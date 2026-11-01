@@ -131,6 +131,30 @@ Previews (the in-app browser's workspace proxy) need a tunnel.
   pings. A tunnel is dead after 45 s with nothing inbound. Tunnels can't be
   resumed: WebKit opens a new one.
 
+## Instance links
+
+A Happy link that leaves the app names the installation it came from:
+`happy://<instanceId>/<internal link without "happy://">`, such as
+`happy://k3x9q2m7p0a4b8c1d5e6f7g2/artifacts/abc123?version=2` (edge SSO
+contract §7). `HappyLink` (HappyWire) reads and writes the grammar,
+ported from happy-agent-client's `happyLinks.ts`.
+
+- Each connection's `instanceId` comes from `GET /v0/health` in the
+  identity loop (`AgentIdentity`) and is kept on its `AgentConnection`. An
+  older daemon reports none.
+- A link from outside (`AppCoordinator.open`) goes through
+  `InstanceLinkRoute`: it opens only on the connection with that exact
+  `instanceId` (the one in use first, if several), switching to it, and
+  shows the artifact or conversation it names; anything else it names
+  shows that connection's home. An unknown installation says "This link
+  belongs to a Happy server you're not connected to." and never falls back
+  to another server. A link naming no installation isn't opened from
+  outside. The app's own `happy://` routes (`direct`, `terminal`, `oauth`)
+  are unchanged.
+- Copy Link, in the bar of an artifact and of a conversation's detail,
+  writes the instance form, and isn't offered when the daemon reports no
+  `instanceId`.
+
 ## Tests
 
 `Tests/HappyCoreTests/ServerSignInTests.swift`: the authorization URL and
@@ -155,7 +179,9 @@ It accepts only `happy://oauth/callback`, PKCE S256 and the `resource`.
   address is entered from Start's scanner, sign-in goes through
   ASWebAuthenticationSession, the name prompt answers the profile gate,
   home loads, expired tokens refresh, an ended SSO session shows "Sign in
-  again", and signing in again connects.
+  again", signing in again connects, the mock's own instance link opens
+  its artifact, and another installation's or an instance-less link is
+  refused.
 - `testDiscoveryAnsweredByTheEdgeOnADevice` runs on a phone with
   `TEST_RUNNER_HAPPY_EDGE_DEVICE=1`: a plain website answering
   `/v0/authentication` is refused with the administrator's fix.

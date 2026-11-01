@@ -14,6 +14,9 @@ actor IdentityTransport: AgentTransport {
     var closed = false
     var failuresRemaining = 0
     var patches: [Data] = []
+    /// The health `instanceId`, raw: nil leaves it out, as older daemons do.
+    var instanceId: String?
+    func report(instanceId: String?) { self.instanceId = instanceId }
     func failNext(_ count: Int) { failuresRemaining = count }
     func configure(name: String? = nil, etag: String? = nil, noAvatar: Bool? = nil, revoked: Bool? = nil) {
         if let name { self.name = name }; if let etag { self.etag = etag }; if let noAvatar { self.noAvatar = noAvatar }; if let revoked { self.revoked = revoked }
@@ -27,7 +30,9 @@ actor IdentityTransport: AgentTransport {
         if failuresRemaining > 0 { failuresRemaining -= 1; throw PairingError.unavailable }
         if revoked { return HTTP1Response(status: 401) }
         switch path {
-        case "/v0/health": return HTTP1Response(status: 200, body: Data(#"{"ready":true,"version":{"protocol":27}}"#.utf8))
+        case "/v0/health":
+            let instance = instanceId.map { #","instanceId":"\#($0)""# } ?? ""
+            return HTTP1Response(status: 200, body: Data(#"{"ready":true,"version":{"protocol":27}\#(instance)}"#.utf8))
         case "/v0/config":
             let avatar: Any = noAvatar ? NSNull() : ["thumbhash": "same-placeholder"]
             return HTTP1Response(status: 200, body: try JSONSerialization.data(withJSONObject: ["config": ["node": ["name": name, "avatar": avatar]]]))
@@ -152,6 +157,44 @@ final class AgentConnectionsTests: XCTestCase {
         let last = try await AgentIdentity.refresh(third, transport: transport, token: "token")
         XCTAssertNil(last.avatar); XCTAssertNil(last.avatarETag)
     }
+    /// The health `instanceId` instance links are matched against, kept
+    /// only when it is one, and dropped when a daemon stops reporting it.
+    func testIdentityKeepsTheHealthInstanceID() async throws {
+        let transport = IdentityTransport()
+        let original = AgentConnection(id: "direct-one", name: "QR name")
+        let none = try await AgentIdentity.refresh(original, transport: transport, token: "token")
+        XCTAssertNil(none.instanceId)
+        await transport.report(instanceId: "k3x9q2m7p0a4b8c1d5e6f7g2")
+        let read = try await AgentIdentity.refresh(none, transport: transport, token: "token")
+        XCTAssertEqual(read.instanceId, "k3x9q2m7p0a4b8c1d5e6f7g2")
+        XCTAssertEqual(try JSONDecoder().decode(AgentConnection.self, from: JSONEncoder().encode(read)).instanceId, read.instanceId)
+        await transport.report(instanceId: "Not-An-Instance")
+        let bad = try await AgentIdentity.refresh(read, transport: transport, token: "token")
+        XCTAssertNil(bad.instanceId)
+    }
+
+    func testInstanceLinksOpenOnlyOnTheirInstallation() {
+        let instance = "k3x9q2m7p0a4b8c1d5e6f7g2"
+        var mine = AgentConnection(id: "mine", name: "Mine"); mine.instanceId = instance
+        var again = AgentConnection(id: "again", name: "Same server, signed in again"); again.instanceId = instance
+        var other = AgentConnection(id: "other", name: "Other"); other.instanceId = "zzzzzzzzzzzzzzzzzzzzzzzz"
+        let older = AgentConnection(id: "older", name: "Older daemon")
+        let all = [older, other, mine, again]
+        let link = "happy://\(instance)/artifacts/q3report?version=2"
+        guard case .open(let id, let opened) = InstanceLinkRoute.route(link, connections: all, active: nil) else { return XCTFail("not opened") }
+        XCTAssertEqual(id, "mine")
+        XCTAssertEqual(opened.target, .reference(.init(kind: .artifact, id: "q3report", version: 2)))
+        guard case .open(let active, _) = InstanceLinkRoute.route(link, connections: all, active: "again") else { return XCTFail("not opened") }
+        XCTAssertEqual(active, "again", "the one in use wins")
+        XCTAssertEqual(InstanceLinkRoute.route("happy://yyyyyyyyyyyyyyyyyyyyyyyy/artifacts/q3report", connections: all, active: "mine"), .unknownInstance)
+        XCTAssertEqual(InstanceLinkRoute.route("happy://artifacts/q3report", connections: all, active: "mine"), .notOpened, "no installation named")
+        XCTAssertEqual(InstanceLinkRoute.route("happy://\(instance)/nonsense", connections: all, active: "mine"), .notOpened)
+        XCTAssertEqual(InstanceLinkRoute.route("happy-file://agents/a1/Foo.tsx", connections: all, active: "mine"), .notOpened)
+        XCTAssertEqual(InstanceLinkRoute.route("happy://session/abc", connections: all, active: "mine"), .notALink)
+        XCTAssertEqual(InstanceLinkRoute.route("happy://oauth/callback?code=c", connections: all, active: "mine"), .notALink)
+        XCTAssertEqual(InstanceLinkRoute.route("https://example.com", connections: all, active: "mine"), .notALink)
+    }
+
     func testRenameSendsTheNodeNameAndShowsItAtOnce() async throws {
         let transport = IdentityTransport()
         let manager = AgentConnections(credentials: KeychainAgentConnectionCredentialStore(backend: AccountsKeychain()), directory: try directory(), makeTransport: { _ in transport })

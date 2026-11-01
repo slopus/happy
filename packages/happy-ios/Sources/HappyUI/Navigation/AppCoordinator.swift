@@ -21,6 +21,10 @@ public final class AppCoordinator {
     private var shownAgentConnectionID: String?
     /// A link from outside, waiting for the stored accounts.
     private var pendingLink: String?
+    /// An entity or file link from outside, waiting for the stored accounts.
+    private var pendingInstanceLink: String?
+    /// What an instance link opens once its connection is home.
+    private var instanceTarget: (connection: String, link: HappyLink)?
     /// The session a tapped notification named, until a signed-in home can
     /// open it.
     private var notificationSessionID: String?
@@ -65,6 +69,7 @@ public final class AppCoordinator {
             self?.show(account.state)
             self?.accountRestored = true
             self?.openPendingLink()
+            self?.openPendingInstanceLink()
             self?.openNotificationSession()
         }
     }
@@ -170,10 +175,68 @@ public final class AppCoordinator {
         // it before iOS opens the app; a stray one opens nothing.
         if OAuthRedirect.isCallback(url) { return true }
         let text = url.absoluteString
-        guard HappyCode(text) != .notHappy else { return false }
+        guard HappyCode(text) != .notHappy else {
+            // An entity or file link: opened only on the installation it names.
+            guard InstanceLinkRoute.route(text, connections: [], active: nil) != .notALink else { return false }
+            pendingInstanceLink = text
+            openPendingInstanceLink()
+            return true
+        }
         pendingLink = text
         openPendingLink()
         return true
+    }
+
+    /// An entity or file link from outside: on the connection whose
+    /// installation it names (`InstanceLinkRoute`), switched to first, and
+    /// on no other.
+    private func openPendingInstanceLink() {
+        guard accountRestored, let text = pendingInstanceLink, let top = linkHost else { return }
+        pendingInstanceLink = nil
+        let connections = context.account.agentConnections
+        switch InstanceLinkRoute.route(text, connections: connections.accounts, active: connections.activeID) {
+        case .notALink:
+            break
+        case .notOpened:
+            Alerts.show(Strings.InstanceLinks.notOpenedTitle, Strings.InstanceLinks.notOpened, on: top)
+        case .unknownInstance:
+            Alerts.show(Strings.InstanceLinks.unknownTitle, Strings.InstanceLinks.unknown, on: top)
+        case .open(let id, let link):
+            instanceTarget = (id, link)
+            if case .agentConnection(let shown) = context.account.state, shown.id == id { return openInstanceTarget() }
+            let account = context.account
+            Task { @MainActor [weak self] in
+                do {
+                    if !account.showsAgentConnections { await account.setShowsAgentConnections(true) }
+                    try await account.switchAccount(to: id)
+                } catch {
+                    self?.instanceTarget = nil
+                    if let top = self?.linkHost { Alerts.show(Strings.InstanceLinks.unknownTitle, error.localizedDescription, on: top) }
+                }
+            }
+        }
+    }
+
+    /// The linked entity, pushed over its connection's home once that is
+    /// the root. An artifact or a conversation opens; anything else
+    /// (a workspace, a file, a service) shows that connection's home.
+    private func openInstanceTarget() {
+        guard let target = instanceTarget, case .agentConnection(let shown) = context.account.state, shown.id == target.connection,
+              shell.stack.first is AgentHomeViewController, let session = Session.session(for: target.connection, context: context) else { return }
+        instanceTarget = nil
+        shell.presentedViewController?.dismiss(animated: false)
+        guard case .reference(let reference) = target.link.target, let navigation = shell.topViewController?.navigationController else { return }
+        switch reference.kind {
+        case .artifact:
+            var artifact = Artifact(id: reference.id, version: reference.version ?? 1, type: "", title: "", followsLatest: reference.version == nil)
+            artifact.pinned = reference.version != nil
+            navigation.pushViewController(ArtifactViewController(session: session, artifact: artifact), animated: true)
+        case .agent:
+            let row = session.snapshot.allRows.first { ($0.kind == .space || $0.kind == .session) && $0.agentId == reference.id }
+            navigation.pushViewController(ChatViewController(session: session, agentId: reference.id, title: row?.label ?? "", spaceId: row?.spaceId, intro: nil), animated: true)
+        default:
+            break
+        }
     }
 
     private func openPendingLink() {
@@ -322,7 +385,9 @@ public final class AppCoordinator {
         }
         NotificationCenter.default.post(name: Self.rootDidChange, object: window)
         openPendingLink()
+        openPendingInstanceLink()
         openNotificationSession()
+        openInstanceTarget()
     }
 
     /// Posted, with the window as its object, once an account's screens

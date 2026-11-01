@@ -6,13 +6,16 @@ import XCTest
 /// https://localhost:8443 by its address. The test signs in through the
 /// browser, gives its name to the profile gate, lands on the server's home,
 /// survives its access tokens being expired (refresh), sees "Sign in again"
-/// once the SSO session ends, and signs in again.
+/// once the SSO session ends, signs in again, and opens instance links from
+/// outside: its own installation's, and refuses any other.
 @MainActor
 final class ServerSignInUITests: XCTestCase {
     private let app = XCUIApplication()
     private let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
     private let browser = XCUIApplication(bundleIdentifier: "com.apple.SafariViewService")
     private static let server = "https://localhost:8443"
+    /// The mock's health `instanceId`.
+    private static let instance = "k3x9q2m7p0a4b8c1d5e6f7g2"
 
     override func setUp() { continueAfterFailure = false }
 
@@ -53,6 +56,13 @@ final class ServerSignInUITests: XCTestCase {
         guard let link else { return XCTFail("the identity provider's page never showed") }
         if let shot { capture(shot) }
         link.tap()
+    }
+
+    /// `url` opened by another app: iOS asks whether to open it in Happy.
+    private func openFromOutside(_ url: URL) {
+        app.open(url)
+        let open = springboard.buttons["Open"]
+        if open.waitForExistence(timeout: 5) { open.tap() }
     }
 
     /// Leaves for the home screen and back: the app reconnects at once.
@@ -133,6 +143,25 @@ final class ServerSignInUITests: XCTestCase {
         XCTAssertTrue(connected.waitForExistence(timeout: 60), "not connected again")
         XCTAssertFalse(needsSignIn.exists)
         capture("8-signed-in-again")
+
+        // A link from outside opens only on the installation it names: the
+        // mock's health `instanceId`, read while connecting.
+        openFromOutside(URL(string: "happy://\(Self.instance)/artifacts/q3report")!)
+        XCTAssertTrue(element("artifact").waitForExistence(timeout: 20), "the instance link didn't open its artifact")
+        XCTAssertTrue(app.navigationBars.staticTexts["Q3 report"].waitForExistence(timeout: 10), "not the linked artifact")
+        XCTAssertTrue(element("artifact-copy-link").exists, "no Copy Link")
+        capture("9-instance-link")
+        // Another installation's link never falls back to this one.
+        openFromOutside(URL(string: "happy://zzzzzzzzzzzzzzzzzzzzzzzz/artifacts/q3report")!)
+        let unknown = app.alerts.staticTexts["This link belongs to a Happy server you’re not connected to."]
+        XCTAssertTrue(unknown.waitForExistence(timeout: 10), "an unknown installation's link wasn't refused")
+        capture("10-unknown-instance")
+        app.alerts.buttons.firstMatch.tap()
+        // Nor does one naming no installation open from outside.
+        openFromOutside(URL(string: "happy://artifacts/q3report")!)
+        XCTAssertTrue(app.alerts.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "doesn’t say which Happy server")).firstMatch.waitForExistence(timeout: 10),
+                      "a link naming no installation opened")
+        app.alerts.buttons.firstMatch.tap()
     }
 
     /// On a phone, where the mock isn't reachable: a server whose

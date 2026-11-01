@@ -26,6 +26,10 @@ public struct AgentConnection: Codable, Equatable, Sendable, Identifiable {
     /// The team server's origin when this is a sign-in, not a pairing. A
     /// revoked one needs signing in again rather than pairing.
     public var server: String? = nil
+    /// The installation's health `instanceId`, once read: what an instance
+    /// link (`happy://<instanceId>/…`) must name to open here. Older
+    /// daemons have none.
+    public var instanceId: String? = nil
 
     public init(id: String, name: String, addedAt: Date = Date()) {
         self.id = id; self.name = name; self.addedAt = addedAt

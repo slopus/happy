@@ -20,6 +20,9 @@ import fs from "node:fs";
 const PORT = Number(process.env.PORT ?? 8443);
 const ORIGIN = `https://localhost:${PORT}`;
 const RESOURCE = "https://happy.acme.example";
+// The installation's health `instanceId`, which instance links name.
+const INSTANCE_ID = "k3x9q2m7p0a4b8c1d5e6f7g2";
+const REPORT = "# Q3 report\n\nShipped behind the SSO load balancer.\n";
 const ACCESS_TTL = Number(process.env.ACCESS_TTL ?? 90);
 const state = {
     codes: new Map(), // code -> {challenge, redirect, resource}
@@ -150,7 +153,7 @@ const handler = async (req, res) => {
     if (!token) return json(res, 401, { error: "Unauthorized", code: "unauthorized", authentication: { methods: [method] } });
 
     // The daemon.
-    if (url.pathname === "/v0/health") return json(res, 200, { ready: true, version: { protocol: 33, daemon: "mock" }, capabilities: { webSocketTunnels: true } });
+    if (url.pathname === "/v0/health") return json(res, 200, { ready: true, version: { protocol: 33, daemon: "mock" }, capabilities: { webSocketTunnels: true }, instanceId: INSTANCE_ID });
     if (url.pathname === "/v0/profile" && req.method === "GET") return json(res, 200, { profile: { userId: state.profileName ? "steve" : null, name: state.profileName, email: null, photo: null, version: "v1", updatedAt: 1 } });
     if (url.pathname === "/v0/profile" && req.method === "PATCH") {
         const body = JSON.parse(await readBody(req) || "{}");
@@ -169,6 +172,15 @@ const handler = async (req, res) => {
         return;
     }
     if (url.pathname.startsWith("/v0/users")) return json(res, 200, { users: [] });
+    // One artifact, for instance links.
+    if (url.pathname === "/v0/artifacts/q3report/versions/latest" || url.pathname === "/v0/artifacts/q3report/versions/1") {
+        const entry = { path: "index.md", mimeType: "text/markdown", size: Buffer.byteLength(REPORT) };
+        return json(res, 200, { version: { artifactId: "q3report", number: 1, title: "Q3 report", entry, files: [entry] } });
+    }
+    if (url.pathname === "/v0/artifacts/q3report/versions/1/files/index.md") {
+        res.writeHead(200, { "content-type": "text/markdown", "content-length": Buffer.byteLength(REPORT) });
+        return res.end(REPORT);
+    }
     return json(res, 404, { error: "Not found", code: "not_found" });
 };
 const server = https.createServer(options, handler);

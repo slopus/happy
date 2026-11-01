@@ -2,6 +2,7 @@
 import AVKit
 import HappyCore
 import HappyLayout
+import HappyWire
 import UIKit
 
 /// A conversation's detail, pushed from its header's capsule: the legacy
@@ -157,6 +158,7 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
         }())
 
         navigationItem.largeTitleDisplayMode = .never
+        navigationItem.rightBarButtonItem = CopyLinkItem.make(.reference(.init(kind: .agent, id: agentId)), instanceId: session.instanceId, identifier: "detail-copy-link")
 
         watch = session.watch { [weak self] snapshot in
             guard let self else { return }

@@ -10,7 +10,7 @@ enum AgentIdentity {
         }
         let health = try await transport.request("/v0/health", credential: token)
         try check(health)
-        struct Health: Decodable { struct Version: Decodable { let `protocol`: Int }; let ready: Bool; let version: Version }
+        struct Health: Decodable { struct Version: Decodable { let `protocol`: Int }; let ready: Bool; let version: Version; let instanceId: String? }
         let state = try JSONDecoder().decode(Health.self, from: health.body)
         guard state.version.protocol >= 27 else { throw PairingError.updateRequired }
         guard state.ready else { throw PairingError.unavailable }
@@ -25,6 +25,7 @@ enum AgentIdentity {
         }
         let config = try JSONDecoder().decode(Configuration.self, from: response.body)
         var updated = account
+        updated.instanceId = state.instanceId.flatMap { HappyLink.isInstanceID($0) ? $0 : nil }
         if let node = config.config.node {
             guard !node.name.isEmpty, node.name.count <= 128, !node.name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { throw PairingError.invalidResponse }
             updated.name = AgentName.friendly(node.name)

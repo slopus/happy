@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import HappyCore
 import HappyLayout
+import HappyWire
 import UIKit
 
 /// One artifact, or one file of it a link opened. Markdown uses the
@@ -76,6 +77,12 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
         view.addSubview(spinner)
         spinner.startAnimating()
         scrollView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped(_:))))
+        // The artifact, at the version it was pinned to; a file a link
+        // opened inside it has no link of its own.
+        if opened == nil {
+            let target = HappyLink.Target.reference(.init(kind: .artifact, id: artifact.id, version: artifact.pinned ? artifact.version : nil))
+            navigationItem.rightBarButtonItem = CopyLinkItem.make(target, instanceId: session.instanceId, identifier: "artifact-copy-link")
+        }
         loading = Task { [weak self] in await self?.load() }
     }
 
