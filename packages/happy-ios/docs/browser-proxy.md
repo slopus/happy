@@ -89,8 +89,8 @@ sandbox is replaced by a same-origin sandbox on the already isolated artifact
 origin, so fetch, SSE and storage work.
 
 Each browser has a nonpersistent data store; native origin rules scope cookies
-and storage. Nothing is shared with another artifact or account. Every browser
-shows “via <computer>”. Safari is only in the Share menu, explicitly labeled
+and storage. Nothing is shared with another artifact or account. Safari is only
+in the Share menu, explicitly labeled
 “Open in Safari (outside proxy)”; synthetic bundled origins cannot open there.
 Sharing a bundled artifact shares its tag.
 
@@ -99,6 +99,53 @@ tunnel is encrypted: ATS checks the **page URL before CONNECT**. The hosted test
 without that allowance failed with -1022. The exception applies only to WebKit,
 not the production native API client; it permits HTTP dev servers and public
 HTTP URLs while those bytes still travel through the agent tunnel.
+
+## The browser screen
+
+`BrowserViewController` keeps the standard header. Back and forward, then
+reload (stop while loading) and share, sit at its right in two glass groups;
+a long press on back or forward lists that way's history. The title is the
+page's, with its host as the subtitle. Embedded in an artifact, the buttons go
+in the artifact's header and its title stays. The page runs the full height,
+under the header and the home indicator, and WebKit insets its content by the
+safe area, so nothing moves when the header appears. Until it paints, the
+screen's surface shows through (`isOpaque = false`). Pull to refresh reloads.
+
+The back swipe is the page's while it has history (`TakesBackSwipe`): the
+shell's pop doesn't begin, and WebKit's own swipe goes back a page. On the
+first page, or over the error page, the swipe closes the screen.
+
+**Loading bar.** WebKit's `estimatedProgress` can't drive it alone: every
+request first opens a tunnel to the computer, and WebKit counts nothing until
+bytes arrive. Measured through the proxy, it sits at 0.1 for the whole tunnel
+setup (1.5 s against the fake daemon, longer over Tailcat), then jumps to 1
+within 30 ms. The old bar set that value unanimated and hid at 1, so it showed a
+10 % stub and vanished; it was also at 0, invisible, while the session
+connected. `BrowserProgress` now starts at 0.1 as soon as anything loads (the
+connect included), creeps toward 0.7 while nothing is heard, takes WebKit's
+estimate only when it is further, fills to 1 and fades. A redirect or a
+replacing navigation continues the bar; it never goes back within a load.
+
+**Error page.** A glyph, a title, a sentence and Try Again, which loads the
+address that failed, not the last one that worked (`BrowserProblem`):
+
+| Cause | Shown as |
+| --- | --- |
+| No network path (`LinkState.waitingForNetwork`) | You're Offline |
+| The agent connection offline, or the proxy's tunnel to the computer failed (`browser_proxy_upstream_transport`) | Can't Reach <computer>; retried by itself when the link is back |
+| No session or route (`BrowserError.unavailable`) | Can't Open This Page |
+| The computer refused the target (502/503/504 on CONNECT), connection refused or lost | Server Isn't Responding, naming host:port |
+| The proxy's own 502/503/504 response (`X-Happy-Proxy-Error`), whatever its body | Server Isn't Responding |
+| An error status with no body | Page Error <status>; one with a body shows as the page |
+| Timeout, DNS, TLS | Page Took Too Long, Can't Find the Server, Can't Open Securely |
+| The web process stopped | Reloaded once quietly; a second stop shows This Page Stopped Working |
+| A link to an app nothing opens | An alert over the page, or the error page when nothing was shown |
+
+WebKit only says the proxy refused a tunnel, so `BrowserProxy` keeps the last
+refusal per host (`BrowserRefusals`) and the screen reads it. Cancelled and
+replaced loads (`NSURLErrorCancelled`, WebKit's 102 and 204) never show an
+error. Hosted tests (`HostedBrowserStatesTests`) drive each case through real
+WebKit and the proxy, and assert the bar's whole run and the buttons.
 
 ## Native artifact viewer
 
@@ -140,7 +187,7 @@ shows the unavailable state. No device-local localhost or public fallback occurs
 
 Hosted tests use real WebKit and the loopback listener against a byte-level fake
 daemon: artifact PUT and live SSE, relative JavaScript and WebSocket, live URL
-artifact API separation, chat workspace selection, the computer indicator, and
+artifact API separation, chat workspace selection, and
 public pages/resources on fake-only domains that cannot resolve on the phone.
 They assert no failover/domain exclusions and no view when no connection exists.
 Core tests cover framing, errors, credential boundaries and streaming; pure

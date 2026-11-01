@@ -203,10 +203,11 @@ final class HostedBrowserTests: XCTestCase {
         defer { window.isHidden = true }
         try await Task.sleep(for: .milliseconds(100))
         XCTAssertTrue(browser.view.subviews.compactMap { $0 as? WKWebView }.isEmpty)
-        XCTAssertTrue(browser.view.subviews.compactMap { $0 as? UILabel }.contains { $0.text?.hasPrefix("Can’t reach") == true })
+        XCTAssertEqual(browser.problem, .unavailable)
+        XCTAssertFalse(browser.failureView.isHidden)
     }
 
-    func testChatLocalhostLinkUsesItsWorkspaceAndShowsComputerName() async throws {
+    func testChatLocalhostLinkUsesItsWorkspace() async throws {
         let daemon = BrowserDaemon()
         let account = AccountController(serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "browser-test", credentialStore: InMemoryCredentialStore(), storeDirectory: nil, agentTransport: { _ in daemon })
         await account.agentConnections.setForeground(false)
@@ -225,8 +226,7 @@ final class HostedBrowserTests: XCTestCase {
         let browser = try XCTUnwrap(navigation.topViewController as? BrowserViewController)
         let web = try await waitForWeb(browser)
         try await waitForText("ws-live", web: web)
-        let route = browser.view.subviews.compactMap { $0 as? UILabel }.first { $0.accessibilityIdentifier == "browser-route" }
-        XCTAssertEqual(route?.text, "via Studio Mac")
+        XCTAssertNil(browser.view.subviews.first { $0.accessibilityIdentifier == "browser-route" }, "No “via <computer>” line")
         let requests = await daemon.requests
         XCTAssertTrue(requests.contains { $0.hasPrefix("CONNECT /v0/workspaces/work1/proxy") })
         window.overrideUserInterfaceStyle = .light

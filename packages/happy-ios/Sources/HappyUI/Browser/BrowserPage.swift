@@ -10,6 +10,8 @@ final class BrowserPage {
     let configuration: WKWebViewConfiguration
     let url: URL
     private let proxy: BrowserProxy
+    /// Why the proxy refused tunnels, for the error page.
+    var refusals: BrowserRefusals { proxy.refusals }
 
     private init(url: URL, proxy: BrowserProxy, port: UInt16) {
         self.url = url; self.proxy = proxy

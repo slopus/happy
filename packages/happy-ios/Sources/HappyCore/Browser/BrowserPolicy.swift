@@ -14,6 +14,12 @@ public enum BrowserPolicy {
         return .web
     }
 
+    /// Addresses WebKit resolves inside the page, with nothing to fetch:
+    /// a blank or srcdoc frame, data and blob URLs, `javascript:` links.
+    public static func isInPage(_ url: URL) -> Bool {
+        ["about", "data", "blob", "javascript"].contains(url.scheme?.lowercased() ?? "")
+    }
+
     public static func normalize(_ host: String) -> String {
         let host = host.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "[]."))
         // Browsers canonicalize legacy IPv4 spellings before CONNECT. Match the

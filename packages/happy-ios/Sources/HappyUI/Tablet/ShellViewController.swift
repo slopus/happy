@@ -522,6 +522,15 @@ enum MainPanelKey {
     }
 }
 
+/// A screen whose own content takes the back swipe while it has somewhere
+/// to go back to: the browser, with history. UIKit's pop doesn't begin
+/// then, so the swipe goes back a page; on the first page it closes the
+/// screen as everywhere else.
+@MainActor
+protocol TakesBackSwipe: AnyObject {
+    var takesBackSwipe: Bool { get }
+}
+
 /// UIKit's own swipe back, kept wherever there is something to go back
 /// to. UIKit stops its edge swipe on a screen whose back button is hidden
 /// or replaced (happy-app's plain headers, a bar item at the left);
@@ -553,6 +562,7 @@ final class PopGestureDelegate: NSObject, UIGestureRecognizerDelegate {
     func gestureRecognizerShouldBegin(_ gesture: UIGestureRecognizer) -> Bool {
         guard let navigation else { return false }
         var begins = navigation.viewControllers.count > 1 && navigation.transitionCoordinator == nil
+            && !(navigation.topViewController.map(Self.takesBackSwipe) ?? false)
         if #available(iOS 26.0, *), gesture === navigation.interactiveContentPopGestureRecognizer {
             // Unlike the edge recognizer, the content pan can begin anywhere.
             // Leave vertical scrolling and the opposite direction to content.
@@ -603,6 +613,12 @@ final class PopGestureDelegate: NSObject, UIGestureRecognizerDelegate {
     /// internal transition object, and the native swipes stop receiving touches.
     private func system(for gesture: UIGestureRecognizer) -> (any UIGestureRecognizerDelegate)? {
         isContent(gesture) ? contentSystem : edgeSystem
+    }
+
+    /// Whether `controller`, or a screen inside it, goes back on its own.
+    private static func takesBackSwipe(_ controller: UIViewController) -> Bool {
+        if let owner = controller as? TakesBackSwipe, owner.takesBackSwipe { return true }
+        return controller.children.contains(where: takesBackSwipe)
     }
 
     private static func isScrollPan(_ gesture: UIGestureRecognizer) -> Bool {

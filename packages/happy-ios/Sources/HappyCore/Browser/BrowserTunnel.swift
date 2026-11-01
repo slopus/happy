@@ -42,7 +42,10 @@ extension AgentClient {
         let stream: any BrowserStream
         do { stream = try await transport.browserConnection() } catch {
             if !(error is CancellationError) { metrics?.request(.browser, status: nil, duration: ConnectionMetrics.uptime() - start) }
-            throw error
+            // No way to the computer at all is the link failing (502), as
+            // a failure inside the tunnel is, not the proxy's own (500).
+            if error is CancellationError || error is BrowserError { throw error }
+            throw BrowserProxyFailure.upstream(error)
         }
         do {
             try await Self.connect(stream, target: "/v0/workspaces/\(workspaceID)/proxy", credential: token)
