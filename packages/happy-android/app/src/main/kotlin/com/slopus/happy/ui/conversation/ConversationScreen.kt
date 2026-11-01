@@ -244,8 +244,9 @@ fun ConversationScreen(
     val glass = rememberGlassSource(colors.surface)
     val blurs = rememberGlassBlur()
     var dock by remember { mutableIntStateOf(0) }
-    // The keyboard moves the dock and the transcript by an offset while it animates, and is in
-    // the layout only at rest, read where things are laid out and placed: it settling composes nothing.
+    // The keyboard draws the dock and the transcript higher while it animates (a translation each
+    // frame, nothing laid out), and is in the layout only at one end, read where things are laid
+    // out and placed: it settling composes nothing.
     val keyboard = rememberKeyboardLift()
     // The transcript slides under the bar as it rides: the bar blurs what the whole way passes under it once.
     glass.travel = keyboard.travel
@@ -425,7 +426,6 @@ fun ConversationScreen(
                 Modifier
                     .align(Alignment.BottomCenter)
                     .riding(keyboard)
-                    .graphicsLayer()
                     .fillMaxWidth()
                     .keyboardPadding(keyboard)
                     .onSizeChanged { dock = it.height }
@@ -567,7 +567,7 @@ private fun TranscriptList(
         state = listState,
         reverseLayout = true,
         contentPadding = remember(bar, dock, keyboard, density) { KeyboardPadding(bar, dock + 8.dp, keyboard, density) },
-        modifier = Modifier.fillMaxSize().aboveKeyboard(keyboard).graphicsLayer().glassSource(glass).graphicsLayer { translationY = reveal.lag() + motion.lift() }.testTag(ConversationScreenTags.LIST),
+        modifier = Modifier.fillMaxSize().aboveKeyboard(keyboard).glassSource(glass).graphicsLayer { translationY = reveal.lag() + motion.lift() }.testTag(ConversationScreenTags.LIST),
     ) {
         items(state.rows, key = ConversationRow::key, contentType = { it::class }) { row ->
             val moves = when {

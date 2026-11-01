@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The window's KeyboardMotion, on the Compose view's parent (ui/conversation/KeyboardLift.kt). -->
+    <item name="keyboard_motion" type="id" />
+</resources>

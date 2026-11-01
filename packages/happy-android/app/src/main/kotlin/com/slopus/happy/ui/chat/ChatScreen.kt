@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -16,7 +15,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -25,10 +23,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -46,6 +44,11 @@ import com.slopus.happy.model.settings.ModeOption
 import com.slopus.happy.sync.AgentModeField
 import com.slopus.happy.ui.components.GlassBarLayout
 import com.slopus.happy.ui.components.GlassSpec
+import com.slopus.happy.ui.components.glassSource
+import com.slopus.happy.ui.components.rememberGlassSource
+import com.slopus.happy.ui.conversation.keyboardPadding
+import com.slopus.happy.ui.conversation.rememberKeyboardLift
+import com.slopus.happy.ui.conversation.riding
 import com.slopus.happy.ui.components.Header
 import com.slopus.happy.ui.components.HeaderBackButton
 import com.slopus.happy.ui.layout.LocalWindowLayout
@@ -249,12 +252,19 @@ fun ChatScreen(
     // The bars over a tablet's composer sit 12 in rather than 8 (`sessionInputHorizontalPadding`).
     val tablet = LocalWindowLayout.current.isTablet
     val showsList = session != null && state.sessionLoaded && state.snapshot.rows.isNotEmpty()
+    // The keyboard as the agent chat takes it (KeyboardLift): the content is drawn higher while it
+    // animates and laid out above it at one end. The bar stays, so it reads the content it records
+    // here and follows it up.
+    val keyboard = rememberKeyboardLift()
+    val glass = rememberGlassSource(colors.surface)
+    glass.travel = keyboard.travel
     GlassBarLayout(
         modifier = modifier
             .testTag(ChatScreenTags.SCREEN)
             .fillMaxSize()
             .background(colors.surface),
         ground = colors.surface,
+        source = glass,
         // Only the transcript runs under the bar; what stands in for it is held below the bar's foot.
         feathered = showsList,
         bar = {
@@ -271,7 +281,7 @@ fun ChatScreen(
             }
         },
     ) { top ->
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().keyboardPadding(keyboard).riding(keyboard).glassSource(glass)) {
             val floating = !tablet && !LocalWindowLayout.current.isLandscape
             // A pending chat's composer runs as the chat it was opened beside.
             val composerSession = session ?: pending?.anchor
@@ -281,8 +291,9 @@ fun ChatScreen(
             val showDetails = !floating || atNewest
             val density = LocalDensity.current
             var dockHeight by remember { mutableIntStateOf(0) }
-            var listBottom by remember { mutableFloatStateOf(0f) }
-            var cardTop by remember { mutableStateOf<Float?>(null) }
+            // The composer card's distance from the list's bottom, in pixels: both move together with the keyboard, so it doesn't.
+            val list = remember { arrayOfNulls<LayoutCoordinates>(1) }
+            var cardInset by remember { mutableStateOf<Float?>(null) }
             val dockInset = if (docked) with(density) { dockHeight.toDp() } else 0.dp
             val inputPadding = if (tablet) ChatScreenSpec.tabletInputPaddingHorizontal else ChatScreenSpec.inputPaddingHorizontal
             val dock = @Composable { dockModifier: Modifier, composerModifier: Modifier ->
@@ -290,7 +301,9 @@ fun ChatScreen(
                     ChatDock(
                         state, composerSession, draft, actions, now, modes, inactiveHint.takeIf { session != null }, goalBar, activityBar, inputPadding, showDetails,
                         autoFocus = session == null && pending?.focusComposer == true,
-                        onPanelPositioned = if (docked) { coordinates -> cardTop = coordinates.positionInRoot().y } else null,
+                        onPanelPositioned = if (docked) { coordinates ->
+                            cardInset = list[0]?.takeIf { it.isAttached }?.let { it.size.height - it.localPositionOf(coordinates, Offset.Zero).y }
+                        } else null,
                         modifier = dockModifier,
                         composerModifier = composerModifier,
                     )
@@ -300,7 +313,7 @@ fun ChatScreen(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .onGloballyPositioned { listBottom = it.boundsInRoot().bottom },
+                    .onPlaced { list[0] = it },
             ) {
                 // The list runs under the bar and the floating dock; anything else keeps to the room between them.
                 Box(Modifier.fillMaxSize().padding(top = if (showsList) 0.dp else top - GlassSpec.feather, bottom = if (showsList) 0.dp else dockInset)) {
@@ -320,7 +333,7 @@ fun ChatScreen(
                                 state = listState,
                                 bottomInset = dockInset,
                                 topInset = top,
-                                scrollButtonInset = cardTop?.takeIf { docked }?.let { with(density) { (listBottom - it).coerceAtLeast(0f).toDp() } },
+                                scrollButtonInset = cardInset?.takeIf { docked }?.let { with(density) { it.coerceAtLeast(0f).toDp() } },
                                 onNewestVisibleChange = if (floating) { visible -> atNewest = visible } else null,
                                 sessionId = session.id,
                                 groupToolCalls = groupToolCalls,
@@ -349,13 +362,12 @@ fun ChatScreen(
                         Modifier
                             .align(Alignment.BottomCenter)
                             .onSizeChanged { dockHeight = it.height }
-                            .windowInsetsPadding(WindowInsets.navigationBars)
-                            .imePadding(),
+                            .windowInsetsPadding(WindowInsets.navigationBars),
                         Modifier,
                     )
                 }
             }
-            if (!docked) dock(Modifier, Modifier.windowInsetsPadding(WindowInsets.navigationBars).imePadding())
+            if (!docked) dock(Modifier, Modifier.windowInsetsPadding(WindowInsets.navigationBars))
         }
     }
 }

@@ -56,7 +56,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -184,13 +183,14 @@ internal fun ConversationComposer(
     var picker by rememberSaveable { mutableStateOf<ModePicker?>(null) }
     var moreCenterY by remember { mutableIntStateOf(0) }
     var modelCenterY by remember { mutableIntStateOf(0) }
-    // Where + and the model label sit, kept out of the snapshot as they move (the dock rides the
-    // keyboard each frame) and given to the popups as one opens, so moving never recomposes this.
-    val anchors = remember { IntArray(2) }
+    // Where + and the model label are, read as a popup opens: nothing runs as they move (the dock
+    // rides the keyboard, settles, scrolls with a growing draft).
+    val anchors = remember { arrayOfNulls<LayoutCoordinates>(2) }
+    fun anchor(i: Int) = anchors[i]?.takeIf { it.isAttached }?.boundsInWindow()?.center?.y?.toInt() ?: 0
     fun openPicker(which: ModePicker) {
         attaching = false
         menu = false
-        modelCenterY = anchors[1]
+        modelCenterY = anchor(1)
         picker = which
     }
 
@@ -263,9 +263,9 @@ internal fun ConversationComposer(
             }
             ComposerLayout(open, compact, if (compact || !open) minimumCompact else minimumActions) {
                 Box(Modifier.layoutId(Slot.MORE)) {
-                    IconButton(onClick = { picker = null; moreCenterY = anchors[0]; if (showCount) menu = true else attaching = true }, modifier = Modifier.testTag(ConversationComposerTags.MORE)
+                    IconButton(onClick = { picker = null; moreCenterY = anchor(0); if (showCount) menu = true else attaching = true }, modifier = Modifier.testTag(ConversationComposerTags.MORE)
                         .semantics { contentDescription = moreLabel }
-                        .onGloballyPositioned { anchors[0] = it.boundsInWindow().center.y.toInt() }) {
+                        .onPlaced { anchors[0] = it }) {
                         BadgedBox(badge = {
                             if (showCount) Badge(containerColor = colors.text, contentColor = colors.surface) {
                                 Text(attached.size.toString(), Modifier.testTag(ConversationComposerTags.COUNT).clearAndSetSemantics {})
@@ -307,7 +307,7 @@ internal fun ConversationComposer(
                         catalog = state.catalog,
                         mode = state.mode,
                         onOpen = { openPicker(ModePicker.Model) },
-                        modifier = Modifier.layoutId(Slot.LABEL).onGloballyPositioned { anchors[1] = it.boundsInWindow().center.y.toInt() },
+                        modifier = Modifier.layoutId(Slot.LABEL).onPlaced { anchors[1] = it },
                     )
                 }
                 val sendLabel = stringResource(if (primary == PrimaryAction.Stop) R.string.conversation_stop else R.string.conversation_send)

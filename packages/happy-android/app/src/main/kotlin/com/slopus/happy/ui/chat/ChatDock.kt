@@ -5,12 +5,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -55,21 +51,20 @@ import kotlinx.coroutines.launch
 
 /**
  * AgentContentView's scrim behind the floating dock: from 28 above the
- * dock ([dockHeight], with its system-bar and keyboard room) down to the
- * screen's bottom, or to the keyboard's top when it is up.
+ * dock ([dockHeight], with its system-bar room) down to the screen's
+ * bottom, or to the keyboard's top when it is up (the screen's content
+ * ends there: it is laid out above the keyboard, [com.slopus.happy.ui.conversation.KeyboardLift]).
  */
 @Composable
 internal fun DockScrim(dockHeight: Int, modifier: Modifier = Modifier) {
     val density = LocalDensity.current
-    val keyboardExtra = (WindowInsets.ime.getBottom(density) - WindowInsets.navigationBars.getBottom(density)).coerceAtLeast(0)
     val stops = if (HappyTheme.colors.dark) ChatScreenSpec.scrimDark else ChatScreenSpec.scrimLight
     with(density) {
         Box(
             modifier
-                .padding(bottom = keyboardExtra.toDp())
                 .testTag(ChatScreenTags.SCRIM)
                 .fillMaxWidth()
-                .height((dockHeight - keyboardExtra).toDp() + ChatScreenSpec.scrimOverhang)
+                .height(dockHeight.toDp() + ChatScreenSpec.scrimOverhang)
                 .background(Brush.verticalGradient(*stops.toTypedArray())),
         )
     }

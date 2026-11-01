@@ -1,54 +1,71 @@
 package com.slopus.happy.ui.conversation
 
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.imeAnimationSource
-import androidx.compose.foundation.layout.imeAnimationTarget
-import androidx.compose.foundation.layout.navigationBars
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ValueAnimator
+import android.os.Build
+import android.view.View
+import android.view.WindowInsets
+import android.view.WindowInsetsAnimation
+import android.view.animation.PathInterpolator
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.offset
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Density
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.offset
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.slopus.happy.ui.components.GlassTravel
+import com.slopus.happy.R
 import kotlin.math.min
+import kotlin.math.roundToInt
 
 /**
  * The keyboard as Telegram's AdjustPanLayoutHelper moves a chat for it
- * (`ui/ActionBar/AdjustPanLayoutHelper.java`, its WindowInsetsAnimation
- * callback): while the keyboard animates, the dock and the transcript move
- * with it by an offset each frame, and the layout takes the keyboard's
- * height once, at whichever end of the animation it is lower, so as a hide
- * starts and as a show ends. Nothing is measured on the frames between.
- * Without an animation (Android before 11, or animations off) the keyboard
- * is in the layout at once and [lift] stays 0.
+ * (`ui/ActionBar/AdjustPanLayoutHelper.java`): the layout takes the
+ * keyboard's height once, at whichever end of its animation that is lower
+ * ([rest]: as a hide starts, as a show ends), and on every frame between,
+ * what rides it is only drawn higher ([lift], a translation), with no
+ * composition, measure, placement or positioned callback.
+ *
+ * The frames come from [KeyboardMotion]: on Android 11+ the IME's own
+ * animation (`WindowInsetsAnimation.Callback`, AdjustPanLayoutHelper's
+ * inset-animator path), which it also keeps from the Compose tree, so
+ * Compose's own insets don't animate a layout under it; before Android 11,
+ * Telegram's 250 ms on cubic-bezier(0.199, 0.011, 0.279, 0.910), from
+ * where the keyboard was to where the window says it is, as
+ * AdjustPanLayoutHelper's pre-draw path animates. Read [rest] only where
+ * things are measured or placed, [lift] and [travel] only where they draw.
  */
 @Stable
-class KeyboardLift internal constructor(
-    private val now: WindowInsets,
-    private val from: WindowInsets,
-    private val to: WindowInsets,
-    private val navigation: WindowInsets,
-    private val density: Density,
-) {
-    private fun above(insets: WindowInsets) = (insets.getBottom(density) - navigation.getBottom(density)).coerceAtLeast(0)
-
+class KeyboardLift internal constructor(private val motion: KeyboardMotion) {
     /** The keyboard's height over the navigation bar that the layout is given, in pixels. Read where it lays out or places, not where it composes. */
-    val rest: Int get() = min(above(from), above(to))
+    val rest: Int get() = motion.rest
 
-    /** How far above [rest] the keyboard is this frame, in pixels. Read only where things are placed or drawn. */
-    val lift: Int get() = (above(now) - rest).coerceAtLeast(0)
+    /** How far above [rest] the keyboard is this frame, in pixels. Read only where things draw. */
+    val lift: Int get() = motion.lift
 
     /**
      * What is placed [aboveKeyboard] travels with it: up by the keyboard's
@@ -56,43 +73,233 @@ class KeyboardLift internal constructor(
      * started and where it ends. The glass over the transcript blurs the band
      * the whole way passes under it once ([GlassTravel]). Read where it draws.
      */
-    val travel: GlassTravel = object : GlassTravel {
-        override val now: Int get() = above(this@KeyboardLift.now)
-        override val from: Int get() = above(this@KeyboardLift.from)
-        override val to: Int get() = above(this@KeyboardLift.to)
+    val travel: GlassTravel get() = motion
+}
+
+/**
+ * The window's keyboard for the [KeyboardLift]s on it (one per Compose
+ * window, shared): held by the screens that ride it while they are started.
+ *
+ * Held, it sits on the Compose view's parent: an insets listener reads the
+ * keyboard's height from what is applied to the window, and on Android 11+
+ * a `WindowInsetsAnimation.Callback` with `DISPATCH_MODE_STOP` follows the
+ * IME's animation frame by frame, as AdjustPanLayoutHelper's does, and
+ * keeps the animation from the Compose view below it. Compose's
+ * `WindowInsets` then take the keyboard's end state as it starts and hold
+ * it, instead of being dispatched every frame (the `insets_animation` and
+ * the measure each frame cost before; research/telegram-chat.md). Nothing in
+ * a screen that rides the keyboard reads them.
+ */
+internal class KeyboardMotion private constructor(private val host: View?) : GlassTravel {
+    private var restState by mutableIntStateOf(0)
+    private var nowState by mutableIntStateOf(0)
+    private var fromState by mutableIntStateOf(0)
+    private var toState by mutableIntStateOf(0)
+
+    val rest: Int get() = restState
+    override val now: Int get() = nowState
+    override val from: Int get() = fromState
+    override val to: Int get() = toState
+    override val lift: Int get() = (nowState - restState).coerceAtLeast(0)
+
+    /** The keyboard's height in what was last applied to the window: where it is going, or is. */
+    private var applied = 0
+    private var animating = false
+    private var fallback: ValueAnimator? = null
+    private var users = 0
+
+    init {
+        // Made in composition: written, not sent.
+        settle(host?.let(::current) ?: 0, send = false)
+    }
+
+    fun acquire() {
+        if (users++ == 0) install()
+    }
+
+    fun release() {
+        if (--users == 0) uninstall()
+    }
+
+    private fun install() {
+        val host = host ?: return
+        applied = current(host)
+        settle(applied)
+        host.setOnApplyWindowInsetsListener { view, insets ->
+            applied(above(WindowInsetsCompat.toWindowInsetsCompat(insets, view)))
+            view.onApplyWindowInsets(insets)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) host.setWindowInsetsAnimationCallback(Follow())
+    }
+
+    private fun uninstall() {
+        val host = host ?: return
+        host.setOnApplyWindowInsetsListener(null)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) host.setWindowInsetsAnimationCallback(null)
+        settle(applied)
+    }
+
+    /**
+     * The window's insets have the keyboard [height] high. Mid-animation that
+     * is where it ends: the layout takes the lower of its two ends. Otherwise
+     * it is there now, or, before Android 11, Telegram's animation takes it
+     * there.
+     */
+    private fun applied(height: Int) {
+        applied = height
+        when {
+            animating && fallback == null -> {
+                toState = height
+                restState = min(fromState, height)
+                send()
+            }
+            height == toState && (animating || height == nowState) -> Unit
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> settle(height)
+            else -> animate(height)
+        }
+    }
+
+    private fun begin() {
+        fallback?.cancel()
+        fallback = null
+        animating = true
+        fromState = nowState
+        toState = nowState
+    }
+
+    /** AdjustPanLayoutHelper's pre-draw path: 250 ms on its curve from where the keyboard is to [height]. */
+    private fun animate(height: Int) {
+        begin()
+        toState = height
+        restState = min(fromState, height)
+        val start = fromState
+        val animator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = KeyboardSpec.DURATION_MS
+            interpolator = KeyboardSpec.interpolator
+            addUpdateListener { move((start + (height - start) * it.animatedFraction).roundToInt()) }
+            addListener(object : AnimatorListenerAdapter() {
+                private var cancelled = false
+                override fun onAnimationCancel(animation: Animator) {
+                    cancelled = true
+                }
+                override fun onAnimationEnd(animation: Animator) {
+                    if (cancelled || fallback !== animation) return
+                    settle(applied)
+                }
+            })
+        }
+        fallback = animator
+        send()
+        animator.start()
+    }
+
+    private fun move(height: Int) {
+        if (height == nowState) return
+        nowState = height
+        send()
+    }
+
+    private fun settle(height: Int, send: Boolean = true) {
+        fallback = null
+        animating = false
+        restState = height
+        nowState = height
+        fromState = height
+        toState = height
+        if (send) send()
+    }
+
+    /** Observers learn of the writes now, so this frame's layout and draw see them, as Compose's own insets do. */
+    private fun send() = Snapshot.sendApplyNotifications()
+
+    @RequiresApi(Build.VERSION_CODES.R)
+    private inner class Follow : WindowInsetsAnimation.Callback(DISPATCH_MODE_STOP) {
+        override fun onPrepare(animation: WindowInsetsAnimation) {
+            if (animation.ime) begin()
+        }
+
+        override fun onProgress(insets: WindowInsets, running: MutableList<WindowInsetsAnimation>): WindowInsets {
+            if (animating && running.any { it.ime }) move(above(WindowInsetsCompat.toWindowInsetsCompat(insets, host)))
+            return insets
+        }
+
+        override fun onEnd(animation: WindowInsetsAnimation) {
+            if (animation.ime && animating) settle(applied)
+        }
+    }
+
+    companion object {
+        /**
+         * The motion of [view]'s window, kept on its parent (the Compose view's own insets callbacks
+         * are Compose's) as a tag, so it goes with the window.
+         */
+        fun of(view: View): KeyboardMotion {
+            val host = view.parent as? View ?: return KeyboardMotion(null)
+            return host.getTag(R.id.keyboard_motion) as? KeyboardMotion ?: KeyboardMotion(host).also { host.setTag(R.id.keyboard_motion, it) }
+        }
+
+        private val WindowInsetsAnimation.ime: Boolean
+            @RequiresApi(Build.VERSION_CODES.R) get() = typeMask and WindowInsets.Type.ime() != 0
+
+        private fun current(view: View): Int = ViewCompat.getRootWindowInsets(view)?.let(::above) ?: 0
+
+        /** The keyboard's height over the navigation bar. */
+        private fun above(insets: WindowInsetsCompat): Int =
+            (insets.getInsets(WindowInsetsCompat.Type.ime()).bottom - insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom).coerceAtLeast(0)
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+/** Telegram's keyboard motion (AdjustPanLayoutHelper's `keyboardDuration` and `keyboardInterpolator`, ChatListItemAnimator's). */
+object KeyboardSpec {
+    const val DURATION_MS = 250L
+    val interpolator = PathInterpolator(0.199f, 0.011f, 0.279f, 0.910f)
+}
+
+/** The window's [KeyboardLift], held while this screen is started. */
 @Composable
 fun rememberKeyboardLift(): KeyboardLift {
-    val now = WindowInsets.ime
-    val from = WindowInsets.imeAnimationSource
-    val to = WindowInsets.imeAnimationTarget
-    val navigation = WindowInsets.navigationBars
-    val density = LocalDensity.current
-    return remember(now, from, to, navigation, density) { KeyboardLift(now, from, to, navigation, density) }
+    val view = LocalView.current
+    val motion = remember(view) { KeyboardMotion.of(view) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(motion, lifecycle) {
+        var held = false
+        fun hold(now: Boolean) {
+            if (now == held) return
+            held = now
+            if (now) motion.acquire() else motion.release()
+        }
+        // Started, not composed: a screen kept under another doesn't hold the window's keyboard from it.
+        val observer = LifecycleEventObserver { _, _ -> hold(lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) }
+        lifecycle.addObserver(observer)
+        onDispose {
+            lifecycle.removeObserver(observer)
+            hold(false)
+        }
+    }
+    return remember(motion) { KeyboardLift(motion) }
 }
 
 /**
- * Placed [KeyboardLift.lift] higher ([share] of it: half for what sits
- * centred between the bar and the dock). A placement only, so what is
- * glass here still knows where it is. The transcript and the dock ride
- * together, each in a layer of its own, so a frame moves two layers: the
- * dock's glass shows the same content as the frame before and isn't blurred
- * again, and only the bar's is.
+ * Drawn [KeyboardLift.lift] higher ([share] of it: half for what sits
+ * centred between the bar and the dock), as AdjustPanLayoutHelper's
+ * `onPanTranslationUpdate` sets a View's translation: a frame of the
+ * keyboard draws this node again (a translation and its layer), and
+ * nothing is composed, measured or placed for it. Its own layer inside, so
+ * the content isn't recorded again, and one outside, so the parent isn't.
  */
 fun Modifier.riding(keyboard: KeyboardLift, share: Float = 1f): Modifier =
-    offset { IntOffset(0, -(keyboard.lift * share).toInt()) }
+    graphicsLayer()
+        .drawWithContent { translate(0f, -(keyboard.lift * share).toInt().toFloat()) { this@drawWithContent.drawContent() } }
+        .graphicsLayer()
 
 /**
- * Placed above the keyboard: [KeyboardLift.rest] and [KeyboardLift.lift]
- * higher, read where it is placed, so the keyboard settling moves it and
- * lays nothing out, for what doesn't need the room above the keyboard to
- * measure (the dock's fade, the jump button).
+ * Placed above the keyboard: [KeyboardLift.rest] higher, read where it is
+ * placed, so the keyboard settling moves it and lays nothing out, and drawn
+ * [KeyboardLift.lift] higher on top ([riding]), for what doesn't need the
+ * room above the keyboard to measure (the dock's fade, the jump button).
  */
 fun Modifier.aboveKeyboard(keyboard: KeyboardLift): Modifier =
-    offset { IntOffset(0, -(keyboard.rest + keyboard.lift)) }
+    offset { IntOffset(0, -keyboard.rest) }.riding(keyboard)
 
 /**
  * [bottom] and the keyboard's [KeyboardLift.rest] of room kept under this,

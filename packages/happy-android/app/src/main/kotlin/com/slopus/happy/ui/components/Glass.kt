@@ -255,6 +255,14 @@ interface GlassTravel {
     val now: Int
     val from: Int
     val to: Int
+
+    /**
+     * How much higher than it is laid out the source is drawn this frame: the
+     * part of [now] that is a translation (a keyboard's, AdjustPanLayoutHelper's),
+     * which a glass it slides under adds to where it is over it. Glasses that
+     * ride with the source are drawn as much higher themselves.
+     */
+    val lift: Int get() = 0
 }
 
 /** A source drawn on [ground], the screen's colour under the content; unspecified for content opaque itself. */
@@ -359,7 +367,8 @@ fun Modifier.glassBar(
     // caret, a shimmer) composites it as it is, and the feather's mask needs no layer of its own.
     val glass = rememberGraphicsLayer()
     var origin by remember { mutableStateOf(Offset.Zero) }
-    val at = rememberSourceOffset(source) { origin }
+    // The bar stays where it is while the source travels under it, drawn higher than it is laid out.
+    val at = rememberSourceOffset(source, travels = true) { origin }
     val statusBar = WindowInsets.statusBars.getTop(LocalDensity.current)
     onGloballyPositioned { origin = it.positionInRoot() }
         .drawWithCache {
@@ -534,11 +543,15 @@ private fun GlassLayers.record(scope: DrawScope, source: GlassSource, area: Rect
  * Where a glass at [origin] is over its [source], in the source's own
  * coordinates. Drawn from this alone, a glass that moves with what it shows
  * (the dock and the transcript riding the keyboard together) isn't drawn
- * again, nor its blur made again.
+ * again, nor its blur made again. A glass that [travels] stays put while the
+ * source is drawn [GlassTravel.lift] higher under it (the bar over a
+ * transcript riding the keyboard), so it adds that.
  */
 @Composable
-private fun rememberSourceOffset(source: GlassSource?, origin: () -> Offset): State<Offset> =
-    remember(source) { derivedStateOf { source?.let { origin() - it.origin } ?: Offset.Zero } }
+private fun rememberSourceOffset(source: GlassSource?, travels: Boolean = false, origin: () -> Offset): State<Offset> =
+    remember(source) {
+        derivedStateOf { source?.let { origin() - it.origin + Offset(0f, if (travels) (it.travel?.lift ?: 0).toFloat() else 0f) } ?: Offset.Zero }
+    }
 
 /**
  * The blur a glass of [size] at [offset] over [source] draws: a band of the

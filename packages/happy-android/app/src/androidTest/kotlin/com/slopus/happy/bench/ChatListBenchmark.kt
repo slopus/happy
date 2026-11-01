@@ -245,6 +245,8 @@ class ChatListBenchmark {
                 activity = a
                 a.enableEdgeToEdge()
                 a.window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+                // As MainActivity asks, unless `-e rate system` leaves the window at the system's choice.
+                if (InstrumentationRegistry.getArguments().getString("rate") != "system") com.slopus.happy.MaxRefreshRate.follow(a)
             }
         }
     }
@@ -295,6 +297,7 @@ class ChatListBenchmark {
         val process = android.os.Process.getElapsedCpuTime() - processCpu
         val frames = recorder.stop()
         FrameSummary(frames).let { report(it.line(name)); report(it.parts()) }
+        report(String.format(java.util.Locale.US, "  display: %.0f Hz, window asks %.0f", activity.windowManager.defaultDisplay.refreshRate, activity.window.attributes.preferredRefreshRate))
         if (dumpFrames) dump(name, frames)
         // CPU time, unlike wall time, barely moves with a loaded host: the steadier comparison.
         report(String.format(java.util.Locale.US, "  cpu: main %.0f ms (%.2f ms/frame), process %d ms", mainCpu / 1e6, mainCpu / 1e6 / frames.size.coerceAtLeast(1), process))
