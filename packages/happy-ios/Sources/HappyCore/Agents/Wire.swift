@@ -122,6 +122,7 @@ extension AgentWire {
             public var sidebarOperations: Bool?
             public var sidebarProposals: Bool?
             public var sidebarAttachments: Bool?
+            public var storyFeed: Bool?
         }
         public var ready: Bool
         public var capabilities: Capabilities?

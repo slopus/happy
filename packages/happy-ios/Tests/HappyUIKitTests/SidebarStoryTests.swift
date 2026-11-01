@@ -1,0 +1,88 @@
+#if canImport(UIKit)
+import Foundation
+@testable import HappyCore
+import HappyLayout
+@testable import HappyUI
+import UIKit
+import XCTest
+
+/// A task with a live story wears an outline around its own icon, the
+/// row exactly where and as big as it was. A tap on the icon opens the
+/// story; anywhere else on the row, its chat.
+@MainActor
+final class SidebarStoryTests: XCTestCase {
+    private static let rows: [Row] = (0..<4).map { index in
+        var row = Row(id: "task:t\(index)", nodeId: "task:t\(index)", kind: .space, label: "Task \(index)", mark: .placeholder(seed: "t\(index)"), agentId: "agent-\(index)", targetKind: "task")
+        row.targetId = "t\(index)"
+        return row
+    }
+
+    private static func rows(seen: Bool?) -> [Row] {
+        guard let seen else { return rows }
+        let story = Story(id: "s1", taskId: "t1", media: .init(kind: "image", mimeType: "image/png"), postedAt: 1, expiresAt: .greatestFiniteMagnitude, seen: seen)
+        return Stories.ring(rows, stories: [story])
+    }
+
+    private func list(_ rows: [Row]) async throws -> (SidebarList, UIWindow) {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        let list = SidebarList(frame: window.bounds)
+        window.addSubview(list)
+        window.isHidden = false
+        list.apply(rows)
+        await list.settle()
+        window.layoutIfNeeded()
+        try await Task.sleep(for: .milliseconds(100))
+        return (list, window)
+    }
+
+    private func ring(_ view: UIView) -> UIView? {
+        view.subviews.first { $0.accessibilityIdentifier?.hasPrefix("story:") == true && !$0.isHidden }
+    }
+
+    func testTheOutlineHugsTheIconAndTheRowStaysPut() async throws {
+        let (list, window) = try await list(Self.rows(seen: nil))
+        defer { window.isHidden = true }
+        let before = try XCTUnwrap(list.view(for: "task:t1")).convert(try XCTUnwrap(list.view(for: "task:t1")).box, to: window)
+        XCTAssertTrue(list.mountedViews.allSatisfy { ring($0) == nil }, "an outline with no story")
+        XCTAssertNil(list.view(for: "task:t1")?.accessibilityValue)
+
+        list.apply(Self.rows(seen: false))
+        await list.settle()
+        window.layoutIfNeeded()
+        let view = try XCTUnwrap(list.view(for: "task:t1"))
+        XCTAssertEqual(view.convert(view.box, to: window), before, "the row moved or grew")
+        let unseen = try XCTUnwrap(ring(view))
+        XCTAssertEqual(unseen.accessibilityIdentifier, "story:unseen:Task 1")
+        XCTAssertEqual(view.accessibilityValue, "story unseen", "VoiceOver and UI tests read the outline here")
+        XCTAssertEqual(unseen.frame, StoryLayout.ring(around: try XCTUnwrap(view.frames.mark), markRadius: GroupedSidebarMetrics.tileRadius).frame)
+        XCTAssertEqual(unseen.layer.borderColor, UIColor(Palette.storyUnseen).resolvedColor(with: view.traitCollection).cgColor)
+        XCTAssertNil(ring(try XCTUnwrap(list.view(for: "task:t0"))), "another task wore the story")
+
+        list.apply(Self.rows(seen: true))
+        await list.settle()
+        let seen = try XCTUnwrap(ring(try XCTUnwrap(list.view(for: "task:t1"))))
+        XCTAssertEqual(seen.accessibilityIdentifier, "story:seen:Task 1")
+        XCTAssertEqual(list.view(for: "task:t1")?.accessibilityValue, "story seen")
+        XCTAssertEqual(seen.layer.borderColor, UIColor(Palette.storySeen).resolvedColor(with: view.traitCollection).cgColor)
+    }
+
+    func testOnlyTheIconOpensTheStory() async throws {
+        let (list, window) = try await list(Self.rows(seen: false))
+        defer { window.isHidden = true }
+        var stories: [String] = []
+        var chats: [String] = []
+        list.onOpenStory = { row, _ in stories.append(row.id) }
+        list.onSelect = { row in chats.append(row.id) }
+        let view = try XCTUnwrap(list.view(for: "task:t1"))
+        let mark = try XCTUnwrap(view.frames.mark)
+        list.tap(view, at: CGPoint(x: mark.midX, y: mark.midY))
+        list.tap(view, at: CGPoint(x: view.frames.label.midX, y: view.frames.label.midY))
+        // A row without a story opens its chat from its icon too, as on main.
+        let plain = try XCTUnwrap(list.view(for: "task:t2"))
+        let plainMark = try XCTUnwrap(plain.frames.mark)
+        list.tap(plain, at: CGPoint(x: plainMark.midX, y: plainMark.midY))
+        XCTAssertEqual(stories, ["task:t1"])
+        XCTAssertEqual(chats, ["task:t1", "task:t2"])
+    }
+}
+#endif

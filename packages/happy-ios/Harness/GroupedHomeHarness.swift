@@ -22,7 +22,47 @@ private actor GroupedHomeTransport: AgentTransport {
     /// The cloned repo's picture, as the daemon serves it.
     let avatar: Data
     let lineCounts: Bool
-    init(avatar: Data, lineCounts: Bool = false) { self.avatar = avatar; self.lineCounts = lineCounts }
+    /// With `-stories`: the computer has `storyFeed`, the person's
+    /// setting is on, and two stories ring "Landing page copy" (a picture,
+    /// then the MP4 at `-storyVideo <path>`) and one rings "Release Bot".
+    let stories: Bool
+    let video: Data?
+    private var seen: Set<String> = []
+    init(avatar: Data, stories: Bool = false, seen: Bool = false, video: Data? = nil, lineCounts: Bool = false) {
+        self.avatar = avatar
+        self.lineCounts = lineCounts
+        self.stories = stories
+        self.video = video
+        if seen { self.seen = ["s1", "s2", "s3"] }
+    }
+
+    private func storyFeed() -> [[String: Any]] {
+        let shot: [String: Any] = ["kind": "image", "mimeType": "image/png"]
+        let clip: [String: Any] = ["kind": "video", "mimeType": "video/mp4", "size": video?.count ?? 0]
+        let feed: [(String, String?, String?, String, [String: Any])] = [
+            ("s1", "landing", nil, "Three headlines, side by side", shot),
+            ("s2", "landing", nil, "The hero, animated", clip),
+            ("s3", nil, "release", "2026.10.4 is on TestFlight", shot),
+        ]
+        return feed.enumerated().filter { video != nil || $0.element.4["kind"] as? String == "image" }.map { index, story in
+            ["id": story.0, "agentId": "a", "taskId": story.1 ?? NSNull(), "botId": story.2 ?? NSNull(), "caption": story.3, "media": story.4,
+             "postedAt": Self.now - Double(10 - index) * 60_000, "expiresAt": Self.now + 86_400_000, "seen": seen.contains(story.0)]
+        }
+    }
+
+    private func storyMedia(_ id: String, range: String?) -> HTTP1Response {
+        guard id == "s2", let video else {
+            let picture = UIGraphicsImageRenderer(size: CGSize(width: 360, height: 640)).pngData { context in
+                UIColor(hue: id == "s1" ? 0.58 : 0.08, saturation: 0.6, brightness: 0.9, alpha: 1).setFill()
+                context.fill(CGRect(x: 0, y: 0, width: 360, height: 640))
+                NSAttributedString(string: id == "s1" ? "Headlines" : "TestFlight", attributes: [.font: UIFont.systemFont(ofSize: 40, weight: .bold), .foregroundColor: UIColor.white]).draw(at: CGPoint(x: 40, y: 290))
+            }
+            return .init(status: 200, headers: ["Content-Type": "image/png"], body: picture)
+        }
+        let bounds = range?.dropFirst("bytes=".count).split(separator: "-").compactMap { Int($0) } ?? []
+        let start = bounds.first ?? 0, end = min(bounds.count > 1 ? bounds[1] : video.count - 1, video.count - 1)
+        return .init(status: 206, headers: ["Content-Type": "video/mp4", "Content-Range": "bytes \(start)-\(end)/\(video.count)"], body: video.subdata(in: start..<(end + 1)))
+    }
 
     /// Tasks and bots made here, newest first, the ones still to be named
     /// by their first message, and the events stream to tell of them.
@@ -71,7 +111,7 @@ private actor GroupedHomeTransport: AgentTransport {
     private func desktop() -> [String: Any] {
         [
             "cursor": "c1", "profile": ["userId": NSNull()],
-            "userSettings": [],
+            "userSettings": stories ? [["key": "stories", "value": true, "version": "1"]] : [],
             "bots": bots, "tasks": tasks,
             "taskMemberships": tasks.map { ["taskId": $0["id"]!] },
             "surfaces": Self.surfaces,
@@ -97,6 +137,9 @@ private actor GroupedHomeTransport: AgentTransport {
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         let route = path.split(separator: "?").first.map(String.init) ?? path
         if route == "/v0/projects/p1/avatar" { return .init(status: 200, body: avatar) }
+        if stories, route == "/v0/stories" { return .init(status: 200, body: try JSONSerialization.data(withJSONObject: ["stories": storyFeed()])) }
+        if stories, route.hasPrefix("/v0/stories/"), route.hasSuffix("/media") { return storyMedia(String(route.split(separator: "/")[2]), range: headers["Range"]) }
+        if stories, method == "POST", route.hasPrefix("/v0/stories/"), route.hasSuffix("/seen") { seen.insert(String(route.split(separator: "/")[2])); return .init(status: 200, body: Data("{}".utf8)) }
         let sent = body.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
         if route == "/v0/git/watch" {
             let samples: [String: (Int, Int, Bool)] = lineCounts ? [
@@ -152,7 +195,7 @@ private actor GroupedHomeTransport: AgentTransport {
         }
         let object: [String: Any]
         switch route {
-        case "/v0/health": object = ["ready": true, "version": ["protocol": 27], "capabilities": ["sidebarOperations": true]]
+        case "/v0/health": object = ["ready": true, "version": ["protocol": 27], "capabilities": ["sidebarOperations": true, "storyFeed": stories]]
         case "/v0/config": object = ["config": [
             "node": ["name": "Personal MacBook Pro"],
             "defaults": ["providerId": "claude", "modelId": "anthropic/opus-5", "permissionMode": "auto"],
@@ -202,8 +245,15 @@ final class GroupedHomeHarness {
         if arguments.contains("-dark") { window.overrideUserInterfaceStyle = .dark }
         if arguments.contains("-light") { window.overrideUserInterfaceStyle = .light }
         let bottom = arguments.contains("-bottom")
+        let value = { (flag: String) in arguments.firstIndex(of: flag).flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil } }
         Task {
-            await open(window: window)
+            await open(window: window, stories: arguments.contains("-stories"), seen: arguments.contains("-seenStories"), video: value("-storyVideo").flatMap { FileManager.default.contents(atPath: $0) })
+            // With `-openStory <row id>` (`task:landing`), that row's icon tapped.
+            if let id = value("-openStory") {
+                try? await Task.sleep(for: .seconds(1.5))
+                guard let list = home?.view.firstSubview(of: SidebarList.self), let view = list.view(for: id), let mark = view.frames.mark else { return }
+                list.tap(view, at: CGPoint(x: mark.midX, y: mark.midY))
+            }
             // With `-bottom`, the list's end, where the projects are.
             guard bottom else { return }
             try? await Task.sleep(for: .seconds(1.5))
@@ -225,8 +275,8 @@ final class GroupedHomeHarness {
         }
     }
 
-    private func open(window: UIWindow) async {
-        let transport = GroupedHomeTransport(avatar: Self.repoPicture(), lineCounts: lineCounts)
+    private func open(window: UIWindow, stories: Bool, seen: Bool, video: Data?) async {
+        let transport = GroupedHomeTransport(avatar: Self.repoPicture(), stories: stories, seen: seen, video: video, lineCounts: lineCounts)
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/grouped-home",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,

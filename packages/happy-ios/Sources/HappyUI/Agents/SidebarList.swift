@@ -40,6 +40,8 @@ final class SidebarList: UIView {
     var preview: ((Row) -> UIViewController?)?
     /// The preview was tapped: the row opens at once, under it.
     var onOpenPreview: ((Row) -> Void)?
+    /// A tap on an outlined icon: the row's stories, with the picture it wears.
+    var onOpenStory: ((Row, UIImage?) -> Void)?
     var images: Images?
 
     /// The list moved: a finger, a glide or a jump.
@@ -544,6 +546,9 @@ final class SidebarList: UIView {
         // The touch that opened a hold, let go: the hold stays and that is all.
         guard hold == nil else { return }
         let row = view.row
+        if row.story != nil, let onOpenStory, let mark = view.frames.mark, StoryLayout.ringTarget(around: mark, labelX: view.frames.label.minX).contains(point) {
+            return onOpenStory(row, view.markImage)
+        }
         switch row.kind {
         case .section, .separator:
             // Home folds nothing.

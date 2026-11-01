@@ -113,6 +113,14 @@ final class HomeViewController: UIViewController {
         }
         sidebar.preview = { [weak self] row in self?.preview(for: row) }
         sidebar.onOpenPreview = { [weak self] row in self?.open(row, animated: false) }
+        sidebar.onOpenStory = { [weak self] row, mark in
+            guard let self, let session else { return }
+            let stories = agentHome.stories.filter { $0.belongs(to: row) }
+            guard !stories.isEmpty else { return open(row) }
+            present(StoryViewerController(client: session.client, library: session.media, stories: stories, name: row.label, mark: mark) { [engine = session.engine] id in
+                Task { await engine.markStorySeen(id) }
+            }, animated: true)
+        }
         sidebar.onWillBeginDragging = { [weak self] in self?.listWillBeginDragging() }
         sidebar.onScroll = { [weak self] in self?.listDidScroll() }
         sidebar.onMove = { [weak self] in self?.onListScroll?() }
