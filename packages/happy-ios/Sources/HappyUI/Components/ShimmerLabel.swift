@@ -219,7 +219,7 @@ final class ShimmerLabel: UIView {
     }
 
     override convenience init(frame: CGRect) {
-        self.init()
+        self.init(makeLabel: { UILabel() })
         self.frame = frame
     }
 
