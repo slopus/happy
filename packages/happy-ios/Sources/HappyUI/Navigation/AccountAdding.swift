@@ -25,11 +25,13 @@ enum AccountAdding {
                 guard let controller else { return }
                 enterLink(context: context, from: controller, busy: busy)
             },
-            ScannerWay(title: Strings.Onboarding.restoreExisting, symbol: "key") { [weak controller] in
+            // Restoring and the relay server are Happy CLI's alone; beside
+            // Happy Agent's codes they say so.
+            ScannerWay(title: Strings.AccountKind.restoreCLIAccount, symbol: "key") { [weak controller] in
                 guard let controller else { return }
                 show(RestoreQRViewController(context: context), context: context, from: controller)
             },
-            ScannerWay(title: Strings.Onboarding.settingsServer, symbol: "server.rack") { [weak controller] in
+            ScannerWay(title: Strings.AccountKind.cliServer, symbol: "server.rack") { [weak controller] in
                 guard let controller else { return }
                 show(ServerConfigViewController(context: context), context: context, from: controller)
             },

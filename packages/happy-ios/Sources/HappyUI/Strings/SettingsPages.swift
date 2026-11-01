@@ -33,9 +33,6 @@ extension Strings {
         public static let add = "Add"
         /// The bar's switcher, to VoiceOver.
         public static let switcher = "Account"
-        /// Precedes the start of a legacy account's id when nothing better
-        /// is known. One made for a computer is an agent until it is named.
-        public static let fallbackTitle = "Legacy Account"
         public static let signOut = "Sign Out"
         public static func signOutConfirm(_ name: String) -> String {
             "Sign out of \(name)? Its data is removed from this phone. Make sure you have backed up its secret key!"

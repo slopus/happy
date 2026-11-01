@@ -9,8 +9,8 @@ extension Strings {
         public static let alreadyUsedTitle = "Code already used"
         public static let alreadyUsed = "This code was already used or has expired. Show a new one on your computer and scan it again."
         public static let deviceNeedsAccountTitle = "No account to share"
-        public static let deviceNeedsAccount = "This code asks for a Happy account. Sign in to one on this phone first."
+        public static var deviceNeedsAccount: String { AccountKind.deviceNeedsCLIAccount }
         public static let accountNotShareableTitle = "Can’t share this account"
-        public static let accountNotShareable = "This account was made for your computer, and its key never leaves this phone. Only a legacy account can be linked to another device."
+        public static var accountNotShareable: String { AccountKind.accountNotShareable }
     }
 }

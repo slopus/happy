@@ -53,8 +53,14 @@ final class HomeRendererHarness {
                 guard let session = controller.session else { fatalError("Home harness missing session") }
                 self.account = controller
                 let store = session.store
+                let namedProfile = arguments.contains("-namedProfile")
                 try await Task.detached {
                     try SeededAccount.seed(store)
+                    // `-namedProfile`: this account has a name and a GitHub
+                    // login, as one signed in with GitHub does.
+                    if namedProfile {
+                        _ = try store.applyProfile(AccountProfile(id: "home-harness", timestamp: 1, firstName: "Steve", github: GitHubProfile(id: 1, login: "steve")))
+                    }
                     if archiveCount > 0, let template = try store.sessions().first {
                         try store.upsertSessions((0..<archiveCount).map { index in
                             var row = template

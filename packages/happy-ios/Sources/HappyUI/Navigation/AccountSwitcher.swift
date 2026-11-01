@@ -11,7 +11,7 @@ import UIKit
 ///
 /// Every kind of account is one row in the menu: a legacy account, one made
 /// for a computer and an agent connection differ only in their name and
-/// picture. Each picture is the account's own or its placeholder
+/// picture, and to VoiceOver in their kind (Happy CLI or Happy Agent). Each picture is the account's own or its placeholder
 /// (`ProfilePictures`), drawn as the same round bitmap at the same size
 /// and scale; none has a subtitle. UIKit lays a symbol and a bitmap, or a
 /// row with a subtitle and one without, out differently.
@@ -134,7 +134,8 @@ final class AccountSwitcher: NSObject {
             let action = UIAction(title: Self.menuTitle(fullName), image: images[account.id] ?? Self.fallback(account), state: account.id == current ? .on : .off) { [weak self] _ in
                 self?.choose(account, current: current)
             }
-            action.accessibilityLabel = fullName
+            // The rows look alike, so VoiceOver says which kind each is.
+            action.accessibilityLabel = Strings.AccountKind.spoken(fullName, account.kindName)
             action.accessibilityIdentifier = "account-\(account.id)"
             return action
         }

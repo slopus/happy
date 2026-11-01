@@ -69,13 +69,13 @@ final class StartUITests: XCTestCase {
 
         // ⋯: entering a link, restoring, the server, help.
         app.buttons["start-more"].tap()
-        let restore = app.buttons["Restore existing account"]
+        let restore = app.buttons["Restore Happy CLI account"]
         XCTAssertTrue(restore.waitForExistence(timeout: 5))
         for title in ["Enter link manually", "Get help"] {
             XCTAssertTrue(app.buttons[title].exists, "\(title) is missing from ⋯")
         }
-        // The server's row reads its subtitle too: "Server, Default".
-        XCTAssertTrue(app.buttons["Server, Default"].exists, "Server is missing from ⋯")
+        // The server's row reads its subtitle too: "Happy CLI server, Default".
+        XCTAssertTrue(app.buttons["Happy CLI server, Default"].exists, "Happy CLI server is missing from ⋯")
         XCTAssertFalse(app.buttons["Create account"].exists)
         pause(0.6)
         capture("2-start-menu")
@@ -102,9 +102,9 @@ final class StartUITests: XCTestCase {
         pause(1)
         capture("4-scanner")
         more.tap()
-        XCTAssertTrue(app.buttons["Restore existing account"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Restore Happy CLI account"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Enter link manually"].exists)
-        XCTAssertTrue(app.buttons["Server"].exists)
+        XCTAssertTrue(app.buttons["Happy CLI server"].exists)
         pause(0.6)
         capture("5-scanner-menu")
     }

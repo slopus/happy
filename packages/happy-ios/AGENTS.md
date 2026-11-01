@@ -96,7 +96,14 @@ nothing here is wired to the release skill or to EAS.
     code with plain names, and legacy reuses them. Never `V2`, `New`,
     `Direct` or feature prefixes. A Happy Protocol V2 pairing is an agent
     connection ("Connect Agent"), never a "computer". Wire names shared
-    with the desktop or daemon stay as they are.
+    with the desktop or daemon stay as they are. **What the person reads
+    names the two kinds Happy Agent (agent connections) and Happy CLI
+    (relay accounts, the code's legacy); "legacy" is never shown, in any
+    language.** The product names are `Strings.AccountKind` and are not
+    translated; sentences around them are in
+    `TranslationCatalog.nativeSources` in every language, and
+    `AccountKindNamingTests` holds all of this. Code, files, settings
+    keys and analytics keep `legacy`.
 11. **No data migrations (not live)**; the only exception is importing the
     RN app's credentials.
 
@@ -338,8 +345,9 @@ nothing here is wired to the release skill or to EAS.
       that nothing can open it again;
     - it goes by the first computer paired with it, the earliest machine
       in its store (`AccountDisplay.computerName`, cached in the registry);
-      "Agent" until that arrives. Only a legacy account with no profile
-      name is called "Legacy Account". There is never a "Happy account".
+      "Happy CLI" until that arrives, as any relay account with no profile
+      name is. The UI never says "Legacy Account", "Agent" for a relay
+      account, or "Happy account" (rule 10).
     - A registry rebuilt from the Keychain after corruption loses the
       origin, so those accounts come back as legacy.
   - **Account id.** The account's anonymous id, derived from its secret,

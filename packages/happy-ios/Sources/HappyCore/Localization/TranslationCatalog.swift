@@ -98,10 +98,15 @@ public final class TranslationCatalog: Sendable {
     public let language: String
     private let entries: [String: Entry]
 
-    init(language: String, json: String) {
+    /// `native` is this app's own words in the language (`nativeSources`),
+    /// beside happy-app's.
+    init(language: String, json: String, native: [String: String] = [:]) {
         self.language = language
         let object = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [String: Any] ?? [:]
         var entries: [String: Entry] = [:]
+        for (key, text) in native {
+            entries[key] = text.contains("${") ? .template(Template(text)) : .text(text)
+        }
         entries.reserveCapacity(object.count)
         for (key, value) in object {
             if let text = value as? String {
@@ -195,7 +200,7 @@ public final class TranslationCatalog: Sendable {
             #endif
             let json = TranslationCatalog.sources.first { $0.code == code }?.json ?? "{}"
             // Decoded outside the lock; a race decodes twice and keeps one.
-            let made = TranslationCatalog(language: code, json: json)
+            let made = TranslationCatalog(language: code, json: json, native: TranslationCatalog.nativeSources[code] ?? [:])
             return lock.withLock {
                 if let cached = catalogs[code] { return cached }
                 catalogs[code] = made

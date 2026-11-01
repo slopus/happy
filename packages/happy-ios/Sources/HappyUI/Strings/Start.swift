@@ -9,6 +9,6 @@ extension Strings {
         public static let more = "More"
         public static let enterLink = "Enter link manually"
         public static let enterLinkTitle = "Enter Link"
-        public static let enterLinkMessage = "Paste the link from Happy on your computer or from Happy Agent."
+        public static var enterLinkMessage: String { AccountKind.enterLinkMessage }
     }
 }

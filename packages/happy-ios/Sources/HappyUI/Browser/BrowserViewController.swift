@@ -23,7 +23,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
 
     init(url: URL, session: Session? = nil, agentID: String? = nil, artifactID: String? = nil, page: BrowserPage? = nil) {
         originalURL = url; self.session = session; self.agentID = agentID; self.artifactID = artifactID; self.page = page
-        computerName = session?.computerName ?? "agent connection"
+        computerName = session?.computerName ?? Strings.agentConnection
         super.init(nibName: nil, bundle: nil)
         title = url.host
         navigationItem.largeTitleDisplayMode = .never
@@ -76,7 +76,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
             }]
             web.load(URLRequest(url: page.url)); update(); view.setNeedsLayout()
         } catch is CancellationError {} catch {
-            failure.text = "Can’t reach \(computerName).\nCheck the agent connection, then tap Reload."
+            failure.text = Strings.AccountKind.agentUnreachable(computerName)
             view.setNeedsLayout()
         }
     }

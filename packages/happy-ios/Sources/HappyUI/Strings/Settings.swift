@@ -16,7 +16,6 @@ extension Strings {
     /// The last of its steps, after the relay checklist's two.
     public static let linkScanStep = "Scan the QR code"
     public static let linkScanBody = "This phone connects straight to the agent."
-    public static let legacyRelay = "Connect through legacy relay"
     public static let experiments = "Experiments"
     public static let turnOn = "Turn on"
     public static let relay = "Relay"

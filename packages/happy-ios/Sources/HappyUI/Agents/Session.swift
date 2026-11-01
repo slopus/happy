@@ -124,7 +124,7 @@ final class Session {
     private init(accountID: String, engine: SyncEngine, account: AccountController) {
         media = MediaLibrary.agent(accountID)
         self.accountID = accountID
-        computerName = account.agentConnections.accounts.first { $0.id == accountID }?.name ?? "agent connection"
+        computerName = account.agentConnections.accounts.first { $0.id == accountID }?.name ?? Strings.agentConnection
         placeholderSeed = account.agentConnections.placeholderSeed(for: accountID) ?? accountID
         self.engine = engine
         self.localSettings = account.localSettings

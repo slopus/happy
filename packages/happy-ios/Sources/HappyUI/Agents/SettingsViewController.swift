@@ -51,7 +51,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         var id: String
         var name: String
         var subtitle: String
-        /// What kind it is: an agent, or a legacy account.
+        /// What kind it is: Happy Agent or Happy CLI.
         var kind: String = Strings.agentConnection
         var isAgentConnection: Bool
         var isActive: Bool
@@ -245,9 +245,12 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         let direct = context.account.agentConnections.accounts
         profiles = (accounts.filter(\.isAgentConnection) + accounts.filter { !$0.isAgentConnection }).map { account in
             if account.isAgentConnection, let computer = direct.first(where: { $0.id == account.id }) {
-                return Profile(id: account.id, name: computer.name, subtitle: computer.status.title, isAgentConnection: true, isActive: account.isActive)
+                return Profile(id: account.id, name: computer.name, subtitle: Strings.AccountKind.subtitle(Strings.agentConnection, computer.status.title), isAgentConnection: true, isActive: account.isActive)
             }
-            return Profile(id: account.id, name: account.shownName, subtitle: account.username.map { "@\($0)" } ?? account.kindName, kind: account.kindName, isAgentConnection: false, isActive: account.isActive)
+            // One with no name of its own is already called by its kind.
+            let username = account.username.map { "@\($0)" }
+            let subtitle = account.shownName == account.kindName ? username ?? "" : Strings.AccountKind.subtitle(account.kindName, username)
+            return Profile(id: account.id, name: account.shownName, subtitle: subtitle, kind: account.kindName, isAgentConnection: false, isActive: account.isActive)
         }
         // With none left, the window's root is the link screen and this
         // page goes with the old one (`AppCoordinator.install`); it lets

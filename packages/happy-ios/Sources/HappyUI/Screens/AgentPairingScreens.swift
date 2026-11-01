@@ -86,7 +86,7 @@ final class AgentPairingViewController: UIViewController {
     override func loadView() { view = screen }
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = "Connect Agent"
+        title = Strings.AccountKind.connectAgent
         identity.heading.string = link.name
         identity.body.string = "Name from pairing code · not verified yet\nConnecting to the agent…"
         screen.primary.isLoading = true; screen.primary.isEnabled = false
