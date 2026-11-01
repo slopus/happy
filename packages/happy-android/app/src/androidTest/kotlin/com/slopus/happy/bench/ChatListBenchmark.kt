@@ -297,6 +297,9 @@ class ChatListBenchmark {
         val process = android.os.Process.getElapsedCpuTime() - processCpu
         val frames = recorder.stop()
         FrameSummary(frames).let { report(it.line(name)); report(it.parts()) }
+        // The rate frames actually came at while something moved: consecutive frames under 40 ms apart.
+        val gaps = frames.map { it.vsyncNs }.zipWithNext { a, b -> (b - a) / 1e6 }.filter { it in 0.1..40.0 }.sorted()
+        if (gaps.isNotEmpty()) report(String.format(java.util.Locale.US, "  frame interval while moving: p50 %.1f ms, %d of %d at 120 Hz (< 10 ms)", gaps[gaps.size / 2], gaps.count { it < 10 }, gaps.size))
         report(String.format(java.util.Locale.US, "  display: %.0f Hz, window asks %.0f", activity.windowManager.defaultDisplay.refreshRate, activity.window.attributes.preferredRefreshRate))
         if (dumpFrames) dump(name, frames)
         // CPU time, unlike wall time, barely moves with a loaded host: the steadier comparison.
@@ -504,13 +507,22 @@ class ChatListBenchmark {
         check(imeVisible()) { "The keyboard never opened" }
         SystemClock.sleep(1_000)
         val controller = WindowCompat.getInsetsController(activity.window, activity.window.decorView)
+        // `-e open tap`: as a person does it, a tap on the composer and Back, so the display has the touch
+        // it boosts its rate for; otherwise the controller, with no finger on the screen.
+        val tap = InstrumentationRegistry.getArguments().getString("open") == "tap"
+        var field = 0 to 0
+        main {
+            val decor = activity.window.decorView
+            val bottom = ViewCompat.getRootWindowInsets(decor)?.getInsets(WindowInsetsCompat.Type.navigationBars())?.bottom ?: 0
+            field = decor.width / 2 to decor.height - bottom - (88 * decor.resources.displayMetrics.density).toInt()
+        }
         val seen = ArrayList<Boolean>()
-        record("conversation $chat ime") {
+        record("conversation $chat ime${if (tap) " tap" else ""}") {
             repeat(4) {
-                main { controller.hide(WindowInsetsCompat.Type.ime()) }
+                if (tap) device.pressBack() else main { controller.hide(WindowInsetsCompat.Type.ime()) }
                 SystemClock.sleep(1_500)
                 seen += imeVisible()
-                main { controller.show(WindowInsetsCompat.Type.ime()) }
+                if (tap) device.click(field.first, field.second) else main { controller.show(WindowInsetsCompat.Type.ime()) }
                 SystemClock.sleep(1_500)
                 seen += imeVisible()
             }

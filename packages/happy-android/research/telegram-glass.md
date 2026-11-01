@@ -378,11 +378,13 @@ content stays under the bar's foot.
 
 ## What stayed different, and why
 
-- **One recorded layer, not dirty rects.** Compose's `GraphicsLayer` is already a
-  RenderNode, and drawing it again inside another layer stays live. Scrolling therefore
-  costs one small blur per glass surface per frame, with no re-recording of the content.
-  Telegram's hash gating exists because a View-based capture has to re-record. Ours
-  doesn't, so there is nothing to gate.
+- **One recorded layer, one merged capture, no hashes.** Compose's `GraphicsLayer` is
+  already a RenderNode, and drawing it again inside another layer stays live. Since
+  2026-11-01 the glasses over a source share one capture of only the bands under them, as
+  Telegram's merged rects do (see "One capture for every glass" below). It is recorded again
+  only when the bands change, and the RenderThread renders it again when the content
+  changes. Telegram's hash gating skips that rendering while a rect's content is unchanged.
+  We have no equivalent yet, so a scrolling frame renders the bands again.
 - **The floating tint stays our grey.** Telegram tints with its panel colour, which in light
   is white, and separates the white pill with a white stroke and a 1 dp shadow. On our white
   page that would make the composer vanish at rest. The grey tint and the dark hairline do
@@ -390,6 +392,43 @@ content stays under the bar's foot.
 - **No liquid-glass refraction pass.** It is off by default in Telegram too.
 - **No old-path blur below API 31.** Telegram's bitmap path runs a CPU blur on a thread.
   Ours shows the tint at 0.94 over the ground instead, which is opaque, as Telegram's is with blur off.
+
+## One capture for every glass (2026-11-01)
+
+Telegram's list draws only the children that intersect a glass rect, once per frame, into
+the blur's source (`RecyclerListView.capture`, `:3138`; `captureChildren`, `:3169`). Every
+glass then samples that one blurred source (`DownscaleScrollableNoiseSuppressor`'s source
+parts). Before this, each of our glasses captured its own band at full size and halved it
+three times: 16 layers on the conversation, 4 of them full-size captures.
+
+`GlassAtlas` (`ui/components/Glass.kt`) is the merged capture:
+- Each glass says which band of its source it needs: the glass plus 48 dp, or the bar's
+  whole keyboard travel.
+- Overlapping bands become one.
+- The bands are drawn one under the other into one full-size capture, each the source
+  clipped to its band, so only what lies under glass is drawn again.
+- That capture is halved twice, and each band halves its part once more and blurs it at an
+  eighth.
+- Bands start on multiples of 8 px, so no 2×2 average reaches across two of them, and each
+  band's eighth is the pixels it had captured alone.
+
+Every screen with glass uses it, through `rememberGlassSource`: the conversation, the legacy
+chat, both homes, Settings and every `GlassBarScreen`, the agent page, the attach sheet's
+bars, and the profile picture's edit button.
+
+The look is unchanged:
+- 1/8, 40 dp, saturation ×3, the tints, the progressive top edge, the 24 dp feather, and
+  the blur from the second frame.
+- Fold screenshots before and after differ by at most 1 of 255 in the bar and feather, light
+  and dark, and by nothing elsewhere.
+- The 1 px steps' CV is 0.37 / 0.33 / 0.39 dark and 0.22 / 0.21 / 0.31 light (title / foot /
+  feather), as before.
+- `GlassMergedCaptureTest` checks pixel parity with a capture of each band alone.
+
+It cost less than hoped: conversation scroll p50 went from 9.2 to 8.7–8.8 ms on the Fold,
+against 5.3 with glass off (research/telegram-chat.md, phase 5). Rendering the full-size
+capture is most of what remains. It stays full size for steadiness (see "Why the blur
+shimmered").
 
 ## Screenshots
 

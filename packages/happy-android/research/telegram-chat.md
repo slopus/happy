@@ -741,6 +741,193 @@ Benchmark additions:
 - `glass_steps`: the 1 px steadiness measure, with the first and last screenshots in
   `files/glass-steps-*.png`.
 
+## Phase 5: the refresh rate, the keyboard and one glass capture, as Telegram does them
+
+Measured 2026-11-01 on the Fold (120 Hz, dark, `-e chat recorded`) and the Nothing Phone
+(A065), non-debuggable chatbench, before and after interleaved.
+
+### The refresh rate (3f943b758)
+
+`MaxRefreshRate` sets the window's `preferredRefreshRate` to the display's highest rate at
+its current resolution, as `AndroidUtilities.setPreferredMaxRefreshRate` does
+(`messenger/AndroidUtilities.java:2815`). Telegram's version takes the highest of
+`Display.getSupportedRefreshRates()` and sets it from `LaunchActivity.onConfigurationChanged`
+(`:7247`). We do the same, and also:
+- as the window is created;
+- on every display change, such as a fold or a resolution chosen in Settings;
+- only among modes at the current resolution, so the request never asks for a resolution
+  change.
+
+It is no `preferredDisplayModeId`, Telegram sets none either.
+
+**Battery.** It is Telegram's request exactly: a preferred base rate for the window while it
+is shown, not a minimum.
+- The system's own policy still lowers the rate where it would: Samsung's idle and content
+  heuristics, battery saver, a low-rate video.
+- Nothing is asked for once the window is gone.
+
+**Effect.**
+- The Nothing Phone ran us at 90 Hz without a request: the system's default app vote was
+  `APP_REQUEST_BASE_MODE_REFRESH_RATE` 90 with a render range capped at 90. With the request
+  the vote is 120 and SurfaceFlinger's `activeMode` is 120 Hz.
+- The Fold was at 120 already. `dumpsys window` now shows `preferredRefreshRate=120.00001`
+  on MainActivity.
+
+| Nothing Phone, `conversation_scroll` | 90 Hz (no request) | 120 Hz |
+|---|---|---|
+| frames in the same flings | 1,761 | 3,382 |
+| total p50 / p90 / p99 | 9.5 / 11.0 / 16.9 ms | 8.3 / 9.7 / 13.7 ms |
+| missed | 0.8% | 1.1% |
+| with `-e glass off` | | 4.7 / 6.0 / 8.9 ms |
+
+Settings push and back on the Nothing Phone at 120 Hz (qz88's 12-iteration macrobenchmark,
+main a45d230d5): CPU p50 / p90 / p99 7.13 / 8.47 / 18.29 ms, FrameTimeline overrun p99
+18.22 ms. Tap to first movement is a median 67 ms warm, against 79 ms at 90 Hz.
+
+### The keyboard (d464acbde)
+
+This is AdjustPanLayoutHelper's inset-animator path (`ui/ActionBar/AdjustPanLayoutHelper.java:413-438`):
+- A `WindowInsetsAnimation.Callback` with `DISPATCH_MODE_STOP`, and an insets listener,
+  sit on the Compose view's parent (`KeyboardMotion`, one per window). They are held while
+  a screen that rides the keyboard is STARTED.
+- `onProgress` writes the keyboard's height and nothing else. What rides it (the
+  transcript, the dock, the dock's fade, the jump button, new work's panel, the legacy
+  chat's content) is translated in draw (`riding`: a layer, a translation, a layer), so an
+  IME frame draws two layers again.
+- The layout takes the keyboard once: as a show ends, as a hide starts.
+- Because the animation stops at the parent, Compose's own `WindowInsets` see only its end
+  states. No `insets_animation` reaches the Compose tree and nothing measures for it.
+- Below Android 11: Telegram's 250 ms on cubic-bezier(0.199, 0.011, 0.279, 0.910), from
+  where the keyboard is to where the window says it will be (its pre-draw path).
+- The glass bar adds the transcript's translation to where it is over it, so it stays put
+  while the list rides under it, and still blurs the whole travel once (`GlassTravel`).
+- The composer's popup anchors and the legacy chat's jump-button inset read coordinates
+  when they are needed, not in `onGloballyPositioned`.
+- The legacy chat lost its `imePadding()`, and its scrim no longer reads the IME.
+
+`KeyboardFrameTest` drives the platform's IME animation through the decor view, as the
+system dispatches it. On every frame, in the conversation and the legacy chat:
+- the Compose owner has no measure, placement or positioned callback pending;
+- nothing composes.
+
+The layout lands above the keyboard once it is up. With `riding` as a placement offset
+instead, all three tests fail.
+
+| Fold, `conversation_ime`, 3 rounds | before (3f943b758) | after |
+|---|---|---|
+| main thread a frame | 3.75–4.00 ms | **2.40–2.70 ms** |
+| ui p50 / p90 | 2.2–2.6 / 4.8–5.0 ms | 1.3–2.0 / 2.7–2.8 ms |
+| missed | 20.9–24.1% | 10.4–13.8% |
+| missed frames that were the animation's own | 27–31 a run | 7–8 a run |
+
+| Nothing Phone (120 Hz), `conversation_ime` | before | after (2 runs) |
+|---|---|---|
+| main thread a frame | 4.03 ms | 2.56–2.78 ms |
+| ui p50 / p90 | 2.6 / 3.3 ms | 1.6 / 2.3 ms |
+| missed | 4.4% | 3.9–6.5% |
+
+The animation's frames now take 2.0–2.9 ms of ui. The misses left in a run:
+- 10–15 caret-blink frames: the GPU clocked down between blinks (phase 2).
+- About 5 frames: the two layout frames a show or hide still has, its start and its
+  settle, ui 8–12 ms.
+
+**Why the keyboard ran at 60 Hz in the benchmark.** The case opened and closed the keyboard
+with `WindowInsetsController` and no finger on the screen. Samsung's scheduler only boosts
+for touch (`touchTimer` 300 ms, `touchControlTimer` 3 s in SurfaceFlinger's policy). Without
+a touch, its content heuristic settles at 60 Hz even though our layer's vote in SurfaceFlinger
+is 120 Hz. The display reports `frameRateCategoryRate {normal=60, high=90}` and no ARR support.
+
+Two requests during the animation changed nothing (17.0 ms between frames, 0–1 of about
+165 frames at 120 Hz):
+- `View.setRequestedFrameRate(REQUESTED_FRAME_RATE_CATEGORY_HIGH)` on the Compose view;
+- an explicit 120.
+
+The window's own surface has no public `setFrameRate`. Samsung does not honour an app's
+request here, so nothing was landed for it.
+
+With `-e open tap` the case opens the keyboard as a person does, with a tap on the composer,
+and closes it with Back:
+- Every show runs at 120 Hz: 43 of 44 frames 8.5 ms apart.
+- A hide by Back, a key and not a touch, runs at 60 Hz unless it falls in the last tap's
+  boost.
+
+Over the run, 181 of 252 moving frames came at 120 Hz. Total p50 is 4.0 ms, ui p50 0.9 ms,
+and 6.4–9.1% missed against the 8.3 ms deadline, which is now the real one for the shows.
+
+**The "missed" figure for the keyboard.** For frames that come at 60 Hz (every hide, and every
+open with no touch), FrameMetrics' deadline is still the 120 Hz 8.3 ms. "Missed" counts frames
+that are on time for the rate they are shown at, so read it with the frame interval line the
+benchmark now prints.
+
+### One glass capture (this change)
+
+Telegram's list draws the children under its glass rects into one capture
+(`RecyclerListView.capture`/`captureChildren`, `:3138`/`:3169`). The blur takes its source
+parts from that capture (`DownscaleScrollableNoiseSuppressor`). Ours now does the same
+(`GlassAtlas`, `ui/components/Glass.kt`):
+- The glasses over a source say which band of it each needs. Bands that overlap become one:
+  the composer's pill and the dock's fade.
+- The bands are drawn one under the other into one full-size capture. Each is the source
+  clipped to its band, so only what lies under the glass is drawn again.
+- The capture is halved twice, and each band halves its part once more to an eighth and
+  blurs it there.
+- Every band starts on a multiple of 8 px, so no 2×2 average reaches across two bands.
+- A frame where the content moves renders one capture and two halvings, whatever the number
+  of glasses. Before, it rendered a capture and three halvings per glass: 16 layers on the
+  conversation, 6 now.
+- The bar alone stretches its band over a keyboard's travel. The dock and the pill ride with
+  the list and keep theirs.
+
+**Same pixels.** `glass_steps`'s screenshots before and after, Fold:
+- Light and dark, the bar and feather differ by at most 1 of 255, and the body and the dock
+  by 0.
+- In dark the status bar differs only where the clock and the icons do.
+
+`GlassMergedCaptureTest` checks, light and dark, that each glass shows from the merged
+capture exactly the pixels it shows from a capture of its band alone. With bands placed off
+the 8 px grid, it fails.
+
+**Steadiness** (`glass_steps`, 40 steps of 1 px, D mean / CV):
+
+| | before | after |
+|---|---|---|
+| dark: title, foot, feather | 0.035 / 0.37, 0.095 / 0.33, 0.068 / 0.38 | 0.036 / 0.37, 0.095 / 0.33, 0.067 / 0.39 |
+| light: title, foot, feather | 0.045 / 0.23, 0.085 / 0.22, 0.044 / 0.31 | 0.045 / 0.22, 0.084 / 0.21, 0.044 / 0.31 |
+
+| Fold | before (d464acbde) | after |
+|---|---|---|
+| `conversation_scroll`, total p50 / p90 / p99 | 9.2 / 11.0 / 14.0–14.1 ms | **8.7–8.8 / 10.1–10.8 / 12.9–13.4 ms** |
+| scroll, RenderThread / GPU p50 | 4.2–4.3 / 3.1 ms | 4.0–4.1 / 2.9 ms |
+| scroll, missed | 3.0–3.5% | 2.9–3.2% |
+| `conversation_ime -e open tap`, total p50 / p99 | 4.0 / 16.3 ms | 4.0 / 14.7 ms |
+| `conversation_stream`, total p50, missed | 8.8 ms, 0.1% | 8.7 ms, 0.7% |
+| glass off, scroll | | 5.3 / 6.9 / 10.6 ms |
+| legacy list, scroll | | 4.6 / 7.1 / 14.2 ms |
+
+**The target was not reached.** Scroll is 8.7 ms, not near glass off's 5.3. The merged capture
+saves about 0.2 ms of RenderThread and 0.2 ms of GPU; the rest of the gap is rendering the
+full-size capture itself. Its text is rasterised again, about 1968 × 330 for the bar and a
+band as large for the dock, with the halvings and the two blurs. The capture stays full size
+because drawing it at 1/8, as Telegram does, puts text on the eighth's grid and makes it jump
+under the glass (research/telegram-glass.md). A capture straight to half size measured the
+same on the Fold and doubled the CV (phase 2). Getting much closer to glass off needs less to
+render each frame:
+- Telegram's hash gating, so a band isn't rendered again while its rows are only translated:
+  the capture follows the scroll offset instead.
+- Or dock bands drawn from the bar's capture where the content is the same.
+
+Neither is done here.
+
+Benchmark additions:
+- `-e open tap`: the IME case opens with a tap and closes with Back.
+- `-e rate system`: leaves the window at the system's choice.
+- A `display:` line with the refresh rate and the window's request.
+- A `frame interval while moving` line.
+
+Recordings and pictures in the task's `.context/telegram-ime-glass/`:
+- `fold-keyboard-dark.mp4` and `fold-keyboard-strip.png`;
+- `glass/{before,after}-{dark,light}-first.png`.
+
 ## Running the benchmark
 
 ```sh
