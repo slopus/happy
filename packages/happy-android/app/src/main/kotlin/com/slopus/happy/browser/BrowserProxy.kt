@@ -325,7 +325,7 @@ class BrowserProxy(parent: CoroutineScope) {
         val lease = upstream { pool.take(reusing = api) }
         var reusable = false
         try {
-            val translated = request.artifactRequest(id, version, lease.token, keepAlive = api)
+            val translated = request.artifactRequest(id, version, lease.token, keepAlive = api, authority = lease.socket.authority)
             val remote = lease.socket
             upstream {
                 remote.write(translated.bytes)

@@ -189,7 +189,7 @@ data class HttpHead(val line: String, val fields: List<Pair<String, String>>) {
      * the connection closed after one answer unless it upgrades or is
      * [keepAlive] (a pooled API request).
      */
-    fun artifactRequest(artifactId: String, version: Int, credential: String, keepAlive: Boolean = false): HttpHead {
+    fun artifactRequest(artifactId: String, version: Int, credential: String, keepAlive: Boolean = false, authority: String = "server.tailcat"): HttpHead {
         val parts = line.split(' ')
         if (parts.size != 3 || parts[2] != "HTTP/1.1" || parts[0] == "CONNECT" || !parts[0].all { it in 'A'..'Z' } ||
             '\r' in credential || '\n' in credential
@@ -198,7 +198,7 @@ data class HttpHead(val line: String, val fields: List<Pair<String, String>>) {
         val kept = without("host", "authorization", "proxy-authorization", "proxy-connection", "connection", "x-happy-proxy-route", "expect", "keep-alive")
         return HttpHead(
             "${parts[0]} $target HTTP/1.1",
-            kept.fields + listOf("Host" to "server.tailcat", "Authorization" to "Bearer $credential", "Connection" to if (value("upgrade") != null) "Upgrade" else if (keepAlive) "keep-alive" else "close"),
+            kept.fields + listOf("Host" to authority, "Authorization" to "Bearer $credential", "Connection" to if (value("upgrade") != null) "Upgrade" else if (keepAlive) "keep-alive" else "close"),
         )
     }
 

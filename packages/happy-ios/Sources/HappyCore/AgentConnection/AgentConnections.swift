@@ -10,6 +10,7 @@ public final class AgentConnections {
     public var onChange: (() -> Void)?
     private let storage: AgentConnectionStorage
     private var credentials: [String: AgentConnectionCredentials] = [:]
+    private var endpoints: [String: AgentEndpoint] = [:]
     private var jobs: [String: Task<Void, Never>] = [:]
     private var generation: UInt64 = 0
     private var foreground = true
@@ -22,7 +23,7 @@ public final class AgentConnections {
     let makeTransport: @Sendable (AgentConnectionCredentials) -> any AgentTransport
     var refreshInterval: Duration = .seconds(60)
 
-    public init(credentials: any AgentConnectionCredentialStore, directory: URL?, makeTransport: @escaping @Sendable (AgentConnectionCredentials) -> any AgentTransport = { TailcatHTTPTransport(address: $0.address, port: $0.port) }) {
+    public init(credentials: any AgentConnectionCredentialStore, directory: URL?, makeTransport: @escaping @Sendable (AgentConnectionCredentials) -> any AgentTransport = { AgentHTTPTransport(address: $0.address, port: $0.port, publicUrl: $0.publicUrl, tailcatAvailable: $0.tailcatAvailable != false) }) {
         storage = AgentConnectionStorage(credentials: credentials, directory: directory)
         self.makeTransport = makeTransport
     }
@@ -47,7 +48,24 @@ public final class AgentConnections {
 
     /// A transport to `id`'s computer that counts on its recorder.
     func transport(_ credential: AgentConnectionCredentials, for id: String) -> any AgentTransport {
-        MeteredAgentTransport(base: makeTransport(credential), metrics: meter(id))
+        AgentEndpointTransport(endpoint: endpoint(credential, for: id), metrics: meter(id), make: makeTransport)
+    }
+
+    private func endpoint(_ credential: AgentConnectionCredentials, for id: String) -> AgentEndpoint {
+        if let value = endpoints[id] { return value }
+        let value = AgentEndpoint(credential) { [weak self] next in
+            guard let self else { throw CancellationError() }
+            try await self.saveEndpoint(next, for: id)
+        }
+        endpoints[id] = value
+        return value
+    }
+
+    private func saveEndpoint(_ value: AgentConnectionCredentials, for id: String) async throws {
+        guard credentials[id]?.deviceToken == value.deviceToken, !hidden.contains(id) else { throw CancellationError() }
+        try await storage.updateCredentials(value, id: id)
+        guard credentials[id]?.deviceToken == value.deviceToken, !hidden.contains(id) else { throw CancellationError() }
+        credentials[id] = value
     }
 
     /// A stable account lifetime, shared by Home, Settings and conversations.
@@ -75,23 +93,26 @@ public final class AgentConnections {
 
     public func add(_ value: AgentConnectionCredentials, name: String) async throws -> AgentConnection {
         if !loaded { try await restore() }
-        // Re-pairing the same device updates its existing entry; a newly
-        // paired device receives its own ID even on the same installation.
-        let id = credentials.first { $0.value.address == value.address && $0.value.deviceID == value.deviceID }?.key ?? "direct-\(UUID().uuidString.lowercased())"
-        await stop(id)
-        if let engine = engines[id] {
-            await engine.stop()
-            if engines[id] === engine { engines.removeValue(forKey: id) }
-        }
+        // Re-reading the same completed handshake updates its entry. A fresh
+        // pairing has a new device ID and account, even on the same phone.
+        let id = credentials.first { $0.value.address == value.address && $0.value.deviceID == value.deviceID && $0.value.deviceToken == value.deviceToken }?.key ?? "direct-\(UUID().uuidString.lowercased())"
         var account = AgentConnection(id: id, name: AgentName.friendly(name))
-        let transport = transport(value, for: id)
+        // Initial identity precedes persistence. Discovery starts with the
+        // regular authenticated refresh after the account has been stored.
+        let transport = MeteredAgentTransport(base: makeTransport(value), metrics: meter(id))
         do { account = try await AgentIdentity.refresh(account, transport: transport, token: value.deviceToken) }
         catch PairingError.revoked { await transport.close(); throw PairingError.revoked }
         catch { }
         await transport.close()
         try Task.checkCancellation()
-        try await storage.add(account, credentials: value)
-        credentials[id] = value
+        // Re-reading the same completed handshake must not roll back a newer
+        // discovered route or retire clients. Keep the old lifetime untouched
+        // if identity validation or secure persistence fails.
+        await stop(id)
+        let savedCredentials = credentials[id] ?? value
+        do { try await storage.add(account, credentials: savedCredentials) }
+        catch { startConnections(); throw error }
+        credentials[id] = savedCredentials
         accounts.removeAll { $0.id == id }; accounts.append(account); activeID = id
         for (otherID, engine) in engines where otherID != id { await engine.pause() }
         onChange?(); startConnections()
@@ -139,6 +160,7 @@ public final class AgentConnections {
         // Await teardown before deleting credentials. The loop can no longer
         // publish or save an old identity after removal completes.
         await stop(id)
+        await endpoints.removeValue(forKey: id)?.retire()
         if let engine = engines[id] {
             await engine.stop()
             if engines[id] === engine { engines.removeValue(forKey: id) }
@@ -168,6 +190,7 @@ public final class AgentConnections {
         job?.cancel()
         let engine = engines.removeValue(forKey: id)
         credentials.removeValue(forKey: id)
+        if let endpoint = endpoints.removeValue(forKey: id) { Task { await endpoint.retire() } }
         meters.removeValue(forKey: id)
         accounts.removeAll { $0.id == id }
         if activeID == id { activeID = nil }
@@ -239,12 +262,12 @@ public final class AgentConnections {
         guard foreground else { return }
         for account in accounts where jobs[account.id] == nil && !account.revoked {
             guard let credential = credentials[account.id] else { continue }
-            let make = makeTransport, meter = meter(account.id); let generation = generation; let interval = refreshInterval
+            let make = makeTransport, meter = meter(account.id), endpoint = endpoint(credential, for: account.id); let generation = generation; let interval = refreshInterval
             jobs[account.id] = Task.detached { [weak self] in
                 var current = account
                 var attempt = 0
                 while !Task.isCancelled {
-                    let transport = MeteredAgentTransport(base: make(credential), metrics: meter)
+                    let transport = AgentEndpointTransport(endpoint: endpoint, metrics: meter, make: make)
                     do {
                         current.status = attempt == 0 ? .connecting : .retrying
                         await self?.apply(current, generation: generation)

@@ -66,7 +66,7 @@ class AgentSessionTest {
     fun tearDown() = scope.cancel()
 
     private fun sessions(transport: (AgentConnectionCredentials) -> Transport = { agent }) =
-        AgentSessions(connections, scope, cacheDir, open, foreground, transport)
+        AgentSessions(connections, scope, cacheDir, open, foreground, makeTransport = transport)
 
     private suspend fun <T> eventually(read: () -> T, check: (T) -> Boolean) {
         withTimeout(10_000) { while (!check(read())) kotlinx.coroutines.delay(20) }
@@ -218,6 +218,155 @@ class AgentSessionTest {
         foreground.value = true
         eventually({ agent.calls.contains("STREAM /v0/events/stream") }) { it }
         eventually({ session.feed.value.conversations }) { it.isNotEmpty() }
+    }
+
+    @Test
+    fun periodicIdentityRefreshStopsInBackgroundAndOnDisposal() = runBlocking {
+        val discoveryScope = CoroutineScope(SupervisorJob(scope.coroutineContext[kotlinx.coroutines.Job]) + Dispatchers.Default)
+        open.value = null
+        val opened = java.util.concurrent.atomic.AtomicInteger()
+        val closed = java.util.concurrent.atomic.AtomicInteger()
+        AgentSessions(connections, discoveryScope, null, open, foreground, identityRefreshMillis = 25) {
+            opened.incrementAndGet()
+            object : Transport by agent { override suspend fun close() { closed.incrementAndGet() } }
+        }
+        eventually({ agent.calls.count { it == "GET /v0/config" } }) { it >= 2 }
+        assertEquals(1, opened.get())
+        assertEquals(0, closed.get())
+        assertFalse(agent.calls.any { it.startsWith("STREAM") || it.contains("bootstrap") })
+        foreground.value = false
+        kotlinx.coroutines.delay(100)
+        val background = agent.calls.count { it == "GET /v0/config" }
+        kotlinx.coroutines.delay(100)
+        assertEquals(background, agent.calls.count { it == "GET /v0/config" })
+        assertEquals(1, closed.get())
+        foreground.value = true
+        eventually({ agent.calls.count { it == "GET /v0/config" } }) { it > background }
+        discoveryScope.coroutineContext[kotlinx.coroutines.Job]!!.cancel()
+        discoveryScope.coroutineContext[kotlinx.coroutines.Job]!!.join()
+        val disposed = agent.calls.count { it == "GET /v0/config" }
+        kotlinx.coroutines.delay(100)
+        assertEquals(disposed, agent.calls.count { it == "GET /v0/config" })
+        assertEquals(opened.get(), closed.get())
+    }
+
+    @Test
+    fun discoveryDoesNotSendAvatarEtagForMissingPicture() = runBlocking {
+        foreground.value = false
+        val missing = File(cacheDir, "does-not-exist.png")
+        connections.update(id) { it.copy(avatarFile = missing.path, avatarETag = "stale") }
+        val headersSeen = CompletableDeferred<Map<String, String>>()
+        AgentSessions(connections, scope, null, open, foreground, identityRefreshMillis = 25) {
+            object : Transport by agent {
+                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse = when (path) {
+                    "/v0/config" -> TransportResponse(200, body = """{"config":{"node":{"name":"Mac","avatar":{"thumbhash":"hash"}}}}""".toByteArray())
+                    "/v0/node/avatar" -> { headersSeen.complete(headers); TransportResponse(404) }
+                    else -> agent.request(method, path, credential, body, headers)
+                }
+            }
+        }
+        foreground.value = true
+        assertFalse(withTimeout(5_000) { headersSeen.await() }.containsKey("If-None-Match"))
+    }
+
+    @Test
+    fun foregroundDiscoveryRefreshesUnselectedAccountsAndDoesNotCancelHealthyStream() = runBlocking {
+        val other = connections.add(AgentConnectionCredentials("other", 24781, "other-device", "other-token"), "Other")
+        val failRefresh = java.util.concurrent.atomic.AtomicBoolean(false)
+        val otherConfigs = java.util.concurrent.atomic.AtomicInteger()
+        val failures = java.util.concurrent.atomic.AtomicInteger()
+        val manager = AgentSessions(connections, scope, null, open, foreground, identityRefreshMillis = 25) { credentials ->
+            object : Transport by agent {
+                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse {
+                    if (path == "/v0/config" && credentials.deviceId == "other-device") {
+                        otherConfigs.incrementAndGet()
+                        return TransportResponse(200, body = """{"config":{"api":{"publicUrl":"https://other.example"}}}""".toByteArray())
+                    }
+                    if (path == "/v0/config" && failRefresh.get()) {
+                        failures.incrementAndGet()
+                        throw com.slopus.happy.connection.AgentConnectionException(com.slopus.happy.connection.AgentConnectionException.Reason.Unavailable)
+                    }
+                    return agent.request(method, path, credential, body, headers)
+                }
+            }
+        }
+        val session = manager.session(id)!!
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ session.status.value }) { it == AgentLinkStatus.Connected }
+        eventually({ otherConfigs.get() }) { it >= 2 }
+        assertEquals("https://other.example", connections.credentials(other.id)!!.publicUrl)
+        failRefresh.set(true)
+        eventually({ failures.get() }) { it >= 3 }
+        assertEquals(AgentLinkStatus.Connected, session.status.value)
+        assertEquals(1, agent.calls.count { it == "STREAM /v0/events/stream" })
+        failRefresh.set(false)
+        val before = agent.calls.count { it == "GET /v0/config" }
+        eventually({ agent.calls.count { it == "GET /v0/config" } }) { it > before }
+    }
+
+    @Test
+    fun httpsRequestDeadlinesAllowSessionReconnectAndSettingsRetry() = runBlocking {
+        val certificate = okhttp3.tls.HeldCertificate.Builder().commonName("localhost").addSubjectAlternativeName("localhost").build()
+        val serverKeys = okhttp3.tls.HandshakeCertificates.Builder().heldCertificate(certificate).build()
+        val clientRoots = okhttp3.tls.HandshakeCertificates.Builder().addTrustedCertificate(certificate.certificate).build()
+        mockwebserver3.MockWebServer().apply {
+            useHttps(serverKeys.sslSocketFactory())
+            protocols = listOf(okhttp3.Protocol.HTTP_1_1)
+            start()
+        }.use { server ->
+            val https = com.slopus.happy.connection.HttpsTransport(com.slopus.happy.connection.AgentOrigin.parse("https://localhost:${server.port}"), clientRoots.sslSocketFactory(), requestTimeoutMillis = 1_000)
+            val health = java.util.concurrent.atomic.AtomicInteger()
+            val settings = java.util.concurrent.atomic.AtomicInteger()
+            val path = "/v0/user-settings/${DesktopSettings.PROJECTS_VISIBILITY}"
+            server.enqueue(mockwebserver3.MockResponse.Builder().headersDelay(3, java.util.concurrent.TimeUnit.SECONDS).body("late").build())
+            val session = AgentSession(id, connections, null, foreground, scope, { object : Transport by agent {
+                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse {
+                    if ((path == "/v0/health" && health.incrementAndGet() == 1) ||
+                        (method == "PUT" && path.startsWith("/v0/user-settings/") && settings.incrementAndGet() == 1)) {
+                        return https.request(method, path, credential, body, headers)
+                    }
+                    return agent.request(method, path, credential, body, headers)
+                }
+            } })
+            try {
+                agent.frames.send(Wire.hello("c0"))
+                eventually({ session.status.value }) { it == AgentLinkStatus.Offline }
+                eventually({ session.status.value }) { it == AgentLinkStatus.Connected }
+                assertTrue(health.get() >= 2)
+                agent.resources[path] = buildJsonObject { put("setting", Wire.projectsHidden(true, "v1")) }
+                server.enqueue(mockwebserver3.MockResponse.Builder().headersDelay(3, java.util.concurrent.TimeUnit.SECONDS).body("late").build())
+                session.setProjectsHidden(true)
+                eventually({ settings.get() }) { it >= 2 }
+                eventually({ session.catalog.value.pendingSettings }) { it.isEmpty() }
+                // The collector remains alive for a later, distinct change.
+                agent.resources[path] = buildJsonObject { put("setting", Wire.projectsHidden(false, "v2")) }
+                session.setProjectsHidden(false)
+                eventually({ settings.get() }) { it >= 3 }
+                eventually({ session.catalog.value.pendingSettings }) { it.isEmpty() }
+                assertEquals(AgentLinkStatus.Connected, session.status.value)
+            } finally { session.close(); https.close() }
+        }
+    }
+
+    @Test
+    fun v2EndpointRemovalUsesNormalOfflineStateWithoutTailcat() = runBlocking {
+        val credentials = AgentConnectionCredentials("https://agent.example", 443, "v2device", "token", "https://agent.example", false)
+        val account = connections.add(credentials, "V2")
+        val session = AgentSession(account.id, connections, null, foreground, scope, { value ->
+            if (value.publicUrl == null) {
+                com.slopus.happy.connection.agentTransport(value.address, value.port, null, value.tailcatAvailable != false).also {
+                    assertFalse(it is com.slopus.happy.connection.TailcatTransport)
+                }
+            } else object : Transport by agent {
+                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse =
+                    if (path == "/v0/config") TransportResponse(200, body = """{"config":{"api":{"publicUrl":null}}}""".toByteArray())
+                    else agent.request(method, path, credential, body, headers)
+            }
+        })
+        eventually({ session.status.value }) { it == AgentLinkStatus.Offline }
+        assertEquals(false, connections.credentials(account.id)?.tailcatAvailable)
+        assertNull(connections.credentials(account.id)?.publicUrl)
+        session.close()
     }
 
     @Test

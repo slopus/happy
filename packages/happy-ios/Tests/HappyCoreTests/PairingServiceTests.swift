@@ -34,8 +34,9 @@ private actor PairingVectorTransport: AgentTransport {
 }
 
 final class PairingServiceTests: XCTestCase {
-    private func service(_ transport: PairingVectorTransport) throws -> PairingService {
-        let payload: [String: Any] = ["v": 1, "a": "tcFixedVectorAddress", "p": 24781, "t": CanonicalBase64URL.encode(Data(repeating: 3, count: 32)), "n": "Unverified Mac", "e": Date().addingTimeInterval(60).timeIntervalSince1970 * 1000]
+    private func service(_ transport: PairingVectorTransport, publicUrl: String? = nil) throws -> PairingService {
+        var payload: [String: Any] = ["v": 1, "a": "tcFixedVectorAddress", "p": 24781, "t": CanonicalBase64URL.encode(Data(repeating: 3, count: 32)), "n": "Unverified Mac", "e": Date().addingTimeInterval(60).timeIntervalSince1970 * 1000]
+        if let publicUrl { payload["v"] = 2; payload["u"] = publicUrl; payload["a"] = nil; payload["p"] = nil }
         let link = try PairingLink(PairingLink.prefix + CanonicalBase64URL.encode(JSONSerialization.data(withJSONObject: payload)))
         return PairingService(link: link, transport: transport, crypto: try PairingCrypto(privateKey: Data(repeating: 1, count: 32), nonce: Data(repeating: 4, count: 32)))
     }
@@ -59,6 +60,22 @@ final class PairingServiceTests: XCTestCase {
         do { _ = try await service.confirm(); XCTFail("Bad proof accepted") }
         catch { XCTAssertEqual(error as? PairingError, .invalidProof) }
         await service.cancel()
+    }
+    func testPublicOriginPairingProofAndCredentialPersistence() async throws {
+        let origin = "https://agent.example.com:8443"
+        let transport = PairingVectorTransport(proof: vectorBytes("876bd980d032036c848f77faaa191644e31504f10bd2a6713f669dac9bb8849f"))
+        let service = try service(transport, publicUrl: origin)
+        let emoji = try await service.start(deviceName: "Phone")
+        XCTAssertEqual(emoji, ["🇨🇳", "✉️", "🚠", "🍼"])
+        let credentials = try await service.confirm()
+        XCTAssertEqual(credentials.address, origin)
+        XCTAssertEqual(credentials.publicUrl, origin)
+        XCTAssertEqual(credentials.tailcatAvailable, false)
+        XCTAssertEqual(credentials.port, 8443)
+        XCTAssertEqual(credentials.deviceToken, CanonicalBase64URL.encode(vectorBytes("a175d3b4fea158aade7d1becf944f3d5eed2e62d7e73cbdcc4aec5e0a93a58a8")))
+        XCTAssertEqual(try JSONDecoder().decode(AgentConnectionCredentials.self, from: JSONEncoder().encode(credentials)), credentials)
+        let old = Data(#"{"address":"tcAddress","port":24781,"deviceID":"device","deviceToken":"token"}"#.utf8)
+        XCTAssertNil(try JSONDecoder().decode(AgentConnectionCredentials.self, from: old).publicUrl)
     }
     func testRejectedExpiredAndCancellationAreFinal() async throws {
         for ending in ["rejected", "expired"] {

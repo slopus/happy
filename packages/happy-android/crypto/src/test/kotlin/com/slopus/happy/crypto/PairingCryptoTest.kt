@@ -62,6 +62,17 @@ class PairingCryptoTest {
     }
 
     @Test
+    fun defaultPort443MatchesIndependentDaemonVector() {
+        val phone = PairingCrypto(privateKey = ByteArray(32) { 1 }, nonce = ByteArray(32) { 4 })
+        val secrets = phone.derive(Sodium.scalarMultBase(ByteArray(32) { 2 }), ByteArray(32) { 5 }, ByteArray(32) { 3 }, "https://agent.example.com", 443)!!
+        assertEquals("8a1f7f7897aea5036ac00ffc02588c564eeb7e62fb7b526cce3510480e32358b", secrets.transcriptHash.lowerHex())
+        assertEquals("3fe98bcd45388b9180b5de36c4dfb094ee89d7a86b4c0e78d2bb394a2a5e2132", secrets.deviceToken.lowerHex())
+        assertEquals("c5831f3f84beb716dd93db6eb9dc4161f2d12330e57100ed0fd032a88f5ab8ab", secrets.mac("mobile").lowerHex())
+        assertTrue(secrets.verifyDaemon(hex("ccc53b9465872a38e8f1b918971a5c2ea40ca498434704dbe51838a6f9d0cafb")))
+        assertEquals(listOf("🌎", "🍞", "🔴", "🏆"), secrets.emoji)
+    }
+
+    @Test
     fun onlyCanonicalBase64UrlDecodes() {
         val bytes = ByteArray(32) { 3 }
         val text = CanonicalBase64Url.encode(bytes)

@@ -63,11 +63,15 @@ extension AgentTransport {
     }
 }
 
-/// One private tunnel per instance; each HTTP request owns a fresh TCP stream.
-/// `server.tailcat` is a logical authority, never a DNS lookup.
-public actor TailcatHTTPTransport: SelfMeteringTransport {
+/// One transport per account. HTTPS uses platform-verified TLS; otherwise
+/// `server.tailcat` is a logical authority over the private tunnel.
+public actor AgentHTTPTransport: SelfMeteringTransport {
     private let address: String
     let port: UInt16
+    private let publicUrl: String?
+    private let tailcatAvailable: Bool
+    nonisolated let authority: String
+    private var publicStreams: [UUID: any BrowserStream] = [:]
     private var client: TailcatClient?
     private var connecting: Task<TailcatClient, Error>?
     private var closed = false
@@ -76,7 +80,11 @@ public actor TailcatHTTPTransport: SelfMeteringTransport {
     /// The tunnel up now, as the recorder knows it.
     private var tunnelID: UUID?
 
-    public init(address: String, port: UInt16) { self.address = address; self.port = port }
+    public init(address: String, port: UInt16, publicUrl: String? = nil, tailcatAvailable: Bool = true) {
+        self.address = address; self.port = port; self.publicUrl = publicUrl
+        self.tailcatAvailable = tailcatAvailable
+        authority = publicUrl.map { String($0.dropFirst("https://".count)) } ?? "server.tailcat:\(port)"
+    }
 
     public nonisolated func attach(_ metrics: ConnectionMetrics) { meter.metrics = metrics }
 
@@ -86,6 +94,7 @@ public actor TailcatHTTPTransport: SelfMeteringTransport {
         let old = client; client = nil
         tunnelDown()
         await old?.close()
+        await closePublicStreams()
     }
 
     /// A computer whose daemon restarted has forgotten this tunnel's session
@@ -95,7 +104,15 @@ public actor TailcatHTTPTransport: SelfMeteringTransport {
         let old = client; client = nil
         tunnelDown()
         await old?.close()
+        await closePublicStreams()
     }
+
+    private func closePublicStreams() async {
+        let streams = publicStreams.values; publicStreams.removeAll()
+        for stream in streams { await stream.close() }
+    }
+
+    private func forgetPublicStream(_ id: UUID) { publicStreams[id] = nil }
 
     private func tunnelDown() {
         guard let id = tunnelID else { return }
@@ -105,20 +122,35 @@ public actor TailcatHTTPTransport: SelfMeteringTransport {
 
     /// A TCP flow to the computer, counted on the channel the request
     /// that opens it names (`MetricsScope.channel`).
-    nonisolated func flow(_ client: TailcatClient) async throws -> any BrowserStream {
-        let raw = try await client.openTCP(port: port)
+    func flow(_ client: TailcatClient?) async throws -> any BrowserStream {
+        guard !closed else { throw CancellationError() }
+        let raw: any BrowserStream
+        if let publicUrl {
+            let origin = try AgentOrigin(publicUrl)
+            let id = UUID()
+            raw = try HTTPSBrowserStream.open(origin) { [weak self] in
+                Task { await self?.forgetPublicStream(id) }
+            }
+            publicStreams[id] = raw
+        } else {
+            guard let client else { throw PairingError.unavailable }
+            raw = try await client.openTCP(port: port)
+        }
         guard let metrics = meter.metrics else { return raw }
-        return MeteredStream(raw, metrics: metrics, channel: MetricsScope.channel ?? .tailcat)
+        return MeteredStream(raw, metrics: metrics, channel: MetricsScope.channel ?? (publicUrl == nil ? .tailcat : .http))
     }
 
     /// Resets the tunnel if it is still `used`, after a failure on it.
-    func reset(_ used: TailcatClient) async {
+    func reset(_ used: TailcatClient?) async {
+        guard let used else { return }
         guard client === used else { return }
         await reset()
     }
 
-    func connection() async throws -> TailcatClient {
+    func connection() async throws -> TailcatClient? {
         guard !closed else { throw CancellationError() }
+        if let publicUrl { _ = try AgentOrigin(publicUrl); return nil }
+        guard tailcatAvailable else { throw PairingError.unavailable }
         if let client { return client }
         let task: Task<TailcatClient, Error>
         if let connecting { task = connecting }
@@ -207,13 +239,13 @@ public actor TailcatHTTPTransport: SelfMeteringTransport {
         }
     }
 
-    private nonisolated func exchange(client: TailcatClient, port: UInt16, method: String, path: String, credential: String, body: Data?, headers: [String: String], timeout: Duration, sent: (@Sendable (Int) -> Void)?) async throws -> HTTP1Response {
+    private nonisolated func exchange(client: TailcatClient?, port: UInt16, method: String, path: String, credential: String, body: Data?, headers: [String: String], timeout: Duration, sent: (@Sendable (Int) -> Void)?) async throws -> HTTP1Response {
         try await withThrowingTaskGroup(of: HTTP1Response.self) { group in
             group.addTask {
                 let stream = try await self.flow(client)
                 return try await withTaskCancellationHandler {
                     do {
-                        var head = "\(method) \(path) HTTP/1.1\r\nHost: server.tailcat:\(port)\r\nAuthorization: Bearer \(credential)\r\nConnection: close\r\nAccept: application/json\r\nContent-Length: \(body?.count ?? 0)\r\n"
+                        var head = "\(method) \(path) HTTP/1.1\r\nHost: \(self.authority)\r\nAuthorization: Bearer \(credential)\r\nConnection: close\r\nAccept: application/json\r\nContent-Length: \(body?.count ?? 0)\r\n"
                         // JSON unless the caller names the type (a picture's bytes).
                         if body != nil, !headers.keys.contains(where: { $0.lowercased() == "content-type" }) { head += "Content-Type: application/json\r\n" }
                         for (name, value) in headers { head += "\(name): \(value)\r\n" }
@@ -248,6 +280,9 @@ public actor TailcatHTTPTransport: SelfMeteringTransport {
         }
     }
 }
+
+/// Kept for callers that construct the original tunnel-only transport.
+public typealias TailcatHTTPTransport = AgentHTTPTransport
 
 extension TailcatHTTPTransport {
     /// What the recorder may show of a tunnel: its relay and the computer's

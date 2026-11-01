@@ -14,14 +14,13 @@ extension TailcatHTTPTransport {
     public func stream(path: String, credential: String, headers: [String: String]) async throws -> HTTP1Stream {
         guard Self.safe(path: path, credential: credential, headers: headers) else { throw PairingError.invalidResponse }
         let client = try await connection()
-        let port = port
         let stream: any BrowserStream
         do { stream = try await flow(client) } catch {
             if Self.lostTunnel(error) { await reset(client) }
             throw error
         }
         do {
-            var head = "GET \(path) HTTP/1.1\r\nHost: server.tailcat:\(port)\r\nAuthorization: Bearer \(credential)\r\nConnection: close\r\nAccept: text/event-stream\r\n"
+            var head = "GET \(path) HTTP/1.1\r\nHost: \(authority)\r\nAuthorization: Bearer \(credential)\r\nConnection: close\r\nAccept: text/event-stream\r\n"
             for (name, value) in headers { head += "\(name): \(value)\r\n" }
             try await stream.write(Data((head + "\r\n").utf8))
             let (responseHead, rest) = try await withThrowingTaskGroup(of: (HTTP1Head, Data).self) { group in

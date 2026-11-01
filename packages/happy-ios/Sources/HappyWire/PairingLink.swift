@@ -5,6 +5,7 @@ import Foundation
 public struct PairingLink: Equatable, Sendable {
     public static let prefix = "happy://direct?"
     public let address: String
+    public let publicUrl: String?
     public let port: UInt16
     public let token: Data
     public let name: String
@@ -16,22 +17,47 @@ public struct PairingLink: Equatable, Sendable {
     }
 
     public init(_ text: String, now: Date = Date()) throws {
-        struct Bundle: Decodable { let v: Double; let a: String; let p: Int; let t: String; let n: String; let e: Double }
+        struct Bundle: Decodable {
+            let v: Double; let a: String?; let p: Int?; let u: String?; let t: String; let n: String; let e: Double
+            let hasA: Bool; let hasP: Bool; let hasU: Bool
+            enum CodingKeys: String, CodingKey { case v, a, p, u, t, n, e }
+            init(from decoder: any Decoder) throws {
+                let values = try decoder.container(keyedBy: CodingKeys.self)
+                v = try values.decode(Double.self, forKey: .v)
+                a = try values.decodeIfPresent(String.self, forKey: .a)
+                p = try values.decodeIfPresent(Int.self, forKey: .p)
+                u = try values.decodeIfPresent(String.self, forKey: .u)
+                t = try values.decode(String.self, forKey: .t)
+                n = try values.decode(String.self, forKey: .n)
+                e = try values.decode(Double.self, forKey: .e)
+                hasA = values.contains(.a); hasP = values.contains(.p); hasU = values.contains(.u)
+            }
+        }
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard text.hasPrefix(Self.prefix), text.utf8.count <= 16384,
               let data = CanonicalBase64URL.decode(String(text.dropFirst(Self.prefix.count))),
               let bundle = try? JSONDecoder().decode(Bundle.self, from: data) else { throw PairingError.invalidCode }
-        guard bundle.v == 1 else { throw PairingError.updateRequired }
-        guard !bundle.a.isEmpty, bundle.a.utf8.count <= 8192,
-              !bundle.a.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
-              let port = UInt16(exactly: bundle.p), port > 0,
-              let token = CanonicalBase64URL.decode(bundle.t), token.count == 32,
+        guard bundle.v == 1 || bundle.v == 2 else { throw PairingError.updateRequired }
+        let address: String
+        let port: UInt16
+        if bundle.v == 2 {
+            guard let value = bundle.u, !bundle.hasA, !bundle.hasP else { throw PairingError.invalidCode }
+            let origin = try AgentOrigin(value)
+            address = origin.value; port = origin.port; publicUrl = origin.value
+        } else {
+            guard let value = bundle.a, !value.isEmpty, value.utf8.count <= 8192,
+                  !value.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
+                  let number = bundle.p, let parsed = UInt16(exactly: number), parsed > 0,
+                  !bundle.hasU else { throw PairingError.invalidCode }
+            address = value; port = parsed; publicUrl = nil
+        }
+        guard let token = CanonicalBase64URL.decode(bundle.t), token.count == 32,
               !bundle.n.isEmpty, bundle.n.count <= 128,
               !bundle.n.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
               bundle.e.isFinite, bundle.e > 0 else { throw PairingError.invalidCode }
         let expiry = Date(timeIntervalSince1970: bundle.e / 1000)
         guard expiry > now else { throw PairingError.expired }
-        address = bundle.a; self.port = port; self.token = token; name = bundle.n; expiresAt = expiry
+        self.address = address; self.port = port; self.token = token; name = bundle.n; expiresAt = expiry
     }
 }
 

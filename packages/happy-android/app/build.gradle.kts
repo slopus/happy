@@ -424,6 +424,8 @@ dependencies {
     testImplementation(libs.compose.ui.test.junit4)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
+    // Ephemeral trusted/untrusted TLS fixtures, without changing system trust.
+    testImplementation(libs.okhttp.tls)
     testImplementation(libs.coil.test)
 
     androidTestImplementation(libs.androidx.test.runner)

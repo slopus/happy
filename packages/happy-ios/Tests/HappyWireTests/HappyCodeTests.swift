@@ -41,7 +41,7 @@ final class HappyCodeTests: XCTestCase {
         XCTAssertEqual(HappyCode("happy:///account?abc"), .invalid(.account))
         XCTAssertEqual(HappyCode("happy://direct?bad"), .invalid(.agentConnection(.invalidCode)))
         XCTAssertEqual(HappyCode(try direct(["e": 1])), .invalid(.agentConnection(.expired)))
-        XCTAssertEqual(HappyCode(try direct(["v": 2])), .invalid(.agentConnection(.updateRequired)))
+        XCTAssertEqual(HappyCode(try direct(["v": 3])), .invalid(.agentConnection(.updateRequired)))
     }
 
     func testAnythingElseIsNotHappy() {

@@ -19,6 +19,9 @@ data class AgentConnectionCredentials(
     val port: Int,
     val deviceId: String,
     val deviceToken: String,
+    val publicUrl: String? = null,
+    /** Absent for stored v1 pairs; v2 QR codes have no Tailcat coordinates. */
+    val tailcatAvailable: Boolean? = null,
 ) {
     override fun toString() = "AgentConnectionCredentials(deviceId=$deviceId, port=$port)"
 }
@@ -102,7 +105,7 @@ class PairingService(
                     throw AgentConnectionException(AgentConnectionException.Reason.InvalidProof)
                 }
                 secrets = null
-                return AgentConnectionCredentials(link.address, link.port, deviceId, CanonicalBase64Url.encode(derived.deviceToken))
+                return AgentConnectionCredentials(link.address, link.port, deviceId, CanonicalBase64Url.encode(derived.deviceToken), link.publicUrl, if (link.publicUrl == null) null else false)
             }
             status = decode(transport.request("GET", "$ROUTE?wait=25", id))
         }

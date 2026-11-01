@@ -3,7 +3,7 @@ package com.slopus.happy.agent
 import com.slopus.happy.connection.AgentConnectionException
 import com.slopus.happy.connection.AgentConnections
 import com.slopus.happy.connection.AgentIdentity
-import com.slopus.happy.connection.TailcatTransport
+import com.slopus.happy.connection.agentTransport
 import com.slopus.happy.connection.Transport
 import com.slopus.happy.conversation.UnsentWork
 import com.slopus.happy.data.DiskThread
@@ -18,6 +18,7 @@ import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -76,7 +77,7 @@ class AgentSession internal constructor(
     private val cacheFile: File?,
     active: Flow<Boolean>,
     parent: CoroutineScope,
-    makeTransport: (com.slopus.happy.connection.AgentConnectionCredentials) -> Transport = { TailcatTransport(it.address, it.port) },
+    makeTransport: (com.slopus.happy.connection.AgentConnectionCredentials) -> Transport = { agentTransport(it.address, it.port, it.publicUrl, it.tailcatAvailable != false) },
     private val random: Random = Random.Default,
 ) {
     private val scope = CoroutineScope(parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]) + Dispatchers.IO)
@@ -91,7 +92,7 @@ class AgentSession internal constructor(
         linkLock.withLock {
             link ?: run {
                 val credentials = connections.credentials(connectionId) ?: throw AgentConnectionException(AgentConnectionException.Reason.Revoked)
-                AgentClient.Link(makeTransport(credentials), credentials.deviceToken).also { link = it }
+                AgentClient.Link(connections.transport(connectionId, credentials, makeTransport), credentials.deviceToken).also { link = it }
             }
         }
     }

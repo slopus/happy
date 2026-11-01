@@ -173,7 +173,7 @@ public actor BrowserProxy {
         let (request, body) = try await BrowserRelay.requestBody(head, initial: initialBody, stream: local)
         let parts = request.line.split(separator: " ")
         let api = parts.count == 3 && parts[1].hasPrefix("/api/") && request.value("upgrade") == nil
-        let translated = try request.artifactRequest(artifactID: id, version: version, credential: client.token, keepAlive: api)
+        _ = try request.artifactRequest(artifactID: id, version: version, credential: client.token, keepAlive: api)
         let start = ConnectionMetrics.uptime()
         let metrics = client.metrics
         let lease: BrowserConnectionPool.Lease
@@ -187,6 +187,7 @@ public actor BrowserProxy {
         var responseStarted = false
         var answered = false
         do {
+            let translated = try request.artifactRequest(artifactID: id, version: version, credential: client.token, keepAlive: api, authority: remote.authority)
             try await remote.write(translated.data)
             if !body.isEmpty { try await remote.write(body) }
             // Responses are never buffered: status, duplicates, chunk framing,

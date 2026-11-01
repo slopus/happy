@@ -66,6 +66,7 @@ interface Transport {
 
 /** Backpressured bytes: each read and write finishes before the next is issued. */
 interface TransportSocket {
+    val authority: String get() = "server.tailcat"
     /** Up to [maximumBytes]; empty once the other side has finished. */
     suspend fun read(maximumBytes: Int = 65536): ByteArray
     suspend fun write(bytes: ByteArray)
@@ -291,14 +292,14 @@ object TailcatHttp {
     private val methods = setOf("GET", "POST", "PATCH", "PUT", "DELETE")
 
     /** The request line and headers; refuses anything that could split them. */
-    fun requestHead(method: String, path: String, port: Int, credential: String, body: ByteArray?, headers: Map<String, String>): ByteArray {
+    fun requestHead(method: String, path: String, port: Int, credential: String, body: ByteArray?, headers: Map<String, String>, authority: String = "server.tailcat:$port"): ByteArray {
         fun unsafe(text: String) = text.contains('\r') || text.contains('\n')
         if (method !in methods || !path.startsWith("/") || path.contains(' ') || unsafe(path) || unsafe(credential) ||
             headers.any { (name, value) -> unsafe(name) || name.contains(':') || unsafe(value) }
         ) throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
         val head = StringBuilder()
             .append("$method $path HTTP/1.1\r\n")
-            .append("Host: server.tailcat:$port\r\n")
+            .append("Host: $authority\r\n")
             .append("Authorization: Bearer $credential\r\n")
             .append("Connection: close\r\n")
         if (headers.keys.none { it.equals("Accept", ignoreCase = true) }) head.append("Accept: application/json\r\n")

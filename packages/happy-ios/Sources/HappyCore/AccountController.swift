@@ -99,7 +99,7 @@ public final class AccountController {
         localSettings: KeyValueStore = InMemoryKeyValueStore(),
         accountCredentialStore: AccountCredentialStore? = nil,
         agentConnectionCredentialStore: any AgentConnectionCredentialStore = InMemoryAgentConnectionCredentialStore(),
-        agentTransport: @escaping @Sendable (AgentConnectionCredentials) -> any AgentTransport = { TailcatHTTPTransport(address: $0.address, port: $0.port) },
+        agentTransport: @escaping @Sendable (AgentConnectionCredentials) -> any AgentTransport = { AgentHTTPTransport(address: $0.address, port: $0.port, publicUrl: $0.publicUrl, tailcatAvailable: $0.tailcatAvailable != false) },
         rnServerImport: @escaping @Sendable () -> ImportedAccountServer = { RNServerConfigImporter.readFromDocuments() },
         localSettingsFactory: ((String) -> KeyValueStore)? = nil,
         transport: HTTPTransport = URLSessionTransport(),

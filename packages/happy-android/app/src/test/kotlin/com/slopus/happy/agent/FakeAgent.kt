@@ -109,8 +109,8 @@ object Wire {
  * [frames] (chunked, as the daemon writes them).
  */
 class FakeAgent(var bootstrap: JsonObject = Wire.bootstrap(), var name: String = "Studio") : Transport {
-    val calls = mutableListOf<String>()
-    val streamCursors = mutableListOf<String?>()
+    val calls = java.util.concurrent.CopyOnWriteArrayList<String>()
+    val streamCursors = java.util.concurrent.CopyOnWriteArrayList<String?>()
     var frames = Channel<String>(Channel.UNLIMITED)
     var revoked = false
     var resources = mutableMapOf<String, JsonObject>()

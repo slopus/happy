@@ -37,7 +37,7 @@ class PairingTest {
     @Test
     fun badLinksSayWhy() {
         val invalid = AgentConnectionException.Reason.InvalidCode
-        assertEquals(AgentConnectionException.Reason.UpdateRequired, reason { PairingLink.parse(link(v = 2), now) })
+        assertEquals(AgentConnectionException.Reason.UpdateRequired, reason { PairingLink.parse(link(v = 3), now) })
         assertEquals(AgentConnectionException.Reason.Expired, reason { PairingLink.parse(link(e = now), now) })
         assertEquals(invalid, reason { PairingLink.parse(link(v = "1"), now) })
         assertEquals(invalid, reason { PairingLink.parse(link(p = 0), now) })

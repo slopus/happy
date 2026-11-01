@@ -59,6 +59,33 @@ private actor CancelledIdentityTransport: AgentTransport {
 
 @MainActor
 final class AgentConnectionsTests: XCTestCase {
+    func testRepeatedPairingAndFailedPersistenceLeaveExistingClientUsable() async throws {
+        let store = FailingAgentCredentialStore()
+        let identity = IdentityTransport()
+        let manager = AgentConnections(credentials: store, directory: nil, makeTransport: { _ in identity })
+        await manager.setForeground(false)
+        var original = value()
+        original.publicUrl = "https://agent.example"
+        let account = try await manager.add(original, name: "Mac")
+        let client = manager.transport(original, for: account.id)
+        _ = try await client.request("/v0/health", credential: original.deviceToken)
+        let repeated = try await manager.add(value(), name: "Mac")
+        XCTAssertEqual(repeated.id, account.id)
+        XCTAssertEqual(manager.credential(for: account.id)?.publicUrl, original.publicUrl)
+        _ = try await client.request("/v0/health", credential: original.deviceToken)
+
+        store.setFailing(true)
+        do { _ = try await manager.add(value(), name: "Mac"); XCTFail("failed save accepted") } catch { }
+        store.setFailing(false)
+        _ = try await client.request("/v0/health", credential: original.deviceToken)
+        await identity.configure(revoked: true)
+        do { _ = try await manager.add(value(), name: "Mac"); XCTFail("revoked pairing accepted") }
+        catch { XCTAssertEqual(error as? PairingError, .revoked) }
+        await identity.configure(revoked: false)
+        _ = try await client.request("/v0/health", credential: original.deviceToken)
+        XCTAssertEqual(manager.credential(for: account.id), original)
+        await client.close()
+    }
     private func value(_ id: String = "device") -> AgentConnectionCredentials {
         AgentConnectionCredentials(address: "tcAddress", port: 24781, deviceID: id, deviceToken: CanonicalBase64URL.encode(Data(repeating: 7, count: 32)))
     }
@@ -326,4 +353,37 @@ final class AgentConnectionsTests: XCTestCase {
         await manager.setForeground(false)
         XCTAssertTrue(manager.accounts.allSatisfy { $0.status == .paused })
     }
+    func testPeriodicIdentityRefreshStopsInBackgroundAndAfterRemoval() async throws {
+        let transport = IdentityTransport()
+        let manager = AgentConnections(credentials: InMemoryAgentConnectionCredentialStore(), directory: nil, makeTransport: { _ in transport })
+        manager.refreshInterval = .milliseconds(20)
+        let account = try await manager.add(value("periodic"), name: "Mac")
+        for _ in 0..<100 {
+            if await transport.paths().filter({ $0 == "/v0/config" }).count >= 3 { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        await manager.setForeground(false)
+        let count = await transport.paths().count
+        try await Task.sleep(for: .milliseconds(60))
+        let background = await transport.paths().count
+        XCTAssertEqual(background, count)
+        try await manager.remove(account.id)
+        await manager.setForeground(true)
+        try await Task.sleep(for: .milliseconds(60))
+        let removed = await transport.paths().count
+        XCTAssertEqual(removed, count)
+    }
+}
+
+private final class FailingAgentCredentialStore: AgentConnectionCredentialStore, @unchecked Sendable {
+    private let lock = NSLock()
+    private let base = InMemoryAgentConnectionCredentialStore()
+    private var failing = false
+    func setFailing(_ value: Bool) { lock.withLock { failing = value } }
+    func all() throws -> [String: AgentConnectionCredentials] { try base.all() }
+    func save(_ credentials: AgentConnectionCredentials, id: String) throws {
+        if lock.withLock({ failing }) { throw PairingError.unavailable }
+        try base.save(credentials, id: id)
+    }
+    func remove(id: String) throws { try base.remove(id: id) }
 }

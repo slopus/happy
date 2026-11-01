@@ -24,12 +24,20 @@ final class PairingLinkTests: XCTestCase {
     }
     func testExpiryAndVersionHaveActionableErrors() throws {
         XCTAssertThrowsError(try PairingLink(code(["e": 1]))) { XCTAssertEqual($0 as? PairingError, .expired) }
-        XCTAssertThrowsError(try PairingLink(code(["v": 2]))) { XCTAssertEqual($0 as? PairingError, .updateRequired) }
+        XCTAssertThrowsError(try PairingLink(code(["v": 3]))) { XCTAssertEqual($0 as? PairingError, .updateRequired) }
         XCTAssertThrowsError(try PairingLink(code(["v": "1"]))) { XCTAssertEqual($0 as? PairingError, .invalidCode) }
     }
     func testCanonicalBinary() {
         XCTAssertNil(CanonicalBase64URL.decode("AB"))
         XCTAssertNil(CanonicalBase64URL.decode("AA="))
         XCTAssertEqual(CanonicalBase64URL.decode("AA"), Data([0]))
+    }
+    func testVersionSpecificFieldsCannotBePresentAsNull() throws {
+        XCTAssertThrowsError(try PairingLink(code(["u": NSNull()])))
+        for field in ["a", "p"] {
+            let bundle: [String: Any] = ["v": 2, "u": "https://agent.example.com", field: NSNull(), "t": CanonicalBase64URL.encode(Data(repeating: 3, count: 32)), "n": "Mac", "e": 2_000_000_000_000.0]
+            let text = PairingLink.prefix + CanonicalBase64URL.encode(try JSONSerialization.data(withJSONObject: bundle))
+            XCTAssertThrowsError(try PairingLink(text))
+        }
     }
 }

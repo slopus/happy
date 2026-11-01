@@ -37,6 +37,7 @@ class PairingLink private constructor(
     /** The agent's name as the code states it: for display only, unverified. */
     val name: String,
     val expiresAtMillis: Long,
+    val publicUrl: String? = null,
 ) {
     override fun toString() = "PairingLink(name=$name, port=$port)"
 
@@ -57,14 +58,21 @@ class PairingLink private constructor(
             fun number(key: String) = (bundle[key] as? JsonPrimitive)?.takeIf { !it.isString }?.doubleOrNull
             fun string(key: String) = (bundle[key] as? JsonPrimitive)?.takeIf { it.isString }?.contentOrNull
             val version = number("v") ?: invalid()
-            if (version != 1.0) throw AgentConnectionException(AgentConnectionException.Reason.UpdateRequired)
-            val address = string("a")?.takeIf { it.isNotEmpty() && it.length <= 8192 && it.none(Char::isISOControl) } ?: invalid()
-            val port = number("p")?.takeIf { it == Math.floor(it) && it in 1.0..65535.0 }?.toInt() ?: invalid()
+            if (version != 1.0 && version != 2.0) throw AgentConnectionException(AgentConnectionException.Reason.UpdateRequired)
+            val origin = if (version == 2.0) {
+                if ("a" in bundle || "p" in bundle) invalid()
+                AgentOrigin.parse(string("u") ?: invalid())
+            } else {
+                if ("u" in bundle) invalid()
+                null
+            }
+            val address = origin?.value ?: string("a")?.takeIf { it.isNotEmpty() && it.length <= 8192 && it.none(Char::isISOControl) } ?: invalid()
+            val port = origin?.port ?: number("p")?.takeIf { it == Math.floor(it) && it in 1.0..65535.0 }?.toInt() ?: invalid()
             val token = string("t")?.let(CanonicalBase64Url::decode)?.takeIf { it.size == 32 } ?: invalid()
             val name = string("n")?.takeIf { it.isNotEmpty() && it.codePointCount(0, it.length) <= 128 && it.none(Char::isISOControl) } ?: invalid()
             val expires = number("e")?.takeIf { it.isFinite() && it > 0 } ?: invalid()
             if (expires.toLong() <= nowMillis) throw AgentConnectionException(AgentConnectionException.Reason.Expired)
-            return PairingLink(address, port, token, name, expires.toLong())
+            return PairingLink(address, port, token, name, expires.toLong(), origin?.value)
         }
 
         internal fun bundle(json: JsonObject) = PREFIX + CanonicalBase64Url.encode(json.toString().toByteArray(Charsets.UTF_8))

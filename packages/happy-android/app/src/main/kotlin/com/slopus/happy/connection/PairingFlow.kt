@@ -39,7 +39,7 @@ class PairingFlow(
     private val scope: CoroutineScope,
     private val accounts: AgentConnections,
     private val deviceName: String,
-    private val makeTransport: (PairingLink) -> Transport = { TailcatTransport(it.address, it.port) },
+    private val makeTransport: (PairingLink) -> Transport = { agentTransport(it.address, it.port, it.publicUrl) },
     private val now: () -> Long = System::currentTimeMillis,
 ) {
     private val mutableState = MutableStateFlow<PairingState?>(null)

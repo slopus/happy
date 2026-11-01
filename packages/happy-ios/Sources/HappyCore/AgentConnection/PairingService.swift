@@ -7,6 +7,9 @@ public struct AgentConnectionCredentials: Codable, Equatable, Sendable {
     public let port: UInt16
     public let deviceID: String
     public let deviceToken: String
+    public var publicUrl: String? = nil
+    /// Missing on stored v1 credentials. V2 codes carry no Tailcat address.
+    public var tailcatAvailable: Bool? = nil
 }
 
 /// An unfinished handshake owns its tunnel and secrets, and stores nothing.
@@ -23,7 +26,7 @@ public actor PairingService {
 
     public init(link: PairingLink, transport: (any AgentTransport)? = nil, crypto: PairingCrypto? = nil) {
         self.link = link
-        self.transport = transport ?? TailcatHTTPTransport(address: link.address, port: link.port)
+        self.transport = transport ?? AgentHTTPTransport(address: link.address, port: link.port, publicUrl: link.publicUrl)
         expiresAt = link.expiresAt
         suppliedCrypto = crypto
     }
@@ -67,7 +70,7 @@ public actor PairingService {
                       let mac = status.mac.flatMap(CanonicalBase64URL.decode), secrets.verifyDaemon(mac) else { throw PairingError.invalidProof }
                 self.secrets = nil
                 await transport.close()
-                return AgentConnectionCredentials(address: link.address, port: link.port, deviceID: id, deviceToken: CanonicalBase64URL.encode(secrets.deviceToken))
+                return AgentConnectionCredentials(address: link.address, port: link.port, deviceID: id, deviceToken: CanonicalBase64URL.encode(secrets.deviceToken), publicUrl: link.publicUrl, tailcatAvailable: link.publicUrl == nil ? nil : false)
             }
             status = try decode(try await transport.request(Self.route + "?wait=25", credential: handshakeID))
         }

@@ -79,6 +79,73 @@ class AgentConnectionsTest {
     }
 
     @Test
+    fun authenticatedEndpointSelectionPersistsWithoutReplacingAccountOrToken() = runBlocking {
+        val accounts = accounts()
+        val original = credentials()
+        val account = accounts.add(original, "Mac")
+        val client = accounts.transport(account.id, original) { daemon }
+        daemon.endpointAdvertisement = kotlinx.serialization.json.JsonPrimitive("https://agent.example:8443")
+        client.request("GET", "/v0/config", original.deviceToken)
+        assertEquals(original.copy(publicUrl = "https://agent.example:8443"), accounts.credentials(account.id))
+        assertEquals(accounts.credentials(account.id), accounts().credentials(account.id))
+        assertEquals(account.id, accounts.accounts.value.single().id)
+        daemon.endpointAdvertisement = kotlinx.serialization.json.JsonNull
+        client.request("GET", "/v0/config", original.deviceToken)
+        assertEquals(original, accounts().credentials(account.id))
+        client.close()
+    }
+
+    @Test
+    fun repeatedCompletedPairingKeepsDiscoveredRouteAndExistingClientEvenAfterRejection() = runBlocking {
+        val accounts = accounts()
+        val original = credentials()
+        val account = accounts.add(original, "Mac")
+        val client = accounts.transport(account.id, original) { daemon }
+        daemon.endpointAdvertisement = kotlinx.serialization.json.JsonPrimitive("https://agent.example")
+        client.request("GET", "/v0/config", original.deviceToken)
+        assertEquals(account.id, accounts.add(original, "Mac").id)
+        assertEquals("https://agent.example", accounts.credentials(account.id)!!.publicUrl)
+        assertEquals(200, client.request("GET", "/v0/health", original.deviceToken).status)
+        val accepting = transport
+        transport = { object : Transport by daemon {
+            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>) = TransportResponse(401)
+        } }
+        try { accounts.add(original, "Mac"); fail("revoked pairing accepted") }
+        catch (error: AgentConnectionException) { assertEquals(AgentConnectionException.Reason.Revoked, error.reason) }
+        transport = accepting
+        assertEquals(200, client.request("GET", "/v0/health", original.deviceToken).status)
+        client.close()
+    }
+
+    @Test
+    fun failedPairingPersistenceDoesNotRetireExistingClients() = runBlocking {
+        var denyWrites = false
+        val preferences = object : android.content.SharedPreferences by secretPrefs {
+            override fun edit(): android.content.SharedPreferences.Editor {
+                val base = secretPrefs.edit()
+                return object : android.content.SharedPreferences.Editor by base {
+                    override fun putString(key: String?, value: String?): android.content.SharedPreferences.Editor {
+                        base.putString(key, value)
+                        return this
+                    }
+                    override fun commit(): Boolean = if (denyWrites) false else base.commit()
+                }
+            }
+        }
+        val accounts = AgentConnections(ExpoSecureStore(preferences, keys, keychainService = AgentConnections.KEYCHAIN_SERVICE), registryPrefs, makeTransport = { daemon })
+        val original = credentials()
+        val account = accounts.add(original, "Mac")
+        val client = accounts.transport(account.id, original) { daemon }
+        assertEquals(200, client.request("GET", "/v0/health", original.deviceToken).status)
+        denyWrites = true
+        try { accounts.add(original, "Mac"); fail("failed save accepted") }
+        catch (_: java.security.GeneralSecurityException) { }
+        assertEquals(200, client.request("GET", "/v0/health", original.deviceToken).status)
+        assertEquals(original, accounts.credentials(account.id))
+        client.close()
+    }
+
+    @Test
     fun theAgentsOwnPictureIsKeptAsAFileAndAskedForOnlyWhenChanged() = runBlocking {
         daemon.avatar = byteArrayOf(1, 2, 3)
         val accounts = accounts()

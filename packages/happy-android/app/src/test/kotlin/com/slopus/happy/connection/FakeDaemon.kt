@@ -7,6 +7,7 @@ import com.slopus.happy.crypto.hmacSha256
 import com.slopus.happy.crypto.sha256
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -44,6 +45,8 @@ class FakeDaemon(
     var agentName: String? = "Studio",
     var revoked: Boolean = false,
     val deviceId: String = "dv3n8k1m5q9r2t6w0y4z7a1c",
+    val address: String = "tcFixedVectorAddress",
+    val port: Int = 24781,
 ) : Transport {
     val calls = mutableListOf<String>()
     private val privateKey = ByteArray(32) { 2 }
@@ -60,6 +63,7 @@ class FakeDaemon(
     var closed = 0
     /** The node's picture at /v0/node/avatar; its ETag is its size. */
     var avatar: ByteArray? = null
+    var endpointAdvertisement: JsonElement? = null
 
     override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse {
         calls += "$method $path"
@@ -95,7 +99,7 @@ class FakeDaemon(
                 assertArrayEquals(commitment, sha256("happy-mobile-pair-v1/commit".toByteArray() + phoneKey + phoneNonce))
                 val shared = Sodium.scalarMult(privateKey, phoneKey)!!
                 var t = "happy-mobile-pair-v1".toByteArray()
-                for (f in listOf(PAIRING_TOKEN, commitment, phoneKey, publicKey, phoneNonce, nonce, "tcFixedVectorAddress".toByteArray(), byteArrayOf(0x60, 0xcd.toByte()))) {
+                for (f in listOf(PAIRING_TOKEN, commitment, phoneKey, publicKey, phoneNonce, nonce, address.toByteArray(), byteArrayOf((port shr 8).toByte(), port.toByte()))) {
                     t += byteArrayOf(0, 0, (f.size shr 8).toByte(), f.size.toByte()) + f
                 }
                 transcript = sha256(t)
@@ -120,6 +124,7 @@ class FakeDaemon(
             "/v0/config" -> paired {
                 ok(buildJsonObject {
                     putJsonObject("config") {
+                        endpointAdvertisement?.let { endpoint -> putJsonObject("api") { put("publicUrl", endpoint) } }
                         agentName?.let { name ->
                             putJsonObject("node") { put("name", name); putJsonObject("avatar") { put("thumbhash", "abc") } }
                         }

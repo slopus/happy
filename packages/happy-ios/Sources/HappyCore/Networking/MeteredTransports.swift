@@ -150,6 +150,7 @@ final class MeteredWebSocketConnection: WebSocketConnection, @unchecked Sendable
 /// A byte stream counted as one TCP flow over the tunnel: opened when
 /// made, closed once, every byte read and written.
 public final class MeteredStream: BrowserStream, @unchecked Sendable {
+    public var authority: String { base.authority }
     let base: any BrowserStream
     private let metrics: ConnectionMetrics
     private let channel: ConnectionChannel

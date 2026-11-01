@@ -42,12 +42,28 @@ data class AgentConnection(
 class AgentConnections(
     private val secrets: ExpoSecureStore,
     private val registry: SharedPreferences,
-    private val makeTransport: (AgentConnectionCredentials) -> Transport = { TailcatTransport(it.address, it.port) },
+    private val makeTransport: (AgentConnectionCredentials) -> Transport = { agentTransport(it.address, it.port, it.publicUrl, it.tailcatAvailable != false) },
     private val now: () -> Long = System::currentTimeMillis,
     private val pictures: File? = null,
 ) {
     private val lock = Mutex()
     private val state = MutableStateFlow(readRegistry())
+    private val endpointLock = Any()
+    private val endpoints = mutableMapOf<String, AgentEndpoint>()
+
+    internal fun transport(id: String, credentials: AgentConnectionCredentials, make: (AgentConnectionCredentials) -> Transport): Transport {
+        val endpoint = synchronized(endpointLock) {
+            endpoints.getOrPut(id) { AgentEndpoint(credentials) { next -> saveEndpoint(id, next) } }
+        }
+        return AgentEndpointTransport(endpoint, make)
+    }
+
+    private suspend fun saveEndpoint(id: String, next: AgentConnectionCredentials) = lock.withLock {
+        withContext(Dispatchers.IO) {
+            if (state.value.none { it.id == id } || read(id)?.deviceToken != next.deviceToken) throw CancellationException("connection removed")
+            secrets.setItem(id, json.encodeToString(AgentConnectionCredentials.serializer(), next))
+        }
+    }
 
     /** Oldest first. */
     val accounts: StateFlow<List<AgentConnection>> = state.asStateFlow()
@@ -65,14 +81,20 @@ class AgentConnections(
     /**
      * Keeps a freshly paired agent. Its own name and avatar are read first
      * when it answers; otherwise it is listed under [fallbackName] (the
-     * pairing code's) until it does. Pairing the same device again updates
-     * its entry. An agent that refuses the new token is not kept.
+     * pairing code's) until it does. Re-reading the same completed handshake
+     * updates its entry; a fresh pairing has its own device ID and account.
+     * An agent that refuses the new token is not kept.
      */
     suspend fun add(credentials: AgentConnectionCredentials, fallbackName: String): AgentConnection = lock.withLock {
         withContext(Dispatchers.IO) {
             val id = state.value.firstOrNull { existing ->
-                read(existing.id)?.let { it.address == credentials.address && it.deviceId == credentials.deviceId } == true
+                read(existing.id)?.let { it.address == credentials.address && it.deviceId == credentials.deviceId && it.deviceToken == credentials.deviceToken } == true
             }?.id ?: "agent-connection-${UUID.randomUUID()}"
+            // Re-reading a completed handshake is idempotent: keep its live
+            // endpoint (including any newer discovery) and stable clients.
+            // A different token gets a new account lifetime, never a retired
+            // endpoint still held by an existing AgentSession.
+            val savedCredentials = read(id) ?: credentials
             val transport = makeTransport(credentials)
             val agent = try {
                 AgentIdentity.refresh(transport, credentials.deviceToken, fallbackName)
@@ -86,7 +108,7 @@ class AgentConnections(
             } finally {
                 transport.close()
             }
-            secrets.setItem(id, json.encodeToString(AgentConnectionCredentials.serializer(), credentials))
+            secrets.setItem(id, json.encodeToString(AgentConnectionCredentials.serializer(), savedCredentials))
             val previous = state.value.firstOrNull { it.id == id }
             val account = keep(
                 AgentConnection(
@@ -148,6 +170,7 @@ class AgentConnections(
      */
     suspend fun remove(id: String) = lock.withLock {
         withContext(Dispatchers.IO) {
+            synchronized(endpointLock) { endpoints.remove(id) }?.retire()
             secrets.deleteItem(id)
             state.value.firstOrNull { it.id == id }?.avatarFile?.let { File(it).delete() }
             write(state.value.filterNot { it.id == id })

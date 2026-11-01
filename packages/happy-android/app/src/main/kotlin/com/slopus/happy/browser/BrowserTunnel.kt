@@ -29,7 +29,7 @@ object BrowserTunnel {
     }
 
     internal suspend fun connect(stream: TransportSocket, target: String, credential: String?) {
-        val head = StringBuilder("CONNECT $target HTTP/1.1\r\nHost: server.tailcat\r\n")
+        val head = StringBuilder("CONNECT $target HTTP/1.1\r\nHost: ${if (credential == null) target else stream.authority}\r\n")
         credential?.let { head.append("Authorization: Bearer ").append(it).append("\r\n") }
         stream.write(head.append("\r\n").toString().toByteArray(Charsets.UTF_8))
         val (response, rest) = BrowserRelay.head(stream)

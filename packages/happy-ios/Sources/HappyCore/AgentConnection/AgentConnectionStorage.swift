@@ -104,6 +104,10 @@ actor AgentConnectionStorage {
         guard let index = registry.accounts.firstIndex(where: { $0.id == account.id }) else { return }
         registry.accounts[index] = account; try persist()
     }
+    func updateCredentials(_ value: AgentConnectionCredentials, id: String) throws {
+        guard registry.accounts.contains(where: { $0.id == id }) else { throw CancellationError() }
+        try credentials.save(value, id: id)
+    }
     func select(_ id: String?) throws { registry.activeID = id; try persist() }
     func remove(_ id: String) throws {
         try credentials.remove(id: id)

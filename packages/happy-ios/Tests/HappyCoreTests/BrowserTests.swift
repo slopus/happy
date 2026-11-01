@@ -99,6 +99,23 @@ final class BrowserTests: XCTestCase {
         XCTAssertTrue(closed)
     }
 
+    func testPublicAuthoritySurvivesMeteringForConnectAndArtifactUpgrade() async throws {
+        let bytes = Bytes([Data("HTTP/1.1 200 OK\r\n\r\n".utf8), Data("HTTP/1.1 200 OK\r\n\r\n".utf8)], authority: "agent.example.com:8443")
+        let metered = MeteredStream(bytes, metrics: ConnectionMetrics(), channel: .browser)
+        XCTAssertEqual(metered.authority, "agent.example.com:8443")
+        let client = AgentClient(transport: Transport(bytes), token: "native-token")
+        let stream = try await client.browserTunnel(workspaceID: "workspace", target: BrowserPolicy.Authority(url: URL(string: "https://example.com")!)!)
+        await stream.close()
+        let written = await bytes.writes.map { String(decoding: $0, as: UTF8.self) }
+        XCTAssertTrue(written[0].contains("Host: agent.example.com:8443\r\n"))
+        XCTAssertFalse(written[1].contains("native-token"))
+        let (head, _) = try XCTUnwrap(BrowserHTTPHead.parse(Data("GET /api/v1/events HTTP/1.1\r\nHost: artifact.invalid\r\nAuthorization: attacker\r\nUpgrade: websocket\r\n\r\n".utf8)))
+        let request = try head.artifactRequest(artifactID: "art1", version: 1, credential: "native-token", authority: bytes.authority)
+        XCTAssertEqual(request.value("Host"), "agent.example.com:8443")
+        XCTAssertEqual(request.value("Authorization"), "Bearer native-token")
+        XCTAssertEqual(request.value("Connection"), "Upgrade")
+    }
+
     func testChunkedRequestIsBoundedAndCannotSmuggleAnotherRequest() async throws {
         let (head, _) = try XCTUnwrap(BrowserHTTPHead.parse(Data("PUT /api/v1/kv/entry HTTP/1.1\r\nTransfer-Encoding: chunked\r\n\r\n".utf8)))
         let stream = Bytes([Data("2\r\n{}\r\n0\r\n\r\nGET /v0/config HTTP/1.1\r\n\r\n".utf8)])
@@ -127,10 +144,11 @@ final class BrowserTests: XCTestCase {
     }
 
     private actor Bytes: BrowserStream {
+        nonisolated let authority: String
         var pending: [Data]
         var writes: [Data] = []
         var closed = false
-        init(_ pending: [Data]) { self.pending = pending }
+        init(_ pending: [Data], authority: String = "server.tailcat") { self.pending = pending; self.authority = authority }
         func read(maximumBytes: Int) async throws -> Data { pending.isEmpty ? Data() : pending.removeFirst() }
         func write(_ data: Data) async throws { writes.append(data) }
         func close() async { closed = true }
