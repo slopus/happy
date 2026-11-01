@@ -219,7 +219,9 @@ final class ShimmerLabel: UIView {
     }
 
     override convenience init(frame: CGRect) {
-        self.init()
+        // Named in full: a bare `self.init()` is UIView's, which comes back
+        // here, forever.
+        self.init(makeLabel: { UILabel() })
         self.frame = frame
     }
 
