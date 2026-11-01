@@ -9,6 +9,8 @@ import UIKit
 enum SurfaceScreens {
     static func make(session: Session, surface: AgentWire.Surface) -> UIViewController {
         switch surface.type {
+        case "document":
+            return DocumentScreens.make(session: session, surfaceId: surface.id, name: surface.name)
         default:
             return SurfaceViewController(session: session, surface: surface)
         }
