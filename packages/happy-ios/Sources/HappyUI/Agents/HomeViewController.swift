@@ -447,7 +447,7 @@ final class HomeViewController: UIViewController {
             guard let surfaceId = row.targetId else { return }
             sidebar.selectedRowId = row.id
             let surface = AgentWire.Surface(id: surfaceId, type: row.surfaceType ?? "", name: row.label)
-            let controller = SurfaceViewController(session: session, surface: surface)
+            let controller = SurfaceScreens.make(session: session, surface: surface)
             MainPanelKey.record("surface:\(surfaceId)", for: controller)
             show(controller, for: row, animated: animated)
         case .space, .session:
