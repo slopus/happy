@@ -20,6 +20,7 @@ import subprocess
 QUERY = """
 WITH inputs AS (
   SELECT i.id, i.ts AS dispatch_ts, i.track_id, p.upid,
+    CASE WHEN i.name LIKE 'dispatchInputEvent MotionEvent%' THEN 'push' ELSE 'back' END AS direction,
     CAST(SUBSTR(e.name, INSTR(e.name, 'eventTimeNano=') + 14) AS INT)
       + i.ts - to_monotonic(i.ts) AS event_ts
   FROM slice i
@@ -28,9 +29,10 @@ WITH inputs AS (
   JOIN process p USING (upid)
   JOIN slice e ON e.track_id = i.track_id AND e.ts >= i.ts
     AND e.ts + e.dur <= i.ts + i.dur
-    AND e.name LIKE 'deliverInputEvent src=0x1002 eventTimeNano=%'
+    AND e.name GLOB 'deliverInputEvent src=0x* eventTimeNano=*'
   WHERE p.name = 'com.slopus.happy.bench' AND t.tid = p.pid
-    AND i.name LIKE 'dispatchInputEvent MotionEvent ACTION_UP%'
+    AND (i.name LIKE 'dispatchInputEvent MotionEvent ACTION_UP%'
+      OR i.name LIKE 'dispatchInputEvent MotionEvent UP %' /* back-input */)
 ), markers AS (
   SELECT i.*, m.ts AS marker_ts,
     ROW_NUMBER() OVER (PARTITION BY i.id ORDER BY m.ts, m.id) AS rank
@@ -65,7 +67,7 @@ WITH inputs AS (
     AND display.surface_frame_token IS NULL
     AND display.present_type != 'Dropped Frame' AND display.dur > 0
 )
-SELECT event_ts, dispatch_ts, marker_ts, frame_ts, frame_dur, buffer_ready_ts,
+SELECT direction, event_ts, dispatch_ts, marker_ts, frame_ts, frame_dur, buffer_ready_ts,
   present_ts, initial_frame_token, surface_frame_token, display_frame_token,
   COALESCE((SELECT app.present_type FROM actual_frame_timeline_slice app
     WHERE app.upid = presented.upid AND app.surface_frame_token = initial_frame_token
@@ -86,22 +88,27 @@ def main():
     parser.add_argument("traces", type=Path)
     parser.add_argument("--out", required=True, type=Path)
     parser.add_argument("--trace-processor", default="trace_processor")
+    parser.add_argument("--include-back", action="store_true", help="Also join the macrobenchmark's system Back key-up")
     args = parser.parse_args()
+    back = "OR i.name LIKE 'dispatchInputEvent KeyEvent ACTION_UP%' OR i.name LIKE 'dispatchInputEvent KeyEvent UP %'"
+    query = QUERY.replace("/* back-input */", back if args.include_back else "")
     rows = []
     for trace in sorted(args.traces.glob("NavigationBenchmark_settings*_iter*.perfetto-trace")):
         result = subprocess.run(
-            [args.trace_processor, str(trace), "-Q", QUERY],
+            [args.trace_processor, str(trace), "-Q", query],
             text=True, capture_output=True, check=True,
         )
         found = list(csv.DictReader(io.StringIO(result.stdout)))
-        if len(found) != 1:
-            raise RuntimeError(f"{trace.name}: expected one input/moved/presented frame, got {len(found)}; inspect trace")
-        row = {"trace": trace.name, "journey": "cold" if "settingsCold" in trace.name else "warm", **found[0]}
-        if not 0 <= float(row["input_queue_ms"]) < 1000:
-            raise RuntimeError(f"Invalid input clock mapping: {row}")
-        if float(row["tap_to_presented_movement_ms"]) < float(row["first_movement_sample_ms"]):
-            raise RuntimeError(f"Presentation predates movement: {row}")
-        rows.append(row)
+        expected = ["back", "push"] if args.include_back else ["push"]
+        if sorted(row["direction"] for row in found) != expected:
+            raise RuntimeError(f"{trace.name}: expected {expected} input/moved/presented frames, got {found}; inspect trace")
+        for sample in found:
+            row = {"trace": trace.name, "journey": "cold" if "settingsCold" in trace.name else "warm", **sample}
+            if not 0 <= float(row["input_queue_ms"]) < 1000:
+                raise RuntimeError(f"Invalid input clock mapping: {row}")
+            if float(row["tap_to_presented_movement_ms"]) < float(row["first_movement_sample_ms"]):
+                raise RuntimeError(f"Presentation predates movement: {row}")
+            rows.append(row)
     if not rows:
         raise RuntimeError("No Settings traces found")
 
@@ -111,10 +118,11 @@ def main():
         writer.writeheader()
         writer.writerows(rows)
     summary = {}
-    for journey in sorted({row["journey"] for row in rows}):
-        selected = [row for row in rows if row["journey"] == journey]
+    groups = {(row["journey"], row["direction"]) for row in rows}
+    for journey, direction in sorted(groups):
+        selected = [row for row in rows if row["journey"] == journey and row["direction"] == direction]
         values = sorted(float(row["tap_to_presented_movement_ms"]) for row in selected)
-        summary[journey] = {
+        summary[f"{journey}_{direction}" if args.include_back else journey] = {
             "n": len(values),
             "median_ms": round(statistics.median(values), 3),
             "p90_ms": values[math.ceil(len(values) * .9) - 1],
