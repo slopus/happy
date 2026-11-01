@@ -7,8 +7,7 @@ API changes frequently. Portable core and layout code still supports Linux.
 The same dependency draws both [chat lists](CHAT-RENDERERS.md).
 
 The legacy Home list (`SessionListViewController`, flat or grouped by
-project), the tablet sidebar's flat list (the same controller) and its
-grouped list (`TabletGroupedListViewController`) draw only on UltraList.
+project), which is also the iPad's sidebar, draws only on UltraList.
 The UITableView renderer and the Appearance row that chose between them are
 gone; an account's stored choice is deleted on its first launch
 (`LocalSettings.Keys.retired`).

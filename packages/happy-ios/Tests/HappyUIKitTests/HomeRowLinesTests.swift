@@ -22,10 +22,6 @@ final class HomeRowLinesTests: XCTestCase {
     /// `HomeRowPlanTextSizeTests.fontLines`.
     static let fontLines: [String: [Int]] = [
         "sessionLineChanges": [36, 38, 41, 43, 48, 53, 59, 77, 92, 114, 135, 154],
-        "tabletArchivedSubtitle": [42, 45, 48, 51, 57, 63, 69, 91, 109, 135, 160, 182],
-        "tabletArchivedTitle": [49, 52, 56, 59, 66, 73, 80, 105, 126, 155, 184, 209],
-        "tabletChatTitle": [49, 52, 56, 59, 66, 73, 80, 105, 126, 155, 184, 209],
-        "tabletMachineName": [36, 38, 41, 43, 48, 53, 59, 77, 92, 114, 135, 154],
     ]
 
     /// Where a title as the plans measure it is not one line: the
@@ -48,13 +44,6 @@ final class HomeRowLinesTests: XCTestCase {
         ("projectTimestamp", TextStyles.projectTimestamp),
         ("gitApproximate", TextStyles.gitApproximate),
         ("gitLineCount", TextStyles.gitLineCount),
-        ("tabletMachineName", TextStyles.tabletMachineName),
-        ("tabletWorkspaceTitle", TextStyles.tabletWorkspaceTitle),
-        ("tabletWorkspaceBranch", TextStyles.tabletWorkspaceBranch),
-        ("tabletChatTitle", TextStyles.tabletChatTitle),
-        ("tabletArchivedTitle", TextStyles.tabletArchivedTitle),
-        ("tabletArchivedSubtitle", TextStyles.tabletArchivedSubtitle),
-        ("tabletArchivedStatus", TextStyles.tabletArchivedStatus),
     ]
 
     /// Each style's one line, as the plans measure a title (TextKit, up to
@@ -94,11 +83,10 @@ final class HomeRowLinesTests: XCTestCase {
             ("branch", box("git-branch-outline", FlatSessionRowLayout.Metrics.branchIconSize)),
             ("draft", box("create-outline", FlatSessionRowLayout.Metrics.draftIconSize)),
             ("machine", box("desktop-outline", 12)),
-            ("tabletMachine", box("desktop-outline", 11)),
             ("chevron", box("chevron-down", 13)),
         ]
         let listed = boxes.map { "\($0.0) \($0.1.width * 3)x\($0.1.height * 3)" }.joined(separator: ", ")
-        XCTAssertEqual(listed, "branch 39.0x40.0, draft 39.0x40.0, machine 36.0x37.0, tabletMachine 33.0x34.0, chevron 39.0x40.0", "the glyph boxes, in pixels")
+        XCTAssertEqual(listed, "branch 39.0x40.0, draft 39.0x40.0, machine 36.0x37.0, chevron 39.0x40.0", "the glyph boxes, in pixels")
         for category in [TextSizeCategory.extraSmall, .accessibilityExtraExtraExtraLarge] {
             let rows = await HomeTextEnvironment.make(TextEnvironment(scale: TextScale(category), displayScale: 3)).rows
             XCTAssertEqual(rows.branchIcon, boxes[0].1)

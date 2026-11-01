@@ -279,7 +279,7 @@ final class HostedHeaderBarTests: XCTestCase {
         let scene = try await hostedActiveScene()
         let window = hostedKeyWindow(in: scene, root: navigation)
         defer { window.isHidden = true }
-        // What TabletShellViewController sets on a tablet-wide window.
+        // happy-app's tablet branches, which the split shell leaves off.
         navigation.traitOverrides.isTabletLayout = true
         window.layoutIfNeeded()
         try await Task.sleep(for: .milliseconds(500))

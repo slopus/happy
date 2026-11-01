@@ -694,8 +694,7 @@ final class ApplyPerfPresenceClockTests: XCTestCase {
         snapshot.settings = SettingsSnapshot(pending: ["hideInactiveSessions": .bool(false)])
         snapshot.presenceNow = millis(now) - 30 * 3_600_000
 
-        // As `HomeDerivation` and `TabletSidebarDerivation` make it, at
-        // the time of the derivation.
+        // As `HomeDerivation` makes it, at the time of the derivation.
         let list = SessionList(snapshot, clock: SessionList.Clock())
         let headings = list.items.compactMap { item -> SessionList.DayAge? in
             if case .dayHeader(let age) = item { return age }
@@ -706,13 +705,10 @@ final class ApplyPerfPresenceClockTests: XCTestCase {
         let home = try XCTUnwrap(HomeDerivation.derive(HomeDerivation.Input(snapshot: snapshot), applied: .init())).output
         let rows = try XCTUnwrap(home.content.list).rows
         XCTAssertFalse(rows.contains { if case .flat(.dayHeader) = $0 { true } else { false } })
-        let sidebar = try XCTUnwrap(TabletSidebarDerivation.derive(snapshot, applied: .init())).output
-        guard case .list(let sidebarList) = sidebar.frame.content else { return XCTFail("the sidebar lists the live session") }
-        XCTAssertEqual(sidebarList.rows, rows)
     }
 
-    /// With the time fixed, presence ticks alone reach neither home nor the
-    /// sidebar, a minute or a day apart.
+    /// With the time fixed, presence ticks alone don't reach home, a minute
+    /// or a day apart.
     func testPresenceTicksAloneChangeNothingOnHome() throws {
         var snapshot = stopped(ApplyPerfFixtures.snapshot(5), index: 1, lastSeen: ApplyPerfFixtures.now - 5 * 60_000)
         snapshot.presenceNow = ApplyPerfFixtures.now
@@ -720,11 +716,9 @@ final class ApplyPerfPresenceClockTests: XCTestCase {
             HomeDerivation.Input(snapshot: snapshot, includesDock: true, clock: ApplyPerfFixtures.clock)
         }
         let home = try XCTUnwrap(HomeDerivation.derive(input(snapshot), applied: .init())).state
-        let sidebar = try XCTUnwrap(TabletSidebarDerivation.derive(snapshot, applied: .init(), clock: ApplyPerfFixtures.clock)).state
         for tick: Int64 in [60_000, 25 * 3_600_000] {
             snapshot.presenceNow = ApplyPerfFixtures.now + tick
             XCTAssertNil(HomeDerivation.derive(input(snapshot), applied: home))
-            XCTAssertNil(TabletSidebarDerivation.derive(snapshot, applied: sidebar, clock: ApplyPerfFixtures.clock))
         }
     }
 }

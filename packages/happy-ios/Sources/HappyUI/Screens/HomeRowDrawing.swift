@@ -57,8 +57,6 @@ struct HomeRowDrawing: Sendable {
     var isHeading = false
     var contentAlpha: CGFloat = 1
     var pulsingDots: [(ColorToken, CGRect)] = []
-    var provider: (ProviderIconKind, CGRect)?
-    var roundAdd = false
     let environment: HomeTextEnvironment
     let dark: Bool
     /// Archived phone rows have fixed geometry for their only live overlay
@@ -340,7 +338,6 @@ struct HomeRowDrawing: Sendable {
         addFrame = addFrame.map(moved)
         shimmer = shimmer.map { ShimmerTitle(value: $0.value, style: $0.style, color: $0.color, frame: moved($0.frame), runWidth: $0.runWidth) }
         pulsingDots = pulsingDots.map { ($0.0, moved($0.1)) }
-        provider = provider.map { ($0.0, moved($0.1)) }
     }
 
     nonisolated static func canDeferArchiveText(_ row: HomeListRow) -> Bool {

@@ -64,8 +64,6 @@ final class SecondaryStringsTests: XCTestCase {
         XCTAssertEqual(Strings.FileViewerDetail.title, russian("common.fileViewer"))
         XCTAssertEqual(Strings.ChangesDetail.title, russian("sessionInfo.viewChanges"))
         XCTAssertEqual(Strings.Tablet.newSession, russian("sidebar.newSession"))
-        XCTAssertEqual(Strings.Tablet.zenToggle, russian("zen.toggle"))
-        XCTAssertEqual(Strings.Tablet.unknown, russian("status.unknown"))
         XCTAssertEqual(Strings.MachineDetail.unknown, russian("status.unknown"))
         for count in [1, 3, 5, 21] {
             XCTAssertEqual(S.minutesAgo(count), russian("time.minutesAgo", ["count": .number(count)]))
@@ -78,20 +76,10 @@ final class SecondaryStringsTests: XCTestCase {
         XCTAssertNotEqual(Strings.Tablet.newSession, "New session")
         XCTAssertNotEqual(Strings.MachineDetail.stopDaemon, "Stop Daemon")
         // machine/[id].tsx writes its stop and rename alerts in English (56,
-        // 60, 144), SessionsList.tsx its "Bots" (451).
+        // 60, 144).
         XCTAssertEqual(Strings.MachineDetail.stopDaemonCancel, "Cancel")
         XCTAssertEqual(Strings.MachineDetail.stopDaemonConfirm, "Stop Daemon")
         XCTAssertEqual(Strings.MachineDetail.renameErrorTitle, "Error")
-        XCTAssertEqual(Strings.Tablet.bots, "Bots")
-    }
-
-    func testTheSidebarBuiltInAnotherLanguageSpeaksIt() async {
-        let russian = await TranslationCatalog.load("ru")
-        AppLocalization.use(russian)
-        let button = SidebarNewSessionButton()
-        XCTAssertEqual(button.label.string, russian("sidebar.newSession"))
-        XCTAssertEqual(button.accessibilityLabel, russian("sidebar.newSession"))
-        XCTAssertEqual(TabletPersistentHeaderView().zenButton.accessibilityLabel, russian("zen.toggle"))
     }
 }
 #endif

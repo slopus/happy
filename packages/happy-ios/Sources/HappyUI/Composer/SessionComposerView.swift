@@ -226,9 +226,6 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             self.applyDetails()
             self.composerDelegate?.composerDidInvalidateHeight(self)
         }
-        registerForTraitChanges([ZenModeTrait.self]) { (self: Self, _) in
-            self.applyConfiguration()
-        }
         registerForTraitChanges(UIView.textSizeTraits) { (self: Self, _) in
             guard self.syncTextSize() else { return }
             self.setNeedsLayout()
@@ -623,8 +620,6 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         configuration.primaryAccessibilityLabel = primary == .voice ? Strings.Voice.title : nil
         configuration.isPrimaryBusy = isAborting
         configuration.showsAdd = canAttach
-        // localSettings.zenMode, as SessionView passes it.
-        configuration.zenMode = traitCollection.isZenMode
         configuration.attachments = canAttach
             ? images.images.map { AgentInputAttachmentPreview(id: $0.id, fileURL: $0.attachment.fileURL) }
             : []

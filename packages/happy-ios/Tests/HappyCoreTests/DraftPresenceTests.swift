@@ -577,7 +577,7 @@ final class DraftPresenceRowTests: XCTestCase {
     }
 
     func testPhoneProjectBotsAndArchiveIgnoreDraftMembershipTheyDoNotRender() throws {
-        let snapshot = TabletGroupedListTests.snapshot()
+        let snapshot = LegacyHomeFixtures.snapshot()
         var input = HomeDerivation.Input(snapshot: snapshot, clock: ApplyPerfFixtures.clock)
         let first = try XCTUnwrap(HomeDerivation.derive(input, applied: .init()))
         let rows = try XCTUnwrap(first.state.content?.list?.rows)
@@ -585,58 +585,5 @@ final class DraftPresenceRowTests: XCTestCase {
         XCTAssertTrue(rows.contains { if case .project(.archived) = $0 { return true }; return false })
         input.draftSessionIds = ["b1", "a1", "a2"]
         XCTAssertNil(HomeDerivation.derive(input, applied: first.state), "no apply or reconfigure for an unrendered draft flag")
-    }
-
-    func testTabletFlatAndGroupedOnlyReconfigureTheRenderedDraftRow() throws {
-        for grouped in [false, true] {
-            let snapshot = TabletGroupedListTests.snapshot(grouping: grouped ? "project" : "flat")
-            let ids: Set<String> = grouped ? ["b1", "s1", "a1"] : ["s1"]
-            var input = TabletSidebarInput(snapshot: snapshot)
-            let first = try XCTUnwrap(TabletSidebarDerivation.derive(input, applied: .init(), clock: ApplyPerfFixtures.clock))
-            input.draftSessionIds = ids
-            let changed = try XCTUnwrap(TabletSidebarDerivation.derive(input, applied: first.state, clock: ApplyPerfFixtures.clock))
-            let expected: [Int]
-            if grouped {
-                let rows = try XCTUnwrap(changed.state.grouped?.rows)
-                expected = rows.indices.filter { rows[$0].sessionId.map(ids.contains) == true }
-                for row in rows {
-                    switch row {
-                    case .bot(let row) where row.id == "b1": XCTAssertTrue(row.hasDraft)
-                    case .chat(let row) where row.id == "s1": XCTAssertTrue(row.hasDraft)
-                    case .archived(let row) where row.id == "a1": XCTAssertTrue(row.hasDraft)
-                    default: break
-                    }
-                }
-            } else {
-                let rows = try XCTUnwrap(changed.state.list?.rows)
-                expected = rows.indices.filter { rows[$0].sessionId.map(ids.contains) == true }
-            }
-            XCTAssertEqual(changed.output.changeset, RowChangeset(reconfigures: expected))
-            input.draftSessionIds = []
-            let cleared = try XCTUnwrap(TabletSidebarDerivation.derive(input, applied: changed.state, clock: ApplyPerfFixtures.clock))
-            XCTAssertEqual(cleared.output.changeset, RowChangeset(reconfigures: expected))
-            XCTAssertEqual(cleared.state, first.state)
-        }
-    }
-
-    func testTabletThinkingUnreadAndDisconnectedChatDraftsProduceNoApply() throws {
-        for mode in ["thinking", "unread", "disconnected"] {
-            var snapshot = TabletGroupedListTests.snapshot()
-            let index = try XCTUnwrap(snapshot.sessions.firstIndex { $0.id == "s1" })
-            if mode == "thinking" { snapshot.sessions[index].thinking = true }
-            if mode == "unread" { snapshot.sessions[index].unread = true }
-            if mode == "disconnected" {
-                snapshot.sessions[index].active = false
-                var fields = snapshot.sessions[index].metadata?.objectValue ?? [:]
-                fields["client"] = .object(["id": .string("rig")])
-                snapshot.sessions[index].metadata = .object(fields)
-            }
-            var input = TabletSidebarInput(snapshot: snapshot)
-            let first = try XCTUnwrap(TabletSidebarDerivation.derive(input, applied: .init(), clock: ApplyPerfFixtures.clock))
-            input.draftSessionIds = ["s1"]
-            XCTAssertNil(TabletSidebarDerivation.derive(input, applied: first.state, clock: ApplyPerfFixtures.clock), mode)
-            input.draftSessionIds = []
-            XCTAssertNil(TabletSidebarDerivation.derive(input, applied: first.state, clock: ApplyPerfFixtures.clock), mode)
-        }
     }
 }

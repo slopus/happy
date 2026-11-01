@@ -255,83 +255,23 @@ final class HomeUltraListTests: XCTestCase {
         }
     }
 
-    /// The tablet's plans at every width and text size: a heading draws
-    /// its title one line of its style, every row holds its text, and the
-    /// chats' and archived cards' rows keep their designed height up to the
-    /// designed size and grow past it.
-    func testTabletPlansHoldTheirTextAtEverySize() async throws {
-        _ = await TranslationCatalog.load("en")
-        var heights: [String: [UIContentSizeCategory: CGFloat]] = [:]
-        let categories = [UIContentSizeCategory.extraSmall, .large, .accessibilityExtraExtraExtraLarge]
-        for category in categories {
-            let text = TextEnvironment(scale: TextScale(TextSizeCategory(category)), displayScale: 2)
-            let environment = await HomeTextEnvironment.make(text)
-            for width in [CGFloat(280), 320] {
-                let at = "\(category.rawValue) at \(width)"
-                func assertHoldsItsText(_ plan: HomeRowDrawing, _ row: TabletGroupedRow) {
-                    XCTAssertEqual(plan.size.width, width, "\(row) \(at)")
-                    for case .text(let value, _, _, let frame) in plan.marks {
-                        XCTAssertGreaterThanOrEqual(frame.minY, -0.001, "\(value) in \(row) \(at)")
-                        XCTAssertLessThanOrEqual(frame.maxY, plan.size.height + 0.001, "\(value) in \(row) \(at)")
-                    }
-                }
-                func check(_ row: TabletGroupedRow, title: String, style: TextStyle) throws {
-                    let plan = HomeRowDrawing.makeTablet(row, width: width, selected: true, environment: environment, dark: true)
-                    assertHoldsItsText(plan, row)
-                    let frame = try XCTUnwrap(plan.marks.lazy.compactMap { mark -> CGRect? in
-                        if case .text(let value, _, _, let frame) = mark, value == title { return frame }
-                        return nil
-                    }.first, "\(row) \(at)")
-                    XCTAssertEqual(frame.height, style.oneLine(in: text), "\(row) \(at)")
-                }
-                try check(.botsHeader, title: Strings.Tablet.bots, style: TextStyles.sessionDayHeader)
-                try check(.machine(id: "m", name: "MacBook Pro"), title: "MacBook Pro", style: TextStyles.tabletMachineName)
-                let workspace = TabletWorkspaceHeader(id: "p", projectName: "happy", avatar: .init(seed: "p"), branch: "main", changes: .init(approximate: false, insertions: 0, deletions: 7), checkout: nil, place: .init(machineId: nil, path: nil, worktreeKey: nil))
-                try check(.workspace(workspace), title: "happy", style: TextStyles.tabletWorkspaceTitle)
-                try check(.archiveToggle(hidden: true), title: Strings.Sidebar.showArchived, style: TextStyles.archiveToggle)
-                try check(.bot(HomeRowMeasurerTests.session("b", workspace: "fix-login", changes: HomeRowMeasurerTests.changes)), title: "Fix the build", style: TextStyles.sessionTitle)
-
-                for first in [false, true] {
-                    for last in [false, true] {
-                        let chat = TabletChatRow(id: "c", title: "A chat title with enough words for two lines", connected: true, indicator: .dot(.working, pulsing: false), showsBorder: !last, first: first, last: last, projectEnd: last)
-                        let plan = HomeRowDrawing.makeTablet(.chat(chat), width: width, selected: true, environment: environment, dark: true)
-                        assertHoldsItsText(plan, .chat(chat))
-                        heights["chat \(first) \(last) \(width)", default: [:]][category] = plan.size.height
-                    }
-                }
-                let session = SessionRecord(id: "a", seq: 1, createdAt: 0, updatedAt: 0, active: false, activeAt: 0, projectId: nil, metadataVersion: 1, metadataCipher: "", metadata: nil, agentStateVersion: 0, agentStateCipher: nil, agentState: nil, dataKeyCipher: "", decryptable: true, thinking: false, unread: false)
-                var archived = TabletArchivedRow(session, row: HomeRowMeasurerTests.session("a", workspace: nil), now: 10_000, first: true)
-                archived.last = true
-                let plan = HomeRowDrawing.makeTablet(.archived(archived), width: width, selected: true, environment: environment, dark: true)
-                assertHoldsItsText(plan, .archived(archived))
-                heights["archived \(width)", default: [:]][category] = plan.size.height
-            }
-        }
-        for (row, at) in heights {
-            XCTAssertEqual(at[.extraSmall], at[.large], "\(row) is its designed height up to the designed size")
-            XCTAssertGreaterThan(at[.accessibilityExtraExtraExtraLarge] ?? 0, at[.large] ?? 0, "\(row) grows with its text")
-        }
-    }
-
     func testGroupedPlansUseCapturedLanguageOffMain() async {
         let environment = await HomeTextEnvironment.make(.init(scale: .standard, displayScale: 2))
         let catalog = await TranslationCatalog.load("ru")
-        let expected = catalog("sidebar.bots")
-        let plans = await Task.detached {
-            [HomeRowDrawing.makeTablet(.botsHeader, width: 320, selected: false, environment: environment, dark: false, catalog: catalog),
-             HomeRowDrawing.make(.flat(.archiveToggle(hidden: true)), width: 320, grouped: false, selected: false, environment: environment, dark: false, catalog: catalog)]
+        let expected = catalog("sidebar.showArchived")
+        let plan = await Task.detached {
+            HomeRowDrawing.make(.flat(.archiveToggle(hidden: true)), width: 320, grouped: false, selected: false, environment: environment, dark: false, catalog: catalog)
         }.value
-        XCTAssertEqual(plans[0].accessibilityLabel, expected)
-        XCTAssertEqual(plans[1].accessibilityLabel, catalog("sidebar.showArchived"))
-        XCTAssertNotEqual(expected, "Bots")
+        XCTAssertEqual(plan.accessibilityLabel, expected)
+        XCTAssertNotEqual(expected, "Show archived")
         let previous = AppLocalization.screens
         AppLocalization.use(catalog)
         defer { AppLocalization.use(previous) }
         let view = CaptureUltraView()
         let adapter = HomeUltraListAdapter(view: view, pictures: nil)
         AppLocalization.use(await TranslationCatalog.load("fr"))
-        let tablet = TabletGroupedList(ids: [.botsHeader], rows: [.botsHeader], avatarStyle: .gradient, avatarMonochrome: false, offline: nil)
-        adapter.update(.init(model: .empty, width: 320, environment: environment, dark: false, selected: nil, tablet: tablet))
+        let model = HomeListModel(ids: [.archiveToggle], rows: [.flat(.archiveToggle(hidden: true))], avatarStyle: .gradient, avatarMonochrome: false, grouped: false, offline: nil)
+        adapter.update(.init(model: model, width: 320, environment: environment, dark: false, selected: nil))
         let snapshot = await view.nextSnapshot()
         XCTAssertEqual(snapshot.first?.plan.accessibilityLabel, expected, "queued work belongs to its screen's captured language")
         adapter.deactivate()

@@ -8,7 +8,7 @@ import HappyWire
 /// (`metadata.task`), listed under each computer's bots, opened as chats,
 /// left by anyone in them, archived only by their owner, never deleted.
 final class TasksHomeTests: XCTestCase {
-    typealias Fixture = TabletGroupedListTests
+    typealias Fixture = LegacyHomeFixtures
 
     static func task(
         _ id: String,
@@ -159,11 +159,6 @@ final class TasksHomeTests: XCTestCase {
             "section:tasks",
             "task:fraction", "task:forty-five", "task:five", "task:tie-a", "task:tie-b",
         ])
-        let sidebar = Fixture.list(Self.snapshot([
-            Self.task("five", taskId: "a", orderKey: "5"),
-            Self.task("forty-five", taskId: "b", orderKey: "45"),
-        ]))
-        XCTAssertEqual(Array(sidebar.ids.prefix(3)), [.tasksHeader, .task("forty-five"), .task("five")])
     }
 
     func testTasksFollowThePersonsOwnOrderThenTheNewest() {
@@ -199,9 +194,6 @@ final class TasksHomeTests: XCTestCase {
         let flat = SessionList(Self.snapshot(sessions, grouping: "flat"), clock: ApplyPerfFixtures.clock)
         XCTAssertEqual(flat.items.compactMap(\.sessionId), ["live"])
         XCTAssertFalse(flat.hasArchived)
-
-        let sidebar = Fixture.list(Self.snapshot(sessions))
-        XCTAssertEqual(sidebar.ids, [.tasksHeader, .task("live")])
     }
 
 
@@ -250,22 +242,6 @@ final class TasksHomeTests: XCTestCase {
         XCTAssertEqual(update.output.changeset.inserts, [0], "joined at the top of the tasks")
         XCTAssertEqual(update.output.changeset.deletes, [])
         XCTAssertEqual(update.output.changeset.reconfigures, [1], "the task it passed gives up the card's top corners")
-    }
-
-    // MARK: Tablet sidebar
-
-    func testTheSidebarListsTasksUnderTheBots() {
-        let list = Fixture.list(Self.snapshot([
-            Fixture.session("b1", machine: "m1", path: "/work/helper", metadata: Self.bot),
-            Self.task("t1", taskId: "a", orderKey: "1"),
-            Self.task("t2", taskId: "b", orderKey: "2"),
-            Fixture.session("s1", machine: "m1", path: "/work/happy", title: "Primary"),
-        ]))
-        XCTAssertEqual(Array(list.ids.prefix(6)), [.botsHeader, .bot("b1"), .tasksHeader, .task("t1"), .task("t2"), .machine("m1")])
-        guard case .task(let first) = list.rows[3], case .task(let last) = list.rows[4] else { return XCTFail("\(list.rows)") }
-        XCTAssertTrue(first.showsDivider)
-        XCTAssertFalse(last.showsDivider, "the last task keeps no hairline, as the last bot")
-        XCTAssertEqual(list.rows[3].sessionId, "t1")
     }
 
     // MARK: Leave, archive, never delete

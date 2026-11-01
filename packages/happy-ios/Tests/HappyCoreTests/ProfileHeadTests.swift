@@ -8,7 +8,7 @@ import HappyWire
 /// seed, so one placeholder), its status; a change to them retexts the head
 /// and makes no group again.
 final class ProfileHeadTests: XCTestCase {
-    typealias Fixture = TabletGroupedListTests
+    typealias Fixture = LegacyHomeFixtures
 
     private static let record = Fixture.session("s1", machine: "m1", path: "/work/happy", title: "Primary")
 

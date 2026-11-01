@@ -35,7 +35,7 @@ final class HomeUltraListAdapter {
     private let language = AppLocalization.language
     /// No ground behind the rows: the iPad's sidebar shows through.
     var clearsGround = false {
-        didSet { if clearsGround != oldValue, let plans { applyGround(tablet: plans.input.tablet != nil) } }
+        didSet { if clearsGround != oldValue, plans != nil { applyGround() } }
     }
 
     struct Input: Equatable, Sendable {
@@ -44,18 +44,16 @@ final class HomeUltraListAdapter {
         var environment: HomeTextEnvironment
         var dark: Bool
         var selected: String?
-        var tablet: TabletGroupedList? = nil
         var language = "en"
         var archiveModels: HomeArchiveModels? = nil
         var viewportHeight: CGFloat = 0
 
-        var ids: [HomeListRow.ID] { tablet?.ids.map(\.ultraBridgeID) ?? model.ids }
+        var ids: [HomeListRow.ID] { model.ids }
     }
     struct Entry: Sendable {
         var row: HomeListRow?
         /// The row's place in its card, drawn with it.
         var place: HomeCardPlace? = nil
-        var tabletRow: TabletGroupedRow? = nil
         var plan: HomeRowDrawing
         var revision: UInt64
         var selected: Bool
@@ -77,18 +75,6 @@ final class HomeUltraListAdapter {
             var revisionSequence = previous?.revisionSequence ?? 0
             let catalog = TranslationCatalog.catalog(for: input.language)
             let sameEnvironment = previous.map { $0.input.language == input.language && $0.input.width == input.width && $0.input.environment == input.environment && $0.input.dark == input.dark && $0.input.model.grouped == input.model.grouped && $0.input.model.avatarStyle == input.model.avatarStyle && $0.input.model.avatarMonochrome == input.model.avatarMonochrome } ?? false
-            if let tablet = input.tablet {
-                for (tabletID, row) in zip(tablet.ids, tablet.rows) {
-                    let id = tabletID.ultraBridgeID
-                    let selected = input.selected != nil && row.sessionId == input.selected
-                    let old = previous?.entries[id]
-                    if sameEnvironment, let old, old.tabletRow == row, old.selected == selected { entries[id] = old; continue }
-                    revisionSequence += 1
-                    entries[id] = Entry(row: nil, tabletRow: row, plan: HomeRowDrawing.makeTablet(row, width: input.width, selected: selected, environment: input.environment, dark: input.dark, catalog: catalog), revision: revisionSequence, selected: selected)
-                }
-                let result = Prepared(input: input, entries: entries, revisionSequence: revisionSequence)
-                return (result, result)
-            }
             let archiveStart = input.archiveModels?.hidden.ids.last.flatMap { input.model.ids.firstIndex(of: $0) }
             for (index, pair) in zip(input.model.ids, input.model.rows).enumerated() {
                 let (id, row) = pair
@@ -155,7 +141,7 @@ final class HomeUltraListAdapter {
 
     func update(_ input: Input) {
         var input = input; input.language = language
-        if let models = input.archiveModels, input.tablet == nil { input.model = models.shown }
+        if let models = input.archiveModels { input.model = models.shown }
         guard active, input.width > 0 else { return }
         guard requested != input else { return }
         requested = input
@@ -233,15 +219,15 @@ final class HomeUltraListAdapter {
     }
 
     /// Home's rows stand in cards on the modern home's ground.
-    private func applyGround(tablet: Bool) {
-        let background = clearsGround ? UIColor.clear : UIColor(tablet ? Palette.groupedBackground : Palette.groupedGround)
+    private func applyGround() {
+        let background = clearsGround ? UIColor.clear : UIColor(Palette.groupedGround)
         view.backgroundColor = background; view.list.backgroundColor = background
     }
 
     private func publish() {
         guard active, let prepared = plans else { return }
         let model = prepared.input.model
-        applyGround(tablet: prepared.input.tablet != nil)
+        applyGround()
         var rows: [HomeUltraRow] = []
         var nextRows: [HomeListRow.ID: HomeUltraRow] = [:]
         var changed = 0
@@ -259,15 +245,10 @@ final class HomeUltraListAdapter {
             }
             // As the table's long press: a flat session, or a project card
             // that can make a workspace.
-            let canHold = entry.tabletRow?.sessionId != nil || { if case .flat(.session)? = entry.row { return true }; if case .project(.task)? = entry.row { return true }; if case .project(.project(let project))? = entry.row { return project.origin != nil }; return false }()
-            let canSelect = entry.row?.sessionId != nil || entry.tabletRow?.sessionId != nil || {
+            let canHold = { if case .flat(.session)? = entry.row { return true }; if case .project(.task)? = entry.row { return true }; if case .project(.project(let project))? = entry.row { return project.origin != nil }; return false }()
+            let canSelect = entry.row?.sessionId != nil || {
                 switch entry.row {
                 case .flat(.archiveToggle)?, .project(.archiveToggle)?, .project(.worktreeToggle)?: return true
-                default: break
-                }
-                switch entry.tabletRow {
-                case .archiveToggle?: return true
-                case .machine(let id, _)?: return id?.isEmpty == false
                 default: return false
                 }
             }()
@@ -276,9 +257,6 @@ final class HomeUltraListAdapter {
             var leaves = false
             if case .flat(.session(let row))? = entry.row { leaves = row.avatar.isTask; archives = !row.archived && (!leaves || row.leaves) }
             else if case .project(.task(let row))? = entry.row { archives = row.leaves; leaves = true }
-            else if case .bot? = entry.tabletRow { archives = true }
-            else if case .task(let row)? = entry.tabletRow { archives = row.leaves; leaves = true }
-            else if case .chat? = entry.tabletRow { archives = true }
             else { archives = false }
             var select: (@MainActor () -> Void)?
             var hold: (@MainActor () -> Void)?
@@ -332,10 +310,6 @@ final class HomeUltraListAdapter {
     }
 }
 
-extension TabletGroupedRow.ID {
-    var ultraBridgeID: HomeListRow.ID { .project("tablet:\(String(reflecting: self))") }
-}
-
 extension HomeListRow.ID {
     var ultraIdentity: String {
         switch self {
@@ -378,25 +352,7 @@ final class HomeUltraOverlay: UIView {
             dot.backgroundColor = UIColor(color); dot.isPulsing = true
             addSubview(dot)
         }
-        if let (kind, frame) = plan.provider {
-            let provider = ProviderIconView(size: 13)
-            provider.kind = kind; provider.frame = frame; addSubview(provider)
-        }
         if let frame = plan.addFrame {
-            if plan.roundAdd {
-                let button = HitSlopControl()
-                button.hitSlop = TabletWorkspaceHeaderLayout.Metrics.addHitSlop
-                button.frame = frame; button.backgroundColor = UIColor(Palette.surfaceHighest)
-                button.layer.cornerRadius = frame.width / 2
-                button.isAccessibilityElement = true; button.accessibilityLabel = Strings.Tablet.newSession; button.accessibilityTraits = .button
-                let icon = IconView(.ionicons("add"), size: TabletWorkspaceHeaderLayout.Metrics.addIconSize, tint: Palette.text)
-                let side = TabletWorkspaceHeaderLayout.Metrics.addIconSize
-                icon.frame = CGRect(x: (frame.width - side) / 2, y: (frame.height - side) / 2, width: side, height: side)
-                icon.isUserInteractionEnabled = false; button.addSubview(icon)
-                button.addAction(UIAction { [weak self] _ in self?.onCreateWorkspace?() }, for: .touchUpInside)
-                addSubview(button)
-                return
-            }
             let button = HeaderIconButton(.ionicons("add"), size: 18, label: Strings.Home.createWorkspaceIn(plan.accessibilityLabel))
             button.iconView.tintColor = UIColor(Palette.textSecondary)
             button.frame = frame

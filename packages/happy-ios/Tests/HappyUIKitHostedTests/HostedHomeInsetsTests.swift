@@ -42,8 +42,11 @@ private struct Unreachable: AgentTransport {
 /// to the repository's `.context/evidence/home-insets`.
 @MainActor
 final class HostedHomeInsetsTests: XCTestCase {
-    override func setUp() {
-        super.setUp()
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        // Beside the sidebar home pushes nothing over itself: what it opens
+        // is the main panel's (HostedSplitShellTests).
+        try XCTSkipIf(UIDevice.current.userInterfaceIdiom == .pad, "a phone's stack")
         LegacyFonts.registerBundledFonts()
     }
 
@@ -379,8 +382,9 @@ struct HomeApp {
             window.isHidden = true
             hostWindow?.makeKey()
         }
+        // The shell settles which stack holds home with the window's width.
+        let shown = try await until { Self.stack(in: window)?.viewControllers.first.map(root) ?? false }
         let navigation = try XCTUnwrap(Self.stack(in: window))
-        let shown = try await until { navigation.viewControllers.first.map(root) ?? false }
         XCTAssertTrue(shown, "no home: \(navigation.viewControllers)")
         try await Task.sleep(for: .milliseconds(400))
         // The account's theme goes on the window as it starts: the style
@@ -409,6 +413,11 @@ struct HomeApp {
     }
 
     private static func stack(in window: UIWindow) -> UINavigationController? {
+        // Beside the main panel, home is the sidebar's root.
+        if let shell = window.rootViewController as? ShellViewController {
+            window.layoutIfNeeded()
+            return shell.isExpanded ? shell.sidebar : shell.phone
+        }
         var queue = [window.rootViewController].compactMap { $0 }
         while !queue.isEmpty {
             let next = queue.removeFirst()

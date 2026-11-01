@@ -40,7 +40,7 @@ extension Strings {
         /// `sidebar.showFewerWorkspaces`.
         public static var showFewerWorkspaces: String { localized("sidebar.showFewerWorkspaces", "Show fewer") }
         /// `t('status.unknown')`, the word ProjectHomeList.tsx:128 passes as `unknownMachineText` for a chat with no
-        /// computer; `ProjectHomeData` and `TabletGroupedList` wrap it in `<…>`, as projectHomeList.ts:368 does.
+        /// computer; `ProjectHomeData` wraps it in `<…>`, as projectHomeList.ts:368 does.
         public static var unknownMachine: String { localized("status.unknown", "unknown") }
         public static let createWorkspace = "Create workspace"  // ProjectHomeList.tsx:466, spelled out
         public static func createWorkspaceIn(_ project: String) -> String { "Create workspace in \(project)" }  // ProjectHomeList.tsx:520, spelled out

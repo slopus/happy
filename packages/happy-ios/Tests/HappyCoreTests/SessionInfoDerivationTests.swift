@@ -8,7 +8,7 @@ import HappyWire
 /// info.tsx off the main thread: the session's own snapshot (never home's),
 /// and exactly which groups and rows each change touches.
 final class SessionInfoDerivationTests: XCTestCase {
-    typealias Fixture = TabletGroupedListTests
+    typealias Fixture = LegacyHomeFixtures
 
     static func detail(_ session: SessionRecord?, dataReady: Bool = true, composer: JSONValue = .object([:])) -> SessionDetailSnapshot {
         SessionDetailSnapshot(
@@ -140,7 +140,7 @@ final class SessionInfoDerivationTests: XCTestCase {
 /// the list cursor and its composer, fetched and compared off the main
 /// thread.
 final class SessionDetailSnapshotTests: XCTestCase {
-    typealias Fixture = TabletGroupedListTests
+    typealias Fixture = LegacyHomeFixtures
 
     private func store() throws -> LocalStore {
         let store = try LocalStore.inMemory()

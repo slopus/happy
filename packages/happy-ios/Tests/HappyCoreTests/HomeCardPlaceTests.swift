@@ -8,7 +8,7 @@ import HappyWire
 /// only the gap between two cards, the archive is one card under its
 /// toggle, and each row knows its place in its card.
 final class HomeCardPlaceTests: XCTestCase {
-    private typealias Fixture = TabletGroupedListTests
+    private typealias Fixture = LegacyHomeFixtures
 
     private func model(_ sessions: [SessionRecord], grouping: String) -> HomeListModel {
         HomeListModel(

@@ -2,25 +2,16 @@
 import HappyLayout
 import UIKit
 
-/// `useIsTablet()` as a trait: the window is at least 768 wide
-/// (`TabletBreakpoint`). The shell sets it on everything under it and
-/// flips it live as Split View, Slide Over or Stage Manager resize the
-/// window. A screen with a tablet branch reads `traitCollection.isTabletLayout`
-/// and re-lays out on `registerForTraitChanges([TabletLayoutTrait.self])`.
+/// `useIsTablet()` as a trait: happy-app's tablet branches (an opaque bar,
+/// no back button). A screen with a tablet branch reads
+/// `traitCollection.isTabletLayout` and re-lays out on
+/// `registerForTraitChanges([TabletLayoutTrait.self])`.
 ///
-/// It is the width rule alone, as happy-app's screens use it: true on the
-/// first-run screens too, where the shell itself steps aside.
+/// The split shell (`ShellViewController`) doesn't set it: the iPad's
+/// main panel keeps the phone's bar and back button (docs/IPAD.md).
 public struct TabletLayoutTrait: UITraitDefinition {
     public static let defaultValue = false
     public static let name = "HappyTabletLayout"
-}
-
-/// `localSettings.zenMode`, which the persistent header's zen control
-/// toggles. Besides collapsing the sidebar it trims the composer
-/// (AgentInput.tsx `zenMode`), so the composer can read it here.
-public struct ZenModeTrait: UITraitDefinition {
-    public static let defaultValue = false
-    public static let name = "HappyZenMode"
 }
 
 /// The screen is the iPad's sidebar (`ShellViewController`): home leaves
@@ -33,7 +24,6 @@ public struct SidebarColumnTrait: UITraitDefinition {
 extension UITraitCollection {
     public var isSidebarColumn: Bool { self[SidebarColumnTrait.self] }
     public var isTabletLayout: Bool { self[TabletLayoutTrait.self] }
-    public var isZenMode: Bool { self[ZenModeTrait.self] }
 }
 
 extension UIMutableTraits {
@@ -45,11 +35,6 @@ extension UIMutableTraits {
     public var isTabletLayout: Bool {
         get { self[TabletLayoutTrait.self] }
         set { self[TabletLayoutTrait.self] = newValue }
-    }
-
-    public var isZenMode: Bool {
-        get { self[ZenModeTrait.self] }
-        set { self[ZenModeTrait.self] = newValue }
     }
 }
 
