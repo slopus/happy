@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.conversation
 
+import com.slopus.happy.conversation.pictureSize
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.media.MediaDataSource

@@ -333,18 +333,16 @@ class ChatListBenchmark {
 
     @Test fun conversation_stream() {
         val history = allRows
-        fun streaming(text: String): ConversationState {
-            val live = Message("a-live", "agent", now + 1_000, listOf(Block.Text(text)))
-            return ConversationState(
-                created = true, loaded = true, agent = agent, working = true, activity = Activity.Working,
-                rows = builder.rows(live, "fx-agent", null, true).asReversed() + history,
-            )
-        }
-        var state by mutableStateOf(streaming("Starting"))
+        fun live(text: String) = Message("a-live", "agent", now + 1_000, listOf(Block.Text(text)))
+        val lane = Dispatchers.Default.limitedParallelism(1)
+        val state = ConversationState(
+            created = true, loaded = true, agent = agent, working = true, activity = Activity.Working,
+            rows = builder.rows(live("Starting"), "fx-agent", null, true).asReversed() + history,
+        )
         content { ConversationScreen(state, null, actions) }
         // About 20 updates a second, a few words each, as an answer streams in; markdown appears as it goes.
-        // Built off the main thread, as Conversation derives its rows on its own lane.
-        streams("conversation $chat") { text -> state = withContext(Dispatchers.Default) { streaming(text) } }
+        // As Conversation applies a delta: on its own lane, to the streaming block's LiveText alone.
+        streams("conversation $chat") { text -> withContext(lane) { check(builder.grow(live(text), 0)) } }
     }
 
     @Test fun conversation_older() {

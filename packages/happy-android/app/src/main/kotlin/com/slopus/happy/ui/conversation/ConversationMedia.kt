@@ -1,6 +1,5 @@
 package com.slopus.happy.ui.conversation
 
-import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,7 +29,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
-import androidx.exifinterface.media.ExifInterface
 import com.slopus.happy.conversation.MediaFlow
 import com.slopus.happy.conversation.MediaItem
 import com.slopus.happy.ui.components.Icon
@@ -38,7 +36,6 @@ import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.RemoteImage
 import com.slopus.happy.ui.components.ThumbHash
 import com.slopus.happy.ui.theme.HappyTheme
-import java.io.ByteArrayInputStream
 import kotlin.math.roundToInt
 
 /** A picture tile's look: iOS's `ChatMediaView`. */
@@ -219,23 +216,3 @@ internal fun hashedRatio(thumbhash: String?): Float? {
     }
 }
 
-/**
- * A picture's upright pixel size, read from its header alone (iOS's
- * `ChatPlanner.pictureSize`): EXIF orientations 5 to 8 turn it on its side,
- * as the image loader will. An unreadable header knows nothing, and the
- * flow falls back to 4:3.
- */
-internal fun pictureSize(bytes: ByteArray): MediaFlow.Image {
-    val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
-    val width = options.outWidth
-    val height = options.outHeight
-    if (width <= 0 || height <= 0) return MediaFlow.Image()
-    val orientation = try {
-        ExifInterface(ByteArrayInputStream(bytes)).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
-    } catch (_: Exception) {
-        ExifInterface.ORIENTATION_NORMAL
-    }
-    val turned = orientation in ExifInterface.ORIENTATION_TRANSPOSE..ExifInterface.ORIENTATION_ROTATE_270
-    return if (turned) MediaFlow.Image(height.toFloat(), width.toFloat()) else MediaFlow.Image(width.toFloat(), height.toFloat())
-}

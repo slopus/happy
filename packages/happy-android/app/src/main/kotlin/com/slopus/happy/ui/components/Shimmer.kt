@@ -135,7 +135,9 @@ private fun rememberRunningShimmerClock(): ShimmerClock {
  * Sweeps a band of [highlight] through whatever this draws, clipped to what
  * it paints: the band is mixed over the drawn pixels only (SrcAtop on an
  * offscreen layer), so glyph edges stay exact and the background stays
- * clear. Only the paint moves, nothing reflows. While the node is off
+ * clear. Only the paint moves, nothing reflows or recomposes: the phase is
+ * read in the band's draw alone, over the content's own layer, so a frame
+ * of the sweep draws a gradient and nothing else. While the node is off
  * screen it lets the clock stop. [phase] freezes the sweep at one point of
  * the loop, for tests and screenshots. With animations off, put no
  * shimmer on at all ([ShimmerText] does this).
@@ -172,6 +174,8 @@ fun Modifier.shimmer(highlight: Color, phase: Float? = null): Modifier {
                 blendMode = BlendMode.SrcAtop,
             )
         }
+        // What shimmers, in a layer of its own: a frame of the sweep records the band and a reference to it, never the text again.
+        .graphicsLayer()
 }
 
 /**

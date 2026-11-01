@@ -210,7 +210,7 @@ private fun SpansText(spans: List<MarkdownSpan>, style: TextStyle, color: Color,
         style = style,
         color = color,
         onTextLayout = { layout.value = it },
-        modifier = modifier.webLinkGestures(text, layout),
+        modifier = modifier.webLinkGestures(text, layout).revealText(layout),
     )
 }
 
@@ -291,11 +291,13 @@ private fun CodeBlock(content: String, language: String?) {
                 )
             }
             Box(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                val layout = remember { mutableStateOf<TextLayoutResult?>(null) }
                 Text(
                     text = highlighted,
                     style = MarkdownSpec.codeText,
                     softWrap = false,
-                    modifier = Modifier.padding(MarkdownSpec.codePadding),
+                    onTextLayout = { layout.value = it },
+                    modifier = Modifier.padding(MarkdownSpec.codePadding).revealText(layout),
                 )
             }
         }

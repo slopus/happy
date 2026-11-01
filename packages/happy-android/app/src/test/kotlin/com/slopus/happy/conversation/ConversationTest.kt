@@ -195,12 +195,52 @@ class ConversationTest {
         // A replay of what is already there changes nothing.
         signals.emit(event("message.delta", """{"agentId":"a1","runId":"r1","messageId":"m","blockIndex":0,"offset":3,"append":"lo"}"""))
         advanceUntilIdle()
-        assertEquals("Hello", (chat.state.value.rows.single() as ConversationRow.Text).text)
+        assertEquals("Hello", (chat.state.value.rows.single() as ConversationRow.Text).current)
         assertTrue(chat.state.value.working)
         val reads = agent.paths("GET").count { it.endsWith("/bootstrap") }
         signals.emit(event("message.delta", """{"agentId":"a1","runId":"r1","messageId":"m","blockIndex":0,"offset":9,"append":"x"}"""))
         advanceUntilIdle()
         assertEquals(reads + 1, agent.paths("GET").count { it.endsWith("/bootstrap") })
+    }
+
+    @Test fun `a delta goes to its streaming row alone, and the end of the run gives the rows the final words`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        signals.emit(event("run.started", """{"agentId":"a1","run":{"id":"r1","status":"running","startedAt":5},"acceptedMessageIds":[]}"""))
+        signals.emit(event("message.created", """{"agentId":"a1","runId":"r1","message":{"id":"m","role":"agent","createdAt":5,"content":[{"type":"text","text":"One"}],"metadata":{}}}"""))
+        advanceUntilIdle()
+        val streaming = chat.state.value
+        val row = streaming.rows.single() as ConversationRow.Text
+        val live = checkNotNull(row.live) { "a streaming block has its live words" }
+        val before = live.content.value
+        for (word in listOf(" two", " **three**", "\n\n- four")) {
+            signals.emit(event("message.delta", """{"agentId":"a1","runId":"r1","messageId":"m","blockIndex":0,"append":${Json.encodeToString(kotlinx.serialization.json.JsonPrimitive(word))}}"""))
+        }
+        advanceUntilIdle()
+        // No new state: the bar, the composer and the list are given exactly what they had.
+        assertTrue(streaming === chat.state.value)
+        assertEquals("One two **three**\n\n- four", live.content.value.text)
+        assertEquals(2, live.content.value.blocks.size)
+        assertEquals("One two **three**\n\n- four", row.current)
+        assertTrue(before !== live.content.value)
+
+        signals.emit(event("run.finished", """{"agentId":"a1","runId":"r1"}"""))
+        advanceUntilIdle()
+        val done = chat.state.value.rows.single() as ConversationRow.Text
+        assertNull(done.live)
+        assertEquals("One two **three**\n\n- four", done.text)
+        assertEquals(2, done.blocks.size)
+    }
+
+    @Test fun `a delta keeps the blocks it left alone`() {
+        val first = com.slopus.happy.chat.markdown.parseMarkdown("Intro\n\n```kotlin\nval a = 1\n```\n\nTail")
+        val next = com.slopus.happy.chat.markdown.parseMarkdown("Intro\n\n```kotlin\nval a = 1\n```\n\nTail grows")
+        val kept = LiveText.reuse(first, next)
+        assertTrue(kept[0] === first[0])
+        assertTrue(kept[1] === first[1])
+        assertTrue(kept[2] !== first[2])
+        assertEquals(next, kept)
     }
 
     @Test fun `a failed older page waits for Retry`() = runTest {

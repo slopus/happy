@@ -1,7 +1,6 @@
 package com.slopus.happy.ui.conversation
 
 import android.text.format.DateFormat
-import android.util.Base64
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
@@ -78,6 +77,7 @@ import com.slopus.happy.agent.AgentFeedRow
 import com.slopus.happy.agent.ConversationKind
 import com.slopus.happy.connection.TransportResponse
 import com.slopus.happy.conversation.AgentChild
+import com.slopus.happy.conversation.InlinePicture
 import com.slopus.happy.conversation.AgentDetail
 import com.slopus.happy.conversation.ConversationViewing
 import com.slopus.happy.conversation.ContextUsage
@@ -682,13 +682,7 @@ private fun MediaCell(media: SharedMedia, store: ConversationMediaStore, opener:
     ) {
         when (media) {
             is SharedMedia.Picture -> {
-                val bytes = remember(media.key) {
-                    try {
-                        Base64.decode(media.image.data, Base64.DEFAULT)
-                    } catch (_: IllegalArgumentException) {
-                        null
-                    }
-                }
+                val bytes = remember(media.key) { InlinePicture.of(media.image).bytes }
                 RemoteImage(model = bytes, contentDescription = null, cacheKey = media.key, modifier = Modifier.fillMaxSize())
             }
             is SharedMedia.Presented -> PresentedCell(media.ref, media.key, store, opener)

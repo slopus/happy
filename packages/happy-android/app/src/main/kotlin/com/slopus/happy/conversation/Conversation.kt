@@ -492,7 +492,12 @@ class Conversation(
                     return
                 }
                 messages[id] = grown
-                payload["runId"].str?.let { place(id, it) }
+                val placed = payload["runId"].str?.let { place(id, it) } == true
+                // Words for a block that already streams in its row go to that row alone: no new state.
+                if (!placed && builder.grow(grown, index)) {
+                    keepSoon()
+                    return
+                }
             }
             "message.deleted" -> {
                 val id = payload["messageId"].str ?: return
@@ -554,11 +559,18 @@ class Conversation(
 
     private fun kotlinx.serialization.json.JsonElement?.strings(): List<String> = arr.orEmpty().mapNotNull { it.str }
 
-    private fun place(messageId: String, runId: String) {
-        pending.remove(messageId)
+    /** Puts the message in its run; true when that moved it. */
+    private fun place(messageId: String, runId: String): Boolean {
+        var moved = pending.remove(messageId)
         val run = runs.firstOrNull { it.first == runId }
-        if (run == null) runs += runId to arrayListOf(messageId)
-        else if (messageId !in run.second) run.second += messageId
+        if (run == null) {
+            runs += runId to arrayListOf(messageId)
+            moved = true
+        } else if (messageId !in run.second) {
+            run.second += messageId
+            moved = true
+        }
+        return moved
     }
 
     /** The accepted messages open their run, in the order they were taken. */

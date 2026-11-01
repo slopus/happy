@@ -19,6 +19,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -362,20 +363,27 @@ private fun rememberPendingStatusVisible(pending: Boolean, queuedWhileBusy: Bool
  * Agent text (`AgentTextBlock`). Spec: 16 side margins, 10 above and below;
  * the markdown, selectable; under it a copy button the width of its 16
  * glyph and 20 high at the text's left edge, copy-outline swapping to a
- * checkmark for 1.5 s after a copy.
+ * checkmark for 1.5 s after a copy. While the words stream, [reveal]
+ * draws them in as Telegram does ([TextReveal]): the copy button shows
+ * once they are all there.
  */
 @Composable
-fun AgentMessage(row: ChatRow.AgentText, callbacks: MessageCallbacks, modifier: Modifier = Modifier) {
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = MessageSpec.agentMarginHorizontal, vertical = MessageSpec.agentMarginVertical)
-            .testTag(MessageTags.AGENT),
-    ) {
-        SelectionContainer {
-            MarkdownView(row.blocks, modifier = Modifier.fillMaxWidth(), onOptionPress = callbacks.onOptionPress)
+fun AgentMessage(row: ChatRow.AgentText, callbacks: MessageCallbacks, modifier: Modifier = Modifier, reveal: TextReveal? = null) {
+    // The reveal's height is a node of its own, so a frame of it measures that node alone.
+    Box(modifier.revealHeight(reveal)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = MessageSpec.agentMarginHorizontal, vertical = MessageSpec.agentMarginVertical)
+                .testTag(MessageTags.AGENT),
+        ) {
+            CompositionLocalProvider(LocalTextReveal provides reveal) {
+                SelectionContainer {
+                    MarkdownView(row.blocks, modifier = Modifier.fillMaxWidth(), onOptionPress = callbacks.onOptionPress)
+                }
+            }
+            MessageCopyButton(row.message.text)
         }
-        MessageCopyButton(row.message.text)
     }
 }
 

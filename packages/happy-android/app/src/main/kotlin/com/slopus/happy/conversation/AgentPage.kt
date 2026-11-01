@@ -223,7 +223,7 @@ data class Shared(val media: List<SharedMedia> = emptyList(), val links: List<Sh
                         row.pictures.forEachIndexed { index, image -> media += SharedMedia.Picture(row.key, index, image) }
                         links += links(row.text)
                     }
-                    is ConversationRow.Text -> links += links(row.text)
+                    is ConversationRow.Text -> links += links(row.current)
                     is ConversationRow.Picture -> media += SharedMedia.Picture(row.key, 0, row.image)
                     is ConversationRow.Media -> row.items.forEach { media += SharedMedia.Presented(it) }
                     else -> Unit

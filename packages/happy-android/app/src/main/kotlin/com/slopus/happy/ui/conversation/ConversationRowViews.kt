@@ -1,6 +1,7 @@
 package com.slopus.happy.ui.conversation
 
-import android.util.Base64
+import com.slopus.happy.conversation.InlinePicture
+import com.slopus.happy.conversation.pictureSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -42,6 +43,11 @@ import com.slopus.happy.conversation.Block
 import com.slopus.happy.conversation.ConversationRow
 import com.slopus.happy.conversation.ConversationViewing
 import com.slopus.happy.conversation.Delivery
+import com.slopus.happy.conversation.LiveText
+import com.slopus.happy.ui.chat.rememberTextReveal
+import com.slopus.happy.ui.components.RecomposeProbe
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.withFrameNanos
 import com.slopus.happy.conversation.MediaFlow
 import com.slopus.happy.conversation.MediaRef
 import com.slopus.happy.conversation.NoticeKind
@@ -65,6 +71,8 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 
 object ConversationRowTags {
+    /** Every row's outermost box, as tall as it is drawn. */
+    const val ROW = "conversation.row"
     const val REASONING = "conversation.reasoning"
     const val PICTURE = "conversation.picture"
     const val MEDIA = "conversation.media"
@@ -137,15 +145,12 @@ class ConversationRowActions(
  */
 @Composable
 fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: ConversationRowActions) {
+    if (RecomposeProbe.counts != null) RecomposeProbe.mark(ConversationScreenTags.probeRow(row.key))
     val content = Modifier.contentMaxWidth(LocalWindowLayout.current)
-    Box(Modifier.fillMaxWidth()) {
+    Box(Modifier.fillMaxWidth().testTag(ConversationRowTags.ROW)) {
         when (row) {
             is ConversationRow.User -> UserRow(row, bubble, actions, content)
-            is ConversationRow.Text -> AgentMessage(
-                ChatRow.AgentText(ChatMessage.AgentText(row.key, 0, row.text), row.blocks),
-                actions.legacy,
-                content,
-            )
+            is ConversationRow.Text -> TextRow(row, actions, content)
             is ConversationRow.Tool -> ToolView(
                 ChatMessage.ToolCallMessage(
                     id = row.key,
@@ -197,6 +202,36 @@ fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: Co
             )
         }
     }
+}
+
+/**
+ * An answer's text. While it streams its words come from [ConversationRow.Text.live],
+ * taken at most once a frame and read here alone, so a delta recomposes this row and
+ * nothing else; [rememberTextReveal] draws them in.
+ */
+@Composable
+private fun TextRow(row: ConversationRow.Text, actions: ConversationRowActions, modifier: Modifier) {
+    val live = row.live?.let { framed(it) }
+    if (RecomposeProbe.counts != null) RecomposeProbe.mark(ConversationScreenTags.probeText(row.key))
+    val reveal = rememberTextReveal(row.key, streaming = row.live != null) { row.live?.isFresh() == true }
+    val text = live?.text ?: row.text
+    val blocks = live?.blocks ?: row.blocks
+    val message = remember(row.key, text, blocks) { ChatRow.AgentText(ChatMessage.AgentText(row.key, 0, text), blocks) }
+    AgentMessage(message, actions.legacy, modifier, reveal)
+}
+
+/**
+ * [live]'s words as this frame shows them: a new reading is taken in the
+ * frame's own callback, before it composes, so however many deltas came
+ * since the last frame the row composes once.
+ */
+@Composable
+internal fun framed(live: LiveText): LiveText.Content {
+    val shown = remember(live) { mutableStateOf(live.content.value) }
+    LaunchedEffect(live) {
+        live.content.collect { withFrameNanos { shown.value = live.content.value } }
+    }
+    return shown.value
 }
 
 @Composable
@@ -255,25 +290,17 @@ private fun InlinePictures(
 ) {
     val shown = if (limit) MediaFlow.messageShown(pictures.size) else pictures.size
     val more = if (limit) MediaFlow.messageMore(pictures.size) else 0
-    val decoded = remember(key, pictures, shown) {
-        pictures.take(shown).map { picture ->
-            val bytes = try {
-                Base64.decode(picture.data, Base64.DEFAULT)
-            } catch (_: IllegalArgumentException) {
-                null
-            }
-            bytes to (bytes?.let(::pictureSize) ?: MediaFlow.Image())
-        }
-    }
+    // Read on the lane as the row was built; here only looked up.
+    val decoded = remember(key, pictures, shown) { pictures.take(shown).map(InlinePicture::of) }
     val label = stringResource(R.string.conversation_picture)
     MediaFlowLayout(
-        items = decoded.map { MediaFlow.Item(false, it.second) },
+        items = decoded.map { MediaFlow.Item(false, it.size) },
         limits = limits,
         alignEnd = alignEnd,
         measure = measure,
         modifier = Modifier.testTag(ConversationRowTags.PICTURE),
     ) { index ->
-        val bytes = decoded[index].first
+        val bytes = decoded[index].bytes
         val cacheKey = ConversationViewing.pictureKey(key, index)
         MediaTile(
             bytes = bytes,
@@ -304,7 +331,7 @@ private fun ReasoningRow(row: ConversationRow.Reasoning, modifier: Modifier) {
             Text(stringResource(R.string.session_info_thinking), style = ConversationRowSpec.label, color = colors.textSecondary)
             Icon(if (open) Ionicon.ChevronUp else Ionicon.ChevronDown, ConversationRowSpec.icon, colors.textSecondary)
         }
-        if (open) Text(row.text, style = ConversationRowSpec.body, color = colors.textSecondary, modifier = Modifier.padding(top = 4.dp))
+        if (open) Text(row.live?.let { framed(it).text } ?: row.text, style = ConversationRowSpec.body, color = colors.textSecondary, modifier = Modifier.padding(top = 4.dp))
     }
 }
 

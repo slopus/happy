@@ -45,10 +45,20 @@ sealed interface ConversationRow {
         val delivery: Delivery,
     ) : ConversationRow
 
-    data class Text(override val key: String, val text: String, val blocks: List<MarkdownBlock>) : ConversationRow
+    /**
+     * An answer's text. While it streams, [live] carries its words as they
+     * grow and [text] and [blocks] are what it read when the row was built:
+     * a delta changes [live] only, so the list and everything around it stay
+     * as they are and only this row redraws. Read [current] for the words now.
+     */
+    data class Text(override val key: String, val text: String, val blocks: List<MarkdownBlock>, val live: LiveText? = null) : ConversationRow {
+        val current: String get() = live?.content?.value?.text ?: text
+    }
 
-    /** The model's thinking summary: folded under one line until opened. */
-    data class Reasoning(override val key: String, val text: String, val streaming: Boolean) : ConversationRow
+    /** The model's thinking summary: folded under one line until opened; [live] as [Text]'s. */
+    data class Reasoning(override val key: String, val text: String, val streaming: Boolean, val live: LiveText? = null) : ConversationRow {
+        val current: String get() = live?.content?.value?.text ?: text
+    }
 
     /**
      * A tool call as the chat's tool row shows it: [input] is what its
@@ -95,22 +105,70 @@ enum class Activity { AwaitingAnswer, WaitingForModel, Thinking, PreparingTools,
  * unchanged so Markdown is parsed once per change. Not thread-safe; the
  * conversation calls it from its one lane.
  */
-class ConversationRowBuilder {
-    private val cache = HashMap<String, Pair<Message, List<ConversationRow>>>()
+class ConversationRowBuilder(private val now: () -> Long = System::currentTimeMillis) {
+    private class Built(val message: Message, val streaming: Boolean, val rows: List<ConversationRow>)
+
+    private val cache = HashMap<String, Built>()
+
+    /** The streaming blocks' live words, by row key; a block keeps its holder for as long as it streams. */
+    private val lives = HashMap<String, LiveText>()
 
     fun rows(message: Message, agentId: String, parentAgentId: String?, streaming: Boolean): List<ConversationRow> {
-        cache[message.id]?.let { (built, rows) -> if (built == message && !streaming) return rows }
-        val rows = build(message, agentId, parentAgentId, streaming)
-        cache[message.id] = message to rows
+        cache[message.id]?.let { if (!streaming && !it.streaming && it.message == message) return it.rows }
+        val rows = build(message, agentId, parentAgentId, streaming, if (streaming) ::live else null)
+        // The pictures are read here, on the lane, so the rows find them read on the main thread.
+        for (row in rows) when (row) {
+            is ConversationRow.User -> row.pictures.forEach(InlinePicture::of)
+            is ConversationRow.Picture -> InlinePicture.of(row.image)
+            else -> Unit
+        }
+        if (!streaming) lives.keys.removeAll { it.startsWith(message.id + ":") }
+        cache[message.id] = Built(message, streaming, rows)
         return rows
+    }
+
+    private fun live(key: String, text: String, markdown: Boolean): LiveText {
+        val live = lives.getOrPut(key) { LiveText(text, if (markdown) parseMarkdown(text) else emptyList(), now) }
+        live.update(text, markdown)
+        return live
+    }
+
+    /**
+     * [message] grew in its block [index], which streams in a row of its own:
+     * the row's [LiveText] takes the words, and the rows as built stand. False
+     * when that can't be, because the block has no live row yet (its first
+     * words make one) or no longer streams, so the rows must be built again.
+     */
+    fun grow(message: Message, index: Int): Boolean {
+        val built = cache[message.id] ?: return false
+        if (!built.streaming) return false
+        val live = lives["${message.id}:$index"] ?: return false
+        if (built.rows.none { (it as? ConversationRow.Text)?.live === live || (it as? ConversationRow.Reasoning)?.live === live }) return false
+        val text = when (val block = message.content.getOrNull(index)) {
+            is Block.Text -> block.text.trim()
+            is Block.Reasoning -> block.text.trim()
+            else -> return false
+        }
+        if (text.isEmpty()) return false
+        live.update(text, message.content[index] is Block.Text)
+        cache[message.id] = Built(message, true, built.rows)
+        return true
     }
 
     fun forget(keep: Set<String>) {
         cache.keys.retainAll(keep)
+        lives.keys.retainAll { key -> key.substringBeforeLast(':') in keep }
     }
 
     companion object {
-        fun build(message: Message, agentId: String, parentAgentId: String?, streaming: Boolean): List<ConversationRow> {
+        /** [live] gives a streaming block's holder ([LiveText]); without one, rows carry their words only. */
+        fun build(
+            message: Message,
+            agentId: String,
+            parentAgentId: String?,
+            streaming: Boolean,
+            live: ((key: String, text: String, markdown: Boolean) -> LiveText)? = null,
+        ): List<ConversationRow> {
             val id = message.id
             if (message.role == "service") {
                 failureOf(message)?.let { return listOf(it) }
@@ -141,10 +199,15 @@ class ConversationRowBuilder {
             val rows = ArrayList<ConversationRow>()
             message.content.forEachIndexed { index, block ->
                 val key = "$id:$index"
+                // Only the block being written streams; one a later block followed is done.
+                val growing = live?.takeIf { streaming && index == message.content.lastIndex }
                 when (block) {
-                    is Block.Text -> block.text.trim().takeIf { it.isNotEmpty() }?.let { rows += ConversationRow.Text(key, it, parseMarkdown(it)) }
+                    is Block.Text -> block.text.trim().takeIf { it.isNotEmpty() }?.let { text ->
+                        val holder = growing?.invoke(key, text, true)
+                        rows += ConversationRow.Text(key, text, holder?.content?.value?.blocks ?: parseMarkdown(text), holder)
+                    }
                     is Block.Reasoning -> block.text.trim().takeIf { it.isNotEmpty() }?.let {
-                        rows += ConversationRow.Reasoning(key, it, streaming && index == message.content.lastIndex)
+                        rows += ConversationRow.Reasoning(key, it, streaming && index == message.content.lastIndex, growing?.invoke(key, it, false))
                     }
                     is Block.Image -> rows += ConversationRow.Picture(key, block)
                     is Block.ToolCall -> rows += toolRows(key, block, message.createdAt)

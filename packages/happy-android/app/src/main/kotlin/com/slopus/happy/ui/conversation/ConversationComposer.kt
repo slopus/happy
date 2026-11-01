@@ -72,6 +72,7 @@ import com.slopus.happy.ui.attachments.rememberComposerImages
 import com.slopus.happy.ui.attachments.ImagePicker
 import com.slopus.happy.ui.chat.PrimaryAction
 import com.slopus.happy.ui.components.Alert
+import com.slopus.happy.ui.components.RecomposeProbe
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.GlassColors
 import com.slopus.happy.ui.components.GlassSource
@@ -155,6 +156,7 @@ internal fun ConversationComposer(
     /** Raised to take the keyboard into the composer (Return in new work's name). */
     focusAsks: Int = 0,
 ) {
+    RecomposeProbe.mark(ConversationScreenTags.PROBE_COMPOSER)
     val colors = HappyTheme.colors
     val attached = pictures?.images.orEmpty()
     val hasContent = text.isNotBlank() || attached.isNotEmpty()
@@ -171,9 +173,13 @@ internal fun ConversationComposer(
     var picker by rememberSaveable { mutableStateOf<ModePicker?>(null) }
     var moreCenterY by remember { mutableIntStateOf(0) }
     var modelCenterY by remember { mutableIntStateOf(0) }
+    // Where + and the model label sit, kept out of the snapshot as they move (the dock rides the
+    // keyboard each frame) and given to the popups as one opens, so moving never recomposes this.
+    val anchors = remember { IntArray(2) }
     fun openPicker(which: ModePicker) {
         attaching = false
         menu = false
+        modelCenterY = anchors[1]
         picker = which
     }
 
@@ -229,9 +235,9 @@ internal fun ConversationComposer(
             }
             ComposerLayout(open, compact, if (compact || !open) minimumCompact else minimumActions) {
                 Box(Modifier.layoutId(Slot.MORE)) {
-                    IconButton(onClick = { picker = null; if (showCount) menu = true else attaching = true }, modifier = Modifier.testTag(ConversationComposerTags.MORE)
+                    IconButton(onClick = { picker = null; moreCenterY = anchors[0]; if (showCount) menu = true else attaching = true }, modifier = Modifier.testTag(ConversationComposerTags.MORE)
                         .semantics { contentDescription = moreLabel }
-                        .onGloballyPositioned { moreCenterY = it.boundsInWindow().center.y.toInt() }) {
+                        .onGloballyPositioned { anchors[0] = it.boundsInWindow().center.y.toInt() }) {
                         BadgedBox(badge = {
                             if (showCount) Badge(containerColor = colors.text, contentColor = colors.surface) {
                                 Text(attached.size.toString(), Modifier.testTag(ConversationComposerTags.COUNT).clearAndSetSemantics {})
@@ -274,7 +280,7 @@ internal fun ConversationComposer(
                         catalog = state.catalog,
                         mode = state.mode,
                         onOpen = { openPicker(ModePicker.Model) },
-                        modifier = Modifier.layoutId(Slot.LABEL).onGloballyPositioned { modelCenterY = it.boundsInWindow().center.y.toInt() },
+                        modifier = Modifier.layoutId(Slot.LABEL).onGloballyPositioned { anchors[1] = it.boundsInWindow().center.y.toInt() },
                     )
                 }
                 val sendLabel = stringResource(if (primary == PrimaryAction.Stop) R.string.conversation_stop else R.string.conversation_send)

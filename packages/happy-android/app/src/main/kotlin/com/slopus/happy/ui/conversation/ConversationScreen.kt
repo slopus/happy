@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -88,6 +87,9 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import com.slopus.happy.ui.components.GlassSource
+import com.slopus.happy.ui.components.RecomposeProbe
+import com.slopus.happy.ui.chat.LocalRevealGrowth
+import androidx.compose.runtime.CompositionLocalProvider
 import com.slopus.happy.ui.components.glassFade
 import com.slopus.happy.ui.components.glassSource
 import com.slopus.happy.ui.components.rememberGlassBlur
@@ -118,6 +120,16 @@ object ConversationScreenTags {
     const val DETAILS = "conversation.header.details"
     /** The fade behind the dock. */
     const val FADE = "conversation.fade"
+
+    /** [RecomposeProbe] marks: the screen, the bar's title, the dock, the composer, the transcript and each row (`row:<key>`). */
+    const val PROBE_SCREEN = "screen"
+    const val PROBE_BAR = "bar"
+    const val PROBE_DOCK = "dock"
+    const val PROBE_COMPOSER = "composer"
+    const val PROBE_TRANSCRIPT = "transcript"
+    fun probeRow(key: String) = "row:$key"
+    /** An answer's text inside its row, which a delta does recompose. */
+    fun probeText(key: String) = "text:$key"
 }
 
 class ConversationScreenActions(
@@ -179,6 +191,7 @@ fun ConversationScreen(
     modifier: Modifier = Modifier,
     bubbleColor: String? = null,
 ) {
+    RecomposeProbe.mark(ConversationScreenTags.PROBE_SCREEN)
     val colors = HappyTheme.colors
     val listState = rememberLazyListState()
     // The composer's text: this screen's while typing; a draft from elsewhere replaces it.
@@ -225,7 +238,12 @@ fun ConversationScreen(
     val glass = rememberGlassSource(colors.surface)
     val blurs = rememberGlassBlur()
     var dock by remember { mutableIntStateOf(0) }
-    val dockHeight = with(LocalDensity.current) { dock.toDp() }
+    // The keyboard moves the dock and the transcript by an offset while it animates, and is in
+    // the layout only at rest: the dock's own height and the keyboard's are added here, in the same
+    // frame, so the list's room never lags the dock's.
+    val keyboard = rememberKeyboardLift()
+    val resting = with(LocalDensity.current) { keyboard.rest.toDp() }
+    val dockHeight = with(LocalDensity.current) { dock.toDp() } + resting
     // Return in new work's name: on to the composer.
     var nameReturns by remember { mutableIntStateOf(0) }
     val phase = when {
@@ -243,6 +261,7 @@ fun ConversationScreen(
         bar = {
             TopAppBar(
                 title = {
+                    RecomposeProbe.mark(ConversationScreenTags.PROBE_BAR)
                     // One status line, under the title and nowhere else: the
                     // connection while it isn't live, otherwise what the agent
                     // is doing. Its room is always kept, so neither the title nor
@@ -366,7 +385,7 @@ fun ConversationScreen(
                     } else {
                         Box(Modifier.fillMaxSize())
                     }
-                    TranscriptPhase.Rows -> Transcript(state, listState, bubble, rowActions, actions.onLoadOlder, top, dockHeight, glass)
+                    TranscriptPhase.Rows -> Transcript(state, listState, bubble, rowActions, actions.onLoadOlder, top, dockHeight, glass, keyboard)
                 }
             }
             // New work: Task or Bot and a name, centred between the bar and the composer, riding the
@@ -374,7 +393,7 @@ fun ConversationScreen(
             // As last chosen, for the fade after it is made.
             val last = remember { arrayOfNulls<NewWork>(1) }
             (state.newWork?.also { last[0] = it } ?: last[0])?.let { shown ->
-                NewWorkRoom(state.newWork != null, Modifier.padding(top = barFoot, bottom = dockHeight)) {
+                NewWorkRoom(state.newWork != null, Modifier.riding(keyboard, 0.5f).padding(top = barFoot, bottom = dockHeight)) {
                     NewWorkChoicePanel(shown, onChange = actions.onChoiceChange, onReturn = { nameReturns++ })
                 }
             }
@@ -384,20 +403,23 @@ fun ConversationScreen(
             Box(
                 Modifier
                     .align(Alignment.BottomCenter)
+                    .riding(keyboard)
                     .fillMaxWidth()
                     .height(dockHeight)
                     .glassFade(glass, colors.surface, blurs)
                     .testTag(ConversationScreenTags.FADE),
             )
-            if (phase == TranscriptPhase.Rows) ConversationJump(listState, state.activity, dockHeight)
+            if (phase == TranscriptPhase.Rows) Box(Modifier.matchParentSize().riding(keyboard)) { ConversationJump(listState, state.activity, dockHeight) }
             Column(
                 Modifier
                     .align(Alignment.BottomCenter)
+                    .riding(keyboard)
                     .fillMaxWidth()
+                    .padding(bottom = resting)
                     .onSizeChanged { dock = it.height }
-                    .windowInsetsPadding(WindowInsets.navigationBars)
-                    .imePadding(),
+                    .windowInsetsPadding(WindowInsets.navigationBars),
             ) {
+                RecomposeProbe.mark(ConversationScreenTags.PROBE_DOCK)
                 state.question?.let { question ->
                     ConversationQuestionCard(
                         question = question,
@@ -451,6 +473,7 @@ private fun Transcript(
     /** The dock's height over the list's newest end, kept clear. */
     dock: Dp,
     glass: GlassSource,
+    keyboard: KeyboardLift,
 ) {
     val nearOldest by remember {
         derivedStateOf {
@@ -459,15 +482,41 @@ private fun Transcript(
             last >= info.totalItemsCount - 1 - info.visibleItemsInfo.size
         }
     }
+    RecomposeProbe.mark(ConversationScreenTags.PROBE_TRANSCRIPT)
     val loadOlder by rememberUpdatedState(onLoadOlder)
     LaunchedEffect(nearOldest, state.hasMore, state.loadingOlder, state.olderFailed) {
         if (nearOldest && state.hasMore && !state.loadingOlder && !state.olderFailed) loadOlder(false)
     }
+    // A streaming row grows from its foot, which rests at the list's newest end: read there, the list
+    // follows it up. Scrolled into it, the reader's words stay put and the growth goes under the dock.
+    val growth = remember(listState) {
+        { key: Any, delta: Int ->
+            val offset = listState.firstVisibleItemScrollOffset
+            if (offset > 0 && listState.layoutInfo.visibleItemsInfo.firstOrNull()?.key == key) {
+                listState.requestScrollToItem(listState.firstVisibleItemIndex, offset + delta)
+            }
+        }
+    }
+    CompositionLocalProvider(LocalRevealGrowth provides growth) { TranscriptList(state, listState, bubble, actions, onLoadOlder, bar, dock, glass, keyboard) }
+}
+
+@Composable
+private fun TranscriptList(
+    state: ConversationState,
+    listState: androidx.compose.foundation.lazy.LazyListState,
+    bubble: com.slopus.happy.ui.chat.BubblePalette,
+    actions: ConversationRowActions,
+    onLoadOlder: (retry: Boolean) -> Unit,
+    bar: Dp,
+    dock: Dp,
+    glass: GlassSource,
+    keyboard: KeyboardLift,
+) {
     LazyColumn(
         state = listState,
         reverseLayout = true,
         contentPadding = PaddingValues(top = bar, bottom = dock + 8.dp),
-        modifier = Modifier.fillMaxSize().glassSource(glass).testTag(ConversationScreenTags.LIST),
+        modifier = Modifier.fillMaxSize().glassSource(glass).lifted(keyboard).testTag(ConversationScreenTags.LIST),
     ) {
         items(state.rows, key = ConversationRow::key, contentType = { it::class }) { row ->
             ConversationRowView(row, bubble, actions)
