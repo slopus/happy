@@ -628,12 +628,15 @@ Shared seams, changed only through the coordinator:
 - `Sources/HappyUI/Navigation/Route.swift`: screens open each other only
   through `push(_ route:context:)`. Each workstream replaces only its own
   placeholders in `Screens.make`;
-- the iPad shell: the window's root is `TabletShellViewController`, which
-  embeds `AppCoordinator`'s navigation controller as its detail and is
-  that controller's delegate, so nothing else sets `navigation.delegate`.
-  Tablet branches read `traitCollection.isTabletLayout` and `isZenMode`
-  (re-laid out through `registerForTraitChanges([TabletLayoutTrait.self])`);
-  their rules are in `HappyLayout/Tablet/TabletBranches.swift`;
+- the iPad shell ([docs/IPAD.md](docs/IPAD.md)): the window's root is
+  `ShellViewController`. On an iPhone it holds `AppCoordinator`'s stack
+  alone; on an iPad a `UISplitViewController` with home in the sidebar and
+  everything it opens in the main panel, collapsing to that one stack
+  below 768 or in a compact window. It is the delegate of every stack in
+  it, so nothing else sets `navigation.delegate`. AppCoordinator reads and
+  sets the window's navigation as one stack (`shell.stack`, `setStack`).
+  Home never pushes in the sidebar: its pushes become the main panel's
+  root;
 - `Schema.swift`: migrations are added by the Sending workstream or the
   coordinator. Migrations are append-only now that Preview has shipped;
   never change a registered migration.

@@ -32,7 +32,7 @@ final class HostedNativeSwipeBackTests: XCTestCase {
         )
         let context = AppContext(account: account, variant: .development, version: "test")
         let navigation = UINavigationController(rootViewController: UIViewController())
-        let shell = TabletShellViewController(context: context, detail: navigation)
+        let shell = ShellViewController(context: context, phone: navigation)
         let window = hostedKeyWindow(in: scene, root: shell)
         shell.view.layoutIfNeeded()
         return (window, navigation)

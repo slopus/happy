@@ -41,7 +41,7 @@ final class HeaderUITests: XCTestCase {
         keep("manage-accounts-\(style)")
     }
 
-    /// The same screen in the real tablet shell: `TabletShellViewController`
+    /// The same screen in the real tablet shell: `ShellViewController`
     /// with its sidebar, the persistent header, and home as the stack's
     /// root, which is what `-screen home` mounts. Beside the sidebar home
     /// itself draws nothing, so this is the one test that the accounts are

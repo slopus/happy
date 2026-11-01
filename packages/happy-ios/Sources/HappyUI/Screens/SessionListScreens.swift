@@ -133,6 +133,9 @@ final class SessionListViewController: UIViewController {
             self.requestTextEnvironment()
         }
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.updateUltraList() }
+        // As the iPad's sidebar the rows stand on the system's sidebar.
+        registerForTraitChanges([SidebarColumnTrait.self]) { (self: Self, _) in self.ultraList.clearsGround = self.traitCollection.isSidebarColumn }
+        ultraList.clearsGround = traitCollection.isSidebarColumn
         // The rows come in with the first text environment.
         requestTextEnvironment()
         updateBanners()

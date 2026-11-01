@@ -464,6 +464,9 @@ final class ChatViewController: UIViewController, ComposeHosting {
 
     // MARK: Detail
 
+    /// The conversation shown: empty for new work until the daemon made it.
+    var shownAgentId: String { media.agentId }
+
     /// The conversation's detail, over it: its numbers, its family and its
     /// activity, and its rename. New work has none until the daemon made it.
     private func openDetail() {

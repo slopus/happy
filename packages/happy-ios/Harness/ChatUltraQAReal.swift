@@ -115,10 +115,10 @@ final class ChatUltraQAReal {
             let context = AppContext(account: controller, variant: .preview, version: "chat-ultra-qa")
             let navigation = UINavigationController(rootViewController: LegacyHomeViewController(context: context, session: session))
             AppCoordinator.applyAppearance(to: navigation.navigationBar)
-            let shell = TabletShellViewController(context: context, detail: navigation)
+            let shell = ShellViewController(context: context, phone: navigation)
             window.rootViewController = shell
             probe = ChatUltraQAProbe(window: window, chat: nil, redacted: true)
-            shell.rootDidChange()
+            shell.updateMode()
             window.bringSubviewToFront(state)
             phase = "ready"
         } catch {

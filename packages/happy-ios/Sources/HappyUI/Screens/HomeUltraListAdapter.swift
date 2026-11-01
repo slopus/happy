@@ -33,6 +33,10 @@ final class HomeUltraListAdapter {
     private var requested: Input?
     private var observation: ApplyObservation?
     private let language = AppLocalization.language
+    /// No ground behind the rows: the iPad's sidebar shows through.
+    var clearsGround = false {
+        didSet { if clearsGround != oldValue, let plans { applyGround(tablet: plans.input.tablet != nil) } }
+    }
 
     struct Input: Equatable, Sendable {
         var model: HomeListModel
@@ -228,12 +232,16 @@ final class HomeUltraListAdapter {
         onSelect = nil; onLongPress = nil; onArchive = nil; onCreateWorkspace = nil; onArchivePersistenceFailure = nil
     }
 
+    /// Home's rows stand in cards on the modern home's ground.
+    private func applyGround(tablet: Bool) {
+        let background = clearsGround ? UIColor.clear : UIColor(tablet ? Palette.groupedBackground : Palette.groupedGround)
+        view.backgroundColor = background; view.list.backgroundColor = background
+    }
+
     private func publish() {
         guard active, let prepared = plans else { return }
         let model = prepared.input.model
-        // Home's rows stand in cards on the modern home's ground.
-        let background = UIColor(prepared.input.tablet != nil ? Palette.groupedBackground : Palette.groupedGround)
-        view.backgroundColor = background; view.list.backgroundColor = background
+        applyGround(tablet: prepared.input.tablet != nil)
         var rows: [HomeUltraRow] = []
         var nextRows: [HomeListRow.ID: HomeUltraRow] = [:]
         var changed = 0

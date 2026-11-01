@@ -101,7 +101,7 @@ extension UIViewController {
 
     /// The screens pushed from here go back with the chevron alone, in its
     /// glass circle: never "Back" nor this screen's title. The shell's
-    /// stack says the same of every screen (`TabletShellViewController`);
+    /// stacks say the same of every screen (`ShellViewController`);
     /// this covers one pushed onto another stack.
     func minimalBackButton() {
         navigationItem.backButtonDisplayMode = .minimal

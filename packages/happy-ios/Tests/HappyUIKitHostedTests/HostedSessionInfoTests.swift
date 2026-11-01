@@ -312,7 +312,9 @@ final class HostedSessionInfoTests: XCTestCase {
         let home = LegacyHomeViewController(context: context, session: account)
         let navigation = UINavigationController(rootViewController: home)
         AppCoordinator.applyAppearance(to: navigation.navigationBar)
-        let shell = TabletShellViewController(context: context, detail: navigation)
+        // One stack on an iPad too: the main panel's back buttons are the
+        // same delegate's (`ShellViewController`).
+        let shell = ShellViewController(context: context, phone: navigation, splits: false)
         let window = hostedKeyWindow(in: scene, root: shell)
         defer { window.isHidden = true; hostWindow?.makeKey() }
         window.layoutIfNeeded()

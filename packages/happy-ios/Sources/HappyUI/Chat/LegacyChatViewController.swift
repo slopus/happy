@@ -1086,7 +1086,11 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         }
         applyTitleAndStatus()
         if tablet, switcher == nil { switcher = AccountSwitcher(context: context, controller: self) }
-        navigationItem.leftBarButtonItem = tablet ? switcher?.barItem : nil
+        // Off a tablet only the switcher goes: the sidebar's toggle stays.
+        if tablet { navigationItem.leftBarButtonItem = switcher?.barItem }
+        else if let item = switcher?.barItem, navigationItem.leftBarButtonItems?.contains(item) == true {
+            navigationItem.leftBarButtonItems = navigationItem.leftBarButtonItems?.filter { $0 !== item }
+        }
         if contentInstalled { tabStrip.glass = !tablet } // TabletBranches.worktreeStripGlass
         floatingDockChanged()
     }

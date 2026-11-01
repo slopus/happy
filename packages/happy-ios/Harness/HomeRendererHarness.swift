@@ -106,12 +106,12 @@ final class HomeRendererHarness {
                 let home = LegacyHomeViewController(context: context, session: session)
                 let navigation = UINavigationController(rootViewController: home)
                 AppCoordinator.applyAppearance(to: navigation.navigationBar)
-                let shell = TabletShellViewController(context: context, detail: navigation)
+                let shell = ShellViewController(context: context, phone: navigation)
                 window.rootViewController = shell
                 if arguments.contains("-qaProbe"), let window = window as? HarnessWindow {
                     qaProbe = ChatUltraQAProbe(window: window, chat: nil)
                 }
-                shell.rootDidChange()
+                shell.updateMode()
                 if archiveCount > 0, let window = window as? HarnessWindow {
                     archiveProbe = HomeArchiveProbe(window: window, snapshots: store.homeSnapshots())
                 }

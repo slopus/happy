@@ -11,9 +11,9 @@ public final class AppCoordinator {
     public let window: UIWindow
     public let context: AppContext
     private lazy var navigation = BrowserNavigationController(context: context)
-    // Tablet (HappyUI/Tablet): the window's root holds the stack, and the
-    // sidebar beside it on a tablet-wide window.
-    private lazy var shell = TabletShellViewController(context: context, detail: navigation)
+    /// The window's root: the stack alone on an iPhone; on an iPad the
+    /// split view, whose columns or compact stack hold it (docs/IPAD.md).
+    private lazy var shell = ShellViewController(context: context, phone: navigation)
     /// The session the root was built for; nil while signed out, unset
     /// before the first state arrives.
     private var shownSession: ObjectIdentifier??
@@ -38,9 +38,8 @@ public final class AppCoordinator {
     }
 
     public func start() {
-        Self.applyAppearance(to: navigation.navigationBar)
         ThemeController.apply(from: context, to: window)
-        window.rootViewController = shell // Tablet: was `navigation`.
+        window.rootViewController = shell
         window.tintColor = UIColor(Palette.headerTint)
         window.makeKeyAndVisible()
         context.account.onChange = { [weak self] state in
@@ -85,7 +84,7 @@ public final class AppCoordinator {
         let account = context.account
         // A root being decided opens it once it is in.
         guard !language.isDeciding else { return }
-        guard let active = account.session, navigation.viewControllers.first is LegacyHomeViewController else {
+        guard let active = account.session, shell.stack.first is LegacyHomeViewController else {
             // Signed out once restored: there is nothing to open it in.
             if accountRestored, account.session == nil { notificationSessionID = nil }
             return
@@ -101,7 +100,7 @@ public final class AppCoordinator {
             guard self.notificationSessionID == sessionId,
                   account.session === active,
                   !self.language.isDeciding,
-                  self.navigation.viewControllers.first is LegacyHomeViewController else {
+                  self.shell.stack.first is LegacyHomeViewController else {
                 self.openNotificationSession()
                 return
             }
@@ -139,14 +138,14 @@ public final class AppCoordinator {
                 return
             }
             guard let session = self.context.account.session,
-                  let home = self.navigation.viewControllers.first as? LegacyHomeViewController else { return }
-            if let chat = self.navigation.topViewController as? LegacyChatViewController, chat.sessionId == sessionId { return }
-            self.navigation.presentedViewController?.dismiss(animated: false)
+                  let home = self.shell.stack.first as? LegacyHomeViewController else { return }
+            if let chat = self.shell.topViewController as? LegacyChatViewController, chat.sessionId == sessionId { return }
+            self.shell.presentedViewController?.dismiss(animated: false)
             let chat = Screens.make(.session(id: sessionId), context: self.context, session: session)
-            self.navigation.setViewControllers([home, chat], animated: true)
+            self.shell.setStack([home, chat], animated: true)
         }
         // A new root may still be animating in after an account switch.
-        if let transition = navigation.transitionCoordinator {
+        if let transition = shell.stackTransition {
             transition.animate(alongsideTransition: nil) { _ in open() }
         } else {
             open()
@@ -267,7 +266,7 @@ public final class AppCoordinator {
 
     private func install(session: AccountSession?, pending: AccountSummary?, animated: Bool) {
         // A swipe back under way (from settings, say) ends first.
-        if let transition = navigation.transitionCoordinator {
+        if let transition = shell.stackTransition {
             transition.animate(alongsideTransition: nil) { [weak self] _ in self?.install(session: session, pending: pending, animated: animated) }
             return
         }
@@ -287,27 +286,30 @@ public final class AppCoordinator {
         // takes over underneath. Anything presented goes with the old root,
         // and so does settings once a flow pushed over it or presented from
         // it (pairing, signing in, signing out) caused the change.
-        let settings = navigation.viewControllers.count == 2 ? navigation.viewControllers.last as? SettingsViewController : nil
+        let current = shell.stack
+        let settings = current.count == 2 ? current.last as? SettingsViewController : nil
         // A confirmation already going counts as gone.
-        let presented = navigation.presentedViewController.flatMap { $0.isBeingDismissed ? nil : $0 }
+        let presented = shell.presentedViewController.flatMap { $0.isBeingDismissed ? nil : $0 }
         let kept = settings.flatMap { settings in
             presented == nil && (context.account.agentConnections.active != nil || session != nil) ? settings : nil
         }
-        navigation.presentedViewController?.dismiss(animated: false)
+        shell.presentedViewController?.dismiss(animated: false)
         let stack = [root] + [kept].compactMap { $0 }
-        if animated, kept == nil, navigation.viewControllers.count == 1, navigation.view.window != nil {
+        // Beside the sidebar, the whole split dissolves into the new
+        // account's: its home in the sidebar, nothing open beside it.
+        if animated, kept == nil, current.count == 1 || shell.isExpanded, shell.view.window != nil {
             // Home itself on screen: the new one dissolves in where it is, so
             // the header and the toolbar stay put and only what's in them
             // changes. A push here read as going somewhere, not as switching.
-            UIView.transition(with: navigation.view, duration: Self.rootCrossfade, options: [.transitionCrossDissolve, .allowUserInteraction]) {
+            UIView.transition(with: shell.crossfadeView, duration: Self.rootCrossfade, options: [.transitionCrossDissolve, .allowUserInteraction]) {
                 UIView.performWithoutAnimation {
-                    self.navigation.setViewControllers(stack, animated: false)
-                    self.navigation.view.layoutIfNeeded()
+                    self.shell.setStack(stack, animated: false)
+                    self.shell.view.layoutIfNeeded()
                 }
             }
         } else {
             // Under settings it swaps unseen; from deeper, back to the new home.
-            navigation.setViewControllers(stack, animated: animated && kept == nil)
+            shell.setStack(stack, animated: animated && kept == nil)
             // Unseen, it is still whole: a root under another screen loads
             // its view only once back or the edge swipe starts, so the bar
             // items it sets then (the account switcher, settings) come in
@@ -315,7 +317,6 @@ public final class AppCoordinator {
             // ends. Loaded now, home fills its bar and list while it waits.
             if kept != nil { root.loadViewIfNeeded() }
         }
-        shell.rootDidChange() // Tablet: the sidebar follows the account.
         NotificationCenter.default.post(name: Self.rootDidChange, object: window)
         openPendingLink()
         openNotificationSession()
@@ -334,8 +335,8 @@ public final class AppCoordinator {
     /// anything over it (a QR sheet, a scanner, an alert) put away so the
     /// pairing pushed there shows.
     private var linkHost: UIViewController? {
-        navigation.presentedViewController?.dismiss(animated: false)
-        return navigation.topViewController
+        shell.presentedViewController?.dismiss(animated: false)
+        return shell.topViewController
     }
 
     /// The title of happy-app's UIKit headers (react-native-screens 4.22.0

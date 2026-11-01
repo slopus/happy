@@ -183,7 +183,7 @@ extension UIViewController {
 
 /// Context is resolved when a link opens, so account switches cannot retain a
 /// stale computer. This is otherwise an ordinary system navigation controller.
-final class BrowserNavigationController: UINavigationController {
+class BrowserNavigationController: UINavigationController {
     let browserContext: AppContext
     init(context: AppContext) { browserContext = context; super.init(nibName: nil, bundle: nil) }
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }

@@ -23,12 +23,25 @@ public struct ZenModeTrait: UITraitDefinition {
     public static let name = "HappyZenMode"
 }
 
+/// The screen is the iPad's sidebar (`ShellViewController`): home leaves
+/// its ground clear, so the system's sidebar material shows through.
+public struct SidebarColumnTrait: UITraitDefinition {
+    public static let defaultValue = false
+    public static let name = "HappySidebarColumn"
+}
+
 extension UITraitCollection {
+    public var isSidebarColumn: Bool { self[SidebarColumnTrait.self] }
     public var isTabletLayout: Bool { self[TabletLayoutTrait.self] }
     public var isZenMode: Bool { self[ZenModeTrait.self] }
 }
 
 extension UIMutableTraits {
+    public var isSidebarColumn: Bool {
+        get { self[SidebarColumnTrait.self] }
+        set { self[SidebarColumnTrait.self] = newValue }
+    }
+
     public var isTabletLayout: Bool {
         get { self[TabletLayoutTrait.self] }
         set { self[TabletLayoutTrait.self] = newValue }
@@ -111,17 +124,6 @@ extension UIViewController {
 
     @objc private func applyTabletBackButton() {
         navigationItem.hidesBackButton = !tabletBranches.plainHeaderShowsBackButton(isOnboardingRoute: false)
-    }
-
-    /// The tablet shell's stack, for a screen beside it rather than in it
-    /// (the sidebar and the list it hosts).
-    var tabletDetailNavigation: UINavigationController? {
-        var current: UIViewController? = self
-        while let controller = current {
-            if let shell = controller as? TabletShellViewController { return shell.detail }
-            current = controller.parent
-        }
-        return nil
     }
 }
 

@@ -28,5 +28,12 @@ extension Strings {
         /// `status.unknown` (SessionsList.tsx 403): an archived chat with no
         /// metadata to name a place (`getSessionSubtitle`).
         public static var unknown: String { localized("status.unknown", "unknown") }
+
+        /// The main panel with nothing open beside the sidebar. This app's
+        /// own: happy-app's tablet shows home's empty index route there.
+        public static let nothingOpen = "Choose a chat in the sidebar."
+        /// The sidebar's button, as iPadOS names it.
+        public static let hideSidebar = "Hide Sidebar"
+        public static let showSidebar = "Show Sidebar"
     }
 }

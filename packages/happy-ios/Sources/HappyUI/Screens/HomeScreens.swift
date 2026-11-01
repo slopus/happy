@@ -42,6 +42,8 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
     /// The home filter's choice, as last derived.
     private var grouping: SessionListGrouping = .flat
     private var content: UIViewController?
+    /// The session the main panel beside home shows, on an iPad.
+    private var shownSessionId: String?
     private var preparesArchives = false
     private var switcher: AccountSwitcher?
     /// The list's room under the bar and above the toolbar, as home last
@@ -63,7 +65,9 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
 
     public override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor(Palette.groupedBackground)
+        // No ground as the iPad's sidebar, where the system's sidebar shows.
+        applyGround()
+        registerForTraitChanges([SidebarColumnTrait.self]) { (self: Self, _) in self.applyGround() }
         minimalBackButton()
         switcher = AccountSwitcher(context: context, controller: self)
         let pipeline = ApplyPipeline<HomeDerivation.Input, HomeDerivation.Applied, HomeUpdate>(
@@ -118,6 +122,10 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
         // Midnight, a new time zone, a clock set by hand: the stamps are
         // written again, off the main thread.
         NotificationCenter.default.addObserver(self, selector: #selector(clockChanged), name: UIApplication.significantTimeChangeNotification, object: nil)
+    }
+
+    private func applyGround() {
+        view.backgroundColor = traitCollection.isSidebarColumn ? .clear : UIColor(Palette.groupedBackground)
     }
 
     /// Something can be started from compose: a computer is linked and,
@@ -274,6 +282,7 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
 
     private func makeList(_ model: HomeListModel, changeset: RowChangeset) -> SessionListViewController {
         let controller = SessionListViewController(context: context, session: session)
+        controller.selectedSessionId = shownSessionId
         // ProjectRow's `+` (ProjectHomeList.tsx `createWorkspace`): the
         // draft moves to the project, asking for a new workspace, and an
         // empty chat opens on it.
@@ -411,6 +420,15 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
               navigation.transitionCoordinator == nil else { return }
         let chat = LegacyChatViewController(context: context, session: session, sessionId: ComposeChat.makeId())
         navigation.pushViewController(chat, animated: true)
+    }
+}
+
+extension LegacyHomeViewController: MainPanelFollowing {
+    /// Beside the main panel, the chat it shows keeps its row selected
+    /// (SessionsList.tsx `selectedSessionId`).
+    func mainPanelDidShow(_ root: UIViewController?) {
+        shownSessionId = root.flatMap(TabletRoutes.route(of:))?.sessionId
+        (content as? SessionListViewController)?.selectedSessionId = shownSessionId
     }
 }
 

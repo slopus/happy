@@ -39,8 +39,10 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        // The conversation's own ground, light and dark.
-        view.backgroundColor = UIColor(Palette.surface)
+        // The conversation's own ground, light and dark; none as the iPad's
+        // sidebar, where the system's sidebar shows.
+        applyGround()
+        registerForTraitChanges([SidebarColumnTrait.self]) { (self: Self, _) in self.applyGround() }
         addChild(v2)
         v2.view.frame = view.bounds
         v2.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -66,6 +68,10 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         headerWatch = Session.session(for: id, context: context)?.watchHeader { [weak self] in self?.headerState = $0 }
         updateTitle()
         updateBar()
+    }
+
+    private func applyGround() {
+        view.backgroundColor = traitCollection.isSidebarColumn ? .clear : UIColor(Palette.surface)
     }
 
     /// The link's status in the account's name's place while it isn't live.
@@ -139,6 +145,12 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
 
     private func openSettings() {
         SettingsViewController.open(context: context, computer: id, from: self)
+    }
+}
+
+extension AgentHomeViewController: MainPanelFollowing {
+    func mainPanelDidShow(_ root: UIViewController?) {
+        v2.shownBeside = root
     }
 }
 #endif

@@ -104,6 +104,9 @@ private final class HomeUltraRowView: ListRowView, UIGestureRecognizerDelegate {
         content.layer.opacity = opacity * 0.88
     }
 
+    /// Home's grounds, which the sidebar leaves out.
+    private static let grounds = [Palette.groupedGround, Palette.groupedBackground]
+
     init(row: HomeUltraRow) {
         self.row = row
         drawingView = row.usesArchiveBitmap ? HomeArchiveBitmapView(plan: row.plan, bitmap: row.archiveBitmap) : row.node.makeView()
@@ -121,6 +124,7 @@ private final class HomeUltraRowView: ListRowView, UIGestureRecognizerDelegate {
         tap.delegate = self; long.delegate = self
         addGestureRecognizer(tap); addGestureRecognizer(long)
         applyRow()
+        registerForTraitChanges([SidebarColumnTrait.self]) { (self: Self, _) in self.applyRow() }
     }
 
     @available(*, unavailable)
@@ -146,13 +150,15 @@ private final class HomeUltraRowView: ListRowView, UIGestureRecognizerDelegate {
     }
 
     private func applyRow() {
-        // The page, then the row's part of its card over it.
+        // The page, then the row's part of its card over it. As the iPad's
+        // sidebar there is no page: the system's sidebar shows through.
+        let page = row.plan.background.flatMap { traitCollection.isSidebarColumn && Self.grounds.contains($0) ? nil : $0 }
         if let card = row.plan.card {
-            backgroundColor = row.plan.background.map(row.plan.resolved)
+            backgroundColor = page.map(row.plan.resolved)
             background.backgroundColor = row.plan.resolved(card.color)
         } else {
             backgroundColor = nil
-            background.backgroundColor = row.plan.background.map(row.plan.resolved)
+            background.backgroundColor = page.map(row.plan.resolved)
         }
         for view in [background, pressFill] {
             var corners: CACornerMask = []

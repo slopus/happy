@@ -95,15 +95,12 @@ extension UIViewController {
     /// Chats push a lightweight shell immediately. Their content is prepared
     /// during the transition, without a readiness gate on navigation.
     ///
-    /// The tablet sidebar has no stack of its own: it pushes onto the one
-    /// beside it, as SidebarNavigator.tsx's single stack does, and not
-    /// again onto the chat already on top. The route is recorded so the
-    /// sidebar can keep that chat's row selected (`HappyUI/Tablet`).
+    /// From the iPad's sidebar, the screen becomes the main panel's root
+    /// instead, or the main panel goes back to it when it shows that
+    /// already (`SidebarNavigationController`). The route is recorded so
+    /// the sidebar can keep that chat's row selected (`HappyUI/Tablet`).
     func push(_ route: Route, context: AppContext, animated: Bool = true) {
-        guard let session = context.account.session,
-              let stack = navigationController ?? tabletDetailNavigation,
-              navigationController != nil || !TabletRoutes.isShowing(route, in: stack)
-        else { return }
+        guard let session = context.account.session, let stack = navigationController else { return }
         #if DEBUG || HAPPY_FIXTURES
         let constructionStarted = CACurrentMediaTime()
         #endif

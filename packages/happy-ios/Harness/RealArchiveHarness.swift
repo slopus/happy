@@ -82,9 +82,9 @@ final class RealArchiveHarness {
             let context = AppContext(account: controller, variant: .preview, version: "archive-regression")
             let navigation = UINavigationController(rootViewController: LegacyHomeViewController(context: context, session: session))
             AppCoordinator.applyAppearance(to: navigation.navigationBar)
-            let shell = TabletShellViewController(context: context, detail: navigation)
+            let shell = ShellViewController(context: context, phone: navigation)
             window.rootViewController = shell
-            shell.rootDidChange()
+            shell.updateMode()
             // Probe only unambiguous archived titles; no names leave the app.
             let details = await Task.detached {
                 var shown = snapshot

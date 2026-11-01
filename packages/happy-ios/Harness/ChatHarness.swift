@@ -7,7 +7,7 @@ import UIKit
 import UltraView
 
 /// A debug app for the chat's UI tests (`Tests/HappyChatUITests`): one
-/// fixture chat under the app's own root (`TabletShellViewController` over a
+/// fixture chat under the app's own root (`ShellViewController` over a
 /// navigation), offline, signed in with a throwaway account. Gestures need a
 /// separate process to drive them, and the real app can't open a chat
 /// without an account.
@@ -69,6 +69,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
     private var chatHeader: ChatHeaderHarness?
     private var avatarSpeeds: AvatarSpeedHarness?
     private var agentChat: AgentChatHarness?
+    private var splitApp: SplitAppHarness?
     #endif
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
@@ -122,6 +123,10 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
             avatarSpeeds = AvatarSpeedHarness(window: window, arguments: arguments)
             return
         }
+        if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "split" {
+            splitApp = SplitAppHarness(window: window, arguments: arguments)
+            return
+        }
         if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "chatHeader" {
             chatHeader = ChatHeaderHarness(window: window, arguments: arguments)
             return
@@ -170,7 +175,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         home.view.backgroundColor = .systemBackground
         let navigation = UINavigationController(rootViewController: home)
         navigation.pushViewController(chat, animated: false)
-        window.rootViewController = TabletShellViewController(context: context, detail: navigation)
+        window.rootViewController = ShellViewController(context: context, phone: navigation)
         let probe = ChatScrollProbe(window: window, chat: chat)
         probe.scrollTo = scrollTo
         self.probe = probe
