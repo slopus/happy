@@ -48,9 +48,11 @@ final class AccountSwitcher: NSObject {
         self.context = context
         self.controller = controller
         item = UIBarButtonItem(customView: button)
-        // It draws its own glass, which follows its width as the name and
-        // the link's status trade places; the bar's would jump.
-        item.hidesSharedBackground = true
+        // Its glass is the bar's own (the item's shared background), which
+        // the bar morphs into Back as a chat is pushed and out of it as the
+        // chat goes. Glass of its own, with the bar's hidden, went through
+        // that morph as a hard-edged rectangle. The bar is laid out inside
+        // `setStatus`'s animation, so its glass follows the width.
         super.init()
         button.accessibilityIdentifier = "account-switcher"
         button.showsMenuAsPrimaryAction = true
@@ -232,9 +234,8 @@ final class AccountSwitcher: NSObject {
 /// the picture, the name or the link's status in its place, and the
 /// chevron. The name and the status are each in a lane of their own, as
 /// wide as the button, so one can slide and fade over the other while
-/// their frames stay the layout's.
+/// their frames stay the layout's. Its glass is the bar's, round it.
 final class AccountSwitcherButton: UIButton {
-    private let glass = GlassCapsuleView(interactive: true, tinted: false)
     private let pictureView = UIImageView()
     private let titleLane = UIView()
     private let titleText = StyledLabel(style: TextStyles.headerTitle, color: Palette.headerTint, lines: 1)
@@ -289,8 +290,6 @@ final class AccountSwitcherButton: UIButton {
         statusText.accessibilityIdentifier = "home-link-status"
         statusLane.alpha = 0
         setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        glass.accessibilityIdentifier = "account-switcher-glass"
-        addSubview(glass)
         titleLane.addSubview(titleText)
         statusLane.addSubview(spinner)
         wordsLane.addSubview(statusText)
@@ -320,7 +319,6 @@ final class AccountSwitcherButton: UIButton {
     override func layoutSubviews() {
         super.layoutSubviews()
         let layout = measured(maxWidth: bounds.width)
-        glass.frame = layout.glass
         pictureView.setLayoutFrame(layout.picture)
         // The lanes are the button's bounds, placed by bounds and centre so
         // a slide's transform leaves their frames alone.

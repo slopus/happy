@@ -161,7 +161,9 @@ private struct SplitComposeMachine: HomeOps, HomeSessionOps {
 /// `-settings` opens Settings instead, `-hideSidebar` hides the sidebar,
 /// `-dark` darkens the window, `-landscape` turns it on its side,
 /// `-resizeLoop` narrows and widens the window in turn, `-narrow` leaves
-/// an iPad's window 600 wide, `-probe` reads the open chat's list
+/// an iPad's window 600 wide, `-animated` pushes the chat `-open` opens as
+/// a tap does, for a recording of the push, `-linkLoop` has the switcher
+/// say the link is down and up again in turn, `-probe` reads the open chat's list
 /// (`ChatScrollProbe`), `-pageProbe` the open page's scroll view
 /// (`PageScrollProbe`), `-long` gives the agent's conversation 60 more
 /// rounds, `-composeMachine` lets compose's first send make a session on
@@ -222,7 +224,7 @@ final class SplitAppHarness {
                     home.push(.settings, context: context)
                 }
             } else if let id = option("-open") {
-                Self.open(id, from: home, context: context, agent: agent)
+                Self.open(id, from: home, context: context, agent: agent, animated: arguments.contains("-animated"))
                 try? await Task.sleep(for: .seconds(1))
                 if arguments.contains("-info"), let chat = shell.topViewController {
                     if let legacy = chat as? LegacyChatViewController {
@@ -245,6 +247,16 @@ final class SplitAppHarness {
                 shell.setSidebarHidden(true)
             }
             if arguments.contains("-resizeLoop") { await Self.resizeLoop(window) }
+            if arguments.contains("-linkLoop"), let bar = home.navigationController?.navigationBar {
+                func find(_ view: UIView) -> AccountSwitcherButton? {
+                    if let button = view as? AccountSwitcherButton { return button }
+                    return view.subviews.lazy.compactMap(find).first
+                }
+                for step in 0..<6 {
+                    try? await Task.sleep(for: .seconds(1.5))
+                    find(bar)?.setStatus(step.isMultiple(of: 2) ? "Waiting for network…" : nil, animated: true, bar: bar)
+                }
+            }
         }
     }
 
@@ -261,13 +273,13 @@ final class SplitAppHarness {
     }
 
     /// What tapping the row does: a chat from the sidebar.
-    private static func open(_ id: String, from home: UIViewController, context: AppContext, agent: Bool) {
+    private static func open(_ id: String, from home: UIViewController, context: AppContext, agent: Bool, animated: Bool = false) {
         if agent {
             guard let session = context.account.agentConnections.activeID.flatMap({ Session.session(for: $0, context: context) }),
                   let row = session.home.rows.first(where: { $0.agentId == id }) else { return }
-            home.navigationController?.pushViewController(ChatViewController(session: session, agentId: id, title: row.label, spaceId: row.spaceId, intro: nil), animated: false)
+            home.navigationController?.pushViewController(ChatViewController(session: session, agentId: id, title: row.label, spaceId: row.spaceId, intro: nil), animated: animated)
         } else {
-            home.push(.session(id: id), context: context, animated: false)
+            home.push(.session(id: id), context: context, animated: animated)
         }
     }
 }

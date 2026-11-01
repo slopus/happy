@@ -26,9 +26,9 @@ public struct AccountSwitcherLayout: Equatable, Sendable {
         /// How far the name and the status slide as one gives way to the
         /// other (Telegram's title does the same).
         public static let slide: CGFloat = 6
-        /// The switcher's own glass round its 36 line on every side: the
-        /// bar's buttons' 44, as the bar's own glass was.
-        public static let glassOutset: CGFloat = 4
+        /// The bar's own glass round the 36 line on every side, its
+        /// buttons' 44: room the switcher leaves it.
+        public static let barGlassOutset: CGFloat = 4
     }
 
     /// The status's measured parts: the spinner's side and its words on one line.
@@ -48,9 +48,6 @@ public struct AccountSwitcherLayout: Equatable, Sendable {
     }
 
     public var size: CGSize
-    /// The switcher's own glass, its whole frame: it follows the width as
-    /// the name and the status trade places.
-    public var glass: CGRect
     public var picture: CGRect
     /// Where the name is, shown or not, so a fade between the two has both.
     public var title: CGRect
@@ -59,31 +56,29 @@ public struct AccountSwitcherLayout: Equatable, Sendable {
     public var status: CGRect
     public var chevron: CGRect
 
-    /// Space left for the switcher, its glass included, after the
-    /// navigation bar's margins and trailing actions.
+    /// Space left for the switcher after the navigation bar's margins,
+    /// its trailing actions and the glass the bar draws round the switcher.
     public static func availableWidth(barWidth: CGFloat, safeArea: LayoutInsets, trailingItems: Int) -> CGFloat {
-        max(0, barWidth - safeArea.left - safeArea.right - 32 - CGFloat(trailingItems) * 48)
+        max(0, barWidth - safeArea.left - safeArea.right - 32 - CGFloat(trailingItems) * 48 - 2 * Metrics.barGlassOutset)
     }
 
     /// Sizes are single-line measurements; `maxWidth` is the room for the
-    /// whole switcher, its glass included.
+    /// whole switcher.
     public init(title: CGSize, status: Status? = nil, showing: Showing = .title, chevron: CGSize, maxWidth: CGFloat = .greatestFiniteMagnitude) {
         typealias M = Metrics
-        // Everything sits on the 36 line, inside the glass's outset.
-        let inset = M.glassOutset
-        let textX = inset + M.leading + M.picture + M.pictureGap
-        let fixed = textX + M.chevronGap + chevron.width + M.trailing + inset
+        let textX = M.leading + M.picture + M.pictureGap
+        let fixed = textX + M.chevronGap + chevron.width + M.trailing
         let room = max(0, maxWidth - fixed)
         let titleWidth = min(title.width, room)
-        picture = CGRect(x: inset + M.leading, y: inset + (M.height - M.picture) / 2, width: M.picture, height: M.picture)
-        let top = inset + ((M.height - title.height) / 2).rounded()
+        picture = CGRect(x: M.leading, y: (M.height - M.picture) / 2, width: M.picture, height: M.picture)
+        let top = ((M.height - title.height) / 2).rounded()
         self.title = CGRect(x: textX, y: top, width: titleWidth, height: title.height)
 
         var statusWidth: CGFloat = 0
         if let status {
             let textRoom = max(0, room - status.spinner.width - M.spinnerGap)
             let words = min(status.text.width, textRoom)
-            let line = inset + ((M.height - status.text.height) / 2).rounded()
+            let line = ((M.height - status.text.height) / 2).rounded()
             let mid = line + status.text.height / 2
             spinner = CGRect(x: textX, y: (mid - status.spinner.height / 2).rounded(), width: status.spinner.width, height: status.spinner.height)
             self.status = CGRect(x: spinner.maxX + M.spinnerGap, y: line, width: words, height: status.text.height)
@@ -94,8 +89,7 @@ public struct AccountSwitcherLayout: Equatable, Sendable {
         }
 
         let content = showing == .status && status != nil ? statusWidth : titleWidth
-        size = CGSize(width: (fixed + content).rounded(.up), height: M.height + 2 * inset)
-        glass = CGRect(origin: .zero, size: size)
+        size = CGSize(width: (fixed + content).rounded(.up), height: M.height)
         self.chevron = CGRect(x: textX + content + M.chevronGap, y: (top + (title.height - chevron.height) / 2).rounded(), width: chevron.width, height: chevron.height)
     }
 }

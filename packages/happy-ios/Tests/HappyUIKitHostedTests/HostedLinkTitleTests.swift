@@ -162,7 +162,9 @@ final class HostedLinkTitleTests: XCTestCase {
             let statusOpacity = CGFloat(status?.opacity ?? -1)
             let rising = (status?.transform.m42 ?? 0) as CGFloat
             let lifting = (title?.transform.m42 ?? 0) as CGFloat
-            let glass = try XCTUnwrap(switcher.subviews.first { $0.accessibilityIdentifier == "account-switcher-glass" })
+            // The bar's glass is round the switcher's container in the bar,
+            // which the bar lays out in the same animation.
+            let glass = try XCTUnwrap(switcher.superview, "the switcher isn't in the bar")
             let glassWidth = glass.layer.presentation()?.bounds.width ?? -1
             lines.append("\(name) +\(ms)ms: title opacity \(titleOpacity) dy \(lifting), status opacity \(statusOpacity) dy \(rising), glass width \(glassWidth) on its way to \(glass.bounds.width)")
             XCTAssertEqual(try header(navigation, switcher, items: items), resting, "\(name) +\(ms)ms: the header moved")

@@ -14,18 +14,16 @@ final class LinkTitleLayoutTests: XCTestCase {
         let status = AccountSwitcherLayout.Status(spinner: spinner, text: CGSize(width: 98, height: 20))
         let name = CGSize(width: 60, height: 20)
         let shown = AccountSwitcherLayout(title: name, status: status, showing: .status, chevron: chevron, maxWidth: room)
-        XCTAssertEqual(shown.size, CGSize(width: 192, height: 44))
-        XCTAssertEqual(shown.spinner, CGRect(x: 44, y: 14, width: 16, height: 16), "where the name began")
-        XCTAssertEqual(shown.status, CGRect(x: 66, y: 12, width: 98, height: 20))
+        XCTAssertEqual(shown.size, CGSize(width: 184, height: 36))
+        XCTAssertEqual(shown.spinner, CGRect(x: 40, y: 10, width: 16, height: 16), "where the name began")
+        XCTAssertEqual(shown.status, CGRect(x: 62, y: 8, width: 98, height: 20))
         XCTAssertEqual(shown.spinner.midY, shown.status.midY, "the spinner is centred on the words' line")
-        XCTAssertEqual(shown.chevron, CGRect(x: 168, y: 19, width: 10, height: 6))
-        XCTAssertEqual(shown.title, CGRect(x: 44, y: 12, width: 60, height: 20), "the name keeps its place to fade from")
-        XCTAssertEqual(shown.glass, CGRect(x: 0, y: 0, width: 192, height: 44), "the bar's buttons' 44")
+        XCTAssertEqual(shown.chevron, CGRect(x: 164, y: 15, width: 10, height: 6))
+        XCTAssertEqual(shown.title, CGRect(x: 40, y: 8, width: 60, height: 20), "the name keeps its place to fade from")
 
         let title = AccountSwitcherLayout(title: name, status: status, showing: .title, chevron: chevron, maxWidth: room)
-        XCTAssertEqual(title.size, CGSize(width: 132, height: 44))
-        XCTAssertEqual(title.chevron, CGRect(x: 108, y: 19, width: 10, height: 6))
-        XCTAssertEqual(title.glass, CGRect(x: 0, y: 0, width: 132, height: 44), "the glass follows the width")
+        XCTAssertEqual(title.size, CGSize(width: 124, height: 36))
+        XCTAssertEqual(title.chevron, CGRect(x: 104, y: 15, width: 10, height: 6))
         XCTAssertEqual(title.picture, shown.picture, "the picture never moves")
         XCTAssertEqual(title.title, shown.title)
         XCTAssertEqual(title.spinner, shown.spinner, "the status keeps its place to fade from")
@@ -37,7 +35,7 @@ final class LinkTitleLayoutTests: XCTestCase {
         let layout = AccountSwitcherLayout(title: CGSize(width: 60, height: 20), chevron: chevron, maxWidth: 313)
         XCTAssertEqual(layout.spinner, .zero)
         XCTAssertEqual(layout.status, .zero)
-        XCTAssertEqual(layout.size.width, 132)
+        XCTAssertEqual(layout.size.width, 124)
         let asked = AccountSwitcherLayout(title: CGSize(width: 60, height: 20), showing: .status, chevron: chevron, maxWidth: 313)
         XCTAssertEqual(asked, layout, "a status asked for with none to show shows the name")
     }
@@ -47,23 +45,23 @@ final class LinkTitleLayoutTests: XCTestCase {
     /// clear of the trailing items.
     func testALongTranslationIsCutBeforeTheTrailingItems() {
         let room = AccountSwitcherLayout.availableWidth(barWidth: 375, safeArea: .zero, trailingItems: 2)
-        XCTAssertEqual(room, 247)
+        XCTAssertEqual(room, 239)
         let status = AccountSwitcherLayout.Status(spinner: spinner, text: CGSize(width: 300, height: 20))
         let layout = AccountSwitcherLayout(title: CGSize(width: 80, height: 20), status: status, showing: .status, chevron: chevron, maxWidth: room)
         XCTAssertEqual(layout.size.width, room)
-        XCTAssertEqual(layout.spinner, CGRect(x: 44, y: 14, width: 16, height: 16), "the spinner is never cut")
-        XCTAssertEqual(layout.status, CGRect(x: 66, y: 12, width: 153, height: 20))
-        XCTAssertEqual(layout.chevron.maxX, room - 14, "its own room, then the glass's")
+        XCTAssertEqual(layout.spinner, CGRect(x: 40, y: 10, width: 16, height: 16), "the spinner is never cut")
+        XCTAssertEqual(layout.status, CGRect(x: 62, y: 8, width: 153, height: 20))
+        XCTAssertEqual(layout.chevron.maxX, room - 10, "its own room; the bar's glass is past it")
         XCTAssertEqual(layout.status.maxX + 4, layout.chevron.minX)
     }
 
     /// The narrowest bar there is: a 320-point split view with both items.
     func testANarrowBarStillShowsTheSpinner() {
         let room = AccountSwitcherLayout.availableWidth(barWidth: 320, safeArea: .zero, trailingItems: 2)
-        XCTAssertEqual(room, 192)
+        XCTAssertEqual(room, 184)
         let status = AccountSwitcherLayout.Status(spinner: spinner, text: CGSize(width: 110, height: 20))
         let layout = AccountSwitcherLayout(title: CGSize(width: 200, height: 20), status: status, showing: .status, chevron: chevron, maxWidth: room)
-        XCTAssertEqual(layout.size.width, 192)
+        XCTAssertEqual(layout.size.width, 184)
         XCTAssertEqual(layout.spinner.width, 16)
         XCTAssertEqual(layout.status.width, 98)
         XCTAssertEqual(layout.title.width, 120, "the name is cut to the same room")
@@ -78,8 +76,8 @@ final class LinkTitleLayoutTests: XCTestCase {
     func testTallerWordsKeepTheSpinnerOnTheirMiddle() {
         let status = AccountSwitcherLayout.Status(spinner: spinner, text: CGSize(width: 90, height: 23))
         let layout = AccountSwitcherLayout(title: CGSize(width: 60, height: 20), status: status, showing: .status, chevron: chevron)
-        XCTAssertEqual(layout.status.minY, 11)
-        XCTAssertEqual(layout.spinner.minY, 15)
+        XCTAssertEqual(layout.status.minY, 7)
+        XCTAssertEqual(layout.spinner.minY, 11)
         XCTAssertEqual(layout.spinner.midY.rounded(), layout.status.midY.rounded())
     }
 }

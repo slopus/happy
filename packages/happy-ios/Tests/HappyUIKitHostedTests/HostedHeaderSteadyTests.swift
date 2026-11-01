@@ -243,7 +243,8 @@ final class HostedHeaderSteadyTests: XCTestCase {
         /// The switcher's width follows its title; its place doesn't.
         func frames() -> [CGRect] {
             window.layoutIfNeeded()
-            let switcherFrame = switcher.convert(switcher.bounds, to: window)
+            // The bar's glass round it is placed in fractions of a point.
+            let switcherFrame = switcher.convert(switcher.bounds, to: window).rounded()
             // The name in its lane: the lane lifts it away as the status comes.
             return [navigation.navigationBar, sidebar].map { $0.convert($0.bounds, to: window) } + [name.frame.rounded()]
                 + [CGRect(origin: switcherFrame.origin, size: CGSize(width: 0, height: switcherFrame.height))]
