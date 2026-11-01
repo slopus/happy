@@ -114,3 +114,61 @@ push and first Back, excluding the final cleanup Back to Home. It reports main
 These are frame tails, not tap-to-first-presented-pixel latency. Failed early
 Settings-selector attempts are excluded; the valid agent Appearance sentinel is
 `Hide projects`, not the relay-account page's Theme/Language labels.
+
+Candidate production source is `b368b6a2`. Each cell below is baseline → candidate
+in milliseconds, pooled p99 across 12 valid iterations of that journey and
+direction. These sequential device runs are not randomized trials.
+
+| Device | Journey | Direction | Main-thread p99 | App-frame p99 |
+| --- | --- | --- | ---: | ---: |
+| Nothing | Chat | Push | 12.99 → 7.79 | 18.20 → 14.40 |
+| Nothing | Chat | Back | 6.10 → 4.83 | 11.32 → 13.26 |
+| Nothing | Agent page | Push | 12.71 → 6.17 | 21.16 → 12.97 |
+| Nothing | Agent page | Back | 16.42 → 4.99 | 18.97 → 16.14 |
+| Nothing | Appearance | Push | 8.77 → 7.23 | 15.08 → 14.38 |
+| Nothing | Appearance | Back | 18.98 → 4.75 | 22.67 → 14.57 |
+| Nothing | Artifacts | Push | 8.14 → 7.05 | 15.25 → 13.82 |
+| Nothing | Artifacts | Back | 7.00 → 5.06 | 12.20 → 14.18 |
+| Fold | Chat | Push | 7.09 → 6.06 | 12.61 → 11.69 |
+| Fold | Chat | Back | 5.08 → 4.81 | 14.91 → 13.71 |
+| Fold | Agent page | Push | 7.88 → 7.44 | 14.17 → 12.04 |
+| Fold | Agent page | Back | 9.57 → 4.13 | 13.49 → 11.12 |
+| Fold | Appearance | Push | 6.57 → 4.52 | 14.90 → 11.66 |
+| Fold | Appearance | Back | 11.75 → 4.05 | 15.59 → 13.39 |
+| Fold | Artifacts | Push | 5.13 → 4.28 | 12.01 → 11.01 |
+| Fold | Artifacts | Back | 3.83 → 4.41 | 12.80 → 13.75 |
+
+The strongest change is returning to non-Home pages: agent-page and Settings
+main-thread p99 falls by about 57–75%. Home was already retained in the baseline;
+chat/artifact returns are controls, not evidence of eliminating a Home rebuild.
+They do not all improve: Nothing chat/artifact Back app-frame p99 rises about
+17%/16%, and Fold artifacts rises about 7% (main-thread p99 also rises 15%).
+Back main-thread medians increase across all four journeys on both devices
+(Nothing baseline 1.84–2.62 ms versus candidate 3.28–3.82 ms; Fold 1.03–1.35 ms
+versus 1.76–1.99 ms). Thus this establishes smaller expensive return spikes and
+retained-state correctness, not uniformly lower animation cost or jank. The
+analyzer preserves FrameTimeline jank labels/counts; those include buffer
+stuffing and must not be equated directly with missed app deadlines.
+
+Fold's final combined benchmark passed all four tests. Nothing's combined run
+passed chat, agent page and artifacts, then failed to find Appearance during
+Settings setup at iteration 9. That incomplete Settings set is excluded. The
+unchanged isolated Settings rerun passed all 12 iterations; the setup failure's
+cause is unconfirmed, and the failed capture is preserved rather than hidden.
+
+Raw trace directories under the task's `nothing-perf` evidence directory:
+
+- Baseline: `{nothing,fold}-d464-retention-baseline` (chat, agent page,
+  artifacts only) and `{nothing,fold}-d464-settings-baseline-valid`.
+- Candidate: `fold-retained-pages-final`, `nothing-retained-pages-final`
+  (excluding its incomplete Settings set), and
+  `nothing-retained-settings-final-valid`.
+- Parsed frames and exact summaries: `{nothing,fold}-retention-before-analysis`,
+  `{nothing,fold}-retention-settings-before-analysis`,
+  `{nothing,fold}-retention-after-analysis`, and
+  `nothing-retention-settings-after-analysis`.
+
+The final commit-labeled debug APK was installed with data-preserving upgrades
+on both phones. Both repeated the nine-cycle rapid tap/Back check successfully
+after that install, then received the documented `cmd package compile -m verify`
+step. No OTA or store release was performed.
