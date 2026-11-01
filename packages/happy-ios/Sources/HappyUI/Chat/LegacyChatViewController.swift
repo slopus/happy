@@ -788,7 +788,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         updateHeaderVisibility(animated: false)
         updateUltraKeyboard()
         ultraKeyboard?.prepareLayout(guideTop: keyboardTracker.frame.minY)
-        layoutScreen()
+        layoutScreen(keyboard: insetMotion)
         ultraKeyboard?.refresh()
         updatePermissionListMaxHeight()
         if list.bounds.width != sentRowsView.width || list.traitCollection.textEnvironment != sentRowsView.text.environment {
@@ -800,8 +800,12 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         ContentWidth.maxWidth // Tablet (HappyUI/Tablet): layout.ts maxWidth, was 800 by size class.
     }
 
-    /// `keyboard` is the move UltraList's keyboard reported, for the list
-    /// to take its inset on.
+    /// The move a layout inside the composer's own animation takes the
+    /// list's inset on.
+    private var insetMotion: ChatUltraKeyboard.Change?
+
+    /// `keyboard` is the move UltraList's keyboard reported, or the
+    /// composer's, for the list to take its inset on.
     private func layoutScreen(keyboard: ChatUltraKeyboard.Change? = nil) {
         let size = view.bounds.size
         let composerHeight = composer.composerHeight(fitting: size.width)
@@ -2001,6 +2005,14 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     func composerDidInvalidateHeight(_ composer: any ChatComposerView) {
         view.setNeedsLayout()
         if isShown {
+            // UltraList never moves inside a UIView animation: its newest
+            // inset goes on the composer's own (its default curve), so the
+            // rows rise with the dock's top, not ahead of it.
+            let duration = UIView.inheritedAnimationDuration
+            let ultraList = list.ultra.list
+            let held = ultraList.isTracking || ultraList.isDragging || ultraList.isDecelerating
+            insetMotion = duration > 0 ? ChatUltraKeyboard.Change(transition: .easeInOut(duration), compensates: !held) : nil
+            defer { insetMotion = nil }
             view.layoutIfNeeded()
         } else {
             UIView.performWithoutAnimation { view.layoutIfNeeded() }

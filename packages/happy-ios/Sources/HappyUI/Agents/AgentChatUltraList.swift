@@ -45,6 +45,14 @@ final class AgentChatUltraList: UIView {
     private var insets = UIEdgeInsets.zero
     private var viewportSize = CGSize.zero
     private var contentHeight: CGFloat = 0
+    /// What the list was last given: its rows, and the room a preview's
+    /// newest row was placed in.
+    private struct Submission: Equatable {
+        struct Row: Equatable { var identity: String; var revision: UInt64 }
+        var rows: [Row]
+        var room: CGFloat?
+    }
+    private var submitted: Submission?
     /// The newest row is at the foot and the reader is on it.
     private(set) var followsNewest = true
     /// A preview's: the newest row, taller than the room it has, shows
@@ -152,6 +160,13 @@ final class AgentChatUltraList: UIView {
             start += intro.height
         }
         contentHeight = start
+        // The screen hands its rows over on every layout, the keyboard's
+        // included. The same rows again are no pass: one would land the
+        // viewport's keyboard motion where it ends, at once.
+        let submission = Submission(rows: items.map { .init(identity: $0.identity, revision: $0.revision) },
+                                    room: showsNewestFromItsStart ? viewportHeight : nil)
+        guard submission != submitted || animated || moves else { return }
+        submitted = submission
         let follows = followsNewest && !list.isTracking && !list.isDragging && !list.isDecelerating
         let target: ListScrollTarget?
         if showsNewestFromItsStart {
@@ -197,6 +212,7 @@ final class AgentChatUltraList: UIView {
         list.willBeginDragging = nil
         list.didEndDragging = nil
         list.applyChanges(items: [], transition: .none)
+        submitted = nil
         rows.removeAll()
         removeFromSuperview()
     }

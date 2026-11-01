@@ -51,6 +51,24 @@ changes height with the keyboard, and UltraView has no public way yet to
 carry a list's frame or clip on that motion. There the keyboard layout guide
 moves the screen and the controller is never made.
 
+The agents' chat has the same keyboard (`ChatViewController.ultraKeyboard`)
+wherever it is shown, since its list always runs under the card: the card,
+the context meter, the jump button, the composer's scrim and new work's
+panel ride the inset's motion. UltraList never moves inside a UIView
+animation, so a layout made in one (the card growing a line, the sessions'
+composer growing) passes the animation's own curve and duration to the
+list's inset (`insetMotion`); given none, the inset moves at once while the
+composer glides, and the rows jump ahead of it. That was the agents' chat's
+keyboard jump once it moved onto UltraList: its inset went in the
+keyboard's UIView animation with no transition of its own, so the rows
+landed 311 points in one frame while the card took the keyboard's whole
+animation.
+`HostedChatKeyboardMotionTests` samples every frame of both chats from
+their presentation layers, at the newest row and back in the history, as
+the system keyboard shows and hides and as the composer grows, and
+`ChatScrollUITests` drives both with a finger (`-screen agentChat` opens
+the agents' chat in the harness).
+
 The agents' chat preview (a context-menu preview of a chat) uses the same
 list, untouchable, showing the newest row from its start
 (`AgentChatUltraList.showsNewestFromItsStart`) under its fade.

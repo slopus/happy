@@ -18,8 +18,10 @@ import UltraView
 /// makes the library's controller, `deactivate()` once the screen has gone
 /// drops it, so nothing a covered screen lays out or hears brings it back.
 ///
-/// Only the floating dock makes one (a phone in portrait). Docked, the
-/// list follows the keyboard layout guide.
+/// Both chats have one. The sessions' chat makes one only under its
+/// floating dock (a phone in portrait); docked, its list follows the
+/// keyboard layout guide. The agents' chat has one wherever it is shown,
+/// since its list always runs under the card.
 @MainActor
 final class ChatUltraKeyboard: NSObject {
     /// The keyboard moved: the screen lays itself out again at once, the
