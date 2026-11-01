@@ -65,7 +65,7 @@ class FakeDaemon(
     var avatar: ByteArray? = null
     var endpointAdvertisement: JsonElement? = null
 
-    override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse {
+    override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
         calls += "$method $path"
         val json = body?.let { Json.parseToJsonElement(it.toString(Charsets.UTF_8)).jsonObject }
         fun ok(value: JsonObject) = TransportResponse(200, body = value.toString().toByteArray())

@@ -7,6 +7,7 @@ import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
 import android.util.Base64
 import androidx.test.platform.app.InstrumentationRegistry
+import com.slopus.happy.connection.RequestCategory
 import com.slopus.happy.connection.TransportResponse
 import com.slopus.happy.conversation.AgentRequest
 import kotlinx.serialization.json.JsonElement
@@ -36,7 +37,7 @@ class FixtureTransport {
         InstrumentationRegistry.getInstrumentation().context.assets.open("sample.mp4").use { it.readBytes() }
     }
 
-    val request: AgentRequest = { method: String, path: String, body: JsonElement? ->
+    val request: AgentRequest = { method: String, path: String, body: JsonElement?, _: RequestCategory ->
         requests += "$method $path"
         if (method == "PUT" || path.endsWith("/send")) bodies += "$method $path" to body
         answer(method, path.substringBefore('?'), body)

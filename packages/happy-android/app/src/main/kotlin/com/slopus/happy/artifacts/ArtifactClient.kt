@@ -7,6 +7,7 @@ import com.slopus.happy.chat.num
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
 import com.slopus.happy.connection.AgentConnectionException
+import com.slopus.happy.connection.RequestCategory
 import com.slopus.happy.connection.TransportResponse
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -50,6 +51,7 @@ open class ArtifactClient(private val client: AgentClient) {
             "GET",
             "/v0/artifacts/${AgentClient.escape(artifactId)}/versions/$version/files/$escaped",
             headers = range?.let { mapOf("Range" to it) } ?: emptyMap(),
+            category = RequestCategory.File,
         )
     }
 

@@ -1,6 +1,7 @@
 package com.slopus.happy.agent
 
 import com.slopus.happy.connection.AgentConnectionException
+import com.slopus.happy.connection.RequestCategory
 import com.slopus.happy.connection.Transport
 import com.slopus.happy.connection.TransportResponse
 import com.slopus.happy.connection.TransportStream
@@ -64,7 +65,7 @@ class AgentClient private constructor(private val link: suspend () -> Link) {
     }
 
     /**
-     * Sends a request. A 401 is [AgentConnectionException.Reason.Revoked];
+     * Sends a request as [category]. A 401 is [AgentConnectionException.Reason.Revoked];
      * an unreachable agent [AgentConnectionException.Reason.Unavailable];
      * any other status but 2xx and 304 an [AgentApiException].
      */
@@ -73,16 +74,17 @@ class AgentClient private constructor(private val link: suspend () -> Link) {
         path: String,
         body: JsonElement? = null,
         headers: Map<String, String> = emptyMap(),
+        category: RequestCategory = RequestCategory.Query,
     ): TransportResponse {
         val link = link()
         val bytes = body?.let { json.encodeToString(JsonElement.serializer(), it).toByteArray(Charsets.UTF_8) }
-        return check(link.transport.request(method, path, link.token, bytes, headers))
+        return check(link.transport.request(method, path, link.token, bytes, headers, category))
     }
 
-    /** Sends [bytes] as they are (an image), with their Content-Type in [headers]. */
+    /** Sends [bytes] as they are (an image), with their Content-Type in [headers]: a [RequestCategory.File]. */
     suspend fun sendBytes(method: String, path: String, bytes: ByteArray, headers: Map<String, String>): TransportResponse {
         val link = link()
-        return check(link.transport.request(method, path, link.token, bytes, headers))
+        return check(link.transport.request(method, path, link.token, bytes, headers, RequestCategory.File))
     }
 
     /** The answer to [send] decoded; an answer that doesn't decode is [AgentConnectionException.Reason.InvalidResponse]. */
@@ -128,8 +130,8 @@ class AgentClient private constructor(private val link: suspend () -> Link) {
         return link.transport.socket() to link.token
     }
 
-    /** Lets go of the tunnel, so the next request makes a new one. */
-    suspend fun reset() = link().transport.reset()
+    /** The transport and token, the credentials read and the link made on the first call. */
+    internal suspend fun resolve(): Link = link()
 
     suspend fun close() = link().transport.close()
 

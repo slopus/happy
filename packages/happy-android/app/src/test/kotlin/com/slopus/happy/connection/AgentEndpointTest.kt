@@ -118,7 +118,7 @@ class AgentEndpointTest {
         var closed = false
         var failing = false
         var gate: CompletableDeferred<TransportResponse>? = null
-        override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse {
+        override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
             if (failing) throw AgentConnectionException(AgentConnectionException.Reason.Unavailable)
             if (path == "/v0/config") gate?.let { return it.await() }
             return TransportResponse(200, body = (if (path == "/v0/config") config else "{}").toByteArray())

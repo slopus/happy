@@ -4,6 +4,7 @@ import io.tailcat.ClientConfiguration
 import io.tailcat.DERPMapCache
 import io.tailcat.DERPMapCacheEntry
 import io.tailcat.DERPMapProvider
+import io.tailcat.NodePrivateKey
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.File
@@ -11,11 +12,7 @@ import io.tailcat.TailcatClient
 import io.tailcat.TailcatConnection
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runInterruptible
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.NonCancellable
 
 /** One HTTP answer from a paired agent. Header names are lower case. */
 class TransportResponse(val status: Int, val headers: Map<String, String> = emptyMap(), val body: ByteArray = ByteArray(0)) {
@@ -29,20 +26,25 @@ class TransportResponse(val status: Int, val headers: Map<String, String> = empt
  * id, or the device token.
  */
 interface Transport {
+    /**
+     * One request as [category]: over that category's client, with its
+     * deadline. A transport with one way to the agent ignores it.
+     */
     suspend fun request(
         method: String,
         path: String,
         credential: String,
         body: ByteArray? = null,
         headers: Map<String, String> = emptyMap(),
+        category: RequestCategory = RequestCategory.Query,
     ): TransportResponse
 
     /**
-     * A GET whose answer keeps coming (Server-Sent Events): returns once the
-     * head is in; the body is read piece by piece from the
-     * [TransportStream]. A read that waits longer than [silenceMillis]
-     * fails, and lets go of the tunnel: an agent that restarted or slept
-     * never closes it.
+     * A GET whose answer keeps coming (Server-Sent Events), over the
+     * [RequestCategory.Realtime] client: returns once the head is in; the
+     * body is read piece by piece from the [TransportStream]. A read that
+     * waits longer than [silenceMillis] fails, and lets go of that client:
+     * an agent that restarted or slept never closes it.
      */
     suspend fun stream(
         path: String,
@@ -54,12 +56,18 @@ interface Transport {
     /**
      * A raw TCP stream to the agent's socket, nothing written on it yet:
      * what the in-app browser speaks HTTP and CONNECT over (iOS's
-     * `browserConnection`). Unavailable where the transport has none.
+     * `browserConnection`), over a [RequestCategory.File] client.
+     * Unavailable where the transport has none.
      */
     suspend fun socket(): TransportSocket = throw AgentConnectionException(AgentConnectionException.Reason.Unavailable)
 
-    /** Lets go of the tunnel, so the next request makes a new one. */
-    suspend fun reset() {}
+    /** Lets go of [category]'s clients, so its next request makes new ones; the other categories' stay. */
+    suspend fun reset(category: RequestCategory) {}
+
+    /** [reset] of every category. */
+    suspend fun reset() {
+        RequestCategory.entries.forEach { reset(it) }
+    }
 
     suspend fun close()
 }
@@ -75,31 +83,32 @@ interface TransportSocket {
 }
 
 /**
- * [Transport] over tailcat-kotlin: one Tailcat client per
- * agent, and a fresh TCP stream to `server.tailcat:<port>` for every
+ * [Transport] over tailcat-kotlin: the agent's [TailcatClients] (one
+ * client for the event stream, one for queries, up to eight for files and
+ * the browser), and a fresh TCP stream to `server.tailcat:<port>` for every
  * HTTP/1.1 request (`Connection: close`), as tailcat-swift is used on iOS.
- * The address is a secret; nothing here logs it.
+ * A query must be answered within [requestTimeoutMillis]; a file has
+ * [fileTimeoutMillis] in all, though any one read or write still fails
+ * after [requestTimeoutMillis] of silence. The address is a secret;
+ * nothing here logs it.
  */
-class TailcatTransport(
-    private val address: String,
+class TailcatTransport internal constructor(
     private val port: Int,
-    private val connectTimeoutMillis: Long = 20_000,
-    private val requestTimeoutMillis: Long = 35_000,
+    private val requestTimeoutMillis: Long,
+    private val fileTimeoutMillis: Long,
+    connect: (RequestCategory, NodePrivateKey) -> TailcatClient,
 ) : Transport {
-    private val lock = Mutex()
-    private var client: TailcatClient? = null
-    private var closed = false
+    constructor(
+        address: String,
+        port: Int,
+        connectTimeoutMillis: Long = 20_000,
+        requestTimeoutMillis: Long = 35_000,
+        fileTimeoutMillis: Long = 15 * 60_000,
+    ) : this(port, requestTimeoutMillis, fileTimeoutMillis, { _, key ->
+        TailcatClient.connect(address, ClientConfiguration(privateKey = key, mapProvider = derpMap, connectTimeoutMillis = connectTimeoutMillis))
+    })
 
-    private suspend fun connection(): TailcatClient = lock.withLock {
-        if (closed) throw AgentConnectionException(AgentConnectionException.Reason.Unavailable)
-        client ?: runInterruptible(Dispatchers.IO) {
-            try {
-                TailcatClient.connect(address, ClientConfiguration(mapProvider = derpMap, connectTimeoutMillis = connectTimeoutMillis))
-            } catch (e: Exception) {
-                throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
-            }
-        }.also { client = it }
-    }
+    private val clients = TailcatClients(connect, disconnect = TailcatClient::close)
 
     override suspend fun request(
         method: String,
@@ -107,13 +116,15 @@ class TailcatTransport(
         credential: String,
         body: ByteArray?,
         headers: Map<String, String>,
+        category: RequestCategory,
     ): TransportResponse {
         val head = TailcatHttp.requestHead(method, path, port, credential, body, headers)
-        val tunnel = connection()
+        val lease = clients.lease(category)
+        val deadline = if (category == RequestCategory.File) fileTimeoutMillis else requestTimeoutMillis
         return try {
-            withTimeout(requestTimeoutMillis) {
+            withTimeout(deadline) {
                 runInterruptible(Dispatchers.IO) {
-                    val stream: TailcatConnection = tunnel.openTCP(port)
+                    val stream: TailcatConnection = lease.client.openTCP(port)
                     try {
                         stream.write(head, timeoutMillis = requestTimeoutMillis)
                         if (body != null) stream.write(body, timeoutMillis = requestTimeoutMillis)
@@ -131,33 +142,36 @@ class TailcatTransport(
         } catch (e: AgentConnectionException) {
             throw e
         } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-            resetIfCurrent(tunnel)
+            failed(lease, e)
             throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
             // Nothing came back on the tunnel: the agent may have restarted and forgotten it.
-            resetIfCurrent(tunnel)
+            failed(lease, e)
             throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
+        } finally {
+            lease.release()
         }
     }
 
     override suspend fun stream(path: String, credential: String, headers: Map<String, String>, silenceMillis: Long): TransportStream {
         val head = TailcatHttp.requestHead("GET", path, port, credential, null, headers + ("Accept" to "text/event-stream"))
-        val tunnel = connection()
+        val lease = clients.lease(RequestCategory.Realtime)
         val socket: TailcatConnection = try {
             withTimeout(requestTimeoutMillis) {
                 runInterruptible(Dispatchers.IO) {
-                    tunnel.openTCP(port).also { it.write(head, timeoutMillis = requestTimeoutMillis) }
+                    lease.client.openTCP(port).also { it.write(head, timeoutMillis = requestTimeoutMillis) }
                 }
             }
-        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-            resetIfCurrent(tunnel)
-            throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
         } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
+            lease.release()
+            if (e !is kotlinx.coroutines.TimeoutCancellationException) throw e
+            failed(lease, e)
+            throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
         } catch (e: Exception) {
-            resetIfCurrent(tunnel)
+            lease.release()
+            failed(lease, e)
             throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
         }
         val reader = object : ByteSource {
@@ -166,11 +180,12 @@ class TailcatTransport(
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
-                resetIfCurrent(tunnel)
+                failed(lease, e)
                 throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
             }
 
             override fun close() {
+                lease.release()
                 try {
                     socket.close()
                 } catch (_: Exception) {
@@ -182,17 +197,17 @@ class TailcatTransport(
     }
 
     override suspend fun socket(): TransportSocket {
-        val tunnel = connection()
+        val lease = clients.lease(RequestCategory.File)
         val stream: TailcatConnection = try {
-            withTimeout(requestTimeoutMillis) { runInterruptible(Dispatchers.IO) { tunnel.openTCP(port) } }
-        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-            resetIfCurrent(tunnel)
-            throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
+            withTimeout(requestTimeoutMillis) { runInterruptible(Dispatchers.IO) { lease.client.openTCP(port) } }
         } catch (e: kotlinx.coroutines.CancellationException) {
-            throw e
+            lease.release()
+            if (e !is kotlinx.coroutines.TimeoutCancellationException) throw e
+            failed(lease, e)
+            throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
         } catch (e: Exception) {
-            // A stack out of connections is busy, not gone: keep the tunnel (and its event stream).
-            if ((e as? io.tailcat.stack.TailcatTransportException)?.reason != io.tailcat.stack.TailcatTransportException.Reason.RESOURCE_LIMIT) resetIfCurrent(tunnel)
+            lease.release()
+            failed(lease, e)
             throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
         }
         return object : TransportSocket {
@@ -214,6 +229,7 @@ class TailcatTransport(
             }
 
             override fun close() {
+                lease.release()
                 try {
                     stream.close()
                 } catch (_: Exception) {
@@ -223,27 +239,19 @@ class TailcatTransport(
         }
     }
 
-    private suspend fun resetIfCurrent(used: TailcatClient) {
-        val old = lock.withLock { client.takeIf { it === used }?.also { client = null } }
-        old?.let { closeOffMain(it) }
+    /**
+     * After [failure] on [lease]'s client, lets go of that client alone. A
+     * stack out of connections is busy, not gone: it is kept, and so is
+     * every other request on it.
+     */
+    private suspend fun failed(lease: TailcatClients<TailcatClient>.Lease, failure: Exception) {
+        val reason = (failure as? io.tailcat.stack.TailcatTransportException)?.reason
+        if (reason != io.tailcat.stack.TailcatTransportException.Reason.RESOURCE_LIMIT) clients.reset(lease)
     }
 
-    override suspend fun reset() {
-        lock.withLock { client.also { client = null } }?.let { closeOffMain(it) }
-    }
+    override suspend fun reset(category: RequestCategory) = clients.reset(category)
 
-    override suspend fun close() {
-        lock.withLock { closed = true; client.also { client = null } }?.let { closeOffMain(it) }
-    }
-
-    /** Closing a client tells the relay, which is network I/O: never on the caller's (maybe main) thread. */
-    private suspend fun closeOffMain(client: TailcatClient) = withContext(NonCancellable + Dispatchers.IO) {
-        try {
-            client.close()
-        } catch (_: Exception) {
-            // Already gone.
-        }
-    }
+    override suspend fun close() = clients.close()
 
     companion object {
         /**

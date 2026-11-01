@@ -31,7 +31,7 @@ enum AgentIdentity {
             updated.thumbhash = node.avatar?.thumbhash
             if node.avatar == nil { updated.avatar = nil; updated.avatarETag = nil }
             else {
-                let image = try await transport.request("/v0/node/avatar", credential: token, headers: account.avatarETag.map { ["If-None-Match": $0] } ?? [:])
+                let image = try await transport.request("/v0/node/avatar", credential: token, headers: account.avatarETag.map { ["If-None-Match": $0] } ?? [:], category: .file)
                 if image.status == 401 || image.status == 403 { throw PairingError.revoked }
                 switch image.status {
                 case 200:

@@ -21,6 +21,7 @@ import com.slopus.happy.agent.Wire
 import com.slopus.happy.auth.ExpoSecureStore
 import com.slopus.happy.connection.AgentConnectionCredentials
 import com.slopus.happy.connection.AgentConnections
+import com.slopus.happy.connection.RequestCategory
 import com.slopus.happy.connection.Transport
 import com.slopus.happy.connection.TransportResponse
 import com.slopus.happy.testing.SoftwareKeys
@@ -91,7 +92,7 @@ class AgentHomeLeaveTest {
     private fun session(status: Int, error: String?): AgentSession {
         val sessions = AgentSessions(connections, scope, cacheDir, MutableStateFlow<String?>(id), MutableStateFlow(true)) {
             object : Transport by agent {
-                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse {
+                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
                     if (!path.endsWith("/leave")) return agent.request(method, path, credential, body, headers)
                     synchronized(leaves) { leaves += "$method $path" }
                     gate.await()

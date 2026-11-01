@@ -108,7 +108,7 @@ class AgentConnectionsTest {
         assertEquals(200, client.request("GET", "/v0/health", original.deviceToken).status)
         val accepting = transport
         transport = { object : Transport by daemon {
-            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>) = TransportResponse(401)
+            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory) = TransportResponse(401)
         } }
         try { accounts.add(original, "Mac"); fail("revoked pairing accepted") }
         catch (error: AgentConnectionException) { assertEquals(AgentConnectionException.Reason.Revoked, error.reason) }
@@ -185,7 +185,7 @@ class AgentConnectionsTest {
     @Test
     fun aPictureThatIsntOneLeavesTheAgentReachable() = runBlocking {
         transport = { object : Transport by daemon {
-            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>) =
+            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory) =
                 if (path == "/v0/node/avatar") TransportResponse(200, mapOf("content-type" to "text/html"), "<html>".toByteArray())
                 else daemon.request(method, path, credential, body, headers)
         } }
@@ -209,7 +209,7 @@ class AgentConnectionsTest {
     @Test
     fun anUnreachableAgentIsKeptUnderTheCodesName() = runBlocking {
         transport = { object : Transport by daemon {
-            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>) =
+            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory) =
                 throw IOException("offline")
         } }
         assertEquals("Steve's Mac", accounts().add(credentials(), "Steve's Mac").name)

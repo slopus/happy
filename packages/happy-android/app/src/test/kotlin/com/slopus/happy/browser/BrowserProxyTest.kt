@@ -2,6 +2,7 @@ package com.slopus.happy.browser
 
 import com.slopus.happy.agent.AgentClient
 import com.slopus.happy.connection.AgentConnectionException
+import com.slopus.happy.connection.RequestCategory
 import com.slopus.happy.connection.Transport
 import com.slopus.happy.connection.TransportResponse
 import com.slopus.happy.connection.TransportSocket
@@ -115,7 +116,7 @@ class BrowserProxyTest {
     }
 
     private class Sockets(val port: Int) : Transport {
-        override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse =
+        override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse =
             throw AgentConnectionException(AgentConnectionException.Reason.Unavailable)
 
         override suspend fun socket(): TransportSocket = LocalSocket(Socket(InetAddress.getLoopbackAddress(), port))

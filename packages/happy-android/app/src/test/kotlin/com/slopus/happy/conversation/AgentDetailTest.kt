@@ -136,7 +136,7 @@ class AgentDetailTest {
     private class History(runs: Int) {
         val asked = ArrayList<String?>()
         private val all = (1..runs).map { """{"id":"r$it","status":"completed","messages":[{"id":"m$it","role":"user","createdAt":$it,"content":[{"type":"text","text":"https://site$it.dev"},{"type":"image","mimeType":"image/png","data":"AAAA"}]}]}""" }
-        val api = object : ConversationApi({ _, path, _ ->
+        val api = object : ConversationApi({ _, path, _, _ ->
             val before = Regex("before=([^&]+)").find(path)?.groupValues?.get(1)
             val limit = Regex("limit=(\\d+)").find(path)!!.groupValues[1].toInt()
             asked += before
@@ -163,7 +163,7 @@ class AgentDetailTest {
     }
 
     @Test fun `a page that fails says so and leaves what was read`() = runBlocking {
-        val api = object : ConversationApi({ _, _, _ -> TransportResponse(503, body = "{}".toByteArray()) }) {}
+        val api = object : ConversationApi({ _, _, _, _ -> TransportResponse(503, body = "{}".toByteArray()) }) {}
         val state = SharedFeed(api, "a1") { null }.load(media = 13, links = 6)
         assertTrue(state.failed)
         assertTrue(state.read)

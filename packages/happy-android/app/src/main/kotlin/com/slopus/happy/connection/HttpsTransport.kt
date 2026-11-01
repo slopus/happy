@@ -16,7 +16,7 @@ fun agentTransport(address: String, port: Int, publicUrl: String?, tailcatAvaila
     publicUrl != null -> HttpsTransport(AgentOrigin.parse(publicUrl))
     tailcatAvailable -> TailcatTransport(address, port)
     else -> object : Transport {
-        override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse =
+        override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse =
             throw AgentConnectionException(AgentConnectionException.Reason.Unavailable)
         override suspend fun close() { }
     }
@@ -30,14 +30,17 @@ class HttpsTransport internal constructor(
     private val origin: AgentOrigin,
     private val socketFactory: SSLSocketFactory = SSLSocketFactory.getDefault() as SSLSocketFactory,
     private val requestTimeoutMillis: Long = 35_000,
+    private val fileTimeoutMillis: Long = 15 * 60_000,
 ) : Transport {
     private val lock = Any()
     private val sockets = mutableSetOf<TlsSocket>()
     private var closed = false
 
-    override suspend fun socket(): TransportSocket {
+    override suspend fun socket(): TransportSocket = socket(RequestCategory.File)
+
+    private suspend fun socket(category: RequestCategory): TlsSocket {
         val raw = Socket()
-        val stream = TlsSocket(raw)
+        val stream = TlsSocket(raw, category)
         synchronized(lock) {
             if (closed) throw AgentConnectionException(AgentConnectionException.Reason.Unavailable)
             sockets.add(stream)
@@ -61,11 +64,11 @@ class HttpsTransport internal constructor(
         }
     }
 
-    override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse {
+    override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
         val head = TailcatHttp.requestHead(method, path, origin.port, credential, body, headers, origin.authority)
         try {
-            return withTimeout(requestTimeoutMillis) {
-                val stream = socket()
+            return withTimeout(if (category == RequestCategory.File) fileTimeoutMillis else requestTimeoutMillis) {
+                val stream = socket(category)
                 try {
                     stream.write(head)
                     if (body != null) stream.write(body)
@@ -88,7 +91,7 @@ class HttpsTransport internal constructor(
 
     override suspend fun stream(path: String, credential: String, headers: Map<String, String>, silenceMillis: Long): TransportStream {
         val head = TailcatHttp.requestHead("GET", path, origin.port, credential, null, headers + ("Accept" to "text/event-stream"), origin.authority)
-        val socket = socket() as TlsSocket
+        val socket = socket(RequestCategory.Realtime)
         try {
             socket.timeout(silenceMillis.coerceIn(1, Int.MAX_VALUE.toLong()).toInt())
             socket.write(head)
@@ -97,6 +100,11 @@ class HttpsTransport internal constructor(
                 override fun close() = socket.close()
             })
         } catch (error: Throwable) { socket.close(); throw error }
+    }
+
+    override suspend fun reset(category: RequestCategory) {
+        val old = synchronized(lock) { sockets.filter { it.category == category }.also { sockets.removeAll(it.toSet()) } }
+        old.forEach { it.close() }
     }
 
     override suspend fun reset() {
@@ -109,7 +117,7 @@ class HttpsTransport internal constructor(
         reset()
     }
 
-    private inner class TlsSocket(private val raw: Socket) : TransportSocket {
+    private inner class TlsSocket(private val raw: Socket, val category: RequestCategory) : TransportSocket {
         override val authority: String get() = origin.authority
         private var tls: SSLSocket? = null
         private var ended = false

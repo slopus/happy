@@ -73,6 +73,29 @@ final class DaemonTests: XCTestCase {
         XCTAssertEqual(hello?.event, "hello")
     }
 
+    /// As the app makes it, the endpoint over the per-category clients: the
+    /// event stream stays open while a query and a file go, and while the
+    /// query clients are let go and made again.
+    func testEachCategoryGoesOverItsOwnClient() async throws {
+        let credentials = try await credentials()
+        let endpoint = AgentEndpoint(credentials) { _ in }
+        let transport = AgentEndpointTransport(endpoint: endpoint) { AgentHTTPTransport(address: $0.address, port: $0.port, publicUrl: $0.publicUrl, tailcatAvailable: $0.tailcatAvailable != false) }
+        let client = AgentClient(transport: transport, token: credentials.deviceToken)
+        let health = try await client.health()
+        XCTAssertTrue(health.ready)
+        var frames = try await client.events(after: nil).makeAsyncIterator()
+        let hello = try await frames.next()
+        XCTAssertEqual(hello?.event, "hello")
+        let bots = try await client.bots()
+        XCTAssertFalse(bots.isEmpty)
+        let avatar = try await transport.request(method: "GET", path: "/v0/node/avatar", credential: credentials.deviceToken, body: nil, headers: ["Accept": "image/*"], category: .file)
+        XCTAssertTrue([200, 404].contains(avatar.status), "\(avatar.status)")
+        await transport.reset(.query)
+        let again = try await client.bots()
+        XCTAssertEqual(again.count, bots.count)
+        await transport.close()
+    }
+
     func testStoreFoldsAndHearsItsOwnEcho() async throws {
         let credentials = try await credentials()
         let (api, _) = try daemon()

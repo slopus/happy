@@ -12,18 +12,28 @@ public struct HTTP1Response: Sendable {
 }
 
 public protocol AgentTransport: Sendable {
-    /// A raw connection, for the browser's scoped HTTP and CONNECT bridges.
+    /// A raw connection, for the browser's scoped HTTP and CONNECT bridges:
+    /// over a `.file` client.
     func browserConnection() async throws -> any BrowserStream
+    /// A `.query`.
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response
-    /// A bounded file write with a longer deadline than small API requests.
+    /// `request` as `category`: over that category's client, with its
+    /// deadline. A transport with one way to the computer ignores it.
+    func request(method: String, path: String, credential: String, body: Data?, headers: [String: String], category: RequestCategory) async throws -> HTTP1Response
+    /// A bounded file write with a longer deadline than small API requests: a `.file`.
     func upload(path: String, credential: String, body: Data) async throws -> HTTP1Response
     /// `upload`, or a `request` with `method`, telling `sent` how many of
     /// the body's bytes have gone out as they go: a sending picture's ring.
     func send(method: String, path: String, credential: String, body: Data, upload: Bool, sent: @escaping @Sendable (Int) -> Void) async throws -> HTTP1Response
-    /// A GET whose body arrives as it is written, for an event stream.
+    /// `send`'s request as `category`.
+    func send(method: String, path: String, credential: String, body: Data, category: RequestCategory, sent: @escaping @Sendable (Int) -> Void) async throws -> HTTP1Response
+    /// A GET whose body arrives as it is written, for an event stream: over
+    /// the `.realtime` client.
     func stream(path: String, credential: String, headers: [String: String]) async throws -> HTTP1Stream
-    /// Lets go of the connection so the next request makes a new one.
+    /// Lets go of every connection so the next request makes a new one.
     func reset() async
+    /// Lets go of `category`'s connections; the other categories' stay.
+    func reset(_ category: RequestCategory) async
     func close() async
 }
 
@@ -39,6 +49,10 @@ public struct HTTP1Stream: Sendable {
 }
 
 extension AgentTransport {
+    public func request(method: String, path: String, credential: String, body: Data?, headers: [String: String], category: RequestCategory) async throws -> HTTP1Response {
+        try await request(method: method, path: path, credential: credential, body: body, headers: headers)
+    }
+
     public func upload(path: String, credential: String, body: Data) async throws -> HTTP1Response {
         try await request(method: "PUT", path: path, credential: credential, body: body, headers: ["Content-Type": "application/json"])
     }
@@ -52,164 +66,168 @@ extension AgentTransport {
         return response
     }
 
+    public func send(method: String, path: String, credential: String, body: Data, category: RequestCategory, sent: @escaping @Sendable (Int) -> Void) async throws -> HTTP1Response {
+        try await send(method: method, path: path, credential: credential, body: body, upload: false, sent: sent)
+    }
+
     public func stream(path: String, credential: String, headers: [String: String]) async throws -> HTTP1Stream {
         throw PairingError.unavailable
     }
 
     public func reset() async {}
 
-    func request(_ path: String, credential: String, method: String = "GET", body: Data? = nil, headers: [String: String] = [:]) async throws -> HTTP1Response {
-        try await request(method: method, path: path, credential: credential, body: body, headers: headers)
+    public func reset(_ category: RequestCategory) async { await reset() }
+
+    func request(_ path: String, credential: String, method: String = "GET", body: Data? = nil, headers: [String: String] = [:], category: RequestCategory = .query) async throws -> HTTP1Response {
+        try await request(method: method, path: path, credential: credential, body: body, headers: headers, category: category)
     }
 }
 
-/// One transport per account. HTTPS uses platform-verified TLS; otherwise
-/// `server.tailcat` is a logical authority over the private tunnel.
-public actor AgentHTTPTransport: SelfMeteringTransport {
-    private let address: String
+/// The computer's API, one transport per account. HTTPS uses
+/// platform-verified TLS; otherwise it goes over the account's
+/// `TailcatClients`: one client for the event stream, one for queries, up to
+/// eight for files and the browser, and `server.tailcat` is a logical
+/// authority, never a DNS lookup. Each HTTP request owns a fresh TCP stream.
+/// A query must be answered within 35 seconds, a file within 15 minutes.
+public final class AgentHTTPTransport: SelfMeteringTransport {
     let port: UInt16
     private let publicUrl: String?
     private let tailcatAvailable: Bool
-    nonisolated let authority: String
-    private var publicStreams: [UUID: any BrowserStream] = [:]
-    private var client: TailcatClient?
-    private var connecting: Task<TailcatClient, Error>?
-    private var closed = false
+    let authority: String
     /// The account's recorder, once a metered transport is over this one.
-    nonisolated let meter = MeterSlot()
-    /// The tunnel up now, as the recorder knows it.
-    private var tunnelID: UUID?
+    let meter: MeterSlot
+    let clients: TailcatClients<Tunnel>
+    private let publicFlows = PublicFlows()
 
-    public init(address: String, port: UInt16, publicUrl: String? = nil, tailcatAvailable: Bool = true) {
-        self.address = address; self.port = port; self.publicUrl = publicUrl
-        self.tailcatAvailable = tailcatAvailable
-        authority = publicUrl.map { String($0.dropFirst("https://".count)) } ?? "server.tailcat:\(port)"
+    /// One Tailcat client, and its id with the recorder while it is up.
+    final class Tunnel: Sendable {
+        let client: TailcatClient
+        let id: UUID?
+        init(_ client: TailcatClient, id: UUID?) { self.client = client; self.id = id }
     }
 
-    public nonisolated func attach(_ metrics: ConnectionMetrics) { meter.metrics = metrics }
+    public convenience init(address: String, port: UInt16, publicUrl: String? = nil, tailcatAvailable: Bool = true) {
+        self.init(port: port, publicUrl: publicUrl, tailcatAvailable: tailcatAvailable) { _, key in
+            var config = TailcatClient.Configuration()
+            config.connectTimeout = 20
+            config.privateKey = key
+            return try await TailcatClient.connect(to: address, configuration: config)
+        }
+    }
+
+    /// `connect` makes one client of `category` with its own node key.
+    init(port: UInt16, publicUrl: String? = nil, tailcatAvailable: Bool = true, connect: @escaping @Sendable (RequestCategory, NodePrivateKey) async throws -> TailcatClient) {
+        self.port = port; self.publicUrl = publicUrl; self.tailcatAvailable = tailcatAvailable
+        authority = publicUrl.map { String($0.dropFirst("https://".count)) } ?? "server.tailcat:\(port)"
+        let meter = MeterSlot()
+        self.meter = meter
+        clients = TailcatClients(connect: { category, key in
+            do {
+                let client = try await connect(category, key)
+                return Tunnel(client, id: await Self.up(client, port: port, metrics: meter.metrics))
+            } catch {
+                if !(error is CancellationError) { meter.metrics?.failed("Tailcat connect: \(MeteredError.describe(error))") }
+                throw error
+            }
+        }, disconnect: { tunnel in
+            if let id = tunnel.id { meter.metrics?.tunnelDown(id) }
+            await tunnel.client.close()
+        })
+    }
+
+    public func attach(_ metrics: ConnectionMetrics) { meter.metrics = metrics }
+
+    /// Tells the recorder `client` is up, and how to ask it its path and flows.
+    private static func up(_ client: TailcatClient, port: UInt16, metrics: ConnectionMetrics?) async -> UUID? {
+        guard let metrics else { return nil }
+        let id = UUID()
+        let address = await client.serverAddress
+        metrics.tunnelUp(id, info: info(address, port: port), flows: { [weak client] in
+            guard let statistics = await client?.flowStatistics else { return nil }
+            return TunnelFlows(open: statistics.open, closing: statistics.closing,
+                               openLimit: TailcatFlowStatistics.openLimit, closingLimit: TailcatFlowStatistics.closingLimit)
+        }) { [weak client] in
+            switch await client?.path {
+            case .relay: .relayed
+            case .direct(let endpoint): .direct(endpoint: endpoint)
+            case nil: nil
+            }
+        }
+        return id
+    }
 
     public func close() async {
-        closed = true
-        connecting?.cancel(); connecting = nil
-        let old = client; client = nil
-        tunnelDown()
-        await old?.close()
-        await closePublicStreams()
+        await clients.close()
+        await publicFlows.shut()
     }
 
-    /// A computer whose daemon restarted has forgotten this tunnel's session
+    /// A computer whose daemon restarted has forgotten a tunnel's session
     /// and drops what it sends until the tunnel rekeys, minutes later; a new
     /// tunnel handshakes at once.
     public func reset() async {
-        let old = client; client = nil
-        tunnelDown()
-        await old?.close()
-        await closePublicStreams()
+        for category in RequestCategory.allCases { await reset(category) }
     }
 
-    private func closePublicStreams() async {
-        let streams = publicStreams.values; publicStreams.removeAll()
-        for stream in streams { await stream.close() }
+    public func reset(_ category: RequestCategory) async {
+        await clients.reset(category)
+        await publicFlows.close(category)
     }
 
-    private func forgetPublicStream(_ id: UUID) { publicStreams[id] = nil }
-
-    private func tunnelDown() {
-        guard let id = tunnelID else { return }
-        tunnelID = nil
-        meter.metrics?.tunnelDown(id)
-    }
-
-    /// A TCP flow to the computer, counted on the channel the request
-    /// that opens it names (`MetricsScope.channel`).
-    func flow(_ client: TailcatClient?) async throws -> any BrowserStream {
-        guard !closed else { throw CancellationError() }
-        let raw: any BrowserStream
+    /// The way a `category` request goes: a lease on one of that
+    /// category's Tailcat clients, or none over HTTPS.
+    func lease(_ category: RequestCategory) async throws -> TailcatClients<Tunnel>.Lease? {
         if let publicUrl {
-            let origin = try AgentOrigin(publicUrl)
-            let id = UUID()
-            raw = try HTTPSBrowserStream.open(origin) { [weak self] in
-                Task { await self?.forgetPublicStream(id) }
-            }
-            publicStreams[id] = raw
-        } else {
-            guard let client else { throw PairingError.unavailable }
-            raw = try await client.openTCP(port: port)
+            guard !publicFlows.isShut else { throw CancellationError() }
+            _ = try AgentOrigin(publicUrl)
+            return nil
         }
-        guard let metrics = meter.metrics else { return raw }
-        return MeteredStream(raw, metrics: metrics, channel: MetricsScope.channel ?? (publicUrl == nil ? .tailcat : .http))
-    }
-
-    /// Resets the tunnel if it is still `used`, after a failure on it.
-    func reset(_ used: TailcatClient?) async {
-        guard let used else { return }
-        guard client === used else { return }
-        await reset()
-    }
-
-    func connection() async throws -> TailcatClient? {
-        guard !closed else { throw CancellationError() }
-        if let publicUrl { _ = try AgentOrigin(publicUrl); return nil }
         guard tailcatAvailable else { throw PairingError.unavailable }
-        if let client { return client }
-        let task: Task<TailcatClient, Error>
-        if let connecting { task = connecting }
-        else {
-            let address = address
-            task = Task { var config = TailcatClient.Configuration(); config.connectTimeout = 20; return try await TailcatClient.connect(to: address, configuration: config) }
-            connecting = task
-        }
-        do {
-            let value = try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
-            // Read before the state below changes, with no wait in between.
-            let tunnel = meter.metrics == nil ? nil : await value.serverAddress
-            guard !closed, !Task.isCancelled else { await value.close(); throw CancellationError() }
-            connecting = nil
-            // Callers that waited on the same connect see it up once.
-            guard client !== value else { return value }
-            client = value
-            if let metrics = meter.metrics, let tunnel {
-                let id = UUID()
-                tunnelID = id
-                metrics.tunnelUp(id, info: Self.info(tunnel, port: port), flows: { [weak value] in
-                    guard let statistics = await value?.flowStatistics else { return nil }
-                    return TunnelFlows(open: statistics.open, closing: statistics.closing,
-                                       openLimit: TailcatFlowStatistics.openLimit, closingLimit: TailcatFlowStatistics.closingLimit)
-                }) { [weak value] in
-                    switch await value?.path {
-                    case .relay: .relayed
-                    case .direct(let endpoint): .direct(endpoint: endpoint)
-                    case nil: nil
-                    }
-                }
-            }
-            return value
-        } catch {
-            connecting = nil
-            if !(error is CancellationError) { meter.metrics?.failed("Tailcat connect: \(MeteredError.describe(error))") }
-            throw error
-        }
+        return try await clients.lease(category)
     }
+
+    /// Lets go of `lease`'s client after a failure on it; HTTPS has none.
+    func reset(_ lease: TailcatClients<Tunnel>.Lease?) async {
+        if let lease { await clients.reset(lease) }
+    }
+
+    /// A TCP flow to the computer over `lease`'s client, or over HTTPS
+    /// without one, counted on the channel the request that opens it names
+    /// (`MetricsScope.channel`). Closing it lets go of the lease.
+    func flow(_ lease: TailcatClients<Tunnel>.Lease?, _ category: RequestCategory) async throws -> any BrowserStream {
+        let raw: any BrowserStream
+        if let lease { raw = try await lease.client.client.openTCP(port: port) }
+        else if let publicUrl { raw = try publicFlows.open(AgentOrigin(publicUrl), category) }
+        else { throw PairingError.unavailable }
+        let counted = meter.metrics.map { MeteredStream(raw, metrics: $0, channel: MetricsScope.channel ?? (lease == nil ? .http : .tailcat)) } ?? raw
+        return lease.map { LeasedStream(counted, lease: $0) } ?? counted
+    }
+
+    /// How long `category`'s request may take, written and answered.
+    static func deadline(_ category: RequestCategory) -> Duration { category == .file ? .seconds(15 * 60) : .seconds(35) }
 
     public func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
-        try await request(method: method, path: path, credential: credential, body: body, headers: headers, sent: nil)
+        try await request(method: method, path: path, credential: credential, body: body, headers: headers, category: .query)
     }
 
-    private func request(method: String, path: String, credential: String, body: Data?, headers: [String: String], sent: (@Sendable (Int) -> Void)?) async throws -> HTTP1Response {
+    public func request(method: String, path: String, credential: String, body: Data?, headers: [String: String], category: RequestCategory) async throws -> HTTP1Response {
+        try await perform(method: method, path: path, credential: credential, body: body, headers: headers, category: category, sent: nil)
+    }
+
+    private func perform(method: String, path: String, credential: String, body: Data?, headers: [String: String], category: RequestCategory, sent: (@Sendable (Int) -> Void)?) async throws -> HTTP1Response {
         guard ["GET", "POST", "PATCH", "PUT", "DELETE"].contains(method), Self.safe(path: path, credential: credential, headers: headers) else { throw PairingError.invalidResponse }
-        let client = try await connection()
-        let port = port
+        let lease = try await lease(category)
+        defer { lease?.release() }
         do {
-            return try await exchange(client: client, port: port, method: method, path: path, credential: credential, body: body, headers: headers, timeout: .seconds(35), sent: sent)
+            return try await exchange(lease: lease, category: category, method: method, path: path, credential: credential, body: body, headers: headers, timeout: Self.deadline(category), sent: sent)
         } catch {
-            if Self.lostTunnel(error) { await reset(client) }
+            if Self.lostTunnel(error) { await reset(lease) }
             throw error
         }
     }
 
     /// Whether `error` says the tunnel carried nothing back (a timeout, a
     /// stream it could not open), rather than a refused or garbled answer.
-    nonisolated static func lostTunnel(_ error: Error) -> Bool {
+    static func lostTunnel(_ error: Error) -> Bool {
         if error is CancellationError { return false }
         if let error = error as? PairingError { return error == .unavailable }
         return true
@@ -222,27 +240,22 @@ public actor AgentHTTPTransport: SelfMeteringTransport {
     public func send(method: String, path: String, credential: String, body: Data, upload: Bool, sent: @escaping @Sendable (Int) -> Void) async throws -> HTTP1Response {
         upload
             ? try await self.upload(path: path, credential: credential, body: body, sent: sent)
-            : try await request(method: method, path: path, credential: credential, body: body, headers: [:], sent: sent)
+            : try await perform(method: method, path: path, credential: credential, body: body, headers: [:], category: .query, sent: sent)
+    }
+
+    public func send(method: String, path: String, credential: String, body: Data, category: RequestCategory, sent: @escaping @Sendable (Int) -> Void) async throws -> HTTP1Response {
+        try await perform(method: method, path: path, credential: credential, body: body, headers: [:], category: category, sent: sent)
     }
 
     private func upload(path: String, credential: String, body: Data, sent: (@Sendable (Int) -> Void)?) async throws -> HTTP1Response {
-        guard body.count <= 72 * 1024 * 1024, Self.safe(path: path, credential: credential, headers: [:]) else {
-            throw PairingError.invalidResponse
-        }
-        let client = try await connection()
-        do {
-            return try await exchange(client: client, port: port, method: "PUT", path: path, credential: credential,
-                body: body, headers: [:], timeout: .seconds(15 * 60), sent: sent)
-        } catch {
-            if Self.lostTunnel(error) { await reset(client) }
-            throw error
-        }
+        guard body.count <= 72 * 1024 * 1024 else { throw PairingError.invalidResponse }
+        return try await perform(method: "PUT", path: path, credential: credential, body: body, headers: [:], category: .file, sent: sent)
     }
 
-    private nonisolated func exchange(client: TailcatClient?, port: UInt16, method: String, path: String, credential: String, body: Data?, headers: [String: String], timeout: Duration, sent: (@Sendable (Int) -> Void)?) async throws -> HTTP1Response {
+    private func exchange(lease: TailcatClients<Tunnel>.Lease?, category: RequestCategory, method: String, path: String, credential: String, body: Data?, headers: [String: String], timeout: Duration, sent: (@Sendable (Int) -> Void)?) async throws -> HTTP1Response {
         try await withThrowingTaskGroup(of: HTTP1Response.self) { group in
             group.addTask {
-                let stream = try await self.flow(client)
+                let stream = try await self.flow(lease, category)
                 return try await withTaskCancellationHandler {
                     do {
                         var head = "\(method) \(path) HTTP/1.1\r\nHost: \(self.authority)\r\nAuthorization: Bearer \(credential)\r\nConnection: close\r\nAccept: application/json\r\nContent-Length: \(body?.count ?? 0)\r\n"
@@ -284,10 +297,72 @@ public actor AgentHTTPTransport: SelfMeteringTransport {
 /// Kept for callers that construct the original tunnel-only transport.
 public typealias TailcatHTTPTransport = AgentHTTPTransport
 
+/// The HTTPS flows open now, by category, so a reset closes only its own.
+final class PublicFlows: @unchecked Sendable {
+    private let lock = NSLock()
+    private var flows: [UUID: (RequestCategory, any BrowserStream)] = [:]
+    private var shutDown = false
+
+    var isShut: Bool { lock.lock(); defer { lock.unlock() }; return shutDown }
+
+    func open(_ origin: AgentOrigin, _ category: RequestCategory) throws -> any BrowserStream {
+        let id = UUID()
+        let stream = try HTTPSBrowserStream.open(origin) { [weak self] in self?.forget(id) }
+        lock.lock()
+        guard !shutDown else { lock.unlock(); Task { await stream.close() }; throw CancellationError() }
+        flows[id] = (category, stream)
+        lock.unlock()
+        return stream
+    }
+
+    private func forget(_ id: UUID) { lock.lock(); flows[id] = nil; lock.unlock() }
+
+    func close(_ category: RequestCategory) async {
+        let closing = lock.withLock {
+            let closing = flows.filter { $0.value.0 == category }
+            for id in closing.keys { flows[id] = nil }
+            return closing
+        }
+        for (_, stream) in closing.values { await stream.close() }
+    }
+
+    func shut() async {
+        let closing = lock.withLock {
+            shutDown = true
+            let closing = Array(flows.values)
+            flows.removeAll()
+            return closing
+        }
+        for (_, stream) in closing { await stream.close() }
+    }
+}
+
+/// A flow that holds its client's lease until it is closed, or dropped.
+final class LeasedStream: BrowserStream, @unchecked Sendable {
+    let base: any BrowserStream
+    private let release: @Sendable () -> Void
+
+    init<Client: AnyObject & Sendable>(_ base: any BrowserStream, lease: TailcatClients<Client>.Lease) {
+        self.base = base
+        release = { lease.release() }
+    }
+
+    deinit { release() }
+
+    var authority: String { base.authority }
+    func read(maximumBytes: Int) async throws -> Data { try await base.read(maximumBytes: maximumBytes) }
+    func write(_ data: Data) async throws { try await base.write(data) }
+
+    func close() async {
+        await base.close()
+        release()
+    }
+}
+
 extension TailcatHTTPTransport {
     /// What the recorder may show of a tunnel: its relay and the computer's
     /// public node key, never the address (it holds the tunnel's secrets).
-    nonisolated static func info(_ address: TailcatAddress, port: UInt16) -> TunnelInfo {
+    static func info(_ address: TailcatAddress, port: UInt16) -> TunnelInfo {
         let region = address.regions.first { $0.regionID == address.regionID } ?? address.regions.first
         let key = address.serverPublicKey.description
         let short = key.hasPrefix("nodekey:") ? "nodekey:" + key.dropFirst(8).prefix(8) + "…" : String(key.prefix(16)) + "…"

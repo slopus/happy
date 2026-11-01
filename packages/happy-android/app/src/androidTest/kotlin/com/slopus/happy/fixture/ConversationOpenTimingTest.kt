@@ -71,7 +71,7 @@ class ConversationOpenTimingTest {
     private val bootstrap = """{"agent":{"id":"timing","workspaceId":"w","status":"idle","title":"Timing"},"mode":null,"draft":null,"pending":[]}"""
 
     /** The agent: answers after [latencyMillis], or never when null (no network). */
-    private fun agent(latencyMillis: Long?): AgentRequest = { _, path, _ ->
+    private fun agent(latencyMillis: Long?): AgentRequest = { _, path, _, _ ->
         if (latencyMillis == null) awaitCancellation()
         delay(latencyMillis)
         val route = path.substringBefore('?')

@@ -12,11 +12,28 @@ labelled unverified. No credentials are stored until the final proof checks.
 The authenticated node name and avatar are fetched before the paired account
 is activated when reachable; otherwise its initial name is “Happy Agent”.
 
-`TailcatHTTPTransport` retains a Tailcat client for each instance and opens a
-fresh TCP stream per request, mapping the logical `server.tailcat` authority
-to `openTCP(port:)`. Responses support content length, chunking and EOF,
-with bounded bodies, metadata and request deadlines. Cancellation closes the
-request stream; instance teardown closes the client.
+`AgentHTTPTransport` (still also named `TailcatHTTPTransport`) keeps several
+Tailcat clients for each instance (`TailcatClients`), picked by each
+request's `RequestCategory`: one for
+`.realtime` (the event stream), one for `.query` (ordinary API calls, the
+default) and up to eight for `.file` (pictures and avatars, attachments,
+messages with images, tool-call media, artifact files, and the in-app
+browser's streams). Each is made on first use with a node key of its own,
+fresh on every connect: the computer and the DERP relay tell clients apart by
+node key, and a relay keeps one connection per key. A file request goes to
+the file client with the fewest requests in flight, and another is made only
+while every one is busy. A query has 35 seconds, a file 15 minutes. A
+failure resets only the client it happened on, so a broken file client never
+drops the event stream; the event stream's silence watchdog resets only
+`.realtime`. Every client's tunnel reports to the same `ConnectionMetrics`.
+Over HTTPS (a computer with a public URL) there are no clients; each flow is
+its own TLS connection, still tagged with its category, so a reset closes
+only that category's, and the deadlines are the same. `AgentEndpointTransport`
+passes the category on to whichever transport it has picked.
+Each request opens a fresh TCP stream, mapping the logical `server.tailcat`
+authority to `openTCP(port:)`. Responses support content length, chunking
+and EOF, with bounded bodies, metadata and request deadlines. Cancellation
+closes the request stream; instance teardown closes every client.
 
 Direct credentials use the existing `AccountKeychainBackend` under their own
 `happy-ios:direct-device` service. They contain the secret Tailcat address,

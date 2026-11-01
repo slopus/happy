@@ -39,7 +39,8 @@ public final class AgentClient: Sendable {
 
     /// `raw` is sent as is, in place of `json` (an upload's bytes).
     /// `sent` hears the body's bytes as they are written.
-    func send(_ method: String, _ path: String, json: JSONValue? = nil, raw: Data? = nil, headers: [String: String] = [:], sent: (@Sendable (Int) -> Void)? = nil) async throws -> HTTP1Response {
+    func send(_ method: String, _ path: String, json: JSONValue? = nil, raw: Data? = nil, headers: [String: String] = [:], category: RequestCategory = .query,
+              sent: (@Sendable (Int) -> Void)? = nil) async throws -> HTTP1Response {
         #if DEBUG
         if method != "GET", let slow = Self.slowWrites { try await Task.sleep(for: .seconds(slow)) }
         #endif
@@ -48,9 +49,9 @@ public final class AgentClient: Sendable {
         let body = try raw ?? json.map { try encoder.encode($0) }
         let response: HTTP1Response
         if let sent, let body, headers.isEmpty {
-            response = try await transport.send(method: method, path: path, credential: token, body: body, upload: false, sent: sent)
+            response = try await transport.send(method: method, path: path, credential: token, body: body, category: category, sent: sent)
         } else {
-            response = try await transport.request(method: method, path: path, credential: token, body: body, headers: headers)
+            response = try await transport.request(method: method, path: path, credential: token, body: body, headers: headers, category: category)
         }
         if response.status == 401 { throw AgentClientError.revoked }
         guard (200..<300).contains(response.status) || response.status == 304 || response.status == 206 else {
@@ -357,8 +358,10 @@ public final class AgentClient: Sendable {
         }
         object["mode"] = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(mode))
         let path = "/v0/agents/\(Self.escape(agentId))/send"
+        // Pictures make it a file's size: a file's client and deadline.
+        let category: RequestCategory = images.isEmpty ? .query : .file
         guard let progress, !images.isEmpty else {
-            _ = try await send("POST", path, json: .object(object))
+            _ = try await send("POST", path, json: .object(object), category: category)
             return
         }
         let encoder = JSONEncoder()
@@ -368,7 +371,7 @@ public final class AgentClient: Sendable {
         // so far say how far each one is.
         let ranges = UploadRanges(body: body, encoded: encoded)
         progress(ranges.shares(sent: 0))
-        _ = try await send("POST", path, raw: body, sent: { progress(ranges.shares(sent: $0)) })
+        _ = try await send("POST", path, raw: body, category: category, sent: { progress(ranges.shares(sent: $0)) })
     }
 
     /// The composer's draft as the computer keeps it for this person.
@@ -429,7 +432,7 @@ public final class AgentClient: Sendable {
     /// A media item's bytes, whole or one range of them.
     public func media(_ agentId: String, toolCallId: String, index: Int, range: ClosedRange<Int>? = nil) async throws -> HTTP1Response {
         let headers = range.map { ["Range": "bytes=\($0.lowerBound)-\($0.upperBound)"] } ?? [:]
-        return try await send("GET", "/v0/agents/\(Self.escape(agentId))/tool-calls/\(Self.escape(toolCallId))/media/\(index)", headers: headers)
+        return try await send("GET", "/v0/agents/\(Self.escape(agentId))/tool-calls/\(Self.escape(toolCallId))/media/\(index)", headers: headers, category: .file)
     }
 
     // MARK: Sidebar proposals
@@ -463,7 +466,7 @@ public final class AgentClient: Sendable {
     /// `client.js` and the rest (`GET /v0/artifacts/:id/api/v1/*`). `path` is
     /// what follows `api/v1/`, escaped as the page wrote it.
     public func artifactAPI(_ artifactId: String, path: String) async throws -> HTTP1Response {
-        try await send("GET", "/v0/artifacts/\(Self.escape(artifactId))/api/v1/\(path)")
+        try await send("GET", "/v0/artifacts/\(Self.escape(artifactId))/api/v1/\(path)", category: .file)
     }
 
     /// One version of an artifact, `nil` for the latest: its entry, its files
@@ -478,7 +481,7 @@ public final class AgentClient: Sendable {
     public func artifactFile(_ artifactId: String, version: Int, path: String, range: String? = nil) async throws -> HTTP1Response {
         let headers = range.map { ["Range": $0] } ?? [:]
         let escaped = path.split(separator: "/", omittingEmptySubsequences: false).map { Self.escape(String($0)) }.joined(separator: "/")
-        return try await send("GET", "/v0/artifacts/\(Self.escape(artifactId))/versions/\(version)/files/\(escaped)", headers: headers)
+        return try await send("GET", "/v0/artifacts/\(Self.escape(artifactId))/versions/\(version)/files/\(escaped)", headers: headers, category: .file)
     }
 
     /// One answer holds at most 8 MiB, so a whole file is read in ranges
@@ -535,7 +538,7 @@ public final class AgentClient: Sendable {
     /// A daemon-relative image such as a bot's avatar.
     public func image(_ path: String) async throws -> Data {
         guard path.hasPrefix("/v0/") else { throw AgentClientError.invalidResponse }
-        return try await send("GET", path).body
+        return try await send("GET", path, category: .file).body
     }
 
     // MARK: Events
@@ -575,7 +578,7 @@ public final class AgentClient: Sendable {
     private static func watch(_ continuation: AsyncThrowingStream<ServerSentEvent, Error>.Continuation, transport: any AgentTransport) -> Task<Void, Never> {
         Task {
             guard (try? await Task.sleep(for: silence)) != nil else { return }
-            await transport.reset()
+            await transport.reset(.realtime)
             continuation.finish(throwing: PairingError.unavailable)
         }
     }

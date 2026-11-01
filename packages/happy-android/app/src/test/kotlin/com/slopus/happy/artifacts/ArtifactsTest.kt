@@ -1,6 +1,7 @@
 package com.slopus.happy.artifacts
 
 import com.slopus.happy.agent.AgentClient
+import com.slopus.happy.connection.RequestCategory
 import com.slopus.happy.connection.Transport
 import com.slopus.happy.connection.TransportResponse
 import kotlinx.coroutines.runBlocking
@@ -23,7 +24,7 @@ class ArtifactsTest {
     /** Answers by path; records each request with its Range header. */
     private class Routes(val answer: (path: String, range: String?) -> TransportResponse) : Transport {
         val asked = mutableListOf<Pair<String, String?>>()
-        override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse {
+        override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
             asked += path to headers["Range"]
             return answer(path, headers["Range"])
         }

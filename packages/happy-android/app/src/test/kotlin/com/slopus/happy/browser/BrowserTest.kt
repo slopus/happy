@@ -2,6 +2,7 @@ package com.slopus.happy.browser
 
 import com.slopus.happy.agent.AgentClient
 import com.slopus.happy.connection.AgentConnectionException
+import com.slopus.happy.connection.RequestCategory
 import com.slopus.happy.connection.Transport
 import com.slopus.happy.connection.TransportResponse
 import com.slopus.happy.connection.TransportSocket
@@ -31,7 +32,7 @@ class BrowserTest {
     }
 
     private class Sockets(val bytes: Bytes) : Transport {
-        override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse =
+        override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse =
             throw AgentConnectionException(AgentConnectionException.Reason.Unavailable)
 
         override suspend fun socket(): TransportSocket = bytes
@@ -39,7 +40,7 @@ class BrowserTest {
     }
 
     private class Routing(val responses: Map<String, String>) : Transport {
-        override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>) =
+        override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory) =
             TransportResponse(if (responses[path] == null) 404 else 200, body = (responses[path] ?: "{}").toByteArray())
 
         override suspend fun close() {}

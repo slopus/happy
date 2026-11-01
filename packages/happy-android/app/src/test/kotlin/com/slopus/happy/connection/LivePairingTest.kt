@@ -1,6 +1,7 @@
 package com.slopus.happy.connection
 
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assume.assumeTrue
 import org.junit.Test
 import java.io.File
@@ -29,10 +30,25 @@ class LivePairingTest {
             out.appendText("paired deviceId=${credentials.deviceId}\n")
             // The device token on a fresh tunnel, as the app reconnects later.
             transport.close()
-            val again = TailcatTransport(credentials.address, credentials.port)
+            // As the app makes it: the endpoint over the per-category clients.
+            val again = AgentEndpointTransport(AgentEndpoint(credentials) { }) { agentTransport(it.address, it.port, it.publicUrl, it.tailcatAvailable != false) }
             try {
                 val agent = AgentIdentity.refresh(again, credentials.deviceToken, fallbackName = link.name)
                 out.appendText("connected name=${agent.name} protocol=${agent.protocol} daemon=${agent.daemonVersion}\n")
+                // The event stream stays open while a query and a file go,
+                // and while the query clients are let go and made again.
+                val events = again.stream("/v0/events/stream", credentials.deviceToken)
+                val first = events.read()?.decodeToString().orEmpty()
+                out.appendText("realtime status=${events.status} first=${first.lineSequence().firstOrNull { it.startsWith("event:") }}\n")
+                val bots = again.request("GET", "/v0/bots", credentials.deviceToken)
+                val avatar = again.request("GET", "/v0/node/avatar", credentials.deviceToken, headers = mapOf("Accept" to "image/*"), category = RequestCategory.File)
+                out.appendText("query status=${bots.status} file status=${avatar.status} bytes=${avatar.body.size}\n")
+                again.reset(RequestCategory.Query)
+                val health = again.request("GET", "/v0/health", credentials.deviceToken)
+                val next = withTimeoutOrNull(5_000) { events.read() ?: ByteArray(0) }
+                val realtime = when { next == null -> "open, quiet"; next.isEmpty() -> "ended"; else -> "open, more" }
+                out.appendText("after query reset: query status=${health.status} realtime $realtime\n")
+                events.close()
             } finally {
                 again.close()
             }

@@ -42,7 +42,7 @@ private class FakeAgent {
     /** The next file writes refused with this status. */
     var refuseFiles = 0
 
-    val request: AgentRequest = { method, path, body ->
+    val request: AgentRequest = { method, path, body, _ ->
         requests += Triple(method, path, body as? JsonObject)
         gate?.await()
         val route = path.substringBefore('?')
@@ -488,7 +488,7 @@ class ConversationTest {
         val gate = CompletableDeferred<Unit>()
         val request = agent.request
         val chat = Conversation(
-            api = ConversationApi { method, path, body -> if (path == "/v0/tasks") gate.await(); request(method, path, body) },
+            api = ConversationApi { method, path, body, category -> if (path == "/v0/tasks") gate.await(); request(method, path, body, category) },
             signals = signals,
             scope = CoroutineScope(StandardTestDispatcher(testScheduler) + SupervisorJob().also { jobs += it }),
             agentId = "a9",
@@ -547,8 +547,8 @@ class ConversationTest {
             {"id":"b1","name":"Old","systemKey":"chief_of_staff","status":"archived","agent":{"id":"archived"}},
             {"id":"b2","name":"Renamed","systemKey":"chief_of_staff","status":"active","agent":{"id":"chief"}}
         ]}"""
-        assertEquals("chief", ConversationApi { _, _, _ -> FakeAgent.ok(bots) }.chiefOfStaffAgentId())
-        assertNull(ConversationApi { _, _, _ -> FakeAgent.ok("""{"bots":[]}""") }.chiefOfStaffAgentId())
+        assertEquals("chief", ConversationApi { _, _, _, _ -> FakeAgent.ok(bots) }.chiefOfStaffAgentId())
+        assertNull(ConversationApi { _, _, _, _ -> FakeAgent.ok("""{"bots":[]}""") }.chiefOfStaffAgentId())
     }
 
     @Test fun `a chat that could not be read reads again on retry`() = runTest {

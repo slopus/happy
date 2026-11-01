@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.artifacts
 
+import com.slopus.happy.connection.RequestCategory
 import com.slopus.happy.conversation.Problem
 import android.graphics.Bitmap
 import android.graphics.Canvas
@@ -94,7 +95,7 @@ class ArtifactScreensTest {
     private fun files(version: String, bodies: Map<String, ByteArray>) = ArtifactClient(
         AgentClient(
             object : Transport {
-                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse {
+                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
                     if ("/files/" !in path) return TransportResponse(200, body = """{"version":$version}""".toByteArray())
                     return bodies[path.substringAfter("/files/")]?.let { TransportResponse(200, body = it) } ?: TransportResponse(404, body = "{}".toByteArray())
                 }

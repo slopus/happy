@@ -7,6 +7,7 @@ import com.slopus.happy.artifacts.ArtifactClient
 import com.slopus.happy.auth.ExpoSecureStore
 import com.slopus.happy.connection.AgentConnectionCredentials
 import com.slopus.happy.connection.AgentConnections
+import com.slopus.happy.connection.RequestCategory
 import com.slopus.happy.connection.Transport
 import com.slopus.happy.connection.TransportResponse
 import com.slopus.happy.testing.SoftwareKeys
@@ -80,7 +81,7 @@ class AgentSessionTest {
         val seen = mutableListOf<Triple<String, String, String>>()
         val sessions = sessions { credentials ->
             object : Transport by agent {
-                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse {
+                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
                     seen += Triple(credentials.address, credential, path)
                     return TransportResponse(200, body = byteArrayOf(1, 2, 3))
                 }
@@ -136,7 +137,7 @@ class AgentSessionTest {
         var gate = CompletableDeferred<Unit>()
         val session = sessions {
             object : Transport by agent {
-                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse {
+                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
                     if (path == "/v0/bootstrap/desktop") gate.await()
                     return agent.request(method, path, credential, body, headers)
                 }
@@ -258,7 +259,7 @@ class AgentSessionTest {
         val headersSeen = CompletableDeferred<Map<String, String>>()
         AgentSessions(connections, scope, null, open, foreground, identityRefreshMillis = 25) {
             object : Transport by agent {
-                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse = when (path) {
+                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse = when (path) {
                     "/v0/config" -> TransportResponse(200, body = """{"config":{"node":{"name":"Mac","avatar":{"thumbhash":"hash"}}}}""".toByteArray())
                     "/v0/node/avatar" -> { headersSeen.complete(headers); TransportResponse(404) }
                     else -> agent.request(method, path, credential, body, headers)
@@ -277,7 +278,7 @@ class AgentSessionTest {
         val failures = java.util.concurrent.atomic.AtomicInteger()
         val manager = AgentSessions(connections, scope, null, open, foreground, identityRefreshMillis = 25) { credentials ->
             object : Transport by agent {
-                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse {
+                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
                     if (path == "/v0/config" && credentials.deviceId == "other-device") {
                         otherConfigs.incrementAndGet()
                         return TransportResponse(200, body = """{"config":{"api":{"publicUrl":"https://other.example"}}}""".toByteArray())
@@ -320,7 +321,7 @@ class AgentSessionTest {
             val path = "/v0/user-settings/${DesktopSettings.PROJECTS_VISIBILITY}"
             server.enqueue(mockwebserver3.MockResponse.Builder().headersDelay(3, java.util.concurrent.TimeUnit.SECONDS).body("late").build())
             val session = AgentSession(id, connections, null, foreground, scope, { object : Transport by agent {
-                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse {
+                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
                     if ((path == "/v0/health" && health.incrementAndGet() == 1) ||
                         (method == "PUT" && path.startsWith("/v0/user-settings/") && settings.incrementAndGet() == 1)) {
                         return https.request(method, path, credential, body, headers)
@@ -358,7 +359,7 @@ class AgentSessionTest {
                     assertFalse(it is com.slopus.happy.connection.TailcatTransport)
                 }
             } else object : Transport by agent {
-                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse =
+                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse =
                     if (path == "/v0/config") TransportResponse(200, body = """{"config":{"api":{"publicUrl":null}}}""".toByteArray())
                     else agent.request(method, path, credential, body, headers)
             }
@@ -401,7 +402,7 @@ class AgentSessionTest {
         )
         return sessions {
             object : Transport by agent {
-                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse {
+                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
                     if (!path.endsWith("/leave")) return agent.request(method, path, credential, body, headers)
                     agent.calls += "$method $path"
                     bodies += body?.decodeToString().orEmpty()

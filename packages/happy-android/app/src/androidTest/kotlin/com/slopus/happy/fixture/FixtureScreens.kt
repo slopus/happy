@@ -11,6 +11,7 @@ import androidx.navigation.compose.rememberNavController
 import com.slopus.happy.agent.AgentClient
 import com.slopus.happy.artifacts.ArtifactClient
 import com.slopus.happy.artifacts.ArtifactRef
+import com.slopus.happy.connection.RequestCategory
 import com.slopus.happy.connection.Transport
 import com.slopus.happy.connection.TransportResponse
 import com.slopus.happy.conversation.Conversation
@@ -104,8 +105,8 @@ private fun files(transport: FixtureTransport) = ArtifactClient(AgentClient(Fixt
 
 /** The fixture's answers as a [Transport], for the artifact client, which speaks to one. */
 private class FixtureAgent(private val transport: FixtureTransport) : Transport {
-    override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse =
-        transport.request(method, path, body?.let { Json.parseToJsonElement(it.decodeToString()) })
+    override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse =
+        transport.request(method, path, body?.let { Json.parseToJsonElement(it.decodeToString()) }, category)
 
     override suspend fun close() {}
 }

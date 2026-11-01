@@ -1,6 +1,7 @@
 package com.slopus.happy.agent
 
 import com.slopus.happy.connection.ByteSource
+import com.slopus.happy.connection.RequestCategory
 import com.slopus.happy.connection.Transport
 import com.slopus.happy.connection.TransportResponse
 import com.slopus.happy.connection.TransportStream
@@ -115,7 +116,7 @@ class FakeAgent(var bootstrap: JsonObject = Wire.bootstrap(), var name: String =
     var revoked = false
     var resources = mutableMapOf<String, JsonObject>()
 
-    override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse {
+    override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
         calls += "$method $path"
         if (revoked) return TransportResponse(401, body = "{\"code\":\"unauthorized\"}".toByteArray())
         fun ok(text: String) = TransportResponse(200, mapOf("content-type" to "application/json"), text.toByteArray())

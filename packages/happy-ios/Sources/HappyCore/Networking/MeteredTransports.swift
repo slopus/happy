@@ -199,8 +199,8 @@ public protocol SelfMeteringTransport: AgentTransport {
 }
 
 /// A paired computer's transport, counted: every request's status and
-/// time on `tailcat`, or `media` for the media and file routes and
-/// uploads; the event stream as a stream; browser streams as flows on
+/// time on `tailcat`, or `media` for `.file` requests, the media and file
+/// routes and uploads; the event stream as a stream; browser streams as flows on
 /// `browser`. Bytes come from the transport under it when it counts its
 /// own (Tailcat does, at the flow), else from the bodies here.
 public struct MeteredAgentTransport: AgentTransport {
@@ -244,9 +244,20 @@ public struct MeteredAgentTransport: AgentTransport {
         }
     }
 
+    /// A `.file` request's bytes are media's, whatever its route.
+    static func channel(path: String, category: RequestCategory) -> ConnectionChannel {
+        category == .file ? .media : channel(path: path)
+    }
+
     public func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         try await metered(Self.channel(path: path), method: method, path: path, headers: headers, body: body) {
             try await base.request(method: method, path: path, credential: credential, body: body, headers: headers)
+        }
+    }
+
+    public func request(method: String, path: String, credential: String, body: Data?, headers: [String: String], category: RequestCategory) async throws -> HTTP1Response {
+        try await metered(Self.channel(path: path, category: category), method: method, path: path, headers: headers, body: body) {
+            try await base.request(method: method, path: path, credential: credential, body: body, headers: headers, category: category)
         }
     }
 
@@ -259,6 +270,12 @@ public struct MeteredAgentTransport: AgentTransport {
     public func send(method: String, path: String, credential: String, body: Data, upload: Bool, sent: @escaping @Sendable (Int) -> Void) async throws -> HTTP1Response {
         try await metered(upload ? .media : Self.channel(path: path), method: method, path: path, headers: [:], body: body) {
             try await base.send(method: method, path: path, credential: credential, body: body, upload: upload, sent: sent)
+        }
+    }
+
+    public func send(method: String, path: String, credential: String, body: Data, category: RequestCategory, sent: @escaping @Sendable (Int) -> Void) async throws -> HTTP1Response {
+        try await metered(Self.channel(path: path, category: category), method: method, path: path, headers: [:], body: body) {
+            try await base.send(method: method, path: path, credential: credential, body: body, category: category, sent: sent)
         }
     }
 
@@ -310,6 +327,7 @@ public struct MeteredAgentTransport: AgentTransport {
     }
 
     public func reset() async { await base.reset() }
+    public func reset(_ category: RequestCategory) async { await base.reset(category) }
     public func close() async { await base.close() }
 }
 

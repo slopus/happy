@@ -3,6 +3,7 @@ package com.slopus.happy.agent
 import com.slopus.happy.connection.AgentConnectionException
 import com.slopus.happy.connection.AgentConnections
 import com.slopus.happy.connection.AgentIdentity
+import com.slopus.happy.connection.RequestCategory
 import com.slopus.happy.connection.agentTransport
 import com.slopus.happy.connection.Transport
 import com.slopus.happy.conversation.UnsentWork
@@ -169,7 +170,7 @@ class AgentSession internal constructor(
     val profile: AgentProfileSource by lazy { AgentProfileSource(client, events, scope) }
 
     /** Bots' pictures, as home's rows draw them. */
-    val pictures = AgentPictures(connectionId, cacheFile?.let { File(it.parentFile, it.nameWithoutExtension + ".pictures") }) { path -> client.send("GET", path).body }
+    val pictures = AgentPictures(connectionId, cacheFile?.let { File(it.parentFile, it.nameWithoutExtension + ".pictures") }) { path -> client.send("GET", path, category = RequestCategory.File).body }
 
     /** One conversation as the catalog knows it, live; null while unknown. */
     fun agent(agentId: String): Flow<WireAgent?> = catalogState
@@ -305,10 +306,7 @@ class AgentSession internal constructor(
     /** Health (protocol 27 or later) and the agent's own name and avatar, shown in the account menu. */
     private suspend fun refreshIdentity() {
         val known = connections.accounts.value.firstOrNull { it.id == connectionId }
-        val link = linkLock.withLock { link } ?: run {
-            client.reset() // reads the credentials and makes the link
-            linkLock.withLock { link }
-        } ?: throw AgentConnectionException(AgentConnectionException.Reason.Revoked)
+        val link = client.resolve()
         val info = AgentIdentity.refresh(link.transport, link.token, known?.name.orEmpty(), known?.avatarFile?.let { known.avatarETag })
         if (known != null) {
             connections.update(connectionId, info.avatar) { it.copy(name = info.name, thumbhash = info.thumbhash ?: it.thumbhash, revoked = false) }

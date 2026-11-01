@@ -29,6 +29,7 @@ import com.slopus.happy.agent.AgentEvent
 import com.slopus.happy.agent.AgentLinkStatus
 import com.slopus.happy.agent.AgentSession
 import com.slopus.happy.chat.obj
+import com.slopus.happy.connection.RequestCategory
 import com.slopus.happy.conversation.AgentRequest
 import com.slopus.happy.conversation.Conversation
 import com.slopus.happy.conversation.ConversationApi
@@ -137,9 +138,9 @@ internal fun NavHostController.heldConversation(agentId: String): Conversation? 
 }
 
 /** The agent connection's client as a conversation asks it: refusals become [ConversationApiException]. */
-internal fun AgentSession.conversationRequest(): AgentRequest = { method, path, body ->
+internal fun AgentSession.conversationRequest(): AgentRequest = { method, path, body, category ->
     try {
-        client.send(method, path, body)
+        client.send(method, path, body, category = category)
     } catch (e: AgentApiException) {
         throw ConversationApiException(e.status, e.code, e.message)
     }
@@ -331,6 +332,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                             "GET",
                             ConversationApi.mediaPath(conversation.agentId, ref.toolCallId, ref.index),
                             headers = mapOf("Range" to "bytes=${range.first}-${range.last}"),
+                            category = RequestCategory.File,
                         )
                     },
                     onVisible = conversation::setVisible,

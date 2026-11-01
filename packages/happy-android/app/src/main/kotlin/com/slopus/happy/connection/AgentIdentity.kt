@@ -71,7 +71,7 @@ object AgentIdentity {
      */
     private suspend fun avatar(transport: Transport, token: String, etag: String?): NodeAvatar {
         val image = try {
-            transport.request("GET", "/v0/node/avatar", token, headers = etag?.let { mapOf("If-None-Match" to it) } ?: emptyMap())
+            transport.request("GET", "/v0/node/avatar", token, headers = etag?.let { mapOf("If-None-Match" to it) } ?: emptyMap(), category = RequestCategory.File)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {

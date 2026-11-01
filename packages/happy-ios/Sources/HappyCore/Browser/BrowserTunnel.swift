@@ -20,8 +20,14 @@ extension AgentTransport {
 }
 
 extension TailcatHTTPTransport {
+    /// Over a `.file` client: a page's bytes are a file's, and its many
+    /// short flows never crowd the event stream's or the queries' stack.
     public func browserConnection() async throws -> any BrowserStream {
-        try await flow(connection())
+        let lease = try await lease(.file)
+        do { return try await flow(lease, .file) } catch {
+            lease?.release()
+            throw error
+        }
     }
 }
 

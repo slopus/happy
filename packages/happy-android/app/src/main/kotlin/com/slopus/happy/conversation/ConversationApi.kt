@@ -4,6 +4,7 @@ import com.slopus.happy.chat.arr
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
 import com.slopus.happy.connection.AgentConnectionException
+import com.slopus.happy.connection.RequestCategory
 import com.slopus.happy.connection.TransportResponse
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -20,8 +21,11 @@ import java.security.SecureRandom
 /** A refused request: the daemon's status, with its error `code` and words when it sent them. */
 class ConversationApiException(val status: Int, val code: String?, override val message: String?) : Exception(message)
 
-/** One request to the paired agent, answered whatever its status; the agent connection's client does the transport. */
-typealias AgentRequest = suspend (method: String, path: String, body: JsonElement?) -> TransportResponse
+/**
+ * One request to the paired agent as its [RequestCategory], answered whatever
+ * its status; the agent connection's client does the transport.
+ */
+typealias AgentRequest = suspend (method: String, path: String, body: JsonElement?, category: RequestCategory) -> TransportResponse
 
 /**
  * The client-chosen ids of new work made on first send (`POST /v0/tasks` or
@@ -54,7 +58,8 @@ data class UnsentWork(val task: NewTask, val choice: WorkChoice, val draft: Stri
  */
 open class ConversationApi(private val request: AgentRequest) {
 
-    private suspend fun call(method: String, path: String, body: JsonElement? = null): JsonObject = decode(request(method, path, body))
+    private suspend fun call(method: String, path: String, body: JsonElement? = null, category: RequestCategory = RequestCategory.Query): JsonObject =
+        decode(request(method, path, body, category))
 
     /**
      * A new chat: a task (`{task, membership}`) or a bot (`{bot}`), its folder
@@ -120,7 +125,9 @@ open class ConversationApi(private val request: AgentRequest) {
             })
             put("mode", mode.json())
         }
-        return Message.parse(call("POST", "/v0/agents/${escape(agentId)}/send", body)["message"])
+        // Pictures make it a file's size: a file's client and deadline.
+        val category = if (images.isEmpty()) RequestCategory.Query else RequestCategory.File
+        return Message.parse(call("POST", "/v0/agents/${escape(agentId)}/send", body, category)["message"])
     }
 
     /**
@@ -135,7 +142,7 @@ open class ConversationApi(private val request: AgentRequest) {
             put("content", java.util.Base64.getEncoder().encodeToString(bytes))
             put("expectedHash", JsonNull)
         }
-        val response = request("PUT", "/v0/workspaces/${escape(workspaceId)}/file", body)
+        val response = request("PUT", "/v0/workspaces/${escape(workspaceId)}/file", body, RequestCategory.File)
         if (response.status == 409) {
             val answer = runCatching { json.parseToJsonElement(response.text).obj }.getOrNull()
             if (answer?.get("code").str == "hash_mismatch" && answer?.get("hash").str == hash) return
@@ -180,7 +187,7 @@ open class ConversationApi(private val request: AgentRequest) {
 
     /** The bytes of one item a tool call presented (`media` presentation). */
     open suspend fun media(agentId: String, toolCallId: String, index: Int): ByteArray {
-        val response = request("GET", mediaPath(agentId, toolCallId, index), null)
+        val response = request("GET", mediaPath(agentId, toolCallId, index), null, RequestCategory.File)
         if (response.status !in 200..299) decode(response)
         return response.body
     }

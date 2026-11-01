@@ -131,7 +131,7 @@ extension AgentClient {
 
     /// `PUT /v0/profile/photo`: the image itself; the daemon works out its ThumbHash.
     public func setProfilePhoto(_ data: Data, contentType: String) async throws -> AgentWire.Profile {
-        try profile(from: await send("PUT", "/v0/profile/photo", raw: data, headers: ["Content-Type": contentType]))
+        try profile(from: await send("PUT", "/v0/profile/photo", raw: data, headers: ["Content-Type": contentType], category: .file))
     }
 
     /// `DELETE /v0/profile/photo`.
@@ -142,7 +142,7 @@ extension AgentClient {
     /// `GET /v0/profile/photo`: the bytes and their ETag, or nil when they
     /// are still `etag`'s (`304`).
     public func profilePhoto(etag: String? = nil) async throws -> (data: Data, etag: String?)? {
-        let response = try await send("GET", "/v0/profile/photo", headers: etag.map { ["If-None-Match": $0] } ?? [:])
+        let response = try await send("GET", "/v0/profile/photo", headers: etag.map { ["If-None-Match": $0] } ?? [:], category: .file)
         if response.status == 304 { return nil }
         return (response.body, response.headers["etag"])
     }

@@ -7,6 +7,7 @@ import com.slopus.happy.artifacts.ArtifactClient
 import com.slopus.happy.artifacts.ArtifactFile
 import com.slopus.happy.artifacts.ArtifactRef
 import com.slopus.happy.artifacts.Extent
+import com.slopus.happy.connection.RequestCategory
 import com.slopus.happy.connection.Transport
 import com.slopus.happy.connection.TransportResponse
 import kotlinx.coroutines.CoroutineScope
@@ -53,7 +54,7 @@ class ArtifactLoaderTest {
     private fun files(versions: Map<Int, String>, bodies: Map<String, ByteArray> = emptyMap(), status: Int? = null) = ArtifactClient(
         AgentClient(
             object : Transport {
-                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>): TransportResponse {
+                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
                     asked += path
                     status?.let { return json("""{"error":"no"}""", it) }
                     val route = path.removePrefix("/v0/artifacts/a1")
@@ -159,7 +160,7 @@ class ArtifactLoaderTest {
             "p2" to """{"artifacts":[{"id":"a2","title":"Two"},{"id":"a3"}],"nextPageCursor":null}""",
         )
         val catalog = object : ArtifactClient(AgentClient(object : Transport {
-            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>) = error("unused")
+            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory) = error("unused")
             override suspend fun close() {}
         }, "t")) {
             override suspend fun catalog(pageCursor: String?): JsonObject {
@@ -190,7 +191,7 @@ class ArtifactLoaderTest {
     @Test fun aCatalogThatCantBeReadSaysSoOnlyWithNothingShown() {
         var fail = true
         val catalog = object : ArtifactClient(AgentClient(object : Transport {
-            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>) = error("unused")
+            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory) = error("unused")
             override suspend fun close() {}
         }, "t")) {
             override suspend fun catalog(pageCursor: String?): JsonObject {

@@ -17,6 +17,7 @@ import com.slopus.happy.R
 import com.slopus.happy.agent.AgentFamily
 import com.slopus.happy.agent.AgentSession
 import com.slopus.happy.agent.string
+import com.slopus.happy.connection.RequestCategory
 import com.slopus.happy.conversation.AgentDetail
 import com.slopus.happy.conversation.Conversation
 import com.slopus.happy.conversation.ConversationApi
@@ -98,7 +99,7 @@ internal class AgentPageModel(private val session: AgentSession, private val age
     private suspend fun readDetail() {
         val path = "/v0/agents/${ConversationApi.escape(agentId)}/bootstrap"
         readState.value = try {
-            val detail = AgentDetail.parse(ConversationApi.decode(request("GET", path, null))) ?: throw IllegalStateException()
+            val detail = AgentDetail.parse(ConversationApi.decode(request("GET", path, null, RequestCategory.Query))) ?: throw IllegalStateException()
             Read(detail, reading = false)
         } catch (e: CancellationException) {
             throw e
@@ -195,6 +196,7 @@ internal fun AgentPageEntry(graph: AppGraph, nav: NavHostController, route: Conv
                     "GET",
                     ConversationApi.mediaPath(route.agentId, ref.toolCallId, ref.index),
                     headers = mapOf("Range" to "bytes=${range.first}-${range.last}"),
+                    category = RequestCategory.File,
                 )
             },
         )

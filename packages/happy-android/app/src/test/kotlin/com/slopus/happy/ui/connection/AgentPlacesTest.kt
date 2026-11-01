@@ -51,7 +51,7 @@ class AgentPlacesTest {
     @After
     fun tearDown() = scope.cancel()
 
-    private fun api(answer: (method: String, path: String) -> String) = ConversationApi { method, path, body ->
+    private fun api(answer: (method: String, path: String) -> String) = ConversationApi { method, path, body, _ ->
         synchronized(asked) { asked += "$method $path"; sent += body }
         TransportResponse(200, body = answer(method, path).toByteArray())
     }
@@ -107,7 +107,7 @@ class AgentPlacesTest {
         runBlocking { withTimeout(5_000) { while (kept == null) kotlinx.coroutines.delay(10) } }
 
         val offline = SurfaceReader(
-            ConversationApi { _, _, _ -> throw AgentConnectionException(AgentConnectionException.Reason.Unavailable) },
+            ConversationApi { _, _, _, _ -> throw AgentConnectionException(AgentConnectionException.Reason.Unavailable) },
             scope, "s2", "document", cached = { kept }, keep = { kept = it },
         )
         offline.read()

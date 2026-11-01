@@ -1,5 +1,6 @@
 package com.slopus.happy.agent
 
+import com.slopus.happy.connection.RequestCategory
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -180,7 +181,7 @@ class AgentProfileSource internal constructor(
         if (hash == photoHash && photoFlow.value != null) return
         photoHash = hash
         val bytes = try {
-            client.send("GET", "/v0/profile/photo").body.takeIf { it.isNotEmpty() }
+            client.send("GET", "/v0/profile/photo", category = RequestCategory.File).body.takeIf { it.isNotEmpty() }
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
