@@ -300,6 +300,20 @@ final class AgentChatUltraList: UIView {
         return moved || grew ? transition : .none
     }
 
+    /// The plan whose message is lifted over the chat (`MessageLiftOverlay`):
+    /// its row draws nothing meanwhile, whatever view shows it.
+    var liftedId: String? {
+        didSet {
+            guard liftedId != oldValue else { return }
+            for case let view as AgentChatRowView in list.loadedItemViews { view.isLifted = view.row.plan.id == liftedId }
+        }
+    }
+
+    /// The view plan `id` is drawn in now, in its coordinates, if on screen.
+    func canvas(forPlan id: String) -> ChatPlanView? {
+        list.loadedItemViews.lazy.compactMap { $0 as? AgentChatRowView }.first { $0.row.plan.id == id }?.canvas
+    }
+
     func scrollToNewest(animated: Bool) {
         followsNewest = true
         list.scrollTo(newestTarget(), transition: animated && !UIAccessibility.isReduceMotionEnabled ? .easeInOut(0.2) : .none)
@@ -482,6 +496,14 @@ final class AgentChatRowView: ListRowView, UIGestureRecognizerDelegate {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
+    /// Its message is lifted over the chat: the copy shows, not the row.
+    var isLifted = false {
+        didSet {
+            canvas.isHidden = isLifted
+            reveal.overlay.isHidden = isLifted
+        }
+    }
+
     func apply(_ row: AgentChatRow) {
         self.row = row
         canvas.veiled = row.transcript?.veiled == row.identity
@@ -491,6 +513,7 @@ final class AgentChatRowView: ListRowView, UIGestureRecognizerDelegate {
         // words show before they come out.
         if let state = row.transcript?.reveal.state(row.identity) { reveal.show(state.map, count: state.count) }
         else if reveal.isActive { reveal.clear() }
+        isLifted = row.transcript?.liftedId == row.plan.id
     }
 
     override func layoutSubviews() {

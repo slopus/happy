@@ -16,7 +16,8 @@ struct ChatPiece {
 
     static func markdown(_ markdown: MarkdownPiece) -> ChatPiece {
         ChatPiece(measurable: Measurable { MarkdownLayout(width: $0, blocks: markdown.blocks).size }) { frame in
-            markdown.draw(MarkdownLayout(width: frame.width, blocks: markdown.blocks), origin: frame.origin)
+            let drawn = markdown.draw(MarkdownLayout(width: frame.width, blocks: markdown.blocks), origin: frame.origin)
+            return (drawn.items, drawn.hits)
         }
     }
 

@@ -409,6 +409,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        MessageLiftOverlay.putBack(from: self)
         #if DEBUG
         probe?.observePop()
         composeTrace?.event("willDisappear interactive=\(transitionCoordinator?.isInteractive == true)")
@@ -1178,7 +1179,17 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         let toggles = plan.toggles.map { name in
             [UIAccessibilityCustomAction(name: name) { [weak self] _ in self?.toggle(id); return true }]
         }
-        row.accessibilityCustomActions = toggles
+        // A long press's actions: Copy, and Select Text on its own screen.
+        let selects = plan.selection.map { selection in
+            [
+                UIAccessibilityCustomAction(name: Strings.Chat.copy) { _ in UIPasteboard.general.string = selection.whole; return true },
+                UIAccessibilityCustomAction(name: Strings.TextSelection.title) { [weak self] _ in
+                    self?.navigationController?.pushViewController(TextSelectionViewController(text: selection.whole), animated: true)
+                    return true
+                },
+            ]
+        }
+        row.accessibilityCustomActions = (toggles ?? []) + (selects ?? [])
         let cardsHosted: [UIView] = plan.proposals.compactMap { proposalViews["\(id)#\($0.artifactId)"] }.filter { $0.superview === row }
         for card in cardsHosted { row.bringSubviewToFront(card) }
         // A row with media reads as its message, then each picture or
@@ -2021,6 +2032,22 @@ extension ChatViewController: AgentChatTranscriptHost {
     }
 
     func transcriptHeld(_ action: ChatRowAction, in view: UIView, frame: CGRect, at point: CGPoint) {
+        // A message lifts, Telegram's way, with Copy and Select.
+        if !previewing, let plan = (view as? ChatPlanView)?.plan, let selection = plan.selection, let window = view.window {
+            switch action {
+            case .copyMenu, .markdownSelectable:
+                let transcript = ultra
+                let source = MessageLiftSource(
+                    plan: plan, selection: selection,
+                    canvas: { [weak transcript] in transcript?.canvas(forPlan: plan.id) },
+                    setLifted: { [weak transcript] lifted in transcript?.liftedId = lifted ? plan.id : nil },
+                    host: self
+                )
+                if MessageLiftOverlay.present(source, in: window) != nil { return }
+            default:
+                break
+            }
+        }
         hold(action)
     }
 }

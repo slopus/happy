@@ -31,8 +31,11 @@ final class ChatRowPlan: @unchecked Sendable {
     /// a time as they grow (`ChatRevealDriver`).
     let revealable: Bool
     private let reveal = ChatRevealMapBox()
+    /// The words a person can select once the message is lifted, and the
+    /// whole message as Copy copies it; nil where there are none.
+    let selection: ChatSelectable?
 
-    init(id: String, size: CGSize, items: [ChatDrawItem], hits: [ChatHit] = [], alpha: CGFloat = 1, accessibilityLabel: String? = nil, proposals: [(artifactId: String, layout: SidebarProposalLayout, frame: CGRect)] = [], toggles: String? = nil, flight: ChatRowFlight? = nil, revealable: Bool = false) {
+    init(id: String, size: CGSize, items: [ChatDrawItem], hits: [ChatHit] = [], alpha: CGFloat = 1, accessibilityLabel: String? = nil, proposals: [(artifactId: String, layout: SidebarProposalLayout, frame: CGRect)] = [], toggles: String? = nil, flight: ChatRowFlight? = nil, revealable: Bool = false, selection: ChatSelectable? = nil) {
         self.id = id
         self.size = size
         self.items = items
@@ -43,6 +46,7 @@ final class ChatRowPlan: @unchecked Sendable {
         self.toggles = toggles
         self.flight = flight
         self.revealable = revealable
+        self.selection = selection
     }
 
     /// Where its words are, in reading order, for a revealable plan. Worked
@@ -67,6 +71,45 @@ private final class ChatRevealMapBox: @unchecked Sendable {
         let made = make()
         map = made
         return made
+    }
+}
+
+/// A message's selectable words (`MessageTextSelectionView`): the texts it
+/// draws, in reading order, each the very layout drawn in the row at its
+/// frame there, so a selection's highlight lies on its glyphs; what
+/// copying puts back between them; and the message whole, as Copy copies it.
+struct ChatSelectable {
+    struct Text {
+        let layout: ChatTextLayout
+        /// Where it is drawn, in row coordinates.
+        var frame: CGRect
+        /// Copied before it when its start is (a list item's marker).
+        var lead = ""
+        /// Copied between the text before it and this one.
+        var joiner = "\n\n"
+        /// The strip it shows through (a code block, a table), which a
+        /// highlight never runs past.
+        var clip: CGRect? = nil
+    }
+
+    var texts: [Text]
+    /// What Copy copies: the message as written.
+    var whole: String
+    /// The message's own shape in its row (a bubble, or what its marks
+    /// cover), which is what lifts.
+    var frame: CGRect
+    /// No bubble of its own (an agent's words): it lifts on a card.
+    var card: Bool
+
+    var run: SelectionText {
+        SelectionText(texts.map { SelectionText.Piece($0.layout.string.string, lead: $0.lead, joiner: $0.joiner) })
+    }
+
+    /// What an agent's words lift as: the marks of `items` together.
+    static func covering(_ items: [ChatDrawItem], texts: [Text], whole: String) -> ChatSelectable? {
+        guard !texts.isEmpty else { return nil }
+        let frame = items.map(\.markFrame).filter { !$0.isEmpty }.reduce(CGRect.null) { $0.union($1) }
+        return ChatSelectable(texts: texts, whole: whole, frame: frame, card: true)
     }
 }
 

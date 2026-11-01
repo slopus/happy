@@ -81,6 +81,8 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         window.makeKeyAndVisible()
         self.window = window
         let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("-chatDark") { window.overrideUserInterfaceStyle = .dark }
+        if arguments.contains("-chatLight") { window.overrideUserInterfaceStyle = .light }
         #if DEBUG || HAPPY_FIXTURES
         if arguments.contains("-homeScrollDiagnostic") {
             homeScrollDiagnostic = HomeScrollDiagnosticHarness(window: window, arguments: arguments)
@@ -605,6 +607,18 @@ final class ChatScrollProbe: NSObject {
             .joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
     }
 
+    /// Rows hiding their drawing for a lifted copy: none once it is back.
+    private func liftedRows(_ chat: UIViewController) -> Int {
+        var count = 0
+        func walk(_ view: UIView) {
+            if let row = view as? AgentChatRowView, row.isLifted { count += 1 }
+            if let row = view as? ChatUltraRowView, row.isLifted { count += 1 }
+            view.subviews.forEach(walk)
+        }
+        walk(chat.view)
+        return count
+    }
+
     private func rect(_ rect: CGRect?) -> [CGFloat]? {
         rect.map { [$0.minX, $0.minY, $0.width, $0.height] }
     }
@@ -645,6 +659,12 @@ final class ChatScrollProbe: NSObject {
         value["fingerDown"] = finger != nil
         value["lastTouch"] = lastTouch
         value["events"] = window.events
+        // A lifted message, what is selected in it, and what was copied.
+        #if DEBUG || HAPPY_FIXTURES
+        value["lift"] = MessageLiftOverlay.shown?.probe as Any
+        #endif
+        value["pasteboard"] = UIPasteboard.general.string as Any
+        value["liftedRows"] = liftedRows(chat)
         guard let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]) else { return "{}" }
         return String(decoding: data, as: UTF8.self)
     }

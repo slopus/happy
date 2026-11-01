@@ -157,7 +157,12 @@ actor ChatPlanner {
                 else if failure { hits.append(ChatHit(frame: bubble, action: .retry(localId: item.id))) }
                 hits.append(ChatHit(frame: bubble, action: .copyMenu(text), hold: true))
             }
-            if let body, let frame = layout.text { items.append(.text((layout.cut ? preview : body).layout(for: frame), frame)) }
+            var selectable: [ChatSelectable.Text] = []
+            if let body, let frame = layout.text {
+                let drawn = (layout.cut ? preview : body).layout(for: frame)
+                items.append(.text(drawn, frame))
+                selectable.append(.init(layout: drawn, frame: frame))
+            }
             if let frame = layout.foldControl { items.append(.text(control.layout(for: frame), frame)) }
             for (picture, frame) in zip(pictures, layout.pictures) {
                 let key = MediaLoader.sentKey(picture.id)
@@ -186,7 +191,10 @@ actor ChatPlanner {
             let shape = layout.bubble.map { ChatBox(frame: $0, fill: Palette.userBubble, radius: M.bubbleRadius) }
                 ?? ChatBox(frame: layout.pictures.reduce(CGRect.null) { $0.union($1) })
             let flight = ChatRowFlight(bubble: shape, text: layout.text, status: layout.delivery, media: !pictures.isEmpty)
-            return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: label, toggles: layout.foldControl == nil ? nil : toggles, flight: flight)
+            let selection = layout.bubble.flatMap { bubble in
+                selectable.isEmpty ? nil : ChatSelectable(texts: selectable, whole: text, frame: bubble, card: false)
+            }
+            return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: label, toggles: layout.foldControl == nil ? nil : toggles, flight: flight, selection: selection)
         case .collaborator, .failure, .tool, .turnEnd, .trace, .question:
             // Planned above.
             return ChatRowPlan(id: item.id, size: CGSize(width: width, height: 0), items: [])
@@ -257,6 +265,7 @@ actor ChatPlanner {
         let layout = layout(parts)
         var items: [ChatDrawItem] = []
         var hits: [ChatHit] = []
+        var selectable: [ChatSelectable.Text] = []
         var proposals: [(artifactId: String, layout: SidebarProposalLayout, frame: CGRect)] = []
         func media(_ media: Media, _ frame: CGRect) {
             items.append(.media(ChatMedia(key: media.key, isVideo: media.isVideo, thumbhash: media.item.thumbhash, label: Strings.media(isVideo: media.isVideo, name: media.item.name)), frame: frame))
@@ -281,6 +290,7 @@ actor ChatPlanner {
                 let drawn = markdown.draw(placed, origin: origin)
                 items += drawn.items
                 hits += drawn.hits
+                selectable += drawn.texts
             case (.media(let frames), .gallery(let gallery)):
                 for (one, frame) in zip(gallery, frames) { media(one, frame) }
             case (.tree(let tree, let origin), .tree(let planned)):
@@ -307,7 +317,10 @@ actor ChatPlanner {
             }
         }
         // Each picture and recording reads as itself (`ChatMediaView`).
-        return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: spoken.joined(separator: "\n\n"), proposals: proposals, revealable: revealable)
+        return ChatRowPlan(
+            id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: spoken.joined(separator: "\n\n"), proposals: proposals,
+            revealable: revealable, selection: .covering(items, texts: selectable, whole: text)
+        )
     }
 
     /// What a failure card's action does, as desktop's card offers it:

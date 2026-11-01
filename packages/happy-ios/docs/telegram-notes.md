@@ -406,6 +406,49 @@ rendering the resulting `file` tool rows.
 - Reduce Motion, or `HAPPY_REVEAL_OFF` (for comparing), shows replies as
   they come.
 
+## 9. Holding a message, and selecting its text
+
+**What Telegram does.**
+
+- *The lift* (`ContextControllerExtractedPresentationNode`). The message is
+  taken out of the list and shown over a blurred, dimmed chat (light
+  `0x000a26` at 0.2, dark black at 0.6, fading in over 0.2 s). The actions
+  sit 7 under it (`contentActionsSpacing`), inside the status bar + 8 and
+  10 from the foot. They are 12 in from the screen's side and lean 2 or 7 in
+  toward the message. A message taller than the room is cut to at least 200
+  and scrolls. Everything moves on one spring (`makeSpringBounceAnimation`:
+  mass 5, stiffness 900, damping 104, 0.42 s). The menu fades in over 0.05 s
+  and grows from 0.01 out of the message's edge. Going back takes 0.2 s
+  ease-in-ease-out to the row's place.
+- *Selecting* (`TextSelectionNode`). A 0.3 s press on a word selects it
+  (`CFStringTokenizer`, by word). Select in the context menu selects it all.
+  Highlight rects come from the text layout, a rect a line, with lines 4 or
+  less apart joined and corners of 2. The handles are a 12 dot on a 2 stem.
+  They are caught 4/8 around, then 14 around, by the middle of the stem.
+  Copy, then Select All or Share, sit over the selection with 12 clear. The
+  highlight fades in over 0.3 s and the handles spring in after 0.25 s.
+
+**What we do.**
+
+- `MessageLiftLayout` (HappyLayout) places the lifted message and its menu
+  with those values. `MessageLiftOverlay` hides the row (`isHidden`, with
+  the reveal overlay) and draws the message again from the row's frozen
+  `ChatRowPlan`, so a streaming or pending message lifts as it was when it
+  was pressed. The agent's words lift on a card; a person's bubble lifts as
+  itself. The menu is the hold menu (`HoldMenuView`): Copy and Select.
+- `ChatSelectable`, in the plan, lists every text the row drew with its
+  frame: paragraphs, list items, code, and table cells. Each is the very
+  `ChatTextLayout` that drew it, so highlight rects (`selectionRects`) and
+  hit-testing (`caretIndex`, `wordRange`) lie on the glyphs. Copying puts
+  markdown's list markers, paragraph breaks and table tabs back between the
+  pieces (`SelectionText`). The time and the delivery mark are never in it.
+- `MessageTextSelectionView` takes Telegram's press, handles, highlight and
+  menu (`UIEditMenuInteraction`). When both handles are in reach (one
+  selected character), the nearer dot takes the finger. Telegram's start
+  handle always wins there.
+- VoiceOver reads the lifted message and offers Copy. Rows in both chats
+  have Copy and Select Text as custom actions.
+
 ## What we deliberately don't copy
 
 - Rotated custom node lists and a display-link-driven scroller: a flipped

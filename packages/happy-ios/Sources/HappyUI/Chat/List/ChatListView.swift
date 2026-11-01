@@ -13,8 +13,11 @@ protocol ChatListViewDelegate: AnyObject {
     func chatList(_ list: ChatListView, perform action: ChatRowAction)
     func chatList(_ list: ChatListView, openLink url: String)
     /// A long press on a row's long-press target. `frame` is the target's
-    /// and `point` the finger's, both in the list's coordinates.
-    func chatList(_ list: ChatListView, hold action: ChatRowAction, frame: CGRect, at point: CGPoint)
+    /// and `point` the finger's, both in the list's coordinates; `canvas`
+    /// is the row's plan view, where the row's own coordinates hold.
+    func chatList(_ list: ChatListView, hold action: ChatRowAction, frame: CGRect, at point: CGPoint, canvas: ChatPlanView?)
+    /// VoiceOver's Select Text on a message: its words, whole.
+    func chatList(_ list: ChatListView, selectText text: String)
 }
 
 /// The chat's message list, on UltraList (`ChatUltraListAdapter`): turned
@@ -57,7 +60,11 @@ final class ChatListView: UIView {
         }
         ultra.onHold = { [weak self] action, view, frame, point in
             guard let self else { return }
-            self.delegate?.chatList(self, hold: action, frame: view.convert(frame, to: self), at: view.convert(point, to: self))
+            self.delegate?.chatList(self, hold: action, frame: view.convert(frame, to: self), at: view.convert(point, to: self), canvas: view as? ChatPlanView)
+        }
+        ultra.onSelectText = { [weak self] text in
+            guard let self else { return }
+            self.delegate?.chatList(self, selectText: text)
         }
         ultra.list.frame = bounds
         addSubview(ultra.list)

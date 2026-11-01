@@ -765,6 +765,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        MessageLiftOverlay.putBack(from: self)
         if contentInstalled { keepStripOffset() }
         if ultraKeyboard?.isDriving == true { ultraKeyboard?.dismissImmediately() }
         // Screens pushed from here, and the one under it, have their bar.
@@ -1934,7 +1935,23 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         }
     }
 
-    func chatList(_ list: ChatListView, hold action: ChatRowAction, frame: CGRect, at point: CGPoint) {
+    func chatList(_ list: ChatListView, hold action: ChatRowAction, frame: CGRect, at point: CGPoint, canvas: ChatPlanView?) {
+        // A message lifts, Telegram's way, with Copy and Select.
+        if let plan = canvas?.plan, let selection = plan.selection, let window = view.window {
+            switch action {
+            case .copyMenu, .markdownSelectable:
+                let adapter = list.ultra
+                let source = MessageLiftSource(
+                    plan: plan, selection: selection,
+                    canvas: { [weak adapter] in adapter?.canvas(forPlan: plan.id) },
+                    setLifted: { [weak adapter] lifted in adapter?.liftedId = lifted ? plan.id : nil },
+                    host: self
+                )
+                if MessageLiftOverlay.present(source, in: window) != nil { return }
+            default:
+                break
+            }
+        }
         switch action {
         case .copyMenu(let text):
             ChatCopyMenu.present(copying: text, anchor: frame, in: list)
@@ -1949,6 +1966,10 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         default:
             chatList(list, perform: action)
         }
+    }
+
+    func chatList(_ list: ChatListView, selectText text: String) {
+        push(.textSelection(text: text), context: context)
     }
 
     func chatList(_ list: ChatListView, openLink url: String) {

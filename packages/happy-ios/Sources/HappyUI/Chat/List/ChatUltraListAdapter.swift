@@ -178,6 +178,15 @@ final class ChatUltraRowView: ListRowView, UIGestureRecognizerDelegate {
         applyCanvas()
     }
 
+    /// Its message is lifted over the chat: the copy shows, not the row.
+    var isLifted = false {
+        didSet {
+            drawing.isHidden = isLifted
+            canvas.isHidden = isLifted
+            reveal.overlay.isHidden = isLifted
+        }
+    }
+
     private func applyCanvas() {
         canvas.drawsStaticContent = row.usesNativeDrawing
         // Words that stream are drawn off the main thread as they grow.
@@ -198,6 +207,19 @@ final class ChatUltraRowView: ListRowView, UIGestureRecognizerDelegate {
         isAccessibilityElement = true
         accessibilityTraits = .staticText
         accessibilityLabel = row.plan.accessibilityLabel
+        // A long press's actions, for VoiceOver.
+        let whole = row.plan.selection?.whole
+        accessibilityCustomActions = whole.map { whole in
+            [
+                UIAccessibilityCustomAction(name: Strings.Chat.copy) { _ in UIPasteboard.general.string = whole; return true },
+                UIAccessibilityCustomAction(name: Strings.TextSelection.title) { [weak self] _ in
+                    guard let adapter = self?.row.adapter, adapter.isActive else { return false }
+                    adapter.onSelectText?(whole)
+                    return true
+                },
+            ]
+        }
+        isLifted = row.adapter?.liftedId == row.plan.id
     }
 
     override func layoutSubviews() {
@@ -320,6 +342,22 @@ final class ChatUltraListAdapter {
     var onAction: ((ChatRowAction) -> Void)?
     var onLink: ((String) -> Void)?
     var onHold: ((ChatRowAction, UIView, CGRect, CGPoint) -> Void)?
+    /// VoiceOver's Select Text on a message: its words, whole.
+    var onSelectText: ((String) -> Void)?
+
+    /// The plan whose message is lifted over the chat (`MessageLiftOverlay`):
+    /// its row draws nothing meanwhile, whatever view shows it.
+    var liftedId: String? {
+        didSet {
+            guard liftedId != oldValue else { return }
+            for case let view as ChatUltraRowView in list.loadedItemViews { view.isLifted = view.row.plan.id == liftedId }
+        }
+    }
+
+    /// The view plan `id` is drawn in now, in its coordinates, if on screen.
+    func canvas(forPlan id: String) -> ChatPlanView? {
+        list.loadedItemViews.lazy.compactMap { $0 as? ChatUltraRowView }.first { $0.row.plan.id == id }?.canvas
+    }
 
     init(olderEnd: ChatOlderEndView, measurer: any NodeRowMeasuring = NodeRowMeasurer()) {
         self.olderEnd = olderEnd
@@ -542,7 +580,7 @@ final class ChatUltraListAdapter {
         flight = nil
         isActive = false
         reveal.stopAll()
-        onScroll = nil; onAction = nil; onLink = nil; onHold = nil
+        onScroll = nil; onAction = nil; onLink = nil; onHold = nil; onSelectText = nil
         list.onScroll = nil; list.onVisibleWindowChanged = nil
         list.willBeginDragging = nil
         list.applyChanges(items: [], transition: .none)

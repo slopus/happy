@@ -278,6 +278,71 @@ final class ChatTextLayout: @unchecked Sendable {
         }
         return lines
     }
+
+    // MARK: Selection
+
+    /// The characters a selection of `range` covers, one rect per line
+    /// fragment, from the layout that draws the glyphs: each line's full
+    /// height, from the first glyph's left to the last one's right.
+    func selectionRects(for range: NSRange) -> [CGRect] {
+        access.lock()
+        defer { access.unlock() }
+        let range = NSIntersectionRange(range, NSRange(location: 0, length: string.length))
+        guard range.length > 0 else { return [] }
+        let glyphs = manager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+        let ns = string.string as NSString
+        var rects: [CGRect] = []
+        manager.enumerateLineFragments(forGlyphRange: glyphs) { line, _, _, lineGlyphs, _ in
+            var part = NSIntersectionRange(lineGlyphs, glyphs)
+            // A wrapped line's trailing space and a paragraph's newline are
+            // not highlighted: the line's rect stops on its last glyph.
+            while part.length > 0, NSMaxRange(part) == NSMaxRange(lineGlyphs) {
+                let character = ns.character(at: self.manager.characterIndexForGlyph(at: NSMaxRange(part) - 1))
+                guard let scalar = UnicodeScalar(character), CharacterSet.whitespacesAndNewlines.contains(scalar) else { break }
+                part.length -= 1
+            }
+            guard part.length > 0 else { return }
+            let box = self.manager.boundingRect(forGlyphRange: part, in: self.container)
+            if box.width > 0 { rects.append(CGRect(x: box.minX, y: line.minY, width: box.width, height: line.height)) }
+        }
+        return rects
+    }
+
+    /// The place between characters nearest `point`, in the text's own
+    /// coordinates, wherever the point is: a dragged handle's.
+    func caretIndex(nearest point: CGPoint) -> Int {
+        access.lock()
+        defer { access.unlock() }
+        guard string.length > 0 else { return 0 }
+        var fraction: CGFloat = 0
+        let glyph = manager.glyphIndex(for: point, in: container, fractionOfDistanceThroughGlyph: &fraction)
+        // Past the last line's foot: its end. Above the first: the start.
+        if point.y >= manager.usedRect(for: container).maxY { return string.length }
+        if point.y < 0 { return 0 }
+        var index = manager.characterIndexForGlyph(at: glyph)
+        if fraction > 0.5 { index += 1 }
+        // Never after a line's breaking newline: on the line it ends.
+        let ns = string.string as NSString
+        if index > 0, index <= ns.length, fraction > 0.5, ns.character(at: index - 1) == 0x0A { index -= 1 }
+        return min(max(0, index), string.length)
+    }
+
+    /// The word around character `index`, as Telegram finds it
+    /// (`CFStringTokenizer` by word in the current locale), or the one
+    /// character when there is no word there.
+    func wordRange(at index: Int) -> NSRange {
+        let ns = string.string as NSString
+        guard ns.length > 0 else { return NSRange(location: 0, length: 0) }
+        let index = min(max(0, index), ns.length - 1)
+        let tokenizer = CFStringTokenizerCreate(kCFAllocatorDefault, ns as CFString, CFRange(location: 0, length: ns.length), kCFStringTokenizerUnitWord, CFLocaleCopyCurrent())
+        var token = CFStringTokenizerGoToTokenAtIndex(tokenizer, index)
+        if token.isEmpty { token = CFStringTokenizerAdvanceToNextToken(tokenizer) }
+        let found = CFStringTokenizerGetCurrentTokenRange(tokenizer)
+        if !token.isEmpty, found.location <= index, found.location + found.length > index {
+            return NSRange(location: found.location, length: found.length)
+        }
+        return ns.rangeOfComposedCharacterSequence(at: index)
+    }
 }
 
 /// One piece of text measured at whatever widths a layout asks for. The
