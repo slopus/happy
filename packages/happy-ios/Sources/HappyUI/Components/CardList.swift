@@ -65,21 +65,32 @@ enum CardItems {
         }
     }
 
-    /// A heading over a card.
-    nonisolated static func heading(_ id: String, _ text: String, width: CGFloat, maxWidth: CGFloat, afterCard: Bool, dark: Bool, displayScale: CGFloat) -> CardItem {
+    /// A heading over a card, with quieter words at its line's end (a
+    /// count) when given.
+    nonisolated static func heading(_ id: String, _ text: String, trailing: String? = nil, width: CGFloat, maxWidth: CGFloat, afterCard: Bool, dark: Bool, displayScale: CGFloat) -> CardItem {
         let layout = CardHeadingLayout(width: width, maxWidth: maxWidth, afterCard: afterCard)
         var drawing = CardDrawing(dark: dark, displayScale: displayScale)
         let font = CardFont(.medium, CardListMetrics.headingSize)
-        drawing.text(text.uppercased(), font, Palette.settingsSecondary, layout.label, kern: CardListMetrics.headingSize * 0.02)
+        var label = layout.label
+        if let trailing, !trailing.isEmpty {
+            let small = CardFont(.regular, CardListMetrics.headingSize)
+            let size = CardText.measure(trailing, font: small, width: label.width / 2, maxLines: 1, scale: displayScale)
+            let frame = CGRect(x: layout.trailingEdge - size.width, y: label.minY + (label.height - size.height) / 2, width: size.width, height: size.height)
+            drawing.text(trailing, small, Palette.settingsSecondary, frame)
+            label.size.width = max(0, frame.minX - CardListMetrics.trailingGap - label.minX)
+        }
+        drawing.text(text.uppercased(), font, Palette.settingsSecondary, label, kern: CardListMetrics.headingSize * 0.02)
         var item = CardItem(id: id, kind: .heading, size: layout.size, drawing: drawing)
         item.accessibilityLabel = text
+        item.accessibilityValue = trailing
         return item
     }
 
-    /// A quiet line in place of rows: an empty list, a search that found nothing.
-    nonisolated static func note(_ id: String, _ text: String, width: CGFloat, maxWidth: CGFloat, scale: CGFloat, dark: Bool, displayScale: CGFloat) -> CardItem {
-        let font = CardFont(.regular, CardListMetrics.noteSize, scale: scale)
-        let layout = CardNoteLayout(width: width, maxWidth: maxWidth, text: CardText.measurable(text, font: font, maxLines: 0, scale: displayScale))
+    /// A quiet line in place of rows: an empty list, a search that found
+    /// nothing, a list's footing.
+    nonisolated static func note(_ id: String, _ text: String, size: CGFloat = CardListMetrics.noteSize, padding: CGFloat = 24, width: CGFloat, maxWidth: CGFloat, scale: CGFloat, dark: Bool, displayScale: CGFloat) -> CardItem {
+        let font = CardFont(.regular, size, scale: scale)
+        let layout = CardNoteLayout(width: width, maxWidth: maxWidth, text: CardText.measurable(text, font: font, maxLines: 0, scale: displayScale), padding: padding)
         var drawing = CardDrawing(dark: dark, displayScale: displayScale)
         let paragraph = layout.text
         drawing.text(text, font, Palette.settingsSecondary, paragraph, wraps: true)
@@ -133,6 +144,10 @@ final class CardListRow: ListRow {
 @MainActor
 final class CardListRowView: ListRowView, UIContextMenuInteractionDelegate, UIGestureRecognizerDelegate {
     private(set) var row: CardListRow
+    /// Clips the card's part to the row: the part is drawn a radius
+    /// taller on the side it joins the next row, so a row shorter than
+    /// two radii still rounds its own corners whole.
+    private let clip = UIView()
     private let card = UIView()
     private let pressFill = UIView()
     private let content = UIView()
@@ -148,10 +163,13 @@ final class CardListRowView: ListRowView, UIContextMenuInteractionDelegate, UIGe
         self.row = row
         drawingView = row.node.makeView()
         super.init(frame: .zero)
+        clip.clipsToBounds = true
+        clip.isUserInteractionEnabled = false
+        addSubview(clip)
         for view in [card, pressFill] {
             view.isUserInteractionEnabled = false
             view.layer.cornerCurve = .continuous
-            addSubview(view)
+            clip.addSubview(view)
         }
         pressFill.alpha = 0
         addSubview(content)
@@ -184,8 +202,7 @@ final class CardListRowView: ListRowView, UIContextMenuInteractionDelegate, UIGe
 
     private func applyRow() {
         let item = row.item
-        card.isHidden = item.card == nil
-        pressFill.isHidden = item.card == nil
+        clip.isHidden = item.card == nil
         var corners: CACornerMask = []
         if item.place.first { corners.formUnion([.layerMinXMinYCorner, .layerMaxXMinYCorner]) }
         if item.place.last { corners.formUnion([.layerMinXMaxYCorner, .layerMaxXMaxYCorner]) }
@@ -223,8 +240,14 @@ final class CardListRowView: ListRowView, UIContextMenuInteractionDelegate, UIGe
         content.frame = bounds
         drawingView.frame = bounds
         let box = row.item.card.map { CGRect(x: $0.minX, y: 0, width: $0.width, height: bounds.height) } ?? .zero
-        card.frame = box
-        pressFill.frame = box
+        clip.frame = box
+        let place = row.item.place
+        let radius = CardListMetrics.radius
+        let above: CGFloat = place.first ? 0 : radius
+        let below: CGFloat = place.last ? 0 : radius
+        let part = CGRect(x: 0, y: -above, width: box.width, height: box.height + above + below)
+        card.frame = part
+        pressFill.frame = part
         for overlay in row.item.overlays {
             overlays[overlay.key]?.frame = overlay.frame
         }
@@ -337,6 +360,18 @@ final class CardListView: UIView {
     static let refreshPull: CGFloat = 64
     static let refreshRoomHeight: CGFloat = 44
 
+    /// The widest the list gets: on a wide window it stands centred in the
+    /// readable column, as home's does, so no row's bitmap is wider than
+    /// its card's column. Its items are worked out at `contentWidth`.
+    var maxWidth: CGFloat = .greatestFiniteMagnitude {
+        didSet { if maxWidth != oldValue { setNeedsLayout() } }
+    }
+
+    /// The width the rows are laid out at.
+    var contentWidth: CGFloat { min(bounds.width, maxWidth) }
+
+    private var listSize: CGSize? { contentWidth > 0 ? CGSize(width: contentWidth, height: bounds.height) : nil }
+
     /// The refresh asked for is under way: the spinner holds its room.
     var refreshing = false {
         didSet {
@@ -366,10 +401,11 @@ final class CardListView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        if edge.frame != bounds {
-            edge.frame = bounds
-            list.frame = CGRect(origin: edge.bounds.origin, size: bounds.size)
-            list.applyChanges(newSize: bounds.size, transition: .none)
+        let column = CGRect(x: ((bounds.width - contentWidth) / 2).rounded(.down), y: 0, width: contentWidth, height: bounds.height)
+        if edge.frame != column {
+            edge.frame = column
+            list.frame = CGRect(origin: edge.bounds.origin, size: column.size)
+            list.applyChanges(newSize: column.size, transition: .none)
         }
         placeSpinner()
     }
@@ -395,10 +431,10 @@ final class CardListView: UIView {
         let structural = previousIDs != next.map(\.id)
         let moves = animated && structural && !previousIDs.isEmpty && window != nil && !UIAccessibility.isReduceMotionEnabled
         ApplyPerf.measure(.screen) {
-            list.applyChanges(items: shown, newSize: bounds.width > 0 ? bounds.size : nil, anchorMode: .automatic, transition: moves ? .easeInOut(0.25) : .none)
+            list.applyChanges(items: shown, newSize: listSize, anchorMode: .automatic, transition: moves ? .easeInOut(0.25) : .none)
             return touched
         }
-        edge.contentSize = CGSize(width: bounds.width, height: y)
+        edge.contentSize = CGSize(width: contentWidth, height: y)
         mirror()
     }
 
@@ -427,7 +463,7 @@ final class CardListView: UIView {
     private func applyInsets(animated: Bool, keepsTop: Bool = true) {
         let top = contentInsets.top + refreshRoom
         edge.contentInset = UIEdgeInsets(top: top, left: 0, bottom: contentInsets.bottom, right: 0)
-        list.applyChanges(newSize: bounds.width > 0 ? bounds.size : nil, newInsets: .init(top: top, bottom: contentInsets.bottom), anchorMode: keepsTop ? .automatic : .preserveVisibleContent, compensatesInsetChange: keepsTop, transition: animated && window != nil ? .easeInOut(0.3) : .none)
+        list.applyChanges(newSize: listSize, newInsets: .init(top: top, bottom: contentInsets.bottom), anchorMode: keepsTop ? .automatic : .preserveVisibleContent, compensatesInsetChange: keepsTop, transition: animated && window != nil ? .easeInOut(0.3) : .none)
         mirror()
     }
 
@@ -446,7 +482,16 @@ final class CardListView: UIView {
 
     func scrollToTop(animated: Bool) { list.scrollToTop(animated: animated) }
 
+    /// Brings `id`'s slot to the top of what shows, if it is listed.
+    func scroll(to id: String, animated: Bool) {
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return }
+        list.scrollTo(.init(index: index, identity: id), transition: animated && window != nil ? .uiKitScroll() : .none)
+    }
+
     private func scrolled() {
+        #if DEBUG || HAPPY_FIXTURES
+        GymFrameMeter.noteScroll()
+        #endif
         mirror()
         placeSpinner()
         onScroll?()

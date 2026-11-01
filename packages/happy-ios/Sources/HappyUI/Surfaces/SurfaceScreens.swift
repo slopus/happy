@@ -11,6 +11,8 @@ enum SurfaceScreens {
         switch surface.type {
         case "document":
             return DocumentScreens.make(session: session, surfaceId: surface.id, name: surface.name)
+        case "system_monitor":
+            return MonitorViewController(session: session, surface: surface)
         default:
             return SurfaceViewController(session: session, surface: surface)
         }

@@ -11,4 +11,9 @@ extension AgentClient {
         if let pageCursor { query.append("pageCursor=\(Self.escape(pageCursor))") }
         return try await decode(JSONValue.self, "GET", "/v0/artifacts?" + query.joined(separator: "&"))
     }
+
+    /// A System Monitor Surface's snapshot, sent bare.
+    public func systemMonitor(_ surfaceId: String) async throws -> SystemMonitorSample {
+        try await decode(SystemMonitorSample.self, "GET", "/v0/surfaces/system-monitor/\(Self.escape(surfaceId))")
+    }
 }

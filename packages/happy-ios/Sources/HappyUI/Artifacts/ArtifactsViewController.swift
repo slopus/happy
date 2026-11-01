@@ -118,6 +118,7 @@ final class ArtifactsViewController: UIViewController, UISearchResultsUpdating {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        list.maxWidth = ContentWidth.maxWidth
         list.frame = view.bounds
         let safe = view.safeAreaInsets
         list.setInsets(UIEdgeInsets(top: safe.top + CardListMetrics.contentTop, left: 0, bottom: safe.bottom + CardListMetrics.contentBottom, right: 0))
@@ -128,8 +129,7 @@ final class ArtifactsViewController: UIViewController, UISearchResultsUpdating {
 
     private func currentInput() -> ArtifactListInput {
         var input = ArtifactListInput(words: .current)
-        input.width = list.bounds.width
-        input.maxWidth = ContentWidth.maxWidth
+        input.width = list.contentWidth
         input.scale = traitCollection.textEnvironment?.scale.multiplier ?? 1
         input.displayScale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 2
         input.dark = traitCollection.userInterfaceStyle == .dark
@@ -169,7 +169,7 @@ final class ArtifactsViewController: UIViewController, UISearchResultsUpdating {
     }
 
     private func show(_ output: Output) -> Bool {
-        guard output.width == list.bounds.width else { return false }
+        guard output.width == list.contentWidth else { return false }
         artifacts = output.artifacts
         list.apply(output.items, animated: true)
         if pulled, !output.refreshing {

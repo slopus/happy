@@ -181,9 +181,10 @@ final class HostedArtifactsListTests: XCTestCase {
 
         // Every row is in its card, on the list's width; on an iPad the
         // cards hold to the readable column.
-        let width = screen.list.bounds.width
-        let column = CardColumn(width: width, maxWidth: ContentWidth.maxWidth)
-        if UIDevice.current.userInterfaceIdiom == .pad { XCTAssertEqual(column.width, 768) } else { XCTAssertEqual(column.x, 16) }
+        let width = screen.list.contentWidth
+        let column = CardColumn(width: width, maxWidth: .greatestFiniteMagnitude)
+        XCTAssertEqual(column.x, 16)
+        if UIDevice.current.userInterfaceIdiom == .pad { XCTAssertEqual(width, 800); XCTAssertEqual(column.width, 768) }
         for item in screen.list.items where item.kind == .row {
             XCTAssertEqual(item.size.width, width)
             XCTAssertEqual(item.card, CGRect(x: column.x, y: 0, width: column.width, height: item.size.height))

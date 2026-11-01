@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import HappyCore
 import HappyIcons
 import HappyLayout
 import UIKit
@@ -79,6 +80,30 @@ struct CardDrawing: Drawing, Equatable {
         case fill(CGRect, ColorToken)
         /// A ring `width` wide.
         case ring(CGRect, width: CGFloat, ColorToken)
+        /// Lines over time on faint guides (a System Monitor's history).
+        case chart([ChartLine], CGRect)
+        /// One bar per value, 0 to 100, each coloured by its level.
+        case bars([Double?], CGRect, gap: CGFloat)
+        /// A rounded track filled to `percent`, coloured by its level.
+        case meter(Double?, CGRect)
+    }
+
+    /// One line of a chart: values from 0 to 1, oldest first, nil where
+    /// nothing was measured (the line breaks there).
+    struct ChartLine: Equatable, Sendable {
+        var values: [Double?]
+        var color: ColorToken
+        var fills = true
+    }
+
+    /// The desktop's level colours: calm, warm, hot; grey unmeasured.
+    nonisolated static func level(_ percent: Double?) -> ColorToken {
+        switch MonitorLevel.of(percent) {
+        case .calm: Palette.monitorCalm
+        case .warm: Palette.monitorWarm
+        case .hot: Palette.monitorHot
+        case .unavailable: Palette.settingsSecondary
+        }
     }
 
     var marks: [Mark] = []
@@ -131,6 +156,79 @@ struct CardDrawing: Drawing, Equatable {
                 context.setStrokeColor(resolved(color).cgColor)
                 context.setLineWidth(width)
                 context.strokeEllipse(in: frame.insetBy(dx: width / 2, dy: width / 2))
+            case .chart(let lines, let frame):
+                drawChart(lines, in: frame, context: context)
+            case .bars(let values, let frame, let gap):
+                guard !values.isEmpty else { continue }
+                let width = max(1, (frame.width - gap * CGFloat(values.count - 1)) / CGFloat(values.count))
+                let radius = min(2, width / 2)
+                for (index, value) in values.enumerated() {
+                    let x = frame.minX + CGFloat(index) * (width + gap)
+                    let track = CGRect(x: x, y: frame.minY, width: width, height: frame.height)
+                    context.setFillColor(resolved(Palette.monitorTrack).cgColor)
+                    context.addPath(UIBezierPath(roundedRect: track, cornerRadius: radius).cgPath)
+                    context.fillPath()
+                    guard let value, value > 0 else { continue }
+                    let height = max(radius * 2, frame.height * min(1, value / 100))
+                    context.setFillColor(resolved(Self.level(value)).cgColor)
+                    context.addPath(UIBezierPath(roundedRect: CGRect(x: x, y: frame.maxY - height, width: width, height: height), cornerRadius: radius).cgPath)
+                    context.fillPath()
+                }
+            case .meter(let percent, let frame):
+                let radius = frame.height / 2
+                context.setFillColor(resolved(Palette.monitorTrack).cgColor)
+                context.addPath(UIBezierPath(roundedRect: frame, cornerRadius: radius).cgPath)
+                context.fillPath()
+                guard let percent, percent > 0 else { continue }
+                let filled = CGRect(x: frame.minX, y: frame.minY, width: max(frame.height, frame.width * min(1, percent / 100)), height: frame.height)
+                context.setFillColor(resolved(Self.level(percent)).cgColor)
+                context.addPath(UIBezierPath(roundedRect: filled, cornerRadius: radius).cgPath)
+                context.fillPath()
+            }
+        }
+    }
+
+    /// Three faint guides, then each line with the ground under it softly
+    /// filled; a line of one value draws nothing.
+    private func drawChart(_ lines: [ChartLine], in frame: CGRect, context: CGContext) {
+        let hairline = 1 / max(1, displayScale)
+        context.setFillColor(resolved(Palette.monitorGrid).cgColor)
+        for fraction in [0, 0.5, 1] as [CGFloat] {
+            context.fill(CGRect(x: frame.minX, y: (frame.minY + (frame.height - hairline) * fraction).rounded(.down), width: frame.width, height: hairline))
+        }
+        let stroke: CGFloat = 1.5
+        let box = frame.insetBy(dx: 0, dy: stroke / 2)
+        for line in lines where line.values.count > 1 {
+            let step = box.width / CGFloat(line.values.count - 1)
+            var runs: [[CGPoint]] = [[]]
+            for (index, value) in line.values.enumerated() {
+                guard let value else {
+                    if !(runs.last?.isEmpty ?? true) { runs.append([]) }
+                    continue
+                }
+                runs[runs.count - 1].append(CGPoint(x: box.minX + CGFloat(index) * step, y: box.maxY - box.height * CGFloat(min(1, max(0, value)))))
+            }
+            let color = resolved(line.color)
+            for run in runs where run.count > 1 {
+                if line.fills {
+                    // `addLines(between:)` would begin a path of its own.
+                    let area = CGMutablePath()
+                    area.move(to: CGPoint(x: run[0].x, y: frame.maxY))
+                    for point in run { area.addLine(to: point) }
+                    area.addLine(to: CGPoint(x: run[run.count - 1].x, y: frame.maxY))
+                    area.closeSubpath()
+                    context.setFillColor(color.withAlphaComponent(dark ? 0.22 : 0.14).cgColor)
+                    context.addPath(area)
+                    context.fillPath()
+                }
+                let path = CGMutablePath()
+                path.addLines(between: run)
+                context.setStrokeColor(color.cgColor)
+                context.setLineWidth(stroke)
+                context.setLineJoin(.round)
+                context.setLineCap(.round)
+                context.addPath(path)
+                context.strokePath()
             }
         }
     }
