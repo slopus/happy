@@ -166,14 +166,25 @@ internal fun openCustomTab(context: Context, url: String) {
  */
 @Composable
 fun Modifier.webLinkGestures(text: AnnotatedString, layout: State<TextLayoutResult?>): Modifier {
-    val opener = LocalLinkOpener.current ?: return this
     if (!text.hasLinkAnnotations(0, text.length)) return this
+    return webLinkGestures(text) { position -> layout.value?.let { linkAt(text, it, position) } }
+}
+
+/**
+ * [webLinkGestures] for a node that draws its texts itself (a transcript
+ * row): [find] gives the link under a point in the node, if any. [key]
+ * changes when what the node draws does.
+ */
+@Composable
+internal fun Modifier.webLinkGestures(key: Any, find: (Offset) -> Link?): Modifier {
+    val opener = LocalLinkOpener.current ?: return this
     val haptics = LocalHapticFeedback.current
     val handler by rememberUpdatedState(LocalUriHandler.current)
-    return this.pointerInput(text, opener) {
+    val linkAt by rememberUpdatedState(find)
+    return this.pointerInput(key, opener) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-            val link = layout.value?.let { linkAt(text, it, down.position) } ?: return@awaitEachGesture
+            val link = linkAt(down.position) ?: return@awaitEachGesture
             val url = link.url ?: return@awaitEachGesture
             down.consume()
             val slop = viewConfiguration.touchSlop

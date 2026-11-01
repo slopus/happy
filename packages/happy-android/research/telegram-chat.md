@@ -493,6 +493,84 @@ Benchmark additions:
   GPU and deadline to `files/chat-frames.txt`.
 - The `parts` line under each case.
 
+## Phase 3, precomputed text rows: results
+
+Answers, people's messages, collaborators' messages and opened thoughts are now
+laid out where the rows are built, as Telegram's `MessageObject.generateLayout` is.
+The row draws what it is given and measures nothing.
+
+- **The typesetter** (`ui/conversation/Typesetter.kt`, one per process):
+  - The conversation's lane calls `prepare` with every row set it publishes. It lays
+    out the newest two screens of rows then and there, and the rest on the
+    typesetter's own lane (`Dispatchers.Default.limitedParallelism(1)`).
+  - A streaming block's words are laid out in `LiveText.update`, before its row
+    reads them. Its settled paragraphs are reused by block identity, so a delta lays
+    out only the paragraph that grew.
+  - It keeps 1,200 rows, keyed by row key, with the words, geometry (column, density,
+    font scale, direction) and palette they were made for.
+- **What a layout is** (`Prose.kt`):
+  - Compose's own `TextMeasurer`, one per thread with a shared font resolver. A drawn
+    row is therefore pixel for pixel MarkdownView, which the tests check.
+  - Paragraphs, headers, inline code, lists, rules and the collaborator's label are
+    pieces at fixed places in *segments*. Code blocks, tables, options, diagrams and
+    pictures stay composables between segments.
+- **Drawn ahead.** The lane also draws each segment into an `android.graphics.Picture`
+  in the current theme's colours. Shaping glyphs for the display list was the main
+  thread's biggest new cost (`Layout.drawText` 8% of the jumps). A row now plays its
+  picture back. A row whose picture is for another theme or width draws its layouts
+  itself while the lane draws it again.
+- **A new width** (fold, rotation, a pane) makes every layout stale. Rows draw the old
+  one scaled to the new width. The lane lays them out again, the rows on screen first,
+  and the rows swap to the new layout when it is ready. Nothing is laid out on the main
+  thread.
+- **Unchanged behaviour:**
+  - Links: a tap opens them through the proxied browser, a long press shows the menu.
+  - Semantics: each segment's texts are its `Text`, and its links are custom actions,
+    so `onNodeWithText` finds them.
+  - Long press: it puts that one answer back in today's `SelectionContainer` with the
+    word selected. Once nothing is selected the answer is drawn again.
+  - Light/dark, font scale and RTL, and the streaming reveal, which masks the drawn
+    layouts.
+- **Checks.** `ProseThread` counts every layout built on the main thread, and throws
+  under `strict` in tests. The benchmark prints the count for each case. It was 0 in
+  every case.
+
+Tests (`ProseRowsTest`, Robolectric, native graphics):
+- Pixel parity with `AgentMessage` in light, dark, RTL and font scale 1.6.
+- Pixel parity of the drawn-ahead playback in light and dark.
+- Bubble and collaborator parity.
+- Semantics and link actions; link tap, long press and off-link.
+- Long-press selection and the return to drawing.
+- Cache keys, invalidation and part reuse.
+- A width change with strict main thread.
+- A whole chat opened and scrolled to its oldest row with strict main thread.
+- Streaming through the builder with strict main thread.
+
+### Emulator (Pixel 7 AVD, API 35, 60 Hz, `-e chat recorded`, 702 rows)
+
+The host was shared and loaded (load average 40–110), so before and after were
+interleaved, 3 × 2 runs each.
+
+| | before (main) | after |
+|---|---|---|
+| `proto_rows_current`, 60 jumps to fresh rows | 1.76–2.08 ms a jump (one 3.88 outlier) | **1.30–1.57 ms a jump** |
+| the same, without the drawn-ahead pictures | | 2.18–2.75 ms a jump |
+| `conversation_open`, main cpu median | 17 / 41 ms | 16 / 17 ms |
+| `conversation_scroll` | p50 17.9 / 29.7 ms. Missed 2.3 / 8.5% | p50 17.5 / 17.1 ms. Missed 2.2 / 1.8% |
+| `conversation_stream` | 3.58 / 4.55 ms an update | 3.68 / 4.17 ms an update |
+| the lane | | first screens 20–29 ms cpu; all 702 rows laid out and drawn in 330–550 ms, +9 MB heap |
+
+Main-thread profile of the jumps (simpleperf, 4 kHz, main thread only):
+- Before: `TextAnnotatedStringNode.measure` 12.5%, `SelectableTextAnnotatedStringNode` 6%,
+  `measureLazyList` 50%.
+- After, before the pictures were added: `measureLazyList` 32%. The text measure was gone,
+  but `AndroidParagraph.paint` was 8% (glyph shaping as the display list records), which
+  the pictures removed.
+
+`proto_compose_prose` (200 answers through `ConversationRowView`) is the
+prototype-doc comparison: open median 6–10 ms of main thread, against
+`proto_compose_current`'s 27.
+
 ## Running the benchmark
 
 ```sh
@@ -525,7 +603,7 @@ adb -s <device> shell cat /sdcard/Android/data/com.slopus.happy.chatbench/files/
     `conversation_older`, `conversation_ime`
   - `legacy_scroll`
   - `proto_compose_current`, `proto_compose_canvas`, `proto_recycler_canvas`,
-    `proto_rows_current`
+    `proto_rows_current`, `proto_compose_prose`
   - `proto_compose_glass`, `proto_recycler_glass`
 
   Run them one at a time; each takes 10–60 s.

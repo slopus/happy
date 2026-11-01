@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
@@ -106,9 +107,14 @@ class TextReveal internal constructor(
         data class Line(val line: Int, val x: Float) : Mask
     }
 
-    /** One text of the row, with its lines' extents measured once per layout. */
+    /**
+     * One text of the row, with its lines' extents measured once per layout:
+     * a Text's own node, or a text drawn at [origin] in a node that draws
+     * several ([coordinates] then being that node's).
+     */
     inner class Piece internal constructor(internal val layout: State<TextLayoutResult?>) {
         internal var coordinates: LayoutCoordinates? = null
+        internal var origin = Offset.Zero
         internal var mask by mutableStateOf<Mask>(if (startPending) Mask.Whole else Mask.None)
         internal var top = 0f
         internal var left = 0f
@@ -207,7 +213,7 @@ class TextReveal internal constructor(
             val coordinates = piece.coordinates?.takeIf { it.isAttached } ?: return@filter false
             if (piece.lines == 0) return@filter false
             if (rootCoordinates != null) {
-                val at = rootCoordinates.localPositionOf(coordinates, Offset.Zero)
+                val at = rootCoordinates.localPositionOf(coordinates, piece.origin)
                 piece.top = at.y
                 piece.left = at.x
             }
@@ -382,37 +388,46 @@ fun Modifier.revealText(layout: State<TextLayoutResult?>): Modifier {
         .onPlaced { piece.coordinates = it }
         .graphicsLayer()
         .drawWithContent {
-            val mask = piece.mask
             val text = piece.layout.value
-            if (mask == TextReveal.Mask.Whole || text == null) {
-                drawContent()
-                return@drawWithContent
-            }
-            if (mask !is TextReveal.Mask.Line || text.lineCount == 0) return@drawWithContent
-            val line = mask.line.coerceIn(0, text.lineCount - 1)
-            val top = text.getLineTop(line)
-            val bottom = text.getLineBottom(line)
-            if (top > 0f) clipRect(bottom = top) { this@drawWithContent.drawContent() }
-            val start = piece.start(line)
-            val end = piece.end(line)
-            val width = end - start
-            if (width <= 0f || mask.x <= 0f) return@drawWithContent
-            if (mask.x >= width) {
-                clipRect(top = top, bottom = bottom) { this@drawWithContent.drawContent() }
-                return@drawWithContent
-            }
-            val fade = TextRevealSpec.fade.toPx()
-            val from = start + lerp(-fade, width, mask.x / width)
-            drawIntoCanvas { it.saveLayer(Rect(start, top, end, bottom), Paint()) }
-            clipRect(start, top, end, bottom) { this@drawWithContent.drawContent() }
-            drawRect(
-                Brush.horizontalGradient(listOf(Color.Black, Color.Transparent), startX = from, endX = from + fade),
-                topLeft = Offset(start, top),
-                size = Size(width, bottom - top),
-                blendMode = BlendMode.DstIn,
-            )
-            drawIntoCanvas { it.restore() }
+            if (text == null) drawContent() else drawRevealed(piece, text) { this@drawWithContent.drawContent() }
         }
         // The text's own layer: the mask above draws it by reference.
         .graphicsLayer()
+}
+
+/**
+ * [piece]'s [text] as its mask shows it, [content] drawing the text at the
+ * origin: whole, nothing, or the lines before the caret's and its own up
+ * to the caret, fading out over the last [TextRevealSpec.fade].
+ */
+internal fun DrawScope.drawRevealed(piece: TextReveal.Piece, text: TextLayoutResult, content: DrawScope.() -> Unit) {
+    val mask = piece.mask
+    if (mask == TextReveal.Mask.Whole) {
+        content()
+        return
+    }
+    if (mask !is TextReveal.Mask.Line || text.lineCount == 0) return
+    val line = mask.line.coerceIn(0, text.lineCount - 1)
+    val top = text.getLineTop(line)
+    val bottom = text.getLineBottom(line)
+    if (top > 0f) clipRect(bottom = top) { content() }
+    val start = piece.start(line)
+    val end = piece.end(line)
+    val width = end - start
+    if (width <= 0f || mask.x <= 0f) return
+    if (mask.x >= width) {
+        clipRect(top = top, bottom = bottom) { content() }
+        return
+    }
+    val fade = TextRevealSpec.fade.toPx()
+    val from = start + lerp(-fade, width, mask.x / width)
+    drawIntoCanvas { it.saveLayer(Rect(start, top, end, bottom), Paint()) }
+    clipRect(start, top, end, bottom) { content() }
+    drawRect(
+        Brush.horizontalGradient(listOf(Color.Black, Color.Transparent), startX = from, endX = from + fade),
+        topLeft = Offset(start, top),
+        size = Size(width, bottom - top),
+        blendMode = BlendMode.DstIn,
+    )
+    drawIntoCanvas { it.restore() }
 }

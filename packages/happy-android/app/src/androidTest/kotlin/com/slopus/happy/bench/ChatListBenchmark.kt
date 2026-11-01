@@ -72,6 +72,8 @@ import com.slopus.happy.ui.conversation.ConversationRowActions
 import com.slopus.happy.ui.conversation.ConversationRowView
 import com.slopus.happy.ui.conversation.ConversationScreen
 import com.slopus.happy.ui.conversation.ConversationScreenActions
+import com.slopus.happy.ui.conversation.ProseThread
+import com.slopus.happy.ui.conversation.Typesetter
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.components.LocalGlassBlur
 import com.slopus.happy.ui.theme.ThemePreference
@@ -82,6 +84,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -187,12 +190,34 @@ class ChatListBenchmark {
         messages
     }
 
-    private val builder = ConversationRowBuilder()
+    /** The rows' text is laid out as a conversation's lane lays it out: off the main thread, before the screen sees it. */
+    private val typesetter by lazy { Typesetter.of(app) }
+    private val builder by lazy { ConversationRowBuilder(typesetter = typesetter) }
     private val agent = AgentInfo("fx-agent", "fx-workspace", null, "Fixture chat", "idle", null, null, now, now, 0, 0)
 
-    /** Newest first, as the screen takes them. */
+    /**
+     * Newest first, as the screen takes them, laid out as the lane would have
+     * them (all of them, as a second or so after a chat opens).
+     */
     private fun rows(messages: List<Message>): List<ConversationRow> =
-        messages.flatMap { builder.rows(it, "fx-agent", null, false) }.asReversed()
+        messages.flatMap { builder.rows(it, "fx-agent", null, false) }.asReversed().also(::laidOut)
+
+    /** [rows] laid out on this (instrumentation) thread and the typesetter's lane, as Conversation does; reports the cost. */
+    private fun laidOut(rows: List<ConversationRow>) {
+        Runtime.getRuntime().gc()
+        val native = Debug.getNativeHeapAllocatedSize()
+        val heap = Runtime.getRuntime().let { it.totalMemory() - it.freeMemory() }
+        val start = Debug.threadCpuTimeNanos()
+        val wall = SystemClock.uptimeMillis()
+        typesetter.prepare(rows)
+        val first = (Debug.threadCpuTimeNanos() - start) / 1e6
+        runBlocking { withContext(typesetter.lane) {} }
+        val took = SystemClock.uptimeMillis() - wall
+        Runtime.getRuntime().gc()
+        val nativeMb = (Debug.getNativeHeapAllocatedSize() - native) / 1e6
+        val heapMb = (Runtime.getRuntime().let { it.totalMemory() - it.freeMemory() } - heap) / 1e6
+        report(String.format(Locale.US, "  laid out off the main thread: %d rows, first screens %.0f ms cpu, all in %d ms; +%.1f MB native, +%.1f MB heap", rows.size, first, took, nativeMb, heapMb))
+    }
 
     private val allRows: List<ConversationRow> by lazy {
         rows(heavy).also { rows ->
@@ -253,6 +278,7 @@ class ChatListBenchmark {
 
     /** Runs [block] while recording frames, then logs both summaries. */
     private fun record(name: String, block: () -> Unit): List<FrameRecorder.Frame> {
+        val builds = ProseThread.mainBuilds.get()
         shell("dumpsys gfxinfo ${app.packageName} reset")
         val recorder = FrameRecorder(activity.window)
         var mainCpu = 0L
@@ -271,12 +297,14 @@ class ChatListBenchmark {
         report(String.format(java.util.Locale.US, "  cpu: main %.0f ms (%.2f ms/frame), process %d ms", mainCpu / 1e6, mainCpu / 1e6 / frames.size.coerceAtLeast(1), process))
         val gfx = shell("dumpsys gfxinfo ${app.packageName}")
         val keep = listOf("Total frames rendered", "Janky frames", "50th percentile", "90th percentile", "99th percentile")
+        report("  prose laid out on the main thread: ${ProseThread.mainBuilds.get() - builds}")
         report("  gfxinfo: " + gfx.lines().map { it.trim() }.filter { l -> keep.any { l.startsWith(it) } }.distinct().take(5).joinToString("; "))
         return frames
     }
 
     /** Five opens: the content switched off, then on, each recorded; the first frame is the one that composes it. */
     private fun opens(name: String) {
+        val builds = ProseThread.mainBuilds.get()
         val first = ArrayList<FrameRecorder.Frame>()
         val all = ArrayList<FrameRecorder.Frame>()
         val cpu = ArrayList<Double>()
@@ -297,6 +325,7 @@ class ChatListBenchmark {
             frames.firstOrNull()?.let(first::add)
             all += frames
         }
+        report("  prose laid out on the main thread: ${ProseThread.mainBuilds.get() - builds}")
         report(FrameSummary(first).line("$name open/first"))
         report(FrameSummary(all).line("$name open/all"))
         report("  open main cpu ms: ${cpu.map { String.format(java.util.Locale.US, "%.0f", it) }} median ${String.format(java.util.Locale.US, "%.0f", cpu.sorted()[cpu.size / 2])}")
@@ -504,6 +533,7 @@ class ChatListBenchmark {
         SystemClock.sleep(500)
         val count = 60
         var cpu = 0L
+        val builds = ProseThread.mainBuilds.get()
         val recorder = FrameRecorder(activity.window)
         main { recorder.start() }
         for (i in 0 until count) {
@@ -519,6 +549,7 @@ class ChatListBenchmark {
         val frames = recorder.stop()
         report(FrameSummary(frames).line("$name jumps"))
         val ui = frames.sumOf { it.uiNs } / 1e6
+        report("  prose laid out on the main thread: ${ProseThread.mainBuilds.get() - builds}")
         report(String.format(Locale.US, "  jumps: %d, main-thread frame work %.1f ms (%.2f ms a jump), call itself %.2f ms a jump", count, ui, ui / count, cpu / 1e6 / count))
     }
 
@@ -533,6 +564,7 @@ class ChatListBenchmark {
         main { idle = Debug.threadCpuTimeNanos() }
         SystemClock.sleep(IDLE_MILLIS)
         main { idle = Debug.threadCpuTimeNanos() - idle }
+        val builds = ProseThread.mainBuilds.get()
         val recorder = FrameRecorder(activity.window)
         var started = 0L
         main {
@@ -560,6 +592,7 @@ class ChatListBenchmark {
         }
         val frames = recorder.stop()
         FrameSummary(frames).let { report(it.line("$name stream")); report(it.parts()) }
+        report("  prose laid out on the main thread: ${ProseThread.mainBuilds.get() - builds}")
         report(String.format(Locale.US, "  stream: %d updates (final %d chars), main cpu %.0f ms, %.2f ms an update", updates, words.length, mainCpu / 1e6, mainCpu / 1e6 / updates))
         val working = idle / 1e6 / IDLE_MILLIS * elapsed
         report(String.format(Locale.US, "  working screen alone: %.0f ms of main a second; the stream added %.2f ms an update", idle / 1e3 / IDLE_MILLIS, (mainCpu / 1e6 - working) / updates))
@@ -589,6 +622,34 @@ class ChatListBenchmark {
         // Parsed off the main thread, as the feeds do; Compose measures the text on it.
         streams("proto compose current") { text -> live = withContext(Dispatchers.Default) { answerRow(text) } }
         flings("proto compose current", reverse = false)
+    }
+
+    /**
+     * The same 200 answers as the conversation draws them now (ConversationRowView's
+     * drawn answer: laid out on the lane by the Typesetter, one node a segment, code
+     * blocks composed), for the same open, jumps, stream and flings as the two above.
+     */
+    @Test fun proto_compose_prose() {
+        val rows = answers.mapIndexed { i, text -> ConversationRow.Text("p$i:0", text, parseMarkdown(text)) }
+        laidOut(rows)
+        val actions = ConversationRowActions(MessageCallbacks(), onRetryFailure = {}, loadMedia = { pictureBytes })
+        val bubble = BubblePalette(androidx.compose.ui.graphics.Color(0xFFF0F0F0), androidx.compose.ui.graphics.Color(0xFFDDDDDD), androidx.compose.ui.graphics.Color.Gray)
+        val list = LazyListState()
+        fun liveRow(text: String) = ConversationRow.Text("live:0", text, parseMarkdown(text))
+        var live by mutableStateOf(liveRow("Starting").also { laidOut(listOf(it)) })
+        content {
+            LazyColumn(Modifier.fillMaxSize(), state = list) {
+                item(key = "live", contentType = ConversationRow.Text::class) { ConversationRowView(live, bubble, actions) }
+                items(rows, key = { it.key }, contentType = { it::class }) { ConversationRowView(it, bubble, actions) }
+            }
+        }
+        opens("proto compose prose")
+        jumps("proto compose prose", 100, 1) { scope.launch { list.scrollToItem(it) } }
+        main { scope.launch { list.scrollToItem(0) } }
+        SystemClock.sleep(500)
+        // Parsed and laid out on the lane, as a conversation's row is.
+        streams("proto compose prose") { text -> live = withContext(typesetter.lane) { liveRow(text).also { typesetter.prepare(listOf(it)) } } }
+        flings("proto compose prose", reverse = false)
     }
 
     /** The prototype as a Compose item: StaticLayouts built off the main thread, one node, one draw. */

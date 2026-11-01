@@ -105,7 +105,11 @@ enum class Activity { AwaitingAnswer, WaitingForModel, Thinking, PreparingTools,
  * unchanged so Markdown is parsed once per change. Not thread-safe; the
  * conversation calls it from its one lane.
  */
-class ConversationRowBuilder(private val now: () -> Long = System::currentTimeMillis) {
+class ConversationRowBuilder(
+    /** Lays out a streaming block's words before its row reads them; null where nothing does. */
+    private val typesetter: RowTypesetter? = null,
+    private val now: () -> Long = System::currentTimeMillis,
+) {
     private class Built(val message: Message, val streaming: Boolean, val rows: List<ConversationRow>)
 
     private val cache = HashMap<String, Built>()
@@ -128,7 +132,13 @@ class ConversationRowBuilder(private val now: () -> Long = System::currentTimeMi
     }
 
     private fun live(key: String, text: String, markdown: Boolean): LiveText {
-        val live = lives.getOrPut(key) { LiveText(text, if (markdown) parseMarkdown(text) else emptyList(), now) }
+        val live = lives.getOrPut(key) {
+            val prepare = typesetter?.let { t -> { content: LiveText.Content, md: Boolean -> t.live(key, content, md) } }
+            LiveText(text, if (markdown) parseMarkdown(text) else emptyList(), now, prepare).also { created ->
+                // Its first words, too, are laid out before a row reads them.
+                prepare?.invoke(created.content.value, markdown)
+            }
+        }
         live.update(text, markdown)
         return live
     }

@@ -143,7 +143,7 @@ enum class Ionicon(val codepoint: Int) {
     WarningOutline(0xf629), // warning-outline
 }
 
-private val IoniconsFamily = FontFamily(Font(R.font.ionicons))
+internal val IoniconsFamily = FontFamily(Font(R.font.ionicons))
 
 /**
  * One glyph in a [size] x [size] box, like `<Ionicons size={size} />`. Unlike

@@ -149,44 +149,56 @@ fun MarkdownView(
         return
     }
     Column(modifier = modifier) {
-        for (block in blocks) {
-            when (block) {
-                is MarkdownBlock.Text -> SpansText(
-                    spans = block.content,
-                    style = MarkdownSpec.text,
-                    color = HappyTheme.colors.text,
-                    modifier = Modifier
-                        .padding(top = MarkdownSpec.textMarginTop, bottom = MarkdownSpec.textMarginBottom)
-                        .testTag(MarkdownTags.TEXT),
-                )
-                is MarkdownBlock.Header -> {
-                    val (style, margins) = MarkdownSpec.headers[(block.level - 1).coerceIn(0, 5)]
-                    SpansText(
-                        spans = block.content,
-                        style = style,
-                        color = HappyTheme.colors.text,
-                        modifier = Modifier.padding(top = margins.first, bottom = margins.second).testTag(MarkdownTags.HEADER),
-                    )
-                }
-                is MarkdownBlock.BulletList -> ListBlock(
-                    block.items.map { Triple(MarkdownSpec.bullets[it.depth.coerceAtMost(2)], it.depth, it.spans) },
-                )
-                is MarkdownBlock.NumberedList -> ListBlock(block.items.map { Triple("${it.number}.", it.depth, it.spans) })
-                is MarkdownBlock.CodeBlock -> CodeBlock(block.content, block.language)
-                is MarkdownBlock.Mermaid -> MermaidView(block.content) { CodeBlock(block.content, "mermaid") }
-                MarkdownBlock.HorizontalRule -> Box(
-                    Modifier
-                        .padding(vertical = MarkdownSpec.ruleMargin)
-                        .testTag(MarkdownTags.RULE)
-                        .fillMaxWidth()
-                        .height(1.dp)
-                        .background(HappyTheme.colors.divider),
-                )
-                is MarkdownBlock.Options -> OptionsBlock(block.items, onOptionPress)
-                is MarkdownBlock.Table -> TableBlock(block)
-                is MarkdownBlock.Image -> image?.invoke(block) ?: MarkdownImage(block.alt, block.url)
-            }
+        for (block in blocks) MarkdownBlockView(block, onOptionPress, image)
+    }
+}
+
+/**
+ * One of [MarkdownView]'s blocks, as it draws it in its column. A drawn
+ * transcript row ([com.slopus.happy.ui.conversation.ProseColumn]) composes
+ * its code, tables, options, pictures and diagrams with it.
+ */
+@Composable
+internal fun MarkdownBlockView(
+    block: MarkdownBlock,
+    onOptionPress: ((String) -> Unit)? = null,
+    image: (@Composable (MarkdownBlock.Image) -> Unit)? = null,
+) {
+    when (block) {
+        is MarkdownBlock.Text -> SpansText(
+            spans = block.content,
+            style = MarkdownSpec.text,
+            color = HappyTheme.colors.text,
+            modifier = Modifier
+                .padding(top = MarkdownSpec.textMarginTop, bottom = MarkdownSpec.textMarginBottom)
+                .testTag(MarkdownTags.TEXT),
+        )
+        is MarkdownBlock.Header -> {
+            val (style, margins) = MarkdownSpec.headers[(block.level - 1).coerceIn(0, 5)]
+            SpansText(
+                spans = block.content,
+                style = style,
+                color = HappyTheme.colors.text,
+                modifier = Modifier.padding(top = margins.first, bottom = margins.second).testTag(MarkdownTags.HEADER),
+            )
         }
+        is MarkdownBlock.BulletList -> ListBlock(
+            block.items.map { Triple(MarkdownSpec.bullets[it.depth.coerceAtMost(2)], it.depth, it.spans) },
+        )
+        is MarkdownBlock.NumberedList -> ListBlock(block.items.map { Triple("${it.number}.", it.depth, it.spans) })
+        is MarkdownBlock.CodeBlock -> CodeBlock(block.content, block.language)
+        is MarkdownBlock.Mermaid -> MermaidView(block.content) { CodeBlock(block.content, "mermaid") }
+        MarkdownBlock.HorizontalRule -> Box(
+            Modifier
+                .padding(vertical = MarkdownSpec.ruleMargin)
+                .testTag(MarkdownTags.RULE)
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(HappyTheme.colors.divider),
+        )
+        is MarkdownBlock.Options -> OptionsBlock(block.items, onOptionPress)
+        is MarkdownBlock.Table -> TableBlock(block)
+        is MarkdownBlock.Image -> image?.invoke(block) ?: MarkdownImage(block.alt, block.url)
     }
 }
 

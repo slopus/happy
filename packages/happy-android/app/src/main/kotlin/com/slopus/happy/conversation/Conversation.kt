@@ -141,6 +141,8 @@ class Conversation(
     /** Where [keeper] is read and written: never the main thread. */
     private val disk: CoroutineContext = Dispatchers.IO,
     private val keepDelayMillis: Long = 1_000,
+    /** Lays out the rows' text on [lane] before each publish, so the screen only draws it; null leaves it to the screen. */
+    private val typesetter: RowTypesetter? = null,
 ) {
     /**
      * A send on its way: the person's [text], its pictures inline and its
@@ -173,7 +175,7 @@ class Conversation(
     val state: StateFlow<ConversationState> = _state.asStateFlow()
 
     private var snapshot = _state.value
-    private val builder = ConversationRowBuilder()
+    private val builder = ConversationRowBuilder(typesetter = typesetter)
     private val runs = ArrayList<Pair<String, MutableList<String>>>()
     /** Each run's status and start as last read, so it is kept as it came. */
     private val runInfo = HashMap<String, Pair<String, Long?>>()
@@ -1055,10 +1057,12 @@ class Conversation(
             agent?.status == "running_tools" -> Activity.RunningTools
             else -> Activity.Working
         }
+        val newestFirst = rows.asReversed().toList()
+        typesetter?.prepare(newestFirst)
         return base.copy(
             created = created,
             newWork = if (created) null else NewWork(choice, making),
-            rows = rows.asReversed().toList(),
+            rows = newestFirst,
             agent = agent,
             mode = mode,
             catalog = catalog,

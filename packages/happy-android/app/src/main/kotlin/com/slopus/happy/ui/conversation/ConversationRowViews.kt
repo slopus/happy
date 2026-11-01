@@ -51,9 +51,7 @@ import androidx.compose.runtime.withFrameNanos
 import com.slopus.happy.conversation.MediaFlow
 import com.slopus.happy.conversation.MediaRef
 import com.slopus.happy.conversation.NoticeKind
-import com.slopus.happy.ui.chat.AgentMessage
 import com.slopus.happy.ui.chat.BubblePalette
-import com.slopus.happy.ui.chat.MarkdownView
 import com.slopus.happy.ui.chat.MessageCallbacks
 import com.slopus.happy.ui.chat.ToolView
 import com.slopus.happy.ui.chat.UserMessage
@@ -170,7 +168,7 @@ fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: Co
                 actions.legacy,
                 content,
             )
-            is ConversationRow.Reasoning -> ReasoningRow(row, content)
+            is ConversationRow.Reasoning -> ReasoningProse(row, content)
             is ConversationRow.Picture -> Box(content.fillMaxWidth().padding(horizontal = ConversationRowSpec.marginHorizontal, vertical = ConversationRowSpec.marginVertical)) {
                 InlinePictures(row.key, listOf(row.image), actions, MediaFlow.tool, alignEnd = false)
             }
@@ -182,7 +180,7 @@ fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: Co
                 onClick = actions.onOpenArtifact?.let { open -> { open(row) } },
                 modifier = content.testTag(ConversationRowTags.ARTIFACT),
             )
-            is ConversationRow.Collaborator -> CollaboratorRow(row, content)
+            is ConversationRow.Collaborator -> CollaboratorProse(row, actions.legacy, content)
             is ConversationRow.Failure -> FailureRow(row, actions, content)
             is ConversationRow.Notice -> Text(
                 stringResource(
@@ -216,8 +214,7 @@ private fun TextRow(row: ConversationRow.Text, actions: ConversationRowActions, 
     val reveal = rememberTextReveal(row.key, streaming = row.live != null) { row.live?.isFresh() == true }
     val text = live?.text ?: row.text
     val blocks = live?.blocks ?: row.blocks
-    val message = remember(row.key, text, blocks) { ChatRow.AgentText(ChatMessage.AgentText(row.key, 0, text), blocks) }
-    AgentMessage(message, actions.legacy, modifier, reveal)
+    AnswerProse(ProseSource(row.key, ProseKind.Answer, text, blocks), actions.legacy, modifier, reveal)
 }
 
 /**
@@ -262,6 +259,7 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
             attachments = if (row.pictures.isEmpty()) null else {
                 { Box(Modifier.padding(top = ConversationRowSpec.photosGap)) { photos() } }
             },
+            body = if (row.text.isNotEmpty()) { _ -> UserProse(row, actions.legacy) } else null,
         )
     } else if (row.pictures.isNotEmpty()) {
         Box(
@@ -310,28 +308,6 @@ private fun InlinePictures(
             onClick = bytes?.let { { actions.onOpenPicture(cacheKey) } },
             more = if (index == decoded.lastIndex) more else 0,
         )
-    }
-}
-
-@Composable
-private fun ReasoningRow(row: ConversationRow.Reasoning, modifier: Modifier) {
-    val colors = HappyTheme.colors
-    var open by rememberSaveable(row.key) { mutableStateOf(false) }
-    Column(
-        modifier
-            .fillMaxWidth()
-            .padding(horizontal = ConversationRowSpec.marginHorizontal, vertical = ConversationRowSpec.marginVertical)
-            .testTag(ConversationRowTags.REASONING),
-    ) {
-        Row(
-            modifier = Modifier.clickable(role = Role.Button) { open = !open },
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            Text(stringResource(R.string.session_info_thinking), style = ConversationRowSpec.label, color = colors.textSecondary)
-            Icon(if (open) Ionicon.ChevronUp else Ionicon.ChevronDown, ConversationRowSpec.icon, colors.textSecondary)
-        }
-        if (open) Text(row.live?.let { framed(it).text } ?: row.text, style = ConversationRowSpec.body, color = colors.textSecondary, modifier = Modifier.padding(top = 4.dp))
     }
 }
 
@@ -471,19 +447,6 @@ private fun InfoCard(
             if (detail != null) Text(detail, style = ConversationRowSpec.notice, color = colors.textSecondary)
         }
         if (onClick != null) Icon(Ionicon.ChevronForward, ConversationRowSpec.icon, colors.textSecondary)
-    }
-}
-
-@Composable
-private fun CollaboratorRow(row: ConversationRow.Collaborator, modifier: Modifier) {
-    Column(
-        modifier
-            .fillMaxWidth()
-            .padding(horizontal = ConversationRowSpec.marginHorizontal, vertical = ConversationRowSpec.marginVertical)
-            .testTag(ConversationRowTags.COLLABORATOR),
-    ) {
-        Text(stringResource(R.string.conversation_from_agent), style = ConversationRowSpec.label, color = HappyTheme.colors.textSecondary)
-        if (row.blocks.isNotEmpty()) MarkdownView(row.blocks)
     }
 }
 

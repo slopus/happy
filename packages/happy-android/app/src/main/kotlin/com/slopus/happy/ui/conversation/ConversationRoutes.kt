@@ -52,6 +52,7 @@ import com.slopus.happy.ui.artifacts.BrowserRoute
 import com.slopus.happy.ui.artifacts.computerName
 import com.slopus.happy.ui.browser.LinkOpener
 import com.slopus.happy.ui.browser.ProvideLinks
+import com.slopus.happy.ui.theme.HappyTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
@@ -168,7 +169,13 @@ internal fun Flow<AgentEvent>.signalsFor(agentId: String): Flow<ConversationSign
  * message, it is the connection's unsent work, which the next compose opens
  * as it was left (iOS's Store `unsent`).
  */
-internal class ConversationHolder(private val session: AgentSession, route: ConversationRoute, private val saved: SavedStateHandle) : ViewModel() {
+internal class ConversationHolder(
+    private val session: AgentSession,
+    route: ConversationRoute,
+    private val saved: SavedStateHandle,
+    /** Lays the rows' text out on the conversation's lane. */
+    typesetter: Typesetter? = null,
+) : ViewModel() {
     /** Not viewModelScope: a send or draft save in flight finishes after the screen goes. */
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -206,6 +213,7 @@ internal class ConversationHolder(private val session: AgentSession, route: Conv
                 answer["bot"].obj?.let(session::upsertBot)
             },
             keeper = session.conversationKeeper(agentId),
+            typesetter = typesetter,
         )
         conversation.start()
         saved.takePrefill(route.prefill)?.let(conversation::prefill)
@@ -275,7 +283,10 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
         )
         return
     }
-    val holder = viewModel(key = "conversation") { ConversationHolder(session, route, createSavedStateHandle()) }
+    val typesetter = Typesetter.of(LocalContext.current)
+    // Before the conversation's lane lays out its first rows, which it draws ahead in these colours.
+    typesetter.reportPalette(ProsePalette.of(HappyTheme.colors))
+    val holder = viewModel(key = "conversation") { ConversationHolder(session, route, createSavedStateHandle(), typesetter) }
     val conversation = holder.conversation
     val state by conversation.state.collectAsStateWithLifecycle()
     val status by session.status.collectAsStateWithLifecycle()

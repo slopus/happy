@@ -187,6 +187,8 @@ fun UserMessage(
     callbacks: MessageCallbacks,
     modifier: Modifier = Modifier,
     attachments: (@Composable () -> Unit)? = null,
+    /** Draws the bubble's words instead of [MarkdownView]: a conversation's laid-out row ([com.slopus.happy.ui.conversation.ProseColumn]). */
+    body: (@Composable (List<com.slopus.happy.chat.markdown.MarkdownBlock>) -> Unit)? = null,
 ) {
     val message = row.message
     val colors = HappyTheme.colors
@@ -219,7 +221,7 @@ fun UserMessage(
                 .border(hairline, bubble.border, bubbleShape)
                 .padding(horizontal = MessageSpec.bubblePaddingHorizontal, vertical = MessageSpec.bubblePaddingVertical),
         ) {
-            MarkdownView(blocks, onOptionPress = callbacks.onOptionPress)
+            if (body != null) body(blocks) else MarkdownView(blocks, onOptionPress = callbacks.onOptionPress)
         }
     }
 
