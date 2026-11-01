@@ -310,16 +310,29 @@ final class AccountsTests: XCTestCase {
         await account.session?.stop()
     }
 
-    func testFailedSecondaryRemovalKeepsSessionRegistryAndCredentials() async throws {
+    /// Signing out is final at once, even when the Keychain won't let go of
+    /// the item (locked): the account is gone here and from the registry,
+    /// the failure is reported, and the next launch, its removal still
+    /// written down, never lists it and deletes the item once it can.
+    func testFailedSecondaryRemovalStillSignsOutAndFinishesAtNextLaunch() async throws {
         let directory = try directory()
         let keychain = AccountsKeychain()
         let account = try await twoAccounts(keychain, directory: directory)
+        let secondID = try accountID(second)
         keychain.removalFailure = -25308
-        let old = account.session
-        do { try await account.signOut(accountID: accountID(second)); XCTFail("delete failed") } catch {}
-        XCTAssertTrue(old === account.session)
-        XCTAssertEqual(account.accounts.count, 2)
-        XCTAssertEqual(try AccountRegistry.load(directory: directory).entries.count, 2)
+        do { try await account.signOut(accountID: secondID); XCTFail("delete failed") } catch {}
+        XCTAssertEqual(account.session?.credentials, shared)
+        XCTAssertEqual(account.accounts.map(\.id), [try accountID(shared)])
+        XCTAssertEqual(try AccountRegistry.load(directory: directory).entries.map(\.id), [try accountID(shared)])
+        XCTAssertNotNil(keychain.items.stored(KeychainAccountCredentialStore.query(id: secondID)), "the Keychain kept it")
         await account.session?.stop()
+
+        keychain.removalFailure = nil
+        let relaunched = controller(keychain, directory: directory)
+        await relaunched.restore()
+        XCTAssertEqual(relaunched.accounts.map(\.id), [try accountID(shared)], "the account came back")
+        await eventually { keychain.items.stored(KeychainAccountCredentialStore.query(id: secondID)) == nil }
+        XCTAssertNil(keychain.items.stored(KeychainAccountCredentialStore.query(id: secondID)))
+        await relaunched.session?.stop()
     }
 }

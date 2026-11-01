@@ -68,13 +68,14 @@ actor AgentConnectionStorage {
     private let credentials: any AgentConnectionCredentialStore
     private var file: URL?
     private var registry = Registry()
+    private var read = false
     init(credentials: any AgentConnectionCredentialStore, directory: URL?) {
         self.credentials = credentials
         file = directory?.appendingPathComponent("direct-accounts.json")
     }
     func configureDirectory(_ directory: URL?) { file = directory?.appendingPathComponent("direct-accounts.json") }
-    func load() throws -> (accounts: [AgentConnection], activeID: String?, credentials: [String: AgentConnectionCredentials]) {
-        var values = try credentials.all()
+    func load(hiding: Set<String> = []) throws -> (accounts: [AgentConnection], activeID: String?, credentials: [String: AgentConnectionCredentials]) {
+        var values = try credentials.all().filter { !hiding.contains($0.key) }
         // The Keychain outlives the app; the registry beside it doesn't. A
         // credential with no registry is from an install since deleted,
         // whose computer may be long gone: a fresh install starts with
@@ -85,6 +86,7 @@ actor AgentConnectionStorage {
             values = [:]
         }
         if let file, let data = try? Data(contentsOf: file), let saved = try? JSONDecoder().decode(Registry.self, from: data) { registry = saved }
+        read = true
         registry.accounts.removeAll { values[$0.id] == nil }
         for id in values.keys.sorted() where !registry.accounts.contains(where: { $0.id == id }) { registry.accounts.append(AgentConnection(id: id, name: AgentName.fallback)) }
         if !registry.accounts.contains(where: { $0.id == registry.activeID }) { registry.activeID = nil }
@@ -105,6 +107,10 @@ actor AgentConnectionStorage {
     func select(_ id: String?) throws { registry.activeID = id; try persist() }
     func remove(_ id: String) throws {
         try credentials.remove(id: id)
+        // A removal finished at launch can come before `load`: the saved
+        // list is read first, so writing it back drops only this one.
+        if !read, let file, let data = try? Data(contentsOf: file), let saved = try? JSONDecoder().decode(Registry.self, from: data) { registry = saved }
+        read = true
         registry.accounts.removeAll { $0.id == id }
         if registry.activeID == id { registry.activeID = nil }
         // The Keychain deletion is authoritative; a later metadata write

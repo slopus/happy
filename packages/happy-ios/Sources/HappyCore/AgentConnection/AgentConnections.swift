@@ -15,6 +15,10 @@ public final class AgentConnections {
     private var foreground = true
     private var loaded = false
     private var engines: [String: SyncEngine] = [:]
+    private var selecting: Task<Void, Never>?
+    /// Agents disconnected whose cleanup a kill interrupted: never listed
+    /// again, while `finishRemoval` forgets them.
+    var hidden: Set<String> = []
     let makeTransport: @Sendable (AgentConnectionCredentials) -> any AgentTransport
     var refreshInterval: Duration = .seconds(60)
 
@@ -43,7 +47,7 @@ public final class AgentConnections {
 
     public func restore() async throws {
         guard !loaded else { return }
-        let saved = try await storage.load()
+        let saved = try await storage.load(hiding: hidden)
         accounts = saved.accounts; activeID = saved.activeID; credentials = saved.credentials; loaded = true
         onChange?(); startConnections()
     }
@@ -125,6 +129,64 @@ public final class AgentConnections {
         OfflineFile.remove(id)
         if activeID == id { activeID = nil }
         onChange?()
+    }
+
+    /// What `forget` took away, for its owner to stop off screen.
+    public struct Teardown: Sendable {
+        let id: String
+        let job: Task<Void, Never>?
+        let engine: SyncEngine?
+    }
+
+    /// Takes the agent off the list at once: no identity loop or engine of
+    /// it says anything again, and it is no longer the one open. Nothing is
+    /// awaited; `finishRemoval` stops what it ran and forgets what it kept.
+    public func forget(_ id: String) -> Teardown? {
+        guard accounts.contains(where: { $0.id == id }) else { return nil }
+        let job = jobs.removeValue(forKey: id)
+        job?.cancel()
+        let engine = engines.removeValue(forKey: id)
+        credentials.removeValue(forKey: id)
+        accounts.removeAll { $0.id == id }
+        if activeID == id { activeID = nil }
+        onChange?()
+        return Teardown(id: id, job: job, engine: engine)
+    }
+
+    /// After `forget`, off screen: its credentials go first (`forget` made
+    /// sure its loop can no longer publish or save anything of it); then
+    /// the engine closes its database, waited for only so long when it is
+    /// stuck on the network; then the folder, whose gate refuses any write
+    /// still on its way. Also finishes one a kill interrupted, with nothing
+    /// running.
+    func finishRemoval(_ teardown: Teardown, limit: Duration = .seconds(10)) async throws {
+        try await storage.remove(teardown.id)
+        let job = teardown.job, engine = teardown.engine
+        if job != nil || engine != nil {
+            await waitAtMost(limit) {
+                await job?.value
+                await engine?.stop()
+            }
+        }
+        let id = teardown.id
+        await Task.detached(priority: .utility) { OfflineFile.remove(id) }.value
+    }
+
+    /// Opens `id` at once; the choice is saved and the engines started or
+    /// paused after.
+    func open(_ id: String?) {
+        guard id.map({ id in accounts.contains { $0.id == id } }) ?? true else { return }
+        activeID = id
+        onChange?()
+        selecting = Task { [previous = selecting] in
+            await previous?.value
+            try? await self.storage.select(id)
+            guard self.activeID == id else { return }
+            for (accountID, engine) in self.engines {
+                if self.foreground && accountID == id { await engine.start() }
+                else { await engine.pause() }
+            }
+        }
     }
 
     public func setForeground(_ active: Bool) async {

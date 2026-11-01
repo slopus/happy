@@ -26,7 +26,8 @@ public enum NativeAccountFactory {
             rnServerImport: importLegacyServer,
             localSettingsFactory: { UserDefaultsStore(suiteName: suite(LocalSettings.storageSuite(accountID: $0))) },
             appState: appState,
-            deliveryActivity: deliveryActivity
+            deliveryActivity: deliveryActivity,
+            pushUnregisterStore: KeychainPushUnregisterStore(backend: backend)
         )
     }
 }

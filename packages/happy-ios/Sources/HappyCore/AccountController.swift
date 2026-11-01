@@ -52,8 +52,22 @@ public final class AccountController {
     private let settingsFactory: ((String) -> KeyValueStore)?
     private var settingsStores: [String: LocalSettings] = [:]
     private var memoryStores: [String: LocalStore] = [:]
-    private var registry = AccountRegistry()
+    private var registry = AccountRegistry() {
+        // An account being removed never comes back, whatever an operation
+        // that began before its removal sets.
+        didSet {
+            guard !removing.isEmpty, registry.entries.contains(where: { removing.contains($0.id) }) else { return }
+            registry = registry.removing(removing)
+        }
+    }
     private var registryLoaded = false
+    /// Accounts signed out or disconnected whose cleanup hasn't finished:
+    /// never listed, whatever the Keychain or a stale registry still says.
+    private var removing: Set<String> = []
+    private var removals: [String: Task<Void, Error>] = [:]
+    private var removalsLoading: Task<Void, Never>?
+    private let removalJournal = AccountRemovalJournal()
+    private let pushQueue: PushUnregisterQueue
     private var busy = false
     private var observers: [UUID: AccountsObserver] = [:]
     private var cancelProfileObservation: (() -> Void)?
@@ -62,6 +76,9 @@ public final class AccountController {
     var prepareAccountStorage: @Sendable (URL?) throws -> Void = AccountStorageDirectory.prepare
     var readRegistryDisplays: @Sendable ([AccountRegistryEntry], [String: LocalStore], URL?) throws -> [String: AccountDisplay?] = AccountController.readDisplays
     var prepareSessionDirectory: @Sendable (URL, String) throws -> Void = AccountSession.prepareDirectory
+    /// Where a removal's cleanup stands once it is written down; a test
+    /// holds it here to stand for the app killed straight after.
+    var holdRemoval: @Sendable () async -> Void = {}
     /// How every account's pictures are fetched.
     var pictureFetch: AccountPictures.Fetch = { [downloader = PictureDownloader()] url, limit in
         await downloader.data(url, limit: limit)
@@ -88,7 +105,8 @@ public final class AccountController {
         transport: HTTPTransport = URLSessionTransport(),
         connector: WebSocketConnector = URLSessionWebSocketConnector(),
         appState: @escaping @Sendable () async -> String = AccountSession.Dependencies.alwaysActive,
-        deliveryActivity: @escaping @Sendable (Bool) async -> Void = AccountSession.Dependencies.noDeliveryActivity
+        deliveryActivity: @escaping @Sendable (Bool) async -> Void = AccountSession.Dependencies.noDeliveryActivity,
+        pushUnregisterStore: any PushUnregisterStore = InMemoryPushUnregisterStore()
     ) {
         self.serverConfig = serverConfig
         self.clientID = clientID
@@ -101,6 +119,7 @@ public final class AccountController {
         self.connector = connector
         self.appState = appState
         self.deliveryActivity = deliveryActivity
+        pushQueue = PushUnregisterQueue(store: pushUnregisterStore, transport: transport, clientID: clientID)
         self.agentConnections = AgentConnections(credentials: agentConnectionCredentialStore, directory: storeDirectory, makeTransport: agentTransport)
         self.agentConnections.onChange = { [weak self] in
             guard let self else { return }
@@ -355,9 +374,18 @@ public final class AccountController {
     /// the origin it had.
     public func signIn(_ credentials: Credentials, origin: AccountOrigin = .legacy) async throws {
         guard !busy else { throw AccountSwitchError.operationInProgress }
+        let id = try accountID(credentials)
+        // Signed in again while its sign-out was still being cleaned up:
+        // that ends first, then it is an account like any other.
+        if removing.contains(id) {
+            _ = try? await removals[id]?.value
+            guard !busy else { throw AccountSwitchError.operationInProgress }
+            removals.removeValue(forKey: id)
+            removing.remove(id)
+            removalJournal.finish(id)
+        }
         busy = true
         defer { finishOperation() }
-        let id = try accountID(credentials)
         _ = try await reconcile()
         let generation = profileGeneration
         let existing = registry.entries.first { $0.id == id }
@@ -399,7 +427,7 @@ public final class AccountController {
     }
 
     /// Signs out the active account only. The next account by added order
-    /// becomes active. Failures leave credentials and the active UI intact.
+    /// becomes active.
     public func signOut() async {
         if let id = agentConnections.activeID { try? await signOut(accountID: id); return }
         guard let id = session?.keys.anonID else {
@@ -409,139 +437,282 @@ public final class AccountController {
         try? await signOut(accountID: id)
     }
 
+    /// `beginSignOut`, then waits for the cleanup it left going. Throws what
+    /// that cleanup ran into; the account is gone regardless, and the next
+    /// launch finishes forgetting it.
     public func signOut(accountID id: AccountSummary.ID) async throws {
-        guard !busy else { throw AccountSwitchError.operationInProgress }
-        busy = true
-        defer { finishOperation() }
-        if agentConnections.accounts.contains(where: { $0.id == id }) {
-            let wasActive = agentConnections.activeID == id
-            try await agentConnections.remove(id)
-            settings(for: id).clear()
-            if wasActive {
-                if let next = agentConnections.accounts.first { try await activateAgentConnection(next.id) }
-                else {
-                    state = .signedOut
-                    let values = try await reconcile()
-                    if let entry = registry.entries.sorted(by: { $0.addedOrder < $1.addedOrder }).first,
-                       let value = values[entry.id], entry.serverConfirmed {
-                        let next = try await makeSession(value.credentials, entry: entry)
-                        try await activate(next, registry: registry)
-                    }
-                }
-            }
-            notifyAccounts()
-            return
-        }
-        let values = try await reconcile()
+        try await beginSignOut(accountID: id).value
+    }
+
+    /// Signs a Happy account out, or disconnects an agent, at once and for
+    /// good: it leaves `accounts` now, and if it was the one open, the next
+    /// account opens in its place (an agent at once, a Happy account once
+    /// its store is open, a few milliseconds), or nothing with none left.
+    /// Nothing here waits on the network.
+    ///
+    /// What is slow goes on in the returned task, which nothing on screen
+    /// waits for: the old session and socket stopped, the push token's
+    /// removal queued for the server (`PushUnregisterQueue`), the Keychain
+    /// item, store, pictures, folder and device settings deleted. It is
+    /// written down first (`AccountRemovalJournal`), so a kill in the middle
+    /// finishes at the next launch and the account never comes back.
+    @discardableResult
+    public func beginSignOut(accountID id: AccountSummary.ID) throws -> Task<Void, Error> {
+        if agentConnections.accounts.contains(where: { $0.id == id }) { return disconnect(id) }
         guard let entry = registry.entries.first(where: { $0.id == id }) else { throw AccountSwitchError.unknownAccount }
-        await unregisterPushToken(of: entry, credentials: values[id]?.credentials)
-        var updated = registry
-        let generation = profileGeneration
-        updated.entries.removeAll { $0.id == id }
         let wasActive = session.map { $0.keys.anonID == id } ?? (agentConnections.activeID == nil && registry.activeID == id)
-        let oldSession = wasActive ? session : nil
-        let following = updated.entries.sorted { $0.addedOrder < $1.addedOrder }.first
-        let next: AccountSession?
-        if wasActive, let following, following.serverConfirmed, let value = values[following.id] {
-            next = try await makeSession(value.credentials, entry: following)
-        } else {
-            next = nil
-        }
-        if wasActive { updated.activeID = following?.id }
-        updated = try await persistRegistry(updated, preservingProfilesSince: generation)
-        do {
-            try accountCredentialStore.remove(id: id, location: entry.location)
-        } catch {
-            _ = try? await persistRegistry(registry, preservingProfilesSince: profileGeneration)
-            throw error
-        }
-        if wasActive {
-            stopProfileObservation()
-            await oldSession?.stop()
-        }
+        let removal = AccountRemoval(id: id, kind: .legacy, location: entry.location,
+                                     serverURL: entry.serverConfirmed ? entry.serverURL : nil)
+        // Written down before anything else: from this frame on, a kill
+        // finishes it at the next launch rather than bringing it back.
+        var journalFailure: Error?
+        do { try removalJournal.add(removal) } catch { journalFailure = error }
+        removing.insert(id)
+        var updated = registry
+        updated.entries.removeAll { $0.id == id }
+        if wasActive { updated.activeID = updated.entries.min { $0.addedOrder < $1.addedOrder }?.id }
         registry = updated
         profileGenerations.removeValue(forKey: id)
-        let closingPictures = pictureCaches.removeValue(forKey: id)
-        if wasActive {
-            if let next {
-                localSettings = settings(for: next.keys.anonID)
-                state = .signedIn(next)
-                observeProfile(of: next)
-            } else if fallsBackToAgentConnection, showsAgentConnections, let computer = agentConnections.accounts.first(where: { !$0.revoked }) ?? agentConnections.accounts.first {
-                // The last Happy account went: a paired computer opens at
-                // once, with no Welcome between.
-                try? await activateAgentConnection(computer.id)
+        let pictures = pictureCaches.removeValue(forKey: id)
+        let memoryStore = memoryStores[id]
+        let handOff = wasActive ? self.handOff(from: id) : nil
+        notifyAccounts()
+        let cleanup = Task {
+            var failure = journalFailure
+            await holdRemoval()
+            let old = await handOff?.value ?? nil
+            // The inventory without it, before its credentials go.
+            do { _ = try await persistRegistry(registry, preservingProfilesSince: profileGeneration) } catch { failure = failure ?? error }
+            do {
+                try await forgetHappyAccount(removal, session: old, pictures: pictures, store: memoryStore, openingStore: true)
+            } catch {
+                failure = failure ?? error
+            }
+            try finishRemoval(id, failure: failure)
+        }
+        removals[id] = cleanup
+        return cleanup
+    }
+
+    /// Signed-out accounts' push tokens on their way to their servers.
+    var pushUnregisters: PushUnregisterQueue { pushQueue }
+
+    /// How long a removal waits for the old session to stop before its
+    /// store is closed and its folder deleted anyway: a closed store refuses
+    /// whatever a stuck request would still write.
+    var teardownLimit: Duration = .seconds(10)
+
+    /// Everything a Happy account's removal leaves for later, in an order a
+    /// kill can interrupt anywhere and the next launch resume (`removal`
+    /// says what it needs): the push token's removal kept for the server,
+    /// the Keychain item, the session stopped, the store erased and closed,
+    /// the folder and the device settings.
+    private func forgetHappyAccount(_ removal: AccountRemoval, session old: AccountSession?, pictures: AccountPictures?,
+                                    store: LocalStore?, openingStore: Bool) async throws {
+        let id = removal.id
+        var failure: Error?
+        // The push token goes from the account's own server with the
+        // account's own credentials (AuthContext.tsx `logout`), never to a
+        // server the person hasn't confirmed; kept with what it needs
+        // before the credentials go, and sent when it can be.
+        if let serverURL = removal.serverURL, let location = removal.location, let pushToken = settings(for: id).registeredPushToken {
+            var token = old?.credentials.token
+            if token == nil { token = (try? await Self.credentials(of: id, at: location, in: accountCredentialStore))?.token }
+            if let token {
+                try? await pushQueue.enqueue(PendingPushUnregister(serverURL: serverURL, token: token, pushToken: pushToken), id: id)
+            }
+        }
+        if let location = removal.location {
+            let credentialStore = accountCredentialStore
+            do { try await Task.detached { try credentialStore.remove(id: id, location: location) }.value } catch { failure = error }
+        }
+        if let old { await waitAtMost(teardownLimit) { await old.stop() } }
+        // No picture is written once this returns, so none lands in the
+        // directory being removed.
+        await pictures?.close()
+        let removedStore = old?.store ?? store
+        do {
+            try await Task.detached { [directory = storageDirectory] in
+                try Self.eraseAccountFiles(id: id, store: removedStore, directory: directory, openingStore: openingStore)
+            }.value
+        } catch {
+            // Never unlink a database whose erase or close failed.
+            failure = failure ?? error
+        }
+        settings(for: id).clear()
+        memoryStores.removeValue(forKey: id)
+        if let failure { throw failure }
+    }
+
+    /// The agent's half of `beginSignOut`. Device tokens can't reach the
+    /// connector's management routes, so nothing is sent: the phone forgets
+    /// the agent, and the desktop's device list revokes it.
+    private func disconnect(_ id: String) -> Task<Void, Error> {
+        var journalFailure: Error?
+        do { try removalJournal.add(AccountRemoval(id: id, kind: .agent)) } catch { journalFailure = error }
+        let wasActive = agentConnections.activeID == id
+        removing.insert(id)
+        let teardown = agentConnections.forget(id)
+        var handOff: Task<AccountSession?, Never>?
+        if wasActive, case .agentConnection = state {
+            if let next = agentConnections.accounts.first {
+                agentConnections.open(next.id)
+                localSettings = settings(for: next.id)
+                state = .agentConnection(next)
+            } else if registry.entries.contains(where: \.serverConfirmed) {
+                // A Happy account opens instead, with no first screen
+                // between, once its store is open.
+                handOff = self.handOff(from: id)
             } else {
                 localSettings = LocalSettings(storage: InMemoryKeyValueStore())
                 state = .signedOut
             }
         }
-        // Publish the new root before erasing/removing the old cache. Even
-        // readers retaining its pool then see empty data, then a closed
-        // store, never a live account.
         notifyAccounts()
-        // No picture is written once this returns, so none lands in the
-        // directory being removed.
-        await closingPictures?.close()
-        var cleanupError: Error?
-        do {
-            let removedStore = oldSession?.store ?? memoryStores[id]
-            let directory = storageDirectory
-            try await Task.detached {
-                // Erased, then closed before its files go: a reader still
-                // holding the store reads `LocalStoreError.closed`, never a
-                // file unlinked under it.
-                if let removedStore {
-                    try removedStore.eraseAll()
-                    try removedStore.close()
-                } else if let directory {
-                    let file = AccountSession.accountDirectory(directory: directory, id: id).appendingPathComponent("store.sqlite")
-                    if FileManager.default.fileExists(atPath: file.path) {
-                        let store = try LocalStore.open(at: file)
-                        try store.eraseAll()
-                        try store.close()
-                    }
-                }
-                if let directory {
-                    let accountDirectory = AccountSession.accountDirectory(directory: directory, id: id)
-                    if FileManager.default.fileExists(atPath: accountDirectory.path) {
-                        try FileManager.default.removeItem(at: accountDirectory)
-                    }
-                }
-            }.value
-        } catch {
-            // Never unlink a database whose erase or close failed. The
-            // account is already signed out, and the next account must
-            // still start.
-            cleanupError = error
+        MediaLibrary.forget(namespace: "agent/\(id)")
+        let cleanup = Task {
+            var failure = journalFailure
+            await holdRemoval()
+            _ = await handOff?.value
+            if let teardown {
+                do { try await agentConnections.finishRemoval(teardown) } catch { failure = failure ?? error }
+            }
+            settings(for: id).clear()
+            try finishRemoval(id, failure: failure)
         }
-        settings(for: id).clear()
-        memoryStores.removeValue(forKey: id)
-        if wasActive {
-            await next?.start()
-            if next == nil, showsAgentConnections, agentConnections.activeID == nil, let following = agentConnections.accounts.first { try await activateAgentConnection(following.id) }
-        }
-        if let cleanupError { throw cleanupError }
+        removals[id] = cleanup
+        return cleanup
     }
 
-    /// How long sign-out waits for the push token's removal.
-    static let pushUnregisterTimeout: Duration = .seconds(5)
-
-    /// AuthContext.tsx `logout`: the token this device registered for the
-    /// account is removed from that account's own server before its
-    /// credentials go, and a failure is ignored. One attempt, bounded, where
-    /// happy-app's backoff retries forever and holds logout until the
-    /// server answers. Never sent for an unconfirmed server.
-    private func unregisterPushToken(of entry: AccountRegistryEntry, credentials: Credentials?) async {
-        guard entry.serverConfirmed, let credentials, let token = settings(for: entry.id).registeredPushToken else { return }
-        let api = HappyAPI(serverURL: entry.serverURL, clientID: clientID, transport: transport, token: credentials.token)
-        let timeout = Self.pushUnregisterTimeout
-        await withTaskGroup(of: Void.self) { group in
-            group.addTask { try? await api.unregisterPushToken(token) }
-            group.addTask { try? await Task.sleep(for: timeout) }
-            await group.next()
-            group.cancelAll()
+    /// The account `id` that was open has gone: the next Happy account by
+    /// added order opens in its place, or one waiting for its server to be
+    /// confirmed, or an agent, or nothing. Returns the session that was
+    /// open, for the cleanup to stop once the new one shows.
+    private func handOff(from id: String) -> Task<AccountSession?, Never> {
+        Task {
+            // A transition already under way ends first; nothing else
+            // starts until this one has.
+            while busy { try? await Task.sleep(for: .milliseconds(5)) }
+            busy = true
+            defer { finishOperation() }
+            let old = session?.keys.anonID == id ? session : nil
+            // Something else opened meanwhile: it stays.
+            guard old != nil || session == nil && agentConnections.activeID == nil else { return nil }
+            if old != nil { stopProfileObservation() }
+            let following = registry.entries.min { $0.addedOrder < $1.addedOrder }
+            var next: AccountSession?
+            if let following, following.serverConfirmed,
+               let credentials = try? await Self.credentials(of: following.id, at: following.location, in: accountCredentialStore) {
+                next = try? await makeSession(credentials, entry: following)
+            }
+            // A newer sign-out took this one too while it opened.
+            if let opened = next, !registry.entries.contains(where: { $0.id == opened.keys.anonID }) {
+                await opened.stop()
+                next = nil
+            }
+            if let next {
+                localSettings = settings(for: next.keys.anonID)
+                state = .signedIn(next)
+                observeProfile(of: next)
+                notifyAccounts()
+                await next.start()
+            } else if following == nil, fallsBackToAgentConnection, showsAgentConnections,
+                      let computer = agentConnections.accounts.first(where: { !$0.revoked }) ?? agentConnections.accounts.first {
+                // The last Happy account went: an agent opens at once, with
+                // no first screen between.
+                agentConnections.open(computer.id)
+                localSettings = settings(for: computer.id)
+                state = .agentConnection(computer)
+                notifyAccounts()
+            } else {
+                // None, or the next waits for its server to be confirmed
+                // (`pendingServerConfirmation`).
+                localSettings = LocalSettings(storage: InMemoryKeyValueStore())
+                state = .signedOut
+                notifyAccounts()
+            }
+            return old
         }
+    }
+
+    /// The end of a removal: struck from the journal only once all of it
+    /// went, so anything left is tried again at the next launch; the
+    /// account stays hidden until then.
+    private func finishRemoval(_ id: String, failure: Error?) throws {
+        if let failure { throw failure }
+        removals.removeValue(forKey: id)
+        removing.remove(id)
+        removalJournal.finish(id)
+    }
+
+    /// Removals a kill interrupted, read once per launch before any
+    /// account is listed: hidden, and finished behind whatever opens.
+    private func loadRemovals(directory: URL?) async {
+        if let loading = removalsLoading { return await loading.value }
+        let loading = Task {
+            let journal = removalJournal
+            let pending = await Task.detached {
+                journal.configure(directory: directory)
+                return journal.pending()
+            }.value
+            removing.formUnion(pending.map(\.id))
+            agentConnections.hidden.formUnion(pending.filter { $0.kind == .agent }.map(\.id))
+            for removal in pending where removals[removal.id] == nil {
+                removals[removal.id] = resumeRemoval(removal)
+            }
+            await pushQueue.resume()
+        }
+        removalsLoading = loading
+        await loading.value
+    }
+
+    private func resumeRemoval(_ removal: AccountRemoval) -> Task<Void, Error> {
+        Task {
+            switch removal.kind {
+            case .legacy:
+                // Nothing has its store open at launch, so it goes as it is.
+                try await forgetHappyAccount(removal, session: nil, pictures: nil, store: nil, openingStore: false)
+            case .agent:
+                try await agentConnections.finishRemoval(AgentConnections.Teardown(id: removal.id, job: nil, engine: nil))
+                settings(for: removal.id).clear()
+            }
+            try finishRemoval(removal.id, failure: nil)
+        }
+    }
+
+    /// Erased, then closed before its files go: a reader still holding the
+    /// store reads `LocalStoreError.closed`, never a file unlinked under it.
+    private nonisolated static func eraseAccountFiles(id: String, store: LocalStore?, directory: URL?, openingStore: Bool) throws {
+        #if DEBUG
+        dispatchPrecondition(condition: .notOnQueue(.main))
+        #endif
+        if let store {
+            try store.eraseAll()
+            try store.close()
+        } else if openingStore, let directory {
+            let file = AccountSession.accountDirectory(directory: directory, id: id).appendingPathComponent("store.sqlite")
+            if FileManager.default.fileExists(atPath: file.path) {
+                let store = try LocalStore.open(at: file)
+                try store.eraseAll()
+                try store.close()
+            }
+        }
+        if let directory {
+            let accountDirectory = AccountSession.accountDirectory(directory: directory, id: id)
+            if FileManager.default.fileExists(atPath: accountDirectory.path) {
+                try FileManager.default.removeItem(at: accountDirectory)
+            }
+        }
+    }
+
+    /// One account's credentials, read off the main thread.
+    private nonisolated static func credentials(of id: String, at location: CredentialLocation, in store: AccountCredentialStore) async throws -> Credentials? {
+        try await Task.detached {
+            switch location {
+            case .shared: return try store.shared().flatMap { (try? accountID($0)) == id ? $0 : nil }
+            case .own: return try store.ownAccounts()[id]?.credentials
+            }
+        }.value
     }
 
     private var nextOrder: Int { (registry.entries.map(\.addedOrder).max() ?? -1) + 1 }
@@ -552,9 +723,16 @@ public final class AccountController {
         let directory = await prepareStorageDirectory()
         let generation = profileGeneration
         var updated = registryLoaded ? registry : try await registryWriter.load(directory: directory)
-        let shared = try accountCredentialStore.shared()
-        let own = try accountCredentialStore.ownAccounts()
-        let sharedID = shared.flatMap { try? accountID($0) }
+        var shared = try accountCredentialStore.shared()
+        var own = try accountCredentialStore.ownAccounts()
+        var sharedID = shared.flatMap { try? accountID($0) }
+        // Signed out, its Keychain item not deleted yet: never listed again.
+        let removing = removing
+        own = own.filter { !removing.contains($0.key) }
+        if let id = sharedID, removing.contains(id) {
+            shared = nil
+            sharedID = nil
+        }
         // A rollback can authenticate an account that already had an own
         // item. Keep only its shared credentials after a successful read.
         if let sharedID, own[sharedID] != nil {
@@ -634,7 +812,7 @@ public final class AccountController {
     }
 
     private func mergingProfiles(into value: AccountRegistry, since generation: UInt64) -> AccountRegistry {
-        var result = value
+        var result = value.removing(removing)
         for index in result.entries.indices {
             let id = result.entries[index].id
             guard (profileGenerations[id] ?? 0) > generation,
@@ -726,6 +904,7 @@ public final class AccountController {
         let directory = await task.value
         storageDirectory = directory
         await agentConnections.configureStorage(directory)
+        await loadRemovals(directory: directory)
         return directory
     }
 

@@ -97,6 +97,7 @@ within a chat): `outbox` in `direct.sqlite` (agent,
 | Permission mode / model | the dock's pick is kept locally and sent with the next message | kept in `composerState`, sent with the next message |
 | Answer a question | intent `answer` (mutation ID), the form shows its answer while it waits | — RPC to the machine; see below |
 | Task / bot made by its first message | `NewTask` (mutation ID, existing): made on send, retried with the message | — |
+| Disconnect / sign out | gone at once, the next agent open in the same call; nothing to send (device tokens can't revoke themselves); the rest after, kept in `Happy/removals.json` across a kill (docs/accounts.md) | gone at once, the next account open once its store is; the push token's removal queued (`PushUnregisterQueue`, retried until the server answers); the rest after, kept in `Happy/removals.json` |
 
 Not covered yet, and why:
 

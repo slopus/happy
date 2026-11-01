@@ -79,7 +79,10 @@ final class AccountRegistryPersistenceTests: XCTestCase {
         try await Task.detached { try AccountRegistry.load(directory: directory) }.value
     }
 
-    func testProfileArrivingDuringReconcileKeepsNewestDisplayAndRemovedInventory() async throws {
+    /// A switch already reading the inventory when the account it heads for
+    /// is signed out: the switch is refused, and its older copy of the
+    /// inventory never brings the account back, here or on disk.
+    func testSwitchUnderWayCannotRestoreAnAccountSignedOutMeanwhile() async throws {
         let directory = try directory()
         let account = try await twoAccounts(directory: directory)
         let gate = RegistryIOGate()
@@ -90,22 +93,28 @@ final class AccountRegistryPersistenceTests: XCTestCase {
         let original = account.readRegistryDisplays
         account.readRegistryDisplays = { entries, stores, directory in
             let old = try original(entries, stores, directory)
-            gate.block()
+            if entries.count == 2 { gate.block() }
             return old
         }
         let firstID = try accountID(first), secondID = try accountID(second)
-        let removal = Task { try await account.signOut(accountID: firstID) }
+        let switching = Task { try await account.switchAccount(to: firstID) }
         await eventually { gate.entered }
-        try await setProfile("Newest", timestamp: 2, account: account)
+        let removal = try account.beginSignOut(accountID: firstID)
+        XCTAssertEqual(account.accounts.map(\.id), [secondID], "the account is gone at once")
         gate.release()
+        do {
+            try await switching.value
+            XCTFail("a switch to a signed-out account must fail")
+        } catch {
+            XCTAssertEqual(error as? AccountSwitchError, .unknownAccount)
+        }
         try await removal.value
         await account.flushProfilePersistence()
         XCTAssertEqual(account.accounts.map(\.id), [secondID])
-        XCTAssertEqual(account.accounts.first?.name, "Newest")
+        XCTAssertEqual(account.session?.keys.anonID, secondID)
         let registry = try await saved(directory)
         XCTAssertEqual(registry.entries.map(\.id), [secondID])
         XCTAssertEqual(registry.activeID, secondID)
-        XCTAssertEqual(registry.entries.first?.display?.name, "Newest")
         await account.session?.stop()
     }
 
@@ -118,15 +127,15 @@ final class AccountRegistryPersistenceTests: XCTestCase {
             XCTAssertFalse(gate.timedOut, "background gate timed out")
         }
         account.registryWriter = AccountRegistryWriter { value, directory in
-            // Reconciliation saves two entries first; pause the critical removal.
+            // Pause the removal's write of the one-entry inventory.
             if value.entries.count == 1, !gate.entered { gate.block() }
             try value.save(directory: directory)
         }
         let firstID = try accountID(first), secondID = try accountID(second)
         let removal = Task { try await account.signOut(accountID: firstID) }
         await eventually { gate.entered }
+        XCTAssertEqual(account.accounts.map(\.id), [secondID], "membership is published before its write lands")
         try await setProfile("During save", timestamp: 2, account: account)
-        XCTAssertEqual(account.accounts.count, 2, "critical membership is not published before persistence succeeds")
         gate.release()
         try await removal.value
         await account.flushProfilePersistence()
@@ -139,7 +148,11 @@ final class AccountRegistryPersistenceTests: XCTestCase {
         await account.session?.stop()
     }
 
-    func testCriticalWriteFailureKeepsSessionInventoryAndCredentials() async throws {
+    /// The inventory's write failing doesn't undo a sign-out: it is gone
+    /// here and its Keychain item deleted, the failure is reported, and the
+    /// next launch, the removal still written down, never lists it though
+    /// the inventory on disk still does.
+    func testCriticalWriteFailureStillSignsOutAndTheNextLaunchKeepsItGone() async throws {
         let directory = try directory(), keychain = AccountsKeychain()
         let account = controller(directory: directory, keychain: keychain)
         try await account.signIn(first)
@@ -156,15 +169,22 @@ final class AccountRegistryPersistenceTests: XCTestCase {
             XCTFail("critical save must fail")
         } catch RegistryTestError.writeFailed { }
         XCTAssertTrue(account.session === active)
-        XCTAssertEqual(account.accounts.count, 2)
-        XCTAssertNotNil(try KeychainAccountCredentialStore(backend: keychain).shared())
-        let registry = try await saved(directory)
-        XCTAssertEqual(registry.entries.count, 2)
-        XCTAssertEqual(registry.activeID, try accountID(second))
+        XCTAssertEqual(account.accounts.map(\.id), [try accountID(second)])
+        XCTAssertNil(try KeychainAccountCredentialStore(backend: keychain).shared())
+        let onDisk = try await saved(directory)
+        XCTAssertEqual(onDisk.entries.count, 2, "the inventory on disk is the old one")
         await account.session?.stop()
+
+        let relaunched = controller(directory: directory, keychain: keychain)
+        await relaunched.restore()
+        XCTAssertEqual(relaunched.accounts.map(\.id), [try accountID(second)], "the account came back")
+        await relaunched.flushProfilePersistence()
+        let rewritten = try await saved(directory)
+        XCTAssertEqual(rewritten.entries.map(\.id), [try accountID(second)])
+        await relaunched.session?.stop()
     }
 
-    func testCriticalFailureWithConcurrentProfilePersistsOldInventoryAndNewDisplay() async throws {
+    func testCriticalFailureWithConcurrentProfileKeepsTheNewInventoryAndDisplay() async throws {
         let directory = try directory()
         let account = try await twoAccounts(directory: directory)
         let gate = RegistryIOGate()
@@ -173,7 +193,7 @@ final class AccountRegistryPersistenceTests: XCTestCase {
             XCTAssertFalse(gate.timedOut, "background gate timed out")
         }
         account.registryWriter = AccountRegistryWriter { value, directory in
-            if value.entries.count == 1 {
+            if value.entries.count == 1, !gate.entered {
                 gate.block()
                 throw RegistryTestError.writeFailed
             }
@@ -191,10 +211,11 @@ final class AccountRegistryPersistenceTests: XCTestCase {
         } catch RegistryTestError.writeFailed { }
         await account.flushProfilePersistence()
         XCTAssertTrue(account.session === oldSession)
-        XCTAssertEqual(Set(account.accounts.map(\.id)), Set([firstID, secondID]))
+        XCTAssertEqual(account.accounts.map(\.id), [secondID])
         XCTAssertEqual(account.accounts.first(where: \.isActive)?.name, "Newest despite failure")
+        // The profile's own write, after the failed one, saves what is here.
         let registry = try await saved(directory)
-        XCTAssertEqual(Set(registry.entries.map(\.id)), Set([firstID, secondID]))
+        XCTAssertEqual(registry.entries.map(\.id), [secondID])
         XCTAssertEqual(registry.activeID, secondID)
         XCTAssertEqual(registry.entries.first { $0.id == secondID }?.display?.name, "Newest despite failure")
         await account.session?.stop()

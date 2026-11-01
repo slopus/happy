@@ -45,9 +45,11 @@ final class PushAccountsTests: XCTestCase {
         return account
     }
 
-    private func unregisters(_ http: FakeHTTP) -> [HTTPRequest] {
+    private nonisolated static func deletes(_ http: FakeHTTP) -> [HTTPRequest] {
         http.requests.filter { $0.method == "DELETE" && $0.url.path.hasPrefix("/v1/push-tokens/") }
     }
+
+    private func unregisters(_ http: FakeHTTP) -> [HTTPRequest] { Self.deletes(http) }
 
     func testSigningOutTheActiveAccountUnregistersItsTokenOnItsServer() async throws {
         let http = FakeHTTP()
@@ -56,6 +58,7 @@ final class PushAccountsTests: XCTestCase {
         let account = try await twoAccounts(AccountsKeychain(), http: http, settings: [try accountID(second): secondSettings])
         account.localSettings.registeredPushToken = "ExponentPushToken[second]"
         await account.signOut()
+        await account.pushUnregisters.waitUntilEmpty()
         let request = try XCTUnwrap(unregisters(http).first)
         XCTAssertEqual(unregisters(http).count, 1)
         XCTAssertEqual(request.url.host, "second.test")
@@ -74,6 +77,7 @@ final class PushAccountsTests: XCTestCase {
         sharedSettings.set("ExponentPushToken[shared]", forKey: "registered-push-token-v1")
         let account = try await twoAccounts(AccountsKeychain(), http: http, settings: [try accountID(shared): sharedSettings])
         try await account.signOut(accountID: accountID(shared))
+        await account.pushUnregisters.waitUntilEmpty()
         let request = try XCTUnwrap(unregisters(http).first)
         XCTAssertEqual(request.url.host, ServerConfig.defaultServerURL.host)
         XCTAssertEqual(request.headers["Authorization"], "Bearer \(shared.token)")
@@ -90,17 +94,67 @@ final class PushAccountsTests: XCTestCase {
         await account.session?.stop()
     }
 
-    /// happy-app logs and carries on; the account still signs out.
-    func testAFailedUnregisterStillSignsOut() async throws {
+    /// happy-app logs and carries on; the account still signs out, at
+    /// once, and the token's removal waits and is tried again until the
+    /// server answers.
+    func testAFailedUnregisterStillSignsOutAndIsTriedAgain() async throws {
         let http = FakeHTTP()
         http.onRaw("DELETE /v1/push-tokens/ExponentPushToken[second]", "down", status: 503)
         let account = try await twoAccounts(AccountsKeychain(), http: http)
+        await account.pushUnregisters.setBackoff(Backoff(initial: .milliseconds(20), maximum: .milliseconds(20)))
         account.localSettings.registeredPushToken = "ExponentPushToken[second]"
         await account.signOut()
-        XCTAssertEqual(unregisters(http).count, 1)
         XCTAssertEqual(account.accounts.map(\.id), [try accountID(shared)])
         XCTAssertNil(account.localSettings.registeredPushToken)
+        await eventually { Self.deletes(http).count >= 2 }
+        let waiting = await account.pushUnregisters.waiting
+        XCTAssertEqual(waiting[try accountID(second)]?.pushToken, "ExponentPushToken[second]")
+        http.onRaw("DELETE /v1/push-tokens/ExponentPushToken[second]", #"{"success":true}"#)
+        await account.pushUnregisters.waitUntilEmpty()
+        let left = await account.pushUnregisters.waiting
+        XCTAssertTrue(left.isEmpty)
         await account.session?.stop()
+    }
+
+    /// Signed out offline: the removal is kept (its own Keychain item in the
+    /// app) and sent by the next launch once the server answers.
+    func testAnUnregisterLeftOfflineIsSentByTheNextLaunch() async throws {
+        let offline = FakeHTTP()
+        offline.on("DELETE /v1/push-tokens/ExponentPushToken[second]") { _ in throw URLError(.notConnectedToInternet) }
+        let keychain = AccountsKeychain()
+        let store = KeychainPushUnregisterStore(backend: keychain)
+        let config = ServerConfig(storage: InMemoryKeyValueStore())
+        keychain.items.seed(rn, Data(TokenStorageFixtures.typicalJSON.utf8))
+        func launch(_ http: FakeHTTP) -> AccountController {
+            AccountController(serverConfig: config, clientID: "ios/test",
+                credentialStore: SecureStoreCredentialStore(backend: keychain), storeDirectory: nil,
+                accountCredentialStore: KeychainAccountCredentialStore(backend: keychain),
+                rnServerImport: { .confirmed(ServerConfig.defaultServerURL) },
+                transport: http, connector: FakeConnector(), pushUnregisterStore: store)
+        }
+        let account = launch(offline)
+        await account.restore()
+        try config.setCustomServerURL("http://second.test:3000")
+        account.beginAddingAccount()
+        try await account.signIn(second)
+        account.localSettings.registeredPushToken = "ExponentPushToken[second]"
+        await account.signOut()
+        await eventually { Self.deletes(offline).count >= 1 }
+        let kept = try XCTUnwrap(try store.all()[try accountID(second)])
+        XCTAssertEqual(kept.serverURL.host, "second.test")
+        XCTAssertEqual(kept.token, "second")
+        XCTAssertNil(try KeychainAccountCredentialStore(backend: keychain).ownAccounts()[try accountID(second)], "the account's own item is gone")
+        await account.session?.stop()
+
+        let online = FakeHTTP()
+        online.onRaw("DELETE /v1/push-tokens/ExponentPushToken[second]", #"{"success":true}"#)
+        let relaunched = launch(online)
+        await relaunched.restore()
+        await eventually { Self.deletes(online).count == 1 }
+        await relaunched.pushUnregisters.waitUntilEmpty()
+        XCTAssertEqual(unregisters(online).first?.headers["Authorization"], "Bearer second")
+        XCTAssertTrue(try store.all().isEmpty)
+        await relaunched.session?.stop()
     }
 
     /// No token reaches a server the user hasn't confirmed.

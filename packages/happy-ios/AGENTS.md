@@ -245,8 +245,11 @@ nothing here is wired to the release skill or to EAS.
     - happy-app's backoff retries the server calls forever. Here each sync
       makes one registration attempt, and the next session start or
       foreground tries again.
-    - The sign-out unregister is one attempt capped at 5 seconds, where
-      happy-app holds logout until the server answers.
+    - The sign-out unregister never holds the sign-out, where happy-app
+      holds logout until the server answers: the account is gone at once,
+      and the removal waits in `PushUnregisterQueue` (its own Keychain
+      item, `happy-ios:push-unregister`) and is retried at 1 … 30 s and on
+      later launches until the server answers, for up to 30 days.
     - Concurrent APNs requests share one callback, where expo rejects the
       older request.
     - Expo's background re-registration when APNs rotates the token is not
@@ -329,8 +332,15 @@ nothing here is wired to the release skill or to EAS.
     without signing other accounts out. `signOut()` removes only the active
     account; `signOut(accountID:)` can remove an inactive one. The next
     account in added order becomes active when the active one signs out.
-    The UI root changes before the removed account's store is erased and
-    files deleted. Signed-out logout never deletes unknown RN bytes. If RN
+    **Sign-out and Disconnect are instant and final**
+    (`beginSignOut(accountID:)`): the account leaves `accounts` in the
+    same call, and the next account opens without anything waiting on the
+    network. Everything slow (the old session and socket stopped, the push
+    token's removal queued, the Keychain item, store, pictures and folder
+    deleted) runs after, written first to `Happy/removals.json`
+    (`AccountRemovalJournal`), so a kill midway is finished by the next
+    launch and the account is never listed again, even while its Keychain
+    item is still there. See docs/accounts.md. Signed-out logout never deletes unknown RN bytes. If RN
     authenticates an account also held in an own item, recovery removes that
     redundant own item only after reading the shared credentials successfully.
   - **Origin.** Each registry entry records how the account came here

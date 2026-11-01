@@ -99,7 +99,8 @@ final class Session {
     /// caches.
     static func forget(_ accountID: String) {
         MediaLibrary.forget(namespace: "agent/\(accountID)")
-        OfflineFile.remove(accountID)
+        // Its folder can hold a large media cache: deleted off the main thread.
+        Task.detached(priority: .utility) { OfflineFile.remove(accountID) }
         guard let session = sessions.removeValue(forKey: accountID) else { return }
         session.stop()
         // The store belongs to the engine, not to the session, so only an

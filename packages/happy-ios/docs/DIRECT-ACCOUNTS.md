@@ -30,8 +30,12 @@ foreground. It checks health and refreshes `config.node` every minute, using
 `GET /v0/node/avatar` with `If-None-Match` even when ThumbHash is unchanged.
 Transient failures reconnect with 1–30 second backoff. Background cancels and
 awaits the loops; 401/403 marks the device revoked and prevents retries across
-relaunch. Removal awaits teardown before erasing credentials and cached
-identity, so a stale request cannot recreate a removed account.
+relaunch. Disconnecting takes the agent off the list and out of the open
+slot at once (`AgentConnections.forget`): its identity loop and engine can
+no longer publish or save anything of it, so nothing waits for them.
+`finishRemoval` then erases the credentials and cached identity, gives the
+engine up to 10 s to close its database (one stuck on the network doesn't
+hold the rest back), and deletes the folder off the main thread.
 
 Device tokens cannot access connector management routes. Disconnect therefore
 forgets this phone's credentials locally; desktop device management handles

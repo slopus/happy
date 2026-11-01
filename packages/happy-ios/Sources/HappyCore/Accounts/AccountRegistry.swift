@@ -66,6 +66,18 @@ public struct AccountRegistry: Codable, Equatable, Sendable {
 
     public init() {}
 
+    /// Without `ids`; one of them active hands that to the first left by
+    /// added order.
+    func removing(_ ids: Set<String>) -> AccountRegistry {
+        guard entries.contains(where: { ids.contains($0.id) }) else { return self }
+        var result = self
+        result.entries.removeAll { ids.contains($0.id) }
+        if let active = activeID, ids.contains(active) {
+            result.activeID = result.entries.min { $0.addedOrder < $1.addedOrder }?.id
+        }
+        return result
+    }
+
     /// Bad JSON is rebuilt from the Keychain. I/O failures propagate so a
     /// temporary filesystem failure cannot replace a good registry.
     public static func load(directory: URL?) throws -> AccountRegistry {

@@ -177,14 +177,23 @@ private extension GrainPalette {
     }
 }
 
-/// The one pipeline every gradient draws with, compiled once from source.
-@MainActor
-private final class GrainRenderer {
-    static let shared = GrainRenderer()
+extension GrainGradientView {
+    /// Compiles the gradient's shader off the main thread, ahead of a first
+    /// screen about to be shown (signing out of the last account): built
+    /// there instead, it holds that screen's first frame for tens of
+    /// milliseconds.
+    nonisolated static func prepare() {
+        Task.detached(priority: .userInitiated) { _ = GrainPipeline.compiled }
+    }
+}
+
+/// The shader compiled from source, once, on whichever thread asks first.
+private struct GrainPipeline: @unchecked Sendable {
+    static let compiled = GrainPipeline()
 
     let device: MTLDevice
-    private let queue: MTLCommandQueue
-    private let pipeline: MTLRenderPipelineState
+    let queue: MTLCommandQueue
+    let pipeline: MTLRenderPipelineState
 
     private init?() {
         guard let device = MTLCreateSystemDefaultDevice(), let queue = device.makeCommandQueue() else { return nil }
@@ -201,6 +210,23 @@ private final class GrainRenderer {
         }
         self.device = device
         self.queue = queue
+    }
+}
+
+/// The one pipeline every gradient draws with.
+@MainActor
+private final class GrainRenderer {
+    static let shared = GrainRenderer()
+
+    let device: MTLDevice
+    private let queue: MTLCommandQueue
+    private let pipeline: MTLRenderPipelineState
+
+    private init?() {
+        guard let compiled = GrainPipeline.compiled else { return nil }
+        device = compiled.device
+        queue = compiled.queue
+        pipeline = compiled.pipeline
     }
 
     private struct Uniforms {

@@ -167,7 +167,7 @@ final class HostedSessionLifetimeTests: XCTestCase {
         let (screen, window) = try await manageAccounts(context)
         defer { window.isHidden = true }
 
-        await screen.signOut(try summary(computer.id, in: account).id, direct: true)
+        screen.signOut(try summary(computer.id, in: account).id, direct: true)
         XCTAssertFalse(account.agentConnections.accounts.contains { $0.id == computer.id }, "the computer is gone")
         assertLetGo(session, "a computer disconnected from Settings")
         XCTAssertNil(Session.session(for: computer.id, context: context), "and nothing makes it a new one")
@@ -217,7 +217,7 @@ final class HostedSessionLifetimeTests: XCTestCase {
         let (screen, window) = try await manageAccounts(context)
         defer { window.isHidden = true }
 
-        await screen.signOut(try summary(gone.id, in: account).id, direct: true)
+        screen.signOut(try summary(gone.id, in: account).id, direct: true)
         assertLetGo(goneSession, "the computer that was disconnected")
         XCTAssertTrue(Session.session(for: kept.id, context: context) === keptSession, "the other computer's session is the same object")
         assertLive(keptSession, "the other computer's session")
@@ -225,9 +225,10 @@ final class HostedSessionLifetimeTests: XCTestCase {
         try await account.agentConnections.remove(kept.id)
     }
 
-    /// A removal that fails removes nothing, so nothing is let go of. The
-    /// account layer refuses a second operation while one is running, which
-    /// is a real failure to reach without faking one.
+    /// A removal that fails removes nothing, so nothing is let go of.
+    /// Removals no longer wait on each other, so the one failure left to
+    /// reach without faking one is a computer already gone when the
+    /// confirm comes (removed meanwhile elsewhere).
     func testADisconnectThatFailsLeavesTheSessionRunning() async throws {
         let account = makeAccount()
         await account.agentConnections.setForeground(false)
@@ -238,12 +239,10 @@ final class HostedSessionLifetimeTests: XCTestCase {
         let (screen, window) = try await manageAccounts(context)
         defer { window.isHidden = true }
 
-        // Another removal under way: it holds the account layer until its
-        // first await, so the next one is refused.
-        let running = Task { try await account.signOut(accountID: other.id) }
-        await Task.yield()
-        await screen.signOut(try summary(computer.id, in: account).id, direct: true)
-        _ = try? await running.value
+        // The other one, gone by the time its confirm comes.
+        let otherID = try summary(other.id, in: account).id
+        try await account.signOut(accountID: otherID)
+        screen.signOut(otherID, direct: true)
 
         XCTAssertTrue(screen.presentedViewController is UIAlertController, "the failure is said, not swallowed")
         screen.presentedViewController?.dismiss(animated: false)
