@@ -47,6 +47,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        MaxRefreshRate.follow(this)
         if (savedInstanceState == null) DeepLinks.offer(intent)
         val ready = (application as HappyApplication).graphReady
         // The first frame waits for the graph (the system's splash stays up meanwhile); the main thread doesn't.
