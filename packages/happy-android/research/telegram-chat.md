@@ -414,6 +414,85 @@ would buy a few ms of open for a rewrite of everything and a worse stream.
 That is about 4–5 weeks for all four phases. After each phase, run the benchmark on the
 Fold and append the numbers here.
 
+## Phase 1 and the streaming reveal: results
+
+Measured 2026-10-31 on the Fold (120 Hz, dark, `-e chat recorded`), the same chatbench
+build method as above. "Before" is main at 857be2598, run the same day. "After" is this
+change.
+
+| | before | after |
+|---|---|---|
+| **stream**, 120 updates at 20 a second | main 22.4 ms an update. Total p50 / p90 / p99 = 9.2 / 26.0 / 31.8 ms. ui p90 13.1 ms. **Missed 4.8%** | main 16.3 ms an update, of which **the stream adds 3.0** (see below). Total 10.1 / 15.1 / 23.5 ms. ui p90 5.9 ms. **Missed 0.3–0.4%**, janky 0 |
+| **IME**, open and close × 4 | total p50 / p99 = 14.3–19.5 / 30–35 ms. ui p50 3.0–5.5. GPU p50 8.1. Main 4.2–5.9 ms a frame. Missed 25–29%, **janky 3.9–4.4%** | total 8.0–8.4 / 13.7–15.1 ms, max 17. ui p50 2.4. GPU p50 3.2. Main 3.9–4.3 ms a frame. Missed 21–50%, **janky 0–0.5%** |
+| **scroll**, 8 + 8 flings | 2,919 frames. 10.4 / 13.8 / 22.3 ms. Missed 3.1%, main 2.52 ms a frame | 3,009–3,200 frames. 10.1–10.3 / 12.9–13.1 / 19.8–21.8 ms. Missed 2.9–3.5%, main 2.58 ms a frame |
+
+On the emulator (60 Hz, interleaved with the same base): stream 6.16 → 4.0–4.9 ms an
+update, missed 0.6 → 0%; IME main 1.89 → 1.51 ms a frame; scroll unchanged.
+
+**Stream.** An update now costs about 3 ms of main thread on the Fold, against the 7 ms
+target. The stream case measures the screen first with the agent working and no words,
+for 3 s: the bar's shimmering title and status and its pulsing dot cost **240 ms of main
+thread a second** (2 ms a frame at 120 Hz) before anything streams. That is the rest of the
+16.3 ms. It existed before too, and is the next thing to take off this screen. The
+recomposition test (`ConversationStreamingTest`) streams deltas and finds the header, the
+dock, the composer, the transcript and every other row composed 0 times.
+
+**IME.** The frames are twice as fast and never twice late, but "missed" got no better. The
+keyboard's animation drives frames at 60 Hz (every 16.7 ms), while FrameMetrics gives
+each one the 120 Hz deadline, 8.3 ms. A frame of 8.2 ms counts as made and one of 8.4 as
+missed, and the frames now sit right there, so the share flips between runs. The frame
+splits into ui 2.4 + RenderThread 2.0 + GPU 3.2 ms. Of the GPU time, 2 ms is the bar's blur,
+which must follow the list moving under it: `-e glass off` gives a total p50 of 5.7 ms and
+14.6% missed. The rest of what still misses:
+- the frame the keyboard settles in;
+- isolated caret-blink frames, whose GPU takes 7–8 ms with the glass on or off (the GPU
+  clocking down between blinks while the keyboard is hidden).
+
+Getting under 3% needs every frame under about 7 ms. That means taking the bar's blur off
+the frames where only the keyboard moves, which is phase 2's.
+
+What changed:
+- **Streaming redraws one row.** A delta goes to the streaming block's `LiveText`, a
+  StateFlow only its row reads, instead of a new `ConversationState`. The list, the header
+  and the dock see nothing. The row takes the newest words once a frame
+  (`withFrameNanos`). The Markdown is parsed on the conversation's lane, keeping the blocks
+  that didn't change. The run's end publishes the final words at once.
+- **The reveal** (`TextReveal`, Telegram's `MultiLayoutTypingAnimator`):
+  - The caret moves at max(40 dp/s, what is left / 1.05 s). The typing line fades over 50 dp
+    (DST_IN), and lines after the caret aren't drawn.
+  - The row is laid out a line at a time, never shorter while words come. The list is
+    drawn that much lower and eases up over 250 ms on cubic-bezier(0.199, 0.011, 0.279,
+    0.910), so a frame of the reveal is a mask and one layer's translation, with no layout.
+  - Scrolled into the answer, the reader's words stay put. Scrolled above it, nothing
+    moves.
+- **The keyboard** (`KeyboardLift`, AdjustPanLayoutHelper):
+  - During the inset animation the transcript and the dock are placed higher by the
+    keyboard's progress, each in its own layer.
+  - The keyboard's height enters the layout once, at the animation's low end. It is read
+    only where things are measured and placed, so nothing composes for it.
+  - The list keeps its height and moves above the keyboard, with the keyboard's room over
+    its top. The rows the keyboard uncovers are already composed, which took the settle
+    frame from 11–22 ms of ui to 6–10.
+  - Both composers moved to `TextFieldState`. The value field rebuilt an empty paragraph on
+    every frame it moved, about a fifth of the main thread.
+- **Glass** records a surface's layers again only when its area of the content moves. A
+  surface that moves with the content (the dock with the transcript) keeps its blur. A
+  caret blinking or a button pressed over the glass no longer re-records it.
+- **Shimmer** draws in its own layer, reading its phase in draw only.
+- **Inline pictures** are decoded and sized on the lane as their rows are built
+  (`InlinePicture`, a 24 MB LRU), and looked up on the main thread.
+
+Recordings: `fold-stream-light.mp4` and `fold-stream-dark.mp4` (200 updates under the glass
+bar), with frame strips, in the task's `.context/streaming/`.
+
+Benchmark additions:
+- `-e theme light|dark`
+- `-e glass off`
+- `-e updates N`
+- `-e frames dump`, which writes every frame's vsync time, total, ui, wait, RenderThread,
+  GPU and deadline to `files/chat-frames.txt`.
+- The `parts` line under each case.
+
 ## Running the benchmark
 
 ```sh

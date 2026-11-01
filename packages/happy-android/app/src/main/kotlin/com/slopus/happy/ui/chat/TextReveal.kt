@@ -7,7 +7,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,6 +52,11 @@ import kotlin.math.roundToInt
  * list moves a line at a time, smoothly, however the words arrive. Once the
  * answer is done and the caret has reached its end the row grows to its whole
  * height, copy button and all, and the reveal steps out of the way.
+ *
+ * The row is laid out a line taller at once and the list ([RevealHost]) is
+ * drawn that much lower, easing back up: the 250 ms are frames of one layer's
+ * translation, with one layout a line, as Telegram's item animator moves
+ * views and lays out once. The new line comes up from under the dock's fade.
  */
 object TextRevealSpec {
     const val MIN_SPEED_DP_PER_SECOND = 40f
@@ -64,8 +68,16 @@ object TextRevealSpec {
     val easing = CubicBezierEasing(0.199f, 0.011f, 0.279f, 0.910f)
 }
 
-/** Where a row asks the list to keep what the reader looks at still while the row grows by [delta] pixels; null where nothing need. */
-val LocalRevealGrowth = staticCompositionLocalOf<((key: Any, delta: Int) -> Unit)?> { null }
+/** The list a revealing row grows in; null where nothing need move with it. */
+interface RevealHost {
+    /** Row [key] was laid out [delta] pixels taller: keep what the reader looks at still. */
+    fun grew(key: Any, delta: Int)
+
+    /** Row [key] is [pixels] shorter on screen than laid out, easing to 0: draw the list that much lower where the row's foot is its end. */
+    fun lag(key: Any, pixels: Float)
+}
+
+val LocalRevealHost = staticCompositionLocalOf<RevealHost?> { null }
 
 /** The reveal the texts under this point register with; null outside a revealing row. */
 val LocalTextReveal = staticCompositionLocalOf<TextReveal?> { null }
@@ -75,7 +87,8 @@ val LocalTextReveal = staticCompositionLocalOf<TextReveal?> { null }
  * the row's outermost box wears [revealHeight], and [run] drives both, one
  * step a frame, sleeping while the caret has caught up and nothing changed.
  * A frame of the caret changes one text's mask and, while a line grows in,
- * the row's height: no composition, and no text measured or recorded again.
+ * the list's lag: no composition, no layout, and no text measured or
+ * recorded again. A line reached is one layout of the row.
  */
 @Stable
 class TextReveal internal constructor(
@@ -84,8 +97,8 @@ class TextReveal internal constructor(
     startAtEnd: Boolean,
     /** The row's own bottom margin, kept under the caret's line. */
     private val bottomPadding: Float,
-    private val key: Any,
-    private val onGrow: ((key: Any, delta: Int) -> Unit)?,
+    internal val key: Any,
+    internal val host: RevealHost?,
 ) {
     internal sealed interface Mask {
         data object Whole : Mask
@@ -142,15 +155,16 @@ class TextReveal internal constructor(
     /** The row's whole height, as last measured. */
     internal var natural = 0
 
-    /** How tall the row is drawn; NaN until the caret has been placed, the row then as tall as it first measured ([first]). */
-    internal var height by mutableFloatStateOf(if (startAtEnd) Float.NaN else 0f)
+    /** How tall the row is on screen, easing to [laid]; NaN until the caret has been placed, the row then as tall as it first measured ([first]). */
+    private var height = if (startAtEnd) Float.NaN else 0f
+    /** How tall the row is laid out: the height's target, set once a line; -1 for [first]. */
+    internal var laid by mutableIntStateOf(if (startAtEnd) -1 else 0)
         private set
     /** The row's height when it first measured: a row met mid-answer keeps it until the caret moves on, so new words never show all at once. */
     internal var first = -1
     private var heightFrom = 0f
     private var heightTo = if (startAtEnd) Float.NaN else 0f
     private var heightStart = 0L
-    private var reported = -1
 
     /** Everything is shown and the row is its whole height: the reveal does nothing more. */
     var done by mutableStateOf(false)
@@ -241,23 +255,21 @@ class TextReveal internal constructor(
         return end && resting
     }
 
-    /** Moves the height toward [target]; true once it rests there. */
+    /** Lays the row out at [target] and eases its height on screen there; true once it rests. */
     private fun animateHeight(frame: Long, target: Float): Boolean {
         val current = height.takeIf { !it.isNaN() } ?: (if (first >= 0) first else natural).toFloat()
         if (target != heightTo) {
             heightFrom = current
             heightTo = target
             heightStart = frame
+            val before = if (laid >= 0) laid else current.roundToInt()
+            val next = target.roundToInt()
+            laid = next
+            if (next != before) host?.grew(key, next - before)
         }
         val t = ((frame - heightStart) / 1e6f / TextRevealSpec.HEIGHT_MILLIS).coerceIn(0f, 1f)
-        val next = if (t >= 1f) heightTo else lerp(heightFrom, heightTo, TextRevealSpec.easing.transform(t))
-        if (next != height) {
-            val before = if (reported >= 0) reported else current.roundToInt()
-            height = next
-            val shown = next.roundToInt()
-            if (shown != before) onGrow?.invoke(key, shown - before)
-            reported = shown
-        }
+        height = if (t >= 1f) heightTo else lerp(heightFrom, heightTo, TextRevealSpec.easing.transform(t))
+        host?.lag(key, laid - height)
         return t >= 1f
     }
 
@@ -327,13 +339,15 @@ class TextReveal internal constructor(
 fun rememberTextReveal(key: Any, streaming: Boolean, fresh: () -> Boolean): TextReveal? {
     val reduceMotion = com.slopus.happy.ui.components.rememberReduceMotion()
     val density = LocalDensity.current
-    val grow = LocalRevealGrowth.current
+    val host = LocalRevealHost.current
     val reveal = remember(key) {
         if (!streaming || reduceMotion) null
-        else TextReveal(density.density, startAtEnd = !fresh(), with(density) { MessageSpec.agentMarginVertical.toPx() }, key, grow)
+        else TextReveal(density.density, startAtEnd = !fresh(), with(density) { MessageSpec.agentMarginVertical.toPx() }, key, host)
     } ?: return null
     val live = rememberUpdatedState(streaming)
     LaunchedEffect(reveal) { reveal.run(live) }
+    // A row scrolled away mid-ease leaves the list where it is.
+    DisposableEffect(reveal) { onDispose { reveal.host?.lag(reveal.key, 0f) } }
     return reveal.takeIf { !it.done }
 }
 
@@ -343,7 +357,7 @@ fun Modifier.revealHeight(reveal: TextReveal?): Modifier = if (reveal == null) t
         val placeable = measurable.measure(constraints)
         reveal.natural = placeable.height
         if (reveal.first < 0) reveal.first = placeable.height
-        val height = reveal.height.let { if (it.isNaN()) reveal.first else it.roundToInt() }.coerceIn(0, placeable.height)
+        val height = reveal.laid.let { if (it < 0) reveal.first else it }.coerceIn(0, placeable.height)
         layout(placeable.width, height) { placeable.place(0, 0) }
     }
     .clipToBounds()

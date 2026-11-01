@@ -8,6 +8,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.State
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -251,13 +253,14 @@ fun Modifier.glassSource(source: GlassSource): Modifier =
 fun Modifier.glass(source: GlassSource?, shape: Shape, colors: GlassColors, blurs: Boolean): Modifier = composed {
     val layers = rememberGlassLayers()
     var origin by remember { mutableStateOf(Offset.Zero) }
+    val at = rememberSourceOffset(source) { origin }
     onGloballyPositioned { origin = it.positionInRoot() }
         .drawWithCache {
             val path = Path().apply { addOutline(shape.createOutline(size, layoutDirection, this@drawWithCache)) }
             val hairline = GlassSpec.hairline.toPx()
             val fill = colors.fill(blurs)
             onDrawBehind {
-                if (source != null) clipPath(path) { drawSource(layers, source, origin, blurs) }
+                if (source != null) clipPath(path) { drawSource(layers, source, at.value, blurs) }
                 drawPath(path, fill)
                 drawPath(path, colors.edge, style = Stroke(hairline))
             }
@@ -272,10 +275,11 @@ fun Modifier.glass(source: GlassSource?, shape: Shape, colors: GlassColors, blur
 fun Modifier.glassFade(source: GlassSource?, tint: Color, blurs: Boolean): Modifier = composed {
     val layers = rememberGlassLayers()
     var origin by remember { mutableStateOf(Offset.Zero) }
+    val at = rememberSourceOffset(source) { origin }
     onGloballyPositioned { origin = it.positionInRoot() }
         .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
         .drawBehind {
-            if (source != null) clipRect { drawSource(layers, source, origin, blurs) }
+            if (source != null) clipRect { drawSource(layers, source, at.value, blurs) }
             drawRect(tint.copy(alpha = if (blurs) glassAlpha(tint) else GlassSpec.FALLBACK_ALPHA))
             val fade = (GlassSpec.fade.toPx() / size.height).coerceIn(0f, 1f)
             // Telegram's fade (BlurredBackgroundWithFadeDrawable, opacity mode): 0, 0x60, 0xB0, 0xE8 of
@@ -322,6 +326,7 @@ fun Modifier.glassBar(
 ): Modifier = composed {
     val layers = rememberGlassLayers()
     var origin by remember { mutableStateOf(Offset.Zero) }
+    val at = rememberSourceOffset(source) { origin }
     val statusBar = WindowInsets.statusBars.getTop(LocalDensity.current)
     onGloballyPositioned { origin = it.positionInRoot() }
         .drawWithCache {
@@ -340,7 +345,7 @@ fun Modifier.glassBar(
                 inset(0f, 0f, 0f, -feather) {
                     if (fade != null) drawIntoCanvas { it.saveLayer(size.toRect(), Paint()) }
                     // The blur spreads past the layer's edge: keep it to the glass.
-                    if (source != null) clipRect { drawSource(layers, source, origin, blurs) }
+                    if (source != null) clipRect { drawSource(layers, source, at.value, blurs) }
                     if (backdrop == null) {
                         drawRect(tint)
                     } else {
@@ -400,8 +405,17 @@ private val saturate = ColorFilter.colorMatrix(ColorMatrix().apply { setToSatura
 /**
  * A glass's two layers: [capture], the content under it at full size and
  * softened by [GlassSpec.prefilterRadius], and [blurred], that shrunk and blurred.
+ * They are recorded again only when the glass's [area] of the source moves:
+ * they draw the source by reference, so when the content changes the
+ * RenderThread blurs it again by itself, and when only something over the
+ * glass redraws (a caret blinking, a button pressed) or the glass and the
+ * content move together (the keyboard carrying the list and the dock), the
+ * blur it made last is drawn again as it is.
  */
-private class GlassLayers(val capture: GraphicsLayer, val blurred: GraphicsLayer)
+private class GlassLayers(val capture: GraphicsLayer, val blurred: GraphicsLayer) {
+    var area: Rect? = null
+    var radius = 0f
+}
 
 @Composable
 private fun rememberGlassLayers(): GlassLayers {
@@ -426,6 +440,9 @@ private fun rememberGlassLayers(): GlassLayers {
 private fun GlassLayers.record(scope: DrawScope, source: GlassSource, area: Rect) {
     val k = GlassSpec.DOWNSCALE
     val radius = GlassSpec.downscaledRadius(with(scope) { GlassSpec.blur.toPx() }, k)
+    if (area == this.area && radius == this.radius && !capture.isReleased && !blurred.isReleased) return
+    this.area = area
+    this.radius = radius
     if (blurred.renderEffect == null) {
         // Softened to about half the small copy's pixel, so shrinking it has nothing left to alias.
         val prefilter = GlassSpec.prefilterRadius(k)
@@ -444,7 +461,17 @@ private fun GlassLayers.record(scope: DrawScope, source: GlassSource, area: Rect
 }
 
 /**
- * What a glass at [origin] shows of [source]: its ground, then (when it
+ * Where a glass at [origin] is over its [source], in the source's own
+ * coordinates. Drawn from this alone, a glass that moves with what it shows
+ * (the dock and the transcript riding the keyboard together) isn't drawn
+ * again, nor its blur made again.
+ */
+@Composable
+private fun rememberSourceOffset(source: GlassSource?, origin: () -> Offset): State<Offset> =
+    remember(source) { derivedStateOf { source?.let { origin() - it.origin } ?: Offset.Zero } }
+
+/**
+ * What a glass at [offset] over [source] shows: its ground, then (when it
  * [blurs]) the content blurred over that, as Telegram's
  * BlurredBackgroundSourceRenderNode draws. The blur takes in
  * [GlassSpec.capture] of content round the glass, kept to the source as
@@ -452,10 +479,9 @@ private fun GlassLayers.record(scope: DrawScope, source: GlassSource, area: Rect
  * blur, the ground alone, so the tint over it is opaque, as Telegram's bar is
  * with blur off.
  */
-private fun DrawScope.drawSource(layers: GlassLayers, source: GlassSource, origin: Offset, blurs: Boolean) {
+private fun DrawScope.drawSource(layers: GlassLayers, source: GlassSource, offset: Offset, blurs: Boolean) {
     if (source.ground.isSpecified) drawRect(source.ground)
     if (!blurs || !source.recorded) return
-    val offset = origin - source.origin
     val bounds = Rect(Offset.Zero, source.layer.size.toSize())
     // Whole pixels, so the full-size capture lies on the screen's pixels and isn't resampled.
     val area = Rect(offset, size).inflate(GlassSpec.capture.toPx()).intersect(bounds).let {

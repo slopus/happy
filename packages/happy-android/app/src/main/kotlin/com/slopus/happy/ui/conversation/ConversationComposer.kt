@@ -1,5 +1,10 @@
 package com.slopus.happy.ui.conversation
 
+import androidx.compose.ui.unit.constrainHeight
+import androidx.compose.ui.unit.offset
+import androidx.compose.ui.layout.SubcomposeLayout
+import com.slopus.happy.ui.components.rememberHoistedTextFieldState
+import androidx.compose.foundation.text.input.TextFieldLineLimits
 import android.net.Uri
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateDpAsState
@@ -7,7 +12,6 @@ import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -56,7 +60,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -161,10 +164,9 @@ internal fun ConversationComposer(
     val attached = pictures?.images.orEmpty()
     val hasContent = text.isNotBlank() || attached.isNotEmpty()
     val primary = primaryActionOf(hasContent, state)
-    // The field's own selection; text set from outside puts the cursor at its end, or where focus asks.
+    // The field's own words and selection; text set from outside puts the cursor at its end, or where focus asks.
     // Saved, so a rotation or a return from process death keeps the caret where it was.
-    var field by rememberSaveable(stateSaver = TextFieldValue.Saver) { mutableStateOf(TextFieldValue(text, TextRange(text.length))) }
-    if (field.text != text) field = TextFieldValue(text, TextRange(text.length))
+    val (field, typed) = rememberHoistedTextFieldState(text, onTextChange)
     val focus = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
     var focused by remember { mutableStateOf(false) }
@@ -248,15 +250,12 @@ internal fun ConversationComposer(
                     }
                 }
                 BasicTextField(
-                    value = field,
-                    onValueChange = {
-                        field = it
-                        if (it.text != text) onTextChange(it.text)
-                    },
+                    state = field,
+                    inputTransformation = typed,
                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = colors.text),
                     cursorBrush = SolidColor(colors.text),
-                    maxLines = ConversationComposerSpec.MAX_LINES,
-                    decorationBox = { inner ->
+                    lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = ConversationComposerSpec.MAX_LINES),
+                    decorator = { inner ->
                         Box(Modifier.padding(vertical = 12.dp)) {
                             if (field.text.isEmpty()) {
                                 Text(
@@ -351,7 +350,7 @@ internal fun ConversationComposer(
         // focus here, after its editor exists, rather than in the parent.
         LaunchedEffect(state.composerFocus?.serial) {
             val ask = state.composerFocus ?: return@LaunchedEffect
-            field = field.copy(selection = TextRange(ask.cursor.coerceIn(0, field.text.length)))
+            field.edit { selection = TextRange(ask.cursor.coerceIn(0, length)) }
             focus.requestFocus()
             keyboard?.show()
         }
@@ -409,15 +408,19 @@ private fun ComposerLayout(open: Boolean, compact: Boolean, minimumRowHeight: Dp
 /** Keep the full card when it fits; otherwise use one row and spend spare height on margins. */
 @Composable
 private fun ComposerViewport(minimumOpen: Dp, minimumCompact: Dp, modifier: Modifier, content: @Composable (Boolean) -> Unit) {
-    val density = LocalDensity.current
-    BoxWithConstraints(modifier.fillMaxWidth().testTag(ConversationComposerTags.COMPOSER)) {
-        val compact = maxHeight < minimumOpen + 16.dp
+    // The margins are worked out where it measures, so the room round it changing (the keyboard
+    // settling) measures the pill again and composes it only when it changes shape.
+    SubcomposeLayout(modifier.fillMaxWidth().testTag(ConversationComposerTags.COMPOSER)) { constraints ->
+        val compact = constraints.hasBoundedHeight && constraints.maxHeight.toDp() < minimumOpen + 16.dp
         // Split whole spare pixels so rounding each margin cannot steal
         // one pixel from the minimum touch surface at fractional densities.
-        val verticalMargin = with(density) {
-            if (compact) ((constraints.maxHeight - minimumCompact.roundToPx()).coerceAtLeast(0) / 2).coerceAtMost(8.dp.roundToPx()).toDp() else 8.dp
-        }
-        Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = verticalMargin)) { content(compact) }
+        val vertical = if (compact) ((constraints.maxHeight - minimumCompact.roundToPx()).coerceAtLeast(0) / 2).coerceAtMost(8.dp.roundToPx()) else 8.dp.roundToPx()
+        val horizontal = 12.dp.roundToPx()
+        val inner = constraints.copy(minWidth = 0, minHeight = 0).offset(-2 * horizontal, -2 * vertical)
+        val placeables = subcompose(Unit) { content(compact) }.map { it.measure(inner) }
+        val width = if (constraints.hasBoundedWidth) constraints.maxWidth else (placeables.maxOfOrNull { it.width } ?: 0) + 2 * horizontal
+        val height = constraints.constrainHeight((placeables.maxOfOrNull { it.height } ?: 0) + 2 * vertical)
+        layout(width, height) { placeables.forEach { it.place(horizontal, vertical) } }
     }
 }
 

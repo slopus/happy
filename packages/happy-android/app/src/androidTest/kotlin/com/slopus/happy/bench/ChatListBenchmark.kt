@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -72,6 +73,8 @@ import com.slopus.happy.ui.conversation.ConversationRowView
 import com.slopus.happy.ui.conversation.ConversationScreen
 import com.slopus.happy.ui.conversation.ConversationScreenActions
 import com.slopus.happy.ui.theme.HappyTheme
+import com.slopus.happy.ui.components.LocalGlassBlur
+import com.slopus.happy.ui.theme.ThemePreference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -154,6 +157,19 @@ class ChatListBenchmark {
     private val fixture = File(app.getExternalFilesDir(null), "chat-fixture.json")
     private val chat = InstrumentationRegistry.getArguments().getString("chat") ?: if (fixture.exists()) "real" else "recorded"
 
+    /** `-e glass off` draws every glass as its tint alone, to tell the blur's share of a frame. */
+    private val glassBlur: Boolean? = if (InstrumentationRegistry.getArguments().getString("glass") == "off") false else null
+
+    /** `-e updates N`: how many deltas a stream case sends, 20 a second (120 by default; more for a recording). */
+    private val updatesWanted = InstrumentationRegistry.getArguments().getString("updates")?.toIntOrNull() ?: 120
+
+    /** `-e theme light` or `dark` draws in that theme whatever the device's, for recordings of both. */
+    private val theme = when (InstrumentationRegistry.getArguments().getString("theme")) {
+        "light" -> ThemePreference.Light
+        "dark" -> ThemePreference.Dark
+        else -> ThemePreference.Adaptive
+    }
+
     /** The whole chat, oldest first. */
     private val heavy: List<Message> by lazy {
         val messages = when (chat) {
@@ -210,7 +226,7 @@ class ChatListBenchmark {
     /** Content behind a switch, so opening composes inside a frame, as a navigation push does. */
     private fun content(block: @Composable () -> Unit) {
         launch()
-        instrumentation.runOnMainSync { activity.setContent { HappyTheme { if (shown) block() } } }
+        instrumentation.runOnMainSync { activity.setContent { HappyTheme(theme) { CompositionLocalProvider(LocalGlassBlur provides glassBlur) { if (shown) block() } } } }
         SystemClock.sleep(1_500)
     }
 
@@ -221,6 +237,18 @@ class ChatListBenchmark {
     private fun report(line: String) {
         android.util.Log.i("ChatBench", line)
         results.appendText(line + "\n")
+    }
+
+    /** `-e frames dump` writes every recorded frame to files/chat-frames.txt: when, how long, each part, the deadline. */
+    private val dumpFrames = InstrumentationRegistry.getArguments().getString("frames") == "dump"
+
+    private fun dump(name: String, frames: List<FrameRecorder.Frame>) {
+        val start = frames.firstOrNull()?.vsyncNs ?: 0
+        File(app.getExternalFilesDir(null), "chat-frames.txt").appendText(
+            "# $name: at ms, total, ui, wait, render, gpu, deadline\n" + frames.joinToString("") {
+                String.format(java.util.Locale.US, "%8.1f %6.1f %6.1f %5.1f %5.1f %5.1f %5.1f%s\n", (it.vsyncNs - start) / 1e6, it.totalNs / 1e6, it.uiNs / 1e6, it.waitNs / 1e6, it.renderNs / 1e6, it.gpuNs / 1e6, it.deadlineNs / 1e6, if (it.totalNs > it.deadlineNs) " MISSED" else "")
+            },
+        )
     }
 
     /** Runs [block] while recording frames, then logs both summaries. */
@@ -237,7 +265,8 @@ class ChatListBenchmark {
         main { mainCpu = android.os.Debug.threadCpuTimeNanos() - mainCpu }
         val process = android.os.Process.getElapsedCpuTime() - processCpu
         val frames = recorder.stop()
-        report(FrameSummary(frames).line(name))
+        FrameSummary(frames).let { report(it.line(name)); report(it.parts()) }
+        if (dumpFrames) dump(name, frames)
         // CPU time, unlike wall time, barely moves with a loaded host: the steadier comparison.
         report(String.format(java.util.Locale.US, "  cpu: main %.0f ms (%.2f ms/frame), process %d ms", mainCpu / 1e6, mainCpu / 1e6 / frames.size.coerceAtLeast(1), process))
         val gfx = shell("dumpsys gfxinfo ${app.packageName}")
@@ -498,14 +527,22 @@ class ChatListBenchmark {
         val words = StringBuilder("Streaming the answer")
         var updates = 0
         var mainCpu = 0L
+        // The screen as it is while the agent works, before any words: the bar's shimmer and its dot run
+        // every frame whatever streams, so what an update costs is what the stream adds to that.
+        var idle = 0L
+        main { idle = Debug.threadCpuTimeNanos() }
+        SystemClock.sleep(IDLE_MILLIS)
+        main { idle = Debug.threadCpuTimeNanos() - idle }
         val recorder = FrameRecorder(activity.window)
+        var started = 0L
         main {
             recorder.start()
             mainCpu = Debug.threadCpuTimeNanos()
+            started = SystemClock.uptimeMillis()
         }
         val job = scope.launch {
             var tick = 0
-            while (isActive && tick < 120) {
+            while (isActive && tick < updatesWanted) {
                 delay(50)
                 tick++
                 words.append(" word").append(tick % 13)
@@ -516,10 +553,20 @@ class ChatListBenchmark {
         }
         while (job.isActive) SystemClock.sleep(100)
         SystemClock.sleep(300)
-        main { mainCpu = Debug.threadCpuTimeNanos() - mainCpu }
+        var elapsed = 0L
+        main {
+            mainCpu = Debug.threadCpuTimeNanos() - mainCpu
+            elapsed = SystemClock.uptimeMillis() - started
+        }
         val frames = recorder.stop()
-        report(FrameSummary(frames).line("$name stream"))
+        FrameSummary(frames).let { report(it.line("$name stream")); report(it.parts()) }
         report(String.format(Locale.US, "  stream: %d updates (final %d chars), main cpu %.0f ms, %.2f ms an update", updates, words.length, mainCpu / 1e6, mainCpu / 1e6 / updates))
+        val working = idle / 1e6 / IDLE_MILLIS * elapsed
+        report(String.format(Locale.US, "  working screen alone: %.0f ms of main a second; the stream added %.2f ms an update", idle / 1e3 / IDLE_MILLIS, (mainCpu / 1e6 - working) / updates))
+    }
+
+    private companion object {
+        const val IDLE_MILLIS = 3_000L
     }
 
     private fun answerRow(text: String) = ChatRow.AgentText(ChatMessage.AgentText("live", now, text), parseMarkdown(text))

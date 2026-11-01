@@ -88,8 +88,13 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import com.slopus.happy.ui.components.GlassSource
 import com.slopus.happy.ui.components.RecomposeProbe
-import com.slopus.happy.ui.chat.LocalRevealGrowth
+import com.slopus.happy.ui.chat.LocalRevealHost
+import com.slopus.happy.ui.chat.RevealHost
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.graphics.graphicsLayer
 import com.slopus.happy.ui.components.glassFade
 import com.slopus.happy.ui.components.glassSource
 import com.slopus.happy.ui.components.rememberGlassBlur
@@ -239,11 +244,9 @@ fun ConversationScreen(
     val blurs = rememberGlassBlur()
     var dock by remember { mutableIntStateOf(0) }
     // The keyboard moves the dock and the transcript by an offset while it animates, and is in
-    // the layout only at rest: the dock's own height and the keyboard's are added here, in the same
-    // frame, so the list's room never lags the dock's.
+    // the layout only at rest, read where things are laid out and placed: it settling composes nothing.
     val keyboard = rememberKeyboardLift()
-    val resting = with(LocalDensity.current) { keyboard.rest.toDp() }
-    val dockHeight = with(LocalDensity.current) { dock.toDp() } + resting
+    val dockHeight = with(LocalDensity.current) { dock.toDp() }
     // Return in new work's name: on to the composer.
     var nameReturns by remember { mutableIntStateOf(0) }
     val phase = when {
@@ -363,7 +366,7 @@ fun ConversationScreen(
             Crossfade(phase, label = "transcript") { shown ->
                 when (shown) {
                     TranscriptPhase.Loading -> LoadingIndicator(
-                        Modifier.padding(top = barFoot, bottom = dockHeight).testTag(ConversationScreenTags.LOADING),
+                        Modifier.padding(top = barFoot).keyboardPadding(keyboard, dockHeight).testTag(ConversationScreenTags.LOADING),
                     )
                     TranscriptPhase.Failed -> StatePage(
                         title = stringResource(R.string.conversation_load_failed),
@@ -371,7 +374,7 @@ fun ConversationScreen(
                         icon = Ionicon.CloudOfflineOutline,
                         action = stringResource(R.string.common_retry) to actions.onRetryLoad,
                         tag = ConversationScreenTags.ERROR,
-                        modifier = Modifier.padding(top = barFoot, bottom = dockHeight),
+                        modifier = Modifier.padding(top = barFoot).keyboardPadding(keyboard, dockHeight),
                     )
                     // New work is asked in the middle instead, and the chat it becomes is about to have its first message.
                     TranscriptPhase.Empty -> if (state.created && state.taken == null) {
@@ -380,7 +383,7 @@ fun ConversationScreen(
                             body = stringResource(R.string.conversation_empty),
                             art = StateArt.Ready,
                             tag = ConversationScreenTags.EMPTY,
-                            modifier = Modifier.padding(top = barFoot, bottom = dockHeight),
+                            modifier = Modifier.padding(top = barFoot).keyboardPadding(keyboard, dockHeight),
                         )
                     } else {
                         Box(Modifier.fillMaxSize())
@@ -393,7 +396,7 @@ fun ConversationScreen(
             // As last chosen, for the fade after it is made.
             val last = remember { arrayOfNulls<NewWork>(1) }
             (state.newWork?.also { last[0] = it } ?: last[0])?.let { shown ->
-                NewWorkRoom(state.newWork != null, Modifier.riding(keyboard, 0.5f).padding(top = barFoot, bottom = dockHeight)) {
+                NewWorkRoom(state.newWork != null, Modifier.riding(keyboard, 0.5f).padding(top = barFoot).keyboardPadding(keyboard, dockHeight)) {
                     NewWorkChoicePanel(shown, onChange = actions.onChoiceChange, onReturn = { nameReturns++ })
                 }
             }
@@ -403,19 +406,20 @@ fun ConversationScreen(
             Box(
                 Modifier
                     .align(Alignment.BottomCenter)
-                    .riding(keyboard)
+                    .aboveKeyboard(keyboard)
                     .fillMaxWidth()
                     .height(dockHeight)
                     .glassFade(glass, colors.surface, blurs)
                     .testTag(ConversationScreenTags.FADE),
             )
-            if (phase == TranscriptPhase.Rows) Box(Modifier.matchParentSize().riding(keyboard)) { ConversationJump(listState, state.activity, dockHeight) }
+            if (phase == TranscriptPhase.Rows) Box(Modifier.matchParentSize().aboveKeyboard(keyboard)) { ConversationJump(listState, state.activity, dockHeight) }
             Column(
                 Modifier
                     .align(Alignment.BottomCenter)
                     .riding(keyboard)
+                    .graphicsLayer()
                     .fillMaxWidth()
-                    .padding(bottom = resting)
+                    .keyboardPadding(keyboard)
                     .onSizeChanged { dock = it.height }
                     .windowInsetsPadding(WindowInsets.navigationBars),
             ) {
@@ -487,17 +491,42 @@ private fun Transcript(
     LaunchedEffect(nearOldest, state.hasMore, state.loadingOlder, state.olderFailed) {
         if (nearOldest && state.hasMore && !state.loadingOlder && !state.olderFailed) loadOlder(false)
     }
-    // A streaming row grows from its foot, which rests at the list's newest end: read there, the list
-    // follows it up. Scrolled into it, the reader's words stay put and the growth goes under the dock.
-    val growth = remember(listState) {
-        { key: Any, delta: Int ->
-            val offset = listState.firstVisibleItemScrollOffset
-            if (offset > 0 && listState.layoutInfo.visibleItemsInfo.firstOrNull()?.key == key) {
-                listState.requestScrollToItem(listState.firstVisibleItemIndex, offset + delta)
-            }
+    val reveal = remember(listState) { TranscriptReveal(listState) }
+    CompositionLocalProvider(LocalRevealHost provides reveal) { TranscriptList(state, listState, bubble, actions, onLoadOlder, bar, dock, glass, keyboard, reveal) }
+}
+
+/**
+ * The transcript's side of a streaming row's reveal. The row grows from its
+ * foot, which rests at the list's newest end: read there, the list follows
+ * it up, drawn [lag] lower while the row's height eases in, so the 250 ms
+ * of a line are one layer moving. Scrolled into the row, the reader's words
+ * stay put and the growth goes under the dock; scrolled above it, nothing
+ * the reader sees moves at all.
+ */
+@Stable
+private class TranscriptReveal(private val list: LazyListState) : RevealHost {
+    private var key: Any? = null
+    private var pixels by mutableFloatStateOf(0f)
+
+    override fun grew(key: Any, delta: Int) {
+        val offset = list.firstVisibleItemScrollOffset
+        if (offset > 0 && list.layoutInfo.visibleItemsInfo.firstOrNull()?.key == key) {
+            list.requestScrollToItem(list.firstVisibleItemIndex, offset + delta)
         }
     }
-    CompositionLocalProvider(LocalRevealGrowth provides growth) { TranscriptList(state, listState, bubble, actions, onLoadOlder, bar, dock, glass, keyboard) }
+
+    override fun lag(key: Any, pixels: Float) {
+        if (pixels == 0f && this.key != key) return
+        this.key = key
+        this.pixels = pixels
+    }
+
+    /** How much lower the list is drawn this frame; read only in its layer. */
+    fun lag(): Float {
+        val pixels = pixels
+        if (pixels == 0f || list.firstVisibleItemIndex != 0 || list.firstVisibleItemScrollOffset != 0) return 0f
+        return if (list.layoutInfo.visibleItemsInfo.firstOrNull()?.key == key) pixels else 0f
+    }
 }
 
 @Composable
@@ -511,12 +540,14 @@ private fun TranscriptList(
     dock: Dp,
     glass: GlassSource,
     keyboard: KeyboardLift,
+    reveal: TranscriptReveal,
 ) {
+    val density = LocalDensity.current
     LazyColumn(
         state = listState,
         reverseLayout = true,
-        contentPadding = PaddingValues(top = bar, bottom = dock + 8.dp),
-        modifier = Modifier.fillMaxSize().glassSource(glass).lifted(keyboard).testTag(ConversationScreenTags.LIST),
+        contentPadding = remember(bar, dock, keyboard, density) { KeyboardPadding(bar, dock + 8.dp, keyboard, density) },
+        modifier = Modifier.fillMaxSize().aboveKeyboard(keyboard).graphicsLayer().glassSource(glass).graphicsLayer { translationY = reveal.lag() }.testTag(ConversationScreenTags.LIST),
     ) {
         items(state.rows, key = ConversationRow::key, contentType = { it::class }) { row ->
             ConversationRowView(row, bubble, actions)

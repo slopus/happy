@@ -1,5 +1,7 @@
 package com.slopus.happy.ui.chat
 
+import com.slopus.happy.ui.components.rememberHoistedTextFieldState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -24,7 +26,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,8 +47,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.model.SessionState
@@ -191,14 +190,16 @@ fun ChatComposer(
     val focus = remember { FocusRequester() }
     if (autoFocus) LaunchedEffect(focus) { runCatching { focus.requestFocus() } }
     val colors = HappyTheme.colors
-    var field by remember { mutableStateOf(TextFieldValue(text, TextRange(text.length))) }
-    val placement = cursor?.placement
-    val value = when {
-        placement != null && placement.text == text -> TextFieldValue(text, placement.selection)
-        field.text == text -> field
-        else -> TextFieldValue(text, TextRange(text.length))
-    }
-    SideEffect { cursor?.selection = value.selection }
+    // A suggestion put in places the cursor after it ([ComposerCursor.placement]); typing lets that go.
+    val (field, typed) = rememberHoistedTextFieldState(
+        text,
+        onTextChange = { next ->
+            cursor?.placement = null
+            onTextChange(next)
+        },
+        placed = { words -> cursor?.placement?.takeIf { it.text == words }?.selection },
+    )
+    LaunchedEffect(field, cursor) { snapshotFlow { field.selection }.collect { cursor?.selection = it } }
     val hairline = with(LocalDensity.current) { 1f.toDp() }
     val shell = RoundedCornerShape(ComposerSpec.shellRadius)
     val layout = LocalWindowLayout.current
@@ -247,13 +248,8 @@ fun ChatComposer(
                 contentAlignment = Alignment.CenterStart,
             ) {
                 BasicTextField(
-                    value = value,
-                    onValueChange = { next ->
-                        field = next
-                        cursor?.placement = null
-                        cursor?.selection = next.selection
-                        if (next.text != text) onTextChange(next.text)
-                    },
+                    state = field,
+                    inputTransformation = typed,
                     textStyle = ComposerSpec.input.copy(color = colors.input.text),
                     cursorBrush = SolidColor(colors.input.text),
                     modifier = Modifier
@@ -262,9 +258,9 @@ fun ChatComposer(
                         .testTag(ComposerTags.INPUT)
                         .fillMaxWidth()
                         .heightIn(max = ComposerSpec.inputMaxHeight),
-                    decorationBox = { field ->
+                    decorator = { inner ->
                         Box {
-                            if (text.isEmpty()) {
+                            if (field.text.isEmpty()) {
                                 Text(
                                     stringResource(R.string.session_input_placeholder),
                                     style = ComposerSpec.input,
@@ -272,7 +268,7 @@ fun ChatComposer(
                                     maxLines = 1,
                                 )
                             }
-                            field()
+                            inner()
                         }
                     },
                 )
