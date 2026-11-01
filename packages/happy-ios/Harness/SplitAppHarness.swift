@@ -32,7 +32,23 @@ private actor DemoComputer: AgentTransport {
                  "content": .array([.object(["type": .string("text"), "text": .string(text)])])])
     }
 
-    private static let run: JSONValue = .object([
+    /// With `rounds`, that many more questions and answers after the
+    /// four, enough to scroll.
+    private let rounds: Int
+    init(rounds: Int = 0) { self.rounds = rounds }
+
+    private var run: JSONValue {
+        guard case .object(var run) = Self.base, case .array(var messages)? = run["messages"] else { return Self.base }
+        for round in 0..<rounds {
+            let at = Double(5 + 2 * round)
+            messages.append(Self.message("ru\(round)", "user", at, "Question \(round + 1): what moves when the window narrows?"))
+            messages.append(Self.message("ra\(round)", "agent", at + 1, "Round \(round + 1). The sidebar folds into the stack, home at its root, and the main panel's screens follow it in order; widened, they go back where they were."))
+        }
+        run["messages"] = .array(messages)
+        return .object(run)
+    }
+
+    private static let base: JSONValue = .object([
         "id": .string("r1"), "status": .string("completed"), "startedAt": .number(1_000), "endedAt": .number(2_000), "reason": .string("completed"),
         "messages": .array([
             message("u1", "user", 1, "How should the iPad lay out the app?"),
@@ -55,7 +71,7 @@ private actor DemoComputer: AgentTransport {
         if path == "/v0/bootstrap/desktop" {
             value = try JSONDecoder().decode(JSONValue.self, from: Data(Self.home.utf8))
         } else if path.contains("/messages?") {
-            value = .object(["hasMore": .bool(false), "runs": .array([Self.run])])
+            value = .object(["hasMore": .bool(false), "runs": .array([run])])
         } else if path.hasSuffix("/bootstrap"), path.hasPrefix("/v0/agents/") {
             let id = String(path.split(separator: "/")[2])
             value = .object(["agent": .object(["id": .string(id), "workspaceId": .string("w"), "status": .string("idle")]), "pending": .array([])])
@@ -87,18 +103,21 @@ private actor DemoComputer: AgentTransport {
 /// `-dark` darkens the window, `-landscape` turns it on its side,
 /// `-resizeLoop` narrows and widens the window in turn, `-narrow` leaves
 /// an iPad's window 600 wide, `-probe` reads the open chat's list
-/// (`ChatScrollProbe`).
+/// (`ChatScrollProbe`), `-pageProbe` the open page's scroll view
+/// (`PageScrollProbe`), `-long` gives the agent's conversation 60 more
+/// rounds.
 @MainActor
 final class SplitAppHarness {
     private var coordinator: AppCoordinator?
     private var probe: ChatScrollProbe?
+    private var pageProbe: PageScrollProbe?
 
     init(window: UIWindow, arguments: [String]) {
         func option(_ name: String) -> String? {
             arguments.firstIndex(of: name).flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
         }
         let agent = arguments.contains("-agent")
-        let computer = DemoComputer()
+        let computer = DemoComputer(rounds: arguments.contains("-long") ? 60 : 0)
         let controller = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/split-harness",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
@@ -156,6 +175,10 @@ final class SplitAppHarness {
             if arguments.contains("-probe"), let window = window as? HarnessWindow, let chat = shell.topViewController {
                 self.probe = ChatScrollProbe(window: window, chat: chat)
             }
+            if arguments.contains("-pageProbe"), let page = shell.topViewController {
+                try? await Task.sleep(for: .seconds(1))
+                self.pageProbe = PageScrollProbe(window: window, page: page)
+            }
             if arguments.contains("-hideSidebar") {
                 try? await Task.sleep(for: .milliseconds(500))
                 shell.setSidebarHidden(true)
@@ -185,6 +208,60 @@ final class SplitAppHarness {
         } else {
             home.push(.session(id: id), context: context, animated: false)
         }
+    }
+}
+/// A page's scroll view as the UI tests read it (an element named
+/// `page-scroll-probe`): its offset and how far it scrolls, and every
+/// change to its offset or insets made while neither a finger nor a glide
+/// was moving it. Something laying the page out under the reader shows
+/// there.
+@MainActor
+final class PageScrollProbe: NSObject {
+    private let element = ProbeElement(frame: CGRect(x: 0, y: 0, width: 2, height: 2))
+    private weak var scroll: UIScrollView?
+    private var observations: [NSKeyValueObservation] = []
+    private var foreignOffsets = 0
+    private var insetChanges = 0
+
+    init(window: UIWindow, page: UIViewController) {
+        super.init()
+        scroll = Self.scrollView(in: page.view)
+        element.isAccessibilityElement = true
+        element.accessibilityIdentifier = "page-scroll-probe"
+        element.isUserInteractionEnabled = false
+        element.alpha = 0.02
+        element.read = { [weak self] in self?.report() ?? "{}" }
+        window.addSubview(element)
+        guard let scroll else { return }
+        observations.append(scroll.observe(\.contentOffset, options: [.old, .new]) { [weak self] view, change in
+            MainActor.assumeIsolated {
+                guard change.oldValue != change.newValue, !view.isTracking, !view.isDragging, !view.isDecelerating else { return }
+                self?.foreignOffsets += 1
+            }
+        })
+        observations.append(scroll.observe(\.contentInset, options: [.old, .new]) { [weak self] _, change in
+            MainActor.assumeIsolated { if change.oldValue != change.newValue { self?.insetChanges += 1 } }
+        })
+    }
+
+    private static func scrollView(in view: UIView) -> UIScrollView? {
+        if let scroll = view as? UIScrollView { return scroll }
+        for child in view.subviews { if let found = scrollView(in: child) { return found } }
+        return nil
+    }
+
+    private func report() -> String {
+        guard let scroll else { return "{}" }
+        let top = -scroll.adjustedContentInset.top
+        let value: [String: Any] = [
+            "offsetY": scroll.contentOffset.y - top,
+            "maxOffsetY": max(0, scroll.contentSize.height + scroll.adjustedContentInset.bottom - scroll.bounds.height - top),
+            "offsetX": scroll.contentOffset.x + scroll.adjustedContentInset.left,
+            "foreignOffsets": foreignOffsets,
+            "insetChanges": insetChanges,
+        ]
+        let data = (try? JSONSerialization.data(withJSONObject: value)) ?? Data()
+        return String(decoding: data, as: UTF8.self)
     }
 }
 #endif

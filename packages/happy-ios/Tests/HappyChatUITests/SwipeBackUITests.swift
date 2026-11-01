@@ -13,6 +13,8 @@ final class SwipeBackUITests: XCTestCase {
     private var app: XCUIApplication!
 
     override func setUp() {
+        // The system's glass never lets the app idle: act without waiting.
+        _ = skipsQuiescence
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
     }
