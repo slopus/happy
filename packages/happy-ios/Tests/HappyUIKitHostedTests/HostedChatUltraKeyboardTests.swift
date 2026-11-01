@@ -175,6 +175,28 @@ final class HostedChatUltraKeyboardTests: XCTestCase {
         post(UIResponder.keyboardWillChangeFrameNotification, up: false, in: window)
     }
 
+    /// The keyboard read off the guide at rest covers nothing. The guide
+    /// rests on the safe area, which a turn or a resized window changes,
+    /// and the dock rests on the new one.
+    func testAKeyboardReadAtRestFollowsANewSafeArea() async throws {
+        let test = try await chat()
+        let keyboard = try XCTUnwrap(test.chat.ultraKeyboard)
+        test.chat.additionalSafeAreaInsets.bottom = 40
+        test.navigation.pushViewController(UIViewController(), animated: false)
+        let stopped = try await until { !keyboard.isActive }
+        XCTAssertTrue(stopped)
+        test.navigation.popViewController(animated: false)
+        let started = try await until { keyboard.isActive }
+        XCTAssertTrue(started, "appearing reads the guide afresh")
+        test.chat.view.layoutIfNeeded()
+        XCTAssertEqual(test.dock.frame.maxY, resting(test.chat), accuracy: 0.5)
+        XCTAssertEqual(keyboard.height, 0, "the guide at rest covers nothing")
+
+        test.chat.additionalSafeAreaInsets.bottom = 0
+        test.chat.view.layoutIfNeeded()
+        XCTAssertEqual(test.dock.frame.maxY, resting(test.chat), accuracy: 0.5, "the dock rests on the new safe area")
+    }
+
     /// What rides the dock and moves on the list's keyboard motion.
     private func riders(_ test: Chat) throws -> [UIView] {
         [test.dock, try XCTUnwrap(subview(ChatScrollButton.self, in: test.chat.view)),

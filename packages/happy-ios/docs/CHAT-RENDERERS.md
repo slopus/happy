@@ -35,7 +35,7 @@ committed window and a user-motion generation. Insets compensate for dock
 and keyboard movement while idle; under a finger they preserve physical
 content movement. Reduce Motion drops the follow animations.
 
-With the floating dock (a phone in portrait) the keyboard comes from
+In every layout the keyboard comes from
 UltraView's own integration (`ChatUltraKeyboard` over the library's
 `KeyboardDismissalController`), only while the chat is shown. A finger
 dragging down from the list carries the keyboard, the dock and the newest
@@ -46,10 +46,18 @@ scrim and an empty chat's placeholder ride the inset's motion through
 `applyViewportMotion`. Where the controller can't drive the keyboard, the
 list keeps the system's interactive dismissal.
 
-Docked (a tablet, a phone on its side) the list's frame ends at the dock and
-changes height with the keyboard, and UltraView has no public way yet to
-carry a list's frame or clip on that motion. There the keyboard layout guide
-moves the screen and the controller is never made.
+Under the iPad's dock, the list's
+frame stays where the dock rests and the keyboard moves its newest inset
+instead, because UltraView has no public way yet to carry a list's frame or
+clip on that motion. A backdrop
+under the dock covers the rows the list runs under it
+(`LegacyChatScreenLayout`'s `keyboardMovesInset`).
+The phone keeps its floating dock and full-height list in both orientations.
+
+The controller moves a docked keyboard only when the app's window covers the
+screen: on a phone, and on an iPad running the app full screen. A smaller
+iPad window (windowed apps, Stage Manager) and a floating, undocked or split
+keyboard keep the system's interactive dismissal.
 
 The agents' chat has the same keyboard (`ChatViewController.ultraKeyboard`)
 wherever it is shown, since its list always runs under the card: the card,

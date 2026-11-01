@@ -110,7 +110,7 @@ final class ChatKeyboardScript: NSObject {
         guard let card = view(AgentInputCardView.self), let window = chat?.view.window,
               let list = view(ChatListView.self) else { return mark("no-composer") }
         let height = window.bounds.height
-        // The list's middle: beside the sidebar when the phone is on its side.
+        // The list's middle, including beside an iPad sidebar.
         let listFrame = list.convert(list.bounds, to: window)
         mark(String(format: "window %.0fx%.0f list %.0f,%.0f %.0fx%.0f", window.bounds.width, height,
                     listFrame.minX, listFrame.minY, listFrame.width, listFrame.height))

@@ -116,11 +116,15 @@ final class ChatUltraKeyboard: NSObject {
         return view.bounds.maxY - height
     }
 
-    /// Before the screen's layout.
+    /// Before the screen's layout. With the keyboard down the guide rests
+    /// on the safe area's bottom, which covers nothing: kept as a height, it
+    /// would hold the dock up by the old safe area after a turn or a resized
+    /// window.
     func prepareLayout(guideTop: CGFloat) {
         guard isActive, resync, let view, view.window != nil, !isDriving else { return }
         resync = false
-        height = max(0, view.bounds.maxY - guideTop)
+        let covered = view.bounds.maxY - guideTop
+        height = covered > view.safeAreaInsets.bottom + 0.5 ? covered : 0
     }
 
     /// After the screen's layout: the controller finds the keyboard and
