@@ -1,0 +1,336 @@
+{
+ "history": {
+  "runs": [
+   {
+    "id": "run-1",
+    "status": "completed",
+    "reason": "completed",
+    "startedAt": 1761993000000,
+    "endedAt": 1761993030000,
+    "usage": {},
+    "costUsd": null,
+    "messages": [
+     {
+      "id": "user-1",
+      "role": "user",
+      "createdAt": 1761993000000,
+      "content": [
+       {
+        "type": "text",
+        "text": "Why does the cache test fail?"
+       }
+      ],
+      "metadata": {},
+      "clientMetadata": {
+       "composer": "mobile"
+      },
+      "profile": null,
+      "mode": {
+       "providerId": "claude",
+       "modelId": "anthropic/opus-5-5",
+       "effort": "high",
+       "serviceTier": null,
+       "permissionMode": "auto"
+      }
+     },
+     {
+      "id": "agent-1",
+      "role": "agent",
+      "createdAt": 1761993002000,
+      "metadata": {
+       "providerId": "claude",
+       "modelId": "anthropic/opus-5-5"
+      },
+      "content": [
+       {
+        "type": "reasoning",
+        "text": "The cache keeps stale reads."
+       },
+       {
+        "type": "tool_call",
+        "id": "call-1",
+        "name": "Bash",
+        "arguments": {
+         "command": "grep -rn cache"
+        },
+        "status": "completed",
+        "result": {
+         "output": "..."
+        },
+        "presentation": {
+         "type": "exec_command",
+         "command": "grep -rn cache",
+         "output": "..."
+        }
+       },
+       {
+        "type": "text",
+        "text": "The cache keeps what it read and drops it when the file changes."
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "run-2",
+    "status": "completed",
+    "reason": "completed",
+    "startedAt": 1761996600000,
+    "endedAt": 1761996630000,
+    "usage": {},
+    "costUsd": null,
+    "messages": [
+     {
+      "id": "user-2",
+      "role": "user",
+      "createdAt": 1761996600000,
+      "content": [
+       {
+        "type": "text",
+        "text": "Then clear it before every run, and tell me what changed in the timings afterwards, please"
+       }
+      ],
+      "metadata": {},
+      "clientMetadata": {
+       "composer": "mobile"
+      },
+      "profile": null,
+      "mode": {
+       "providerId": "claude",
+       "modelId": "anthropic/opus-5-5",
+       "effort": "high",
+       "serviceTier": null,
+       "permissionMode": "auto"
+      }
+     },
+     {
+      "id": "agent-2",
+      "role": "agent",
+      "createdAt": 1761996602000,
+      "metadata": {
+       "providerId": "claude",
+       "modelId": "anthropic/opus-5-5"
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "Cleared. The suite takes 4 s longer."
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "run-3",
+    "status": "completed",
+    "reason": "abort",
+    "startedAt": 1762000200000,
+    "endedAt": 1762000230000,
+    "usage": {},
+    "costUsd": null,
+    "messages": [
+     {
+      "id": "user-3",
+      "role": "user",
+      "createdAt": 1762000200000,
+      "content": [
+       {
+        "type": "image",
+        "mimeType": "image/png",
+        "data": "iVBORw0KGgoAAAANSUhEUgAAAUAAAADICAIAAAAWZq/8AAABvUlEQVR42u3TQQkAAAgEwctpJoMZyxC+hIFJsLCpHuCpSAAGBgwMGBgMDBgYMDBgYDAwYGDAwGBgwMCAgQEDg4EBAwMGBgwMBgYMDBgYDAwYGDAwYGAwMGBgwMCAgcHAgIEBA4OBAQMDBgYMDAYGDAwYGAysAhgYMDBgYDAwYGDAwICBwcCAgQEDg4EBAwMGBgwMBgYMDBgYMDAYGDAwYGAwMGBgwMCAgcHAgIEBAwMGBgMDBgYMDAYGDAwYGDAwGBgwMGBgMDBgYMDAgIHBwICBAQMDBgYDAwYGDAwGBgwMGBgwMBgYMDBgYMDAYGDAwICBwcCAgQEDAwYGAwMGBgwMGBgMDBgYMDAYGDAwYGDAwGBgwMCAgcHAgIEBAwMGBgMDBgYMDBgYDAwYGDAwGBgwMGBgwMBgYMDAgIEBA4OBAQMDBgYDAwYGDAwYGAwMGBgwMBhYBTAwYGDAwGBgwMCAgQEDg4EBAwMGBgMDBgYMDBgYDAwYGDAwYGAwMGBgwMBgYMDAgIEBA4OBAQMDBgYMDAYGDAwYGAwMGBgwMGBgMDBgYMDAYGDAwICBAQODgQEDAwYGDAwGBgwMXCwy/gSdYkYOlwAAAABJRU5ErkJggg=="
+       }
+      ],
+      "metadata": {},
+      "clientMetadata": {
+       "composer": "mobile"
+      },
+      "profile": null,
+      "mode": {
+       "providerId": "claude",
+       "modelId": "anthropic/opus-5-5",
+       "effort": "high",
+       "serviceTier": null,
+       "permissionMode": "auto"
+      }
+     },
+     {
+      "id": "agent-3",
+      "role": "agent",
+      "createdAt": 1762000202000,
+      "metadata": {
+       "providerId": "claude",
+       "modelId": "anthropic/opus-5-5"
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "That is the timing chart."
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "run-4",
+    "status": "completed",
+    "reason": "completed",
+    "startedAt": 1762003800000,
+    "endedAt": 1762003830000,
+    "usage": {},
+    "costUsd": null,
+    "messages": [
+     {
+      "id": "user-4",
+      "role": "user",
+      "createdAt": 1762003800000,
+      "content": [
+       {
+        "type": "text",
+        "text": "Written by a member of the team"
+       }
+      ],
+      "metadata": {
+       "userId": "u-steve"
+      },
+      "clientMetadata": {
+       "composer": "mobile"
+      },
+      "profile": null,
+      "mode": {
+       "providerId": "claude",
+       "modelId": "anthropic/opus-5-5",
+       "effort": "high",
+       "serviceTier": null,
+       "permissionMode": "auto"
+      }
+     },
+     {
+      "id": "agent-4",
+      "role": "agent",
+      "createdAt": 1762003802000,
+      "metadata": {
+       "providerId": "claude",
+       "modelId": "anthropic/opus-5-5"
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "Noted."
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "run-5",
+    "status": "completed",
+    "reason": "completed",
+    "startedAt": 1762007400000,
+    "endedAt": 1762007430000,
+    "usage": {},
+    "costUsd": null,
+    "messages": [
+     {
+      "id": "user-5",
+      "role": "user",
+      "createdAt": 1762007400000,
+      "content": [
+       {
+        "type": "text",
+        "text": "Ok"
+       }
+      ],
+      "metadata": {},
+      "clientMetadata": {
+       "composer": "mobile"
+      },
+      "profile": null,
+      "mode": {
+       "providerId": "claude",
+       "modelId": "anthropic/opus-5-5",
+       "effort": "high",
+       "serviceTier": null,
+       "permissionMode": "auto"
+      }
+     },
+     {
+      "id": "agent-5",
+      "role": "agent",
+      "createdAt": 1762007402000,
+      "metadata": {
+       "providerId": "claude",
+       "modelId": "anthropic/opus-5-5"
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "Done."
+       }
+      ]
+     }
+    ]
+   }
+  ],
+  "hasMore": false,
+  "cursor": "01991f3a-6d2f-7000-8000-3a0b2c4d5e6f"
+ },
+ "bootstrap": {
+  "agent": {
+   "id": "a",
+   "workspaceId": "w",
+   "status": "idle",
+   "title": "History"
+  },
+  "draft": {
+   "value": null,
+   "updatedAt": 1761993000000
+  },
+  "mode": {
+   "providerId": "claude",
+   "modelId": "anthropic/opus-5-5",
+   "effort": "high",
+   "serviceTier": null,
+   "permissionMode": "auto"
+  },
+  "context": {
+   "approximate": false,
+   "contextTokens": 1000,
+   "contextWindow": 200000,
+   "providerId": "claude",
+   "modelId": "anthropic/opus-5-5"
+  },
+  "usage": {},
+  "pending": [
+   {
+    "id": "user-6",
+    "role": "user",
+    "status": "pending",
+    "delivery": "queue",
+    "createdAt": 1762011000000,
+    "content": [
+     {
+      "type": "text",
+      "text": "And the next one?"
+     }
+    ],
+    "metadata": {},
+    "clientMetadata": {
+     "composer": "mobile"
+    },
+    "mode": {
+     "providerId": "claude",
+     "modelId": "anthropic/opus-5-5",
+     "effort": "high",
+     "serviceTier": null,
+     "permissionMode": "auto"
+    },
+    "runId": null
+   }
+  ],
+  "processes": [],
+  "subagents": [],
+  "profiles": [],
+  "slashCommands": [],
+  "cursor": "01991f3a-6d2f-7000-8000-3a0b2c4d5e6f"
+ }
+}

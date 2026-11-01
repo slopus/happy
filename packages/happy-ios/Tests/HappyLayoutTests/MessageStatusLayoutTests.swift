@@ -135,4 +135,108 @@ final class MessageStatusLayoutTests: XCTestCase {
         let box = try! XCTUnwrap(timed.delivery)
         XCTAssertEqual(box.minY, timed.markdownOrigin.y + MarkdownLayout.Metrics.textMarginTop + 24)
     }
+
+    // MARK: Nothing moves
+
+    /// The text sizes the chats follow, smallest, designed, and the
+    /// accessibility sizes up to the largest.
+    private let scales: [CGFloat] = [.extraSmall, .large, .extraExtraExtraLarge, .accessibilityMedium, .accessibilityExtraExtraExtraLarge]
+        .map { (category: TextSizeCategory) in category.reactNativeMultiplier }
+
+    /// Times as the bubble measures them in tabular digits at 11 points:
+    /// "1:00 PM", "10:10 AM", "11:59 AM", "12:00 PM", and 24-hour "01:00"
+    /// and "23:59" (one width: every digit is as wide as any other).
+    private let times: [(String, CGFloat)] = [("1:00 PM", 41), ("10:10 AM", 48), ("11:59 AM", 48), ("12:00 PM", 47.5), ("01:00", 30), ("23:59", 30)]
+
+    /// The marks' own boxes at a scale: the clock and the failed disc share
+    /// a square, and each check is drawn in its own.
+    private func marks(_ status: MessageStatusLayout) -> [CGRect] {
+        [status.clock, status.sentCheck, status.readCheck, status.failed]
+    }
+
+    func testEveryMarkIsDrawnInsideOneBoxWhateverItsState() {
+        for scale in scales {
+            for (name, width) in times {
+                let status = MessageStatusLayout(time: CGSize(width: width * scale, height: 13 * scale), scale: scale)
+                // The mark's frame holds all four, so it is the same frame
+                // whichever one shows, and so is the tap target over it.
+                for mark in marks(status) {
+                    XCTAssertTrue(status.mark.contains(mark), "\(name) at \(scale): \(mark) outside \(status.mark)")
+                }
+                // Nothing reaches back over the time.
+                XCTAssertGreaterThan(status.mark.minX, status.time.maxX, "\(name) at \(scale)")
+                // Past the box only the overhang, at most 5: inside the
+                // agents' bubble's 12 of padding, the Happy CLI bubble's 12
+                // and the pill's 7, at every text size.
+                XCTAssertLessThanOrEqual(status.overhang, MessageStatusLayout.Metrics.overhang + 0.0001, "\(name) at \(scale)")
+                XCTAssertLessThan(status.overhang, MessageLayout.Metrics.bubblePaddingH)
+                XCTAssertLessThan(status.overhang, UserMessageLayout.Metrics.bubblePaddingH)
+                XCTAssertLessThan(status.overhang, MessageStatusLayout.Metrics.pillPadding.right)
+                // And no lower than the box's foot plus the padding under it.
+                XCTAssertLessThanOrEqual(status.mark.maxY, status.size.height + 1, "\(name) at \(scale)")
+            }
+        }
+    }
+
+    func testTheDesignedSizeIsTelegramsBox() {
+        let status = MessageStatusLayout(time: CGSize(width: 28, height: 13), scale: 1)
+        XCTAssertEqual(status, self.status)
+        XCTAssertEqual(status.mark, CGRect(x: 34, y: 2, width: 17, height: 11))
+        XCTAssertEqual(status.overhang, 5)
+    }
+
+    func testTheMarksGrowWithTheTextAndTheSlotTakesWhatTheOverhangCannot() {
+        let large = MessageStatusLayout(time: CGSize(width: 28, height: 13), scale: 2)
+        XCTAssertEqual(large.clock.size, CGSize(width: 22, height: 22))
+        XCTAssertEqual(large.readCheck.size, CGSize(width: 22, height: 18))
+        XCTAssertEqual(large.readCheck.minX - large.sentCheck.minX, 12)
+        // 36 of reach past the time, 5 of it in the padding.
+        XCTAssertEqual(large.size.width, 5 + 28 + 31)
+        XCTAssertEqual(large.overhang, 5)
+        // Smaller than designed, all of it shrinks.
+        let small = MessageStatusLayout(time: CGSize(width: 28, height: 13), scale: 0.5)
+        XCTAssertEqual(small.size.width, 5 + 28 + 6.5)
+        XCTAssertEqual(small.overhang, 2.5)
+    }
+
+    /// The agents' bubble and the Happy CLI bubble, inline and on a line
+    /// of their own, at every text size and for every time: the box, the
+    /// bubble and the text are a function of the time's size alone. The
+    /// mark's state is no input, so the clock, one check, two and the
+    /// refusal are one layout; and the mark stays inside the bubble.
+    func testTheBubblesFramesDependOnTheTimeAloneAndHoldEveryMark() {
+        for scale in scales {
+            let line = 24 * scale
+            for (name, width) in times {
+                let status = MessageStatusLayout(time: CGSize(width: width * scale, height: 13 * scale), scale: scale)
+                for (placement, last) in [("inline", 100 * scale), ("own-line", 310)] {
+                    let words = CGSize(width: min(310, max(100 * scale, last)), height: line * 2)
+                    let agent = MessageLayout.user(width: 390, text: text(words), showsStatus: false, delivery: status, trailing: text(CGSize(width: last, height: line)))
+                    let again = MessageLayout.user(width: 390, text: text(words), showsStatus: false, delivery: MessageStatusLayout(time: CGSize(width: width * scale, height: 13 * scale), scale: scale), trailing: text(CGSize(width: last, height: line)))
+                    XCTAssertEqual(agent, again, "\(name) \(placement) at \(scale)")
+                    let bubble = try! XCTUnwrap(agent.bubble), box = try! XCTUnwrap(agent.delivery)
+                    let mark = status.mark.offsetBy(dx: box.minX, dy: box.minY)
+                    XCTAssertTrue(bubble.contains(mark), "agent \(name) \(placement) at \(scale): \(mark) leaves \(bubble)")
+                    XCTAssertEqual(box.maxX, bubble.maxX - MessageLayout.Metrics.bubblePaddingH, "agent \(name) \(placement) at \(scale)")
+
+                    let legacy = legacy(words, trailing: last, delivery: status)
+                    let legacyBubble = try! XCTUnwrap(legacy.bubble), legacyBox = try! XCTUnwrap(legacy.delivery)
+                    XCTAssertTrue(legacyBubble.contains(status.mark.offsetBy(dx: legacyBox.minX, dy: legacyBox.minY)), "legacy \(name) \(placement) at \(scale)")
+                }
+            }
+        }
+    }
+
+    /// The box over pictures sent alone keeps its pill whatever the mark,
+    /// and the mark stays in the pill.
+    func testThePillHoldsEveryMarkAtEveryTextSize() {
+        for scale in scales {
+            for (name, width) in times {
+                let status = MessageStatusLayout(time: CGSize(width: width * scale, height: 13 * scale), scale: scale)
+                let placed = status.pill(over: CGRect(x: 100, y: 0, width: 260, height: 200))
+                let mark = status.mark.offsetBy(dx: placed.frame.minX, dy: placed.frame.minY)
+                XCTAssertTrue(placed.pill.insetBy(dx: -0.001, dy: -0.001).contains(mark), "\(name) at \(scale): \(mark) leaves \(placed.pill)")
+            }
+        }
+    }
 }

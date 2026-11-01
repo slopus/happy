@@ -9,11 +9,22 @@ import CoreGraphics
 /// slot for the clock or the checks, which is always kept, so the clock
 /// turning into checks never moves anything.
 ///
-///     5 gap │ time │ 13 slot
+///     5 gap │ time │ 13 slot ┊ 5 overhang
 ///               ╰ clock: 11 square, centred 8.5 past the time, 7.5 down
 ///               ╰ checks: 11×9, 3 down; the first 1 past the time, the
 ///                 second 6 further, reaching 5 past the slot into the
 ///                 bubble's padding
+///               ╰ failed: the clock's square
+///
+/// Every mark is drawn inside `mark`, the union of all four, so the box
+/// is as wide for one as for another: no state can move the time or the
+/// words, or widen the bubble. Past the box only `overhang` is drawn, at
+/// most 5, inside the bubble's 12 of padding and the pill's 7.
+///
+/// The marks grow with the text size as Telegram's follow its font size
+/// (`scale`, the text's multiplier). Beyond the designed size the overhang
+/// stays 5 and the slot takes the rest, so a large mark never leaves the
+/// bubble.
 ///
 /// Frames are in the status box, whose origin is the gap's left edge.
 public struct MessageStatusLayout: Equatable, Sendable {
@@ -22,6 +33,8 @@ public struct MessageStatusLayout: Equatable, Sendable {
         public static let gap: CGFloat = 5
         /// What the clock or the checks take after the time.
         public static let slot: CGFloat = 13
+        /// How far the second check reaches past the box, into the padding.
+        public static let overhang: CGFloat = 5
         public static let clock: CGFloat = 11
         public static let clockX: CGFloat = 8.5
         public static let clockY: CGFloat = 7.5
@@ -46,17 +59,29 @@ public struct MessageStatusLayout: Equatable, Sendable {
     public var readCheck: CGRect
     /// Where the failed mark goes: the clock's square.
     public var failed: CGRect { clock }
+    /// What any mark may draw over, whichever it is: the clock's square
+    /// and both checks. The live mark's frame, and its tap target.
+    public var mark: CGRect { clock.union(sentCheck).union(readCheck) }
+    /// How far `mark` reaches past the box's right edge.
+    public var overhang: CGFloat { mark.maxX - size.width }
 
-    /// `time` is the measured time text.
-    public init(time: CGSize) {
+    /// `time` is the measured time text, `scale` the text size's multiplier.
+    public init(time: CGSize, scale: CGFloat = 1) {
         typealias M = Metrics
+        let s = scale > 0 ? scale : 1
         let timeEnd = M.gap + time.width
-        size = CGSize(width: timeEnd + M.slot, height: time.height)
+        // The marks' extent past the time: the second check's far end.
+        let reach = (M.slot + M.overhang) * s
+        let overhang = min(M.overhang * s, M.overhang)
+        size = CGSize(width: timeEnd + reach - overhang, height: time.height)
         self.time = CGRect(x: M.gap, y: M.timeY, width: time.width, height: time.height)
-        clock = CGRect(x: timeEnd + M.clockX - M.clock / 2, y: M.clockY - M.clock / 2, width: M.clock, height: M.clock)
-        let readX = timeEnd + 5 + M.slot - M.checkWidth
-        readCheck = CGRect(x: readX, y: M.checkY, width: M.checkWidth, height: M.checkHeight)
-        sentCheck = CGRect(x: readX - M.checkOffset, y: M.checkY, width: M.checkWidth, height: M.checkHeight)
+        let end = size.width + overhang
+        let check = CGSize(width: M.checkWidth * s, height: M.checkHeight * s)
+        readCheck = CGRect(x: end - check.width, y: M.checkY * s, width: check.width, height: check.height)
+        sentCheck = readCheck.offsetBy(dx: -M.checkOffset * s, dy: 0)
+        let clockSide = M.clock * s
+        let clockMid = end - (M.slot + M.overhang - M.clockX) * s
+        clock = CGRect(x: clockMid - clockSide / 2, y: M.clockY * s - clockSide / 2, width: clockSide, height: clockSide)
     }
 
     /// Where the box goes in a bubble's content, and what that does to it

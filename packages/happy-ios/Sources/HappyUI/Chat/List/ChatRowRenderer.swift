@@ -56,6 +56,9 @@ struct ChatRowInput: Equatable, Sendable {
     var userStatus: UserMessageStatus?
     /// For the person's own message: its clock or checks (`outgoing`).
     var outgoing: MessageDelivery?
+    /// For the person's own message: the time it shows, in ms, which is
+    /// the first it showed (`ChatRowsApplied.times`); nil is its `createdAt`.
+    var time: Int64?
     /// For an agent's message: copied a moment ago, so its button shows a tick.
     var copied = false
     /// The heights the row's diagrams reported, by their place in the row.
@@ -93,7 +96,7 @@ enum ChatRowRenderer {
             switch message {
             case .userText(let user):
                 let status = input.userStatus ?? userStatus(user, delivery: input.delivery, now: Int64(Date().timeIntervalSince1970 * 1000))
-                return userText(user, delivery: input.delivery, status: status, outgoing: input.outgoing, diagrams: diagrams, width: width, style: input.style)
+                return userText(user, delivery: input.delivery, status: status, outgoing: input.outgoing, time: input.time, diagrams: diagrams, width: width, style: input.style)
             case .agentText(let agent): return agentText(agent, copied: input.copied, diagrams: diagrams, width: width, style: input.style)
             case .toolCall(let call):
                 let views = ChatToolViews(question: input.question, diffExpanded: input.diffExpanded, diagrams: diagrams, delivery: input.delivery)
@@ -153,7 +156,7 @@ enum ChatRowRenderer {
     }
 
     static func userText(
-        _ message: UserTextMessage, delivery: OutboxDelivery?, status messageStatus: UserMessageStatus, outgoing: MessageDelivery? = nil, diagrams: ChatMermaidHeights,
+        _ message: UserTextMessage, delivery: OutboxDelivery?, status messageStatus: UserMessageStatus, outgoing: MessageDelivery? = nil, time shownAt: Int64? = nil, diagrams: ChatMermaidHeights,
         width: CGFloat, style: ChatRowStyle
     ) -> ChatRowPlan {
         let palette = bubblePalette(style.bubble)
@@ -190,7 +193,7 @@ enum ChatRowRenderer {
             return ChatRowPlan(id: message.id, size: CGSize(width: width, height: 0), items: [])
         }
 
-        let time = outgoing.flatMap { _ in MessageTime.text(Double(message.createdAt), ink: Palette.deliveryInk, in: environment) }
+        let time = outgoing.flatMap { _ in MessageTime.text(Double(shownAt ?? message.createdAt), ink: Palette.deliveryInk, in: environment) }
         let deliveryStatus = outgoing.map { _ in MessageTime.status(time, in: environment) }
         let trailing: Measurable? = if case .text = content { markdown?.trailing } else { nil }
         let layout = UserMessageLayout(.init(

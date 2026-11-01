@@ -19,13 +19,18 @@ struct ChatDeliveryMark: Equatable, Sendable {
     /// The time and the mark of `status` placed at `box`, in row
     /// coordinates: the time is drawn with the row, the mark live over it.
     static func items(_ status: MessageStatusLayout, box: CGRect, time: ChatTextLayout?, state: MessageDelivery, tint: ColorToken, message: String) -> (items: [ChatDrawItem], mark: CGRect) {
-        let slot = status.clock.union(status.sentCheck).union(status.readCheck)
-        let frame = slot.offsetBy(dx: box.minX, dy: box.minY)
+        // One frame for every state: what any of the marks may draw over,
+        // out to whole points, so snapping the view to pixels never cuts
+        // into a mark drawn at another text size.
+        let exact = status.mark.offsetBy(dx: box.minX, dy: box.minY)
+        let frame = CGRect(x: exact.minX.rounded(.down), y: exact.minY.rounded(.down),
+                           width: exact.maxX.rounded(.up) - exact.minX.rounded(.down), height: exact.maxY.rounded(.up) - exact.minY.rounded(.down))
+        let (dx, dy) = (box.minX - frame.minX, box.minY - frame.minY)
         let mark = ChatDeliveryMark(
             state: state, tint: tint, message: message,
-            clock: status.clock.offsetBy(dx: -slot.minX, dy: -slot.minY),
-            sentCheck: status.sentCheck.offsetBy(dx: -slot.minX, dy: -slot.minY),
-            readCheck: status.readCheck.offsetBy(dx: -slot.minX, dy: -slot.minY)
+            clock: status.clock.offsetBy(dx: dx, dy: dy),
+            sentCheck: status.sentCheck.offsetBy(dx: dx, dy: dy),
+            readCheck: status.readCheck.offsetBy(dx: dx, dy: dy)
         )
         var items: [ChatDrawItem] = []
         if let time { items.append(.text(time, status.time.offsetBy(dx: box.minX, dy: box.minY))) }
@@ -35,30 +40,46 @@ struct ChatDeliveryMark: Equatable, Sendable {
 }
 
 /// A message's time as the bubble shows it: hours and minutes, the
-/// locale's way. Safe off main.
+/// locale's way, in tabular digits, so times of one format are one width.
+/// Safe off main.
 enum MessageTime {
-    private static let formatter: DateFormatter = {
+    private static let formatter = makeFormatter(.autoupdatingCurrent)
+
+    /// Hours and minutes in `locale`'s clock, 12 or 24 hours.
+    static func makeFormatter(_ locale: Locale, timeZone: TimeZone = .autoupdatingCurrent) -> DateFormatter {
         let formatter = DateFormatter()
-        formatter.locale = .autoupdatingCurrent
-        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "jmm", options: 0, locale: .autoupdatingCurrent) ?? "HH:mm"
+        formatter.locale = locale
+        formatter.timeZone = timeZone
+        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "jmm", options: 0, locale: locale) ?? "HH:mm"
         return formatter
-    }()
+    }
 
     /// `milliseconds` since 1970.
     static func string(_ milliseconds: Double) -> String {
         formatter.string(from: Date(timeIntervalSince1970: milliseconds / 1000))
     }
 
+    /// `messageTime` at the row's text size with every digit one width
+    /// (Telegram's date node draws its digits monospaced too).
+    static func attributed(_ text: String, ink: ColorToken, in environment: TextEnvironment?) -> NSAttributedString {
+        let style = ChatTextStyles.messageTime
+        let size = environment.map { style.scaled($0.scale).size } ?? style.size
+        let font = UIFont.monospacedDigitSystemFont(ofSize: size, weight: .regular)
+        return NSAttributedString(string: text, attributes: style.attributes(color: UIColor(ink), font: font, lineBreakMode: .byClipping, in: environment))
+    }
+
     /// The time measured in the bubble's style at the row's text size, in `ink`.
     static func text(_ milliseconds: Double?, ink: ColorToken, in environment: TextEnvironment?) -> ChatTextLayout? {
         guard let milliseconds else { return nil }
-        return ChatTextLayout(ChatTextStyles.messageTime.string(string(milliseconds), color: ink, lineBreakMode: .byClipping, in: environment), width: 1000, maxLines: 1)
+        return ChatTextLayout(attributed(string(milliseconds), ink: ink, in: environment), width: 1000, maxLines: 1)
     }
 
-    /// The status box around `text`: a message with no time (one kept
-    /// before times were) keeps the line's height for its mark.
+    /// The status box around `text`, its marks at the row's text size: a
+    /// message with no time (one kept before times were) keeps the line's
+    /// height for its mark.
     static func status(_ text: ChatTextLayout?, in environment: TextEnvironment?) -> MessageStatusLayout {
-        MessageStatusLayout(time: text?.size ?? CGSize(width: 0, height: ChatTextLayout(ChatTextStyles.messageTime.string("0", color: Palette.deliveryInk, in: environment), width: 1000, maxLines: 1).size.height))
+        let time = text?.size ?? CGSize(width: 0, height: ChatTextLayout(attributed("0", ink: Palette.deliveryInk, in: environment), width: 1000, maxLines: 1).size.height)
+        return MessageStatusLayout(time: time, scale: environment?.scale.effective(maxScale: ChatTextStyles.messageTime.maxScale) ?? 1)
     }
 }
 
@@ -141,15 +162,16 @@ final class ChatDeliveryView: UIView {
         read.strokeColor = ink
         failed.fillColor = UIColor(Palette.deliveryFailed).resolvedColor(with: traitCollection).cgColor
         failedBang.fillColor = UIColor.white.cgColor
+        scale(to: mark.clock.width / MessageStatusLayout.Metrics.clock)
         place(clockFrame, mark.clock)
         clockHour.frame = CGRect(origin: .zero, size: mark.clock.size)
         place(clockMinute, mark.clock)
         place(sent, mark.sentCheck)
         place(read, mark.readCheck)
-        let disc = CGRect(x: mark.clock.midX - Self.failedSize / 2, y: mark.clock.midY - Self.failedSize / 2, width: Self.failedSize, height: Self.failedSize)
-        place(failed, disc)
-        place(failedBang, disc)
-        failed.path = CGPath(ellipseIn: CGRect(origin: .zero, size: disc.size), transform: nil)
+        // The failed disc is the clock's square, so it takes no more room.
+        place(failed, mark.clock)
+        place(failedBang, mark.clock)
+        failed.path = CGPath(ellipseIn: CGRect(origin: .zero, size: mark.clock.size), transform: nil)
 
         let sending = mark.state == .sending
         clockFrame.isHidden = !sending
@@ -173,6 +195,26 @@ final class ChatDeliveryView: UIView {
             stopTurning()
             startTurning()
         }
+    }
+
+    /// The marks are drawn at the 17-point base; at another text size
+    /// their paths and lines grow with the slot.
+    private var scale: CGFloat = 1
+
+    private func scale(to next: CGFloat) {
+        guard next > 0, next != scale else { return }
+        scale = next
+        var transform = CGAffineTransform(scaleX: next, y: next)
+        func scaled(_ path: CGPath) -> CGPath { path.copy(using: &transform) ?? path }
+        sent.path = scaled(Self.fullCheck)
+        read.path = scaled(Self.partialCheck)
+        clockFrame.path = scaled(Self.clockFrame)
+        clockHour.path = scaled(Self.clockHour)
+        clockMinute.path = scaled(Self.clockMinute)
+        failedBang.path = scaled(Self.bang)
+        sent.lineWidth = 0.99 * next
+        read.lineWidth = 0.99 * next
+        clockFrame.lineWidth = next
     }
 
     private func place(_ layer: CALayer, _ frame: CGRect) {
@@ -212,8 +254,6 @@ final class ChatDeliveryView: UIView {
     }
 
     // The marks' shapes, in their own squares, at the 17-point base.
-
-    private static let failedSize: CGFloat = 11
 
     /// A circle on a 1-point line.
     private static let clockFrame = CGPath(ellipseIn: CGRect(x: 0.5, y: 0.5, width: 10, height: 10), transform: nil)

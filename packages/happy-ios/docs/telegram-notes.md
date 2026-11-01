@@ -332,6 +332,24 @@ rendering the resulting `file` tool rows.
   - The time is drawn with the row.
   - `ChatDeliveryView` draws the mark live over the row as `CAShapeLayer`s:
     the turning clock, the checks' pop, and the refused send's red "!".
+- Nothing in the bubble moves while its mark moves on
+  (`HostedDeliveryStabilityTests` reads every step off the screen):
+  - The mark's view is `MessageStatusLayout.mark`, the union of the clock's
+    square (which the red "!" shares) and both checks, rounded out to whole
+    points: one frame, and one tap target, for every state. Past the box
+    only the second check's 5 points reach, inside the bubble's 12 of
+    padding and the pill's 7.
+  - The time is in tabular digits, so times of one format are one width.
+  - A row keeps the time it first showed. The computer's or the server's
+    `createdAt` replaces this phone's when a send is taken, and a minute's
+    difference ("12:59 PM" to "1:00 PM") would narrow the bubble or move
+    the time onto the last line. The agent chat's `ChatPlanner` and the
+    Happy CLI chat's `ChatRowsApplied.times` hold it.
+  - A refused send in the agent chat is the red mark alone, as Telegram's;
+    there is no "Send failed" line under the bubble to grow the row. Tapping
+    the bubble or the mark sends it again.
+  - The marks follow the text size as Telegram's follow its font size. Past
+    the designed size the overhang stays 5 and the slot takes the rest.
 - The states, and the signal behind each:
   - the agent chat: `ChatItem.Delivery`, kept with the conversation:
     `.sending` is the clock, `.pending` (the daemon accepted it) is one

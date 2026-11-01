@@ -445,8 +445,8 @@ final class HostedSendFlightTests: XCTestCase {
                     try shot(window, bubble, "agent-\(label)-\(delivery == .sending ? "clock" : delivery == .pending ? "one" : delivery == .sent ? "two" : "failed")-\(style == .dark ? "dark" : "light")")
                 }
                 XCTAssertEqual(walked.map(\.mark), [.sending, .received, .accepted, .failed], label)
-                // Clock, one check, two: one frame throughout.
-                for step in walked.prefix(3) {
+                // Clock, one check, two and the refusal: one frame throughout.
+                for step in walked {
                     XCTAssertEqual(step.bubble, walked[0].bubble, "\(label): the bubble moved between marks")
                     XCTAssertEqual(step.height, walked[0].height, "\(label): the row's height changed between marks")
                 }
@@ -509,7 +509,7 @@ final class HostedSendFlightTests: XCTestCase {
                     try shot(window, bubble, "legacy-\(label)-\(name)-\(style == .dark ? "dark" : "light")")
                 }
                 XCTAssertEqual(walked.map(\.mark), [.sending, .received, .accepted, .failed], label)
-                for step in walked.prefix(3) {
+                for step in walked {
                     XCTAssertEqual(step.bubble, walked[0].bubble, "\(label): the bubble moved between marks")
                     XCTAssertEqual(step.height, walked[0].height, "\(label): the row's height changed between marks")
                 }

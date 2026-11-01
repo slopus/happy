@@ -31,6 +31,11 @@ actor ChatPlanner {
 
     private let syntax: CodeSyntaxService
     private var cache: [String: (item: ChatItem, key: Key, copied: Bool, opened: Bool, proposals: [ProposalShown?], plan: ChatRowPlan)] = [:]
+    /// The time each person's message first showed, which it keeps while
+    /// it is shown: the computer's time for a send replaces this phone's
+    /// when it is taken, and may be a minute on ("12:59" to "1:00"), which
+    /// would widen the bubble or move the time to a line of its own.
+    private var times: [String: Double?] = [:]
 
     init(syntax: CodeSyntaxService) {
         self.syntax = syntax
@@ -46,7 +51,12 @@ actor ChatPlanner {
         var others = key
         others.switchTarget = nil
         others.modelNames = [:]
-        for item in items {
+        var shownTimes: [String: Double?] = [:]
+        for var item in items {
+            if item.role == .user {
+                if let first = times[item.id] { item.time = first }
+                shownTimes[item.id] = item.time
+            }
             let isCopied = copied == item.id
             let isOpened = opened.contains(item.id)
             let shown = item.proposalIds.map { proposals[$0] }
@@ -62,6 +72,7 @@ actor ChatPlanner {
             if plan.size.height > 0 { plans.append(plan) }
         }
         cache = next
+        times = shownTimes
         // The newest of the agent's words may be streaming: where they are
         // is worked out here, off the main thread, for showing them as
         // they come.
@@ -133,7 +144,9 @@ actor ChatPlanner {
             let layout = MessageLayout.user(
                 width: width, maxContentWidth: key.maxContentWidth, text: body?.measurable,
                 fold: body.map { _ in .init(preview: preview.measurable, control: control.measurable, opened: opened, lineHeight: ChatTextStyles.text.lineHeight ?? 24) },
-                pictures: pictures.map(\.image), showsStatus: failure,
+                // A refusal is the red mark in the slot, as Telegram's: no
+                // line under the bubble, so the row never grows when a send fails.
+                pictures: pictures.map(\.image), showsStatus: false,
                 delivery: status, trailing: body?.trailing
             )
             var items: [ChatDrawItem] = []
@@ -141,6 +154,7 @@ actor ChatPlanner {
             if let bubble = layout.bubble {
                 items.append(.box(ChatBox(frame: bubble, fill: Palette.userBubble, radius: M.bubbleRadius)))
                 if layout.foldControl != nil { hits.append(ChatHit(frame: bubble, action: .toggleTool(item.id))) }
+                else if failure { hits.append(ChatHit(frame: bubble, action: .retry(localId: item.id))) }
                 hits.append(ChatHit(frame: bubble, action: .copyMenu(text), hold: true))
             }
             if let body, let frame = layout.text { items.append(.text((layout.cut ? preview : body).layout(for: frame), frame)) }
@@ -158,14 +172,6 @@ actor ChatPlanner {
                 } else {
                     hits.append(ChatHit(frame: frame, action: .openMedia(key)))
                 }
-            }
-            if failure, let frame = layout.status {
-                let line = ChatTextLayout(
-                    ChatTextStyles.pendingStatus.string(Strings.sendFailed, color: Palette.statusError, alignment: .right, lineBreakMode: .byTruncatingTail, in: environment),
-                    width: frame.width, maxLines: 1
-                )
-                items.append(.text(line, frame))
-                hits.insert(ChatHit(frame: frame, action: .retry(localId: item.id)), at: 0)
             }
             // The mark says where it is, so the bubble is never dimmed.
             if let box = layout.delivery {

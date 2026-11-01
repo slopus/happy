@@ -75,6 +75,10 @@ struct ChatRowsApplied: Sendable {
     var graceEnd: Int64?
     var pins = 0
     var ticks = 0
+    /// The time each of this device's sends first showed, by row: the
+    /// server's echo carries its own `createdAt`, which may be a minute on
+    /// from the outbox's ("12:59" to "1:00") and would reflow the bubble.
+    var times: [String: Int64] = [:]
 }
 
 /// The rows and their geometry, planned off the main thread, with their
@@ -168,6 +172,12 @@ enum ChatRows {
         )
         var graceEnd: Int64?
         var forms: [String: ChatQuestionForm] = [:]
+        // A send's row is its local id from the outbox to the echo and on.
+        var times: [String: Int64] = [:]
+        for case .userText(let message) in snapshot.messages where message.localId != nil {
+            times[message.id] = applied.times[message.id] ?? message.createdAt
+        }
+        state.times = times
         let result = ChatRowsDerivation.derive(
             messages: snapshot.messages,
             window: state.window,
@@ -179,7 +189,7 @@ enum ChatRows {
             planner: planner,
             applied: applied.rows,
             makeRows: { items, groups in
-                rows(items, groups: groups, delivery: snapshot.delivery, agentState: session.agentState, receipts: SessionMetadata.sendsMessageReceipts(session.metadata), view: view, style: style, now: now, graceEnd: &graceEnd, forms: &forms)
+                rows(items, groups: groups, delivery: snapshot.delivery, agentState: session.agentState, receipts: SessionMetadata.sendsMessageReceipts(session.metadata), times: times, view: view, style: style, now: now, graceEnd: &graceEnd, forms: &forms)
             },
             id: \.id,
             recolour: input.recolour
@@ -246,6 +256,7 @@ enum ChatRows {
         delivery deliveries: [String: OutboxDelivery],
         agentState: JSONValue?,
         receipts: Bool = false,
+        times: [String: Int64] = [:],
         view: ChatRowsView,
         style: ChatRowStyle,
         now: Int64,
@@ -294,7 +305,7 @@ enum ChatRows {
             }
             return ChatRowInput(
                 item: item, delivery: delivery, expanded: expanded, permissionBusy: busy, question: question, diffExpanded: diffs,
-                userStatus: userStatus, outgoing: outgoing, copied: copied, mermaid: view.mermaidHeights[item.id] ?? [:], style: style
+                userStatus: userStatus, outgoing: outgoing, time: outgoing == nil ? nil : times[item.id], copied: copied, mermaid: view.mermaidHeights[item.id] ?? [:], style: style
             )
         }
     }
