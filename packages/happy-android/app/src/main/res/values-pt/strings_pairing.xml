@@ -22,5 +22,6 @@
     <string name="pairing_error_invalid_proof">Não foi possível verificar o agente. Gere um novo código.</string>
     <string name="pairing_error_invalid_response">O agente retornou uma resposta inválida.</string>
     <string name="pairing_error_unavailable">Não foi possível acessar o agente. Verifique a conexão dele e tente de novo.</string>
+    <string name="pairing_error_disabled">O pareamento de celulares está desativado neste agente.</string>
     <string name="pairing_error_revoked">Este dispositivo não está mais autorizado. Conecte o agente de novo.</string>
 </resources>

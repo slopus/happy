@@ -23,5 +23,6 @@
     <string name="pairing_error_invalid_proof">The agent could not be verified. Generate a new code.</string>
     <string name="pairing_error_invalid_response">The agent returned an invalid response.</string>
     <string name="pairing_error_unavailable">Could not reach the agent. Check its connection and try again.</string>
+    <string name="pairing_error_disabled">Phone pairing is turned off on this agent.</string>
     <string name="pairing_error_revoked">This device is no longer authorized. Connect the agent again.</string>
 </resources>

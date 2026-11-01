@@ -109,6 +109,23 @@ class PairingTest {
     }
 
     @Test
+    fun anAgentWithPhonePairingOffSaysSo() = runBlocking {
+        fun refusing(status: Int, answer: String) = object : Transport by FakeDaemon() {
+            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory) =
+                TransportResponse(status, mapOf("content-type" to "application/json"), answer.toByteArray())
+        }.let { daemon ->
+            PairingService(PairingLink.parse(link(), now), daemon, PairingCrypto(privateKey = ByteArray(32) { 1 }, nonce = ByteArray(32) { 4 }), now = { now })
+        }
+        suspend fun reason(service: PairingService) = try { service.start("Pixel"); null } catch (e: AgentConnectionException) { e.reason }
+        // The daemon's mobile connector is disabled; an older daemon has no route at all.
+        assertEquals(AgentConnectionException.Reason.Disabled, reason(refusing(409, """{"error":"Phone pairing is off","code":"unsupported"}""")))
+        assertEquals(AgentConnectionException.Reason.Disabled, reason(refusing(404, """{"error":"Not found","code":"not_found"}""")))
+        // Any other refusal stays what it was.
+        assertEquals(AgentConnectionException.Reason.InvalidResponse, reason(refusing(500, """{"error":"Boom","code":"internal"}""")))
+        assertEquals("Phone pairing is turned off on this agent.", AgentConnectionException.Reason.Disabled.message)
+    }
+
+    @Test
     fun cancellingRejectsAndStopsTheHandshake() = runBlocking {
         val daemon = FakeDaemon()
         val pairing = service(daemon)

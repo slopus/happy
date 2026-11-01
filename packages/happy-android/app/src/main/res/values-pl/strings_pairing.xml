@@ -22,5 +22,6 @@
     <string name="pairing_error_invalid_proof">Nie udało się zweryfikować agenta. Wygeneruj nowy kod.</string>
     <string name="pairing_error_invalid_response">Agent zwrócił nieprawidłową odpowiedź.</string>
     <string name="pairing_error_unavailable">Nie można połączyć się z agentem. Sprawdź jego połączenie i spróbuj ponownie.</string>
+    <string name="pairing_error_disabled">Parowanie telefonów jest wyłączone na tym agencie.</string>
     <string name="pairing_error_revoked">To urządzenie nie jest już autoryzowane. Połącz agenta ponownie.</string>
 </resources>

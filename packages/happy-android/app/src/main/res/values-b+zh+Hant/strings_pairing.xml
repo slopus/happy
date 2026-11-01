@@ -22,5 +22,6 @@
     <string name="pairing_error_invalid_proof">無法驗證代理程式。請產生新代碼。</string>
     <string name="pairing_error_invalid_response">代理程式傳回了無效的回應。</string>
     <string name="pairing_error_unavailable">無法連線到代理程式。請檢查它的連線後再試一次。</string>
+    <string name="pairing_error_disabled">此代理程式已關閉手機配對。</string>
     <string name="pairing_error_revoked">此裝置已不再獲得授權。請重新連線代理程式。</string>
 </resources>

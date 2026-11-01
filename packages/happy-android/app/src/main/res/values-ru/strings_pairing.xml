@@ -22,5 +22,6 @@
     <string name="pairing_error_invalid_proof">Не удалось проверить агента. Создайте новый код.</string>
     <string name="pairing_error_invalid_response">Агент вернул некорректный ответ.</string>
     <string name="pairing_error_unavailable">Не удалось связаться с агентом. Проверьте его подключение и попробуйте снова.</string>
+    <string name="pairing_error_disabled">Подключение телефонов отключено на этом агенте.</string>
     <string name="pairing_error_revoked">Это устройство больше не авторизовано. Подключите агента снова.</string>
 </resources>

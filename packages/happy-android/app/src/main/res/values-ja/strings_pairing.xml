@@ -22,5 +22,6 @@
     <string name="pairing_error_invalid_proof">エージェントを検証できませんでした。新しいコードを生成してください。</string>
     <string name="pairing_error_invalid_response">エージェントから無効な応答が返されました。</string>
     <string name="pairing_error_unavailable">エージェントに接続できませんでした。接続を確認して、もう一度お試しください。</string>
+    <string name="pairing_error_disabled">このエージェントではスマートフォンのペアリングがオフになっています。</string>
     <string name="pairing_error_revoked">このデバイスは認可されなくなりました。エージェントをもう一度接続してください。</string>
 </resources>

@@ -22,5 +22,6 @@
     <string name="pairing_error_invalid_proof">No s\'ha pogut verificar l\'agent. Genera un codi nou.</string>
     <string name="pairing_error_invalid_response">L\'agent ha retornat una resposta no vàlida.</string>
     <string name="pairing_error_unavailable">No s\'ha pogut contactar amb l\'agent. Comprova\'n la connexió i torna-ho a provar.</string>
+    <string name="pairing_error_disabled">La vinculació de telèfons està desactivada en aquest agent.</string>
     <string name="pairing_error_revoked">Aquest dispositiu ja no està autoritzat. Torna a connectar l\'agent.</string>
 </resources>

@@ -70,7 +70,7 @@ class PairingService(
             put("commitment", CanonicalBase64Url.encode(crypto.commitment))
             putJsonObject("device") { put("name", name); put("platform", "android") }
         }
-        val started: Started = decode(transport.request("POST", ROUTE, CanonicalBase64Url.encode(link.token), body.bytes()))
+        val started: Started = decode(transport.request("POST", ROUTE, CanonicalBase64Url.encode(link.token), body.bytes()), starting = true)
         val key = CanonicalBase64Url.decode(started.publicKey)?.takeIf { it.size == 32 }
         val nonce = CanonicalBase64Url.decode(started.nonce)?.takeIf { it.size == 32 }
         if (CanonicalBase64Url.decode(started.handshakeId)?.size != 32 || key == null || nonce == null || !started.expiresAt.isFinite()) {
@@ -140,15 +140,26 @@ class PairingService(
         if (expiresAt <= now()) throw AgentConnectionException(AgentConnectionException.Reason.Expired)
     }
 
-    private inline fun <reified T> decode(response: TransportResponse): T {
+    /** [response] read as [T]; [starting] is the handshake's first request, the one an older daemon without the route answers 404. */
+    private inline fun <reified T> decode(response: TransportResponse, starting: Boolean = false): T {
         // A handshake the daemon no longer knows answers 401: treated as expired.
         if (response.status == 401) throw AgentConnectionException(AgentConnectionException.Reason.Expired)
+        // The server turned phone pairing off: the daemon's `unsupported`, or an older one's missing route.
+        if ((starting && response.status == 404) || errorCode(response) == "unsupported") throw AgentConnectionException(AgentConnectionException.Reason.Disabled)
         if (response.status != 200) throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
         return try {
             json.decodeFromString<T>(response.text)
         } catch (_: Exception) {
             throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
         }
+    }
+
+    /** A refusal's Happy JSON `code`, if it has one. */
+    private fun errorCode(response: TransportResponse): String? = if (response.status in 200..299) null else try {
+        (json.parseToJsonElement(response.text) as? kotlinx.serialization.json.JsonObject)?.get("code")
+            ?.let { it as? kotlinx.serialization.json.JsonPrimitive }?.takeIf { it.isString }?.content
+    } catch (_: Exception) {
+        null
     }
 
     private fun kotlinx.serialization.json.JsonObject.bytes() = toString().toByteArray(Charsets.UTF_8)
