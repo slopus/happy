@@ -168,6 +168,30 @@ public final class NewSessionComposer {
         drafts.setEffortLevel(key)
     }
 
+    /// What the first send makes, as far as the computer can make it. A bot
+    /// or a task is Happy Agent's (`NewSessionLaunch.resolve`), so picking
+    /// one moves the harness there, as a catalog project does: the model,
+    /// permission and effort pickers then offer Happy Agent's own, and
+    /// what they pick is what the spawn asks for. Back to Session, the
+    /// harness stays Happy Agent's until another is picked.
+    public func selectKind(_ kind: HomeDockKind) {
+        switch kind {
+        case .session:
+            drafts.setCreatesBot(false)
+            drafts.setCreatesTask(false)
+            return
+        case .bot:
+            guard choices.supportsBots else { return }
+            drafts.setCreatesBot(true)
+        case .task:
+            guard choices.supportsTasks else { return }
+            drafts.setCreatesTask(true)
+        }
+        if drafts.draft.agentType != .rig, choices.agentOptions.contains(where: { $0.key == NewSessionDraft.Agent.rig.rawValue }) {
+            selectAgent(.rig, picked: true)
+        }
+    }
+
     /// HomeDock.tsx `selectAgent`: the harness and the modes it starts on.
     /// `picked` is the person choosing it; the corrections below only
     /// follow what the computer can run and never set a pick.
@@ -191,7 +215,7 @@ public final class NewSessionComposer {
     }
 
     /// The bot the draft names: Happy Agent on the chosen computer, named
-    /// and wearing the picked face. A bot takes no first message.
+    /// and wearing the picked face, with no first message.
     public func launchBot() -> Result<NewSessionLaunch, NewSessionLaunch.Refusal> {
         NewSessionLaunch.resolve(
             draft: drafts.draft,
@@ -230,10 +254,12 @@ public final class NewSessionComposer {
                                     createsTask: true, prompt: prompt, attachments: attachments)
     }
 
-    public func launchBotPrepared() async -> Result<NewSessionLaunch, NewSessionLaunch.Refusal> {
+    /// The bot the draft names; `prompt` and `attachments`, when given, are
+    /// its first message, sent once it wears its face.
+    public func launchBotPrepared(prompt: String = "", attachments: [OutgoingAttachment] = []) async -> Result<NewSessionLaunch, NewSessionLaunch.Refusal> {
         await waitForIdle()
         return await deriver.launch(snapshot: snapshot, revision: snapshotRevision, draft: drafts.draft,
-                                    bot: (name: drafts.botName, faceSeed: drafts.botFaceSeed), prompt: "", attachments: [])
+                                    bot: (name: drafts.botName, faceSeed: drafts.botFaceSeed), prompt: prompt, attachments: attachments)
     }
 
     // MARK: Refresh

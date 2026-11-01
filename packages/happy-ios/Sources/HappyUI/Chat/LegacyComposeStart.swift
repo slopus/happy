@@ -10,9 +10,11 @@ import UIKit
 // harness, the last ones picked, with that text as the first message. The
 // machine and folder are picked in the middle of the empty chat, as Happy
 // Agent's new work picks Task or Bot (`NewWorkPanel`'s `.session`); the
-// machine only on an account with more than one. The screen then becomes
-// the session's chat in place (`becomeChat`): the same screen and the same
-// composer, retargeted.
+// machine only on an account with more than one. Where the computer's
+// Happy Agent makes them, a task or a bot is picked there too, as home's
+// dock offered: Happy Agent makes it on that computer, with the first send
+// as its first message. The screen then becomes the session's chat in
+// place (`becomeChat`): the same screen and the same composer, retargeted.
 //
 // A start that fails or is refused says why, and the text stays in the
 // composer and the draft for another send. Leaving before it has answered
@@ -79,10 +81,49 @@ final class LegacyComposeStart: NSObject {
 
     var isStarting: Bool { starter.isStarting }
 
-    /// "Starting Claude…" and the rest while the start runs.
+    /// "Starting Claude…", "Creating task…" and the rest while the start runs.
     var progress: String? {
         let choices = composer.choices
-        return NewSessionProgress.label(phase: starter.phase, agentName: choices.currentAgent.name, picksWorkspaces: choices.picksWorkspaces)
+        return NewSessionProgress.label(
+            phase: starter.phase, agentName: choices.currentAgent.name, picksWorkspaces: choices.picksWorkspaces,
+            createsBot: drafts.createsBot, createsTask: drafts.createsTask
+        )
+    }
+
+    // MARK: Kind
+
+    /// Session, and Bot and Task where the computer's Happy Agent makes
+    /// them; a Happy CLI computer alone offers Session only.
+    var kinds: [HomeDockKind] {
+        HomeDockKind.offered(supportsBots: composer.choices.supportsBots, supportsTasks: composer.choices.supportsTasks)
+    }
+
+    var kind: HomeDockKind {
+        HomeDockKind.current(createsBot: drafts.createsBot, createsTask: drafts.createsTask)
+    }
+
+    func setKind(_ kind: HomeDockKind) {
+        guard !isStarting, sessionId == nil else { return }
+        composer.selectKind(kind)
+    }
+
+    /// The name field, as typed: a pasted line break becomes a space and
+    /// the daemon's ceiling is kept. Returns what the field should hold.
+    func setBotName(_ name: String) -> String {
+        let sanitized = BotName.sanitize(name)
+        drafts.setBotName(sanitized)
+        return sanitized
+    }
+
+    /// What the composer asks for: the first message of a task, or of the
+    /// session or bot the harness runs.
+    var placeholder: String {
+        let choices = composer.choices
+        switch kind {
+        case .task: return Strings.Tasks.placeholder
+        case .bot: return NewSessionChoices.promptPlaceholder(agentKey: choices.currentAgent.key, agentName: choices.currentAgent.name)
+        case .session: return choices.promptPlaceholder
+        }
     }
 
     /// The machine is asked only when there is more than one to choose.
@@ -118,9 +159,21 @@ final class LegacyComposeStart: NSObject {
         drafts.setInput(text)
         let started = drafts.draft
         let bot = drafts.bot
+        let createsTask = drafts.createsTask
+        let attachments = message.attachments
         onChange?()
-        let resolved = await composer.launchPrepared(prompt: text, attachments: message.attachments)
-        guard composer.isCurrentTarget(started, bot: bot) else { throw Refused(message: SessionStarter.Message.startFailed) }
+        // A bot or a task is Happy Agent's on the chosen computer; the
+        // text is its first message either way. A bot's missing name is
+        // refused by the launch, which says so.
+        let resolved = bot.createsBot
+            ? await composer.launchBotPrepared(prompt: text, attachments: attachments)
+            : createsTask
+            ? await composer.launchTaskPrepared(prompt: text, attachments: attachments)
+            : await composer.launchPrepared(prompt: text, attachments: attachments)
+        // If the target moved meanwhile (another computer, path, harness,
+        // kind or bot name), nothing starts.
+        let isCurrentTarget = { composer.isCurrentTarget(started, bot: bot, createsTask: createsTask) }
+        guard isCurrentTarget() else { throw Refused(message: SessionStarter.Message.startFailed) }
         let launch: NewSessionLaunch
         switch resolved {
         case .success(let value):
@@ -131,13 +184,21 @@ final class LegacyComposeStart: NSObject {
             onChange?()
             throw Refused(message: message)
         }
-        guard let sessionId = await starter.start(launch, isCurrentTarget: { composer.isCurrentTarget(started, bot: bot) }) else {
+        guard let sessionId = await starter.start(launch, isCurrentTarget: isCurrentTarget) else {
             onChange?()
             throw Refused(message: SessionStarter.Message.startFailed)
         }
         self.sessionId = sessionId
-        // Only what was sent is cleared: edits made while it ran stay.
+        // Only what was sent is cleared: edits made while it ran stay. The
+        // next compose offers a session again, and a next bot a clean name
+        // and fresh faces, as home's dock did.
         if drafts.draft.input == text { drafts.setInput("") }
+        if bot.createsBot {
+            if drafts.botName == bot.botName { drafts.setBotName("") }
+            drafts.rollBotFaces()
+            drafts.setCreatesBot(false)
+        }
+        if createsTask { drafts.setCreatesTask(false) }
         onChange?()
         return sessionId
     }
@@ -176,6 +237,14 @@ final class LegacyComposeStart: NSObject {
                 completion(self?.harnessMenuElements() ?? [])
             },
         ])
+    }
+
+    /// The harness row with nothing to run: setup help, not a menu.
+    var offersHarnessHelp: Bool { !composer.choices.hasAvailableHarness }
+
+    func openHarnessHelp() {
+        guard offersHarnessHelp else { return }
+        host?.openBrowser(Strings.Home.harnessHelpURL)
     }
 
     func harnessMenuElements() -> [UIMenuElement] {
@@ -251,8 +320,17 @@ extension LegacyComposeStart: SessionStarterPresenter {
         Alerts.show(Strings.ImageUpload.notSupportedTitle, Strings.ImageUpload.notSupportedMessage, on: host)
     }
 
-    /// Compose makes sessions, never bots.
-    func offerBotFaceRetry(_ message: String) async -> Bool { false }
+    /// The bot is made but wears no face: asked over its chat.
+    func offerBotFaceRetry(_ message: String) async -> Bool {
+        guard let host else { return false }
+        return await Alerts.confirm(
+            Strings.Home.botFaceNotSet,
+            message,
+            confirmTitle: Strings.Home.botFaceTryAgain,
+            cancelTitle: Strings.Home.botFaceNotNow,
+            on: host
+        )
+    }
 }
 
 /// A `compose-chat:` composer's sends: the first starts the session.

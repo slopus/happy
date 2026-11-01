@@ -270,7 +270,7 @@ public struct NewSessionChoices: Equatable, Sendable {
         permissionLabel = currentPermission.flatMap { PermissionModeLabels.shortLabel(ModeOption(key: $0.key, name: $0.name)) }
         modelChipLabel = ModelModeOptions.truncateModelLabel(currentModel?.name ?? currentAgent.name)
         promptPlaceholder = inputs.createsBot
-            ? "Name your bot"
+            ? Self.botNamePlaceholder
             : Self.promptPlaceholder(agentKey: currentAgent.key, agentName: currentAgent.name)
     }
 
@@ -375,6 +375,9 @@ public struct NewSessionChoices: Equatable, Sendable {
         if let selected, available.contains(selected) { return selected }
         return available.first
     }
+
+    /// What a bot's name field asks before anything is typed.
+    public static let botNamePlaceholder = "Name your bot"
 
     /// `resolveHomeDockPromptPlaceholder`.
     public static func promptPlaceholder(agentKey: String, agentName: String) -> String {
@@ -558,8 +561,10 @@ extension NewSessionLaunch {
             permissionMode: permission.key,
             modelMode: model.key,
             effortLevel: effort?.key,
-            prompt: bot != nil ? "" : prompt.trimmingCharacters(in: .whitespacesAndNewlines),
-            attachments: bot != nil ? [] : attachments,
+            // An empty chat's first send is a bot's first message, as it is
+            // a task's; home's dock made bots from the name alone ("").
+            prompt: prompt.trimmingCharacters(in: .whitespacesAndNewlines),
+            attachments: attachments,
             signature: SpawnRequests.Signature(
                 machineId: machine.id,
                 agent: agent.rawValue,
