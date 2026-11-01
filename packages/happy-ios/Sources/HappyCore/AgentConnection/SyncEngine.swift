@@ -30,6 +30,9 @@ public actor SyncEngine {
     /// given (docs/offline-first.md). Shown at once over what the computer
     /// last said, kept in `direct.sqlite`, sent once the account is live.
     public nonisolated let intents: IntentOutbox
+    /// The documents open on this account and those with changes still to
+    /// send; the stream's live document frames go to them.
+    public nonisolated let documents: DocumentLibrary
     private var overlay = IntentOverlay()
     /// What waits in `intents`, as last published.
     private var waiting: [Intent] = []
@@ -88,6 +91,7 @@ public actor SyncEngine {
         let forward = EngineIntentStorage()
         let intents = IntentOutbox(storage: forward, deliver: { try await SyncEngine.deliver($0, client: client) })
         self.intents = intents
+        documents = DocumentLibrary(client: client, directory: directory)
         spaces = Store(client: client, offline: offline, intents: intents)
         forward.engine = self
     }
@@ -144,6 +148,7 @@ public actor SyncEngine {
         for task in tasks { await task.value }
         await intents.setOnline(false)
         guard generation == pausedGeneration else { return }
+        await documents.closed()
         await spaces.pause()
         guard generation == pausedGeneration else { return }
         snapshot.live = false
@@ -166,6 +171,7 @@ public actor SyncEngine {
         stopped = true
         await pause()
         await spaces.stop()
+        await documents.stop()
         intentsFollowing?.cancel()
         await intents.close()
         try? await storage?.close()
@@ -231,12 +237,17 @@ public actor SyncEngine {
                         // The bootstrap cursor precedes its reads. Opening from
                         // it is safe even after a crash, replay or daemon replacement.
                         let hello = try JSONDecoder().decode(JSONValue.self, from: Data(frame.data.utf8))
+                        await documents.opened(hello)
                         if hello["gap"] == .bool(true) { scheduleReconcile(generation) }
                         profileChanged()
                         // Faces may have changed while away.
                         usersMissing = []
                         readAuthors(generation, again: Set(users.keys))
                         try await resyncSidebar(generation)
+                        continue
+                    }
+                    if DocumentStreams.isDocumentFrame(frame.event) {
+                        await documents.frame(frame.event, data: frame.data)
                         continue
                     }
                     guard let event = try? JSONDecoder().decode(JSONValue.self, from: Data(frame.data.utf8)) else { continue }
@@ -274,6 +285,7 @@ public actor SyncEngine {
                 snapshot.live = false; snapshot.error = Store.describe(error)
                 publish()
             }
+            await documents.closed()
             guard current(generation) else { return }
             snapshot.live = false; publish()
             do { try await Task.sleep(for: .seconds(min(30, 1 << min(attempt, 5)))) } catch { return }
@@ -679,6 +691,7 @@ public actor SyncEngine {
                 switch kind {
                 case "task": try await client.renameTask(intent.target, name: title, mutationId: intent.id)
                 case "bot": try await client.renameBot(intent.target, name: title, mutationId: intent.id)
+                case "surface": try await client.renameSurface(intent.target, name: title, mutationId: intent.id)
                 default: return
                 }
             case .archive:

@@ -92,6 +92,8 @@ within a chat): `outbox` in `direct.sqlite` (agent,
 | Rename a task or bot | intent `rename`, title shown at once | — (no rename in the legacy app) |
 | Archive a task, bot or subtask | intent `archive` | intent `archive`: `session.archiving` kept through relaunch while it waits; one try now (`killSession`, else the server), the rest when the socket is back |
 | Leave a task / Surface | intent `leave` | intent `leave` (`leaveTask` RPC) |
+| Edit a document Surface | every change kept at once in `documents/<surfaceId>/`, sent in batches under a mutation ID a retry repeats, the rest sent on reconnect or after a relaunch with or without the editor open (`DocumentSync`, docs/DOCUMENT-EDITOR.md) | — |
+| Rename a Surface | intent `rename`, kind `surface` (`PATCH /v0/surfaces/:id`) | — |
 | Delete a session | — (no delete for agent work) | intent `delete`: gone here at once, a list read meanwhile doesn't bring it back (`LocalStore.deletePending`); refused, a full pass of the list brings it back |
 | Settings (mute, hide projects, Prioritizing, …) | `pendingSetting` (existing) | `pendingSettings` (existing) |
 | Permission mode / model | the dock's pick is kept locally and sent with the next message | kept in `composerState`, sent with the next message |
@@ -124,6 +126,7 @@ Not covered yet, and why:
 | Profiles, team members | bootstrap `profile`, checkpoint `users` | `accountProfile` |
 | Avatars and pictures | `pictures/` (`OfflineFile.keepPicture`) | `session.avatar` descriptor + `AttachmentPictures` |
 | Artifact metadata | checkpoint `artifacts` | — |
+| Documents opened | `documents/<surfaceId>/`: the Yjs replica, local changes since, the batch on its way (`DocumentKeep`) | — |
 | Media | `media/` (`MediaStore`, docs/media.md) | `media/` beside `files/` |
 | Drafts | `drafts` in the offline folder | `draft`, `composerState` |
 | Pending actions | `intent`, `outbox`, `pendingSetting` | `intent`, `outbox`, `attachment`, `pendingSettings` |
