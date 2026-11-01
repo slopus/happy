@@ -17,6 +17,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -24,6 +25,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.structuralEqualityPolicy
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
@@ -404,16 +406,20 @@ internal class RetainedPagePosition(val order: Int) {
     private var anchorOffset by mutableStateOf(Offset.Zero)
     var anchorPresent by mutableStateOf(false)
     var visualOverride by mutableStateOf<PageVisual?>(null)
+    // Pixel changes belong to the layer, not the composition/measurement gates.
+    // Reading the whole override from present invalidates both on every frame.
+    private val isPresent by derivedStateOf(structuralEqualityPolicy()) { visualOverride != null || anchorPresent }
+    private val overrideDim by derivedStateOf(structuralEqualityPolicy()) { visualOverride?.dim }
     var overrideRunning = false
     var offset: Offset
         get() = visualOverride?.offset ?: anchorOffset
         set(value) { anchorOffset = value }
     var present: Boolean
-        get() = visualOverride != null || anchorPresent
+        get() = isPresent
         set(value) { anchorPresent = value }
     var resident by mutableStateOf(false)
     var anchorDim: () -> Float = { 0f }
-    fun dim(): Float = visualOverride?.dim ?: anchorDim()
+    fun dim(): Float = overrideDim ?: anchorDim()
     var anchor: LayoutCoordinates? = null
     var settled = false
 

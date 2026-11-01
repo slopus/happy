@@ -19,7 +19,10 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.runtime.snapshots.SnapshotStateObserver
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -122,6 +125,39 @@ class RetainedPagesTest {
         rule.mainClock.autoAdvance = false
         rule.runOnUiThread { nav.navigate(SettingsRoute()) }
         settle()
+    }
+
+    @Test
+    fun movingPixelsDoNotInvalidatePresenceOrAnUnchangedScrim() {
+        val page = RetainedPagePosition(1)
+        page.visualOverride = PageVisual(Offset.Zero, 0f)
+        Snapshot.sendApplyNotifications()
+        var presenceInvalidations = 0
+        var dimInvalidations = 0
+        var offsetInvalidations = 0
+        val observer = SnapshotStateObserver { it() }
+        observer.start()
+        try {
+            observer.observeReads("presence", { presenceInvalidations++ }) { assertTrue(page.present) }
+            observer.observeReads("dim", { dimInvalidations++ }) { assertEquals(0f, page.dim(), 0f) }
+            observer.observeReads("offset", { offsetInvalidations++ }) { assertEquals(Offset.Zero, page.offset) }
+            repeat(30) { frame ->
+                page.visualOverride = PageVisual(Offset((frame + 1) * 10f, 0f), 0f)
+                Snapshot.sendApplyNotifications()
+            }
+            assertEquals("presence gates composition and measurement", 0, presenceInvalidations)
+            assertEquals("translation must not re-record an unchanged page", 0, dimInvalidations)
+            assertTrue("the layer still sees pixel updates", offsetInvalidations > 0)
+            page.visualOverride = PageVisual(page.offset, NavMotion.DIM)
+            Snapshot.sendApplyNotifications()
+            assertEquals(1, dimInvalidations)
+            page.visualOverride = null
+            Snapshot.sendApplyNotifications()
+            assertEquals(1, presenceInvalidations)
+        } finally {
+            observer.stop()
+            observer.clear()
+        }
     }
 
     @Test
