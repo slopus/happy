@@ -1816,6 +1816,36 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             }
         });
 
+        it('preserves tool-call-end result and isError on the normalized tool-result', () => {
+            const normalized = normalizeRawMessage('db-result', null, 1, {
+                ...base,
+                content: {
+                    type: 'session',
+                    data: {
+                        id: 'env-result',
+                        time: 1,
+                        role: 'agent',
+                        turn: 'turn-1',
+                        ev: {
+                            t: 'tool-call-end',
+                            call: 'call-result',
+                            result: 'src/auth/index.ts',
+                            isError: true
+                        }
+                    }
+                }
+            });
+            expect(normalized).toBeTruthy();
+            if (normalized && normalized.role === 'agent') {
+                expect(normalized.content[0]).toMatchObject({
+                    type: 'tool-result',
+                    tool_use_id: 'call-result',
+                    content: 'src/auth/index.ts',
+                    is_error: true
+                });
+            }
+        });
+
         it('maps turn-end to ready event and drops turn-start', () => {
             const turnStart = normalizeRawMessage('db-5', null, 1, {
                 ...base,

@@ -472,6 +472,26 @@ function toolTitle(name: string, input: unknown): string {
     return `${name} call`;
 }
 
+// Claude tool_result content is `string | Array<{ type: 'text', text: string }>`.
+function extractToolResultText(content: unknown): string | undefined {
+    if (typeof content === 'string') {
+        return content.length > 0 ? content : undefined;
+    }
+    if (Array.isArray(content)) {
+        const parts: string[] = [];
+        for (const part of content) {
+            if (part && typeof part === 'object' && (part as { type?: unknown }).type === 'text') {
+                const text = (part as { text?: unknown }).text;
+                if (typeof text === 'string' && text.length > 0) {
+                    parts.push(text);
+                }
+            }
+        }
+        return parts.length > 0 ? parts.join('\n') : undefined;
+    }
+    return undefined;
+}
+
 function toToolArgs(input: unknown): Record<string, unknown> {
     if (input && typeof input === 'object' && !Array.isArray(input)) {
         return input as Record<string, unknown>;
@@ -684,9 +704,13 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
                         maybeEmitSubagentStop(state, turnId, sessionSubagentForToolResult, envelopes);
                     }
                 }
+                const result = extractToolResultText((block as { content?: unknown }).content);
+                const isError = (block as { is_error?: unknown }).is_error === true;
                 envelopes.push(createEnvelope('agent', {
                     t: 'tool-call-end',
                     call: block.tool_use_id,
+                    ...(result !== undefined ? { result } : {}),
+                    ...(isError ? { isError: true } : {}),
                 }, { turn: turnId, subagent }));
                 continue;
             }
