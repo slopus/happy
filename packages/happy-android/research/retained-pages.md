@@ -210,3 +210,43 @@ intermediate runs are preserved in `nothing-retained-derived-presence` and
 `nothing-retained-independent-state` (each four passing tests, 12 iterations
 per journey), with corresponding `nothing-retention-{derived,independent}-analysis`
 summaries. Final paired traces use `{nothing,fold}-retained-single-animation`.
+
+Both final device runs passed all four tests (12 iterations each). The following
+Back-only comparison is **baseline → initial retention → follow-up**, in ms;
+it uses the same 650 ms windows as the earlier table.
+
+| Device | Journey | Main median | Main p99 | App-frame p99 |
+| --- | --- | ---: | ---: | ---: |
+| Nothing | Chat | 2.470 → 3.823 → 2.532 | 6.10 → 4.83 → 4.76 | 11.32 → 13.26 → 10.98 |
+| Nothing | Agent page | 1.987 → 3.441 → 2.232 | 16.42 → 4.99 → 4.62 | 18.97 → 16.14 → 9.39 |
+| Nothing | Appearance | 1.841 → 3.283 → 2.166 | 18.98 → 4.75 → 4.88 | 22.67 → 14.57 → 12.28 |
+| Nothing | Artifacts | 2.619 → 3.748 → 2.696 | 7.00 → 5.06 → 5.61 | 12.20 → 14.18 → 11.92 |
+| Fold | Chat | 1.350 → 1.991 → 1.449 | 5.08 → 4.81 → 4.09 | 14.91 → 13.71 → 13.93 |
+| Fold | Agent page | 1.335 → 1.966 → 1.448 | 9.57 → 4.13 → 4.38 | 13.49 → 11.12 → 10.02 |
+| Fold | Appearance | 1.029 → 1.759 → 1.241 | 11.75 → 4.05 → 4.18 | 15.59 → 13.39 → 11.54 |
+| Fold | Artifacts | 1.347 → 1.882 → 1.433 | 3.83 → 4.41 → 4.40 | 12.80 → 13.75 → 11.98 |
+
+Back main medians fall 28–35% on Nothing and 24–29% on Fold versus initial
+retention. Nothing's chat/artifact frame-tail regressions are reversed: final
+app-frame p99 is slightly below the pre-retention baseline. All eight Back
+app-frame p99 values are below baseline in these runs. Push app-frame p99 is
+also below baseline except Nothing artifacts (15.269 versus 15.248 ms).
+Exact push/Back summaries and frame samples are in
+`{nothing,fold}-retention-single-animation-analysis`.
+
+This does **not** establish literally zero per-frame cost: Back main medians
+remain 0.062–0.325 ms above baseline on Nothing and 0.086–0.212 ms on Fold.
+Some p99 values also rise versus the intermediate retained build, notably
+Nothing artifacts main-thread p99 (5.061 → 5.611 ms), though it remains below
+its original baseline. In a representative Nothing agent-page return, recurring
+animation cost is back to 0.324 versus baseline 0.327 ms; recomposition is
+0.078 versus 0.072, measure/layout 0.388 versus 0.412, and draw 0.545 versus
+0.573 ms. The large avoidable work is removed; remaining host/layer bookkeeping
+and run-to-run effects have not been isolated sufficiently to claim zero cost.
+
+Final navigation benchmark source is `4efe1b51f`, intentionally before the
+independent glass change so this comparison isolates navigation. It was rebased
+unchanged onto glass commit `003d6f8e5`; the combined full unit/layout gate passed
+2,182 tests, 55 skipped (the navigation-only gate passed 2,179, 55 skipped).
+The combined main dev install is handed to the glass workstream; these benchmark
+runs upgrade only the isolated bench app, not the daily dev app or its account.
