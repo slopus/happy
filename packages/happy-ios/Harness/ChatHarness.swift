@@ -259,8 +259,16 @@ final class ChatScrollProbe: NSObject {
     /// it was seen in, in order: a pan the split view or the swipe back
     /// cancelled or held shows here.
     private var path: [(name: String, recognizer: UIGestureRecognizer, states: [String])] = []
-    /// Frames sampled while the current finger is down.
+    /// Frames sampled while the current finger is down. The first is taken
+    /// as the finger lands, before the window hands it on; the second just
+    /// after, once the list's pan has caught any glide.
     private var samples: [Sample] = []
+    /// Where the list was drawn as the finger landed, and where its pan
+    /// stopped it, in the scroll host's bounds: a glide caught under the
+    /// finger runs on to the frame the screen already had in hand.
+    private var landedAt: CGFloat?
+    private var caughtAt: CGFloat?
+    private var caughtIndex = 0
     private var lastTouch: [String: Any] = [:]
     private var touches = 0
     private var focusWhenFilled = false
@@ -306,6 +314,11 @@ final class ChatScrollProbe: NSObject {
         }
         window.onTouch = { [weak self] touch in self?.touched(touch) }
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardMotion(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
+        let previousAfter = window.afterTouch
+        window.afterTouch = { [weak self] touch in
+            previousAfter?(touch)
+            self?.delivered(touch)
+        }
         // Slow enough to leave the app idle in between: the composer's focus
         // once the rows are in.
         let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
@@ -355,6 +368,9 @@ final class ChatScrollProbe: NSObject {
             currentTouch = touch
             path = []
             samples = []
+            landedAt = list.map { ($0.scrollGestureView.layer.presentation() ?? $0.scrollGestureView.layer).bounds.minY }
+            caughtAt = nil
+            caughtIndex = 0
             sample()
             startSampling()
         case .moved, .stationary:
@@ -387,6 +403,15 @@ final class ChatScrollProbe: NSObject {
         lastTouch.removeValue(forKey: "release")
         releaseEnd = max(releaseEnd ?? 0, CACurrentMediaTime() + max(Self.releaseDuration, duration))
         startSampling()
+    }
+
+    /// The window has handed the landing finger to the recognizers: the
+    /// list's pan has caught a glide by now, wherever UIKit asked it to.
+    private func delivered(_ touch: UITouch) {
+        guard touch.phase == .began, touch === currentTouch, caughtAt == nil else { return }
+        caughtAt = list?.scrollGestureView.layer.bounds.minY
+        caughtIndex = samples.count
+        sample()
     }
 
     @objc private func tick() {
@@ -515,9 +540,13 @@ final class ChatScrollProbe: NSObject {
 
     /// What the finger did, from its samples: how far it, the content and
     /// the keyboard travelled, in total and over the frames where the
-    /// keyboard moved.
+    /// keyboard moved. The finger and the content are measured from where
+    /// the pan caught the list; how far a caught glide ran on, and whether
+    /// the list then held still under the resting finger, separately.
     private func finishTouch() {
-        guard let first = samples.first, let last = samples.last else { return }
+        guard let landed = samples.first, let last = samples.last else { return }
+        let start = samples.indices.contains(caughtIndex) ? caughtIndex : 0
+        let first = samples[start]
         touches += 1
         var fingerWithKeyboard: CGFloat = 0
         var offsetWithKeyboard: CGFloat = 0
@@ -538,6 +567,12 @@ final class ChatScrollProbe: NSObject {
         touch["samples"] = samples.count
         touch["fingerTravel"] = last.fingerY - first.fingerY
         touch["offsetTravel"] = last.offset - first.offset
+        touch["offsetTravelFromLanding"] = last.offset - landed.offset
+        if let landedAt, let caughtAt { touch["catchTravel"] = caughtAt - landedAt }
+        // Until the finger first moves, the caught list stays put.
+        let resting = samples[start...].prefix { $0.fingerY == first.fingerY }
+        touch["restingSamples"] = resting.count
+        touch["restingDrift"] = resting.map { abs($0.offset - first.offset) }.max() ?? 0
         touch["keyboardTravel"] = last.keyboardTop - first.keyboardTop
         touch["fingerTravelWithKeyboard"] = fingerWithKeyboard
         touch["offsetTravelWithKeyboard"] = offsetWithKeyboard

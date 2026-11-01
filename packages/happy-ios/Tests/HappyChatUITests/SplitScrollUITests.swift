@@ -68,10 +68,20 @@ final class SplitScrollUITests: XCTestCase {
         // The list's own pan, never cancelled under the finger.
         XCTAssertTrue((touch(after)["recognizers"] as? [String] ?? []).contains("UltraList.InputPan"), detail)
         XCTAssertFalse(path.contains { $0.contains("InputPan") && $0.contains("cancelled") }, detail)
+        // A finger landing on a glide stops it: the list runs on only to
+        // the frame the screen already had in hand, a few points, then
+        // holds still until the finger moves.
+        let caught = number(touch(after)["catchTravel"])
+        print("SPLIT-SCROLL \(label): caught after \(caught), from landing \(number(touch(after)["offsetTravelFromLanding"]))")
+        XCTAssertLessThanOrEqual(abs(caught), 40, "\(label): the glide ran on under the finger, \(caught)")
+        if (touch(after)["restingSamples"] as? NSNumber)?.intValue ?? 0 > 1 {
+            XCTAssertLessThanOrEqual(number(touch(after)["restingDrift"]), 0.5, "\(label): the caught list moved under a resting finger")
+        }
         // Inverted: the content moves opposite the finger, by as much, less
-        // the touch's slop before the pan began. A drag that caught the
-        // list past an end, rubber-banding after a fling, rightly gives
-        // less: where it started says so.
+        // the touch's slop before the pan began, from where the finger
+        // caught it. A drag that caught the list past an end,
+        // rubber-banding after a fling, rightly gives less: where it
+        // started says so.
         let start = number(after["visibleMinY"]) - content
         guard start >= -1, start <= number(after["maxDistance"]) + 1 else {
             print("SPLIT-SCROLL \(label) began past an end, at \(start)")
