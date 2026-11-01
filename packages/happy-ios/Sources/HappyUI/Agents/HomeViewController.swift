@@ -59,6 +59,10 @@ final class HomeViewController: UIViewController {
     /// Every snapshot shown, for the screen around this one.
     var onSnapshot: ((Snapshot) -> Void)?
 
+    /// Home's list moved, however it moved, for the screen around this
+    /// one: the iPad sidebar's search field rides on it.
+    var onListScroll: (() -> Void)?
+
     /// The scroll edge the bar shades: it follows home's list.
     var list: UIScrollView { sidebar.edge }
 
@@ -111,6 +115,7 @@ final class HomeViewController: UIViewController {
         sidebar.onOpenPreview = { [weak self] row in self?.open(row, animated: false) }
         sidebar.onWillBeginDragging = { [weak self] in self?.listWillBeginDragging() }
         sidebar.onScroll = { [weak self] in self?.listDidScroll() }
+        sidebar.onMove = { [weak self] in self?.onListScroll?() }
         sidebar.onDidEndDragging = { [weak self] decelerate in self?.listDidEndDragging(decelerate: decelerate) }
         sidebar.onDidEndDecelerating = { [weak self] in self?.listDidEndDecelerating() }
         empty.onPair = { [weak self] in
@@ -141,7 +146,14 @@ final class HomeViewController: UIViewController {
     /// No ground as the iPad's sidebar: the system's sidebar shows there.
     private func applyGround() {
         view.backgroundColor = traitCollection.isSidebarColumn ? .clear : UIColor(Palette.groupedGround)
+        // What search finds is on the sidebar's glass too; home's list
+        // fades from under it instead (`listShowsUnderResults`).
+        resultsView.backgroundColor = traitCollection.isSidebarColumn ? .clear : UIColor(Palette.groupedGround)
     }
+
+    /// What search finds covers home's list on its own ground; on the
+    /// sidebar's glass, where it has none, the list fades out under it.
+    private var listShowsUnderResults: Bool { !traitCollection.isSidebarColumn }
 
     /// The computer shown: the fixed one, the last chosen, or the first paired.
     private func agentConnectionID() -> String? {
@@ -242,6 +254,7 @@ final class HomeViewController: UIViewController {
         resultsView.isHidden = false
         UIView.animate(withDuration: 0.2, delay: 0, options: [.beginFromCurrentState, .curveEaseOut]) {
             self.resultsView.alpha = 1
+            if !self.listShowsUnderResults { self.sidebar.alpha = 0 }
         }
     }
 
@@ -259,9 +272,11 @@ final class HomeViewController: UIViewController {
         if animated {
             UIView.animate(withDuration: 0.2, delay: 0, options: [.beginFromCurrentState, .curveEaseOut]) {
                 self.resultsView.alpha = 0
+                self.sidebar.alpha = 1
             } completion: { _ in gone() }
         } else {
             resultsView.alpha = 0
+            sidebar.alpha = 1
             gone()
         }
         onSearchEnded?()

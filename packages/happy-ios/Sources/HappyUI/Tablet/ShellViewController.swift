@@ -226,9 +226,44 @@ public final class ShellViewController: UIViewController {
     /// The sidebar's selection follows the main panel's root.
     private func followMainPanel() {
         placeToggle()
+        updateTopEdges()
         let root = isExpanded ? main.viewControllers.first.flatMap { $0 === placeholder ? nil : $0 } : nil
         let home = isExpanded ? sidebar.viewControllers.first : phone.viewControllers.first
         (home as? MainPanelFollowing)?.mainPanelDidShow(root)
+    }
+
+    // MARK: The main panel's top edge
+
+    /// The scroll views whose soft top edge this shell turned off.
+    private let unshadedEdges = NSHashTable<UIScrollView>.weakObjects()
+
+    /// iOS 26 shades a scroll view's top softly under its bar, but only
+    /// across the scroll view: in the main panel that is the panel, which
+    /// starts where the floating sidebar ends, so the shade stopped in a
+    /// hard line above the sidebar. While the sidebar floats beside them
+    /// the main panel's screens go without it, and their top is the
+    /// column's own ground right across; the chats keep their own header
+    /// fade (`HeaderScrimView`). With the sidebar hidden or the window a
+    /// phone's, the panel is the whole width and the shade comes back.
+    private func updateTopEdges() {
+        guard #available(iOS 26.0, *) else { return }
+        let shown = showsSidebar ? main.viewControllers.flatMap { Self.topScrollViews(in: $0.viewIfLoaded) } : []
+        for scroll in unshadedEdges.allObjects where !shown.contains(where: { $0 === scroll }) {
+            scroll.topEdgeEffect.isHidden = false
+            unshadedEdges.remove(scroll)
+        }
+        for scroll in shown where !scroll.topEdgeEffect.isHidden {
+            scroll.topEdgeEffect.isHidden = true
+            unshadedEdges.add(scroll)
+        }
+    }
+
+    /// The outermost scroll views in `view`: a scroll view's own are its
+    /// content, under no bar.
+    private static func topScrollViews(in view: UIView?) -> [UIScrollView] {
+        guard let view else { return [] }
+        if let scroll = view as? UIScrollView { return [scroll] }
+        return view.subviews.flatMap { topScrollViews(in: $0) }
     }
 
     // MARK: Mode
@@ -309,6 +344,7 @@ public final class ShellViewController: UIViewController {
         leave(sidebar, main)
         phone.setViewControllers(stack, animated: false)
         placeToggle()
+        updateTopEdges()
         (stack.first as? MainPanelFollowing)?.mainPanelDidShow(nil)
         setNeedsStatusBarAppearanceUpdate()
     }
@@ -383,6 +419,9 @@ extension ShellViewController: UISplitViewControllerDelegate {
     }
 
     public func splitViewController(_ svc: UISplitViewController, willChangeTo displayMode: UISplitViewController.DisplayMode) {
+        // The sidebar coming or going, whoever moved it: the main panel's
+        // top edge follows once the mode has changed.
+        DispatchQueue.main.async { [weak self] in self?.updateTopEdges() }
         guard isExpanded, !rewriting, !resizing, !svc.isCollapsed else { return }
         // The sidebar's button, ⌃⌘S or the swipe: the person's choice.
         switch displayMode {
@@ -400,6 +439,8 @@ extension ShellViewController: UISplitViewControllerDelegate {
 extension ShellViewController: UINavigationControllerDelegate {
     public func navigationController(_ navigationController: UINavigationController, willShow viewController: UIViewController, animated: Bool) {
         Self.minimalBackButtons(in: navigationController)
+        // Before the screen slides in, so its top never flashes the shade.
+        if navigationController === main { updateTopEdges() }
     }
 
     public func navigationController(_ navigationController: UINavigationController, didShow viewController: UIViewController, animated: Bool) {

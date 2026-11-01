@@ -25,11 +25,10 @@ rewritten) are `SplitRule`, `MainPanelLayout` and `SplitStack` in
 
 - **The sidebar is the account's home**, as it is on the phone: Happy
   Agent's `AgentHomeViewController` (`SidebarList` on UltraView) or Happy
-  CLI's `LegacyHomeViewController`, with its own bar (the account switcher
-  with the connection status, settings, filter, search) and its toolbar
-  (compose). Home doesn't know it is a sidebar except for one trait,
-  `SidebarColumnTrait`: its ground goes clear there, so the system's
-  sidebar material shows behind the cards.
+  CLI's `LegacyHomeViewController`. Home knows it is a sidebar by one
+  trait, `SidebarColumnTrait`: its ground goes clear, so the sidebar's
+  glass shows behind the cards, and its chrome is the sidebar's, not the
+  phone's (The sidebar's chrome, below).
 - **The sidebar never pushes.** `SidebarNavigationController` turns every
   push onto it (a row, compose, Settings, What's New, a quick action, a
   link) into the main panel's new root (`ShellViewController.showInMain`).
@@ -46,6 +45,46 @@ rewritten) are `SplitRule`, `MainPanelLayout` and `SplitStack` in
   shell tells home (`MainPanelFollowing`), which selects that row: the row
   it was opened from, else the row of that conversation or session. On a
   phone nothing stays selected, as before.
+
+### The sidebar's chrome
+
+On a phone, and in a narrow window's one stack, home keeps the phone's
+chrome: the switcher and settings (and Happy CLI's filter) in the header,
+search and compose in the bottom toolbar. As the sidebar
+(`Sources/HappyUI/Tablet/SidebarChrome.swift`, laid out by
+`SidebarChromeLayout`):
+
+- **The header holds the account switcher alone**, and Happy CLI's filter
+  menu.
+- **Search is a field at the top of the list** (`SidebarSearchField`,
+  `SidebarSearchLayout`), as Telegram's chat list keeps its own: it
+  scrolls with the rows and fades as it passes under the bar. Typing does
+  what the phone's bar field does (`HomeViewController.beginSearch`,
+  `search(_:)`, `endSearch`). While it is open the field stays at its rest
+  with Cancel beside it, and home's list fades from under the results,
+  which have no ground of their own on the sidebar's glass. Happy CLI's
+  home has no search, on the phone or here.
+- **Settings and compose are a bar at the sidebar's foot**
+  (`SidebarBottomBar`, `SidebarBottomBarLayout`): settings in a glass
+  circle at the bottom left; compose at the bottom right as the column's
+  one prominent action, a 48-point prominent-glass pill in the app's
+  primary (`Palette.roundButtonFill`, the send button's: black, light in
+  dark) that says what it starts, "New work" for an agent and "New
+  session" for Happy CLI. Both sit 16 off the sidebar's edges and foot,
+  or the safe area where that is more; the list's bottom inset clears
+  them and iOS's soft edge shades the rows under them. Where nothing can
+  be started (Happy CLI with no computer) settings is alone.
+
+The sidebar floats over the main column, whose ground is the chat's
+(`Palette.surface`), light and dark: one surface behind and beside it.
+iOS 26 shades a scroll view's top under its bar, but only across the
+scroll view, which in the main panel starts at the sidebar's edge, so the
+shade ended in a line above the sidebar. While the sidebar floats beside
+them, the main panel's screens go without that soft top edge
+(`ShellViewController.updateTopEdges`); the chats keep their own header
+fade. With the sidebar hidden, or the window a phone's, it is back.
+`UIBackgroundExtensionView` was tried and left out: it mirrors the chat's
+text, blurred, under the sidebar's glass.
 
 ### Where the main panel sits
 

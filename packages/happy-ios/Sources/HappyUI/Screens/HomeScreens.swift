@@ -17,6 +17,8 @@ import UIKit
 /// Every state has home's bar: the account switcher at the left, its name
 /// giving way to the link's status while the account isn't live
 /// (`AccountSwitcher.link`), and the filter menu and settings at the right.
+/// As the iPad's sidebar (`SidebarColumnTrait`) settings and compose are
+/// the sidebar's own bar at its foot instead (`SidebarBottomBar`).
 ///
 /// Nothing is typed here: compose in the bar (`compose()`) opens an empty
 /// chat, whose first send starts the session (`LegacyComposeStart`). It is
@@ -51,6 +53,14 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
     private var room: HomeListRoom?
     /// On top of the stack, neither coming nor going.
     private var standing = false
+    /// Settings and compose at the foot, as the iPad's sidebar has them.
+    private(set) lazy var bottomBar = SidebarBottomBar(
+        composeTitle: Strings.Tablet.newSession,
+        onSettings: { [weak self] in self?.openSettings() },
+        onCompose: { [weak self] in self?.compose() }
+    )
+    /// The list whose foot the bottom bar shades.
+    private weak var barFollows: UIScrollView?
 
     public init(context: AppContext, session: AccountSession) {
         self.context = context
@@ -67,7 +77,12 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
         super.viewDidLoad()
         // No ground as the iPad's sidebar, where the system's sidebar shows.
         applyGround()
-        registerForTraitChanges([SidebarColumnTrait.self]) { (self: Self, _) in self.applyGround() }
+        registerForTraitChanges([SidebarColumnTrait.self]) { (self: Self, _) in
+            self.applyGround()
+            self.updateNavigation(animated: false)
+        }
+        bottomBar.isHidden = true
+        view.addSubview(bottomBar)
         minimalBackButton()
         switcher = AccountSwitcher(context: context, controller: self)
         let pipeline = ApplyPipeline<HomeDerivation.Input, HomeDerivation.Applied, HomeUpdate>(
@@ -188,7 +203,14 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
     public override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         switcher?.layout()
-        let room = HomeListRoom(size: view.bounds.size, safeArea: LayoutInsets(view.safeAreaInsets), control: nil, standing: standing, kept: room)
+        var control: CGRect?
+        if !bottomBar.isHidden {
+            let bar = bottomBar.layout(size: view.bounds.size, safeArea: LayoutInsets(view.safeAreaInsets))
+            bottomBar.apply(bar, in: view.bounds)
+            control = bar.bar
+        }
+        followList()
+        let room = HomeListRoom(size: view.bounds.size, safeArea: LayoutInsets(view.safeAreaInsets), control: control, standing: standing, kept: room)
         self.room = room
         applyInsets(room.insets)
     }
@@ -321,16 +343,38 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
         guard let state else { return }
         let floating = true
         if floating {
+            let sidebar = traitCollection.isSidebarColumn
             navigationItem.leftBarButtonItem = switcher?.barItem
-            let items: [HeaderBar.Trailing: UIBarButtonItem] = [.filter: filterItem, .settings: settingsItem]
+            let items: [HeaderBar.Trailing: UIBarButtonItem] = sidebar ? [.filter: filterItem] : [.filter: filterItem, .settings: settingsItem]
+            bottomBar.isHidden = !sidebar
+            bottomBar.showsCompose = canCompose
             // The same items each time: a button rebuilt under a finger
             // drops its tap, and home updates with every connection change.
-            let toolbar = canCompose ? composeItems : nil
+            let toolbar = canCompose && !sidebar ? composeItems : nil
             if toolbarItems != toolbar { toolbarItems = toolbar }
             navigationItem.rightBarButtonItems = HeaderBar.trailing(items)
             if navigationController?.topViewController === self { HomeToolbar.show(for: self, animated: animated) }
         }
         view.setNeedsLayout()
+    }
+
+    /// The bottom bar shades the foot of the list on show, the first
+    /// scroll view in it (UltraList's own, which a toolbar finds too).
+    private func followList() {
+        let list = bottomBar.isHidden ? nil : content.flatMap { Self.firstScrollView(in: $0.view) }
+        guard list !== barFollows else { return }
+        barFollows = list
+        bottomBar.follow(list)
+    }
+
+    private static func firstScrollView(in view: UIView) -> UIScrollView? {
+        var queue = [view]
+        while !queue.isEmpty {
+            let next = queue.removeFirst()
+            if let scroll = next as? UIScrollView { return scroll }
+            queue.append(contentsOf: next.subviews)
+        }
+        return nil
     }
 
     /// MainView.tsx `HeaderRight`: the grouping choice and a way to the

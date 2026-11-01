@@ -49,6 +49,9 @@ final class SidebarList: UIView {
     var onDidEndDragging: ((Bool) -> Void)?
     /// A glide came to rest.
     var onDidEndDecelerating: (() -> Void)?
+    /// The list's place changed, however it moved: a finger, a glide, a
+    /// jump, rows changing above it or its insets.
+    var onMove: (() -> Void)?
 
     /// Each new set of rows shows at once from the top (search's results,
     /// replaced as the query changes) rather than gliding in under the
@@ -443,6 +446,7 @@ final class SidebarList: UIView {
         edge.contentOffset.y = offset
         // The list stays where it is on screen.
         list.frame.origin = edge.bounds.origin
+        onMove?()
     }
 
     /// While the list moves under a finger or glides, the indicator shows.

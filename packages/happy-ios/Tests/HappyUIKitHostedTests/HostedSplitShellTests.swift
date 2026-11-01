@@ -255,8 +255,10 @@ final class HostedSplitShellTests: XCTestCase {
         let chat = try XCTUnwrap(shell.main.viewControllers.first)
         let sidebarWidth = shell.sidebar.view.bounds.width
         XCTAssertGreaterThan(sidebarWidth, 250)
-        // The panel starts where the floating sidebar ends.
-        XCTAssertEqual(shell.main.view.convert(shell.main.view.bounds, to: app.window), CGRect(x: sidebarWidth, y: 0, width: app.window.bounds.width - sidebarWidth, height: app.window.bounds.height))
+        // The panel starts where the floating sidebar ends: iOS 26 insets
+        // the floating sidebar from the window's edge, iOS 27 doesn't.
+        let sidebarEnd = shell.sidebar.view.convert(shell.sidebar.view.bounds, to: app.window).maxX
+        XCTAssertEqual(shell.main.view.convert(shell.main.view.bounds, to: app.window), CGRect(x: sidebarEnd, y: 0, width: app.window.bounds.width - sidebarEnd, height: app.window.bounds.height))
         // iOS's own button, at the leading edge of the main panel's bar.
         XCTAssertTrue(shell.wearsToggle(chat), "the main panel has the sidebar's button")
         XCTAssertFalse(shell.wearsToggle(home))
