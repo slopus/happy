@@ -20,7 +20,7 @@ import UniformTypeIdentifiers
 /// Previewing, it is what a hold on the row shows over the sidebar, as
 /// Telegram previews a chat: the newest messages under the name in a
 /// capsule, nothing to type in or tap, and nothing marked read.
-final class ChatViewController: UIViewController, ComposeHosting {
+final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed {
     typealias Intro = IntroView.Mark
 
     private let session: Session
@@ -252,10 +252,9 @@ final class ChatViewController: UIViewController, ComposeHosting {
             view.addSubview(transcriptHeaderScrim)
         }
         // Back, the title, and Compose alone, a glass circle as Back is:
-        // the permission mode is on the detail the title opens.
-        navigationItem.rightBarButtonItems = HeaderBar.trailing([
-            .compose: HeaderBar.composeItem { [weak self] in self?.compose() },
-        ])
+        // the permission mode is on the detail the title opens. New work
+        // has Back alone until its first send.
+        showHeader(animated: false)
         card.configuration.showsAdd = true
         card.configuration.showsExpand = true
         card.configuration.addAccessibilityLabel = Strings.addPicture
@@ -380,15 +379,17 @@ final class ChatViewController: UIViewController, ComposeHosting {
         tellReadsNewest(moving: false)
     }
 
-    /// In the window as the push starts: new work's keyboard comes up now,
-    /// with the push, as Messages' compose does, not after it.
+    /// In the window as the push starts: new work's keyboard comes up with
+    /// the push, as Messages' compose does, not after it.
     override func viewIsAppearing(_ animated: Bool) {
         super.viewIsAppearing(animated)
         if previewing { return }
         #if DEBUG
         composeTrace?.event("isAppearing window=\(view.window != nil)")
         #endif
-        takeOpeningFocus()
+        // Pushed with the keyboard already coming (`KeyboardPush`), the
+        // composer takes it once the push is over, not inside it.
+        if !keyboardPushed { takeOpeningFocus() }
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -400,8 +401,10 @@ final class ChatViewController: UIViewController, ComposeHosting {
         ultraKeyboard?.refresh()
         guard !previewing, let navigationController else { return }
         _ = navigationController
-        // New work: the keyboard comes up now if it couldn't with the push.
+        // New work: the keyboard comes up now if it couldn't with the push,
+        // or the composer takes it from the push's stand-in.
         takeOpeningFocus()
+        keyboardPushed = false
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -669,6 +672,20 @@ final class ChatViewController: UIViewController, ComposeHosting {
         #endif
     }
 
+    /// Pushed by `KeyboardPush`: the keyboard comes up with the push, held
+    /// by a stand-in until the push is over.
+    private var keyboardPushed = false
+
+    func keyboardPushWillStart(keyboardUp: Bool) {
+        keyboardPushed = true
+        // Laid out with the keyboard down; its notification, heard once
+        // the screen is in the window, carries the card up with it.
+        if !keyboardUp { ultraKeyboard?.startsDown = true }
+    }
+
+    /// Already heard: this screen's observers come after the push's.
+    func keyboardPushStarted(_ keyboard: Notification) {}
+
     /// The keyboard is this screen's: the composer's or the name's.
     private var ownsKeyboard: Bool {
         card.textView.isFirstResponder || newWorkPanel?.name.isFirstResponder == true
@@ -694,6 +711,19 @@ final class ChatViewController: UIViewController, ComposeHosting {
         // never goes down in between.
         if newWorkPanel.name.isFirstResponder { card.focus() }
         newWorkPanel.dismiss()
+        showHeader(animated: true)
+    }
+
+    /// Compose, at the bar's right.
+    private lazy var composeItems = HeaderBar.trailing([
+        .compose: HeaderBar.composeItem { [weak self] in self?.compose() },
+    ])
+
+    /// New work's header is Back alone until its first send
+    /// (`ConversationHeader`); every other conversation's has its name and
+    /// Compose.
+    private func showHeader(animated: Bool) {
+        ConversationHeader.show(newTask == nil || newWorkPanelGone, title: header, items: composeItems, on: navigationItem, animated: animated)
     }
 
     /// Nothing typed or picked.
@@ -717,8 +747,8 @@ final class ChatViewController: UIViewController, ComposeHosting {
                 card.focus()
                 return
             }
-            card.blur()
-            ComposeNavigation.replace(self, with: NewWork.chat(session, task: task))
+            // The keyboard, up or not, goes to the new screen with its push.
+            ComposeNavigation.replace(self, with: NewWork.chat(session, task: task), traits: card.textView, keyboardUp: ownsKeyboard)
         }
     }
 

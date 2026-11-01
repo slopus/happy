@@ -30,7 +30,7 @@ import UltraView
 /// `ApplyPipeline`). The main thread hands over what it decides (the width,
 /// what the reader opened) and applies only what changed. While a pass
 /// runs, newer snapshots merge into the next one.
-final class LegacyChatViewController: UIViewController, ChatListViewDelegate, ChatComposerDelegate, ComposeHosting {
+final class LegacyChatViewController: UIViewController, ChatListViewDelegate, ChatComposerDelegate, ComposeHosting, KeyboardPushed {
     private let context: AppContext
     private let account: AccountSession
     /// Read by `AppCoordinator` to skip reopening the chat a tapped
@@ -236,8 +236,6 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         headerTitle = navigationItem.title ?? ""
         applyTitleAndStatus()
         navigationItem.titleView = header
-        // Compose too, so the bar never makes room for it later.
-        navigationItem.rightBarButtonItems = composeItems
         if ComposeChat.isComposeId(sessionId) {
             let compose = LegacyComposeStart(context: context, account: account)
             compose.host = self
@@ -245,6 +243,9 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
             composing = compose
             composeFocusOwed = true
         }
+        // Compose too, so the bar never makes room for it later; an empty
+        // compose chat has Back alone until its first send.
+        showHeader(animated: false)
     }
 
     private func makeComposer() -> any ChatComposerView {
@@ -451,7 +452,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     private func startConstruction() {
         guard !constructionStarted else { return }
         constructionStarted = true
-        construction = ChatConstruction(steps: [
+        let installs: [() -> Void] = prebuilt ? [] : [
             { [weak self] in self?.installList() },
             { [weak self] in self?.installHeader() },
             { [weak self] in self?.installDock() },
@@ -459,6 +460,8 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
             { [weak self] in self?.installTabStrip() },
             { [weak self] in self?.installKeyboardTracker() },
             { [weak self] in self?.installComposer() },
+        ]
+        construction = ChatConstruction(steps: installs + [
             { [weak self] in self?.connectContent() },
         ], isCurrent: { [weak self] in
             guard let self else { return false }
@@ -505,7 +508,9 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         #if DEBUG
         composeTrace?.event("isAppearing restored=\(composer.isRestored)")
         #endif
-        takeComposeFocus()
+        // Pushed with the keyboard already coming (`KeyboardPush`), the
+        // composer takes it once the push is over, not inside it.
+        if !keyboardPushed { takeComposeFocus() }
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -517,6 +522,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         ultraKeyboard?.refresh()
         VoiceCoordinator.shared.focus(account: account, sessionId: chatId)
         takeComposeFocus()
+        keyboardPushed = false
     }
 
     override func viewDidDisappear(_ animated: Bool) {
@@ -876,6 +882,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
                 }
             )
         }
+        if keyboardPushed, keyboardStartsDown { ultraKeyboard?.startsDown = true }
         if appeared { ultraKeyboard?.activate() }
     }
 
@@ -1335,7 +1342,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
             return
         }
         let chat = LegacyChatViewController(context: context, session: account, sessionId: ComposeChat.makeId())
-        ComposeNavigation.replace(self, with: chat)
+        ComposeNavigation.replace(self, with: chat, keyboardUp: composer.isTextFocused)
     }
 
     private func composeChanged() {
@@ -1343,6 +1350,20 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         updateHeader()
         updateComposeTarget()
         if contentInstalled { updateComposer() }
+        showHeader(animated: true)
+    }
+
+    /// The header shown: Back alone while an empty compose chat has
+    /// nothing sent; its name, status and Compose once the first send
+    /// starts the session (`ConversationHeader`). A refused start is
+    /// empty again.
+    private var headerShown: Bool?
+
+    private func showHeader(animated: Bool) {
+        let shown = !isComposing || composing?.isStarting == true
+        guard shown != headerShown else { return }
+        headerShown = shown
+        ConversationHeader.show(shown, title: header, items: composeItems, on: navigationItem, animated: animated)
     }
 
     /// What the first send makes and where it goes; while it starts the
@@ -1384,6 +1405,41 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         #endif
     }
 
+    /// Pushed by `KeyboardPush`: the keyboard comes up with the push, held
+    /// by a stand-in until the push is over.
+    private var keyboardPushed = false
+    /// Built before the push, while the keyboard came (`keyboardPushWillWait`).
+    private var prebuilt = false
+    private var keyboardStartsDown = false
+
+    /// An empty compose builds all but its connection while the keyboard
+    /// comes, nothing moving yet, rather than in the push's first frame;
+    /// the connection waits for the screen to be in its stack.
+    func keyboardPushWillWait() {
+        guard isComposing, !constructionStarted, !prebuilt else { return }
+        prebuilt = true
+        installList()
+        installHeader()
+        installDock()
+        installButtons()
+        installTabStrip()
+        installKeyboardTracker()
+        installComposer()
+    }
+
+    /// Laid out with the keyboard down, unless it was up already.
+    func keyboardPushWillStart(keyboardUp: Bool) {
+        keyboardPushed = true
+        keyboardStartsDown = !keyboardUp
+    }
+
+    /// Built as the push started, this screen's keyboard wasn't listening
+    /// when the notification was posted: it hears it now, the dock riding
+    /// the keyboard up from where it was laid out.
+    func keyboardPushStarted(_ keyboard: Notification) {
+        ultraKeyboard?.hear(keyboard)
+    }
+
     /// The session the first send started: the screen becomes its chat in
     /// place, keeping the composer, its keyboard and whatever was typed
     /// since (`becomeChat`).
@@ -1393,6 +1449,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         composing = nil
         composeTarget.dismiss()
         updateHeader()
+        showHeader(animated: true)
         updatePlaceholder()
         list.scrollToNewest(animated: true)
     }
@@ -1998,7 +2055,8 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         view.layoutIfNeeded()
         composerReveal.restored(generation: generation)
         opening?.check()
-        takeComposeFocus()
+        // During a `KeyboardPush` the composer waits for the push's end.
+        if !keyboardPushed { takeComposeFocus() }
     }
 
     /// Telegram's send: at the newest message it flies in from the

@@ -226,11 +226,15 @@ final class HostedComposeTests: XCTestCase {
         let chat = try XCTUnwrap(navigation.topViewController as? LegacyChatViewController)
         let card = try await composerCard(in: chat)
         let composer = try XCTUnwrap(Self.subview(SessionComposerView.self, in: chat.view))
+        // Empty, the header is Back alone.
+        assertHeader(of: chat, shown: false)
         card.setText("Fix the header shadow", selection: NSRange(location: 21, length: 0))
         card.delegate?.agentInputCardDidChangeText(card)
         card.delegate?.agentInputCardDidPressSend(card)
 
         try await until { !chat.isComposing }
+        // The name and Compose came in with the send.
+        assertHeader(of: chat, shown: true)
         // The same screen and composer, now the session's; nothing pushed.
         XCTAssertTrue(navigation.topViewController === chat)
         XCTAssertEqual(navigation.viewControllers.count, 2)
@@ -261,6 +265,10 @@ final class HostedComposeTests: XCTestCase {
         keep(window, "legacy-start-refused")
         chat.presentedViewController?.dismiss(animated: false)
         XCTAssertTrue(chat.isComposing, "still the empty chat")
+        // The start said what it was doing in the header; refused, it is
+        // the empty chat's again.
+        try await until { (chat.navigationItem.titleView as? ChatHeaderView)?.capsule.alpha == 0 }
+        assertHeader(of: chat, shown: false)
         XCTAssertEqual(card.text, "Try again later", "the text stays to send again")
         XCTAssertTrue(navigation.topViewController === chat)
     }
@@ -284,6 +292,8 @@ final class HostedComposeTests: XCTestCase {
         let empty = try XCTUnwrap(navigation.topViewController as? LegacyChatViewController)
         XCTAssertFalse(empty === open)
         XCTAssertTrue(empty.isComposing)
+        assertHeader(of: open, shown: true)
+        assertHeader(of: empty, shown: false)
         XCTAssertEqual(navigation.viewControllers.count, 2, "the stack grows no deeper")
         XCTAssertTrue(navigation.viewControllers.first === home)
         XCTAssertNil(open.parent, "the chat it replaced has gone")
@@ -600,6 +610,7 @@ final class HostedComposeTests: XCTestCase {
         try await until { navigation.topViewController is ChatViewController && navigation.transitionCoordinator == nil }
         let newWork = try XCTUnwrap(navigation.topViewController as? ChatViewController)
         XCTAssertEqual(navigation.viewControllers.count, 2)
+        assertHeader(of: newWork, shown: false)
         XCTAssertTrue(navigation.isToolbarHidden, "home actions leave with home")
         try await until { Self.subview(AgentInputCardView.self, in: newWork.view)?.textView.isFirstResponder == true }
         try await Task.sleep(for: .milliseconds(400))
@@ -617,6 +628,7 @@ final class HostedComposeTests: XCTestCase {
         let other = ChatViewController(session: session, agentId: "agent-other", title: "Header shadow", spaceId: "other", intro: nil)
         navigation.pushViewController(other, animated: false)
         window.layoutIfNeeded()
+        assertHeader(of: other, shown: true)
         other.compose()
         for frame in 0..<6 {
             try await Task.sleep(for: .milliseconds(70))
@@ -632,6 +644,16 @@ final class HostedComposeTests: XCTestCase {
     }
 
     // MARK: Helpers
+
+    /// A conversation's header: Back alone while it is empty
+    /// (`ConversationHeader`), its name and Compose once it has a message.
+    private func assertHeader(of chat: UIViewController, shown: Bool, file: StaticString = #filePath, line: UInt = #line) {
+        let item = chat.navigationItem
+        let title = item.titleView as? ChatHeaderView
+        XCTAssertEqual(title?.capsule.alpha, shown ? 1 : 0, "the name's capsule", file: file, line: line)
+        XCTAssertEqual(title?.accessibilityElementsHidden, !shown, file: file, line: line)
+        XCTAssertEqual(item.rightBarButtonItems?.compactMap(\.accessibilityIdentifier) ?? [], shown ? ["compose"] : [], "Compose", file: file, line: line)
+    }
 
     private func composerCard(in chat: LegacyChatViewController) async throws -> AgentInputCardView {
         try await until { chat.contentInstalled && Self.subview(AgentInputCardView.self, in: chat.view) != nil }

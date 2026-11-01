@@ -77,11 +77,18 @@ final class ChatUltraKeyboard: NSObject {
         center.addObserver(self, selector: #selector(keyboardDidHide(_:)), name: UIResponder.keyboardDidHideNotification, object: nil)
     }
 
+    /// Pushed while the keyboard comes up for it (`KeyboardPush`): the
+    /// layout guide already says where the keyboard will rest, so the
+    /// screen starts with it down and its notification brings it up.
+    var startsDown = false
+
     /// The screen is appearing: the library's controller starts.
     func activate() {
         guard !isActive, let view else { return }
         isActive = true
-        resync = true
+        resync = !startsDown
+        if startsDown { height = 0 }
+        startsDown = false
         let accessoryHeight = accessoryHeight
         dismissal = KeyboardDismissalController(
             scrollView: list, coordinateView: view,
@@ -174,6 +181,12 @@ final class ChatUltraKeyboard: NSObject {
         guard abs(height - self.height) > 0.01 || change.finishes else { return }
         self.height = height
         changed(change)
+    }
+
+    /// A keyboard notification posted before the screen was in its window
+    /// (`KeyboardPush` hands it on once it is).
+    func hear(_ notification: Notification) {
+        keyboardWillChangeFrame(notification)
     }
 
     @objc private func keyboardWillChangeFrame(_ notification: Notification) {

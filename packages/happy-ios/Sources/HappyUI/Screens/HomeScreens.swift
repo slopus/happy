@@ -409,7 +409,8 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
         guard canCompose, let navigation = navigationController, navigation.topViewController === self,
               navigation.transitionCoordinator == nil else { return }
         let chat = LegacyChatViewController(context: context, session: session, sessionId: ComposeChat.makeId())
-        navigation.pushViewController(chat, animated: true)
+        // The keyboard first, then the push in its frame (`KeyboardPush`).
+        KeyboardPush.push(chat, on: navigation)
     }
 }
 

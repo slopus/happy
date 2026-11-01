@@ -504,9 +504,14 @@ final class HomeViewController: UIViewController {
             Haptics.play(.newWork)
             let chat = NewWork.chat(session, task: task, library: library)
             guard let navigation = navigationController else { return }
-            navigation.pushViewController(chat, animated: true)
-            // Over the screen it goes to, as that screen comes in.
-            if library { chat.presentAttach(from: navigation) }
+            if library {
+                navigation.pushViewController(chat, animated: true)
+                // Over the screen it goes to, as that screen comes in.
+                chat.presentAttach(from: navigation)
+            } else {
+                // The keyboard first, then the push in its frame (`KeyboardPush`).
+                KeyboardPush.push(chat, on: navigation, traits: chat.card.textView)
+            }
         }
     }
 }

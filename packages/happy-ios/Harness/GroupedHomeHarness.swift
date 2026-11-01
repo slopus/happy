@@ -241,7 +241,9 @@ final class GroupedHomeHarness {
             self.home = home
             let navigation = UINavigationController(rootViewController: home)
             AppCoordinator.applyAppearance(to: navigation.navigationBar)
-            window.rootViewController = navigation
+            // Under the app's own root, whose stack delegate gives screens
+            // their own pushes (new work's waits for its keyboard).
+            window.rootViewController = ShellViewController(context: context, phone: navigation)
             window.layoutIfNeeded()
         } catch {
             print("GROUPED_HOME error: \(error)")
