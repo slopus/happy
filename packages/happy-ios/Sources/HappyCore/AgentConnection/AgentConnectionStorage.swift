@@ -23,6 +23,9 @@ public struct AgentConnection: Codable, Equatable, Sendable, Identifiable {
     public var revoked: Bool = false
     public var status: ConnectionStatus = .paused
     public var addedAt: Date
+    /// The team server's origin when this is a sign-in, not a pairing. A
+    /// revoked one needs signing in again rather than pairing.
+    public var server: String? = nil
 
     public init(id: String, name: String, addedAt: Date = Date()) {
         self.id = id; self.name = name; self.addedAt = addedAt
@@ -47,9 +50,13 @@ public struct KeychainAgentConnectionCredentialStore: AgentConnectionCredentialS
         var result: [String: AgentConnectionCredentials] = [:]
         for id in try backend.accounts(service: Self.service) {
             guard let data = try backend.copyData(query(id)),
-                  let value = try? JSONDecoder().decode(AgentConnectionCredentials.self, from: data),
-                  value.port > 0, !value.address.isEmpty, !value.deviceID.isEmpty,
-                  CanonicalBase64URL.decode(value.deviceToken)?.count == 32 else { continue }
+                  let value = try? JSONDecoder().decode(AgentConnectionCredentials.self, from: data) else { continue }
+            if value.signIn != nil {
+                guard let url = value.publicUrl, (try? AgentOrigin(url)) != nil else { continue }
+            } else {
+                guard value.port > 0, !value.address.isEmpty, !value.deviceID.isEmpty,
+                      CanonicalBase64URL.decode(value.deviceToken)?.count == 32 else { continue }
+            }
             result[id] = value
         }
         return result

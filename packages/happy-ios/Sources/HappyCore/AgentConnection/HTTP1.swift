@@ -35,6 +35,14 @@ public protocol AgentTransport: Sendable {
     /// Lets go of `category`'s connections; the other categories' stay.
     func reset(_ category: RequestCategory) async
     func close() async
+    /// The bearer to write into a request this transport doesn't frame
+    /// itself (an artifact request on a browser connection): `credential`,
+    /// unless the transport signs its own requests in.
+    func bearer(_ credential: String) async throws -> String
+    /// A proxy tunnel at `path`, a CONNECT route such as
+    /// `/v0/workspaces/:id/proxy`, open and past its `200`: CONNECT, or its
+    /// WebSocket twin where the server has one (edge SSO contract §4).
+    func proxyTunnel(_ path: String, credential: String) async throws -> any BrowserStream
 }
 
 /// A response head, and its decoded body as the bytes arrive. The body ends
@@ -78,6 +86,24 @@ extension AgentTransport {
 
     public func reset(_ category: RequestCategory) async { await reset() }
 
+    public func bearer(_ credential: String) async throws -> String { credential }
+
+    public func proxyTunnel(_ path: String, credential: String) async throws -> any BrowserStream {
+        try await connectTunnel(path, credential: credential)
+    }
+
+    /// CONNECT `path` on a fresh browser connection.
+    func connectTunnel(_ path: String, credential: String) async throws -> any BrowserStream {
+        let stream = try await browserConnection()
+        do {
+            try await AgentClient.connect(stream, target: path, credential: credential)
+            return stream
+        } catch {
+            await stream.close()
+            throw error
+        }
+    }
+
     func request(_ path: String, credential: String, method: String = "GET", body: Data? = nil, headers: [String: String] = [:], category: RequestCategory = .query) async throws -> HTTP1Response {
         try await request(method: method, path: path, credential: credential, body: body, headers: headers, category: category)
     }
@@ -91,7 +117,7 @@ extension AgentTransport {
 /// A query must be answered within 35 seconds, a file within 15 minutes.
 public final class AgentHTTPTransport: SelfMeteringTransport {
     let port: UInt16
-    private let publicUrl: String?
+    let publicUrl: String?
     private let tailcatAvailable: Bool
     let authority: String
     /// The account's recorder, once a metered transport is over this one.

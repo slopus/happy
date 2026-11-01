@@ -29,7 +29,17 @@ public enum ScanRoute: Equatable, Sendable {
     /// directly paired computer. `canShareAccount`: that account is a legacy
     /// one, whose secret may go to another device; one made for a computer
     /// never leaves it and this phone.
-    public static func route(_ code: HappyCode, intent: ScanIntent, hasAccount: Bool, canShareAccount: Bool = true) -> ScanRoute {
+    /// `managed`: what the organization allows (`ManagedSettings`); a code
+    /// for something it turned off is refused, never half-opened.
+    public static func route(_ code: HappyCode, intent: ScanIntent, hasAccount: Bool, canShareAccount: Bool = true, managed: ManagedSettings = .current) -> ScanRoute {
+        switch code {
+        case .agentConnection(let link):
+            guard managed.allowsPhonePairing, managed.allowsTailcat || link.publicUrl != nil else { return .problem(.turnedOff) }
+            return .connectAgent(link)
+        case .terminal, .account:
+            guard managed.allowsHostedRelay else { return .problem(.turnedOff) }
+        default: break
+        }
         switch code {
         case .agentConnection(let link):
             return .connectAgent(link)
@@ -60,4 +70,6 @@ public enum ScanProblem: Equatable, Sendable {
     /// Another device's account link, while the account in use was made
     /// for a computer: its secret is never handed on.
     case accountNotShareable
+    /// The organization's managed settings turned this kind of connection off.
+    case turnedOff
 }

@@ -83,6 +83,8 @@ public enum BrowserPolicy {
 
 public enum BrowserError: Error, Equatable, Sendable {
     case forbidden, malformed, tooLarge, unavailable, timeout, upstream(Int)
+    /// The server's network carries neither CONNECT nor WebSocket tunnels.
+    case tunnelsBlocked
 }
 
 /// A bounded HTTP head, preserving duplicate response fields (notably Set-Cookie).

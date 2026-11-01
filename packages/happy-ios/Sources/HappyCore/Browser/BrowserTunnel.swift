@@ -40,15 +40,17 @@ extension AgentClient {
         guard BrowserPolicy.validID(workspaceID) else { throw BrowserError.forbidden }
         let start = ConnectionMetrics.uptime()
         let stream: any BrowserStream
-        do { stream = try await transport.browserConnection() } catch {
-            if !(error is CancellationError) { metrics?.request(.browser, status: nil, duration: ConnectionMetrics.uptime() - start) }
+        do { stream = try await transport.proxyTunnel("/v0/workspaces/\(workspaceID)/proxy", credential: token) } catch {
+            if !(error is CancellationError) {
+                let status: Int? = if case BrowserError.upstream(let code) = error { code } else { nil }
+                metrics?.request(.browser, status: status, duration: ConnectionMetrics.uptime() - start)
+            }
             // No way to the computer at all is the link failing (502), as
             // a failure inside the tunnel is, not the proxy's own (500).
-            if error is CancellationError || error is BrowserError { throw error }
+            if error is CancellationError || error is BrowserError || error is AgentClientError { throw error }
             throw BrowserProxyFailure.upstream(error)
         }
         do {
-            try await Self.connect(stream, target: "/v0/workspaces/\(workspaceID)/proxy", credential: token)
             try await Self.connect(stream, target: target.text, credential: nil)
             metrics?.request(.browser, status: 200, duration: ConnectionMetrics.uptime() - start)
             return stream
@@ -67,13 +69,13 @@ extension AgentClient {
     public func artifactConnection(head: BrowserHTTPHead, artifactID: String, version: Int) async throws -> any BrowserStream {
         let stream = try await transport.browserConnection()
         do {
-            let request = try head.artifactRequest(artifactID: artifactID, version: version, credential: token, authority: stream.authority)
+            let request = try head.artifactRequest(artifactID: artifactID, version: version, credential: try await transport.bearer(token), authority: stream.authority)
             try await stream.write(request.data); return stream
         }
         catch { await stream.close(); throw error }
     }
 
-    private static func connect(_ stream: any BrowserStream, target: String, credential: String?) async throws {
+    static func connect(_ stream: any BrowserStream, target: String, credential: String?) async throws {
         var head = "CONNECT \(target) HTTP/1.1\r\nHost: \(credential == nil ? target : stream.authority)\r\n"
         if let credential { head += "Authorization: Bearer \(credential)\r\n" }
         try await stream.write(Data((head + "\r\n").utf8))

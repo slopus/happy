@@ -52,6 +52,11 @@ enum PairingFlow {
         guard PairingLink.isAgentConnection(text) else { return false }
         do {
             let link = try PairingLink(text)
+            let managed = ManagedSettings.current
+            guard managed.allowsPhonePairing, managed.allowsTailcat || link.publicUrl != nil else {
+                Alerts.show(Strings.ServerSignIn.turnedOffTitle, Strings.ServerSignIn.turnedOff, on: controller)
+                return true
+            }
             let pairing = AgentPairingViewController(context: context, link: link, start: start)
             controller.navigationController?.pushViewController(pairing, animated: true)
         } catch {

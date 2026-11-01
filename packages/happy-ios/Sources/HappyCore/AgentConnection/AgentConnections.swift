@@ -11,6 +11,10 @@ public final class AgentConnections {
     private let storage: AgentConnectionStorage
     private var credentials: [String: AgentConnectionCredentials] = [:]
     private var endpoints: [String: AgentEndpoint] = [:]
+    /// Each signed-in server's bearer, shared by every transport to it.
+    private var authorizations: [String: ServerAuthorization] = [:]
+    /// What the token endpoint is reached through; tests replace it.
+    var tokens = OAuthTokenClient()
     private var jobs: [String: Task<Void, Never>] = [:]
     private var generation: UInt64 = 0
     private var foreground = true
@@ -23,7 +27,7 @@ public final class AgentConnections {
     let makeTransport: @Sendable (AgentConnectionCredentials) -> any AgentTransport
     var refreshInterval: Duration = .seconds(60)
 
-    public init(credentials: any AgentConnectionCredentialStore, directory: URL?, makeTransport: @escaping @Sendable (AgentConnectionCredentials) -> any AgentTransport = { AgentHTTPTransport(address: $0.address, port: $0.port, publicUrl: $0.publicUrl, tailcatAvailable: $0.tailcatAvailable != false) }) {
+    public init(credentials: any AgentConnectionCredentialStore, directory: URL?, makeTransport: @escaping @Sendable (AgentConnectionCredentials) -> any AgentTransport = { AgentHTTPTransport(address: $0.address, port: $0.port, publicUrl: $0.publicUrl, tailcatAvailable: $0.tailcatAvailable != false && ManagedSettings.current.allowsTailcat) }) {
         storage = AgentConnectionStorage(credentials: credentials, directory: directory)
         self.makeTransport = makeTransport
     }
@@ -48,8 +52,41 @@ public final class AgentConnections {
 
     /// A transport to `id`'s computer that counts on its recorder.
     func transport(_ credential: AgentConnectionCredentials, for id: String) -> any AgentTransport {
-        AgentEndpointTransport(endpoint: endpoint(credential, for: id), metrics: meter(id), make: makeTransport)
+        AgentEndpointTransport(endpoint: endpoint(credential, for: id), metrics: meter(id), make: maker(credential, for: id))
     }
+
+    /// `makeTransport`, signing every request in for a signed-in server.
+    private func maker(_ credential: AgentConnectionCredentials, for id: String) -> @Sendable (AgentConnectionCredentials) -> any AgentTransport {
+        let make = makeTransport
+        guard credential.signIn != nil else { return make }
+        let authorization = authorization(credential, for: id), origin = credential.publicUrl ?? ""
+        return { SignedInTransport(base: make($0), authorization: authorization, origin: origin) }
+    }
+
+    /// `id`'s bearer: created from its saved grant, with no access token
+    /// yet, so the first request refreshes one.
+    func authorization(_ credential: AgentConnectionCredentials, for id: String, access: OAuthAccess? = nil) -> ServerAuthorization {
+        if let value = authorizations[id] { return value }
+        let value = ServerAuthorization(grant: credential.signIn?.grant ?? OAuthGrant(clientId: ""), access: access, tokens: tokens) { [weak self] grant in
+            try await self?.saveGrant(grant, for: id)
+        }
+        authorizations[id] = value
+        return value
+    }
+
+    /// A rotated refresh token, saved over the old one.
+    private func saveGrant(_ grant: OAuthGrant, for id: String) async throws {
+        guard var value = credentials[id], value.signIn != nil, !hidden.contains(id) else { throw CancellationError() }
+        value.signIn?.grant = grant
+        try await storage.updateCredentials(value, id: id)
+        credentials[id] = value
+    }
+
+    /// Whether `id` is a team server signed in to, rather than a pairing.
+    public func isServer(_ id: String) -> Bool { credentials[id]?.signIn != nil }
+
+    /// The origin of the signed-in server `id`.
+    public func server(for id: String) -> String? { credentials[id]?.signIn != nil ? credentials[id]?.publicUrl : nil }
 
     private func endpoint(_ credential: AgentConnectionCredentials, for id: String) -> AgentEndpoint {
         if let value = endpoints[id] { return value }
@@ -62,7 +99,7 @@ public final class AgentConnections {
     }
 
     private func saveEndpoint(_ value: AgentConnectionCredentials, for id: String) async throws {
-        guard credentials[id]?.deviceToken == value.deviceToken, !hidden.contains(id) else { throw CancellationError() }
+        guard credentials[id]?.deviceToken == value.deviceToken, credentials[id]?.signIn == nil, !hidden.contains(id) else { throw CancellationError() }
         try await storage.updateCredentials(value, id: id)
         guard credentials[id]?.deviceToken == value.deviceToken, !hidden.contains(id) else { throw CancellationError() }
         credentials[id] = value
@@ -81,7 +118,7 @@ public final class AgentConnections {
     func credential(for id: String) -> AgentConnectionCredentials? { credentials[id] }
     /// What the connection's placeholder picture is picked by: its
     /// computer's address, the same on every phone paired with it.
-    public func placeholderSeed(for id: String) -> String? { credentials[id].map { "agent:\($0.address)" } }
+    public func placeholderSeed(for id: String) -> String? { credentials[id].map { "agent:\($0.signIn == nil ? $0.address : $0.publicUrl ?? "")" } }
     func configureStorage(_ directory: URL?) async { await storage.configureDirectory(directory) }
 
     public func restore() async throws {
@@ -115,6 +152,31 @@ public final class AgentConnections {
         credentials[id] = savedCredentials
         accounts.removeAll { $0.id == id }; accounts.append(account); activeID = id
         for (otherID, engine) in engines where otherID != id { await engine.pause() }
+        onChange?(); startConnections()
+        return account
+    }
+
+    /// Adds the team server signed in to at `origin`, or signs an account
+    /// already there in again: same origin and person, same account, its
+    /// grant replaced and its revocation lifted. `access` is the token the
+    /// sign-in just got, so nothing is refreshed straight away.
+    public func addServer(_ origin: AgentOrigin, signIn: ServerSignInRecord, access: OAuthAccess, name: String) async throws -> AgentConnection {
+        if !loaded { try await restore() }
+        let value = AgentConnectionCredentials.server(origin, signIn: signIn)
+        let id = credentials.first { $0.value.signIn != nil && $0.value.publicUrl == origin.value && $0.value.signIn?.userId == signIn.userId }?.key ?? "server-\(UUID().uuidString.lowercased())"
+        var account = accounts.first { $0.id == id } ?? AgentConnection(id: id, name: AgentName.friendly(name))
+        account.server = origin.value
+        account.revoked = false
+        account.status = .connecting
+        await stop(id)
+        try await storage.add(account, credentials: value)
+        credentials[id] = value
+        if let existing = authorizations[id] { await existing.replace(access: access, grant: signIn.grant) }
+        else { _ = authorization(value, for: id, access: access) }
+        accounts.removeAll { $0.id == id }; accounts.append(account); activeID = id
+        // Every engine pauses; `select` starts this one again, an engine
+        // that gave up when the old sign-in ended included.
+        for engine in engines.values { await engine.pause() }
         onChange?(); startConnections()
         return account
     }
@@ -161,6 +223,7 @@ public final class AgentConnections {
         // publish or save an old identity after removal completes.
         await stop(id)
         await endpoints.removeValue(forKey: id)?.retire()
+        if let authorization = authorizations.removeValue(forKey: id) { await authorization.signInRequired() }
         if let engine = engines[id] {
             await engine.stop()
             if engines[id] === engine { engines.removeValue(forKey: id) }
@@ -191,6 +254,7 @@ public final class AgentConnections {
         let engine = engines.removeValue(forKey: id)
         credentials.removeValue(forKey: id)
         if let endpoint = endpoints.removeValue(forKey: id) { Task { await endpoint.retire() } }
+        if let authorization = authorizations.removeValue(forKey: id) { Task { await authorization.signInRequired() } }
         meters.removeValue(forKey: id)
         accounts.removeAll { $0.id == id }
         if activeID == id { activeID = nil }
@@ -262,7 +326,7 @@ public final class AgentConnections {
         guard foreground else { return }
         for account in accounts where jobs[account.id] == nil && !account.revoked {
             guard let credential = credentials[account.id] else { continue }
-            let make = makeTransport, meter = meter(account.id), endpoint = endpoint(credential, for: account.id); let generation = generation; let interval = refreshInterval
+            let make = maker(credential, for: account.id), meter = meter(account.id), endpoint = endpoint(credential, for: account.id); let generation = generation; let interval = refreshInterval
             jobs[account.id] = Task.detached { [weak self] in
                 var current = account
                 var attempt = 0

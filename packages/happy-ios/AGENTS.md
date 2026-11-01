@@ -381,6 +381,15 @@ nothing here is wired to the release skill or to EAS.
     the others. Their items and caches stay on disk, unused, and are picked
     up again when this app is reinstalled. If the shared account was
     signed out here, the RN build starts signed out.
+- **Team servers sign in with OAuth, not pairing.** A server added by its
+  HTTPS address (`ServerSignInFlow`) is an agent connection whose
+  credentials hold a sign-in grant instead of a device token. Its
+  `SignedInTransport` puts the in-memory access token in `Authorization`,
+  asks `/v0/authentication` after Happy's own `401`, and takes a redirect or
+  an edge `401`/`403` as "sign in again". Previews use WebSocket tunnels where
+  CONNECT can't pass. The redirect URI (`happy://oauth/callback`) and the MDM keys (`ManagedSettings`) are fixed and shared
+  with Android and desktop, so don't rename them. See
+  [docs/SERVER-SIGN-IN.md](docs/SERVER-SIGN-IN.md).
 - **Credentials stay in the RN app's Keychain item.** This app reads and
   writes happy-app's `auth_credentials` exactly as expo-secure-store 55
   stores it, so an in-place upgrade (same bundle ids) stays signed in and a

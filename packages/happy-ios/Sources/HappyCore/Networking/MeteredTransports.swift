@@ -326,6 +326,13 @@ public struct MeteredAgentTransport: AgentTransport {
         return countsBytes ? MeteredStream(stream, metrics: metrics, channel: .browser) : stream
     }
 
+    public func proxyTunnel(_ path: String, credential: String) async throws -> any BrowserStream {
+        let stream = try await MetricsScope.$channel.withValue(.browser) { try await base.proxyTunnel(path, credential: credential) }
+        return countsBytes ? MeteredStream(stream, metrics: metrics, channel: .browser) : stream
+    }
+
+    public func bearer(_ credential: String) async throws -> String { try await base.bearer(credential) }
+
     public func reset() async { await base.reset() }
     public func reset(_ category: RequestCategory) async { await base.reset(category) }
     public func close() async { await base.close() }

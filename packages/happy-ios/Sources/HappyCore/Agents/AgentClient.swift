@@ -21,10 +21,14 @@ public enum AgentClientError: Error, Equatable, Sendable {
 public final class AgentClient: Sendable {
     let transport: any AgentTransport
     let token: String
+    /// A team server signed in to: refused, it wants signing in again,
+    /// not pairing.
+    public let signsIn: Bool
 
-    init(transport: any AgentTransport, token: String) {
+    init(transport: any AgentTransport, token: String, signsIn: Bool = false) {
         self.transport = transport
         self.token = token
+        self.signsIn = signsIn
     }
 
     public func close() async { await transport.close() }
@@ -584,6 +588,6 @@ extension AgentConnections {
     /// A client for a paired device, sharing nothing with its identity refresh.
     public func agentClient(for accountID: String) -> AgentClient? {
         guard let credential = credential(for: accountID) else { return nil }
-        return AgentClient(transport: transport(credential, for: accountID), token: credential.deviceToken)
+        return AgentClient(transport: transport(credential, for: accountID), token: credential.deviceToken, signsIn: credential.signIn != nil)
     }
 }

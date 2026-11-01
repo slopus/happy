@@ -276,6 +276,8 @@ public final class AccountController {
             try await activateAgentConnection(id)
             return
         }
+        // The organization turned Happy's hosted relay off.
+        guard ManagedSettings.current.allowsHostedRelay else { throw ServerSignInError.notAllowed }
         let values = try await reconcile()
         guard let entry = registry.entries.first(where: { $0.id == id }), let value = values[id] else {
             throw AccountSwitchError.unknownAccount
@@ -354,6 +356,8 @@ public final class AccountController {
     }
 
     private func restoreLegacy() async {
+        // With the hosted relay turned off, relay accounts stay closed.
+        guard ManagedSettings.current.allowsHostedRelay else { return }
         do {
             let values = try await reconcile()
             guard let id = registry.activeID,
@@ -374,6 +378,7 @@ public final class AccountController {
     /// the origin it had.
     public func signIn(_ credentials: Credentials, origin: AccountOrigin = .legacy) async throws {
         guard !busy else { throw AccountSwitchError.operationInProgress }
+        guard ManagedSettings.current.allowsHostedRelay else { throw ServerSignInError.notAllowed }
         let id = try accountID(credentials)
         // Signed in again while its sign-out was still being cleaned up:
         // that ends first, then it is an account like any other.
@@ -412,6 +417,7 @@ public final class AccountController {
     /// included, keeps nothing: the accounts here and the active one stay
     /// as they were.
     public func addAccount(approvingTerminal publicKey: Data) async throws -> PairingOutcome {
+        guard ManagedSettings.current.allowsHostedRelay else { throw ServerSignInError.notAllowed }
         let wasAdding = isAddingAccount
         isAddingAccount = true
         var kept = false
@@ -1030,6 +1036,19 @@ public final class AccountController {
         busy = true; defer { finishOperation() }
         _ = await prepareStorageDirectory()
         let account = try await agentConnections.add(credentials, name: name)
+        isAddingAccount = false
+        try await activateAgentConnection(account.id)
+    }
+
+    /// Keeps a team server signed in to (`ServerSignInFlow`), or signs an
+    /// account already there in again, and opens it.
+    public func addServer(_ signedIn: ServerSignInFlow.SignedIn) async throws {
+        guard !busy else { throw AccountSwitchError.operationInProgress }
+        guard ManagedSettings.current.allowsServer(signedIn.origin) else { throw ServerSignInError.notAllowed }
+        busy = true; defer { finishOperation() }
+        _ = await prepareStorageDirectory()
+        let name = URLComponents(string: signedIn.origin.value)?.host ?? signedIn.origin.value
+        let account = try await agentConnections.addServer(signedIn.origin, signIn: signedIn.record, access: signedIn.access, name: name)
         isAddingAccount = false
         try await activateAgentConnection(account.id)
     }

@@ -11,6 +11,8 @@ import UIKit
 enum CompositionRoot {
     static func makeContext(bundle: Bundle = .main) -> AppContext {
         let variant = AppVariant.current(bundle: bundle)
+        // The organization's MDM settings, before anything reads them.
+        ManagedSettings.current = ManagedSettings.read()
         let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.0.0"
         let account = NativeAccountFactory.make(
             version: version,

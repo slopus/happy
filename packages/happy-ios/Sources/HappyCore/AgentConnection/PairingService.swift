@@ -10,6 +10,34 @@ public struct AgentConnectionCredentials: Codable, Equatable, Sendable {
     public var publicUrl: String? = nil
     /// Missing on stored v1 credentials. V2 codes carry no Tailcat address.
     public var tailcatAvailable: Bool? = nil
+    /// A team server signed in to with OAuth rather than paired: its
+    /// `publicUrl` is the server, and there is no device or Tailcat address.
+    public var signIn: ServerSignInRecord? = nil
+
+    public init(address: String, port: UInt16, deviceID: String, deviceToken: String, publicUrl: String? = nil, tailcatAvailable: Bool? = nil, signIn: ServerSignInRecord? = nil) {
+        self.address = address; self.port = port; self.deviceID = deviceID; self.deviceToken = deviceToken
+        self.publicUrl = publicUrl; self.tailcatAvailable = tailcatAvailable; self.signIn = signIn
+    }
+
+    /// A signed-in server's: the token goes in at request time.
+    public static func server(_ origin: AgentOrigin, signIn: ServerSignInRecord) -> AgentConnectionCredentials {
+        AgentConnectionCredentials(address: "", port: 0, deviceID: "", deviceToken: "", publicUrl: origin.value, tailcatAvailable: false, signIn: signIn)
+    }
+}
+
+/// How a team server was signed in to, kept in the Keychain with the
+/// account: the method as discovered then (its refresh URL, client and
+/// resource are the only ones its refresh token is ever sent with), the
+/// grant, and who signed in.
+public struct ServerSignInRecord: Codable, Equatable, Sendable {
+    public var method: OAuthMethod
+    public var grant: OAuthGrant
+    /// The server's user ID for this person, once onboarded.
+    public var userId: String?
+
+    public init(method: OAuthMethod, grant: OAuthGrant, userId: String?) {
+        self.method = method; self.grant = grant; self.userId = userId
+    }
 }
 
 /// An unfinished handshake owns its tunnel and secrets, and stores nothing.
@@ -26,7 +54,7 @@ public actor PairingService {
 
     public init(link: PairingLink, transport: (any AgentTransport)? = nil, crypto: PairingCrypto? = nil) {
         self.link = link
-        self.transport = transport ?? AgentHTTPTransport(address: link.address, port: link.port, publicUrl: link.publicUrl)
+        self.transport = transport ?? AgentHTTPTransport(address: link.address, port: link.port, publicUrl: link.publicUrl, tailcatAvailable: ManagedSettings.current.allowsTailcat)
         expiresAt = link.expiresAt
         suppliedCrypto = crypto
     }

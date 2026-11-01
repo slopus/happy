@@ -187,6 +187,8 @@ enum HappyScan {
             Alerts.show(Strings.Scan.deviceNeedsAccountTitle, Strings.Scan.deviceNeedsAccount, on: controller)
         case .accountNotShareable:
             Alerts.show(Strings.Scan.accountNotShareableTitle, Strings.Scan.accountNotShareable, on: controller)
+        case .turnedOff:
+            Alerts.show(Strings.ServerSignIn.turnedOffTitle, Strings.ServerSignIn.turnedOff, on: controller)
         }
     }
 

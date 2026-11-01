@@ -14,6 +14,12 @@ public enum Hashing {
         Data(SHA256.hash(data: data))
     }
 
+    /// Only for protocol checks that require it, such as the WebSocket
+    /// handshake's `Sec-WebSocket-Accept`; never for security.
+    public static func sha1(_ data: Data) -> Data {
+        Data(Insecure.SHA1.hash(data: data))
+    }
+
     public static func hmacSHA512(key: Data, data: Data) -> Data {
         Data(HMAC<SHA512>.authenticationCode(for: data, using: SymmetricKey(data: key)))
     }

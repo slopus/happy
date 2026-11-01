@@ -23,6 +23,11 @@ public final class ServerFormView: UIView {
         didSet { apply() }
     }
 
+    /// The button's title while not validating.
+    public var saveTitle = Strings.Common.save {
+        didSet { apply() }
+    }
+
     let label = StyledLabel(style: TextStyles.fieldLabel, color: Palette.textSecondary, lines: 1)
     let fieldBackground = UIView()
     let errorLabel = StyledLabel(style: TextStyles.fieldError, color: Palette.textDestructive)
@@ -113,7 +118,7 @@ public final class ServerFormView: UIView {
         validatingLabel.isHidden = !isValidating
         field.isEnabled = !isValidating
         field.alpha = isValidating ? 0.6 : 1
-        save.title = isValidating ? Strings.Server.validating : Strings.Common.save
+        save.title = isValidating ? Strings.Server.validating : saveTitle
         save.isEnabled = !isValidating
         reset.isHidden = !isCustomServer
         statusLabel.isHidden = !isCustomServer

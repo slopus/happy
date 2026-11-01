@@ -306,7 +306,8 @@ public actor SyncEngine {
                        type != "agent.draft.updated" { scheduleReconcile(generation) }
                 }
             } catch AgentClientError.revoked {
-                snapshot.live = false; snapshot.error = "This device was disconnected. Pair it again."
+                snapshot.live = false
+                snapshot.error = client.signsIn ? "Your sign-in to this server has ended. Sign in again." : "This device was disconnected. Pair it again."
                 publish()
                 return
             } catch {
@@ -317,7 +318,10 @@ public actor SyncEngine {
             await documents.closed()
             guard current(generation) else { return }
             snapshot.live = false; publish()
-            do { try await Task.sleep(for: .seconds(min(30, 1 << min(attempt, 5)))) } catch { return }
+            // A signed-in server's edge closes idle connections; come back
+            // quickly (edge SSO contract §5: 0.1 s doubling to 10 s).
+            let delay: Duration = client.signsIn ? .milliseconds(min(10_000, 100 << min(attempt, 7))) : .seconds(min(30, 1 << min(attempt, 5)))
+            do { try await Task.sleep(for: delay) } catch { return }
             attempt += 1
         }
     }

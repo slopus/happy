@@ -55,7 +55,9 @@ final class AppConfigurationTests: XCTestCase {
         let info = try plist(.development)
         XCTAssertEqual(info["CFBundleShortVersionString"] as? String, "2026.10.1")
         let schemes = (info["CFBundleURLTypes"] as? [[String: Any]])?.first?["CFBundleURLSchemes"] as? [String]
+        // `happy` also carries the server sign-in's redirect (`OAuthRedirect`).
         XCTAssertEqual(schemes, ["happy"])
+        XCTAssertEqual(schemes?.contains(OAuthRedirect.scheme), true)
     }
 
     func testBuildFilesUseTheRNBundleIds() throws {

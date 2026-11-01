@@ -33,6 +33,8 @@ struct BrowserFailure {
         case BrowserError.tooLarge: self.init(413, "Content Too Large", "request_too_large")
         case BrowserError.unavailable: self.init(503, "Service Unavailable", "route_unavailable")
         case BrowserError.timeout: self.init(408, "Request Timeout", "request_timeout")
+        case BrowserError.tunnelsBlocked: self.init(503, "Service Unavailable", "tunnels_blocked")
+        case AgentClientError.revoked, is TunnelRefusal: self.init(401, "Unauthorized", "sign_in_required")
         case BrowserError.upstream(let status) where (400...599).contains(status):
             self.init(status, "Upstream Refused", "upstream_refused")
         case let transport as TailcatTransportError:

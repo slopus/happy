@@ -44,7 +44,9 @@ actor AgentEndpoint {
 
     @discardableResult
     func apply(_ advertisement: AgentEndpointAdvertisement, from source: Snapshot) async throws -> Bool {
-        guard !retired, !changing, source.revision == revision,
+        // A signed-in server's origin is where its person signed in; a
+        // daemon never moves the bearer somewhere else.
+        guard !retired, !changing, source.revision == revision, credentials.signIn == nil,
               case .publicUrl(let url) = advertisement, url != credentials.publicUrl else { return false }
         changing = true
         defer { changing = false }
@@ -133,6 +135,8 @@ actor AgentEndpointTransport: AgentTransport {
         try await current().0.stream(path: path, credential: credential, headers: headers)
     }
     func browserConnection() async throws -> any BrowserStream { try await current().0.browserConnection() }
+    func proxyTunnel(_ path: String, credential: String) async throws -> any BrowserStream { try await current().0.proxyTunnel(path, credential: credential) }
+    func bearer(_ credential: String) async throws -> String { try await current().0.bearer(credential) }
     func reset() async { await selected?.0.reset() }
     func reset(_ category: RequestCategory) async { await selected?.0.reset(category) }
     func close() async {

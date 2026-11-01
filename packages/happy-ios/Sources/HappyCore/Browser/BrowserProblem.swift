@@ -25,6 +25,11 @@ public enum BrowserProblem: Equatable, Sendable {
     case crashed
     /// A link to an app or scheme this phone has nothing to open with.
     case unsupported(scheme: String)
+    /// The team server's network allows neither CONNECT nor WebSocket
+    /// tunnels, so pages can't open through it.
+    case tunnelsBlocked
+    /// The team server wants its person to sign in again.
+    case signInRequired
     /// Anything else, in the system's own words.
     case other(String)
 
@@ -87,6 +92,8 @@ public enum BrowserProblem: Equatable, Sendable {
         if link == .waitingForNetwork { return .noNetwork }
         if link == .offline { return .computerUnreachable }
         switch error {
+        case BrowserError.tunnelsBlocked: return .tunnelsBlocked
+        case AgentClientError.revoked, is TunnelRefusal: return .signInRequired
         case is BrowserError, is AgentClientError: return .unavailable
         default: return .computerUnreachable
         }
@@ -126,6 +133,8 @@ public struct BrowserProxyRefusal: Equatable, Sendable {
         case "browser_proxy_upstream_timeout": return .timedOut
         case "browser_proxy_upstream_response_invalid": return .serverNotResponding
         case "browser_proxy_upstream_refused" where (502...504).contains(status): return .serverNotResponding
+        case "browser_proxy_tunnels_blocked": return .tunnelsBlocked
+        case "browser_proxy_sign_in_required": return .signInRequired
         default: return .unavailable
         }
     }
