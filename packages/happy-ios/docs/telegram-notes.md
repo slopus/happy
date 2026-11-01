@@ -382,8 +382,27 @@ rendering the resulting `file` tool rows.
 
 **What we do.**
 
-- `TextReveal` (HappyLayout) is the controller with Telegram's constants.
-  `RevealMap` is where each character of a row ends, line by line, worked
+- `TextReveal` (HappyLayout) is the controller with Telegram's constants,
+  with two changes so words already here never crawl out. Telegram shows a
+  first chunk at 40 characters a second however long it is, so a whole
+  message or a reconnect's text took many seconds; here the first chunk is
+  paced like the others, out by when the next is due, never slower than 40.
+  Telegram's finish eases the speed up and takes up to half a second; here
+  `finish` takes the speed at once, and the rest is out in 0.3 s.
+- *Which message.* Telegram reveals only a message with a typing draft
+  (`TypingDraftMessageAttribute`). There is one per chat, it is the newest
+  message, and it finishes (`finalize`, 0.3 s) the moment its draft ends. A
+  message read from history has no draft, so it never reveals.
+  `RevealFocus` does the same for our rows. Only the newest row reveals,
+  while the agent works. A row that stops being the newest (a tool call, a
+  newer segment or message came after it, or the agent stopped) finishes in
+  0.3 s. A reveal starts only for words that arrive while the chat is on
+  screen. It never starts for the history a chat opens with, for what came
+  while another screen was over it, for the catch-up after the app was in
+  the background, for several rows arriving in one update, or for a row
+  that grew by more than 400 characters at once. The person's queued sends,
+  under the work in the agents' chat, don't count as newer.
+- `RevealMap` is where each character of a row ends, line by line, worked
   out off the main thread from the row's plan (`ChatRevealMapping`, warmed by
   the planners). Pictures, code scrollers and tables come out whole, as
   blocks.
@@ -397,12 +416,15 @@ rendering the resulting `file` tool rows.
   so the rows above slide and the newest row stays on the composer. A row
   never gets shorter while it reveals (a table is a paragraph until its rule
   arrives); it settles once whole.
-- Only the newest of the agent's rows reveals: in the agent chat while the
-  agent works, in the Happy CLI chat while the session thinks. A row grows
-  only from the words it had. A pass that moves nothing lands at once, so a
-  growth in flight is never retimed. A second of quiet, or the turn ending,
-  finishes the reveal in 0.3 s. The Happy CLI chat keeps a row that revealed
-  on its native canvas, so it never swaps to a bitmap on screen.
+- "The agent works" is the agent chat's working state, or, in the Happy CLI
+  chat, the session thinking. A row grows only from the words it had. A
+  pass that moves nothing lands at once, so a growth in flight is never
+  retimed. A second of quiet finishes the reveal in 0.3 s. A row scrolled
+  off the list mid-reveal keeps revealing, and its view shows on from there
+  when it comes back. The Happy CLI chat keeps a row that revealed on its
+  native canvas, so it never swaps to a bitmap on screen. The CLI sends
+  each message whole, so there a new message at the newest end comes out
+  in about half a second, and the one before it finishes.
 - Reduce Motion, or `HAPPY_REVEAL_OFF` (for comparing), shows replies as
   they come.
 

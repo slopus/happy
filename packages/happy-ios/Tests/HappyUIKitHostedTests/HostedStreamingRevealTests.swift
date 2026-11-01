@@ -19,7 +19,20 @@ private struct RevealNoSocket: WebSocketConnector {
 
 /// One agent, `a`, with twelve finished turns; replies stream in through
 /// the store's events (`Store.externalEvent`), as the daemon's would.
+/// `working`: a thirteenth turn is running, its reply half written.
 private actor RevealComputer: AgentTransport {
+    let working: Bool
+
+    init(working: Bool = false) { self.working = working }
+
+    static let running: JSONValue = .object([
+        "id": .string("r-live"), "status": .string("running"), "startedAt": .number(5_000),
+        "messages": .array([
+            message("u-live", role: "user", [text("And the flaky one?")]),
+            message("m-live", role: "agent", [text(String(repeating: "The fixture's clock runs ahead of the file's modification time. ", count: 9))], status: "streaming"),
+        ]),
+    ])
+
     static func text(_ text: String) -> JSONValue { .object(["type": .string("text"), "text": .string(text)]) }
 
     static func message(_ id: String, role: String, _ content: [JSONValue], status: String? = nil) -> JSONValue {
@@ -42,9 +55,9 @@ private actor RevealComputer: AgentTransport {
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) throws -> HTTP1Response {
         let value: JSONValue
         if path.contains("/agents/a/messages?") {
-            value = .object(["hasMore": .bool(false), "runs": .array(Self.runs)])
+            value = .object(["hasMore": .bool(false), "runs": .array(Self.runs + (working ? [Self.running] : []))])
         } else if path.hasSuffix("/agents/a/bootstrap") {
-            value = .object(["agent": .object(["id": .string("a"), "workspaceId": .string("w"), "status": .string("idle")]), "pending": .array([])])
+            value = .object(["agent": .object(["id": .string("a"), "workspaceId": .string("w"), "status": .string(working ? "working" : "idle")]), "pending": .array([])])
         } else {
             value = .object([:])
         }
@@ -222,8 +235,8 @@ final class HostedStreamingRevealTests: XCTestCase {
         var store: Store
     }
 
-    private func agentChat() async throws -> AgentScreen {
-        let computer = RevealComputer()
+    private func agentChat(working: Bool = false) async throws -> AgentScreen {
+        let computer = RevealComputer(working: working)
         let controller = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
@@ -422,6 +435,7 @@ final class HostedStreamingRevealTests: XCTestCase {
         let hostWindow = scene.keyWindow
         // The fixture chat whose reply starts streaming 0.8 s after it opens.
         let sessionId = FixtureScenarios.prefix + FixtureScenario.live.rawValue
+        await FixtureChatWorld.shared.reset(sessionId)
         let chat = LegacyChatViewController(context: context, session: account, sessionId: sessionId)
         let navigation = UINavigationController(rootViewController: UIViewController())
         navigation.pushViewController(chat, animated: false)
@@ -519,6 +533,509 @@ final class HostedStreamingRevealTests: XCTestCase {
         let drift = (gaps.max() ?? 0) - (gaps.min() ?? 0)
         print("HostedStreamingRevealTests \(label): composer gap \(gaps.min() ?? 0)…\(gaps.max() ?? 0)")
         XCTAssertLessThanOrEqual(drift, 1, "\(label): the reply left the composer by \(drift) points", file: file, line: line)
+    }
+}
+
+/// The reveal's own state on every display frame: the row at the stream's
+/// pace, the rows coming out, and for each watched row how far its pace
+/// has come, what shows, and what its view shows.
+@MainActor
+private final class FocusSampler: NSObject {
+    struct Row {
+        /// How far the pace has come; nil while it shows whole.
+        var paced: Int?
+        var shown: Int?
+        var length: Int?
+        /// What the row's view shows of it, while it has one that reveals.
+        var presented: Int?
+        /// It has a view on the list.
+        var loaded: Bool
+    }
+
+    struct Frame {
+        var time: CFTimeInterval
+        var target: String?
+        var revealing: Set<String>
+        var rows: [String: Row]
+    }
+
+    private let driver: ChatRevealDriver
+    private let watched: [String]
+    private let presenter: (String) -> ChatRevealPresenter?
+    private var link: CADisplayLink?
+    private(set) var frames: [Frame] = []
+
+    init(driver: ChatRevealDriver, watched: [String], presenter: @escaping (String) -> ChatRevealPresenter?) {
+        self.driver = driver
+        self.watched = watched
+        self.presenter = presenter
+    }
+
+    func start() {
+        let link = CADisplayLink(target: self, selector: #selector(tick))
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+        link.add(to: .main, forMode: .common)
+        self.link = link
+    }
+
+    func stop() {
+        link?.invalidate()
+        link = nil
+    }
+
+    @objc private func tick() {
+        var rows: [String: Row] = [:]
+        for identity in Set(watched).union(driver.revealing) {
+            let state = driver.state(identity)
+            let view = presenter(identity)
+            rows[identity] = Row(paced: driver.paced(identity), shown: state?.count, length: state?.map.length,
+                                 presented: view?.isActive == true ? view?.shown : nil, loaded: view != nil)
+        }
+        frames.append(Frame(time: CACurrentMediaTime(), target: driver.target, revealing: driver.revealing, rows: rows))
+    }
+}
+
+// MARK: Only the newest row comes out, and only as it arrives
+
+extension HostedStreamingRevealTests {
+    private static func toolCall(_ id: String) -> JSONValue {
+        .object(["type": .string("tool_call"), "id": .string(id), "name": .string("exec_command"), "status": .string("completed"),
+                 "presentation": .object(["type": .string("exec_command"), "command": .string("swift test --filter CacheTests")])])
+    }
+
+    private func started(_ run: String, store: Store) async {
+        await store.externalEvent(event("run.started", ["run": .object(["id": .string(run), "status": .string("running"), "startedAt": .number(5_000)]), "acceptedMessageIds": .array([])]))
+    }
+
+    private func created(_ id: String, run: String, _ content: [JSONValue], store: Store) async {
+        await store.externalEvent(event("message.created", ["runId": .string(run), "message": RevealComputer.message(id, role: "agent", content, status: "streaming")]))
+    }
+
+    private func delta(_ id: String, run: String, block: Int = 0, offset: Int, _ append: String, store: Store) async {
+        await store.externalEvent(event("message.delta", [
+            "runId": .string(run), "messageId": .string(id), "blockIndex": .number(Double(block)),
+            "offset": .number(Double(offset)), "append": .string(append),
+        ]))
+    }
+
+    /// Streams `text` into message `id`'s first block as a model would, a
+    /// chunk every 35 ms, after `text`'s first chunk made it.
+    private func streamAgent(_ text: String, id: String, run: String, store: Store) async throws {
+        let chunks = Self.chunks(text)
+        var sent = chunks[0]
+        await created(id, run: run, [RevealComputer.text(sent)], store: store)
+        for chunk in chunks.dropFirst() {
+            try await Task.sleep(for: .milliseconds(35))
+            await delta(id, run: run, offset: sent.utf16.count, chunk, store: store)
+            sent += chunk
+        }
+    }
+
+    private func agentPresenter(_ screen: AgentScreen, _ identity: String) -> ChatRevealPresenter? {
+        let list = screen.transcript.list
+        guard let index = list.items.firstIndex(where: { $0.identity == identity }) else { return nil }
+        return (list.loadedItemView(at: index) as? AgentChatRowView)?.reveal
+    }
+
+    private func agentSampler(_ screen: AgentScreen, _ watched: [String]) -> FocusSampler {
+        FocusSampler(driver: screen.transcript.reveal, watched: watched) { [unowned self] in agentPresenter(screen, $0) }
+    }
+
+    /// A reply comes out, then a newer segment arrives while it still is:
+    /// the first is out within 0.3 s, and only the second goes at the
+    /// stream's pace.
+    func testAnAgentsNewerSegmentFinishesTheOneComingOut() async throws {
+        let screen = try await agentChat()
+        let first = "chat:row:seg-1", second = "chat:row:seg-2"
+        let sampler = agentSampler(screen, [first, second])
+        sampler.start()
+        await started("seg", store: screen.store)
+        // Arriving in one piece, long: it comes out, quickly.
+        await created("seg-1", run: "seg", [RevealComputer.text(Self.reply)], store: screen.store)
+        try await Task.sleep(for: .milliseconds(150))
+        try await streamAgent(Self.reply, id: "seg-2", run: "seg", store: screen.store)
+        try await Task.sleep(for: .milliseconds(800))
+        sampler.stop()
+        assertTheNewerFinishesTheOlder(sampler.frames, older: first, newer: second, "agent")
+    }
+
+    /// One update brings three segments of the agent's words with tool calls
+    /// between: none comes out. The newest is still being written, and its
+    /// next words do.
+    func testABurstOfAgentSegmentsShowsWhole() async throws {
+        let screen = try await agentChat()
+        ChatRevealDriver.starts = []
+        let segments = ["chat:row:burst", "chat:row:burst/2", "chat:row:burst/4"]
+        let sampler = agentSampler(screen, segments)
+        sampler.start()
+        await started("burst", store: screen.store)
+        let last = "Both fixes are in; the suite passes every time now."
+        await created("burst", run: "burst", [
+            RevealComputer.text(String(Self.reply.prefix(300))), Self.toolCall("burst-t1"),
+            RevealComputer.text(String(Self.reply.dropFirst(300).prefix(300))), Self.toolCall("burst-t3"),
+            RevealComputer.text(last),
+        ], store: screen.store)
+        try await Task.sleep(for: .milliseconds(800))
+        XCTAssertTrue(segments.allSatisfy { id in screen.transcript.list.items.contains { $0.identity == id } }, "the segments never landed: \(screen.chat.plans.map(\.id))")
+        XCTAssertEqual(ChatRevealDriver.starts, [], "a segment of the burst came out")
+        await delta("burst", run: "burst", block: 4, offset: last.utf16.count, " The cache drops the entry", store: screen.store)
+        try await Task.sleep(for: .milliseconds(35))
+        await delta("burst", run: "burst", block: 4, offset: last.utf16.count + 26, " as soon as the file changes.", store: screen.store)
+        try await Task.sleep(for: .milliseconds(600))
+        sampler.stop()
+        XCTAssertEqual(ChatRevealDriver.starts, ["chat:row:burst/4"], "the newest segment's next words did not come out alone")
+    }
+
+    /// A conversation opened while the agent is half way through a reply:
+    /// none of what is there comes out, and what arrives next does.
+    func testOpeningAnAgentsChatMidReplyShowsItWhole() async throws {
+        ChatRevealDriver.starts = []
+        let screen = try await agentChat(working: true)
+        try await Task.sleep(for: .milliseconds(600))
+        XCTAssertTrue(screen.chat.plans.contains { $0.id == "m-live" }, "the running turn never landed")
+        XCTAssertEqual(ChatRevealDriver.starts, [], "the history came out")
+        let sent = String(repeating: "The fixture's clock runs ahead of the file's modification time. ", count: 9)
+        await delta("m-live", run: "r-live", offset: sent.utf16.count, "So the test", store: screen.store)
+        try await Task.sleep(for: .milliseconds(35))
+        await delta("m-live", run: "r-live", offset: sent.utf16.count + 11, " fails.", store: screen.store)
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(ChatRevealDriver.starts, ["chat:row:m-live"], "the words that arrived after did not come out")
+    }
+
+    /// Scrolled away from a reply coming out and back: it goes on from
+    /// where it was, never again from the start.
+    func testAnAgentsReplyScrolledAwayAndBackGoesOn() async throws {
+        let screen = try await agentChat()
+        ChatRevealDriver.starts = []
+        let identity = "chat:row:far-m"
+        let sampler = agentSampler(screen, [identity])
+        sampler.start()
+        await started("far", store: screen.store)
+        let streaming = Task { try await self.streamAgent(Self.reply + "\n\n" + Self.reply, id: "far-m", run: "far", store: screen.store) }
+        try await Task.sleep(for: .milliseconds(800))
+        screen.transcript.list.scrollTo(.init(index: 24), transition: .none)
+        let away = try await until { self.agentPresenter(screen, identity) == nil }
+        XCTAssertTrue(away, "the reply's row stayed on the list")
+        try await Task.sleep(for: .milliseconds(400))
+        screen.transcript.scrollToNewest(animated: false)
+        try await streaming.value
+        try await Task.sleep(for: .milliseconds(400))
+        sampler.stop()
+        assertGoesOnAfterTheRowCameBack(sampler.frames, identity, "agent")
+        XCTAssertEqual(ChatRevealDriver.starts, [identity], "the reply came out again from the start")
+    }
+
+    /// The app goes to the background mid-reply: it shows whole, the
+    /// catch-up on the way back shows whole, and what arrives after comes
+    /// out again.
+    func testAnAgentsCatchUpAfterTheBackgroundShowsWhole() async throws {
+        let screen = try await agentChat()
+        ChatRevealDriver.starts = []
+        let identity = "chat:row:bg-m"
+        await started("bg", store: screen.store)
+        let chunks = Self.chunks(Self.reply)
+        var sent = chunks[0]
+        await created("bg-m", run: "bg", [RevealComputer.text(sent)], store: screen.store)
+        for chunk in chunks[1..<12] {
+            try await Task.sleep(for: .milliseconds(35))
+            await delta("bg-m", run: "bg", offset: sent.utf16.count, chunk, store: screen.store)
+            sent += chunk
+        }
+        try await Task.sleep(for: .milliseconds(35))
+        XCTAssertTrue(screen.transcript.reveal.isRevealing(identity), "the reply wasn't coming out")
+        try await assertTheCatchUpShowsWhole(screen.transcript.reveal, identity) { [self] grown in
+            await delta("bg-m", run: "bg", offset: sent.utf16.count, grown, store: screen.store)
+            sent += grown
+        } height: {
+            guard let index = screen.transcript.list.items.firstIndex(where: { $0.identity == identity }) else { return nil }
+            return (screen.transcript.list.items[index] as? AgentChatRow).map { ($0.height, $0.plan.size.height) }
+        }
+    }
+
+    // MARK: The Happy CLI chat
+
+    private struct LegacyScreen {
+        var sessionId: String
+        var list: ChatListView
+        @MainActor var adapter: ChatUltraListAdapter { list.ultra }
+    }
+
+    /// The live fixture chat, thinking, with its own reply held back.
+    private func legacyChat() async throws -> LegacyScreen {
+        let controller = AccountController(
+            serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
+            credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
+            rnServerImport: { .confirmed(ServerConfig.defaultServerURL) },
+            transport: RevealOffline(), connector: RevealNoSocket()
+        )
+        try await controller.signIn(Credentials(token: "t", secret: Data(repeating: 7, count: 32)))
+        let account = try XCTUnwrap(controller.session)
+        let context = AppContext(account: controller, variant: .development, version: "test")
+        let scene = try await hostedActiveScene()
+        let hostWindow = scene.keyWindow
+        let sessionId = FixtureScenarios.prefix + FixtureScenario.live.rawValue
+        // Twelve earlier turns, a day before the live one.
+        let history: [ChatMessage] = (0..<12).flatMap { index -> [ChatMessage] in
+            let at = FixtureScenarios.now - 2 * 86_400_000 + Int64(index) * 60_000
+            let answer = "Answer \(index). " + String(repeating: "The cache keeps what it read and drops it when the file changes. ", count: 2 + index % 3)
+            return [
+                .userText(UserTextMessage(id: "user-h\(index)", createdAt: at, text: "Question \(index): why does the cache test fail?")),
+                .agentText(AgentTextMessage(id: "agent-h\(index)", createdAt: at + 1_000, turn: "turn-h\(index)", text: answer)),
+            ]
+        }
+        await FixtureChatWorld.shared.reset(sessionId, streams: false, history: history)
+        let chat = LegacyChatViewController(context: context, session: account, sessionId: sessionId)
+        let navigation = UINavigationController(rootViewController: UIViewController())
+        navigation.pushViewController(chat, animated: false)
+        let window = hostedKeyWindow(in: scene, root: navigation)
+        addTeardownBlock { @MainActor in
+            window.isHidden = true
+            hostWindow?.makeKey()
+            await FixtureChatWorld.shared.reset(sessionId)
+            await controller.signOut()
+        }
+        window.layoutIfNeeded()
+        let constructed = try await until { chat.contentInstalled }
+        XCTAssertTrue(constructed)
+        let list = try XCTUnwrap(find(ChatListView.self, in: chat.view))
+        let loaded = try await until { list.plans.count > 20 && list.ultra.list.loadedItemView(at: 1) != nil }
+        XCTAssertTrue(loaded, "the chat never landed: \(list.plans.count) rows")
+        try await Task.sleep(for: .milliseconds(400))
+        return LegacyScreen(sessionId: sessionId, list: list)
+    }
+
+    private func legacyPresenter(_ screen: LegacyScreen, _ identity: String) -> ChatRevealPresenter? {
+        let list = screen.adapter.list
+        guard let index = list.items.firstIndex(where: { $0.identity == identity }) else { return nil }
+        return (list.loadedItemView(at: index) as? ChatUltraRowView)?.reveal
+    }
+
+    private func legacySampler(_ screen: LegacyScreen, _ watched: [String]) -> FocusSampler {
+        FocusSampler(driver: screen.adapter.reveal, watched: watched) { [unowned self] in legacyPresenter(screen, $0) }
+    }
+
+    private func agentText(_ id: String, _ text: String) async -> ChatMessage {
+        .agentText(AgentTextMessage(id: id, createdAt: await FixtureChatWorld.shared.now(), turn: "turn-live", text: text))
+    }
+
+    /// Grows message `id` to `text` as the CLI's fixture does: 6 to 18
+    /// characters every 45 ms.
+    private func streamLegacy(_ text: String, id: String, _ screen: LegacyScreen) async throws {
+        let world = FixtureChatWorld.shared
+        var shown = text.index(text.startIndex, offsetBy: 12)
+        await world.arrive([await agentText(id, String(text[..<shown]))], sessionId: screen.sessionId)
+        var step = 0
+        while shown < text.endIndex {
+            try await Task.sleep(for: .milliseconds(45))
+            step += 1
+            shown = text.index(shown, offsetBy: 6 + step * 7 % 13, limitedBy: text.endIndex) ?? text.endIndex
+            await world.say(String(text[..<shown]), id: id, sessionId: screen.sessionId)
+        }
+    }
+
+    func testALegacyNewerMessageFinishesTheOneComingOut() async throws {
+        let screen = try await legacyChat()
+        let first = "chat:message:agent-whole", second = "chat:message:agent-next"
+        let sampler = legacySampler(screen, [first, second])
+        sampler.start()
+        // A whole message, as the CLI sends them: it comes out, quickly.
+        await FixtureChatWorld.shared.arrive([await agentText("agent-whole", Self.reply)], sessionId: screen.sessionId)
+        try await Task.sleep(for: .milliseconds(150))
+        try await streamLegacy(Self.reply, id: "agent-next", screen)
+        try await Task.sleep(for: .milliseconds(800))
+        sampler.stop()
+        assertTheNewerFinishesTheOlder(sampler.frames, older: first, newer: second, "legacy")
+    }
+
+    /// Three messages in one snapshot (a catch-up): none comes out. The
+    /// newest goes on growing, and that comes out.
+    func testABurstOfLegacyMessagesShowsWhole() async throws {
+        let screen = try await legacyChat()
+        ChatRevealDriver.starts = []
+        let world = FixtureChatWorld.shared
+        let at = await world.now()
+        let tool = ChatMessage.toolCall(ToolCallMessage(id: "burst-tool", createdAt: at + 1, turn: "turn-live", tool: ToolCall(
+            name: "Bash", state: .completed, input: .object(["command": .string("swift test")]), createdAt: at + 1, startedAt: at + 1
+        )))
+        let last = "Both fixes are in; the suite passes every time now."
+        await world.arrive([
+            .agentText(AgentTextMessage(id: "burst-a", createdAt: at, turn: "turn-live", text: String(Self.reply.prefix(300)))), tool,
+            .agentText(AgentTextMessage(id: "burst-b", createdAt: at + 2, turn: "turn-live", text: last)),
+        ], sessionId: screen.sessionId)
+        try await Task.sleep(for: .milliseconds(800))
+        XCTAssertTrue(screen.list.plans.contains { $0.id == "burst-b" }, "the burst never landed")
+        XCTAssertEqual(ChatRevealDriver.starts, [], "a message of the burst came out")
+        await world.say(last + " The cache drops", id: "burst-b", sessionId: screen.sessionId)
+        try await Task.sleep(for: .milliseconds(45))
+        await world.say(last + " The cache drops the entry at once.", id: "burst-b", sessionId: screen.sessionId)
+        try await Task.sleep(for: .milliseconds(600))
+        XCTAssertEqual(ChatRevealDriver.starts, ["chat:message:burst-b"], "the newest message's next words did not come out alone")
+    }
+
+    /// The chat opens on its history while the session thinks: none of it
+    /// comes out, the second time it opens neither.
+    func testOpeningALegacyChatShowsItsHistoryWhole() async throws {
+        ChatRevealDriver.starts = []
+        let screen = try await legacyChat()
+        try await Task.sleep(for: .milliseconds(600))
+        XCTAssertEqual(ChatRevealDriver.starts, [], "the history came out")
+        // Again, with the history as the first one left it.
+        await FixtureChatWorld.shared.arrive([await agentText("agent-before", Self.reply)], sessionId: screen.sessionId)
+        try await Task.sleep(for: .milliseconds(800))
+        ChatRevealDriver.starts = []
+        let scene = try await hostedActiveScene()
+        let controller = AccountController(
+            serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
+            credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
+            rnServerImport: { .confirmed(ServerConfig.defaultServerURL) },
+            transport: RevealOffline(), connector: RevealNoSocket()
+        )
+        try await controller.signIn(Credentials(token: "t", secret: Data(repeating: 7, count: 32)))
+        let account = try XCTUnwrap(controller.session)
+        let again = LegacyChatViewController(context: AppContext(account: controller, variant: .development, version: "test"), session: account, sessionId: screen.sessionId)
+        let navigation = UINavigationController(rootViewController: UIViewController())
+        navigation.pushViewController(again, animated: false)
+        let window = hostedKeyWindow(in: scene, root: navigation)
+        addTeardownBlock { @MainActor in
+            window.isHidden = true
+            await controller.signOut()
+        }
+        window.layoutIfNeeded()
+        let reopened = try await until { again.contentInstalled }
+        XCTAssertTrue(reopened)
+        let list = try XCTUnwrap(find(ChatListView.self, in: again.view))
+        let landed = try await until { list.plans.contains { $0.id == "agent-before" } }
+        XCTAssertTrue(landed)
+        try await Task.sleep(for: .milliseconds(600))
+        XCTAssertEqual(ChatRevealDriver.starts, [], "the history came out on opening again")
+    }
+
+    func testALegacyReplyScrolledAwayAndBackGoesOn() async throws {
+        let screen = try await legacyChat()
+        ChatRevealDriver.starts = []
+        let identity = "chat:message:agent-far"
+        let sampler = legacySampler(screen, [identity])
+        sampler.start()
+        let streaming = Task { try await self.streamLegacy(Self.reply + "\n\n" + Self.reply, id: "agent-far", screen) }
+        try await Task.sleep(for: .milliseconds(900))
+        screen.list.setVisibleMinY(2400)
+        let away = try await until { self.legacyPresenter(screen, identity) == nil }
+        XCTAssertTrue(away, "the reply's row stayed on the list")
+        try await Task.sleep(for: .milliseconds(400))
+        screen.list.scrollToNewest(animated: false)
+        try await streaming.value
+        try await Task.sleep(for: .milliseconds(400))
+        sampler.stop()
+        assertGoesOnAfterTheRowCameBack(sampler.frames, identity, "legacy")
+        XCTAssertEqual(ChatRevealDriver.starts, [identity], "the reply came out again from the start")
+    }
+
+    func testALegacyCatchUpAfterTheBackgroundShowsWhole() async throws {
+        let screen = try await legacyChat()
+        ChatRevealDriver.starts = []
+        let identity = "chat:message:agent-bg"
+        let world = FixtureChatWorld.shared
+        var text = String(Self.reply.prefix(12))
+        await world.arrive([await agentText("agent-bg", text)], sessionId: screen.sessionId)
+        for _ in 0..<10 {
+            try await Task.sleep(for: .milliseconds(45))
+            text = String(Self.reply.prefix(text.count + 11))
+            await world.say(text, id: "agent-bg", sessionId: screen.sessionId)
+        }
+        try await Task.sleep(for: .milliseconds(45))
+        XCTAssertTrue(screen.adapter.reveal.isRevealing(identity), "the reply wasn't coming out")
+        try await assertTheCatchUpShowsWhole(screen.adapter.reveal, identity) { grown in
+            text += grown
+            await world.say(text, id: "agent-bg", sessionId: screen.sessionId)
+        } height: {
+            guard let index = screen.adapter.list.items.firstIndex(where: { $0.identity == identity }) else { return nil }
+            return (screen.adapter.list.items[index] as? ChatUltraRow).map { ($0.height, $0.plan.size.height) }
+        }
+    }
+
+    // MARK: What each chat keeps to
+
+    /// `older` was coming out when `newer` arrived; from the frame `newer`
+    /// is on the list, `older` is out within `TextReveal.finishTime` (its
+    /// drawing within the glyph wait after), never the target again, and
+    /// `newer` comes out at the stream's pace, over many frames.
+    private func assertTheNewerFinishesTheOlder(_ frames: [FocusSampler.Frame], older: String, newer: String, _ label: String, file: StaticString = #filePath, line: UInt = #line) {
+        func done(_ row: FocusSampler.Row?, _ value: (FocusSampler.Row) -> Int?) -> Bool {
+            guard let row, let count = value(row), let length = row.length else { return true }
+            return count >= length
+        }
+        guard let arrival = frames.firstIndex(where: { $0.rows[newer]?.loaded == true || $0.revealing.contains(newer) }) else {
+            return XCTFail("\(label): the newer row never landed", file: file, line: line)
+        }
+        let at = frames[arrival].time
+        XCTAssertTrue(frames[..<arrival].contains { !done($0.rows[older], \.paced) }, "\(label): the older row wasn't coming out when the newer one came", file: file, line: line)
+        XCTAssertTrue(frames[arrival].revealing.contains(older) || done(frames[arrival].rows[older], \.paced), file: file, line: line)
+        let after = frames[arrival...]
+        let paced = after.first { done($0.rows[older], \.paced) }.map { $0.time - at }
+        let shown = after.first { done($0.rows[older], \.shown) }.map { $0.time - at }
+        print("HostedStreamingRevealTests \(label): the older row was out \(paced ?? -1) s after the newer came, shown \(shown ?? -1) s")
+        XCTAssertLessThanOrEqual(paced ?? .infinity, TextReveal.finishTime + 2.0 / 60, "\(label): the older row took \(paced ?? -1) s to finish", file: file, line: line)
+        XCTAssertLessThanOrEqual(shown ?? .infinity, TextReveal.finishTime + 0.1 + 2.0 / 60, "\(label): the older row showed whole \(shown ?? -1) s after", file: file, line: line)
+        XCTAssertFalse(after.contains { $0.target == older }, "\(label): the older row went on at the stream's pace", file: file, line: line)
+        let pacing = after.filter { $0.target == newer }
+        let counts = Set(pacing.compactMap { $0.rows[newer]?.paced })
+        XCTAssertGreaterThan(counts.count, 20, "\(label): the newer row came out in \(counts.count) steps", file: file, line: line)
+        XCTAssertTrue(after.contains { !done($0.rows[newer], \.paced) }, file: file, line: line)
+    }
+
+    /// The row went off the list while coming out and came back: what
+    /// shows of it never went back, and its view showed on from there.
+    private func assertGoesOnAfterTheRowCameBack(_ frames: [FocusSampler.Frame], _ identity: String, _ label: String, file: StaticString = #filePath, line: UInt = #line) {
+        let revealing = frames.filter { $0.revealing.contains(identity) }
+        XCTAssertGreaterThan(revealing.count, 60, "\(label): the reply came out for \(revealing.count) frames", file: file, line: line)
+        guard let left = frames.firstIndex(where: { $0.revealing.contains(identity) && $0.rows[identity]?.loaded == false }) else {
+            return XCTFail("\(label): the row never left the list while coming out", file: file, line: line)
+        }
+        guard let back = frames[left...].firstIndex(where: { $0.rows[identity]?.loaded == true }) else {
+            return XCTFail("\(label): the row never came back", file: file, line: line)
+        }
+        XCTAssertTrue(frames[back].revealing.contains(identity), "\(label): the reply was out before it came back, nothing to check", file: file, line: line)
+        let before = frames[left].rows[identity]?.shown ?? 0
+        let presented = frames[back].rows[identity]?.presented ?? 0
+        XCTAssertGreaterThan(before, 0, file: file, line: line)
+        XCTAssertGreaterThanOrEqual(presented, before, "\(label): the row came back showing \(presented) characters, \(before) before it left", file: file, line: line)
+        var previous = 0
+        for frame in revealing {
+            let shown = frame.rows[identity]?.shown ?? 0
+            XCTAssertGreaterThanOrEqual(shown, previous, "\(label): what shows went back from \(previous) to \(shown)", file: file, line: line)
+            previous = shown
+        }
+    }
+
+    /// With `identity` coming out, the app goes to the background: it
+    /// shows whole at once, and what arrives meanwhile and on the way back
+    /// (`grow`) doesn't come out; once that is in, the next words do.
+    /// `height` is the row's height on the list and its plan's.
+    private func assertTheCatchUpShowsWhole(_ driver: ChatRevealDriver, _ identity: String, grow: (String) async -> Void, height: () -> (CGFloat, CGFloat)?, file: StaticString = #filePath, line: UInt = #line) async throws {
+        NotificationCenter.default.post(name: UIApplication.didEnterBackgroundNotification, object: UIApplication.shared)
+        XCTAssertFalse(driver.isRevealing(identity), "the reply went on coming out in the background", file: file, line: line)
+        let starts = ChatRevealDriver.starts.count
+        for chunk in [" While away,", " the agent", " went on."] {
+            try await Task.sleep(for: .milliseconds(45))
+            await grow(chunk)
+        }
+        try await Task.sleep(for: .milliseconds(100))
+        NotificationCenter.default.post(name: UIApplication.willEnterForegroundNotification, object: UIApplication.shared)
+        try await Task.sleep(for: .milliseconds(150))
+        // The catch-up: under what a reconnect's size alone gives away.
+        await grow(" " + String(repeating: "What came while the app was away. ", count: 6))
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertEqual(ChatRevealDriver.starts.count, starts, "the catch-up came out: \(ChatRevealDriver.starts.suffix(2))", file: file, line: line)
+        if let (shown, planned) = height() {
+            XCTAssertEqual(shown, planned, accuracy: 0.5, "the caught-up row isn't whole", file: file, line: line)
+        } else {
+            XCTFail("the row is gone", file: file, line: line)
+        }
+        await grow(" And then")
+        try await Task.sleep(for: .milliseconds(45))
+        await grow(" more came.")
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(ChatRevealDriver.starts.suffix(1), [identity], "the words after the catch-up did not come out", file: file, line: line)
     }
 }
 #endif

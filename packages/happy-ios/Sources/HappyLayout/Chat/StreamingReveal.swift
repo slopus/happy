@@ -16,7 +16,15 @@ import CoreGraphics
 ///
 /// Adapted from Telegram-iOS
 /// `submodules/TelegramUI/Components/StreamingTextReveal/Sources/TextRevealController.swift`;
-/// the constants are Telegram's.
+/// the constants are Telegram's. Two things differ, both so that words that
+/// are already here never crawl out:
+/// - Before a second chunk, Telegram shows 40 characters a second however
+///   many there are, so a long first chunk (a whole message, a reconnect's
+///   catch-up) takes many seconds. Here the first chunk is paced like any
+///   other, to be out by when the next is due, and never slower than 40.
+/// - Telegram's finish eases the speed up to the finishing one, so it takes
+///   up to half a second. Here `finish` takes that speed at once, and what
+///   is left is out in `finishTime`, as it says.
 public struct TextReveal: Equatable, Sendable {
     /// How quickly the speed follows its target, in seconds.
     public static let speedTimeConstant = 0.12
@@ -80,11 +88,13 @@ public struct TextReveal: Equatable, Sendable {
         revealed = min(revealed, Double(self.length))
     }
 
-    /// Nothing more is coming: the text ends at `length`.
+    /// Nothing more is coming: the text ends at `length`, and what is left
+    /// comes out within `finishTime` from now.
     public mutating func finish(length: Int) {
         self.length = max(0, length)
         isFinishing = true
         revealed = min(revealed, Double(self.length))
+        speed = max(speed, (Double(self.length) - revealed) / Self.finishTime)
     }
 
     /// Moves on to `time`. `complete` once finishing and everything is shown.
@@ -94,10 +104,11 @@ public struct TextReveal: Equatable, Sendable {
         let target: Double
         if isFinishing {
             target = max(speed, lag / Self.finishTime)
-        } else if chunks < 2 {
-            target = lag > 0 ? Self.initialRate : 0
         } else if let nextChunkTime {
-            target = lag / max(Self.stallFloor, nextChunkTime - time)
+            let paced = lag / max(Self.stallFloor, nextChunkTime - time)
+            // The first chunk: out by when the next is due, at 40 a second
+            // or faster.
+            target = chunks < 2 && lag > 0 ? max(Self.initialRate, paced) : paced
         } else {
             target = lag > 0 ? Self.initialRate : 0
         }
@@ -105,6 +116,130 @@ public struct TextReveal: Equatable, Sendable {
         revealed = min(Double(length), revealed + speed * frame)
         lastFrameTime = time
         return (count, isFinishing && revealed >= Double(length))
+    }
+}
+
+/// Which of a transcript's rows shows its words as they stream, update by
+/// update. Telegram reveals only a bot's draft, the one message still being
+/// written, and finishes it the moment it stops being one
+/// (`ChatMessageTextBubbleContentNode`, `TypingDraftMessageAttribute`); a
+/// message read from history never reveals. Here:
+///
+/// - Only the newest row reveals at the stream's pace (`target`), while the
+///   agent works. A row that stops being the newest (anything came after
+///   it, or the agent stopped) finishes: what is left comes out in
+///   `TextReveal.finishTime`.
+/// - Only words that arrive while the chat is on screen reveal. Never the
+///   history it opens with, what came while it was away (another screen
+///   over it, the app in the background), or several rows arriving in one
+///   update or one row growing by a lot at once: a reconnect's catch-up
+///   or a burst. Those show whole.
+public struct RevealFocus: Equatable, Sendable {
+    /// What a row is next to the update before.
+    public enum Change: Equatable, Sendable {
+        /// It wasn't there.
+        case new
+        /// Its words are what they were and `by` characters more.
+        case grew(by: Int)
+        /// The same words, or other words: planned again, not streamed.
+        case same
+    }
+
+    public struct Row: Equatable, Sendable {
+        public var id: String
+        /// The agent's words, which may come out as they arrive.
+        public var revealable: Bool
+        public var change: Change
+
+        public init(id: String, revealable: Bool, change: Change) {
+            self.id = id
+            self.revealable = revealable
+            self.change = change
+        }
+    }
+
+    public enum Step: Equatable, Sendable {
+        /// Comes out from what it showed before, at the stream's pace.
+        case start
+        /// Goes on coming out, with its words as they are now.
+        case grow
+        /// What is left comes out within `TextReveal.finishTime`.
+        case finish
+        /// Shows whole at once.
+        case stop
+    }
+
+    /// More characters than this in one update were caught up with, not
+    /// streamed: a model's chunks are tens of characters, a few of them
+    /// together when the planner falls behind.
+    public static let catchUp = 400
+
+    /// The row coming out at the stream's pace.
+    public private(set) var target: String?
+    private var wasOnScreen = false
+    private var hadRows = false
+    /// The app is in the background.
+    private var away = false
+    /// It was, and what it missed hasn't come yet.
+    private var missed = false
+
+    public init() {}
+
+    /// The app went to the background: nothing reveals until it is back,
+    /// and what it missed comes whole.
+    public mutating func wentAway() {
+        away = true
+        missed = true
+        target = nil
+    }
+
+    public mutating func cameBack() { away = false }
+
+    /// One update's rows, oldest first. `streaming`: the agent is at work;
+    /// `onScreen`: the transcript is in a window; `revealing`: the rows
+    /// still coming out. Returns what each row that changes its reveal does.
+    public mutating func update(_ rows: [Row], streaming: Bool, onScreen: Bool, revealing: Set<String>) -> [String: Step] {
+        // What arrived: words that grew, and rows new after the first one
+        // already shown (older history paged in at the far end arrived
+        // from nowhere the reader was).
+        var arrived = 0
+        var caughtUp = false
+        var shown = false
+        for row in rows {
+            switch row.change {
+            case .new:
+                if shown { arrived += 1 }
+            case .grew(let by):
+                shown = true
+                arrived += 1
+                if by > Self.catchUp { caughtUp = true }
+            case .same:
+                shown = true
+            }
+        }
+        let live = onScreen && wasOnScreen && hadRows && !away && !missed
+        if missed, onScreen, !away, arrived > 0 { missed = false }
+        wasOnScreen = onScreen
+        hadRows = !rows.isEmpty
+
+        var steps: [String: Step] = [:]
+        var next: String?
+        if streaming, live, let newest = rows.last, newest.revealable {
+            if revealing.contains(newest.id) {
+                if caughtUp, newest.change != .same {
+                    steps[newest.id] = .stop
+                } else {
+                    steps[newest.id] = .grow
+                    next = newest.id
+                }
+            } else if newest.change != .same, arrived == 1, !caughtUp {
+                steps[newest.id] = .start
+                next = newest.id
+            }
+        }
+        for id in revealing where id != next && steps[id] == nil { steps[id] = .finish }
+        target = next
+        return steps
     }
 }
 

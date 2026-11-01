@@ -56,6 +56,9 @@ final class ChatRowPlan: @unchecked Sendable {
         revealable ? reveal.value { ChatRevealMapping.map(self) } : nil
     }
 
+    /// The map if it has been worked out already: never works it out.
+    var preparedRevealMap: RevealMap? { revealable ? reveal.prepared : nil }
+
     func warmReveal() { _ = revealMap }
 }
 
@@ -71,6 +74,12 @@ private final class ChatRevealMapBox: @unchecked Sendable {
         let made = make()
         map = made
         return made
+    }
+
+    var prepared: RevealMap? {
+        lock.lock()
+        defer { lock.unlock() }
+        return map
     }
 }
 

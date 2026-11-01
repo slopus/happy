@@ -1367,7 +1367,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         }
         let folds = foldMoved && view.window != nil
         foldMoved = false
-        ultra.apply(settled + waiting, intro: opening, animated: wasTaken, moves: folds, streaming: chat.working)
+        ultra.apply(settled + waiting, intro: opening, animated: wasTaken, moves: folds, streaming: chat.working, queued: waiting.count)
         updateJump()
     }
 

@@ -416,38 +416,26 @@ final class ChatUltraListAdapter {
         submit(update, target: target, transition: animated ? .easeInOut(0.2) : .none, followOnly: true)
     }
 
-    /// Words that grew while the agent works come out from where they
-    /// were; words that are whole now finish coming out.
+    /// Only the newest row comes out as it streams, and only with words
+    /// that arrive while the chat is on screen; any other finishes coming
+    /// out (`RevealFocus`).
     private func startReveals(_ update: ChatListUpdate) {
-        let streaming = update.streaming
-        // Newest first: the first of the agent's words is the one that streams.
-        let newest = update.plans.first(where: \.revealable)
-        var live = Set<String>()
-        for plan in update.plans where plan.revealable {
+        var focus: [RevealFocus.Row] = []
+        focus.reserveCapacity(update.plans.count)
+        // Newest first: the focus reads them oldest first.
+        for plan in update.plans.reversed() {
             let identity = "chat:message:\(plan.id)"
-            if reveal.isRevealing(identity) {
-                live.insert(identity)
-                if let kept = rows[identity], kept.plan !== plan, let map = plan.revealMap {
-                    reveal.update(identity, map: map, finishing: !streaming)
-                }
-                continue
-            }
-            guard streaming, ChatRevealDriver.enabled, plan === newest, latest != nil, list.window != nil, let map = plan.revealMap else { continue }
-            if let kept = rows[identity] {
-                // Grown, not merely planned again (another width, a copy tick).
-                guard kept.plan !== plan, kept.plan.revealable, let old = kept.plan.revealMap, map.length > old.length,
-                      ChatRevealMapping.grew(kept.plan, into: plan) else { continue }
-                reveal.start(identity, map: map, from: old.length, finishing: false)
-            } else {
-                // A reply's first words, at the newest end.
-                guard update.plans.first?.id == plan.id else { continue }
-                reveal.start(identity, map: map, from: 0, finishing: false)
-            }
-            revealed.insert(identity)
-            live.insert(identity)
+            focus.append(.init(id: identity, revealable: plan.revealable, change: ChatRevealMapping.change(from: rows[identity]?.plan, to: plan)))
         }
-        reveal.keep(live)
-        if !streaming { reveal.finishAll() }
+        let steps = reveal.focus(focus, streaming: update.streaming, onScreen: list.window != nil)
+        // The rows revealing are at the newest end, where the search starts.
+        let plans = update.plans
+        func plan(_ identity: String) -> ChatRowPlan? {
+            let id = identity.dropFirst("chat:message:".count)
+            return plans.first { $0.revealable && $0.id == id }
+        }
+        revealed.formUnion(reveal.perform(steps, plan: plan, previous: { [rows] in rows[$0]?.plan }))
+        reveal.keep { plan($0) != nil }
     }
 
     private func submit(_ update: ChatListUpdate, target: CGFloat?, transition: ListTransition, followOnly: Bool) {

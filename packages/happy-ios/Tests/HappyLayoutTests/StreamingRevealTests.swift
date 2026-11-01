@@ -10,19 +10,36 @@ import XCTest
 final class StreamingRevealTests: XCTestCase {
     // MARK: TextReveal
 
-    /// Before a second chunk says how fast they come, 40 a second, the
-    /// speed easing up to it over 0.12 s.
-    func testTheFirstChunkComesOutAtFortyASecond() {
+    /// Before a second chunk says how fast they come, a few words come out
+    /// at 40 a second, the speed easing up to it over 0.12 s.
+    func testAShortFirstChunkComesOutAtFortyASecond() {
         var reveal = TextReveal(revealed: 0, length: 0)
-        reveal.observe(length: 200, at: 0)
+        reveal.observe(length: 12, at: 0)
         var time = 0.0
         _ = reveal.tick(at: time)
-        while time < 1 {
+        while time < 0.2 {
             time += 1.0 / 120
             _ = reveal.tick(at: time)
         }
-        // 40 a second, less what the speed took to come up: about 0.12 s' worth.
-        XCTAssertEqual(reveal.revealed, 40 - 40 * TextReveal.speedTimeConstant, accuracy: 1.5)
+        // 40 a second, less what the speed took to come up.
+        XCTAssertEqual(reveal.revealed, 40 * (0.2 - TextReveal.speedTimeConstant * (1 - exp(-0.2 / TextReveal.speedTimeConstant))), accuracy: 0.6)
+    }
+
+    /// A long first chunk (a whole message, a reconnect's words) is out
+    /// by about when a next chunk would be due, not at 40 a second: a
+    /// thousand characters in well under a second, not 25.
+    func testALongFirstChunkNeverCrawls() {
+        var reveal = TextReveal(revealed: 0, length: 0)
+        reveal.observe(length: 1000, at: 0)
+        var time = 0.0
+        _ = reveal.tick(at: time)
+        while reveal.count < 1000, time < 5 {
+            time += 1.0 / 120
+            _ = reveal.tick(at: time)
+        }
+        XCTAssertEqual(reveal.count, 1000)
+        XCTAssertLessThan(time, TextReveal.initialGap + 0.3)
+        XCTAssertGreaterThan(time, TextReveal.initialGap - 0.2, "it still comes out, not at once")
     }
 
     /// Chunks 50 ms apart come out evenly: in no frame does the count leap,
@@ -52,24 +69,50 @@ final class StreamingRevealTests: XCTestCase {
     }
 
     /// Once the text is whole, what is left comes out at the speed that
-    /// would take 0.3 s, and the reveal says when it has.
+    /// takes 0.3 s, taken at once, and the reveal says when it has: 0.3 s
+    /// from the finish, however slowly it was going.
     func testFinishingShowsTheRestWithinThreeTenths() {
-        var reveal = TextReveal(revealed: 0, length: 0)
-        reveal.observe(length: 300, at: 0)
-        _ = reveal.tick(at: 0)
-        _ = reveal.tick(at: 0.05)
-        reveal.finish(length: 300)
-        var time = 0.05
+        for (length, lead) in [(300, 0.05), (1500, 0.05), (40, 0.5), (2000, 1.0)] {
+            var reveal = TextReveal(revealed: 0, length: 0)
+            reveal.observe(length: 10, at: 0)
+            var time = 0.0
+            _ = reveal.tick(at: 0)
+            while time < lead {
+                time += 1.0 / 120
+                _ = reveal.tick(at: time)
+            }
+            reveal.observe(length: length, at: time)
+            reveal.finish(length: length)
+            let finished = time
+            var complete = false
+            while !complete, time < 2 {
+                time += 1.0 / 120
+                complete = reveal.tick(at: time).complete
+            }
+            XCTAssertTrue(complete)
+            XCTAssertEqual(reveal.count, length)
+            XCTAssertLessThanOrEqual(time - finished, TextReveal.finishTime + 1.0 / 120 + 0.001, "\(length) characters took \(time - finished) s")
+        }
+    }
+
+    /// Finished again with more words, it still ends 0.3 s after.
+    func testFinishingAgainWithMoreKeepsToThreeTenths() {
+        var reveal = TextReveal(revealed: 0, length: 100)
+        reveal.finish(length: 100)
+        var time = 0.0
+        _ = reveal.tick(at: time)
+        for _ in 0..<12 {
+            time += 1.0 / 120
+            _ = reveal.tick(at: time)
+        }
+        reveal.finish(length: 400)
+        let finished = time
         var complete = false
-        while !complete, time < 1 {
+        while !complete, time < 2 {
             time += 1.0 / 120
             complete = reveal.tick(at: time).complete
         }
-        XCTAssertTrue(complete)
-        // The speed eases up to the finishing speed over its time constant,
-        // and the finishing speed falls as the lag does: half a second here.
-        XCTAssertLessThan(time - 0.05, TextReveal.finishTime + 0.25)
-        XCTAssertEqual(reveal.count, 300)
+        XCTAssertLessThanOrEqual(time - finished, TextReveal.finishTime + 1.0 / 120 + 0.001)
     }
 
     /// A hitch counts as one 50 ms frame, not a leap.
@@ -78,9 +121,12 @@ final class StreamingRevealTests: XCTestCase {
         reveal.observe(length: 1000, at: 0)
         _ = reveal.tick(at: 0)
         for frame in 1...60 { _ = reveal.tick(at: Double(frame) / 120) }
-        let before = reveal.revealed
+        XCTAssertLessThan(reveal.count, 1000)
+        // The same as a frame 50 ms after the last.
+        var frame = reveal
+        _ = frame.tick(at: 0.5 + TextReveal.longestFrame)
         _ = reveal.tick(at: 0.5 + 2)
-        XCTAssertLessThanOrEqual(reveal.revealed - before, 40 * TextReveal.longestFrame + 0.5)
+        XCTAssertEqual(reveal.revealed, frame.revealed, accuracy: 0.001)
     }
 
     /// Text that shrank (an edit) never shows more than there is.

@@ -79,8 +79,6 @@ final class AgentChatUltraList: UIView {
     /// What `apply` was last handed, to hand over again as a revealing
     /// row grows a line.
     private var latest: (plans: [ChatRowPlan], intro: (view: UIView, height: CGFloat)?)?
-    /// The agent is at work: its newest words may still be arriving.
-    private var streaming = false
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -154,45 +152,33 @@ final class AgentChatUltraList: UIView {
     /// `animated` eases rows in while the newest is followed; `moves` eases
     /// a turn opening or folding wherever the reader is, the rows they see
     /// staying put. `streaming`: the agent is at work, so its newest words
-    /// may grow, and come out as they do (`ChatRevealDriver`).
-    func apply(_ plans: [ChatRowPlan], intro: (view: UIView, height: CGFloat)? = nil, animated: Bool = false, moves: Bool = false, streaming: Bool = false) {
-        if isActive { startReveals(plans, streaming: streaming) }
+    /// may grow, and come out as they do (`ChatRevealDriver`). The last
+    /// `queued` rows are the person's sends waiting under the work: the
+    /// agent's newest row is the one above them.
+    func apply(_ plans: [ChatRowPlan], intro: (view: UIView, height: CGFloat)? = nil, animated: Bool = false, moves: Bool = false, streaming: Bool = false, queued: Int = 0) {
+        if isActive { startReveals(plans.dropLast(queued), streaming: streaming) }
         latest = (plans, intro)
         submit(plans, intro: intro, transition: (animated || moves) && !UIAccessibility.isReduceMotionEnabled ? .easeInOut(0.2) : .none, followOnly: !moves)
     }
 
-    /// Words that grew while the agent works come out from where they
-    /// were; words that are whole now finish coming out.
-    private func startReveals(_ plans: [ChatRowPlan], streaming: Bool) {
-        let was = self.streaming
-        self.streaming = streaming
-        // The newest of the agent's words is the one that streams.
-        let newest = plans.last(where: \.revealable)
-        var live = Set<String>()
-        for plan in plans where plan.revealable {
+    /// Only the newest row comes out as it streams, and only with words
+    /// that arrive while the chat is on screen; any other finishes coming
+    /// out (`RevealFocus`).
+    private func startReveals(_ plans: ArraySlice<ChatRowPlan>, streaming: Bool) {
+        var focus: [RevealFocus.Row] = []
+        focus.reserveCapacity(plans.count)
+        for plan in plans {
             let identity = "chat:row:\(plan.id)"
-            if reveal.isRevealing(identity) {
-                live.insert(identity)
-                if let kept = rows[identity], kept.plan !== plan, let map = plan.revealMap {
-                    reveal.update(identity, map: map, finishing: !streaming)
-                }
-                continue
-            }
-            guard streaming, ChatRevealDriver.enabled, plan === newest, submitted != nil, window != nil, let map = plan.revealMap else { continue }
-            if let kept = rows[identity] {
-                // Grown, not merely planned again (another width, the turn ending).
-                guard kept.plan !== plan, kept.plan.revealable, let old = kept.plan.revealMap, map.length > old.length,
-                      ChatRevealMapping.grew(kept.plan, into: plan) else { continue }
-                reveal.start(identity, map: map, from: old.length, finishing: false)
-            } else {
-                // A reply's first words, at the newest end.
-                guard plans.last?.id == plan.id || was else { continue }
-                reveal.start(identity, map: map, from: 0, finishing: false)
-            }
-            live.insert(identity)
+            focus.append(.init(id: identity, revealable: plan.revealable, change: ChatRevealMapping.change(from: rows[identity]?.plan, to: plan)))
         }
-        reveal.keep(live)
-        if !streaming { reveal.finishAll() }
+        let steps = reveal.focus(focus, streaming: streaming, onScreen: window != nil)
+        // The rows revealing are at the newest end, where the search starts.
+        func plan(_ identity: String) -> ChatRowPlan? {
+            let id = identity.dropFirst("chat:row:".count)
+            return plans.last { $0.revealable && $0.id == id }
+        }
+        _ = reveal.perform(steps, plan: plan, previous: { [rows] in rows[$0]?.plan })
+        reveal.keep { plan($0) != nil }
     }
 
     private func submit(_ plans: [ChatRowPlan], intro: (view: UIView, height: CGFloat)?, transition: ListTransition, followOnly: Bool) {

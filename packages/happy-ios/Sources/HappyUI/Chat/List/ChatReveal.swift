@@ -40,11 +40,15 @@ enum ChatRevealMapping {
         return RevealMap(lines: lines, size: plan.size)
     }
 
-    /// `new` says all `old` said and more: words that streamed on, not
-    /// words that changed.
-    static func grew(_ old: ChatRowPlan, into new: ChatRowPlan) -> Bool {
-        guard let before = old.accessibilityLabel, let after = new.accessibilityLabel else { return false }
-        return after.count > before.count && after.hasPrefix(before)
+    /// What `new` is next to `old`, the row's plan in the update before:
+    /// it grew if it says all `old` said and more (words that streamed on,
+    /// not words that changed).
+    static func change(from old: ChatRowPlan?, to new: ChatRowPlan) -> RevealFocus.Change {
+        guard let old else { return .new }
+        guard old !== new, old.revealable, new.revealable,
+              let before = old.accessibilityLabel, let after = new.accessibilityLabel else { return .same }
+        let added = after.utf16.count - before.utf16.count
+        return added > 0 && after.hasPrefix(before) ? .grew(by: added) : .same
     }
 
     /// A block with the boxes it sits on (a code block's card).
@@ -75,10 +79,12 @@ protocol ChatRevealHost: AnyObject {
 
 /// The rows of one transcript that are revealing, and the display link
 /// that moves them. Only the main thread's few steps a frame are here:
-/// the count, the mask's rectangles, and new glyph copies.
+/// the count, the mask's rectangles, and new glyph copies. Which row
+/// reveals is `RevealFocus`'s.
 @MainActor
-final class ChatRevealDriver {
+final class ChatRevealDriver: NSObject {
     weak var host: ChatRevealHost?
+    private var focus = RevealFocus()
     private struct Entry {
         var reveal: TextReveal
         var map: RevealMap
@@ -103,9 +109,25 @@ final class ChatRevealDriver {
     static var ticks: [Double] = []
     /// Of those, the list's passes for rows growing a line.
     static var passes: [Double] = []
+    /// Every row that started coming out, in order.
+    static var starts: [String] = []
     #endif
 
+    override init() {
+        super.init()
+        // In the background nothing is seen: replies show whole, and what
+        // arrives on the way back (the catch-up) does too.
+        NotificationCenter.default.addObserver(self, selector: #selector(wentAway), name: UIApplication.didEnterBackgroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(cameBack), name: UIApplication.willEnterForegroundNotification, object: nil)
+    }
+
     func isRevealing(_ identity: String) -> Bool { entries[identity] != nil }
+
+    /// The row coming out at the stream's pace.
+    var target: String? { focus.target }
+
+    /// The rows still coming out, the target and any finishing.
+    var revealing: Set<String> { Set(entries.keys) }
 
     /// The row's height while it reveals; nil once it shows whole.
     func height(_ identity: String) -> CGFloat? { entries[identity]?.height }
@@ -115,6 +137,76 @@ final class ChatRevealDriver {
         entries[identity].map { ($0.map, $0.shown) }
     }
 
+    /// How far the pace has come for a row: ahead of what shows while a
+    /// glyph's drawing is on its way.
+    func paced(_ identity: String) -> Int? { entries[identity]?.reveal.count }
+
+    /// What each row's reveal does with this update (`RevealFocus`), the
+    /// transcript's rows oldest first. `onScreen`: it is in a window.
+    func focus(_ rows: [RevealFocus.Row], streaming: Bool, onScreen: Bool) -> [String: RevealFocus.Step] {
+        focus.update(rows, streaming: streaming, onScreen: onScreen, revealing: Set(entries.keys))
+    }
+
+    /// Carries out `focus`'s steps. `plan` is a row's plan now, `previous`
+    /// the one it had before this update. Returns the rows that started.
+    func perform(_ steps: [String: RevealFocus.Step], plan: (String) -> ChatRowPlan?, previous: (String) -> ChatRowPlan?) -> [String] {
+        var started: [String] = []
+        for (identity, step) in steps {
+            guard let plan = plan(identity) else { continue }
+            let old = previous(identity)
+            switch step {
+            case .start:
+                guard Self.enabled, let map = plan.revealMap else { continue }
+                // From the words it showed whole until now.
+                start(identity, map: map, from: min(old?.revealMap?.length ?? 0, map.length), finishing: false)
+                started.append(identity)
+            case .grow:
+                if old !== plan, let map = plan.revealMap { update(identity, map: map, finishing: false) }
+            case .finish:
+                if old === plan {
+                    finish(identity)
+                } else if let map = plan.preparedRevealMap {
+                    update(identity, map: map, finishing: true)
+                } else {
+                    // Planned again as it stopped being the newest, and not
+                    // mapped off the main thread: it shows whole.
+                    stop(identity)
+                }
+            case .stop:
+                stop(identity)
+            }
+        }
+        return started
+    }
+
+    /// No longer the newest: what is left of `identity` comes out in
+    /// `TextReveal.finishTime`.
+    func finish(_ identity: String) {
+        guard var entry = entries[identity], !entry.reveal.isFinishing else { return }
+        entry.reveal.finish(length: entry.map.length)
+        entries[identity] = entry
+        run()
+    }
+
+    /// `identity` shows whole at once. Its height is the plan's again by
+    /// the transcript's next pass.
+    func stop(_ identity: String) {
+        guard entries.removeValue(forKey: identity) != nil else { return }
+        host?.revealPresenter(identity)?.clear()
+        if entries.isEmpty { link?.isPaused = true }
+    }
+
+    @objc private func wentAway() {
+        focus.wentAway()
+        guard !entries.isEmpty else { return }
+        for identity in Array(entries.keys) { host?.revealPresenter(identity)?.clear() }
+        entries.removeAll()
+        link?.isPaused = true
+        host?.revealHeightsChanged()
+    }
+
+    @objc private func cameBack() { focus.cameBack() }
+
     /// Starts showing `identity` from `count` characters. `finishing`: its
     /// words are whole already, and come out in `TextReveal.finishTime`.
     func start(_ identity: String, map: RevealMap, from count: Int, finishing: Bool) {
@@ -123,6 +215,9 @@ final class ChatRevealDriver {
         if finishing { reveal.finish(length: map.length) } else { reveal.observe(length: map.length, at: now) }
         let shown = min(count, map.length)
         entries[identity] = Entry(reveal: reveal, map: map, shown: shown, height: map.height(showing: shown), activeAt: now)
+        #if DEBUG || HAPPY_FIXTURES
+        Self.starts.append(identity)
+        #endif
         run()
     }
 
@@ -147,17 +242,9 @@ final class ChatRevealDriver {
         run()
     }
 
-    /// Nothing more is coming for any row.
-    func finishAll() {
-        for (identity, entry) in entries where !entry.reveal.isFinishing {
-            entries[identity]?.reveal.finish(length: entry.map.length)
-        }
-        if !entries.isEmpty { run() }
-    }
-
     /// Rows that left the list stop.
-    func keep(_ identities: Set<String>) {
-        for identity in entries.keys where !identities.contains(identity) {
+    func keep(_ present: (String) -> Bool) {
+        for identity in Array(entries.keys) where !present(identity) {
             entries.removeValue(forKey: identity)
             host?.revealPresenter(identity)?.clear()
         }

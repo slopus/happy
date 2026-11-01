@@ -44,10 +44,20 @@ flight. Each row view keeps its canvas at the plan's full size from its top.
 Its `ChatRevealPresenter` masks what is still to come and lays the glyph
 copies over the row. In the legacy chat a revealing row draws on the native
 canvas, its text drawn off the main thread, and stays there once revealed.
+Which row reveals is `RevealFocus`'s (HappyLayout, tested in
+`RevealFocusTests`): only the newest, with words that arrive on screen, and
+any other finishes in 0.3 s. Both transcripts hand it their rows on every
+apply and carry out its steps through `ChatRevealDriver.perform`.
 `HostedStreamingRevealTests` streams replies into both chats at 35 ms
 chunks. It samples every frame from the presentation layers: the row only
 grows, smoothly, its words never move, and the newest row stays on the
-composer. It also checks the reveal's own main-thread time.
+composer. It also checks the reveal's own main-thread time. In both chats it
+also checks five more cases from the reveal's own state each frame:
+- a newer segment or message finishes the one before within 0.3 s;
+- a burst shows whole;
+- opening a chat mid-reply shows it whole;
+- a row scrolled away and back goes on from where it was;
+- the catch-up after the background shows whole.
 
 The adapter reads positions from the library's committed row descriptors and
 frames. Ordinary mutations carry no absolute scroll target, so background

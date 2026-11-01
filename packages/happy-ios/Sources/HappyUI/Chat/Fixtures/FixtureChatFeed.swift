@@ -30,12 +30,14 @@ public actor FixtureChatWorld {
     private var chats: [String: Chat] = [:]
     private var clock: Int64 = FixtureScenarios.now
     private var streams: [String: Task<Void, Never>] = [:]
+    /// Live chats whose reply doesn't start by itself: a test sends its own.
+    private var held: Set<String> = []
 
     func subscribe(_ sessionId: String, id: UUID, continuation: AsyncStream<LegacyChatSnapshot>.Continuation) {
         if chats[sessionId] == nil {
             let scenario = FixtureScenarios.scenario(for: sessionId)
             chats[sessionId] = Chat(messages: FixtureScenarios.messages(scenario, sessionId: sessionId))
-            if scenario == .live { startLiveStream(sessionId) }
+            if scenario == .live, !held.contains(sessionId) { startLiveStream(sessionId) }
         }
         chats[sessionId]?.subscribers[id] = continuation
         continuation.yield(snapshot(sessionId))
@@ -235,6 +237,39 @@ public actor FixtureChatWorld {
         streams[sessionId]?.cancel()
         streams[sessionId] = nil
     }
+
+    // MARK: Tests
+
+    /// `sessionId` starts over from its scenario when next opened, with
+    /// `history` before it; `streams` false keeps a live chat's own reply
+    /// from starting.
+    func reset(_ sessionId: String, streams starts: Bool = true, history: [ChatMessage] = []) {
+        streams[sessionId]?.cancel()
+        streams[sessionId] = nil
+        chats[sessionId] = history.isEmpty ? nil : Chat(messages: history + FixtureScenarios.messages(FixtureScenarios.scenario(for: sessionId), sessionId: sessionId))
+        if starts { held.remove(sessionId) } else { held.insert(sessionId) }
+    }
+
+    /// `messages` arrive at the newest end together, in one snapshot.
+    func arrive(_ messages: [ChatMessage], sessionId: String) {
+        guard chats[sessionId] != nil else { return }
+        let index = chats[sessionId]!.messages.firstIndex { $0.sortKey >= ChatMessage.pendingSortOffset } ?? chats[sessionId]!.messages.endIndex
+        chats[sessionId]!.messages.insert(contentsOf: messages, at: index)
+        publish(sessionId)
+    }
+
+    /// The agent's message `id` says `text` now.
+    func say(_ text: String, id: String, sessionId: String) {
+        update(sessionId, id: id) { message in
+            guard case .agentText(var agent) = message else { return }
+            agent.text = text
+            message = .agentText(agent)
+        }
+        publish(sessionId)
+    }
+
+    /// A fresh clock reading, for messages a test makes.
+    func now() -> Int64 { tick() }
 }
 
 public struct FixtureChatFeed: ChatFeed {
