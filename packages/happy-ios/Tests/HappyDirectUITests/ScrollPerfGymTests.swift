@@ -176,14 +176,18 @@ final class ScrollPerfGymTests: XCTestCase {
         composer.tap()
         composer.typeText("stream 30 40 \(Int(Date().timeIntervalSince1970) % 100_000)")
         app.buttons["Send"].tap()
-        let working = app.descendants(matching: .any)["working"]
-        XCTAssertTrue(working.waitForExistence(timeout: 20), "the reply never started")
+        // Under way while the header says the agent is at it.
+        let status = app.descendants(matching: .any)["chat-status"]
+        let atWork = ["Thinking", "Working"]
+        let started = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label IN %@", atWork), object: status)
+        XCTAssertEqual(XCTWaiter().wait(for: [started], timeout: 20), .completed, "the reply never started")
+        func working() -> Bool { status.exists && atWork.contains(status.label) }
         pause(3)
         dismissKeyboard()
         runScript("up dragdown up dragdown up dragdown down*4")
-        report("scroll-while-streaming", extra: working.exists ? "streaming=1" : "streaming=0")
+        report("scroll-while-streaming", extra: working() ? "streaming=1" : "streaming=0")
         let deadline = Date().addingTimeInterval(120)
-        while Date() < deadline, working.exists { pause(1) }
+        while Date() < deadline, working() { pause(1) }
     }
 
     /// The sidebar itself: flung down its rows and back, then each heading

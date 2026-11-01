@@ -27,8 +27,12 @@ final class ChatRowPlan: @unchecked Sendable {
     let toggles: String?
     /// The person's own message: what its send transition flies in.
     let flight: ChatRowFlight?
+    /// An agent's words, which may still be arriving: shown a character at
+    /// a time as they grow (`ChatRevealDriver`).
+    let revealable: Bool
+    private let reveal = ChatRevealMapBox()
 
-    init(id: String, size: CGSize, items: [ChatDrawItem], hits: [ChatHit] = [], alpha: CGFloat = 1, accessibilityLabel: String? = nil, proposals: [(artifactId: String, layout: SidebarProposalLayout, frame: CGRect)] = [], toggles: String? = nil, flight: ChatRowFlight? = nil) {
+    init(id: String, size: CGSize, items: [ChatDrawItem], hits: [ChatHit] = [], alpha: CGFloat = 1, accessibilityLabel: String? = nil, proposals: [(artifactId: String, layout: SidebarProposalLayout, frame: CGRect)] = [], toggles: String? = nil, flight: ChatRowFlight? = nil, revealable: Bool = false) {
         self.id = id
         self.size = size
         self.items = items
@@ -38,6 +42,31 @@ final class ChatRowPlan: @unchecked Sendable {
         self.proposals = proposals
         self.toggles = toggles
         self.flight = flight
+        self.revealable = revealable
+    }
+
+    /// Where its words are, in reading order, for a revealable plan. Worked
+    /// out once, on whichever thread asks first: the planners ask off the
+    /// main thread for the rows that may stream (`warmReveal`).
+    var revealMap: RevealMap? {
+        revealable ? reveal.value { ChatRevealMapping.map(self) } : nil
+    }
+
+    func warmReveal() { _ = revealMap }
+}
+
+/// A value worked out once, on any thread.
+private final class ChatRevealMapBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var map: RevealMap?
+
+    func value(_ make: () -> RevealMap) -> RevealMap {
+        lock.lock()
+        defer { lock.unlock() }
+        if let map { return map }
+        let made = make()
+        map = made
+        return made
     }
 }
 

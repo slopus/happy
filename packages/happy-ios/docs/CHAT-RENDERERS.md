@@ -36,6 +36,19 @@ the pass that inserts it, and that pass uses the flight's curve. The row is
 unveiled in the transaction where the copy goes. Every other pass keeps its
 own transition.
 
+The agent's newest words come out a character at a time as they stream
+(`ChatRevealDriver`, see docs/telegram-notes.md §8). A revealing row is as
+tall as the lines it shows, and a pass for it growing a line runs 0.15 s.
+A pass that moves nothing lands at once, so it never retimes a growth in
+flight. Each row view keeps its canvas at the plan's full size from its top.
+Its `ChatRevealPresenter` masks what is still to come and lays the glyph
+copies over the row. In the legacy chat a revealing row draws on the native
+canvas, its text drawn off the main thread, and stays there once revealed.
+`HostedStreamingRevealTests` streams replies into both chats at 35 ms
+chunks. It samples every frame from the presentation layers: the row only
+grows, smoothly, its words never move, and the newest row stays on the
+composer. It also checks the reveal's own main-thread time.
+
 The adapter reads positions from the library's committed row descriptors and
 frames. Ordinary mutations carry no absolute scroll target, so background
 preparation cannot replay an old target after a drag starts. Following near

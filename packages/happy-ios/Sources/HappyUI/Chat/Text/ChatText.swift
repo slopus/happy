@@ -244,6 +244,40 @@ final class ChatTextLayout: @unchecked Sendable {
         if string.string.last?.isNewline == true { return 0 }
         return min(width, used.maxX)
     }
+
+    /// Each line as drawn at `origin`, with where each of its characters
+    /// ends, for showing a reply a character at a time (`RevealMap`). Off
+    /// the main thread: it walks every glyph.
+    func revealLines(at origin: CGPoint) -> [RevealMap.Line] {
+        access.lock()
+        defer { access.unlock() }
+        guard string.length > 0 else { return [] }
+        var lines: [RevealMap.Line] = []
+        let all = manager.glyphRange(for: container)
+        manager.enumerateLineFragments(forGlyphRange: all) { [manager] fragment, used, _, glyphs, _ in
+            let characters = manager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
+            guard characters.length > 0, glyphs.length > 0 else { return }
+            // A glyph's place is where it starts; a character ends where
+            // the next glyph starts, the last at the line's used end.
+            var starts: [CGFloat] = []
+            starts.reserveCapacity(glyphs.length)
+            for glyph in glyphs.location..<NSMaxRange(glyphs) {
+                starts.append(fragment.minX + manager.location(forGlyphAt: glyph).x)
+            }
+            var ends: [CGFloat] = []
+            ends.reserveCapacity(characters.length)
+            var last = used.minX
+            for character in characters.location..<NSMaxRange(characters) {
+                let glyph = min(max(0, manager.glyphIndexForCharacter(at: character) - glyphs.location), starts.count - 1)
+                let end = glyph + 1 < starts.count ? starts[glyph + 1] : used.maxX
+                last = max(last, end)
+                ends.append(origin.x + last)
+            }
+            let frame = CGRect(x: origin.x + used.minX, y: origin.y + fragment.minY, width: used.width, height: fragment.height)
+            lines.append(RevealMap.Line(frame: frame, ends: ends))
+        }
+        return lines
+    }
 }
 
 /// One piece of text measured at whatever widths a layout asks for. The
@@ -355,6 +389,13 @@ final class ChatOffMainTextView: ChatTextView {
     private var drawing: Task<Void, Never>?
     /// The width the shown bitmap was drawn at.
     private var drawnWidth: CGFloat?
+    /// The words the shown bitmap was drawn for.
+    private var drawnLayout: ChatTextLayout?
+    /// What shows is a drawing of its words as they are now, not of the
+    /// fewer they were (a reply coming out reads its glyphs from it).
+    var showsItsLayout: Bool {
+        layer.contents != nil && (drawnLayout === layout || Self.drawsAlike(drawnLayout, layout))
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -390,6 +431,7 @@ final class ChatOffMainTextView: ChatTextView {
         drawing = nil
         layer.contents = nil
         drawnWidth = nil
+        drawnLayout = nil
         setNeedsDisplay()
     }
 
@@ -399,6 +441,7 @@ final class ChatOffMainTextView: ChatTextView {
         guard let layout, bounds.width > 0, bounds.height > 0 else {
             layer.contents = nil
             drawnWidth = nil
+            drawnLayout = nil
             return
         }
         let size = bounds.size
@@ -412,6 +455,7 @@ final class ChatOffMainTextView: ChatTextView {
         if layer.contents == nil, let window, !isInHiddenView, convert(bounds, to: window).intersects(window.bounds) {
             layer.contents = Self.draw(layout, size: size, scale: scale, traits: traits)
             drawnWidth = size.width
+            drawnLayout = layout
             return
         }
         drawing = Task { [weak self] in
@@ -420,6 +464,7 @@ final class ChatOffMainTextView: ChatTextView {
             guard !Task.isCancelled, let self, self.layout === layout, self.bounds.size == size else { return }
             self.layer.contents = image
             self.drawnWidth = size.width
+            self.drawnLayout = layout
         }
     }
 

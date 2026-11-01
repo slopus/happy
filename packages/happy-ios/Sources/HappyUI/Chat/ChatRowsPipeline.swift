@@ -87,6 +87,8 @@ struct ChatListUpdate: Sendable {
     var footer: ChatRowPlan?
     var changeset: RowChangeset
     var pinning: String?
+    /// The agent is at work: its newest words may still be arriving.
+    var streaming = false
 }
 
 /// One chat update for the main thread. Every optional is nil when its
@@ -222,8 +224,11 @@ enum ChatRows {
         if !result.changeset.isEmpty || footer != nil || model != applied.model || pinning != nil {
             update.list = ChatListUpdate(
                 ids: result.rows.ids, plans: result.rows.plans, model: model, footer: footer,
-                changeset: result.changeset, pinning: pinning
+                changeset: result.changeset, pinning: pinning, streaming: session.thinking
             )
+            // The newest of the agent's words may be streaming: where they
+            // are is worked out here, off the main thread.
+            result.rows.plans.first(where: \.revealable)?.warmReveal()
             state.rows = result.rows
             state.model = model
             changed = true

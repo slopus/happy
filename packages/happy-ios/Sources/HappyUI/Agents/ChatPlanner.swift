@@ -62,6 +62,10 @@ actor ChatPlanner {
             if plan.size.height > 0 { plans.append(plan) }
         }
         cache = next
+        // The newest of the agent's words may be streaming: where they are
+        // is worked out here, off the main thread, for showing them as
+        // they come.
+        plans.last(where: \.revealable)?.warmReveal()
         return plans
     }
 
@@ -84,7 +88,7 @@ actor ChatPlanner {
         let text = HappyReferences.plain(item.text, view: key.references.view)
         switch item.role {
         case .agent:
-            return Self.body(item, key: key, syntax: syntax, proposals: proposals) {
+            return Self.body(item, key: key, syntax: syntax, proposals: proposals, revealable: true) {
                 MessageLayout.agent(width: width, maxContentWidth: key.maxContentWidth, parts: $0)
             }
         case .user:
@@ -187,7 +191,7 @@ actor ChatPlanner {
     /// agent text (Figtree 16/24 markdown, soft breaks as spaces, blocks 8
     /// apart, no copy button: a long press selects instead) and the
     /// pictures, recordings, files and artifacts where they were presented.
-    static func body(_ item: ChatItem, key: Key, syntax: CodeSyntaxService, proposals: [String: ProposalShown], layout: ([MessageLayout.Part]) -> MessageLayout) -> ChatRowPlan {
+    static func body(_ item: ChatItem, key: Key, syntax: CodeSyntaxService, proposals: [String: ProposalShown], revealable: Bool = false, layout: ([MessageLayout.Part]) -> MessageLayout) -> ChatRowPlan {
         let environment = key.environment
         let text = HappyReferences.plain(item.text, view: key.references.view)
         var parts: [MessageLayout.Part] = []
@@ -297,7 +301,7 @@ actor ChatPlanner {
             }
         }
         // Each picture and recording reads as itself (`ChatMediaView`).
-        return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: spoken.joined(separator: "\n\n"), proposals: proposals)
+        return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: spoken.joined(separator: "\n\n"), proposals: proposals, revealable: revealable)
     }
 
     /// What a failure card's action does, as desktop's card offers it:

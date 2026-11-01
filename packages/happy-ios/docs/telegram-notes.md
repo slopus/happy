@@ -44,6 +44,12 @@ October 2026), read as raw files over the web:
   `ChatControllerNode.swift` the list's insets and scroll indicator insets
   and `dismissedInputByDragging`; in `WindowContent.swift` the keyboard pan
   and `dismissedKeyboardByCurrentGesture` (section 6).
+- `submodules/TelegramUI/Components/StreamingTextReveal/Sources/TextRevealController.swift`,
+  `updateRevealMask` in
+  `submodules/TelegramUI/Components/InteractiveTextComponent/Sources/InteractiveTextComponent.swift`,
+  and the draft handling in
+  `submodules/TelegramUI/Components/Chat/ChatMessageTextBubbleContentNode/Sources/ChatMessageTextBubbleContentNode.swift`:
+  a streaming reply coming out (section 8).
 
 ## 1. The inverted list and keeping the scroll position
 
@@ -149,11 +155,10 @@ two precomputed layouts.
   `performBatchUpdates` + `invalidateLayout(with:)`. `UICollectionView`
   interpolates both the cell frame and every neighbour's position, which
   gives the `apparentHeight` effect without a custom display link.
-- Streaming agent text arrives several times a second. Updates are coalesced
-  to one per display frame (`CADisplayLink`-free: a main-queue coalescer
-  keyed by message id). Growth at index 0 extends away from the scroll
-  origin, so the bubble grows upward smoothly while the newest edge stays
-  pinned above the composer.
+- Streaming agent text arrives several times a second, and comes out a
+  character at a time, the row growing a line at a time (section 8).
+  Growth at index 0 extends away from the scroll origin, so the bubble grows
+  upward smoothly while the newest edge stays pinned above the composer.
 - Status changes that keep the height (pending → sent, the fixed-height
   status line `MessageView.tsx` reserves) are reconfigured in place with no
   layout invalidation, so they never jump.
@@ -335,6 +340,53 @@ rendering the resulting `file` tool rows.
     and `pending` is one check, and the agent's `user-message-accepted`
     receipt is two checks. A session without receipts shows two checks once
     the agent has answered after the message.
+
+## 8. A streaming reply coming out
+
+**What Telegram does.**
+
+- *How fast.* `TextRevealController` paces the characters shown against
+  the characters received. It keeps an average of the gap between chunks
+  (EWMA, weight 0.4, starting at 0.5 s) and aims to show the lag by when the
+  next chunk is due, never slower than 10% of it a second. The speed eases
+  toward that aim with a 0.12 s time constant, a frame counting at most
+  0.05 s; it starts at 40 characters a second. Once the text is final, what
+  is left comes out in 0.3 s.
+- *How a character comes out* (`updateRevealMask`). A mask shows the lines
+  above and the current line up to the last character shown. Each new
+  character is a snippet layer with the text's contents, cut to its rect
+  (`contentsRect`), and runs for 0.2 s: alpha 0 → 1, 6 points up additively,
+  scale 0.5 → 1, and a blur 2 → 0 over 0.22 s. The mask leaves out the
+  first snippet still running, so it never shows twice.
+- *The bubble.* Whenever the size for the characters shown changes, the
+  bubble asks for a full update with a 0.15 s ease-in-out transition. The
+  status fades in over 0.2 s once the text is whole.
+
+**What we do.**
+
+- `TextReveal` (HappyLayout) is the controller with Telegram's constants.
+  `RevealMap` is where each character of a row ends, line by line, worked
+  out off the main thread from the row's plan (`ChatRevealMapping`, warmed by
+  the planners). Pictures, code scrollers and tables come out whole, as
+  blocks.
+- `ChatRevealDriver` runs one display link per transcript. Each frame it
+  ticks every revealing row, and `ChatRevealPresenter` masks the row's
+  canvas and adds snippet layers that copy the drawn text (`contentsRect`),
+  with Telegram's 0.2 s alpha, rise and scale. A burst of more than 48
+  characters fades a line at a time instead. The blur is not copied.
+- A revealing row is as tall as the lines it shows (`RevealMap.height`).
+  When that changes, the list takes a pass on Telegram's 0.15 s ease-in-out,
+  so the rows above slide and the newest row stays on the composer. A row
+  never gets shorter while it reveals (a table is a paragraph until its rule
+  arrives); it settles once whole.
+- Only the newest of the agent's rows reveals: in the agent chat while the
+  agent works, in the Happy CLI chat while the session thinks. A row grows
+  only from the words it had. A pass that moves nothing lands at once, so a
+  growth in flight is never retimed. A second of quiet, or the turn ending,
+  finishes the reveal in 0.3 s. The Happy CLI chat keeps a row that revealed
+  on its native canvas, so it never swaps to a bitmap on screen.
+- Reduce Motion, or `HAPPY_REVEAL_OFF` (for comparing), shows replies as
+  they come.
 
 ## What we deliberately don't copy
 

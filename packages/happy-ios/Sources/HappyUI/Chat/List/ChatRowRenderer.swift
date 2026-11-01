@@ -296,7 +296,8 @@ enum ChatRowRenderer {
             id: message.id, size: layout.size,
             items: drawn.items + [.icon(.ionicons(copied ? "checkmark" : "copy-outline"), size: AgentTextLayout.Metrics.copyIconSize, frame: layout.copyIcon, tint: Palette.text)],
             hits: [ChatHit(frame: copyTarget, action: .copyMessage(id: message.id, text: message.text))] + drawn.hits,
-            accessibilityLabel: message.text
+            accessibilityLabel: message.text,
+            revealable: true
         )
     }
 
