@@ -5,6 +5,7 @@ import android.os.Build
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.Stable
@@ -22,6 +23,7 @@ import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.toRect
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.BlurEffect
@@ -41,13 +43,13 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.graphics.drawscope.inset
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.isSpecified
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.layer.CompositingStrategy as LayerCompositing
 import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -62,6 +64,7 @@ import com.slopus.happy.ui.FirstFrame
 import java.io.File
 import kotlin.math.ceil
 import kotlin.math.floor
+import kotlin.math.roundToInt
 
 /**
  * Frosted glass over scrolling content, hand-rolled on [GraphicsLayer]
@@ -164,14 +167,6 @@ object GlassSpec {
         return maxOf(1f, if (small > 0.5f) (small - 0.5f) / SIGMA_SCALE else 0f)
     }
 
-    /**
-     * The blur radius, in pixels, that softens the full-size capture before it
-     * is shrunk [scale] times: a sigma of half the small copy's pixel, so
-     * shrinking it leaves nothing to alias and a line moving 1 px moves the
-     * blur 1 px. Against the 40 dp blur it adds nothing you can see.
-     */
-    fun prefilterRadius(scale: Float): Float = (scale / 2 - 0.5f) / SIGMA_SCALE
-
     private const val SIGMA_SCALE = 0.57735f
 }
 
@@ -231,6 +226,34 @@ class GlassSource internal constructor(internal val layer: GraphicsLayer) {
     internal var origin by mutableStateOf(Offset.Zero)
     internal var recorded by mutableStateOf(false)
     internal var ground by mutableStateOf(Color.Unspecified)
+
+    /**
+     * The bands of this source its glasses have blurred, Telegram's merged
+     * glass rects: a glass whose band lies inside one already blurred draws
+     * from that one, so the composer's pill blurs nothing of its own over the
+     * dock's band.
+     */
+    internal val bands = ArrayList<GlassLayers>(3)
+
+    /**
+     * A motion the source is part way through ([GlassTravel]), read where the
+     * glasses over it draw; null while it rests.
+     */
+    var travel: GlassTravel? = null
+}
+
+/**
+ * A source carried up the screen by [now] pixels this frame, on its way from
+ * [from] to [to]: a list riding the keyboard. A glass the source slides under
+ * (the bar over the transcript) blurs the band the whole way passes under it
+ * once and moves that blur each frame, where it would blur again every frame;
+ * a glass that rides with the source sees the same band throughout and blurs
+ * nothing anyway. Read in draw.
+ */
+interface GlassTravel {
+    val now: Int
+    val from: Int
+    val to: Int
 }
 
 /** A source drawn on [ground], the screen's colour under the content; unspecified for content opaque itself. */
@@ -251,7 +274,7 @@ fun Modifier.glassSource(source: GlassSource): Modifier =
 
 /** A glass surface in [shape]: the blurred content under it, the tint, the hairline. */
 fun Modifier.glass(source: GlassSource?, shape: Shape, colors: GlassColors, blurs: Boolean): Modifier = composed {
-    val layers = rememberGlassLayers()
+    val layers = rememberGlassLayers(source)
     var origin by remember { mutableStateOf(Offset.Zero) }
     val at = rememberSourceOffset(source) { origin }
     onGloballyPositioned { origin = it.positionInRoot() }
@@ -260,7 +283,10 @@ fun Modifier.glass(source: GlassSource?, shape: Shape, colors: GlassColors, blur
             val hairline = GlassSpec.hairline.toPx()
             val fill = colors.fill(blurs)
             onDrawBehind {
-                if (source != null) clipPath(path) { drawSource(layers, source, at.value, blurs) }
+                if (source != null) {
+                    val blurred = blurOf(layers, source, at.value, size, blurs)
+                    clipPath(path) { drawSource(source, at.value, blurred) }
+                }
                 drawPath(path, fill)
                 drawPath(path, colors.edge, style = Stroke(hairline))
             }
@@ -273,13 +299,16 @@ fun Modifier.glass(source: GlassSource?, shape: Shape, colors: GlassColors, blur
  * goes soft and pale instead of meeting an edge.
  */
 fun Modifier.glassFade(source: GlassSource?, tint: Color, blurs: Boolean): Modifier = composed {
-    val layers = rememberGlassLayers()
+    val layers = rememberGlassLayers(source)
     var origin by remember { mutableStateOf(Offset.Zero) }
     val at = rememberSourceOffset(source) { origin }
     onGloballyPositioned { origin = it.positionInRoot() }
         .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
         .drawBehind {
-            if (source != null) clipRect { drawSource(layers, source, at.value, blurs) }
+            if (source != null) {
+                val blurred = blurOf(layers, source, at.value, size, blurs)
+                clipRect { drawSource(source, at.value, blurred) }
+            }
             drawRect(tint.copy(alpha = if (blurs) glassAlpha(tint) else GlassSpec.FALLBACK_ALPHA))
             val fade = (GlassSpec.fade.toPx() / size.height).coerceIn(0f, 1f)
             // Telegram's fade (BlurredBackgroundWithFadeDrawable, opacity mode): 0, 0x60, 0xB0, 0xE8 of
@@ -324,7 +353,10 @@ fun Modifier.glassBar(
     backdrop: (DrawScope.() -> Unit)? = null,
     feathered: Boolean = true,
 ): Modifier = composed {
-    val layers = rememberGlassLayers()
+    val layers = rememberGlassLayers(source)
+    // The glass drawn once into a layer of its own: a frame where only something over it redraws (a
+    // caret, a shimmer) composites it as it is, and the feather's mask needs no layer of its own.
+    val glass = rememberGraphicsLayer()
     var origin by remember { mutableStateOf(Offset.Zero) }
     val at = rememberSourceOffset(source) { origin }
     val statusBar = WindowInsets.statusBars.getTop(LocalDensity.current)
@@ -340,12 +372,14 @@ fun Modifier.glassBar(
             val tint = ramp(ground)
             val mask = ramp(Color.Black)
             val fade = if (feather > 0f) featherMask(bar, feather) else null
+            glass.compositingStrategy = LayerCompositing.Offscreen
             onDrawBehind {
                 // The glass is the bar and the feather under it.
-                inset(0f, 0f, 0f, -feather) {
-                    if (fade != null) drawIntoCanvas { it.saveLayer(size.toRect(), Paint()) }
+                val whole = IntSize(size.width.roundToInt(), (bar + feather).roundToInt())
+                val blurred = source?.let { blurOf(layers, it, at.value, whole.toSize(), blurs) }
+                glass.record(whole) {
                     // The blur spreads past the layer's edge: keep it to the glass.
-                    if (source != null) clipRect { drawSource(layers, source, at.value, blurs) }
+                    if (source != null) clipRect { drawSource(source, at.value, blurred) }
                     if (backdrop == null) {
                         drawRect(tint)
                     } else {
@@ -354,11 +388,9 @@ fun Modifier.glassBar(
                         drawRect(mask, blendMode = BlendMode.DstIn)
                         drawIntoCanvas { it.restore() }
                     }
-                    if (fade != null) {
-                        drawRect(fade, blendMode = BlendMode.DstIn)
-                        drawIntoCanvas { it.restore() }
-                    }
+                    if (fade != null) drawRect(fade, blendMode = BlendMode.DstIn)
                 }
+                drawLayer(glass)
             }
         }
 }
@@ -403,60 +435,87 @@ private fun glassAlpha(tint: Color): Float = if (tint.luminance() < DARK_LUMINAN
 private val saturate = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(GlassSpec.SATURATION) })
 
 /**
- * A glass's two layers: [capture], the content under it at full size and
- * softened by [GlassSpec.prefilterRadius], and [blurred], that shrunk and blurred.
- * They are recorded again only when the glass's [area] of the source moves:
- * they draw the source by reference, so when the content changes the
- * RenderThread blurs it again by itself, and when only something over the
- * glass redraws (a caret blinking, a button pressed) or the glass and the
- * content move together (the keyboard carrying the list and the dock), the
- * blur it made last is drawn again as it is.
+ * A glass's layers: [capture], the content under it at full size, then
+ * [half], [quarter] and [blurred], that halved three times over (the last an
+ * eighth of the size), blurred and saturated. They are recorded again only
+ * when the glass's [area] of the source moves: they draw the source by
+ * reference, so when the content changes the RenderThread blurs it again by
+ * itself, and when only something over the glass redraws (a caret blinking, a
+ * button pressed) or the glass and the content move together (the keyboard
+ * carrying the list and the dock), the blur it made last is drawn again as it
+ * is. [stretched], [area] is the band a whole [GlassTravel] passes under,
+ * larger than the glass needs at rest.
  */
-private class GlassLayers(val capture: GraphicsLayer, val blurred: GraphicsLayer) {
+internal class GlassLayers(val capture: GraphicsLayer, val half: GraphicsLayer, val quarter: GraphicsLayer, val blurred: GraphicsLayer) {
     var area: Rect? = null
     var radius = 0f
+    var stretched = false
+    val released get() = capture.isReleased || half.isReleased || quarter.isReleased || blurred.isReleased
+
+    /**
+     * Whether [needed] can be drawn from what these layers hold: exactly that
+     * band, or one round it, unless that is a travel's band and the travel is
+     * over (its band is larger than the glass and would cost every frame the
+     * content changes under it).
+     */
+    fun covers(needed: Rect, radius: Float, travelling: Boolean): Boolean {
+        val area = area ?: return false
+        if (released || radius != this.radius) return false
+        return area == needed || (area.contains(needed) && (travelling || !stretched))
+    }
 }
 
+private fun Rect.contains(other: Rect) = left <= other.left && top <= other.top && right >= other.right && bottom >= other.bottom
+
 @Composable
-private fun rememberGlassLayers(): GlassLayers {
+private fun rememberGlassLayers(source: GlassSource?): GlassLayers {
     val capture = rememberGraphicsLayer()
+    val half = rememberGraphicsLayer()
+    val quarter = rememberGraphicsLayer()
     val blurred = rememberGraphicsLayer()
-    return remember(capture, blurred) { GlassLayers(capture, blurred) }
+    val layers = remember(capture, half, quarter, blurred) { GlassLayers(capture, half, quarter, blurred) }
+    DisposableEffect(source, layers) { onDispose { source?.bands?.remove(layers) } }
+    return layers
 }
 
 /**
  * Records [area] of [source] (in the source's coordinates, whole pixels),
  * shrunk and blurred: DownscaleScrollableNoiseSuppressor's SourcePart, an
- * eighth of its size, blurred there, saturation chained after the blur.
+ * eighth of its size, blurred there with [radius], saturation chained after
+ * the blur.
  *
  * Unlike Telegram's, the content is not drawn at an eighth of its size: it
- * is drawn at full size into [GlassLayers.capture], softened there, and that
- * picture is shrunk. Drawn small, text is rasterised on the small copy's
- * grid and its glyphs snap to it, so a line scrolling 1 px at a time sits
- * still under the glass and then jumps a whole small pixel (8 px): white text
- * on black shimmers. Telegram's chats hide this under their bubbles, which
- * are antialiased rects and slide smoothly; ours are mostly bare text.
+ * is drawn at full size into [GlassLayers.capture], and that picture is
+ * halved three times, each halving a bilinear 2×2 average of the one before.
+ * Drawn small, text is rasterised on the small copy's grid and its glyphs
+ * snap to it, so a line scrolling 1 px at a time sits still under the glass
+ * and then jumps a whole small pixel (8 px): white text on black shimmers.
+ * Telegram's chats hide this under their bubbles, which are antialiased rects
+ * and slide smoothly; ours are mostly bare text. Halving step by step leaves
+ * every full-size pixel in the small copy (a box filter 8 px wide), so a line
+ * moving 1 px moves the blur by 1 px. It does what a Gaussian prefilter of
+ * half a small pixel at full size did, the same to within one level of 255,
+ * without blurring a picture the size of the bar on the GPU every frame the
+ * content moves (research/telegram-glass.md).
  */
-private fun GlassLayers.record(scope: DrawScope, source: GlassSource, area: Rect) {
-    val k = GlassSpec.DOWNSCALE
-    val radius = GlassSpec.downscaledRadius(with(scope) { GlassSpec.blur.toPx() }, k)
-    if (area == this.area && radius == this.radius && !capture.isReleased && !blurred.isReleased) return
+private fun GlassLayers.record(scope: DrawScope, source: GlassSource, area: Rect, radius: Float) {
+    if (area == this.area && radius == this.radius && !released) return
     this.area = area
     this.radius = radius
     if (blurred.renderEffect == null) {
-        // Softened to about half the small copy's pixel, so shrinking it has nothing left to alias.
-        val prefilter = GlassSpec.prefilterRadius(k)
-        capture.renderEffect = BlurEffect(prefilter, prefilter, TileMode.Clamp)
-        blurred.renderEffect = BlurEffect(radius, radius, TileMode.Clamp)
-        blurred.colorFilter = saturate
+        // Each halving is drawn into a layer of its own, so the next one samples a picture, not the ops.
+        capture.compositingStrategy = LayerCompositing.Offscreen
+        half.compositingStrategy = LayerCompositing.Offscreen
+        quarter.compositingStrategy = LayerCompositing.Offscreen
     }
+    blurred.renderEffect = BlurEffect(radius, radius, TileMode.Clamp)
+    blurred.colorFilter = saturate
+    fun size(at: Float) = IntSize(ceil(area.width / at).toInt().coerceAtLeast(1), ceil(area.height / at).toInt().coerceAtLeast(1))
     with(scope) {
-        capture.record(IntSize(area.width.toInt(), area.height.toInt())) {
-            translate(-area.left, -area.top) { drawLayer(source.layer) }
-        }
-        blurred.record(IntSize(ceil(area.width / k).toInt().coerceAtLeast(1), ceil(area.height / k).toInt().coerceAtLeast(1))) {
-            scale(1 / k, 1 / k, pivot = Offset.Zero) { drawLayer(capture) }
-        }
+        capture.record(size(1f)) { translate(-area.left, -area.top) { drawLayer(source.layer) } }
+        half.record(size(2f)) { scale(0.5f, 0.5f, pivot = Offset.Zero) { drawLayer(capture) } }
+        quarter.record(size(4f)) { scale(0.5f, 0.5f, pivot = Offset.Zero) { drawLayer(half) } }
+        blurred.record(size(GlassSpec.DOWNSCALE)) { scale(0.5f, 0.5f, pivot = Offset.Zero) { drawLayer(quarter) } }
     }
 }
 
@@ -471,25 +530,51 @@ private fun rememberSourceOffset(source: GlassSource?, origin: () -> Offset): St
     remember(source) { derivedStateOf { source?.let { origin() - it.origin } ?: Offset.Zero } }
 
 /**
- * What a glass at [offset] over [source] shows: its ground, then (when it
- * [blurs]) the content blurred over that, as Telegram's
- * BlurredBackgroundSourceRenderNode draws. The blur takes in
- * [GlassSpec.capture] of content round the glass, kept to the source as
- * Telegram keeps it to the list; the caller clips it to the glass. Without
- * blur, the ground alone, so the tint over it is opaque, as Telegram's bar is
- * with blur off.
+ * The blur a glass of [size] at [offset] over [source] draws: a band of the
+ * source its own [layers] or another glass's already hold, or [layers]
+ * recorded again for it. The band takes in [GlassSpec.capture] of content
+ * round the glass, kept to the source as Telegram keeps it to the list.
+ * Recorded in the glass's own draw, not inside another layer's recording
+ * (a layer recorded while another records draws through the other's scope
+ * and never returns). Null where there is nothing to blur.
  */
-private fun DrawScope.drawSource(layers: GlassLayers, source: GlassSource, offset: Offset, blurs: Boolean) {
-    if (source.ground.isSpecified) drawRect(source.ground)
-    if (!blurs || !source.recorded) return
+private fun DrawScope.blurOf(layers: GlassLayers, source: GlassSource, offset: Offset, size: Size, blurs: Boolean): GlassLayers? {
+    if (!blurs || !source.recorded) return null
     val bounds = Rect(Offset.Zero, source.layer.size.toSize())
+    val margin = GlassSpec.capture.toPx()
     // Whole pixels, so the full-size capture lies on the screen's pixels and isn't resampled.
-    val area = Rect(offset, size).inflate(GlassSpec.capture.toPx()).intersect(bounds).let {
+    fun band(at: Offset) = Rect(at, size).inflate(margin).intersect(bounds).let {
         Rect(floor(it.left), floor(it.top), ceil(it.right), ceil(it.bottom))
     }
-    if (area.isEmpty) return
-    layers.record(this, source, area)
+    val needed = band(offset)
+    if (needed.isEmpty) return null
+    val radius = GlassSpec.downscaledRadius(GlassSpec.blur.toPx(), GlassSpec.DOWNSCALE)
+    val travel = source.travel?.takeIf { it.from != it.to }
+    return source.bands.firstOrNull { it.covers(needed, radius, travel != null) } ?: layers.also {
+        // Moving under a travelling source: blur the band the whole travel passes under, once.
+        val whole = if (travel == null || it.area == null) needed else {
+            val y = offset.y - travel.now
+            listOf(band(Offset(offset.x, y + travel.from)), band(Offset(offset.x, y + travel.to))).fold(needed) { a, b ->
+                if (b.isEmpty) a else Rect(minOf(a.left, b.left), minOf(a.top, b.top), maxOf(a.right, b.right), maxOf(a.bottom, b.bottom))
+            }
+        }
+        it.stretched = whole != needed
+        it.record(this, source, whole, radius)
+        if (it !in source.bands) source.bands += it
+    }
+}
+
+/**
+ * What a glass at [offset] over [source] shows: its ground, then the content
+ * [blurred] over that ([blurOf]), as Telegram's
+ * BlurredBackgroundSourceRenderNode draws; the caller clips it to the glass.
+ * Without blur, the ground alone, so the tint over it is opaque, as
+ * Telegram's bar is with blur off.
+ */
+private fun DrawScope.drawSource(source: GlassSource, offset: Offset, blurred: GlassLayers?) {
+    if (source.ground.isSpecified) drawRect(source.ground)
+    val area = blurred?.area ?: return
     translate(area.left - offset.x, area.top - offset.y) {
-        scale(GlassSpec.DOWNSCALE, GlassSpec.DOWNSCALE, pivot = Offset.Zero) { drawLayer(layers.blurred) }
+        scale(GlassSpec.DOWNSCALE, GlassSpec.DOWNSCALE, pivot = Offset.Zero) { drawLayer(blurred.blurred) }
     }
 }

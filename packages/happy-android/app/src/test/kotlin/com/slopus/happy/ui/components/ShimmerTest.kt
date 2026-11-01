@@ -148,10 +148,13 @@ class ShimmerTest {
         }
         rule.mainClock.advanceTimeByFrame()
         assertEquals(3, clock!!.sweeping)
+        // The clock writes no state as it ticks, so the test's own write reaches composition a frame later.
         shown = 1
+        rule.mainClock.advanceTimeByFrame()
         rule.mainClock.advanceTimeByFrame()
         assertEquals(1, clock!!.sweeping)
         working = false
+        rule.mainClock.advanceTimeByFrame()
         rule.mainClock.advanceTimeByFrame()
         assertEquals(0, clock!!.sweeping)
     }

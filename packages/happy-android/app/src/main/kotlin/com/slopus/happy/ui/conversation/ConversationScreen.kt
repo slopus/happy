@@ -246,6 +246,8 @@ fun ConversationScreen(
     // The keyboard moves the dock and the transcript by an offset while it animates, and is in
     // the layout only at rest, read where things are laid out and placed: it settling composes nothing.
     val keyboard = rememberKeyboardLift()
+    // The transcript slides under the bar as it rides: the bar blurs what the whole way passes under it once.
+    glass.travel = keyboard.travel
     val dockHeight = with(LocalDensity.current) { dock.toDp() }
     // Return in new work's name: on to the composer.
     var nameReturns by remember { mutableIntStateOf(0) }

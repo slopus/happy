@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.offset
+import com.slopus.happy.ui.components.GlassTravel
 import kotlin.math.min
 
 /**
@@ -48,6 +49,18 @@ class KeyboardLift internal constructor(
 
     /** How far above [rest] the keyboard is this frame, in pixels. Read only where things are placed or drawn. */
     val lift: Int get() = (above(now) - rest).coerceAtLeast(0)
+
+    /**
+     * What is placed [aboveKeyboard] travels with it: up by the keyboard's
+     * height over the navigation bar this frame, between where its animation
+     * started and where it ends. The glass over the transcript blurs the band
+     * the whole way passes under it once ([GlassTravel]). Read where it draws.
+     */
+    val travel: GlassTravel = object : GlassTravel {
+        override val now: Int get() = above(this@KeyboardLift.now)
+        override val from: Int get() = above(this@KeyboardLift.from)
+        override val to: Int get() = above(this@KeyboardLift.to)
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)

@@ -96,6 +96,7 @@ import java.io.File
 import java.util.Locale
 
 private const val GLASS_DP = 120
+private const val GLASS_STEPS = 40
 
 /**
  * The chat's frame costs, for research/telegram-chat.md. Each case logs one
@@ -403,6 +404,14 @@ class ChatListBenchmark {
         streams("conversation $chat") { text -> withContext(lane) { check(builder.grow(live(text), 0)) } }
     }
 
+    /** The agent working with nothing streaming, for 5 s: what the bar's shimmering title, status and pulsing dot cost alone. */
+    @Test fun conversation_working() {
+        val state = conversation().copy(working = true, activity = Activity.Working)
+        content { ConversationScreen(state, null, actions) }
+        SystemClock.sleep(1_000)
+        record("conversation $chat working") { SystemClock.sleep(5_000) }
+    }
+
     @Test fun conversation_older() {
         val pages = listOf(0.34, 0.67, 1.0).map { conversation(it) }
         var state by mutableStateOf(pages[0])
@@ -451,6 +460,73 @@ class ChatListBenchmark {
             }
         }
         report("  ime visible after each step: $seen")
+    }
+
+    /**
+     * The glass's steadiness, research/telegram-glass.md's method: a finger
+     * held on the transcript moves it 1 px at a time, [GLASS_STEPS] steps,
+     * with a screenshot after each. For each band of the bar, D is the mean
+     * |frame − previous frame| in 8-bit luma: a steady blur drifts evenly (a
+     * low coefficient of variation), an unsteady one sits still and jumps.
+     * The first and last screenshots are written to `files/glass-steps-*.png`,
+     * so two builds can be compared pixel for pixel.
+     */
+    @Test fun glass_steps() {
+        val state = conversation()
+        content { ConversationScreen(state, null, actions) }
+        val density = app.resources.displayMetrics.density
+        var status = 0
+        main { status = ViewCompat.getRootWindowInsets(activity.window.decorView)?.getInsets(WindowInsetsCompat.Type.statusBars())?.top ?: 0 }
+        val bands = listOf(
+            "status" to (0 until status),
+            "title" to (status until status + (32 * density).toInt()),
+            "foot" to (status + (32 * density).toInt() until status + (64 * density).toInt()),
+            "feather" to (status + (64 * density).toInt() until status + (88 * density).toInt()),
+        )
+        val x = device.displayWidth / 2f
+        var y = device.displayHeight / 2f
+        val start = SystemClock.uptimeMillis()
+        fun touch(action: Int) = instrumentation.sendPointerSync(android.view.MotionEvent.obtain(start, SystemClock.uptimeMillis(), action, x, y, 0))
+        touch(android.view.MotionEvent.ACTION_DOWN)
+        // Past the touch slop, so every step after this scrolls by its pixel.
+        repeat(10) { y += 6f; touch(android.view.MotionEvent.ACTION_MOVE); SystemClock.sleep(16) }
+        SystemClock.sleep(500)
+        fun luma(): Array<FloatArray> {
+            SystemClock.sleep(250)
+            val shot = instrumentation.uiAutomation.takeScreenshot()
+            return bands.map { (_, rows) ->
+                FloatArray(rows.count() * shot.width).also { out ->
+                    var i = 0
+                    for (row in rows) for (col in 0 until shot.width) {
+                        val c = shot.getPixel(col, row)
+                        out[i++] = 0.299f * Color.red(c) + 0.587f * Color.green(c) + 0.114f * Color.blue(c)
+                    }
+                }
+            }.toTypedArray().also { shot.recycle() }
+        }
+        fun save(name: String) {
+            val shot = instrumentation.uiAutomation.takeScreenshot()
+            File(app.getExternalFilesDir(null), "glass-steps-$name.png").outputStream().use { shot.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            shot.recycle()
+        }
+        save("first")
+        var last = luma()
+        val d = bands.map { ArrayList<Double>() }
+        repeat(GLASS_STEPS) {
+            y += 1f
+            touch(android.view.MotionEvent.ACTION_MOVE)
+            val now = luma()
+            for (b in bands.indices) d[b] += now[b].indices.sumOf { kotlin.math.abs(now[b][it] - last[b][it]).toDouble() } / now[b].size.coerceAtLeast(1)
+            last = now
+        }
+        save("last")
+        touch(android.view.MotionEvent.ACTION_UP)
+        bands.forEachIndexed { b, (name, rows) ->
+            val v = d[b]
+            val mean = v.average()
+            val sd = kotlin.math.sqrt(v.sumOf { (it - mean) * (it - mean) } / v.size)
+            report(String.format(Locale.US, "  glass steps %-8s y %4d-%4d: D mean %.3f max %.3f cv %.2f", name, rows.first, rows.last, mean, v.max(), if (mean > 0) sd / mean else 0.0))
+        }
     }
 
     // ---- the legacy chat ----
