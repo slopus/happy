@@ -46,6 +46,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
@@ -61,6 +62,7 @@ import com.slopus.happy.browser.Browser
 import com.slopus.happy.browser.BrowserPolicy
 import com.slopus.happy.browser.BrowserProxy
 import com.slopus.happy.ui.components.MaterialSymbols
+import com.slopus.happy.ui.components.themedWebView
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
@@ -281,9 +283,8 @@ fun BrowserView(
             if (ready && shown != null && session != null) {
                 AndroidView(
                     factory = { ctx ->
-                        WebView(ctx).apply {
-                            // Before anything else touches it: the profile is fixed at first use.
-                            if (session.isolated) WebViewProfiles.assign(this)
+                        // Before anything else touches it: the profile is fixed at first use.
+                        themedWebView(ctx, colors.surface, colors.dark) { if (session.isolated) WebViewProfiles.assign(this) }.apply {
                             settings.javaScriptEnabled = true
                             settings.domStorageEnabled = true
                             settings.allowFileAccess = false
@@ -309,6 +310,7 @@ fun BrowserView(
                                 onFailure = { failure = unreachablePage },
                                 onLoaded = { failure = null },
                                 onElsewhere = { elsewhere(it) },
+                                themed = colors.surface.toArgb(),
                             )
                             loadUrl(shown.url)
                             web = this
@@ -421,6 +423,8 @@ private class BrowserClient(
     private val onFailure: () -> Unit,
     private val onLoaded: () -> Unit,
     private val onElsewhere: (String) -> Unit,
+    /** The theme's colour, under a page that paints its own background. */
+    private val themed: Int,
 ) : WebViewClient() {
     private var answered = 0
 
@@ -451,14 +455,50 @@ private class BrowserClient(
 
     override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) = onState(view)
 
+    /** Once the page's first frame is up: what shows under it ([ground]). */
+    override fun onPageCommitVisible(view: WebView, url: String?) {
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.VISUAL_STATE_CALLBACK)) {
+            WebViewCompat.postVisualStateCallback(view, 0) { ground(view) }
+        } else {
+            ground(view)
+        }
+    }
+
     override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) = onState(view)
 
     override fun onPageFinished(view: WebView, url: String?) {
         onState(view)
         onLoaded()
+        ground(view)
+    }
+
+    /**
+     * What shows under the page. Until it has drawn, the theme's colour
+     * (themedWebView), never WebView's white. A page that paints its own
+     * background, or takes a dark one from `color-scheme`, covers it either
+     * way; one with neither was made on white, so it gets white, as in any
+     * browser.
+     */
+    private fun ground(view: WebView) {
+        view.evaluateJavascript(BARE_PAGE) { bare ->
+            view.setBackgroundColor(if (bare == "true") android.graphics.Color.WHITE else themed)
+        }
     }
 
     override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
         if (request.isForMainFrame) onFailure()
     }
 }
+
+/**
+ * True when the page paints no background of its own (the root and body
+ * transparent) and asks for no dark one (`color-scheme`, as CSS or meta):
+ * a page made on white.
+ */
+internal const val BARE_PAGE = """(function() {
+  var root = document.documentElement, body = document.body;
+  function clear(e) { var c = e ? getComputedStyle(e).backgroundColor : ''; return !c || c === 'transparent' || c === 'rgba(0, 0, 0, 0)'; }
+  var meta = document.querySelector('meta[name="color-scheme"]');
+  var scheme = getComputedStyle(root).colorScheme + ' ' + (meta ? meta.content : '');
+  return clear(root) && clear(body) && scheme.indexOf('dark') < 0;
+})()"""

@@ -614,6 +614,29 @@ happy-app's `sources/changelog/changelog.json`, with its images in
 `Changelog.images`. `AppGraph.changelog` is the read marker Home's update
 banner needs.
 
+### Theme and what the platform draws
+
+The theme setting (`localSettings.themePreference`) is the platform's
+night mode too (`ui/theme/AppNightMode.kt`), so nothing platform-drawn
+shows the system's theme under the app's (it used to flash white under a
+dark app on a light phone):
+
+- On API 31+, `UiModeManager.setApplicationNightMode`, which the system
+  keeps for the package: the next start's splash and window are in the
+  app's theme before any of our code runs. MainActivity handles uiMode, so
+  a change repaints in place.
+- MainActivity paints its window in the theme (`paintWindow`), before
+  HappyApp's first frame and on every change.
+- Every WebView is a `themedWebView`: the app's night mode for
+  `prefers-color-scheme`, and the theme's colour until the page draws. The
+  browser then puts white under a page that paints no background and asks
+  for no dark one (`BARE_PAGE`).
+
+A new WebView or window goes through these too. `AppNightModeTest` covers
+dark on a light phone and light on a dark one. `tools/flashscan` records a
+device and reports its brightest frames (`journey.sh`: a cold start and a
+chat).
+
 ## Build and test
 
 Run agent Android builds, unit tests and device checks on Kirill's Mac Mini

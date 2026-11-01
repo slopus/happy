@@ -1,13 +1,11 @@
 package com.slopus.happy
 
 import android.content.Intent
-import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.view.ViewTreeObserver
 import androidx.activity.ComponentActivity
-import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.CompositionLocalProvider
@@ -22,6 +20,8 @@ import com.slopus.happy.ui.FirstFrame
 import com.slopus.happy.ui.HappyApp
 import com.slopus.happy.ui.LocalAfterStart
 import com.slopus.happy.ui.connect.DeepLinks
+import com.slopus.happy.ui.theme.AppNightMode
+import com.slopus.happy.ui.theme.paintWindow
 import androidx.profileinstaller.ProfileInstaller
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -55,6 +55,8 @@ class MainActivity : ComponentActivity() {
             val built = ready.await()
             graph.value = built
             BackgroundSendNotifications.start(this@MainActivity, built)
+            // The platform's night mode is the app's theme setting, kept by the system for the next start.
+            launch(Dispatchers.IO) { built.localSettings.themePreference.collect { AppNightMode.apply(applicationContext, it) } }
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 built.setForeground(true)
                 built.requestSync()
@@ -85,18 +87,19 @@ class MainActivity : ComponentActivity() {
         }
         setContent {
             val shown by graph.collectAsState()
-            // System bar icons follow the app's theme, which can differ from the system's.
             shown?.let { CompositionLocalProvider(LocalAfterStart provides afterStart) {
-                HappyApp(it, onDarkThemeChange = { dark ->
-                    val style = if (dark) {
-                        SystemBarStyle.dark(Color.TRANSPARENT)
-                    } else {
-                        SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
-                    }
-                    enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
-                })
+                HappyApp(it, onDarkThemeChange = ::showTheme)
             } }
         }
+    }
+
+    private var shownDark: Boolean? = null
+
+    /** [HappyApp]'s theme, before its first frame is drawn and on every change ([paintWindow]). */
+    private fun showTheme(dark: Boolean) {
+        if (shownDark == dark) return
+        shownDark = dark
+        paintWindow(dark)
     }
 
     /** Both homes and the first screen report it once their rows (or loader) are drawn. */

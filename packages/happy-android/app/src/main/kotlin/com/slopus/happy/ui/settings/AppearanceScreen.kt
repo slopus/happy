@@ -236,12 +236,12 @@ private fun SwitchItem(title: String, subtitle: String, icon: Ionicon, iconColor
  * wears its placeholder whichever style is set, so only Black & White and
  * Animated Avatars change how they look.
  *
- * Not ported: a theme change doesn't set the platform's night mode
- * (happy-app's Appearance.setColorScheme). Compose and the system bars
- * follow the setting; only platform-drawn chrome such as the text selection
- * toolbar keeps the system's. Doing it needs UiModeManager (API 31+) plus
- * recreating the activity for its window theme, which MainActivity avoids
- * by handling uiMode itself.
+ * The theme is the platform's night mode too (happy-app's
+ * Appearance.setColorScheme, `ui/theme/AppNightMode`): on API 31+ the system's
+ * splash, the window, platform-drawn chrome such as the text selection
+ * toolbar, and web pages follow the setting, as Compose and the system bars
+ * do. MainActivity handles uiMode itself, so a change repaints in place;
+ * nothing is recreated.
  */
 @Composable
 fun AppearanceScreen(

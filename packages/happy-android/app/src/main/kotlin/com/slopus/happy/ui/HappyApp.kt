@@ -4,7 +4,7 @@ import com.slopus.happy.ui.connection.openAgentSettingsRow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import com.slopus.happy.ui.voice.LocalVoiceController
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -100,7 +100,8 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
     // Avatar.tsx reads the avatar settings everywhere: the chat header and Settings as well as Home.
     LocalizedContent(language.locale) { HappyTheme(preference = theme) { ProvideAvatarSettings(settings) { CompositionLocalProvider(LocalVoiceController provides graph.voice, LocalAnimatedAvatars provides animatedAvatars) {
         val dark = HappyTheme.colors.dark
-        LaunchedEffect(dark) { onDarkThemeChange(dark) }
+        // In the frame that composes it, before that frame is drawn: the window's colour is the theme's from the first frame.
+        SideEffect { onDarkThemeChange(dark) }
 
         val open by graph.openAccount.collectAsStateWithLifecycle()
         val agent = (open as? OpenAccount.Agent)?.id
@@ -231,7 +232,8 @@ private fun rememberLinks(graph: AppGraph, nav: NavHostController, agent: String
     val context = LocalContext.current
     if (agent == null) {
         val system = LocalUriHandler.current
-        return remember(system) { LinkOpener.legacy(context, system) }
+        val dark = HappyTheme.colors.dark
+        return remember(system, dark) { LinkOpener.legacy(context, system, dark) }
     }
     val computer = computerName(graph, agent)
     return remember(nav, agent, computer) { LinkOpener.agent(context, computer) { url -> nav.navigate(BrowserRoute(agent, url)) } }

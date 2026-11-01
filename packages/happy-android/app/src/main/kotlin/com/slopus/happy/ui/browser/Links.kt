@@ -118,12 +118,12 @@ class LinkOpener internal constructor(
             return LinkOpener(proxied = true, computer = computer, tap = browse, inApp = browse, external = { openOutside(context, it) })
         }
 
-        /** Legacy mode: a tap does what [system] always did; "in the app" is a Custom Tab. */
-        fun legacy(context: Context, system: UriHandler): LinkOpener = LinkOpener(
+        /** Legacy mode: a tap does what [system] always did; "in the app" is a Custom Tab, [dark] or light as the app is. */
+        fun legacy(context: Context, system: UriHandler, dark: Boolean = false): LinkOpener = LinkOpener(
             proxied = false,
             computer = null,
             tap = system::openUri,
-            inApp = { url -> if (BrowserPolicy.route(url) == BrowserPolicy.Route.Web) openCustomTab(context, url) else openOutside(context, url) },
+            inApp = { url -> if (BrowserPolicy.route(url) == BrowserPolicy.Route.Web) openCustomTab(context, url, dark) else openOutside(context, url) },
             external = { openOutside(context, it) },
         )
     }
@@ -145,10 +145,12 @@ fun ProvideLinks(opener: LinkOpener, content: @Composable () -> Unit) {
     }
 }
 
-/** A Custom Tab for [url], else whatever opens it. */
-internal fun openCustomTab(context: Context, url: String) {
+/** A Custom Tab for [url] in the app's theme, not the system's, else whatever opens it. */
+internal fun openCustomTab(context: Context, url: String, dark: Boolean) {
     try {
-        CustomTabsIntent.Builder().setShowTitle(true).build().apply { intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }.launchUrl(context, Uri.parse(url))
+        CustomTabsIntent.Builder().setShowTitle(true)
+            .setColorScheme(if (dark) CustomTabsIntent.COLOR_SCHEME_DARK else CustomTabsIntent.COLOR_SCHEME_LIGHT)
+            .build().apply { intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }.launchUrl(context, Uri.parse(url))
     } catch (_: ActivityNotFoundException) {
         openOutside(context, url)
     } catch (_: SecurityException) {

@@ -88,7 +88,7 @@ fun MermaidView(content: String, modifier: Modifier = Modifier, fallback: @Compo
             .testTag(MermaidTags.DIAGRAM),
     ) {
         AndroidView(
-            factory = { context -> mermaidWebView(context, background) { onHeight(it) } },
+            factory = { context -> mermaidWebView(context, background, colors.dark) { onHeight(it) } },
             update = { view ->
                 if (view.tag != html) {
                     view.tag = html
@@ -102,8 +102,7 @@ fun MermaidView(content: String, modifier: Modifier = Modifier, fallback: @Compo
 }
 
 @SuppressLint("SetJavaScriptEnabled")
-private fun mermaidWebView(context: Context, background: Color, onHeight: (Int) -> Unit) = WebView(context).apply {
-    setBackgroundColor(background.toArgb())
+private fun mermaidWebView(context: Context, background: Color, dark: Boolean, onHeight: (Int) -> Unit) = themedWebView(context, background, dark).apply {
     settings.javaScriptEnabled = true
     settings.allowFileAccess = false
     settings.allowContentAccess = false
