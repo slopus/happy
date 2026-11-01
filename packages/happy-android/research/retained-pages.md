@@ -172,3 +172,41 @@ The final commit-labeled debug APK was installed with data-preserving upgrades
 on both phones. Both repeated the nine-cycle rapid tap/Back check successfully
 after that install, then received the documented `cmd package compile -m verify`
 step. No OTA or store release was performed.
+
+## Follow-up: recurring Back-frame overhead
+
+The first retained-page implementation reduced expensive return spikes but
+increased recurring frame work. `benchmark/retention-frame-work.sql` isolates
+main-thread slices 50–450 ms after each input, separating animation,
+recomposition, layout, drawing and accessibility work. These nested slices
+overlap; their durations must not be added together.
+
+Two causes were fixed:
+
+- `present` and the scrim read the whole `PageVisual` snapshot. Every position
+  update invalidated the host's presence checks in composition and measurement,
+  and even a top page with an unchanged zero dim. Presence, translation and dim
+  now have separate mutable state. A derived-state intermediate reduced the
+  work, but independent channels also avoid its per-frame recalculation.
+- A key Back emits a zero-progress start too. The interruption handoff therefore
+  animated an ordinary full pop alongside NavHost's own animation. Both pages
+  still become placed at gesture start (including zero progress), but completing
+  an unmoved gesture from rest releases the handoff and uses only NavHost's pop.
+  A real drag or interrupted push keeps the existing current-pixel handoff.
+
+The new snapshot-observation regression checks 30 pixel updates cause no
+presence/scrim invalidations while layer offsets still update. Another test
+checks ordinary Back has no second animation and cancelling before movement
+restores the entry lifecycles. The first fast-path attempt deferred the covered
+page's placement too; the existing LTR/RTL predictive tests caught that at zero
+progress, and the implementation was corrected without relaxing those checks.
+
+For attribution, a Nothing chat Back sample originally spent 1.093 ms per
+`Recomposer:recompose` slice and 0.922 ms per measure/layout slice, against
+0.074/0.441 ms before general retention. Draw time was essentially unchanged
+(0.634 versus 0.628 ms). The split-state intermediate removed recurring page
+recomposition, exposing the second animation as the remaining cost. Complete
+intermediate runs are preserved in `nothing-retained-derived-presence` and
+`nothing-retained-independent-state` (each four passing tests, 12 iterations
+per journey), with corresponding `nothing-retention-{derived,independent}-analysis`
+summaries. Final paired traces use `{nothing,fold}-retained-single-animation`.

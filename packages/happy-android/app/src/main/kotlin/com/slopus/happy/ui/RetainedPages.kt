@@ -17,7 +17,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -25,7 +24,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.runtime.structuralEqualityPolicy
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
@@ -213,7 +211,7 @@ private fun RetainedBackHandler(nav: NavHostController, retention: RetainedPages
                 retention.seekGesture(nav.currentBackStack.value.filter { it.destination !is NavGraph }.map { it.id }, event.progress, direction)
             }
             override fun onBackCompleted() {
-                retention.completeGesture = null // NavHost completes the real pop's lifecycle.
+                retention.beforePop()
                 nav.popBackStack()
             }
         }
@@ -332,13 +330,13 @@ internal class RetainedPagesState {
     /** A gesture always begins at the pixels on screen, even mid-push. */
     fun seekGesture(stack: List<String>, progress: Float, direction: Int) {
         if (!gestureStarted) {
-            gestureStarted = true
             val topId = stack.lastOrNull() ?: return
             val belowId = stack.dropLast(1).lastOrNull() ?: return
             val top = position(topId)
             val below = position(belowId)
             val width = (parent?.size?.width ?: 0) * direction.toFloat()
             if (width == 0f) return
+            gestureStarted = true
             gesture = RetainedGesture(topId, belowId, width, PageVisual(top.offset, top.dim()), PageVisual(below.offset, below.dim()))
         }
         val gesture = gesture ?: return
@@ -355,6 +353,23 @@ internal class RetainedPagesState {
 
     fun endGestureInput() { gestureStarted = false }
 
+    fun beforePop() {
+        completeGesture = null // NavHost completes the real pop's lifecycle.
+        val gesture = gesture ?: return
+        val top = position(gesture.topId)
+        // A key Back also sends a zero-progress start. Keep both pages placed
+        // during that start, but do not run a second animation for a full pop
+        // from rest. Real drags and interrupted pushes still need the handoff.
+        if (abs(gesture.top.offset.x) < 1f && abs(top.offset.x) < 1f) {
+            this.gesture = null
+            gestureStarted = false
+            for (page in listOf(top, position(gesture.belowId))) {
+                page.overrideRunning = false
+                page.visualOverride = null
+            }
+        }
+    }
+
     /** Toolbar/system Back while a push is still moving uses the same
      * current-pixel handoff, rather than reversing an old tween's clock.
      */
@@ -364,7 +379,12 @@ internal class RetainedPagesState {
     }
 
     suspend fun finishGesture(active: String?) {
-        val gesture = gesture ?: return
+        val gesture = gesture ?: run {
+            // A gesture cancelled before moving still prepared both entries.
+            completeGesture?.invoke()
+            completeGesture = null
+            return
+        }
         val top = position(gesture.topId)
         val below = position(gesture.belowId)
         val fromTop = top.offset.x
@@ -405,21 +425,31 @@ internal class RetainedPagesState {
 internal class RetainedPagePosition(val order: Int) {
     private var anchorOffset by mutableStateOf(Offset.Zero)
     var anchorPresent by mutableStateOf(false)
-    var visualOverride by mutableStateOf<PageVisual?>(null)
     // Pixel changes belong to the layer, not the composition/measurement gates.
-    // Reading the whole override from present invalidates both on every frame.
-    private val isPresent by derivedStateOf(structuralEqualityPolicy()) { visualOverride != null || anchorPresent }
-    private val overrideDim by derivedStateOf(structuralEqualityPolicy()) { visualOverride?.dim }
+    // Store the channels separately: neither presence nor a steady scrim needs
+    // invalidation (or derived-state recalculation) when only pixels move.
+    private var overridden by mutableStateOf(false)
+    private var overrideOffset by mutableStateOf(Offset.Zero)
+    private var overrideDim by mutableStateOf(0f)
+    var visualOverride: PageVisual?
+        get() = if (overridden) PageVisual(overrideOffset, overrideDim) else null
+        set(value) {
+            if (value != null) {
+                overrideOffset = value.offset
+                overrideDim = value.dim
+            }
+            overridden = value != null
+        }
     var overrideRunning = false
     var offset: Offset
-        get() = visualOverride?.offset ?: anchorOffset
+        get() = if (overridden) overrideOffset else anchorOffset
         set(value) { anchorOffset = value }
     var present: Boolean
-        get() = isPresent
+        get() = overridden || anchorPresent
         set(value) { anchorPresent = value }
     var resident by mutableStateOf(false)
     var anchorDim: () -> Float = { 0f }
-    fun dim(): Float = overrideDim ?: anchorDim()
+    fun dim(): Float = if (overridden) overrideDim else anchorDim()
     var anchor: LayoutCoordinates? = null
     var settled = false
 

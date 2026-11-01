@@ -471,6 +471,39 @@ class RetainedPagesTest {
     }
 
     @Test
+    fun restingBackUsesOnlyTheNavHostAnimationAndZeroProgressCancelSettlesLifecycle() {
+        val retained = RetainedPagesState()
+        show(retention = retained)
+        val homeId = nav.currentBackStackEntry!!.id
+        push()
+        val top = nav.currentBackStackEntry!!
+        val input = BackInput()
+        rule.runOnUiThread { events.addInput(input) }
+        for (commit in listOf(false, true)) {
+            rule.mainClock.autoAdvance = false
+            rule.runOnUiThread { input.start(); input.progress(0f) }
+            repeat(3) { rule.mainClock.advanceTimeByFrame() }
+            rule.waitForIdle()
+            assertTrue("gesture start places the covered page even at zero progress", retained.position(homeId).present)
+            rule.runOnUiThread { if (commit) input.complete() else input.cancel() }
+            repeat(4) {
+                rule.mainClock.advanceTimeByFrame()
+                rule.waitForIdle()
+                if (commit) {
+                    assertEquals("ordinary Back must not run a second animation", null, retained.position(top.id).visualOverride)
+                    assertEquals(null, retained.position(homeId).visualOverride)
+                }
+            }
+            settle()
+            if (!commit) {
+                assertEquals(top.id, nav.currentBackStackEntry!!.id)
+                assertEquals(Lifecycle.State.RESUMED, top.lifecycle.currentState)
+                assertEquals(Lifecycle.State.CREATED, homeLifecycle?.currentState)
+            } else assertEquals(homeId, nav.currentBackStackEntry!!.id)
+        }
+    }
+
+    @Test
     fun predictiveBackCanStartDuringPushAndCancelOrCommit() {
         val retained = RetainedPagesState()
         show(retention = retained)
