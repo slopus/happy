@@ -453,6 +453,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                 accountRows(),
                 [Row(Index.profile, image: profilePhoto, value: profileName.isEmpty ? nil : profileName, action: { [weak self] in self?.openProfile() })],
                 [
+                    Row(Index.connection, action: { [weak self] in self?.openConnection() }),
                     Row(Index.appearance, action: { [weak self] in self?.open(.appearance) }),
                     Row(Index.dataStorage, action: { [weak self] in self?.open(.dataStorage) }),
                 ],
@@ -468,6 +469,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                 Row(Index.backupRestore, action: { [weak self] in self?.open(.backup) }),
             ],
             [
+                Row(Index.connection, action: { [weak self] in self?.openConnection() }),
                 Row(Index.appearance, action: { [weak self] in self?.push(.settingsAppearance, for: id) }),
                 Row(Index.language, action: { [weak self] in self?.open(.language) }),
                 Row(Index.voice, action: { [weak self] in self?.open(.voice) }),
@@ -692,6 +694,19 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     }
 
     // MARK: Actions
+
+    /// How the shown profile reaches its computer or server, and the
+    /// last ten minutes over it: a computer's any time, a Happy account's
+    /// once it is the active one (only it has a session).
+    private func openConnection() {
+        guard isTop, let profile = shown else { return }
+        if profile.isAgentConnection {
+            guard context.account.agentConnections.metrics(for: profile.id) != nil else { return }
+            show(ConnectionViewController(context: context, source: .agent(id: profile.id)))
+        } else if let session = activeSession {
+            show(ConnectionViewController(context: context, source: .legacy(session)))
+        }
+    }
 
     /// The person's own name and picture on the computer shown.
     private func openProfile() {

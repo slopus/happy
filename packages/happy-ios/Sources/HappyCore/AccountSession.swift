@@ -61,6 +61,11 @@ public final class AccountSession: Sendable {
     /// session's own screens.
     public let sessionDetails: LegacySessionDetailFeed
     public let machineDetails: MachineDetailFeed
+    /// This account's traffic, counted in memory while it is signed in.
+    public let metrics = ConnectionMetrics()
+    /// The server it talks to, and the Socket.IO endpoint.
+    public let serverURL: URL
+    public let socketURL: URL
     /// Socket status for the UI (connection dot in settings).
     public let statusUpdates: AsyncStream<RealtimeStatus>
     /// True from each socket (re)connect until what it pulls for home has
@@ -114,7 +119,9 @@ public final class AccountSession: Sendable {
             .appendingPathComponent("happy-files-\(keys.anonID)", isDirectory: true)
         self.fileCache = SessionFileCache(directory: fileCacheDirectory)
         self.media = MediaLibrary.legacy(accountID: keys.anonID, filesDirectory: self.filesDirectory)
-        self.api = HappyAPI(serverURL: dependencies.serverURL, clientID: dependencies.clientID, transport: dependencies.transport)
+        serverURL = dependencies.serverURL
+        let transport = MeteredHTTPTransport(base: dependencies.transport, metrics: metrics, serverURL: dependencies.serverURL)
+        self.api = HappyAPI(serverURL: dependencies.serverURL, clientID: dependencies.clientID, transport: transport)
             .authenticated(token: credentials.token)
         self.avatarPictures = AvatarPictures(owner: keys.anonID,
             directory: filesDirectory.map { $0.deletingLastPathComponent().appendingPathComponent("avatars", isDirectory: true) },
@@ -142,10 +149,11 @@ public final class AccountSession: Sendable {
         guard let socketURL = SocketIOURL.make(serverURL: dependencies.serverURL) else {
             throw ServerURLError.invalid
         }
+        self.socketURL = socketURL
         let token = credentials.token
         let clientID = dependencies.clientID
         let appState = dependencies.appState
-        self.realtime = SocketIOClient(url: socketURL, connector: dependencies.connector) {
+        self.realtime = SocketIOClient(url: socketURL, connector: MeteredWebSocketConnector(base: dependencies.connector, metrics: metrics)) {
             .object([
                 "token": .string(token),
                 "clientType": .string("user-scoped"),

@@ -11,6 +11,7 @@ public final class NetworkPath: @unchecked Sendable {
     private let monitor = NWPathMonitor()
     private let lock = NSLock()
     private var satisfied = true
+    private var latest = NetworkPathDetails(satisfied: true)
     private var watchers: [UUID: @Sendable (Bool) -> Void] = [:]
     #if DEBUG
     /// Tests: what the path is said to be, whatever it is.
@@ -18,7 +19,10 @@ public final class NetworkPath: @unchecked Sendable {
     #endif
 
     private init() {
-        monitor.pathUpdateHandler = { [weak self] path in self?.update(path.status == .satisfied) }
+        monitor.pathUpdateHandler = { [weak self] path in
+            self?.describe(path)
+            self?.update(path.status == .satisfied)
+        }
         monitor.start(queue: DispatchQueue(label: "engineering.happy.network-path", qos: .utility))
     }
 
@@ -29,6 +33,29 @@ public final class NetworkPath: @unchecked Sendable {
         if let forced { return forced }
         #endif
         return satisfied
+    }
+
+    /// The way out as the system last described it: the interface, and
+    /// whether it is expensive (cellular, a hotspot) or constrained (Low
+    /// Data Mode).
+    public var details: NetworkPathDetails {
+        lock.lock(); defer { lock.unlock() }
+        var value = latest
+        #if DEBUG
+        if let forced { value.satisfied = forced }
+        #endif
+        return value
+    }
+
+    private func describe(_ path: NWPath) {
+        let interface: NetworkPathDetails.Interface = if path.status != .satisfied { .none }
+            else if path.usesInterfaceType(.wifi) { .wifi }
+            else if path.usesInterfaceType(.cellular) { .cellular }
+            else if path.usesInterfaceType(.wiredEthernet) { .wired }
+            else if path.usesInterfaceType(.loopback) { .loopback }
+            else { .other }
+        let value = NetworkPathDetails(satisfied: path.status == .satisfied, interface: interface, expensive: path.isExpensive, constrained: path.isConstrained)
+        lock.lock(); latest = value; lock.unlock()
     }
 
     private func update(_ value: Bool) {
@@ -75,6 +102,29 @@ public final class NetworkPath: @unchecked Sendable {
         DispatchQueue.main.async { for watch in watchers { watch(shown) } }
     }
     #endif
+}
+
+public struct NetworkPathDetails: Equatable, Sendable {
+    public enum Interface: String, Sendable {
+        case wifi = "Wi-Fi", cellular = "Cellular", wired = "Ethernet", loopback = "Loopback", other = "Other", none = "None"
+    }
+    public var satisfied: Bool
+    public var interface: Interface = .other
+    public var expensive = false
+    public var constrained = false
+
+    public init(satisfied: Bool, interface: Interface = .other, expensive: Bool = false, constrained: Bool = false) {
+        self.satisfied = satisfied; self.interface = interface; self.expensive = expensive; self.constrained = constrained
+    }
+
+    /// "Wi-Fi", "Cellular · expensive · Low Data Mode", "No network".
+    public var text: String {
+        guard satisfied else { return "No network" }
+        var parts = [interface.rawValue]
+        if expensive { parts.append("expensive") }
+        if constrained { parts.append("Low Data Mode") }
+        return parts.joined(separator: " · ")
+    }
 }
 
 public final class NetworkPathWatch: @unchecked Sendable {

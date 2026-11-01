@@ -15,8 +15,8 @@ extension TailcatHTTPTransport {
         guard Self.safe(path: path, credential: credential, headers: headers) else { throw PairingError.invalidResponse }
         let client = try await connection()
         let port = port
-        let stream: TailcatConnection
-        do { stream = try await client.openTCP(port: port) } catch {
+        let stream: any BrowserStream
+        do { stream = try await flow(client) } catch {
             if Self.lostTunnel(error) { await reset(client) }
             throw error
         }

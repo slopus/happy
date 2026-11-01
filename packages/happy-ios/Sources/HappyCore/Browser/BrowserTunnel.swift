@@ -16,20 +16,33 @@ extension AgentTransport {
 
 extension TailcatHTTPTransport {
     public func browserConnection() async throws -> any BrowserStream {
-        try await connection().openTCP(port: port)
+        try await flow(connection())
     }
 }
 
 extension AgentClient {
+    /// The computer's recorder, when the client's transport counts.
+    var metrics: ConnectionMetrics? { (transport as? MeteredAgentTransport)?.metrics }
+
     /// Authentication is injected here and never returned to the web process.
     public func browserTunnel(workspaceID: String, target: BrowserPolicy.Authority) async throws -> any BrowserStream {
         guard BrowserPolicy.validID(workspaceID) else { throw BrowserError.forbidden }
-        let stream = try await transport.browserConnection()
+        let start = ConnectionMetrics.uptime()
+        let stream: any BrowserStream
+        do { stream = try await transport.browserConnection() } catch {
+            if !(error is CancellationError) { metrics?.request(.browser, status: nil, duration: ConnectionMetrics.uptime() - start) }
+            throw error
+        }
         do {
             try await Self.connect(stream, target: "/v0/workspaces/\(workspaceID)/proxy", credential: token)
             try await Self.connect(stream, target: target.text, credential: nil)
+            metrics?.request(.browser, status: 200, duration: ConnectionMetrics.uptime() - start)
             return stream
         } catch {
+            if !(error is CancellationError) {
+                let status: Int? = if case BrowserError.upstream(let code) = error { code } else { nil }
+                metrics?.request(.browser, status: status, duration: ConnectionMetrics.uptime() - start)
+            }
             await stream.close()
             if error is CancellationError { throw error }
             if case BrowserError.upstream = error { throw error }

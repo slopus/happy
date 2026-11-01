@@ -600,6 +600,6 @@ extension AgentConnections {
     /// A client for a paired device, sharing nothing with its identity refresh.
     public func agentClient(for accountID: String) -> AgentClient? {
         guard let credential = credential(for: accountID) else { return nil }
-        return AgentClient(transport: makeTransport(credential), token: credential.deviceToken)
+        return AgentClient(transport: transport(credential, for: accountID), token: credential.deviceToken)
     }
 }

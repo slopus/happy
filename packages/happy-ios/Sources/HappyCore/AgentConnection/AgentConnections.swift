@@ -29,6 +29,27 @@ public final class AgentConnections {
 
     public var active: AgentConnection? { accounts.first { $0.id == activeID } }
 
+    /// Each computer's traffic recorder, in memory while it is paired.
+    private var meters: [String: ConnectionMetrics] = [:]
+
+    /// The computer `id`'s recorder, nil once it is no longer paired.
+    public func metrics(for id: String) -> ConnectionMetrics? {
+        guard credentials[id] != nil else { return nil }
+        return meter(id)
+    }
+
+    private func meter(_ id: String) -> ConnectionMetrics {
+        if let meter = meters[id] { return meter }
+        let meter = ConnectionMetrics()
+        meters[id] = meter
+        return meter
+    }
+
+    /// A transport to `id`'s computer that counts on its recorder.
+    func transport(_ credential: AgentConnectionCredentials, for id: String) -> any AgentTransport {
+        MeteredAgentTransport(base: makeTransport(credential), metrics: meter(id))
+    }
+
     /// A stable account lifetime, shared by Home, Settings and conversations.
     /// Construction performs no I/O; the actor opens SQLite off-main on start.
     public func syncEngine(for id: String) -> SyncEngine? {
@@ -63,7 +84,7 @@ public final class AgentConnections {
             if engines[id] === engine { engines.removeValue(forKey: id) }
         }
         var account = AgentConnection(id: id, name: AgentName.friendly(name))
-        let transport = makeTransport(value)
+        let transport = transport(value, for: id)
         do { account = try await AgentIdentity.refresh(account, transport: transport, token: value.deviceToken) }
         catch PairingError.revoked { await transport.close(); throw PairingError.revoked }
         catch { }
@@ -94,7 +115,7 @@ public final class AgentConnections {
     public func rename(_ id: String, to name: String) async throws {
         guard let credential = credentials[id] else { throw AccountSwitchError.unknownAccount }
         let body = try JSONSerialization.data(withJSONObject: ["node": ["name": name]])
-        let transport = makeTransport(credential)
+        let transport = transport(credential, for: id)
         defer { Task { await transport.close() } }
         // The transport names the body's type itself.
         let response = try await transport.request(method: "PATCH", path: "/v0/config", credential: credential.deviceToken, body: body, headers: [:])
@@ -124,7 +145,7 @@ public final class AgentConnections {
         }
         do { try await storage.remove(id) }
         catch { startConnections(); throw error }
-        credentials.removeValue(forKey: id); accounts.removeAll { $0.id == id }
+        credentials.removeValue(forKey: id); accounts.removeAll { $0.id == id }; meters.removeValue(forKey: id)
         // What V2 kept to open on it offline goes with it.
         OfflineFile.remove(id)
         if activeID == id { activeID = nil }
@@ -147,6 +168,7 @@ public final class AgentConnections {
         job?.cancel()
         let engine = engines.removeValue(forKey: id)
         credentials.removeValue(forKey: id)
+        meters.removeValue(forKey: id)
         accounts.removeAll { $0.id == id }
         if activeID == id { activeID = nil }
         onChange?()
@@ -217,12 +239,12 @@ public final class AgentConnections {
         guard foreground else { return }
         for account in accounts where jobs[account.id] == nil && !account.revoked {
             guard let credential = credentials[account.id] else { continue }
-            let make = makeTransport; let generation = generation; let interval = refreshInterval
+            let make = makeTransport, meter = meter(account.id); let generation = generation; let interval = refreshInterval
             jobs[account.id] = Task.detached { [weak self] in
                 var current = account
                 var attempt = 0
                 while !Task.isCancelled {
-                    let transport = make(credential)
+                    let transport = MeteredAgentTransport(base: make(credential), metrics: meter)
                     do {
                         current.status = attempt == 0 ? .connecting : .retrying
                         await self?.apply(current, generation: generation)

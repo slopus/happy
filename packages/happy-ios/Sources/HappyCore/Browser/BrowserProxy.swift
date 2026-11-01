@@ -174,12 +174,18 @@ public actor BrowserProxy {
         let parts = request.line.split(separator: " ")
         let api = parts.count == 3 && parts[1].hasPrefix("/api/") && request.value("upgrade") == nil
         let translated = try request.artifactRequest(artifactID: id, version: version, credential: client.token, keepAlive: api)
+        let start = ConnectionMetrics.uptime()
+        let metrics = client.metrics
         let lease: BrowserConnectionPool.Lease
         do { lease = try await upstream.take(reusing: api) }
         catch is CancellationError { throw CancellationError() }
-        catch { throw BrowserProxyFailure.upstream(error) }
+        catch {
+            metrics?.request(.browser, status: nil, duration: ConnectionMetrics.uptime() - start)
+            throw BrowserProxyFailure.upstream(error)
+        }
         let remote = lease.stream
         var responseStarted = false
+        var answered = false
         do {
             try await remote.write(translated.data)
             if !body.isEmpty { try await remote.write(body) }
@@ -195,6 +201,8 @@ public actor BrowserProxy {
                 try await writeResponse(response.data, to: local)
                 (response, bytes) = try await BrowserRelay.head(remote, initial: bytes)
             }
+            metrics?.request(.browser, status: Int(response.line.split(separator: " ").dropFirst().first ?? ""), duration: ConnectionMetrics.uptime() - start)
+            answered = true
             if response.line.split(separator: " ").dropFirst().first == "101" {
                 responseStarted = true
                 try await writeResponse(response.artifactResponse().data, to: local)
@@ -234,6 +242,7 @@ public actor BrowserProxy {
             }
         } catch {
             await upstream.release(lease, reusable: false)
+            if !answered, !(error is CancellationError) { metrics?.request(.browser, status: nil, duration: ConnectionMetrics.uptime() - start) }
             if error is CancellationError { throw error }
             if case BrowserProxyFailure.responseStarted = error { throw error }
             let failure = BrowserProxyFailure.upstream(error)

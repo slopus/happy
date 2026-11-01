@@ -65,19 +65,26 @@ extension AgentTransport {
 
 /// One private tunnel per instance; each HTTP request owns a fresh TCP stream.
 /// `server.tailcat` is a logical authority, never a DNS lookup.
-public actor TailcatHTTPTransport: AgentTransport {
+public actor TailcatHTTPTransport: SelfMeteringTransport {
     private let address: String
     let port: UInt16
     private var client: TailcatClient?
     private var connecting: Task<TailcatClient, Error>?
     private var closed = false
+    /// The account's recorder, once a metered transport is over this one.
+    nonisolated let meter = MeterSlot()
+    /// The tunnel up now, as the recorder knows it.
+    private var tunnelID: UUID?
 
     public init(address: String, port: UInt16) { self.address = address; self.port = port }
+
+    public nonisolated func attach(_ metrics: ConnectionMetrics) { meter.metrics = metrics }
 
     public func close() async {
         closed = true
         connecting?.cancel(); connecting = nil
         let old = client; client = nil
+        tunnelDown()
         await old?.close()
     }
 
@@ -86,7 +93,22 @@ public actor TailcatHTTPTransport: AgentTransport {
     /// tunnel handshakes at once.
     public func reset() async {
         let old = client; client = nil
+        tunnelDown()
         await old?.close()
+    }
+
+    private func tunnelDown() {
+        guard let id = tunnelID else { return }
+        tunnelID = nil
+        meter.metrics?.tunnelDown(id)
+    }
+
+    /// A TCP flow to the computer, counted on the channel the request
+    /// that opens it names (`MetricsScope.channel`).
+    nonisolated func flow(_ client: TailcatClient) async throws -> any BrowserStream {
+        let raw = try await client.openTCP(port: port)
+        guard let metrics = meter.metrics else { return raw }
+        return MeteredStream(raw, metrics: metrics, channel: MetricsScope.channel ?? .tailcat)
     }
 
     /// Resets the tunnel if it is still `used`, after a failure on it.
@@ -107,10 +129,30 @@ public actor TailcatHTTPTransport: AgentTransport {
         }
         do {
             let value = try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
+            // Read before the state below changes, with no wait in between.
+            let tunnel = meter.metrics == nil ? nil : await value.serverAddress
             guard !closed, !Task.isCancelled else { await value.close(); throw CancellationError() }
-            connecting = nil; client = value
+            connecting = nil
+            // Callers that waited on the same connect see it up once.
+            guard client !== value else { return value }
+            client = value
+            if let metrics = meter.metrics, let tunnel {
+                let id = UUID()
+                tunnelID = id
+                metrics.tunnelUp(id, info: Self.info(tunnel, port: port)) { [weak value] in
+                    switch await value?.path {
+                    case .relay: .relayed
+                    case .direct(let endpoint): .direct(endpoint: endpoint)
+                    case nil: nil
+                    }
+                }
+            }
             return value
-        } catch { connecting = nil; throw error }
+        } catch {
+            connecting = nil
+            if !(error is CancellationError) { meter.metrics?.failed("Tailcat connect: \(MeteredError.describe(error))") }
+            throw error
+        }
     }
 
     public func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
@@ -164,7 +206,7 @@ public actor TailcatHTTPTransport: AgentTransport {
     private nonisolated func exchange(client: TailcatClient, port: UInt16, method: String, path: String, credential: String, body: Data?, headers: [String: String], timeout: Duration, sent: (@Sendable (Int) -> Void)?) async throws -> HTTP1Response {
         try await withThrowingTaskGroup(of: HTTP1Response.self) { group in
             group.addTask {
-                let stream = try await client.openTCP(port: port)
+                let stream = try await self.flow(client)
                 return try await withTaskCancellationHandler {
                     do {
                         var head = "\(method) \(path) HTTP/1.1\r\nHost: server.tailcat:\(port)\r\nAuthorization: Bearer \(credential)\r\nConnection: close\r\nAccept: application/json\r\nContent-Length: \(body?.count ?? 0)\r\n"
@@ -200,6 +242,28 @@ public actor TailcatHTTPTransport: AgentTransport {
             guard let response = try await group.next() else { throw PairingError.unavailable }
             return response
         }
+    }
+}
+
+extension TailcatHTTPTransport {
+    /// What the recorder may show of a tunnel: its relay and the computer's
+    /// public node key, never the address (it holds the tunnel's secrets).
+    nonisolated static func info(_ address: TailcatAddress, port: UInt16) -> TunnelInfo {
+        let region = address.regions.first { $0.regionID == address.regionID } ?? address.regions.first
+        let key = address.serverPublicKey.description
+        let short = key.hasPrefix("nodekey:") ? "nodekey:" + key.dropFirst(8).prefix(8) + "…" : String(key.prefix(16)) + "…"
+        return TunnelInfo(regionID: region?.regionID ?? address.regionID, regionCode: region?.regionCode ?? "", regionName: region?.regionName ?? "",
+                          relayHost: region?.nodes.first { !$0.stunOnly }?.hostName, nodeKey: short, port: port)
+    }
+}
+
+/// The recorder a transport reports to, set once it is metered.
+final class MeterSlot: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value: ConnectionMetrics?
+    var metrics: ConnectionMetrics? {
+        get { lock.lock(); defer { lock.unlock() }; return value }
+        set { lock.lock(); value = newValue; lock.unlock() }
     }
 }
 
