@@ -9,17 +9,21 @@ import XCTest
 /// 16 in from the card's sides, so 329 for a title and its value.
 final class ConnectionLayoutTests: XCTestCase {
     private func title(_ string: String) -> Measurable { text(string, lineHeight: 22) }
+    private func line(_ string: String) -> Measurable { text(string, lineHeight: 22, maxLines: 1) }
     private func note(_ string: String) -> Measurable { text(string, lineHeight: 16) }
 
     private var layout: ConnectionLayout {
         ConnectionLayout(width: 393, cards: [
             .init(header: note("STATUS"), rows: [
                 // 31 characters, 248 wide: fits the 285 beside "Type".
-                .text(title: title("Type"), value: title("Tailcat · relayed via Frankfurt")),
-                // 36 characters, 288 wide: over the 261 beside "Network", so two lines.
-                .text(title: title("Network"), value: title("Cellular · expensive · Low Data Mode")),
-                // A 240-wide title leaves the value less than half: it wraps at 158.5.
-                .text(title: title("A title as long as thirty ch."), value: title("x")),
+                .text(title: line("Type"), value: line("Tailcat · relayed via Frankfurt")),
+                // 36 characters, 288 wide: over the 261 beside "Network", so cut to 261, one line.
+                .text(title: line("Network"), value: line("Cellular · expensive · Low Data Mode")),
+                // A 240-wide title would leave the value 77: the value keeps
+                // half, 164.5, and the title is cut to 152.5.
+                .text(title: line("A title as long as thirty chs"), value: line("A value as long as thirty chs")),
+                // A short value and a long title: the title keeps its 240.
+                .text(title: line("A title as long as thirty chs"), value: line("x")),
             ]),
             .init(header: note("LAST 10 MINUTES"), rows: [
                 .chart(title: title("Bytes per minute"), caption: note("peak 12 KB")),
@@ -41,23 +45,27 @@ final class ConnectionLayoutTests: XCTestCase {
         XCTAssertEqual(layout.contentHeight, 462)
     }
 
-    func testAValueSitsAtTheEndAndWrapsUnderItself() {
+    func testEveryRowIsOneLineAndALongValueIsCutShort() {
         let rows = layout.cards[0].rows
         assertFrame(rows[0].box, rect(0, 0, 361, 44))
         assertFrame(rows[0].title, rect(16, 11, 32, 22))
         assertFrame(rows[0].value, rect(97, 11, 248, 22))
         assertFrame(rows[0].separator, rect(16, 44 - 1.0 / 3, 345, 1.0 / 3))
 
-        // Two lines: the row grows by one, title and value from its top.
-        assertFrame(rows[1].box, rect(0, 44, 361, 66))
+        // Cut to what "Network" leaves, still one line.
+        assertFrame(rows[1].box, rect(0, 44, 361, 44))
         assertFrame(rows[1].title, rect(16, 11, 56, 22))
-        assertFrame(rows[1].value, rect(89, 11, 256, 44))
-        assertFrame(rows[1].separator, rect(16, 66 - 1.0 / 3, 345, 1.0 / 3))
+        assertFrame(rows[1].value, rect(84, 11, 261, 22))
+        assertFrame(rows[1].separator, rect(16, 44 - 1.0 / 3, 345, 1.0 / 3))
 
-        assertFrame(rows[2].box, rect(0, 110, 361, 66))
-        assertFrame(rows[2].title, rect(16, 11, 152, 44))
-        assertFrame(rows[2].value, rect(337, 11, 8, 22))
-        XCTAssertNil(rows[2].separator, "a card's last row has none")
+        assertFrame(rows[2].box, rect(0, 88, 361, 44))
+        assertFrame(rows[2].title, rect(16, 11, 152.5, 22))
+        assertFrame(rows[2].value, rect(180.5, 11, 164.5, 22))
+
+        assertFrame(rows[3].box, rect(0, 132, 361, 44))
+        assertFrame(rows[3].title, rect(16, 11, 232, 22))
+        assertFrame(rows[3].value, rect(337, 11, 8, 22))
+        XCTAssertNil(rows[3].separator, "a card's last row has none")
     }
 
     func testAChartRowHasItsTitleAndCaptionOverTheSparkline() {

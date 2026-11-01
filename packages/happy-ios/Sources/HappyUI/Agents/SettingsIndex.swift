@@ -41,17 +41,18 @@ enum SettingsIndex {
     static var version: Entry { Entry(id: "version", title: Strings.Common.version, glyph: "information-circle-outline", tile: .gray) }
 
     /// What a computer's settings show, its pages' rows and the agent's
-    /// picture's menu (the two asks) included, in their order. Disconnect is left
+    /// picture's menu (the two asks) included, in their order; Connection
+    /// is Data and Storage's. Disconnect is left
     /// out: a search doesn't offer to take the computer away.
     static var computer: [Entry] {
-        [profile, changeAgentName, changeAgentAvatar, connection, appearance, hideProjects, dataStorage, supportUs, connectAgent, addAccount] + aboutRows
+        [profile, changeAgentName, changeAgentAvatar, appearance, hideProjects, dataStorage, connection, supportUs, connectAgent, addAccount] + aboutRows
     }
 
     /// What a Happy account's settings show under its accounts card, in
     /// their order: the same places as a computer's, with the account's own
     /// pages beside them. Sign out is left out, as Disconnect is.
     static var happyAccount: [Entry] {
-        [account, backupRestore, connection, appearance, language, voice, agents, dataStorage, scanTerminal, enterTerminal, supportUs] + aboutRows
+        [account, backupRestore, appearance, language, voice, agents, dataStorage, connection, scanTerminal, enterTerminal, supportUs] + aboutRows
     }
 
     /// The About page's rows.

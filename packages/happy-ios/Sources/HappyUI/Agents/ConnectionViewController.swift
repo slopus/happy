@@ -175,9 +175,9 @@ final class ConnectionViewController: UIViewController {
             ConnectionLayout.CardSpec(
                 header: card.header.map { Self.measured($0.uppercased(), Self.noteFont) },
                 rows: card.rows.map { row in
-                    let title = Self.measured(row.title, Self.titleFont)
-                    let value = row.value.map { Self.measured($0, Self.titleFont) }
-                    return row.chart == nil ? .text(title: title, value: value) : .chart(title: title, caption: row.value.map { Self.measured($0, Self.noteFont) })
+                    let title = Self.line(row.title, Self.titleFont)
+                    guard row.chart == nil else { return .chart(title: title, caption: row.value.map { Self.line($0, Self.noteFont) }) }
+                    return .text(title: title, value: row.value.map { Self.line($0, Self.titleFont) })
                 },
                 footer: card.footer.map { Self.measured($0, Self.noteFont) }
             )
@@ -190,6 +190,12 @@ final class ConnectionViewController: UIViewController {
             cards[index].apply(card.rows)
         }
         scroll.contentSize = CGSize(width: width, height: layout.contentHeight)
+    }
+
+    /// `text` on one line in `font`, its whole width; the layout cuts it.
+    static func line(_ text: String, _ font: UIFont) -> Measurable {
+        let size = (text as NSString).size(withAttributes: [.font: font])
+        return .fixed(width: ceil(size.width), height: ceil(font.lineHeight))
     }
 
     /// `text` as a label in `font` draws it, wrapped at the width offered.
@@ -225,11 +231,11 @@ final class ConnectionCardView: UIView {
         override init(frame: CGRect) {
             super.init(frame: frame)
             title.font = ConnectionViewController.titleFont
-            title.numberOfLines = 0
+            title.lineBreakMode = .byTruncatingTail
             value.font = ConnectionViewController.titleFont
             value.textColor = UIColor(Palette.settingsSecondary)
             value.textAlignment = .right
-            value.numberOfLines = 0
+            value.lineBreakMode = .byTruncatingMiddle
             separator.backgroundColor = UIColor(Palette.settingsSeparator)
             for view in [title, value, separator] { view.isUserInteractionEnabled = false; addSubview(view) }
         }

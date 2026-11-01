@@ -270,8 +270,14 @@ public struct ConnectionSnapshot: Equatable, Sendable {
 /// it is for a page on screen, about once a second, off the main thread.
 public final class ConnectionMetrics: @unchecked Sendable {
     public typealias Clock = @Sendable () -> TimeInterval
-    /// Monotonic seconds: the time a phone's clock is set to never moves it.
-    public static let uptime: Clock = { TimeInterval(DispatchTime.now().uptimeNanoseconds) / 1_000_000_000 }
+    /// Monotonic seconds that go on while the phone sleeps, so the window
+    /// slides past a night asleep (uptime would stop); setting the phone's
+    /// clock never moves them.
+    public static let uptime: Clock = {
+        let elapsed = ContinuousClock.now - origin
+        return TimeInterval(elapsed.components.seconds) + TimeInterval(elapsed.components.attoseconds) / 1e18
+    }
+    private static let origin = ContinuousClock.now
 
     private let lock = NSLock()
     private let now: Clock

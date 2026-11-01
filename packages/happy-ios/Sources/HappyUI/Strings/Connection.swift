@@ -10,7 +10,6 @@ extension Strings {
         static let title = "Connection"
         static let status = "Status"
         static let lastTenMinutes = "Last 10 Minutes"
-        static let byChannel = "By Channel"
         static let tailcat = "Tailcat"
 
         static let type = "Type"
@@ -19,6 +18,10 @@ extension Strings {
         static let node = "Node"
         static let port = "Port"
         static let relay = "Relay"
+        static let relayServer = "Relay server"
+        static let endpoint = "Peer address"
+        static let protocolTitle = "Protocol"
+        static let engine = "Engine.IO"
         static let path = "Path"
         static let server = "Server"
         static let realtime = "Realtime"
@@ -28,15 +31,22 @@ extension Strings {
         static let sent = "Sent"
         static let received = "Received"
         static let requests = "Requests"
-        static let connections = "Connections"
-        static let webSockets = "WebSockets"
-        static let eventStreams = "Event streams"
-        static let latency = "Request time"
+        static let failed = "Failed requests"
+        static let connectionsOpened = "Connections opened"
+        static let connectionsClosed = "Connections closed"
+        static let webSocketsOpened = "WebSockets opened"
+        static let webSocketsClosed = "WebSockets closed"
+        static let eventStreamsOpened = "Event streams opened"
+        static let eventStreamsClosed = "Event streams closed"
+        static let reconnects = "Reconnects"
+        static let latencyP50 = "Request time p50"
+        static let latencyP95 = "Request time p95"
         static let bytesPerMinute = "Bytes per minute"
 
         static let liveFlows = "Live flows"
         static let tunnels = "Tunnels open"
         static let lastError = "Last error"
+        static let errorAge = "When"
         static let none = "None"
         static let notConnected = "Not connected"
         static let dash = "—"
@@ -50,28 +60,18 @@ extension Strings {
 
         static func since(_ duration: String) -> String { "Counting for \(duration), since this account opened." }
 
-        // The connection in plain words.
-        static let tailcatConnecting = "Tailcat · connecting"
-        static func tailcatRelayed(_ region: String) -> String { "Tailcat · relayed via \(region)" }
-        static let tailcatDirect = "Tailcat · direct (peer to peer)"
+        // The connection in plain words, a row each.
         static let tailcatUp = "Tailcat"
-        static let happyServer = "Happy CLI server · HTTPS + Socket.IO"
-        static let happyServerPlain = "Happy CLI server · HTTP + Socket.IO"
+        static let happyServer = "Happy CLI server"
+        static let httpsSocketIO = "HTTPS + Socket.IO"
+        static let httpSocketIO = "HTTP + Socket.IO"
         static let relayed = "Relayed (DERP)"
-        static func direct(_ endpoint: String) -> String { "Direct · \(endpoint)" }
+        static let direct = "Direct (peer to peer)"
+        static let connecting = "Connecting"
 
-        static func requestsValue(_ count: String, failed: String?) -> String {
-            failed.map { "\(count) · \($0) failed" } ?? count
-        }
-        static func openedClosed(_ opened: String, _ closed: String?) -> String {
-            closed.map { "\(opened) opened · \($0) closed" } ?? "\(opened) opened"
-        }
-        static func streams(_ opened: String, _ closed: String, reconnects: String) -> String {
-            "\(opened) opened · \(closed) closed · \(reconnects) reconnects"
-        }
-        static func latencyValue(p50: String, p95: String) -> String { "p50 \(p50) · p95 \(p95)" }
+        static func traffic(_ channel: String) -> String { "\(channel) traffic" }
         static func peak(_ size: String) -> String { "peak \(size)" }
         static func flows(_ open: String) -> String { "\(open) of 1,024" }
-        static func ago(_ error: String, _ age: String) -> String { "\(error), \(age) ago" }
+        static func ago(_ age: String) -> String { "\(age) ago" }
     }
 }

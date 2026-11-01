@@ -143,14 +143,17 @@ final class HostedSettingsUnifiedTests: XCTestCase {
         XCTAssertEqual(settings.shownRowIDs, [
             ["account:\(id)", SettingsIndex.connectAgent.id],
             ["account", "backup-restore"],
-            ["connection", "appearance", "language", "voice", "agents", "data-storage"],
+            ["appearance", "language", "voice", "agents", "data-storage"],
             ["scan-terminal", "enter-terminal"],
             ["support-us"],
             SettingsIndex.aboutRows.map(\.id),
             ["sign-out"],
         ])
-        // What home's search knows is what the page shows, in its order.
-        XCTAssertEqual(SettingsIndex.happyAccount.map(\.id), Array(settings.shownRowIDs.dropFirst().dropLast().joined()))
+        // What home's search knows is what the page shows, in its order,
+        // with Data and Storage's Connection after Data and Storage.
+        var page = Array(settings.shownRowIDs.dropFirst().dropLast().joined())
+        page.insert(SettingsIndex.connection.id, at: try XCTUnwrap(page.firstIndex(of: SettingsIndex.dataStorage.id)) + 1)
+        XCTAssertEqual(SettingsIndex.happyAccount.map(\.id), page)
         for gone in Self.removed { XCTAssertNil(settings.shownRow(gone), "\(gone) is still on the page") }
         // Signing it out is its row's hold too, as Manage Accounts did.
         XCTAssertEqual(settings.shownRow("account:\(id)")?.menu.map(\.title), [Strings.signOut])
@@ -179,7 +182,7 @@ final class HostedSettingsUnifiedTests: XCTestCase {
         XCTAssertEqual(settings.shownRowIDs, [
             ["account:\(computer)", "account:\(happy)", SettingsIndex.connectAgent.id],
             ["profile"],
-            ["connection", "appearance", "data-storage"],
+            ["appearance", "data-storage"],
             ["support-us"],
             SettingsIndex.aboutRows.map(\.id),
             ["disconnect"],

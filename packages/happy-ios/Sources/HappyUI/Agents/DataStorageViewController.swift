@@ -3,20 +3,24 @@ import HappyCore
 import HappyLayout
 import UIKit
 
-/// Telegram's Data and Storage, for one account: what its kept media
-/// takes on this phone (read off the main thread), Clear Media, and
+/// Telegram's Data and Storage, for one account: Connection on top (where
+/// Telegram has Network Usage and Proxy), what its kept media takes on this
+/// phone (read off the main thread), Clear Media, and
 /// Automatic Media Download's switches and size limits, one setting for
 /// every network.
 final class DataStorageViewController: SettingsPageViewController {
     private let library: MediaLibrary?
     private let defaults: UserDefaults
+    /// The Connection page, made when its row is tapped; nil hides the row.
+    private let connection: (() -> UIViewController?)?
     private var usage: Int64?
     private var rules: MediaAutoDownload
     private var clearing = false
 
-    init(library: MediaLibrary?, defaults: UserDefaults = .standard) {
+    init(library: MediaLibrary?, defaults: UserDefaults = .standard, connection: (() -> UIViewController?)? = nil) {
         self.library = library
         self.defaults = defaults
+        self.connection = connection
         rules = MediaAutoDownload.load(defaults)
         super.init(title: Strings.DataStorage.title)
     }
@@ -64,7 +68,13 @@ final class DataStorageViewController: SettingsPageViewController {
             }
         }
         automatic[automatic.count - 1].footer = Text.autoDownloadFooter
-        return [storage, automatic]
+        guard connection != nil else { return [storage, automatic] }
+        return [[Row(SettingsIndex.connection, action: { [weak self] in self?.openConnection() })], storage, automatic]
+    }
+
+    private func openConnection() {
+        guard let page = connection?() else { return }
+        navigationController?.pushViewController(page, animated: true)
     }
 
     private func change(_ kind: MediaAutoDownload.Kind, _ edit: (inout MediaAutoDownload.Rule) -> Void) {

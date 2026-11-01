@@ -4,17 +4,16 @@ import CoreGraphics
 #endif
 
 /// Settings › Connection: grouped cards in settings' inset style, each
-/// with a quiet header over it and a footer under it. A row is a title on
-/// the left and its value on the right, the value wrapping under itself
-/// when it is long; a chart row is its title over a sparkline the card's
-/// width.
+/// with a quiet header over it and a footer under it. A row is one line, a
+/// title on the left and its value on the right; a value too long for
+/// what the title leaves is cut short, never wrapped. A chart row is its
+/// title over a sparkline the card's width.
 ///
 ///     STATUS
 ///     ╭──────────────────────────────────╮
-///     │ Connection   Tailcat · relayed via│
-///     │                         Frankfurt │
+///     │ Type                      Tailcat │
 ///     │──────────────────────────────────│
-///     │ Status                     online │
+///     │ Path               Relayed (DERP) │
 ///     ╰──────────────────────────────────╯
 ///     LAST 10 MINUTES
 ///     ╭──────────────────────────────────╮
@@ -35,7 +34,7 @@ public struct ConnectionLayout: Equatable, Sendable {
         public static let rowPadding: CGFloat = 11
         public static let rowMinimum: CGFloat = 44
         public static let valueGap: CGFloat = 12
-        /// A value never gets less than this share of the row.
+        /// A value is cut short no narrower than this share of the row.
         public static let valueShare: CGFloat = 0.5
         public static let chartGap: CGFloat = 10
         public static let chartHeight: CGFloat = 44
@@ -45,7 +44,8 @@ public struct ConnectionLayout: Equatable, Sendable {
     }
 
     public enum RowSpec {
-        /// A title and a value; nil for a row that is only its title (an action).
+        /// A title and a value, each one line (measured at its full
+        /// width); nil for a row that is only its title (an action).
         case text(title: Measurable, value: Measurable?)
         /// A title, a caption at the end of its line, a sparkline under them.
         case chart(title: Measurable, caption: Measurable?)
@@ -102,17 +102,16 @@ public struct ConnectionLayout: Equatable, Sendable {
                 switch spec {
                 case .text(let titleText, let valueText):
                     let title = titleText.size(fitting: inner)
-                    // The title keeps its line unless that leaves the value
-                    // less than its share; then it wraps instead.
-                    let titleWidth = valueText == nil ? min(title.width, inner) : min(title.width, inner * (1 - M.valueShare) - M.valueGap / 2)
-                    let titleSize = titleWidth < title.width ? titleText.size(fitting: titleWidth) : title
-                    let valueWidth = max(0, inner - titleWidth - M.valueGap)
-                    let value = valueText?.size(fitting: valueWidth)
-                    let height = max(M.rowMinimum, max(titleSize.height, value?.height ?? 0) + 2 * M.rowPadding)
+                    let value = valueText?.size(fitting: inner)
+                    // The value gets what the title leaves, or its share if
+                    // that is more; the title is cut to the rest.
+                    let valueWidth = value.map { min($0.width, max(inner - title.width - M.valueGap, inner * M.valueShare)) } ?? 0
+                    let titleWidth = min(title.width, value == nil ? inner : inner - valueWidth - M.valueGap)
+                    let height = max(M.rowMinimum, max(title.height, value?.height ?? 0) + 2 * M.rowPadding)
                     row = Row(
                         box: CGRect(x: 0, y: rowY, width: cardWidth, height: height),
-                        title: CGRect(x: M.rowInset, y: M.rowPadding, width: titleSize.width, height: titleSize.height),
-                        value: value.map { CGRect(x: cardWidth - M.rowInset - $0.width, y: M.rowPadding, width: $0.width, height: $0.height) }
+                        title: CGRect(x: M.rowInset, y: M.rowPadding, width: titleWidth, height: title.height),
+                        value: value.map { CGRect(x: cardWidth - M.rowInset - valueWidth, y: M.rowPadding, width: valueWidth, height: $0.height) }
                     )
                 case .chart(let titleText, let captionText):
                     let caption = captionText?.size(fitting: inner / 2)

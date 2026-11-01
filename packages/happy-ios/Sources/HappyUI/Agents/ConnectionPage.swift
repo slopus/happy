@@ -51,84 +51,98 @@ struct ConnectionPage: Equatable {
     static func make(_ inputs: Inputs) -> ConnectionPage {
         let snapshot = inputs.snapshot
         let totals = snapshot.totals
-        var status: [Row] = [
-            Row(id: "type", title: Text.type, value: type(inputs)),
-            Row(id: "state", title: Text.state, value: stateText(inputs.state)),
-        ]
+        var status: [Row] = []
         var tailcat: Card?
         let since: TimeInterval?
         switch inputs.kind {
         case .agent(let name):
+            status.append(Row(id: "type", title: Text.type, value: Text.tailcatUp))
+            status.append(Row(id: "path", title: Text.path, value: pathText(inputs)))
+            if case .direct(let endpoint)? = snapshot.path {
+                status.append(Row(id: "endpoint", title: Text.endpoint, value: endpoint))
+            }
+            status.append(Row(id: "state", title: Text.state, value: stateText(inputs.state)))
             status.append(Row(id: "computer", title: Text.computer, value: name))
             if let tunnel = snapshot.tunnel {
                 status.append(Row(id: "node", title: Text.node, value: tunnel.nodeKey))
                 status.append(Row(id: "port", title: Text.port, value: String(tunnel.port)))
-                status.append(Row(id: "relay", title: Text.relay, value: relay(tunnel)))
-            }
-            if let path = snapshot.path {
-                status.append(Row(id: "path", title: Text.path, value: pathText(path)))
+                status.append(Row(id: "relay", title: Text.relay, value: tunnel.regionLabel))
+                if let host = tunnel.relayHost { status.append(Row(id: "relay-host", title: Text.relayServer, value: host)) }
             }
             since = snapshot.tunnelSince
             tailcat = Card(id: "tailcat", header: Text.tailcat, rows: [
                 Row(id: "flows", title: Text.liveFlows, value: Text.flows(count(snapshot.liveFlows))),
                 Row(id: "tunnels", title: Text.tunnels, value: count(snapshot.tunnels)),
-                Row(id: "error", title: Text.lastError, value: lastError(snapshot)),
-            ], footer: Text.tailcatFooter)
+            ] + errorRows(snapshot), footer: Text.tailcatFooter)
         case .legacy(let serverURL, let socketURL):
-            status.append(Row(id: "server", title: Text.server, value: serverURL.absoluteString))
-            status.append(Row(id: "realtime", title: Text.realtime, value: realtime(socketURL)))
+            status.append(Row(id: "type", title: Text.type, value: Text.happyServer))
+            status.append(Row(id: "protocol", title: Text.protocolTitle, value: serverURL.scheme?.lowercased() == "https" ? Text.httpsSocketIO : Text.httpSocketIO))
+            status.append(Row(id: "state", title: Text.state, value: stateText(inputs.state)))
+            status.append(Row(id: "server", title: Text.server, value: host(serverURL)))
+            status.append(Row(id: "realtime", title: Text.realtime, value: socketURL.path.isEmpty ? "/" : socketURL.path))
+            if let engine = engineVersion(socketURL) {
+                status.append(Row(id: "engine", title: Text.engine, value: engine))
+            }
             since = snapshot.streamSince[.socket]
         }
         status.append(Row(id: "connected", title: Text.connectedFor, value: snapshot.age(since).map(duration) ?? Text.notConnected))
         status.append(Row(id: "network", title: Text.network, value: inputs.network.text))
-        if case .legacy = inputs.kind {
-            status.append(Row(id: "error", title: Text.lastError, value: lastError(snapshot)))
-        }
+        if case .legacy = inputs.kind { status += errorRows(snapshot) }
 
         let agent = if case .agent = inputs.kind { true } else { false }
-        let failed = totals.failures(on: requestChannels)
         let streamChannel: ConnectionChannel = agent ? .tailcat : .socket
         let p50 = totals.latency(0.5, on: requestChannels), p95 = totals.latency(0.95, on: requestChannels)
-        let opened = totals.count(.connectionsOpened)
         let peak = totals.bytesPerMinute.max() ?? 0
-        let window = Card(id: "window", header: Text.lastTenMinutes, rows: [
+        var window: [Row] = [
             Row(id: "sent", title: Text.sent, value: size(totals.count(.bytesSent))),
             Row(id: "received", title: Text.received, value: size(totals.count(.bytesReceived))),
-            Row(id: "requests", title: Text.requests, value: Text.requestsValue(count(totals.requests(on: requestChannels)), failed: failed > 0 ? count(failed) : nil)),
-            // HTTP's closes are never seen (URLSession pools them), so a
-            // Happy CLI account says only what opened.
-            Row(id: "connections", title: Text.connections, value: Text.openedClosed(count(opened), agent ? count(totals.count(.connectionsClosed)) : nil)),
-            Row(id: "streams", title: agent ? Text.eventStreams : Text.webSockets, value: Text.streams(
-                count(totals.count(.streamsOpened, streamChannel)), count(totals.count(.streamsClosed, streamChannel)),
-                reconnects: count(totals.count(.streamReconnects, streamChannel)))),
-            Row(id: "latency", title: Text.latency, value: p50.flatMap { p50 in p95.map { Text.latencyValue(p50: milliseconds(p50), p95: milliseconds($0)) } } ?? Text.dash),
+            Row(id: "requests", title: Text.requests, value: count(totals.requests(on: requestChannels))),
+            Row(id: "failed", title: Text.failed, value: count(totals.failures(on: requestChannels))),
+            Row(id: "connections-opened", title: Text.connectionsOpened, value: count(totals.count(.connectionsOpened))),
+        ]
+        // HTTP's closes are never seen (URLSession pools them), so a Happy
+        // CLI account says only what opened.
+        if agent {
+            window.append(Row(id: "connections-closed", title: Text.connectionsClosed, value: count(totals.count(.connectionsClosed))))
+        }
+        window += [
+            Row(id: "streams-opened", title: agent ? Text.eventStreamsOpened : Text.webSocketsOpened, value: count(totals.count(.streamsOpened, streamChannel))),
+            Row(id: "streams-closed", title: agent ? Text.eventStreamsClosed : Text.webSocketsClosed, value: count(totals.count(.streamsClosed, streamChannel))),
+            Row(id: "reconnects", title: Text.reconnects, value: count(totals.count(.streamReconnects, streamChannel))),
+            Row(id: "latency-p50", title: Text.latencyP50, value: p50.map(milliseconds) ?? Text.dash),
+            Row(id: "latency-p95", title: Text.latencyP95, value: p95.map(milliseconds) ?? Text.dash),
             Row(id: "chart", title: Text.bytesPerMinute, value: peak > 0 ? Text.peak(size(peak)) : nil, chart: totals.bytesPerMinute),
-        ], footer: windowFooter(snapshot, agent: agent))
+        ]
 
-        let channels = totals.channelsUsed
-        let byChannel = channels.isEmpty ? nil : Card(id: "channels", header: Text.byChannel, rows: channels.map { channel in
-            Row(id: "channel-\(channel.rawValue)", title: channel.name, value: channelSummary(totals, channel))
-        })
+        // A card a channel, headed by its name.
+        let channels = totals.channelsUsed.map { channel in
+            var rows = [
+                Row(id: "channel-\(channel.rawValue)-sent", title: Text.sent, value: size(totals.count(.bytesSent, channel))),
+                Row(id: "channel-\(channel.rawValue)-received", title: Text.received, value: size(totals.count(.bytesReceived, channel))),
+            ]
+            if requestChannels.contains(channel) {
+                rows.append(Row(id: "channel-\(channel.rawValue)-requests", title: Text.requests, value: count(totals.requests(on: [channel]))))
+            }
+            return Card(id: "channel-\(channel.rawValue)", header: Text.traffic(channel.name), rows: rows)
+        }
         let copy = Card(id: "copy", rows: [Row(id: "copy", title: Text.copy, isAction: true)], footer: Text.copyFooter)
 
-        let cards = [Card(id: "status", header: Text.status, rows: status), window] + [byChannel, tailcat].compactMap { $0 } + [copy]
+        let cards = [Card(id: "status", header: Text.status, rows: status),
+                     Card(id: "window", header: Text.lastTenMinutes, rows: window, footer: windowFooter(snapshot, agent: agent))]
+            + channels + [tailcat, copy].compactMap { $0 }
         return ConnectionPage(cards: cards, diagnostics: diagnostics(inputs, cards: cards))
     }
 
     // MARK: Words
 
-    static func type(_ inputs: Inputs) -> String {
-        switch inputs.kind {
-        case .legacy(let serverURL, _):
-            return serverURL.scheme?.lowercased() == "https" ? Text.happyServer : Text.happyServerPlain
-        case .agent:
-            switch inputs.snapshot.path {
-            case .relayed?: return Text.tailcatRelayed(inputs.snapshot.tunnel?.regionLabel ?? "DERP")
-            case .direct?: return Text.tailcatDirect
-            case nil:
-                if inputs.snapshot.tunnels > 0 { return Text.tailcatUp }
-                return inputs.state == .offline || inputs.state == .waitingForNetwork ? "\(Text.tailcatUp) · \(Text.notConnected.lowercased())" : Text.tailcatConnecting
-            }
+    /// How the tunnel goes; the type row says it is Tailcat.
+    static func pathText(_ inputs: Inputs) -> String {
+        switch inputs.snapshot.path {
+        case .relayed?: return Text.relayed
+        case .direct?: return Text.direct
+        case nil:
+            if inputs.snapshot.tunnels > 0 { return Text.dash }
+            return inputs.state == .offline || inputs.state == .waitingForNetwork ? Text.notConnected : Text.connecting
         }
     }
 
@@ -138,28 +152,26 @@ struct ConnectionPage: Equatable {
         return text.prefix(1).uppercased() + text.dropFirst()
     }
 
-    static func relay(_ tunnel: TunnelInfo) -> String {
-        [tunnel.regionLabel, tunnel.relayHost].compactMap { $0 }.joined(separator: " · ")
+    /// The server's host, and its port when it names one; the protocol
+    /// row has the scheme.
+    static func host(_ url: URL) -> String {
+        (url.host ?? url.absoluteString) + (url.port.map { ":\($0)" } ?? "")
     }
 
-    static func pathText(_ path: TunnelPath) -> String {
-        switch path {
-        case .relayed: Text.relayed
-        case .direct(let endpoint): Text.direct(endpoint)
+    /// The Engine.IO version the socket asks for; its query holds nothing
+    /// else (the token goes in the handshake).
+    static func engineVersion(_ url: URL) -> String? {
+        URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "EIO" }?.value
+    }
+
+    /// "None", or the error and, a row under it, how long ago.
+    static func errorRows(_ snapshot: ConnectionSnapshot) -> [Row] {
+        guard let error = snapshot.lastError else { return [Row(id: "error", title: Text.lastError, value: Text.none)] }
+        var rows = [Row(id: "error", title: Text.lastError, value: error)]
+        if let age = snapshot.age(snapshot.lastErrorAt) {
+            rows.append(Row(id: "error-age", title: Text.errorAge, value: Text.ago(duration(age))))
         }
-    }
-
-    /// The socket's endpoint and the Engine.IO version it asks for; its
-    /// query holds nothing else (the token goes in the handshake).
-    static func realtime(_ url: URL) -> String {
-        let engine = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "EIO" }?.value
-        let endpoint = "\(url.scheme ?? "wss")://\(url.host ?? "")\(url.port.map { ":\($0)" } ?? "")\(url.path)"
-        return engine.map { "\(endpoint) · Engine.IO \($0)" } ?? endpoint
-    }
-
-    static func lastError(_ snapshot: ConnectionSnapshot) -> String {
-        guard let error = snapshot.lastError else { return Text.none }
-        return snapshot.age(snapshot.lastErrorAt).map { Text.ago(error, duration($0)) } ?? error
+        return rows
     }
 
     static func windowFooter(_ snapshot: ConnectionSnapshot, agent: Bool) -> String? {
@@ -167,13 +179,6 @@ struct ConnectionPage: Equatable {
         if snapshot.counted < TimeInterval(MetricsRing.windowSeconds) - 1 { parts.append(Text.since(duration(snapshot.counted))) }
         if !agent { parts.append(Text.httpConnectionsFooter) }
         return parts.isEmpty ? nil : parts.joined(separator: " ")
-    }
-
-    static func channelSummary(_ totals: MetricsTotals, _ channel: ConnectionChannel) -> String {
-        var parts = ["↑ \(size(totals.count(.bytesSent, channel)))", "↓ \(size(totals.count(.bytesReceived, channel)))"]
-        let requests = totals.requests(on: [channel])
-        if requests > 0 { parts.append("\(count(requests)) req") }
-        return parts.joined(separator: " · ")
     }
 
     // MARK: Numbers
