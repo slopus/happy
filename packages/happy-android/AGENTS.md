@@ -638,7 +638,11 @@ after `adb install` of the dev build run
 `adb shell cmd package compile -m verify -f com.slopus.happy.dev` (cold
 start 516 → 302 ms on the Fold). A new content provider or androidx.startup
 initializer runs before the first frame and fails `ColdStartTest` until it
-is listed there; prefer starting it where it is first needed. Keep
+is listed there; prefer starting it where it is first needed (Firebase's
+provider and ProfileInstaller's initializer are removed for that). Work
+nothing on the first screen shows waits for `LocalAfterStart` (push
+registration, notification channels, the paywall host), and glass blurs
+from the window's second frame (`FirstFrame`). Keep
 `HappyApplication.onCreate` to the debug StrictMode it has. The Baseline and
 startup profiles (`app/src/main/generated/baselineProfiles`) come from
 `benchmark/`'s generator; regenerate them after large UI changes, with only
@@ -816,8 +820,13 @@ plugin: `app/build.gradle.kts` reads `app/google-services.json`, else
 happy-app's committed `packages/happy-app/google-services.json`, and
 generates the plugin's resources for the client matching each variant's
 application id. Without a file or a matching client the app builds and runs
-and push reports unsupported (no prompt, nothing registered). Pushes arrive
-only if:
+and push reports unsupported (no prompt, nothing registered). Firebase
+doesn't start with the process: the manifest removes FirebaseInitProvider,
+and `push/FirebaseStart.kt` starts it where push needs it, off the main
+thread from registration (after the first frame) and in
+`HappyMessagingService.onCreate` for a push that wakes a killed process
+(`FirebaseStartTest`). Anything new that touches FirebaseMessaging calls
+`FirebaseStart.ensure` first. Pushes arrive only if:
 
 - the file has clients for `com.ex3ndr.happy`, `com.slopus.happy.preview`
   and `com.slopus.happy.dev` (happy-app's has all three);

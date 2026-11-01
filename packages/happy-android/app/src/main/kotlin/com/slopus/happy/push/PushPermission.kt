@@ -27,6 +27,7 @@ import com.slopus.happy.auth.AuthState
 import com.slopus.happy.model.settings.PushPermission
 import com.slopus.happy.model.settings.PushPermissionRequest
 import com.slopus.happy.model.settings.PushPermissionStatus
+import com.slopus.happy.ui.LocalAfterStart
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -131,6 +132,8 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
  * sync.ts `pushTokenSync`: while signed in, every time the app comes to the
  * foreground, ask for notifications if they can still be asked for, then
  * register this device's push token. Signing out forgets the registration.
+ * It all waits for the cold start to end ([LocalAfterStart]): the first
+ * registration starts Firebase ([FirebaseStart]).
  * Builds without Firebase, and devices without an FCM token, skip it all
  * and never prompt (happy-app prompts first and then finds no project id;
  * here there is nothing to prompt for).
@@ -161,12 +164,17 @@ fun PushRegistrationEffect(
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val currentSync by rememberUpdatedState(sync)
-    LaunchedEffect(Unit) { NotificationChannels.create(context) }
+    val afterStart = LocalAfterStart.current
+    LaunchedEffect(Unit) {
+        afterStart.await()
+        NotificationChannels.create(context)
+    }
     LaunchedEffect(authToken, lifecycle) {
         if (authToken == null) {
             forget()
             return@LaunchedEffect
         }
+        afterStart.await()
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             if (!withContext(Dispatchers.IO) { supported() }) return@repeatOnLifecycle
             var info = permission.info()

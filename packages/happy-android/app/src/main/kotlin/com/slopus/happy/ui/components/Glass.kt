@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
 import com.slopus.happy.BuildConfig
+import com.slopus.happy.ui.FirstFrame
 import java.io.File
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -193,7 +194,8 @@ val LocalGlassBlur: ProvidableCompositionLocal<Boolean?> = compositionLocalOf { 
 fun rememberGlassBlur(): Boolean {
     val forced = LocalGlassBlur.current
     val context = LocalContext.current
-    return forced ?: remember(context) { glassBlurEnabled(context) }
+    // From the window's second frame (FirstFrame): the blur's layers would cost the first one.
+    return forced ?: (remember(context) { glassBlurEnabled(context) } && FirstFrame.drawn)
 }
 
 /** One theme's glass: [tint] over the blur, and the [edge] hairline round it. */

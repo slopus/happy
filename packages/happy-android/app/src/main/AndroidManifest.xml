@@ -66,6 +66,21 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
             android:exported="false"
             android:theme="@style/Theme.Happy.Scanner" />
+        <!-- The Baseline Profile is written after the start instead (MainActivity), not from an initializer before it. -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.profileinstaller.ProfileInstallerInitializer"
+                tools:node="remove" />
+        </provider>
+        <!-- Firebase starts where push needs it (push/FirebaseStart.kt), not before every cold start. -->
+        <provider
+            android:name="com.google.firebase.provider.FirebaseInitProvider"
+            android:authorities="${applicationId}.firebaseinitprovider"
+            tools:node="remove" />
         <!-- Pushes relayed by Expo arrive as FCM data messages (push/PushServices.kt). -->
         <service
             android:name=".push.HappyMessagingService"

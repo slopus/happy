@@ -45,11 +45,18 @@ class ColdStartTest {
                 "androidx.core.content.FileProvider",
                 // androidx.startup: the initializers below.
                 "androidx.startup.InitializationProvider",
-                // Firebase's: reads google-services' resources, ~3 ms on the Fold (8 ms debuggable).
-                "com.google.firebase.provider.FirebaseInitProvider",
             ),
             providers,
         )
+    }
+
+    @Test
+    fun firebaseDoesNotStartWithTheProcess() {
+        // FirebaseInitProvider cost ~3 ms on the Fold (8 ms debuggable) before the first frame. Push starts
+        // Firebase itself (push/FirebaseStart.kt): registration after the first frame, the messaging service for a push.
+        val providers = context.packageManager.getPackageInfo(context.packageName, PackageManager.GET_PROVIDERS)
+            .providers.orEmpty().map { it.name }
+        assertEquals(false, "com.google.firebase.provider.FirebaseInitProvider" in providers)
     }
 
     @Test
@@ -59,12 +66,14 @@ class ColdStartTest {
         val initializers = startup.metaData.keySet().filter { startup.metaData.getString(it) == "androidx.startup" }.sorted()
         assertEquals(
             listOf(
-                // Loads the emoji font on its own thread, after the first frame.
+                // Configures EmojiCompat (0.14 ms on the Fold); its font loads on its own thread after the first frame.
+                // Text composed before it is configured would never get its emoji, so it stays.
                 "androidx.emoji2.text.EmojiCompatInitializer",
+                // lifecycle-process refuses to start lazily, and RevenueCat watches the process's lifecycle.
                 "androidx.lifecycle.ProcessLifecycleInitializer",
-                // Writes the Baseline Profile for sideloaded installs, 5 s after start, off the main thread.
-                "androidx.profileinstaller.ProfileInstallerInitializer",
+                // OkHttp's Android platform (its context, for the public suffix list), 0.24 ms.
                 "okhttp3.internal.platform.PlatformInitializer",
+                // Not ProfileInstallerInitializer: MainActivity writes the Baseline Profile after the start.
             ),
             initializers,
         )

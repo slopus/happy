@@ -8,6 +8,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -109,7 +110,10 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
         val switcher = remember(graph) { AccountSwitcher(graph, scope, dissolve) }
         val shown = remember { arrayOfNulls<NavHostController>(1) }
         val stack = rememberStackGeneration(open) { switcher.keepsSettings && open != OpenAccount.None && shown[0]?.isSettingsOverHome() == true }
-        PaywallHost(graph.purchases)
+        // RevenueCat's paywall host, once the start is over: no paywall opens before a tap.
+        val afterStart = LocalAfterStart.current
+        val started by produceState(false) { afterStart.await(); value = true }
+        if (started) PaywallHost(graph.purchases)
         DissolveBox(dissolve) { CompositionLocalProvider(LocalAccountSwitcher provides switcher) {
         // Each account has its own back stack, replaced when another opens (but not from Settings).
         key(stack) {

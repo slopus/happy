@@ -5,7 +5,6 @@ import android.content.SharedPreferences
 import android.util.Log
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailabilityLight
-import com.google.firebase.FirebaseApp
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
@@ -23,7 +22,8 @@ fun interface DevicePushTokenSource {
  * Firebase Cloud Messaging. Firebase is configured at build time from a
  * google-services.json (AGENTS.md "Push"); a build without one has no
  * Firebase app, and push is unsupported. So is a device without Play
- * services, where FCM can't hand out a token.
+ * services, where FCM can't hand out a token. [supported] starts Firebase
+ * ([FirebaseStart]), so it is asked off the main thread, before [token].
  */
 class FcmTokenSource(private val context: Context) : DevicePushTokenSource {
     val supported: Boolean get() = hasPlayServices(context) && isFirebaseConfigured(context)
@@ -47,11 +47,8 @@ class FcmTokenSource(private val context: Context) : DevicePushTokenSource {
                 ConnectionResult.SERVICE_INVALID,
             )
 
-        fun isFirebaseConfigured(context: Context): Boolean = try {
-            FirebaseApp.getApps(context).isNotEmpty() || FirebaseApp.initializeApp(context) != null
-        } catch (_: IllegalStateException) {
-            false
-        }
+        /** Starts Firebase if it isn't running yet ([FirebaseStart]): call it off the main thread. */
+        fun isFirebaseConfigured(context: Context): Boolean = FirebaseStart.ensure(context)
     }
 }
 

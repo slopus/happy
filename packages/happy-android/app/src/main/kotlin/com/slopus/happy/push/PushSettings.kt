@@ -23,6 +23,7 @@ import kotlinx.coroutines.withContext
  */
 class AppPushRegistration(
     private val permission: NotificationPermission,
+    /** Starts Firebase ([FirebaseStart]), so it is asked on Dispatchers.IO. */
     private val supported: () -> Boolean,
     private val registrar: PushRegistrar,
     private val store: RegisteredPushTokenStore,
@@ -33,7 +34,7 @@ class AppPushRegistration(
     override suspend fun requestPermissionOrOpenSettings() = permission.requestOrOpenSettings()
 
     override suspend fun currentToken(): String? {
-        if (!permission.info().granted || !supported()) return store.load()
+        if (!permission.info().granted || !withContext(Dispatchers.IO) { supported() }) return store.load()
         return try {
             withContext(Dispatchers.IO) { registrar.currentExpoToken() } ?: store.load()
         } catch (e: CancellationException) {
@@ -52,7 +53,7 @@ class AppPushRegistration(
             if (!info.granted) return PushTokenSync(registered = false, token = store.load(), permission = info)
         }
         val token = authToken()
-        if (token == null || !supported()) return PushTokenSync(registered = false, token = store.load(), permission = info)
+        if (token == null || !withContext(Dispatchers.IO) { supported() }) return PushTokenSync(registered = false, token = store.load(), permission = info)
         return when (val result = withContext(Dispatchers.IO) { registrar.sync(token) }) {
             is PushSyncResult.Registered -> PushTokenSync(registered = true, token = result.token, permission = info)
             PushSyncResult.Unsupported -> PushTokenSync(registered = false, token = store.load(), permission = info)

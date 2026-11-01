@@ -206,7 +206,7 @@ android {
 // file is app/google-services.json, else happy-app's committed one (same
 // Firebase project and application ids). Each variant gets the resources
 // the plugin would generate for the client whose package name is its
-// application id; FirebaseInitProvider reads them at startup.
+// application id; push/FirebaseStart.kt reads them where push first needs Firebase.
 val googleServices: Map<*, *>? = listOf(file("google-services.json"), file("../../happy-app/google-services.json"))
     .firstOrNull { it.exists() }
     ?.let { groovy.json.JsonSlurper().parse(it) as Map<*, *> }

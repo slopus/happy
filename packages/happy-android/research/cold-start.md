@@ -22,8 +22,8 @@ Android 17), on 2026-10-31, from main at dc8c8b770.
     connection with a kept home of Steve's size (18 bots, 46 tasks,
     24 projects, 53 workspaces, 167 agents, about 350 KB). Seed it with
     `am broadcast -f 0x20 -n com.slopus.happy.bench/com.slopus.happy.bench.BenchFixture -a com.slopus.happy.bench.SEED`.
-    The bench build has no Firebase client, so it skips Firebase's
-    `FirebaseInitProvider`. A store build pays about 3 ms more for it.
+    The bench build has no Firebase client. Until the second pass a store
+    build paid about 3 ms more for `FirebaseInitProvider`; no build has it now.
 - **Traces:** Perfetto with am, wm, view, gfx, dalvik, res, binder and sched,
   plus the app's own sections (`diagnostics/traced`): `AppGraph`,
   `warmHome`, `PushServices` and `AgentSession.readCache`. While measuring,
@@ -118,7 +118,7 @@ Considered and not done:
 - **Deferring Firebase.** Its provider costs about 3 ms (8 ms debuggable).
   `HappyMessagingService` can start the process for a push without the
   activity, so removing the provider means initializing Firebase on that
-  path by hand.
+  path by hand. Done in the second pass, below.
 - **RevenueCat, voice, push:** none of them starts with the process.
   RevenueCat configures on its first account, the voice SDK only in
   `connect()`, and push's services on the graph's thread.
@@ -160,11 +160,121 @@ timeToFullDisplay equals timeToInitialDisplay in both.
 - **Compose's first composition** of HappyApp is about 30 ms in release.
   `NavHost` registers every route's destination on the first frame.
 
+## Second pass: lazy start (2026-10-31, from main at 7f6a279ea)
+
+Steve asked for as much as possible to start lazily, aiming for about
+100 ms to the first frame with home's rows on release code. Each change
+below was measured on its own build, in 15-run sets. Sets of the same
+build vary by about ±4 ms, so the before and after at the end are
+interleaved: each build installed in turn, two rounds, 30 starts each.
+
+### What Firebase does here, and when it starts now
+
+Firebase is only FCM: the device's push token (exchanged for an Expo token
+and registered with happy-server) and `HappyMessagingService`, which shows
+the data messages Expo relays. Before, `FirebaseInitProvider` initialised
+FirebaseApp in bindApplication on every cold start of a build with a
+Firebase client, about 3 ms on release code and 8 ms debuggable. The
+manifest now removes it, and `push/FirebaseStart.kt` starts Firebase
+(idempotent, synchronized, the same generated resources) where push
+needs it:
+
+- push registration, which now waits for the start to end
+  (`LocalAfterStart`: fully drawn and one frame more) and asks on
+  Dispatchers.IO; Settings' push rows ask on IO too;
+- `HappyMessagingService.onCreate`, before `super.onCreate()`, so a push
+  or a token refresh (`onNewToken`) that starts a killed process finds
+  Firebase running.
+
+`FirebaseInstanceIdReceiver`, the GMS broadcast that wakes the process,
+doesn't touch FirebaseApp before the service starts. In firebase-messaging
+25.0.1's bytecode it builds an `FcmBroadcastProcessor`, which only binds or
+starts the messaging service (`ServiceStarter`, `WithinAppServiceConnection`,
+`WakeLockHolder`: no FirebaseApp references). The first reads are
+`MessagingAnalytics`, called from the service's `handleIntent`. The other
+Firebase components in the merged manifest start nothing by themselves:
+`ComponentDiscoveryService` is only metadata (registrars for messaging,
+installations, common and datatransport) read by `initializeApp`;
+datatransport's `TransportBackendDiscovery`, `JobInfoSchedulerService` and
+alarm receiver run only when something is logged. There is no ML Kit
+provider (the QR scanner uses ZXing).
+
+Verified on the Fold with a real push to a killed dev process (`am kill`
+from the background, so not stopped, as a swipe-away leaves it). The dev
+install's open account is an agent connection, which registers no push
+token, and Expo has no FCM credentials for `com.slopus.happy.dev`
+(`InvalidCredentials`). So the push was sent through Happy's push server
+(push.cluster-fluster.com, native FCM, the same data-only layout as Expo's),
+to the install's cached FCM token, and the test device was unregistered
+afterwards. Logcat: the process started for `FirebaseInstanceIdReceiver`
+at 53.891, FirebaseApp initialised at 53.967 (nothing else can start it
+now), and the notification was posted on `messages` at 53.978, shown
+heads-up.
+
+### Changes and what each bought (bench, first frame, ms)
+
+| Change | Sets of 15 | Notes |
+|---|---|---|
+| Before (main at 7f6a279ea) | 117, 118, 118 | |
+| FirebaseInitProvider removed | 122, 118, 118 | bench has no Firebase client, so nothing to gain there; dev and store builds gain the provider's 8 or 3 ms |
+| Glass blurs from the window's second frame (`FirstFrame`) | 107, 114, 108, 111 | the blur's offscreen layers were 6.8 ms of the first frame's RenderThread (`flush layers`, three image allocations); the first frame draws the bar's opaque tint, the next one blurs |
+| The graph shown at attach (`MainActivity.onAttachedToWindow`) | 106, 108 | the graph was built by 41 ms, but the message that told the main thread ran after the first traversal, which composed an empty window, had its draw cancelled by the hold, and drew home a traversal later. Now the first traversal composes and draws home |
+| ProfileInstaller's initializer removed (profile written 5 s after the start), PaywallHost composed after the start | 112, 106 | 0.4 ms of bindApplication; inside the noise |
+
+Interleaved, 30 starts each, before and after on the same afternoon:
+
+| Build | First frame before | First frame after | Fully drawn before | Fully drawn after |
+|---|---|---|---|---|
+| bench (release code) | 111 | **105** | 111 | **105** (rows in the first frame) |
+| dev, verified | 273 | **259** | 522 | **511** |
+
+Tried and taken out:
+
+- **Starting the GPU driver from `Application.onCreate`** (a
+  `HardwareRenderer` given a 1×1 `ImageReader` surface). The main thread
+  waited 4 ms for the RenderThread to attach, and Vulkan then started only
+  1.7 ms sooner than the system's own preload. A net loss.
+
+Checked and left alone:
+
+- **The other initializers.** `ProcessLifecycleInitializer` must be eager
+  (lifecycle-process throws when started lazily) and RevenueCat observes
+  the process lifecycle. `EmojiCompatInitializer` costs 0.14 ms; its font
+  already loads after the first frame, and text composed before
+  EmojiCompat is configured would never get its emoji. OkHttp's
+  `PlatformInitializer` (0.24 ms) gives OkHttp the context it reads the
+  public suffix list with.
+- **Fonts.** The system font (in the zygote's cache) and the icon font
+  (0.07 ms) load during measure; nothing to gain.
+- **Avatars.** Placeholders are stills unless Animated Avatars is on; their
+  pictures decode on Dispatchers.Default after the first frame.
+- **Runtime class verification.** One trace, right after an install, had
+  5 ms of `VerifyClass` on the main thread for R8-merged classes; later
+  traces of the same install had none.
+
+### Where the 105 ms goes now (bench)
+
+| Step | ms |
+|---|---|
+| The system, from the launch to the fork | about 28 |
+| Zygote, bindApplication (dex and app image 4.6, initializers 0.6) | about 18 |
+| Activity create, start, resume | 7 |
+| addView waiting for the RenderThread's Vulkan instance and device (the system's preload) | 12–15 |
+| First traversal on the main thread: composition 1, measure 9 (text 3.6), relayout 3, record 1 | 15 |
+| First frame on the RenderThread: image allocations, cached pipelines, text atlas | 12 |
+
+What's left is mostly fixed cost: the system's launch, the Vulkan driver
+(the main thread can't proceed until it's loaded, and the app can't start
+it sooner), and the GPU's first frame. Getting to 100 would mean less in
+home's first frame itself: fewer rows measured, or cheaper text.
+
 ## Guards
 
 - `ColdStartTest` (Robolectric) pins what runs before the first frame: the
-  three content providers and the four androidx.startup initializers in
-  the merged manifest. It checks that `HappyApplication.onCreate` builds
+  two content providers and the three androidx.startup initializers in
+  the merged manifest, and that FirebaseInitProvider is not one of them.
+  `FirebaseStartTest` pins that the messaging service starts Firebase when
+  nothing has, and that starting it again (from any thread) keeps one app. It checks that `HappyApplication.onCreate` builds
   nothing, and that `AppGraph.warmHome()` only starts the open home's disk
   read (`DiskThread.strict`) and that the rows come in without home
   composed.

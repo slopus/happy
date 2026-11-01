@@ -56,6 +56,13 @@ class PushServices(context: Context, graph: AppGraph) {
  * not show by itself) and re-register when FCM rotates the token.
  */
 class HappyMessagingService : FirebaseMessagingService() {
+    override fun onCreate() {
+        // Nothing starts Firebase with the process any more (FirebaseStart), and a push or a new
+        // token can be what started it: FirebaseMessagingService's handling reads FirebaseApp.
+        FirebaseStart.ensure(this)
+        super.onCreate()
+    }
+
     override fun onMessageReceived(message: RemoteMessage) {
         presentPush(
             this,
