@@ -142,10 +142,10 @@ class ConversationRowActions(
  * help, "Retried" once acted on. A notice: 13/18 textSecondary, centred.
  */
 @Composable
-fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: ConversationRowActions) {
+fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: ConversationRowActions, modifier: Modifier = Modifier) {
     if (RecomposeProbe.counts != null) RecomposeProbe.mark(ConversationScreenTags.probeRow(row.key))
     val content = Modifier.contentMaxWidth(LocalWindowLayout.current)
-    Box(Modifier.fillMaxWidth().testTag(ConversationRowTags.ROW)) {
+    Box(modifier.fillMaxWidth().testTag(ConversationRowTags.ROW)) {
         when (row) {
             is ConversationRow.User -> UserRow(row, bubble, actions, content)
             is ConversationRow.Text -> TextRow(row, actions, content)

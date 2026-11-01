@@ -571,6 +571,71 @@ Main-thread profile of the jumps (simpleperf, 4 kHz, main thread only):
 prototype-doc comparison: open median 6–10 ms of main thread, against
 `proto_compose_current`'s 27.
 
+### Fold (Galaxy Z Fold7, inner screen, 120 Hz, dark), 2 × interleaved
+
+| | before (main, fe1ad56f6's base) | after |
+|---|---|---|
+| `conversation_open`, main cpu median | 104 / 99 ms | **96 / 83 ms** |
+| `conversation_scroll` | 3,211 / 3,061 frames. p99 24.5 / 21.3 ms. Missed 3.1 / 3.2%. ui max 39 / 34 ms | 3,100 / 3,001 frames. p99 **17.1 / 18.0 ms**. Missed 2.8 / 3.0%. ui max 18 / 19 ms |
+| `proto_rows_current`, fresh-row jumps | p90 29.6 / 28.2 ms. **Janky 25.7 / 23.7%**. 4.36 / 4.56 ms of main a jump | p90 19.9 / 20.7 ms. **Janky 13.1 / 16.3%**. 4.11 / 3.96 ms a jump |
+| `conversation_stream`, main an update | 16.2 / 16.3 ms | 17.4 / 17.3 ms |
+| prose laid out on the main thread | | 0 in every case |
+| the lane | | first screens 20–30 ms cpu. All 702 rows in 520–650 ms, +9.5 MB heap |
+
+The open is 8–16% cheaper on the Fold, not the 40% asked for. Profiling the open (the
+emulator at the Fold's size) shows why:
+- Today's text measure, `SelectionContainer` and `MarkdownView` (about 25% of the open's
+  main thread) are gone.
+- What remains is composing and measuring the rest of the screen: the glass bar's
+  layout 20%, the composer 4–5%, tool rows' `Text` 2%, and the subcomposition of every
+  row (`LazyColumn` 11%).
+
+A further cut needs the tool rows drawn the same way, and the screen's chrome composed
+before the transcript.
+
+`proto_compose_prose` on the Fold: open median 28–29 ms, jumps 0.96 ms of main, scroll
+missed 0.4–0.7%, stream 5.3 ms an update.
+
+## Phase 4, motion: results
+
+Telegram's list motion, on its curve: 250 ms, cubic-bezier(0.199, 0.011, 0.279, 0.910)
+(`TranscriptMotionSpec`, `ui/conversation/TranscriptMotion.kt`).
+
+- **Insert** (`ChatListItemAnimator`).
+  - When a row arrives at the newest end and the reader is there, the rows already shown
+    move up for it. The list's layer is drawn the new rows' height lower and eases to 0,
+    so no row is laid out or placed again for it.
+  - Each new row fades from 0 and grows from 0.9 in its own layer. Its start waits
+    `(1 − bottom / listHeight) × 100` ms, so the lowest row goes first.
+  - Reading older history, nothing moves. More than 8 rows at once (a sync catching up)
+    just appear, and so does everything with Reduce Motion.
+  - A streaming answer comes in through its reveal, which already grows it from nothing.
+- **The sent message's flight** (`TextMessageEnterTransition`).
+  - Applies to a text of 10 lines or fewer with nothing attached, sent at the newest end.
+  - The composer hands over its words as laid out and where they were. The row hides
+    until they land. Over the screen, the bubble and the words move from the field to
+    the row's words over 250 ms on the curve. The bubble is opaque by 40%.
+  - When the bubble breaks the lines differently from the field, the field's words
+    cross-fade into the bubble's picture, which the lane drew ahead.
+  - Every frame of the flight draws two pictures and a rounded rect, and shapes no
+    text.
+- **The jump button** (`ChatActivitySideControlsButtonsLayout`).
+  - Shown more than 100 dp from the newest message, and hidden inside it.
+  - It moves over 280 ms decelerating: fading, growing from 0.7, rising 80 dp.
+  - With Reduce Motion it just appears.
+
+Tests:
+- `TranscriptMotionTest`: the curve's values; the row above moving up between frames
+  and settling; nothing moving while reading older; the flight's start, middle and
+  landed frames, with the bubble drawn in its place after; a long message not flying.
+- `ConversationJumpTest`: the 100 dp threshold and the 280 ms rise.
+
+Fold recordings of `conversation_motion -e drive on` (two sends, each answered 1.2 s
+later; away from the newest and back; the jump button): `fold-motion-dark.mp4` and
+`fold-motion-light.mp4`. Frames over the whole recording: p50 5.4 ms, p99 17–23 ms,
+janky 0.7–0.8%. Streaming with phase 4 against main at the same commit, interleaved
+twice: 17.5–18.0 vs 17.6–17.9 ms of main an update, so no change.
+
 ## Running the benchmark
 
 ```sh
@@ -601,6 +666,7 @@ adb -s <device> shell cat /sdcard/Android/data/com.slopus.happy.chatbench/files/
 - **Cases:**
   - `conversation_open`, `conversation_scroll`, `conversation_stream`,
     `conversation_older`, `conversation_ime`
+  - `conversation_motion` (`-e drive on` sends, scrolls and jumps on its own, for recordings)
   - `legacy_scroll`
   - `proto_compose_current`, `proto_compose_canvas`, `proto_recycler_canvas`,
     `proto_rows_current`, `proto_compose_prose`

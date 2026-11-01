@@ -1,7 +1,13 @@
 package com.slopus.happy.ui.conversation
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Easing
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -25,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -32,6 +39,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.conversation.Activity
@@ -54,10 +62,12 @@ object ConversationJumpTags {
  * as iOS's ChatJumpButton and ChatFootLayout draw it: a 32 circle on
  * surfaceHigh with a 1 divider ring and a soft shadow, the 16 arrow-down
  * in the text colour, centred 12 above where the list ends (the list keeps
- * 8 over the dock). It fades in (160 ms) once the reader is more than a
- * third of the list's height from the newest message ([showsJump]); while
- * the agent works ([jumpShimmers]) the arrow carries the sheen every
- * working thing does. A press dims the arrow to 0.6.
+ * 8 over the dock). It comes and goes as Telegram's page-down button does
+ * (ChatActivity, ChatActivitySideControlsButtonsLayout): once the reader is
+ * more than [threshold] from the newest message ([showsJump]), over [MOTION_MS]
+ * decelerating, fading, growing from [HIDDEN_SCALE] and rising [slide]. While
+ * the agent works ([jumpShimmers]) the arrow carries the sheen every working
+ * thing does. A press dims the arrow to 0.6.
  */
 object ConversationJumpSpec {
     val size = 32.dp
@@ -66,12 +76,18 @@ object ConversationJumpSpec {
     val gap = 12.dp
     val listGap = 8.dp
     val shadow = 4.dp
-    const val FADE_MS = 160
+    val threshold = 100.dp
+    const val MOTION_MS = 280
+    const val HIDDEN_SCALE = 0.7f
+    val slide = 80.dp
+
+    /** Android's DecelerateInterpolator, which Telegram's button moves on. */
+    val decelerate = Easing { 1f - (1f - it) * (1f - it) }
     const val PRESSED_ALPHA = 0.6f
 }
 
-/** Desktop shows the way back once the reader is more than a third of the list's height from its end. */
-internal fun showsJump(distanceFromEnd: Float, viewport: Float): Boolean = viewport > 0f && distanceFromEnd > viewport / 3f
+/** Telegram shows the way back once the reader is more than [threshold] pixels from the newest message, and hides it inside them. */
+internal fun showsJump(distanceFromEnd: Float, viewport: Float, threshold: Float): Boolean = viewport > 0f && distanceFromEnd > threshold
 
 /**
  * Desktop's rule (iOS's `ChatJumpButton.spins`): the arrow shimmers while
@@ -94,17 +110,22 @@ internal fun distanceFromNewest(state: LazyListState): Float {
 /** [ConversationJumpSpec]'s button over the transcript, [dock] being the dock's height under the list. */
 @Composable
 internal fun BoxScope.ConversationJump(state: LazyListState, activity: Activity?, dock: Dp) {
-    val shown by remember(state) {
+    val threshold = with(LocalDensity.current) { ConversationJumpSpec.threshold.toPx() }
+    val shown by remember(state, threshold) {
         derivedStateOf {
             val info = state.layoutInfo
             val viewport = (info.viewportSize.height - info.beforeContentPadding - info.afterContentPadding).toFloat()
-            showsJump(distanceFromNewest(state), viewport)
+            showsJump(distanceFromNewest(state), viewport, threshold)
         }
     }
+    val slide = with(LocalDensity.current) { ConversationJumpSpec.slide.roundToPx() }
+    val still = rememberReduceMotion()
+    val motion = if (still) snap<Float>() else tween(ConversationJumpSpec.MOTION_MS, easing = ConversationJumpSpec.decelerate)
+    val moves = if (still) snap<IntOffset>() else tween(ConversationJumpSpec.MOTION_MS, easing = ConversationJumpSpec.decelerate)
     AnimatedVisibility(
         visible = shown,
-        enter = fadeIn(tween(ConversationJumpSpec.FADE_MS)),
-        exit = fadeOut(tween(ConversationJumpSpec.FADE_MS)),
+        enter = fadeIn(motion) + scaleIn(motion, ConversationJumpSpec.HIDDEN_SCALE) + slideInVertically(moves) { slide },
+        exit = fadeOut(motion) + scaleOut(motion, ConversationJumpSpec.HIDDEN_SCALE) + slideOutVertically(moves) { slide },
         modifier = Modifier
             .align(Alignment.BottomCenter)
             .padding(bottom = dock + ConversationJumpSpec.listGap + ConversationJumpSpec.gap),

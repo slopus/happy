@@ -43,6 +43,7 @@ import androidx.recyclerview.widget.RecyclerView
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import com.slopus.happy.chat.ChatMessage
 import com.slopus.happy.chat.ChatRow
@@ -57,6 +58,7 @@ import com.slopus.happy.conversation.ComposerFocus
 import com.slopus.happy.conversation.ConversationRow
 import com.slopus.happy.conversation.ConversationRowBuilder
 import com.slopus.happy.conversation.ConversationState
+import com.slopus.happy.conversation.Delivery
 import com.slopus.happy.conversation.Message
 import com.slopus.happy.conversation.Presentation
 import com.slopus.happy.ui.chat.AgentMessage
@@ -410,6 +412,57 @@ class ChatListBenchmark {
         content { ConversationScreen(state, null, actions) }
         SystemClock.sleep(1_000)
         record("conversation $chat working") { SystemClock.sleep(5_000) }
+    }
+
+    /**
+     * For recordings of the transcript's motion: the chat, live for `-e seconds N` (60 by default).
+     * What is sent in the composer goes in as a message, and an answer arrives 1.2 s later. With
+     * `-e drive on` it sends two, reads older and comes back by the jump button itself, for a
+     * screen recording made beside it. Frames are summarised at the end.
+     */
+    @Test fun conversation_motion() {
+        var state by mutableStateOf(conversation())
+        var sent = 0
+        val reply = "Done. The guard now waits for the session cookie before it redirects, so the login page no longer loops."
+        val actions = ConversationScreenActions(loadMedia = { pictureBytes }, onSend = { text, _ ->
+            val id = "sent${sent++}"
+            state = state.copy(rows = listOf(ConversationRow.User("$id:user", id, text, parseMarkdown(text), emptyList(), Delivery.Sending)) + state.rows)
+            scope.launch {
+                delay(1_200)
+                state = state.copy(rows = listOf(ConversationRow.Text("$id-answer:0", reply, parseMarkdown(reply))) + state.rows)
+            }
+            true
+        })
+        content { ConversationScreen(state, null, actions) }
+        val recorder = FrameRecorder(activity.window)
+        main { recorder.start() }
+        if (InstrumentationRegistry.getArguments().getString("drive") == "on") {
+            // Two sends, each answered; away from the newest end and back by hand; away again and the jump button.
+            SystemClock.sleep(2_500)
+            for (words in listOf("Ship%sit", "And%sthe%slogout%spage%stoo?")) {
+                device.findObject(By.text("Message"))?.click()
+                SystemClock.sleep(900)
+                device.executeShellCommand("input text $words")
+                SystemClock.sleep(700)
+                device.findObject(By.desc("Send"))?.click()
+                SystemClock.sleep(3_500)
+            }
+            device.pressBack()
+            SystemClock.sleep(1_200)
+            val x = device.displayWidth / 2
+            val h = device.displayHeight
+            device.swipe(x, h / 3, x, h * 2 / 3, 30)
+            SystemClock.sleep(2_000)
+            device.swipe(x, h * 2 / 3, x, h / 3, 30)
+            SystemClock.sleep(2_000)
+            device.swipe(x, h / 3, x, h * 2 / 3, 30)
+            SystemClock.sleep(2_000)
+            device.findObject(By.desc("Jump to latest"))?.click()
+            SystemClock.sleep(3_000)
+        } else {
+            SystemClock.sleep((InstrumentationRegistry.getArguments().getString("seconds")?.toLongOrNull() ?: 60L) * 1_000)
+        }
+        report(FrameSummary(recorder.stop()).line("conversation $chat motion, $sent sent"))
     }
 
     @Test fun conversation_older() {

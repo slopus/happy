@@ -77,6 +77,7 @@ import com.slopus.happy.ui.components.ShimmerText
 import com.slopus.happy.ui.components.StatusDot
 import com.slopus.happy.ui.components.StateArt
 import com.slopus.happy.ui.components.StatePage
+import com.slopus.happy.ui.components.rememberReduceMotion
 import com.slopus.happy.ui.components.TitleWithStatus
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
@@ -248,6 +249,8 @@ fun ConversationScreen(
     val keyboard = rememberKeyboardLift()
     // The transcript slides under the bar as it rides: the bar blurs what the whole way passes under it once.
     glass.travel = keyboard.travel
+    // A message sent at the newest end flies from the composer to its row.
+    val flight = remember { SendFlight() }
     val dockHeight = with(LocalDensity.current) { dock.toDp() }
     // Return in new work's name: on to the composer.
     var nameReturns by remember { mutableIntStateOf(0) }
@@ -390,7 +393,7 @@ fun ConversationScreen(
                     } else {
                         Box(Modifier.fillMaxSize())
                     }
-                    TranscriptPhase.Rows -> Transcript(state, listState, bubble, rowActions, actions.onLoadOlder, top, dockHeight, glass, keyboard)
+                    TranscriptPhase.Rows -> Transcript(state, listState, bubble, rowActions, actions.onLoadOlder, top, dockHeight, glass, keyboard, flight)
                 }
             }
             // New work: Task or Bot and a name, centred between the bar and the composer, riding the
@@ -459,9 +462,11 @@ fun ConversationScreen(
                         modifier = Modifier.contentMaxWidth(LocalWindowLayout.current),
                         backdrop = glass,
                         focusAsks = nameReturns,
+                        flight = flight,
                     )
                 }
             }
+            SendFlightOverlay(flight, bubble, remember(colors) { ProsePalette.of(colors) })
             PictureViewerHost(pictures, store)
         }
     }
@@ -480,6 +485,7 @@ private fun Transcript(
     dock: Dp,
     glass: GlassSource,
     keyboard: KeyboardLift,
+    flight: SendFlight,
 ) {
     val nearOldest by remember {
         derivedStateOf {
@@ -494,7 +500,10 @@ private fun Transcript(
         if (nearOldest && state.hasMore && !state.loadingOlder && !state.olderFailed) loadOlder(false)
     }
     val reveal = remember(listState) { TranscriptReveal(listState) }
-    CompositionLocalProvider(LocalRevealHost provides reveal) { TranscriptList(state, listState, bubble, actions, onLoadOlder, bar, dock, glass, keyboard, reveal) }
+    flight.atNewest = { listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0 }
+    CompositionLocalProvider(LocalRevealHost provides reveal, LocalSendFlight provides flight) {
+        TranscriptList(state, listState, bubble, actions, onLoadOlder, bar, dock, glass, keyboard, reveal, flight)
+    }
 }
 
 /**
@@ -543,16 +552,31 @@ private fun TranscriptList(
     glass: GlassSource,
     keyboard: KeyboardLift,
     reveal: TranscriptReveal,
+    flight: SendFlight,
 ) {
     val density = LocalDensity.current
+    // Rows arriving at the newest end come in as Telegram's do; with Reduce Motion they just appear.
+    val motion = remember(listState) { TranscriptMotion(listState) }
+    motion.update(state.rows, still = rememberReduceMotion())
+    val generation = motion.generation
+    LaunchedEffect(motion, generation) { if (generation > 0) motion.run() }
     LazyColumn(
         state = listState,
         reverseLayout = true,
         contentPadding = remember(bar, dock, keyboard, density) { KeyboardPadding(bar, dock + 8.dp, keyboard, density) },
-        modifier = Modifier.fillMaxSize().aboveKeyboard(keyboard).graphicsLayer().glassSource(glass).graphicsLayer { translationY = reveal.lag() }.testTag(ConversationScreenTags.LIST),
+        modifier = Modifier.fillMaxSize().aboveKeyboard(keyboard).graphicsLayer().glassSource(glass).graphicsLayer { translationY = reveal.lag() + motion.lift() }.testTag(ConversationScreenTags.LIST),
     ) {
         items(state.rows, key = ConversationRow::key, contentType = { it::class }) { row ->
-            ConversationRowView(row, bubble, actions)
+            val moves = when {
+                // Its words are on their way from the composer: it shows once they land.
+                flight.claim(row) -> {
+                    motion.flies(row.key)
+                    Modifier.graphicsLayer { alpha = if (flight.hides(row.key)) 0f else 1f }
+                }
+                motion.entering(row.key) -> motion.enter(row.key)
+                else -> Modifier
+            }
+            ConversationRowView(row, bubble, actions, moves)
         }
         item(key = "older", contentType = "older") {
             Box(Modifier.fillMaxWidth().heightIn(min = 32.dp).testTag(ConversationScreenTags.OLDER), contentAlignment = Alignment.Center) {

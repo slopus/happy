@@ -597,10 +597,14 @@ internal fun CollaboratorProse(row: ConversationRow.Collaborator, callbacks: Mes
     }
 }
 
-/** A person's words in their bubble, drawn ([UserMessage][com.slopus.happy.ui.chat.UserMessage]'s body). */
+/** A person's words in their bubble, drawn ([UserMessage][com.slopus.happy.ui.chat.UserMessage]'s body); where a sent message's flight lands ([SendFlight]). */
 @Composable
 internal fun UserProse(row: ConversationRow.User, callbacks: MessageCallbacks) {
-    ProseColumn(rememberProse(ProseSource(row.key, ProseKind.User, row.text, row.blocks)), fill = false) { block ->
+    val prose = rememberProse(ProseSource(row.key, ProseKind.User, row.text, row.blocks))
+    // A message just sent: its words fly here from the composer, and land where these are placed.
+    val flight = LocalSendFlight.current
+    val placed = if (flight != null) Modifier.onPlaced { flight.place(row.key, it, prose) } else Modifier
+    ProseColumn(prose, fill = false, modifier = placed) { block ->
         MarkdownBlockView(block, callbacks.onOptionPress)
     }
 }

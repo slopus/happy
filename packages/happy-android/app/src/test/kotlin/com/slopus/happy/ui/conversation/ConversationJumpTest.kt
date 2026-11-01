@@ -80,10 +80,32 @@ class ConversationJumpTest {
         for (phase in Activity.entries - Activity.AwaitingAnswer) assertTrue("$phase", jumpShimmers(phase))
     }
 
-    @Test fun itShowsPastAThirdOfTheListFromTheNewest() {
-        assertFalse(showsJump(300f, 900f))
-        assertTrue(showsJump(301f, 900f))
-        assertFalse("No list, no jump", showsJump(500f, 0f))
+    @Test fun itShowsPast100dpFromTheNewestAsTelegramsDoes() {
+        assertFalse(showsJump(300f, 900f, 300f))
+        assertTrue(showsJump(301f, 900f, 300f))
+        assertFalse("No list, no jump", showsJump(500f, 0f, 300f))
+        assertEquals(100.dp, ConversationJumpSpec.threshold)
+        assertEquals(280, ConversationJumpSpec.MOTION_MS)
+        assertEquals(0.7f, ConversationJumpSpec.HIDDEN_SCALE)
+        assertEquals(80.dp, ConversationJumpSpec.slide)
+        assertEquals("decelerating", 0.75f, ConversationJumpSpec.decelerate.transform(0.5f), 1e-6f)
+    }
+
+    @Test fun itRisesGrowsAndFadesIn280ms() {
+        show()
+        rule.waitForIdle()
+        val dockTop = rule.node(ConversationScreenTags.FADE).bounds.top
+        rule.mainClock.autoAdvance = false
+        rule.node(ConversationScreenTags.LIST).performTouchInput { swipeDown(startY = top + 200f, endY = bottom - 200f) }
+        var frames = 0
+        while (jumps() == 0 && frames++ < 120) rule.mainClock.advanceTimeByFrame()
+        // Its first frame: on its way up from under the dock.
+        rule.mainClock.advanceTimeByFrame()
+        val early = rule.node(ConversationJumpTags.JUMP).bounds
+        assertTrue("below its place as it starts: ${early.bottom} vs ${dockTop - 20.dp}", early.bottom > dockTop - 20.dp + 10.dp)
+        rule.mainClock.advanceTimeBy(ConversationJumpSpec.MOTION_MS.toLong() + 32)
+        assertDp("in its place after 280 ms", dockTop - 20.dp, rule.node(ConversationJumpTags.JUMP).bounds.bottom)
+        rule.mainClock.autoAdvance = true
     }
 
     @Test fun atTheNewestThereIsNone() {
