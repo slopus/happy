@@ -52,7 +52,7 @@ private struct ComposeMachine: HomeOps {
             metadataVersion: 1, metadataCipher: "harness",
             metadata: .object([
                 "path": .string(SeededAccount.project), "host": .string("harness-mac"), "homeDir": .string(SeededAccount.home),
-                "machineId": .string(SeededAccount.machineId), "flavor": .string("claude"), "version": .string("1.0.0"),
+                "machineId": .string(SeededAccount.machineId), "flavor": .string(options.agent ?? "claude"), "version": .string("1.2.6"),
             ]),
             agentStateVersion: 1, agentStateCipher: nil, agentState: .object(["controlledByUser": .bool(false)]),
             dataKeyCipher: nil, decryptable: true
@@ -100,6 +100,30 @@ final class HostedComposeTests: XCTestCase {
     nonisolated static let studio = "studio-mac"
     nonisolated static let studioFolder = "/Users/harness/Developer/site"
 
+    private nonisolated static func seedLegacy(_ store: LocalStore, secondMachine: Bool) throws {
+        try SeededAccount.seed(store)
+        try store.addPendingSettings(["sessionListGrouping": .string("flat")])
+        guard secondMachine, let initialMachine = try store.machines().first,
+              let template = try store.sessions().first else { return }
+        var machine = initialMachine
+        machine.id = studio
+        machine.createdAt -= 1
+        var metadata = machine.metadata?.objectValue ?? [:]
+        metadata["displayName"] = .string("Studio Mac")
+        metadata["host"] = .string("studio-mac")
+        machine.metadata = .object(metadata)
+        try store.upsertMachine(machine)
+        var row = template
+        row.id = "studio-site"
+        var fields = row.metadata?.objectValue ?? [:]
+        fields["machineId"] = .string(studio)
+        fields["host"] = .string("studio-mac")
+        fields["path"] = .string(studioFolder)
+        fields["summary"] = .object(["text": .string("Landing page")])
+        row.metadata = .object(fields)
+        try store.upsertSessions([row])
+    }
+
     private func legacyHome(refuses: Bool = false, secondMachine: Bool = false, log: SpawnLog? = nil) async throws -> (LegacyHomeViewController, UINavigationController, UIWindow, AccountSession, AppContext) {
         let controller = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
@@ -110,27 +134,8 @@ final class HostedComposeTests: XCTestCase {
         try await controller.signIn(Credentials(token: "t", secret: Data(repeating: 7, count: 32)))
         let account = try XCTUnwrap(controller.session)
         let store = account.store
-        try await Task.detached {
-            try SeededAccount.seed(store)
-            try store.addPendingSettings(["sessionListGrouping": .string("flat")])
-            if secondMachine, var machine = try store.machines().first, let template = try store.sessions().first {
-                machine.id = Self.studio
-                machine.createdAt -= 1
-                var metadata = machine.metadata?.objectValue ?? [:]
-                metadata["displayName"] = .string("Studio Mac")
-                metadata["host"] = .string("studio-mac")
-                machine.metadata = .object(metadata)
-                try store.upsertMachine(machine)
-                var row = template
-                row.id = "studio-site"
-                var fields = row.metadata?.objectValue ?? [:]
-                fields["machineId"] = .string(Self.studio)
-                fields["host"] = .string("studio-mac")
-                fields["path"] = .string(Self.studioFolder)
-                fields["summary"] = .object(["text": .string("Landing page")])
-                row.metadata = .object(fields)
-                try store.upsertSessions([row])
-            }
+        try await Task.detached { [store, secondMachine] in
+            try HostedComposeTests.seedLegacy(store, secondMachine: secondMachine)
         }.value
         // The last place picked: the seeded machine's project.
         let drafts = NewSessionDraftStore.shared(for: controller.localSettings)
@@ -143,6 +148,7 @@ final class HostedComposeTests: XCTestCase {
                 sessionOps: ComposeSessionOps(),
                 sender: account.sender,
                 metadataTransport: account.realtime,
+                saveInitialModes: { [sender = account.sender] in try await sender.saveInitialModes(sessionId: $0, patch: $1) },
                 refreshSessions: {},
                 paintBotFace: { _ in throw URLError(.cannotConnectToHost) },
                 attachmentPlan: { [sender = account.sender] message, sessionId in try await sender.attachmentPlan(for: message, sessionId: sessionId) },
@@ -269,12 +275,11 @@ final class HostedComposeTests: XCTestCase {
         XCTAssertNil(Self.subview(AgentInputCardView.self, in: home.view), "home grew an input on the way back")
     }
 
-    /// One computer: the empty chat asks only the folder, in its middle,
-    /// listing that computer's folders; the one picked is where the
-    /// session starts.
-    func testLegacyOneMachineAsksOnlyTheFolder() async throws {
+    /// One computer: folder and harness are visible, and model picks
+    /// before the first send reach the spawn on that computer.
+    func testLegacyOneMachinePicksFolderHarnessAndModelBeforeFirstSend() async throws {
         let log = SpawnLog()
-        let (home, navigation, window, _, _) = try await legacyHome(log: log)
+        let (home, navigation, window, account, _) = try await legacyHome(log: log)
         defer { window.isHidden = true }
         home.compose()
         try await settle(navigation)
@@ -285,8 +290,23 @@ final class HostedComposeTests: XCTestCase {
         try await until { panel.folder.title.contains("happy") }
         XCTAssertTrue(panel.machine.isHidden, "one computer, and it was asked")
         XCTAssertFalse(panel.folder.isHidden)
+        XCTAssertFalse(panel.harness.isHidden)
+        XCTAssertGreaterThan(panel.harness.frame.minY, panel.folder.frame.maxY)
         assertCentred(panel, in: chat)
         keep(window, "legacy-new-work-one-machine")
+
+        XCTAssertNotNil(card.configuration.model?.menu, "the model must be pickable before a session exists")
+        XCTAssertNotNil(card.configuration.permission?.menu)
+        let harnesses = Self.actions(start.harnessMenuElements())
+        try XCTUnwrap(harnesses.first { $0.title == "Codex" }).performWithSender(nil, target: nil)
+        try await until { panel.harness.title == "Codex" }
+        let model = try XCTUnwrap(start.composer.choices.modelOptions.first { $0.key != "default" && !$0.isDisabled })
+        card.delegate?.agentInputCard(card, didSelect: model.key, in: .model)
+        try await until { card.configuration.model?.menu?.selectedKey == model.key }
+        XCTAssertEqual(start.drafts.draft.agentType, .codex)
+        XCTAssertEqual(start.drafts.draft.pickedAgentType, .codex)
+        XCTAssertEqual(start.drafts.draft.modelMode, model.key)
+        keep(window, "legacy-new-work-codex-model")
 
         // Its folders, newest first: the worktree and the project.
         let folders = Self.actions(start.folderMenuElements())
@@ -302,6 +322,12 @@ final class HostedComposeTests: XCTestCase {
         try await until { !chat.isComposing }
         XCTAssertEqual(log.spawned.map(\.machineId), [SeededAccount.machineId])
         XCTAssertEqual(log.spawned.map(\.directory), [SeededAccount.worktree], "the folder picked isn't where it started")
+        XCTAssertEqual(log.spawned.map(\.agent), ["codex"])
+        XCTAssertEqual(log.spawned.map(\.modelMode), [model.key])
+        let store = account.store
+        let outbox = try await Task.detached { try store.pendingOutbox() }.value
+        let first = try XCTUnwrap(outbox.first { $0.sessionId == Self.newSessionId && $0.kind == .message })
+        XCTAssertEqual(first.payload["meta"]?["model"]?.stringValue, model.key, "the first message used a different model")
         try await until { panel.isHidden }
     }
 

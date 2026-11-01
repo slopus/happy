@@ -161,15 +161,28 @@ final class LegacyComposeStart: NSObject {
         ])
     }
 
-    /// The chosen machine's folders, most recent first, a custom path, and
-    /// the harness when there is a choice of one; built as it opens, so it
-    /// lists the machine chosen now.
+    /// The chosen machine's folders, most recent first, and a custom path.
     func folderMenu() -> UIMenu {
         UIMenu(children: [
             UIDeferredMenuElement.uncached { [weak self] completion in
                 completion(self?.folderMenuElements() ?? [])
             },
         ])
+    }
+
+    func harnessMenu() -> UIMenu {
+        UIMenu(children: [
+            UIDeferredMenuElement.uncached { [weak self] completion in
+                completion(self?.harnessMenuElements() ?? [])
+            },
+        ])
+    }
+
+    func harnessMenuElements() -> [UIMenuElement] {
+        let composer = composer
+        return [Self.section(Strings.Home.harnessTitle, composer.choices.agentOptions, selected: composer.choices.currentAgent.key) {
+            composer.selectAgent($0)
+        }]
     }
 
     func machineMenuElements() -> [UIMenuElement] {
@@ -183,14 +196,10 @@ final class LegacyComposeStart: NSObject {
         let composer = composer
         let choices = composer.choices
         let custom = NewSessionChoices.Option(key: NewSessionChoices.customPathKey, name: Strings.Home.enterCustomPath, isAction: true)
-        var elements: [UIMenuElement] = [
+        return [
             Self.section(Strings.Home.projectsSection, choices.projectOptions, selected: choices.currentProject?.key) { composer.selectProject($0) },
             Self.section(nil, [custom], selected: nil) { [weak self] _ in self?.askForCustomPath() },
         ]
-        if choices.agentOptions.count > 1 {
-            elements.append(Self.section(Strings.Home.harnessTitle, choices.agentOptions, selected: composer.drafts.draft.agentType.rawValue) { composer.selectAgent($0) })
-        }
-        return elements
     }
 
     private static func section(_ title: String?, _ options: [NewSessionChoices.Option], selected: String?, select: @escaping (String) -> Void) -> UIMenu {

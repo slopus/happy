@@ -148,6 +148,21 @@ public struct OutboxSender: ChatSending {
         try store.saveComposerState(state)
     }
 
+    /// A new session's first message must read the chosen modes even if
+    /// the metadata update is still waiting for the server.
+    public func saveInitialModes(sessionId: String, patch: SessionAgentModesPatch) async throws {
+        let store = store
+        try await Task.detached(priority: .userInitiated) {
+            var state = try store.composerState(sessionId: sessionId)
+            var values = state.values.objectValue ?? [:]
+            if let permission = patch.permissionMode { values["permissionMode"] = permission }
+            if let model = patch.modelMode { values["modelMode"] = model }
+            if let effort = patch.effortLevel { values["effortLevel"] = effort }
+            state.values = .object(values)
+            try store.saveComposerState(state)
+        }.value
+    }
+
     /// The UI can observe the outbox and display happy-app's upload-failed alert count.
     public func failedAttachmentCount(sessionId: String) throws -> Int {
         try store.pendingOutbox(limit: Int.max).filter {

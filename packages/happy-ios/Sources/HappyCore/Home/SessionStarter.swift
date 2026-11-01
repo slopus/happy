@@ -105,6 +105,9 @@ public final class SessionStarter {
         public var sessionOps: any HomeSessionOps
         public var sender: any ChatSending
         public var metadataTransport: any MetadataUpdateTransport
+        /// Pin creation picks locally before the first message is encoded.
+        /// Publishing metadata can proceed independently of this disk write.
+        public var saveInitialModes: @Sendable (String, SessionAgentModesPatch) async throws -> Void
         /// sync.ts `refreshSessions`.
         public var refreshSessions: @Sendable () async -> Void
         /// utils/botFacePaint.ts `paintBotFace`: a seed's face as PNG
@@ -126,6 +129,7 @@ public final class SessionStarter {
             sessionOps: any HomeSessionOps,
             sender: any ChatSending,
             metadataTransport: any MetadataUpdateTransport,
+            saveInitialModes: @escaping @Sendable (String, SessionAgentModesPatch) async throws -> Void,
             refreshSessions: @escaping @Sendable () async -> Void,
             paintBotFace: @escaping @Sendable (String) async throws -> Data,
             attachmentPlan: @escaping @Sendable (OutgoingMessage, String) async throws -> AttachmentSendPlan,
@@ -136,6 +140,7 @@ public final class SessionStarter {
             self.sessionOps = sessionOps
             self.sender = sender
             self.metadataTransport = metadataTransport
+            self.saveInitialModes = saveInitialModes
             self.refreshSessions = refreshSessions
             self.paintBotFace = paintBotFace
             self.attachmentPlan = attachmentPlan
@@ -319,6 +324,19 @@ public final class SessionStarter {
                     modelMode: .string(launch.modelMode),
                     effortLevel: launch.effortLevel.map(JSONValue.string) ?? .null
                 )
+                let saveInitialModes = environment.saveInitialModes
+                guard let saved = await run.race({ () -> Result<Void, any Error> in
+                    do {
+                        try await saveInitialModes(sessionId, patch)
+                        return .success(())
+                    } catch {
+                        return .failure(error)
+                    }
+                }) else {
+                    Task { @MainActor in await self.stopAbandoned(sessionId, launch: launch, run: run) }
+                    return nil
+                }
+                try saved.get()
                 let transport = environment.metadataTransport
                 Task { try? await sessionOps.sessionSetAgentModes(sessionId: sessionId, patch: patch, transport: transport) }
             }

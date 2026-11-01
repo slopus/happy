@@ -551,8 +551,13 @@ private enum StartTestError: Error, LocalizedError {
 
 private actor FakeSender: ChatSending {
     var sent: [(OutgoingMessage, String)] = []
+    var initialModes: SessionAgentModesPatch?
+    var modesAtSend: [SessionAgentModesPatch?] = []
+
+    func saveInitialModes(_ patch: SessionAgentModesPatch) { initialModes = patch }
 
     func send(_ message: OutgoingMessage, sessionId: String) async throws -> String {
+        modesAtSend.append(initialModes)
         sent.append((message, sessionId))
         return "local-\(sent.count)"
     }
@@ -658,13 +663,17 @@ final class SessionStarterTests: XCTestCase {
     private var phases: [NewSessionStartPhase?] = []
     private lazy var requests = SpawnRequests()
 
-    private func makeStarter(spawnRequests: SpawnRequests? = nil, ops: FakeOps? = nil) -> SessionStarter {
+    private func makeStarter(spawnRequests: SpawnRequests? = nil, ops: FakeOps? = nil, failInitialModes: Bool = false) -> SessionStarter {
         let recorder = self.recorder
         let starter = SessionStarter(environment: .init(
             ops: ops ?? self.ops,
             sessionOps: sessionOps,
             sender: sender,
             metadataTransport: FakeTransport(),
+            saveInitialModes: { [sender] _, patch in
+                if failInitialModes { throw StartTestError.notSynced }
+                await sender.saveInitialModes(patch)
+            },
             refreshSessions: { await recorder.refreshed() },
             paintBotFace: { try await recorder.paint($0) },
             attachmentPlan: { [pictures, planGate] message, _ in
@@ -747,6 +756,8 @@ final class SessionStarterTests: XCTestCase {
         let sent = await sender.sent
         XCTAssertEqual(sent.first?.0, OutgoingMessage(text: "Fix the build", source: .newSession))
         XCTAssertEqual(sent.first?.1, "s1")
+        let modesAtSend = await sender.modesAtSend
+        XCTAssertEqual(modesAtSend.first ?? nil, modes.first?.1, "creation picks must be saved before encoding the first message")
         XCTAssertTrue(presenter.errors.isEmpty)
     }
 
@@ -756,6 +767,17 @@ final class SessionStarterTests: XCTestCase {
         let options = await ops.spawned
         XCTAssertEqual(options.first?.permissionMode, "default")
         XCTAssertEqual(options.first?.modelMode, "gpt-6.1-sol")
+    }
+
+    func testInitialModeSaveFailureKeepsTheFirstMessageUnsent() async {
+        await ops.script([.success(sessionId: "s1")])
+        let starter = makeStarter(failInitialModes: true)
+        let result = await starter.start(launch(agent: .codex, model: "gpt-6.1-sol"), isCurrentTarget: { true })
+        XCTAssertNil(result)
+        let sent = await sender.sent
+        XCTAssertTrue(sent.isEmpty)
+        XCTAssertFalse(presenter.errors.isEmpty)
+        XCTAssertFalse(starter.isStarting)
     }
 
     func testANewWorktreeIsCreatedFirst() async {
@@ -1598,8 +1620,11 @@ final class NewSessionChoicesTests: XCTestCase {
         XCTAssertEqual(draft.pickedAgentType, .codex)
         XCTAssertEqual(draft.permissionMode, defaults.permissionMode)
         XCTAssertEqual(draft.modelMode, defaults.modelMode)
+        XCTAssertEqual(draft.effortLevel, defaults.effortLevel)
         composer.selectAgent("vim")
         XCTAssertEqual(composer.drafts.draft.agentType, .codex)
+        composer.drafts.selectAgent(.rig, picked: true, defaults: AgentDefaults.Config(permissionMode: "default", modelMode: "default", effortLevel: nil))
+        XCTAssertNil(composer.drafts.draft.effortLevel, "a harness with no effort default must clear the previous harness's effort")
     }
 
     @MainActor
