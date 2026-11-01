@@ -46,20 +46,7 @@ class ManagedPolicyTest {
     @Test
     fun managementCanOnlyTurnAnalyticsOff() {
         assertEquals(false, ManagedPolicy.from(mapOf("analyticsEnabled" to false)).analyticsEnabled)
-        assertEquals(ManagedPolicy(managed = true), ManagedPolicy.from(mapOf("analyticsEnabled" to true)))
-    }
-
-    @Test
-    fun pairingIsOptInOnlyUnderManagement() {
-        // No managed configuration: pairing as before.
-        assertTrue(ManagedPolicy.from(emptyMap()).pairingAllowed)
-        assertTrue(ManagedPolicy.from(mapOf("unknown" to 1)).pairingAllowed)
-        // Managed: off unless phonePairingEnabled is true, whatever else is set.
-        assertFalse(ManagedPolicy.from(mapOf("serverUrl" to "https://happy.acme.example")).pairingAllowed)
-        assertFalse(ManagedPolicy.from(mapOf("analyticsEnabled" to true)).pairingAllowed)
-        assertFalse(ManagedPolicy.from(mapOf("phonePairingEnabled" to false)).pairingAllowed)
-        assertFalse(ManagedPolicy.from(mapOf("phonePairingEnabled" to "true")).pairingAllowed)
-        assertTrue(ManagedPolicy.from(mapOf("tailcatEnabled" to false, "phonePairingEnabled" to true)).pairingAllowed)
+        assertEquals(ManagedPolicy(), ManagedPolicy.from(mapOf("analyticsEnabled" to true)))
     }
 
     @Test

@@ -33,7 +33,7 @@
     <string name="team_server_status_signed_out">disconnesso</string>
     <string name="team_server_settings_signed_out">Disconnesso</string>
     <string name="team_server_relay_disabled">La tua organizzazione ha disattivato il relay ospitato di Happy.</string>
-    <string name="team_server_pairing_disabled">La tua organizzazione non consente di collegare agenti tramite codice.</string>
+    <string name="team_server_pairing_disabled">La tua organizzazione ha disattivato il collegamento degli agenti tramite codice.</string>
     <string name="browser_tunnels_blocked">La rete di questo server non consente le anteprime.</string>
     <string name="start_sign_in_server">Accedi a %1$s</string>
     <string name="managed_by_organization">Gestito dalla tua organizzazione</string>
@@ -47,5 +47,4 @@
     <string name="team_server_profile_required">Aggiungi il tuo nome per continuare a usare questo server.</string>
     <string name="team_server_add_name">Aggiungi il tuo nome</string>
     <string name="managed_analytics_enabled_description">Disattivato disattiva le analisi e blocca l\'impostazione. Attivato lascia la scelta a ogni persona.</string>
-    <string name="managed_phone_pairing_enabled_description">Disattivato finché non viene attivato: su un dispositivo gestito, gli agenti si possono collegare tramite codice QR solo se questa opzione è attiva.</string>
 </resources>

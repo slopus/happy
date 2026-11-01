@@ -33,7 +33,7 @@
     <string name="team_server_status_signed_out">已登出</string>
     <string name="team_server_settings_signed_out">已登出</string>
     <string name="team_server_relay_disabled">你的組織已關閉 Happy 託管中繼。</string>
-    <string name="team_server_pairing_disabled">你的組織不允許透過代碼連接代理。</string>
+    <string name="team_server_pairing_disabled">你的組織已關閉透過代碼連接代理。</string>
     <string name="browser_tunnels_blocked">此伺服器的網路不允許預覽。</string>
     <string name="start_sign_in_server">登入 %1$s</string>
     <string name="managed_by_organization">由你的組織管理</string>
@@ -47,5 +47,4 @@
     <string name="team_server_profile_required">新增你的名字以繼續使用此伺服器。</string>
     <string name="team_server_add_name">新增名字</string>
     <string name="managed_analytics_enabled_description">關閉會關閉分析並鎖定該設定。開啟則由每個人自行選擇。</string>
-    <string name="managed_phone_pairing_enabled_description">預設關閉，需手動開啟：在受管理的裝置上，只有開啟此項後才能透過 QR 碼連接代理。</string>
 </resources>

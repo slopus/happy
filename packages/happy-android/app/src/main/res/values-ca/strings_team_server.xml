@@ -33,7 +33,7 @@
     <string name="team_server_status_signed_out">sessió tancada</string>
     <string name="team_server_settings_signed_out">Sessió tancada</string>
     <string name="team_server_relay_disabled">La teva organització ha desactivat el relé allotjat de Happy.</string>
-    <string name="team_server_pairing_disabled">La teva organització no permet connectar agents amb un codi.</string>
+    <string name="team_server_pairing_disabled">La teva organització ha desactivat connectar agents amb un codi.</string>
     <string name="browser_tunnels_blocked">La xarxa d\'aquest servidor no permet previsualitzacions.</string>
     <string name="start_sign_in_server">Inicia sessió a %1$s</string>
     <string name="managed_by_organization">Gestionat per la teva organització</string>
@@ -47,5 +47,4 @@
     <string name="team_server_profile_required">Afegeix el teu nom per continuar fent servir aquest servidor.</string>
     <string name="team_server_add_name">Afegeix el teu nom</string>
     <string name="managed_analytics_enabled_description">Desactivat desactiva l\'analítica i la bloqueja. Activat deixa l\'elecció a cada persona.</string>
-    <string name="managed_phone_pairing_enabled_description">Desactivat fins que s\'activi: en un dispositiu gestionat, els agents només es poden connectar amb un codi QR si aquesta opció està activada.</string>
 </resources>
