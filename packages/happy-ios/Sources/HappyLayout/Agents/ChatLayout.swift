@@ -60,13 +60,17 @@ public struct ChatScreenLayout: Equatable, Sendable {
     ///
     /// With a `meter`, its row takes the 8 under the card and 12 more, so
     /// the card stands 20 above the keyboard and the bar 8 under the card.
-    public init(size: CGSize, safeArea: LayoutInsets, keyboardTop: CGFloat, meter: Bool = false, cardHeight: (CGFloat) -> CGFloat) {
+    ///
+    /// The card keeps to the transcript's column, `maxContentWidth` wide
+    /// and centred (`ChatColumn`), so on a wide iPad window the two line up.
+    public init(size: CGSize, safeArea: LayoutInsets, keyboardTop: CGFloat, meter: Bool = false, maxContentWidth: CGFloat = .greatestFiniteMagnitude, cardHeight: (CGFloat) -> CGFloat) {
         typealias M = Metrics
-        let width = max(0, size.width - 2 * M.paddingH)
+        let column = ChatColumn(rowWidth: size.width, maxContentWidth: maxContentWidth)
+        let width = max(0, column.width - 2 * M.paddingH)
         let height = cardHeight(width)
         let foot = min(keyboardTop, size.height - safeArea.bottom)
         let below = meter ? ContextMeterLayout.Metrics.height : M.paddingBottom
-        card = CGRect(x: M.paddingH, y: foot - below - height, width: width, height: height)
+        card = CGRect(x: column.x + M.paddingH, y: foot - below - height, width: width, height: height)
         self.meter = meter ? CGRect(
             x: card.maxX - ContextMeterLayout.Metrics.trailingInset - ContextMeterLayout.Metrics.width,
             y: card.maxY,
@@ -88,8 +92,8 @@ public struct ChatScreenLayout: Equatable, Sendable {
     /// Whether the card goes compact, decided from `restingCardHeight`: the
     /// full card's height with one line of text at a width. Never from the
     /// card as it is, so going compact (or typing) can't undo itself.
-    public static func compacts(size: CGSize, safeArea: LayoutInsets, keyboardTop: CGFloat, meter: Bool = false, restingCardHeight: (CGFloat) -> CGFloat) -> Bool {
-        ChatScreenLayout(size: size, safeArea: safeArea, keyboardTop: keyboardTop, meter: meter, cardHeight: restingCardHeight).viewport < compactBelow
+    public static func compacts(size: CGSize, safeArea: LayoutInsets, keyboardTop: CGFloat, meter: Bool = false, maxContentWidth: CGFloat = .greatestFiniteMagnitude, restingCardHeight: (CGFloat) -> CGFloat) -> Bool {
+        ChatScreenLayout(size: size, safeArea: safeArea, keyboardTop: keyboardTop, meter: meter, maxContentWidth: maxContentWidth, cardHeight: restingCardHeight).viewport < compactBelow
     }
 
     /// Whether the meter's row shows: whenever there is a meter, except

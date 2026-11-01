@@ -202,7 +202,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         reveal = nil
         view.layoutIfNeeded()
         if let y = settingsLayout.revealOffset(card: card, row: index, viewport: scroll.bounds.height, insets: LayoutInsets(scroll.adjustedContentInset)) {
-            scroll.setContentOffset(CGPoint(x: 0, y: y), animated: true)
+            scroll.setContentOffset(CGPoint(x: scroll.contentOffset.x, y: y), animated: true)
         }
         cards[card].flash(index)
     }
@@ -332,7 +332,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                 if let change { change() } else { self.rebuild() }
                 self.view.layoutIfNeeded()
                 let offset = self.settingsLayout.keptOffset(self.scroll.contentOffset.y, viewport: self.scroll.bounds.height, insets: LayoutInsets(self.scroll.adjustedContentInset))
-                if offset != self.scroll.contentOffset.y { self.scroll.setContentOffset(CGPoint(x: 0, y: offset), animated: false) }
+                if offset != self.scroll.contentOffset.y { self.scroll.setContentOffset(CGPoint(x: self.scroll.contentOffset.x, y: offset), animated: false) }
             }
         }
         guard view.window != nil else { return apply() }
@@ -641,10 +641,10 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        let width = view.bounds.width
         let searching = query != nil
         // Under the bar, whose row is in the safe area: the cards scroll under it.
         scroll.frame = view.bounds
+        let width = scroll.readableColumn(width: view.bounds.width)
         let specs = SettingsCardView.specs(rows, width: width)
         let picture = shown == nil ? nil : agentButton.intrinsicContentSize.width
         let layout = SettingsLayout(width: width, nameHeight: ceil(name.font.lineHeight), subtitleHeight: ceil(subtitle.font.lineHeight), cards: specs, footers: SettingsCardView.footers(rows, width: width), searching: searching, showsStrip: false, picture: picture)

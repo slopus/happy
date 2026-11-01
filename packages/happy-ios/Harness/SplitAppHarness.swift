@@ -84,7 +84,8 @@ private actor DemoComputer: AgentTransport {
 /// For screenshots and recordings, after launch: `-open <session id or
 /// agent id>` opens a chat from the sidebar, `-info` pushes its profile,
 /// `-settings` opens Settings instead, `-hideSidebar` hides the sidebar,
-/// `-dark` darkens the window.
+/// `-dark` darkens the window, `-landscape` turns it on its side,
+/// `-resizeLoop` narrows and widens the window in turn.
 @MainActor
 final class SplitAppHarness {
     private var coordinator: AppCoordinator?
@@ -93,7 +94,6 @@ final class SplitAppHarness {
         func option(_ name: String) -> String? {
             arguments.firstIndex(of: name).flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
         }
-        if arguments.contains("-dark") { window.overrideUserInterfaceStyle = .dark }
         let agent = arguments.contains("-agent")
         let computer = DemoComputer()
         let controller = AccountController(
@@ -121,6 +121,12 @@ final class SplitAppHarness {
             coordinator.start()
             try? await Task.sleep(for: .seconds(2))
             guard let shell = window.rootViewController as? ShellViewController, let home = shell.stack.first else { return }
+            // After the account's own theme has been applied.
+            if arguments.contains("-dark") { window.overrideUserInterfaceStyle = .dark }
+            if arguments.contains("-landscape") {
+                window.windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight)) { error in print("split harness: \(error)") }
+                try? await Task.sleep(for: .seconds(1))
+            }
             if arguments.contains("-settings") {
                 if agent {
                     SettingsViewController.open(context: context, computer: controller.agentConnections.activeID, from: home)
@@ -142,6 +148,19 @@ final class SplitAppHarness {
                 try? await Task.sleep(for: .milliseconds(500))
                 shell.setSidebarHidden(true)
             }
+            if arguments.contains("-resizeLoop") { await Self.resizeLoop(window) }
+        }
+    }
+
+    /// Narrow and wide in turn, as Split View or Stage Manager would leave
+    /// the window, for a recording of the stack being rewritten: 600 wide
+    /// (one stack), then the scene's whole width (the split), every 3 s.
+    private static func resizeLoop(_ window: UIWindow) async {
+        let whole = window.bounds
+        for step in 0..<8 {
+            try? await Task.sleep(for: .seconds(3))
+            let width = step.isMultiple(of: 2) ? 600 : whole.width
+            window.frame = CGRect(x: 0, y: 0, width: width, height: whole.height)
         }
     }
 

@@ -220,6 +220,16 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(sideways.headerScrim, CGRect(x: 0, y: 0, width: 874, height: 66))
     }
 
+    /// On an iPad the card keeps to the transcript's 800 column, centred,
+    /// 8 in from it; narrower than that it is the phone's card.
+    func testTheComposerCardKeepsToTheTranscriptsColumn() {
+        let safe = LayoutInsets(top: 74, left: 0, bottom: 20, right: 0)
+        let wide = ChatScreenLayout(size: CGSize(width: 1376, height: 1032), safeArea: safe, keyboardTop: 1032, maxContentWidth: 800) { width in width == 784 ? 100 : 0 }
+        XCTAssertEqual(wide.card, CGRect(x: 296, y: 904, width: 784, height: 100))
+        let narrow = ChatScreenLayout(size: CGSize(width: 692, height: 1180), safeArea: safe, keyboardTop: 1180, maxContentWidth: 800) { _ in 100 }
+        XCTAssertEqual(narrow.card, CGRect(x: 8, y: 1052, width: 676, height: 100))
+    }
+
     /// The edge over that header, 150 tall: whole behind the status bar and
     /// the bar's top half, a third left at the bar's foot (116), a tenth 12
     /// under it, none at its end. Messages read almost up to the glass.

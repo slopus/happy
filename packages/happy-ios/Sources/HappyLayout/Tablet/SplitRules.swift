@@ -24,6 +24,14 @@ public enum SplitRule {
     public static func showsSplit(width: CGFloat, isRegularWidth: Bool, showsHome: Bool) -> Bool {
         showsHome && isRegularWidth && width >= minWidth
     }
+
+    /// The sidebar's width: 30% of the window, as happy-app's sidebar, held
+    /// between 340 and 360. 340 is the least that keeps the account's pill
+    /// whole beside its two buttons while it says "Connecting…"; the
+    /// system's own 320 cut it.
+    public static func sidebarWidth(windowWidth: CGFloat) -> CGFloat {
+        min(360, max(340, (windowWidth * 0.3).rounded()))
+    }
 }
 
 /// The main panel inside its column. iOS 26's sidebar floats over the

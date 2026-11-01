@@ -70,13 +70,9 @@ final class TabletBreakpointTests: XCTestCase {
     }
 
     func testContentWidthLimit() {
-        let window = CGSize(width: 820, height: 1180)
-        XCTAssertEqual(ContentWidthLimit.maxWidth(deviceType: .phone, window: window), 1180)
-        XCTAssertEqual(ContentWidthLimit.headerMaxWidth(deviceType: .phone, window: window), 1180)
-        XCTAssertEqual(ContentWidthLimit.maxWidth(deviceType: .tablet, window: window), 800)
-        XCTAssertEqual(ContentWidthLimit.headerMaxWidth(deviceType: .tablet, window: window), 800)
-        XCTAssertEqual(ContentWidthLimit.maxWidth(deviceType: .tablet, window: window, isMacCatalyst: true), 1400)
-        XCTAssertEqual(ContentWidthLimit.headerMaxWidth(deviceType: .tablet, window: window, isMacCatalyst: true), .greatestFiniteMagnitude)
+        // Every iPad, whatever its size or window; no limit on a phone.
+        XCTAssertEqual(ContentWidthLimit.maxWidth(isPad: true), 800)
+        XCTAssertEqual(ContentWidthLimit.maxWidth(isPad: false), .greatestFiniteMagnitude)
     }
 }
 

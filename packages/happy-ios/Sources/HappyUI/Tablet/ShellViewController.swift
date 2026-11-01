@@ -256,6 +256,12 @@ public final class ShellViewController: UIViewController {
     func updateMode(width: CGFloat? = nil) {
         guard let split, isViewLoaded else { return }
         let width = width ?? view.bounds.width
+        let sidebarWidth = SplitRule.sidebarWidth(windowWidth: width)
+        if split.preferredPrimaryColumnWidth != sidebarWidth {
+            split.minimumPrimaryColumnWidth = sidebarWidth
+            split.maximumPrimaryColumnWidth = sidebarWidth
+            split.preferredPrimaryColumnWidth = sidebarWidth
+        }
         let wanted = SplitRule.showsSplit(
             width: width,
             isRegularWidth: traitCollection.horizontalSizeClass == .regular,

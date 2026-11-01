@@ -196,6 +196,53 @@ final class HostedSplitShellTests: XCTestCase {
         withExtendedLifetime(app.coordinator) {}
     }
 
+    // MARK: Readable widths
+
+    private func shown<View: UIView>(_ type: View.Type, in view: UIView) -> [View] {
+        view.subviews.flatMap { sub -> [View] in
+            guard !sub.isHidden, sub.alpha > 0 else { return [] }
+            return (sub as? View).map { [$0] } ?? shown(type, in: sub)
+        }
+    }
+
+    /// With the sidebar hidden the main panel is the whole window, and its
+    /// pages keep to the readable column (`ContentWidth`): Settings' cards
+    /// 800 less their 16 sides, in the middle; the chat's list docked under
+    /// its bar and strip, so nothing scrolls under them.
+    func testWithTheSidebarHiddenPagesKeepToTheReadableColumn() async throws {
+        let app = try await app()
+        let shell = app.shell
+        let home = try XCTUnwrap(home(shell))
+        shell.setSidebarHidden(true)
+        try await until("hidden") { !shell.showsSidebar }
+        try await Task.sleep(for: .milliseconds(500))
+        let middle = app.window.bounds.midX
+
+        home.push(.settings, context: app.context)
+        try await settle(shell)
+        let settings = try XCTUnwrap(shell.main.viewControllers.first as? SettingsViewController)
+        settings.view.layoutIfNeeded()
+        let cards = shown(SettingsCardView.self, in: settings.view)
+        XCTAssertFalse(cards.isEmpty, "Settings showed no cards")
+        for card in cards {
+            let frame = card.convert(card.bounds, to: app.window)
+            XCTAssertEqual(frame.width, ContentWidthLimit.tablet - 2 * SettingsLayout.Metrics.side, "\(frame)")
+            XCTAssertEqual(frame.midX, middle, accuracy: 0.5, "\(frame)")
+        }
+        try await capture(app, "settings-hidden")
+
+        home.push(.session(id: "seeded-main"), context: app.context)
+        try await settle(shell)
+        let chat = try XCTUnwrap(shell.main.viewControllers.first as? LegacyChatViewController)
+        try await until("the chat") { chat.contentInstalled && !self.shown(ChatWorktreeTabStrip.self, in: chat.view).isEmpty }
+        chat.view.layoutIfNeeded()
+        let strip = try XCTUnwrap(shown(ChatWorktreeTabStrip.self, in: chat.view).first)
+        let list = try XCTUnwrap(shown(ChatListView.self, in: chat.view).first)
+        XCTAssertEqual(list.convert(list.bounds, to: app.window).minY, strip.convert(strip.bounds, to: app.window).maxY, "the list starts under the strip")
+        try await capture(app, "chat-hidden")
+        withExtendedLifetime(app.coordinator) {}
+    }
+
     // MARK: Hiding the sidebar
 
     func testTheSidebarHidesAndComesBackAndTheWindowRemembers() async throws {

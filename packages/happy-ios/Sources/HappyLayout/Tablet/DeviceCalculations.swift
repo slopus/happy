@@ -13,9 +13,10 @@ import CoreGraphics
 ///     not the device. An iPad in Split View or Slide Over can fall below it
 ///     and get the phone layout; widening the window brings the sidebar
 ///     back.
-///   - `deviceType(…)` (`getDeviceType`) is about the screen. It only feeds
-///     `layout.maxWidth`, and it calls most iPads phones: only a screen over
-///     9 inches across (the 13-inch iPads) is a tablet.
+///   - `deviceType(…)` (`getDeviceType`) is about the screen. There it
+///     feeds `layout.maxWidth` and calls most iPads phones: only a screen
+///     over 9 inches across (the 13-inch iPads) is a tablet. Here every
+///     iPad's content is held to the same width (`ContentWidthLimit`).
 public enum TabletBreakpoint {
     /// "At 768 logical pixels the sidebar is 250px and leaves 518px for
     /// content."
@@ -81,25 +82,17 @@ public enum DeviceCalculations {
     }
 }
 
-/// components/layout.ts, iOS: how wide content may grow. Fixed when the
-/// module loads, from the screen and the window of that moment, and never
-/// recomputed.
+/// How wide content may grow: 800 on every iPad, in any window, and no
+/// limit on a phone (docs/IPAD.md). happy-app's components/layout.ts holds
+/// only screens over 9 inches across to it, fixed when the module loads,
+/// which left an 11-inch iPad's chat and settings stretched across a
+/// landscape window or a main panel with the sidebar hidden.
 public enum ContentWidthLimit {
-    /// Tablets (by `DeviceCalculations.deviceType`) and the web.
+    /// The readable column: chat rows, the composer, settings and item groups.
     public static let tablet: CGFloat = 800
-    /// `getMaxLayoutWidth` on Mac Catalyst.
-    public static let macLayout: CGFloat = 1400
 
-    /// `layout.maxWidth`: a phone's longest window side (so, in effect, no
-    /// limit), 800 on a tablet.
-    public static func maxWidth(deviceType: DeviceCalculations.DeviceType, window: CGSize, isMacCatalyst: Bool = false) -> CGFloat {
-        if deviceType == .phone { return max(window.width, window.height) }
-        return isMacCatalyst ? macLayout : tablet
-    }
-
-    /// `layout.headerMaxWidth`: the same, unlimited on Mac Catalyst.
-    public static func headerMaxWidth(deviceType: DeviceCalculations.DeviceType, window: CGSize, isMacCatalyst: Bool = false) -> CGFloat {
-        if deviceType == .phone { return max(window.width, window.height) }
-        return isMacCatalyst ? .greatestFiniteMagnitude : tablet
+    /// `layout.maxWidth` and `layout.headerMaxWidth`, which are the same here.
+    public static func maxWidth(isPad: Bool) -> CGFloat {
+        isPad ? tablet : .greatestFiniteMagnitude
     }
 }

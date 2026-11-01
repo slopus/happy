@@ -613,7 +613,7 @@ final class ChatViewController: UIViewController, ComposeHosting {
     private var compacts: Bool {
         var safeArea = LayoutInsets(view.safeAreaInsets)
         if let barSafeTop { safeArea.top = barSafeTop }
-        return ChatScreenLayout.compacts(size: view.bounds.size, safeArea: safeArea, keyboardTop: keyboardTop, meter: gauge != nil) { [card] width in
+        return ChatScreenLayout.compacts(size: view.bounds.size, safeArea: safeArea, keyboardTop: keyboardTop, meter: gauge != nil, maxContentWidth: ContentWidth.maxWidth) { [card] width in
             card.restingHeight(fitting: width)
         }
     }
@@ -1237,7 +1237,8 @@ final class ChatViewController: UIViewController, ComposeHosting {
             // the keyboard, or the guide under the system's own dismissal.
             keyboardTop: ultraKeyboard.flatMap { $0.isActive ? $0.keyboardTop(guideTop: guideTop) : nil }
                 ?? (fingerOnKeyboard ? guideTop : keyboardTop),
-            meter: ChatScreenLayout.showsMeter(hasGauge: gauge != nil, compact: compact)
+            meter: ChatScreenLayout.showsMeter(hasGauge: gauge != nil, compact: compact),
+            maxContentWidth: ContentWidth.maxWidth
         ) { [card] width in card.height(fitting: width) }
         transcriptHeaderScrim.setLayoutFrame(screen.headerScrim)
         card.setLayoutFrame(screen.card)

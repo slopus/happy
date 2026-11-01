@@ -26,6 +26,13 @@ final class SplitRulesTests: XCTestCase {
         XCTAssertFalse(SplitRule.showsSplit(width: 1376, isRegularWidth: true, showsHome: false))
     }
 
+    func testTheSidebarIsAThirdOfTheWindowBetween340And360() {
+        XCTAssertEqual(SplitRule.sidebarWidth(windowWidth: 820), 340, "an 11-inch iPad upright")
+        XCTAssertEqual(SplitRule.sidebarWidth(windowWidth: 1180), 354, "on its side")
+        XCTAssertEqual(SplitRule.sidebarWidth(windowWidth: 1032), 340, "a 13-inch iPad upright")
+        XCTAssertEqual(SplitRule.sidebarWidth(windowWidth: 1376), 360, "on its side")
+    }
+
     func testTheMainPanelSitsBesideTheFloatingSidebar() {
         let beside = MainPanelLayout(size: CGSize(width: 1032, height: 1376), safeArea: LayoutInsets(top: 32, left: 320, bottom: 20, right: 0))
         XCTAssertEqual(beside.panel, CGRect(x: 320, y: 0, width: 712, height: 1376))

@@ -351,7 +351,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         cliWarning.addTarget(self, action: #selector(dismissCliWarning), for: .touchUpInside)
         view.addSubview(cliWarning)
         view.addSubview(scrim)
-        registerForTraitChanges([TabletLayoutTrait.self]) { (self: Self, _) in
+        registerForTraitChanges([TabletLayoutTrait.self, UITraitHorizontalSizeClass.self]) { (self: Self, _) in
             self.tabletLayoutChanged()
         }
     }
@@ -392,7 +392,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
 
     private func installTabStrip() {
         tabStrip.isHidden = true
-        tabStrip.glass = !isTabletLayout
+        tabStrip.glass = !docksList
         tabStrip.names = Self.tabNames(account)
         tabStrip.onSelect = { [weak self] id in self?.selectTab(id) }
         tabStrip.onLongPress = { [weak self] id in self?.sessionActions.present(sessionId: id) }
@@ -822,8 +822,8 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
             composerCardOffset: composer.cardOffset,
             maxContentWidth: maxContentWidth,
             // TabletBranches: chatFloatingDock and chatInputPaddingH.
-            docked: isTabletLayout,
-            accessoryPaddingH: isTabletLayout ? TabletBranches.Metrics.tabletInputPaddingH : TabletBranches.Metrics.phoneInputPaddingH,
+            docked: docksList,
+            accessoryPaddingH: docksList ? TabletBranches.Metrics.tabletInputPaddingH : TabletBranches.Metrics.phoneInputPaddingH,
             hidesHeader: hidesHeader,
             headerAccessory: tabStrip.isHidden ? 0 : WorktreeTabStripLayout.Metrics.height
         ))
@@ -931,7 +931,15 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     /// the dock over the list, with the fades behind the bar and the dock
     /// and the bars above the composer that hide while the reader is back.
     private var floatingDock: Bool {
-        !isTabletLayout && !hidesHeader
+        !docksList && !hidesHeader
+    }
+
+    /// The tablet's docked list (`LegacyChatScreenLayout.Input.docked`):
+    /// on a tablet-wide window, and in the iPad's main panel, which keeps
+    /// the phone's bar but has room for nothing to scroll under it or the
+    /// strip (docs/IPAD.md).
+    private var docksList: Bool {
+        isTabletLayout || (traitCollection.userInterfaceIdiom == .pad && traitCollection.horizontalSizeClass == .regular)
     }
 
     /// TabletBranches' `chatHidesHeaderInLandscape`, as the window is now.
@@ -1091,7 +1099,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         else if let item = switcher?.barItem, navigationItem.leftBarButtonItems?.contains(item) == true {
             navigationItem.leftBarButtonItems = navigationItem.leftBarButtonItems?.filter { $0 !== item }
         }
-        if contentInstalled { tabStrip.glass = !tablet } // TabletBranches.worktreeStripGlass
+        if contentInstalled { tabStrip.glass = !docksList } // TabletBranches.worktreeStripGlass
         floatingDockChanged()
     }
 
@@ -1348,7 +1356,12 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     /// branches again.
     private func tabletLayoutChanged() {
         let tablet = traitCollection.isTabletLayout
-        guard tablet != isTabletLayout else { return }
+        guard tablet != isTabletLayout else {
+            // The iPad's main panel docks the list without the tablet's bar.
+            applyHeaderBranch()
+            view.setNeedsLayout()
+            return
+        }
         isTabletLayout = tablet
         applyHeaderBranch()
         view.setNeedsLayout()

@@ -316,8 +316,9 @@ final class HostedChatProfileTests: XCTestCase {
         XCTAssertTrue(opened, "the legacy profile showed no cards")
         info.view.layoutIfNeeded()
 
-        // The head: `ProfileHeaderView`, at `ProfileHeaderLayout`'s frames.
-        let width = info.view.bounds.width
+        // The head: `ProfileHeaderView`, at `ProfileHeaderLayout`'s frames,
+        // in the page's readable column (the whole width on a phone).
+        let width = ChatColumn(rowWidth: info.view.bounds.width, maxContentWidth: ContentWidth.maxWidth).width
         let head = ProfileHeaderLayout(width: width, nameHeight: info.header.nameHeight, nameWidth: info.header.nameWidth, subtitleHeight: info.header.subtitleHeight)
         XCTAssertEqual(info.header.sessionAvatar?.frame, head.mark)
         XCTAssertEqual(info.header.name.frame, head.name)

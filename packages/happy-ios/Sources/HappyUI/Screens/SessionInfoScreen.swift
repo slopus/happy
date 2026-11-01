@@ -209,7 +209,7 @@ final class SessionInfoViewController: UIViewController, UIScrollViewDelegate {
         // scroll view given its frame while pulled past an end snaps back.
         if scroll.frame != view.bounds { scroll.frame = view.bounds }
         stateView?.frame = view.bounds
-        let width = view.bounds.width
+        let width = scroll.readableColumn(width: view.bounds.width)
         let showsTiles = frame?.model != nil
         let layout = SessionDetailLayout(
             width: width, nameHeight: header.nameHeight, nameWidth: header.nameWidth,

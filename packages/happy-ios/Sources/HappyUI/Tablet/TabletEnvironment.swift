@@ -127,36 +127,32 @@ extension UIViewController {
     }
 }
 
-/// components/layout.ts: how wide content may grow. happy-app works it out
-/// once, when the module loads, from the screen and the window of that
-/// moment; so does this, the first time it is read. Only a 13-inch iPad is
-/// a tablet there (800); every other iPad and every iPhone is unlimited.
+/// How wide content may grow (`ContentWidthLimit`): 800 on an iPad,
+/// unlimited on a phone.
 @MainActor
 public enum ContentWidth {
-    /// `layout.maxWidth`: messages, item groups, the session list.
-    public static var maxWidth: CGFloat { limits.maxWidth }
+    /// `layout.maxWidth`: messages, the composer, item groups, settings.
+    public static var maxWidth: CGFloat { ContentWidthLimit.maxWidth(isPad: isPad) }
     /// `layout.headerMaxWidth`: header rows.
-    public static var headerMaxWidth: CGFloat { limits.headerMaxWidth }
+    public static var headerMaxWidth: CGFloat { maxWidth }
 
-    private static var cached: (maxWidth: CGFloat, headerMaxWidth: CGFloat)?
+    private static let isPad = UIDevice.current.userInterfaceIdiom == .pad
+}
 
-    private static var limits: (maxWidth: CGFloat, headerMaxWidth: CGFloat) {
-        if let cached { return cached }
-        // Before the scene connects there is nothing to measure yet: no
-        // limit, and nothing kept.
-        guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else {
-            return (.greatestFiniteMagnitude, .greatestFiniteMagnitude)
+extension UIScrollView {
+    /// Holds a scrolling page to the readable column (`ContentWidth`),
+    /// centred: the page lays itself out at the width this returns, and the
+    /// margins either side are the scroll view's insets, so the page is
+    /// still the window's to scroll. The whole width on a phone.
+    func readableColumn(width: CGFloat) -> CGFloat {
+        let column = ChatColumn(rowWidth: width, maxContentWidth: ContentWidth.maxWidth)
+        if contentInset.left != column.x || contentInset.right != column.x {
+            contentInset.left = column.x
+            contentInset.right = column.x
         }
-        let screen = scene.screen.bounds.size
-        // The scene's own size, which is the window's even before one is key.
-        let window = scene.coordinateSpace.bounds.size
-        let type = DeviceCalculations.deviceType(screen: screen, isPad: UIDevice.current.userInterfaceIdiom == .pad)
-        let limits = (
-            maxWidth: ContentWidthLimit.maxWidth(deviceType: type, window: window),
-            headerMaxWidth: ContentWidthLimit.headerMaxWidth(deviceType: type, window: window)
-        )
-        cached = limits
-        return limits
+        let x = -adjustedContentInset.left
+        if contentOffset.x != x { contentOffset.x = x }
+        return column.width
     }
 }
 #endif

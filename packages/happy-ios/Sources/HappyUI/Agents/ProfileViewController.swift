@@ -125,8 +125,8 @@ final class ProfileViewController: UIViewController, UITextFieldDelegate, PHPick
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        let width = view.bounds.width
         scroll.frame = view.bounds
+        let width = scroll.readableColumn(width: view.bounds.width)
         let specs = rows.map { card in
             card.map { SettingsLayout.RowSpec(hasIcon: $0.hasIcon, valueWidth: SettingsCardView.valueWidth($0.value), accessory: $0.accessory) }
         }

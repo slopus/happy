@@ -48,7 +48,7 @@ class SettingsPageViewController: UIViewController {
               let index = rows[card].firstIndex(where: { $0.id == id }), cards.indices.contains(card) else { return }
         reveal = nil
         if let y = settingsLayout.revealOffset(card: card, row: index, viewport: scroll.bounds.height, insets: LayoutInsets(scroll.adjustedContentInset)) {
-            scroll.setContentOffset(CGPoint(x: 0, y: y), animated: true)
+            scroll.setContentOffset(CGPoint(x: scroll.contentOffset.x, y: y), animated: true)
         }
         cards[card].flash(index)
     }
@@ -74,8 +74,8 @@ class SettingsPageViewController: UIViewController {
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        let width = view.bounds.width
         scroll.frame = view.bounds
+        let width = scroll.readableColumn(width: view.bounds.width)
         let specs = SettingsCardView.specs(rows, width: width)
         let layout = SettingsLayout(width: width, nameHeight: 0, subtitleHeight: 0, cards: specs, footers: SettingsCardView.footers(rows, width: width), searching: true)
         settingsLayout = layout

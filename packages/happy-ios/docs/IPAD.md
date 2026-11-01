@@ -59,6 +59,13 @@ rectangle, as on a phone, its bar's title centred over what is visible.
 When the sidebar hides, the safe area goes and the main panel takes the
 whole window, in the split's own animation.
 
+### The sidebar's width
+
+`SplitRule.sidebarWidth`: 30% of the window, as happy-app's drawer, held to
+340–360. The system's own 320 cut the account's pill to "Connectin…" beside
+its two buttons; 340 is the least that keeps it whole. An 11-inch iPad
+upright leaves the main panel 480, more than a phone.
+
 ### Hiding the sidebar
 
 The sidebar's button is at the leading edge of the main panel's root
@@ -76,6 +83,30 @@ survives relaunch and each window has its own. It is reapplied when the
 window expands again after being narrow, and kept through rotation by
 `preferredDisplayMode`. Mode changes the split makes itself while the
 window resizes or collapses are not taken for the person's choice.
+
+## Readable widths
+
+Nothing stretches across a wide main panel. Every iPad's content is held to
+800 points, centred (`ContentWidthLimit`, `ContentWidth`); happy-app held
+only 13-inch screens to it, which left an 11-inch iPad's chat and settings
+running across a landscape window or a main panel with the sidebar hidden.
+On a phone there is no limit.
+
+- The chats' rows lay out in that column (`ChatColumn`), and the agent
+  chat's composer card keeps to it too (`ChatScreenLayout`'s
+  `maxContentWidth`), so the two line up.
+- Settings, its pages, the agent's profile, the session info and the
+  profile editor lay out at the column's width; the margins either side are
+  their scroll view's insets (`UIScrollView.readableColumn`), so a finger
+  anywhere in the panel still scrolls them.
+- In a regular-width iPad window the legacy chat docks its list under the
+  bar and the worktree strip (`LegacyChatScreenLayout`'s `docked`), as
+  happy-app's tablet did, but keeps the phone's bar: nothing scrolls under
+  the glass, so no transcript shows through the strip or above the title.
+  A narrow window is the phone's chat, unchanged.
+- The composer's "+" is a card over the button in a regular window
+  (`AttachMenuSheetLayout`), and the model and effort pickers are panels
+  anchored to their control, so neither needed changing.
 
 ## Narrow windows: one stack
 
