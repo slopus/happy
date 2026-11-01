@@ -48,6 +48,10 @@ private actor StoriesComputer: AgentTransport {
             let answer = feed
             if holding { await withCheckedContinuation { held.append($0) } }
             return try json(["stories": .array(answer), "cursor": .null])
+        case let path where method == "DELETE" && path.hasSuffix("/locked"):
+            return .init(status: 403, body: Data(#"{"error":"forbidden"}"#.utf8))
+        case let path where method == "POST" && path.hasSuffix("/replies"):
+            return try json(["reply": ["id": "r9", "storyId": "s1", "userId": .null, "text": "Nice", "createdAt": 1]])
         default:
             return .init(status: method == "GET" ? 404 : 200, body: Data("{}".utf8))
         }
@@ -264,6 +268,98 @@ final class StoriesTests: XCTestCase {
         let after = try await wait(engine) { _ in true }
         XCTAssertNil(Self.ring(after, "Launch"))
         await engine.stop()
+    }
+
+    // MARK: v2: the row, replies, reposts, delete
+
+    private static func repost(_ id: String, of task: String, by user: String?, seen: Bool = false) -> JSONValue {
+        guard case .object(var story) = story(id, task: task, seen: seen) else { return .null }
+        (story["poster"], story["userId"], story["round"]) = ("person", user.map(JSONValue.string) ?? .null, ["mimeType": "video/mp4", "size": 20])
+        return .object(story)
+    }
+
+    /// A tile per agent and per reposter, unseen first; a repost names its
+    /// person, never rings the task's icon, and the reader's own is theirs.
+    func testTheRowGroupsAgentsAndPeopleUnseenFirst() throws {
+        var task = Row(id: "task:t", nodeId: "task:t", kind: .space, label: "Launch", mark: .seedling(seed: "t"), targetKind: "task"); task.targetId = "t"
+        guard case .object(var other) = Self.story("o", bot: "b") else { return XCTFail() }
+        other["agentId"] = "bot-agent"
+        let stories = try Self.decode([Self.story("s1", task: "t", seen: true), Self.repost("p1", of: "t", by: "u2"), .object(other), Self.repost("p2", of: "t", by: nil, seen: true)])
+        let users = ["u2": TeamUser(id: "u2", name: "Sam", photo: .init(thumbhash: "th"))]
+        let posters = Stories.posters(stories, rows: [task], users: users, profile: .init(userId: "me"))
+        XCTAssertEqual(posters.map(\.id), ["person:u2", "agent:bot-agent", "agent:a", "person:me"])
+        XCTAssertEqual(posters.map(\.person), [true, false, false, true])
+        XCTAssertEqual(posters[0].name, "Sam")
+        XCTAssertEqual(posters[0].mark, .image(path: "/v0/users/u2/photo", thumbhash: "th"))
+        XCTAssertEqual(posters[2].name, "Launch")
+        XCTAssertEqual(posters[2].mark, .seedling(seed: "t"))
+        XCTAssertTrue(posters[3].me)
+        XCTAssertEqual(stories[1].round?.size, 20)
+        XCTAssertEqual(Stories.ring([task], stories: [stories[1]]).first?.story, nil, "a repost ringed the task's own icon")
+    }
+
+    /// Gone for everyone at once; a delete the computer refuses keeps it.
+    func testARemovedStoryLeavesAtOnceAndARefusedDeleteKeepsIt() async throws {
+        let computer = StoriesComputer()
+        await computer.post(Self.story("s1", task: "task1"))
+        await computer.post(Self.story("locked", task: "task1"))
+        let engine = await engine(computer)
+        _ = try await wait(engine) { $0.stories.count == 2 }
+        await computer.emit(["type": "story.removed", "payload": ["storyId": "s1"]])
+        var snapshot = try await wait(engine) { $0.stories.count == 1 }
+        XCTAssertEqual(snapshot.stories.map(\.id), ["locked"])
+        do { try await engine.deleteStory("locked"); XCTFail("a refused delete passed") } catch {}
+        snapshot = try await wait(engine) { _ in true }
+        XCTAssertEqual(snapshot.stories.map(\.id), ["locked"])
+        XCTAssertEqual(snapshot.posters.count, 1)
+        await engine.stop()
+    }
+
+    /// The person's reply shows at once; a later read keeps what was seen.
+    func testAReplyShowsAtOnceAndAChangeKeepsItSeen() async throws {
+        let computer = StoriesComputer()
+        await computer.post(Self.story("s1", task: "task1"))
+        let engine = await engine(computer)
+        _ = try await wait(engine) { $0.stories.count == 1 }
+        await engine.markStorySeen("s1")
+        let reply = try await engine.client.replyToStory("s1", text: "Nice")
+        await engine.replied(reply, to: "s1")
+        var snapshot = try await wait(engine) { $0.stories.first?.replyCount == 1 }
+        XCTAssertEqual(snapshot.stories.first?.replies?.map(\.text), ["Nice"])
+        // The computer tells of it too, its own copy not yet seen here.
+        await computer.emit(["type": "story.changed", "payload": ["story": Self.story("s1", task: "task1")]])
+        try await Task.sleep(for: .milliseconds(150))
+        snapshot = try await wait(engine) { _ in true }
+        XCTAssertEqual(snapshot.stories.first?.seen, true)
+        await engine.stop()
+    }
+
+    /// Repliers the full list names past the last two are read as members are.
+    func testRepliersPastThePreviewAreLookedUp() async throws {
+        let computer = StoriesComputer()
+        await computer.post(Self.story("s1", task: "task1"))
+        let engine = await engine(computer)
+        _ = try await wait(engine) { $0.stories.count == 1 }
+        await engine.lookUp(["u9"])
+        try await Task.sleep(for: .milliseconds(150))
+        let paths = await computer.paths()
+        XCTAssertTrue(paths.contains("GET /v0/users?ids=u9"), "\(paths)")
+        await engine.stop()
+    }
+
+    /// A round over 16 MiB is refused here, before it is encoded or sent.
+    func testARoundTooLargeIsRefusedBeforeItIsSent() async throws {
+        let computer = StoriesComputer()
+        let client = AgentClient(transport: computer, token: "t")
+        do {
+            try await client.repostStory("s1", caption: "Mine", round: Data(count: Stories.roundLimit + 1))
+            XCTFail("a round over the limit was sent")
+        } catch AgentClientError.status(413, _, _) {}
+        let paths = await computer.paths()
+        XCTAssertEqual(paths, [])
+        try await client.repostStory("s1", caption: nil, round: Data(count: 16))
+        let sent = await computer.paths()
+        XCTAssertEqual(sent, ["POST /v0/stories/s1/repost"])
     }
 
     /// An empty video asks for nothing and never traps.

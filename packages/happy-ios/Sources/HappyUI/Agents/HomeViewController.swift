@@ -20,6 +20,8 @@ final class HomeViewController: UIViewController {
     /// The computer this screen always shows; nil to follow the choice.
     private let fixedAgentConnection: String?
     private let sidebar = SidebarList()
+    /// Who has live stories, over the list's first row; empty while stories are off.
+    private let storiesRow = StoriesRowView()
     private let empty = EmptyView()
     private var session: Session?
     private var accountsObservation: AccountsObservation?
@@ -95,6 +97,8 @@ final class HomeViewController: UIViewController {
         applyGround()
         registerForTraitChanges([SidebarColumnTrait.self]) { (self: Self, _) in self.applyGround() }
         view.addSubview(sidebar)
+        view.addSubview(storiesRow)
+        storiesRow.onOpen = { [weak self] index in self.map { $0.openStories($0.agentHome.posters, start: index) } }
         view.addSubview(empty)
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillChange(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
         resultsView.isHidden = true
@@ -113,13 +117,10 @@ final class HomeViewController: UIViewController {
         }
         sidebar.preview = { [weak self] row in self?.preview(for: row) }
         sidebar.onOpenPreview = { [weak self] row in self?.open(row, animated: false) }
-        sidebar.onOpenStory = { [weak self] row, mark in
-            guard let self, let session else { return }
-            let stories = agentHome.stories.filter { $0.belongs(to: row) }
-            guard !stories.isEmpty else { return open(row) }
-            present(StoryViewerController(client: session.client, library: session.media, stories: stories, name: row.label, mark: mark) { [engine = session.engine] id in
-                Task { await engine.markStorySeen(id) }
-            }, animated: true)
+        sidebar.onOpenStory = { [weak self] row, _ in
+            guard let self else { return }
+            guard let poster = agentHome.posters.first(where: { !$0.person && $0.stories.contains { $0.belongs(to: row) } }) else { return open(row) }
+            openStories([poster], start: 0)
         }
         sidebar.onWillBeginDragging = { [weak self] in self?.listWillBeginDragging() }
         sidebar.onScroll = { [weak self] in self?.listDidScroll() }
@@ -182,6 +183,7 @@ final class HomeViewController: UIViewController {
         headerWatch = nil; waitingForNetwork = false
         session = id.flatMap { Session.session(for: $0, context: context) }
         sidebar.images = session?.images
+        storiesRow.images = session?.images
         resultsView.list.images = session?.images
         sidebar.apply([])
         snapshot = Snapshot()
@@ -222,6 +224,8 @@ final class HomeViewController: UIViewController {
             sidebar.apply(snapshot.rows)
             if shownBeside != nil { updateSelection() }
         }
+        if storiesRow.posters != home.posters { storiesRow.apply(home.posters); view.setNeedsLayout() }
+        if let viewer = presentedViewController as? StoryViewerController { (viewer.names, viewer.me) = (storyNames, home.userId); viewer.refresh(home.stories) }
         if search != nil { showResults() }
         warmUp()
         applyChrome()
@@ -397,7 +401,9 @@ final class HomeViewController: UIViewController {
         resultsView.insets = UIEdgeInsets(top: searchInsets.chromeTop, left: 0, bottom: searchInsets.listBottom, right: 0)
         sidebar.frame = layout.content
         session?.warm.layOut(width: layout.column.width, environment: traitCollection.textEnvironment)
-        let insets = UIEdgeInsets(layout.listInsets)
+        storiesColumn = layout.column
+        var insets = UIEdgeInsets(layout.listInsets)
+        insets.top += storiesRow.posters.isEmpty ? 0 : StoryLayout.Metrics.rowHeight
         let indicator = UIEdgeInsets(layout.indicatorInsets)
         if sidebar.contentInsets != insets {
             // A shrinking top leaves nothing scrolled past it.
@@ -407,6 +413,28 @@ final class HomeViewController: UIViewController {
             sidebar.setInsets(insets, indicator: indicator, keepsTop: false)
         }
         empty.frame = layout.empty
+        placeStories()
+    }
+
+    /// Where the rows sit, so the stories row keeps to the safe area's sides with them.
+    private var storiesColumn = CGRect.zero
+    /// The stories row rides just over the list's first row, scrolling with it.
+    private func placeStories() {
+        let height = storiesRow.posters.isEmpty ? 0 : StoryLayout.Metrics.rowHeight
+        storiesRow.isHidden = height == 0 || sidebar.isHidden
+        storiesRow.frame = CGRect(x: storiesColumn.minX, y: sidebar.frame.minY - sidebar.contentOffsetY - height, width: storiesColumn.width, height: height)
+    }
+
+    /// Names by ID for the viewer: members, and the agents tasks and bots run.
+    private var storyNames: [String: String] {
+        agentHome.people.merging(agentHome.allRows.compactMap { row in row.kind == .space ? row.agentId.map { ($0, row.label) } : nil }) { _, row in row }
+    }
+
+    private func openStories(_ posters: [StoryPoster], start: Int) {
+        guard let session, posters.indices.contains(start) else { return }
+        let viewer = StoryViewerController(engine: session.engine, library: session.media, images: session.images, posters: posters, start: start, names: storyNames)
+        viewer.me = agentHome.userId
+        present(viewer, animated: true)
     }
 
 
@@ -550,6 +578,7 @@ extension HomeViewController {
     }
 
     private func listDidScroll() {
+        placeStories()
         #if DEBUG || HAPPY_FIXTURES
         GymFrameMeter.noteScroll()
         #endif

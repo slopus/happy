@@ -17,6 +17,10 @@ public struct HomeSnapshot: Equatable, Sendable {
     public var notice: String?
     /// The live stories, oldest first; empty while stories are off.
     public var stories: [Story] = []
+    /// The stories row: who posted them, unseen first.
+    public var posters: [StoryPoster] = []
+    /// Members' names by ID, for who replied.
+    public var people: [String: String] = [:]
     public init() {}
 }
 
@@ -91,6 +95,7 @@ public actor SyncEngine {
     private var stories: [Story] = []
     private var storyRead: Task<Void, Never>?
     private var storyExpiry: Task<Void, Never>?
+    private var storyPeople: Set<String> = []
     private var storiesOn: Bool { storyFeed == true && snapshot.settings[Stories.settingKey] == .bool(true) }
 
     public init(client: AgentClient, directory: URL?) {
@@ -290,6 +295,7 @@ public actor SyncEngine {
                         derive()
                     }
                     if event["type"] == .string("story.changed") { receiveStory(event["payload"]?["story"]) }
+                    if event["type"] == .string("story.removed"), let id = event["payload"]?["storyId"]?.stringValue { dropStory(id) }
                     // Events are delivery hints, never a durable checkpoint.
                     // Coalesce catalog invalidations; message token events go
                     // straight to the open conversation without rereading Home.
@@ -408,9 +414,14 @@ public actor SyncEngine {
     private func authorChanged(_ id: String?, _ generation: Int) {
         guard let id, let desktop, let me = desktop.profile?.userId else { return }
         if id == me { return scheduleReconcile(generation) }
-        guard SidebarRows.authors(desktop).contains(id) else { return }
+        guard authors(desktop).contains(id) else { return }
         usersMissing.remove(id)
         readAuthors(generation, again: [id])
+    }
+
+    /// The members the listed tasks belong to, and the people stories name.
+    private func authors(_ desktop: DesktopSnapshot) -> Set<String> {
+        SidebarRows.authors(desktop).union(Stories.people(snapshot.stories).union(storyPeople).subtracting([desktop.profile?.userId ?? ""]))
     }
 
     /// Reads the members the listed tasks belong to that this phone doesn't
@@ -424,7 +435,7 @@ public actor SyncEngine {
             while usersDirty && current(generation) {
                 usersDirty = false
                 guard let desktop else { break }
-                let authors = SidebarRows.authors(desktop)
+                let authors = authors(desktop)
                 let wanted = authors.filter { (users[$0] == nil && !usersMissing.contains($0)) || usersAgain.contains($0) }.sorted()
                 usersAgain.subtract(wanted)
                 guard !wanted.isEmpty else { continue }
@@ -542,6 +553,8 @@ public actor SyncEngine {
             }
             snapshot.rows = Rows.visible(snapshot.allRows)
             snapshot.userId = desktop.profile?.userId
+            snapshot.posters = Stories.posters(live, rows: snapshot.allRows, users: users, profile: desktop.profile)
+            snapshot.people = live.isEmpty ? [:] : users.mapValues(\.name)
         }
         publish()
     }
@@ -604,14 +617,45 @@ public actor SyncEngine {
             stories = feed.map { var story = $0; story.seen = story.seen || seen.contains(story.id); return story }
                 + stories.filter { !before.contains($0.id) && !listed.contains($0.id) }
             derive()
+            readAuthors(generation)
         }
     }
 
     private func receiveStory(_ value: JSONValue?) {
         guard snapshot.settings[Stories.settingKey] == .bool(true), let value, let data = try? JSONEncoder().encode(value),
-              let story = try? JSONDecoder().decode(Story.self, from: data) else { return }
+              var story = try? JSONDecoder().decode(Story.self, from: data) else { return }
+        story.seen = story.seen || stories.contains { $0.id == story.id && $0.seen }
         stories.removeAll { $0.id == story.id }
         stories.append(story)
+        derive()
+        readAuthors(generation)
+    }
+
+    /// Gone for everyone: deleted, or no longer this person's to see.
+    private func dropStory(_ storyId: String) {
+        stories.removeAll { $0.id == storyId }
+        derive()
+    }
+
+    /// Deletes the person's own repost, or a story of a task they own; a
+    /// refusal throws and leaves it.
+    public func deleteStory(_ storyId: String) async throws {
+        try await client.deleteStory(storyId)
+        dropStory(storyId)
+    }
+
+    /// Names `ids` (repliers past the last two) once they are read.
+    public func lookUp(_ ids: Set<String>) {
+        guard !ids.isSubset(of: storyPeople) else { return }
+        storyPeople.formUnion(ids)
+        readAuthors(generation)
+    }
+
+    /// The person's reply, shown at once over the story it answers.
+    public func replied(_ reply: Story.Reply, to storyId: String) {
+        guard let index = stories.firstIndex(where: { $0.id == storyId }), !(stories[index].replies ?? []).contains(reply) else { return }
+        stories[index].replies = Array(((stories[index].replies ?? []) + [reply]).suffix(2))
+        stories[index].replyCount = (stories[index].replyCount ?? 0) + 1
         derive()
     }
 

@@ -27,12 +27,14 @@ private actor GroupedHomeTransport: AgentTransport {
     /// then the MP4 at `-storyVideo <path>`) and one rings "Release Bot".
     let stories: Bool
     let video: Data?
+    let reposts: Bool
     private var seen: Set<String> = []
-    init(avatar: Data, stories: Bool = false, seen: Bool = false, video: Data? = nil, lineCounts: Bool = false) {
+    init(avatar: Data, stories: Bool = false, seen: Bool = false, video: Data? = nil, reposts: Bool = false, lineCounts: Bool = false) {
         self.avatar = avatar
         self.lineCounts = lineCounts
         self.stories = stories
         self.video = video
+        self.reposts = reposts
         if seen { self.seen = ["s1", "s2", "s3"] }
     }
 
@@ -44,18 +46,78 @@ private actor GroupedHomeTransport: AgentTransport {
             ("s2", "landing", nil, "The hero, animated", clip),
             ("s3", nil, "release", "2026.10.4 is on TestFlight", shot),
         ]
-        return feed.enumerated().filter { video != nil || $0.element.4["kind"] as? String == "image" }.map { index, story in
-            ["id": story.0, "agentId": "a", "taskId": story.1 ?? NSNull(), "botId": story.2 ?? NSNull(), "caption": story.3, "media": story.4,
-             "postedAt": Self.now - Double(10 - index) * 60_000, "expiresAt": Self.now + 86_400_000, "seen": seen.contains(story.0)]
+        let reply = { (id: String, user: String?, text: String) -> [String: Any] in ["id": id, "storyId": "s1", "userId": user ?? NSNull(), "text": text, "createdAt": Self.now] }
+        let own = feed.enumerated().filter { video != nil || $0.element.4["kind"] as? String == "image" }.map { index, story -> [String: Any] in
+            var entry: [String: Any] = ["id": story.0, "agentId": story.1.map { "\($0)-agent" } ?? "release-agent", "poster": "agent", "taskId": story.1 ?? NSNull(), "botId": story.2 ?? NSNull(),
+             "caption": story.3, "media": story.4, "postedAt": Self.now - Double(10 - index) * 60_000, "expiresAt": Self.now + 86_400_000, "seen": seen.contains(story.0),
+             "replyCount": 0, "replies": [], "canDelete": true]
+            let earlier = story.0 == "s1" ? [reply("r1", "u2", "The second one"), reply("r2", nil, "Agreed, shorter")] : [], added = replies[story.0] ?? []
+            (entry["replyCount"], entry["replies"]) = (earlier.count + added.count, Array((earlier + added).suffix(2)))
+            return entry
+        }
+        // With -reposts: Sam's repost of the headlines and the person's own of the release, a round on each.
+        let round: Any = video.map { ["mimeType": "video/mp4", "size": $0.count] as [String: Any] } ?? NSNull()
+        let sources: [(String, String?, String, String?, String)] = reposts ? [("s4", "u2", "s1", "landing", "Love these"), ("s5", nil, "s3", nil, "Shipping!")] : []
+        let shared = sources.map { id, user, of, task, caption -> [String: Any] in
+            let agentId: String = task.map { "\($0)-agent" } ?? "release-agent"
+            let taskId: Any = task ?? NSNull(), botId: Any = task == nil ? "release" : NSNull(), userId: Any = user ?? NSNull()
+            var entry: [String: Any] = ["id": id, "agentId": agentId, "poster": "person", "userId": userId, "repostOf": of, "taskId": taskId, "botId": botId]
+            (entry["caption"], entry["media"], entry["round"], entry["postedAt"], entry["expiresAt"]) = (caption, shot, round, Self.now - 60_000, Self.now + 86_400_000)
+            (entry["seen"], entry["replyCount"], entry["replies"], entry["canDelete"]) = (seen.contains(id), 0, [Any](), user == nil)
+            return entry
+        }
+        return (own + shared + posted).filter { !deleted.contains($0["id"] as? String ?? "") }
+    }
+    private var replies: [String: [[String: Any]]] = [:]
+    private var deleted: Set<String> = []
+    private var posted: [[String: Any]] = []
+
+    /// Seen, replies, a repost and a delete, as the daemon answers them.
+    private func storyRoute(_ method: String, _ id: String, _ action: String?, _ body: Data?) throws -> HTTP1Response {
+        let sent = body.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
+        let json = { (object: Any) in HTTP1Response(status: 200, body: try JSONSerialization.data(withJSONObject: object)) }
+        guard let story = storyFeed().first(where: { $0["id"] as? String == id }) else { return .init(status: 404, body: Data("{}".utf8)) }
+        switch (method, action) {
+        case ("POST", "seen"?): seen.insert(id); return try json([:])
+        case ("GET", "replies"?):
+            let older = (0..<4).map { ["id": "o\($0)", "storyId": id, "userId": "u2", "text": "Earlier thought \($0 + 1)", "createdAt": Self.now - 600_000] as [String: Any] }
+            return try json(["replies": (id == "s1" ? older : []) + (story["replies"] as? [[String: Any]] ?? [])])
+        case ("POST", "replies"?):
+            let reply: [String: Any] = ["id": "r\(replies.values.joined().count + 3)", "storyId": id, "userId": NSNull(), "text": sent["text"] as? String ?? "", "createdAt": Date().timeIntervalSince1970 * 1000]
+            replies[id, default: []].append(reply)
+            print("STORIES_HARNESS reply to \(id): \(sent["text"] as? String ?? "")")
+            if let changed = storyFeed().first(where: { $0["id"] as? String == id }) { tell("story.changed", ["story": changed]) }
+            return try json(["reply": reply])
+        case ("POST", "repost"?):
+            var repost = story
+            (repost["id"], repost["poster"], repost["userId"], repost["repostOf"], repost["caption"]) = ("p\(posted.count)", "person", NSNull(), id, sent["caption"] as? String ?? NSNull())
+            (repost["postedAt"], repost["seen"], repost["canDelete"], repost["replyCount"], repost["replies"]) = (Date().timeIntervalSince1970 * 1000, false, true, 0, [])
+            let round = (sent["round"] as? [String: Any])?["data"] as? String
+            repost["round"] = round.map { ["mimeType": "video/mp4", "size": Data(base64Encoded: $0)?.count ?? 0] as [String: Any] } ?? NSNull()
+            print("STORIES_HARNESS repost of \(id), round bytes: \(round.flatMap { Data(base64Encoded: $0)?.count } ?? 0)")
+            if let round, let data = Data(base64Encoded: round) { rounds[repost["id"] as! String] = data }
+            posted.append(repost)
+            tell("story.changed", ["story": repost])
+            return try json(["story": repost])
+        case ("DELETE", nil):
+            deleted.insert(id)
+            tell("story.removed", ["storyId": id])
+            return try json([:])
+        default: return .init(status: 404, body: Data("{}".utf8))
         }
     }
+    /// Rounds posted here, by repost.
+    private var rounds: [String: Data] = [:]
 
-    private func storyMedia(_ id: String, range: String?) -> HTTP1Response {
-        guard id == "s2", let video else {
+    private func storyMedia(_ id: String, range: String?, round: Bool = false) -> HTTP1Response {
+        // A repost shows the media of the story it reposts.
+        let source = storyFeed().first { $0["id"] as? String == id }?["repostOf"] as? String ?? id
+        guard let video = round ? rounds[id] ?? video : video, source == "s2" || round else {
+            let headlines = source == "s1"
             let picture = UIGraphicsImageRenderer(size: CGSize(width: 360, height: 640)).pngData { context in
-                UIColor(hue: id == "s1" ? 0.58 : 0.08, saturation: 0.6, brightness: 0.9, alpha: 1).setFill()
+                UIColor(hue: headlines ? 0.58 : 0.08, saturation: 0.6, brightness: 0.9, alpha: 1).setFill()
                 context.fill(CGRect(x: 0, y: 0, width: 360, height: 640))
-                NSAttributedString(string: id == "s1" ? "Headlines" : "TestFlight", attributes: [.font: UIFont.systemFont(ofSize: 40, weight: .bold), .foregroundColor: UIColor.white]).draw(at: CGPoint(x: 40, y: 290))
+                NSAttributedString(string: headlines ? "Headlines" : "TestFlight", attributes: [.font: UIFont.systemFont(ofSize: 40, weight: .bold), .foregroundColor: UIColor.white]).draw(at: CGPoint(x: 40, y: 290))
             }
             return .init(status: 200, headers: ["Content-Type": "image/png"], body: picture)
         }
@@ -138,8 +200,9 @@ private actor GroupedHomeTransport: AgentTransport {
         let route = path.split(separator: "?").first.map(String.init) ?? path
         if route == "/v0/projects/p1/avatar" { return .init(status: 200, body: avatar) }
         if stories, route == "/v0/stories" { return .init(status: 200, body: try JSONSerialization.data(withJSONObject: ["stories": storyFeed()])) }
-        if stories, route.hasPrefix("/v0/stories/"), route.hasSuffix("/media") { return storyMedia(String(route.split(separator: "/")[2]), range: headers["Range"]) }
-        if stories, method == "POST", route.hasPrefix("/v0/stories/"), route.hasSuffix("/seen") { seen.insert(String(route.split(separator: "/")[2])); return .init(status: 200, body: Data("{}".utf8)) }
+        if stories, route.hasPrefix("/v0/stories/"), route.hasSuffix("/media") || route.hasSuffix("/round") { return storyMedia(String(route.split(separator: "/")[2]), range: headers["Range"], round: route.hasSuffix("/round")) }
+        if stories, route.hasPrefix("/v0/stories/") { return try storyRoute(method, String(route.split(separator: "/")[2]), route.split(separator: "/").dropFirst(3).first.map(String.init), body) }
+        if stories, route == "/v0/users" { return .init(status: 200, body: Data(#"{"users":[{"id":"u2","name":"Sam Rivera"}]}"#.utf8)) }
         let sent = body.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
         if route == "/v0/git/watch" {
             let samples: [String: (Int, Int, Bool)] = lineCounts ? [
@@ -247,12 +310,18 @@ final class GroupedHomeHarness {
         let bottom = arguments.contains("-bottom")
         let value = { (flag: String) in arguments.firstIndex(of: flag).flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil } }
         Task {
-            await open(window: window, stories: arguments.contains("-stories"), seen: arguments.contains("-seenStories"), video: value("-storyVideo").flatMap { FileManager.default.contents(atPath: $0) })
+            StoryRepostController.debugRecording = value("-roundVideo").map(URL.init(fileURLWithPath:))
+            await open(window: window, stories: arguments.contains("-stories"), seen: arguments.contains("-seenStories"), video: value("-storyVideo").flatMap { FileManager.default.contents(atPath: $0) }, reposts: arguments.contains("-reposts"))
             // With `-openStory <row id>` (`task:landing`), that row's icon tapped.
             if let id = value("-openStory") {
                 try? await Task.sleep(for: .seconds(1.5))
                 guard let list = home?.view.firstSubview(of: SidebarList.self), let view = list.view(for: id), let mark = view.frames.mark else { return }
                 list.tap(view, at: CGPoint(x: mark.midX, y: mark.midY))
+            }
+            // With `-openTile <n>`, the stories row's nth tile tapped.
+            if let tile = value("-openTile").flatMap(Int.init) {
+                try? await Task.sleep(for: .seconds(1.5))
+                home?.view.firstSubview(of: StoriesRowView.self)?.onOpen?(tile)
             }
             // With `-bottom`, the list's end, where the projects are.
             guard bottom else { return }
@@ -275,8 +344,8 @@ final class GroupedHomeHarness {
         }
     }
 
-    private func open(window: UIWindow, stories: Bool, seen: Bool, video: Data?) async {
-        let transport = GroupedHomeTransport(avatar: Self.repoPicture(), stories: stories, seen: seen, video: video, lineCounts: lineCounts)
+    private func open(window: UIWindow, stories: Bool, seen: Bool, video: Data?, reposts: Bool) async {
+        let transport = GroupedHomeTransport(avatar: Self.repoPicture(), stories: stories, seen: seen, video: video, reposts: reposts, lineCounts: lineCounts)
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/grouped-home",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
