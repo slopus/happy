@@ -35,6 +35,8 @@ data class AgentConnection(
     val signInRequired: Boolean = false,
     /** Signed in, but the team server has no profile for the person yet: they give a name (with [signInRequired]). */
     val profileRequired: Boolean = false,
+    /** Health's `instanceId` when last read: external `happy://<instanceId>/…` links open here (edge SSO §7). */
+    val instanceId: String? = null,
 )
 
 /**
@@ -129,6 +131,7 @@ class AgentConnections(
                     avatarFile = previous?.avatarFile,
                     avatarETag = previous?.avatarETag,
                     addedAt = previous?.addedAt ?: now(),
+                    instanceId = agent?.instanceId ?: previous?.instanceId,
                 ),
                 agent?.avatar ?: NodeAvatar.Unchanged,
             )
@@ -188,6 +191,7 @@ class AgentConnections(
                     avatarETag = existing?.avatarETag,
                     addedAt = existing?.addedAt ?: now(),
                     server = origin.value,
+                    instanceId = agent?.instanceId ?: existing?.instanceId,
                 ),
                 agent?.avatar ?: NodeAvatar.Unchanged,
             )

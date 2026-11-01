@@ -34,4 +34,6 @@
     <string name="browser_tunnels_blocked">La rete di questo server non consente le anteprime.</string>
     <string name="team_server_profile_required">Aggiungi il tuo nome per continuare a usare questo server.</string>
     <string name="team_server_add_name">Aggiungi il tuo nome</string>
+    <string name="happy_link_unknown_title">Impossibile aprire il link</string>
+    <string name="happy_link_unknown_server">Questo link appartiene a un server Happy a cui non sei connesso.</string>
 </resources>

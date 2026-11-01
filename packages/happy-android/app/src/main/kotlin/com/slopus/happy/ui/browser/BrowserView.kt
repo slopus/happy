@@ -87,7 +87,7 @@ object BrowserTags {
 /**
  * One page to show: [url], reached through [scope] (iOS's `BrowserPage`).
  * [artifactId] marks an artifact's page: its origin is synthetic, sharing
- * shares the artifact's tag, and a link to another origin opens a browser of its own.
+ * shares the artifact's external Happy link, and a link to another origin opens a browser of its own.
  */
 @Stable
 class BrowserPage(val url: String, val scope: BrowserProxy.Scope, val artifactId: String? = null) {
@@ -206,6 +206,12 @@ fun BrowserView(
     onOpenElsewhere: (String) -> Unit = {},
     /** The page's address, each time it changes. */
     onUrl: (String) -> Unit = {},
+    /**
+     * An artifact's external link (`happy://<instanceId>/artifacts/<id>`,
+     * edge SSO §7), what sharing a bundled artifact's page shares; null
+     * where its server has no instance id, and then it isn't offered.
+     */
+    artifactLink: (artifactId: String) -> String? = { null },
 ) {
     val colors = HappyTheme.colors
     val context = LocalContext.current
@@ -372,31 +378,35 @@ fun BrowserView(
             ) {
                 Icon(MaterialSymbols.Refresh, stringResource(R.string.files_reload))
             }
-            ShareButton(shown, web, context)
+            ShareButton(shown, web, context, artifactLink)
         }
     }
 }
 
 @Composable
-private fun ShareButton(page: BrowserPage?, web: WebView?, context: Context) {
+private fun ShareButton(page: BrowserPage?, web: WebView?, context: Context, artifactLink: (String) -> String?) {
     var open by remember { mutableStateOf(false) }
+    // A bundled artifact's origin exists only here: its external Happy link is what can be shared, if its server has one.
+    val synthetic = page?.synthetic == true
+    val artifactShare = if (synthetic) page?.artifactId?.let(artifactLink) else null
     Box {
-        IconButton(onClick = { open = true }, enabled = page != null, modifier = Modifier.testTag(BrowserTags.SHARE)) {
+        IconButton(onClick = { open = true }, enabled = page != null && (!synthetic || artifactShare != null), modifier = Modifier.testTag(BrowserTags.SHARE)) {
             Icon(MaterialSymbols.Share, stringResource(R.string.artifact_share))
         }
         DropdownMenu(expanded = open && com.slopus.happy.ui.components.LocalPageActive.current, onDismissRequest = { open = false }) {
             val shareUrl = if (page?.artifactId == null) web?.url ?: page?.url else page.url
-            DropdownMenuItem(
-                text = { Text(stringResource(R.string.browser_share_link)) },
-                onClick = {
-                    open = false
-                    // A bundled artifact's origin exists only here: its tag is what can be shared.
-                    val text = if (page?.synthetic == true) "<happy-artifact id=\"${page.artifactId}\"/>" else shareUrl ?: return@DropdownMenuItem
-                    val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
-                    context.startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                },
-            )
-            if (page?.synthetic != true && shareUrl != null) {
+            val shared = if (synthetic) artifactShare else shareUrl
+            if (shared != null) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.browser_share_link)) },
+                    onClick = {
+                        open = false
+                        val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, shared)
+                        context.startActivity(Intent.createChooser(send, null).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    },
+                )
+            }
+            if (!synthetic && shareUrl != null) {
                 DropdownMenuItem(
                     text = { Text(stringResource(R.string.browser_open_outside)) },
                     onClick = {
@@ -412,8 +422,13 @@ private fun ShareButton(page: BrowserPage?, web: WebView?, context: Context) {
 /** [url] as the bar shows it: `https://` and a lone trailing slash dropped; plain `http://` kept, so it shows. */
 fun displayUrl(url: String): String = url.removePrefix("https://").let { if (it.count { c -> c == '/' } == 1 && it.endsWith("/")) it.dropLast(1) else it }
 
-/** Hands [url] to whatever on the phone opens it (a `mailto:`, `tel:`, or the outside browser on request). */
+/**
+ * Hands [url] to whatever on the phone opens it (a `mailto:`, `tel:`, or
+ * the outside browser on request). A Happy Agent URL ([HappyUrls]) never
+ * leaves the app: it is the app's own to open, or nothing's.
+ */
 internal fun openOutside(context: Context, url: String) {
+    if (com.slopus.happy.agent.HappyUrls.owns(url)) return
     try {
         context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     } catch (_: ActivityNotFoundException) {

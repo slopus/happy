@@ -207,6 +207,18 @@ class AgentConnectionsTest {
     }
 
     @Test
+    fun theInstanceIdExternalLinksAreLockedToIsKeptFromHealth() = runBlocking {
+        val accounts = accounts()
+        assertEquals(null, accounts.add(credentials(), "Steve's Mac").instanceId)
+        daemon.instanceId = "k3x9q2m7p0a4b8c1d5e6f7g2"
+        assertEquals("k3x9q2m7p0a4b8c1d5e6f7g2", accounts.add(credentials(), "Steve's Mac").instanceId)
+        assertEquals("k3x9q2m7p0a4b8c1d5e6f7g2", accounts().accounts.value.single().instanceId)
+        // Anything but a well-formed id counts as none; the one known stays.
+        daemon.instanceId = "Not-An-Instance"
+        assertEquals("k3x9q2m7p0a4b8c1d5e6f7g2", accounts.add(credentials(), "Steve's Mac").instanceId)
+    }
+
+    @Test
     fun anUnreachableAgentIsKeptUnderTheCodesName() = runBlocking {
         transport = { object : Transport by daemon {
             override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory) =

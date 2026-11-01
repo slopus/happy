@@ -775,7 +775,8 @@ decodes the drawn pixels back to the link.
 ### Deep links
 
 `happy://` links route as expo-router routes them for happy-app (the host
-is the first path segment), and so do `https://app.happy.engineering/<path>`
+is the first path segment; Happy Agent's own hosts and instance-locked links
+are not app paths, see "Team servers behind SSO"), and so do `https://app.happy.engineering/<path>`
 links. Every app path maps to its Compose route (`parseDeepLink` in
 `ui/connect/DeepLinks.kt`): `terminal?<key>` opens the confirm screen,
 `/terminal/connect` explains that the web link needs a browser,
@@ -829,7 +830,22 @@ change its wire behaviour on Android alone.
 - **No device management.** There are no Android Enterprise managed
   configurations (Steve's decision). Tailcat, the hosted relay and pairing by
   code are switched on the server (`happy.toml`); the app only hides what the
-  agent reports as off. Analytics is always the person's own choice.
+  agent reports as off. Analytics is always the person's own choice. A pairing
+  the agent refuses with `unsupported` (or an older daemon's 404) reads "Phone
+  pairing is turned off on this agent." (`AgentConnectionException.Reason.Disabled`).
+- **Instance-locked links** (§7, `agent/HappyUrls.kt`, `ui/connection/HappyLinks.kt`):
+  `HappyUrls` ports happy-agent-client's `happyLinks.ts` grammar case for case
+  (`HappyUrlsTest`) plus the external form `happy://<instanceId>/<internal URL
+  without happy://>`. Health's `instanceId` is kept on each `AgentConnection`.
+  From outside (`DeepLinks`), only an external link opens, and only on the
+  connection with that `instanceId` (switching to it first, through
+  `DeepLink.OnConnection`, since each account has its own back stack); none
+  matching says "This link belongs to a Happy server you're not connected to."
+  and never falls back. Internal Happy links and `happy-file://` from outside,
+  and malformed ones, open nothing. Inside an artifact a Happy link means that
+  connection; `openOutside` never hands a Happy URL to the system. Sharing a
+  bundled artifact's page shares its external link, and isn't offered when the
+  server has no `instanceId`. Chat doesn't render `happy://` links as links yet.
 
 ## Push
 

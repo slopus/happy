@@ -34,4 +34,6 @@
     <string name="browser_tunnels_blocked">此服务器的网络不允许预览。</string>
     <string name="team_server_profile_required">添加你的名字以继续使用此服务器。</string>
     <string name="team_server_add_name">添加名字</string>
+    <string name="happy_link_unknown_title">无法打开此链接</string>
+    <string name="happy_link_unknown_server">此链接属于你未连接的 Happy 服务器。</string>
 </resources>

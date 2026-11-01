@@ -72,6 +72,34 @@ class DeepLinksTest {
     }
 
     @Test
+    fun happyUrlsOpenFromOutsideOnlyLockedToTheirInstance() {
+        val instance = "k3x9q2m7p0a4b8c1d5e6f7g2"
+        assertEquals(
+            DeepLink.Instance(instance, com.slopus.happy.agent.HappyLink.Reference(com.slopus.happy.agent.HappyReferenceKind.Artifact, "abc123", version = 2)),
+            parseDeepLink("happy://$instance/artifacts/abc123?version=2"),
+        )
+        assertEquals(
+            DeepLink.Instance(instance, com.slopus.happy.agent.HappyLink.File(com.slopus.happy.agent.HappyLink.Target.Agent("a1"), "src/Foo.tsx", 42..50)),
+            parseDeepLink("happy://$instance/agents/a1/files/src/Foo.tsx#L42-L50"),
+        )
+        // Internal links, malformed ones and happy-file:// never open from outside, nor fall back to Home.
+        listOf(
+            "happy://artifacts/abc123",
+            "happy://agents/a1/files/a.ts",
+            "happy://workspaces/w1/services/s1",
+            "happy://artifacts/",
+            "happy://Surfaces/x",
+            "happy-file://agents/a1/a.ts",
+            "happy://$instance/",
+            "happy://$instance/session/s1",
+            "happy://${instance.uppercase()}/artifacts/abc123",
+        ).forEach { assertNull(it, parseDeepLink(it)) }
+        // The mobile routes are untouched.
+        assertEquals(DeepLink.Session("s1"), parseDeepLink("happy://session/s1"))
+        assertEquals(DeepLink.Screen(SettingsRoute()), parseDeepLink("happy://settings"))
+    }
+
+    @Test
     fun linksThatArentTheAppsAreIgnored() {
         listOf(
             "https://example.com/terminal?$key",
@@ -136,7 +164,7 @@ class DeepLinksTest {
             "happy://settings/usage",
             "happy://inbox",
             "happy://friends",
-            "happy://artifacts/a1",
+            // happy://artifacts/… is Happy Agent's: from outside it opens nothing (happyUrlsOpenFromOutsideOnlyLockedToTheirInstance).
             "happy://dev",
             "happy://text-selection?textId=1",
             "happy://user/u1",

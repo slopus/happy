@@ -1,6 +1,8 @@
 package com.slopus.happy.ui.connect
 
 import android.content.Intent
+import com.slopus.happy.agent.HappyLink
+import com.slopus.happy.agent.HappyUrls
 import com.slopus.happy.push.ACTION_OPEN_PUSH
 import com.slopus.happy.push.EXTRA_PUSH_SESSION_ID
 import com.slopus.happy.ui.RestoreManualRoute
@@ -64,6 +66,15 @@ sealed interface DeepLink {
         override fun toString() = "AgentPairing(…)"
     }
 
+    /**
+     * `happy://<instanceId>/…` (edge SSO contract §7): [link] on the
+     * connection whose installation is [instanceId], and on no other.
+     */
+    data class Instance(val instanceId: String, val link: HappyLink) : DeepLink
+
+    /** [link] on [connectionId], taken by that connection's back stack once it is open (an [Instance] link's, after switching to it). */
+    data class OnConnection(val connectionId: String, val link: HappyLink) : DeepLink
+
     /** `/`, and app paths with no screen on Android (excluded features, or none at all): Home. */
     data object Home : DeepLink
 }
@@ -74,11 +85,17 @@ sealed interface DeepLink {
  * (`happy://terminal?k` and `happy:///terminal?k` are both `/terminal`), and
  * `https://app.happy.engineering/<path>` (app.config.js's production intent
  * filter) is the same path. Every app path maps to its screen; a path
- * Android has no screen for opens Home. Null only for links that aren't the
- * app's (another scheme or host, or not a URL).
+ * Android has no screen for opens Home. Null for links that aren't the
+ * app's (another scheme or host, or not a URL), and for Happy URLs
+ * ([HappyUrls]) not locked to an instance: from outside the app, only an
+ * external `happy://<instanceId>/…` link opens, and a malformed one never.
  */
 fun parseDeepLink(link: String): DeepLink? {
     if (HappyCode.isAgentPairing(link)) return DeepLink.AgentPairing(link.trim())
+    if (HappyUrls.owns(link.trim())) {
+        val url = HappyUrls.parse(link.trim()) ?: return null
+        return url.instanceId?.let { DeepLink.Instance(it, url.link) }
+    }
     val uri = try {
         URI(link.trim())
     } catch (_: URISyntaxException) {

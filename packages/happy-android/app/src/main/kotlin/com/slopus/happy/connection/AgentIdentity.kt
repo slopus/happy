@@ -13,6 +13,8 @@ data class AgentInfo(
     val avatar: NodeAvatar = NodeAvatar.Unchanged,
     /** Health's `capabilities.webSocketTunnels` (edge SSO): tunnels go over WebSockets instead of CONNECT. */
     val webSocketTunnels: Boolean = false,
+    /** Health's `instanceId`: the installation's, which external links are locked to (edge SSO §7). Null from an older daemon. */
+    val instanceId: String? = null,
 )
 
 /** What `/v0/node/avatar` answered. The ETag, not the ThumbHash, says which bytes these are. */
@@ -39,7 +41,7 @@ object AgentIdentity {
 
     @Serializable private class Version(val protocol: Int, val daemon: String? = null)
     @Serializable private class Capabilities(val webSocketTunnels: Boolean = false)
-    @Serializable private class Health(val ready: Boolean, val version: Version, val capabilities: Capabilities? = null)
+    @Serializable private class Health(val ready: Boolean, val version: Version, val capabilities: Capabilities? = null, val instanceId: String? = null)
     @Serializable private class Avatar(val thumbhash: String? = null)
     @Serializable private class Node(val name: String, val avatar: Avatar? = null)
     @Serializable private class Config(val node: Node? = null)
@@ -86,6 +88,8 @@ object AgentIdentity {
                 else -> avatar(requester, etag, oauth)
             },
             webSocketTunnels = health.capabilities?.webSocketTunnels == true,
+            // Anything but a well-formed id is as good as none: no external link is offered.
+            instanceId = health.instanceId?.takeIf(com.slopus.happy.agent.HappyUrls::isInstanceId),
         )
     }
 

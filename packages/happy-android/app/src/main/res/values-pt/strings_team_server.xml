@@ -34,4 +34,6 @@
     <string name="browser_tunnels_blocked">A rede deste servidor não permite pré-visualizações.</string>
     <string name="team_server_profile_required">Adicione seu nome para continuar usando este servidor.</string>
     <string name="team_server_add_name">Adicionar seu nome</string>
+    <string name="happy_link_unknown_title">Não é possível abrir o link</string>
+    <string name="happy_link_unknown_server">Este link pertence a um servidor Happy ao qual você não está conectado.</string>
 </resources>

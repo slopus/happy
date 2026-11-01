@@ -34,4 +34,6 @@
     <string name="browser_tunnels_blocked">このサーバーのネットワークではプレビューを利用できません。</string>
     <string name="team_server_profile_required">このサーバーを引き続き使うには名前を追加してください。</string>
     <string name="team_server_add_name">名前を追加</string>
+    <string name="happy_link_unknown_title">リンクを開けません</string>
+    <string name="happy_link_unknown_server">このリンクは、接続していない Happy サーバーのものです。</string>
 </resources>

@@ -48,6 +48,8 @@ import com.slopus.happy.ui.connection.AgentSurfaceRoute
 import com.slopus.happy.ui.connect.LocalAddFlow
 import com.slopus.happy.ui.connect.LocalAgentPairing
 import com.slopus.happy.ui.connection.LocalServerSignIn
+import com.slopus.happy.ui.connection.LocalHappyLinks
+import com.slopus.happy.ui.connection.rememberHappyLinks
 import com.slopus.happy.ui.connection.signInToServer
 import com.slopus.happy.ui.connect.rememberAddFlow
 import com.slopus.happy.ui.tablet.TabletShell
@@ -128,8 +130,10 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
             val troubleshoot = { nav.navigate(TroubleshootRoute) }
             val connectAgent = remember(nav) { { code: String -> nav.connectAgent(graph, code) } }
             val signInToServer = remember(nav) { { address: String? -> nav.signInToServer(graph, address) } }
+            // Happy URLs (edge SSO §7): external ones only on their own installation's connection.
+            val happyLinks = rememberHappyLinks(graph, nav, agent)
             // Every scanner, signed in or out, sends happy://direct? codes here.
-            CompositionLocalProvider(LocalAgentPairing provides connectAgent, LocalServerSignIn provides signInToServer) {
+            CompositionLocalProvider(LocalAgentPairing provides connectAgent, LocalServerSignIn provides signInToServer, LocalHappyLinks provides happyLinks) {
               // Add (the first screen's Connect, the account menu's Add): scan, then route the code.
               val add = rememberAddFlow(graph)
               CompositionLocalProvider(LocalAddFlow provides add) {
@@ -180,7 +184,7 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                     }
                 }
                 }
-                DeepLinkEffect(nav, signedIn = signedIn, onOpenSession = { id -> nav.navigate(SessionRoute(id)) })
+                DeepLinkEffect(nav, signedIn = signedIn, onOpenSession = { id -> nav.navigate(SessionRoute(id)) }, openConnection = agent, onHappyLink = happyLinks::take)
               }
             }
             PushRegistrationEffect(graph)

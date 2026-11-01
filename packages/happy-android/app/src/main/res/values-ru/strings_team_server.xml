@@ -34,4 +34,6 @@
     <string name="browser_tunnels_blocked">Сеть этого сервера не разрешает предпросмотр.</string>
     <string name="team_server_profile_required">Укажите своё имя, чтобы продолжить работу с этим сервером.</string>
     <string name="team_server_add_name">Указать имя</string>
+    <string name="happy_link_unknown_title">Не удаётся открыть ссылку</string>
+    <string name="happy_link_unknown_server">Эта ссылка относится к серверу Happy, к которому вы не подключены.</string>
 </resources>

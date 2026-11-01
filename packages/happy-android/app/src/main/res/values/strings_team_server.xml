@@ -36,4 +36,6 @@
     <string name="browser_tunnels_blocked">This server\'s network doesn\'t allow previews.</string>
     <string name="team_server_profile_required">Add your name to keep using this server.</string>
     <string name="team_server_add_name">Add your name</string>
+    <string name="happy_link_unknown_title">Can\'t open this link</string>
+    <string name="happy_link_unknown_server">This link belongs to a Happy server you\'re not connected to.</string>
 </resources>

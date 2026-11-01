@@ -345,7 +345,7 @@ class AgentSession internal constructor(
         val info = AgentIdentity.refresh(client.requester, known?.name.orEmpty(), known?.avatarFile?.let { known.avatarETag }, oauth = client.isOAuth())
         client.noteHealth(info)
         if (known != null) {
-            connections.update(connectionId, info.avatar) { it.copy(name = info.name, thumbhash = info.thumbhash ?: it.thumbhash, revoked = false) }
+            connections.update(connectionId, info.avatar) { it.copy(name = info.name, thumbhash = info.thumbhash ?: it.thumbhash, revoked = false, instanceId = info.instanceId) }
         }
     }
 
