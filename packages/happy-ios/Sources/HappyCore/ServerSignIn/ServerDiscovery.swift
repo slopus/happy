@@ -13,8 +13,6 @@ public enum ServerSignInError: Error, Equatable, Sendable {
     case discoveryBlocked
     /// Discovery listed no sign-in this app supports.
     case noSupportedMethod
-    /// The server's managed settings don't allow this one.
-    case notAllowed
     /// The new token didn't sign in to the server.
     case rejected
 }

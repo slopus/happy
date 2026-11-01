@@ -448,15 +448,12 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                 accessory: .none,
                 action: { [weak self] in self?.choose(index) },
                 // Any of them goes from here, the shown one or not.
-                // The organization's own server can't be removed.
-                menu: ManagedSettings.current.isPinned(server) ? [] : [Row.MenuItem(title: profile.isAgentConnection && server == nil ? Strings.disconnect : Strings.signOut, glyph: "log-out-outline", destructive: true) { [weak self] in
+                menu: [Row.MenuItem(title: profile.isAgentConnection && server == nil ? Strings.disconnect : Strings.signOut, glyph: "log-out-outline", destructive: true) { [weak self] in
                     self?.remove(profile.id, direct: profile.isAgentConnection)
                 }]
             )
         }
-        if AccountAdding.canAdd(context: context) {
-            rows.append(Row(SettingsIndex.connectAgent, accessory: .none, action: { [weak self] in self?.connectAgent() }))
-        }
+        rows.append(Row(SettingsIndex.connectAgent, accessory: .none, action: { [weak self] in self?.connectAgent() }))
         return rows
     }
 
@@ -476,7 +473,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                     }),
                 ]]
             } ?? []
-            let removal: [[SettingsRow]] = ManagedSettings.current.isPinned(server) ? [] : [[
+            let removal: [[SettingsRow]] = [[
                 Row(id: "disconnect", title: server == nil ? Strings.disconnect : Strings.ServerSignIn.signOut, accessory: .none, destructive: true, action: { [weak self] in self?.remove(id, direct: true) }),
             ]]
             return [

@@ -63,6 +63,8 @@ public struct PairingLink: Equatable, Sendable {
 
 public enum PairingError: Error, Equatable, Sendable, LocalizedError {
     case invalidCode, updateRequired, expired, rejected, invalidProof, invalidResponse, unavailable, revoked
+    /// The server's `happy.toml` turned phone pairing off.
+    case turnedOff
 
     public var errorDescription: String? {
         switch self {
@@ -74,6 +76,7 @@ public enum PairingError: Error, Equatable, Sendable, LocalizedError {
         case .invalidResponse: "The agent returned an invalid response."
         case .unavailable: "Could not reach the agent. Check its connection and try again."
         case .revoked: "This device is no longer authorized. Connect the agent again."
+        case .turnedOff: "Phone pairing is turned off on this server."
         }
     }
 }

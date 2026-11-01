@@ -27,7 +27,7 @@ public final class AgentConnections {
     let makeTransport: @Sendable (AgentConnectionCredentials) -> any AgentTransport
     var refreshInterval: Duration = .seconds(60)
 
-    public init(credentials: any AgentConnectionCredentialStore, directory: URL?, makeTransport: @escaping @Sendable (AgentConnectionCredentials) -> any AgentTransport = { AgentHTTPTransport(address: $0.address, port: $0.port, publicUrl: $0.publicUrl, tailcatAvailable: $0.tailcatAvailable != false && ManagedSettings.current.allowsTailcat) }) {
+    public init(credentials: any AgentConnectionCredentialStore, directory: URL?, makeTransport: @escaping @Sendable (AgentConnectionCredentials) -> any AgentTransport = { AgentHTTPTransport(address: $0.address, port: $0.port, publicUrl: $0.publicUrl, tailcatAvailable: $0.tailcatAvailable != false) }) {
         storage = AgentConnectionStorage(credentials: credentials, directory: directory)
         self.makeTransport = makeTransport
     }

@@ -66,31 +66,7 @@ public final class AppCoordinator {
             self?.accountRestored = true
             self?.openPendingLink()
             self?.openNotificationSession()
-            self?.openManagedServer()
         }
-        // MDM can change the managed configuration while the app runs.
-        managedObserver = NotificationCenter.default.addObserver(forName: UserDefaults.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated {
-                let next = ManagedSettings.read()
-                guard next != ManagedSettings.current else { return }
-                ManagedSettings.current = next
-                self?.openManagedServer()
-            }
-        }
-    }
-
-    nonisolated(unsafe) private var managedObserver: NSObjectProtocol?
-
-    /// The server the organization manages, signed in to whenever a root is
-    /// installed (launch included) without it or with its sign-in ended,
-    /// unless the screen is already up. While it's open, an ended sign-in
-    /// shows as "Sign in again" in settings instead of taking the screen.
-    private func openManagedServer() {
-        guard accountRestored, let server = ManagedSettings.current.serverUrl?.value,
-              !context.account.agentConnections.accounts.contains(where: { $0.server == server && !$0.revoked }) else { return }
-        guard !(shell.presentedViewController.map { ($0 as? UINavigationController)?.viewControllers.first is ServerSignInViewController } ?? false),
-              !(shell.topViewController is ServerSignInViewController), let top = linkHost else { return }
-        AccountAdding.signInToServer(context: context, from: top, server: server)
     }
 
     /// Opens the session a tapped notification names (`app/_layout.tsx`
@@ -347,8 +323,6 @@ public final class AppCoordinator {
         NotificationCenter.default.post(name: Self.rootDidChange, object: window)
         openPendingLink()
         openNotificationSession()
-        // Installing put away whatever was presented, sign-in included.
-        openManagedServer()
     }
 
     /// Posted, with the window as its object, once an account's screens

@@ -2,9 +2,8 @@ import XCTest
 
 /// A team server behind an SSO load balancer, end to end against the edge
 /// mock (`scripts/edge-sso-mock/run-ui-test.sh` starts it and trusts its
-/// CA in this simulator only). The managed configuration (`serverUrl`
-/// https://localhost:8443, everything else off) makes the app open on
-/// signing in to that server. The test signs in through the
+/// CA in this simulator only). From Start, the scanner's ⋯ signs in to
+/// https://localhost:8443 by its address. The test signs in through the
 /// browser, gives its name to the profile gate, lands on the server's home,
 /// survives its access tokens being expired (refresh), sees "Sign in again"
 /// once the SSO session ends, and signs in again.
@@ -63,25 +62,33 @@ final class ServerSignInUITests: XCTestCase {
         app.activate()
     }
 
-    /// What an MDM would deliver, through the argument domain so the run
-    /// needs no profile; the app reads it the same way.
-    private static let managed = """
-    <dict><key>serverUrl</key><string>\(server)</string><key>allowAdditionalServers</key><false/>\
-    <key>analyticsEnabled</key><false/><key>hostedRelayEnabled</key><false/>\
-    <key>tailcatEnabled</key><false/><key>phonePairingEnabled</key><false/></dict>
-    """
+    /// Start, the scanner's ⋯, "Sign in to a server", and `server` typed in.
+    private func enterServer(_ server: String, shot: String) {
+        app.launch()
+        let start = app.buttons["start-button"]
+        XCTAssertTrue(start.waitForExistence(timeout: 30), "no Start")
+        start.tap()
+        let more = app.buttons["scanner-more"]
+        XCTAssertTrue(more.waitForExistence(timeout: 8), "the scanner has no ⋯")
+        // The simulator has no camera; its permission prompt may still ask.
+        for button in ["Allow", "OK"] where springboard.alerts.buttons[button].exists {
+            springboard.alerts.buttons[button].tap()
+        }
+        more.tap()
+        let way = app.buttons["Sign in to a server"]
+        XCTAssertTrue(way.waitForExistence(timeout: 5), "no Sign in to a server")
+        way.tap()
+        let address = element("server-sign-in-url")
+        XCTAssertTrue(address.waitForExistence(timeout: 10), "the sign-in screen didn't open")
+        XCTAssertTrue(address.isEnabled)
+        address.tap()
+        address.typeText(server)
+        capture(shot)
+        element("server-sign-in-continue").tap()
+    }
 
     func testSignInRefreshAndSignInAgain() {
-        app.launchArguments = ["-com.apple.configuration.managed", Self.managed]
-        app.launch()
-
-        // The managed server opens by itself, its address filled in and fixed.
-        let address = element("server-sign-in-url")
-        XCTAssertTrue(address.waitForExistence(timeout: 30), "the managed server's sign-in didn't open")
-        XCTAssertEqual(address.value as? String, Self.server)
-        XCTAssertFalse(address.isEnabled)
-        capture("1-managed-server")
-        element("server-sign-in-continue").tap()
+        enterServer(Self.server, shot: "1-server-address")
         signInInBrowser("2-identity-provider")
 
         // First time on this server: the profile gate wants a name.
@@ -104,8 +111,7 @@ final class ServerSignInUITests: XCTestCase {
         app.buttons["settings"].firstMatch.tap()
         XCTAssertTrue(element("settings:server-sign-in").waitForExistence(timeout: 10))
         XCTAssertTrue(element("settings:server").exists)
-        XCTAssertFalse(element("settings:disconnect").exists, "the managed server can be removed")
-        XCTAssertFalse(element("settings:connect-agent").exists, "another server can be added")
+        XCTAssertTrue(element("settings:disconnect").exists, "the server can't be signed out of")
         capture("5-settings")
 
         // The SSO session ends: everything is redirected to the IdP and the
@@ -114,7 +120,6 @@ final class ServerSignInUITests: XCTestCase {
         bounce()
         let needsSignIn = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Sign in again")).firstMatch
         XCTAssertTrue(needsSignIn.waitForExistence(timeout: 30), "no Sign in again")
-        XCTAssertFalse(element("settings:connect-agent").exists, "only Sign in again renews the managed server")
         capture("6-needs-sign-in")
 
         control("restore")
@@ -130,20 +135,14 @@ final class ServerSignInUITests: XCTestCase {
         capture("8-signed-in-again")
     }
 
-    /// On a phone, where the mock isn't reachable: a managed server whose
+    /// On a phone, where the mock isn't reachable: a server whose
     /// `/v0/authentication` is answered by a plain website (an edge in front
     /// of Happy, as far as the app can tell) is refused with the
     /// administrator's fix, over the real network. Runs only with
     /// `TEST_RUNNER_HAPPY_EDGE_DEVICE=1`.
     func testDiscoveryAnsweredByTheEdgeOnADevice() throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["HAPPY_EDGE_DEVICE"] == "1")
-        app.launchArguments = ["-com.apple.configuration.managed", Self.managed.replacingOccurrences(of: Self.server, with: "https://example.com")]
-        app.launch()
-        let address = element("server-sign-in-url")
-        XCTAssertTrue(address.waitForExistence(timeout: 30), "the managed server's sign-in didn't open")
-        XCTAssertEqual(address.value as? String, "https://example.com")
-        capture("device-1-managed-server")
-        element("server-sign-in-continue").tap()
+        enterServer("https://example.com", shot: "device-1-server-address")
         let refused = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "/v0/authentication")).firstMatch
         XCTAssertTrue(refused.waitForExistence(timeout: 30), "no refusal")
         capture("device-2-edge-answered")

@@ -19,11 +19,6 @@ extension Strings {
         static let nameMessage = "This is the first time you’re signing in to this server. Your name shows to your team."
         static let namePlaceholder = "Name"
 
-        static let managedByOrganization = "Managed by your organization."
-        static let off = "Off"
-        static let turnedOffTitle = "Turned Off by Your Organization"
-        static let turnedOff = "Your organization’s settings don’t allow this kind of connection on this phone."
-
         static func failure(_ error: any Error) -> String {
             switch error {
             case ServerSignInError.invalidURL: return "Enter the server’s https:// address, such as https://happy.example.com."
@@ -31,7 +26,6 @@ extension Strings {
             case ServerSignInError.discoveryUnavailable: return "This server doesn’t offer sign-in. It may need a newer version of Happy."
             case ServerSignInError.discoveryBlocked: return "Something in front of this server answered instead of Happy. Ask your administrator to let /v0/authentication through without signing in."
             case ServerSignInError.noSupportedMethod: return "This server doesn’t offer a way to sign in that this app supports."
-            case ServerSignInError.notAllowed: return "Your organization’s settings don’t allow adding this server."
             case ServerSignInError.rejected: return "The server didn’t accept this sign-in. Try again, or ask your administrator."
             case OAuthError.cancelled: return "Sign-in was cancelled."
             case OAuthError.stateMismatch: return "The sign-in result didn’t match this attempt. Try again."

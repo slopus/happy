@@ -25,12 +25,10 @@ public struct ServerSignInFlow: Sendable {
         self.origin = origin; self.method = method; self.tokens = tokens; self.discovery = discovery; self.makeTransport = makeTransport
     }
 
-    /// Discovers how `address` signs in. The organization's managed
-    /// settings decide which servers may be added.
-    public static func start(_ address: String, managed: ManagedSettings = .current, http: any HTTPTransport = NoRedirectURLSessionTransport(),
+    /// Discovers how `address` signs in.
+    public static func start(_ address: String, http: any HTTPTransport = NoRedirectURLSessionTransport(),
                              makeTransport: @escaping @Sendable (AgentOrigin) -> any AgentTransport = ServerSignInFlow.transport) async throws -> ServerSignInFlow {
         let origin = try ServerURL.normalize(address)
-        guard managed.allowsServer(origin) else { throw ServerSignInError.notAllowed }
         let discovery = ServerDiscovery(http: http)
         guard let method = try await discovery.discover(origin).methods.first else { throw ServerSignInError.noSupportedMethod }
         return ServerSignInFlow(origin: origin, method: method, tokens: OAuthTokenClient(http: http), discovery: discovery, makeTransport: makeTransport)

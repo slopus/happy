@@ -199,65 +199,6 @@ final class SignInRequiredTests: XCTestCase {
     }
 }
 
-final class ManagedSettingsTests: XCTestCase {
-    func testKeysAreReadByTypeAndUnknownOnesIgnored() {
-        let managed = ManagedSettings([
-            "serverUrl": "https://Happy.Acme.Example/",
-            "allowAdditionalServers": false,
-            "analyticsEnabled": false,
-            "hostedRelayEnabled": "no",
-            "tailcatEnabled": NSNumber(value: 0),
-            "phonePairingEnabled": true,
-            "somethingElse": true,
-        ])
-        XCTAssertEqual(managed.serverUrl?.value, "https://happy.acme.example")
-        XCTAssertEqual(managed.allowAdditionalServers, false)
-        XCTAssertEqual(managed.analyticsEnabled, false)
-        XCTAssertNil(managed.hostedRelayEnabled)
-        #if canImport(Darwin)
-        XCTAssertNil(managed.tailcatEnabled)
-        #endif
-        XCTAssertEqual(managed.phonePairingEnabled, true)
-        XCTAssertFalse(managed.allowsAnalytics)
-        XCTAssertTrue(managed.allowsHostedRelay)
-        XCTAssertTrue(managed.allowsServer(managed.serverUrl!))
-        XCTAssertFalse(managed.allowsServer(try! ServerURL.normalize("https://other.example")))
-        XCTAssertTrue(managed.isPinned("https://happy.acme.example"))
-        XCTAssertNil(ManagedSettings(["serverUrl": "http://insecure.example"]).serverUrl)
-        XCTAssertFalse(ManagedSettings(nil).isManaged)
-    }
-
-    func testAnalyticsCanOnlyBeForcedOff() {
-        XCTAssertEqual(ManagedSettings(["analyticsEnabled": false]).analyticsEnabled, false)
-        XCTAssertNil(ManagedSettings(["analyticsEnabled": true]).analyticsEnabled)
-        XCTAssertTrue(ManagedSettings(["analyticsEnabled": true]).allowsAnalytics)
-    }
-
-    func testPhonePairingIsOptInOnceManaged() throws {
-        XCTAssertTrue(ManagedSettings(nil).allowsPhonePairing, "no managed configuration changes nothing")
-        XCTAssertFalse(ManagedSettings([:]).allowsPhonePairing)
-        XCTAssertFalse(ManagedSettings(["serverUrl": "https://happy.acme.example"]).allowsPhonePairing)
-        XCTAssertFalse(ManagedSettings(["phonePairingEnabled": "yes"]).allowsPhonePairing, "a wrong type isn't a yes")
-        XCTAssertFalse(ManagedSettings(["phonePairingEnabled": false]).allowsPhonePairing)
-        XCTAssertTrue(ManagedSettings(["phonePairingEnabled": true]).allowsPhonePairing)
-        // A Tailcat pairing code, from the camera or a link.
-        let bundle: [String: Any] = ["v": 1, "a": "tcAddress", "p": 24781, "t": CanonicalBase64URL.encode(Data(repeating: 3, count: 32)), "n": "Mac", "e": 2_000_000_000_000.0]
-        let code = HappyCode(PairingLink.prefix + CanonicalBase64URL.encode(try JSONSerialization.data(withJSONObject: bundle)))
-        func route(_ managed: ManagedSettings) -> ScanRoute { ScanRoute.route(code, intent: .connect, hasAccount: true, managed: managed) }
-        XCTAssertEqual(route(ManagedSettings([:])), .problem(.turnedOff))
-        guard case .connectAgent = route(ManagedSettings(nil)) else { return XCTFail("unmanaged pairing refused") }
-        guard case .connectAgent = route(ManagedSettings(["phonePairingEnabled": true])) else { return XCTFail("opted-in pairing refused") }
-    }
-
-    func testScanRefusesWhatTheOrganizationTurnedOff() throws {
-        let off = ManagedSettings(hostedRelayEnabled: false, tailcatEnabled: false, phonePairingEnabled: false)
-        let key = CanonicalBase64URL.encode(Data(repeating: 1, count: 32))
-        XCTAssertEqual(ScanRoute.route(HappyCode("happy://terminal?\(key)"), intent: .connect, hasAccount: true, managed: off), .problem(.turnedOff))
-        XCTAssertEqual(ScanRoute.route(HappyCode("happy:///account?\(key)"), intent: .connect, hasAccount: true, managed: off), .problem(.turnedOff))
-        XCTAssertEqual(ScanRoute.route(HappyCode("happy://terminal?\(key)"), intent: .connect, hasAccount: true, managed: ManagedSettings()), .connectComputer(publicKey: Data(repeating: 1, count: 32)))
-    }
-}
-
 /// The access token each request carried, and what the daemon answers.
 private actor Daemon: AgentTransport {
     var answers: [String: [HTTP1Response]] = [:]

@@ -77,7 +77,7 @@ public final class PairingAnalytics {
     public init() {}
 
     public func log(_ event: PairingEvent) {
-        guard let sink, !isOptedOut(), ManagedSettings.current.allowsAnalytics else { return }
+        guard let sink, !isOptedOut() else { return }
         var properties = event.properties
         if let variant { properties["app_variant"] = .string(variant.rawValue) }
         sink(event.name, properties)

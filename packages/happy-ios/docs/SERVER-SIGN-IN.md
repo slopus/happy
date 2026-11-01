@@ -9,8 +9,14 @@ authorization code flow") and the edge SSO contract shared by iOS, Android
 and desktop.
 
 The code is in `Sources/HappyCore/ServerSignIn/`. The screen is
-`Screens/ServerSignInScreen.swift`, and MDM is
-`Sources/HappyCore/Environment/ManagedSettings.swift`.
+`Screens/ServerSignInScreen.swift`, reached from the scanner's ⋯ ("Sign in
+to a server") wherever an account or agent is added. There is no managed
+app configuration: Tailcat, the hosted relay and phone pairing are the
+server's to turn on or off (`happy.toml`), and analytics is the person's
+choice. The phone pairs only from a code the computer shows, which it
+doesn't show while pairing is off there; a code scanned anyway is refused
+by the server with `unsupported`, and the app says "Phone pairing is
+turned off on this server." (`PairingError.turnedOff`).
 
 ## Redirect URI (allow-list exactly this)
 
@@ -31,7 +37,7 @@ used.
 
 ## Sign-in
 
-1. The person enters `https://host[:port]`, or MDM supplies it.
+1. The person enters `https://host[:port]`.
    `ServerURL.normalize` accepts only an `https` origin.
 2. `GET /v0/authentication` (`ServerDiscovery`) runs without a token and
    doesn't follow redirects. A redirect (3xx but not 304), a 401 or a non-JSON 403 here means the
@@ -125,51 +131,11 @@ Previews (the in-app browser's workspace proxy) need a tunnel.
   pings. A tunnel is dead after 45 s with nothing inbound. Tunnels can't be
   resumed: WebKit opens a new one.
 
-## Managed settings (MDM)
-
-The configuration is delivered as managed app config, which the app reads
-from `UserDefaults.standard` under `com.apple.configuration.managed`. It is
-read at launch and again on `UserDefaults.didChangeNotification`. The keys
-are the same on iOS, Android and desktop:
-
-| Key | Type | Effect when present |
-| --- | --- | --- |
-| `serverUrl` | string | The team server's `https://` origin. The sign-in screen opens for it at launch, and whenever the app's root changes, until it's signed in or while its sign-in has ended. While the app runs, an ended sign-in shows as "Sign in again" in settings. It can't be signed out or removed. |
-| `allowAdditionalServers` | bool | `false`: no other server can be signed in to, and "Sign in to a server" disappears once `serverUrl` is signed in. |
-| `analyticsEnabled` | bool | `false`: analytics off. The Analytics row shows "Off" and "Managed by your organization", and `PairingAnalytics` sends nothing. `true` is ignored and leaves the person's choice: MDM can't force analytics on. |
-| `hostedRelayEnabled` | bool | `false`: no Happy CLI (relay) account can be restored, created, scanned, switched to or opened at launch. The relay options leave the menus. |
-| `tailcatEnabled` | bool | `false`: no transport uses Tailcat. A pairing code without a public URL is refused. |
-| `phonePairingEnabled` | bool | Opt-in. With any managed configuration delivered, Happy Agent pairing codes (`happy://direct?`) are refused from the camera, a pasted link or an opened URL unless this is `true`. Without a managed configuration, pairing works as before. |
-
-An absent key leaves the person's choice, except `phonePairingEnabled`:
-once any managed configuration is delivered, even one with none of these
-keys, pairing stays off until it's `true`. A key of the wrong type, an
-unknown key, or a `serverUrl` that isn't an `https` origin is ignored. With
-both the relay and pairing turned off, Start and Add go straight to
-signing in to a server.
-
-Example (Jamf / Intune "app configuration" plist):
-
-```xml
-<dict>
-    <key>serverUrl</key><string>https://happy.acme.example</string>
-    <key>allowAdditionalServers</key><false/>
-    <key>analyticsEnabled</key><false/>
-    <key>hostedRelayEnabled</key><false/>
-    <key>tailcatEnabled</key><false/>
-    <key>phonePairingEnabled</key><false/>
-</dict>
-```
-
-To try it without MDM on a development device:
-`xcrun simctl spawn booted defaults write com.slopus.happy.dev com.apple.configuration.managed -dict serverUrl https://happy.acme.example`.
-On hardware, use a configuration profile.
-
 ## Tests
 
 `Tests/HappyCoreTests/ServerSignInTests.swift`: the authorization URL and
 PKCE, the code and refresh forms, rotation, discovery filtering, the
-needs-sign-in rule, URL normalization, MDM parsing and scan refusals,
+needs-sign-in rule, URL normalization,
 refresh-and-retry, a single shared refresh, the WebSocket handshake and
 framing, and tunnel classification.
 
@@ -186,7 +152,7 @@ It accepts only `happy://oauth/callback`, PKCE S256 and the `resource`.
   `HAPPY_EDGE_MOCK_PORT=8444 swift test --filter EdgeMockInteropTests`.
 - `scripts/edge-sso-mock/run-ui-test.sh` (on a Mac) runs
   `ServerSignInUITests` in a simulator that trusts the mock's CA: the
-  managed server opens by itself, sign-in goes through
+  address is entered from Start's scanner, sign-in goes through
   ASWebAuthenticationSession, the name prompt answers the profile gate,
   home loads, expired tokens refresh, an ended SSO session shows "Sign in
   again", and signing in again connects.

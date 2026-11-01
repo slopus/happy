@@ -66,15 +66,9 @@ final class AccountSettingsViewController: SettingsPageViewController {
             Row(id: "server", title: Strings.BackupRestore.server, value: activeServerHost(context) ?? Strings.BackupRestore.defaultServer, accessory: .none, footer: Strings.BackupRestore.copyID),
         ]
         let optOut = AccountSettings(snapshot).analyticsOptOut
-        // Locked by the organization: shown, not changeable.
-        let privacy = if ManagedSettings.current.analyticsEnabled == false {
-            [Row(id: "analytics", title: Text.analytics, icon: ("analytics-outline", .blue), value: Strings.ServerSignIn.off,
-                 accessory: .none, footer: Strings.ServerSignIn.managedByOrganization)]
-        } else {
-            [Row(id: "analytics", title: Text.analytics, icon: ("analytics-outline", .blue), accessory: .toggle, isOn: !optOut, toggled: { [weak self] on in
-                self?.session.updateSettings(["analyticsOptOut": .bool(!on)])
-            }, footer: Text.privacyDescription)]
-        }
+        let privacy = [Row(id: "analytics", title: Text.analytics, icon: ("analytics-outline", .blue), accessory: .toggle, isOn: !optOut, toggled: { [weak self] on in
+            self?.session.updateSettings(["analyticsOptOut": .bool(!on)])
+        }, footer: Text.privacyDescription)]
         return [info, privacy] + pushCards()
     }
 

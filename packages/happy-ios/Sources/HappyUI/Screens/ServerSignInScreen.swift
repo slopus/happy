@@ -7,20 +7,19 @@ import UIKit
 /// Adds a team server by its HTTPS address, or signs one in again: the
 /// server's own sign-in opens in the system browser
 /// (`ASWebAuthenticationSession`), which returns to Happy's fixed redirect
-/// URI (`OAuthRedirect`, docs/SERVER-SIGN-IN.md). A server the organization
-/// manages, or one being signed in again, is filled in and can't be
-/// changed. Nothing is kept until the server has accepted the sign-in.
+/// URI (`OAuthRedirect`, docs/SERVER-SIGN-IN.md). A server being signed in
+/// again is filled in and can't be changed. Nothing is kept until the server has accepted the sign-in.
 final class ServerSignInViewController: UIViewController, UITextFieldDelegate, ASWebAuthenticationPresentationContextProviding {
     private let context: AppContext
     private let list = GroupedListView()
     private let form = ServerFormView()
-    /// The server whose address can't be edited here.
+    /// The server signed in to again, whose address can't be edited here.
     private let fixed: String?
     private var browser: ASWebAuthenticationSession?
 
     init(context: AppContext, server: String? = nil) {
         self.context = context
-        fixed = server ?? ManagedSettings.current.serverUrl.flatMap { ManagedSettings.current.allowAdditionalServers == false ? $0.value : nil }
+        fixed = server
         super.init(nibName: nil, bundle: nil)
         followsTextSize()
     }
@@ -37,7 +36,7 @@ final class ServerSignInViewController: UIViewController, UITextFieldDelegate, A
         form.saveTitle = Strings.ServerSignIn.continueAction
         form.save.accessibilityIdentifier = "server-sign-in-continue"
         form.field.accessibilityIdentifier = "server-sign-in-url"
-        form.field.text = fixed ?? ManagedSettings.current.serverUrl?.value
+        form.field.text = fixed
         form.field.isEnabled = fixed == nil
         form.field.delegate = self
         form.field.addTarget(self, action: #selector(edited), for: .editingChanged)

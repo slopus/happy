@@ -54,7 +54,7 @@ public actor PairingService {
 
     public init(link: PairingLink, transport: (any AgentTransport)? = nil, crypto: PairingCrypto? = nil) {
         self.link = link
-        self.transport = transport ?? AgentHTTPTransport(address: link.address, port: link.port, publicUrl: link.publicUrl, tailcatAvailable: ManagedSettings.current.allowsTailcat)
+        self.transport = transport ?? AgentHTTPTransport(address: link.address, port: link.port, publicUrl: link.publicUrl)
         expiresAt = link.expiresAt
         suppliedCrypto = crypto
     }
@@ -125,10 +125,16 @@ public actor PairingService {
 
     private func decode<T: Decodable>(_ response: HTTP1Response) throws -> T {
         if response.status == 401 { throw PairingError.expired }
-        guard response.status == 200 else { throw PairingError.invalidResponse }
+        guard response.status == 200 else {
+            // The server's own refusal when pairing is off there.
+            if (try? JSONDecoder().decode(Refusal.self, from: response.body))?.code == "unsupported" { throw PairingError.turnedOff }
+            throw PairingError.invalidResponse
+        }
         do { return try JSONDecoder().decode(T.self, from: response.body) }
         catch { throw PairingError.invalidResponse }
     }
+
+    private struct Refusal: Decodable { let code: String? }
 
     private struct Status: Decodable {
         let status: String; let deviceId: String?; let mac: String?

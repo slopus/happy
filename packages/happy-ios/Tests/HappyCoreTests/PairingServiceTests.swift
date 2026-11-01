@@ -33,6 +33,14 @@ private actor PairingVectorTransport: AgentTransport {
     func snapshot() -> ([(String, String, Data?)], Bool) { (requests, closed) }
 }
 
+/// A server whose `happy.toml` turned phone pairing off.
+private struct PairingOffTransport: AgentTransport {
+    func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
+        HTTP1Response(status: 409, headers: ["content-type": "application/json"], body: Data(#"{"error":"Phone pairing is disabled","code":"unsupported"}"#.utf8))
+    }
+    func close() async {}
+}
+
 final class PairingServiceTests: XCTestCase {
     private func service(_ transport: PairingVectorTransport, publicUrl: String? = nil) throws -> PairingService {
         var payload: [String: Any] = ["v": 1, "a": "tcFixedVectorAddress", "p": 24781, "t": CanonicalBase64URL.encode(Data(repeating: 3, count: 32)), "n": "Unverified Mac", "e": Date().addingTimeInterval(60).timeIntervalSince1970 * 1000]
@@ -76,6 +84,12 @@ final class PairingServiceTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(AgentConnectionCredentials.self, from: JSONEncoder().encode(credentials)), credentials)
         let old = Data(#"{"address":"tcAddress","port":24781,"deviceID":"device","deviceToken":"token"}"#.utf8)
         XCTAssertNil(try JSONDecoder().decode(AgentConnectionCredentials.self, from: old).publicUrl)
+    }
+    func testPairingTurnedOffOnTheServerSaysSo() async throws {
+        let link = try PairingLink(PairingLink.prefix + CanonicalBase64URL.encode(JSONSerialization.data(withJSONObject: ["v": 1, "a": "tcAddress", "p": 24781, "t": CanonicalBase64URL.encode(Data(repeating: 3, count: 32)), "n": "Mac", "e": Date().addingTimeInterval(60).timeIntervalSince1970 * 1000])))
+        let service = PairingService(link: link, transport: PairingOffTransport())
+        do { _ = try await service.start(deviceName: "Phone"); XCTFail("pairing started") }
+        catch { XCTAssertEqual(error as? PairingError, .turnedOff) }
     }
     func testRejectedExpiredAndCancellationAreFinal() async throws {
         for ending in ["rejected", "expired"] {
