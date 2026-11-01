@@ -202,7 +202,7 @@ public struct SessionDetailActions: Sendable {
     public static let taskDeleteMessage = "A task’s conversation can’t be deleted. Leave the task instead."
     static let failedToLeaveTask = "Failed to leave task"
     static let failedToArchiveSession = "Failed to archive session"
-    static let failedToDeleteSession = "Failed to delete session"
+    public static let failedToDeleteSession = "Failed to delete session"
 
     static func message(_ error: SessionActionError) -> String? {
         if case .failed(let message) = error, !message.isEmpty { return message }

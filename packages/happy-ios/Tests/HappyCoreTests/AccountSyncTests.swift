@@ -272,15 +272,28 @@ final class SessionActionsTests: XCTestCase {
         XCTAssertTrue(stored.isArchived)
     }
 
-    func testAFailedArchivePutsTheRowBack() async throws {
+    func testARefusedArchivePutsTheRowBack() async throws {
         try storeSession()
-        http.onRaw("POST /v1/sessions/s/archive", "nope", status: 500)
+        http.onRaw("POST /v1/sessions/s/archive", "nope", status: 403)
         do {
             try await actions.archive(sessionId: "s")
             XCTFail("expected an error")
         } catch {}
         XCTAssertEqual(try store.session(id: "s")?.archiving, false)
         XCTAssertEqual(try store.session(id: "s")?.isArchived, false)
+        let pending = await engine.intents.pending()
+        XCTAssertTrue(pending.isEmpty)
+    }
+
+    /// A server that fails for now isn't a no: the archive stands, kept,
+    /// and goes again.
+    func testAFailingServerKeepsTheArchiveWaiting() async throws {
+        try storeSession()
+        http.onRaw("POST /v1/sessions/s/archive", "nope", status: 500)
+        try await actions.archive(sessionId: "s")
+        XCTAssertEqual(try store.session(id: "s")?.archiving, true)
+        let pending = await engine.intents.pending()
+        XCTAssertEqual(pending.map(\.kind), [.archive])
     }
 
     func testABotNeedsItsMachine() async throws {

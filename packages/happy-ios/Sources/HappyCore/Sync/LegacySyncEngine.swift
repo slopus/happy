@@ -83,6 +83,14 @@ public actor LegacySyncEngine {
     /// This account's durable Rig drafts and serialized metadata writer.
     public nonisolated let rigComposer: RigComposerSync
     public nonisolated let presence: SessionPresence
+    /// The person's archives, leaves and deletes on their way
+    /// (docs/offline-first.md): shown at once, kept in `LocalStore.intent`,
+    /// sent while the socket is up. `AccountSession` gives it its delivery.
+    public nonisolated let intents: IntentOutbox
+    /// Whether the socket is up, as last said: true until said otherwise,
+    /// so an account never connected (tests) is taken at its word.
+    public private(set) var reachable = true
+    private var intentsFollowing: Task<Void, Never>?
     private let decoder: RecordDecoder
     private let accountCipher: AccountCipher
     private let options: Options
@@ -112,6 +120,7 @@ public actor LegacySyncEngine {
         self.keyRing = keyRing
         self.rigComposer = RigComposerSync(store: store, keyRing: keyRing, now: now, sleep: sleep)
         self.presence = SessionPresence(store: store, now: now)
+        self.intents = IntentOutbox(storage: LocalIntentStorage(store: store), now: now, sleep: sleep)
         self.decoder = RecordDecoder(keyRing: keyRing)
         self.accountCipher = AccountCipher(secret: keys.secret)
         self.options = options
@@ -127,6 +136,7 @@ public actor LegacySyncEngine {
         ThreadRules.assertOffMain()
         guard !stopped else { return }
         await presence.start()
+        followIntents()
         for job in [Job.sessions, .machines, .settings, .profile, .outbox] {
             await invalidate(job)
         }
@@ -134,6 +144,8 @@ public actor LegacySyncEngine {
 
     public func stop() async {
         stopped = true
+        intentsFollowing?.cancel()
+        await intents.close()
         await rigComposer.stop()
         retryTask?.cancel()
         retryTask = nil
@@ -142,6 +154,39 @@ public actor LegacySyncEngine {
         }
         jobs = [:]
         try? await presence.stop()
+    }
+
+    // MARK: Intents
+
+    /// The socket came or went: what waits goes while it is up.
+    public func setConnected(_ connected: Bool) async {
+        reachable = connected
+        if !stopped { followIntents() }
+        await intents.setOnline(connected && !stopped)
+    }
+
+    private func followIntents() {
+        guard intentsFollowing == nil else { return }
+        let intents = intents
+        intentsFollowing = Task { [weak self] in
+            for await rejection in await intents.rejections() {
+                await self?.rollBack(rejection.intent)
+            }
+        }
+    }
+
+    /// A refused action, undone here: the row is back in the list. A
+    /// deleted session is read again by a full pass of the list.
+    public func rollBack(_ intent: Intent) async {
+        switch intent.kind {
+        case .archive, .leave:
+            try? store.setSessionArchiving(id: intent.target, false)
+        case .delete:
+            try? store.setCursor(.sessionsLastFullSync, 0)
+            await invalidate(.sessions)
+        default:
+            break
+        }
     }
 
     public func invalidate(_ job: Job) async {
@@ -1018,5 +1063,26 @@ actor AttachmentLinks {
         let fresh = try await api.attachmentLink(sessionId: sessionId, ref: ref)
         link = (fresh.url, fresh.headers, ContinuousClock.now)
         return fresh
+    }
+}
+
+/// A legacy account's intents, in its `LocalStore`.
+struct LocalIntentStorage: IntentStorage {
+    let store: LocalStore
+
+    func intents() async throws -> [Intent] {
+        try store.intentValues().compactMap { try? JSONDecoder().decode(Intent.self, from: $0) }
+    }
+
+    func saveIntent(_ intent: Intent) async throws {
+        try store.saveIntent(slot: intent.slot, id: intent.id, value: JSONEncoder().encode(intent))
+    }
+
+    func updateIntent(_ intent: Intent) async throws {
+        try store.updateIntent(id: intent.id, value: JSONEncoder().encode(intent))
+    }
+
+    func removeIntent(id: String) async throws {
+        try store.removeIntent(id: id)
     }
 }

@@ -209,14 +209,7 @@ final class HomeSessionActions {
                 try await actions.archive(sessionId: sessionId)
             } catch {
                 guard let account, context.account.session === account, let front = Self.front(of: window) else { return }
-                let message = switch error as? SessionActionError {
-                case .botNeedsMachine: Strings.SessionInfo.botNeedsMachine
-                case .taskNeedsMachine: Strings.Tasks.needsMachine
-                // A task's machine says why it won't (only its owner may).
-                case .failed(let reason) where !reason.isEmpty: reason
-                default: Strings.SessionInfo.failedToArchiveSession
-                }
-                Alerts.show(Strings.Common.error, message, on: front)
+                Alerts.show(Strings.Common.error, Self.message(error, .archive), on: front)
             }
         }
     }
@@ -232,13 +225,22 @@ final class HomeSessionActions {
                 try await actions.leaveTask(sessionId: sessionId)
             } catch {
                 guard let account, context.account.session === account, let front = Self.front(of: window) else { return }
-                let message = switch error as? SessionActionError {
-                case .taskNeedsMachine: Strings.Tasks.leaveNeedsMachine
-                case .failed(let reason) where !reason.isEmpty: reason
-                default: Strings.Tasks.failedToLeave
-                }
-                Alerts.show(Strings.Common.error, message, on: front)
+                Alerts.show(Strings.Common.error, Self.message(error, .leave), on: front)
             }
+        }
+    }
+
+    /// What a failed archive, leave or delete says.
+    static func message(_ error: Error, _ kind: Intent.Kind) -> String {
+        switch (error as? SessionActionError, kind) {
+        case (.botNeedsMachine, _): Strings.SessionInfo.botNeedsMachine
+        case (.taskNeedsMachine, .leave): Strings.Tasks.leaveNeedsMachine
+        case (.taskNeedsMachine, _): Strings.Tasks.needsMachine
+        // A task's machine says why it won't (only its owner may).
+        case (.failed(let reason), _) where !reason.isEmpty: reason
+        case (_, .leave): Strings.Tasks.failedToLeave
+        case (_, .delete): SessionDetailActions.failedToDeleteSession
+        default: Strings.SessionInfo.failedToArchiveSession
         }
     }
 

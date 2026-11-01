@@ -85,6 +85,17 @@ public actor IntentOutbox {
     public struct Rejection: Equatable, Sendable {
         public let intent: Intent
         public let reason: String
+        /// Whether someone waiting on it (`verdict`) was told: a screen
+        /// that said it already need not again.
+        public let heard: Bool
+    }
+
+    /// What became of an intent.
+    public enum Verdict: Equatable, Sendable {
+        case taken
+        case refused(String)
+        /// Still on its way when the wait ran out: it stands, and goes later.
+        case waiting
     }
 
     private let storage: IntentStorage
@@ -98,7 +109,7 @@ public actor IntentOutbox {
     private var again = false
     private var listeners: [UUID: AsyncStream<[Intent]>.Continuation] = [:]
     private var rejectionListeners: [UUID: AsyncStream<Rejection>.Continuation] = [:]
-    private var waiters: [String: [CheckedContinuation<Bool, Never>]] = [:]
+    private var waiters: [String: [(token: UUID, continuation: CheckedContinuation<Verdict, Never>)]] = [:]
     /// On their way now, so no other send starts them again.
     private var inFlight: Set<String> = []
     /// Delivered, for tests.
@@ -165,7 +176,7 @@ public actor IntentOutbox {
         var list = await pending()
         let intent = Intent(kind: kind, target: target, value: value, createdAt: max(now(), (list.last?.createdAt ?? 0) + 1))
         try await storage.saveIntent(intent)
-        if let replaced = list.first(where: { $0.slot == intent.slot }) { finish(replaced.id, true) }
+        if let replaced = list.first(where: { $0.slot == intent.slot }) { finish(replaced.id, .taken) }
         list.removeAll { $0.slot == intent.slot }
         list.append(intent)
         kept = list
@@ -177,12 +188,39 @@ public actor IntentOutbox {
     /// Whether `id` was taken (true) or refused (false); at once for one
     /// no longer waiting, or replaced by a later one (true).
     public func outcome(_ id: String) async -> Bool {
-        guard await pending().contains(where: { $0.id == id }) else { return true }
-        return await withCheckedContinuation { waiters[id, default: []].append($0) }
+        if case .refused = await verdict(id) { return false }
+        return true
     }
 
-    private func finish(_ id: String, _ taken: Bool) {
-        for waiter in waiters.removeValue(forKey: id) ?? [] { waiter.resume(returning: taken) }
+    /// What became of `id`: taken (or replaced by a later one), refused
+    /// and why, or, after `limit`, still waiting.
+    public func verdict(_ id: String, within limit: Duration? = nil) async -> Verdict {
+        guard await pending().contains(where: { $0.id == id }) else { return .taken }
+        let token = UUID()
+        let sleep = sleep
+        return await withCheckedContinuation { continuation in
+            waiters[id, default: []].append((token, continuation))
+            if let limit {
+                Task {
+                    try? await sleep(limit)
+                    self.expire(id, token)
+                }
+            }
+        }
+    }
+
+    private func expire(_ id: String, _ token: UUID) {
+        guard let index = waiters[id]?.firstIndex(where: { $0.token == token }) else { return }
+        waiters[id]?.remove(at: index).continuation.resume(returning: .waiting)
+        if waiters[id]?.isEmpty == true { waiters[id] = nil }
+    }
+
+    /// Tells whoever waits on `id`; whether anyone did.
+    @discardableResult
+    private func finish(_ id: String, _ verdict: Verdict) -> Bool {
+        let waiting = waiters.removeValue(forKey: id) ?? []
+        for waiter in waiting { waiter.continuation.resume(returning: verdict) }
+        return !waiting.isEmpty
     }
 
     // MARK: Delivery
@@ -240,8 +278,10 @@ public actor IntentOutbox {
         }
     }
 
-    /// One try of `intent`: gone when taken or refused, else due again later.
-    private func send(_ intent: Intent, _ deliver: Deliver) async {
+    /// One try of `intent`: gone when taken or refused, else due again
+    /// later. `told`: the caller hears the verdict itself.
+    @discardableResult
+    private func send(_ intent: Intent, _ deliver: Deliver, told: Bool = false) async -> Verdict {
         inFlight.insert(intent.id)
         defer { inFlight.remove(intent.id) }
         do {
@@ -249,27 +289,35 @@ public actor IntentOutbox {
             try? await storage.removeIntent(id: intent.id)
             delivered.append(intent)
             drop(intent.id)
-            finish(intent.id, true)
+            finish(intent.id, .taken)
+            return .taken
         } catch let refusal as IntentRefusal {
             try? await storage.removeIntent(id: intent.id)
             drop(intent.id)
-            finish(intent.id, false)
-            for listener in rejectionListeners.values { listener.yield(Rejection(intent: intent, reason: refusal.reason)) }
+            let heard = finish(intent.id, .refused(refusal.reason)) || told
+            for listener in rejectionListeners.values { listener.yield(Rejection(intent: intent, reason: refusal.reason, heard: heard)) }
+            return .refused(refusal.reason)
         } catch {
             var retry = intent
             retry.attempts += 1
             retry.nextAttemptAt = now() + Self.backoff(retry.attempts)
             try? await storage.updateIntent(retry)
             if let index = kept?.firstIndex(where: { $0.id == intent.id }) { kept?[index] = retry }
+            return .waiting
         }
     }
 
     /// Tries `id` once now, whether or not the account is said to be
-    /// reachable: a person waits on it (an answer to a question). Kept as
-    /// it was if it doesn't go.
-    public func attempt(_ id: String) async {
-        guard let deliver, !inFlight.contains(id), let intent = await pending().first(where: { $0.id == id }) else { return }
-        await send(intent, deliver)
+    /// reachable: a person waits on it (an answer to a question, an
+    /// archive). Kept as it was if it doesn't go. `deliver` stands in for
+    /// the account's own when it has none yet.
+    @discardableResult
+    public func attempt(_ id: String, through deliver: Deliver? = nil) async -> Verdict {
+        guard let intent = await pending().first(where: { $0.id == id }) else { return .taken }
+        guard let deliver = deliver ?? self.deliver else { return .waiting }
+        // Already on its way: its answer, or the wait.
+        if inFlight.contains(id) { return await verdict(id, within: .seconds(60)) }
+        return await send(intent, deliver, told: true)
     }
 
     private func wake() {
@@ -295,7 +343,7 @@ public actor IntentOutbox {
         listeners = [:]
         for listener in rejectionListeners.values { listener.finish() }
         rejectionListeners = [:]
-        for id in Array(waiters.keys) { finish(id, false) }
+        for id in Array(waiters.keys) { finish(id, .waiting) }
     }
 }
 

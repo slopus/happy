@@ -98,10 +98,12 @@ public final class LocalStore: Sendable {
         troubleshootingHub = SnapshotHub(observation: troubleshootingObservation, project: { overlay.troubleshooting($0) })
         try Schema.migrator.migrate(writer)
         // Live state from a previous run is stale: the server re-sends
-        // `thinking` every few seconds while it holds, and an archive that
-        // was in flight has since been answered.
+        // `thinking` every few seconds while it holds. An archive or leave
+        // still waiting in `intent` keeps its session out of the list; any
+        // other was answered.
         try performWrite { db in
-            try db.execute(sql: "UPDATE session SET thinking = 0, thinkingAt = 0, archiving = 0 WHERE thinking = 1 OR archiving = 1")
+            try db.execute(sql: "UPDATE session SET thinking = 0, thinkingAt = 0 WHERE thinking = 1")
+            try db.execute(sql: "UPDATE session SET archiving = \(Self.removalPending) WHERE archiving != \(Self.removalPending)")
             try db.execute(sql: "UPDATE outbox SET state = 'queued' WHERE state = 'sending'")
         }
     }
@@ -157,6 +159,8 @@ public final class LocalStore: Sendable {
         let removed = try performWrite { db in
             var removed = Set<String>()
             for record in incoming {
+                // Deleted here, the server not told yet.
+                if try Self.deletePending(record.id, db) { continue }
                 let result = try Self.upsert(record, db)
                 if let reconcileComposer {
                     try Self.reconcileComposer(result.merged, previous: result.previous, db: db, transform: reconcileComposer)
@@ -262,6 +266,41 @@ public final class LocalStore: Sendable {
         try performWrite { db in
             try db.execute(sql: "UPDATE session SET archiving = ? WHERE id = ? AND archiving != ?", arguments: [archiving, id, archiving])
         }
+    }
+
+    // MARK: Intents (docs/offline-first.md)
+
+    /// An archive or leave waiting for `session`, in SQL. Legacy accounts
+    /// never queue an unarchive, which would share the archive slot.
+    static let removalPending = "EXISTS (SELECT 1 FROM intent WHERE intent.slot IN ('archive|' || session.id, 'leave|' || session.id))"
+
+    /// Whether a delete of session `id` waits: a stale list must not bring
+    /// it back meanwhile.
+    static func deletePending(_ id: String, _ db: Database) throws -> Bool {
+        try Bool.fetchOne(db, sql: "SELECT EXISTS (SELECT 1 FROM intent WHERE slot = ?)", arguments: ["delete|" + id]) ?? false
+    }
+
+    /// The kept intents, each as the JSON it was saved as.
+    public func intentValues() throws -> [Data] {
+        try performRead { db in try Data.fetchAll(db, sql: "SELECT value FROM intent") }
+    }
+
+    /// Keeps an intent, replacing what its slot held.
+    public func saveIntent(slot: String, id: String, value: Data) throws {
+        try performWrite { db in
+            try db.execute(sql: """
+                INSERT INTO intent(slot, id, value) VALUES (?, ?, ?)
+                ON CONFLICT(slot) DO UPDATE SET id = excluded.id, value = excluded.value
+                """, arguments: [slot, id, value])
+        }
+    }
+
+    public func updateIntent(id: String, value: Data) throws {
+        try performWrite { db in try db.execute(sql: "UPDATE intent SET value = ? WHERE id = ?", arguments: [value, id]) }
+    }
+
+    public func removeIntent(id: String) throws {
+        try performWrite { db in try db.execute(sql: "DELETE FROM intent WHERE id = ?", arguments: [id]) }
     }
 
     public func deleteSession(id: String) throws {
@@ -860,7 +899,7 @@ public final class LocalStore: Sendable {
         try performWrite { db in
             for table in [
                 "message", "outbox", "chatHistory", "session", "machine", "project", "accountSettings", "pendingSettings",
-                "accountProfile", "syncState", "attachment", "draft", "composerState",
+                "accountProfile", "syncState", "attachment", "draft", "composerState", "intent",
             ] {
                 try db.execute(sql: "DELETE FROM \(table)")
             }

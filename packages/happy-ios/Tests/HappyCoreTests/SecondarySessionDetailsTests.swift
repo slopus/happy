@@ -422,7 +422,7 @@ final class SessionDetailActionsTests: XCTestCase {
 
     func testAFailedDeleteHasHappyAppsWords() async throws {
         let record = try stored()
-        http.onRaw("DELETE /v1/sessions/s", "no", status: 500)
+        http.onRaw("DELETE /v1/sessions/s", "no", status: 403)
         do {
             try await actions.delete(record)
             XCTFail("expected an error")

@@ -93,11 +93,27 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
         // The stream ends when the session stops.
         let statusUpdates = session.statusUpdates
         networkWatch = NetworkPath.shared.watch { [weak self] satisfied in
-            MainActor.assumeIsolated { self?.networkPath = satisfied }
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let back = satisfied && !self.networkPath
+                self.networkPath = satisfied
+                // Back from airplane mode: reconnect, and send what waited, now.
+                if back, self.isCurrentAccount { Task { [session = self.session] in await session.networkReturned() } }
+            }
         }
         Task { @MainActor [weak self] in
             for await status in statusUpdates {
                 self?.status = status
+            }
+        }
+        // An archive, leave or delete refused with no screen waiting on it
+        // (sent after a relaunch, or once back online): put back already,
+        // and said here, once. The stream ends when the session stops.
+        let intents = session.sync.intents
+        Task { @MainActor [weak self] in
+            for await rejection in await intents.rejections() where !rejection.heard {
+                guard let self, self.isCurrentAccount, let front = HomeSessionActions.front(of: self.view.window) else { continue }
+                Alerts.show(Strings.Common.error, HomeSessionActions.message(SessionActionError(refusal: rejection.reason), rejection.intent.kind), on: front)
             }
         }
         // sync.ts `nativeUpdateSync`: asked at start and whenever the app
@@ -309,13 +325,6 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
         content?.view.isHidden = blank
         if floating {
             // The account's name is the bar's title; the connection hangs under it.
-            let headerState: Strings.HeaderStatus.State = switch status {
-            case .connected: .online
-            // No way out at all: Telegram's "waiting for network…".
-            case _ where !networkPath: .waitingForNetwork
-            case .connecting: .connecting
-            case .disconnected, .error: .offline
-            }
             switcher?.subtitle = Strings.HeaderStatus.text(headerState)
             // Beside the sidebar home draws nothing, but the bar is over
             // the sidebar too: the switcher stays, or a tablet has no way
@@ -371,6 +380,17 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
     /// Not private, so a test can flip it.
     var status: RealtimeStatus = HomeConnectionStatus.initial {
         didSet { if status != oldValue { updateNavigation(animated: false) } }
+    }
+
+    /// What the header says of the connection.
+    var headerState: Strings.HeaderStatus.State {
+        switch status {
+        case .connected: .online
+        // No way out at all: Telegram's "waiting for network…".
+        case _ where !networkPath: .waitingForNetwork
+        case .connecting: .connecting
+        case .disconnected, .error: .offline
+        }
     }
 
     /// Whether the phone has a way out at all (`NetworkPath`).

@@ -290,6 +290,13 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         defer { loadingSeconds = CACurrentMediaTime() - loadingStarted }
         #endif
         super.viewDidLoad()
+        networkWatch = NetworkPath.shared.watch { [weak self] satisfied in
+            MainActor.assumeIsolated {
+                guard let self, self.networkPath != satisfied else { return }
+                self.networkPath = satisfied
+                self.applyTitleAndStatus()
+            }
+        }
         isTabletLayout = traitCollection.isTabletLayout
         // A tablet's bar is opaque with the plain title (TabletBranches),
         // its name in the bar's own text until that is planned.
@@ -1016,14 +1023,25 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     /// (`composerDidChangeHeaderStatus`), the record home held until then.
     private var sessionStatus: ChatHeaderStatus?
 
+    /// Whether the phone has a way out at all (`NetworkPath`).
+    private var networkPath = NetworkPath.shared.isSatisfied
+    private var networkWatch: NetworkPathWatch?
+
     /// What is under the name: a chat still being started says what the
-    /// start is doing; any other, its session's status.
+    /// start is doing; with no network, that it waits for one, as
+    /// Telegram's does; any other, its session's status.
     private var shownStatus: ChatHeaderStatus? {
         if let compose = composing, isComposing {
             return compose.progress.map { ChatHeaderStatus(text: $0, color: UIColor(Palette.textSecondary), working: true) }
         }
+        if !networkPath {
+            return ChatHeaderStatus(text: Strings.HeaderStatus.text(.waitingForNetwork), color: UIColor(Palette.textSecondary), working: true)
+        }
         return sessionStatus
     }
+
+    /// What is under the name now, for tests.
+    var headerStatusText: String? { shownStatus?.text }
 
     /// The name and status on the phone's capsule and the tablet's plain
     /// title alike, the status crossfading as the agent chat's does.

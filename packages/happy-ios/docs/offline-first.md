@@ -38,8 +38,10 @@ computer ("agent", `SyncEngine` over Tailcat) and a Happy account
 
 `IntentOutbox` (`Sources/HappyCore/Sync/IntentOutbox.swift`) is the one
 implementation of these rules for both account kinds. Each account keeps
-its rows in its own database, so an intent and the local state it changes
-commit together:
+its rows in its own database. The agent's local state is the overlay laid
+from the rows themselves; the legacy account writes the row first and its
+`session` change second, and every launch makes `session.archiving` agree
+with the rows, so a kill between the two still keeps the row out:
 
 | Account kind | Database | Table |
 | --- | --- | --- |
@@ -59,10 +61,20 @@ what the action carries (a title, answers).
   bumps `attempts` and `nextAttemptAt` and moves on, so one unreachable
   machine never holds back another chat's read.
 - The owner turns delivery on only once the account is verified live
-  (agent: after the bootstrap read; legacy: socket connected), and off
-  on pause, background and sign-out.
-- `outcome(id)` lets a caller that wants to know (a screen showing a
-  spinner) wait for the answer; nothing on the main thread waits on it.
+  (agent: after the bootstrap read; legacy: socket connected,
+  `LegacySyncEngine.setConnected`), and off on pause, background and
+  sign-out.
+- `attempt(id)` sends one now whether or not the account is said to be
+  reachable, for a screen that waits on the answer (legacy archive, leave
+  and delete; agent question answers), and says `taken`, `refused(why)`
+  or `waiting`. Waiting means the action stands and goes later: the
+  screen moves on as if it were done.
+- `verdict(id, within:)` and `outcome(id)` wait for an answer; nothing on
+  the main thread waits on them.
+- Each rejection says whether someone waiting on it was told (`heard`).
+  One nobody heard (sent after a relaunch, or once back online) is said
+  by the account's home: the agent home's notice row, the legacy home's
+  alert. Either way the row is back by then.
 
 Messages keep their own outboxes, which predate this one and already
 follow the same rules with more to them (attachments, uploads, order
@@ -78,9 +90,9 @@ within a chat): `outbox` in `direct.sqlite` (agent,
 | Mark a chat read (opening it) | intent `read`: the home dot and counters clear at once, kept through relaunch and stale reads, `POST /v0/agents/:id/read` | local only: `session.unread` is this phone's own (`markSessionRead`), nothing to send |
 | Send a message | message outbox (existing), pending bubble, in order | message outbox (existing), "Sending…", in order, `dependsOn` |
 | Rename a task or bot | intent `rename`, title shown at once | — (no rename in the legacy app) |
-| Archive a task, bot or subtask | intent `archive` | intent `archive`: `session.archiving` kept through relaunch while it waits |
-| Leave a task / Surface | intent `leave` | intent `leave` |
-| Delete a session | — (no delete for agent work) | intent `delete`: the row hides at once |
+| Archive a task, bot or subtask | intent `archive` | intent `archive`: `session.archiving` kept through relaunch while it waits; one try now (`killSession`, else the server), the rest when the socket is back |
+| Leave a task / Surface | intent `leave` | intent `leave` (`leaveTask` RPC) |
+| Delete a session | — (no delete for agent work) | intent `delete`: gone here at once, a list read meanwhile doesn't bring it back (`LocalStore.deletePending`); refused, a full pass of the list brings it back |
 | Settings (mute, hide projects, Prioritizing, …) | `pendingSetting` (existing) | `pendingSettings` (existing) |
 | Permission mode / model | the dock's pick is kept locally and sent with the next message | kept in `composerState`, sent with the next message |
 | Answer a question | intent `answer` (mutation ID), the form shows its answer while it waits | — RPC to the machine; see below |
@@ -96,6 +108,11 @@ Not covered yet, and why:
 - Agent sidebar edits (move, fold, sections) are optimistic with three
   retries under one mutation ID (`Store.edit`) but not kept across a
   relaunch.
+- A legacy bot's or task's archive and a task's leave need its machine.
+  While the socket is up, a machine that doesn't answer is a refusal, as
+  before. With the socket down, it is this phone that can't reach it, so
+  the action waits.
+- Legacy rename, pin and unarchive: the legacy app has none.
 
 ## What is kept per account kind
 
@@ -156,9 +173,11 @@ Both kinds' headers say where sync is, as Telegram does:
 | Live | the account's usual subtitle |
 
 With no network path, home shows no "computer did not answer" notice: the
-header already says it. When the path comes back the account reconnects
-at once rather than at the end of its backoff (`SyncEngine.reconnect`), and
-what waited is sent.
+header already says it, and so does a legacy chat's, over its session's
+status. When the path comes back the account reconnects at once rather
+than at the end of its backoff (agent: `SyncEngine.reconnect`; legacy:
+`AccountSession.networkReturned`, a fresh socket), and what waited is
+sent.
 
 ## Tests
 
@@ -167,7 +186,13 @@ what waited is sent.
 - `SyncEngineTests`: a pending read and archive survive a kill and
   relaunch offline, then flush after reconnect; a stale bootstrap does
   not bring the unread dot back; a refusal rolls back with a notice.
-- `LegacyIntentTests` (HappyCore): the same for a legacy account.
+- `LegacyIntentTests` (HappyCore): a legacy account's archive kept
+  through a kill and relaunch offline and a stale list, then sent once;
+  an archive not pending reset at launch; a delete a stale list doesn't
+  undo; a refusal after a relaunch putting the row back, unheard; a
+  task's archive offline waiting rather than refused.
+- `SessionActionsTests`: a 4xx puts the archived row back at once; a 5xx
+  keeps it waiting.
 - `HostedOfflineAgentTests`: a paired computer read online, then
   airplane mode: a chat read and a task archived offline, the app killed
   and opened again still offline. Home is drawn from disk at once with
@@ -175,6 +200,10 @@ what waited is sent.
   header; the chat read before opens from disk. When the network comes
   back the read and the archive each reach the computer once, and the
   dot doesn't come back.
-- Hosted, legacy: opening in airplane mode on a cached home and chat; a
-  message sent offline shows pending, and goes once, in order, when the
-  network is back.
+- `HostedOfflineLegacyTests`: a Happy account in airplane mode archives a
+  chat and sends two messages, is killed and opened again still offline:
+  home opens with the chat still archived and "waiting for network…",
+  the chat opens from disk with both messages "Sending…" and its header
+  saying "waiting for network…". When the network is back each message
+  is posted once, in order, the archive once, and the bubbles settle in
+  the order they were sent.

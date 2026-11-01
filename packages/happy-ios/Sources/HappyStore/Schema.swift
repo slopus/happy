@@ -203,6 +203,12 @@ enum Schema {
             try db.execute(sql: "DELETE FROM syncState WHERE key = 'sessions.lastFullSync'")
         }
 
+        migrator.registerMigration("v8-intents") { db in
+            // The person's actions on their way (docs/offline-first.md): one
+            // row per slot (`kind|target`), the whole intent as JSON.
+            try db.execute(sql: "CREATE TABLE intent (slot TEXT PRIMARY KEY NOT NULL, id TEXT NOT NULL UNIQUE, value BLOB NOT NULL)")
+        }
+
         return migrator
     }
 }

@@ -214,6 +214,8 @@ public final class AccountSession: Sendable {
     public func start() async {
         await rigComposer.configure(transport: realtime)
         await sync.configureSending(filesDirectory: sender.filesDirectory)
+        let actions = actions
+        await sync.intents.setDeliver { try await actions.deliver($0) }
         await sync.syncAll()
         let realtime = self.realtime
         let sync = self.sync
@@ -257,6 +259,13 @@ public final class AccountSession: Sendable {
         statusContinuation.finish()
     }
 
+    /// The phone has a way out again (`NetworkPath`): connect now rather
+    /// than when the socket's backoff says, so what waited goes at once.
+    public func networkReturned() async {
+        guard await realtime.status != .connected else { return }
+        await realtime.reconnect()
+    }
+
     /// Tells the server whether the app is in the foreground, so it can
     /// suppress pushes while the user is looking at the app.
     public func sendAppState(_ state: String) async {
@@ -278,8 +287,10 @@ public final class AccountSession: Sendable {
         case .status(let value):
             status.yield(value)
             await rigComposer?.setConnected(value == .connected)
+            await sync.setConnected(value == .connected)
         case .connected:
             await sync.syncAll()
+            await sync.setConnected(true)
             await rigComposer?.setConnected(true)
         case .event("update", let payload?):
             if let update = try? payload.decode(as: UpdateContainer.self) {
