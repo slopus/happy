@@ -21,10 +21,16 @@ import androidx.compose.ui.unit.dp
  * between full and 30% opacity, 1 s each way, eased; settling back takes
  * 200 ms. The pulse keeps the screen's [ShimmerClock] and is drawn by it:
  * a frame of it draws one circle, with no animation of its own to run, no
- * state to write and nothing to compose.
+ * state to write and nothing to compose. [onRenderThread], the pulse runs
+ * there ([RenderThreadPulse]) and costs the main thread nothing a frame; it
+ * then stops at once rather than settling.
  */
 @Composable
-fun StatusDot(color: Color, modifier: Modifier = Modifier, pulsing: Boolean = false, size: Dp = 6.dp) {
+fun StatusDot(color: Color, modifier: Modifier = Modifier, pulsing: Boolean = false, size: Dp = 6.dp, onRenderThread: Boolean = false) {
+    if (pulsing && onRenderThread && renderThreadMotion()) {
+        RenderThreadPulse(color, modifier, size)
+        return
+    }
     Box(modifier = modifier.size(size).then(PulseElement(rememberShimmerClock(), color, pulsing)))
 }
 

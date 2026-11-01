@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- StatusDot's circle, white, tinted its colour (SRC_IN). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="6dp"
+    android:height="6dp"
+    android:viewportWidth="2"
+    android:viewportHeight="2">
+    <path
+        android:name="dot"
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M0,1 A1,1 0 1,0 2,1 A1,1 0 1,0 0,1 Z" />
+</vector>

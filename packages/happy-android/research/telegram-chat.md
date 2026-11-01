@@ -636,6 +636,111 @@ later; away from the newest and back; the jump button): `fold-motion-dark.mp4` a
 janky 0.7–0.8%. Streaming with phase 4 against main at the same commit, interleaved
 twice: 17.5–18.0 vs 17.6–17.9 ms of main an update, so no change.
 
+## Phase 2, the glass's cost: results
+
+Measured 2026-10-31 on the Fold (120 Hz, dark, `-e chat recorded`), non-debuggable
+chatbench. "Before" is main at ca1a18607/c458fa14e~1; "after" is c458fa14e plus the
+RenderThread shimmer and band sharing. Runs interleaved, ranges over 2–4 runs each.
+
+| | before | after |
+|---|---|---|
+| **IME**, open and close × 4 | total p50 7.8–8.2 ms, GPU p50 3.3–3.4. Missed 37–46%. With `-e glass off`: 20% | total p50 5.6–6.4 ms, GPU p50 1.3. **Missed 18–26%**, janky 0–0.5%: the same as glass off |
+| **scroll**, 8 + 8 flings | total p50 / p90 / p99 = 10.4–10.6 / 12.9–13.9 / 17.7–22.1 ms. Missed 2.5–3.7% | **9.2–9.3 / 10.9–11.1 / 13.6–14.6 ms**. Missed 2.7–3.2%, janky 0.1–0.2% |
+| **working, nothing streaming** (`conversation_working`, 5 s) | main 1.8 ms a frame, 120 frames a second: 210–256 ms of main a second | **main 0 ms**. The RenderThread draws the shimmer and the dot at 60 Hz, 6.3 ms total p50 |
+| **stream**, 120 updates | main 16.1–17.7 ms an update, of which 127–256 ms a second the working bar | 15.4–16.0 ms an update, none of it the bar |
+
+Legacy ChatList (no glass) scrolls at 4.6 ms p50; the conversation with `-e glass off` at
+5.8. Targets missed: the keyboard is not under 3%, and scroll is 9.2 ms, not near 4.7.
+
+**Where the glass's GPU time went: the prefilter.** A trace of an IME frame had the bar's
+full-size Gaussian prefilter (sigma 4 px over a 1968 × 572 layer) as most of the glass's
+GPU. It is now three bilinear halvings to the 1/8 copy (`GlassLayers.record`): every
+full-size pixel reaches the small copy, so it does the prefilter's job.
+- Pixels: before vs after, light and dark, the bar and feather differ by at most 2 of 255
+  and the body and the dock by at most 1. The status-bar band differs where the clock and
+  the icons do.
+- Steadiness (`glass_steps`, research/telegram-glass.md's method, 40 steps of 1 px):
+  coefficient of variation per band 0.2–0.4 before and after. Dark, mean D 0.03/0.08/0.07
+  before and 0.04/0.10/0.07 after for title/foot/feather, all under 0.2 of 255.
+- Capturing straight into the half copy (one layer fewer) measured the same on the Fold,
+  but it doubled the steps' CV to 1.2–1.4, so the full-size capture stays.
+
+**The keyboard doesn't re-blur.** `KeyboardLift.travel` tells the transcript's
+`GlassSource` where the keyboard is, where it started and where it ends. The bar, which the
+list slides under, blurs the band the whole travel passes under once, as the animation
+starts, and only moves that blur each frame (`GlassTravel`, `blurOf`). The dock and the
+composer ride with the list and never re-blurred. During the animation the GPU's p50 went
+from 3.3 to 1.3 ms, glass off's figure.
+
+**Bands are shared.** Glasses over one source keep their blurred bands on it
+(`GlassSource.bands`). A glass whose band lies inside another's draws from that, and two
+that overlap (the composer's pill over the dock's fade) blur one band round both.
+
+**The bar is one layer.** The bar's glass (blur, tint, feather mask) is recorded into an
+offscreen layer of its own. A caret, a pressed button or the shimmer over it composites
+that as it is. The feather's mask no longer needs a saveLayer per frame.
+
+**The working bar costs the main thread nothing.** Two steps:
+1. c458fa14e: the shimmer and the dot draw from one clock that writes no snapshot state.
+   Each tick invalidates only its nodes' draws, at most 60 times a second. Main went from
+   about 2 ms a frame at 120 Hz to 1.2 ms a frame at 60 Hz (127 ms a second). Every tick
+   is still a whole main-thread frame (Choreographer, Compose's frame, a traversal, draw).
+2. In the conversation's bar the title's and status's sweep and the dot's pulse are now
+   AnimatedVectorDrawables (`res/drawable/shimmer_sweep.xml`, `status_dot_pulse.xml`, the
+   same numbers) in a View of their own (`RenderThreadMotion.kt`). The RenderThread runs
+   them with no main-thread frame at all, as it runs the platform's spinner. The text is
+   still laid out and recorded by Compose, and the View draws that recording with the
+   band over it (SrcAtop in a layer). Lists' shimmers keep the clock: they come and go
+   with scrolling. Robolectric, Reduce Motion and API < 29 take the clock's path.
+
+`ConversationWorkingTest` runs 30 frames of a working bar and finds no state written,
+nothing composed, and the bar's pixels changing.
+
+**What still misses on the keyboard.** The glass is out of it: glass on and glass off now
+miss the same share. What is left:
+- The animation's frames come every 16.7 ms against FrameMetrics' 8.3 ms deadline (see
+  phase 1). Their p50 is 5.6–6.4 ms, so the share flips with a millisecond either way.
+  The ones that miss are ui 4–6 ms plus RenderThread 2–3 ms. The ui is
+  `insets_animation` (0.3–1.5 ms, the platform dispatching insets to the View tree),
+  `measureAndLayout` (0.8–1.5 ms) and `onPositionedCallbacks` (0.3–0.5 ms, the glass's
+  and the composer's `onGloballyPositioned` running as everything is placed again each
+  frame).
+- The frame the keyboard settles in (7–12 ms of ui).
+- Caret-blink frames, below.
+
+Under 3% needs the IME frames' main thread under about 3 ms. The next steps are moving
+the glass's and the composer's position reads out of `onGloballyPositioned` (positions
+read in draw), and placing the riding layers without a layout pass (a translation set from
+the insets callback, as AdjustPanLayoutHelper does on a View). Neither is the glass's.
+
+**Caret-blink frames.** Isolated frames 500 ms apart with 7–8 ms of GPU, glass on or off.
+A trace has them drawing only the caret: about 0.6 ms of RenderThread and a handful of
+ops, at a GPU frequency of 342–443 MHz. The GPU has clocked down between blinks and takes
+the frame at that speed. It is not work we can remove; since the bar is its own layer, a
+blink no longer re-runs any of the glass. They count as missed only because 7–8 ms plus
+the wait passes 8.3 ms. Holding the GPU up for a caret would cost power to win a
+statistic.
+
+**Scroll.** RenderThread is 4.6 ms a frame against legacy's 1.3. About 0.6 ms of that is
+recording the 16 glass layers. About 2.4 ms is flushing them: four blurs of about 1968 ×
+330 at full size and their halvings. GPU p90 went 6.4 → 4.4 ms and the tail flattened
+(p99 18–22 → 14 ms). The p50's remaining gap to the glass-off 5.8 ms is that flush. The
+next step is Telegram's: draw the capture at the band's size into one merged node per
+frame rather than one per glass (the bar's 1968 × 333, the fade's and the pill's), or
+blur the bands at half size.
+
+Pictures and video in the task's `.context/glass-cost/`:
+- `before-conversation-{light,dark}.png` and `after-conversation-{light,dark}.png`, the
+  same screen from `glass_steps`.
+- `fold-keyboard-dark.mp4`: `conversation_ime` with the after build.
+- `working-bar-renderthread-strip-emulator.png`: four frames of the RenderThread sweep and
+  pulse.
+
+Benchmark additions:
+- `conversation_working`: the working screen for 5 s, nothing streaming.
+- `glass_steps`: the 1 px steadiness measure, with the first and last screenshots in
+  `files/glass-steps-*.png`.
+
 ## Running the benchmark
 
 ```sh
@@ -665,7 +770,7 @@ adb -s <device> shell cat /sdcard/Android/data/com.slopus.happy.chatbench/files/
   on the daemon, write `{"runs":[…]}`, then run `tools/bench/scramble-chat.py recording.json out.json.gz`.
 - **Cases:**
   - `conversation_open`, `conversation_scroll`, `conversation_stream`,
-    `conversation_older`, `conversation_ime`
+    `conversation_older`, `conversation_ime`, `conversation_working`, `glass_steps`
   - `conversation_motion` (`-e drive on` sends, scrolls and jumps on its own, for recordings)
   - `legacy_scroll`
   - `proto_compose_current`, `proto_compose_canvas`, `proto_recycler_canvas`,

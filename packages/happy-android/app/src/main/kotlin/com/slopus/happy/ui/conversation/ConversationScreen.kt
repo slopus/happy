@@ -320,6 +320,8 @@ fun ConversationScreen(
                                     baseColor = colors.text,
                                     highlightColor = ShimmerSpec.sheen(colors.text, colors.surface),
                                     shimmering = running,
+                                    // The bar stays while the agent works: its sweep runs on the RenderThread, the main thread idle.
+                                    onRenderThread = true,
                                     modifier = Modifier.testTag(ConversationScreenTags.TITLE),
                                 )
                             },
@@ -331,13 +333,14 @@ fun ConversationScreen(
                                     .testTag(ConversationScreenTags.SUBTITLE)
                                     .semantics { liveRegion = LiveRegionMode.Polite },
                             ) {
-                                status.dot?.let { StatusDot(it, pulsing = status.pulsing) }
+                                status.dot?.let { StatusDot(it, pulsing = status.pulsing, onRenderThread = true) }
                                 ShimmerText(
                                     status.text,
                                     style = style,
                                     baseColor = colors.textSecondary,
                                     highlightColor = ShimmerSpec.sheen(colors.textSecondary, colors.surface),
                                     shimmering = status.shimmer,
+                                    onRenderThread = true,
                                     modifier = Modifier.testTag(ConversationScreenTags.STATUS),
                                 )
                             }

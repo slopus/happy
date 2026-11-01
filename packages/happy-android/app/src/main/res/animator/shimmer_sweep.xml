@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ShimmerSpec: the band's centre from half a width before the text to half a width past it, 1.6 s, linear, again and again. -->
+<objectAnimator xmlns:android="http://schemas.android.com/apk/res/android"
+    android:propertyName="translateX"
+    android:valueFrom="-50"
+    android:valueTo="150"
+    android:valueType="floatType"
+    android:duration="1600"
+    android:repeatCount="infinite"
+    android:interpolator="@android:anim/linear_interpolator" />

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- StatusDot.tsx: full to 30% opacity, 1 s each way, eased, again and again. -->
+<objectAnimator xmlns:android="http://schemas.android.com/apk/res/android"
+    android:propertyName="fillAlpha"
+    android:valueFrom="1"
+    android:valueTo="0.3"
+    android:valueType="floatType"
+    android:duration="1000"
+    android:repeatCount="infinite"
+    android:repeatMode="reverse"
+    android:interpolator="@android:interpolator/fast_out_slow_in" />

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- ShimmerSpec's band on a viewport one text wide (100): 0.3 of it each side of its centre, clear, then white, then clear; tinted the sheen (SRC_IN). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="100dp"
+    android:height="1dp"
+    android:viewportWidth="100"
+    android:viewportHeight="1">
+    <group android:name="band" android:translateX="-50">
+        <path android:pathData="M-30,0 L30,0 L30,1 L-30,1 Z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="-30"
+                    android:startY="0"
+                    android:endX="30"
+                    android:endY="0"
+                    android:startColor="#00FFFFFF"
+                    android:centerColor="#FFFFFFFF"
+                    android:endColor="#00FFFFFF" />
+            </aapt:attr>
+        </path>
+    </group>
+</vector>

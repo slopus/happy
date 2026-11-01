@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.components
 
+import android.os.Build
 import androidx.compose.animation.core.withInfiniteAnimationFrameMillis
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -286,7 +287,10 @@ private class ShimmerNode(var clock: ShimmerClock, var highlight: Color, var pha
  * [shimmering] turns the sweep on and off on the same Text, so a row's size
  * never changes with it. Without the sweep (not [shimmering], or animations
  * off) the text is plain [stillColor], [baseColor] unless given. Every
- * shimmer keeps [LocalShimmerClock], and stops while scrolled away.
+ * shimmer keeps [LocalShimmerClock], and stops while scrolled away; one
+ * [onRenderThread] sweeps there instead ([RenderThreadShimmerText]) and
+ * costs the main thread nothing a frame, for text that stays on screen while
+ * it works (the conversation's bar), not a list's rows.
  */
 @Composable
 fun ShimmerText(
@@ -298,8 +302,13 @@ fun ShimmerText(
     shimmering: Boolean = true,
     stillColor: Color = baseColor,
     phase: Float? = null,
+    onRenderThread: Boolean = false,
 ) {
     val sweeps = shimmering && (phase != null || !rememberReduceMotion())
+    if (sweeps && onRenderThread && phase == null && renderThreadMotion() && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        RenderThreadShimmerText(text, style, baseColor, highlightColor, modifier)
+        return
+    }
     Text(
         text = text,
         style = style,

@@ -13,6 +13,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.State
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -450,6 +451,10 @@ internal class GlassLayers(val capture: GraphicsLayer, val half: GraphicsLayer, 
     var area: Rect? = null
     var radius = 0f
     var stretched = false
+    /** The band its own glass needed when it last drew. */
+    var wanted: Rect? = null
+    /** Raised to have its glass draw again: another glass's band now covers its own. Read in draw. */
+    var version by mutableIntStateOf(0)
     val released get() = capture.isReleased || half.isReleased || quarter.isReleased || blurred.isReleased
 
     /**
@@ -474,7 +479,13 @@ private fun rememberGlassLayers(source: GlassSource?): GlassLayers {
     val quarter = rememberGraphicsLayer()
     val blurred = rememberGraphicsLayer()
     val layers = remember(capture, half, quarter, blurred) { GlassLayers(capture, half, quarter, blurred) }
-    DisposableEffect(source, layers) { onDispose { source?.bands?.remove(layers) } }
+    DisposableEffect(source, layers) {
+        onDispose {
+            source?.bands?.remove(layers)
+            // Any glass drawing from this one's band draws from its own again.
+            source?.bands?.forEach { it.version++ }
+        }
+    }
     return layers
 }
 
@@ -550,7 +561,21 @@ private fun DrawScope.blurOf(layers: GlassLayers, source: GlassSource, offset: O
     if (needed.isEmpty) return null
     val radius = GlassSpec.downscaledRadius(GlassSpec.blur.toPx(), GlassSpec.DOWNSCALE)
     val travel = source.travel?.takeIf { it.from != it.to }
-    return source.bands.firstOrNull { it.covers(needed, radius, travel != null) } ?: layers.also {
+    layers.version
+    layers.wanted = needed
+    // The largest band blurred already that covers this one: two glasses sharing one draw from the same.
+    source.bands.filter { it.covers(needed, radius, travel != null) }.maxByOrNull { it.area!!.width * it.area!!.height }?.let { return it }
+    // Over another glass's band (the composer's pill over the dock's fade): one band round both, blurred
+    // once; the other glass draws from it from its next frame.
+    if (travel == null) source.bands.firstOrNull { it !== layers && !it.stretched && it.wanted?.overlaps(needed) == true }?.let { other ->
+        val both = other.wanted!!.let { Rect(minOf(it.left, needed.left), minOf(it.top, needed.top), maxOf(it.right, needed.right), maxOf(it.bottom, needed.bottom)) }
+        layers.stretched = false
+        layers.record(this, source, both, radius)
+        if (layers !in source.bands) source.bands += layers
+        other.version++
+        return layers
+    }
+    return layers.also {
         // Moving under a travelling source: blur the band the whole travel passes under, once.
         val whole = if (travel == null || it.area == null) needed else {
             val y = offset.y - travel.now
