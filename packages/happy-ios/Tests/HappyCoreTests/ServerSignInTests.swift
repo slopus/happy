@@ -223,7 +223,7 @@ final class ManagedSettingsTests: XCTestCase {
         XCTAssertTrue(managed.allowsServer(managed.serverUrl!))
         XCTAssertFalse(managed.allowsServer(try! ServerURL.normalize("https://other.example")))
         XCTAssertTrue(managed.isPinned("https://happy.acme.example"))
-        XCTAssertFalse(ManagedSettings(["serverUrl": "http://insecure.example"]).isManaged)
+        XCTAssertNil(ManagedSettings(["serverUrl": "http://insecure.example"]).serverUrl)
         XCTAssertFalse(ManagedSettings(nil).isManaged)
     }
 
@@ -231,7 +231,22 @@ final class ManagedSettingsTests: XCTestCase {
         XCTAssertEqual(ManagedSettings(["analyticsEnabled": false]).analyticsEnabled, false)
         XCTAssertNil(ManagedSettings(["analyticsEnabled": true]).analyticsEnabled)
         XCTAssertTrue(ManagedSettings(["analyticsEnabled": true]).allowsAnalytics)
-        XCTAssertFalse(ManagedSettings(["analyticsEnabled": true]).isManaged)
+    }
+
+    func testPhonePairingIsOptInOnceManaged() throws {
+        XCTAssertTrue(ManagedSettings(nil).allowsPhonePairing, "no managed configuration changes nothing")
+        XCTAssertFalse(ManagedSettings([:]).allowsPhonePairing)
+        XCTAssertFalse(ManagedSettings(["serverUrl": "https://happy.acme.example"]).allowsPhonePairing)
+        XCTAssertFalse(ManagedSettings(["phonePairingEnabled": "yes"]).allowsPhonePairing, "a wrong type isn't a yes")
+        XCTAssertFalse(ManagedSettings(["phonePairingEnabled": false]).allowsPhonePairing)
+        XCTAssertTrue(ManagedSettings(["phonePairingEnabled": true]).allowsPhonePairing)
+        // A Tailcat pairing code, from the camera or a link.
+        let bundle: [String: Any] = ["v": 1, "a": "tcAddress", "p": 24781, "t": CanonicalBase64URL.encode(Data(repeating: 3, count: 32)), "n": "Mac", "e": 2_000_000_000_000.0]
+        let code = HappyCode(PairingLink.prefix + CanonicalBase64URL.encode(try JSONSerialization.data(withJSONObject: bundle)))
+        func route(_ managed: ManagedSettings) -> ScanRoute { ScanRoute.route(code, intent: .connect, hasAccount: true, managed: managed) }
+        XCTAssertEqual(route(ManagedSettings([:])), .problem(.turnedOff))
+        guard case .connectAgent = route(ManagedSettings(nil)) else { return XCTFail("unmanaged pairing refused") }
+        guard case .connectAgent = route(ManagedSettings(["phonePairingEnabled": true])) else { return XCTFail("opted-in pairing refused") }
     }
 
     func testScanRefusesWhatTheOrganizationTurnedOff() throws {

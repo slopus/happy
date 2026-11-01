@@ -139,9 +139,11 @@ are the same on iOS, Android and desktop:
 | `analyticsEnabled` | bool | `false`: analytics off. The Analytics row shows "Off" and "Managed by your organization", and `PairingAnalytics` sends nothing. `true` is ignored and leaves the person's choice: MDM can't force analytics on. |
 | `hostedRelayEnabled` | bool | `false`: no Happy CLI (relay) account can be restored, created, scanned, switched to or opened at launch. The relay options leave the menus. |
 | `tailcatEnabled` | bool | `false`: no transport uses Tailcat. A pairing code without a public URL is refused. |
-| `phonePairingEnabled` | bool | `false`: Happy Agent pairing codes (`happy://direct?`) are refused from the camera, a pasted link or an opened URL. |
+| `phonePairingEnabled` | bool | Opt-in. With any managed configuration delivered, Happy Agent pairing codes (`happy://direct?`) are refused from the camera, a pasted link or an opened URL unless this is `true`. Without a managed configuration, pairing works as before. |
 
-An absent key leaves the person's choice. A key of the wrong type, an
+An absent key leaves the person's choice, except `phonePairingEnabled`:
+once any managed configuration is delivered, even one with none of these
+keys, pairing stays off until it's `true`. A key of the wrong type, an
 unknown key, or a `serverUrl` that isn't an `https` origin is ignored. With
 both the relay and pairing turned off, Start and Add go straight to
 signing in to a server.
