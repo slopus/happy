@@ -85,10 +85,13 @@ private actor DemoComputer: AgentTransport {
 /// agent id>` opens a chat from the sidebar, `-info` pushes its profile,
 /// `-settings` opens Settings instead, `-hideSidebar` hides the sidebar,
 /// `-dark` darkens the window, `-landscape` turns it on its side,
-/// `-resizeLoop` narrows and widens the window in turn.
+/// `-resizeLoop` narrows and widens the window in turn, `-narrow` leaves
+/// an iPad's window 600 wide, `-probe` reads the open chat's list
+/// (`ChatScrollProbe`).
 @MainActor
 final class SplitAppHarness {
     private var coordinator: AppCoordinator?
+    private var probe: ChatScrollProbe?
 
     init(window: UIWindow, arguments: [String]) {
         func option(_ name: String) -> String? {
@@ -123,6 +126,11 @@ final class SplitAppHarness {
             guard let shell = window.rootViewController as? ShellViewController, let home = shell.stack.first else { return }
             // After the account's own theme has been applied.
             if arguments.contains("-dark") { window.overrideUserInterfaceStyle = .dark }
+            // An iPad's window narrowed to the one stack, as Split View leaves it.
+            if arguments.contains("-narrow"), UIDevice.current.userInterfaceIdiom == .pad {
+                window.frame = CGRect(x: 0, y: 0, width: 600, height: window.bounds.height)
+                try? await Task.sleep(for: .milliseconds(500))
+            }
             if arguments.contains("-landscape") {
                 window.windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight)) { error in print("split harness: \(error)") }
                 try? await Task.sleep(for: .seconds(1))
@@ -143,6 +151,10 @@ final class SplitAppHarness {
                         chat.navigationController?.pushViewController(SessionDetailViewController(session: session, agentId: id, title: "iPad split view", spaceId: nil), animated: true)
                     }
                 }
+            }
+            // The chat list as the scroll tests read it (`ChatScrollProbe`).
+            if arguments.contains("-probe"), let window = window as? HarnessWindow, let chat = shell.topViewController {
+                self.probe = ChatScrollProbe(window: window, chat: chat)
             }
             if arguments.contains("-hideSidebar") {
                 try? await Task.sleep(for: .milliseconds(500))

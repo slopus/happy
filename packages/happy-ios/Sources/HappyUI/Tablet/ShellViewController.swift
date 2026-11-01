@@ -97,6 +97,11 @@ public final class ShellViewController: UIViewController {
             AppCoordinator.applyAppearance(to: navigation.navigationBar)
             navigation.delegate = self
         }
+        // UIKit makes a stack's swipe recognizers with its view, and takes
+        // them back as their delegate when it does: load both first, or the
+        // swipes stay UIKit's own (`PopGestureDelegate`).
+        phone.loadViewIfNeeded()
+        main.loadViewIfNeeded()
         gestures = [PopGestureDelegate(navigation: phone), PopGestureDelegate(navigation: main)]
         main.setViewControllers([placeholder], animated: false)
         guard let split else {

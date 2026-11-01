@@ -246,6 +246,12 @@ final class ChatScrollProbe: NSObject {
     private static let releaseDuration: CFTimeInterval = 0.6
     private var timer: Timer?
     private var finger: CGPoint?
+    /// The finger itself, for the recognizers it reaches.
+    private weak var currentTouch: UITouch?
+    /// Every recognizer the finger reached, window to list, and each state
+    /// it was seen in, in order: a pan the split view or the swipe back
+    /// cancelled or held shows here.
+    private var path: [(name: String, recognizer: UIGestureRecognizer, states: [String])] = []
     /// Frames sampled while the current finger is down.
     private var samples: [Sample] = []
     private var lastTouch: [String: Any] = [:]
@@ -335,6 +341,8 @@ final class ChatScrollProbe: NSObject {
         case .began:
             finishRelease()
             finger = point
+            currentTouch = touch
+            path = []
             samples = []
             sample()
             if link == nil {
@@ -427,6 +435,31 @@ final class ChatScrollProbe: NSObject {
     private func sample() {
         guard finger != nil, let sample = makeSample() else { return }
         samples.append(sample)
+        notePath()
+    }
+
+    private static func name(_ state: UIGestureRecognizer.State) -> String {
+        switch state {
+        case .possible: "possible"
+        case .began: "began"
+        case .changed: "changed"
+        case .ended: "ended"
+        case .cancelled: "cancelled"
+        case .failed: "failed"
+        @unknown default: "?"
+        }
+    }
+
+    private func notePath() {
+        for recognizer in currentTouch?.gestureRecognizers ?? [] {
+            let state = Self.name(recognizer.state)
+            if let index = path.firstIndex(where: { $0.recognizer === recognizer }) {
+                if path[index].states.last != state { path[index].states.append(state) }
+            } else {
+                let host = recognizer.view.map { NSStringFromClass(type(of: $0)) } ?? "nil"
+                path.append(("\(NSStringFromClass(type(of: recognizer))) on \(host)", recognizer, [state]))
+            }
+        }
     }
 
     /// The moment after the finger lifted: whether the keyboard's
@@ -489,6 +522,12 @@ final class ChatScrollProbe: NSObject {
         touch["tracking"] = tracking
         touch["dragging"] = dragging
         touch["recognizers"] = recognizers.sorted()
+        // The last states too, which the finger's lifting settles.
+        for index in path.indices {
+            let state = Self.name(path[index].recognizer.state)
+            if path[index].states.last != state { path[index].states.append(state) }
+        }
+        touch["path"] = path.map { "\($0.name): \($0.states.joined(separator: ">"))" }
         touch["keyboardDriven"] = samples.contains { $0.driving }
         lastTouch = touch
         var trace: [String] = []

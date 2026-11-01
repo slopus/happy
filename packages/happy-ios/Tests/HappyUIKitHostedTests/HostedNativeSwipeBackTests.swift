@@ -38,6 +38,37 @@ final class HostedNativeSwipeBackTests: XCTestCase {
         return (window, navigation)
     }
 
+    /// As the app starts: AppCoordinator's window and shell, around the
+    /// navigation it made without a root and before its view was loaded.
+    /// Both of UIKit's swipes answer to the shell's delegate, on the
+    /// phone's stack and the iPad's main panel.
+    func testTheAppsOwnStacksHaveTheShellsSwipe() async throws {
+        let scene = try await hostedActiveScene()
+        let hostWindow = scene.keyWindow
+        let account = AccountController(
+            serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
+            credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
+            rnServerImport: { .confirmed(ServerConfig.defaultServerURL) },
+            transport: SwipeNoNetwork(), connector: SwipeNoSockets()
+        )
+        let context = AppContext(account: account, variant: .development, version: "test")
+        let window = UIWindow(windowScene: scene)
+        let coordinator = AppCoordinator(window: window, context: context)
+        coordinator.start()
+        defer { window.isHidden = true; hostWindow?.makeKey() }
+        let shell = try XCTUnwrap(window.rootViewController as? ShellViewController)
+        shell.view.layoutIfNeeded()
+        for navigation in [shell.phone, shell.main] {
+            let edge = try XCTUnwrap(navigation.interactivePopGestureRecognizer)
+            XCTAssertTrue(edge.delegate is PopGestureDelegate, "the edge swipe is UIKit's own: \(String(describing: edge.delegate))")
+            if #available(iOS 26.0, *) {
+                let content = try XCTUnwrap(navigation.interactiveContentPopGestureRecognizer)
+                XCTAssertTrue(content.delegate is PopGestureDelegate, "the content swipe is UIKit's own: \(String(describing: content.delegate))")
+            }
+        }
+        withExtendedLifetime(coordinator) {}
+    }
+
     func testTheSystemSwipeIsOnAndMayBeginOnlyWithSomethingToGoBackTo() async throws {
         let (window, navigation) = try await shell()
         defer { window.isHidden = true }
