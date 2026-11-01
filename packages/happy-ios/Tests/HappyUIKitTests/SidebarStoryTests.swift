@@ -11,6 +11,28 @@ import XCTest
 /// story; anywhere else on the row, its chat.
 @MainActor
 final class SidebarStoryTests: XCTestCase {
+    func testYourStoryKeepsOnePhotoTileWithAnIndependentAddBadge() throws {
+        let row = StoriesRowView(frame: CGRect(x: 0, y: 0, width: 390, height: 104))
+        let mark = Row.Mark.image(path: "/v0/profile/photo", thumbhash: nil)
+        row.apply([], enabled: true, personMark: mark); row.layoutIfNeeded()
+        func own() throws -> UIView { try XCTUnwrap(row.subviews.first { $0.accessibilityIdentifier == "storyOwn" }) }
+        XCTAssertEqual(try own().accessibilityLabel, "Your Story")
+        XCTAssertEqual(try own().layer.borderWidth, 0)
+        XCTAssertEqual(row.personMark, mark)
+        let badge = try XCTUnwrap(row.subviews.first { $0.accessibilityIdentifier == "storyAdd" } as? UIButton)
+        XCTAssertEqual(badge.frame, StoryLayout.row(count: 1, nameHeight: 14).tiles[0].add)
+        var additions = 0; row.onAdd = { additions += 1 }
+        for seen in [false, true] {
+            let story = Story(id: "own", poster: "person", media: .init(kind: "image", mimeType: "image/png"), postedAt: 1, expiresAt: .greatestFiniteMagnitude, seen: seen)
+            row.apply(Stories.posters([story], rows: [], users: [:], profile: nil), enabled: true, personMark: mark); row.layoutIfNeeded()
+            XCTAssertEqual(row.subviews.compactMap { $0 as? UILabel }.map(\.text), ["Your Story"])
+            XCTAssertEqual(try own().accessibilityValue, seen ? "story seen" : "story unseen")
+            XCTAssertEqual(try own().layer.borderWidth, StoryLayout.Metrics.ringWidth)
+            badge.sendActions(for: .touchUpInside)
+        }
+        XCTAssertEqual(additions, 2)
+    }
+
     private static let rows: [Row] = (0..<4).map { index in
         var row = Row(id: "task:t\(index)", nodeId: "task:t\(index)", kind: .space, label: "Task \(index)", mark: .placeholder(seed: "t\(index)"), agentId: "agent-\(index)", targetKind: "task")
         row.targetId = "t\(index)"

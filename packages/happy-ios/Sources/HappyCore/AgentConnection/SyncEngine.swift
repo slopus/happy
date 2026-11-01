@@ -12,6 +12,7 @@ public struct HomeSnapshot: Equatable, Sendable {
     public var settings: [String: JSONValue] = [:]
     /// The person signed in as a team user; nil outside a team.
     public var userId: String?
+    public var personMark: Row.Mark = .placeholder(seed: "person:")
     public var error: String?
     /// An action the computer refused, said for a moment while it rolls back.
     public var notice: String?
@@ -19,6 +20,7 @@ public struct HomeSnapshot: Equatable, Sendable {
     public var stories: [Story] = []
     /// The stories row: who posted them, unseen first.
     public var posters: [StoryPoster] = []
+    public var storiesEnabled = false
     /// Members' names by ID, for who replied.
     public var people: [String: String] = [:]
     public init() {}
@@ -544,6 +546,7 @@ public actor SyncEngine {
         snapshot.loaded = desktop != nil
         // What is still live, oldest first: play order.
         let live = storiesOn ? stories.filter { $0.expiresAt > Date().timeIntervalSince1970 * 1000 }.sorted { $0.postedAt < $1.postedAt } : []
+        snapshot.storiesEnabled = storiesOn
         snapshot.stories = live
         expireStories(live)
         if let desktop {
@@ -553,6 +556,7 @@ public actor SyncEngine {
             }
             snapshot.rows = Rows.visible(snapshot.allRows)
             snapshot.userId = desktop.profile?.userId
+            snapshot.personMark = desktop.profile?.photo.map { .image(path: snapshot.userId.map(TeamUser.photoPath) ?? "/v0/profile/photo", thumbhash: $0.thumbhash) } ?? .placeholder(seed: "person:\(snapshot.userId ?? "")")
             snapshot.posters = Stories.posters(live, rows: snapshot.allRows, users: users, profile: desktop.profile)
             snapshot.people = live.isEmpty ? [:] : users.mapValues(\.name)
         }

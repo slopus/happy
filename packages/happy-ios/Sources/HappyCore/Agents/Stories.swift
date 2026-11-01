@@ -1,10 +1,22 @@
 import Foundation
 import HappyWire
 
-/// A picture or short video a task's or bot's agent posted, live for a
+/// A picture or short video an agent or person posted, live for a
 /// day (happy-agent `API.md`, "Stories"). Read only while the daemon has
 /// `storyFeed` and the person's `stories` setting is on.
 public struct Story: Equatable, Sendable, Decodable {
+    public struct Position: Codable, Equatable, Sendable {
+        public var x: Double, y: Double
+        public init(x: Double, y: Double) { (self.x, self.y) = (x, y) }
+    }
+    public struct Layers: Codable, Equatable, Sendable {
+        public struct Text: Codable, Equatable, Sendable {
+            public var text: String, x: Double, y: Double
+            public init(text: String, x: Double, y: Double) { (self.text, self.x, self.y) = (text, x, y) }
+        }
+        public var text: Text?, round: Position?
+        public init(text: Text? = nil, round: Position? = nil) { (self.text, self.round) = (text, round) }
+    }
     public struct Media: Equatable, Sendable, Decodable {
         public var kind: String
         public var mimeType: String
@@ -22,11 +34,11 @@ public struct Story: Equatable, Sendable, Decodable {
     /// Exactly one of these is set: whose row wears the story, or whose story was reposted.
     public var taskId: String?
     public var botId: String?
-    /// "person" for a person's repost; an agent's own otherwise.
+    /// "person" for gallery originals and reposts; "agent" otherwise.
     public var poster: String?
-    /// The reposter; nil for an agent's story, or for the person on a computer that is theirs alone.
+    /// The person who posted; nil for an agent, or in standalone.
     public var userId: String?
-    /// The reposter's round video, over the reposted media.
+    /// The poster's round video, over the base media.
     public var round: Round?
     public var caption: String?
     public var media: Media
@@ -37,21 +49,24 @@ public struct Story: Equatable, Sendable, Decodable {
     /// The last two, oldest first.
     public var replies: [Reply]?
     public var canDelete: Bool?
+    public var layers: Layers?
+    public var repostOf: JSONValue?
 
     public var isVideo: Bool { media.kind == "video" }
-    public var isRepost: Bool { poster == "person" }
+    public var isPerson: Bool { poster == "person" }
+    public var isRepost: Bool { repostOf?.stringValue != nil || (isPerson && agentId != nil) }
 
     /// Whether `row`'s (a task's or bot's) icon wears this story: its agent's own, not a repost.
     public func belongs(to row: Row) -> Bool {
         switch row.targetKind {
-        case "task": !isRepost && taskId != nil && taskId == row.targetId
-        case "bot": !isRepost && botId != nil && botId == row.targetId
+        case "task": !isPerson && taskId != nil && taskId == row.targetId
+        case "bot": !isPerson && botId != nil && botId == row.targetId
         default: false
         }
     }
 }
 
-/// One tile of the stories row: an agent's stories, or one person's reposts.
+/// One tile of the stories row: an agent's or a person's stories.
 public struct StoryPoster: Equatable, Sendable {
     public var id: String
     public var person: Bool
@@ -98,10 +113,10 @@ public enum Stories {
     public static func posters(_ stories: [Story], rows: [Row], users: [String: TeamUser], profile: DesktopSnapshot.Profile?) -> [StoryPoster] {
         var posters: [StoryPoster] = []
         for story in stories {
-            let person = story.isRepost ? story.userId ?? profile?.userId : nil
-            let id = story.isRepost ? "person:\(person ?? "")" : "agent:\(story.agentId ?? story.taskId ?? story.botId ?? "")"
+            let person = story.isPerson ? story.userId ?? profile?.userId : nil
+            let id = story.isPerson ? "person:\(person ?? "")" : "agent:\(story.agentId ?? story.taskId ?? story.botId ?? "")"
             if let index = posters.firstIndex(where: { $0.id == id }) { posters[index].stories.append(story); continue }
-            var poster = StoryPoster(id: id, person: story.isRepost, me: story.isRepost && person == profile?.userId, name: "", mark: .placeholder(seed: id), stories: [story])
+            var poster = StoryPoster(id: id, person: story.isPerson, me: story.isPerson && person == profile?.userId, name: "", mark: .placeholder(seed: id), stories: [story])
             if let person {
                 let photo = poster.me ? profile?.photo : users[person]?.photo
                 poster.name = users[person]?.name ?? ""
@@ -152,19 +167,43 @@ extension AgentClient {
         return try await decode(Answer.self, "GET", "/v0/stories/\(Self.escape(storyId))/replies").replies
     }
 
-    /// Lands in the poster's agent's chat, quoting the story.
+    /// Lands in the agent's chat when present, and always in the story's replies.
     public func replyToStory(_ storyId: String, text: String) async throws -> Story.Reply {
         struct Answer: Decodable { let reply: Story.Reply }
         return try await decode(Answer.self, "POST", "/v0/stories/\(Self.escape(storyId))/replies", json: .object(["text": .string(text)])).reply
     }
 
-    /// `round`: an H.264 MP4 of the reposter, validated before encoding off main.
-    public func repostStory(_ storyId: String, caption: String?, round: Data?) async throws {
+    /// `round`: an H.264 MP4 of the reposter, sent as binary with the layers.
+    public func repostStory(_ storyId: String, caption: String?, round: consuming Data?, layers: Story.Layers? = nil) async throws {
         guard (round?.count ?? 0) <= Stories.roundLimit else { throw AgentClientError.status(413, code: "round_too_large", message: nil) }
+        let path = "/v0/stories/\(Self.escape(storyId))/repost"
+        if layers != nil || round != nil { return try await storyUpload(path, media: nil, caption: caption, layers: layers, round: consume round) }
         var body: [String: JSONValue] = [:]
         if let caption, !caption.isEmpty { body["caption"] = .string(caption) }
-        if let round { body["round"] = .object(["data": .string(round.base64EncodedString())]) }
-        _ = try await send("POST", "/v0/stories/\(Self.escape(storyId))/repost", json: .object(body))
+        _ = try await send("POST", path, json: .object(body))
+    }
+
+    public func postStory(media: consuming Data, mimeType: String, caption: String? = nil, layers: Story.Layers, round: consuming Data?) async throws {
+        guard media.count <= 32 << 20, (round?.count ?? 0) <= Stories.roundLimit else { throw AgentClientError.status(413, code: "media_too_large", message: nil) }
+        try await storyUpload("/v0/stories", media: (consume media, mimeType), caption: caption, layers: layers, round: consume round)
+    }
+    private func storyUpload(_ path: String, media: consuming (Data, String)?, caption: String?, layers: Story.Layers?, round: consuming Data?) async throws {
+        var media = consume media, round = consume round
+        let boundary = UUID().uuidString
+        var body = Data()
+        body.reserveCapacity((media?.0.count ?? 0) + (round?.count ?? 0) + 1024)
+        func part(_ name: String, _ data: Data, _ mime: String? = nil) {
+            body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(name)\"\(mime == nil ? "" : "; filename=\"story\"")\r\n\(mime.map { "Content-Type: \($0)\r\n" } ?? "")\r\n".utf8))
+            body.append(data); body.append(Data("\r\n".utf8))
+        }
+        if let (data, mime) = media { part("media", data, mime) }
+        media = nil
+        struct Metadata: Encodable { let caption: String?; let layers: Story.Layers? }
+        part("metadata", try JSONEncoder().encode(Metadata(caption: caption, layers: layers)))
+        if let round { part("round", round, "video/mp4") }
+        round = nil
+        body.append(Data("--\(boundary)--\r\n".utf8))
+        _ = try await send("POST", path, raw: body, headers: ["Content-Type": "multipart/form-data; boundary=\(boundary)"])
     }
 
     public func deleteStory(_ storyId: String) async throws {

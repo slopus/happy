@@ -7,6 +7,8 @@ import UIKit
 /// Stories by poster, oldest first. Media pauses while replying or reading replies.
 @MainActor
 final class StoryViewerController: UIViewController, UITextFieldDelegate, UIGestureRecognizerDelegate {
+    var onChat: ((String) -> Void)?
+    var agents: [Row] = []
     private let engine: SyncEngine
     private let library: MediaLibrary?
     private let images: Images?
@@ -15,19 +17,24 @@ final class StoryViewerController: UIViewController, UITextFieldDelegate, UIGest
     private var pages: [(poster: Int, story: Story)]
     /// Names by ID: members who replied, agents whose stories were reposted.
     var names: [String: String] {
-        didSet { if let drawer { drawer.attributedText = transcript(drawerReplies, color: .label) } }
+        didSet { drawer.attributedText = transcript(drawerReplies, color: .white) }
     }
     var me: String?
     private(set) var index: Int
     private let picture = UIImageView()
+    private let media = UIView()
     private let video = StoryPlayerView()
     private let roundVideo = StoryPlayerView()
     private var player: AVPlayer?
     private var roundPlayer: AVQueuePlayer?
     private var looper: AVPlayerLooper?
     private var failure: NSKeyValueObservation?
-    /// The open replies sheet, and what it lists.
-    private weak var drawer: UITextView?
+    /// The open replies overlay, and what it lists.
+    private let drawer = UITextView(), dim = UIControl(), repliesHeader = UILabel()
+    private let drawerPanel = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark)), grabber = UIView()
+    private var pull: CGFloat = 1, pullStart: CGFloat = 1, drawerExtent: CGFloat = 44, zoom: CGFloat = 1
+    private var zoomOffset = CGPoint.zero
+    private let drawerPan = UIPanGestureRecognizer(), pinch = UIPinchGestureRecognizer(), mediaPan = UIPanGestureRecognizer()
     private var drawerReplies: [Story.Reply] = []
     /// The videos' bytes; their assets hold them only weakly.
     private var streams: [MediaStream] = []
@@ -37,10 +44,12 @@ final class StoryViewerController: UIViewController, UITextFieldDelegate, UIGest
     private let mark = StoryMarkView()
     private let name = UILabel()
     private let mute = UIButton(type: .system), more = MenuButton(type: .system), close = UIButton(type: .system)
-    private let chip = UILabel()
+    private let chip = UIControl(), sourceMark = StoryMarkView(), sourceName = UILabel()
     private let caption = UILabel()
+    private let layerText = UITextView()
     private let replies = UILabel()
     private let reply = UITextField()
+    private let replyMaterial = UIVisualEffectView(effect: UIBlurEffect(style: .systemUltraThinMaterialDark))
     private var loading: Task<Void, Never>?
     /// How long the shown picture has been on screen; nil until it is.
     private var elapsed: Double?
@@ -72,26 +81,48 @@ final class StoryViewerController: UIViewController, UITextFieldDelegate, UIGest
         (roundVideo.layer.cornerRadius, roundVideo.layer.borderWidth, roundVideo.layer.borderColor) = (StoryLayout.Metrics.round / 2, 2, UIColor.white.cgColor)
         topShade.colors = [UIColor.black.withAlphaComponent(0.55).cgColor, UIColor.clear.cgColor]
         bottomShade.colors = [UIColor.clear.cgColor, UIColor.black.withAlphaComponent(0.6).cgColor]
-        (name.font, caption.font, caption.numberOfLines, chip.font) = (.systemFont(ofSize: 15, weight: .semibold), .systemFont(ofSize: 16), 0, .systemFont(ofSize: 13, weight: .medium))
-        (chip.backgroundColor, chip.textAlignment, chip.clipsToBounds, chip.layer.cornerRadius) = (UIColor.black.withAlphaComponent(0.45), .center, true, StoryLayout.Metrics.chip / 2)
-        for label in [name, caption, chip] { label.textColor = .white }
+        (name.font, caption.font, caption.numberOfLines, sourceName.font) = (.systemFont(ofSize: 15, weight: .semibold), .systemFont(ofSize: 16), 0, .systemFont(ofSize: 13, weight: .semibold))
+        (chip.backgroundColor, chip.clipsToBounds, chip.layer.cornerRadius) = (UIColor.black.withAlphaComponent(0.45), true, 17)
+        for label in [name, caption, sourceName, repliesHeader] { label.textColor = .white }
+        chip.addTarget(self, action: #selector(openChat), for: .touchUpInside); chip.accessibilityIdentifier = "storyAttribution"
+        chip.isAccessibilityElement = true; chip.accessibilityTraits = .button
+        repliesHeader.font = .systemFont(ofSize: 17, weight: .semibold)
         for label in [name, caption] { (label.layer.shadowOpacity, label.layer.shadowRadius, label.layer.shadowOffset) = (0.5, 3, .zero) }
-        close.setImage(Glyphs.image("close", size: 24), for: .normal)
+        close.setImage(UIImage(systemName: "xmark"), for: .normal)
         close.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
         close.accessibilityLabel = Strings.close
         more.setImage(UIImage(systemName: "ellipsis"), for: .normal)
         more.showsMenuAsPrimaryAction = true
         mute.addTarget(self, action: #selector(muteTapped), for: .touchUpInside)
-        for button in [close, more, mute] { button.tintColor = .white }
+        for button in [close, more, mute] { button.configuration = .glass(); button.configuration?.image = button.image(for: .normal); button.configuration?.baseForegroundColor = .white; button.configuration?.cornerStyle = .capsule }
         (replies.numberOfLines, replies.isUserInteractionEnabled, replies.accessibilityTraits) = (0, true, .button)
         replies.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(openReplies)))
         reply.delegate = self
         (reply.returnKeyType, reply.textColor, reply.font) = (.send, .white, .systemFont(ofSize: 16))
-        (reply.layer.cornerRadius, reply.layer.borderWidth, reply.layer.borderColor) = (StoryLayout.Metrics.bar / 2, 1, UIColor.white.withAlphaComponent(0.5).cgColor)
+        (replyMaterial.clipsToBounds, replyMaterial.layer.cornerRadius) = (true, StoryLayout.Metrics.bar / 2)
+        reply.keyboardAppearance = .dark
         (reply.leftView, reply.leftViewMode) = (UIView(frame: CGRect(x: 0, y: 0, width: 16, height: 1)), .always)
-        for view in [picture, video, mark, name, mute, more, close, chip, roundVideo, caption, replies, reply] { self.view.addSubview(view) }
+        (drawer.isEditable, drawer.isSelectable, drawer.backgroundColor, dim.backgroundColor) = (false, false, .clear, UIColor.black.withAlphaComponent(0.65))
+        drawer.alwaysBounceVertical = true
+        (layerText.isEditable, layerText.isSelectable, layerText.isScrollEnabled, layerText.isUserInteractionEnabled) = (false, false, false, false)
+        (layerText.font, layerText.textColor, layerText.textAlignment, layerText.backgroundColor, layerText.layer.cornerRadius) = (.systemFont(ofSize: 24, weight: .semibold), .white, .center, UIColor.black.withAlphaComponent(0.35), 8)
+        layerText.textContainerInset = UIEdgeInsets(top: 6, left: 10, bottom: 6, right: 10); layerText.textContainer.lineFragmentPadding = 0
+        (roundVideo.isAccessibilityElement, roundVideo.accessibilityIdentifier, roundVideo.accessibilityLabel) = (true, "storyRoundLayer", "Round recording")
+        (drawer.accessibilityIdentifier, dim.accessibilityIdentifier, replyMaterial.accessibilityIdentifier) = ("storyReplies", "storyRepliesDim", "storyReplyCapsule")
+        dim.addTarget(self, action: #selector(tuckReplies), for: .touchUpInside)
+        (drawerPanel.clipsToBounds, drawerPanel.layer.cornerRadius, grabber.backgroundColor, grabber.layer.cornerRadius) = (true, 20, UIColor.white.withAlphaComponent(0.5), 2)
+        drawerPanel.accessibilityIdentifier = "storyRepliesDrawer"
+        for item in [drawer, repliesHeader, grabber] { drawerPanel.contentView.addSubview(item) }
+        drawerPan.addTarget(self, action: #selector(drawerDragged(_:))); drawerPan.delegate = self; drawerPanel.addGestureRecognizer(drawerPan)
+        repliesHeader.isUserInteractionEnabled = true; repliesHeader.accessibilityTraits = .button
+        repliesHeader.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(openReplies)))
+        for (gesture, action) in [(pinch, #selector(pinched(_:))), (mediaPan, #selector(mediaDragged(_:)))] { gesture.addTarget(self, action: action); gesture.delegate = self; media.addGestureRecognizer(gesture) }
+        media.clipsToBounds = true; media.accessibilityIdentifier = "storyMediaStage"
+        for item in [picture, video, layerText, roundVideo] { media.addSubview(item) }
+        for item in [media, mark, name, mute, more, chip, sourceMark, sourceName, caption, replies, dim, drawerPanel, replyMaterial, reply, close] { view.addSubview(item) }
+        closeReplies()
         // The shades go over the media and under the words.
-        for shade in [topShade, bottomShade] { view.layer.insertSublayer(shade, above: video.layer) }
+        for shade in [topShade, bottomShade] { media.layer.insertSublayer(shade, below: layerText.layer) }
         let tap = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
         tap.delegate = self
         view.addGestureRecognizer(tap)
@@ -141,15 +172,30 @@ final class StoryViewerController: UIViewController, UITextFieldDelegate, UIGest
             size: view.bounds.size, safeArea: LayoutInsets(view.safeAreaInsets), count: segments.count,
             nameHeight: name.font.lineHeight.rounded(.up), captionHeight: caption.text == nil ? 0 : fits(caption),
             repliesHeight: replies.isHidden ? 0 : fits(replies),
-            chipWidth: chip.text == nil ? 0 : chip.intrinsicContentSize.width + 20, round: story.round != nil, keyboard: keyboard
+            chipWidth: chip.isHidden ? 0 : sourceName.intrinsicContentSize.width + 48, round: story.round != nil, keyboard: keyboard
         )
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         (topShade.frame, bottomShade.frame) = (layout.topShade, layout.bottomShade)
         CATransaction.commit()
-        (picture.frame, video.frame, mark.frame, name.frame) = (view.bounds, view.bounds, layout.mark, layout.name)
+        (picture.frame, video.frame, mark.frame, name.frame) = (layout.media, layout.media, layout.mark, layout.name)
         (mute.frame, more.frame, close.frame, chip.frame, roundVideo.frame) = (layout.mute, layout.more, layout.close, layout.chip, layout.round)
         (caption.frame, replies.frame, reply.frame) = (layout.caption, layout.replies, layout.bar)
+        replyMaterial.frame = layout.bar
+        media.bounds = view.bounds; media.center = view.center
+        dim.frame = view.bounds
+        let overlay = StoryLayout.replies(size: view.bounds.size, bar: layout.bar, measured: drawer.sizeThatFits(CGSize(width: view.bounds.width - 48, height: .greatestFiniteMagnitude)).height, pull: pull)
+        (drawerPanel.frame, drawer.frame, repliesHeader.frame, grabber.frame, drawerExtent) = (overlay.panel, overlay.text, overlay.header, overlay.grabber, overlay.expanded)
+        dim.alpha = pull; dim.isHidden = drawerPanel.isHidden || pull == 0
+        drawer.isHidden = drawerPanel.isHidden || pull == 0
+        let attribution = StoryLayout.attribution(in: chip.frame)
+        (sourceMark.frame, sourceName.frame, sourceMark.layer.cornerRadius) = (attribution.mark, attribution.name, 6)
+        if let text = story.layers?.text {
+            let width = StoryLayout.textWidth(in: view.bounds.size)
+            let measured = layerText.attributedText.boundingRect(with: CGSize(width: width - 20, height: .greatestFiniteMagnitude), options: .usesLineFragmentOrigin, context: nil).size
+            layerText.frame = StoryLayout.textFrame(size: view.bounds.size, center: CGPoint(x: text.x, y: text.y), measured: measured)
+        }
+        if let center = story.layers?.round { roundVideo.frame = StoryLayout.layer(size: view.bounds.size, center: CGPoint(x: center.x, y: center.y), measured: layout.round.size) }
         mark.layer.cornerRadius = posters[pages[index].poster].person ? layout.mark.width / 2 : StoryLayout.Metrics.markRadius
         for (segment, frame) in zip(segments, layout.segments) { segment.frame = frame }
     }
@@ -157,6 +203,7 @@ final class StoryViewerController: UIViewController, UITextFieldDelegate, UIGest
     // MARK: Showing
 
     private func show(_ next: Int) {
+        closeReplies()
         index = next
         applySegments()
         let story = pages[next].story
@@ -212,19 +259,24 @@ final class StoryViewerController: UIViewController, UITextFieldDelegate, UIGest
 
     private func applyWords() {
         let story = pages[index].story, poster = posters[pages[index].poster]
+        (layerText.text, layerText.isHidden) = (story.layers?.text?.text, story.layers?.text == nil)
         let title = NSMutableAttributedString(string: poster.me ? Strings.Stories.you : poster.name)
         title.append(NSAttributedString(string: "  " + Strings.Stories.age(story.postedAt, now: Date()), attributes: [.foregroundColor: UIColor.white.withAlphaComponent(0.7), .font: UIFont.systemFont(ofSize: 14)]))
         name.attributedText = title
         caption.text = story.caption?.isEmpty == false ? story.caption : nil
-        chip.text = story.isRepost ? Strings.Stories.repostedFrom(story.agentId.flatMap { names[$0] } ?? "") : nil
-        chip.isHidden = chip.text == nil
-        reply.attributedPlaceholder = NSAttributedString(string: Strings.Stories.replyTo(poster.me ? (story.agentId.flatMap { names[$0] } ?? "") : poster.name), attributes: [.foregroundColor: UIColor.white.withAlphaComponent(0.7)])
+        caption.isHidden = !drawerPanel.isHidden || caption.text == nil
+        let agent = agents.first { $0.agentId == story.agentId }
+        sourceName.text = agent?.label ?? story.agentId.flatMap { names[$0] } ?? ""
+        chip.accessibilityLabel = sourceName.text
+        sourceMark.show(agent?.mark ?? .placeholder(seed: story.agentId ?? ""), images: images)
+        for item in [chip, sourceMark, sourceName] { item.isHidden = !story.isRepost }
+        reply.attributedPlaceholder = NSAttributedString(string: Strings.Stories.replyTo(story.agentId == nil ? (poster.me ? Strings.Stories.you : poster.name) : poster.me ? (story.agentId.flatMap { names[$0] } ?? "") : poster.name), attributes: [.foregroundColor: UIColor.white.withAlphaComponent(0.7)])
         let count = story.replyCount ?? 0, shown = transcript(story.replies ?? [], color: .white)
         shown.append(NSAttributedString(string: Strings.Stories.viewAll(count), attributes: [.font: UIFont.systemFont(ofSize: 13, weight: .medium), .foregroundColor: UIColor.white.withAlphaComponent(0.75)]))
         replies.attributedText = shown
-        replies.isHidden = count == 0
+        replies.isHidden = !drawerPanel.isHidden || count == 0
         var actions: [UIAction] = []
-        if !story.isRepost { actions.append(UIAction(title: Strings.Stories.repost, image: UIImage(systemName: "arrow.2.squarepath")) { [weak self] _ in self?.repost(story) }) }
+        if !story.isPerson { actions.append(UIAction(title: Strings.Stories.repost, image: UIImage(systemName: "arrow.2.squarepath")) { [weak self] _ in self?.repost(story) }) }
         if story.canDelete == true {
             actions.append(UIAction(title: Strings.Stories.delete, image: UIImage(systemName: "trash"), attributes: .destructive) { [weak self, engine] _ in
                 Task { do { try await engine.deleteStory(story.id) } catch { self?.failed() } }
@@ -255,6 +307,12 @@ final class StoryViewerController: UIViewController, UITextFieldDelegate, UIGest
             return pages.isEmpty ? leave() : show(min(index, pages.count - 1))
         }
         index = at
+        if !drawerPanel.isHidden {
+            let latest = pages[at].story.replies ?? []
+            drawerReplies = (drawerReplies.filter { old in !latest.contains { $0.id == old.id } } + latest).sorted { $0.createdAt < $1.createdAt }
+            drawer.attributedText = transcript(drawerReplies, color: .white)
+            repliesHeader.text = Strings.Stories.replyCount(pages[at].story.replyCount ?? drawerReplies.count)
+        }
         applySegments()
         applyWords()
     }
@@ -279,7 +337,7 @@ final class StoryViewerController: UIViewController, UITextFieldDelegate, UIGest
 
     @objc func tick(_ link: CADisplayLink) {
         guard showing else { return }
-        let hold = presentedViewController != nil || reply.isFirstResponder || more.open
+        let hold = (!drawerPanel.isHidden && pull > 0) || presentedViewController != nil || reply.isFirstResponder || more.open
         if hold != held {
             held = hold
             for player in [player, roundPlayer] { hold ? player?.pause() : player?.play() }
@@ -307,7 +365,27 @@ final class StoryViewerController: UIViewController, UITextFieldDelegate, UIGest
 
     /// Only the media steps; the bar, the replies and the buttons are their own.
     func gestureRecognizer(_ gesture: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        [view, picture, video, roundVideo].contains { $0 === touch.view }
+        if gesture === drawerPan || gesture === pinch || gesture === mediaPan { return true }
+        return zoom == 1 && [view, media, picture, video, roundVideo].contains { $0 === touch.view }
+    }
+    func gestureRecognizer(_ gesture: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { gesture === pinch || other === pinch || gesture === drawerPan || other === drawerPan }
+    func gestureRecognizerShouldBegin(_ gesture: UIGestureRecognizer) -> Bool { gesture !== drawerPan || pull < 1 || drawer.contentOffset.y <= 0 || gesture.location(in: drawerPanel).y < 44 }
+
+    @objc private func pinched(_ gesture: UIPinchGestureRecognizer) {
+        zoom = min(3, max(1, gesture.scale))
+        media.transform = CGAffineTransform(translationX: zoomOffset.x, y: zoomOffset.y).scaledBy(x: zoom, y: zoom)
+        if gesture.state == .ended || gesture.state == .cancelled { zoom = 1; zoomOffset = .zero; UIView.animate(withDuration: 0.3, delay: 0, usingSpringWithDamping: 0.8, initialSpringVelocity: 0) { self.media.transform = .identity } }
+    }
+    @objc private func mediaDragged(_ gesture: UIPanGestureRecognizer) {
+        guard zoom > 1 else { return }
+        let delta = gesture.translation(in: view); zoomOffset.x += delta.x; zoomOffset.y += delta.y
+        media.transform = CGAffineTransform(translationX: zoomOffset.x, y: zoomOffset.y).scaledBy(x: zoom, y: zoom); gesture.setTranslation(.zero, in: view)
+    }
+    @objc private func drawerDragged(_ gesture: UIPanGestureRecognizer) {
+        if gesture.state == .began { pullStart = pull }
+        pull = min(1, max(0, pullStart - gesture.translation(in: view).y / max(1, drawerExtent - 44)))
+        if gesture.state == .ended || gesture.state == .cancelled { pull = gesture.velocity(in: view).y > 250 ? 0 : gesture.velocity(in: view).y < -250 ? 1 : pull > 0.5 ? 1 : 0 }
+        view.setNeedsLayout(); view.layoutIfNeeded()
     }
 
     @objc private func closeTapped() { leave() }
@@ -317,7 +395,7 @@ final class StoryViewerController: UIViewController, UITextFieldDelegate, UIGest
     private func applyMute() {
         player?.isMuted = Self.muted
         roundPlayer?.isMuted = Self.muted
-        mute.setImage(UIImage(systemName: Self.muted ? "speaker.slash.fill" : "speaker.wave.2.fill"), for: .normal)
+        mute.configuration?.image = UIImage(systemName: Self.muted ? "speaker.slash.fill" : "speaker.wave.2.fill")
     }
 
     // MARK: Replies, reposts
@@ -326,6 +404,7 @@ final class StoryViewerController: UIViewController, UITextFieldDelegate, UIGest
         let text = field.text?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard showing, !text.isEmpty else { return false }
         let id = pages[index].story.id
+        held = true; player?.pause(); roundPlayer?.pause()
         field.text = nil
         view.endEditing(true)
         Task { [weak self, engine] in
@@ -340,25 +419,41 @@ final class StoryViewerController: UIViewController, UITextFieldDelegate, UIGest
         UIView.animate(withDuration: 0.25) { self.view.setNeedsLayout(); self.view.layoutIfNeeded() }
     }
 
-    /// Every reply, oldest first, in a sheet dragged down to close.
+    /// Every reply, oldest first, over the paused story.
     @objc private func openReplies() {
         guard showing else { return }
-        let id = pages[index].story.id, sheet = UIViewController(), text = UITextView()
-        (text.isEditable, text.backgroundColor, text.textContainerInset) = (false, .systemBackground, UIEdgeInsets(top: 28, left: 16, bottom: 16, right: 16))
-        sheet.view = text
-        sheet.sheetPresentationController?.detents = [.medium(), .large()]
-        sheet.sheetPresentationController?.prefersGrabberVisible = true
-        present(sheet, animated: true)
+        let id = pages[index].story.id
+        if drawerPanel.isHidden { drawerReplies = pages[index].story.replies ?? [] }
+        held = true; player?.pause(); roundPlayer?.pause()
+        (drawerPanel.isHidden, drawer.isHidden, pull) = (false, false, 1)
+        repliesHeader.text = Strings.Stories.replyCount(pages[index].story.replyCount ?? 0)
+        caption.isHidden = true; replies.isHidden = true
+        drawer.attributedText = transcript(drawerReplies, color: .white)
+        view.setNeedsLayout()
         Task { [weak self, client = engine.client] in
-            guard let replies = try? await client.storyReplies(id), let self else { return }
-            (self.drawer, drawerReplies) = (text, replies)
-            text.attributedText = transcript(replies, color: .label)
+            guard let replies = try? await client.storyReplies(id), let self, showing, pages[index].story.id == id else { return }
+            drawerReplies = replies
+            drawer.attributedText = transcript(replies, color: .white)
+            view.setNeedsLayout()
             await engine.lookUp(Set(replies.compactMap(\.userId)).subtracting(names.keys).subtracting([me ?? ""]))
         }
     }
 
+    @objc private func closeReplies() {
+        [dim, drawer, drawerPanel].forEach { $0.isHidden = true }; view.endEditing(true)
+        caption.isHidden = caption.text == nil
+        replies.isHidden = !showing || (pages[index].story.replyCount ?? 0) == 0
+    }
+    @objc private func tuckReplies() { pull = 0; view.endEditing(true); view.setNeedsLayout(); view.layoutIfNeeded() }
+    @objc private func openChat() {
+        guard showing, let id = pages[index].story.agentId else { return }
+        stop()
+        let action = onChat
+        dismiss(animated: true) { action?(id) }
+    }
+
     private func repost(_ story: Story) {
-        present(StoryRepostController(client: engine.client, storyId: story.id) { [weak self] ok in if !ok { self?.failed() } }, animated: true)
+        present(StoryRepostController(client: engine.client, source: .repost(story), library: library) { [weak self] ok in if !ok { self?.failed() } }, animated: true)
     }
 
     private func failed() {

@@ -10,6 +10,7 @@ private actor StoriesComputer: AgentTransport {
     var settingOn: Bool
     var feed: [JSONValue] = []
     var requested: [String] = []
+    var writes: [(String, Data, [String: String])] = []
     var continuations: [AsyncThrowingStream<Data, Error>.Continuation] = []
     /// Feed reads wait here while held, each answered with the feed as it was asked for.
     var holding = false
@@ -32,6 +33,7 @@ private actor StoriesComputer: AgentTransport {
 
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         requested.append("\(method) \(path)")
+        if method == "POST", let body { writes.append((path, body, headers)) }
         func json(_ value: JSONValue) throws -> HTTP1Response { .init(status: 200, body: try JSONEncoder().encode(value)) }
         switch path {
         case "/v0/bootstrap/desktop":
@@ -68,6 +70,45 @@ private actor StoriesComputer: AgentTransport {
 }
 
 final class StoriesTests: XCTestCase {
+    func testEmptyRepostAndPositionedEmojiLayerPreserveWireShape() async throws {
+        let computer = StoriesComputer()
+        let live = AgentClient(transport: computer, token: "t")
+        try await live.repostStory("s1", caption: nil, round: nil)
+        try await live.repostStory("s1", caption: nil, round: nil, layers: .init(text: .init(text: "Hello 🌍", x: 0.7, y: 0.3)))
+        let writes = await computer.writes
+        XCTAssertEqual(try JSONDecoder().decode(JSONValue.self, from: writes[0].1), .object([:]))
+        let multipart = String(decoding: writes[1].1, as: UTF8.self)
+        let metadata = try XCTUnwrap(multipart.components(separatedBy: "\r\n\r\n").dropFirst().first?.components(separatedBy: "\r\n--").first)
+        let posted = try JSONDecoder().decode(JSONValue.self, from: Data(metadata.utf8))
+        XCTAssertEqual(posted["layers"]?["text"]?["text"], .string("Hello 🌍"))
+        XCTAssertEqual(posted["layers"]?["text"]?["x"], .number(0.7))
+    }
+
+    func testGalleryUploadUsesBinaryMultipartAndRejectsOversizedMedia() async throws {
+        let computer = StoriesComputer(), media = Data([0xff, 0x00, 0x80, 0x31]), round = Data([0x00, 0xfe, 0x45])
+        let client = AgentClient(transport: computer, token: "t")
+        try await client.postStory(media: media, mimeType: "image/jpeg", caption: "Main caption 🌍", layers: .init(text: .init(text: "🌍", x: 0.2, y: 0.8), round: .init(x: 0.7, y: 0.3)), round: round)
+        let writes = await computer.writes
+        let write = try XCTUnwrap(writes.first)
+        XCTAssertEqual(write.0, "/v0/stories")
+        XCTAssertTrue(write.2["Content-Type"]?.hasPrefix("multipart/form-data; boundary=") == true)
+        XCTAssertNotNil(write.1.range(of: media)); XCTAssertNotNil(write.1.range(of: round))
+        XCTAssertTrue(String(decoding: write.1, as: UTF8.self).contains("name=\"metadata\""))
+        XCTAssertTrue(String(decoding: write.1, as: UTF8.self).contains("Main caption 🌍"))
+        do { try await client.postStory(media: Data(count: (32 << 20) + 1), mimeType: "image/jpeg", layers: .init(), round: nil); XCTFail("oversized media uploaded") }
+        catch AgentClientError.status(413, _, _) {}
+        let count = await computer.writes.count
+        XCTAssertEqual(count, 1)
+    }
+
+    func testGalleryPersonStoryHasCirclePosterWithoutAgentChat() throws {
+        var value = try XCTUnwrap(Self.story("gallery").objectValue)
+        value["poster"] = "person"; value["agentId"] = .null; value["repostOf"] = .null
+        let story = try JSONDecoder().decode(Story.self, from: JSONEncoder().encode(JSONValue.object(value)))
+        XCTAssertTrue(story.isPerson); XCTAssertFalse(story.isRepost); XCTAssertNil(story.agentId)
+        let posters = Stories.posters([story], rows: [], users: [:], profile: nil)
+        XCTAssertTrue(try XCTUnwrap(posters.first).person)
+    }
     private static let now = Date().timeIntervalSince1970 * 1000
 
     private static func story(_ id: String, task: String? = nil, bot: String? = nil, seen: Bool = false, kind: String = "image", posted: Double = now - 60_000, expires: Double = now + 3_600_000) -> JSONValue {

@@ -4,7 +4,18 @@ import Foundation
 @testable import HappyCore
 @testable import HappyUI
 import UIKit
+import UIKit.UIGestureRecognizerSubclass
 import XCTest
+
+private final class StoryPinch: UIPinchGestureRecognizer {
+    private var phase: UIGestureRecognizer.State = .changed
+    override var state: UIGestureRecognizer.State { get { phase } set { phase = newValue } }
+}
+private final class StoryPan: UIPanGestureRecognizer {
+    var delta = CGPoint.zero
+    override func translation(in view: UIView?) -> CGPoint { delta }
+    override func setTranslation(_ translation: CGPoint, in view: UIView?) { delta = translation }
+}
 
 /// A computer whose story media never answers (`hangs`) or is gone (404).
 private actor StoryMediaComputer: AgentTransport {
@@ -25,6 +36,61 @@ private actor StoryMediaComputer: AgentTransport {
 /// its last frame, and when it can't be played at all.
 @MainActor
 final class StoryViewerTests: XCTestCase {
+    func testRepliesStayInlineAndTheReplyFieldUsesAMaterialCapsule() throws {
+        let viewer = try viewer(hangs: true)
+        viewer.view.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        viewer.view.layoutIfNeeded()
+        let capsule = try XCTUnwrap(viewer.view.subviews.first { $0.accessibilityIdentifier == "storyReplyCapsule" } as? UIVisualEffectView)
+        XCTAssertNotNil(capsule.effect)
+        XCTAssertEqual(capsule.layer.cornerRadius, capsule.bounds.height / 2)
+        _ = viewer.perform(NSSelectorFromString("openReplies"))
+        let panel = try XCTUnwrap(viewer.view.subviews.first { $0.accessibilityIdentifier == "storyRepliesDrawer" } as? UIVisualEffectView)
+        let drawer = try XCTUnwrap(panel.contentView.subviews.first { $0.accessibilityIdentifier == "storyReplies" } as? UITextView)
+        XCTAssertFalse(drawer.isHidden)
+        XCTAssertNil(viewer.presentedViewController, "replies presented a sheet")
+        XCTAssertEqual(drawer.backgroundColor, .clear)
+        XCTAssertFalse(viewer.view.subviews.contains { ($0 as? UIButton)?.configuration?.title == "Open chat" && !$0.isHidden })
+        let dim = try XCTUnwrap(viewer.view.subviews.first { $0.accessibilityIdentifier == "storyRepliesDim" } as? UIControl)
+        let close = try XCTUnwrap(viewer.view.subviews.first { $0.accessibilityLabel == "Close" })
+        XCTAssertGreaterThan(try XCTUnwrap(viewer.view.subviews.firstIndex(of: close)), try XCTUnwrap(viewer.view.subviews.firstIndex(of: dim)))
+        let media = try XCTUnwrap(viewer.view.subviews.first { $0.accessibilityIdentifier == "storyMediaStage" })
+        let layers = try XCTUnwrap(media.layer.sublayers)
+        let text = try XCTUnwrap(media.subviews.compactMap { $0 as? UITextView }.first)
+        XCTAssertTrue(layers.indices.filter { layers[$0] is CAGradientLayer }.allSatisfy { $0 < layers.firstIndex(of: text.layer)! })
+        let action = try XCTUnwrap(dim.actions(forTarget: viewer, forControlEvent: .touchUpInside)?.first)
+        _ = viewer.perform(NSSelectorFromString(action))
+        XCTAssertTrue(drawer.isHidden)
+        XCTAssertFalse(panel.isHidden)
+        XCTAssertEqual(panel.frame.height, 44)
+        viewer.tick(CADisplayLink(target: viewer, selector: #selector(StoryViewerController.tick(_:))))
+        XCTAssertTrue(viewer.playing, "tucking replies left the video paused")
+        _ = viewer.perform(NSSelectorFromString("openReplies"))
+        XCTAssertFalse(viewer.playing)
+        _ = viewer.perform(NSSelectorFromString("closeReplies"))
+        XCTAssertTrue(drawer.isHidden)
+        viewer.leave()
+    }
+    func testPinchClampsToThreeAndSpringsBackWithoutPausingOrNavigating() throws {
+        let viewer = try viewer(hangs: true)
+        let media = try XCTUnwrap(viewer.view.subviews.first { $0.accessibilityIdentifier == "storyMediaStage" })
+        let pinch = StoryPinch(); pinch.scale = 5
+        _ = viewer.perform(NSSelectorFromString("pinched:"), with: pinch)
+        XCTAssertEqual(media.transform.a, 3)
+        let pan = StoryPan(); pan.delta = CGPoint(x: 20, y: 30)
+        _ = viewer.perform(NSSelectorFromString("mediaDragged:"), with: pan)
+        XCTAssertEqual(media.transform.tx, 20); XCTAssertEqual(media.transform.ty, 30)
+        pinch.scale = 2
+        _ = viewer.perform(NSSelectorFromString("pinched:"), with: pinch)
+        XCTAssertEqual(media.transform.tx, 20, "a pinch update lost the pan")
+        XCTAssertTrue(viewer.playing); XCTAssertEqual(viewer.index, 0)
+        viewer.tick(CADisplayLink(target: viewer, selector: #selector(StoryViewerController.tick(_:))))
+        XCTAssertTrue(viewer.playing)
+        pinch.state = .ended
+        _ = viewer.perform(NSSelectorFromString("pinched:"), with: pinch)
+        XCTAssertEqual(media.transform, .identity)
+        XCTAssertTrue(viewer.playing); XCTAssertEqual(viewer.index, 0)
+        viewer.leave()
+    }
     private static func story(_ id: String, kind: String) throws -> Story {
         let json = #"{"id":"\#(id)","agentId":"a","taskId":"t","botId":null,"caption":null,"media":{"kind":"\#(kind)","mimeType":"video/mp4","size":2048},"postedAt":1,"expiresAt":9e15,"seen":false}"#
         return try JSONDecoder().decode(Story.self, from: Data(json.utf8))
@@ -129,6 +195,32 @@ final class StoryViewerTests: XCTestCase {
 /// go, and a recording made here is deleted once retaken.
 @MainActor
 final class StoryRepostTests: XCTestCase {
+    func testCameraPreviewsWithoutRecordingThenStopAndRetakeReplaceTheTake() throws {
+        let clip = try file()
+        StoryRepostController.debugRecording = clip
+        defer { StoryRepostController.debugRecording = nil; try? FileManager.default.removeItem(at: clip) }
+        let story = try JSONDecoder().decode(Story.self, from: Data(#"{"id":"s1","media":{"kind":"image","mimeType":"image/png"},"postedAt":1,"expiresAt":9e15,"seen":false}"#.utf8))
+        let composer = StoryRepostController(client: AgentClient(transport: StoryMediaComputer(hangs: false), token: "t"), source: .repost(story), library: nil) { _ in }
+        composer.loadViewIfNeeded()
+        _ = composer.perform(NSSelectorFromString("cameraTapped"))
+        XCTAssertFalse(composer.recording); XCTAssertNil(composer.recorded)
+        composer.recordTapped()
+        XCTAssertTrue(composer.recording)
+        let visible = composer.view.subviews.compactMap { $0 as? UIButton }.filter { !$0.isHidden }
+        XCTAssertEqual(visible.map(\.accessibilityLabel), ["Stop"])
+        XCTAssertFalse(composer.view.subviews.contains(where: \.isFirstResponder))
+        composer.recordTapped()
+        XCTAssertFalse(composer.recording); XCTAssertEqual(composer.recorded, clip)
+        composer.recordTapped()
+        XCTAssertTrue(composer.recording); XCTAssertNil(composer.recorded)
+        NotificationCenter.default.post(name: UIApplication.didEnterBackgroundNotification, object: nil)
+        XCTAssertFalse(composer.recording); XCTAssertNil(composer.recorded)
+        composer.recordTapped()
+        XCTAssertTrue(composer.recording)
+        composer.recordTapped()
+        _ = composer.perform(NSSelectorFromString("removeTapped"))
+        XCTAssertNil(composer.recorded)
+    }
     private func file() throws -> URL {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mov")
         try Data("mov".utf8).write(to: url)
@@ -141,7 +233,8 @@ final class StoryRepostTests: XCTestCase {
 
     func testPostWaitsForTheRecordingAndAFailedOneIsDeleted() async throws {
         let computer = StoryMediaComputer(hangs: false)
-        let repost = StoryRepostController(client: AgentClient(transport: computer, token: "t"), storyId: "s1") { _ in }
+        let story = try JSONDecoder().decode(Story.self, from: Data(#"{"id":"s1","agentId":"a","media":{"kind":"image","mimeType":"image/png"},"postedAt":1,"expiresAt":9e15,"seen":false}"#.utf8))
+        let repost = StoryRepostController(client: AgentClient(transport: computer, token: "t"), source: .repost(story), library: nil) { _ in }
         let first = try file()
         repost.began(first)
         XCTAssertTrue(repost.recording)
@@ -166,6 +259,19 @@ final class StoryRepostTests: XCTestCase {
         XCTAssertEqual(repost.recorded, second)
         repost.recordTapped()
         XCTAssertFalse(FileManager.default.fileExists(atPath: second.path), "a retaken recording's file was kept")
+    }
+
+    func testAnInterruptedTakeCannotReturnAsACompletedRound() async throws {
+        let story = try JSONDecoder().decode(Story.self, from: Data(#"{"id":"s1","media":{"kind":"image","mimeType":"image/png"},"postedAt":1,"expiresAt":9e15,"seen":false}"#.utf8))
+        let composer = StoryRepostController(client: AgentClient(transport: StoryMediaComputer(hangs: false), token: "t"), source: .repost(story), library: nil) { _ in }
+        composer.loadViewIfNeeded()
+        let take = try file(); composer.began(take)
+        _ = composer.perform(NSSelectorFromString("interrupted"))
+        XCTAssertFalse(composer.recording); XCTAssertNil(composer.recorded)
+        composer.fileOutput(AVCaptureMovieFileOutput(), didFinishRecordingTo: take, from: [], error: nil)
+        try await until { !FileManager.default.fileExists(atPath: take.path) }
+        XCTAssertNil(composer.recorded)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: take.path))
     }
 }
 #endif

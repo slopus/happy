@@ -5,8 +5,13 @@ extension Strings {
     public enum Stories {
         public static let you = "You"
         public static let someone = "Someone"
+        public static let yourStory = "Your Story"
+        public static let text = "Text"
+        public static let camera = "Camera"
+        public static let again = "Re-record"
         public static func replyTo(_ name: String) -> String { "Reply to \(name)…" }
         public static func viewAll(_ count: Int) -> String { count == 1 ? "View 1 reply" : "View all \(count) replies" }
+        public static func replyCount(_ count: Int) -> String { count == 1 ? "1 reply" : "\(count) replies" }
         public static func repostedFrom(_ name: String) -> String { "Reposted from \(name)" }
         public static let repost = "Repost"
         public static let delete = "Delete"
