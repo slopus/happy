@@ -4,6 +4,8 @@
   The keys are the edge SSO contract's, identical on iOS and desktop. A key the EMM
   leaves unset is the person's own choice; a set one is enforced and shown locked.
   analyticsEnabled can only turn analytics off: true means the same as unset.
+  phonePairingEnabled is opt-in: once any key here is set, pairing by code is off
+  unless it is true.
   No defaults on purpose: RestrictionsManager reports only what the EMM set.
 -->
 <restrictions xmlns:android="http://schemas.android.com/apk/res/android">
@@ -32,5 +34,6 @@
     <restriction
         android:key="phonePairingEnabled"
         android:restrictionType="bool"
-        android:title="@string/managed_phone_pairing_enabled" />
+        android:title="@string/managed_phone_pairing_enabled"
+        android:description="@string/managed_phone_pairing_enabled_description" />
 </restrictions>

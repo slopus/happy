@@ -35,7 +35,7 @@
     <string name="team_server_status_signed_out">signed out</string>
     <string name="team_server_settings_signed_out">Signed out</string>
     <string name="team_server_relay_disabled">Your organization has turned off Happy\'s hosted relay.</string>
-    <string name="team_server_pairing_disabled">Your organization has turned off connecting agents by code.</string>
+    <string name="team_server_pairing_disabled">Your organization doesn\'t allow connecting agents by code.</string>
     <string name="browser_tunnels_blocked">This server\'s network doesn\'t allow previews.</string>
     <string name="start_sign_in_server">Sign in to %1$s</string>
     <string name="managed_by_organization">Managed by your organization</string>
@@ -49,4 +49,5 @@
     <string name="team_server_profile_required">Add your name to keep using this server.</string>
     <string name="team_server_add_name">Add your name</string>
     <string name="managed_analytics_enabled_description">Off turns analytics off and locks it. On leaves the choice to each person.</string>
+    <string name="managed_phone_pairing_enabled_description">Off unless turned on: on a managed device, agents can be connected by QR code only when this is on.</string>
 </resources>

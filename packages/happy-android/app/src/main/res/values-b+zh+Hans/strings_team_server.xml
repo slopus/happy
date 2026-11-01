@@ -33,7 +33,7 @@
     <string name="team_server_status_signed_out">已退出登录</string>
     <string name="team_server_settings_signed_out">已退出登录</string>
     <string name="team_server_relay_disabled">你的组织已关闭 Happy 托管中继。</string>
-    <string name="team_server_pairing_disabled">你的组织已关闭通过代码连接代理。</string>
+    <string name="team_server_pairing_disabled">你的组织不允许通过代码连接代理。</string>
     <string name="browser_tunnels_blocked">此服务器的网络不允许预览。</string>
     <string name="start_sign_in_server">登录 %1$s</string>
     <string name="managed_by_organization">由你的组织管理</string>
@@ -47,4 +47,5 @@
     <string name="team_server_profile_required">添加你的名字以继续使用此服务器。</string>
     <string name="team_server_add_name">添加名字</string>
     <string name="managed_analytics_enabled_description">关闭会关闭分析并锁定该设置。开启则由每个人自行选择。</string>
+    <string name="managed_phone_pairing_enabled_description">默认关闭，需手动开启：在受管理的设备上，只有开启此项后才能通过二维码连接代理。</string>
 </resources>

@@ -19,8 +19,9 @@ import kotlinx.coroutines.flow.asStateFlow
  * Enterprise managed configurations, `res/xml/app_restrictions.xml`). The
  * keys are the edge SSO contract's §6, the same on iOS and desktop. A key
  * that is set is enforced in code and its control shows locked; one that
- * isn't (null here) leaves the person's own choice. A value of the wrong
- * type, or a server that isn't an `https://` origin, is ignored.
+ * isn't (null here) leaves the person's own choice, except pairing by
+ * code, which a managed device must opt in to ([pairingAllowed]). A value
+ * of the wrong type, or a server that isn't an `https://` origin, is ignored.
  */
 data class ManagedPolicy(
     /** The team server's origin: offered on the first screen, kept and not removable once signed in. */
@@ -33,13 +34,20 @@ data class ManagedPolicy(
     val hostedRelayEnabled: Boolean? = null,
     /** False: nothing connects over Tailcat. */
     val tailcatEnabled: Boolean? = null,
-    /** False: no agent can be paired by QR code (`happy://direct?`). */
+    /** True: agents can be paired by QR code (`happy://direct?`) on a managed device; see [pairingAllowed]. */
     val phonePairingEnabled: Boolean? = null,
+    /** The device's management set any of these keys, even to a value ignored here. */
+    val managed: Boolean = serverUrl != null || allowAdditionalServers != null || analyticsEnabled != null ||
+        hostedRelayEnabled != null || tailcatEnabled != null || phonePairingEnabled != null,
 ) {
     /** Whether the person may add the team server at [origin]. */
     fun allowsServer(origin: String): Boolean = allowAdditionalServers != false || origin == serverUrl
 
-    val managed: Boolean get() = this != ManagedPolicy()
+    /**
+     * Pairing by code is opt-in under management: a managed device pairs
+     * only with `phonePairingEnabled` true. An unmanaged one always may.
+     */
+    val pairingAllowed: Boolean get() = !managed || phonePairingEnabled == true
 
     companion object {
         const val SERVER_URL = "serverUrl"
@@ -48,6 +56,7 @@ data class ManagedPolicy(
         const val HOSTED_RELAY_ENABLED = "hostedRelayEnabled"
         const val TAILCAT_ENABLED = "tailcatEnabled"
         const val PHONE_PAIRING_ENABLED = "phonePairingEnabled"
+        val KEYS = setOf(SERVER_URL, ALLOW_ADDITIONAL_SERVERS, ANALYTICS_ENABLED, HOSTED_RELAY_ENABLED, TAILCAT_ENABLED, PHONE_PAIRING_ENABLED)
 
         private const val TAG = "ManagedSettings"
 
@@ -78,6 +87,7 @@ data class ManagedPolicy(
                 hostedRelayEnabled = bool(HOSTED_RELAY_ENABLED),
                 tailcatEnabled = bool(TAILCAT_ENABLED),
                 phonePairingEnabled = bool(PHONE_PAIRING_ENABLED),
+                managed = values.keys.any { it in KEYS },
             )
         }
 

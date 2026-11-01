@@ -832,7 +832,10 @@ change its wire behaviour on Android alone.
   enforced: management can turn analytics off, never on), `hostedRelayEnabled`,
   `tailcatEnabled`, `phonePairingEnabled`. A set key is enforced in code and its
   control shows "Managed by your organization"; an unset or wrongly typed one
-  leaves the person's choice.
+  leaves the person's choice. The exception is pairing by code, which is opt-in:
+  once management sets any of these keys, it is refused unless
+  `phonePairingEnabled` is true (`ManagedPolicy.pairingAllowed`). Without
+  managed configurations, nothing changes.
 
 ## Push
 

@@ -354,8 +354,8 @@ class AppGraph(
     fun startAgentPairing(code: String) {
         agentPairingState.value?.close()
         agentPairingState.value = PairingFlow(scope, agentConnections, deviceName).also { flow ->
-            // Management may turn pairing by code off; every scanner's route ends here, and says so.
-            if (managed.policy.value.phonePairingEnabled == false) flow.refuse(AgentConnectionException.Reason.Disabled) else flow.start(code)
+            // Under management, pairing by code is opt-in; every scanner's route ends here, and says so.
+            if (!managed.policy.value.pairingAllowed) flow.refuse(AgentConnectionException.Reason.Disabled) else flow.start(code)
         }
     }
 

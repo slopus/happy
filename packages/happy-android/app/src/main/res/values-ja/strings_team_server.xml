@@ -33,7 +33,7 @@
     <string name="team_server_status_signed_out">サインアウト済み</string>
     <string name="team_server_settings_signed_out">サインアウト済み</string>
     <string name="team_server_relay_disabled">組織が Happy のホスト型リレーをオフにしています。</string>
-    <string name="team_server_pairing_disabled">組織がコードによるエージェント接続をオフにしています。</string>
+    <string name="team_server_pairing_disabled">組織がコードによるエージェントの接続を許可していません。</string>
     <string name="browser_tunnels_blocked">このサーバーのネットワークではプレビューを利用できません。</string>
     <string name="start_sign_in_server">%1$s にサインイン</string>
     <string name="managed_by_organization">組織によって管理されています</string>
@@ -47,4 +47,5 @@
     <string name="team_server_profile_required">このサーバーを引き続き使うには名前を追加してください。</string>
     <string name="team_server_add_name">名前を追加</string>
     <string name="managed_analytics_enabled_description">オフにすると分析がオフになりロックされます。オンにすると各ユーザーの選択に任されます。</string>
+    <string name="managed_phone_pairing_enabled_description">オンにしない限りオフです。管理対象のデバイスでは、これがオンのときだけ QR コードでエージェントを接続できます。</string>
 </resources>

@@ -33,7 +33,7 @@
     <string name="team_server_status_signed_out">вход не выполнен</string>
     <string name="team_server_settings_signed_out">Вход не выполнен</string>
     <string name="team_server_relay_disabled">Ваша организация отключила облачный ретранслятор Happy.</string>
-    <string name="team_server_pairing_disabled">Ваша организация отключила подключение агентов по коду.</string>
+    <string name="team_server_pairing_disabled">Ваша организация не разрешает подключать агентов по коду.</string>
     <string name="browser_tunnels_blocked">Сеть этого сервера не разрешает предпросмотр.</string>
     <string name="start_sign_in_server">Войти на %1$s</string>
     <string name="managed_by_organization">Управляется вашей организацией</string>
@@ -47,4 +47,5 @@
     <string name="team_server_profile_required">Укажите своё имя, чтобы продолжить работу с этим сервером.</string>
     <string name="team_server_add_name">Указать имя</string>
     <string name="managed_analytics_enabled_description">«Выкл.» отключает аналитику и блокирует настройку. «Вкл.» оставляет выбор за каждым пользователем.</string>
+    <string name="managed_phone_pairing_enabled_description">Выключено, пока не включено: на управляемом устройстве агентов можно подключать по QR-коду, только если эта настройка включена.</string>
 </resources>
