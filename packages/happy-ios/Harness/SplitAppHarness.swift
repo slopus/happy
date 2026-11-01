@@ -1,4 +1,5 @@
 #if (DEBUG || HAPPY_FIXTURES) && canImport(UIKit)
+import CryptoKit
 import Foundation
 import HappyCore
 import HappyWire
@@ -75,6 +76,11 @@ private actor DemoComputer: AgentTransport {
         } else if path.hasSuffix("/bootstrap"), path.hasPrefix("/v0/agents/") {
             let id = String(path.split(separator: "/")[2])
             value = .object(["agent": .object(["id": .string(id), "workspaceId": .string("w"), "status": .string("idle")]), "pending": .array([])])
+        } else if method == "PUT", path.hasSuffix("/file"), let body,
+                  let content = try JSONDecoder().decode(JSONValue.self, from: body)["content"]?.stringValue,
+                  let bytes = Data(base64Encoded: content) {
+            // A picked video is kept in the workspace, as the computer would.
+            value = .object(["hash": .string(SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined())])
         } else if method == "POST" {
             value = .object([:])
         } else {

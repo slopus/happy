@@ -45,6 +45,7 @@ final class AttachMenuPanel: UIView, UITextViewDelegate, UIGestureRecognizerDele
     let field = UITextView()
     private let placeholder = UILabel()
     private let send = UIControl()
+    private let fieldTap = UITapGestureRecognizer()
     private let sendBackground = UIView()
     private let sendGlyph = UIImageView(image: UIImage(systemName: "arrow.up", withConfiguration: UIImage.SymbolConfiguration(pointSize: 17, weight: .semibold)))
 
@@ -106,8 +107,11 @@ final class AttachMenuPanel: UIView, UITextViewDelegate, UIGestureRecognizerDele
             view.isHidden = true
             glass.contentView.addSubview(view)
         }
-        // Tapping the field anywhere gives it the keyboard.
-        glass.contentView.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(fieldTapped(_:))))
+        // Tapping the field anywhere gives it the keyboard; never on send,
+        // a plain control whose touch this tap would otherwise cancel.
+        fieldTap.addTarget(self, action: #selector(fieldTapped(_:)))
+        fieldTap.delegate = self
+        glass.contentView.addGestureRecognizer(fieldTap)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -196,6 +200,10 @@ final class AttachMenuPanel: UIView, UITextViewDelegate, UIGestureRecognizerDele
 
     override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
         gestureRecognizer !== recognizer || !picking
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        gestureRecognizer !== fieldTap || touch.view?.isDescendant(of: send) != true
     }
 
     // MARK: Caption
