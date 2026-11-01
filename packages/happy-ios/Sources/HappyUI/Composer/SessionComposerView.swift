@@ -824,6 +824,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         // chat's submit empties its record even if the session arrives
         // before it returns, and the handover carries the record over.
         let clearsStored = !isDraftSynced && !isPending
+        composerDelegate?.composerWillSend(self, from: card)
         // Behind the draft writes before it, ahead of the ones after.
         let sending = draftWriter.send(message)
         // The outbox copies the staged files; they outlive a composer

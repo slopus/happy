@@ -27,6 +27,15 @@ earlier live content. The pooled native overlay retains scrollers, diff
 controls, images, timers and Mermaid pages across revisions of the same row.
 Row opacity applies once to each drawing and overlay.
 
+The person's own bubble draws its time with the row, and its clock or checks
+live over it (`ChatDrawItem.delivery`, `ChatDeliveryView`). The mark is the
+row's last item, so it always sits above the bitmap. A send made at the
+newest edge flies in from the composer (`ChatSendFlight`, see
+docs/telegram-notes.md §7). The list veils the row the flight waits for from
+the pass that inserts it, and that pass uses the flight's curve. The row is
+unveiled in the transaction where the copy goes. Every other pass keeps its
+own transition.
+
 The adapter reads positions from the library's committed row descriptors and
 frames. Ordinary mutations carry no absolute scroll target, so background
 preparation cannot replay an old target after a drag starts. Following near

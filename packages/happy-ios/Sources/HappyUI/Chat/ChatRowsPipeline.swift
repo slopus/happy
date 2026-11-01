@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import HappyCore
 import HappyLayout
+import HappyStore
 import HappyWire
 import UIKit
 
@@ -176,7 +177,7 @@ enum ChatRows {
             planner: planner,
             applied: applied.rows,
             makeRows: { items, groups in
-                rows(items, groups: groups, delivery: snapshot.delivery, agentState: session.agentState, view: view, style: style, now: now, graceEnd: &graceEnd, forms: &forms)
+                rows(items, groups: groups, delivery: snapshot.delivery, agentState: session.agentState, receipts: SessionMetadata.sendsMessageReceipts(session.metadata), view: view, style: style, now: now, graceEnd: &graceEnd, forms: &forms)
             },
             id: \.id,
             recolour: input.recolour
@@ -232,23 +233,31 @@ enum ChatRows {
 
     /// One input per shown row, newest first. Collects the question forms
     /// in the window and the next time a waiting message's status is due.
+    /// `receipts`: the agent says when it takes a message in
+    /// (`SessionMetadata.sendsMessageReceipts`).
     static func rows(
         _ items: [ChatListItem],
         groups: ChatWorkGroupState,
         delivery deliveries: [String: OutboxDelivery],
         agentState: JSONValue?,
+        receipts: Bool = false,
         view: ChatRowsView,
         style: ChatRowStyle,
         now: Int64,
         graceEnd: inout Int64?,
         forms: inout [String: ChatQuestionForm]
     ) -> [ChatRowInput] {
-        items.filter { ChatRowRenderer.isShown($0, style: style) }.map { item in
+        let shown = items.filter { ChatRowRenderer.isShown($0, style: style) }
+        // Without receipts, the agent answering is the sign it took a message.
+        let newestAnswer = shown.firstIndex { if case .message(.userText) = $0 { false } else { true } }
+        return shown.enumerated().map { index, item in
             var delivery: OutboxDelivery?
             var userStatus: UserMessageStatus?
+            var outgoing: MessageDelivery?
             if case .message(.userText(let message)) = item {
                 if let localId = message.localId { delivery = deliveries[localId] }
                 userStatus = ChatRowRenderer.userStatus(message, delivery: delivery, now: now)
+                outgoing = ChatRowRenderer.outgoing(message, delivery: delivery, receipts: receipts, answered: newestAnswer.map { $0 < index } ?? false)
                 if let end = UserMessageStatus.graceEnds(
                     pending: message.pending, undelivered: delivery != nil, queuedWhileBusy: message.meta?.queuedWhileBusy == true,
                     createdAt: message.createdAt, now: now
@@ -280,7 +289,7 @@ enum ChatRows {
             }
             return ChatRowInput(
                 item: item, delivery: delivery, expanded: expanded, permissionBusy: busy, question: question, diffExpanded: diffs,
-                userStatus: userStatus, copied: copied, mermaid: view.mermaidHeights[item.id] ?? [:], style: style
+                userStatus: userStatus, outgoing: outgoing, copied: copied, mermaid: view.mermaidHeights[item.id] ?? [:], style: style
             )
         }
     }

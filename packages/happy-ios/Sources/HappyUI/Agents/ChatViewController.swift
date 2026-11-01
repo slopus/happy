@@ -1407,10 +1407,8 @@ final class ChatViewController: UIViewController, ComposeHosting {
     }
 
     /// A send follows the transcript the person is actually reading.
-    var sendFollowsNewest: Bool {
-        let distance = ultra.distanceFromNewest
-        return SendFollow.Send(following: followsNewest, distanceFromEnd: distance).follows
-    }
+    /// A send now would fly in from the composer (`SendFollow`).
+    var sendFlies: Bool { ChatSendFlight.flies(distance: ultra.distanceFromNewest) }
 
     private func send() {
         guard !acceptingSend else { return }
@@ -1433,12 +1431,17 @@ final class ChatViewController: UIViewController, ComposeHosting {
         }
         acceptingSend = true
         Haptics.play(.send)
-        // A reader at or near the end follows it there; one reading further
-        // up stays where they are. The transcript is never lifted.
+        // Telegram's send: the reader is carried to the end; at the end
+        // the message flies in from the composer, from history it arrives
+        // with the scroll. The transcript is never lifted.
         let id = ClientID.make()
-        if sendFollowsNewest {
+        if sendFlies {
+            ultra.flight = ChatSendFlight(source: ChatSendFlight.source(from: card, in: view), host: view, message: id)
             followsNewest = true
             ultra.follow()
+        } else {
+            followsNewest = true
+            ultra.scrollToNewest(animated: !UIAccessibility.isReduceMotionEnabled)
         }
         let conversation = conversation
         let store = session.store

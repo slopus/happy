@@ -16,6 +16,15 @@ final class ChatPlanView: UIView {
     /// (a diff's "Show N more lines").
     var onAction: ((ChatRowAction) -> Void)?
     private(set) var plan: ChatRowPlan?
+    /// Hidden while a copy of the row flies in over it (`ChatSendFlight`).
+    var veiled = false {
+        didSet { if veiled != oldValue { alpha = veiled ? 0 : plan?.alpha ?? 1 } }
+    }
+    /// Every text it shows has been drawn: shown now, it shows whole.
+    var isDrawn: Bool {
+        texts.allSatisfy { $0.isHidden || $0.isDrawn } && chunkViews.values.allSatisfy(\.isDrawn)
+            && scrollers.allSatisfy { $0.isHidden || $0.content.isDrawn }
+    }
     /// A tall plan is cut into chunks (`ChatChunks`), each drawn by
     /// a view of its own, and only the chunks near `band` have one: a long
     /// reply costs what shows of it. Off, every mark has its view.
@@ -58,6 +67,7 @@ final class ChatPlanView: UIView {
     private var media: [ChatMediaView] = []
     private var fileStatuses: [ChatFileStatusView] = []
     private var pages: [InlinePageView] = []
+    private var deliveries: [ChatDeliveryView] = []
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -78,7 +88,7 @@ final class ChatPlanView: UIView {
     func apply(_ plan: ChatRowPlan) {
         guard plan !== self.plan else { return }
         self.plan = plan
-        alpha = plan.alpha
+        alpha = veiled ? 0 : plan.alpha
         let cut = cutsTallPlans ? ChatChunks(frames: plan.items.map(\.markFrame), size: plan.size) : nil
         if let cut, cut.chunks.count > 1 {
             chunks = cut.chunks.map { chunk in
@@ -158,6 +168,7 @@ final class ChatPlanView: UIView {
         var mediaIndex = 0
         var fileStatusIndex = 0
         var pageIndex = 0
+        var deliveryIndex = 0
         var order: [UIView] = []
         for item in items {
             switch item {
@@ -278,6 +289,11 @@ final class ChatPlanView: UIView {
                 view.setLayoutFrame(frame)
                 view.apply(page)
                 order.append(view)
+            case .delivery(let mark, let frame):
+                let view = take(&deliveries, &deliveryIndex) { ChatDeliveryView() }
+                view.setLayoutFrame(frame)
+                view.apply(mark)
+                order.append(view)
             }
         }
         for view in boxes[boxIndex...] { view.isHidden = true }
@@ -326,6 +342,10 @@ final class ChatPlanView: UIView {
             view.isHidden = true
         }
         for view in pages[pageIndex...] {
+            view.apply(nil)
+            view.isHidden = true
+        }
+        for view in deliveries[deliveryIndex...] {
             view.apply(nil)
             view.isHidden = true
         }
@@ -410,7 +430,7 @@ extension ChatDrawItem {
         case .box(let box), .pulse(let box): box.frame
         case .text(_, let frame), .icon(_, _, let frame, _), .spinner(let frame, _, _), .shimmer(_, let frame), .elapsed(_, let frame, _),
              .diff(_, let frame, _, _, _, _), .diffHeader(_, _, let frame), .scroller(_, let frame, _, _), .attachment(_, let frame),
-             .webImage(_, let frame, _), .mermaid(_, let frame), .media(_, let frame), .fileStatus(_, let frame), .embed(_, let frame): frame
+             .webImage(_, let frame, _), .mermaid(_, let frame), .media(_, let frame), .fileStatus(_, let frame), .embed(_, let frame), .delivery(_, let frame): frame
         }
     }
 }

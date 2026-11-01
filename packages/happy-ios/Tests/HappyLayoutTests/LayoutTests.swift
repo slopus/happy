@@ -327,18 +327,14 @@ final class LayoutTests: XCTestCase {
         XCTAssertEqual(short.chunks, [.init(items: 0..<2, frame: CGRect(x: 0, y: 0, width: 390, height: 2048))])
     }
 
-    /// A send carries a reader at or near the end to it, and leaves one
-    /// reading up in history where they are.
-    func testASendFollowsOnlyAReaderNearTheEnd() {
-        func follows(_ following: Bool, _ distance: CGFloat) -> Bool {
-            SendFollow.Send(following: following, distanceFromEnd: distance).follows
-        }
-        XCTAssertTrue(follows(true, 0))
-        XCTAssertTrue(follows(true, 400), "already following: it stays following")
-        XCTAssertTrue(follows(false, 0))
-        XCTAssertTrue(follows(false, 80), "the threshold itself follows")
-        XCTAssertFalse(follows(false, 81), "reading history: nothing moves")
-        XCTAssertFalse(follows(false, 400))
+    /// A send flies in from the composer only at the end, as Telegram's
+    /// does closer than 20 points to it.
+    func testASendFliesInOnlyAtTheEnd() {
+        func flies(_ distance: CGFloat) -> Bool { SendFollow.Send(distanceFromEnd: distance).flies }
+        XCTAssertTrue(flies(0))
+        XCTAssertTrue(flies(19.5))
+        XCTAssertFalse(flies(20), "Telegram's threshold itself scrolls instead")
+        XCTAssertFalse(flies(400), "reading history: it arrives with the scroll")
     }
 
     /// An inline page sits under its artifact's card, across the column at its measured height.

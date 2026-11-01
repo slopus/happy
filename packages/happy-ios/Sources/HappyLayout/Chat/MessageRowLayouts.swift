@@ -71,12 +71,19 @@ public struct UserMessageLayout: Equatable, Sendable {
         /// Another participant's name; their messages sit on the left.
         public var author: Measurable?
         public var content: Content
+        /// The time and delivery mark at the foot of the bubble (a person's
+        /// own message), with `trailing` measuring the last block's last
+        /// line, nil when that block is no paragraph.
+        public var delivery: MessageStatusLayout?
+        public var trailing: Measurable?
 
-        public init(width: CGFloat, maxContentWidth: CGFloat = .greatestFiniteMagnitude, author: Measurable? = nil, content: Content) {
+        public init(width: CGFloat, maxContentWidth: CGFloat = .greatestFiniteMagnitude, author: Measurable? = nil, content: Content, delivery: MessageStatusLayout? = nil, trailing: Measurable? = nil) {
             self.width = width
             self.maxContentWidth = maxContentWidth
             self.author = author
             self.content = content
+            self.delivery = delivery
+            self.trailing = trailing
         }
     }
 
@@ -94,6 +101,8 @@ public struct UserMessageLayout: Equatable, Sendable {
     /// bubble's side.
     public var status: CGRect
     public var alignsLeft: Bool
+    /// The time and mark's box, in the bubble (`Input.delivery`).
+    public var delivery: CGRect?
 
     public init(_ input: Input) {
         typealias M = Metrics
@@ -118,14 +127,27 @@ public struct UserMessageLayout: Equatable, Sendable {
             author = nil
         }
 
+        var placedDelivery: CGRect?
         func makeBubble(_ blocks: [MarkdownLayout.Block], marginBottom: CGFloat) -> (frame: CGRect, markdown: MarkdownLayout, origin: CGPoint) {
             let available = max(0, inner - 2 * M.bubblePaddingH)
             let natural = MarkdownLayout.naturalWidth(of: blocks, available: available)
             let markdown = MarkdownLayout(width: natural, blocks: blocks)
-            let width = natural + 2 * M.bubblePaddingH
-            let frame = CGRect(x: place(width: width), y: y, width: width, height: markdown.size.height + 2 * M.bubblePaddingV)
+            var content = markdown.size
+            var delivery: CGRect?
+            if let status = input.delivery {
+                // The text keeps its lines; the bubble grows around the box,
+                // which stands on the last block's foot, in the margin under it.
+                let foot = markdown.blocks.last?.frame.maxY ?? content.height
+                let placement = status.place(text: CGSize(width: content.width, height: foot), trailing: input.trailing?.size(fitting: natural).width, available: available)
+                content = CGSize(width: placement.content.width, height: max(content.height, placement.content.height))
+                delivery = placement.frame
+            }
+            let width = content.width + 2 * M.bubblePaddingH
+            let frame = CGRect(x: place(width: width), y: y, width: width, height: content.height + 2 * M.bubblePaddingV)
             y += frame.height + marginBottom
-            return (frame, markdown, CGPoint(x: frame.minX + M.bubblePaddingH, y: frame.minY + M.bubblePaddingV))
+            let origin = CGPoint(x: frame.minX + M.bubblePaddingH, y: frame.minY + M.bubblePaddingV)
+            placedDelivery = delivery?.offsetBy(dx: origin.x, dy: origin.y)
+            return (frame, markdown, origin)
         }
 
         var bubble: (frame: CGRect, markdown: MarkdownLayout, origin: CGPoint)?
@@ -157,6 +179,7 @@ public struct UserMessageLayout: Equatable, Sendable {
             y += rowHeight + M.goalMarginBottom
         }
         self.bubble = bubble?.frame
+        delivery = placedDelivery
         markdown = bubble?.markdown
         markdownOrigin = bubble?.origin ?? .zero
 

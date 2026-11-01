@@ -108,7 +108,7 @@ final class HostedAgentTranscriptRendererTests: XCTestCase {
         let plans = (0..<40).map { ChatRowPlan(id: "row-\($0)", size: CGSize(width: chat.view.bounds.width, height: 80), items: []) }
         transcript.apply(plans)
         try await until { transcript.list.loadedItemView(at: 0) != nil }
-        XCTAssertTrue(chat.sendFollowsNewest)
+        XCTAssertTrue(chat.sendFlies)
         XCTAssertEqual(scrim.presence, 1)
 
         transcript.list.scrollToTop(animated: false)
@@ -117,15 +117,15 @@ final class HostedAgentTranscriptRendererTests: XCTestCase {
 
         transcript.list.scrollTo(.init(index: 15), transition: .none)
         try await until { transcript.distanceFromNewest > 200 }
-        XCTAssertFalse(chat.sendFollowsNewest, "a send in history read the unused scroll view's offset")
+        XCTAssertFalse(chat.sendFlies, "a send in history read the unused scroll view's offset")
 
         transcript.list.scrollTo(.init(index: 0, pointOffset: -50), transition: .none)
         try await until { (30...80).contains(transcript.distanceFromNewest) }
-        XCTAssertFalse(transcript.followsNewest, "the 24pt reading threshold differs from the 80pt send threshold")
-        XCTAssertTrue(chat.sendFollowsNewest, "a send near the end should follow it")
+        XCTAssertFalse(transcript.followsNewest)
+        XCTAssertFalse(chat.sendFlies, "past Telegram's 20pt a send scrolls rather than flies")
         transcript.scrollToNewest(animated: false)
         try await until { abs(transcript.distanceFromNewest) < 1 }
-        XCTAssertTrue(chat.sendFollowsNewest)
+        XCTAssertTrue(chat.sendFlies)
     }
 
     func testAnAppendTargetsTheIncomingNewestRowAboveTheComposer() async throws {

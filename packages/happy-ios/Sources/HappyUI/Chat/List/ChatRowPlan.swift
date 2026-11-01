@@ -25,8 +25,10 @@ final class ChatRowPlan: @unchecked Sendable {
     let proposals: [(artifactId: String, layout: SidebarProposalLayout, frame: CGRect)]
     /// What its tap toggles (Show full, Show less), as a VoiceOver action.
     let toggles: String?
+    /// The person's own message: what its send transition flies in.
+    let flight: ChatRowFlight?
 
-    init(id: String, size: CGSize, items: [ChatDrawItem], hits: [ChatHit] = [], alpha: CGFloat = 1, accessibilityLabel: String? = nil, proposals: [(artifactId: String, layout: SidebarProposalLayout, frame: CGRect)] = [], toggles: String? = nil) {
+    init(id: String, size: CGSize, items: [ChatDrawItem], hits: [ChatHit] = [], alpha: CGFloat = 1, accessibilityLabel: String? = nil, proposals: [(artifactId: String, layout: SidebarProposalLayout, frame: CGRect)] = [], toggles: String? = nil, flight: ChatRowFlight? = nil) {
         self.id = id
         self.size = size
         self.items = items
@@ -35,6 +37,7 @@ final class ChatRowPlan: @unchecked Sendable {
         self.accessibilityLabel = accessibilityLabel
         self.proposals = proposals
         self.toggles = toggles
+        self.flight = flight
     }
 }
 
@@ -96,6 +99,8 @@ enum ChatDrawItem {
     case fileStatus(ChatFileStatus, frame: CGRect)
     /// Live content of its own, drawn by a view that reads and follows it.
     case embed(ChatEmbed, frame: CGRect)
+    /// A person's own message's clock or checks (`ChatDeliveryView`).
+    case delivery(ChatDeliveryMark, frame: CGRect)
 }
 
 /// What an embedded view shows.

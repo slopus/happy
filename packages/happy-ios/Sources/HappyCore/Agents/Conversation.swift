@@ -83,13 +83,17 @@ public struct ChatItem: Equatable, Sendable, Identifiable {
     public var delivery: Delivery
     /// The run it belongs to, which `TurnFold` folds as one.
     public var turn: String?
+    /// When a person's message was written, in ms: the computer's time for
+    /// one it holds, this phone's for one still on its way.
+    public var time: Double?
 
-    public init(id: String, role: Role, pieces: [Piece], delivery: Delivery, turn: String? = nil) {
+    public init(id: String, role: Role, pieces: [Piece], delivery: Delivery, turn: String? = nil, time: Double? = nil) {
         self.id = id
         self.role = role
         self.pieces = pieces
         self.delivery = delivery
         self.turn = turn
+        self.time = time
     }
 
     public var text: String {
@@ -283,6 +287,8 @@ public actor Conversation {
         struct Send: Codable, Equatable, Sendable {
             var id: String; var text: String; var pictures: [Picture]; var accepted: Bool; var failure: String?; var mode: AgentWire.Mode?
             var files: [QueuedFile]?
+            /// When it was sent, in ms; absent in what was kept before it was.
+            var at: Double?
         }
         var runs: [Run]
         var messages: [String: AgentWire.Message]
@@ -338,6 +344,8 @@ public actor Conversation {
     /// began before the send can take it off the screen.
     private var outgoing: [(id: String, text: String, pictures: [(mimeType: String, data: Data)], accepted: Bool, failure: String?)] = []
     private var outgoingFiles: [String: [QueuedFile]] = [:]
+    /// When each send was made, in ms, for its bubble's time.
+    private var outgoingTimes: [String: Double] = [:]
     private var admitting: Set<String> = []
     /// Standalone consumers and fixtures never persist a conversation. Every
     /// production Session supplies its account's durable engine.
@@ -503,6 +511,7 @@ public actor Conversation {
                 else { outgoing.append(copy) }
                 outgoingModes[queued.id] = queued.mode
                 outgoingFiles[queued.id] = queued.files
+                if outgoingTimes[queued.id] == nil { outgoingTimes[queued.id] = Date().timeIntervalSince1970 * 1000 }
             }
         }
         let events = await store.conversationEvents(agentId)
@@ -854,6 +863,7 @@ public actor Conversation {
         outgoingFiles[id] = files
         outgoing.append((id, text, inline, false, nil))
         outgoingModes[id] = mode
+        outgoingTimes[id] = Date().timeIntervalSince1970 * 1000
         guard await saveConversationNow() else {
             failed(id, "Could not save this message on this device. Retry when storage is available.")
             return false
@@ -923,6 +933,7 @@ public actor Conversation {
         if withdrawn || (send.text.isEmpty && send.pictures.isEmpty && (outgoingFiles[id] ?? []).isEmpty) {
             outgoing.remove(at: index)
             outgoingModes.removeValue(forKey: id)
+            outgoingTimes.removeValue(forKey: id)
             attachmentCleanup.insert(id)
             publish()
             return
@@ -1001,6 +1012,7 @@ public actor Conversation {
         outgoing = kept.outgoing.map { ($0.id, $0.text, $0.pictures.map { ($0.mimeType, $0.data) }, $0.accepted, $0.failure) }
         outgoingModes = Dictionary(kept.outgoing.compactMap { send in send.mode.map { (send.id, $0) } }, uniquingKeysWith: { first, _ in first })
         outgoingFiles = Dictionary(kept.outgoing.compactMap { send in send.files.map { (send.id, $0) } }, uniquingKeysWith: { first, _ in first })
+        outgoingTimes = Dictionary(kept.outgoing.compactMap { send in send.at.map { (send.id, $0) } }, uniquingKeysWith: { first, _ in first })
         mode = picked ?? kept.mode
         snapshot.mode = mode
         snapshot.hasMore = kept.hasMore
@@ -1051,7 +1063,7 @@ public actor Conversation {
         guard let persistence, snapshot.loaded || !outgoing.isEmpty else { return true }
         let window = Self.kept(runs: runs, messages: messages, pending: pending)
         let kept = KeptConversation(runs: window.runs.map { .init(id: $0.id, messageIds: $0.messageIds, time: times[$0.id]) }, messages: window.messages, pending: pending,
-            outgoing: outgoing.map { .init(id: $0.id, text: $0.text, pictures: $0.pictures.map { .init(mimeType: $0.mimeType, data: $0.data) }, accepted: $0.accepted, failure: $0.failure, mode: outgoingModes[$0.id], files: outgoingFiles[$0.id]) }, mode: mode, hasMore: snapshot.hasMore || window.trimmed)
+            outgoing: outgoing.map { .init(id: $0.id, text: $0.text, pictures: $0.pictures.map { .init(mimeType: $0.mimeType, data: $0.data) }, accepted: $0.accepted, failure: $0.failure, mode: outgoingModes[$0.id], files: outgoingFiles[$0.id], at: outgoingTimes[$0.id]) }, mode: mode, hasMore: snapshot.hasMore || window.trimmed)
         guard kept != lastKept || conversationWrite != nil else { return true }
         let key = "conversation:\(agentId)"
         let claim = checkpointClaim(for: key)
@@ -1503,7 +1515,7 @@ public actor Conversation {
                 pieces.append(.sentFile(ChatItem.SentFile(id: UploadProgressBoard.fileKey(send.id, offset), name: AttachmentRules.safeName(file.name),
                     mimeType: file.mimeType, file: file.fileURL, width: file.width, height: file.height)))
             }
-            items.append(ChatItem(id: send.id, role: .user, pieces: pieces, delivery: send.failure.map { .failed($0) } ?? (send.accepted ? .pending : .sending)))
+            items.append(ChatItem(id: send.id, role: .user, pieces: pieces, delivery: send.failure.map { .failed($0) } ?? (send.accepted ? .pending : .sending), time: outgoingTimes[send.id]))
         }
         snapshot.items = items
         // Only steering for a run already going: a send that starts one is
@@ -1617,7 +1629,7 @@ public actor Conversation {
         var proposed: Set<String> = []
         func flush(next: String) {
             if !pieces.isEmpty {
-                items.append(ChatItem(id: segment, role: role, pieces: pieces, delivery: role == .user && message.status == "pending" ? .pending : .sent))
+                items.append(ChatItem(id: segment, role: role, pieces: pieces, delivery: role == .user && message.status == "pending" ? .pending : .sent, time: role == .user ? message.createdAt : nil))
             }
             pieces = []
             segment = next

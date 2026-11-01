@@ -54,6 +54,8 @@ struct ChatRowInput: Equatable, Sendable {
     /// For a user's message: its status line and dimming, decided at the
     /// time the inputs were made (the pending grace runs on the clock).
     var userStatus: UserMessageStatus?
+    /// For the person's own message: its clock or checks (`outgoing`).
+    var outgoing: MessageDelivery?
     /// For an agent's message: copied a moment ago, so its button shows a tick.
     var copied = false
     /// The heights the row's diagrams reported, by their place in the row.
@@ -91,7 +93,7 @@ enum ChatRowRenderer {
             switch message {
             case .userText(let user):
                 let status = input.userStatus ?? userStatus(user, delivery: input.delivery, now: Int64(Date().timeIntervalSince1970 * 1000))
-                return userText(user, delivery: input.delivery, status: status, diagrams: diagrams, width: width, style: input.style)
+                return userText(user, delivery: input.delivery, status: status, outgoing: input.outgoing, diagrams: diagrams, width: width, style: input.style)
             case .agentText(let agent): return agentText(agent, copied: input.copied, diagrams: diagrams, width: width, style: input.style)
             case .toolCall(let call):
                 let views = ChatToolViews(question: input.question, diffExpanded: input.diffExpanded, diagrams: diagrams, delivery: input.delivery)
@@ -134,8 +136,24 @@ enum ChatRowRenderer {
         )
     }
 
+    /// The mark on the person's own message, nil on another's: the clock
+    /// while it is in this device's outbox, one check once the server has
+    /// it, two once the agent took it in (its receipt, or with no receipts
+    /// its answer after it).
+    static func outgoing(_ message: UserTextMessage, delivery: OutboxDelivery?, receipts: Bool, answered: Bool) -> MessageDelivery? {
+        guard message.author == nil || message.author?.owner == true else { return nil }
+        if message.sendError != nil { return .failed }
+        switch delivery {
+        case .failed: return .failed
+        case .queued, .sending: return .sending
+        case nil: break
+        }
+        if message.pending || !receipts && !answered { return .received }
+        return .accepted
+    }
+
     static func userText(
-        _ message: UserTextMessage, delivery: OutboxDelivery?, status messageStatus: UserMessageStatus, diagrams: ChatMermaidHeights,
+        _ message: UserTextMessage, delivery: OutboxDelivery?, status messageStatus: UserMessageStatus, outgoing: MessageDelivery? = nil, diagrams: ChatMermaidHeights,
         width: CGFloat, style: ChatRowStyle
     ) -> ChatRowPlan {
         let palette = bubblePalette(style.bubble)
@@ -172,7 +190,13 @@ enum ChatRowRenderer {
             return ChatRowPlan(id: message.id, size: CGSize(width: width, height: 0), items: [])
         }
 
-        let layout = UserMessageLayout(.init(width: width, maxContentWidth: style.maxContentWidth, author: authorText?.measurable, content: content))
+        let time = outgoing.flatMap { _ in MessageTime.text(Double(message.createdAt), ink: Palette.deliveryInk, in: environment) }
+        let deliveryStatus = outgoing.map { _ in MessageTime.status(time, in: environment) }
+        let trailing: Measurable? = if case .text = content { markdown?.trailing } else { nil }
+        let layout = UserMessageLayout(.init(
+            width: width, maxContentWidth: style.maxContentWidth, author: authorText?.measurable, content: content,
+            delivery: deliveryStatus, trailing: trailing
+        ))
         var items: [ChatDrawItem] = []
         var hits: [ChatHit] = []
         if let frame = layout.author, let authorText { items.append(.text(authorText.layout(for: frame), frame)) }
@@ -185,10 +209,12 @@ enum ChatRowRenderer {
         if !copyTarget.isNull {
             hits.append(ChatHit(frame: copyTarget, action: .copyMenu(copyText), hold: true))
         }
+        var firstText: CGRect?
         if let placed = layout.markdown, let markdown {
             let drawn = markdown.draw(placed, origin: layout.markdownOrigin)
             items += drawn.items
             hits = drawn.hits + hits
+            firstText = drawn.items.lazy.compactMap { if case .text(_, let frame) = $0 { frame } else { nil } }.first
         }
         if let chip = layout.chip, let label = layout.chipLabel, let chipText {
             items.append(.box(ChatBox(frame: chip, fill: palette.background, border: palette.border, borderWidth: UserMessageLayout.Metrics.chipBorder, radius: UserMessageLayout.Metrics.chipRadius)))
@@ -199,15 +225,24 @@ enum ChatRowRenderer {
             items.append(.text(sentText.layout(for: label), label))
         }
 
+        if let outgoing, let box = layout.delivery, let deliveryStatus {
+            let placed = ChatDeliveryMark.items(deliveryStatus, box: box, time: time, state: outgoing, tint: Palette.deliveryInk, message: message.id)
+            items += placed.items
+            if outgoing == .failed, case .failed = delivery, let localId = message.localId {
+                hits.insert(ChatHit(frame: placed.mark.insetBy(dx: -8, dy: -8), action: .retry(localId: localId)), at: 0)
+            }
+        }
+
         // The status line is always there at one line's height, so a row
         // never changes height when a message settles. Its height is RN's
         // fixed 14 at every text size (`pendingStatusText`), so a larger
-        // size's text is cut at it.
+        // size's text is cut at it. On the person's own message the clock
+        // says it is on its way.
         let status: String
         var failed = false
         switch messageStatus.line {
         case .none: status = ""
-        case .sending: status = text.words.sending
+        case .sending: status = outgoing == nil ? text.words.sending : String()
         case .sendsAfterThisTurn: status = text.words.sendsAfterThisTurn
         case .failed(let reason):
             status = text.words.sendFailed(reason)
@@ -224,12 +259,18 @@ enum ChatRowRenderer {
                 hits.insert(ChatHit(frame: layout.status, action: .retry(localId: localId)), at: 0)
             }
         }
-        // A message the agent hasn't read yet is dimmed once its status
-        // shows; a refused one is not.
+        // Another's message the agent hasn't read yet is dimmed once its
+        // status shows; a refused one is not, nor one with its own mark.
         return ChatRowPlan(
             id: message.id, size: layout.size, items: items, hits: hits,
-            alpha: messageStatus.dimmed ? UserMessageLayout.Metrics.pendingOpacity : 1,
-            accessibilityLabel: [author?.name, copyText, status.isEmpty ? nil : status].compactMap { $0 }.joined(separator: ", ")
+            alpha: messageStatus.dimmed && outgoing == nil ? UserMessageLayout.Metrics.pendingOpacity : 1,
+            accessibilityLabel: [author?.name, copyText, status.isEmpty ? nil : status].compactMap { $0 }.joined(separator: ", "),
+            flight: outgoing == nil || layout.chip != nil || layout.goalLabel != nil ? nil : layout.bubble.map {
+                ChatRowFlight(
+                    bubble: ChatBox(frame: $0, fill: palette.background, border: palette.border, borderWidth: 1, radius: UserMessageLayout.Metrics.bubbleRadius),
+                    text: firstText, status: layout.delivery
+                )
+            }
         )
     }
 
@@ -323,6 +364,9 @@ struct MarkdownDocument: Sendable {
 /// and once that layout has placed them, what to draw where.
 struct MarkdownPiece {
     let blocks: [MarkdownLayout.Block]
+    /// The last line's width of the paragraph the markdown ends with; nil
+    /// when it ends with any other block (`MeasuredText.trailing`).
+    let trailing: Measurable?
     private let drawers: [(MarkdownLayout.Placed, CGPoint) -> ([ChatDrawItem], [ChatHit])]
 
     static let bullets = ["•", "◦", "▪"]
@@ -364,12 +408,15 @@ struct MarkdownPiece {
         }
 
         var diagramIndex = 0
+        var paragraph: MeasuredText?
         for block in LegacyMarkdown.parse(markdown) {
+            paragraph = nil
             switch block {
             case .text(let spans):
                 let measured = MeasuredText(ChatSpans.string(spans, style: body, color: color, in: environment, everyLink: document != nil))
                 blocks.append(.text(measured.measurable))
                 drawers.append(text(measured))
+                paragraph = measured
 
             case .header(let level, let spans):
                 let measured = MeasuredText(ChatSpans.string(spans, style: header(level), color: color, in: environment, everyLink: document != nil))
@@ -508,6 +555,7 @@ struct MarkdownPiece {
         }
         self.blocks = blocks
         self.drawers = drawers
+        trailing = paragraph?.trailing
     }
 
     func draw(_ layout: MarkdownLayout, origin: CGPoint) -> (items: [ChatDrawItem], hits: [ChatHit]) {

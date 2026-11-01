@@ -2001,12 +2001,20 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         takeComposeFocus()
     }
 
+    /// Telegram's send: at the newest message it flies in from the
+    /// composer; further up, `didSend` scrolls down to it instead.
+    func composerWillSend(_ composer: any ChatComposerView, from card: AgentInputCardView) {
+        guard !isComposing, ChatSendFlight.flies(distance: list.distanceFromNewest) else { return }
+        list.ultra.flight = ChatSendFlight(source: ChatSendFlight.source(from: card, in: view), host: view, message: nil)
+    }
+
     func composer(_ composer: any ChatComposerView, didSend localId: String) {
         // The first send made the session: this screen is its chat now.
         if let compose = composing, isComposing, let real = compose.sessionId {
             composeStarted(real)
             return
         }
+        list.ultra.flight?.identify(localId)
         list.scrollToNewest(animated: true)
         // A message sent while the agent waits on questions answers them:
         // once it is delivered, the forms are dismissed (SessionView's

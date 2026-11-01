@@ -194,6 +194,10 @@ public protocol ChatComposerDelegate: AnyObject {
     /// the agent was waiting on, since the message answers it.
     func composer(_ composer: any ChatComposerView, didSend localId: String)
 
+    /// A message is about to go, `card` still showing it: the screen may
+    /// take its words to fly them in (`ChatSendFlight`).
+    func composerWillSend(_ composer: any ChatComposerView, from card: AgentInputCardView)
+
     /// `headerStatus` changed.
     func composerDidChangeHeaderStatus(_ composer: any ChatComposerView)
 }
@@ -201,6 +205,7 @@ public protocol ChatComposerDelegate: AnyObject {
 extension ChatComposerDelegate {
     public func composerDidRestore(_ composer: any ChatComposerView, generation: Int) {}
     public func composerDidChangeHeaderStatus(_ composer: any ChatComposerView) {}
+    public func composerWillSend(_ composer: any ChatComposerView, from card: AgentInputCardView) {}
 }
 
 /// How long the chat waits for its composer's opening draft.

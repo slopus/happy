@@ -61,6 +61,19 @@ final class AgentChatUltraList: UIView {
     /// As close to the newest row as counts as on it, 24pt, not the
     /// sessions' 200.
     static let followThreshold: CGFloat = 24
+    /// A send flying in from the composer: the row it waits for is
+    /// veiled from the pass that inserts it until the copy lands.
+    var flight: ChatSendFlight? {
+        didSet {
+            oldValue?.cancel()
+            flight?.onFinish = { [weak self, weak flight] in
+                guard let self, self.flight === flight else { return }
+                self.flight = nil
+                self.unveil()
+            }
+        }
+    }
+    private(set) var veiled: String?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -120,6 +133,7 @@ final class AgentChatUltraList: UIView {
                           anchorMode: .preserveVisibleContent,
                           compensatesInsetChange: keyboard?.compensates ?? !list.isTracking,
                           transition: keyboard?.transition ?? .none)
+        flight?.follow(in: list)
     }
 
     /// The conversation's rows, oldest first as the screen plans them,
@@ -138,8 +152,13 @@ final class AgentChatUltraList: UIView {
         var places: [String: CGFloat] = [:]
         var start: CGFloat = 0
         items.reserveCapacity(plans.count + 1)
+        var landing: (identity: String, plan: ChatRowPlan)?
         for plan in plans.reversed() {
             let identity = "chat:row:\(plan.id)"
+            if rows[identity] == nil, landing == nil, let flight, flight.awaits(plan) {
+                landing = (identity, plan)
+                veiled = identity
+            }
             let row: AgentChatRow
             if let kept = rows[identity], kept.plan === plan {
                 row = kept
@@ -177,11 +196,38 @@ final class AgentChatUltraList: UIView {
         } else {
             target = follows ? .init(index: 0, identity: items.first?.identity) : nil
         }
+        let transition: ListTransition = if landing != nil && follows {
+            // The rows above make room as the send flies in.
+            ChatSendFlight.Motion.list
+        } else {
+            (animated && follows || moves) && !UIAccessibility.isReduceMotionEnabled ? .easeInOut(0.2) : .none
+        }
         list.applyChanges(items: items, newSize: viewportSize,
                           newInsets: .init(top: insets.top, bottom: insets.bottom),
                           scrollTo: target,
                           anchorMode: .preserveVisibleContent,
-                          transition: (animated && follows || moves) && !UIAccessibility.isReduceMotionEnabled ? .easeInOut(0.2) : .none)
+                          transition: transition)
+        if let landing { land(landing.identity, plan: landing.plan) }
+    }
+
+    /// Flies the send in over its row once the pass placed it.
+    private func land(_ identity: String, plan: ChatRowPlan) {
+        list.performAfterCurrentPass { [weak self] in
+            guard let self, let flight, veiled == identity else { return }
+            guard let index = list.items.firstIndex(where: { $0.identity == identity }),
+                  let view = list.loadedItemView(at: index) as? AgentChatRowView else {
+                flight.cancel()
+                return
+            }
+            flight.land(on: view, plan: plan, drawn: { [weak view] in view?.canvas.isDrawn ?? true }, reveal: { [weak self] in self?.unveil() })
+        }
+    }
+
+    private func unveil() {
+        guard let identity = veiled else { return }
+        veiled = nil
+        guard let index = list.items.firstIndex(where: { $0.identity == identity }) else { return }
+        (list.loadedItemView(at: index) as? AgentChatRowView)?.canvas.veiled = false
     }
 
     func scrollToNewest(animated: Bool) {
@@ -189,8 +235,8 @@ final class AgentChatUltraList: UIView {
         list.scrollTo(newestTarget(), transition: animated && !UIAccessibility.isReduceMotionEnabled ? .easeInOut(0.2) : .none)
     }
 
-    /// What arrives next is followed: a send by a reader at the end, or
-    /// near it (`SendFollow`), carries them to it.
+    /// What arrives next is followed: a send carries the reader to it
+    /// (`SendFollow`).
     func follow() { followsNewest = true }
 
     private func newestTarget() -> ListScrollTarget {
@@ -205,6 +251,7 @@ final class AgentChatUltraList: UIView {
 
     /// Let go of: the rows go, and nothing of this list answers a touch.
     func deactivate() {
+        flight = nil
         isActive = false
         host = nil
         list.onScroll = nil
@@ -345,6 +392,7 @@ final class AgentChatRowView: ListRowView, UIGestureRecognizerDelegate {
 
     func apply(_ row: AgentChatRow) {
         self.row = row
+        canvas.veiled = row.transcript?.veiled == row.identity
         row.transcript?.show(row.plan, in: canvas)
     }
 

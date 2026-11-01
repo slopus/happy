@@ -114,10 +114,23 @@ actor ChatPlanner {
             // On its way: each picture shows how far it is, and can be
             // taken out; one that failed is sent again with a tap.
             let uploading = item.delivery == .sending || failure
+            // Telegram's outgoing status: the clock until the computer has
+            // it, a check once it does, two once the agent took it into a run.
+            let delivery: MessageDelivery = switch item.delivery {
+            case .sending: .sending
+            case .pending: .received
+            case .sent: .accepted
+            case .failed: .failed
+            }
+            let onMedia = body == nil
+            let ink = onMedia ? Palette.deliveryOnMedia : Palette.deliveryInk
+            let time = MessageTime.text(item.time, ink: ink, in: environment)
+            let status = MessageTime.status(time, in: environment)
             let layout = MessageLayout.user(
                 width: width, maxContentWidth: key.maxContentWidth, text: body?.measurable,
                 fold: body.map { _ in .init(preview: preview.measurable, control: control.measurable, opened: opened, lineHeight: ChatTextStyles.text.lineHeight ?? 24) },
-                pictures: pictures.map(\.image), showsStatus: failure
+                pictures: pictures.map(\.image), showsStatus: failure,
+                delivery: status, trailing: body?.trailing
             )
             var items: [ChatDrawItem] = []
             var hits: [ChatHit] = []
@@ -150,12 +163,20 @@ actor ChatPlanner {
                 items.append(.text(line, frame))
                 hits.insert(ChatHit(frame: frame, action: .retry(localId: item.id)), at: 0)
             }
-            // On its way, or waiting for the agent to take it: dimmed, never
-            // moved. Pictures still uploading say so themselves, undimmed.
-            let rings = uploading && !pictures.isEmpty
-            let alpha: CGFloat = !rings && (item.delivery == .sending || item.delivery == .pending) ? 0.6 : 1
+            // The mark says where it is, so the bubble is never dimmed.
+            if let box = layout.delivery {
+                if let pill = layout.deliveryPill {
+                    items.append(.box(ChatBox(frame: pill, fill: Palette.deliveryPill, radius: pill.height / 2)))
+                }
+                let placed = ChatDeliveryMark.items(status, box: box, time: time, state: delivery, tint: ink, message: item.id)
+                items += placed.items
+                if failure { hits.insert(ChatHit(frame: placed.mark.insetBy(dx: -8, dy: -8), action: .retry(localId: item.id)), at: 0) }
+            }
             let label = [text, failure ? Strings.sendFailed : ""].filter { !$0.isEmpty }.joined(separator: ", ")
-            return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, alpha: alpha, accessibilityLabel: label, toggles: layout.foldControl == nil ? nil : toggles)
+            let shape = layout.bubble.map { ChatBox(frame: $0, fill: Palette.userBubble, radius: M.bubbleRadius) }
+                ?? ChatBox(frame: layout.pictures.reduce(CGRect.null) { $0.union($1) })
+            let flight = ChatRowFlight(bubble: shape, text: layout.text, status: layout.delivery, media: !pictures.isEmpty)
+            return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: label, toggles: layout.foldControl == nil ? nil : toggles, flight: flight)
         case .collaborator, .failure, .tool, .turnEnd, .trace, .question:
             // Planned above.
             return ChatRowPlan(id: item.id, size: CGSize(width: width, height: 0), items: [])

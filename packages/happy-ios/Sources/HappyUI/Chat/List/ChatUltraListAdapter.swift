@@ -123,7 +123,7 @@ final class ChatUltraRow: ListRow {
                 if live.contains(where: { $0.intersects(frame) }) { return true }
             case .spinner(let frame, _, _), .shimmer(_, let frame), .elapsed(_, let frame, _), .diff(_, let frame, _, _, _, _),
                  .diffHeader(_, _, let frame), .scroller(_, let frame, _, _), .attachment(_, let frame),
-                 .webImage(_, let frame, _), .mermaid(_, let frame), .media(_, let frame), .fileStatus(_, let frame), .embed(_, let frame): live.append(frame)
+                 .webImage(_, let frame, _), .mermaid(_, let frame), .media(_, let frame), .fileStatus(_, let frame), .embed(_, let frame), .delivery(_, let frame): live.append(frame)
             case .pulse(let box): live.append(box.frame)
             }
         }
@@ -169,7 +169,9 @@ final class ChatUltraRowView: ListRowView, UIGestureRecognizerDelegate {
 
     private func applyCanvas() {
         canvas.drawsStaticContent = row.usesNativeDrawing
-        drawing.alpha = row.plan.alpha
+        let veiled = row.adapter?.veiled == row.identity
+        drawing.alpha = veiled ? 0 : row.plan.alpha
+        canvas.veiled = veiled
         canvas.apply(row.plan)
         canvas.onAction = { [weak self] action in
             guard let adapter = self?.row.adapter, adapter.isActive else { return }
@@ -183,6 +185,11 @@ final class ChatUltraRowView: ListRowView, UIGestureRecognizerDelegate {
     override func layoutSubviews() {
         super.layoutSubviews()
         drawing.frame = bounds; canvas.frame = bounds
+    }
+    /// Shown again after a send's copy landed on it.
+    func unveil() {
+        drawing.alpha = row.plan.alpha
+        canvas.veiled = false
     }
     override func update(width: Double, transition: ListTransition) -> Double { row.plan.size.height }
     override func applyPreparation(_ preparation: ListPreparation, width: Double, environment: RenderEnvironment) {
@@ -262,6 +269,22 @@ final class ChatUltraListAdapter {
     }
     private var settlement: Settlement?
     private(set) var isActive = true
+    /// A send flying in from the composer: the row it waits for is
+    /// veiled from the pass that inserts it until the copy lands.
+    var flight: ChatSendFlight? {
+        didSet {
+            oldValue?.cancel()
+            landing = nil
+            flight?.onFinish = { [weak self, weak flight] in
+                guard let self, self.flight === flight else { return }
+                self.flight = nil
+                self.unveil()
+            }
+        }
+    }
+    private(set) var veiled: String?
+    /// The veiled row and its plan, until the list has placed it.
+    private var landing: (identity: String, plan: ChatRowPlan)?
     var onScroll: (() -> Void)?
     var onAction: ((ChatRowAction) -> Void)?
     var onLink: ((String) -> Void)?
@@ -276,6 +299,7 @@ final class ChatUltraListAdapter {
         list.onScroll = { [weak self] _ in self?.onScroll?() }
         list.onVisibleWindowChanged = { [weak self] in
             self?.settleCommittedUpdate()
+            self?.land()
             self?.onScroll?()
         }
         list.willBeginDragging = { [weak self] in self?.motion &+= 1 }
@@ -314,6 +338,7 @@ final class ChatUltraListAdapter {
         }
         list.applyChanges(newSize: keyboard == nil || sizeChanged ? size : nil, newInsets: .init(top: insets.top, bottom: insets.bottom), anchorMode: .preserveVisibleContent,
                           compensatesInsetChange: keyboard?.compensates ?? !list.isTracking, transition: keyboard?.transition ?? .none)
+        flight?.follow(in: list)
     }
 
     func apply(_ update: ChatListUpdate, target: CGFloat? = nil, animated: Bool) {
@@ -351,6 +376,11 @@ final class ChatUltraListAdapter {
         }
         var items: [any ListRow] = []
         if let footer = update.footer { items.append(descriptor(footer, identity: "chat:newer-end", y: 0)) }
+        if landing == nil, let flight, let plan = update.plans.first, rows["chat:message:\(plan.id)"] == nil, flight.awaits(plan) {
+            landing = ("chat:message:\(plan.id)", plan)
+            veiled = "chat:message:\(plan.id)"
+        }
+        let lands = landing.map { landing in rows[landing.identity] == nil } ?? false
         for (index, plan) in update.plans.enumerated() {
             items.append(descriptor(plan, identity: "chat:message:\(plan.id)", y: update.model.frame(ofRow: index).minY))
         }
@@ -360,8 +390,35 @@ final class ChatUltraListAdapter {
             guard let index = items.firstIndex(where: { $0.identity == pin.identity }) else { return nil }
             return ListScrollTarget(index: index, identity: pin.identity, resolve: { height, _ in pin.end - height })
         }
+        let transition: ListTransition = if lands && follow {
+            // The rows above make room as the send flies in.
+            ChatSendFlight.Motion.list
+        } else {
+            animated && follow && !UIAccessibility.isReduceMotionEnabled ? .easeInOut(0.2) : .none
+        }
         list.applyChanges(items: items, newSize: viewportSize, newInsets: .init(top: insets.top, bottom: insets.bottom), scrollTo: scroll,
-                          anchorMode: .preserveVisibleContent, transition: animated && follow && !UIAccessibility.isReduceMotionEnabled ? .easeInOut(0.2) : .none)
+                          anchorMode: .preserveVisibleContent, transition: transition)
+        if lands { list.performAfterCurrentPass { [weak self] in self?.land() } }
+    }
+
+    /// Flies the send in over its row once the list placed it: a row is
+    /// measured off the main thread, so it may be a pass or two later.
+    private func land() {
+        guard let landing, let flight, veiled == landing.identity,
+              let index = list.items.firstIndex(where: { $0.identity == landing.identity }),
+              list.settledFrame(at: index) != nil,
+              let view = list.loadedItemView(at: index) as? ChatUltraRowView else { return }
+        self.landing = nil
+        flight.land(on: view, plan: landing.plan, drawn: { [weak view] in view.map { $0.isDisplayReady && $0.canvas.isDrawn } ?? true },
+                    reveal: { [weak self] in self?.unveil() })
+    }
+
+    private func unveil() {
+        guard let identity = veiled else { return }
+        veiled = nil
+        landing = nil
+        guard let index = list.items.firstIndex(where: { $0.identity == identity }) else { return }
+        (list.loadedItemView(at: index) as? ChatUltraRowView)?.unveil()
     }
 
     private func settleCommittedUpdate() {
@@ -394,6 +451,7 @@ final class ChatUltraListAdapter {
     func scrollToNewest(animated: Bool) { motion &+= 1; list.scrollTo(newestTarget(), transition: animated ? .easeInOut(0.2) : .none) }
 
     func deactivate() {
+        flight = nil
         isActive = false
         onScroll = nil; onAction = nil; onLink = nil; onHold = nil
         list.onScroll = nil; list.onVisibleWindowChanged = nil

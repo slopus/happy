@@ -229,6 +229,21 @@ final class ChatTextLayout: @unchecked Sendable {
         guard let index = characterIndex(at: point), index < string.length else { return nil }
         return string.attribute(.chatLink, at: index, effectiveRange: nil) as? String
     }
+
+    /// How far the last line reaches from the left (Telegram's
+    /// `trailingLineWidth`): the room after it is where a bubble's time
+    /// may go.
+    var trailingWidth: CGFloat {
+        access.lock()
+        defer { access.unlock() }
+        guard string.length > 0 else { return 0 }
+        let glyphs = manager.glyphRange(for: container)
+        guard glyphs.length > 0 else { return 0 }
+        let used = manager.lineFragmentUsedRect(forGlyphAt: NSMaxRange(glyphs) - 1, effectiveRange: nil)
+        // A text ending in a line break ends on an empty line.
+        if string.string.last?.isNewline == true { return 0 }
+        return min(width, used.maxX)
+    }
 }
 
 /// One piece of text measured at whatever widths a layout asks for. The
@@ -246,6 +261,12 @@ final class MeasuredText {
 
     var measurable: Measurable {
         Measurable { [self] width in layout(width: width).size }
+    }
+
+    /// The last line's width when wrapped at a width (`trailingWidth`), as
+    /// the width of what it measures.
+    var trailing: Measurable {
+        Measurable { [self] width in CGSize(width: layout(width: width).trailingWidth, height: 0) }
     }
 
     func layout(width: CGFloat) -> ChatTextLayout {
@@ -278,6 +299,9 @@ class ChatTextView: UIView {
             accessibilityLabel = layout?.string.string
         }
     }
+
+    /// Its words are on screen, or it has none to draw.
+    var isDrawn: Bool { layer.contents != nil || layout == nil || bounds.isEmpty }
 
     /// The same words at the same width, planned again as a reply streams
     /// on below them: what is drawn stands.

@@ -276,6 +276,66 @@ rendering the resulting `file` tool rows.
   platform's default indicator; this is a deliberate difference
   (docs/FEATURES.md).
 
+## 7. Sending, and the time and checks
+
+**What Telegram does.**
+
+- *The send.* `ChatMessageTransitionNode`'s `.textInput` source runs for
+  0.3 s. The container moves additively, on two curves: across on
+  (0.23, 1, 0.32, 1), and up and down on (0.19919, 0.01064, 0.27921, 0.91025).
+  - The bubble's frame grows from the input field's on those same curves
+    (`ChatMessageBackground.animateFrom`), and its image fades in over 0.1 s.
+  - The typed text's copy fades out over 0.1 s while the bubble's text fades
+    in over 0.08 s. The bubble's text moves additively from where the copy
+    was (`ChatMessageTextBubbleContentNode.animateFrom`).
+  - The status fades in over 0.25 s, coming from the input field's right
+    edge.
+  - Only a send made within 20 points of the end flies
+    (`shouldAnimateMessageTransition`). Any other send scrolls down to the
+    end.
+- *The status.* `ChatMessageDateAndStatusNode` at the 17-point base:
+  - the date is 11 points, 5 after the text, with a 13-wide slot after it;
+  - the clock is an 11-point frame turning once in 6 s, with a minute hand
+    turning once in 1 s, both linear and endless, from `beginTime` 1;
+  - the checks are drawn from two SVG paths, the second 6 points after the
+    first; each pops in from scale 1.3 to 1 over 0.1 s;
+  - the box rides on the last line when it fits there (`trailingLineWidth`),
+    and otherwise takes a line of its own.
+
+**What we do.**
+
+- `ChatSendFlight` adapts the send.
+  - The new row is laid out in the list as usual but veiled (its canvas and
+    bitmap at alpha 0).
+  - A copy flies over it from the composer: the bubble, the words and the
+    time each run on Telegram's curves and fades.
+  - In the transaction where the copy goes, the row shows, once its text has
+    drawn. The pass that inserts it uses the vertical curve, so the rows
+    above make room in step.
+  - The copy's place is the row's, and the flight is additive on top of it.
+    An inset pass during the flight (the keyboard going down) moves the copy
+    on the list's own viewport motion (`applyViewportMotion`), so it never
+    fights `ChatUltraKeyboard`.
+  - A send with pictures fades its row in and slides it up instead.
+  - A send from further back than 20 points scrolls down to the end and
+    flies nothing.
+  - The row's identity is the send's id in both chats, so the server's echo
+    reconfigures it in place and never flies a second time.
+- `MessageStatusLayout` (HappyLayout) places the time and the slot inline or
+  on a line of their own. The slot is always kept, so the clock turning into
+  checks never resizes the bubble.
+  - The time is drawn with the row.
+  - `ChatDeliveryView` draws the mark live over the row as `CAShapeLayer`s:
+    the turning clock, the checks' pop, and the refused send's red "!".
+- The states, and the signal behind each:
+  - the agent chat: `ChatItem.Delivery`, kept with the conversation:
+    `.sending` is the clock, `.pending` (the daemon accepted it) is one
+    check, `.sent` (taken into a run) is two checks;
+  - the Happy CLI chat: the outbox's queued or sending is the clock, stored
+    and `pending` is one check, and the agent's `user-message-accepted`
+    receipt is two checks. A session without receipts shows two checks once
+    the agent has answered after the message.
+
 ## What we deliberately don't copy
 
 - Rotated custom node lists and a display-link-driven scroller: a flipped
