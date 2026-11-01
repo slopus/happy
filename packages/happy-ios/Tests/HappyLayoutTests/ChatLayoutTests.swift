@@ -564,6 +564,48 @@ final class ChatScreenLayoutTests: XCTestCase {
         XCTAssertNil(layout.statusBarShadow)
     }
 
+    func testDockedTheKeyboardCanMoveTheInsetInstead() {
+        // A docked main panel with a 32-point top safe area and a
+        // 21-point home indicator inset.
+        func screen(keyboardTop: CGFloat?, movesInset: Bool = true) -> LegacyChatScreenLayout {
+            LegacyChatScreenLayout(.init(
+                size: CGSize(width: 926, height: 428), safeArea: LayoutInsets(top: 32, left: 47, bottom: 21, right: 47), keyboardTop: keyboardTop,
+                composerHeight: 70, composerCardOffset: 20, docked: true, accessoryPaddingH: 12, keyboardMovesInset: movesInset
+            ))
+        }
+        let resting = screen(keyboardTop: nil)
+        assertFrame(resting.dock, rect(0, 337, 926, 70))
+        assertFrame(resting.list, rect(0, 32, 926, 305))
+        XCTAssertEqual(resting.newestEdgeInset, 8)
+        XCTAssertEqual(resting.oldestEdgeInset, 64)
+        assertFrame(resting.scrollButton, rect(447, 301, 32, 32))
+        // The backdrop under the dock, down to the screen's bottom.
+        assertFrame(resting.scrim, rect(0, 337, 926, 91))
+        assertFrame(resting.placeholder, rect(0, 32, 926, 305))
+
+        // A 200 keyboard: the list keeps its frame and the newest end
+        // follows the dock through the inset.
+        let typing = screen(keyboardTop: 228)
+        assertFrame(typing.dock, rect(0, 158, 926, 70))
+        assertFrame(typing.list, rect(0, 32, 926, 305))
+        XCTAssertEqual(typing.newestEdgeInset, 187)
+        assertFrame(typing.scrollButton, rect(447, 122, 32, 32))
+        assertFrame(typing.scrim, rect(0, 158, 926, 270))
+        assertFrame(typing.placeholder, rect(0, 32, 926, 126))
+
+        // Dragged below the resting edge: the dock stays on the safe area.
+        let dragged = screen(keyboardTop: 420)
+        assertFrame(dragged.dock, rect(0, 337, 926, 70))
+        XCTAssertEqual(dragged.newestEdgeInset, 8)
+
+        // Without it the list's frame stops at the dock, with no backdrop.
+        let guide = screen(keyboardTop: 228, movesInset: false)
+        assertFrame(guide.list, rect(0, 32, 926, 126))
+        XCTAssertEqual(guide.newestEdgeInset, 8)
+        assertFrame(guide.scrollButton, rect(447, 122, 32, 32))
+        XCTAssertEqual(guide.scrim.height, 0)
+    }
+
     func testAPhoneOnItsSideHasNoHeader() {
         // An iPhone SE held sideways: below the tablet width, no status bar.
         let layout = LegacyChatScreenLayout(.init(

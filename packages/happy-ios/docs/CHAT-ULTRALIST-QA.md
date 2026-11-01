@@ -49,6 +49,20 @@ it asks for the microphone and fetches voice credentials from the server.
   seeded Home, which pushes chats through normal navigation.
 - `-qaProbe`: installs the probe. `-qaRun <name>` names its files, and
   `-qaDark` shows the window in dark appearance.
+- `-qaScript keyboard`: drags the keyboard down with a finger made in the
+  app (a digitizer event, private API) and writes every 120 Hz tick's
+  finger, keyboard, dock, offset and whether the list had the system's
+  hidden keyboard input to `<run>-keyboard.csv`, with the keyboard
+  notifications in `<run>-script.jsonl`. Three rounds of a slow drag to the
+  bottom, a quick flick, a medium one and a drag held a third of the way
+  down. The finger runs on a timer, not a display link, so a trace taken
+  meanwhile shows the rate the app draws the drag at. The keyboard is read
+  from its host view in this process: once the system's dismissal starts,
+  the host leaves the app's windows and the column is empty. `-qaTouch
+  hid` puts the event on UIKit's queue instead of sending a touch made
+  here; it doesn't reach the views on iOS 26.1.
+- `-qaLandscape`: turns the harness's window on its side
+  (`requestGeometryUpdate`), for a phone UI automation can't rotate.
 - `-giantParagraphs N` (1…1000): sets the size of the `giant` fixture's message.
 - `-keyboard`: opens the chat with the composer focused.
 - `-qaRealChat`: the read-only TEST account (below).

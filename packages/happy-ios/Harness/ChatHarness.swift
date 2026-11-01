@@ -15,7 +15,7 @@ import UltraView
 /// Launch arguments: `-fixture <name>` picks the chat (`long` by default);
 /// `-keyboard` opens the keyboard once the rows are in; `-scrollTo
 /// <fraction>` goes that far back through the history once the rows are
-/// in.
+/// in; `-qaLandscape` turns the window on its side.
 ///
 /// `ChatScrollProbe` reports the list to the tests as the accessibility value
 /// of an element named `chat-scroll-probe`. With `-hideKeyboardButton`, an
@@ -62,6 +62,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
     private var realArchive: RealArchiveHarness?
     private var qaProbe: ChatUltraQAProbe?
     private var motionScript: ChatMotionScript?
+    private var keyboardScript: ChatKeyboardScript?
     private var qaReal: ChatUltraQAReal?
     private var homeControllerScroll: HomeControllerScrollHarness?
     private var homeScrollDiagnostic: HomeScrollDiagnosticHarness?
@@ -176,6 +177,10 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         let navigation = UINavigationController(rootViewController: home)
         navigation.pushViewController(chat, animated: false)
         window.rootViewController = ShellViewController(context: context, phone: navigation)
+        if ProcessInfo.processInfo.arguments.contains("-qaLandscape") {
+            // A run without UI automation can't turn the phone.
+            window.windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight))
+        }
         let probe = ChatScrollProbe(window: window, chat: chat)
         probe.scrollTo = scrollTo
         self.probe = probe
@@ -184,7 +189,8 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         let arguments = ProcessInfo.processInfo.arguments
         if let index = arguments.firstIndex(of: "-qaScript"), arguments.indices.contains(index + 1) {
             let run = arguments.firstIndex(of: "-qaRun").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil } ?? "script"
-            motionScript = ChatMotionScript(chat: chat, name: arguments[index + 1], run: run)
+            if arguments[index + 1] == "keyboard" { keyboardScript = ChatKeyboardScript(chat: chat, run: run) }
+            else { motionScript = ChatMotionScript(chat: chat, name: arguments[index + 1], run: run) }
         }
         #endif
         if keyboard { probe.focusComposerWhenFilled() }
@@ -274,6 +280,9 @@ final class ChatScrollProbe: NSObject {
         var dockPresentedMinY: CGFloat
         /// UltraView's keyboard controller owned the keyboard.
         var driving: Bool
+        /// The list had the system's hidden interactive keyboard input,
+        /// whose pan runs beside the list's on every drag.
+        var systemInput: Bool
     }
 
     init(window: HarnessWindow, chat: UIViewController) {
@@ -428,7 +437,8 @@ final class ChatScrollProbe: NSObject {
             tracking: list.isTracking, dragging: list.isDragging,
             active: activeRecognizers(list.scrollGestureView),
             dockPresentedMinY: dock?.superview.map { $0.convert(CGPoint(x: 0, y: presented), to: window).y } ?? .nan,
-            driving: ultraKeyboard(chat)?.isDriving ?? false
+            driving: ultraKeyboard(chat)?.isDriving ?? false,
+            systemInput: list.hasKeyboardInput
         )
     }
 
@@ -529,6 +539,7 @@ final class ChatScrollProbe: NSObject {
         }
         touch["path"] = path.map { "\($0.name): \($0.states.joined(separator: ">"))" }
         touch["keyboardDriven"] = samples.contains { $0.driving }
+        touch["systemInput"] = samples.contains { $0.systemInput }
         lastTouch = touch
         var trace: [String] = []
         for sample in samples {
@@ -575,6 +586,7 @@ final class ChatScrollProbe: NSObject {
         }
         value["keyboardTop"] = keyboardTop(chat)
         value["keyboard"] = keyboardDriver(chat)
+        value["systemInput"] = list.hasKeyboardInput
         value["window"] = [window.bounds.width, window.bounds.height]
         value["tracking"] = list.isTracking
         value["dragging"] = list.isDragging
@@ -604,10 +616,12 @@ protocol ProbedChatList {
     var isDragging: Bool { get }
     var isDecelerating: Bool { get }
     var scrollGestureView: UIView { get }
+    var hasKeyboardInput: Bool { get }
     func setVisibleMinY(_ distance: CGFloat)
 }
 
 extension ChatListView: ProbedChatList {
+    var hasKeyboardInput: Bool { ultra.list.hasKeyboardInput }
     var listView: UIView { self }
     var rows: Int { plans.count }
     var newestInset: CGFloat { contentInsets.top }
@@ -619,6 +633,7 @@ extension ChatListView: ProbedChatList {
 struct AgentProbedList: ProbedChatList {
     let chat: ChatViewController
     let transcript: AgentChatUltraList
+    var hasKeyboardInput: Bool { transcript.list.hasKeyboardInput }
     var listView: UIView { transcript.list }
     var rows: Int { chat.plans.count }
     var isDisplayReady: Bool { !chat.plans.isEmpty && transcript.list.loadedItemView(at: 0) != nil }

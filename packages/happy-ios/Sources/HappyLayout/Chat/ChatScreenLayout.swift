@@ -41,6 +41,14 @@ import CoreGraphics
 /// 44pt round back button floats 16 in and 8 under the status bar, and
 /// the status bar gets a shadowed strip of its own.
 ///
+/// Docked, the keyboard can move the list's newest inset instead of its
+/// frame (`keyboardMovesInset`, while UltraView's keyboard controller
+/// carries the keyboard): the list keeps ending where the dock rests, its
+/// newest end sits 8 above the dock wherever the keyboard puts it, and a
+/// backdrop rides under the dock to the screen's bottom, so the rows that
+/// run under the dock and the keyboard stay covered as they were when the
+/// list stopped at the dock. The scroll button stays 4 above the dock.
+///
 /// Something under the header (`headerAccessory`, the worktree tab strip)
 /// rides with it: on a phone the oldest end clears it too
 /// (`chatListTopContentInset`'s `headerAccessoryHeight`); on a tablet the
@@ -113,12 +121,15 @@ public struct LegacyChatScreenLayout: Equatable, Sendable {
         public var hidesHeader: Bool
         /// The height of what hangs under the header, margins included.
         public var headerAccessory: CGFloat
+        /// Docked: the keyboard moves the list's newest inset, not its
+        /// frame.
+        public var keyboardMovesInset: Bool
 
         public init(
             size: CGSize, safeArea: LayoutInsets, keyboardTop: CGFloat?, accessories: [Accessory] = [], composerHeight: CGFloat,
             composerCardOffset: CGFloat = 0, maxContentWidth: CGFloat = .greatestFiniteMagnitude,
             docked: Bool = false, accessoryPaddingH: CGFloat = Metrics.accessoryPaddingH, hidesHeader: Bool = false,
-            headerAccessory: CGFloat = 0
+            headerAccessory: CGFloat = 0, keyboardMovesInset: Bool = false
         ) {
             self.size = size
             self.safeArea = safeArea
@@ -131,6 +142,7 @@ public struct LegacyChatScreenLayout: Equatable, Sendable {
             self.accessoryPaddingH = accessoryPaddingH
             self.hidesHeader = hidesHeader
             self.headerAccessory = headerAccessory
+            self.keyboardMovesInset = keyboardMovesInset
         }
     }
 
@@ -147,6 +159,8 @@ public struct LegacyChatScreenLayout: Equatable, Sendable {
     public var composer: CGRect
     public var scrollButton: CGRect
     /// The fade behind the dock, from 28 above it to the screen's bottom.
+    /// Docked, the backdrop from the dock to the screen's bottom while the
+    /// keyboard moves the inset, and empty otherwise.
     public var scrim: CGRect
     /// The scrim behind the navigation bar.
     public var headerScrim: CGRect
@@ -207,11 +221,12 @@ public struct LegacyChatScreenLayout: Equatable, Sendable {
         statusBarShadow = nil
         if input.docked || input.hidesHeader {
             let top = max(0, input.safeArea.top)
-            list = CGRect(x: 0, y: top + accessory, width: width, height: max(0, dock.minY - top - accessory))
-            newestEdgeInset = M.newerEdgeExtra
+            let listBottom = input.keyboardMovesInset ? restingBottom - dockHeight : dock.minY
+            list = CGRect(x: 0, y: top + accessory, width: width, height: max(0, listBottom - top - accessory))
+            newestEdgeInset = max(0, listBottom - dock.minY) + M.newerEdgeExtra
             oldestEdgeInset = input.hidesHeader ? M.headerlessOlderEdgeExtra : top + M.dockedOlderEdgeExtra
-            scrollButton.origin.y = list.maxY - M.dockedScrollButtonGap - M.scrollButtonSize
-            scrim = CGRect(x: 0, y: dock.minY, width: width, height: 0)
+            scrollButton.origin.y = dock.minY - M.dockedScrollButtonGap - M.scrollButtonSize
+            scrim = CGRect(x: 0, y: dock.minY, width: width, height: input.keyboardMovesInset ? max(0, height - dock.minY) : 0)
             headerScrim = CGRect(x: 0, y: 0, width: width, height: 0)
         }
         if input.hidesHeader {

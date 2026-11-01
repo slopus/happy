@@ -11,17 +11,18 @@ import UltraView
 /// the library's dismissal or return. Ordinary shows and hides come from
 /// the keyboard's frame notifications, which the controller sees first,
 /// and move the list on the library's keyboard transition. Where the
-/// controller can't drive this keyboard (not a phone, a floating keyboard),
-/// the list keeps the system's interactive dismissal.
+/// controller can't drive this keyboard (a smaller iPad window, or a
+/// floating, split or undocked keyboard), the list keeps the system's
+/// interactive dismissal.
 ///
 /// It works only while the screen is shown: `activate()` on appearance
 /// makes the library's controller, `deactivate()` once the screen has gone
 /// drops it, so nothing a covered screen lays out or hears brings it back.
 ///
-/// Both chats have one. The sessions' chat makes one only under its
-/// floating dock (a phone in portrait); docked, its list follows the
-/// keyboard layout guide. The agents' chat has one wherever it is shown,
-/// since its list always runs under the card.
+/// Both chats have one in every layout. The sessions' chat keeps its list
+/// frame still under the iPad's dock, moving the newest inset with the
+/// keyboard. A phone's floating dock keeps its full-height list in either
+/// orientation. The agents' list runs under its card.
 @MainActor
 final class ChatUltraKeyboard: NSObject {
     /// The keyboard moved: the screen lays itself out again at once, the
@@ -54,6 +55,8 @@ final class ChatUltraKeyboard: NSObject {
     /// behind the list's pass applies, and none once the screen has gone or
     /// the controller has moved the keyboard since.
     private var generation: UInt64 = 0
+    /// When the keyboard motion the last notification started ends.
+    private var notifiedMotionEnd: CFTimeInterval = 0
 
     private(set) var isActive = false
     /// The controller found a keyboard it can drive.
@@ -177,13 +180,26 @@ final class ChatUltraKeyboard: NSObject {
         // An undocked keyboard covers nothing, as the layout guide reads it
         // with `followsUndockedKeyboard` off.
         let docked = local.maxY >= view.bounds.maxY - 1
+        notifiedMotionEnd = CACurrentMediaTime() + max(0, duration)
         notified(height: docked ? max(0, view.bounds.maxY - local.minY) : 0,
                  Change(transition: duration > 0 ? .keyboard(duration) : .immediate))
     }
 
     @objc private func keyboardDidHide(_ notification: Notification) {
         guard isActive, dismissal?.handle(notification) != true, view?.window != nil else { return }
-        notified(height: 0, Change(transition: .immediate, finishes: true))
+        // A phone on its side hears the hide as the keyboard starts to go:
+        // its motion is landed once it has played, unless something has
+        // moved the keyboard since.
+        let remaining = notifiedMotionEnd - CACurrentMediaTime()
+        guard remaining > 0 else {
+            notified(height: 0, Change(transition: .immediate, finishes: true))
+            return
+        }
+        let generation = generation
+        DispatchQueue.main.asyncAfter(deadline: .now() + remaining) { [weak self] in
+            guard let self, self.isActive, self.generation == generation, self.view?.window != nil else { return }
+            self.notified(height: 0, Change(transition: .immediate, finishes: true))
+        }
     }
 }
 #endif

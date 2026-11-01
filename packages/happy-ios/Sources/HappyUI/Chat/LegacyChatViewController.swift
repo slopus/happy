@@ -812,7 +812,8 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
             docked: docksList,
             accessoryPaddingH: docksList ? TabletBranches.Metrics.tabletInputPaddingH : TabletBranches.Metrics.phoneInputPaddingH,
             hidesHeader: hidesHeader,
-            headerAccessory: tabStrip.isHidden ? 0 : WorktreeTabStripLayout.Metrics.height
+            headerAccessory: tabStrip.isHidden ? 0 : WorktreeTabStripLayout.Metrics.height,
+            keyboardMovesInset: ultraKeyboard != nil
         ))
         list.setLayoutFrame(screen.list)
         list.setEdgeInsets(newest: screen.newestEdgeInset, oldest: screen.oldestEdgeInset, keyboard: keyboard)
@@ -847,16 +848,17 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         if let strip = screen.statusBarShadow { statusBarStrip.setLayoutFrame(strip) }
     }
 
-    /// One `ChatUltraKeyboard` for the list under the floating dock, none
-    /// otherwise.
+    /// One `ChatUltraKeyboard` for the chat's list in every layout.
     ///
-    /// Docked (a tablet, a phone on its side) the list's own frame ends at
-    /// the dock and changes height with the keyboard. UltraView has no
-    /// public way yet to carry a list's frame or clip on its viewport
-    /// motion, so there the keyboard layout guide moves the screen.
+    /// Under an iPad's dock, the
+    /// keyboard moves the list's newest inset instead of its frame, which
+    /// UltraView can't carry on its viewport motion, and a backdrop under
+    /// the dock covers the rows the list now runs under it
+    /// (`LegacyChatScreenLayout`'s `keyboardMovesInset`). UltraView chooses
+    /// whether to drive this keyboard or keep the system's fallback.
     private func updateUltraKeyboard() {
         // A layout after the chat has left its navigation makes none.
-        let current = floatingDock && parent != nil ? list.ultra.list : nil
+        let current = parent != nil ? list.ultra.list : nil
         if let keyboard = ultraKeyboard, current != nil, keyboard.list === current { return }
         if let old = ultraKeyboard {
             // Its list may already be off screen: it keeps it for this.
@@ -950,7 +952,10 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     private func floatingDockChanged() {
         guard contentInstalled else { return }
         headerScrim.isHidden = !floatingDock
-        scrim.isHidden = !floatingDock || dock.isHidden
+        // Docked, the scrim is the backdrop under the dock, empty unless
+        // the keyboard moves the list's inset.
+        scrim.isBackdrop = !floatingDock
+        scrim.isHidden = dock.isHidden
         if !floatingDock && !dockDetailsVisible { setDockDetailsVisible(true) }
     }
 
@@ -1499,7 +1504,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         list.isHidden = fullScreen
         if dock.isHidden != fullScreen {
             dock.isHidden = fullScreen
-            scrim.isHidden = fullScreen || !floatingDock
+            scrim.isHidden = fullScreen
             view.setNeedsLayout()
         }
     }
@@ -2068,6 +2073,12 @@ private final class TaskHolder {
 final class ChatScrimView: UIView {
     override class var layerClass: AnyClass { CAGradientLayer.self }
 
+    /// The docked layout's backdrop under the dock: the screen's ground,
+    /// solid, where the list used to stop.
+    var isBackdrop = false {
+        didSet { if isBackdrop != oldValue { update() } }
+    }
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         isUserInteractionEnabled = false
@@ -2084,6 +2095,11 @@ final class ChatScrimView: UIView {
 
     private func update() {
         guard let gradient = layer as? CAGradientLayer else { return }
+        backgroundColor = isBackdrop ? UIColor(Palette.surface) : nil
+        guard !isBackdrop else {
+            gradient.colors = nil
+            return
+        }
         let dark = traitCollection.userInterfaceStyle == .dark
         let base: UIColor = dark ? .black : .white
         let stops: [CGFloat] = dark ? [0, 0.20, 0.66] : [0, 0.18, 0.74]

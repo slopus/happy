@@ -152,15 +152,33 @@ final class ChatScrollUITests: XCTestCase {
         try keyboardShowReturnDismissAndHide(arguments: ["-screen", "agentChat", "-hideKeyboardButton"])
     }
 
-    private func keyboardShowReturnDismissAndHide(empty: Bool = false, arguments: [String]? = nil) throws {
+    /// The phone landscape layout and the iPad's docked layout
+    /// keep the list's frame still while its inset rides the keyboard.
+    func testUltraListLandscapeKeyboardShowReturnDismissAndHide() throws {
+        try keyboardShowReturnDismissAndHide(landscape: true)
+    }
+
+    private func keyboardShowReturnDismissAndHide(empty: Bool = false, landscape: Bool = false, arguments: [String]? = nil) throws {
+        XCUIDevice.shared.orientation = landscape ? .landscapeLeft : .portrait
+        if landscape { addTeardownBlock { XCUIDevice.shared.orientation = .portrait } }
         let app = launch(arguments ?? ["-fixture", empty ? "empty" : "long", "-hideKeyboardButton"])
-        var state = probe(app) { empty ? $0["renderer"] != nil : self.filled($0) }
+        func sideways(_ state: [String: Any]) -> Bool {
+            let window = (state["window"] as? [NSNumber])?.map(\.doubleValue) ?? []
+            return window.count == 2 && (window[0] > window[1]) == landscape
+        }
+        var state = probe(app) { (empty ? $0["renderer"] != nil : self.filled($0)) && sideways($0) }
+        XCTAssertTrue(sideways(state), "the window is \(landscape ? "landscape" : "portrait")")
         XCTAssertTrue(app.textViews.firstMatch.waitForExistence(timeout: 10), "the composer is there")
         XCTAssertEqual(state["renderer"] as? String, "UltraList")
         let window = try XCTUnwrap(state["window"] as? [NSNumber]).map { CGFloat($0.doubleValue) }
-        let width = window[0], height = window[1]
+        let height = window[1]
         let resting = height - number((state["safeArea"] as? [NSNumber])?[2])
-        let x = width / 2
+        // The list's middle, including when it sits beside an iPad sidebar.
+        let list = try XCTUnwrap(frame(state["list"]))
+        let x = list.midX
+        /// Where a drag starts: above the dock, below the navigation bar.
+        let safeTop = number((state["safeArea"] as? [NSNumber])?[0])
+        func start(_ dockTop: CGFloat) -> CGFloat { max(list.minY + 4, safeTop + 4, dockTop - 110) }
         Thread.sleep(forTimeInterval: 0.5)
 
         func touches(_ state: [String: Any]) -> Int { ((state["lastTouch"] as? [String: Any])?["index"] as? NSNumber)?.intValue ?? 0 }
@@ -189,10 +207,11 @@ final class ChatScrollUITests: XCTestCase {
             XCTAssertGreaterThanOrEqual((sampled["dockFramesMoved"] as? NSNumber)?.intValue ?? 0, 3, "\(label): the dock animates, frame by frame")
         }
         /// UltraView's controller owned the finger's keyboard and its
-        /// release.
+        /// release, and the list's drag never had the system's hidden input.
         func assertDriven(_ state: [String: Any], _ label: String) {
             let touch = state["lastTouch"] as? [String: Any] ?? [:]
             XCTAssertEqual(touch["keyboardDriven"] as? Bool, true, "\(label): the controller tracked the finger")
+            XCTAssertEqual(touch["systemInput"] as? Bool, false, "\(label): no system keyboard input under the finger")
             XCTAssertEqual(release(state)["driving"] as? Bool, true, "\(label): the controller played the release")
         }
         func show(_ label: String) throws -> [String: Any] {
@@ -219,7 +238,7 @@ final class ChatScrollUITests: XCTestCase {
 
         // Partial drag, held still and let go: the keyboard returns.
         var count = touches(state)
-        point(app, x, dockTop - 110).press(forDuration: 0.05, thenDragTo: point(app, x, partial), withVelocity: 300, thenHoldForDuration: 0.4)
+        point(app, x, start(dockTop)).press(forDuration: 0.05, thenDragTo: point(app, x, partial), withVelocity: 300, thenHoldForDuration: 0.4)
         state = settled(after: count)
         attach("return", state)
         var touch = state["lastTouch"] as? [String: Any] ?? [:]
@@ -232,7 +251,7 @@ final class ChatScrollUITests: XCTestCase {
         // Slow drag to the bottom: dismissed, the conversation under the finger.
         count = touches(state)
         dockTop = number(state["dockMinY"])
-        point(app, x, dockTop - 110).press(forDuration: 0.05, thenDragTo: point(app, x, height - 4), withVelocity: 250, thenHoldForDuration: 0.3)
+        point(app, x, start(dockTop)).press(forDuration: 0.05, thenDragTo: point(app, x, height - 4), withVelocity: 250, thenHoldForDuration: 0.3)
         state = settled(after: count)
         attach("dismiss", state)
         touch = state["lastTouch"] as? [String: Any] ?? [:]
@@ -243,13 +262,17 @@ final class ChatScrollUITests: XCTestCase {
             XCTAssertEqual(content / finger, 1, accuracy: 0.15, "dismiss: content \(content) for a finger's \(finger) while the keyboard moved")
         }
         XCTAssertEqual(touch["keyboardDriven"] as? Bool, true, "dismiss: the controller tracked the finger")
+        XCTAssertEqual(touch["systemInput"] as? Bool, false, "dismiss: no system keyboard input under the finger")
         assertDown(state, "dismiss")
 
         // A quick drag let go partway: dismissed by its speed.
         state = try show("show again")
         count = touches(state)
         dockTop = number(state["dockMinY"])
-        point(app, x, dockTop - 110).press(forDuration: 0.05, thenDragTo: point(app, x, partial), withVelocity: 1500, thenHoldForDuration: 0)
+        // At least 100 long: on its side the list shows little above the
+        // keyboard's dock.
+        let quick = max(partial, start(dockTop) + 100)
+        point(app, x, start(dockTop)).press(forDuration: 0.05, thenDragTo: point(app, x, quick), withVelocity: 1500, thenHoldForDuration: 0)
         state = settled(after: count)
         attach("quick dismiss", state)
         assertDown(state, "quick dismiss")
