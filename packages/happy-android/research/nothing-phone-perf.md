@@ -382,6 +382,75 @@ release-code, profiled, offline benchmark.
 
 ## Iterations
 
+### 120 Hz checkpoint and retained Home
+
+The `a45d230d5` checkpoint includes the expanded profile and the 120 Hz
+request (`3f943b758`). It also includes later glass changes, so comparisons
+with the earlier 90 Hz APK do not isolate refresh rate. Twelve warm and
+twelve fresh-process Settings cycles per arm passed on both devices.
+
+| Checkpoint tap → presented movement | Nothing median / p90 (ms) | Fold median / p90 (ms) |
+|---|---|---|
+| Fresh process push | 57.25 / 60.87 | 49.18 / 52.78 |
+| Warm push | 67.14 / 76.00 | 49.46 / 52.85 |
+| Fresh process Back | 87.53 / 99.08 | 90.46 / 95.71 |
+| Warm Back | 91.31 / 96.51 | 89.16 / 97.22 |
+
+A candidate made the zero-time animation sample one frame advanced. It
+did not reliably change the first placement: Compose can place the initial
+offset without sampling the animation at zero. Nothing cold push was
+neutral (56.38 ms), warm median improved but its p90 did not (59.39/75.29).
+Fold cold/warm medians were neutral (49.39/50.17). Nothing warm Back
+regressed to 98.86 ms. **Rejected**, with the original motion clock restored.
+
+`RetainedHome` instead keeps the actual home tree under NavHost, following
+the coordinates of its existing home destination. That destination remains
+the transition/scrim carrier, so no second easing or parallax calculation is
+introduced. The retained tree has the home entry's lifecycle, saved state
+and ViewModelStore, not the activity's. A covered home is undrawn, absent
+from semantics, and cannot focus or receive pointers. Its shimmer clock
+and lifecycle-aware collectors stop; account-keyed content still changes
+when switching accounts from Settings.
+
+Seven tests cover unchanged lazy-item composition/measurement and scroll
+identity, saved scroll across host recreation while covered, exact LTR/RTL
+anchor motion without exposed backdrop, focus exclusion, account switching,
+and predictive Back cancellation/commit. The full build/unit-test gate
+passed again with the isolated retention fix and original motion clock:
+`assembleDebug testDebugUnitTest assembleDebugAndroidTest
+:benchmark:assembleBenchmarkBench :app:assembleBenchmarkBench` (2m40s).
+
+To isolate retention, both device measurement arms below used that same
+timing prototype; only retention differed. The signed-in Nothing dev app
+used ART `verify`, twelve Settings push/back cycles per arm, preserving
+Personal MacBook Pro and all account data. The frame windows include the
+live home's post-transition work; these are frame tails, **not tap latency**.
+
+| Live Nothing frames | Before retention | With retention |
+|---|---:|---:|
+| Back UI p99 | 77.41 ms | 36.92 ms |
+| Back total p99 | 112.54 ms | 48.02 ms |
+| Back total median | 11.96 ms | 11.98 ms |
+| Back missed deadlines | 141 / 939 | 160 / 1010 |
+| Push UI p99 | 35.18 ms | 26.70 ms |
+| Push total p99 | 74.92 ms | 90.55 ms |
+
+This supports removing the expensive home rebuild, not a universal
+smoothness improvement: median and deadline counts did not improve, and
+the push total tail was noisy/worse. Offline Nothing warm Settings CPU p99
+improved 17.36 → 14.18 ms and overrun p99 19.89 → 11.05 ms. Push latency
+remained neutral: cold 56.38 → 58.48 ms, warm 59.39 → 60.78 ms. Fold push
+was likewise broadly neutral (cold 49.39 → 51.63, warm 50.17 → 48.15 ms).
+Some retained Back traces contain no sampled-offset marker; the strict
+analyzer rejects them instead of dropping them. No retained-Back latency
+claim is made pending a placement-based marker.
+
+Evidence directories: `main-a45d230-120-baseline`,
+`main-a45d230-120-first-draw-motion`, `main-a45d230-120-retained-home`,
+their `fold-a45d230-*` counterparts, `dev-a45-timing-settings` and
+`dev-a45-retained-settings`. Tagged APKs preserve each arm; none is an OTA
+or store release.
+
 | Change | Measurement | Decision |
 |---|---|---|
 | Navigation benchmark and bench-only Compose tracing | Settings/chat/artifacts device cases pass; agent-page case added | Infrastructure, no shipping UI change |
@@ -391,9 +460,9 @@ release-code, profiled, offline benchmark.
 
 ## Remaining checks
 
-- Keep home composed while covered and verify lazy-list state, lifecycle,
-  account switching, gestures and accessibility survive. Compare the
-  real-account return frame before/after on Nothing and Fold.
+- Retained Home passed the isolated full gate, lifecycle/state/gesture
+  tests and a matched real-account Nothing comparison. The Fold real-account
+  return-frame comparison remains; its offline benchmark passed.
 - Reduce tap→presented movement toward <40 ms, isolating the initial
   unmoved frame, composition scheduling and the display queue. Compare
   system Settings navigation without changing its options.

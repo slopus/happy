@@ -135,10 +135,28 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                     val start: Any = if (open == OpenAccount.None) StartRoute else HomeRoute
                     val motion = rememberNavMotion()
                     CompositionLocalProvider(LocalPageDims provides motion.dims) {
+                    RetainedHome(nav, modifier = Modifier.backdrop(nav), home = {
+                        // A switch made in Settings changes the covered home too.
+                        key(open.key) {
+                            when (val account = open) {
+                                is OpenAccount.Agent -> AgentHome(
+                                    graph,
+                                    account.id,
+                                    onOpenConversation = { agentId -> nav.openConversation(account.id, agentId) },
+                                    onCompose = { nav.composeConversation(account.id) },
+                                    onSettings = { nav.navigate(SettingsRoute()) },
+                                    onSettingsRow = { row -> nav.openAgentSettingsRow(account.id, row) },
+                                    onOpenArtifacts = { nav.navigate(AgentArtifactsRoute(account.id)) },
+                                    onOpenSurface = { nav.navigate(AgentSurfaceRoute(account.id, it.id, it.type, it.name)) },
+                                )
+                                is OpenAccount.Happy -> LegacyHome(graph, nav, onOpenSession = openSession, onTroubleshoot = troubleshoot)
+                                OpenAccount.None -> Unit
+                            }
+                        }
+                    }) { home ->
                     NavHost(
                         navController = nav,
                         startDestination = start,
-                        modifier = Modifier.backdrop(nav),
                         enterTransition = motion.enter,
                         exitTransition = motion.exit,
                         popEnterTransition = motion.popEnter,
@@ -147,25 +165,7 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                         predictivePopExitTransition = motion.predictivePopExit,
                     ) {
                         page<StartRoute> { Start(graph, nav, add) }
-                        // The open account's home; under Settings it changes with a switch made there.
-                        page<HomeRoute> {
-                            key(open.key) {
-                                when (val account = open) {
-                                    is OpenAccount.Agent -> AgentHome(
-                                        graph,
-                                        account.id,
-                                        onOpenConversation = { agentId -> nav.openConversation(account.id, agentId) },
-                                        onCompose = { nav.composeConversation(account.id) },
-                                        onSettings = { nav.navigate(SettingsRoute()) },
-                                        onSettingsRow = { row -> nav.openAgentSettingsRow(account.id, row) },
-                                        onOpenArtifacts = { nav.navigate(AgentArtifactsRoute(account.id)) },
-                                        onOpenSurface = { nav.navigate(AgentSurfaceRoute(account.id, it.id, it.type, it.name)) },
-                                    )
-                                    is OpenAccount.Happy -> LegacyHome(graph, nav, onOpenSession = openSession, onTroubleshoot = troubleshoot)
-                                    OpenAccount.None -> Unit
-                                }
-                            }
-                        }
+                        page<HomeRoute> { home.Anchor() }
                         // The open account's Settings, of either kind; a switch made here changes it in place.
                         page<SettingsRoute> { entry ->
                             ProvideRowReveal(entry.toRoute<SettingsRoute>().reveal) { AccountSettings(graph, nav, open) }
@@ -181,6 +181,7 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                         agentConnectionRoutes(graph, nav)
                         agentHomeRoutes(graph, nav)
                         conversationRoutes(graph, nav)
+                    }
                     }
                     }
                 }
