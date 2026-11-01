@@ -244,7 +244,8 @@ final class ChatScrollProbe: NSObject {
     private weak var chat: UIViewController?
     private let element = ProbeElement(frame: CGRect(x: 0, y: 0, width: 2, height: 2))
     private let endEditing = UIButton(type: .custom)
-    /// Runs only while a finger is down, and for `releaseDuration` after.
+    /// Runs while a finger is down, after its release and through any
+    /// keyboard animation that follows it.
     private var link: CADisplayLink?
     /// What happens after the finger lifts: the keyboard's release.
     private var releaseSamples: [Sample] = []
@@ -304,6 +305,7 @@ final class ChatScrollProbe: NSObject {
             window.addSubview(endEditing)
         }
         window.onTouch = { [weak self] touch in self?.touched(touch) }
+        NotificationCenter.default.addObserver(self, selector: #selector(keyboardMotion(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
         // Slow enough to leave the app idle in between: the composer's focus
         // once the rows are in.
         let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
@@ -354,11 +356,7 @@ final class ChatScrollProbe: NSObject {
             path = []
             samples = []
             sample()
-            if link == nil {
-                let link = CADisplayLink(target: self, selector: #selector(tick))
-                link.add(to: .main, forMode: .common)
-                self.link = link
-            }
+            startSampling()
         case .moved, .stationary:
             finger = point
         case .ended, .cancelled:
@@ -371,6 +369,24 @@ final class ChatScrollProbe: NSObject {
         default:
             break
         }
+    }
+
+    private func startSampling() {
+        guard link == nil else { return }
+        let link = CADisplayLink(target: self, selector: #selector(tick))
+        link.add(to: .main, forMode: .common)
+        self.link = link
+    }
+
+    /// The first keyboard after a simulator boots can start showing after
+    /// the tap's release window has already elapsed. Observe its actual
+    /// animation, retaining any controller motion sampled before it.
+    @objc private func keyboardMotion(_ notification: Notification) {
+        guard finger == nil, !lastTouch.isEmpty else { return }
+        let duration = notification.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0
+        lastTouch.removeValue(forKey: "release")
+        releaseEnd = max(releaseEnd ?? 0, CACurrentMediaTime() + max(Self.releaseDuration, duration))
+        startSampling()
     }
 
     @objc private func tick() {
