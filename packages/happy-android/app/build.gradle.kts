@@ -387,6 +387,8 @@ dependencies {
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
     implementation(libs.compose.ui.tooling.preview)
+    // Destination composition/measure attribution in navigation macrobenchmark traces.
+    "benchImplementation"(libs.compose.runtime.tracing)
     debugImplementation(libs.compose.ui.tooling)
     debugImplementation(libs.compose.ui.test.manifest)
 

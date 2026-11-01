@@ -51,6 +51,7 @@ androidx-browser = { module = "androidx.browser:browser", version.ref = "browser
 androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation-compose" }
 
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
+compose-runtime-tracing = { module = "androidx.compose.runtime:runtime-tracing" }
 compose-ui = { module = "androidx.compose.ui:ui" }
 compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
 compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }

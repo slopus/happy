@@ -4,6 +4,7 @@ import androidx.benchmark.macro.junit4.BaselineProfileRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Until
+import android.os.SystemClock
 import com.slopus.happy.benchmark.BenchApp.awaitHome
 import com.slopus.happy.benchmark.BenchApp.seed
 import org.junit.Rule
@@ -36,5 +37,39 @@ class BaselineProfileGenerator {
         device.waitForIdle()
         device.pressBack()
         awaitHome()
+    }
+
+    /** Common pushes belong in the baseline profile, not the cold-start dex layout. */
+    @Test
+    fun navigation() = rule.collect(
+        packageName = BenchApp.packageName,
+        includeInStartupProfile = false,
+    ) {
+        seed()
+        startActivityAndWait()
+        awaitHome()
+        openSettings()
+        check(device.wait(Until.hasObject(By.text("Appearance")), BenchApp.TIMEOUT))
+        SystemClock.sleep(750)
+        device.pressBack()
+        awaitHome()
+        SystemClock.sleep(750)
+        device.findObject(By.text("Artifacts")).click()
+        check(device.wait(Until.gone(By.text("Release Notes")), BenchApp.TIMEOUT))
+        SystemClock.sleep(750)
+        device.pressBack()
+        awaitHome()
+        SystemClock.sleep(750)
+        device.findObject(By.text(BenchApp.HOME_ROW)).click()
+        check(device.wait(Until.gone(By.text("Release Notes")), BenchApp.TIMEOUT))
+        SystemClock.sleep(750)
+        checkNotNull(device.wait(Until.findObject(By.text(BenchApp.HOME_ROW)), BenchApp.TIMEOUT)).click()
+        check(device.wait(Until.hasObject(By.text("Model")), BenchApp.TIMEOUT))
+        SystemClock.sleep(750)
+        device.pressBack()
+        SystemClock.sleep(750)
+        device.pressBack()
+        awaitHome()
+        SystemClock.sleep(750)
     }
 }

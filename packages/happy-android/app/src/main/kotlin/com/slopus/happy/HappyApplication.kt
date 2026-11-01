@@ -1,6 +1,8 @@
 package com.slopus.happy
 
 import android.app.Application
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.contentcapture.ContentCaptureManager
 import com.slopus.happy.data.DiskThread
 import com.slopus.happy.diagnostics.traced
 import com.slopus.happy.push.PushServices
@@ -42,8 +44,14 @@ class HappyApplication : Application() {
         built
     }
 
+    @OptIn(ExperimentalComposeUiApi::class)
     override fun onCreate() {
         super.onCreate()
+        // Private conversations aren't input to Android's system-intelligence capture.
+        // Its Compose semantics scans also cost 5–12 ms during navigation on the
+        // Nothing Phone. This switch only stops content capture: accessibility and
+        // autofill have their own managers and keep the complete semantics tree.
+        ContentCaptureManager.isEnabled = false
         if (BuildConfig.DEBUG) DiskThread.watch()
     }
 }
