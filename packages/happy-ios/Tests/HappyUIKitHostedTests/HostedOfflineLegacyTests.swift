@@ -181,7 +181,7 @@ final class HostedOfflineLegacyTests: XCTestCase {
         try await Task.detached {
             try SeededAccount.seed(store)
             try store.upsertSessions([record])
-            try store.applyMessagePage(sessionId: Self.chatId, messages: messages, syncedThrough: 2)
+            try store.applyMessagePage(sessionId: HostedOfflineLegacyTests.chatId, messages: messages, syncedThrough: 2)
         }.value
     }
 

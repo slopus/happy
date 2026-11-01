@@ -67,24 +67,28 @@ final class NewWorkLayoutTests: XCTestCase {
         XCTAssertEqual(short.block.minY, 100 + M.margin)
     }
 
-    /// Legacy with one computer: the folder alone, no control, no note.
-    func testOneComputerIsTheFolderAlone() {
-        let layout = NewWorkLayout(width: 393, top: 106, bottom: 420, kindHeight: nil, rows: 1, note: nil)
+    /// Legacy with one computer: folder and harness, no kind or note.
+    func testOneComputerAsksTheFolderAndHarness() {
+        let layout = NewWorkLayout(width: 393, top: 106, bottom: 420, kindHeight: nil, rows: 2, note: nil)
         XCTAssertNil(layout.kind)
         XCTAssertNil(layout.note)
-        XCTAssertEqual(layout.rows, [CGRect(x: 0, y: 0, width: 320, height: M.rowHeight)])
-        XCTAssertEqual(layout.block.height, M.rowHeight)
-        XCTAssertEqual(layout.block.midY, (106 + 420) / 2, accuracy: 0.001)
-    }
-
-    /// Legacy with two: the computer over the folder, a gap between.
-    func testTwoComputersAskTheComputerOverTheFolder() {
-        let layout = NewWorkLayout(width: 393, top: 106, bottom: 420, kindHeight: nil, rows: 2, note: nil)
         XCTAssertEqual(layout.rows, [
             CGRect(x: 0, y: 0, width: 320, height: M.rowHeight),
             CGRect(x: 0, y: M.rowHeight + M.rowGap, width: 320, height: M.rowHeight),
         ])
         XCTAssertEqual(layout.block.height, 2 * M.rowHeight + M.rowGap)
+        XCTAssertEqual(layout.block.midY, (106 + 420) / 2, accuracy: 0.001)
+    }
+
+    /// Legacy with two: computer, folder, harness, with gaps between.
+    func testTwoComputersAskTheComputerOverTheFolderAndHarness() {
+        let layout = NewWorkLayout(width: 393, top: 106, bottom: 420, kindHeight: nil, rows: 3, note: nil)
+        XCTAssertEqual(layout.rows, [
+            CGRect(x: 0, y: 0, width: 320, height: M.rowHeight),
+            CGRect(x: 0, y: M.rowHeight + M.rowGap, width: 320, height: M.rowHeight),
+            CGRect(x: 0, y: 2 * (M.rowHeight + M.rowGap), width: 320, height: M.rowHeight),
+        ])
+        XCTAssertEqual(layout.block.height, 3 * M.rowHeight + 2 * M.rowGap)
         XCTAssertEqual(layout.block.midY, (106 + 420) / 2, accuracy: 0.001)
     }
 }

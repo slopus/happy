@@ -513,6 +513,7 @@ final class PendingChatLaunchTests: XCTestCase {
             sessionOps: machine,
             sender: RealStorage(sessions: sessions),
             metadataTransport: NoTransport(),
+            saveInitialModes: { _, _ in },
             refreshSessions: { await machine.refreshed() },
             paintBotFace: { _ in Data() },
             attachmentPlan: { message, _ in AttachmentSendPlan(accepted: message.attachments, rejected: [], shouldShowUnsupportedAlert: false, shouldSendText: true) },

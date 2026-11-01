@@ -8,7 +8,7 @@ import CoreGraphics
 /// the keyboard, and the block, laid out against it, moves with it.
 ///
 /// Happy Agent's asks Task or Bot over an optional name; a legacy account's
-/// asks the computer (when it has more than one) and the folder. Either is
+/// asks the computer (when it has more than one), folder and harness. Either is
 /// an optional control over field-high rows and a line saying what it is.
 ///
 ///     bar ─────────────────────────

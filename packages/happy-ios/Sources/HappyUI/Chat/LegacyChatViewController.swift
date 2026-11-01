@@ -267,7 +267,8 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
                     return try await compose.start(message)
                 },
                 controls: services.controls,
-                draftStorage: ComposeDraftStorage(drafts: compose.drafts)
+                draftStorage: ComposeDraftStorage(drafts: compose.drafts),
+                newSession: compose.composer
             ))
         }
         let pending = PendingChats.isPendingChatId(sessionId)
@@ -328,6 +329,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         if let compose = composing {
             composeTarget.machine.menu = compose.machineMenu()
             composeTarget.folder.menu = compose.folderMenu()
+            composeTarget.harness.menu = compose.harnessMenu()
             view.addSubview(composeTarget)
             #if DEBUG
             if ComposeTrace.isOn { composeTrace = ComposeTrace(self) }
@@ -1393,6 +1395,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         guard isComposing else { return }
         updateHeader()
         updateComposeTarget()
+        if contentInstalled { updateComposer() }
     }
 
     /// The machine and folder the first send goes to; while it starts the
@@ -1404,6 +1407,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         composeTarget.showsMachine = compose.asksMachine
         composeTarget.machine.title = compose.machineName
         composeTarget.folder.title = compose.folderName
+        composeTarget.harness.title = compose.composer.choices.currentAgent.name
         view.setNeedsLayout()
     }
 
@@ -1695,7 +1699,9 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
             usage: facts?.usage,
             delivery: facts?.delivery ?? [:],
             isLoaded: facts?.isLoaded ?? false,
-            hasPendingQuestion: facts?.hasPendingQuestion ?? false
+            hasPendingQuestion: facts?.hasPendingQuestion ?? false,
+            newSessionChoices: isComposing ? composing?.composer.choices : nil,
+            isStartingNewSession: isComposing && composing?.isStarting == true
         ))
     }
 
