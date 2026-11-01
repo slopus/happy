@@ -163,21 +163,65 @@ everything the previous build saved, pending sends included.
 
 ## The title while away
 
-Both kinds' headers say where sync is, as Telegram does:
+Both kinds' headers say where sync is, as Telegram's chat list does. On
+home (phone, and the switcher over an iPad's sidebar) the account's name in
+the switcher gives way to the status, a small spinner before it; a chat
+says it under its name, with the same spinner.
 
-| State | Shown |
-| --- | --- |
-| No network path (`NetworkPath`, `NWPathMonitor`) | "Waiting for network…" |
-| Reaching the server or computer | "Connecting…" |
-| Connected, catching up | "Updating…" |
-| Live | the account's usual subtitle |
+| State (`LinkState`) | Home's title | A chat's subtitle |
+| --- | --- | --- |
+| No network path (`NetworkPath`, `NWPathMonitor`) | "Waiting for network…" | "waiting for network…" |
+| Reaching the server or computer | "Connecting…" | "connecting…" |
+| Connected, catching up | "Updating…" | "updating…" |
+| Offline for a reason home lists (agent only) | the name | "offline" |
+| Live | the name | the session's own status |
 
-With no network path, home shows no "computer did not answer" notice: the
-header already says it, and so does a legacy chat's, over its session's
-status. When the path comes back the account reconnects at once rather
-than at the end of its backoff (agent: `SyncEngine.reconnect`; legacy:
-`AccountSession.networkReturned`, a fresh socket), and what waited is
-sent.
+**One model per account, read by every header.** Each kind works its
+`LinkState` out of its own sources and feeds one `LinkIndicator`; home's
+title and every chat of that account watch it, so they change together:
+
+- agent: `Session.headerState(status:snapshot:network:)`, from the
+  pairing's check, the engine's snapshot and the path. An open stream is
+  the truth whatever the pairing's check last said; an engine error with
+  the stream down is `offline`.
+- legacy: `LegacyLink`, the one reader of the session's socket status and
+  catch-up streams (`AccountSession.statusUpdates`, `catchUpUpdates`). The
+  socket retries for as long as the account is signed in, so a socket that
+  is down is "connecting"; connected, it is "updating" until what the
+  connect pulls for home has landed (`LegacySyncEngine.caughtUp`).
+
+**Debounced** (`LinkStateDebounce`, pure, tested on a made-up clock):
+"Connecting…" and "Updating…" show only once the link has been away
+0.8 s, and whatever shows stays at least 0.6 s, so a short wobble never
+flickers the title. "Waiting for network…" is news and shows at once,
+over any hold. Live again gives the name back once it has stood 0.3 s:
+the sources say their parts one at a time (a socket connected a moment
+before its catch-up begins), so a status gives way to the next one
+directly, without the name flashing between them.
+
+**Motion.** The name and the status trade places in 0.25 s: the one going
+lifts 6 points and fades as the one coming rises into place, and the
+switcher's width and glass follow (`AccountSwitcherButton.setStatus`). The
+switcher draws its own glass (`hidesSharedBackground`), since the bar's
+would jump to the new width. The picture and the bar's other items never
+move. One status for another changes only the words; the spinner stays.
+With Reduce Motion they only crossfade.
+
+**VoiceOver.** The switcher's value says the status before the name
+("Connecting…, Studio Mac"). A change that stands half a second is
+announced once while home is on screen; back live, "Online".
+
+**One statement per cause.** With no network path, home shows no
+"computer did not answer" notice: the title already says it, and so does
+a chat's, over its session's status. When the network is fine but the
+computer did not answer, home's notice says so in its own words and the
+title keeps the name rather than say "Connecting…" beside it; the notice
+is the clearer of the two, since it says which side is away. When the path
+comes back the account reconnects at once rather than at the end of its
+backoff (agent: `SyncEngine.reconnect`, which also drops the error from
+the offline spell, so the title says "Connecting…" until this try
+answers; legacy: `AccountSession.networkReturned`, a fresh socket), and
+what waited is sent.
 
 ## Tests
 
@@ -193,6 +237,13 @@ sent.
   task's archive offline waiting rather than refused.
 - `SessionActionsTests`: a 4xx puts the archived row back at once; a 5xx
   keeps it waiting.
+- `LinkStateDebounceTests` (HappyCore): the debounce on a made-up clock.
+- `LinkTitleLayoutTests`, `ChatHeaderSpinnerLayoutTests` (HappyLayout):
+  the status in the name's place and under a chat's name, long
+  translations and narrow bars.
+- `HostedLinkTitleTests`: both homes through offline, connecting,
+  updating and live, the header held still and the frames mid-change; a
+  legacy chat's subtitle from the same link.
 - `HostedOfflineAgentTests`: a paired computer read online, then
   airplane mode: a chat read and a task archived offline, the app killed
   and opened again still offline. Home is drawn from disk at once with

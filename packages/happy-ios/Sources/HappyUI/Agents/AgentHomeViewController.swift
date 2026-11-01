@@ -6,8 +6,8 @@ import UIKit
 /// Home for an agent connection: its V2 under a clear navigation bar, the
 /// list running under it with iOS 26's soft scroll edge as the bar's shade.
 /// At the left, alone, the account switcher (`AccountSwitcher`): the active
-/// account's picture and name, with the connection under it while it isn't
-/// live. Settings stays at the right. Search and compose are in UIKit's
+/// account's picture and name, the name giving way to the link's status
+/// while the computer isn't live. Settings stays at the right. Search and compose are in UIKit's
 /// bottom toolbar; what search finds
 /// shows over home, which stays where it was.
 final class AgentHomeViewController: UIViewController, ComposeHosting {
@@ -15,7 +15,6 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
     private let id: String
     private let v2: HomeViewController
     private(set) lazy var search = BarSearch(host: self, placeholder: Strings.search, fieldIdentifier: "search-field")
-    private var observation: AccountsObservation?
     private var switcher: AccountSwitcher?
     private var headerWatch: Watch?
     /// The list's room under the bar and above the toolbar, as home last
@@ -23,8 +22,10 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
     private var room: HomeListRoom?
     /// On top of the stack, neither coming nor going.
     private var standing = false
-    var headerState: Strings.HeaderStatus.State = .connecting {
-        didSet { updateTitle() }
+    /// What the title says of the link (`Session.watchHeader`). Not
+    /// private, so a test can flip it.
+    var headerState: Strings.HeaderStatus.State = .online {
+        didSet { if headerState != oldValue { updateTitle() } }
     }
 
     init(context: AppContext, id: String) {
@@ -63,14 +64,13 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         v2.onSearchEnded = { [weak self] in self?.search.end() }
         switcher = AccountSwitcher(context: context, controller: self)
         headerWatch = Session.session(for: id, context: context)?.watchHeader { [weak self] in self?.headerState = $0 }
-        observation = context.account.observeAccounts { [weak self] _ in self?.updateTitle() }
         updateTitle()
         updateBar()
     }
 
-    /// The connection, always under the account's name.
+    /// The link's status in the account's name's place while it isn't live.
     private func updateTitle() {
-        switcher?.subtitle = Strings.HeaderStatus.text(headerState)
+        switcher?.link = headerState
     }
 
     /// Account and settings stay in the header while search lives below:

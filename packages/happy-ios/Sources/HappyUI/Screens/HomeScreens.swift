@@ -14,9 +14,9 @@ import UIKit
 ///   - "No sessions yet" on a reachable computer with nothing on it;
 ///   - the session list otherwise.
 ///
-/// Every state has home's bar: the account's picture at the left,
-/// "Sessions" with the connection under it, and the filter menu and
-/// settings at the right.
+/// Every state has home's bar: the account switcher at the left, its name
+/// giving way to the link's status while the account isn't live
+/// (`AccountSwitcher.link`), and the filter menu and settings at the right.
 ///
 /// Nothing is typed here: compose in the bar (`compose()`) opens an empty
 /// chat, whose first send starts the session (`LegacyComposeStart`). It is
@@ -90,8 +90,8 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
         observation = pipeline.observation
         // Tablet (HappyUI/Tablet): the shell flips this with the window's width.
         registerForTraitChanges([TabletLayoutTrait.self]) { (self: Self, _) in self.updateNavigation(animated: false) }
-        // The stream ends when the session stops.
-        let statusUpdates = session.statusUpdates
+        // The link as home's title says it, and as this account's chats do.
+        linkWatch = LegacyLink.link(for: session).watch { [weak self] in self?.headerState = $0 }
         networkWatch = NetworkPath.shared.watch { [weak self] satisfied in
             MainActor.assumeIsolated {
                 guard let self else { return }
@@ -99,11 +99,6 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
                 self.networkPath = satisfied
                 // Back from airplane mode: reconnect, and send what waited, now.
                 if back, self.isCurrentAccount { Task { [session = self.session] in await session.networkReturned() } }
-            }
-        }
-        Task { @MainActor [weak self] in
-            for await status in statusUpdates {
-                self?.status = status
             }
         }
         // An archive, leave or delete refused with no screen waiting on it
@@ -324,8 +319,6 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
         let blank = floating && traitCollection.isTabletLayout
         content?.view.isHidden = blank
         if floating {
-            // The account's name is the bar's title; the connection hangs under it.
-            switcher?.subtitle = Strings.HeaderStatus.text(headerState)
             // Beside the sidebar home draws nothing, but the bar is over
             // the sidebar too: the switcher stays, or a tablet has no way
             // to the accounts at all.
@@ -376,27 +369,17 @@ public final class LegacyHomeViewController: UIViewController, ComposeHosting {
         return [grouping, UIMenu(options: .displayInline, children: [appearance])]
     }
 
-    /// The connection, under "Sessions" while it isn't connected.
+    /// What the title says of the account's link (`LegacyLink`): the
+    /// account's name while it is online, else the status in its place.
     /// Not private, so a test can flip it.
-    var status: RealtimeStatus = HomeConnectionStatus.initial {
-        didSet { if status != oldValue { updateNavigation(animated: false) } }
+    var headerState: Strings.HeaderStatus.State = .online {
+        didSet { if headerState != oldValue { switcher?.link = headerState } }
     }
+    private var linkWatch: Watch?
 
-    /// What the header says of the connection.
-    var headerState: Strings.HeaderStatus.State {
-        switch status {
-        case .connected: .online
-        // No way out at all: Telegram's "waiting for network…".
-        case _ where !networkPath: .waitingForNetwork
-        case .connecting: .connecting
-        case .disconnected, .error: .offline
-        }
-    }
-
-    /// Whether the phone has a way out at all (`NetworkPath`).
-    var networkPath = NetworkPath.shared.isSatisfied {
-        didSet { if networkPath != oldValue { updateNavigation(animated: false) } }
-    }
+    /// Whether the phone has a way out at all (`NetworkPath`): its return
+    /// reconnects at once.
+    private var networkPath = NetworkPath.shared.isSatisfied
     private var networkWatch: NetworkPathWatch?
 
     private lazy var settingsItem = HeaderBar.settingsItem { [weak self] in self?.openSettings() }

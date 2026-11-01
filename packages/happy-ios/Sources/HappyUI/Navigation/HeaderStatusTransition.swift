@@ -23,6 +23,18 @@ enum HeaderStatusTransition {
         }
     }
 
+    /// `view` fades to `alpha` in the crossfade's time; `done` once it has.
+    static func fade(_ view: UIView, to alpha: CGFloat, done: @escaping () -> Void) {
+        guard animates(view) else {
+            view.alpha = alpha
+            done()
+            return
+        }
+        UIView.animate(withDuration: duration, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction, .curveEaseInOut]) {
+            view.alpha = alpha
+        } completion: { _ in done() }
+    }
+
     private static let duration = 0.2
 
     private static func animates(_ view: UIView) -> Bool {

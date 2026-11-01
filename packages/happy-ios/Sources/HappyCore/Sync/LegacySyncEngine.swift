@@ -142,6 +142,16 @@ public actor LegacySyncEngine {
         }
     }
 
+    /// Returns once what `syncAll` pulls for home has landed (sessions,
+    /// machines, settings, profile), retries included, without pulling it
+    /// again: the header's "updating…" lasts this long.
+    public func caughtUp() async {
+        for job in [Job.sessions, .machines, .settings, .profile] {
+            guard !stopped, let sync = jobs[job] else { continue }
+            await sync.settled()
+        }
+    }
+
     public func stop() async {
         stopped = true
         intentsFollowing?.cancel()

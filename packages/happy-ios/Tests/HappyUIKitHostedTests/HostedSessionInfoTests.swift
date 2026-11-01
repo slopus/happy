@@ -20,6 +20,15 @@ private struct NoSockets: WebSocketConnector {
     }
 }
 
+/// A socket always on its way: the account's own status stays
+/// "connecting", for a test to say it's live instead.
+private struct ForeverConnecting: WebSocketConnector {
+    func connect(to url: URL) async throws -> WebSocketConnection {
+        try await Task.sleep(for: .seconds(3_600))
+        throw URLError(.timedOut)
+    }
+}
+
 /// Session info as the chat's title opens it, over a store holding the
 /// session, in a window of a real scene: its groups must be on screen, and
 /// a long session's (an agent state of hundreds of requests, megabytes of
@@ -30,7 +39,7 @@ final class HostedSessionInfoTests: XCTestCase {
     /// 2026-10-16 09:00 UTC.
     private static let base: Int64 = 1_792_141_200_000
 
-    private func signedIn(agentState: JSONValue, sessionRecord: SessionRecord? = nil) async throws -> (AccountController, AccountSession) {
+    private func signedIn(agentState: JSONValue, sessionRecord: SessionRecord? = nil, connector: any WebSocketConnector = NoSockets()) async throws -> (AccountController, AccountSession) {
         let controller = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()),
             clientID: "ios/test",
@@ -38,7 +47,7 @@ final class HostedSessionInfoTests: XCTestCase {
             storeDirectory: nil,
             rnServerImport: { .confirmed(ServerConfig.defaultServerURL) },
             transport: NoNetwork(),
-            connector: NoSockets()
+            connector: connector
         )
         try await controller.signIn(Credentials(token: "t", secret: Data(repeating: 3, count: 32)))
         let account = try XCTUnwrap(controller.session)
@@ -246,8 +255,17 @@ final class HostedSessionInfoTests: XCTestCase {
     /// session's status on one glass capsule, in the bar from the push's
     /// first layout, nothing measured first; the status is nowhere else.
     func testTheLegacyChatHasItsCapsuleFromThePushesFirstLayout() async throws {
-        let (controller, account) = try await signedIn(agentState: .object(["controlledByUser": .bool(false)]))
+        let (controller, account) = try await signedIn(agentState: .object(["controlledByUser": .bool(false)]), connector: ForeverConnecting())
         let context = AppContext(account: controller, variant: .development, version: "test")
+        // No socket here: the account's link is told it's live, or the
+        // chat would say "connecting…" where the session's status goes.
+        let link = LegacyLink.link(for: account)
+        // The socket's own "connecting" has come.
+        try await Task.sleep(for: .milliseconds(300))
+        link.receive(status: .connected)
+        link.receive(catchingUp: false)
+        let live = try await until { link.indicator.shown == .online }
+        XCTAssertTrue(live, "the link never came back live")
         for (style, name) in [(UIUserInterfaceStyle.light, "light"), (.dark, "dark")] {
             let (window, navigation, _) = try await hosted()
             window.overrideUserInterfaceStyle = style

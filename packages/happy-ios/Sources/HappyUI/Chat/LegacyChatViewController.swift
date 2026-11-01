@@ -238,7 +238,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         // The capsule is in the bar as the push starts, the name and status
         // on it, as the agent chat's is; nothing is measured to show it.
         sessionStatus = cached.map { SessionComposerView.headerStatus(record: $0, now: home?.presenceNow) }
-        header.statuses = SessionComposerView.headerStatuses
+        header.statuses = SessionComposerView.headerStatuses + Strings.HeaderStatus.spinning
         header.onOpen = { [weak self] in self?.openInfo() }
         headerTitle = navigationItem.title ?? ""
         applyTitleAndStatus()
@@ -290,12 +290,10 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         defer { loadingSeconds = CACurrentMediaTime() - loadingStarted }
         #endif
         super.viewDidLoad()
-        networkWatch = NetworkPath.shared.watch { [weak self] satisfied in
-            MainActor.assumeIsolated {
-                guard let self, self.networkPath != satisfied else { return }
-                self.networkPath = satisfied
-                self.applyTitleAndStatus()
-            }
+        linkWatch = LegacyLink.link(for: account).watch { [weak self] state in
+            guard let self, link != state else { return }
+            link = state
+            applyTitleAndStatus()
         }
         isTabletLayout = traitCollection.isTabletLayout
         // A tablet's bar is opaque with the plain title (TabletBranches),
@@ -1023,25 +1021,29 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     /// (`composerDidChangeHeaderStatus`), the record home held until then.
     private var sessionStatus: ChatHeaderStatus?
 
-    /// Whether the phone has a way out at all (`NetworkPath`).
-    private var networkPath = NetworkPath.shared.isSatisfied
-    private var networkWatch: NetworkPathWatch?
+    /// The account's link as its headers show it (`LegacyLink`), the
+    /// same one home's title reads.
+    private var link: LinkState = .online
+    private var linkWatch: Watch?
 
     /// What is under the name: a chat still being started says what the
-    /// start is doing; with no network, that it waits for one, as
+    /// start is doing; while the account's link isn't live, where it is
+    /// ("connecting…", "waiting for network…"), with the spinner, as
     /// Telegram's does; any other, its session's status.
     private var shownStatus: ChatHeaderStatus? {
         if let compose = composing, isComposing {
             return compose.progress.map { ChatHeaderStatus(text: $0, color: UIColor(Palette.textSecondary), working: true) }
         }
-        if !networkPath {
-            return ChatHeaderStatus(text: Strings.HeaderStatus.text(.waitingForNetwork), color: UIColor(Palette.textSecondary), working: true)
+        if Strings.HeaderStatus.spins(link) {
+            return ChatHeaderStatus(text: Strings.HeaderStatus.text(link), color: UIColor(Palette.textSecondary), spins: true)
         }
         return sessionStatus
     }
 
     /// What is under the name now, for tests.
     var headerStatusText: String? { shownStatus?.text }
+    /// Whether the spinner turns before it, for tests.
+    var headerStatusSpins: Bool { header.statusSpins }
 
     /// The name and status on the phone's capsule and the tablet's plain
     /// title alike, the status crossfading as the agent chat's does.
@@ -1053,6 +1055,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         }
         header.setStatus(status?.text ?? "", color: status?.color ?? UIColor(Palette.textSecondary))
         header.statusShimmers = status?.working == true
+        header.statusSpins = status?.spins == true
         // Made with the view, at the screen's text size.
         guard isViewLoaded else { return }
         plainTitleView.update(title: headerTitle, subtitle: status?.text, changes: nil)

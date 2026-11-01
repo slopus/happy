@@ -1,3 +1,4 @@
+import Foundation
 import HappyCore
 
 extension Strings {
@@ -6,7 +7,7 @@ extension Strings {
     enum HeaderStatus {
         /// Telegram's: "updating…" while it catches up, "connecting…" while it
         /// reaches the server, "waiting for network…" with no way out at all.
-        enum State: Int, CaseIterable { case online = 0, syncing = 1, connecting = 2, offline = 3, waitingForNetwork = 7 }
+        typealias State = LinkState
 
         static let translations: [String: [String]] = [
             "en": ["online", "updating…", "connecting…", "offline", "Thinking", "Working", "Waiting for your answer", "waiting for network…"],
@@ -22,7 +23,36 @@ extension Strings {
         ]
 
         static var all: [String] { translations[AppLocalization.language] ?? translations["en"]! }
-        static func text(_ state: State) -> String { all[state.rawValue] }
+        static func text(_ state: State) -> String { all[index(state)] }
+
+        private static func index(_ state: State) -> Int {
+            switch state {
+            case .online: 0
+            case .syncing: 1
+            case .connecting: 2
+            case .offline: 3
+            case .waitingForNetwork: 7
+            }
+        }
+
+        /// The link on its way somewhere: said with the spinner before it.
+        static func spins(_ state: State) -> Bool {
+            state == .syncing || state == .connecting || state == .waitingForNetwork
+        }
+
+        /// The words said with the spinner, in the screens' language.
+        static var spinning: [String] { State.allCases.filter { spins($0) }.map { text($0) } }
+
+        /// What home's title says in the account's name's place, the same
+        /// words begun with a capital as a title is ("Connecting…"); nil
+        /// while the name stands. Offline isn't said there: what home lists
+        /// says why (a computer that did not answer, a pairing to redo).
+        static func title(_ state: State) -> String? {
+            guard spins(state) else { return nil }
+            let text = text(state)
+            let locale = Locale(identifier: AppLocalization.language)
+            return text.prefix(1).uppercased(with: locale) + text.dropFirst()
+        }
         static func text(_ state: State, activity: Activity?, loaded: Bool) -> String {
             guard state == .online else { return text(state) }
             guard loaded else { return text(.syncing) }

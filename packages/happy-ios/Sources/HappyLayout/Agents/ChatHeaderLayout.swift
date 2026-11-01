@@ -32,6 +32,10 @@ public struct ChatHeaderLayout: Equatable, Sendable {
         /// The content is never narrower than this (Telegram's 150): a
         /// short name's capsule is 178, not a bubble round its word.
         public static let minContent: CGFloat = 150
+        /// The spinner before a link's status ("connecting…") and the room
+        /// after it: home's title's spinner, at the status's smaller size.
+        public static let spinner: CGFloat = 14
+        public static let spinnerGap: CGFloat = 5
     }
 
     /// The glass, its ends round.
@@ -39,19 +43,25 @@ public struct ChatHeaderLayout: Equatable, Sendable {
     /// The name's line.
     public var title: CGRect
     public var status: CGRect?
+    /// The spinner before the status, centred on its line with it, the
+    /// pair centred under the name; nil when the status doesn't spin.
+    public var spinner: CGRect?
 
     /// Widths are single-line measurements: the name, the status shown (nil
-    /// with none), and the widest status there is. `centerX` is the bar's
-    /// middle and `room` what the bar left between its items, both in the
-    /// header's own coordinates; `height` is the header's.
+    /// with none), and the widest status there is, its spinner's room
+    /// included if it spins. `spins` puts the spinner before the status.
+    /// `centerX` is the bar's middle and `room` what the bar left between
+    /// its items, both in the header's own coordinates; `height` is the
+    /// header's.
     public init(
-        titleWidth: CGFloat, statusWidth: CGFloat?, reservedStatusWidth: CGFloat = 0,
+        titleWidth: CGFloat, statusWidth: CGFloat?, reservedStatusWidth: CGFloat = 0, spins: Bool = false,
         centerX: CGFloat, room: ClosedRange<CGFloat>, height: CGFloat
     ) {
         typealias M = Metrics
         let roomWidth = room.upperBound - room.lowerBound
         let titleWidth = max(0, titleWidth).rounded(.up)
-        let statusLine = statusWidth.map { max($0, reservedStatusWidth, 0).rounded(.up) }
+        let spinnerRoom = M.spinner + M.spinnerGap
+        let statusLine = statusWidth.map { max($0 + (spins ? spinnerRoom : 0), reservedStatusWidth, 0).rounded(.up) }
         let floor = min(M.minContent, max(0, roomWidth - 2 * M.padding))
         let content = max(titleWidth, statusLine ?? 0, floor)
         let width = min(content + 2 * M.padding, roomWidth)
@@ -66,6 +76,16 @@ public struct ChatHeaderLayout: Equatable, Sendable {
         status = statusLine.map {
             let line = min($0, inner)
             return CGRect(x: (capsule.midX - line / 2).rounded(), y: top + M.titleHeight, width: line, height: M.statusHeight)
+        }
+        spinner = nil
+        // A spinning status: the spinner and the words as one, centred;
+        // the words cut, never the spinner.
+        if spins, let statusWidth, let line = status {
+            let words = min(max(0, statusWidth).rounded(.up), max(0, line.width - spinnerRoom))
+            let pair = spinnerRoom + words
+            let x = (capsule.midX - pair / 2).rounded()
+            spinner = CGRect(x: x, y: line.minY + ((M.statusHeight - M.spinner) / 2).rounded(), width: M.spinner, height: M.spinner)
+            status = CGRect(x: x + spinnerRoom, y: line.minY, width: words, height: M.statusHeight)
         }
     }
 }

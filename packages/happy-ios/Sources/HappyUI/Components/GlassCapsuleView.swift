@@ -6,12 +6,15 @@ import UIKit
 /// (its `GlassBackgroundView` with the `.panel` tint): the regular glass,
 /// a faint white over it, fainter in the dark. What it carries goes in
 /// `contentView`. Interactive, it answers a finger as the bar's own
-/// buttons do. Reduce Transparency and the like are the system's to apply.
+/// buttons do. Untinted, it is the bar's own buttons' glass. Reduce
+/// Transparency and the like are the system's to apply.
 final class GlassCapsuleView: UIVisualEffectView {
     private let interactive: Bool
+    private let tinted: Bool
 
-    init(interactive: Bool = false) {
+    init(interactive: Bool = false, tinted: Bool = true) {
         self.interactive = interactive
+        self.tinted = tinted
         super.init(effect: nil)
         cornerConfiguration = .capsule()
         applyGlass()
@@ -28,7 +31,7 @@ final class GlassCapsuleView: UIVisualEffectView {
     /// Telegram's panel tint: white at 10% in the light, 2.5% in the dark.
     private func applyGlass() {
         let glass = UIGlassEffect(style: .regular)
-        glass.tintColor = UIColor(white: 1, alpha: traitCollection.userInterfaceStyle == .dark ? 0.025 : 0.1)
+        if tinted { glass.tintColor = UIColor(white: 1, alpha: traitCollection.userInterfaceStyle == .dark ? 0.025 : 0.1) }
         glass.isInteractive = interactive
         effect = glass
     }

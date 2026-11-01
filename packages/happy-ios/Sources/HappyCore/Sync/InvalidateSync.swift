@@ -86,6 +86,22 @@ public actor InvalidateSync {
         }
     }
 
+    /// Returns once nothing is left to run, without asking for another run:
+    /// at once when idle, else when the run in flight (and its retries)
+    /// has succeeded or the sync was stopped.
+    public func settled() async {
+        guard task != nil, !Task.isCancelled else { return }
+        let id = UUID()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                if Task.isCancelled { continuation.resume() }
+                else { waiters[id] = continuation }
+            }
+        } onCancel: {
+            Task { await self.cancelWaiter(id) }
+        }
+    }
+
     /// Cancels the run in flight and returns once it has ended, so nothing it
     /// fetched is merged afterwards: a switch or sign-out may close or erase
     /// the store next. Requests honour cancellation; a store write already

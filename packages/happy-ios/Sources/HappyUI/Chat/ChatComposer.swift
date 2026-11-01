@@ -149,11 +149,15 @@ public struct ChatHeaderStatus: Equatable {
     /// Work under way ("thinking…", a chat being started): the words carry
     /// the sheen.
     public var working = false
+    /// The account's link on its way ("connecting…"): the spinner before
+    /// the words, as home's title has it.
+    public var spins = false
 
-    public init(text: String, color: UIColor, working: Bool = false) {
+    public init(text: String, color: UIColor, working: Bool = false, spins: Bool = false) {
         self.text = text
         self.color = color
         self.working = working
+        self.spins = spins
     }
 }
 

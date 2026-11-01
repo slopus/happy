@@ -63,8 +63,12 @@ public final class AccountSession: Sendable {
     public let machineDetails: MachineDetailFeed
     /// Socket status for the UI (connection dot in settings).
     public let statusUpdates: AsyncStream<RealtimeStatus>
+    /// True from each socket (re)connect until what it pulls for home has
+    /// landed (`LegacySyncEngine.caughtUp`): the header's "updating…".
+    public let catchUpUpdates: AsyncStream<Bool>
 
     private let statusContinuation: AsyncStream<RealtimeStatus>.Continuation
+    private let catchUp: CatchUpSignal
     private let pump = PumpHolder()
 
     public struct Dependencies: Sendable {
@@ -150,6 +154,9 @@ public final class AccountSession: Sendable {
             ])
         }
         (statusUpdates, statusContinuation) = AsyncStream.makeStream(of: RealtimeStatus.self, bufferingPolicy: .bufferingNewest(1))
+        let (catchUpUpdates, catchUpContinuation) = AsyncStream.makeStream(of: Bool.self, bufferingPolicy: .bufferingNewest(1))
+        self.catchUpUpdates = catchUpUpdates
+        catchUp = CatchUpSignal(catchUpContinuation)
         self.actions = SessionActions(api: api, store: store, sync: sync, rpc: realtime)
         self.machineActions = MachineActions(api: api, store: store, sync: sync, rpc: realtime, metadataTransport: realtime)
         self.gitStatus = GitStatusSync(actions: actions, store: store)
@@ -223,9 +230,10 @@ public final class AccountSession: Sendable {
         let gitStatus = self.gitStatus
         let rigComposer = self.rigComposer
         let fileCache = self.fileCache
+        let catchUp = self.catchUp
         pump.set(Task {
             for await event in realtime.events {
-                await Self.route(event, sync: sync, status: statusContinuation, gitStatus: gitStatus, rigComposer: rigComposer, fileCache: fileCache)
+                await Self.route(event, sync: sync, status: statusContinuation, catchUp: catchUp, gitStatus: gitStatus, rigComposer: rigComposer, fileCache: fileCache)
             }
         })
         await realtime.connect()
@@ -257,6 +265,7 @@ public final class AccountSession: Sendable {
         await store.stopSnapshotProducers()
         await task?.value
         statusContinuation.finish()
+        catchUp.finish()
     }
 
     /// The phone has a way out again (`NetworkPath`): connect now rather
@@ -281,7 +290,7 @@ public final class AccountSession: Sendable {
     }
 
     static func route(_ event: RealtimeEvent, sync: LegacySyncEngine, status: AsyncStream<RealtimeStatus>.Continuation,
-                      gitStatus: GitStatusSync? = nil, rigComposer: RigComposerSync? = nil,
+                      catchUp: CatchUpSignal? = nil, gitStatus: GitStatusSync? = nil, rigComposer: RigComposerSync? = nil,
                       fileCache: SessionFileCache? = nil) async {
         switch event {
         case .status(let value):
@@ -290,6 +299,7 @@ public final class AccountSession: Sendable {
             await sync.setConnected(value == .connected)
         case .connected:
             await sync.syncAll()
+            catchUp?.begin(sync)
             await sync.setConnected(true)
             await rigComposer?.setConnected(true)
         case .event("update", let payload?):
@@ -311,6 +321,36 @@ public final class AccountSession: Sendable {
         case .event:
             break
         }
+    }
+}
+
+/// Says when a connect's catch-up starts and ends. Only the latest
+/// connect's end is said: one that ends after a newer connect began says
+/// nothing, so the stream never claims caught up while a newer one runs.
+final class CatchUpSignal: @unchecked Sendable {
+    private let lock = NSLock()
+    private var generation = 0
+    private let continuation: AsyncStream<Bool>.Continuation
+
+    init(_ continuation: AsyncStream<Bool>.Continuation) {
+        self.continuation = continuation
+    }
+
+    func begin(_ sync: LegacySyncEngine) {
+        let started = lock.withLock {
+            generation += 1
+            continuation.yield(true)
+            return generation
+        }
+        Task { [self] in
+            await sync.caughtUp()
+            lock.withLock { if generation == started { continuation.yield(false) } }
+        }
+    }
+
+    func finish() {
+        lock.withLock { generation += 1 }
+        continuation.finish()
     }
 }
 

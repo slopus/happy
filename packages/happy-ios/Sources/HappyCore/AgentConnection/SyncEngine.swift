@@ -150,6 +150,10 @@ public actor SyncEngine {
     /// Does nothing while the engine is paused or already live.
     public func reconnect() async {
         guard !stopped, runner != nil, !snapshot.live else { return }
+        // What failed while there was no network says nothing of the
+        // computer: the header says "connecting…" until this try answers.
+        // Cleared in the same turn as the pause, which publishes it.
+        snapshot.error = nil
         await pause()
         start()
     }

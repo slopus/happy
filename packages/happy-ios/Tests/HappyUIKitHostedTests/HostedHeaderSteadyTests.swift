@@ -26,8 +26,9 @@ private struct SteadyAgentTransport: AgentTransport {
 }
 
 /// A connection that comes and goes moves nothing in the header or under
-/// it: the account's name stays where it is while "connecting" shows under
-/// it and goes, and a chat's name stays put while "Thinking" does. Stills
+/// it: the switcher's picture stays where it is while "Connecting…" takes
+/// the name's place and goes, and a chat's name stays put while "Thinking"
+/// does. Stills
 /// of each state go to the repository's `.context/evidence/header-steady`
 /// when that folder's parent exists.
 @MainActor
@@ -110,37 +111,39 @@ final class HostedHeaderSteadyTests: XCTestCase {
 
         func now() throws -> Where {
             window.layoutIfNeeded()
-            let name = try XCTUnwrap(Self.subviews(StyledLabel.self, in: switcher).first { $0.string == switcher.title })
+            let name = switcher.nameLabel
             let rows = scroll.subviews.filter { !$0.isHidden && $0.frame.height > 20 && $0.frame.maxY > scroll.contentOffset.y + scroll.adjustedContentInset.top }
             let first = try XCTUnwrap(rows.min { $0.frame.minY < $1.frame.minY })
             return Where(
                 bar: navigation.navigationBar.convert(navigation.navigationBar.bounds, to: window),
                 switcher: switcher.convert(switcher.bounds, to: window).integral,
-                name: name.convert(name.bounds, to: window),
+                // In its lane: the lane lifts it away as the status comes.
+                // Rounded past float noise from a fractional width.
+                name: name.frame.rounded(),
                 list: scroll.convert(scroll.bounds, to: window),
                 offset: scroll.contentOffset, inset: scroll.contentInset,
                 firstRow: first.convert(first.bounds, to: window)
             )
         }
 
-        home.status = .connected
-        try await Task.sleep(for: .milliseconds(200))
+        home.headerState = .online
+        try await Task.sleep(for: .milliseconds(300))
         let live = try now()
         capture(window, "1-legacy-home-connected")
-        let flips: [RealtimeStatus] = [.connecting, .connected, .connecting, .disconnected, .error, .connected, .connecting]
-        for (index, status) in flips.enumerated() {
-            home.status = status
+        let flips: [LinkState] = [.connecting, .online, .connecting, .waitingForNetwork, .syncing, .online, .connecting]
+        for (index, state) in flips.enumerated() {
+            home.headerState = state
             try await Task.sleep(for: .milliseconds(120))
             let seen = try now()
-            if index < 2 { capture(window, "\(index + 2)-legacy-home-\(status)") }
-            XCTAssertEqual(seen.bar, live.bar, "the bar moved at \(status)")
-            XCTAssertEqual(Self.subviews(StyledLabel.self, in: switcher).count, 1)
-            XCTAssertEqual(seen.switcher, live.switcher, "the switcher moved at \(status)")
-            XCTAssertEqual(seen.name.origin, live.name.origin, "the account's name moved at \(status)")
-            XCTAssertEqual(seen.list, live.list, "the list moved at \(status)")
-            XCTAssertEqual(seen.offset, live.offset, "the list scrolled at \(status)")
-            XCTAssertEqual(seen.inset, live.inset, "the list's inset changed at \(status)")
-            XCTAssertEqual(seen.firstRow, live.firstRow, "the first row moved at \(status)")
+            if index < 2 { capture(window, "\(index + 2)-legacy-home-\(state)") }
+            XCTAssertEqual(seen.bar, live.bar, "the bar moved at \(state)")
+            XCTAssertEqual(seen.switcher.origin, live.switcher.origin, "the switcher moved at \(state)")
+            XCTAssertEqual(seen.switcher.height, live.switcher.height)
+            XCTAssertEqual(seen.name.origin, live.name.origin, "the account's name moved at \(state)")
+            XCTAssertEqual(seen.list, live.list, "the list moved at \(state)")
+            XCTAssertEqual(seen.offset, live.offset, "the list scrolled at \(state)")
+            XCTAssertEqual(seen.inset, live.inset, "the list's inset changed at \(state)")
+            XCTAssertEqual(seen.firstRow, live.firstRow, "the first row moved at \(state)")
         }
         await controller.signOut()
     }
@@ -236,10 +239,14 @@ final class HostedHeaderSteadyTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(200))
         window.layoutIfNeeded()
         let switcher = try XCTUnwrap(home.navigationItem.leftBarButtonItem?.customView as? AccountSwitcherButton)
-        let name = try XCTUnwrap(Self.subviews(StyledLabel.self, in: switcher).first { $0.string == switcher.title })
+        let name = switcher.nameLabel
+        /// The switcher's width follows its title; its place doesn't.
         func frames() -> [CGRect] {
             window.layoutIfNeeded()
-            return [navigation.navigationBar, switcher, name, sidebar].map { $0.convert($0.bounds, to: window) }
+            let switcherFrame = switcher.convert(switcher.bounds, to: window)
+            // The name in its lane: the lane lifts it away as the status comes.
+            return [navigation.navigationBar, sidebar].map { $0.convert($0.bounds, to: window) } + [name.frame.rounded()]
+                + [CGRect(origin: switcherFrame.origin, size: CGSize(width: 0, height: switcherFrame.height))]
         }
         /// The first row, as it rests. The offline notice is the list's
         /// first row (`SidebarList.notice`), so the row stands under it.
@@ -261,13 +268,13 @@ final class HostedHeaderSteadyTests: XCTestCase {
             snapshot.error = state == .offline ? "The computer is offline" : nil
             content.applyConnection(snapshot)
             try await Task.sleep(for: .milliseconds(80))
-            XCTAssertEqual(Self.subviews(StyledLabel.self, in: switcher).count, 1)
             XCTAssertEqual(frames(), original, "mid-fade at \(state)")
             XCTAssertEqual(sidebar.contentInsets, inset)
             XCTAssertEqual(sidebar.contentOffsetY, offset)
             XCTAssertEqual(sidebar.rows.map(\.id), rows.map(\.id))
             try await Task.sleep(for: .milliseconds(250))
             XCTAssertEqual(frames(), original, "settled at \(state)")
+            XCTAssertEqual(switcher.status, Strings.HeaderStatus.title(state), "the title at \(state)")
             let notice = snapshot.error == nil ? 0 : try XCTUnwrap(sidebar.list.settledFrame(at: 0)).height
             XCTAssertEqual(try firstRow(), originalRow.offsetBy(dx: 0, dy: notice), "the first row isn't under the notice at \(state)")
             capture(window, "agent-home-\(state)")
@@ -296,9 +303,26 @@ final class HostedHeaderSteadyTests: XCTestCase {
         XCTAssertEqual(Session.headerState(status: .connected, snapshot: snapshot), .online)
         snapshot.live = false; snapshot.error = "offline"
         XCTAssertEqual(Session.headerState(status: .connected, snapshot: snapshot), .offline)
+        // Retrying after the computer did not answer: home's notice says
+        // so, the header says offline rather than connecting for it too.
+        XCTAssertEqual(Session.headerState(status: .retrying, snapshot: snapshot), .offline)
+        snapshot.error = nil
         XCTAssertEqual(Session.headerState(status: .retrying, snapshot: snapshot), .connecting)
         XCTAssertEqual(Session.headerState(status: .paused, snapshot: snapshot), .offline)
         XCTAssertEqual(Session.headerState(status: .revoked, snapshot: snapshot), .offline)
+        // The stream is open: live, whatever the pairing's check last said.
+        snapshot.live = true
+        XCTAssertEqual(Session.headerState(status: .retrying, snapshot: snapshot), .online)
+        XCTAssertEqual(Session.headerState(status: .revoked, snapshot: snapshot), .offline)
+        XCTAssertEqual(Session.headerState(status: .connecting, snapshot: snapshot, network: false), .waitingForNetwork)
+    }
+}
+
+private extension CGRect {
+    /// To a thousandth of a point.
+    func rounded() -> CGRect {
+        func r(_ value: CGFloat) -> CGFloat { (value * 1_000).rounded() / 1_000 }
+        return CGRect(x: r(minX), y: r(minY), width: r(width), height: r(height))
     }
 }
 #endif

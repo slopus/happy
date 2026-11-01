@@ -59,8 +59,11 @@ final class Session {
     /// Whether the phone has a way out at all (`NetworkPath`).
     private var networkPath = NetworkPath.shared.isSatisfied
     private var networkWatch: NetworkPathWatch?
-    private var headerWatchers: [UUID: (Strings.HeaderStatus.State) -> Void] = [:]
+    /// The link as it is (`headerState(status:snapshot:network:)`), and as
+    /// headers show it: home's title and every chat's subtitle watch
+    /// `link` (`watchHeader`), so they change together, debounced.
     private(set) var headerState: Strings.HeaderStatus.State = .connecting
+    let link = LinkIndicator(wanted: .connecting)
 
     /// The notifications this session watches for, for the same reason.
     /// Nothing adds to it today; it is emptied by `stop` all the same, so
@@ -162,8 +165,7 @@ final class Session {
         connectionObservation = account.observeAccounts { [weak self, weak account] _ in
             guard let self, let account else { return }
             computerName = account.agentConnections.accounts.first { $0.id == accountID }?.name ?? computerName
-            connectionStatus = account.agentConnections.accounts.first { $0.id == accountID }?.status ?? .paused
-            updateHeaderState()
+            receive(status: account.agentConnections.accounts.first { $0.id == accountID }?.status ?? .paused)
         }
         connectionFollowing = Task { [weak self, engine] in
             for await snapshot in await engine.snapshots() {
@@ -186,13 +188,16 @@ final class Session {
     static func headerState(status: ConnectionStatus, snapshot: HomeSnapshot, network: Bool = true) -> Strings.HeaderStatus.State {
         // No way out at all: nothing to connect to yet, whatever was last heard.
         if !network, status != .revoked { return .waitingForNetwork }
+        if status == .revoked { return .offline }
+        // The stream is open: it is the truth, whatever the pairing's own
+        // check (which retries on its own backoff) last said.
+        if snapshot.live { return snapshot.loaded && !snapshot.syncing ? .online : .syncing }
+        // The computer did not answer: home's notice says so, in its words.
+        if snapshot.error != nil { return .offline }
         switch status {
         case .paused, .revoked: return .offline
-        case .retrying: return .connecting
-        case .connecting: return .connecting
-        case .connected:
-            if snapshot.error != nil && !snapshot.live { return .offline }
-            return snapshot.live && snapshot.loaded && !snapshot.syncing ? .online : .syncing
+        case .retrying, .connecting: return .connecting
+        case .connected: return .syncing
         }
     }
 
@@ -200,7 +205,13 @@ final class Session {
         let next = Self.headerState(status: connectionStatus, snapshot: home, network: networkPath)
         guard next != headerState else { return }
         headerState = next
-        for watch in headerWatchers.values { watch(next) }
+        link.want(next)
+    }
+
+    /// The pairing's own check, as `AgentConnections` says it (or a test).
+    func receive(status: ConnectionStatus) {
+        connectionStatus = status
+        updateHeaderState()
     }
 
     /// What home lists, now and as it changes: the rows a screen finds its
@@ -221,11 +232,9 @@ final class Session {
         for watch in homeWatchers.values { watch(snapshot) }
     }
 
+    /// What headers show of the link, now and on every change (`link`).
     func watchHeader(_ watch: @escaping (Strings.HeaderStatus.State) -> Void) -> Watch {
-        let id = UUID()
-        headerWatchers[id] = watch
-        watch(headerState)
-        return Watch { [weak self] in self?.headerWatchers.removeValue(forKey: id) }
+        link.watch(watch)
     }
 }
 
