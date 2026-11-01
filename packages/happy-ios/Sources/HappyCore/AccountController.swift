@@ -589,7 +589,15 @@ public final class AccountController {
     /// confirmed, or an agent, or nothing. Returns the session that was
     /// open, for the cleanup to stop once the new one shows.
     private func handOff(from id: String) -> Task<AccountSession?, Never> {
-        Task {
+        // Nothing to open off the main thread and nothing else under way:
+        // done in this call.
+        if !busy, registry.entries.min(by: { $0.addedOrder < $1.addedOrder })?.serverConfirmed != true {
+            let old = session?.keys.anonID == id ? session : nil
+            if old != nil { stopProfileObservation() }
+            showWithoutHappyAccount()
+            return Task { old }
+        }
+        return Task {
             // A transition already under way ends first; nothing else
             // starts until this one has.
             while busy { try? await Task.sleep(for: .milliseconds(5)) }
@@ -599,9 +607,8 @@ public final class AccountController {
             // Something else opened meanwhile: it stays.
             guard old != nil || session == nil && agentConnections.activeID == nil else { return nil }
             if old != nil { stopProfileObservation() }
-            let following = registry.entries.min { $0.addedOrder < $1.addedOrder }
             var next: AccountSession?
-            if let following, following.serverConfirmed,
+            if let following = registry.entries.min(by: { $0.addedOrder < $1.addedOrder }), following.serverConfirmed,
                let credentials = try? await Self.credentials(of: following.id, at: following.location, in: accountCredentialStore) {
                 next = try? await makeSession(credentials, entry: following)
             }
@@ -616,23 +623,28 @@ public final class AccountController {
                 observeProfile(of: next)
                 notifyAccounts()
                 await next.start()
-            } else if following == nil, fallsBackToAgentConnection, showsAgentConnections,
-                      let computer = agentConnections.accounts.first(where: { !$0.revoked }) ?? agentConnections.accounts.first {
-                // The last Happy account went: an agent opens at once, with
-                // no first screen between.
-                agentConnections.open(computer.id)
-                localSettings = settings(for: computer.id)
-                state = .agentConnection(computer)
-                notifyAccounts()
             } else {
-                // None, or the next waits for its server to be confirmed
-                // (`pendingServerConfirmation`).
-                localSettings = LocalSettings(storage: InMemoryKeyValueStore())
-                state = .signedOut
-                notifyAccounts()
+                showWithoutHappyAccount()
             }
             return old
         }
+    }
+
+    /// No Happy account to open in place of the one gone: with none left,
+    /// an agent where computers are a home of their own (no first screen
+    /// between); otherwise nothing, or the next waiting for its server to be
+    /// confirmed (`pendingServerConfirmation`).
+    private func showWithoutHappyAccount() {
+        if registry.entries.isEmpty, fallsBackToAgentConnection, showsAgentConnections,
+           let computer = agentConnections.accounts.first(where: { !$0.revoked }) ?? agentConnections.accounts.first {
+            agentConnections.open(computer.id)
+            localSettings = settings(for: computer.id)
+            state = .agentConnection(computer)
+        } else {
+            localSettings = LocalSettings(storage: InMemoryKeyValueStore())
+            state = .signedOut
+        }
+        notifyAccounts()
     }
 
     /// The end of a removal: struck from the journal only once all of it

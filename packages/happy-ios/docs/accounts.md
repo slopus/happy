@@ -145,5 +145,8 @@ Before this, a Happy account's sign-out awaited the push token's removal (up
 to 5 s, the whole time on a network that never answers), the session's stop
 and the Keychain, and only then changed the root; an agent's disconnect
 deleted its offline folder on the main thread (140 ms with a 1500-file media
-cache in the simulator). `HostedInstantSignOutTests` measures confirm to the
-next home: 1-2 frames now, 5.0 s before for a Happy account.
+cache in the simulator), and the last account's Start screen compiled its
+Metal shader on the main thread (precompiled during the confirm now).
+`HostedInstantSignOutTests` measures confirm to the next home: the first frame
+drawn after the button shows it (9-36 ms in a Debug simulator), against 5.0 s
+for a Happy account before.
