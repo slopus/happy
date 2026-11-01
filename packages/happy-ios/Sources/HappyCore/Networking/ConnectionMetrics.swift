@@ -237,6 +237,20 @@ public struct TunnelInfo: Equatable, Sendable {
 
 /// What a page shows of an account's link at one moment: the window's
 /// sums and what is up now.
+/// Tailcat's own count of a tunnel's TCP flows (`TailcatClient.flowStatistics`):
+/// live ones, and ones this phone closed that still finish FIN/ACK or wait
+/// out TIME-WAIT, each against its budget.
+public struct TunnelFlows: Equatable, Sendable {
+    public var open: Int
+    public var closing: Int
+    public var openLimit: Int
+    public var closingLimit: Int
+
+    public init(open: Int, closing: Int, openLimit: Int, closingLimit: Int) {
+        self.open = open; self.closing = closing; self.openLimit = openLimit; self.closingLimit = closingLimit
+    }
+}
+
 public struct ConnectionSnapshot: Equatable, Sendable {
     public var totals = MetricsTotals()
     /// When this was taken, on the recorder's clock.
@@ -248,7 +262,10 @@ public struct ConnectionSnapshot: Equatable, Sendable {
     public var tunnels = 0
     public var tunnelSince: TimeInterval?
     public var path: TunnelPath?
-    /// TCP flows open over Tailcat now, this phone's side.
+    /// The newest tunnel's flows as Tailcat counts them, when it says.
+    public var flows: TunnelFlows?
+    /// TCP flows open over Tailcat now, as the app counts its own opens
+    /// and closes; Tailcat's `flows` is the truth when there is one.
     public var liveFlows = 0
     /// Streams open now by channel, and since when the oldest of them is.
     public var openStreams: [ConnectionChannel: Int] = [:]
@@ -291,6 +308,7 @@ public final class ConnectionMetrics: @unchecked Sendable {
         var info: TunnelInfo
         var since: TimeInterval
         var path: @Sendable () async -> TunnelPath?
+        var flows: (@Sendable () async -> TunnelFlows?)?
     }
     private var tunnels: [UUID: Tunnel] = [:]
     private var newestTunnel: UUID?
@@ -361,10 +379,11 @@ public final class ConnectionMetrics: @unchecked Sendable {
         }
     }
 
-    /// A tunnel came up; `path` asks it how it reaches the computer now.
-    public func tunnelUp(_ id: UUID, info: TunnelInfo, path: @escaping @Sendable () async -> TunnelPath?) {
+    /// A tunnel came up; `path` asks it how it reaches the computer now,
+    /// and `flows` how many flows it holds.
+    public func tunnelUp(_ id: UUID, info: TunnelInfo, flows: (@Sendable () async -> TunnelFlows?)? = nil, path: @escaping @Sendable () async -> TunnelPath?) {
         locked { time in
-            tunnels[id] = Tunnel(info: info, since: time, path: path)
+            tunnels[id] = Tunnel(info: info, since: time, path: path, flows: flows)
             newestTunnel = id
         }
     }
@@ -383,10 +402,11 @@ public final class ConnectionMetrics: @unchecked Sendable {
 
     // MARK: Reading
 
-    /// The window and the state now. The path is asked of the newest
-    /// tunnel, so this waits on its actor: never call it on the main thread.
+    /// The window and the state now. The path and flows are asked of the
+    /// newest tunnel, so this waits on its actor: never call it on the main
+    /// thread.
     public func snapshot() async -> ConnectionSnapshot {
-        let (snapshot, probe) = locked { time -> (ConnectionSnapshot, (@Sendable () async -> TunnelPath?)?) in
+        let (snapshot, newest) = locked { time -> (ConnectionSnapshot, Tunnel?) in
             var value = ConnectionSnapshot()
             value.time = time
             value.counted = min(time - started, TimeInterval(MetricsRing.windowSeconds))
@@ -400,10 +420,11 @@ public final class ConnectionMetrics: @unchecked Sendable {
             value.streamSince = since
             value.lastError = lastError?.0
             value.lastErrorAt = lastError?.1
-            return (value, newest?.path)
+            return (value, newest)
         }
         var result = snapshot
-        result.path = await probe?()
+        result.path = await newest?.path()
+        result.flows = await newest?.flows?()
         return result
     }
 }

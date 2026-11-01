@@ -139,7 +139,11 @@ public actor TailcatHTTPTransport: SelfMeteringTransport {
             if let metrics = meter.metrics, let tunnel {
                 let id = UUID()
                 tunnelID = id
-                metrics.tunnelUp(id, info: Self.info(tunnel, port: port)) { [weak value] in
+                metrics.tunnelUp(id, info: Self.info(tunnel, port: port), flows: { [weak value] in
+                    guard let statistics = await value?.flowStatistics else { return nil }
+                    return TunnelFlows(open: statistics.open, closing: statistics.closing,
+                                       openLimit: TailcatFlowStatistics.openLimit, closingLimit: TailcatFlowStatistics.closingLimit)
+                }) { [weak value] in
                     switch await value?.path {
                     case .relay: .relayed
                     case .direct(let endpoint): .direct(endpoint: endpoint)

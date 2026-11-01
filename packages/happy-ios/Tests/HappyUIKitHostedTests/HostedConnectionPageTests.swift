@@ -39,7 +39,8 @@ private final class TunnelComputer: SelfMeteringTransport, @unchecked Sendable {
     func attach(_ metrics: ConnectionMetrics) {
         lock.withLock { self.metrics = metrics }
         let path = path
-        metrics.tunnelUp(tunnel, info: TunnelInfo(regionID: 4, regionCode: "fra", regionName: "Frankfurt", relayHost: "derp4.example.test", nodeKey: "nodekey:6a1f02c9…", port: 4821)) { path }
+        metrics.tunnelUp(tunnel, info: TunnelInfo(regionID: 4, regionCode: "fra", regionName: "Frankfurt", relayHost: "derp4.example.test", nodeKey: "nodekey:6a1f02c9…", port: 4821),
+                         flows: { TunnelFlows(open: 1, closing: 3, openLimit: 1024, closingLimit: 1024) }) { path }
     }
 
     private func flow(_ head: String, answer: Data) async throws {
@@ -290,7 +291,8 @@ final class HostedConnectionPageTests: XCTestCase {
         XCTAssertEqual(shown.row("reconnects")?.value, "0")
         XCTAssertEqual(shown.row("failed")?.value, "0")
         XCTAssertEqual(shown.row("connections-opened")?.value, shown.row("connections-closed")?.value, "every flow so far was closed")
-        XCTAssertEqual(shown.row("flows")?.value, "0 of 1,024", "every flow so far was closed")
+        XCTAssertEqual(shown.row("flows")?.value, "1 of 1,024", "Tailcat's own count, not the app's")
+        XCTAssertEqual(shown.row("closing-flows")?.value, "3 of 1,024")
         assertEveryRowIsOneLine(page)
         XCTAssertTrue(page.isTicking)
 

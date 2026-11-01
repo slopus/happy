@@ -70,8 +70,13 @@ struct ConnectionPage: Equatable {
                 if let host = tunnel.relayHost { status.append(Row(id: "relay-host", title: Text.relayServer, value: host)) }
             }
             since = snapshot.tunnelSince
-            tailcat = Card(id: "tailcat", header: Text.tailcat, rows: [
-                Row(id: "flows", title: Text.liveFlows, value: Text.flows(count(snapshot.liveFlows))),
+            // Tailcat's own count when the tunnel is up; the app's, of the
+            // flows it opened and has not closed, until then.
+            var flows = [Row(id: "flows", title: Text.liveFlows, value: Text.of(count(snapshot.flows?.open ?? snapshot.liveFlows), count(snapshot.flows?.openLimit ?? 1024)))]
+            if let tunnel = snapshot.flows {
+                flows.append(Row(id: "closing-flows", title: Text.closingFlows, value: Text.of(count(tunnel.closing), count(tunnel.closingLimit))))
+            }
+            tailcat = Card(id: "tailcat", header: Text.tailcat, rows: flows + [
                 Row(id: "tunnels", title: Text.tunnels, value: count(snapshot.tunnels)),
             ] + errorRows(snapshot), footer: Text.tailcatFooter)
         case .legacy(let serverURL, let socketURL):

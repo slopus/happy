@@ -176,18 +176,21 @@ final class ConnectionMetricsTests: XCTestCase {
         metrics.connectionClosed(.tailcat, flow: true)
         let first = UUID(), second = UUID()
         metrics.tunnelUp(first, info: TunnelInfo(regionID: 1, regionName: "Frankfurt", nodeKey: "nodekey:aa…", port: 1)) { .relayed }
-        metrics.tunnelUp(second, info: TunnelInfo(regionID: 2, regionCode: "sfo", nodeKey: "nodekey:bb…", port: 2)) { .direct(endpoint: "203.0.113.4:41641") }
+        metrics.tunnelUp(second, info: TunnelInfo(regionID: 2, regionCode: "sfo", nodeKey: "nodekey:bb…", port: 2),
+                         flows: { TunnelFlows(open: 2, closing: 5, openLimit: 1024, closingLimit: 1024) }) { .direct(endpoint: "203.0.113.4:41641") }
         var snapshot = await metrics.snapshot()
         XCTAssertEqual(snapshot.liveFlows, 1)
         XCTAssertEqual(snapshot.totals.count(.connectionsOpened), 3)
         XCTAssertEqual(snapshot.tunnels, 2)
         XCTAssertEqual(snapshot.tunnel?.regionLabel, "sfo")
         XCTAssertEqual(snapshot.path, .direct(endpoint: "203.0.113.4:41641"))
+        XCTAssertEqual(snapshot.flows, TunnelFlows(open: 2, closing: 5, openLimit: 1024, closingLimit: 1024), "the newest tunnel's own count")
         metrics.tunnelDown(second)
         snapshot = await metrics.snapshot()
         XCTAssertEqual(snapshot.tunnels, 1)
         XCTAssertEqual(snapshot.tunnel?.regionLabel, "Frankfurt")
         XCTAssertEqual(snapshot.path, .relayed)
+        XCTAssertNil(snapshot.flows, "a tunnel that doesn't say has no count")
         metrics.tunnelDown(first)
         snapshot = await metrics.snapshot()
         XCTAssertNil(snapshot.tunnel)

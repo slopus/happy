@@ -43,7 +43,8 @@ extension Strings {
         static let latencyP95 = "Request time p95"
         static let bytesPerMinute = "Bytes per minute"
 
-        static let liveFlows = "Live flows"
+        static let liveFlows = "Open flows"
+        static let closingFlows = "Closing flows"
         static let tunnels = "Tunnels open"
         static let lastError = "Last error"
         static let errorAge = "When"
@@ -55,7 +56,7 @@ extension Strings {
         static let copied = "Copied"
         static let copyFooter = "A plain-text snapshot of this page, for a bug report. It holds no keys, tokens or addresses that would let anyone in."
 
-        static let tailcatFooter = "Each request opens its own flow through the tunnel. This phone may have 1,024 open at once; the computer accepts 256 at once on its port from every phone together."
+        static let tailcatFooter = "Each request opens its own flow through the tunnel. This phone may have 1,024 open at once; the computer accepts 256 at once on its port from every phone together. A closed flow lingers a moment to finish with the computer; past 1,024 of those, the oldest is dropped."
         static let httpConnectionsFooter = "The system keeps HTTP connections open to reuse them and closes them without saying, so only the ones it opened are counted."
 
         static func since(_ duration: String) -> String { "Counting for \(duration), since this account opened." }
@@ -71,7 +72,7 @@ extension Strings {
 
         static func traffic(_ channel: String) -> String { "\(channel) traffic" }
         static func peak(_ size: String) -> String { "peak \(size)" }
-        static func flows(_ open: String) -> String { "\(open) of 1,024" }
+        static func of(_ count: String, _ limit: String) -> String { "\(count) of \(limit)" }
         static func ago(_ age: String) -> String { "\(age) ago" }
     }
 }
