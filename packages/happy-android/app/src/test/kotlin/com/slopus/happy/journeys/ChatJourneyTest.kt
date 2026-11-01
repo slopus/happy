@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasParent
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.isNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -33,6 +34,7 @@ import com.slopus.happy.ui.components.OptionMenuTags
 import com.slopus.happy.ui.files.MessageDetailTags
 import com.slopus.happy.ui.home.FlatRowTags
 import com.slopus.happy.ui.node
+import com.slopus.happy.ui.isOnActivePage
 import com.slopus.happy.ui.usage.UsageRowTags
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -87,7 +89,7 @@ class ChatJourneyTest {
 
     private fun text(text: String) = buildJsonObject { put("t", "text"); put("text", text) }
 
-    private fun back() = rule.onAllNodesWithTag(HeaderTags.LEFT, useUnmergedTree = true).onFirst().performClick()
+    private fun back() = rule.onAllNodes(hasTestTag(HeaderTags.LEFT) and isOnActivePage, useUnmergedTree = true).onFirst().performClick()
 
     private fun shown(tag: String) = rule.node(tag).bounds.left > (-1000).dp
 

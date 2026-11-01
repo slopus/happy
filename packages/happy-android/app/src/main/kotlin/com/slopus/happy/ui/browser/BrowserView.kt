@@ -13,7 +13,7 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebStorage
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import androidx.activity.compose.BackHandler
+import com.slopus.happy.ui.components.PageBackHandler as BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -265,7 +265,14 @@ fun BrowserView(
         }
     }
 
-    BackHandler(enabled = canGoBack) { web?.goBack() }
+    val started = com.slopus.happy.ui.components.pageStarted()
+    androidx.compose.runtime.DisposableEffect(web, started) {
+        val view = web
+        if (started) view?.onResume() else view?.onPause()
+        onDispose { view?.onPause() }
+    }
+
+    BackHandler(enabled = canGoBack && started) { web?.goBack() }
 
     Column(modifier.fillMaxSize().background(colors.surface).testTag(BrowserTags.BROWSER)) {
         Box(Modifier.fillMaxWidth().height(2.dp)) {
@@ -371,7 +378,7 @@ private fun ShareButton(page: BrowserPage?, web: WebView?, context: Context) {
         IconButton(onClick = { open = true }, enabled = page != null, modifier = Modifier.testTag(BrowserTags.SHARE)) {
             Icon(MaterialSymbols.Share, stringResource(R.string.artifact_share))
         }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+        DropdownMenu(expanded = open && com.slopus.happy.ui.components.LocalPageActive.current, onDismissRequest = { open = false }) {
             val shareUrl = if (page?.artifactId == null) web?.url ?: page?.url else page.url
             DropdownMenuItem(
                 text = { Text(stringResource(R.string.browser_share_link)) },

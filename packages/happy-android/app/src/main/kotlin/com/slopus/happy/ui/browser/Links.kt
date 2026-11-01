@@ -288,6 +288,7 @@ fun LinkMenu(opener: LinkOpener) {
             action()
         }
     }
+    if (!com.slopus.happy.ui.components.LocalPageActive.current) return
     ModalBottomSheet(
         onDismissRequest = { opener.menu = null },
         sheetState = sheet,

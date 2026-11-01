@@ -201,7 +201,7 @@ private fun PermissionButton(
                 textAlign = TextAlign.Center,
             )
         }
-        if (loading) {
+        if (loading && com.slopus.happy.ui.components.pageStarted()) {
             val pulse by rememberInfiniteTransition(label = "permissionRing").animateFloat(
                 initialValue = 0.18f,
                 targetValue = 0.52f,

@@ -33,6 +33,20 @@ class NavigationBenchmark {
     @Test fun settingsCold() = navigation(cold = true) { openSettings() }
     @Test fun chat() = navigation { device.findObject(By.text(BenchApp.HOME_ROW)).click() }
     @Test fun artifacts() = navigation { device.findObject(By.text("Artifacts")).click() }
+    @Test fun settingsPage() = navigation(
+        prepare = {
+            openSettings()
+            check(device.wait(Until.gone(By.text("Release Notes")), BenchApp.TIMEOUT))
+            SystemClock.sleep(750)
+        },
+        finish = {
+            device.pressBack()
+            awaitHome()
+        },
+    ) {
+        checkNotNull(device.wait(Until.findObject(By.text("Appearance")), BenchApp.TIMEOUT)).click()
+        check(device.wait(Until.hasObject(By.text("Hide projects")), BenchApp.TIMEOUT)) { "Appearance page did not open" }
+    }
     @Test fun agentPage() = navigation(
         prepare = {
             device.findObject(By.text(BenchApp.HOME_ROW)).click()

@@ -48,7 +48,7 @@ import kotlinx.coroutines.withContext
  * streams many); history's shared media and links, a page at a time as the
  * page asks; and the computer's model catalog, once, for the models' names.
  */
-internal class AgentPageModel(session: AgentSession, private val agentId: String) : ViewModel() {
+internal class AgentPageModel(private val session: AgentSession, private val agentId: String) : ViewModel() {
     @androidx.compose.runtime.Immutable
     data class Read(val detail: AgentDetail? = null, val reading: Boolean = true, val error: Problem? = null)
 
@@ -63,11 +63,13 @@ internal class AgentPageModel(session: AgentSession, private val agentId: String
     val catalog: StateFlow<ModeCatalog?> = catalogState.asStateFlow()
     private var wanted = 0 to 0
     private var asking: Job? = null
+    private var observing = false
 
-    init {
+    suspend fun observe(): Unit = kotlinx.coroutines.coroutineScope {
+        observing = true
         val pokes = Channel<Unit>(Channel.CONFLATED)
-        viewModelScope.launch { session.events.signalsFor(agentId).collect { pokes.trySend(Unit) } }
-        viewModelScope.launch {
+        launch { session.events.signalsFor(agentId).collect { pokes.trySend(Unit) } }
+        launch {
             readDetail()
             for (poke in pokes) {
                 delay(FIRST_DELAY_MS)
@@ -75,7 +77,7 @@ internal class AgentPageModel(session: AgentSession, private val agentId: String
                 delay(EVERY_MS - FIRST_DELAY_MS)
             }
         }
-        viewModelScope.launch {
+        if (catalogState.value == null) launch {
             catalogState.value = try {
                 api.catalog()
             } catch (e: CancellationException) {
@@ -84,6 +86,12 @@ internal class AgentPageModel(session: AgentSession, private val agentId: String
                 // The tiles keep the model's ID.
                 null
             }
+        }
+        if (wanted != (0 to 0)) want(wanted.first, wanted.second)
+        try { kotlinx.coroutines.awaitCancellation() } finally {
+            observing = false
+            asking?.cancel()
+            pokes.close()
         }
     }
 
@@ -103,7 +111,7 @@ internal class AgentPageModel(session: AgentSession, private val agentId: String
     /** History back far enough for [media] media and [links] links; asked while reading, it asks again once that is in. */
     fun want(media: Int, links: Int) {
         wanted = maxOf(wanted.first, media) to maxOf(wanted.second, links)
-        if (asking?.isActive == true) return
+        if (!observing || asking?.isActive == true) return
         asking = viewModelScope.launch {
             do {
                 val target = wanted
@@ -135,6 +143,7 @@ internal fun AgentPageEntry(graph: AppGraph, nav: NavHostController, route: Conv
         return
     }
     val model = viewModel(key = "agentPage") { AgentPageModel(session, route.agentId) }
+    com.slopus.happy.ui.components.StartedEffect(model) { model.observe() }
     val held = remember(nav, route.agentId) { nav.heldConversation(route.agentId) }
     val warm = held?.state?.collectAsStateWithLifecycle()?.value
     val read by model.read.collectAsStateWithLifecycle()

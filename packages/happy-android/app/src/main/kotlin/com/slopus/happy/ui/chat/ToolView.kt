@@ -1,7 +1,6 @@
 package com.slopus.happy.ui.chat
 
 import android.content.res.Resources
-import androidx.compose.animation.core.withInfiniteAnimationFrameMillis
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -14,7 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
+import com.slopus.happy.ui.components.PageProgressIndicator as CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -22,6 +21,8 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -402,8 +403,12 @@ private fun StatusIcon(icon: ToolStatusIcon) {
 /** `ElapsedView`: whole seconds since [from], ticking each second, as "12.0s". */
 @Composable
 private fun ElapsedView(from: Long, modifier: Modifier = Modifier) {
-    val seconds by produceState(elapsedSeconds(from), from) {
-        while (true) withInfiniteAnimationFrameMillis { value = elapsedSeconds(from) }
+    var seconds by remember(from) { mutableLongStateOf(elapsedSeconds(from)) }
+    com.slopus.happy.ui.components.StartedEffect(from) {
+        while (true) {
+            seconds = elapsedSeconds(from)
+            kotlinx.coroutines.delay(1000)
+        }
     }
     Text(
         "%.1fs".format(seconds.toDouble()),

@@ -57,7 +57,9 @@ fun rememberComposerDraft(mirror: Flow<ComposerMirror>?, onWrite: suspend (Strin
     val write by rememberUpdatedState(onWrite)
     val draft = remember(mirror) { ComposerDraft() }
     LaunchedEffect(draft) {
-        launch { for (text in draft.writes) write(text) }
+        for (text in draft.writes) write(text)
+    }
+    com.slopus.happy.ui.components.StartedEffect(draft) {
         mirror?.collect { draft.onMirror(it.draft.orEmpty()) }
     }
     return draft

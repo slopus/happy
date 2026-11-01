@@ -1,6 +1,6 @@
 package com.slopus.happy.ui.settings
 
-import androidx.activity.compose.BackHandler
+import com.slopus.happy.ui.components.PageBackHandler as BackHandler
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding

@@ -191,9 +191,13 @@ class Conversation(
     /** A run is going: from `run.started` until it finishes or the agent goes idle. */
     private var running = false
     private var visible = false
+    private var observing = true
+    private var closed = false
 
     private var following: Job? = null
     private var reading: Job? = null
+    private var olderReading: Job? = null
+    private var questionReading: Job? = null
     private var pumping: Job? = null
     private var creating: Deferred<Unit>? = null
     private var choice = initialChoice
@@ -211,7 +215,7 @@ class Conversation(
     private val created: Boolean get() = newTask == null
 
     fun start() {
-        if (following != null) return
+        if (closed || !observing || following != null) return
         following = scope.launch(lane) {
             // The picker's choices; a failure here is asked again when a send needs the default.
             launch { try { readCatalog() } catch (e: CancellationException) { throw e } catch (_: Exception) {} }
@@ -222,6 +226,30 @@ class Conversation(
                     ConversationSignal.Resync -> reload()
                     is ConversationSignal.Event -> held?.add(signal) ?: receive(signal)
                 }
+            }
+        }
+    }
+
+    /**
+     * A covered page keeps its rows but stops its own subscription and reads.
+     * Revealing it catches up from the kept history anchor. Accepted sends,
+     * uploads, task creation and draft writes are deliberately independent.
+     */
+    fun setObserving(value: Boolean) {
+        scope.launch(lane) {
+            if (closed || observing == value) return@launch
+            observing = value
+            if (value) start() else {
+                visible = false
+                following?.cancel()
+                following = null
+                reading?.cancel()
+                reading = null
+                olderReading?.cancel()
+                questionReading?.cancel()
+                reconciling?.cancel()
+                held = null
+                publish { it.copy(syncing = false, loadingOlder = false) }
             }
         }
     }
@@ -237,11 +265,16 @@ class Conversation(
     /** Leaves: a draft waiting for the pause is saved now. */
     fun close() {
         scope.launch(lane) {
+            closed = true
+            observing = false
             if (!draftSynced && created) saveDraftNow()
             keeping?.cancel()
             keepNow()
             following?.cancel()
             reading?.cancel()
+            olderReading?.cancel()
+            questionReading?.cancel()
+            reconciling?.cancel()
         }
     }
 
@@ -266,6 +299,7 @@ class Conversation(
      * history again.
      */
     private fun reload() {
+        if (!observing || closed) return
         reading?.cancel()
         if (held == null) held = ArrayList()
         reading = scope.launch(lane) {
@@ -328,15 +362,17 @@ class Conversation(
 
     /** The kept history, read off the main thread and shown at once; the agent's answer follows. */
     private suspend fun restore() {
-        restored = true
-        val keeper = keeper ?: return
+        val keeper = keeper ?: run { restored = true; return }
         val kept = try {
             withContext(disk) { KeptConversation.parse(keeper.read()) }
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
             null
-        } ?: return
+        }
+        // Cancellation before the disk answered must allow a later restore.
+        restored = true
+        kept ?: return
         // Something came in while the disk was read: that is newer than what was kept.
         if (runs.isNotEmpty() || pending.isNotEmpty()) return
         for (run in kept.runs) putRun(run)
@@ -435,8 +471,10 @@ class Conversation(
     /** Runs older than the first one shown. After a failure only [retry] (Retry) asks again. */
     fun loadOlder(retry: Boolean = false) {
         scope.launch(lane) {
+            if (!observing || olderReading?.isActive == true) return@launch
             val first = runs.firstOrNull()?.first ?: return@launch
             if (!snapshot.hasMore || snapshot.loadingOlder || held != null || (snapshot.olderFailed && !retry)) return@launch
+            olderReading = launch {
             publish { it.copy(loadingOlder = true, olderFailed = false) }
             try {
                 val page = api.messages(agentId, before = first)
@@ -454,11 +492,14 @@ class Conversation(
             } catch (_: Exception) {
                 publish { it.copy(loadingOlder = false, olderFailed = true) }
             }
+            }
         }
     }
 
     private fun readQuestion() {
-        scope.launch(lane) {
+        if (!observing || closed) return
+        questionReading?.cancel()
+        questionReading = scope.launch(lane) {
             val question = try {
                 api.question(agentId)
             } catch (e: CancellationException) {
@@ -587,6 +628,7 @@ class Conversation(
 
     /** History disagreed with an event: read again once things settle. */
     private fun reconcileSoon() {
+        if (!observing || closed) return
         reconciling?.cancel()
         reconciling = scope.launch(lane) {
             delay(300)

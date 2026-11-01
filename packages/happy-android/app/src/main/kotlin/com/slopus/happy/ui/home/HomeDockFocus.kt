@@ -1,6 +1,6 @@
 package com.slopus.happy.ui.home
 
-import androidx.activity.compose.BackHandler
+import com.slopus.happy.ui.components.PageBackHandler as BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition

@@ -18,7 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.CircularProgressIndicator
+import com.slopus.happy.ui.components.PageProgressIndicator as CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -100,9 +100,10 @@ internal fun VideoPage(item: ViewerItem, source: ViewerSource, active: Boolean, 
             video?.close()
         }
     }
-    LaunchedEffect(prepared, active) {
+    val started = com.slopus.happy.ui.components.pageStarted()
+    LaunchedEffect(prepared, active, started) {
         if (!prepared) return@LaunchedEffect
-        if (active) {
+        if (active && started) {
             player.start()
             playing = true
         } else if (player.isPlaying) {
@@ -110,7 +111,7 @@ internal fun VideoPage(item: ViewerItem, source: ViewerSource, active: Boolean, 
             playing = false
         }
     }
-    LaunchedEffect(playing) {
+    com.slopus.happy.ui.components.StartedEffect(playing) {
         while (playing) {
             position = runCatching { player.currentPosition }.getOrDefault(position)
             delay(250)

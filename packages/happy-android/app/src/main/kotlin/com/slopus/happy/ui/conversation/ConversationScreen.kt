@@ -18,7 +18,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material3.CircularProgressIndicator
+import com.slopus.happy.ui.components.PageProgressIndicator as CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -236,7 +236,10 @@ fun ConversationScreen(
     }
     val atNewest by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }
     val visible by rememberUpdatedState(actions.onVisible)
-    LaunchedEffect(atNewest, state.created) { if (state.created) visible(atNewest) }
+    com.slopus.happy.ui.components.StartedEffect(atNewest, state.created) {
+        if (state.created) visible(atNewest)
+        try { kotlinx.coroutines.awaitCancellation() } finally { visible(false) }
+    }
 
     // The dock floats over the transcript, which scrolls on under its glass; the list keeps the
     // dock's height free at its newest end, so the last message is never left under it. The bar

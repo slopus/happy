@@ -82,13 +82,28 @@ class ArtifactCatalogReader(
     private val stateFlow = MutableStateFlow(ArtifactListState(emptyList(), null))
     val state: StateFlow<ArtifactListState> = stateFlow.asStateFlow()
     private var reading: Job? = null
+    private var starting: Job? = null
     private var started = false
+    private var observing = true
+
+    fun resume() {
+        observing = true
+        if (started) read() else start()
+    }
+
+    fun pause() {
+        observing = false
+        if (starting?.isActive == true) started = false
+        starting?.cancel()
+        reading?.cancel()
+        reading = null
+    }
 
     /** The kept page, then a fresh read; once, however often the screen comes back. */
     fun start() {
         if (started) return
         started = true
-        scope.launch {
+        starting = scope.launch {
             val page = withContext(Dispatchers.IO) { cached() }?.let(ArtifactListing::parse)
             if (page != null && !stateFlow.value.loaded) stateFlow.value = ArtifactListState(page.items, page.next, loaded = page.items.isNotEmpty())
             read()
@@ -96,7 +111,7 @@ class ArtifactCatalogReader(
     }
 
     fun read(append: Boolean = false) {
-        if (reading?.isActive == true) return
+        if (!observing || reading?.isActive == true) return
         val cursor = if (append) stateFlow.value.next ?: return else null
         reading = scope.launch {
             try {

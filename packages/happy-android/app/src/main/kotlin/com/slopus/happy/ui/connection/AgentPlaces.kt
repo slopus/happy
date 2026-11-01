@@ -149,6 +149,7 @@ internal class SurfaceReader(
     private val cached: () -> JsonObject? = { null },
     private val keep: (JsonObject) -> Unit = {},
 ) {
+    private var reading: kotlinx.coroutines.Job? = null
     private val stateFlow = MutableStateFlow<PlaceRead<SurfaceBody>>(if (readable) PlaceRead.Reading else PlaceRead.Ready(SurfaceBody.Elsewhere))
     val state: StateFlow<PlaceRead<SurfaceBody>> = stateFlow.asStateFlow()
 
@@ -159,8 +160,11 @@ internal class SurfaceReader(
         (type == TODO && (event.data["surfaceId"].str ?: event.data["todo"].obj?.get("surfaceId").str) == surfaceId)
 
     fun read() {
-        scope.launch { restore(); refresh() }
+        reading?.cancel()
+        reading = scope.launch { restore(); refresh() }
     }
+
+    fun pauseReads() { reading?.cancel() }
 
     /** One read, returning once it has landed or failed; what a pull waits on. */
     suspend fun refresh() {
@@ -221,10 +225,13 @@ internal fun AgentSurface(graph: AppGraph, nav: NavHostController, route: AgentS
             cached = { it.cachedResource("surface" + route.surfaceId) },
             keep = { value -> it.keepResource("surface" + route.surfaceId, value) },
         ) } }
-    LaunchedEffect(reader) {
-        if (session == null || reader == null) return@LaunchedEffect
+    com.slopus.happy.ui.components.StartedEffect(reader) {
+        if (session == null || reader == null) return@StartedEffect
         reader.read()
-        if (route.type == SurfaceReader.TODO) session.events.filter(reader::hears).collect { reader.read() }
+        try {
+            if (route.type == SurfaceReader.TODO) session.events.filter(reader::hears).collect { reader.read() }
+            else kotlinx.coroutines.awaitCancellation()
+        } finally { reader.pauseReads() }
     }
     // The bar keeps up with a rename, as iOS's does.
     val feed = session?.feed?.collectAsStateWithLifecycle()?.value

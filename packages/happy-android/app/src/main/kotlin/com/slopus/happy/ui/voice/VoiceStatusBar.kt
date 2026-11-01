@@ -58,7 +58,7 @@ fun VoiceStatusBar(sidebar: Boolean = false) {
     val state by controller.state.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var elapsed by remember(state.connectedAtElapsed) { mutableLongStateOf(SystemClock.elapsedRealtime()) }
-    LaunchedEffect(state.status, state.connectedAtElapsed) {
+    com.slopus.happy.ui.components.StartedEffect(state.status, state.connectedAtElapsed) {
         if (state.status == VoiceStatus.Connected) while (true) {
             elapsed = SystemClock.elapsedRealtime()
             delay(1000)
@@ -130,7 +130,7 @@ fun VoiceStatusBarContent(state: VoiceState, duration: String?, sidebar: Boolean
 private fun ShimmerMic() {
     val reduce = rememberReduceMotion()
     val progress = remember { Animatable(0f) }
-    LaunchedEffect(reduce) {
+    com.slopus.happy.ui.components.StartedEffect(reduce) {
         if (!reduce) progress.animateTo(1f, infiniteRepeatable(tween(1800, easing = LinearEasing)))
     }
     val modifier = if (reduce) Modifier else Modifier
@@ -153,7 +153,7 @@ private fun VoiceBars() {
     Row(Modifier.testTag("voice.bars").height(12.dp), horizontalArrangement = Arrangement.spacedBy(1.5.dp)) {
         repeat(3) { index ->
             val scale = remember { Animatable(listOf(.3f, .5f, .4f)[index]) }
-            LaunchedEffect(reduce) {
+            com.slopus.happy.ui.components.StartedEffect(reduce) {
                 if (!reduce) {
                     delay(index * 100L)
                     scale.animateTo(1f, infiniteRepeatable(tween(300 + index * 50), RepeatMode.Reverse))

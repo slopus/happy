@@ -17,7 +17,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
-import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.rememberNavController
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
@@ -91,7 +90,7 @@ import kotlinx.serialization.Serializable
  * new account: home and Settings follow [AppGraph.openAccount].
  */
 @Composable
-fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
+fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {}, onDarkThemeChange: (Boolean) -> Unit = {}) {
     val theme by graph.localSettings.themePreference.collectAsStateWithLifecycle()
     val language by graph.language.language.collectAsStateWithLifecycle()
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
@@ -120,6 +119,7 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
         key(stack) {
             val nav = rememberNavController()
             shown[0] = nav
+            SideEffect { onNavigationReady(nav) }
             val openSession = { id: String -> nav.navigate(SessionRoute(id)) }
             val troubleshoot = { nav.navigate(TroubleshootRoute) }
             val connectAgent = remember(nav) { { code: String -> nav.connectAgent(graph, code) } }
@@ -134,8 +134,9 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                 TabletShell(graph, nav, signedIn = signedIn, onOpenSession = openSession, onTroubleshoot = troubleshoot) {
                     val start: Any = if (open == OpenAccount.None) StartRoute else HomeRoute
                     val motion = rememberNavMotion()
-                    CompositionLocalProvider(LocalPageDims provides motion.dims) {
-                    RetainedHome(nav, modifier = Modifier.backdrop(nav), home = {
+                    RetainedNavHost(nav, start, motion, modifier = Modifier.backdrop(nav)) {
+                        page<StartRoute> { Start(graph, nav, add) }
+                        page<HomeRoute> {
                         // A switch made in Settings changes the covered home too.
                         key(open.key) {
                             when (val account = open) {
@@ -153,20 +154,7 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                                 OpenAccount.None -> Unit
                             }
                         }
-                    }) { home ->
-                    NavHost(
-                        navController = nav,
-                        startDestination = start,
-                        modifier = Modifier.traceNavPlacement(motion.dims),
-                        enterTransition = motion.enter,
-                        exitTransition = motion.exit,
-                        popEnterTransition = motion.popEnter,
-                        popExitTransition = motion.popExit,
-                        predictivePopEnterTransition = motion.predictivePopEnter,
-                        predictivePopExitTransition = motion.predictivePopExit,
-                    ) {
-                        page<StartRoute> { Start(graph, nav, add) }
-                        page<HomeRoute> { home.Anchor() }
+                        }
                         // The open account's Settings, of either kind; a switch made here changes it in place.
                         page<SettingsRoute> { entry ->
                             ProvideRowReveal(entry.toRoute<SettingsRoute>().reveal) { AccountSettings(graph, nav, open) }
@@ -182,8 +170,6 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                         agentConnectionRoutes(graph, nav)
                         agentHomeRoutes(graph, nav)
                         conversationRoutes(graph, nav)
-                    }
-                    }
                     }
                 }
                 }

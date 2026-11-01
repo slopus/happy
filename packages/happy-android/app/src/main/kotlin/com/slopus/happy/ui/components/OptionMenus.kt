@@ -79,7 +79,7 @@ fun HappyDropdownMenu(
 ) {
     val colors = HappyTheme.colors
     DropdownMenu(
-        expanded = expanded,
+        expanded = expanded && LocalPageActive.current,
         onDismissRequest = onDismissRequest,
         modifier = modifier.widthIn(min = MenuSpec.minWidth, max = MenuSpec.maxWidth),
         offset = offset,

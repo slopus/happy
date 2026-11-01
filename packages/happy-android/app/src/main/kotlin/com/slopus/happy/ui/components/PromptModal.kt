@@ -34,7 +34,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
+import com.slopus.happy.ui.components.PageDialog as Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.slopus.happy.R
 import com.slopus.happy.ui.layout.ContentTokens

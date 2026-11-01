@@ -86,10 +86,12 @@ private class ArtifactsHolder(session: AgentSession?) : ViewModel() {
 private fun AgentArtifacts(graph: AppGraph, nav: NavHostController, route: AgentArtifactsRoute) {
     val session = remember(route.connectionId) { graph.agentSessions.session(route.connectionId) }
     val reader = viewModel { ArtifactsHolder(session) }.reader
-    LaunchedEffect(reader) {
-        if (session == null || reader == null) return@LaunchedEffect
-        reader.start()
-        session.events.filter { it.type.startsWith("artifact.") || it.type == AgentEvent.HELLO }.collect { reader.read() }
+    com.slopus.happy.ui.components.StartedEffect(reader) {
+        if (session == null || reader == null) return@StartedEffect
+        reader.resume()
+        try {
+            session.events.filter { it.type.startsWith("artifact.") || it.type == AgentEvent.HELLO }.collect { reader.read() }
+        } finally { reader.pause() }
     }
     val read = reader?.state?.collectAsStateWithLifecycle()?.value ?: ArtifactListState(emptyList(), null, failed = true, loaded = true)
     ArtifactsScreen(

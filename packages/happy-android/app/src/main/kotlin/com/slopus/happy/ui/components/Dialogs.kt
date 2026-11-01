@@ -64,6 +64,7 @@ suspend fun confirm(
  */
 @Composable
 fun HappyAlert(alert: Alert, onDismiss: () -> Unit) {
+    if (!LocalPageActive.current) return
     AlertDialog(
         onDismissRequest = { if (alert.cancelable) onDismiss() },
         title = {

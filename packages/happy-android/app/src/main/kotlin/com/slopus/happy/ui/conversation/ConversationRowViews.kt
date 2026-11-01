@@ -225,7 +225,7 @@ private fun TextRow(row: ConversationRow.Text, actions: ConversationRowActions, 
 @Composable
 internal fun framed(live: LiveText): LiveText.Content {
     val shown = remember(live) { mutableStateOf(live.content.value) }
-    LaunchedEffect(live) {
+    com.slopus.happy.ui.components.StartedEffect(live) {
         live.content.collect { withFrameNanos { shown.value = live.content.value } }
     }
     return shown.value

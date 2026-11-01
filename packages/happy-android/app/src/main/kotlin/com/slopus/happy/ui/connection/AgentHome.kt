@@ -1,7 +1,7 @@
 package com.slopus.happy.ui.connection
 
 import com.slopus.happy.ui.rememberHomeAccountSwitch
-import androidx.activity.compose.BackHandler
+import com.slopus.happy.ui.components.PageBackHandler as BackHandler
 import androidx.activity.compose.ReportDrawnWhen
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade

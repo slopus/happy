@@ -59,6 +59,7 @@ internal fun renderThreadMotion(): Boolean =
 @Composable
 internal fun RenderThreadShimmerText(text: String, style: TextStyle, baseColor: Color, highlightColor: Color, modifier: Modifier) {
     val recorded = rememberGraphicsLayer()
+    val started = pageStarted()
     Box {
         Text(
             text = text,
@@ -69,18 +70,23 @@ internal fun RenderThreadShimmerText(text: String, style: TextStyle, baseColor: 
             // Recorded for the View to draw, under its band; not drawn here.
             modifier = Modifier.drawWithContent { recorded.record { this@drawWithContent.drawContent() } }.then(modifier),
         )
-        AndroidView(::SweepView, Modifier.matchParentSize(), update = { it.show(recorded, highlightColor.toArgb()) })
+        AndroidView(::SweepView, Modifier.matchParentSize(), update = {
+            it.running(started)
+            it.show(recorded, highlightColor.toArgb())
+        })
     }
 }
 
 /** [StatusDot]'s pulse on the RenderThread ([renderThreadMotion]). */
 @Composable
 internal fun RenderThreadPulse(color: Color, modifier: Modifier, size: Dp) {
-    AndroidView(::PulseView, modifier.size(size), update = { it.tint(color.toArgb()) })
+    val started = pageStarted()
+    AndroidView(::PulseView, modifier.size(size), update = { it.running(started); it.tint(color.toArgb()) })
 }
 
 /** An AnimatedVectorDrawable of [id], tinted SRC_IN, running from when its View is attached until it is detached. */
 private abstract class VectorMotionView(context: Context, id: Int) : View(context) {
+    private var started = false
     protected val motion = (context.getDrawable(id)!!.mutate() as AnimatedVectorDrawable).apply {
         setTintMode(PorterDuff.Mode.SRC_IN)
         callback = this@VectorMotionView
@@ -91,6 +97,12 @@ private abstract class VectorMotionView(context: Context, id: Int) : View(contex
         invalidate()
     }
 
+    fun running(value: Boolean) {
+        if (started == value) return
+        started = value
+        if (started && isAttachedToWindow) motion.start() else motion.stop()
+    }
+
     override fun verifyDrawable(who: Drawable) = who === motion || super.verifyDrawable(who)
 
     override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) = motion.setBounds(0, 0, w, h)
@@ -98,7 +110,7 @@ private abstract class VectorMotionView(context: Context, id: Int) : View(contex
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         // Started before its first draw, it starts on the RenderThread once drawn.
-        motion.start()
+        if (started) motion.start()
     }
 
     override fun onDetachedFromWindow() {

@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -120,9 +121,18 @@ class NavMotionTest {
 
     private val width: Dp get() = rule.onRoot().bounds.right - rule.onRoot().bounds.left
 
-    private fun left(tag: String): Dp = rule.node(tag).bounds.left
+    // Covered/outgoing pages are intentionally removed from accessibility.
+    // Keep their layout node to measure visual motion without making them
+    // accessible just for this test; retained content keeps these nodes alive.
+    private val measuredNodes = mutableMapOf<String, androidx.compose.ui.semantics.SemanticsNode>()
+    private fun measured(tag: String): androidx.compose.ui.semantics.SemanticsNode? {
+        val found = rule.onAllNodes(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNodes().singleOrNull()
+        if (found != null) measuredNodes[tag] = found
+        return found ?: measuredNodes[tag]
+    }
+    private fun left(tag: String): Dp = with(rule.density) { checkNotNull(measured(tag)).positionInRoot.x.toDp() }
 
-    private fun shown(tag: String) = rule.onAllNodes(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+    private fun shown(tag: String) = measured(tag)?.layoutInfo?.let { it.isAttached && it.isPlaced } == true
 
     private fun curve(time: Float) = NavMotion.easing.transform(time.coerceIn(0f, 1f))
 
@@ -151,7 +161,7 @@ class NavMotionTest {
         val top = incoming - left(ServerTags.FORM)
         assertOnCurve("the new page", 1f - top / width, NavMotion.DURATION_MILLIS / 2L)
         assertParallax("push", outgoing, top)
-        rule.node(StartTags.CONTENT).assertDoesNotExist()
+        rule.node(StartTags.CONTENT).assertIsNotDisplayed()
     }
 
     @Test
@@ -350,7 +360,7 @@ class NavMotionTest {
             assertParallax("progress $progress", beneath(), top())
         }
         val during = rule.node(ServerTags.FORM).bounds
-        assertEquals("the gesture never scales the page", serverBounds.right - serverBounds.left, during.right - during.left)
+        assertDp("the gesture never scales the page", serverBounds.right - serverBounds.left, during.right - during.left)
 
         // Cancel: back to rest from half way, on the curve, over half of 450 ms.
         rule.runOnUiThread { input.cancel() }
@@ -361,7 +371,7 @@ class NavMotionTest {
         assertTrue("cancel starts from where the finger left: $cancelling", cancelling < 0.5f)
         assertOnCurve("cancel", 1f - cancelling / 0.5f, NavMotion.DURATION_MILLIS / 4L + 16, NavMotion.DURATION_MILLIS / 2f)
         assertEquals("cancel restores the page", serverAtRest, left(ServerTags.FORM))
-        rule.node(StartTags.CONTENT).assertDoesNotExist()
+        rule.node(StartTags.CONTENT).assertIsNotDisplayed()
 
         // Commit: from half way to the end, on the curve.
         rule.mainClock.autoAdvance = false
@@ -403,7 +413,7 @@ class NavMotionTest {
         val incoming = left(ServerTags.FORM)
         // Gone within a few frames, with no page travelling across the pane.
         repeat(3) { rule.mainClock.advanceTimeByFrame() }
-        rule.node(StartTags.CONTENT).assertDoesNotExist()
+        rule.node(StartTags.CONTENT).assertIsNotDisplayed()
         settle()
         assertEquals(left(ServerTags.FORM), incoming)
     }

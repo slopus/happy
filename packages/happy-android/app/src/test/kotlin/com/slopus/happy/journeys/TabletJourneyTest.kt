@@ -96,7 +96,7 @@ class TabletJourneyTest {
         }
         rule.node(TabletSidebarTags.NEW_SESSION).performClick()
         rule.waitFor(ComposeChatTags.TARGET)
-        rule.onAllNodes(hasTestTag(ChatScreenTags.SCREEN), useUnmergedTree = true).assertCountEquals(1)
+        rule.onAllNodes(hasTestTag(ChatScreenTags.SCREEN) and com.slopus.happy.ui.isOnActivePage, useUnmergedTree = true).assertCountEquals(1)
         assertDp("the compose chat in the detail", 360, rule.node(ChatScreenTags.SCREEN).bounds.left)
         rule.node(ComposerTags.INPUT).performTextInput("Start here")
         rule.node(ComposerTags.PRIMARY).performClick()

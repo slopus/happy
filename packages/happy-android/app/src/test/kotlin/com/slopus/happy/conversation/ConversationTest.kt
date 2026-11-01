@@ -121,6 +121,58 @@ class ConversationTest {
 
     private fun event(type: String, payload: String) = ConversationSignal.Event(type, Json.parseToJsonElement(payload).jsonObject)
 
+    @Test fun `covered conversation unsubscribes and catches up once on reveal`() = runTest {
+        val agent = FakeAgent()
+        val conversation = conversation(agent)
+        advanceUntilIdle()
+        assertEquals(1, signals.subscriptionCount.value)
+        conversation.setObserving(false)
+        advanceUntilIdle()
+        assertEquals(0, signals.subscriptionCount.value)
+        val before = agent.requests.size
+        signals.emit(ConversationSignal.Resync)
+        advanceUntilIdle()
+        assertEquals(before, agent.requests.size)
+        conversation.setObserving(true)
+        conversation.setObserving(true)
+        advanceUntilIdle()
+        assertEquals(1, signals.subscriptionCount.value)
+        assertEquals(2, agent.paths("GET").count { it.endsWith("/bootstrap") })
+        assertTrue(conversation.state.value.loaded)
+        assertFalse(conversation.state.value.syncing)
+    }
+
+    @Test fun `covering during bootstrap cancels the read and reveal retries it`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val agent = FakeAgent().apply { beforeBootstrap = { gate.await() } }
+        val conversation = conversation(agent)
+        testScheduler.runCurrent()
+        assertTrue(conversation.state.value.syncing)
+        conversation.setObserving(false)
+        testScheduler.runCurrent()
+        assertFalse(conversation.state.value.syncing)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertFalse(conversation.state.value.loaded)
+        conversation.setObserving(true)
+        advanceUntilIdle()
+        assertTrue(conversation.state.value.loaded)
+        assertEquals(2, agent.paths("GET").count { it.endsWith("/bootstrap") })
+    }
+
+    @Test fun `a covered conversation still saves accepted draft writes`() = runTest {
+        val agent = FakeAgent()
+        val conversation = conversation(agent)
+        advanceUntilIdle()
+        conversation.setObserving(false)
+        advanceUntilIdle()
+        conversation.setDraft("kept while covered")
+        advanceUntilIdle()
+        assertTrue(agent.paths("PUT").any { it.endsWith("/draft") })
+        assertEquals("kept while covered", conversation.state.value.draft)
+        assertEquals(0, signals.subscriptionCount.value)
+    }
+
     @Test fun `initial history and reconnect stay syncing until bootstrap completes or fails`() = runTest {
         val agent = FakeAgent()
         var gate = CompletableDeferred<Unit>()

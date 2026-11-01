@@ -288,6 +288,10 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
     typesetter.reportPalette(ProsePalette.of(HappyTheme.colors))
     val holder = viewModel(key = "conversation") { ConversationHolder(session, route, createSavedStateHandle(), typesetter) }
     val conversation = holder.conversation
+    com.slopus.happy.ui.components.StartedEffect(conversation) {
+        conversation.setObserving(true)
+        try { kotlinx.coroutines.awaitCancellation() } finally { conversation.setObserving(false) }
+    }
     val state by conversation.state.collectAsStateWithLifecycle()
     val status by session.status.collectAsStateWithLifecycle()
     val syncing by session.isSyncing.collectAsStateWithLifecycle()

@@ -23,6 +23,9 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.draw.drawWithContent
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.ComposeNavigator
+import androidx.navigation.compose.ComposeNavigatorDestinationBuilder
+import androidx.navigation.get
 import androidx.compose.foundation.background
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -103,6 +106,7 @@ class NavMotion(
                 enter = {
                     dims.top(targetState)
                     slideIntoContainer(SlideDirection.Start, spec(easing, fromFirstFrame = true, firstMovement = firstMovement(targetState))) { initial ->
+                        dims.initialPlacement?.invoke(targetState.id, initial)
                         dims.placement?.expect(initialState.id, targetState.id, initial)
                         initial
                     }
@@ -135,7 +139,10 @@ class NavMotion(
                 {
                     dims.beneath(targetState, spec(easing, fromFirstFrame))
                     slideIntoContainer(SlideDirection.End, spec(easing, fromFirstFrame, firstMovement(targetState))) { full ->
-                        parallax(full).also { initial -> dims.placement?.expect(initialState.id, targetState.id, initial) }
+                        parallax(full).also { initial ->
+                            dims.initialPlacement?.invoke(targetState.id, initial)
+                            dims.placement?.expect(initialState.id, targetState.id, initial)
+                        }
                     }
                 },
                 {
@@ -156,6 +163,7 @@ class PageDims {
     private val beneath = HashMap<String, FiniteAnimationSpec<Float>>()
     internal var placement: NavPlacementTrace? =
         if (BuildConfig.BUILD_TYPE == "bench" || BuildConfig.BUILD_TYPE.endsWith("Bench")) NavPlacementTrace() else null
+    internal var initialPlacement: ((String, Int) -> Unit)? = null
 
     internal fun beneath(entry: NavBackStackEntry, spec: FiniteAnimationSpec<Float>) {
         beneath[entry.id] = spec
@@ -175,8 +183,20 @@ val LocalPageDims = staticCompositionLocalOf<PageDims?> { null }
  * A destination whose page wears the dim while another moves over it
  * ([DimmedPage]): every NavHost destination of the app is one.
  */
-inline fun <reified T : Any> NavGraphBuilder.page(noinline content: @Composable AnimatedContentScope.(NavBackStackEntry) -> Unit) {
-    composable<T> { entry -> DimmedPage(entry) { content(entry) } }
+inline fun <reified T : Any> NavGraphBuilder.page(noinline content: @Composable (NavBackStackEntry) -> Unit) {
+    if (this is RetainedGraphBuilder) {
+        val destination = ComposeNavigatorDestinationBuilder(provider[ComposeNavigator::class], T::class, emptyMap()) { entry ->
+            RetainedPageDestination(entry)
+        }.build()
+        pages[destination.id] = content
+        addDestination(destination)
+    } else composable<T> { entry -> DimmedPage(entry) { content(entry) } }
+}
+
+@PublishedApi
+@Composable
+internal fun AnimatedContentScope.RetainedPageDestination(entry: NavBackStackEntry) {
+    RetainedPageAnchor(entry, checkNotNull(LocalRetainedPages.current))
 }
 
 /**

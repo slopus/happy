@@ -2,7 +2,7 @@ package com.slopus.happy.ui.chat
 
 import com.slopus.happy.ui.components.DialogWindowMotion
 import com.slopus.happy.ui.components.WindowMotion
-import androidx.activity.compose.BackHandler
+import com.slopus.happy.ui.components.PageBackHandler as BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,7 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.CircularProgressIndicator
+import com.slopus.happy.ui.components.PageProgressIndicator as CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -52,7 +52,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
+import com.slopus.happy.ui.components.PageDialog as Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.slopus.happy.R
 import com.slopus.happy.chat.AgentQuestion

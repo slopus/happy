@@ -4,6 +4,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpRect
@@ -29,8 +33,13 @@ fun ComposeContentTestRule.setHappyContent(dark: Boolean = false, content: @Comp
     }
 }
 
-/** The node with [tag], looked up in the unmerged tree so tags inside clickable rows are found. */
-fun ComposeContentTestRule.node(tag: String): SemanticsNodeInteraction = onNodeWithTag(tag, useUnmergedTree = true)
+/** The unmerged test tree also exposes descendants of clearAndSetSemantics. */
+val isOnActivePage = !hasAnyAncestor(SemanticsMatcher("cleared, inaccessible retained page") {
+    it.config.isClearingSemantics && it.config.contains(SemanticsProperties.HideFromAccessibility)
+})
+
+/** Find nested tags, but never operate controls on a retained inaccessible page. */
+fun ComposeContentTestRule.node(tag: String): SemanticsNodeInteraction = onNode(hasTestTag(tag) and isOnActivePage, useUnmergedTree = true)
 
 /** Bounds in the root, in dp, unaffected by clipping. */
 val SemanticsNodeInteraction.bounds: DpRect get() = getUnclippedBoundsInRoot()

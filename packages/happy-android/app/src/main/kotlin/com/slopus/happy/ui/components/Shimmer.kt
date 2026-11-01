@@ -184,14 +184,14 @@ fun ProvideShimmerClock(content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalShimmerClock provides clock, content = content)
 }
 
-/** The provided clock, or one of the caller's own, running while it is composed. */
+/** The provided clock, or one of the caller's own, running while its page is started. */
 @Composable
 internal fun rememberShimmerClock(): ShimmerClock = LocalShimmerClock.current ?: rememberRunningShimmerClock()
 
 @Composable
 private fun rememberRunningShimmerClock(): ShimmerClock {
     val clock = remember { ShimmerClock() }
-    LaunchedEffect(clock) { clock.run() }
+    StartedEffect(clock) { clock.run() }
     return clock
 }
 

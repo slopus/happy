@@ -351,7 +351,7 @@ fun rememberTextReveal(key: Any, streaming: Boolean, fresh: () -> Boolean): Text
         else TextReveal(density.density, startAtEnd = !fresh(), with(density) { MessageSpec.agentMarginVertical.toPx() }, key, host)
     } ?: return null
     val live = rememberUpdatedState(streaming)
-    LaunchedEffect(reveal) { reveal.run(live) }
+    com.slopus.happy.ui.components.StartedEffect(reveal) { reveal.run(live) }
     // A row scrolled away mid-ease leaves the list where it is.
     DisposableEffect(reveal) { onDispose { reveal.host?.lag(reveal.key, 0f) } }
     return reveal.takeIf { !it.done }
