@@ -33,18 +33,30 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Rule
+import org.junit.Before
+import org.junit.After
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-/** Content capture is not accessibility or autofill; opting out must keep both semantics. */
+/** Experimental capture opt-out is isolated from accessibility/autofill; it is not app policy. */
 @OptIn(ExperimentalComposeUiApi::class)
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = PHONE, sdk = [35])
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-class ContentCapturePolicyTest {
+class ContentCaptureIsolationTest {
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
+    private var captureWasEnabled = true
+
+    @Before fun disableCaptureForThisTest() {
+        captureWasEnabled = ContentCaptureManager.isEnabled
+        ContentCaptureManager.isEnabled = false
+    }
+
+    @After fun restoreCapture() {
+        ContentCaptureManager.isEnabled = captureWasEnabled
+    }
 
     @Test fun privateContentIsNotCapturedButActionsAndAutofillRemain() {
         assertFalse(ContentCaptureManager.isEnabled)

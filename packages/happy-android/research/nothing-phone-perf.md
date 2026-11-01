@@ -2,6 +2,11 @@
 
 Work in progress, 2026-10-31. Baseline source: `1f1c38d04`.
 
+**Current decision:** the content-capture opt-out in `1be782b7d` is being
+reverted. It removed CPU work but did not earn its place as a navigation
+performance fix in the controlled release-code comparison. The benchmark
+and isolation test remain. No final frame-time improvement is claimed.
+
 ## Device and method
 
 - Nothing Phone A065, serial `331d7713`, Android 16, 1080 × 2412,
@@ -87,17 +92,18 @@ Confirmed in the exact Compose 1.12.1 source:
 `ContentCaptureManager.isEnabled` and a capture session. Its checker and
 semantics/layout-change scheduling are guarded by that flag. Accessibility
 uses `AndroidComposeViewAccessibilityDelegateCompat`, and autofill has its
-own manager. The experimental public capture-only switch is therefore
-used in `HappyApplication.onCreate`, before any Compose window exists.
+own manager. The experimental public capture-only switch was tested in
+`HappyApplication.onCreate`, before any Compose window exists.
 
-Trade-off: private screens no longer supply text to Android system
+Trade-off of opting out: private screens would no longer supply text to Android system
 intelligence through content capture (including features built on that
 capture). This does **not** disable accessibility, the semantics tree,
 autofill, screenshots, clipboard or the app's own translations.
-`ContentCapturePolicyTest` checks readable/clickable semantics, username
+`ContentCaptureIsolationTest` checks readable/clickable semantics, username
 autofill metadata and view flags, and calls `View.autofill` with an
 `AutofillValue` to verify that Android's virtual-view autofill entry point
-still changes the field. The test passes with capture disabled.
+still changes the field. The test disables capture only for itself and
+restores the previous flag afterwards; production retains the default.
 
 The opt-out trace contains **zero** change-checker, appear-event or
 uncovered-semantics-tree scans (only a 0.02 ms framework flush remains).
@@ -106,20 +112,56 @@ The ordinary-install frame comparison is mixed: push total
 28/547 missed. Unlike the initial APK this one includes bench-only tracing,
 and neither run controlled JIT compilation, so this is not evidence of an
 across-the-board frame-time improvement. A paired fully-compiled comparison
-and profile-guided measurements follow. Removing the independently measured
-capture work is the reason for keeping the opt-out.
+and profile-guided measurements follow. The initial CPU saving alone was
+not sufficient reason to keep the opt-out, as the next comparison shows.
 
 The full gate passed (`assembleDebug testDebugUnitTest assembleDebugAndroidTest`
 and the benchmark build). The coordinating agent explicitly approved landing
 this capture-only removal before the Fold slot becomes available. The Fold
 no-regression check is therefore **after landing**, not a completed precondition.
 
+#### Controlled compilation: rejected
+
+Same fixture and tracing dependency, twelve cycles each, both APKs compiled
+with `cmd package compile -m speed -f com.slopus.happy.bench`:
+
+| Direction | Capture on: total p50 / p90 / p99 | Capture off: total p50 / p90 / p99 | Missed on → off |
+|---|---|---|---|
+| Settings push | 15.03 / 17.55 / 25.52 | 15.65 / 17.79 / 34.85 | 23/516 → 34/512 |
+| Back to home | 14.37 / 16.14 / 42.60 | 15.13 / 20.31 / 47.90 | 27/550 → 27/551 |
+
+The opt-out removes scans outside Choreographer too. Their
+`view.measureAndLayout()` can do work before the next frame; removing all
+of that scanning is not equivalent to removing all of that layout work.
+In the three-cycle traces, total main-thread CPU fell 1762 → 1569 ms, but
+the frame tails did not improve. We do not retain it as a performance fix.
+
+The subsequent Fold check (120 Hz, same two fully compiled bench APKs,
+twelve cycles each) was essentially neutral, not a reason to retain it:
+
+| Direction | Capture on: total p50 / p90 / p99 | Capture off: total p50 / p90 / p99 | Missed on → off |
+|---|---|---|---|
+| Settings push | 10.34 / 11.38 / 15.58 | 10.25 / 11.38 / 15.66 | 28/666 → 25/663 |
+| Back to home | 10.05 / 11.38 / 16.52 | 10.12 / 11.34 / 17.50 | 29/684 → 29/684 |
+
+The Fold's dev package was not replaced during this check and was restored
+to the foreground when the coordinated device slot ended.
+
+The attempted dev `speed-profile` comparison is **not valid**. First,
+the debug APK has no `assets/dexopt/baseline.prof`; an explicit profile
+broadcast returned 0 and ART reported `verify` after the compile request.
+Second, the capture-on run ended on **Search settings**, not home: checking
+the package in front does not prove the intended route was exercised.
+Those files remain as diagnostic evidence but are excluded from conclusions.
+Use the accessibility-driven macrobenchmark or verify destination and home
+after every operation, not only the package.
+
 ## Iterations
 
 | Change | Measurement | Decision |
 |---|---|---|
 | Navigation benchmark and bench-only Compose tracing | Settings/chat/artifacts device cases pass; agent-page case added | Infrastructure, no shipping UI change |
-| Opt out of system content capture | 360 ms of bench / 609 ms of dev scanning per three cycles → zero bench scans; gate and autofill test pass | Kept; frame A/B and Fold check continue after landing |
+| Opt out of system content capture | Scans removed, but matched release-code push p99 25.5 → 34.9 ms and back 42.6 → 47.9 ms | Reverted after initial landing; tests retained |
 | Settings/artifacts baseline-profile journey | Pending generation and A/B measurement | Pending |
 
 ## Remaining checks
