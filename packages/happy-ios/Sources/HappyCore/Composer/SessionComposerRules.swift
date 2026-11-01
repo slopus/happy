@@ -49,6 +49,17 @@ public enum SessionComposerRules {
         let flavor = metadata?["flavor"]?.stringValue ?? ""
         return flavor.isEmpty || flavor == "claude" || flavor == "codex"
     }
+
+    /// `canUseAttachments` before the session exists: the harness its first
+    /// send starts. Happy Agent's session publishes its own policy only once
+    /// it is made, so pictures are offered and the start names any it
+    /// refuses (`SessionStarter`'s plan); a Happy CLI harness by flavor.
+    public static func canUseAttachments(starting agent: NewSessionDraft.Agent) -> Bool {
+        switch agent {
+        case .claude, .codex, .rig: true
+        case .gemini, .openclaw, .agy: false
+        }
+    }
 }
 
 /// useSessionStatus: the status row above the card.

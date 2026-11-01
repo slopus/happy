@@ -2,6 +2,7 @@
 import CryptoKit
 import Foundation
 import HappyCore
+import HappyStore
 import HappyWire
 @testable import HappyUI
 import UIKit
@@ -99,6 +100,58 @@ private actor DemoComputer: AgentTransport {
     func close() {}
 }
 
+/// The seeded computer's Happy CLI with `-composeMachine`: compose's first
+/// send makes a Claude session there at once (its row written, as sync
+/// would) instead of asking a computer that is offline.
+private struct SplitComposeMachine: HomeOps, HomeSessionOps {
+    static let sessionId = "split-compose-session"
+    let store: LocalStore
+
+    func machineSpawnNewSession(options: SpawnSessionOptions) async -> SpawnSessionResult {
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        let record = SessionRecord(
+            id: Self.sessionId, seq: 0, createdAt: now, updatedAt: now, active: true, activeAt: now, projectId: nil,
+            metadataVersion: 1, metadataCipher: "harness",
+            metadata: .object([
+                "path": .string(options.directory), "host": .string("harness-mac"), "homeDir": .string(SeededAccount.home),
+                "machineId": .string(options.machineId), "flavor": .string(options.agent ?? "claude"), "version": .string("1.2.6"),
+            ]),
+            agentStateVersion: 1, agentStateCipher: nil, agentState: .object(["controlledByUser": .bool(false)]),
+            dataKeyCipher: nil, decryptable: true
+        )
+        try? await Task.detached { [store] in try store.upsertSessions([record]) }.value
+        return .success(sessionId: Self.sessionId)
+    }
+    func machineResumeSession(machineId: String, sessionId: String, model: String?, permissionMode: String?) async -> SpawnSessionResult { .error(errorMessage: "") }
+    func forkAndSpawn(source: ForkSource, options: ForkOptions) async -> SpawnSessionResult { .error(errorMessage: "") }
+    func machineStopSession(machineId: String, sessionId: String) async -> MachineOperationResult { try! JSONDecoder().decode(MachineOperationResult.self, from: Data(#"{"success":true}"#.utf8)) }
+    func machineBash(machineId: String, command: String, cwd: String) async throws -> SessionBashResponse { throw URLError(.cannotConnectToHost) }
+
+    func sessionKill(sessionId: String) async throws -> SessionKillResponse { throw URLError(.cannotConnectToHost) }
+    func sessionSetAgentModes(sessionId: String, patch: SessionAgentModesPatch, transport: any MetadataUpdateTransport) async throws {}
+    func sessionSetAvatar(sessionId: String, picture: SessionAvatarPicture) async throws {}
+    func archive(sessionId: String) async throws {}
+    func ensureSessionReady(sessionId: String) async throws {}
+    func uploadSessionBlob(sessionId: String, name: String, bytes: Data) async throws -> (ref: String, size: Int) { throw URLError(.cannotConnectToHost) }
+
+    @MainActor static func install() {
+        LegacyComposeStart.makeStarter = { account in
+            let machine = SplitComposeMachine(store: account.store)
+            return SessionStarter(environment: .init(
+                ops: machine,
+                sessionOps: machine,
+                sender: account.sender,
+                metadataTransport: account.realtime,
+                saveInitialModes: { [sender = account.sender] in try await sender.saveInitialModes(sessionId: $0, patch: $1) },
+                refreshSessions: {},
+                paintBotFace: { _ in throw URLError(.cannotConnectToHost) },
+                attachmentPlan: { [sender = account.sender] message, sessionId in try await sender.attachmentPlan(for: message, sessionId: sessionId) },
+                spawnRequests: account.spawnRequests
+            ))
+        }
+    }
+}
+
 /// The whole app, offline, as an iPad shows it (`-screen split`): the
 /// seeded Happy CLI account (`SeededAccount`), or with `-agent` a Happy
 /// Agent answering from fixtures, under AppCoordinator's own split view.
@@ -111,7 +164,8 @@ private actor DemoComputer: AgentTransport {
 /// an iPad's window 600 wide, `-probe` reads the open chat's list
 /// (`ChatScrollProbe`), `-pageProbe` the open page's scroll view
 /// (`PageScrollProbe`), `-long` gives the agent's conversation 60 more
-/// rounds.
+/// rounds, `-composeMachine` lets compose's first send make a session on
+/// the seeded computer (`SplitComposeMachine`).
 @MainActor
 final class SplitAppHarness {
     private var coordinator: AppCoordinator?
@@ -123,6 +177,7 @@ final class SplitAppHarness {
             arguments.firstIndex(of: name).flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
         }
         let agent = arguments.contains("-agent")
+        if arguments.contains("-composeMachine") { SplitComposeMachine.install() }
         let computer = DemoComputer(rounds: arguments.contains("-long") ? 60 : 0)
         let controller = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/split-harness",

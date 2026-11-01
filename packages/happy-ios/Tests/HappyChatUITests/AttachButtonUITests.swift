@@ -3,7 +3,9 @@ import XCTest
 /// The composer's "+" through the whole app (`-screen split`:
 /// AppCoordinator's window and its ShellViewController), with the drawn
 /// library (`-attachLibrary authorized`: picture 0 a photo, picture 1 a
-/// video), in the Happy Agent chat and the Happy CLI chat. Taps go through
+/// video), in the Happy Agent chat, the Happy CLI chat and the empty Happy
+/// CLI chat compose opens before there is a session (`-composeMachine`:
+/// its first send makes one on the seeded computer). Taps go through
 /// hit-testing, as a finger's do: the hosted tests send the controls'
 /// actions straight, which is how the menu's send could stop answering a
 /// finger with every one of them passing.
@@ -37,16 +39,25 @@ final class AttachButtonUITests: XCTestCase {
         UIDevice.current.userInterfaceIdiom == .pad ? [[], ["-narrow"]] : [[]]
     }
 
+    /// With `-composeMachine`, compose is tapped first: the empty Happy CLI
+    /// chat, before it has a session, its first send making one there.
     private func launch(_ arguments: [String]) {
         app?.terminate()
         app = XCUIApplication()
         app.launchArguments = ["-screen", "split", "-attachLibrary", "authorized"] + arguments
         app.launch()
-        XCTAssertTrue(add.waitForExistence(timeout: 20), "\(arguments): the chat never showed its +")
+        let composes = arguments.contains("-composeMachine")
+        let compose = app.buttons["compose"]
+        XCTAssertTrue(composes ? compose.waitForExistence(timeout: 20) : add.waitForExistence(timeout: 20), "\(arguments): \(composes ? "no compose" : "the chat never showed its +")")
         if arguments.contains("-narrow") {
             let window = app.windows.firstMatch
             let deadline = Date().addingTimeInterval(10)
             while window.frame.width >= 768, Date() < deadline { usleep(200_000) }
+        }
+        if composes {
+            sleep(1)
+            compose.tap()
+            XCTAssertTrue(add.waitForExistence(timeout: 10), "\(arguments): the empty chat hides its +")
         }
         sleep(2)
     }
@@ -121,5 +132,14 @@ final class AttachButtonUITests: XCTestCase {
 
     func testTheCLIChatSendsAVideo() {
         sendsPicture(1, ["-open", "seeded-tab-1"]) { cliFiles.count > 0 }
+    }
+
+    // The empty Happy CLI chat compose opens, before it has a session: "+"
+    // is there, and a photo sent from the menu makes the session and lands
+    // in its transcript (its upload is HostedComposeAttachTests').
+    func testThePlusOpensTheMenuInTheEmptyCLIChat() { plusOpensTheMenu(["-composeMachine"]) }
+
+    func testTheEmptyCLIChatSendsAPhotoIntoTheNewSession() {
+        sendsPicture(0, ["-composeMachine"]) { cliFiles.count > 0 }
     }
 }

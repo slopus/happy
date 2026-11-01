@@ -16,9 +16,15 @@ import UIKit
 // as its first message. The screen then becomes the session's chat in
 // place (`becomeChat`): the same screen and the same composer, retargeted.
 //
-// A start that fails or is refused says why, and the text stays in the
-// composer and the draft for another send. Leaving before it has answered
-// stops it; the draft stays for the next compose.
+// Pictures, videos and files picked with "+" before there is a session go
+// with that first message: once the session is made, the start hands them
+// to its outbox ahead of the text, which uploads them to it and keeps them
+// across a relaunch until they are sent (`takesAttachments`).
+//
+// A start that fails or is refused says why, and the text and the picked
+// files stay in the composer (the text in the draft too) for another send.
+// Leaving before it has answered stops it; the draft stays for the next
+// compose.
 
 enum ComposeChat {
     static let prefix = "compose-chat:"
@@ -124,6 +130,13 @@ final class LegacyComposeStart: NSObject {
         case .bot: return NewSessionChoices.promptPlaceholder(agentKey: choices.currentAgent.key, agentName: choices.currentAgent.name)
         case .session: return choices.promptPlaceholder
         }
+    }
+
+    /// Pictures and files picked before the session exists go with the
+    /// first send, as home's dock took them: a bot or a task is Happy
+    /// Agent's, a session the harness picked.
+    var takesAttachments: Bool {
+        SessionComposerRules.canUseAttachments(starting: kind == .session ? composer.choices.resolvedAgent : .rig)
     }
 
     /// The machine is asked only when there is more than one to choose.

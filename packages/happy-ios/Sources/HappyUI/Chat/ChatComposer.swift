@@ -76,8 +76,11 @@ public struct ChatComposerState: Equatable, Sendable {
     /// harness's ("Ask Claude Code").
     public var newSessionPlaceholder: String?
     public var isStartingNewSession: Bool
+    /// The empty chat's first send can carry pictures and files: "+" shows
+    /// before there is a session to ask (`canUseAttachments(starting:)`).
+    public var newSessionTakesAttachments: Bool
 
-    public init(session: ChatSessionState, usage: ChatUsage? = nil, delivery: [String: OutboxDelivery] = [:], isLoaded: Bool = false, hasPendingQuestion: Bool = false, newSessionChoices: NewSessionChoices? = nil, newSessionPlaceholder: String? = nil, isStartingNewSession: Bool = false) {
+    public init(session: ChatSessionState, usage: ChatUsage? = nil, delivery: [String: OutboxDelivery] = [:], isLoaded: Bool = false, hasPendingQuestion: Bool = false, newSessionChoices: NewSessionChoices? = nil, newSessionPlaceholder: String? = nil, isStartingNewSession: Bool = false, newSessionTakesAttachments: Bool = false) {
         self.session = session
         self.usage = usage
         self.delivery = delivery
@@ -86,6 +89,7 @@ public struct ChatComposerState: Equatable, Sendable {
         self.newSessionChoices = newSessionChoices
         self.newSessionPlaceholder = newSessionPlaceholder
         self.isStartingNewSession = isStartingNewSession
+        self.newSessionTakesAttachments = newSessionTakesAttachments
     }
 }
 

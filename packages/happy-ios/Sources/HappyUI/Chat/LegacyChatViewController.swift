@@ -1721,7 +1721,8 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
             hasPendingQuestion: facts?.hasPendingQuestion ?? false,
             newSessionChoices: isComposing ? composing?.composer.choices : nil,
             newSessionPlaceholder: isComposing ? composing?.placeholder : nil,
-            isStartingNewSession: isComposing && composing?.isStarting == true
+            isStartingNewSession: isComposing && composing?.isStarting == true,
+            newSessionTakesAttachments: isComposing && composing?.takesAttachments == true
         ))
     }
 

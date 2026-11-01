@@ -350,7 +350,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             stopRequested = false
         }
         // Nothing to attach to: a picked image would be dropped at send.
-        if !SessionComposerRules.canUseAttachments(record), !images.images.isEmpty {
+        if !canAttach, !images.images.isEmpty {
             images.clear()
         }
 
@@ -610,11 +610,20 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     // MARK: Card
 
+    /// "+" and the strip: the session's agent takes pictures, or, in an
+    /// empty chat with no session yet, the harness its first send starts
+    /// does. Those pictures go with the first message once it has made the
+    /// session (`LegacyComposeStart`).
+    private var canAttach: Bool {
+        guard let state else { return false }
+        if state.newSessionChoices != nil { return state.newSessionTakesAttachments }
+        return SessionComposerRules.canUseAttachments(state.session.record)
+    }
+
     private func applyConfiguration() {
         let record = state?.session.record
         let chips = state?.newSessionChoices.map { ComposerChipSet(choices: $0, titles: Self.titles) }
             ?? ComposerChipSet(modes: modes, record: record, titles: Self.titles)
-        let canAttach = SessionComposerRules.canUseAttachments(record)
         let primary = AgentInputPrimaryAction.resolve(
             hasComposerContent: hasComposerContent,
             isSendBlocked: SessionComposerRules.isSendBlocked(record),
@@ -775,7 +784,8 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     /// Telegram's attachment menu, as the agent chat's "+" opens it.
     func agentInputCardDidPressAdd(_ card: AgentInputCardView) {
-        guard SessionComposerRules.canUseAttachments(state?.session.record), let host = hostViewController else { return }
+        // Not while the empty chat's first send is making the session.
+        guard canAttach, !card.configuration.refusesControls, let host = hostViewController else { return }
         attach.present(from: host)
     }
 

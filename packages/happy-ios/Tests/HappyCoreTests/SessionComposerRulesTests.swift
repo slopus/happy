@@ -72,6 +72,18 @@ final class SessionComposerRulesTests: XCTestCase {
         XCTAssertFalse(SessionComposerRules.canUseAttachments(rig(capabilities: #"{ "attachments": { "enabled": false } }"#)))
         XCTAssertFalse(SessionComposerRules.canUseAttachments(nil))
     }
+
+    /// An empty chat, before its session: by the harness its first send
+    /// starts, as attachmentSupport.ts flavors go; Happy Agent's session
+    /// decides once it is made.
+    func testAttachmentsBeforeTheSessionByTheHarnessStarted() {
+        XCTAssertTrue(SessionComposerRules.canUseAttachments(starting: .claude))
+        XCTAssertTrue(SessionComposerRules.canUseAttachments(starting: .codex))
+        XCTAssertTrue(SessionComposerRules.canUseAttachments(starting: .rig))
+        XCTAssertFalse(SessionComposerRules.canUseAttachments(starting: .gemini))
+        XCTAssertFalse(SessionComposerRules.canUseAttachments(starting: .openclaw))
+        XCTAssertFalse(SessionComposerRules.canUseAttachments(starting: .agy))
+    }
 }
 
 /// useSessionStatus and formatLastSeen.
