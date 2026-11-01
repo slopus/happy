@@ -72,15 +72,19 @@ public struct ChatComposerState: Equatable, Sendable {
     /// (AskUserQuestion / request_user_input); sending answers it.
     public var hasPendingQuestion: Bool
     public var newSessionChoices: NewSessionChoices?
+    /// What the empty chat's first message asks for: a task's, or the
+    /// harness's ("Ask Claude Code").
+    public var newSessionPlaceholder: String?
     public var isStartingNewSession: Bool
 
-    public init(session: ChatSessionState, usage: ChatUsage? = nil, delivery: [String: OutboxDelivery] = [:], isLoaded: Bool = false, hasPendingQuestion: Bool = false, newSessionChoices: NewSessionChoices? = nil, isStartingNewSession: Bool = false) {
+    public init(session: ChatSessionState, usage: ChatUsage? = nil, delivery: [String: OutboxDelivery] = [:], isLoaded: Bool = false, hasPendingQuestion: Bool = false, newSessionChoices: NewSessionChoices? = nil, newSessionPlaceholder: String? = nil, isStartingNewSession: Bool = false) {
         self.session = session
         self.usage = usage
         self.delivery = delivery
         self.isLoaded = isLoaded
         self.hasPendingQuestion = hasPendingQuestion
         self.newSessionChoices = newSessionChoices
+        self.newSessionPlaceholder = newSessionPlaceholder
         self.isStartingNewSession = isStartingNewSession
     }
 }

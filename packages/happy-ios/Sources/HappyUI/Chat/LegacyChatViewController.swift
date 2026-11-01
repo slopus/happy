@@ -318,6 +318,10 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
             composeTarget.machine.menu = compose.machineMenu()
             composeTarget.folder.menu = compose.folderMenu()
             composeTarget.harness.menu = compose.harnessMenu()
+            composeTarget.harness.addAction(UIAction { [weak compose] _ in compose?.openHarnessHelp() }, for: .primaryActionTriggered)
+            composeTarget.onSessionKind = { [weak compose] in compose?.setKind($0) }
+            composeTarget.onBotName = { [weak compose] in compose?.setBotName($0) ?? $0 }
+            composeTarget.onReturn = { [weak self] in self?.composer.focus() }
             view.addSubview(composeTarget)
             #if DEBUG
             if ComposeTrace.isOn { composeTrace = ComposeTrace(self) }
@@ -1336,16 +1340,30 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         if contentInstalled { updateComposer() }
     }
 
-    /// The machine and folder the first send goes to; while it starts the
+    /// What the first send makes and where it goes; while it starts the
     /// target is fixed, and once the chat is real it goes.
     private func updateComposeTarget() {
         guard let compose = composing else { return }
         if !isComposing { composeTarget.isHidden = true }
+        // Made: the panel stays as it was while it goes, though the draft
+        // already offers a session again.
+        guard compose.sessionId == nil else { return }
         composeTarget.isLocked = compose.isStarting
-        composeTarget.showsMachine = compose.asksMachine
+        composeTarget.setSessionKinds(compose.kinds, current: compose.kind, botName: compose.drafts.botName)
+        // A bot or a task lives on a computer and nowhere else: the
+        // computer is asked even on an account with one.
+        composeTarget.showsMachine = compose.asksMachine || compose.kind != .session
         composeTarget.machine.title = compose.machineName
         composeTarget.folder.title = compose.folderName
-        composeTarget.harness.title = compose.composer.choices.currentAgent.name
+        // Nothing to run: the row is setup help, as home's dock had it.
+        let help = compose.offersHarnessHelp
+        let harness = composeTarget.harness
+        harness.title = help ? Strings.Home.harnessHelp : compose.composer.choices.currentAgent.name
+        harness.icon = .ionicons(help ? "help-circle-outline" : "hardware-chip-outline")
+        harness.menu = help ? nil : harness.menu ?? compose.harnessMenu()
+        harness.showsMenuAsPrimaryAction = !help
+        harness.accessibilityLabel = help ? Strings.Home.harnessHelpLabel : Strings.Home.harnessTitle
+        harness.accessibilityTraits = help ? .link : .button
         view.setNeedsLayout()
     }
 
@@ -1639,6 +1657,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
             isLoaded: facts?.isLoaded ?? false,
             hasPendingQuestion: facts?.hasPendingQuestion ?? false,
             newSessionChoices: isComposing ? composing?.composer.choices : nil,
+            newSessionPlaceholder: isComposing ? composing?.placeholder : nil,
             isStartingNewSession: isComposing && composing?.isStarting == true
         ))
     }

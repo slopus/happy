@@ -100,9 +100,37 @@ final class HostedComposeTests: XCTestCase {
     nonisolated static let studio = "studio-mac"
     nonisolated static let studioFolder = "/Users/harness/Developer/site"
 
-    private nonisolated static func seedLegacy(_ store: LocalStore, secondMachine: Bool) throws {
+    /// Happy Agent beside the seeded computer's Happy CLI, making tasks and
+    /// bots.
+    nonisolated static let happyAgent = "harness-happy-agent"
+
+    private nonisolated static func seedHappyAgent(_ store: LocalStore) throws {
+        guard var machine = try store.machines().first else { return }
+        machine.id = happyAgent
+        machine.createdAt += 1
+        machine.metadata = .object([
+            "host": .string("harness-mac"), "homeDir": .string(SeededAccount.home),
+            "machineKind": .string("rig"), "siblingMachineId": .string(SeededAccount.machineId),
+            "capabilities": .object(["newSession": .bool(true), "bots": .bool(true), "tasks": .bool(true), "worktrees": .bool(false)]),
+            "defaults": .object(["providerId": .string("codex"), "modelId": .string("gpt"), "permissionMode": .string("auto")]),
+            "models": .array([
+                .object(["providerId": .string("codex"), "id": .string("gpt"), "name": .string("GPT"), "providerName": .string("OpenAI"),
+                         "thinkingLevels": .array([.string("medium"), .string("high")]), "defaultThinkingLevel": .string("medium")]),
+                .object(["providerId": .string("claude"), "id": .string("opus"), "name": .string("Opus"), "providerName": .string("Anthropic"),
+                         "thinkingLevels": .array([.string("low"), .string("max")]), "defaultThinkingLevel": .string("low")]),
+            ]),
+            "operatingModes": .array([
+                .object(["code": .string("auto"), "value": .string("Auto")]),
+                .object(["code": .string("read_only"), "value": .string("Read only")]),
+            ]),
+        ])
+        try store.upsertMachine(machine)
+    }
+
+    private nonisolated static func seedLegacy(_ store: LocalStore, secondMachine: Bool, happyAgent: Bool = false) throws {
         try SeededAccount.seed(store)
         try store.addPendingSettings(["sessionListGrouping": .string("flat")])
+        if happyAgent { try seedHappyAgent(store) }
         guard secondMachine, let initialMachine = try store.machines().first,
               let template = try store.sessions().first else { return }
         var machine = initialMachine
@@ -124,7 +152,7 @@ final class HostedComposeTests: XCTestCase {
         try store.upsertSessions([row])
     }
 
-    private func legacyHome(refuses: Bool = false, secondMachine: Bool = false, log: SpawnLog? = nil) async throws -> (LegacyHomeViewController, UINavigationController, UIWindow, AccountSession, AppContext) {
+    private func legacyHome(refuses: Bool = false, secondMachine: Bool = false, happyAgent: Bool = false, log: SpawnLog? = nil) async throws -> (LegacyHomeViewController, UINavigationController, UIWindow, AccountSession, AppContext) {
         let controller = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
@@ -134,14 +162,15 @@ final class HostedComposeTests: XCTestCase {
         try await controller.signIn(Credentials(token: "t", secret: Data(repeating: 7, count: 32)))
         let account = try XCTUnwrap(controller.session)
         let store = account.store
-        try await Task.detached { [store, secondMachine] in
-            try HostedComposeTests.seedLegacy(store, secondMachine: secondMachine)
+        try await Task.detached { [store, secondMachine, happyAgent] in
+            try HostedComposeTests.seedLegacy(store, secondMachine: secondMachine, happyAgent: happyAgent)
         }.value
-        // The last place picked: the seeded machine's project.
+        // The last place picked: the seeded machine's project, in Claude.
         let drafts = NewSessionDraftStore.shared(for: controller.localSettings)
         drafts.setMachineId(SeededAccount.machineId)
         drafts.setPath(SeededAccount.project)
         drafts.setInput("")
+        if happyAgent { drafts.pickAgentType(.claude) }
         LegacyComposeStart.makeStarter = { account in
             SessionStarter(environment: .init(
                 ops: ComposeMachine(store: account.store, refuses: refuses, log: log),
@@ -288,6 +317,8 @@ final class HostedComposeTests: XCTestCase {
         let panel = try XCTUnwrap(Self.subview(NewWorkPanel.self, in: chat.view))
         let start = try XCTUnwrap(chat.composeStart)
         try await until { panel.folder.title.contains("happy") }
+        XCTAssertTrue(panel.kind.isHidden, "Happy CLI alone makes sessions: no Session | Bot | Task")
+        XCTAssertEqual(start.kinds, [.session])
         XCTAssertTrue(panel.machine.isHidden, "one computer, and it was asked")
         XCTAssertFalse(panel.folder.isHidden)
         XCTAssertFalse(panel.harness.isHidden)
@@ -367,6 +398,128 @@ final class HostedComposeTests: XCTestCase {
         try await until { !chat.isComposing }
         XCTAssertEqual(log.spawned.map(\.machineId), [Self.studio], "it started on the other computer")
         XCTAssertEqual(log.spawned.map(\.directory), [Self.studioFolder])
+    }
+
+    /// Takes an alert down once it has finished coming up: one dismissed
+    /// mid-presentation stays.
+    private func dismissAlert(on chat: UIViewController) async throws {
+        try await until {
+            if let alert = chat.presentedViewController, !alert.isBeingPresented { alert.dismiss(animated: false) }
+            return chat.presentedViewController == nil
+        }
+    }
+
+    /// Picks a segment of the panel's Session | Bot | Task as a tap does.
+    private func pick(_ kind: HomeDockKind, in panel: NewWorkPanel) throws {
+        panel.kind.selectedSegmentIndex = try XCTUnwrap(panel.sessionKinds.firstIndex(of: kind))
+        panel.kind.sendActions(for: .valueChanged)
+    }
+
+    /// Happy Agent beside the computer's Happy CLI: Session | Bot | Task
+    /// heads the empty chat. A task asks the computer alone, takes Happy
+    /// Agent's model as picked in the composer, and its first message is
+    /// the text sent.
+    func testLegacyTaskOnAComputerWithHappyAgent() async throws {
+        let log = SpawnLog()
+        let (home, navigation, window, account, _) = try await legacyHome(happyAgent: true, log: log)
+        defer { window.isHidden = true }
+        home.compose()
+        try await settle(navigation)
+        let chat = try XCTUnwrap(navigation.topViewController as? LegacyChatViewController)
+        let card = try await composerCard(in: chat)
+        let panel = try XCTUnwrap(Self.subview(NewWorkPanel.self, in: chat.view))
+        let start = try XCTUnwrap(chat.composeStart)
+        try await until { !panel.kind.isHidden }
+        XCTAssertEqual(panel.sessionKinds, [.session, .bot, .task])
+        XCTAssertEqual(start.drafts.draft.agentType, .claude)
+        XCTAssertFalse(panel.folder.isHidden)
+        assertCentred(panel, in: chat)
+        keep(window, "legacy-new-work-kinds")
+
+        try pick(.task, in: panel)
+        try await until { panel.folder.isHidden && start.drafts.draft.agentType == .rig }
+        XCTAssertTrue(start.drafts.createsTask)
+        XCTAssertFalse(panel.machine.isHidden, "a task lives on a computer: it is shown")
+        XCTAssertTrue(panel.harness.isHidden)
+        try await until { card.configuration.placeholder == "What should this task do?" }
+        try await until { card.configuration.model?.menu?.selectedKey == "codex:gpt" }
+        card.delegate?.agentInputCard(card, didSelect: "claude:opus", in: .model)
+        try await until { card.configuration.model?.menu?.selectedKey == "claude:opus" }
+        assertCentred(panel, in: chat)
+        keep(window, "legacy-new-work-task")
+
+        card.setText("Fix the login redirect", selection: NSRange(location: 22, length: 0))
+        card.delegate?.agentInputCardDidChangeText(card)
+        card.delegate?.agentInputCardDidPressSend(card)
+        try await until { !chat.isComposing }
+        XCTAssertEqual(log.spawned.map(\.machineId), [Self.happyAgent])
+        XCTAssertEqual(log.spawned.map(\.agent), ["rig"])
+        XCTAssertEqual(log.spawned.map(\.providerId), ["claude"])
+        XCTAssertEqual(log.spawned.map(\.modelId), ["opus"])
+        XCTAssertEqual(log.spawned.map(\.happyAgentTarget), [.object(["kind": .string("task")])])
+        let store = account.store
+        let outbox = try await Task.detached { try store.pendingOutbox() }.value
+        let first = try XCTUnwrap(outbox.first { $0.sessionId == Self.newSessionId && $0.kind == .message })
+        XCTAssertEqual(first.payload["content"]?["text"]?.stringValue, "Fix the login redirect")
+        XCTAssertFalse(start.drafts.createsTask, "the next compose offers a session")
+        try await until { panel.isHidden }
+    }
+
+    /// A bot needs its name: without one it is refused and the text stays;
+    /// named, it is made on Happy Agent, and a face that couldn't be
+    /// painted is offered again over the chat.
+    func testLegacyBotNeedsItsNameAndTakesTheFirstMessage() async throws {
+        let log = SpawnLog()
+        let (home, navigation, window, account, _) = try await legacyHome(happyAgent: true, log: log)
+        defer { window.isHidden = true }
+        home.compose()
+        try await settle(navigation)
+        let chat = try XCTUnwrap(navigation.topViewController as? LegacyChatViewController)
+        let card = try await composerCard(in: chat)
+        let panel = try XCTUnwrap(Self.subview(NewWorkPanel.self, in: chat.view))
+        let start = try XCTUnwrap(chat.composeStart)
+        try await until { !panel.kind.isHidden }
+        try pick(.bot, in: panel)
+        try await until { panel.sessionKind == .bot && start.drafts.draft.agentType == .rig }
+        XCTAssertTrue(panel.folder.isHidden)
+        XCTAssertEqual(panel.name.placeholder, "Name your bot")
+        assertCentred(panel, in: chat)
+        keep(window, "legacy-new-work-bot")
+
+        card.setText("Plan the release", selection: NSRange(location: 16, length: 0))
+        card.delegate?.agentInputCardDidChangeText(card)
+        card.delegate?.agentInputCardDidPressSend(card)
+        try await until { chat.presentedViewController is UIAlertController }
+        XCTAssertEqual((chat.presentedViewController as? UIAlertController)?.message, "Give the bot a name")
+        try await dismissAlert(on: chat)
+        XCTAssertTrue(chat.isComposing)
+        XCTAssertEqual(card.text, "Plan the release", "the text stays to send again")
+        XCTAssertTrue(log.spawned.isEmpty)
+
+        panel.name.text = "Release\nCaptain"
+        panel.name.sendActions(for: .editingChanged)
+        XCTAssertEqual(start.drafts.botName, "Release Captain")
+        XCTAssertEqual(panel.name.text, "Release Captain")
+        card.delegate?.agentInputCardDidPressSend(card)
+        try await until { chat.presentedViewController is UIAlertController }
+        let offer = try XCTUnwrap(chat.presentedViewController as? UIAlertController)
+        XCTAssertEqual(offer.title, "Picture not set")
+        // Not now. `UIAlertAction` keeps its handler private; a test
+        // reaches it by key.
+        typealias Handler = @convention(block) (UIAlertAction) -> Void
+        let notNow = try XCTUnwrap(offer.actions.first { $0.style == .cancel })
+        let handler = unsafeBitCast(try XCTUnwrap(notNow.value(forKey: "handler") as AnyObject?), to: Handler.self)
+        try await dismissAlert(on: chat)
+        handler(notNow)
+        try await until { !chat.isComposing }
+        XCTAssertEqual(log.spawned.map(\.machineId), [Self.happyAgent])
+        XCTAssertEqual(log.spawned.map(\.happyAgentTarget), [.object(["kind": .string("bot"), "name": .string("Release Captain")])])
+        let store = account.store
+        let outbox = try await Task.detached { try store.pendingOutbox() }.value
+        let first = try XCTUnwrap(outbox.first { $0.sessionId == Self.newSessionId && $0.kind == .message })
+        XCTAssertEqual(first.payload["content"]?["text"]?.stringValue, "Plan the release", "the bot's first message")
+        XCTAssertFalse(start.drafts.createsBot)
+        XCTAssertEqual(start.drafts.botName, "")
     }
 
     /// The panel's middle is the middle of the room between the bar and

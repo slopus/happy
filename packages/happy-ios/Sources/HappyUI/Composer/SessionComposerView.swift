@@ -627,7 +627,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         configuration.permission = chips.permission.map(Self.chip)
         configuration.model = Self.chip(chips.model)
         configuration.effort = chips.effort.map(Self.chip)
-        configuration.placeholder = state?.newSessionChoices?.promptPlaceholder ?? Strings.Composer.inputPlaceholder
+        configuration.placeholder = state?.newSessionPlaceholder ?? state?.newSessionChoices?.promptPlaceholder ?? Strings.Composer.inputPlaceholder
         configuration.refusesControls = state?.isStartingNewSession == true
         configuration.primaryAction = primary
         configuration.primaryAccessibilityLabel = primary == .voice ? Strings.Voice.title : nil
