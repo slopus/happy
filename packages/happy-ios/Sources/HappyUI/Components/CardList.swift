@@ -227,6 +227,7 @@ final class CardListRowView: ListRowView, UIContextMenuInteractionDelegate, UIGe
         accessibilityValue = item.accessibilityValue
         accessibilityTraits = item.kind == .heading ? .header : item.opens ? .button : .staticText
         accessibilityIdentifier = item.id
+        accessibilityCustomActions = row.owner?.accessibilityActions?(row.identity)
         setPressed(false, animated: false)
     }
 
@@ -303,6 +304,7 @@ final class CardListRowView: ListRowView, UIContextMenuInteractionDelegate, UIGe
 
     @objc private func tapped() {
         guard row.item.opens else { return }
+        if let selectAt = row.owner?.onSelectAt { return selectAt(row.identity, tap.location(in: self)) }
         row.owner?.onSelect?(row.identity)
     }
 
@@ -341,6 +343,11 @@ final class CardListView: UIView {
     private let spinner = UIActivityIndicatorView(style: .medium)
 
     var onSelect: ((String) -> Void)?
+    /// A tap on the row `id`, where in it: set for rows with parts (a
+    /// checkbox and its text); `onSelect` is then not called.
+    var onSelectAt: ((String, CGPoint) -> Void)?
+    /// What VoiceOver offers on the row `id` besides opening it.
+    var accessibilityActions: ((String) -> [UIAccessibilityCustomAction])?
     var swipeActions: ((String) -> [ListSwipeAction])?
     var leadingSwipeActions: ((String) -> [ListSwipeAction])?
     /// What a hold on a row offers; nil for none.

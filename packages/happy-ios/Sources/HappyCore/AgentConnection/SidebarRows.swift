@@ -51,6 +51,7 @@ public enum SidebarRows {
             for child in children { agentRow(child, depth: depth + 1, muted: muted) }
         }
         rows.append(Row(id: "direct:artifacts", nodeId: "direct:artifacts", kind: .space, label: "Artifacts", mark: .glyph("doc"), targetKind: "artifacts"))
+        rows.append(Row(id: "direct:todos", nodeId: "direct:todos", kind: .space, label: "Todos", mark: .glyph(Rows.surfaceGlyph("todo")), targetKind: "todos"))
         let joined = (desktop.surfaces ?? []).compactMap { surface -> (DesktopSnapshot.Surface, String)? in
             guard let member = surface.members.first(where: { $0.userId == desktop.profile?.userId }) else { return nil }
             return (surface, member.orderKey)

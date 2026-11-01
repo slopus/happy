@@ -33,6 +33,8 @@ public actor SyncEngine {
     /// The documents open on this account and those with changes still to
     /// send; the stream's live document frames go to them.
     public nonisolated let documents: DocumentLibrary
+    /// The todo lists open on this account or with changes on their way.
+    public nonisolated let todos: TodoLibrary
     private var overlay = IntentOverlay()
     /// What waits in `intents`, as last published.
     private var waiting: [Intent] = []
@@ -89,11 +91,19 @@ public actor SyncEngine {
         attachmentDirectory = (directory ?? FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
             .appendingPathComponent("outbox-files", isDirectory: true)
         let forward = EngineIntentStorage()
-        let intents = IntentOutbox(storage: forward, deliver: { try await SyncEngine.deliver($0, client: client) })
+        let todoDelivery = TodoDelivery()
+        let intents = IntentOutbox(storage: forward, deliver: { intent in
+            if intent.kind.isTodo { try await todoDelivery.deliver(intent) } else { try await SyncEngine.deliver(intent, client: client) }
+        })
         self.intents = intents
         documents = DocumentLibrary(client: client, directory: directory)
-        spaces = Store(client: client, offline: offline, intents: intents)
+        let spaces = Store(client: client, offline: offline, intents: intents)
+        self.spaces = spaces
+        let keep = EngineResources()
+        todos = TodoLibrary(routes: client, outbox: intents, keep: keep, events: { await spaces.events(matching: ["todo."]) })
+        todoDelivery.library = todos
         forward.engine = self
+        keep.engine = self
     }
 
     public func snapshots() -> AsyncStream<HomeSnapshot> {
@@ -172,6 +182,7 @@ public actor SyncEngine {
         await pause()
         await spaces.stop()
         await documents.stop()
+        await todos.stop()
         intentsFollowing?.cancel()
         await intents.close()
         try? await storage?.close()
@@ -629,7 +640,7 @@ public actor SyncEngine {
     private func intentsChanged(_ list: [Intent]) async {
         let ids = Set(list.map(\.id)), slots = Set(list.map(\.slot))
         var taken = false
-        for intent in waiting where !ids.contains(intent.id) && !slots.contains(intent.slot) {
+        for intent in waiting where !intent.kind.isTodo && !ids.contains(intent.id) && !slots.contains(intent.slot) {
             if refusedIds.remove(intent.id) != nil { continue }
             settling.append((intent, reads))
             taken = true
@@ -660,8 +671,8 @@ public actor SyncEngine {
         } else if waiting.contains(where: { $0.id == id }) {
             refusedIds.insert(id)
         }
-        // A refused read is nothing to tell.
-        guard rejection.intent.kind != .read else { return }
+        // A refused read is nothing to tell; a todo list tells its own.
+        guard rejection.intent.kind != .read, !rejection.intent.kind.isTodo else { return }
         snapshot.notice = rejection.reason
         publish()
         noticeClearing?.cancel()
@@ -706,6 +717,9 @@ public actor SyncEngine {
                 guard let agentId = intent.value["agentId"]?.stringValue, let answers = answers(intent.value) else { return }
                 _ = try await client.answerQuestion(agentId, questionId: intent.target, answers: answers, mutationId: intent.id)
             case .unarchive, .delete:
+                throw IntentRefusal("")
+            case .todoCreate, .todoText, .todoStatus, .todoMove:
+                // `TodoLibrary.deliver` sends these.
                 throw IntentRefusal("")
             }
         } catch AgentClientError.status(let status, _, _) where status == 404 || (status == 409 && intent.kind == .answer) {
@@ -863,4 +877,14 @@ extension SyncEngine {
     func intentStorage() throws -> SyncStorage {
         try database()
     }
+}
+
+/// The engine's checkpoints as the todo lists' keep, made with the engine
+/// like `EngineIntentStorage`.
+final class EngineResources: TodoKeep, @unchecked Sendable {
+    /// Set once, as the engine finishes its init.
+    weak var engine: SyncEngine?
+
+    func read(_ key: String) async -> JSONValue? { try? await engine?.cachedResource(key) }
+    func write(_ key: String, _ value: JSONValue) async { try? await engine?.keepResource(key, value: value) }
 }

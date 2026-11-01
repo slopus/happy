@@ -188,8 +188,8 @@ final class DaemonTests: XCTestCase {
         let client = client(credentials)
         let (api, _) = try daemon()
         let list = try XCTUnwrap(call(api, ["POST", "/v0/surfaces", #"{"type":"todo","name":"Read list"}"#])["surface"]?["id"]?.stringValue)
-        try await client.addTodo(list, id: ClientID.make(), text: "Buy oranges")
-        let todos = try await client.todos(list)
+        _ = try await client.createTodo(list, id: TodoID.make(), text: "Buy oranges", mutationId: ClientID.make())
+        let todos = try await client.todos(list, scope: .active)
         XCTAssertEqual(todos.map(\.text), ["Buy oranges"])
         let made = try call(api, ["POST", "/v0/surfaces", ##"{"type":"document","name":"Read notes","text":"# Read notes\n"}"##])
         guard let document = made["surface"]?["id"]?.stringValue else { throw XCTSkip("This daemon serves no documents") }

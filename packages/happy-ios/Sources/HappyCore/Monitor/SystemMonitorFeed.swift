@@ -40,8 +40,8 @@ public actor SystemMonitorFeed {
 
     private let fetch: Fetch
     private let sleep: Sleep
-    private let keep: @Sendable (JSONValue) async -> Void
-    private let kept: @Sendable () async -> JSONValue?
+    private let keep: Keep
+    private let kept: Kept
     private var state = State()
     private var listeners: [UUID: AsyncStream<State>.Continuation] = [:]
     private var polling: Task<Void, Never>?
@@ -50,7 +50,15 @@ public actor SystemMonitorFeed {
     /// Poked: the wait before the next read ends early.
     private var wake: CheckedContinuation<Void, Never>?
 
-    public init(fetch: @escaping Fetch, sleep: @escaping Sleep = { try await Task.sleep(for: $0) }, keep: @escaping @Sendable (JSONValue) async -> Void = { _ in }, kept: @escaping @Sendable () async -> JSONValue? = { nil }) {
+    public typealias Keep = @Sendable (JSONValue) async -> Void
+    public typealias Kept = @Sendable () async -> JSONValue?
+
+    // The defaults, compiled once, here, as `InvalidateSync.taskSleep` explains.
+    public static let taskSleep: Sleep = { try await Task.sleep(for: $0) }
+    public static let keepNothing: Keep = { _ in }
+    public static let keptNothing: Kept = { nil }
+
+    public init(fetch: @escaping Fetch, sleep: @escaping Sleep = SystemMonitorFeed.taskSleep, keep: @escaping Keep = SystemMonitorFeed.keepNothing, kept: @escaping Kept = SystemMonitorFeed.keptNothing) {
         self.fetch = fetch
         self.sleep = sleep
         self.keep = keep

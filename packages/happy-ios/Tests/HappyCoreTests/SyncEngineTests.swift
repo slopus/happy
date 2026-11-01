@@ -213,12 +213,12 @@ final class SyncEngineTests: XCTestCase {
     func testCanonicalDesktopOrderMembershipHierarchyAndVisibility() throws {
         let desktop = try JSONDecoder().decode(DesktopSnapshot.self, from: Data(SyncFixture.fixture.utf8))
         let all = SidebarRows.make(desktop, settings: [:])
-        XCTAssertEqual(all.map { $0.kind == .separator ? "—" : $0.label }, ["Artifacts", "Notes", "Groceries", "—", "Happy", "Delegated task", "—", "Last created", "First created", "—", "App", "Root chat", "Feature"])
+        XCTAssertEqual(all.map { $0.kind == .separator ? "—" : $0.label }, ["Artifacts", "Todos", "Notes", "Groceries", "—", "Happy", "Delegated task", "—", "Last created", "First created", "—", "App", "Root chat", "Feature"])
         XCTAssertEqual(all.map(\.id).count, Set(all.map(\.id)).count)
         XCTAssertEqual(all.first { $0.label == "Delegated task" }?.depth, 1)
         let settings: [String: JSONValue] = [DesktopSettingKeys.projectsVisibility: .object(["projectsHidden": .bool(true)]), "happy-desktop.bot.happy": .object(["hidden": .bool(true)])]
         let hidden = SidebarRows.make(desktop, settings: settings)
-        XCTAssertEqual(hidden.map { $0.kind == .separator ? "—" : $0.label }, ["Artifacts", "Notes", "Groceries", "—", "—", "Last created", "First created"])
+        XCTAssertEqual(hidden.map { $0.kind == .separator ? "—" : $0.label }, ["Artifacts", "Todos", "Notes", "Groceries", "—", "—", "Last created", "First created"])
     }
 
     func testOfflineCacheAndSettingsSurviveAccountRelaunchThenReplay() async throws {

@@ -149,6 +149,30 @@ final class IntentOutboxTests: XCTestCase {
         XCTAssertTrue(IntentOverlay(after).removed.isEmpty, "the row came back")
     }
 
+    /// Storage that takes a while to keep each action, so two asked for at
+    /// once are both being kept at the same time.
+    private actor SlowIntentStorage: IntentStorage {
+        private let rows = MemoryIntentStorage()
+        func intents() async throws -> [Intent] { await rows.intents() }
+        func saveIntent(_ intent: Intent) async throws {
+            try await Task.sleep(for: .milliseconds(30))
+            await rows.saveIntent(intent)
+        }
+        func updateIntent(_ intent: Intent) async throws { await rows.updateIntent(intent) }
+        func removeIntent(id: String) async throws { await rows.removeIntent(id: id) }
+    }
+
+    /// Two actions asked for together both wait: the second to be kept
+    /// doesn't write back the list from before the first.
+    func testActionsAskedForTogetherAreBothKept() async throws {
+        let outbox = makeOutbox(SlowIntentStorage())
+        async let first = outbox.enqueue(.read, target: "a1")
+        async let second = outbox.enqueue(.rename, target: "t1", value: .object(["title": "Both"]))
+        let ids = try await Set([first.id, second.id])
+        let pending = await outbox.pending()
+        XCTAssertEqual(Set(pending.map(\.id)), ids)
+    }
+
     /// Kept in the account's database: a relaunch has every action still
     /// waiting, with its ID, and sends it then.
     func testPendingActionsSurviveAReopen() async throws {

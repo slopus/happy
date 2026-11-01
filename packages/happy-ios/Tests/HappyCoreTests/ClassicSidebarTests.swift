@@ -41,7 +41,7 @@ final class ClassicSidebarTests: XCTestCase {
 
     func testDesktopsSectionsAndOrder() throws {
         XCTAssertEqual(labels(try rows()), [
-            "Artifacts", "Notes", "Groceries",
+            "Artifacts", "Todos", "Notes", "Groceries",
             "—", "Happy", "Sub one", "Sub two", "Research", "Release",
             "—", "Three", "One", "Two",
             "—", "App", "Root chat", "Feature", "Fix", "Docs",

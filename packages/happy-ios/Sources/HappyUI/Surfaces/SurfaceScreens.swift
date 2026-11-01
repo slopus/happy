@@ -13,8 +13,10 @@ enum SurfaceScreens {
             return DocumentScreens.make(session: session, surfaceId: surface.id, name: surface.name)
         case "system_monitor":
             return MonitorViewController(session: session, surface: surface)
+        case "todo":
+            return TodoListViewController(session: session, surface: surface)
         default:
-            return SurfaceViewController(session: session, surface: surface)
+            return SurfaceElsewhereViewController(surface: surface)
         }
     }
 }

@@ -248,20 +248,6 @@ public final class AgentClient: Sendable {
         catch AgentClientError.status(404, _, _), AgentClientError.status(501, _, _) { return nil }
     }
 
-    /// A todo list's active todos, then its completed ones.
-    public func todos(_ surfaceId: String) async throws -> [AgentWire.Todo] {
-        struct Response: Decodable { let todos: [Lossy<AgentWire.Todo>] }
-        let path = "/v0/surfaces/todo/\(Self.escape(surfaceId))"
-        async let active = decode(Response.self, "GET", path)
-        async let completed = decode(Response.self, "GET", path + "?scope=completed")
-        return try await (active.todos + completed.todos).compactMap(\.value)
-    }
-
-    /// A new todo at the top of the list; `id` is the retry key.
-    public func addTodo(_ surfaceId: String, id: String, text: String) async throws {
-        _ = try await send("POST", "/v0/surfaces/todo/\(Self.escape(surfaceId))", json: .object(["id": .string(id), "text": .string(text), "mutationId": .string(ClientID.make())]))
-    }
-
     /// A document as Markdown, its read-only projection.
     public func document(_ surfaceId: String) async throws -> String {
         try await decode(JSONValue.self, "GET", "/v0/surfaces/document/\(Self.escape(surfaceId))")["document"]?["text"]?.stringValue ?? ""

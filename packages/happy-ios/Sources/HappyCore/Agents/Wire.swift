@@ -311,13 +311,6 @@ extension AgentWire {
         }
     }
 
-    public struct Todo: Equatable, Sendable, Codable, Identifiable {
-        public var id: String
-        public var text: String
-        /// `active`, `completed` or `deleted`.
-        public var status: String
-    }
-
     public struct Mode: Equatable, Sendable, Codable {
         public var providerId: String
         public var modelId: String

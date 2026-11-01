@@ -135,13 +135,6 @@ extension Strings {
     public static let showLess = "Show less"
 
 
-    // A Surface on the phone: read, and a todo added.
-    public static let addTodo = "Add a todo"
-    public static let noTodos = "Nothing here yet."
-    public static let todoDone = "done"
-    public static let emptyDocument = "This document is empty."
-    public static let openOnComputer = "Open this on your computer to use it."
-
     // Pictures and recordings in a conversation.
     public static let picture = "Picture"
     public static let video = "Video"

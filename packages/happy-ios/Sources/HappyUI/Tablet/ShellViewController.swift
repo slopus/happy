@@ -559,6 +559,7 @@ enum MainPanelKey {
         if let chat = controller as? ChatViewController, !chat.shownAgentId.isEmpty { return "agent:\(chat.shownAgentId)" }
         if controller is SettingsViewController { return "settings" }
         if controller is ArtifactsViewController { return "artifacts" }
+        if controller is TodoListsViewController { return "todos" }
         return nil
     }
 }

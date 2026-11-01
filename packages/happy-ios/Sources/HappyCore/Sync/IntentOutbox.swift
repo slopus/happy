@@ -14,6 +14,14 @@ public struct Intent: Codable, Equatable, Sendable {
         case delete
         case rename
         case answer
+        /// A todo list's changes (`TodoOp`): one slot per todo for each.
+        case todoCreate = "todo.create"
+        case todoText = "todo.text"
+        case todoStatus = "todo.status"
+        case todoMove = "todo.move"
+
+        /// A todo list's, sent by `TodoLibrary`.
+        public var isTodo: Bool { [.todoCreate, .todoText, .todoStatus, .todoMove].contains(self) }
 
         /// The kinds that set one thing share it: a later one replaces an
         /// earlier one still waiting.
@@ -173,9 +181,12 @@ public actor IntentOutbox {
     /// and then nothing is shown.
     @discardableResult
     public func enqueue(_ kind: Intent.Kind, target: String, value: JSONValue = .null) async throws -> Intent {
-        var list = await pending()
-        let intent = Intent(kind: kind, target: target, value: value, createdAt: max(now(), (list.last?.createdAt ?? 0) + 1))
+        let before = await pending()
+        let intent = Intent(kind: kind, target: target, value: value, createdAt: max(now(), (before.last?.createdAt ?? 0) + 1))
         try await storage.saveIntent(intent)
+        // Read again: another enqueue may have landed while this one was
+        // being kept, and writing back the list from before would lose it.
+        var list = await pending()
         if let replaced = list.first(where: { $0.slot == intent.slot }) { finish(replaced.id, .taken) }
         list.removeAll { $0.slot == intent.slot }
         list.append(intent)
@@ -388,6 +399,7 @@ public struct IntentOverlay: Equatable, Sendable {
             case .unarchive: restored.insert(intent.target)
             case .rename: if let title = intent.value["title"]?.stringValue ?? intent.value.stringValue { titles[intent.target] = title }
             case .answer: answers[intent.target] = intent.value
+            case .todoCreate, .todoText, .todoStatus, .todoMove: break
             }
         }
     }
