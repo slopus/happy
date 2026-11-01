@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_team_server.xml in ja: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="team_server_title">サーバーにサインイン</string>
+    <string name="team_server_address_hint">組織の Happy サーバーです。サインインはブラウザで行います。</string>
+    <string name="team_server_checking">%1$s を確認しています…</string>
+    <string name="team_server_continue_with">%1$s で続ける</string>
+    <string name="team_server_browser_host">ブラウザで %1$s にサインインします。</string>
+    <string name="team_server_waiting">ブラウザでサインインを完了してください。</string>
+    <string name="team_server_reopen">ブラウザをもう一度開く</string>
+    <string name="team_server_finishing">サインインしています…</string>
+    <string name="team_server_name_title">お名前は?</string>
+    <string name="team_server_name_detail">%1$s のメンバーにこの名前が表示されます。</string>
+    <string name="team_server_name_placeholder">名前</string>
+    <string name="team_server_name_failed">名前を保存できませんでした。もう一度お試しください。</string>
+    <string name="team_server_failed">サインインできませんでした</string>
+    <string name="team_server_try_again">もう一度試す</string>
+    <string name="team_server_no_browser">サインインページを開けるブラウザがありません。</string>
+    <string name="team_server_error_invalid_address">サーバーの https:// アドレスをパスなしで入力してください。</string>
+    <string name="team_server_error_no_sign_in">このサーバーはサインインに対応していません。管理者にお問い合わせください。</string>
+    <string name="team_server_error_edge_blocked">サーバーのロードバランサーがサインインを通しませんでした。/v0/authentication をサインインなしで許可するよう管理者に依頼してください。</string>
+    <string name="team_server_error_unreachable">サーバーに接続できませんでした。アドレスと接続を確認してください。</string>
+    <string name="team_server_error_denied">サインインがキャンセルされたか拒否されました。</string>
+    <string name="team_server_error_expired">このサインインは期限切れです。もう一度お試しください。</string>
+    <string name="team_server_error_invalid_token">サインインサービスから有効なトークンが返されませんでした。</string>
+    <string name="team_server_error_rejected">サーバーがこのサインインを受け付けませんでした。</string>
+    <string name="team_server_error_not_allowed">組織がこのサーバーの追加を許可していません。</string>
+    <string name="team_server_error_sign_in_required">このサーバーへのサインインの有効期限が切れました。もう一度サインインしてください。</string>
+    <string name="team_server_sign_in_again">もう一度サインイン</string>
+    <string name="team_server_status_signed_out">サインアウト済み</string>
+    <string name="team_server_settings_signed_out">サインアウト済み</string>
+    <string name="team_server_relay_disabled">組織が Happy のホスト型リレーをオフにしています。</string>
+    <string name="team_server_pairing_disabled">組織がコードによるエージェント接続をオフにしています。</string>
+    <string name="browser_tunnels_blocked">このサーバーのネットワークではプレビューを利用できません。</string>
+    <string name="start_sign_in_server">%1$s にサインイン</string>
+    <string name="managed_by_organization">組織によって管理されています</string>
+    <string name="managed_server_url">チームサーバーの URL</string>
+    <string name="managed_server_url_description">組織の Happy サーバーの https:// アドレス。初回起動時に提示され、保持されます。</string>
+    <string name="managed_allow_additional_servers">ほかのサーバーを許可</string>
+    <string name="managed_analytics_enabled">分析</string>
+    <string name="managed_hosted_relay_enabled">Happy ホスト型リレー</string>
+    <string name="managed_tailcat_enabled">Tailcat 接続</string>
+    <string name="managed_phone_pairing_enabled">QR コードによるエージェント接続</string>
+    <string name="team_server_profile_required">このサーバーを引き続き使うには名前を追加してください。</string>
+    <string name="team_server_add_name">名前を追加</string>
+    <string name="managed_analytics_enabled_description">オフにすると分析がオフになりロックされます。オンにすると各ユーザーの選択に任されます。</string>
+</resources>

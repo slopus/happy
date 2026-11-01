@@ -51,6 +51,9 @@ class ConnectFlow internal constructor(
     internal var scanner: QrScanner = QrScanner { ScanResult.Cancelled }
     internal var connectAgent: ((String) -> Unit)? = null
 
+    /** Add's way to a team server: an `https://` address scanned or pasted signs in to it (edge SSO). */
+    internal var signInToServer: ((String?) -> Unit)? = null
+
     /** No scanner on this device: instead of saying so, Add asks for the link. */
     internal var onUnavailable: (() -> Unit)? = null
 
@@ -96,9 +99,15 @@ class ConnectFlow internal constructor(
                 ConnectKind.Add -> alert = errorAlert(messages.accountSignedOut)
                 else -> alert = errorAlert(messages.accountElsewhere)
             }
-            is HappyCode.UnknownHappy, is HappyCode.NotHappy -> alert = errorAlert(messages.notHappy)
+            is HappyCode.NotHappy -> serverAddress(code.text)?.let { address -> signInToServer?.invoke(address) }
+                ?: run { alert = errorAlert(messages.notHappy) }
+            is HappyCode.UnknownHappy -> alert = errorAlert(messages.notHappy)
         }
     }
+
+    /** [text] as a team server's address, where this flow adds one (Add only). */
+    private fun serverAddress(text: String): String? =
+        text.takeIf { kind == ConnectKind.Add && signInToServer != null && it.startsWith("https://", ignoreCase = true) }
 
     /**
      * connectWithUrl: a pasted link, routed by [route] exactly as the same
@@ -109,8 +118,9 @@ class ConnectFlow internal constructor(
      */
     fun connectWithUrl(url: String) {
         scope.launch {
-            when (HappyCode.classify(url)) {
-                is HappyCode.UnknownHappy, is HappyCode.NotHappy -> alert = errorAlert(messages.invalidUrl)
+            when (val code = HappyCode.classify(url)) {
+                is HappyCode.NotHappy -> if (serverAddress(code.text) != null) route(url) else alert = errorAlert(messages.invalidUrl)
+                is HappyCode.UnknownHappy -> alert = errorAlert(messages.invalidUrl)
                 else -> route(url)
             }
         }
@@ -267,6 +277,7 @@ private fun rememberConnectFlow(
     )
     flow.scanner = rememberQrScanner()
     flow.connectAgent = LocalAgentPairing.current
+    flow.signInToServer = com.slopus.happy.ui.connection.LocalServerSignIn.current
     val prefix = kind.prefix
     flow.process = process@{ url ->
         if (!url.startsWith(prefix)) {
@@ -312,8 +323,13 @@ fun rememberAddFlow(graph: AppGraph): ConnectFlow = rememberAddConnect(
 fun rememberAddConnect(approve: suspend (url: String) -> Unit): ConnectFlow {
     val haptics = LocalHapticFeedback.current
     val failed = stringResource(R.string.modals_failed_to_connect_terminal)
+    val relayOff = stringResource(R.string.team_server_relay_disabled)
     val flow = rememberConnectFlow(ConnectKind.Add, approve) { flow, error ->
-        if (error == null) haptics.performHapticFeedback(HapticFeedbackType.Confirm) else flow.alert = flow.errorAlert(failed)
+        when {
+            error == null -> haptics.performHapticFeedback(HapticFeedbackType.Confirm)
+            error is com.slopus.happy.auth.RelayDisabledException -> flow.alert = flow.errorAlert(relayOff)
+            else -> flow.alert = flow.errorAlert(failed)
+        }
     }
     flow.onUnavailable = { flow.enteringLink = true }
     if (flow.enteringLink) {

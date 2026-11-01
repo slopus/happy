@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.ui.connect.LocalAddFlow
+import com.slopus.happy.ui.connection.LocalServerSignIn
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slopus.happy.ui.components.Avatar
 import com.slopus.happy.ui.components.avatar.AvatarPlaceholder
@@ -100,7 +101,8 @@ fun rememberAccountMenu(graph: AppGraph): AccountMenu {
                     thumbhash = agent.thumbhash,
                     agent = true,
                     active = registry.activeId == agent.id,
-                    attention = agent.revoked,
+                    attention = agent.revoked || agent.signInRequired,
+                    detail = agent.server?.removePrefix("https://"),
                 )
             },
         )
@@ -111,6 +113,7 @@ object AccountMenuTags {
     const val BUTTON = "accountMenu.button"
     const val MENU = "accountMenu.menu"
     const val ADD = "accountMenu.add"
+    const val ADD_SERVER = "accountMenu.addServer"
     fun entry(id: String) = "accountMenu.entry.$id"
 }
 
@@ -138,7 +141,8 @@ object AccountMenuSpec {
  * of every Happy account and agent connection on the phone (avatar, name,
  * the server or kind under it; the open one checked, one needing attention
  * flagged), then Add, which scans a code and adds the Happy account or
- * agent connection it is for ([LocalAddFlow]). Picking one switches.
+ * agent connection it is for ([LocalAddFlow]), and Sign in to a server,
+ * for a team server behind SSO ([LocalServerSignIn]). Picking one switches.
  * Outside a top app bar, where the slot is not already 4 in, pass a 0 [inset].
  */
 @Composable
@@ -147,6 +151,7 @@ fun AccountMenuButton(
     onSwitch: (String) -> Unit,
     onAdd: () -> Unit = LocalAddFlow.current?.let { it::scan } ?: {},
     inset: Dp = AccountMenuSpec.buttonInset,
+    onAddServer: (() -> Unit)? = LocalServerSignIn.current?.let { { it(null) } },
 ) {
     val colors = HappyTheme.colors
     var open by remember { mutableStateOf(false) }
@@ -212,6 +217,21 @@ fun AccountMenuButton(
                 },
                 modifier = Modifier.testTag(AccountMenuTags.ADD),
             )
+            if (onAddServer != null) {
+                HappyMenuItem(
+                    label = stringResource(R.string.team_server_title),
+                    leading = {
+                        Box(Modifier.size(AccountMenuSpec.rowAvatar), contentAlignment = Alignment.Center) {
+                            Icon(Ionicon.GlobeOutline, AccountMenuSpec.addIcon, colors.text)
+                        }
+                    },
+                    onClick = {
+                        open = false
+                        onAddServer()
+                    },
+                    modifier = Modifier.testTag(AccountMenuTags.ADD_SERVER),
+                )
+            }
         }
     }
 }

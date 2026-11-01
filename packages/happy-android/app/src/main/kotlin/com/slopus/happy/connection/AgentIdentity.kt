@@ -11,6 +11,8 @@ data class AgentInfo(
     val daemonVersion: String? = null,
     val protocol: Int? = null,
     val avatar: NodeAvatar = NodeAvatar.Unchanged,
+    /** Health's `capabilities.webSocketTunnels` (edge SSO): tunnels go over WebSockets instead of CONNECT. */
+    val webSocketTunnels: Boolean = false,
 )
 
 /** What `/v0/node/avatar` answered. The ETag, not the ThumbHash, says which bytes these are. */
@@ -36,7 +38,8 @@ object AgentIdentity {
     private const val MAX_AVATAR_BYTES = 8 * 1024 * 1024
 
     @Serializable private class Version(val protocol: Int, val daemon: String? = null)
-    @Serializable private class Health(val ready: Boolean, val version: Version)
+    @Serializable private class Capabilities(val webSocketTunnels: Boolean = false)
+    @Serializable private class Health(val ready: Boolean, val version: Version, val capabilities: Capabilities? = null)
     @Serializable private class Avatar(val thumbhash: String? = null)
     @Serializable private class Node(val name: String, val avatar: Avatar? = null)
     @Serializable private class Config(val node: Node? = null)
@@ -44,12 +47,32 @@ object AgentIdentity {
 
     private val json = Json { ignoreUnknownKeys = true }
 
-    /** [etag] is the picture's the phone holds, asked with `If-None-Match` so unchanged bytes aren't sent again. */
-    suspend fun refresh(transport: Transport, token: String, fallbackName: String, etag: String? = null): AgentInfo {
-        val health = json.decodeOrInvalid<Health>(check(transport.request("GET", "/v0/health", token)))
+    /** One request to the agent, authorized: what [refresh] reads with. */
+    fun interface Requester {
+        suspend fun request(method: String, path: String, headers: Map<String, String>, category: RequestCategory): TransportResponse
+    }
+
+    /**
+     * [etag] is the picture's the phone holds, asked with `If-None-Match` so
+     * unchanged bytes aren't sent again. An [oauth] team server's refusals
+     * follow [SignInRule]: SignInRequired, never Revoked.
+     */
+    suspend fun refresh(transport: Transport, token: String, fallbackName: String, etag: String? = null, oauth: Boolean = false): AgentInfo =
+        refresh(Requester { method, path, headers, category -> transport.request(method, path, token, headers = headers, category = category) }, fallbackName, etag, oauth)
+
+    /** Health's `capabilities.webSocketTunnels` alone. */
+    suspend fun webSocketTunnels(requester: Requester, oauth: Boolean): Boolean =
+        json.decodeOrInvalid<Health>(check(requester.request("GET", "/v0/health", emptyMap(), RequestCategory.Query), oauth)).capabilities?.webSocketTunnels == true
+
+    suspend fun refresh(requester: Requester, fallbackName: String, etag: String? = null, oauth: Boolean = false): AgentInfo {
+        fun checked(response: TransportResponse) = check(response, oauth)
+        val health = json.decodeOrInvalid<Health>(checked(requester.request("GET", "/v0/health", emptyMap(), RequestCategory.Query)))
         if (health.version.protocol < MIN_PROTOCOL) throw AgentConnectionException(AgentConnectionException.Reason.UpdateRequired)
         if (!health.ready) throw AgentConnectionException(AgentConnectionException.Reason.Unavailable)
-        val node = json.decodeOrInvalid<ConfigResponse>(check(transport.request("GET", "/v0/config", token))).config.node
+        val config = requester.request("GET", "/v0/config", emptyMap(), RequestCategory.Query)
+        // A team member may not read the node's configuration: the server goes by the name it was added under.
+        val node = if (oauth && config.status != 200 && !SignInRule.requiresSignIn(config)) null
+            else json.decodeOrInvalid<ConfigResponse>(checked(config)).config.node
         val name = node?.name?.takeIf { it.isNotEmpty() && it.codePointCount(0, it.length) <= 128 && it.none(Char::isISOControl) }
         if (node != null && name == null) throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
         return AgentInfo(
@@ -60,8 +83,9 @@ object AgentIdentity {
             avatar = when {
                 node == null -> NodeAvatar.Unchanged
                 node.avatar == null -> NodeAvatar.None
-                else -> avatar(transport, token, etag)
+                else -> avatar(requester, etag, oauth)
             },
+            webSocketTunnels = health.capabilities?.webSocketTunnels == true,
         )
     }
 
@@ -69,16 +93,20 @@ object AgentIdentity {
      * The node's picture. Only a refusal (401/403) fails the refresh: a
      * picture that can't be read, or isn't one, leaves the kept one as it is.
      */
-    private suspend fun avatar(transport: Transport, token: String, etag: String?): NodeAvatar {
+    private suspend fun avatar(requester: Requester, etag: String?, oauth: Boolean): NodeAvatar {
         val image = try {
-            transport.request("GET", "/v0/node/avatar", token, headers = etag?.let { mapOf("If-None-Match" to it) } ?: emptyMap(), category = RequestCategory.File)
+            requester.request("GET", "/v0/node/avatar", etag?.let { mapOf("If-None-Match" to it) } ?: emptyMap(), RequestCategory.File)
         } catch (e: CancellationException) {
             throw e
+        } catch (e: AgentConnectionException) {
+            if (e.reason == AgentConnectionException.Reason.SignInRequired) throw e
+            return NodeAvatar.Unchanged
         } catch (_: Exception) {
             return NodeAvatar.Unchanged
         }
+        if (oauth && SignInRule.requiresSignIn(image)) throw AgentConnectionException(AgentConnectionException.Reason.SignInRequired)
         return when (image.status) {
-            401, 403 -> throw AgentConnectionException(AgentConnectionException.Reason.Revoked)
+            401, 403 -> if (oauth) NodeAvatar.Unchanged else throw AgentConnectionException(AgentConnectionException.Reason.Revoked)
             200 -> if (image.body.size <= MAX_AVATAR_BYTES && image.headers["content-type"]?.lowercase()?.startsWith("image/") == true) {
                 NodeAvatar.Picture(image.body, image.headers["etag"])
             } else {
@@ -89,8 +117,9 @@ object AgentIdentity {
         }
     }
 
-    private fun check(response: TransportResponse): TransportResponse {
-        if (response.status == 401 || response.status == 403) throw AgentConnectionException(AgentConnectionException.Reason.Revoked)
+    private fun check(response: TransportResponse, oauth: Boolean): TransportResponse {
+        if (oauth && SignInRule.requiresSignIn(response)) throw AgentConnectionException(AgentConnectionException.Reason.SignInRequired)
+        if (!oauth && (response.status == 401 || response.status == 403)) throw AgentConnectionException(AgentConnectionException.Reason.Revoked)
         if (response.status != 200) throw AgentConnectionException(AgentConnectionException.Reason.Unavailable)
         return response
     }

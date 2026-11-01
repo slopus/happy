@@ -90,6 +90,7 @@ object AgentHomeTags {
     const val EMPTY = "agentHome.empty"
     const val OFFLINE = "agentHome.offline"
     const val BANNER = "agentHome.banner"
+    const val BANNER_ACTION = "agentHome.bannerAction"
     const val SEARCH = "agentHome.search"
     const val SETTINGS = "agentHome.settings"
     const val COMPOSE = "agentHome.compose"

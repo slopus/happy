@@ -1,6 +1,9 @@
 package com.slopus.happy.browser
 
+import com.slopus.happy.agent.AgentApiException
 import com.slopus.happy.agent.AgentClient
+import com.slopus.happy.connection.SignInRule
+import kotlinx.coroutines.withTimeout
 import com.slopus.happy.agent.decode
 import com.slopus.happy.chat.arr
 import com.slopus.happy.chat.obj
@@ -11,21 +14,85 @@ import kotlinx.serialization.json.JsonObject
 
 /**
  * iOS's `BrowserTunnel`: a stream to [target] reached by the computer, through
- * `CONNECT /v0/workspaces/:id/proxy` and a nested `CONNECT host:port`. The
- * device token goes on the first CONNECT only, never to the target.
+ * the workspace's proxy and a nested `CONNECT host:port`. The bearer goes on
+ * the outer tunnel only, never to the target.
+ *
+ * The outer tunnel is the route's WebSocket twin where the agent offers it
+ * over HTTPS (edge SSO contract §4), else `CONNECT`. A server reached over
+ * HTTPS whose edge refuses CONNECT (an answer that isn't the daemon's, or
+ * none) has its tunnels turned off ([AgentClient.tunnelsBlocked]) instead
+ * of being asked again.
  */
 object BrowserTunnel {
     suspend fun open(client: AgentClient, workspaceId: String, target: BrowserPolicy.Authority): TransportSocket {
         if (!BrowserPolicy.validId(workspaceId)) throw BrowserException(BrowserException.Kind.Forbidden)
-        val (stream, token) = client.socket()
+        val stream = outer(client, "/v0/workspaces/$workspaceId/proxy")
         try {
-            connect(stream, "/v0/workspaces/$workspaceId/proxy", token)
             connect(stream, target.text, null)
             return stream
         } catch (e: Throwable) {
             stream.close()
             throw e
         }
+    }
+
+    /** The tunnel into [path]'s network, past its outer `200` (or `101`). */
+    internal suspend fun outer(client: AgentClient, path: String): TransportSocket {
+        if (client.tunnelsBlocked.value) throw BrowserException(BrowserException.Kind.Unavailable)
+        val webSocket = try {
+            client.webSocketTunnel(path)
+        } catch (e: AgentApiException) {
+            // No daemon code: the edge turned the upgrade away.
+            if (e.code == null) client.blockTunnels()
+            throw BrowserException(BrowserException.Kind.Upstream, e.status)
+        }
+        if (webSocket != null) return webSocket
+        val (stream, token) = client.socket()
+        try {
+            connectOuter(client, stream, path, token)
+            return stream
+        } catch (e: Throwable) {
+            stream.close()
+            throw e
+        }
+    }
+
+    private suspend fun connectOuter(client: AgentClient, stream: TransportSocket, path: String, token: String) {
+        val https = client.resolve().transport.overHttps()
+        stream.write("CONNECT $path HTTP/1.1\r\nHost: ${stream.authority}\r\nAuthorization: Bearer $token\r\n\r\n".toByteArray(Charsets.UTF_8))
+        val (response, rest) = try {
+            BrowserRelay.head(stream)
+        } catch (e: BrowserException) {
+            // Dropped without an answer: an edge that doesn't speak CONNECT.
+            if (https && e.kind == BrowserException.Kind.Unavailable) client.blockTunnels()
+            throw e
+        }
+        val status = response.status ?: 502
+        if (status == 200 && rest.isEmpty()) return
+        if (status == 200) throw BrowserException(BrowserException.Kind.Upstream, 502)
+        val body = refusalBody(stream, response, rest)
+        val type = response.value("content-type")
+        if (client.isOAuth() && SignInRule.requiresSignIn(status, type, body)) client.signInRequired()
+        if (https && !SignInRule.isHappyError(type, body)) client.blockTunnels()
+        throw BrowserException(BrowserException.Kind.Upstream, status)
+    }
+
+    /** Up to 16 KiB of a refusal's body, by its Content-Length: enough to tell the daemon's JSON from an edge's page. */
+    private suspend fun refusalBody(stream: TransportSocket, head: HttpHead, initial: ByteArray): ByteArray {
+        val length = head.value("content-length")?.toIntOrNull()?.coerceIn(0, 16 * 1024) ?: return initial
+        var body = initial
+        try {
+            withTimeout(5_000) {
+                while (body.size < length) {
+                    val more = stream.read(length - body.size)
+                    if (more.isEmpty()) break
+                    body += more
+                }
+            }
+        } catch (e: CancellationException) {
+            if (e !is kotlinx.coroutines.TimeoutCancellationException) throw e
+        }
+        return body.copyOf(minOf(body.size, length))
     }
 
     internal suspend fun connect(stream: TransportSocket, target: String, credential: String?) {

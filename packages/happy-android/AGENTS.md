@@ -794,6 +794,46 @@ signed with only the upload key won't. Signed out, only the screens that need
 no account (server, restore, troubleshoot, changelog, onboarding settings)
 open; other links are dropped rather than pushed onto empty signed-in screens.
 
+### Team servers behind SSO (edge SSO)
+
+A Happy Agent server behind an HTTPS load balancer that enforces SSO is an
+`AgentConnection` with `server` (its origin) and `AgentConnectionCredentials.oauth`
+instead of a device token. The contract is shared with iOS and desktop; don't
+change its wire behaviour on Android alone.
+
+- **Sign-in** (`connection/ServerSignInFlow.kt`, `ServerAuth.kt`): `GET
+  /v0/authentication` lists the methods, then OAuth authorization code + PKCE
+  S256 in a Custom Tab (never a WebView), with RFC 8707 `resource` on
+  authorize, exchange and refresh. The redirect URI is **`happy://oauth/callback`**
+  on every flavor (`ServerSignInFlow.REDIRECT_URI`); the manifest's `happy`
+  scheme filter carries it, and MainActivity hands it to the flow before
+  `DeepLinks`. `authenticated` with no `userId` asks for a name (`PATCH
+  /v0/profile`) before the server is kept.
+- **Tokens**: the refresh token lives with the credentials (Keystore,
+  `ExpoSecureStore`); access tokens are in memory only (`AgentConnections.bearer`,
+  refreshed 60 s before expiry, one refresh at a time per connection, rotation
+  persisted). The refresh token goes only to the `refreshUrl` and `client_id`
+  recorded at sign-in. Credentials go only in `Authorization`, on SSE and
+  WebSockets too; no OkHttp client here follows redirects.
+- **Sign in again** (`SignInRule`): any 3xx but 304, any 401, or a 403 that
+  isn't Happy JSON (`application/json` with string `error` and `code`). A
+  Happy-JSON 401 first asks `GET /v0/authentication` with the same bearer
+  (`AgentClient.recover`); an edge's 401 stands. `AgentConnection.signInRequired`
+  stops the account's links at once (`AgentSession`) and home shows "Sign in
+  again", which reopens the flow replacing the same connection. Paired agents
+  keep 401 = Revoked.
+- **Tunnels**: over HTTPS, the in-app browser prefers the WebSocket twin of a
+  CONNECT route (`<route>/websocket`, `WebSocketTunnel`) when health reports
+  `capabilities.webSocketTunnels`; otherwise CONNECT once, and an edge's refusal
+  turns tunnels off for that client with a note (`browser_tunnels_blocked`).
+- **Managed configurations** (`config/ManagedSettings.kt`,
+  `res/xml/app_restrictions.xml`): `serverUrl` (https origin, offered first and
+  not removable), `allowAdditionalServers`, `analyticsEnabled` (only `false` is
+  enforced: management can turn analytics off, never on), `hostedRelayEnabled`,
+  `tailcatEnabled`, `phonePairingEnabled`. A set key is enforced in code and its
+  control shows "Managed by your organization"; an unset or wrongly typed one
+  leaves the person's choice.
+
 ## Push
 
 What happy-app does with expo-notifications, without Expo:

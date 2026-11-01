@@ -30,6 +30,9 @@ sealed interface AuthState {
     }
 }
 
+/** Management turned Happy's hosted relay off (`hostedRelayEnabled`), and this account would live there. */
+class RelayDisabledException : IllegalStateException("Happy's hosted relay is turned off by your organization")
+
 /** The secret key the user typed is not one. */
 class InvalidSecretKeyException(cause: Throwable? = null) : IllegalArgumentException("Invalid secret key", cause)
 
@@ -44,6 +47,8 @@ class AuthRepository(
     private val api: AuthApi,
     private val random: RandomSource = SecureRandomSource,
     private val io: CoroutineDispatcher = Dispatchers.IO,
+    /** Whether a Happy account may be signed in on the current server (managed `hostedRelayEnabled`). */
+    private val allowed: () -> Boolean = { true },
 ) {
     private val mutableState = MutableStateFlow(signedIn(credentialStore.read()))
     val state: StateFlow<AuthState> = mutableState.asStateFlow()
@@ -54,6 +59,7 @@ class AuthRepository(
      * failed approval leaves nothing signed in.
      */
     suspend fun createAccount(prepare: suspend (AuthState.SignedIn) -> Unit = {}) {
+        if (!allowed()) throw RelayDisabledException()
         val secret = random.nextBytes(32)
         val token = api.getToken(AuthChallenge.create(secret, random))
         prepare(signedIn(AuthCredentials(token = token, secret = encodeBase64(secret, Base64Variant.Url))) as AuthState.SignedIn)
@@ -62,6 +68,7 @@ class AuthRepository(
 
     /** restore/manual.tsx: accepts the dashed backup format or the raw base64url secret. */
     suspend fun restore(secretKey: String) {
+        if (!allowed()) throw RelayDisabledException()
         val secret = try {
             decodeBase64(SecretKeyBackup.normalize(secretKey), Base64Variant.Url)
         } catch (e: IllegalArgumentException) {
@@ -77,6 +84,7 @@ class AuthRepository(
      * stored as is, as `auth.login(token, secret)` does.
      */
     suspend fun signIn(token: String, secret: ByteArray) {
+        if (!allowed()) throw RelayDisabledException()
         require(secret.size == 32) { "Invalid secret" }
         val credentials = AuthCredentials(token = token, secret = encodeBase64(secret, Base64Variant.Url))
         withContext(io) { credentialStore.write(credentials) }

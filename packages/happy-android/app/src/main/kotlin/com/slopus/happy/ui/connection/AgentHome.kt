@@ -104,6 +104,8 @@ class AgentHomeActions(
      * it gave none. Null here offers no Leave.
      */
     val onLeaveSurface: (suspend (AgentFeedRow.Surface) -> String?)? = null,
+    /** Signs a team server in again, once its sign-in expired (edge SSO). */
+    val onSignIn: () -> Unit = {},
 )
 
 /** The colours of every bar on an agent connection's screens: the page's own [container], scrolled or not. */
@@ -180,6 +182,8 @@ fun AgentHomeScreen(
     status: AgentLinkStatus,
     accounts: AccountMenu,
     actions: AgentHomeActions,
+    /** A team server signed in to but without the person's profile yet: SignInRequired asks for a name instead. */
+    profileRequired: Boolean = false,
 ) {
     val colors = HappyTheme.colors
     var searching by rememberSaveable { mutableStateOf(false) }
@@ -268,16 +272,17 @@ fun AgentHomeScreen(
                             AgentLinkStatus.UpdateRequired -> null
                             else -> stringResource(R.string.agent_home_offline_title, name)
                         },
-                        body = statusMessage(status) ?: stringResource(R.string.agent_home_offline_body),
+                        body = statusMessage(status, profileRequired) ?: stringResource(R.string.agent_home_offline_body),
+                        action = signInAction(status, actions, profileRequired),
                         modifier = Modifier.padding(top = barFoot),
                     )
                     // Desktop's wand beside the button that makes the first chat.
                     HomePhase.Empty -> StatePage(
                         tag = AgentHomeTags.EMPTY,
-                        art = if (statusMessage(status) == null) StateArt.Make else null,
+                        art = if (statusMessage(status, profileRequired) == null) StateArt.Make else null,
                         title = stringResource(R.string.agent_home_empty_title),
-                        body = statusMessage(status) ?: stringResource(R.string.agent_home_empty_body),
-                        action = stringResource(R.string.session_new_chat) to actions.onCompose,
+                        body = statusMessage(status, profileRequired) ?: stringResource(R.string.agent_home_empty_body),
+                        action = signInAction(status, actions, profileRequired) ?: (stringResource(R.string.session_new_chat) to actions.onCompose),
                         modifier = Modifier.padding(top = barFoot),
                     )
                     HomePhase.List -> AgentHomeList(
@@ -289,8 +294,8 @@ fun AgentHomeScreen(
                         onLeaveSurface = actions.onLeaveSurface?.let { { surface: AgentFeedRow.Surface -> confirmingLeave = surface } },
                         // The list starts under the glass bar and scrolls on beneath it.
                         contentPadding = PaddingValues(top = top),
-                        header = statusMessage(status)?.let { text ->
-                            { item(key = "banner", contentType = "banner") { Banner(text) } }
+                        header = statusMessage(status, profileRequired)?.let { text ->
+                            { item(key = "banner", contentType = "banner") { Banner(text, signInAction(status, actions, profileRequired)) } }
                         },
                         // Room for the last card to scroll clear of the compose button.
                         bottom = { Spacer(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = AgentHomeSpec.fabClearance)) },
@@ -431,6 +436,7 @@ private fun barStatus(status: AgentLinkStatus): BarStatus? {
             AgentLinkStatus.Connecting -> R.string.status_connecting
             AgentLinkStatus.Offline -> R.string.status_offline
             AgentLinkStatus.Revoked -> R.string.agent_home_status_revoked
+            AgentLinkStatus.SignInRequired -> R.string.team_server_status_signed_out
             else -> R.string.agent_home_status_update
         },
     )
@@ -485,15 +491,21 @@ internal fun BoxScope.ComposeFab(onClick: () -> Unit, tag: String) {
 }
 
 @Composable
-private fun statusMessage(status: AgentLinkStatus): String? = when (status) {
+private fun statusMessage(status: AgentLinkStatus, profileRequired: Boolean = false): String? = when (status) {
     AgentLinkStatus.Revoked -> stringResource(R.string.agent_home_revoked)
     AgentLinkStatus.UpdateRequired -> stringResource(R.string.agent_home_update_required)
+    AgentLinkStatus.SignInRequired -> stringResource(if (profileRequired) R.string.team_server_profile_required else R.string.team_server_error_sign_in_required)
     else -> null
 }
 
+/** A team server's "Sign in again", while its sign-in has expired. */
+@Composable
+private fun signInAction(status: AgentLinkStatus, actions: AgentHomeActions, profileRequired: Boolean): Pair<String, () -> Unit>? =
+    if (status == AgentLinkStatus.SignInRequired) stringResource(if (profileRequired) R.string.team_server_add_name else R.string.team_server_sign_in_again) to actions.onSignIn else null
+
 /** Above the rows: why the agent can't be reached for good (removed, or too new). */
 @Composable
-private fun Banner(text: String) {
+private fun Banner(text: String, action: Pair<String, () -> Unit>? = null) {
     val scheme = MaterialTheme.colorScheme
     Row(
         modifier = Modifier
@@ -506,7 +518,13 @@ private fun Banner(text: String) {
     ) {
         Icon(Ionicon.AlertCircleOutline, 24.dp, scheme.onErrorContainer)
         Spacer(Modifier.size(16.dp))
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = scheme.onErrorContainer)
+        Text(text, style = MaterialTheme.typography.bodyMedium, color = scheme.onErrorContainer, modifier = Modifier.weight(1f, fill = false))
+        action?.let { (label, onClick) ->
+            Spacer(Modifier.size(8.dp))
+            androidx.compose.material3.TextButton(onClick = onClick, modifier = Modifier.testTag(AgentHomeTags.BANNER_ACTION)) {
+                Text(label, color = scheme.onErrorContainer)
+            }
+        }
     }
 }
 
@@ -524,6 +542,8 @@ fun AgentHome(
     onSettingsRow: (AgentSettingsRow) -> Unit,
     onOpenArtifacts: () -> Unit = {},
     onOpenSurface: (AgentFeedRow.Surface) -> Unit = {},
+    /** Signs the team server at [server] in again ([AgentConnection.server]). */
+    onSignIn: (server: String) -> Unit = {},
 ) {
     val session = remember(id) { graph.agentSessions.session(id) } ?: return
     val agents by graph.agentConnections.accounts.collectAsStateWithLifecycle()
@@ -533,7 +553,7 @@ fun AgentHome(
     ReportDrawnWhen { feed.loaded || status != AgentLinkStatus.Connecting }
     val add = LocalAddFlow.current
     val switchAccount = rememberHomeAccountSwitch(graph)
-    val actions = remember(graph, session, onOpenConversation, onCompose, onSettings, onSettingsRow, onOpenArtifacts, onOpenSurface, add, switchAccount) {
+    val actions = remember(graph, session, onOpenConversation, onCompose, onSettings, onSettingsRow, onOpenArtifacts, onOpenSurface, add, switchAccount, onSignIn) {
         AgentHomeActions(
             onOpenConversation = onOpenConversation,
             onCompose = onCompose,
@@ -544,6 +564,7 @@ fun AgentHome(
             onOpenArtifacts = onOpenArtifacts,
             onOpenSurface = onOpenSurface,
             onLeaveSurface = { session.leaveSurface(it.id) },
+            onSignIn = { graph.agentConnections.accounts.value.firstOrNull { it.id == id }?.server?.let(onSignIn) },
         )
     }
     CompositionLocalProvider(LocalAgentPictures provides session.pictures) {
@@ -553,6 +574,7 @@ fun AgentHome(
             status = status,
             accounts = rememberAccountMenu(graph),
             actions = actions,
+            profileRequired = agents.firstOrNull { it.id == id }?.profileRequired == true,
         )
     }
 }

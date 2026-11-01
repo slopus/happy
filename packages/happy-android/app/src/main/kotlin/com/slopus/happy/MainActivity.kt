@@ -1,6 +1,7 @@
 package com.slopus.happy
 
 import android.content.Intent
+import com.slopus.happy.connection.ServerSignInFlow
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -48,7 +49,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         MaxRefreshRate.follow(this)
-        if (savedInstanceState == null) DeepLinks.offer(intent)
+        if (savedInstanceState == null && !oauthCallback(intent)) DeepLinks.offer(intent)
         val ready = (application as HappyApplication).graphReady
         // The first frame waits for the graph (the system's splash stays up meanwhile); the main thread doesn't.
         if (!ready.isCompleted) holdFirstFrame()
@@ -136,7 +137,22 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        DeepLinks.offer(intent)
+        if (!oauthCallback(intent)) DeepLinks.offer(intent)
+    }
+
+    /**
+     * The browser coming back to a team server sign-in
+     * ([ServerSignInFlow.REDIRECT_URI]): handed to the sign-in in progress,
+     * if this process still has it (its verifier was in memory only), and
+     * never treated as a Happy link. Bringing this activity up closes the
+     * Custom Tab above it (singleTask).
+     */
+    private fun oauthCallback(intent: Intent?): Boolean {
+        val uri = intent?.takeIf { it.action == Intent.ACTION_VIEW }?.dataString ?: return false
+        if (!ServerSignInFlow.isRedirect(uri)) return false
+        val ready = (application as HappyApplication).graphReady
+        if (ready.isCompleted && ready.getCompletionExceptionOrNull() == null) ready.getCompleted().oauthCallback(uri)
+        return true
     }
 }
 

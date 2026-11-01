@@ -22,6 +22,12 @@ data class AgentConnectionCredentials(
     val publicUrl: String? = null,
     /** Absent for stored v1 pairs; v2 QR codes have no Tailcat coordinates. */
     val tailcatAvailable: Boolean? = null,
+    /**
+     * A team server signed in with OAuth (edge SSO): [publicUrl] is its
+     * origin, [deviceToken] is empty, and requests carry an access token
+     * that [AgentConnections.bearer] keeps fresh with this.
+     */
+    val oauth: OAuthCredential? = null,
 ) {
     override fun toString() = "AgentConnectionCredentials(deviceId=$deviceId, port=$port)"
 }

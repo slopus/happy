@@ -124,6 +124,21 @@ class AgentSessionTest {
     }
 
     @Test
+    fun signInRequiredStopsAnOpenStreamAndSigningInResumesIt() = runBlocking {
+        val session = sessions().session(id)!!
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ session.status.value }) { it == AgentLinkStatus.Connected }
+        // A refused refresh elsewhere (git watch, a request) while the stream stays open.
+        connections.update(id) { it.copy(signInRequired = true) }
+        eventually({ session.status.value }) { it == AgentLinkStatus.SignInRequired }
+        agent.frames = Channel(Channel.UNLIMITED)
+        connections.update(id) { it.copy(signInRequired = false) }
+        eventually({ agent.streamCursors.size }) { it == 2 }
+        assertEquals("c0", agent.streamCursors[1])
+        assertEquals(1, agent.calls.count { it == "GET /v0/bootstrap/desktop" })
+    }
+
+    @Test
     fun aGapReadsTheSnapshotAgain(): Unit = runBlocking {
         val session = sessions().session(id)!!
         eventually({ session.feed.value.loaded }) { it }

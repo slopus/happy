@@ -238,6 +238,11 @@ fun BrowserView(
         }
     }
     val shown = page
+    // A server whose edge refuses tunnels (edge SSO): no page can load through it; say why instead.
+    val noTunnels = stringResource(R.string.browser_tunnels_blocked)
+    LaunchedEffect(shown) {
+        shown?.scope?.client?.tunnelsBlocked?.collect { blocked -> if (blocked) failure = noTunnels }
+    }
     LaunchedEffect(shown) {
         shown ?: return@LaunchedEffect
         // A profile of its own where WebView has them: its own cookies, storage and proxy credential.
@@ -358,6 +363,7 @@ fun BrowserView(
             }
             IconButton(
                 onClick = {
+                    if (shown?.scope?.client?.tunnelsBlocked?.value == true) return@IconButton
                     failure = null
                     val view = web
                     if (view != null) view.reload() else if (page == null) attempt++

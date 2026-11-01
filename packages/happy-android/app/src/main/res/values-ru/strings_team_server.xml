@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_team_server.xml in ru: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="team_server_title">Войти на сервер</string>
+    <string name="team_server_address_hint">Сервер Happy вашей организации. Вход выполняется в браузере.</string>
+    <string name="team_server_checking">Проверка %1$s…</string>
+    <string name="team_server_continue_with">Продолжить через %1$s</string>
+    <string name="team_server_browser_host">Вход откроется в браузере на %1$s.</string>
+    <string name="team_server_waiting">Завершите вход в браузере.</string>
+    <string name="team_server_reopen">Открыть браузер снова</string>
+    <string name="team_server_finishing">Выполняется вход…</string>
+    <string name="team_server_name_title">Как вас зовут?</string>
+    <string name="team_server_name_detail">Это имя видят участники %1$s.</string>
+    <string name="team_server_name_placeholder">Ваше имя</string>
+    <string name="team_server_name_failed">Не удалось сохранить имя. Попробуйте ещё раз.</string>
+    <string name="team_server_failed">Не удалось войти</string>
+    <string name="team_server_try_again">Попробовать снова</string>
+    <string name="team_server_no_browser">Нет браузера, который может открыть страницу входа.</string>
+    <string name="team_server_error_invalid_address">Введите адрес сервера https:// без пути.</string>
+    <string name="team_server_error_no_sign_in">Этот сервер не поддерживает вход. Обратитесь к администратору.</string>
+    <string name="team_server_error_edge_blocked">Балансировщик нагрузки сервера не пропустил вход. Попросите администратора разрешить /v0/authentication без входа.</string>
+    <string name="team_server_error_unreachable">Не удалось подключиться к серверу. Проверьте адрес и соединение.</string>
+    <string name="team_server_error_denied">Вход отменён или отклонён.</string>
+    <string name="team_server_error_expired">Срок этого входа истёк. Попробуйте ещё раз.</string>
+    <string name="team_server_error_invalid_token">Служба входа не выдала подходящий токен.</string>
+    <string name="team_server_error_rejected">Сервер не принял этот вход.</string>
+    <string name="team_server_error_not_allowed">Ваша организация не разрешает добавлять этот сервер.</string>
+    <string name="team_server_error_sign_in_required">Срок входа на этот сервер истёк. Войдите снова.</string>
+    <string name="team_server_sign_in_again">Войти снова</string>
+    <string name="team_server_status_signed_out">вход не выполнен</string>
+    <string name="team_server_settings_signed_out">Вход не выполнен</string>
+    <string name="team_server_relay_disabled">Ваша организация отключила облачный ретранслятор Happy.</string>
+    <string name="team_server_pairing_disabled">Ваша организация отключила подключение агентов по коду.</string>
+    <string name="browser_tunnels_blocked">Сеть этого сервера не разрешает предпросмотр.</string>
+    <string name="start_sign_in_server">Войти на %1$s</string>
+    <string name="managed_by_organization">Управляется вашей организацией</string>
+    <string name="managed_server_url">URL командного сервера</string>
+    <string name="managed_server_url_description">Адрес https:// сервера Happy вашей организации. Приложение предлагает его при первом запуске и сохраняет.</string>
+    <string name="managed_allow_additional_servers">Разрешить другие серверы</string>
+    <string name="managed_analytics_enabled">Аналитика</string>
+    <string name="managed_hosted_relay_enabled">Облачный ретранслятор Happy</string>
+    <string name="managed_tailcat_enabled">Подключения Tailcat</string>
+    <string name="managed_phone_pairing_enabled">Подключение агентов по QR-коду</string>
+    <string name="team_server_profile_required">Укажите своё имя, чтобы продолжить работу с этим сервером.</string>
+    <string name="team_server_add_name">Указать имя</string>
+    <string name="managed_analytics_enabled_description">«Выкл.» отключает аналитику и блокирует настройку. «Вкл.» оставляет выбор за каждым пользователем.</string>
+</resources>

@@ -19,6 +19,8 @@ import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.connection.PairingFlow
 import com.slopus.happy.connection.PairingState
+import com.slopus.happy.connection.ServerSignInFlow
+import com.slopus.happy.connection.ServerSignInState
 import com.slopus.happy.ui.artifacts.artifactRoutes
 import kotlinx.serialization.Serializable
 
@@ -29,9 +31,22 @@ import kotlinx.serialization.Serializable
  */
 @Serializable data object PairingRoute
 
+/**
+ * Signing in to a team server (edge SSO). Carries nothing: the sign-in's
+ * PKCE verifier is a secret, so it waits in [AppGraph.serverSignIn].
+ */
+@Serializable data object ServerSignInRoute
+
+/**
+ * Where a team server's address goes to be signed in to (null: the
+ * person types it), provided at the app's root; null where nothing can.
+ */
+val LocalServerSignIn: androidx.compose.runtime.ProvidableCompositionLocal<((String?) -> Unit)?> = androidx.compose.runtime.compositionLocalOf { null }
+
 /** The Protocol V2 screens, signed in or out. HappyApp's NavHost calls this once. */
 fun NavGraphBuilder.agentConnectionRoutes(graph: AppGraph, nav: NavHostController) {
     page<PairingRoute> { Pairing(graph, nav) }
+    page<ServerSignInRoute> { ServerSignIn(graph, nav) }
     artifactRoutes(graph, nav)
     page<AgentSurfaceRoute> { entry -> AgentSurface(graph, nav, entry.toRoute()) }
 }
@@ -71,5 +86,60 @@ private class PairingHolder(private val graph: AppGraph) : ViewModel() {
 
     override fun onCleared() {
         flow?.let(graph::endAgentPairing)
+    }
+}
+
+/** Starts signing in to the team server at [address] (null: asked for), or [replacing] again, and shows it. */
+fun NavHostController.signInToServer(graph: AppGraph, address: String?, replacing: String? = null) {
+    graph.startServerSignIn(address, replacing)
+    navigate(ServerSignInRoute) { launchSingleTop = true }
+}
+
+@Composable
+private fun ServerSignIn(graph: AppGraph, nav: NavHostController) {
+    val holder = viewModel { ServerSignInHolder(graph) }
+    val flow by graph.serverSignIn.collectAsStateWithLifecycle()
+    LaunchedEffect(flow) { flow?.let { holder.flow = it } }
+    val state = key(flow) { flow?.state?.collectAsStateWithLifecycle()?.value } ?: ServerSignInState.Enter()
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val dark = com.slopus.happy.ui.theme.HappyTheme.colors.dark
+    LaunchedEffect(state) {
+        val done = state as? ServerSignInState.Done ?: return@LaunchedEffect
+        // Signed in again: back where the person was; a new server opens, as a new agent does.
+        if (flow?.replacing != null) nav.popBackStack() else graph.open(done.account.id)
+    }
+    ServerSignInScreen(
+        state = state,
+        onSubmitAddress = { flow?.submit(it) },
+        onOpenBrowser = { flow?.browserUrl()?.let { url -> openSignInPage(context, url, dark) } },
+        onSubmitName = { flow?.submitName(it) },
+        onRetry = { flow?.retry() },
+        onBack = { nav.popBackStack() },
+    )
+}
+
+/**
+ * The authorization page in a Custom Tab (RFC 8252: the system browser,
+ * never a WebView), so the person's SSO session and password manager are
+ * there; where no browser has Custom Tabs, the default browser.
+ */
+private fun openSignInPage(context: android.content.Context, url: String, dark: Boolean) {
+    val intent = androidx.browser.customtabs.CustomTabsIntent.Builder()
+        .setShowTitle(true)
+        .setColorScheme(if (dark) androidx.browser.customtabs.CustomTabsIntent.COLOR_SCHEME_DARK else androidx.browser.customtabs.CustomTabsIntent.COLOR_SCHEME_LIGHT)
+        .build()
+    try {
+        intent.launchUrl(context, android.net.Uri.parse(url))
+    } catch (_: android.content.ActivityNotFoundException) {
+        android.widget.Toast.makeText(context, R.string.team_server_no_browser, android.widget.Toast.LENGTH_LONG).show()
+    }
+}
+
+/** The sign-in this screen shows, kept by its back stack entry; popping the screen ends it. */
+private class ServerSignInHolder(private val graph: AppGraph) : ViewModel() {
+    var flow: ServerSignInFlow? = graph.serverSignIn.value
+
+    override fun onCleared() {
+        flow?.let(graph::endServerSignIn)
     }
 }

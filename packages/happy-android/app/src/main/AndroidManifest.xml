@@ -52,7 +52,8 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- app.config.js scheme: happy://terminal?<key> (ui/connect/DeepLinks.kt) -->
+            <!-- app.config.js scheme: happy://terminal?<key> (ui/connect/DeepLinks.kt), and
+                 happy://oauth/callback, team server sign-in's redirect URI (MainActivity.oauthCallback) -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -108,6 +109,10 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/conversation_media_paths" />
         </provider>
+        <!-- Android Enterprise managed configurations (config/ManagedSettings.kt), the edge SSO contract's keys. -->
+        <meta-data
+            android:name="android.content.APP_RESTRICTIONS"
+            android:resource="@xml/app_restrictions" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@drawable/notification_icon" />

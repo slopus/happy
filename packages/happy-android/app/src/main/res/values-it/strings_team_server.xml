@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_team_server.xml in it: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="team_server_title">Accedi a un server</string>
+    <string name="team_server_address_hint">Il server Happy della tua organizzazione. Accedi dal browser.</string>
+    <string name="team_server_checking">Verifica di %1$s…</string>
+    <string name="team_server_continue_with">Continua con %1$s</string>
+    <string name="team_server_browser_host">Accederai su %1$s nel browser.</string>
+    <string name="team_server_waiting">Completa l\'accesso nel browser.</string>
+    <string name="team_server_reopen">Riapri il browser</string>
+    <string name="team_server_finishing">Accesso in corso…</string>
+    <string name="team_server_name_title">Come ti chiami?</string>
+    <string name="team_server_name_detail">Le persone su %1$s vedono questo nome.</string>
+    <string name="team_server_name_placeholder">Il tuo nome</string>
+    <string name="team_server_name_failed">Impossibile salvare il nome. Riprova.</string>
+    <string name="team_server_failed">Impossibile accedere</string>
+    <string name="team_server_try_again">Riprova</string>
+    <string name="team_server_no_browser">Nessun browser può aprire la pagina di accesso.</string>
+    <string name="team_server_error_invalid_address">Inserisci l\'indirizzo https:// del server, senza percorso.</string>
+    <string name="team_server_error_no_sign_in">Questo server non offre l\'accesso. Chiedi al tuo amministratore.</string>
+    <string name="team_server_error_edge_blocked">Il bilanciatore di carico del server non ha lasciato passare l\'accesso. Chiedi all\'amministratore di consentire /v0/authentication senza accesso.</string>
+    <string name="team_server_error_unreachable">Impossibile raggiungere il server. Controlla l\'indirizzo e la connessione.</string>
+    <string name="team_server_error_denied">L\'accesso è stato annullato o rifiutato.</string>
+    <string name="team_server_error_expired">Questo accesso è scaduto. Riprova.</string>
+    <string name="team_server_error_invalid_token">Il servizio di accesso non ha restituito un token valido.</string>
+    <string name="team_server_error_rejected">Il server non ha accettato questo accesso.</string>
+    <string name="team_server_error_not_allowed">La tua organizzazione non consente di aggiungere questo server.</string>
+    <string name="team_server_error_sign_in_required">Il tuo accesso a questo server è scaduto. Accedi di nuovo.</string>
+    <string name="team_server_sign_in_again">Accedi di nuovo</string>
+    <string name="team_server_status_signed_out">disconnesso</string>
+    <string name="team_server_settings_signed_out">Disconnesso</string>
+    <string name="team_server_relay_disabled">La tua organizzazione ha disattivato il relay ospitato di Happy.</string>
+    <string name="team_server_pairing_disabled">La tua organizzazione ha disattivato il collegamento degli agenti tramite codice.</string>
+    <string name="browser_tunnels_blocked">La rete di questo server non consente le anteprime.</string>
+    <string name="start_sign_in_server">Accedi a %1$s</string>
+    <string name="managed_by_organization">Gestito dalla tua organizzazione</string>
+    <string name="managed_server_url">URL del server del team</string>
+    <string name="managed_server_url_description">L\'indirizzo https:// del server Happy della tua organizzazione. L\'app lo propone al primo avvio e lo mantiene.</string>
+    <string name="managed_allow_additional_servers">Consenti altri server</string>
+    <string name="managed_analytics_enabled">Analisi</string>
+    <string name="managed_hosted_relay_enabled">Relay ospitato di Happy</string>
+    <string name="managed_tailcat_enabled">Connessioni Tailcat</string>
+    <string name="managed_phone_pairing_enabled">Collegamento degli agenti tramite codice QR</string>
+    <string name="team_server_profile_required">Aggiungi il tuo nome per continuare a usare questo server.</string>
+    <string name="team_server_add_name">Aggiungi il tuo nome</string>
+    <string name="managed_analytics_enabled_description">Disattivato disattiva le analisi e blocca l\'impostazione. Attivato lascia la scelta a ogni persona.</string>
+</resources>

@@ -127,6 +127,8 @@ fun AccountScreen(
     onRequestPush: () -> Unit = {},
     onRefreshPush: () -> Unit = {},
     onDeletePushToken: (PushToken) -> Unit = {},
+    /** Management set analytics (`analyticsEnabled`): the switch shows it, locked. */
+    analyticsManaged: Boolean = false,
 ) {
     val colors = HappyTheme.colors
     val copy = rememberCopy()
@@ -174,12 +176,14 @@ fun AccountScreen(
                 val analytics = stringResource(R.string.settings_account_analytics)
                 Item(
                     title = analytics,
+                    subtitle = if (analyticsManaged) stringResource(R.string.managed_by_organization) else null,
                     icon = { SettingsTile(Ionicon.AnalyticsOutline, SettingsTiles.blue) },
                     rightElement = {
                         HappySwitch(
                             checked = !analyticsOptOut,
                             onCheckedChange = { enabled -> onAnalyticsOptOutChange(!enabled) },
                             modifier = Modifier.testTag(AccountTags.ANALYTICS_SWITCH),
+                            enabled = !analyticsManaged,
                             label = analytics,
                         )
                     },

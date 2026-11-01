@@ -272,6 +272,7 @@ internal fun linkStatusText(status: AgentLinkStatus?, syncing: Boolean = false):
     AgentLinkStatus.Offline -> stringResource(R.string.status_offline)
     AgentLinkStatus.Revoked -> stringResource(R.string.conversation_revoked)
     AgentLinkStatus.UpdateRequired -> stringResource(R.string.conversation_update_required)
+    AgentLinkStatus.SignInRequired -> stringResource(R.string.team_server_error_sign_in_required)
 }
 
 @Composable

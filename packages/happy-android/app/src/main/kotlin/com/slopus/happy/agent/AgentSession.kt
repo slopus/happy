@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -59,7 +60,11 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.random.Random
 
 /** How an agent connection's live link stands, as its home and chats show it. */
-enum class AgentLinkStatus { Connecting, Connected, Offline, Revoked, UpdateRequired }
+enum class AgentLinkStatus {
+    Connecting, Connected, Offline, Revoked, UpdateRequired,
+    /** A team server's sign-in expired (edge SSO): the person signs in again, then the link resumes. */
+    SignInRequired,
+}
 
 /**
  * One agent connection while the phone talks to it (iOS's DirectSyncEngine):
@@ -88,16 +93,21 @@ class AgentSession internal constructor(
     private val snapshotQueued = AtomicBoolean(false)
     // Asks for the settings changed here to be sent; one ask covers every change made meanwhile.
     private val settingsQueued = Channel<Unit>(Channel.CONFLATED)
-    private var link: AgentClient.Link? = null
-    private val token = MutableStateFlow<String?>(null)
+    private var route: Pair<com.slopus.happy.connection.AgentConnectionCredentials, Transport>? = null
 
+    /**
+     * The transport is made once; the bearer is asked for on every request,
+     * so a team server's access token is refreshed as it nears expiry.
+     */
     val client: AgentClient = AgentClient.lazy {
-        linkLock.withLock {
-            link ?: run {
+        val (credentials, transport) = linkLock.withLock {
+            route ?: run {
                 val credentials = connections.credentials(connectionId) ?: throw AgentConnectionException(AgentConnectionException.Reason.Revoked)
-                AgentClient.Link(connections.transport(connectionId, credentials, makeTransport), credentials.deviceToken).also { link = it }
+                (credentials to connections.transport(connectionId, credentials, makeTransport)).also { route = it }
             }
         }
+        val renew: (suspend (String) -> String)? = if (credentials.oauth != null) { stale -> connections.renew(connectionId, stale) } else null
+        AgentClient.Link(transport, connections.bearer(connectionId, credentials), renew, credentials.oauth?.let { { profile -> connections.signedOut(connectionId, profile) } })
     }
 
     // Empty until the kept catalog is read off the main thread (init), then live.
@@ -238,10 +248,19 @@ class AgentSession internal constructor(
         scope.launch {
             // The kept catalog first: home draws it, and the link resumes from its cursor.
             traced("AgentSession.readCache") { readCache() }?.let { cached -> catalogLock.withLock { catalogState.update { if (it.loaded) it else cached } } }
-            active.distinctUntilChanged().collectLatest { on -> if (on) coroutineScope {
-                launch { watchGit() }
-                live()
-            } }
+            // A team server that wants signing in again (a refused refresh) stops the link at once,
+            // even with its event stream still open, and it resumes from its cursor after.
+            val signedIn = connections.accounts.map { list -> list.none { it.id == connectionId && it.signInRequired } }.distinctUntilChanged()
+            combine(active.distinctUntilChanged(), signedIn, ::Pair).collectLatest { (on, signedIn) ->
+                when {
+                    !signedIn -> statusState.value = AgentLinkStatus.SignInRequired
+                    on -> coroutineScope {
+                        launch { watchGit() }
+                        live()
+                    }
+                    statusState.value == AgentLinkStatus.SignInRequired -> statusState.value = AgentLinkStatus.Connecting
+                }
+            }
         }
         scope.launch {
             settingsQueued.receiveAsFlow().collect { deliverSettings() }
@@ -258,7 +277,7 @@ class AgentSession internal constructor(
     suspend fun close() {
         scope.cancel()
         withContext(kotlinx.coroutines.NonCancellable) {
-            linkLock.withLock { link?.transport?.close(); link = null }
+            linkLock.withLock { route?.second?.close(); route = null }
         }
     }
 
@@ -268,6 +287,7 @@ class AgentSession internal constructor(
         // there; only a gap or a refused cursor reads the whole snapshot again.
         var snapshotRead = catalogState.value.let { it.loaded && it.cursor != null }
         while (true) {
+            awaitSignedIn()
             if (statusState.value != AgentLinkStatus.Connected) statusState.value = AgentLinkStatus.Connecting
             try {
                 refreshIdentity()
@@ -289,6 +309,12 @@ class AgentSession internal constructor(
                         statusState.value = AgentLinkStatus.UpdateRequired
                         return
                     }
+                    AgentConnectionException.Reason.SignInRequired, AgentConnectionException.Reason.ProfileRequired -> {
+                        val profile = e.reason == AgentConnectionException.Reason.ProfileRequired
+                        connections.signedOut(connectionId, profile)
+                        backoff = INITIAL_BACKOFF
+                        continue
+                    }
                     else -> statusState.value = AgentLinkStatus.Offline
                 }
             } catch (e: AgentApiException) {
@@ -303,11 +329,21 @@ class AgentSession internal constructor(
         }
     }
 
+    /**
+     * While a team server wants signing in again, the link waits, saying so,
+     * and resumes from its cursor once the person has.
+     */
+    private suspend fun awaitSignedIn() {
+        if (connections.accounts.value.none { it.id == connectionId && it.signInRequired }) return
+        statusState.value = AgentLinkStatus.SignInRequired
+        connections.accounts.first { list -> list.none { it.id == connectionId && it.signInRequired } }
+    }
+
     /** Health (protocol 27 or later) and the agent's own name and avatar, shown in the account menu. */
     private suspend fun refreshIdentity() {
         val known = connections.accounts.value.firstOrNull { it.id == connectionId }
-        val link = client.resolve()
-        val info = AgentIdentity.refresh(link.transport, link.token, known?.name.orEmpty(), known?.avatarFile?.let { known.avatarETag })
+        val info = AgentIdentity.refresh(client.requester, known?.name.orEmpty(), known?.avatarFile?.let { known.avatarETag }, oauth = client.isOAuth())
+        client.noteHealth(info)
         if (known != null) {
             connections.update(connectionId, info.avatar) { it.copy(name = info.name, thumbhash = info.thumbhash ?: it.thumbhash, revoked = false) }
         }

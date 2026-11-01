@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_team_server.xml in pl: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="team_server_title">Zaloguj się do serwera</string>
+    <string name="team_server_address_hint">Serwer Happy Twojej organizacji. Logujesz się do niego w przeglądarce.</string>
+    <string name="team_server_checking">Sprawdzanie %1$s…</string>
+    <string name="team_server_continue_with">Kontynuuj z %1$s</string>
+    <string name="team_server_browser_host">Zalogujesz się w przeglądarce na %1$s.</string>
+    <string name="team_server_waiting">Dokończ logowanie w przeglądarce.</string>
+    <string name="team_server_reopen">Otwórz przeglądarkę ponownie</string>
+    <string name="team_server_finishing">Logowanie…</string>
+    <string name="team_server_name_title">Jak masz na imię?</string>
+    <string name="team_server_name_detail">Osoby na %1$s widzą to imię.</string>
+    <string name="team_server_name_placeholder">Twoje imię</string>
+    <string name="team_server_name_failed">Nie udało się zapisać imienia. Spróbuj ponownie.</string>
+    <string name="team_server_failed">Nie udało się zalogować</string>
+    <string name="team_server_try_again">Spróbuj ponownie</string>
+    <string name="team_server_no_browser">Żadna przeglądarka nie może otworzyć strony logowania.</string>
+    <string name="team_server_error_invalid_address">Wpisz adres https:// serwera, bez ścieżki.</string>
+    <string name="team_server_error_no_sign_in">Ten serwer nie oferuje logowania. Zapytaj administratora.</string>
+    <string name="team_server_error_edge_blocked">Load balancer serwera nie przepuścił logowania. Poproś administratora o dopuszczenie /v0/authentication bez logowania.</string>
+    <string name="team_server_error_unreachable">Nie można połączyć się z serwerem. Sprawdź adres i połączenie.</string>
+    <string name="team_server_error_denied">Logowanie zostało anulowane lub odrzucone.</string>
+    <string name="team_server_error_expired">To logowanie wygasło. Spróbuj ponownie.</string>
+    <string name="team_server_error_invalid_token">Usługa logowania nie zwróciła użytecznego tokenu.</string>
+    <string name="team_server_error_rejected">Serwer nie zaakceptował tego logowania.</string>
+    <string name="team_server_error_not_allowed">Twoja organizacja nie pozwala dodać tego serwera.</string>
+    <string name="team_server_error_sign_in_required">Twoje logowanie do tego serwera wygasło. Zaloguj się ponownie.</string>
+    <string name="team_server_sign_in_again">Zaloguj się ponownie</string>
+    <string name="team_server_status_signed_out">wylogowano</string>
+    <string name="team_server_settings_signed_out">Wylogowano</string>
+    <string name="team_server_relay_disabled">Twoja organizacja wyłączyła hostowany przekaźnik Happy.</string>
+    <string name="team_server_pairing_disabled">Twoja organizacja wyłączyła łączenie agentów kodem.</string>
+    <string name="browser_tunnels_blocked">Sieć tego serwera nie pozwala na podglądy.</string>
+    <string name="start_sign_in_server">Zaloguj się do %1$s</string>
+    <string name="managed_by_organization">Zarządzane przez Twoją organizację</string>
+    <string name="managed_server_url">Adres serwera zespołu</string>
+    <string name="managed_server_url_description">Adres https:// serwera Happy Twojej organizacji. Aplikacja proponuje go przy pierwszym uruchomieniu i go zachowuje.</string>
+    <string name="managed_allow_additional_servers">Zezwalaj na inne serwery</string>
+    <string name="managed_analytics_enabled">Analityka</string>
+    <string name="managed_hosted_relay_enabled">Hostowany przekaźnik Happy</string>
+    <string name="managed_tailcat_enabled">Połączenia Tailcat</string>
+    <string name="managed_phone_pairing_enabled">Łączenie agentów kodem QR</string>
+    <string name="team_server_profile_required">Dodaj swoje imię, aby dalej korzystać z tego serwera.</string>
+    <string name="team_server_add_name">Dodaj imię</string>
+    <string name="managed_analytics_enabled_description">Wyłączenie wyłącza analitykę i blokuje ustawienie. Włączenie pozostawia wybór każdej osobie.</string>
+</resources>

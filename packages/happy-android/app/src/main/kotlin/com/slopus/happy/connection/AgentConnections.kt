@@ -29,6 +29,12 @@ data class AgentConnection(
     /** The agent removed this phone (401/403); it must be paired again. */
     val revoked: Boolean = false,
     val addedAt: Long,
+    /** A team server signed in with OAuth (edge SSO), not a paired agent: its origin. */
+    val server: String? = null,
+    /** The team server's sign-in expired and couldn't be refreshed: the person signs in again. */
+    val signInRequired: Boolean = false,
+    /** Signed in, but the team server has no profile for the person yet: they give a name (with [signInRequired]). */
+    val profileRequired: Boolean = false,
 )
 
 /**
@@ -45,8 +51,13 @@ class AgentConnections(
     private val makeTransport: (AgentConnectionCredentials) -> Transport = { agentTransport(it.address, it.port, it.publicUrl, it.tailcatAvailable != false) },
     private val now: () -> Long = System::currentTimeMillis,
     private val pictures: File? = null,
+    /** Refreshes team servers' access tokens; without it they sign in again when one expires. */
+    private val serverAuth: ServerAuthClient? = null,
 ) {
     private val lock = Mutex()
+    /** Team servers' access tokens: in memory only, by connection id. */
+    private val tokens = mutableMapOf<String, AccessToken>()
+    private val refreshing = mutableMapOf<String, Mutex>()
     private val state = MutableStateFlow(readRegistry())
     private val endpointLock = Any()
     private val endpoints = mutableMapOf<String, AgentEndpoint>()
@@ -137,6 +148,110 @@ class AgentConnections(
     }
 
     /**
+     * Keeps a team server signed in with OAuth ([origin], edge SSO): its
+     * [credential] (the refresh token, Keystore-encrypted like a device
+     * token) and [access] (in memory). Signing in to a server already on the
+     * phone, or [replacing] one, renews that connection in place. Its name
+     * is the server's own once it answers, else [fallbackName].
+     */
+    suspend fun addServer(origin: AgentOrigin, credential: OAuthCredential, access: AccessToken, fallbackName: String, replacing: String? = null): AgentConnection = lock.withLock {
+        withContext(Dispatchers.IO) {
+            val existing = state.value.firstOrNull { it.id == replacing } ?: state.value.firstOrNull { it.server == origin.value }
+            val id = existing?.id ?: "agent-connection-${UUID.randomUUID()}"
+            val credentials = AgentConnectionCredentials(
+                address = origin.host,
+                port = origin.port,
+                deviceId = "",
+                deviceToken = "",
+                publicUrl = origin.value,
+                tailcatAvailable = false,
+                oauth = credential,
+            )
+            val transport = makeTransport(credentials)
+            val agent = try {
+                AgentIdentity.refresh(transport, access.value, fallbackName, oauth = true)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            } finally {
+                transport.close()
+            }
+            secrets.setItem(id, json.encodeToString(AgentConnectionCredentials.serializer(), credentials))
+            synchronized(tokens) { tokens[id] = access }
+            val account = keep(
+                AgentConnection(
+                    id = id,
+                    name = agent?.name ?: existing?.name ?: fallbackName,
+                    thumbhash = agent?.thumbhash ?: existing?.thumbhash,
+                    avatarFile = existing?.avatarFile,
+                    avatarETag = existing?.avatarETag,
+                    addedAt = existing?.addedAt ?: now(),
+                    server = origin.value,
+                ),
+                agent?.avatar ?: NodeAvatar.Unchanged,
+            )
+            write(state.value.filterNot { it.id == id } + account)
+            account
+        }
+    }
+
+    /**
+     * What [id]'s requests are authorized with: a paired agent's device
+     * token, or a team server's access token, refreshed first when it is
+     * missing or within a minute of expiring. Throws
+     * [AgentConnectionException]: SignInRequired when it can't be refreshed,
+     * Unavailable when the refresh URL can't be reached.
+     */
+    suspend fun bearer(id: String, credentials: AgentConnectionCredentials): String {
+        if (credentials.oauth == null) return credentials.deviceToken
+        synchronized(tokens) { tokens[id] }?.takeIf(::fresh)?.let { return it.value }
+        return refresh(id, stale = null)
+    }
+
+    /**
+     * [id]'s team server wants signing in again ([profileRequired]: only a
+     * name): its links wait, and home says so, until the person has.
+     */
+    suspend fun signedOut(id: String, profileRequired: Boolean = false) {
+        update(id) { it.copy(signInRequired = true, profileRequired = profileRequired) }
+    }
+
+    /** After [stale] was refused with a 401: a newer token, refreshed unless another request already did. */
+    suspend fun renew(id: String, stale: String): String = refresh(id, stale)
+
+    private fun fresh(token: AccessToken) = token.expiresAtMillis == null || token.expiresAtMillis - now() > REFRESH_MARGIN_MILLIS
+
+    private suspend fun refresh(id: String, stale: String?): String {
+        val gate = synchronized(tokens) { refreshing.getOrPut(id) { Mutex() } }
+        return gate.withLock {
+            synchronized(tokens) { tokens[id] }?.takeIf { it.value != stale && fresh(it) }?.let { return@withLock it.value }
+            val credential = credentials(id)?.oauth ?: throw AgentConnectionException(AgentConnectionException.Reason.SignInRequired)
+            val (access, next) = try {
+                serverAuth?.refresh(credential) ?: throw ServerAuthException(ServerAuthException.Reason.SignInRequired)
+            } catch (e: ServerAuthException) {
+                if (e.reason == ServerAuthException.Reason.Unreachable) {
+                    throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
+                }
+                synchronized(tokens) { tokens.remove(id) }
+                signedOut(id)
+                throw AgentConnectionException(AgentConnectionException.Reason.SignInRequired).initCause(e)
+            }
+            if (next != credential) {
+                // A rotated refresh token: the old one may already be spent.
+                lock.withLock {
+                    withContext(Dispatchers.IO) {
+                        val saved = read(id) ?: return@withContext
+                        secrets.setItem(id, json.encodeToString(AgentConnectionCredentials.serializer(), saved.copy(oauth = next)))
+                    }
+                }
+            }
+            synchronized(tokens) { tokens[id] = access }
+            access.value
+        }
+    }
+
+    /**
      * [account] with [avatar] in its file: new bytes go to a file named by
      * their hash, so a picture's path changes with it and no cache shows the
      * old one; the file it replaces is deleted.
@@ -171,6 +286,7 @@ class AgentConnections(
     suspend fun remove(id: String) = lock.withLock {
         withContext(Dispatchers.IO) {
             synchronized(endpointLock) { endpoints.remove(id) }?.retire()
+            synchronized(tokens) { tokens.remove(id) }
             secrets.deleteItem(id)
             state.value.firstOrNull { it.id == id }?.avatarFile?.let { File(it).delete() }
             write(state.value.filterNot { it.id == id })
@@ -200,6 +316,8 @@ class AgentConnections(
         const val SECRETS_PREFS = "agent-connection-credentials"
         const val KEYCHAIN_SERVICE = "agent-connection"
         private const val KEY = "accounts"
+        /** A team server's access token is refreshed this long before it expires (edge SSO contract §1). */
+        const val REFRESH_MARGIN_MILLIS = 60_000L
         private val json = Json { ignoreUnknownKeys = true }
     }
 }

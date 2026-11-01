@@ -19,6 +19,7 @@ import com.slopus.happy.auth.SecureStoreCredentialStore
 import com.slopus.happy.auth.SecureStoreKeys
 import com.slopus.happy.config.LiveAvatarsSetting
 import com.slopus.happy.config.LocalSettings
+import com.slopus.happy.config.ManagedSettings
 import com.slopus.happy.config.ServerConfig
 import com.slopus.happy.data.HappyDatabase
 import com.slopus.happy.data.HappyStore
@@ -31,8 +32,11 @@ import com.slopus.happy.payments.PreferencesPurchasesCache
 import com.slopus.happy.payments.PurchaseAccount
 import com.slopus.happy.payments.PurchasesRepository
 import com.slopus.happy.payments.RevenueCatPurchases
+import com.slopus.happy.connection.AgentConnectionException
 import com.slopus.happy.connection.AgentConnections
 import com.slopus.happy.connection.PairingFlow
+import com.slopus.happy.connection.ServerAuthClient
+import com.slopus.happy.connection.ServerSignInFlow
 import com.slopus.happy.connection.TailcatTransport
 import com.slopus.happy.sync.AccountSync
 import com.slopus.happy.ui.changelog.ChangelogReadMarker
@@ -102,6 +106,16 @@ class AppGraph(
     )
     val localSettings = LocalSettings(context.getSharedPreferences(LocalSettings.PREFS_NAME, Context.MODE_PRIVATE))
 
+    /** What the organization's device management set (Android Enterprise managed configurations). */
+    val managed = ManagedSettings(appContext)
+
+    /**
+     * Whether a Happy account may be used on [url]: management may turn
+     * Happy's hosted relay (the default server) off; a self-hosted one stays.
+     */
+    fun relayAllowed(url: String = serverUrl): Boolean =
+        managed.policy.value.hostedRelayEnabled != false || url.trimEnd('/') != serverConfig.defaultUrl.trimEnd('/')
+
     /** Animated Avatars, kept on this phone for every account (not cleared with local settings). */
     val liveAvatars = LiveAvatarsSetting(context.getSharedPreferences(LiveAvatarsSetting.PREFS_NAME, Context.MODE_PRIVATE))
 
@@ -160,7 +174,7 @@ class AppGraph(
         }
     }
 
-    val auth = AuthRepository(openAccountCredentials, authApi)
+    val auth = AuthRepository(openAccountCredentials, authApi, allowed = { relayAllowed() })
 
     private val inMemoryDatabases = databaseName == null
     private val databases = HashMap<String, HappyDatabase>()
@@ -252,7 +266,11 @@ class AppGraph(
      * Agent connections over Happy Protocol V2: accounts of their own beside
      * the relay account, kept through a relay sign-out.
      */
+    /** Team server sign-in and token refresh (edge SSO): discovery, code exchange, refresh; never follows a redirect. */
+    val serverAuth = ServerAuthClient(okHttp)
+
     val agentConnections = AgentConnections(
+        serverAuth = serverAuth,
         secrets = ExpoSecureStore(
             prefs = context.getSharedPreferences(AgentConnections.SECRETS_PREFS, Context.MODE_PRIVATE),
             keys = secureStoreKeys,
@@ -335,13 +353,49 @@ class AppGraph(
     /** Starts connecting the agent behind a `happy://direct?` code, replacing any unfinished pairing. */
     fun startAgentPairing(code: String) {
         agentPairingState.value?.close()
-        agentPairingState.value = PairingFlow(scope, agentConnections, deviceName).also { it.start(code) }
+        agentPairingState.value = PairingFlow(scope, agentConnections, deviceName).also { flow ->
+            // Management may turn pairing by code off; every scanner's route ends here, and says so.
+            if (managed.policy.value.phonePairingEnabled == false) flow.refuse(AgentConnectionException.Reason.Disabled) else flow.start(code)
+        }
     }
 
     /** The pairing screen left. */
     fun endAgentPairing(flow: PairingFlow) {
         flow.close()
         agentPairingState.compareAndSet(flow, null)
+    }
+
+    private val serverSignInState = MutableStateFlow<ServerSignInFlow?>(null)
+
+    /** The team server sign-in on screen, if any. In memory only: its PKCE verifier is a secret. */
+    val serverSignIn: StateFlow<ServerSignInFlow?> = serverSignInState.asStateFlow()
+
+    /**
+     * Starts signing in to a team server at [address] (null: the person
+     * types it), or signing [replacing] in again; replaces any unfinished one.
+     */
+    fun startServerSignIn(address: String?, replacing: String? = null) {
+        serverSignInState.value?.close()
+        val onboarding = agentConnections.accounts.value.firstOrNull { it.id == replacing && it.profileRequired }?.server
+        serverSignInState.value = ServerSignInFlow(scope, agentConnections, serverAuth, { managed.policy.value }, replacing)
+            .also { flow -> if (onboarding != null) flow.onboard(onboarding) else flow.start(address) }
+    }
+
+    /** The sign-in screen left. */
+    fun endServerSignIn(flow: ServerSignInFlow) {
+        flow.close()
+        serverSignInState.compareAndSet(flow, null)
+    }
+
+    /** The browser came back to [ServerSignInFlow.REDIRECT_URI] (MainActivity). */
+    fun oauthCallback(uri: String) {
+        serverSignInState.value?.callback(uri)
+    }
+
+    /** Whether [id] is the team server management pinned: it can't be removed. */
+    fun isPinned(id: String): Boolean {
+        val pinned = managed.policy.value.serverUrl ?: return false
+        return agentConnections.accounts.value.any { it.id == id && it.server == pinned }
     }
 
     /** What the agent lists this phone as: the name the person gave it, else the model. */
@@ -377,6 +431,18 @@ class AppGraph(
                 val id = openAccountId() ?: return@collect
                 accountStore.updateDisplay(id, AccountDisplay.of(Profile.parse(store.profile())))
             }
+        }
+    }
+
+    init {
+        // Managed configuration, enforced where it acts, not only in the UI that shows it.
+        scope.launch {
+            managed.policy.collect { policy -> TailcatTransport.enabled = policy.tailcatEnabled != false }
+        }
+        scope.launch {
+            // Management can only turn analytics off (analyticsEnabled = false); never on.
+            combine(managed.policy, settings.settings) { policy, current -> policy.analyticsEnabled == false && !current.analyticsOptOut }
+                .collect { force -> if (force && auth.state.value is AuthState.SignedIn) settings.change { it.copy(analyticsOptOut = true) } }
         }
     }
 
@@ -487,6 +553,8 @@ class AppGraph(
         stopAccount()
         store.use(database((state as? AuthState.SignedIn)?.let { accountId(it.credentials) }))
         if (state !is AuthState.SignedIn) return
+        // Kept, but not synced, while management has Happy's hosted relay off.
+        if (!relayAllowed()) return
         val account = AccountSync(
             http = http,
             okHttp = okHttp,

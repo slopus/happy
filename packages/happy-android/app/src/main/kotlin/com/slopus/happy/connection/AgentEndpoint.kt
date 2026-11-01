@@ -102,7 +102,8 @@ internal class AgentEndpointTransport(
     override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
         val (base, snapshot) = current()
         val response = base.request(method, path, credential, body, headers, category)
-        if (method == "GET" && path == "/v0/config" && response.status == 200 && credential == snapshot.credentials.deviceToken) {
+        // A team server (OAuth) is reached at the address it was signed in to, whatever its config says.
+        if (method == "GET" && path == "/v0/config" && response.status == 200 && snapshot.credentials.oauth == null && credential == snapshot.credentials.deviceToken) {
             val advertisement = AgentEndpointAdvertisement.decode(response.body)
             val changed = endpoint.apply(advertisement, snapshot)
             if (changed && advertisement == AgentEndpointAdvertisement.Select(null) && snapshot.credentials.tailcatAvailable == false) {
@@ -116,6 +117,8 @@ internal class AgentEndpointTransport(
         current().first.stream(path, credential, headers, silenceMillis)
 
     override suspend fun socket(): TransportSocket = current().first.socket()
+    override suspend fun webSocketTunnel(path: String, credential: String): TransportSocket? = current().first.webSocketTunnel(path, credential)
+    override suspend fun overHttps(): Boolean = current().first.overHttps()
     override suspend fun reset() { lock.withLock { selected?.first }?.reset() }
     override suspend fun reset(category: RequestCategory) { lock.withLock { selected?.first }?.reset(category) }
     override suspend fun close() {

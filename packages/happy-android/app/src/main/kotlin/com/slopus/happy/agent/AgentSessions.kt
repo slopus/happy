@@ -71,12 +71,16 @@ class AgentSessions(
     private suspend fun refreshIdentity(id: String) {
         val credentials = connections.credentials(id) ?: return
         val transport = connections.transport(id, credentials, makeTransport)
+        val renew: (suspend (String) -> String)? = if (credentials.oauth != null) { stale -> connections.renew(id, stale) } else null
+        val signedOut: (suspend (Boolean) -> Unit)? = credentials.oauth?.let { { profile -> connections.signedOut(id, profile) } }
+        val client = AgentClient.lazy { AgentClient.Link(transport, connections.bearer(id, credentials), renew, signedOut) }
         try {
             while (true) {
                 val known = connections.accounts.value.firstOrNull { it.id == id && !it.revoked } ?: return
-                try {
+                // A team server that wants signing in again waits for the person.
+                if (!known.signInRequired) try {
                     val etag = known.avatarFile?.takeIf { File(it).isFile }?.let { known.avatarETag }
-                    val info = AgentIdentity.refresh(transport, credentials.deviceToken, known.name, etag)
+                    val info = AgentIdentity.refresh(client.requester, known.name, etag, oauth = credentials.oauth != null)
                     connections.update(id, info.avatar) { it.copy(name = info.name, thumbhash = info.thumbhash ?: it.thumbhash) }
                 } catch (error: CancellationException) {
                     throw error
@@ -84,6 +88,10 @@ class AgentSessions(
                     if (error.reason == AgentConnectionException.Reason.Revoked) {
                         connections.update(id) { it.copy(revoked = true) }
                         return
+                    }
+                    if (error.reason == AgentConnectionException.Reason.SignInRequired || error.reason == AgentConnectionException.Reason.ProfileRequired) {
+                        val profile = error.reason == AgentConnectionException.Reason.ProfileRequired
+                        connections.signedOut(id, profile)
                     }
                     transport.reset()
                 } catch (_: Exception) {

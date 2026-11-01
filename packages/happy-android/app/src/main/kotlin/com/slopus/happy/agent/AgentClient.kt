@@ -1,6 +1,14 @@
 package com.slopus.happy.agent
 
 import com.slopus.happy.connection.AgentConnectionException
+import com.slopus.happy.connection.AgentIdentity
+import com.slopus.happy.connection.AgentInfo
+import com.slopus.happy.connection.SignInRule
+import com.slopus.happy.connection.TransportSocket
+import com.slopus.happy.connection.UpgradeRefused
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import com.slopus.happy.connection.RequestCategory
 import com.slopus.happy.connection.Transport
 import com.slopus.happy.connection.TransportResponse
@@ -32,7 +40,21 @@ class AgentApiException(val status: Int, val code: String?, override val message
  * credentials are read on the first request.
  */
 class AgentClient private constructor(private val link: suspend () -> Link) {
-    class Link(val transport: Transport, val token: String)
+    /**
+     * The transport and the bearer it is authorized with. A team server
+     * signed in with OAuth has [renew]: a 401 asks it once for a newer
+     * token and the request is sent again, and its refusals follow
+     * [SignInRule] (SignInRequired, never Revoked), told to [signedOut]
+     * first so the account says so however the refusal is handled.
+     */
+    class Link(
+        val transport: Transport,
+        val token: String,
+        internal val renew: (suspend (stale: String) -> String)? = null,
+        internal val signedOut: (suspend (profileRequired: Boolean) -> Unit)? = null,
+    ) {
+        val oauth: Boolean get() = renew != null
+    }
 
     constructor(transport: Transport, token: String) : this(Link(transport, token).let { fixed -> { fixed } })
 
@@ -78,13 +100,58 @@ class AgentClient private constructor(private val link: suspend () -> Link) {
     ): TransportResponse {
         val link = link()
         val bytes = body?.let { json.encodeToString(JsonElement.serializer(), it).toByteArray(Charsets.UTF_8) }
-        return check(link.transport.request(method, path, link.token, bytes, headers, category))
+        return check(link, authorized(link) { token -> link.transport.request(method, path, token, bytes, headers, category) })
     }
 
     /** Sends [bytes] as they are (an image), with their Content-Type in [headers]: a [RequestCategory.File]. */
     suspend fun sendBytes(method: String, path: String, bytes: ByteArray, headers: Map<String, String>): TransportResponse {
         val link = link()
-        return check(link.transport.request(method, path, link.token, bytes, headers, RequestCategory.File))
+        return check(link, authorized(link) { token -> link.transport.request(method, path, token, bytes, headers, RequestCategory.File) })
+    }
+
+    /**
+     * One request, authorized (a team server's token renewed after a 401),
+     * its answer as it came: for [AgentIdentity], which reads statuses
+     * itself. A team server that wants signing in again throws SignInRequired.
+     */
+    val requester: AgentIdentity.Requester = AgentIdentity.Requester { method, path, headers, category ->
+        val link = link()
+        val response = authorized(link) { token -> link.transport.request(method, path, token, null, headers, category) }
+        if (link.oauth && SignInRule.requiresSignIn(response)) signInRequired(link)
+        response
+    }
+
+    /** Whether the open link is a team server signed in with OAuth. */
+    suspend fun isOAuth(): Boolean = link().oauth
+
+    /** [call] with the link's token; after a team server's 401, once more if [recover] says to. */
+    private suspend fun authorized(link: Link, call: suspend (String) -> TransportResponse): TransportResponse {
+        val response = call(link.token)
+        return recover(link, response)?.let { call(it) } ?: response
+    }
+
+    /**
+     * The token to send again with after a team server's [refused] answer,
+     * or null to let it stand (edge SSO contract §3). Only the daemon's own
+     * JSON 401 is asked about, with `GET /v0/authentication` and the same
+     * bearer: valid but no profile is the profile gate (ProfileRequired),
+     * valid with a user is transient (the same token once more), invalid is
+     * renewed. An edge's 401 stands: the edge may refuse what the daemon
+     * accepts, so the person signs in again.
+     */
+    private suspend fun recover(link: Link, refused: TransportResponse): String? {
+        val renew = link.renew ?: return null
+        if (refused.status != 401 || !SignInRule.isHappyError(refused.headers["content-type"], refused.body)) return null
+        val check = link.transport.request("GET", "/v0/authentication", link.token)
+        val root = if (check.status == 200) runCatching { json.parseToJsonElement(check.text).jsonObject }.getOrNull() else null
+        val authenticated = (root?.get("authenticated") as? kotlinx.serialization.json.JsonPrimitive)?.content == "true"
+        val user = (root?.get("userId") as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content
+        return when {
+            root == null -> renew(link.token)
+            authenticated && user == null -> signInRequired(link, profileRequired = true)
+            authenticated -> link.token
+            else -> renew(link.token)
+        }
     }
 
     /** The answer to [send] decoded; an answer that doesn't decode is [AgentConnectionException.Reason.InvalidResponse]. */
@@ -106,7 +173,19 @@ class AgentClient private constructor(private val link: suspend () -> Link) {
     /** `GET /v0/events/stream` from [after]; the stream's status is checked. */
     suspend fun events(after: String?): TransportStream {
         val link = link()
-        val stream = link.transport.stream("/v0/events/stream", link.token, after?.let { mapOf("Last-Event-ID" to it) } ?: emptyMap())
+        val headers = after?.let { mapOf("Last-Event-ID" to it) } ?: emptyMap()
+        var stream = link.transport.stream("/v0/events/stream", link.token, headers)
+        if (stream.status == 401 && link.renew != null) {
+            val refused = try {
+                TransportResponse(stream.status, stream.headers, stream.readAll())
+            } catch (_: Exception) {
+                TransportResponse(stream.status, stream.headers)
+            } finally {
+                stream.close()
+            }
+            val retry = recover(link, refused) ?: signInRequired(link)
+            stream = link.transport.stream("/v0/events/stream", retry, headers)
+        }
         if (stream.status != 200) {
             val body = try {
                 stream.readAll()
@@ -115,7 +194,7 @@ class AgentClient private constructor(private val link: suspend () -> Link) {
             } finally {
                 stream.close()
             }
-            check(com.slopus.happy.connection.TransportResponse(stream.status, stream.headers, body))
+            check(link, com.slopus.happy.connection.TransportResponse(stream.status, stream.headers, body))
         }
         return stream
     }
@@ -133,10 +212,67 @@ class AgentClient private constructor(private val link: suspend () -> Link) {
     /** The transport and token, the credentials read and the link made on the first call. */
     internal suspend fun resolve(): Link = link()
 
+    /** Health's `capabilities.webSocketTunnels`, once known ([noteHealth], or read by [webSocketTunnel]). */
+    @Volatile private var webSocketTunnels: Boolean? = null
+    private val blocked = MutableStateFlow(false)
+
+    /**
+     * This server's edge refuses CONNECT and it offers no WebSocket tunnels
+     * (edge SSO contract §4): previews and other tunnels are off for it,
+     * with a note, and not tried again while this client lives.
+     */
+    val tunnelsBlocked: StateFlow<Boolean> = blocked.asStateFlow()
+
+    /** What health said, kept so a tunnel needn't ask again. */
+    fun noteHealth(info: AgentInfo) {
+        webSocketTunnels = info.webSocketTunnels
+    }
+
+    internal fun blockTunnels() {
+        blocked.value = true
+    }
+
+    /**
+     * A tunnel over the WebSocket twin of the CONNECT route [connectPath]
+     * (`<connectPath>/websocket`), when this agent offers them and is
+     * reached over HTTPS; null otherwise, and CONNECT is the way. A refused
+     * upgrade is an [AgentApiException] for the daemon's own refusals, and
+     * SignInRequired or Revoked by the same rules as a request.
+     */
+    suspend fun webSocketTunnel(connectPath: String): TransportSocket? {
+        val link = link()
+        if (!link.transport.overHttps()) return null
+        val supported = webSocketTunnels ?: AgentIdentity.webSocketTunnels(requester, link.oauth).also { webSocketTunnels = it }
+        if (!supported) return null
+        val path = "$connectPath/websocket"
+        return try {
+            try {
+                link.transport.webSocketTunnel(path, link.token)
+            } catch (e: UpgradeRefused) {
+                val retry = recover(link, e.response) ?: throw e
+                link.transport.webSocketTunnel(path, retry)
+            }
+        } catch (e: UpgradeRefused) {
+            check(link, e.response)
+            throw AgentApiException(e.response.status, null, null)
+        }
+    }
+
     suspend fun close() = link().transport.close()
 
-    private fun check(response: TransportResponse): TransportResponse {
-        if (response.status == 401) throw AgentConnectionException(AgentConnectionException.Reason.Revoked)
+    /**
+     * A team server wants signing in again ([profileRequired]: a name
+     * first): the account is told, and the request fails.
+     */
+    internal suspend fun signInRequired(link: Link? = null, profileRequired: Boolean = false): Nothing {
+        (link ?: link()).signedOut?.invoke(profileRequired)
+        val reason = if (profileRequired) AgentConnectionException.Reason.ProfileRequired else AgentConnectionException.Reason.SignInRequired
+        throw AgentConnectionException(reason)
+    }
+
+    private suspend fun check(link: Link, response: TransportResponse): TransportResponse {
+        if (link.oauth && SignInRule.requiresSignIn(response)) signInRequired(link)
+        if (!link.oauth && response.status == 401) throw AgentConnectionException(AgentConnectionException.Reason.Revoked)
         if (response.status in 200..299 || response.status == 304) return response
         val failure = try {
             json.parseToJsonElement(response.text)

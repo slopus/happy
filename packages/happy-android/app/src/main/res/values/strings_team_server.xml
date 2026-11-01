@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Team servers behind an SSO load balancer (edge SSO: connection/ServerSignInFlow.kt) and
+  managed configurations (config/ManagedSettings.kt). Not in happy-app's catalogs.
+  Translated in values-*/ (AndroidStringsTranslatedTest).
+-->
+<resources>
+    <string name="team_server_title">Sign in to a server</string>
+    <string name="team_server_address_hint">Your organization\'s Happy server. You sign in to it in your browser.</string>
+    <string name="team_server_address_placeholder" translatable="false">happy.example.com</string>
+    <string name="team_server_checking">Checking %1$s…</string>
+    <string name="team_server_continue_with">Continue with %1$s</string>
+    <string name="team_server_browser_host">You\'ll sign in at %1$s in your browser.</string>
+    <string name="team_server_waiting">Finish signing in in your browser.</string>
+    <string name="team_server_reopen">Open browser again</string>
+    <string name="team_server_finishing">Signing in…</string>
+    <string name="team_server_name_title">What\'s your name?</string>
+    <string name="team_server_name_detail">People on %1$s see this name.</string>
+    <string name="team_server_name_placeholder">Your name</string>
+    <string name="team_server_name_failed">Couldn\'t save your name. Try again.</string>
+    <string name="team_server_failed">Couldn\'t sign in</string>
+    <string name="team_server_try_again">Try again</string>
+    <string name="team_server_no_browser">No browser can open the sign-in page.</string>
+    <string name="team_server_error_invalid_address">Enter the server\'s https:// address, without a path.</string>
+    <string name="team_server_error_no_sign_in">This server doesn\'t offer sign-in. Ask your administrator.</string>
+    <string name="team_server_error_edge_blocked">The server\'s load balancer didn\'t let sign-in through. Ask your administrator to allow /v0/authentication without signing in.</string>
+    <string name="team_server_error_unreachable">Could not reach the server. Check the address and your connection.</string>
+    <string name="team_server_error_denied">Sign-in was cancelled or refused.</string>
+    <string name="team_server_error_expired">This sign-in expired. Try again.</string>
+    <string name="team_server_error_invalid_token">The sign-in service didn\'t return a usable token.</string>
+    <string name="team_server_error_rejected">The server didn\'t accept this sign-in.</string>
+    <string name="team_server_error_not_allowed">Your organization doesn\'t allow adding this server.</string>
+    <string name="team_server_error_sign_in_required">Your sign-in to this server has expired. Sign in again.</string>
+    <string name="team_server_sign_in_again">Sign in again</string>
+    <string name="team_server_status_signed_out">signed out</string>
+    <string name="team_server_settings_signed_out">Signed out</string>
+    <string name="team_server_relay_disabled">Your organization has turned off Happy\'s hosted relay.</string>
+    <string name="team_server_pairing_disabled">Your organization has turned off connecting agents by code.</string>
+    <string name="browser_tunnels_blocked">This server\'s network doesn\'t allow previews.</string>
+    <string name="start_sign_in_server">Sign in to %1$s</string>
+    <string name="managed_by_organization">Managed by your organization</string>
+    <string name="managed_server_url">Team server URL</string>
+    <string name="managed_server_url_description">The https:// address of your organization\'s Happy server. The app offers it at first launch and keeps it.</string>
+    <string name="managed_allow_additional_servers">Allow additional servers</string>
+    <string name="managed_analytics_enabled">Analytics</string>
+    <string name="managed_hosted_relay_enabled">Happy hosted relay</string>
+    <string name="managed_tailcat_enabled">Tailcat connections</string>
+    <string name="managed_phone_pairing_enabled">Connecting agents by QR code</string>
+    <string name="team_server_profile_required">Add your name to keep using this server.</string>
+    <string name="team_server_add_name">Add your name</string>
+    <string name="managed_analytics_enabled_description">Off turns analytics off and locks it. On leaves the choice to each person.</string>
+</resources>
