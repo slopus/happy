@@ -49,12 +49,9 @@ public enum StoryLayout {
     /// A tap at `x` in the viewer: back a story in its first third, on past it.
     public static func step(atX x: CGFloat, width: CGFloat) -> Int { x < width / 3 ? -1 : 1 }
 
-    public static func replies(size: CGSize, bar: CGRect, measured: CGFloat, pull: CGFloat) -> (panel: CGRect, text: CGRect, header: CGRect, grabber: CGRect, expanded: CGFloat) {
-        let width = size.width - 24, expanded = min(stage(in: size).height * 0.6, max(44, measured + 52), max(44, bar.minY - 100))
-        let height = 44 + (expanded - 44) * min(1, max(0, pull))
-        return (CGRect(x: 12, y: bar.minY - height - 8, width: width, height: height),
-                CGRect(x: 12, y: 44, width: width - 24, height: max(0, height - 52)), CGRect(x: 12, y: 10, width: width - 24, height: 30),
-                CGRect(x: (width - 36) / 2, y: 5, width: 36, height: 4), expanded)
+    public static func replies(bar: CGRect, buttons: CGRect, measured: CGFloat) -> CGRect {
+        let height = min(max(0, measured), max(0, bar.minY - buttons.maxY - 20))
+        return CGRect(x: bar.minX + 4, y: bar.minY - height - 8, width: bar.width - 8, height: height)
     }
 
     /// Layer centers use the full media frame, as the wire contract specifies.
@@ -115,7 +112,7 @@ public enum StoryLayout {
         let segments = (0..<max(count, 1)).map { CGRect(x: M.inset + CGFloat($0) * (segment + M.segmentGap), y: top, width: segment, height: M.segmentHeight) }
         let mark = CGRect(x: M.inset + 4, y: top + M.segmentHeight + 10, width: M.mark, height: M.mark)
         let close = CGRect(x: size.width - M.inset - M.close, y: mark.midY - M.close / 2, width: M.close, height: M.close)
-        let more = close.offsetBy(dx: -M.close, dy: 0), mute = more.offsetBy(dx: -M.close, dy: 0)
+        let more = close.offsetBy(dx: -48, dy: 0), mute = more.offsetBy(dx: -48, dy: 0)
         let name = CGRect(x: mark.maxX + 10, y: (mark.midY - nameHeight / 2).rounded(), width: max(0, mute.minX - 4 - mark.maxX), height: nameHeight)
         let chip = CGRect(x: mark.minX, y: mark.maxY + 10, width: chipWidth, height: chipWidth > 0 ? M.chip : 0)
         let roundFrame = round ? CGRect(x: mark.minX, y: chip.maxY + 10, width: M.round, height: M.round) : .zero

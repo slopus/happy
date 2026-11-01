@@ -12,19 +12,32 @@ private final class StoryPinch: UIPinchGestureRecognizer {
     override var state: UIGestureRecognizer.State { get { phase } set { phase = newValue } }
 }
 private final class StoryPan: UIPanGestureRecognizer {
+    private var phase: UIGestureRecognizer.State = .changed
+    override var state: UIGestureRecognizer.State { get { phase } set { phase = newValue } }
     var delta = CGPoint.zero
     override func translation(in view: UIView?) -> CGPoint { delta }
     override func setTranslation(_ translation: CGPoint, in view: UIView?) { delta = translation }
+}
+private final class StoryHold: UILongPressGestureRecognizer {
+    private var phase: UIGestureRecognizer.State = .began
+    override var state: UIGestureRecognizer.State { get { phase } set { phase = newValue } }
+    var touches = 1
+    override var numberOfTouches: Int { touches }
 }
 
 /// A computer whose story media never answers (`hangs`) or is gone (404).
 private actor StoryMediaComputer: AgentTransport {
     let hangs: Bool
+    let replies: Int
     var asked: [String] = []
-    init(hangs: Bool) { self.hangs = hangs }
+    init(hangs: Bool, replies: Int = 0) { self.hangs = hangs; self.replies = replies }
 
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         asked.append("\(method) \(path)")
+        if path.hasSuffix("/replies") {
+            let replies = (1...max(1, replies)).map { ["id": "r\($0)", "userId": NSNull(), "text": "Reply \($0)", "createdAt": $0] as [String: Any] }
+            return .init(status: 200, body: try JSONSerialization.data(withJSONObject: ["replies": replies]))
+        }
         if hangs { try await Task.sleep(for: .seconds(60)) }
         return .init(status: 404, body: Data(#"{"error":"not_found"}"#.utf8))
     }
@@ -36,39 +49,112 @@ private actor StoryMediaComputer: AgentTransport {
 /// its last frame, and when it can't be played at all.
 @MainActor
 final class StoryViewerTests: XCTestCase {
-    func testRepliesStayInlineAndTheReplyFieldUsesAMaterialCapsule() throws {
+    func testMoreMenuDoesNotSnapshotTheButtonDuringDismissal() throws {
         let viewer = try viewer(hangs: true)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.addSubview(viewer.view); window.isHidden = false
+        defer { viewer.leave(); window.isHidden = true }
+        viewer.view.frame = window.bounds; viewer.view.layoutIfNeeded()
+        let more = try XCTUnwrap(viewer.view.subviews.first { $0.accessibilityLabel == Strings.more } as? UIButton)
+        let interaction = UIContextMenuInteraction(delegate: more)
+        let configuration = UIContextMenuConfiguration(identifier: nil, previewProvider: nil, actionProvider: nil)
+        let highlight = try XCTUnwrap(more.contextMenuInteraction(interaction, previewForHighlightingMenuWithConfiguration: configuration))
+        let dismissal = try XCTUnwrap(more.contextMenuInteraction(interaction, previewForDismissingMenuWithConfiguration: configuration))
+        for preview in [highlight, dismissal] {
+            XCTAssertEqual(preview.parameters.backgroundColor, .clear)
+            let path = try XCTUnwrap(preview.parameters.visiblePath)
+            XCTAssertTrue(path.isEmpty)
+            XCTAssertTrue(preview.view.bounds.isEmpty)
+            XCTAssertTrue(preview.target.container === more)
+            XCTAssertEqual(preview.target.center, CGPoint(x: more.bounds.midX, y: more.bounds.midY))
+            XCTAssertTrue(preview.parameters.shadowPath?.isEmpty == true)
+        }
+    }
+
+    func testHoldingPausesPlaybackHidesChromeAndResumesWithoutNavigating() throws {
+        let viewer = try viewer(hangs: true)
+        defer { viewer.leave() }
+        let media = try XCTUnwrap(viewer.view.subviews.first { $0.accessibilityIdentifier == "storyMediaStage" })
+        let player = try XCTUnwrap(media.subviews.compactMap { ($0 as? StoryPlayerView)?.playerLayer.player }.first)
+        let close = try XCTUnwrap(viewer.view.subviews.first { $0.accessibilityLabel == "Close" })
+        let gesture = try XCTUnwrap(viewer.view.gestureRecognizers?.compactMap { $0 as? UILongPressGestureRecognizer }.first)
+        XCTAssertEqual(gesture.minimumPressDuration, 0.2)
+        let hold = StoryHold()
+        _ = viewer.perform(NSSelectorFromString("pressed:"), with: hold)
+        XCTAssertEqual(player.rate, 0); XCTAssertEqual(close.alpha, 0)
+        viewer.tick(CADisplayLink(target: viewer, selector: #selector(StoryViewerController.tick(_:))))
+        XCTAssertEqual(player.rate, 0); XCTAssertEqual(viewer.index, 0)
+        hold.state = .ended
+        _ = viewer.perform(NSSelectorFromString("pressed:"), with: hold)
+        XCTAssertGreaterThan(player.rate, 0); XCTAssertEqual(close.alpha, 1); XCTAssertEqual(viewer.index, 0)
+        hold.state = .began; hold.touches = 2
+        _ = viewer.perform(NSSelectorFromString("pressed:"), with: hold)
+        XCTAssertGreaterThan(player.rate, 0, "two fingers paused playback")
+        hold.touches = 1
+        _ = viewer.perform(NSSelectorFromString("pressed:"), with: hold)
+        XCTAssertEqual(player.rate, 0)
+        let pinch = StoryPinch(); pinch.scale = 2
+        _ = viewer.perform(NSSelectorFromString("pinched:"), with: pinch)
+        _ = viewer.perform(NSSelectorFromString("pressed:"), with: hold)
+        XCTAssertGreaterThan(player.rate, 0, "holding while pinching paused playback")
+        XCTAssertEqual(close.alpha, 1); XCTAssertEqual(viewer.index, 0)
+        pinch.state = .ended; _ = viewer.perform(NSSelectorFromString("pinched:"), with: pinch)
+        _ = viewer.perform(NSSelectorFromString("openReplies"))
+        _ = viewer.perform(NSSelectorFromString("pressed:"), with: hold)
+        XCTAssertEqual(close.alpha, 1, "holding over expanded replies hid the chrome")
+        XCTAssertEqual(player.rate, 0); XCTAssertEqual(viewer.index, 0)
+    }
+
+    func testRepliesExpandInlineScrollAboveTheFixedInputAndCollapseOnDimOrDownSwipe() async throws {
+        let viewer = try viewer(hangs: true, replies: 60)
+        defer { viewer.leave() }
         viewer.view.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        var story = try Self.story("v1", kind: "video")
+        story.replyCount = 60; story.replies = [.init(id: "r59", userId: nil, text: "Reply 59", createdAt: 59), .init(id: "r60", userId: nil, text: "Reply 60", createdAt: 60)]
+        viewer.refresh([story, try Self.story("i2", kind: "image")])
         viewer.view.layoutIfNeeded()
         let capsule = try XCTUnwrap(viewer.view.subviews.first { $0.accessibilityIdentifier == "storyReplyCapsule" } as? UIVisualEffectView)
         XCTAssertNotNil(capsule.effect)
         XCTAssertEqual(capsule.layer.cornerRadius, capsule.bounds.height / 2)
+        let input = capsule.frame
+        let preview = try XCTUnwrap(viewer.view.subviews.compactMap { $0 as? UILabel }.first { $0.text?.contains("View all 60") == true })
+        XCTAssertFalse(preview.text?.contains("Reply 1\n") == true)
         _ = viewer.perform(NSSelectorFromString("openReplies"))
-        let panel = try XCTUnwrap(viewer.view.subviews.first { $0.accessibilityIdentifier == "storyRepliesDrawer" } as? UIVisualEffectView)
-        let drawer = try XCTUnwrap(panel.contentView.subviews.first { $0.accessibilityIdentifier == "storyReplies" } as? UITextView)
-        XCTAssertFalse(drawer.isHidden)
+        let list = try XCTUnwrap(viewer.view.subviews.first { $0.accessibilityIdentifier == "storyReplies" } as? UITextView)
+        try await until { list.text.contains("Reply 1\n") }
+        viewer.view.layoutIfNeeded(); list.layoutIfNeeded()
+        XCTAssertTrue(list.text.contains("Reply 1\n")); XCTAssertTrue(list.text.contains("Reply 60"))
+        XCTAssertFalse(list.isHidden); XCTAssertTrue(preview.isHidden); XCTAssertFalse(viewer.playing)
+        XCTAssertGreaterThan(list.contentSize.height, list.bounds.height)
+        XCTAssertEqual(list.frame.maxY, input.minY - 8); XCTAssertEqual(capsule.frame, input)
         XCTAssertNil(viewer.presentedViewController, "replies presented a sheet")
-        XCTAssertEqual(drawer.backgroundColor, .clear)
-        XCTAssertFalse(viewer.view.subviews.contains { ($0 as? UIButton)?.configuration?.title == "Open chat" && !$0.isHidden })
+        XCTAssertEqual(list.backgroundColor, .clear)
+        XCTAssertFalse(list.isOpaque)
+        XCTAssertFalse(viewer.view.subviews.contains { $0.accessibilityIdentifier == "storyRepliesDrawer" })
         let dim = try XCTUnwrap(viewer.view.subviews.first { $0.accessibilityIdentifier == "storyRepliesDim" } as? UIControl)
         let close = try XCTUnwrap(viewer.view.subviews.first { $0.accessibilityLabel == "Close" })
         XCTAssertGreaterThan(try XCTUnwrap(viewer.view.subviews.firstIndex(of: close)), try XCTUnwrap(viewer.view.subviews.firstIndex(of: dim)))
+        XCTAssertEqual(list.frame.minY, close.frame.maxY + 12)
+        for button in viewer.view.subviews.compactMap({ $0 as? UIButton }) { XCTAssertNil(button.configuration); XCTAssertEqual(button.tintColor, .white) }
         let media = try XCTUnwrap(viewer.view.subviews.first { $0.accessibilityIdentifier == "storyMediaStage" })
         let layers = try XCTUnwrap(media.layer.sublayers)
         let text = try XCTUnwrap(media.subviews.compactMap { $0 as? UITextView }.first)
         XCTAssertTrue(layers.indices.filter { layers[$0] is CAGradientLayer }.allSatisfy { $0 < layers.firstIndex(of: text.layer)! })
         let action = try XCTUnwrap(dim.actions(forTarget: viewer, forControlEvent: .touchUpInside)?.first)
         _ = viewer.perform(NSSelectorFromString(action))
-        XCTAssertTrue(drawer.isHidden)
-        XCTAssertFalse(panel.isHidden)
-        XCTAssertEqual(panel.frame.height, 44)
-        viewer.tick(CADisplayLink(target: viewer, selector: #selector(StoryViewerController.tick(_:))))
-        XCTAssertTrue(viewer.playing, "tucking replies left the video paused")
+        XCTAssertTrue(list.isHidden); XCTAssertFalse(preview.isHidden)
+        XCTAssertTrue(viewer.playing, "collapsing replies left the video paused")
+        XCTAssertEqual(capsule.frame, input)
         _ = viewer.perform(NSSelectorFromString("openReplies"))
+        try await until { list.text.contains("Reply 1\n") }
         XCTAssertFalse(viewer.playing)
-        _ = viewer.perform(NSSelectorFromString("closeReplies"))
-        XCTAssertTrue(drawer.isHidden)
-        viewer.leave()
+        let pan = StoryPan(); pan.state = .ended; pan.delta = CGPoint(x: 0, y: 100)
+        list.contentOffset.y = 100
+        _ = viewer.perform(NSSelectorFromString("repliesDragged:"), with: pan)
+        XCTAssertFalse(list.isHidden, "a scrolled list collapsed before reaching its top")
+        list.contentOffset = .zero
+        _ = viewer.perform(NSSelectorFromString("repliesDragged:"), with: pan)
+        XCTAssertTrue(list.isHidden); XCTAssertTrue(viewer.playing); XCTAssertEqual(viewer.index, 0)
     }
     func testPinchClampsToThreeAndSpringsBackWithoutPausingOrNavigating() throws {
         let viewer = try viewer(hangs: true)
@@ -96,9 +182,9 @@ final class StoryViewerTests: XCTestCase {
         return try JSONDecoder().decode(Story.self, from: Data(json.utf8))
     }
 
-    private func viewer(hangs: Bool, seen: @escaping @MainActor (String) -> Void = { _ in }) throws -> StoryViewerController {
+    private func viewer(hangs: Bool, replies: Int = 0, seen: @escaping @MainActor (String) -> Void = { _ in }) throws -> StoryViewerController {
         let library = MediaLibrary(namespace: "story-viewer-\(UUID().uuidString)", directory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
-        let engine = SyncEngine(client: AgentClient(transport: StoryMediaComputer(hangs: hangs), token: "t"), directory: nil)
+        let engine = SyncEngine(client: AgentClient(transport: StoryMediaComputer(hangs: hangs, replies: replies), token: "t"), directory: nil)
         let poster = StoryPoster(id: "agent:a", person: false, me: false, name: "Task", mark: .none, stories: [try Self.story("v1", kind: "video"), try Self.story("i2", kind: "image")])
         let viewer = StoryViewerController(engine: engine, library: library, images: nil, posters: [poster], start: 0, names: [:], seen: seen)
         viewer.loadViewIfNeeded()

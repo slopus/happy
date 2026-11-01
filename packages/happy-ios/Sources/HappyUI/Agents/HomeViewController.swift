@@ -98,7 +98,6 @@ final class HomeViewController: UIViewController {
         applyGround()
         registerForTraitChanges([SidebarColumnTrait.self]) { (self: Self, _) in self.applyGround() }
         view.addSubview(sidebar)
-        view.addSubview(storiesRow)
         storiesRow.onOpen = { [weak self] index in self.map { $0.openStories($0.agentHome.posters, start: index) } }
         storiesRow.onAdd = { [weak self] in
             guard let self, let session, gallery?.preparing != true else { return }
@@ -230,6 +229,7 @@ final class HomeViewController: UIViewController {
             if shownBeside != nil { updateSelection() }
         }
         if storiesRow.posters != home.posters || storiesRow.enabled != home.storiesEnabled || storiesRow.personMark != home.personMark { storiesRow.apply(home.posters, enabled: home.storiesEnabled, personMark: home.personMark); view.setNeedsLayout() }
+        sidebar.stories = home.storiesEnabled ? storiesRow : nil
         if let viewer = presentedViewController as? StoryViewerController { (viewer.names, viewer.me, viewer.agents) = (storyNames, home.userId, home.allRows); viewer.refresh(home.stories) }
         if search != nil { showResults() }
         warmUp()
@@ -406,9 +406,7 @@ final class HomeViewController: UIViewController {
         resultsView.insets = UIEdgeInsets(top: searchInsets.chromeTop, left: 0, bottom: searchInsets.listBottom, right: 0)
         sidebar.frame = layout.content
         session?.warm.layOut(width: layout.column.width, environment: traitCollection.textEnvironment)
-        storiesColumn = layout.column
-        var insets = UIEdgeInsets(layout.listInsets)
-        insets.top += storiesRow.enabled ? StoryLayout.Metrics.rowHeight : 0
+        let insets = UIEdgeInsets(layout.listInsets)
         let indicator = UIEdgeInsets(layout.indicatorInsets)
         if sidebar.contentInsets != insets {
             // A shrinking top leaves nothing scrolled past it.
@@ -418,16 +416,6 @@ final class HomeViewController: UIViewController {
             sidebar.setInsets(insets, indicator: indicator, keepsTop: false)
         }
         empty.frame = layout.empty
-        placeStories()
-    }
-
-    /// Where the rows sit, so the stories row keeps to the safe area's sides with them.
-    private var storiesColumn = CGRect.zero
-    /// The stories row rides just over the list's first row, scrolling with it.
-    private func placeStories() {
-        let height = storiesRow.enabled ? StoryLayout.Metrics.rowHeight : 0
-        storiesRow.isHidden = height == 0 || sidebar.isHidden
-        storiesRow.frame = CGRect(x: storiesColumn.minX, y: sidebar.frame.minY - sidebar.contentOffsetY - height, width: storiesColumn.width, height: height)
     }
 
     /// Names by ID for the viewer: members, and the agents tasks and bots run.
@@ -588,7 +576,6 @@ extension HomeViewController {
     }
 
     private func listDidScroll() {
-        placeStories()
         #if DEBUG || HAPPY_FIXTURES
         GymFrameMeter.noteScroll()
         #endif

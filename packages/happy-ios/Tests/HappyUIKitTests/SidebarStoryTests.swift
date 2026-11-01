@@ -11,6 +11,34 @@ import XCTest
 /// story; anywhere else on the row, its chat.
 @MainActor
 final class SidebarStoryTests: XCTestCase {
+    func testStoriesAreARealFirstRowAndKeepTheirContentFrameWhileScrolling() async throws {
+        let rows = (0..<30).map { Row(id: "task:\($0)", nodeId: "task:\($0)", kind: .space, label: "Task \($0)") }
+        let (list, window) = try await list(rows)
+        defer { window.isHidden = true }
+        list.setInsets(UIEdgeInsets(top: 120, left: 0, bottom: 0, right: 0), indicator: .zero, keepsTop: true)
+        let stories = StoriesRowView(); stories.apply([], enabled: true)
+        list.stories = stories
+        await list.settle(); window.layoutIfNeeded()
+        XCTAssertEqual(list.list.items.first?.identity, SidebarStoriesItem.id)
+        let host = try XCTUnwrap(stories.superview)
+        XCTAssertTrue(list.list.loadedItemViews.contains { $0 === host })
+        let frame = stories.frame
+        let first = try XCTUnwrap(list.view(for: "task:0"))
+        let distance = first.convert(first.bounds, to: list).minY - stories.convert(stories.bounds, to: list).minY
+        for offset: CGFloat in [60, -80, 0] {
+            list.setContentOffsetY(offset); await list.settle(); window.layoutIfNeeded()
+            if offset < 0 { XCTAssertLessThan(list.contentOffsetY, 0) }
+            if offset > 0 { XCTAssertGreaterThan(list.contentOffsetY, 0) }
+            XCTAssertEqual(stories.frame, frame)
+            XCTAssertEqual(first.convert(first.bounds, to: list).minY - stories.convert(stories.bounds, to: list).minY, distance, accuracy: 0.5)
+            XCTAssertEqual(stories.convert(stories.bounds, to: list).minY + list.contentOffsetY, 0, accuracy: 0.5)
+        }
+        list.stories = nil; await list.settle()
+        XCTAssertFalse(list.list.items.contains { $0.identity == SidebarStoriesItem.id })
+        let plain = SidebarList.derive(.init(rows: rows, width: 390, dark: false, displayScale: 3, selected: nil, notice: nil), previous: nil)
+        XCTAssertEqual(list.list.items.map(\.identity), plain.identities)
+    }
+
     func testYourStoryKeepsOnePhotoTileWithAnIndependentAddBadge() throws {
         let row = StoriesRowView(frame: CGRect(x: 0, y: 0, width: 390, height: 104))
         let mark = Row.Mark.image(path: "/v0/profile/photo", thumbhash: nil)

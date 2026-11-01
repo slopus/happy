@@ -38,21 +38,17 @@ final class StoryLayoutTests: XCTestCase {
 
     func testInlineRepliesStopAboveTheCapsuleAndKeyboard() {
         let viewer = StoryLayout.viewer(size: CGSize(width: 390, height: 844), safeArea: LayoutInsets(top: 47, bottom: 34), count: 1, nameHeight: 18, captionHeight: 0, keyboard: 300)
-        let overlay = StoryLayout.replies(size: CGSize(width: 390, height: 844), bar: viewer.bar, measured: 40, pull: 1)
-        XCTAssertEqual(overlay.panel.maxY, viewer.bar.minY - 8)
-        XCTAssertEqual(overlay.panel.height, 92)
-        XCTAssertGreaterThan(overlay.text.minY, overlay.header.maxY)
+        let overlay = StoryLayout.replies(bar: viewer.bar, buttons: viewer.close, measured: 40)
+        XCTAssertEqual(overlay, CGRect(x: 16, y: 444, width: 358, height: 40))
+        XCTAssertEqual(overlay.maxY, viewer.bar.minY - 8)
     }
-    func testRepliesGrowFromTheBottomToTheirCapAndTuckToAPeek() {
-        let size = CGSize(width: 390, height: 844), bar = CGRect(x: 12, y: 758, width: 366, height: 44)
-        let one = StoryLayout.replies(size: size, bar: bar, measured: 28, pull: 1)
-        let many = StoryLayout.replies(size: size, bar: bar, measured: 2000, pull: 1)
-        let peek = StoryLayout.replies(size: size, bar: bar, measured: 2000, pull: 0)
-        XCTAssertEqual(one.panel.height, 80)
-        XCTAssertEqual(many.panel.height, 844 * 0.6, accuracy: 0.001)
-        XCTAssertEqual(one.panel.maxY, many.panel.maxY)
-        XCTAssertEqual(peek.panel.height, 44); XCTAssertEqual(peek.text.height, 0)
-        XCTAssertTrue(CGRect(origin: .zero, size: peek.panel.size).contains(peek.grabber))
+    func testExpandedRepliesGrowFromTheInputToJustBelowTheTopButtons() {
+        let bar = CGRect(x: 12, y: 758, width: 366, height: 44), buttons = CGRect(x: 338, y: 61, width: 44, height: 44)
+        let one = StoryLayout.replies(bar: bar, buttons: buttons, measured: 28)
+        let many = StoryLayout.replies(bar: bar, buttons: buttons, measured: 2000)
+        XCTAssertEqual(one, CGRect(x: 16, y: 722, width: 358, height: 28))
+        XCTAssertEqual(many, CGRect(x: 16, y: 117, width: 358, height: 633))
+        XCTAssertEqual(one.maxY, many.maxY)
     }
     /// The outline stands 2.5 outside a row's 30-point icon, 2 thick, and
     /// stays inside the row's 48: the row neither moves nor grows.
@@ -73,8 +69,8 @@ final class StoryLayoutTests: XCTestCase {
             CGRect(x: 8, y: 55, width: 122, height: 2), CGRect(x: 134, y: 55, width: 122, height: 2), CGRect(x: 260, y: 55, width: 122, height: 2),
         ])
         XCTAssertEqual(viewer.mark, CGRect(x: 12, y: 67, width: 32, height: 32))
-        XCTAssertEqual(viewer.name, CGRect(x: 54, y: 74, width: 202, height: 18))
-        XCTAssertEqual([viewer.mute, viewer.more], [CGRect(x: 250, y: 61, width: 44, height: 44), CGRect(x: 294, y: 61, width: 44, height: 44)])
+        XCTAssertEqual(viewer.name, CGRect(x: 54, y: 74, width: 194, height: 18))
+        XCTAssertEqual([viewer.mute, viewer.more], [CGRect(x: 242, y: 61, width: 44, height: 44), CGRect(x: 290, y: 61, width: 44, height: 44)])
         XCTAssertEqual(viewer.close, CGRect(x: 338, y: 61, width: 44, height: 44))
         XCTAssertEqual(viewer.caption, CGRect(x: 16, y: 710, width: 358, height: 40))
         XCTAssertEqual(viewer.bar, CGRect(x: 12, y: 758, width: 366, height: 44))
