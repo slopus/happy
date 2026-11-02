@@ -8,6 +8,7 @@ import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
@@ -19,6 +20,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.agent.AgentProfileState
+import com.slopus.happy.agent.CompletionSound
 import com.slopus.happy.agent.WireProfile
 import com.slopus.happy.agent.WireProfilePhoto
 import com.slopus.happy.ui.PHONE
@@ -177,6 +179,20 @@ class AgentConnectionSettingsTest {
         rule.node(AgentPagesTags.HIDE_PROJECTS).assertIsOn().performClick()
         assertEquals(listOf(false), hidden)
         rule.onNodeWithText("Home leaves your projects out, here and in Happy Desktop.").assertIsDisplayed()
+    }
+
+    @Test
+    fun appearanceChecksTheCompletionSoundAndPicksAnother() {
+        val picked = mutableListOf<CompletionSound>()
+        rule.setHappyContent {
+            AgentAppearanceScreen(ThemePreference.Adaptive, {}, projectsHidden = false, onProjectsHidden = {}, onBack = {}, completionSound = CompletionSound.Focused, onCompletionSound = { picked += it })
+        }
+        rule.onNodeWithText("COMPLETION SOUND").performScrollTo().assertIsDisplayed()
+        rule.node(AgentPagesTags.sound(CompletionSound.Never)).performScrollTo().performClick()
+        assertEquals(listOf(CompletionSound.Never), picked)
+        rule.onNode(hasTestTag(AgentPagesTags.sound(CompletionSound.Focused)) and hasAnyDescendant(hasText("When focused")), useUnmergedTree = true).assertExists()
+        rule.onNode(hasTestTag(AgentPagesTags.sound(CompletionSound.Always)) and hasAnyDescendant(hasText("Always")), useUnmergedTree = true).assertExists()
+        rule.onNodeWithText("A chime when a conversation finishes", substring = true).performScrollTo().assertIsDisplayed()
     }
 
     @Test

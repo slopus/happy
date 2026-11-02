@@ -85,4 +85,9 @@
     <string name="conversation_show_full">Pokaż całość</string>
     <!-- A code block's copy button in a Happy Agent chat, said by a screen reader (desktop CopyButton "Copy code"). -->
     <string name="markdown_copy_code">Kopiuj kod</string>
+    <string name="agent_settings_completion_sound">Dźwięk zakończenia</string>
+    <string name="agent_settings_completion_sound_always">Zawsze</string>
+    <string name="agent_settings_completion_sound_focused">Gdy na pierwszym planie</string>
+    <string name="agent_settings_completion_sound_never">Nigdy</string>
+    <string name="agent_settings_completion_sound_footer">Sygnał, gdy rozmowa się kończy. Na tym telefonie gra, gdy to połączenie jest otwarte, więc „Gdy na pierwszym planie” działa jak „Zawsze”. Każde połączenie pamięta Twój wybór na każdym urządzeniu, na którym go używasz.</string>
 </resources>

@@ -85,4 +85,9 @@
     <string name="conversation_show_full">Показать полностью</string>
     <!-- A code block's copy button in a Happy Agent chat, said by a screen reader (desktop CopyButton "Copy code"). -->
     <string name="markdown_copy_code">Скопировать код</string>
+    <string name="agent_settings_completion_sound">Звук завершения</string>
+    <string name="agent_settings_completion_sound_always">Всегда</string>
+    <string name="agent_settings_completion_sound_focused">Когда в фокусе</string>
+    <string name="agent_settings_completion_sound_never">Никогда</string>
+    <string name="agent_settings_completion_sound_footer">Сигнал, когда разговор завершается. На этом телефоне он звучит, пока это подключение открыто, поэтому «Когда в фокусе» — то же, что «Всегда». Каждое подключение хранит ваш выбор на всех устройствах, где вы им пользуетесь.</string>
 </resources>

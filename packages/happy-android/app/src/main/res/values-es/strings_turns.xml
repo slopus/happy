@@ -83,4 +83,9 @@
     <string name="conversation_show_full">Mostrar todo</string>
     <!-- A code block's copy button in a Happy Agent chat, said by a screen reader (desktop CopyButton "Copy code"). -->
     <string name="markdown_copy_code">Copiar código</string>
+    <string name="agent_settings_completion_sound">Sonido al terminar</string>
+    <string name="agent_settings_completion_sound_always">Siempre</string>
+    <string name="agent_settings_completion_sound_focused">Con el foco</string>
+    <string name="agent_settings_completion_sound_never">Nunca</string>
+    <string name="agent_settings_completion_sound_footer">Un sonido cuando una conversación termina. En este teléfono suena mientras esta conexión está abierta, así que «Con el foco» equivale a «Siempre». Cada conexión guarda tu elección, en todos los dispositivos donde la uses.</string>
 </resources>

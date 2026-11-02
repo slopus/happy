@@ -79,4 +79,9 @@
     <string name="conversation_show_full">すべて表示</string>
     <!-- A code block's copy button in a Happy Agent chat, said by a screen reader (desktop CopyButton "Copy code"). -->
     <string name="markdown_copy_code">コードをコピー</string>
+    <string name="agent_settings_completion_sound">完了サウンド</string>
+    <string name="agent_settings_completion_sound_always">常に</string>
+    <string name="agent_settings_completion_sound_focused">フォーカス時</string>
+    <string name="agent_settings_completion_sound_never">鳴らさない</string>
+    <string name="agent_settings_completion_sound_footer">会話が終わったときにチャイムを鳴らします。このスマートフォンではこの接続を開いている間に鳴るため、「フォーカス時」は「常に」と同じです。選択は接続ごとに保存され、その接続を使うすべてのデバイスに適用されます。</string>
 </resources>

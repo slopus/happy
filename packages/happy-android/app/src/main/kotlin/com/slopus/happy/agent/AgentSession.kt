@@ -87,6 +87,8 @@ class AgentSession internal constructor(
     parent: CoroutineScope,
     makeTransport: (com.slopus.happy.connection.AgentConnectionCredentials) -> Transport = { agentTransport(it.address, it.port, it.publicUrl, it.tailcatAvailable != false) },
     private val random: Random = Random.Default,
+    /** Plays desktop's completion chime ([CompletionWatch] decides when). */
+    private val chime: () -> Unit = {},
 ) {
     private val scope = CoroutineScope(parent.coroutineContext + SupervisorJob(parent.coroutineContext[Job]) + Dispatchers.IO)
     private val linkLock = Mutex()
@@ -162,6 +164,17 @@ class AgentSession internal constructor(
     /** Hides or shows the projects, on home here and on the desktop. */
     fun setProjectsHidden(hidden: Boolean) {
         scope.launch { setSetting(DesktopSettings.PROJECTS_VISIBILITY, DesktopSettings.projectsVisibility(hidden)) }
+    }
+
+    /** Desktop's Completion sound for this connection, which the chime follows ([CompletionWatch]). */
+    val completionSound: StateFlow<CompletionSound> = catalogState
+        .map { DesktopSettings.completionSound(it.settingValues) }
+        .distinctUntilChanged()
+        .stateIn(scope, SharingStarted.Eagerly, DesktopSettings.completionSound(catalogState.value.settingValues))
+
+    /** Sets the Completion sound, here and on every device this connection is used from. */
+    fun setCompletionSound(sound: CompletionSound) {
+        scope.launch { setSetting(DesktopSettings.COMPLETION_SOUND, DesktopSettings.completionSoundValue(sound)) }
     }
 
     /**
@@ -363,6 +376,8 @@ class AgentSession internal constructor(
         }
     }
 
+    private val completions = CompletionWatch()
+
     /** The journal from the catalog's cursor until the stream ends or fails. */
     private suspend fun follow(onConnected: () -> Unit) {
         val stream = client.events(catalogState.value.cursor)
@@ -388,6 +403,8 @@ class AgentSession internal constructor(
                         }
                         apply(event)
                     }
+                    val listed = { agentId: String -> feed.value.conversations.any { it.agentId == agentId } }
+                    if (completions.finished(event, catalogState.value, listed, System.currentTimeMillis()) != null) chime()
                     eventFlow.emit(event)
                 }
             }

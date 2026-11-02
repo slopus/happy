@@ -83,4 +83,9 @@
     <string name="conversation_show_full">Mostra-ho tot</string>
     <!-- A code block's copy button in a Happy Agent chat, said by a screen reader (desktop CopyButton "Copy code"). -->
     <string name="markdown_copy_code">Copia el codi</string>
+    <string name="agent_settings_completion_sound">So en acabar</string>
+    <string name="agent_settings_completion_sound_always">Sempre</string>
+    <string name="agent_settings_completion_sound_focused">Amb el focus</string>
+    <string name="agent_settings_completion_sound_never">Mai</string>
+    <string name="agent_settings_completion_sound_footer">Un so quan una conversa acaba. En aquest telèfon sona mentre aquesta connexió és oberta, així que «Amb el focus» és el mateix que «Sempre». Cada connexió guarda la teva tria, a tots els dispositius on la facis servir.</string>
 </resources>

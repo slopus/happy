@@ -79,4 +79,9 @@
     <string name="conversation_show_full">顯示全部</string>
     <!-- A code block's copy button in a Happy Agent chat, said by a screen reader (desktop CopyButton "Copy code"). -->
     <string name="markdown_copy_code">複製程式碼</string>
+    <string name="agent_settings_completion_sound">完成提示音</string>
+    <string name="agent_settings_completion_sound_always">一律</string>
+    <string name="agent_settings_completion_sound_focused">聚焦時</string>
+    <string name="agent_settings_completion_sound_never">永不</string>
+    <string name="agent_settings_completion_sound_footer">對話結束時播放提示音。在這支手機上，它會在此連線開啟時播放，因此「聚焦時」與「一律」相同。每個連線都會保存你的選擇，在你使用它的每部裝置上皆生效。</string>
 </resources>

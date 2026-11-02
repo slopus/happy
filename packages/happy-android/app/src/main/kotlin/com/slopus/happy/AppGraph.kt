@@ -6,6 +6,7 @@ import com.slopus.happy.accounts.AccountStore
 import com.slopus.happy.accounts.RnServerConfigImporter
 import com.slopus.happy.accounts.accountId
 import com.slopus.happy.agent.AgentSessions
+import com.slopus.happy.agent.CompletionChime
 import com.slopus.happy.auth.AndroidKeyStoreKeys
 import com.slopus.happy.auth.AuthCredentials
 import com.slopus.happy.auth.CredentialStore
@@ -446,6 +447,7 @@ class AppGraph(
         cacheDir = File(appContext.noBackupFilesDir, "agent-connections"),
         openId = openAgentId,
         foreground = isForeground,
+        chime = CompletionChime(appContext)::play,
     )
 
     /**

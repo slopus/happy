@@ -83,4 +83,9 @@
     <string name="conversation_show_full">Mostra tutto</string>
     <!-- A code block's copy button in a Happy Agent chat, said by a screen reader (desktop CopyButton "Copy code"). -->
     <string name="markdown_copy_code">Copia codice</string>
+    <string name="agent_settings_completion_sound">Suono di completamento</string>
+    <string name="agent_settings_completion_sound_always">Sempre</string>
+    <string name="agent_settings_completion_sound_focused">Quando in primo piano</string>
+    <string name="agent_settings_completion_sound_never">Mai</string>
+    <string name="agent_settings_completion_sound_footer">Un suono quando una conversazione finisce. Su questo telefono suona mentre questa connessione è aperta, quindi «Quando in primo piano» equivale a «Sempre». Ogni connessione ricorda la tua scelta, su ogni dispositivo da cui la usi.</string>
 </resources>

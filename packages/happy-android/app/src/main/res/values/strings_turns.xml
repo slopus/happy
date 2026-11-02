@@ -103,4 +103,10 @@
     <string name="conversation_show_full">Show full</string>
     <!-- A code block's copy button in a Happy Agent chat, said by a screen reader (desktop CopyButton "Copy code"). -->
     <string name="markdown_copy_code">Copy code</string>
+    <!-- Desktop's Completion sound for an agent connection, on its Appearance page (happy-desktop.completionSound). -->
+    <string name="agent_settings_completion_sound">Completion sound</string>
+    <string name="agent_settings_completion_sound_always">Always</string>
+    <string name="agent_settings_completion_sound_focused">When focused</string>
+    <string name="agent_settings_completion_sound_never">Never</string>
+    <string name="agent_settings_completion_sound_footer">A chime when a conversation finishes. On this phone it plays while this connection is open, so When focused is the same as Always. Each connection keeps your choice, on every device you use it from.</string>
 </resources>

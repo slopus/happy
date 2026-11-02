@@ -54,6 +54,7 @@ import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.agent.AgentProfileState
+import com.slopus.happy.agent.CompletionSound
 import com.slopus.happy.attachments.ProfilePhoto
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
@@ -92,6 +93,7 @@ internal fun NavGraphBuilder.agentSettingsPages(graph: AppGraph, nav: NavHostCon
         val session = remember(id) { graph.agentSessions.session(id) }
         val theme by graph.localSettings.themePreference.collectAsStateWithLifecycle()
         val hidden = session?.projectsHidden?.collectAsStateWithLifecycle()?.value ?: false
+        val sound = session?.completionSound?.collectAsStateWithLifecycle()?.value ?: CompletionSound.Always
         ProvideRowReveal(route.reveal) {
             AgentAppearanceScreen(
                 theme = theme,
@@ -99,6 +101,8 @@ internal fun NavGraphBuilder.agentSettingsPages(graph: AppGraph, nav: NavHostCon
                 projectsHidden = hidden,
                 onProjectsHidden = { session?.setProjectsHidden(it) },
                 onBack = { nav.popBackStack() },
+                completionSound = sound,
+                onCompletionSound = { session?.setCompletionSound(it) },
             )
         }
     }
@@ -114,6 +118,7 @@ object AgentPagesTags {
     fun theme(theme: ThemePreference) = "agentPages.theme.${theme.name}"
     const val HIDE_PROJECTS = "agentPages.hideProjects"
     const val HIDE_PROJECTS_ROW = "agentPages.hideProjectsRow"
+    fun sound(sound: CompletionSound) = "agentPages.sound.${sound.name}"
     const val PICTURE = "agentPages.picture"
     const val CHANGE_PHOTO = "agentPages.changePhoto"
     const val NAME = "agentPages.name"
@@ -141,7 +146,9 @@ private fun AgentPage(title: String, onBack: () -> Unit, content: @Composable ()
  * A connection's look on this phone (iOS's `appearanceRows`): the theme,
  * Adaptive, Light or Dark with a check on the chosen one; and Hide projects,
  * the desktop's own setting, which home follows here and Happy Desktop
- * there. Deliberately no renderer or layout choice.
+ * there. Deliberately no renderer or layout choice. Then desktop's
+ * Completion sound (Always, When focused, Never), the connection's own
+ * setting too, which the chime follows here ([com.slopus.happy.agent.CompletionWatch]).
  */
 @Composable
 fun AgentAppearanceScreen(
@@ -150,8 +157,10 @@ fun AgentAppearanceScreen(
     projectsHidden: Boolean,
     onProjectsHidden: (Boolean) -> Unit,
     onBack: () -> Unit,
+    completionSound: CompletionSound = CompletionSound.Always,
+    onCompletionSound: (CompletionSound) -> Unit = {},
 ) {
-    val sections = agentAppearanceSections(theme, onTheme, projectsHidden, onProjectsHidden)
+    val sections = agentAppearanceSections(theme, onTheme, projectsHidden, onProjectsHidden, completionSound, onCompletionSound)
     AgentPage(stringResource(R.string.settings_appearance), onBack) {
         for (section in sections) SettingsCard(section)
     }
@@ -164,6 +173,8 @@ fun agentAppearanceSections(
     onTheme: (ThemePreference) -> Unit,
     projectsHidden: Boolean,
     onProjectsHidden: (Boolean) -> Unit,
+    completionSound: CompletionSound = CompletionSound.Always,
+    onCompletionSound: (CompletionSound) -> Unit = {},
 ): List<SettingsSection> = listOf(
     SettingsSection(
         listOf(
@@ -193,6 +204,23 @@ fun agentAppearanceSections(
             ),
         ),
         footer = stringResource(R.string.settings_hide_projects_footer),
+    ),
+    SettingsSection(
+        listOf(
+            CompletionSound.Always to R.string.agent_settings_completion_sound_always,
+            CompletionSound.Focused to R.string.agent_settings_completion_sound_focused,
+            CompletionSound.Never to R.string.agent_settings_completion_sound_never,
+        ).map { (option, name) ->
+            SettingsEntry(
+                id = AgentPagesTags.sound(option),
+                title = stringResource(name),
+                checked = option == completionSound,
+                chevron = false,
+                onClick = { onCompletionSound(option) },
+            )
+        },
+        footer = stringResource(R.string.agent_settings_completion_sound_footer),
+        title = stringResource(R.string.agent_settings_completion_sound),
     ),
 )
 

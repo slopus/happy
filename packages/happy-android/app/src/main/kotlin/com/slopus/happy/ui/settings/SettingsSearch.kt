@@ -82,7 +82,7 @@ class SettingsEntry(
 
 /** A card of entries and the line under it. */
 @Immutable
-class SettingsSection(val rows: List<SettingsEntry>, val footer: String? = null)
+class SettingsSection(val rows: List<SettingsEntry>, val footer: String? = null, val title: String? = null)
 
 /** [entry] as a settings row. */
 @Composable
@@ -122,7 +122,7 @@ fun SettingsRow(entry: SettingsEntry) {
 /** [section]'s card. */
 @Composable
 fun SettingsCard(section: SettingsSection) {
-    ItemGroup(footer = section.footer) {
+    ItemGroup(title = section.title, footer = section.footer) {
         for (row in section.rows) SettingsRow(row)
     }
 }

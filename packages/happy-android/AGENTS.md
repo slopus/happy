@@ -1100,6 +1100,18 @@ light veil is white at 0.6, so the chat reads frosted white, not grey; the
 dark veil is black at 0.6. A card's shadow (8% black, 12 blur) and the
 menu's 4 elevation part white from white without shading the composer.
 
+A conversation that finishes chimes as on desktop (a72f8304, 962201a2).
+`AgentSession.follow` asks `CompletionWatch` about each journal event. It
+chimes for a `run.finished` of a top-level conversation that home lists,
+for its current run, ended within 30 s (so a replay after reconnecting
+stays quiet), unless the connection's `happy-desktop.completionSound` is
+"never" or the bot is muted or hidden (`happy-desktop.bot.<id>`).
+`CompletionChime` renders desktop's two sines (659.25 Hz, then 880 Hz at
+0.11 s; 15 ms attack, decay to 0.42 s) as a sonification AudioTrack and
+stays silent unless the ringer is normal. The link only runs while the
+connection is open and the app is in the foreground, so on the phone
+When focused and Always chime alike. Appearance shows the setting.
+
 ### Image loading
 
 One Coil 3 `ImageLoader` (`ui/components/RemoteImage.kt`) for every

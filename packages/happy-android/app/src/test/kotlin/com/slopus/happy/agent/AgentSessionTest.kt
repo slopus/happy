@@ -66,8 +66,8 @@ class AgentSessionTest {
     @After
     fun tearDown() = scope.cancel()
 
-    private fun sessions(transport: (AgentConnectionCredentials) -> Transport = { agent }) =
-        AgentSessions(connections, scope, cacheDir, open, foreground, makeTransport = transport)
+    private fun sessions(chime: () -> Unit = {}, transport: (AgentConnectionCredentials) -> Transport = { agent }) =
+        AgentSessions(connections, scope, cacheDir, open, foreground, makeTransport = transport, chime = chime)
 
     private suspend fun <T> eventually(read: () -> T, check: (T) -> Boolean) {
         withTimeout(10_000) { while (!check(read())) kotlinx.coroutines.delay(20) }
@@ -106,6 +106,27 @@ class AgentSessionTest {
         eventually({ session.feed.value.conversations.single { it.agentId == "at1" } }) { it.working }
         assertEquals("c1", session.catalog.value.cursor)
         assertTrue(session.agent("at1").first()!!.working)
+    }
+
+    @Test
+    fun aConversationThatFinishesLiveChimesOnceAndNeverSilencesIt() = runBlocking {
+        val chimes = java.util.concurrent.atomic.AtomicInteger()
+        val session = sessions(chime = { chimes.incrementAndGet() }).session(id)!!
+        agent.frames.send(Wire.hello("c0"))
+        session.feed.first { it.loaded }
+        fun run(id: String, endedAt: Long? = null) = buildJsonObject { put("id", id); if (endedAt != null) put("endedAt", endedAt) }
+        agent.frames.send(Wire.frame("c1", "run.started", buildJsonObject { put("agentId", "at1"); put("run", run("r1")) }))
+        agent.frames.send(Wire.frame("c2", "run.finished", buildJsonObject { put("agentId", "at1"); put("run", run("r1", System.currentTimeMillis())) }))
+        // A finish long past is the journal catching up: quiet.
+        agent.frames.send(Wire.frame("c3", "run.finished", buildJsonObject { put("agentId", "ab1"); put("run", run("r0", 1L)) }))
+        eventually({ session.catalog.value.cursor }) { it == "c3" }
+        assertEquals(1, chimes.get())
+
+        session.setCompletionSound(CompletionSound.Never)
+        eventually({ session.completionSound.value }) { it == CompletionSound.Never }
+        agent.frames.send(Wire.frame("c4", "run.finished", buildJsonObject { put("agentId", "at1"); put("run", run("r2", System.currentTimeMillis())) }))
+        eventually({ session.catalog.value.cursor }) { it == "c4" }
+        assertEquals(1, chimes.get())
     }
 
     @Test
