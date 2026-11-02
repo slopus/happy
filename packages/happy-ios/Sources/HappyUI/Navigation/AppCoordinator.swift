@@ -191,7 +191,9 @@ public final class AppCoordinator {
     /// installation it names (`InstanceLinkRoute`), switched to first, and
     /// on no other.
     private func openPendingInstanceLink() {
-        guard accountRestored, let text = pendingInstanceLink, let top = linkHost else { return }
+        guard accountRestored, pendingInstanceLink != nil, shell.topViewController != nil else { return }
+        guard clearedForLink(then: { [weak self] in self?.openPendingInstanceLink() }),
+              let text = pendingInstanceLink, let top = linkHost else { return }
         pendingInstanceLink = nil
         let connections = context.account.agentConnections
         switch InstanceLinkRoute.route(text, connections: connections.accounts, active: connections.activeID) {
@@ -240,7 +242,9 @@ public final class AppCoordinator {
     }
 
     private func openPendingLink() {
-        guard accountRestored, let text = pendingLink, let top = linkHost else { return }
+        guard accountRestored, pendingLink != nil, shell.topViewController != nil else { return }
+        guard clearedForLink(then: { [weak self] in self?.openPendingLink() }),
+              let text = pendingLink, let top = linkHost else { return }
         pendingLink = nil
         let route = ScanRoute.route(HappyCode(text), intent: .connect, hasAccount: context.account.session != nil, canShareAccount: context.account.sessionIsLegacy)
         Task { @MainActor in
@@ -399,12 +403,32 @@ public final class AppCoordinator {
     /// dissolve is already the reduced-motion form, so it stays.
     static let rootCrossfade: TimeInterval = 0.28
 
-    /// Where a link from outside opens: on top of the window's stack, with
-    /// anything over it (a QR sheet, a scanner, an alert) put away so the
-    /// pairing pushed there shows.
+    /// Where a link from outside opens: on top of the window's stack, once
+    /// `clearedForLink` has put away anything over it.
     private var linkHost: UIViewController? {
         shell.presentedViewController?.dismiss(animated: false)
         return shell.topViewController
+    }
+
+    /// True when nothing is shown over the stack. Otherwise it (a QR sheet,
+    /// a scanner, an alert, an open ⋯ menu) is put away, animated, and
+    /// `then` runs once it has gone. A menu dismissed without its animation
+    /// went on animating after the pairing push had taken its bar button
+    /// away, and UIKit stopped the app (SIGTRAP in
+    /// `-[_UIContextMenuPresentation dismiss]`, a link arriving while the
+    /// install screen's ⋯ was open).
+    private func clearedForLink(then: @escaping @MainActor () -> Void) -> Bool {
+        guard let presented = shell.presentedViewController else { return true }
+        if presented.isBeingDismissed {
+            if let coordinator = presented.transitionCoordinator {
+                coordinator.animate(alongsideTransition: nil) { _ in then() }
+            } else {
+                DispatchQueue.main.async { then() }
+            }
+            return false
+        }
+        shell.dismiss(animated: true) { then() }
+        return false
     }
 
     /// The title of happy-app's UIKit headers (react-native-screens 4.22.0
