@@ -198,6 +198,8 @@ class Conversation(
     private val runInfo = HashMap<String, RunInfo>()
     /** Finished turns opened on their work ([toggleTurn]). */
     private val expanded = HashSet<String>()
+    /** A person's long messages opened past their first lines ([toggleMessage]), by row key. */
+    private val opened = HashSet<String>()
     private val messages = HashMap<String, Message>()
     private val pending = ArrayList<String>()
     private val outgoing = ArrayList<Outgoing>()
@@ -647,6 +649,14 @@ class Conversation(
     fun toggleTurn(turn: String) {
         scope.launch(lane) {
             if (!expanded.remove(turn)) expanded += turn
+            publish()
+        }
+    }
+
+    /** Opens a person's long message whole, or cuts it back to its first lines, by its row's key. */
+    fun toggleMessage(key: String) {
+        scope.launch(lane) {
+            if (!opened.remove(key)) opened += key
             publish()
         }
     }
@@ -1261,6 +1271,7 @@ class Conversation(
             val time = shownAt.getOrPut(send.id) { send.sentAt }
             rows += ConversationRow.User("${send.id}:user", send.id, send.wire, com.slopus.happy.chat.markdown.parseMarkdown(send.wire), send.images, delivery, time)
         }
+        if (opened.isNotEmpty()) rows.replaceAll { if (it is ConversationRow.User && it.key in opened) it.copy(opened = true) else it }
         builder.forget(messages.keys)
         val produced = lastRun != null && running &&
             runs.last().second.any { id -> messages[id]?.let { it.role == "agent" && it.content.isNotEmpty() } == true }

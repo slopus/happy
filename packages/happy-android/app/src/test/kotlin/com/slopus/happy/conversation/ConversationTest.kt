@@ -227,6 +227,25 @@ class ConversationTest {
         assertEquals(Presentation.Command("ls", null), (state.rows[2] as ConversationRow.Tool).tool.presentation)
     }
 
+    @Test fun `a person's message opens whole and is cut back by its key, pending or in a run`() = runTest {
+        val agent = FakeAgent()
+        agent.page = """{"runs":[{"id":"r1","status":"completed","messages":[
+            {"id":"m1","role":"user","createdAt":1,"content":[{"type":"text","text":"Hi"}],"metadata":{}}
+        ]}],"hasMore":false}"""
+        agent.bootstrap = agent.bootstrap.replace("\"pending\":[]", """"pending":[{"id":"m3","role":"user","status":"pending","createdAt":3,"content":[{"type":"text","text":"Next"}],"metadata":{}}]""")
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        fun opened() = chat.state.value.rows.filterIsInstance<ConversationRow.User>().filter { it.opened }.map { it.key }
+        assertEquals(emptyList<String>(), opened())
+        chat.toggleMessage("m1:user")
+        chat.toggleMessage("m3:user")
+        advanceUntilIdle()
+        assertEquals(listOf("m3:user", "m1:user"), opened())
+        chat.toggleMessage("m1:user")
+        advanceUntilIdle()
+        assertEquals(listOf("m3:user"), opened())
+    }
+
     @Test fun `home's name is the title before anything is read, and the computer's title wins once it is`() = runTest {
         val agent = FakeAgent()
         val chat = Conversation(

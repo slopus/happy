@@ -99,4 +99,6 @@
     <string name="turn_tool_start_subagent">Start subagent</string>
     <string name="turn_tool_wait_subagents">Wait for subagents</string>
     <string name="turn_tool_workflow">Workflow</string>
+    <!-- A person's long message, cut at its first lines (iOS Strings.showFull); Show less is machine_launcher_show_less. -->
+    <string name="conversation_show_full">Show full</string>
 </resources>

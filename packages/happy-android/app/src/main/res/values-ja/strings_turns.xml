@@ -75,4 +75,6 @@
     <string name="turn_tool_start_subagent">サブエージェントを開始</string>
     <string name="turn_tool_wait_subagents">サブエージェントを待機</string>
     <string name="turn_tool_workflow">ワークフロー</string>
+    <!-- A person's long message, cut at its first lines (iOS Strings.showFull); Show less is machine_launcher_show_less. -->
+    <string name="conversation_show_full">すべて表示</string>
 </resources>

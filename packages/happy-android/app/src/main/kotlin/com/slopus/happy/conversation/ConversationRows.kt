@@ -62,6 +62,8 @@ sealed interface ConversationRow {
         val delivery: Delivery,
         /** The time the bubble shows: the send's own, kept when its echo comes. */
         val createdAt: Long = 0,
+        /** Shown whole: a long one is cut at its first lines until tapped open ([com.slopus.happy.ui.conversation.UserFold]). */
+        val opened: Boolean = false,
     ) : ConversationRow
 
     /**

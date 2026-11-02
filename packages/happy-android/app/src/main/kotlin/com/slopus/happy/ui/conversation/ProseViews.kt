@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.material3.Text
 import androidx.compose.foundation.text.selection.rememberSelectionState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -31,6 +32,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Canvas
@@ -57,6 +59,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
@@ -66,6 +69,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -81,6 +85,7 @@ import com.slopus.happy.ui.chat.LocalTrailingSlot
 import com.slopus.happy.ui.chat.TrailingLine
 import com.slopus.happy.ui.chat.MarkdownBlockView
 import com.slopus.happy.ui.chat.MarkdownView
+import com.slopus.happy.ui.chat.MarkdownSpec
 import com.slopus.happy.ui.chat.MessageCallbacks
 import com.slopus.happy.ui.chat.MessageSpec
 import com.slopus.happy.ui.chat.MessageTags
@@ -610,24 +615,128 @@ internal fun CollaboratorProse(row: ConversationRow.Collaborator, callbacks: Mes
     }
 }
 
-/** A person's words in their bubble, drawn ([UserMessage][com.slopus.happy.ui.chat.UserMessage]'s body); where a sent message's flight lands ([SendFlight]). */
+/**
+ * A person's long message is cut at its first lines until tapped open, as
+ * desktop's Message and iOS's bubble are (MESSAGE_PREVIEW_HEIGHT; iOS
+ * c52fd2842): past [PREVIEW_LINES] lines it shows those, to the foot of the
+ * last, and Show full [gap] under them in [control], the time on that line;
+ * opened, all of it and Show less. Cut, it keeps the whole text's width, so
+ * opening only grows it down.
+ */
+object UserFold {
+    const val PREVIEW_LINES = 10
+    val gap = 8.dp
+    val control = TurnRowSpec.traceMeta
+
+    /** Where a cut whose last line is in code or a table falls, in [density]'s pixels: ten lines of text. */
+    fun limit(density: Density): Int = with(density) { (MarkdownSpec.text.lineHeight * PREVIEW_LINES).toPx().roundToInt() }
+}
+
+/**
+ * Where a person's words are cut ([UserFold]): [at] is the foot of the
+ * last line shown in the prose's pixels, or null where that line is in a
+ * composed block (code, a table) or under one, whose height is the row's.
+ */
+internal class ProseCut(val at: Int?)
+
+/** Where [Prose] is cut to its first [lines] lines; null when it has no more. A composed block counts its own lines. */
+internal fun Prose.cut(lines: Int): ProseCut? {
+    var count = 0
+    var top: Int? = 0
+    var at: Int? = null
+    for (segment in segments) {
+        when (segment) {
+            is DrawnSegment -> {
+                // A list's markers sit beside its items' lines: they aren't lines of their own.
+                val feet = ArrayList<Int>()
+                segment.parts.forEachIndexed { index, part ->
+                    for (piece in part.pieces) if (piece.reveals) for (line in 0 until piece.layout.lineCount) {
+                        feet += segment.tops[index] + piece.y + piece.layout.getLineBottom(line).roundToInt()
+                    }
+                }
+                feet.sort()
+                for (foot in feet) {
+                    if (++count == lines) at = top?.plus(foot)
+                    if (count > lines) return ProseCut(at)
+                }
+                top = top?.plus(segment.height)
+            }
+            is ComposedSegment -> {
+                count += segment.block.lineCount()
+                if (count > lines) return ProseCut(at)
+                // Below it, nothing here knows how far down a line is.
+                top = null
+            }
+        }
+    }
+    return null
+}
+
+/** How many lines a composed block reads as: code's own, a table's rows and header. */
+private fun MarkdownBlock.lineCount(): Int = when (this) {
+    is MarkdownBlock.CodeBlock -> content.trimEnd('\n').lines().size
+    is MarkdownBlock.Mermaid -> content.trimEnd('\n').lines().size
+    is MarkdownBlock.Table -> rows.size + 1
+    is MarkdownBlock.Options -> items.size
+    else -> 1
+}
+
+/**
+ * A person's words in their bubble, drawn ([UserMessage][com.slopus.happy.ui.chat.UserMessage]'s body); where a sent
+ * message's flight lands ([SendFlight]). [cut] says where they fold ([UserFold]), unless the row is opened.
+ */
 @Composable
-internal fun UserProse(row: ConversationRow.User, callbacks: MessageCallbacks) {
-    val prose = rememberProse(ProseSource(row.key, ProseKind.User, row.text, row.blocks))
+internal fun UserProse(row: ConversationRow.User, prose: Prose, cut: ProseCut?, callbacks: MessageCallbacks) {
     // A message just sent: its words fly here from the composer, and land where these are placed.
     val flight = LocalSendFlight.current
     // An own bubble's time rides up onto the last line when it can (MessageDelivery's BubbleFoot).
     val trailing = LocalTrailingSlot.current
     val placed = if (flight != null) Modifier.onPlaced { flight.place(row.key, it, prose) { trailing?.content } } else Modifier
-    val foot = if (trailing != null) Modifier.layout { measurable, constraints ->
+    val limit = UserFold.limit(LocalDensity.current)
+    val opened = row.opened
+    // Cut, the words are measured whole, as wide as all of them, and shown to their tenth line; the clip keeps the rest from drawing.
+    val words = (if (cut != null) Modifier.clipToBounds() else Modifier).layout { measurable, constraints ->
         val placeable = measurable.measure(constraints)
-        // A layout made for another width is drawn scaled to this one (DrawnProse); so is its last line.
+        // A layout made for another width is drawn scaled to this one (DrawnProse); so are its lines.
         val scale = if (constraints.hasBoundedWidth) constraints.maxWidth.toFloat() / prose.available else 1f
-        trailing.line = prose.trailing()?.let { TrailingLine(it.right * scale, it.below * scale) }
-        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
-    } else Modifier
-    ProseColumn(prose, fill = false, modifier = placed.then(foot)) { block ->
-        MarkdownBlockView(block, callbacks.onOptionPress)
+        val shown = when {
+            cut == null || opened -> placeable.height
+            cut.at != null -> (cut.at * scale).roundToInt()
+            else -> limit
+        }.coerceAtMost(placeable.height)
+        if (cut == null) trailing?.line = prose.trailing()?.let { TrailingLine(it.right * scale, it.below * scale) }
+        layout(placeable.width, shown) { placeable.place(0, 0) }
+    }
+    val column = @Composable {
+        ProseColumn(prose, fill = false, modifier = placed.then(words)) { block ->
+            MarkdownBlockView(block, callbacks.onOptionPress)
+        }
+    }
+    if (cut == null) return column()
+    Layout(
+        contents = listOf(
+            column,
+            {
+                // Said by the bubble's tap instead: a screen reader reads the words whole.
+                Text(
+                    stringResource(if (opened) R.string.machine_launcher_show_less else R.string.conversation_show_full),
+                    style = UserFold.control,
+                    color = HappyTheme.colors.textSecondary,
+                    maxLines = 1,
+                    modifier = Modifier.testTag(ConversationRowTags.USER_FOLD).semantics { hideFromAccessibility() },
+                )
+            },
+        ),
+    ) { (texts, controls), constraints ->
+        val text = texts.first().measure(constraints.copy(minHeight = 0))
+        val control = controls.first().measure(constraints.copy(minWidth = 0, minHeight = 0))
+        val top = text.height + UserFold.gap.roundToPx()
+        // The last line is the control's: the time rides on it.
+        trailing?.line = TrailingLine(control.width.toFloat(), 0f)
+        layout(maxOf(text.width, control.width), top + control.height) {
+            text.place(0, 0)
+            control.place(0, top)
+        }
     }
 }
 

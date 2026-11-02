@@ -79,4 +79,6 @@
     <string name="turn_tool_start_subagent">Iniciar subagente</string>
     <string name="turn_tool_wait_subagents">Aguardar subagentes</string>
     <string name="turn_tool_workflow">Fluxo de trabalho</string>
+    <!-- A person's long message, cut at its first lines (iOS Strings.showFull); Show less is machine_launcher_show_less. -->
+    <string name="conversation_show_full">Mostrar tudo</string>
 </resources>

@@ -356,6 +356,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                     onChoiceChange = holder::setChoice,
                     onCommand = conversation::runCommand,
                     onToggleTurn = conversation::toggleTurn,
+                    onToggleMessage = conversation::toggleMessage,
                     // The values typed into a secret go in this one request to the computer and nowhere else.
                     secrets = SecretRequestActions(
                         secrets = { ConversationApi(session.conversationRequest()).secrets() },

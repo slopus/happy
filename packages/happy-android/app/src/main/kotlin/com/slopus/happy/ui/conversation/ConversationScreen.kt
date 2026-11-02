@@ -189,6 +189,8 @@ class ConversationScreenActions(
     val onCommand: (name: String, arguments: String?) -> Boolean = { _, _ -> false },
     /** Opens a finished turn on its work, or folds it again, by its run. */
     val onToggleTurn: (String) -> Unit = {},
+    /** Opens a person's long message whole, or cuts it back, by its row's key. */
+    val onToggleMessage: (String) -> Unit = {},
 )
 
 /**
@@ -276,6 +278,10 @@ fun ConversationScreen(
             onToggleTurn = { turn ->
                 folds.toggle(turn, rows)
                 actions.onToggleTurn(turn)
+            },
+            onToggleMessage = { key ->
+                folds.toggleMessage(key, rows)
+                actions.onToggleMessage(key)
             },
         )
     }
@@ -648,7 +654,7 @@ private fun TranscriptList(
             }
             ConversationRowView(row, bubble, actions, moves)
         }
-        item(key = "older", contentType = "older") {
+        item(key = OLDER_KEY, contentType = OLDER_KEY) {
             Box(Modifier.fillMaxWidth().heightIn(min = 32.dp).testTag(ConversationScreenTags.OLDER), contentAlignment = Alignment.Center) {
                 when {
                     state.loadingOlder -> CircularProgressIndicator(Modifier.size(16.dp), color = HappyTheme.colors.textSecondary, strokeWidth = 2.dp)
@@ -671,31 +677,46 @@ private fun TranscriptList(
 /**
  * A turn opens or folds under the finger (iOS `foldMoved`): its fold control
  * stays where it was on screen, so the rows it brings or takes move the
- * others and not it, and the list stops following the newest row.
+ * others and not it, and the list stops following the newest row. A
+ * person's long message opens down from its top, as desktop's does: the
+ * row over it stays, or, that row off the screen, the message's foot.
  */
 internal class FoldHold(private val list: androidx.compose.foundation.lazy.LazyListState) {
     private var held: Held? = null
 
-    private class Held(val key: String, val offset: Int, val open: Boolean)
+    /** [key]'s row is put back [offset] from the list's end once [turned] says the rows have changed. */
+    private class Held(val key: Any, val offset: Int, val turned: (List<ConversationRow>) -> Boolean)
 
     /** [turn]'s control is tapped while the list shows [rows]. */
     fun toggle(turn: String, rows: List<ConversationRow>) {
         val key = ConversationRow.traceKey(turn)
         val trace = list.layoutInfo.visibleItemsInfo.firstOrNull { it.key == key }
         val open = (rows.firstOrNull { it.key == key } as? ConversationRow.Trace)?.open
-        held = if (trace != null && open != null) Held(key, trace.offset, open) else null
+        held = if (trace != null && open != null) Held(key, trace.offset) { (it.firstOrNull { row -> row.key == key } as? ConversationRow.Trace)?.open != open } else null
     }
 
-    /** The rows composed now: once the turn has turned, its control is put back where it was, before they are laid out. */
+    /** The person's message [key] is tapped open or shut while the list shows [rows]. */
+    fun toggleMessage(key: String, rows: List<ConversationRow>) {
+        val visible = list.layoutInfo.visibleItemsInfo
+        val at = visible.indexOfFirst { it.key == key }
+        val over = visible.getOrNull(at + 1)?.takeIf { at >= 0 && it.index == visible[at].index + 1 }
+        val opened = (rows.firstOrNull { it.key == key } as? ConversationRow.User)?.opened
+        held = if (over != null && opened != null) Held(over.key, over.offset) { (it.firstOrNull { row -> row.key == key } as? ConversationRow.User)?.opened != opened } else null
+    }
+
+    /** The rows composed now: once the row has turned, the held one is put back where it was, before they are laid out. */
     fun apply(rows: List<ConversationRow>) {
         val held = held ?: return
-        val index = rows.indexOfFirst { it.key == held.key }
-        val trace = rows.getOrNull(index) as? ConversationRow.Trace
-        if (trace != null && trace.open == held.open) return
+        if (!held.turned(rows)) return
         this.held = null
-        if (trace != null) list.requestScrollToItem(index, -held.offset)
+        // Past the rows is the list's own "older" item.
+        val index = rows.indexOfFirst { it.key == held.key }.takeIf { it >= 0 } ?: rows.size.takeIf { held.key == OLDER_KEY } ?: return
+        list.requestScrollToItem(index, -held.offset)
     }
 }
+
+/** The list's item past its oldest row: the spinner or retry for older history. */
+private const val OLDER_KEY = "older"
 
 /** What the page under the bar shows. */
 private enum class TranscriptPhase { Loading, Failed, Empty, Rows }

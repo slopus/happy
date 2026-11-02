@@ -202,6 +202,9 @@ fun UserMessage(
     onRetry: (() -> Unit)? = null,
     /** A refused message's long-press menu also offers to throw it away. */
     onDiscard: (() -> Unit)? = null,
+    /** Tapping the bubble does this instead, said as [tapLabel]: a long message opens or is cut back. */
+    onTap: (() -> Unit)? = null,
+    tapLabel: String? = null,
 ) {
     val message = row.message
     val colors = HappyTheme.colors
@@ -229,7 +232,7 @@ fun UserMessage(
     // Held, it lifts over the chat (iOS 8c2a92172); its words are laid out again there to select.
     val lift = rememberLiftSource(row.key)
     val haptics = LocalHapticFeedback.current
-    // Set below, once the bubble can lay itself out to select: a refused bubble's own tap retries, so it takes the hold too.
+    // Set below, once the bubble can lay itself out to select: a refused or folded bubble's own tap retries or opens it, so it takes the hold too.
     val hold = remember { arrayOfNulls<() -> Unit>(1) }
     val retryLabel = stringResource(R.string.common_retry)
 
@@ -244,13 +247,13 @@ fun UserMessage(
                 .background(bubble.background)
                 .border(hairline, bubble.border, bubbleShape)
                 .then(
-                    if (onRetry != null && !selectable) {
+                    if ((onTap ?: onRetry) != null && !selectable) {
                         Modifier.combinedClickable(
                             role = Role.Button,
-                            onClickLabel = retryLabel,
+                            onClickLabel = if (onTap != null) tapLabel else retryLabel,
                             hapticFeedbackEnabled = false,
                             onLongClick = if (lift != null) ({ hold[0]?.invoke() }) else null,
-                            onClick = onRetry,
+                            onClick = onTap ?: onRetry!!,
                         )
                     } else {
                         Modifier

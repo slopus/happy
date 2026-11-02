@@ -76,6 +76,8 @@ object ConversationRowTags {
     const val FAILURE = "conversation.failure"
     const val FAILURE_RETRY = "conversation.failure.retry"
     const val NOTICE = "conversation.notice"
+    /** A long message's Show full / Show less ([UserFold]). */
+    const val USER_FOLD = "conversation.user.fold"
 }
 
 /** The rows' own measures; text and user bubbles are the legacy chat's (MessageSpec), a turn's own rows [TurnRowSpec]. */
@@ -112,6 +114,8 @@ class ConversationRowActions(
     val asks: AskActions? = null,
     /** Opens a finished turn on its work, or folds it again, by its run. */
     val onToggleTurn: (String) -> Unit = {},
+    /** Opens a person's long message whole, or cuts it back, by its row's key. */
+    val onToggleMessage: (String) -> Unit = {},
 )
 
 /**
@@ -250,6 +254,10 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
     val photos = @Composable {
         InlinePictures(row.key, row.pictures, actions, MediaFlow.message, alignEnd = true, measure = MediaFlow::messageMeasure, limit = true)
     }
+    // Past its first lines it is cut, and a tap on the bubble opens it or cuts it back ([UserFold]).
+    val prose = if (row.text.isNotEmpty()) rememberProse(ProseSource(row.key, ProseKind.User, row.text, row.blocks)) else null
+    val cut = remember(prose) { prose?.cut(UserFold.PREVIEW_LINES) }
+    val toggle = stringResource(if (row.opened) R.string.machine_launcher_show_less else R.string.conversation_show_full)
     if (row.text.isNotEmpty() || failed) {
         UserMessage(
             ChatRow.User(message, UserDisplay.Text(row.text, row.blocks), delivery = delivery, time = row.createdAt),
@@ -262,7 +270,9 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
             attachments = if (row.pictures.isEmpty()) null else {
                 { Box(Modifier.padding(top = ConversationRowSpec.photosGap)) { photos() } }
             },
-            body = if (row.text.isNotEmpty()) { _ -> UserProse(row, actions.legacy) } else null,
+            onTap = if (cut != null) ({ actions.onToggleMessage(row.key) }) else null,
+            tapLabel = toggle,
+            body = if (prose != null) { _ -> UserProse(row, prose, cut, actions.legacy) } else null,
         )
     } else if (row.pictures.isNotEmpty()) {
         Box(
