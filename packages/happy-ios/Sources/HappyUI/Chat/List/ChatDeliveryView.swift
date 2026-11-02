@@ -204,17 +204,22 @@ final class ChatDeliveryView: UIView {
     private func scale(to next: CGFloat) {
         guard next > 0, next != scale else { return }
         scale = next
-        var transform = CGAffineTransform(scaleX: next, y: next)
-        func scaled(_ path: CGPath) -> CGPath { path.copy(using: &transform) ?? path }
-        sent.path = scaled(Self.fullCheck)
-        read.path = scaled(Self.partialCheck)
-        clockFrame.path = scaled(Self.clockFrame)
-        clockHour.path = scaled(Self.clockHour)
-        clockMinute.path = scaled(Self.clockMinute)
-        failedBang.path = scaled(Self.bang)
+        sent.path = Self.scaled(Self.fullCheck, next)
+        read.path = Self.scaled(Self.partialCheck, next)
+        clockFrame.path = Self.scaled(Self.clockFrame, next)
+        clockHour.path = Self.scaled(Self.clockHour, next)
+        clockMinute.path = Self.scaled(Self.clockMinute, next)
+        failedBang.path = Self.scaled(Self.bang, next)
         sent.lineWidth = 0.99 * next
         read.lineWidth = 0.99 * next
         clockFrame.lineWidth = next
+    }
+
+    /// A copy of `path` grown by `scale`. Not a closure over the
+    /// transform: the optimizer's isolation check refuses one.
+    private static func scaled(_ path: CGPath, _ scale: CGFloat) -> CGPath {
+        var transform = CGAffineTransform(scaleX: scale, y: scale)
+        return path.copy(using: &transform) ?? path
     }
 
     private func place(_ layer: CALayer, _ frame: CGRect) {
