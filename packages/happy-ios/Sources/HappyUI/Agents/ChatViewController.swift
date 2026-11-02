@@ -358,7 +358,6 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        header.ride(transitionCoordinator, appearing: true)
         // A preview is only looked at: what it shows stays unread.
         if previewing { return }
         #if DEBUG
@@ -410,7 +409,6 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        header.ride(transitionCoordinator, appearing: false)
         MessageLiftOverlay.putBack(from: self)
         #if DEBUG
         probe?.observePop()

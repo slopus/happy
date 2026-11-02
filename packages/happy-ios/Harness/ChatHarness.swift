@@ -71,7 +71,6 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
     private var avatarSpeeds: AvatarSpeedHarness?
     private var agentChat: AgentChatHarness?
     private var splitApp: SplitAppHarness?
-    private var glassReference: GlassReferenceHarness?
     #endif
 
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
@@ -125,10 +124,6 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "avatarSpeeds" {
             avatarSpeeds = AvatarSpeedHarness(window: window, arguments: arguments)
-            return
-        }
-        if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "glassReference" {
-            glassReference = GlassReferenceHarness(window: window, arguments: arguments)
             return
         }
         if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "split" {
