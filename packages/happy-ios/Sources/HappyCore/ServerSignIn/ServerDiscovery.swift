@@ -15,10 +15,12 @@ public enum ServerSignInError: Error, Equatable, Sendable {
     case noSupportedMethod
     /// The new token didn't sign in to the server.
     case rejected
+    /// The server's health `instanceId` isn't the one the scanned code named.
+    case wrongServer
 }
 
 public enum ServerURL {
-    /// The origin a person typed, as `https://host[:port]`. A missing scheme
+    /// A server's origin, as `https://host[:port]`. A missing scheme
     /// means https; a trailing slash is dropped; anything else in the path,
     /// a query, credentials or plain `http` is refused.
     public static func normalize(_ input: String) throws -> AgentOrigin {

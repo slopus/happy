@@ -2,15 +2,17 @@
 
 A team runs Happy Agent on its own server, behind an HTTPS load balancer
 that may enforce the organization's single sign-on. The app adds such a
-server by its address and signs in with the server's own OAuth method. It
+server only by scanning the code Happy Desktop shows, and signs in with
+the server's own OAuth method. It never takes a typed or pasted address. It
 doesn't need Tailcat, Happy Cloud, WorkOS or the hosted relay. The daemon
 side is specified in happy-agent's `API.md` ("Signing in with the
 authorization code flow") and the edge SSO contract shared by iOS, Android
 and desktop.
 
 The code is in `Sources/HappyCore/ServerSignIn/`. The screen is
-`Screens/ServerSignInScreen.swift`, reached from the scanner's ⋯ ("Sign in
-to a server") wherever an account or agent is added. There is no managed
+`Screens/ServerSignInScreen.swift`, opened by a scanned server code (any of
+the app's scanners) and by "Sign In Again" in Settings. It shows the server
+but doesn't let it be edited. There is no managed
 app configuration: Tailcat, the hosted relay and phone pairing are the
 server's to turn on or off (`happy.toml`), and analytics is the person's
 choice. The phone pairs only from a code the computer shows, which it
@@ -35,10 +37,50 @@ and no fragment. When several flavors share a phone, the wrong one may
 receive a redirect; its state check refuses it. Universal links are not
 used.
 
+## The server code
+
+Happy Desktop shows `happy://<instanceId>/server?url=<percent-encoded base
+URL>` (edge SSO contract v5 §8), for example
+`happy://k3x9q2m7p0a4b8c1d5e6f7g2/server?url=https%3A%2F%2Fhappy.acme.example%2F`.
+It carries no token, code or secret. `ServerLink` (HappyWire) parses it:
+
+- `instanceId` matches `^[a-z][a-z0-9]{23}$`;
+- `url` is percent-decoded as UTF-8, any valid escape in either case. The
+  result must already be a normalized https base URL, as
+  `new URL(u).href === u` would have it: no userinfo, query or fragment, a
+  lowercase host, no default port, a path ending in `/`. A path prefix is
+  allowed;
+- nothing else: no other parameter, no fragment, no `/` after `server`, at
+  most 4,096 characters. Anything else is malformed ("Can't Use This
+  Code") and never repaired.
+
+It isn't a Happy link: `HappyLink` refuses it, and in a conversation or a
+document it is inert text. What happens to one (`HappyScan`):
+
+1. Only a code from the app's own scanner is acted on. One opened from
+   another app or a browser, or pasted, says "A server code works only
+   when you scan it" and adds nothing.
+2. A connected server already reporting that `instanceId`
+   (`InstanceLinkRoute.connection`) is shown, and nothing is added.
+3. A base URL with a path other than `/` stops here: "This server is set
+   up under a web address path, which Happy on iPhone can't connect to
+   yet." The transports address a server by origin; prefixes are a
+   follow-up.
+4. Otherwise the sign-in screen opens on the code's origin, and the
+   sign-in below runs. After it, `GET /v0/health` with the new token must
+   report the code's `instanceId` (the edge blocks health without one).
+   Another installation's, or none, discards the credential and shows
+   "This code doesn't match the server it points to."
+   (`ServerSignInError.wrongServer`).
+
+"Sign In Again" checks the `instanceId` the connection last reported the
+same way; a connection from an older daemon that never reported one isn't
+checked.
+
 ## Sign-in
 
-1. The person enters `https://host[:port]`.
-   `ServerURL.normalize` accepts only an `https` origin.
+1. The server comes from a scanned code, or from the connection signing
+   in again.
 2. `GET /v0/authentication` (`ServerDiscovery`) runs without a token and
    doesn't follow redirects. A redirect (3xx but not 304), a 401 or a non-JSON 403 here means the
    load balancer didn't let discovery through, and the screen says so.
@@ -53,7 +95,8 @@ used.
    `NoRedirectURLSessionTransport`, which refuses redirects), with
    `resource` when present.
 5. `GET /v0/authentication` with the new token confirms
-   `authenticated: true`. When `userId` is null, the server hasn't met this
+   `authenticated: true`, and health is checked against the code's
+   `instanceId` (above). When `userId` is null, the server hasn't met this
    person yet: the app asks for a name and saves it with
    `PATCH /v0/profile` before keeping the account. Otherwise the team-mode
    profile gate would answer 401 to everything.
@@ -149,8 +192,8 @@ ported from happy-agent-client's `happyLinks.ts`.
   shows that connection's home. An unknown installation says "This link
   belongs to a Happy server you're not connected to." and never falls back
   to another server. A link naming no installation isn't opened from
-  outside. The app's own `happy://` routes (`direct`, `terminal`, `oauth`)
-  are unchanged.
+  outside. The app's own `happy://` routes (`direct`, `terminal`, `oauth`,
+  and the server code) aren't instance links.
 - Copy Link, in the bar of an artifact and of a conversation's detail,
   writes the instance form, and isn't offered when the daemon reports no
   `instanceId`.
@@ -159,8 +202,8 @@ ported from happy-agent-client's `happyLinks.ts`.
 
 `Tests/HappyCoreTests/ServerSignInTests.swift`: the authorization URL and
 PKCE, the code and refresh forms, rotation, discovery filtering, the
-needs-sign-in rule, URL normalization,
-refresh-and-retry, a single shared refresh, the WebSocket handshake and
+needs-sign-in rule, URL normalization, the server code's `instanceId`
+checked after sign-in, refresh-and-retry, a single shared refresh, the WebSocket handshake and
 framing, and tunnel classification.
 
 `scripts/edge-sso-mock/server.mjs` plays the load balancer, the identity
@@ -171,17 +214,25 @@ HTML page, and `/control/expire`, `/control/revoke` and `/control/restore`
 expire every access token, end the SSO session, or let it sign in again.
 It accepts only `happy://oauth/callback`, PKCE S256 and the `resource`.
 
+`Tests/HappyWireTests/ServerLinkTests.swift`: the server code's grammar,
+formatting, and every malformed form. `ScanRouteTests` routes it from any
+scan.
+
 - `EdgeMockInteropTests` runs the real code flow, rotation, an edge
   refusal and a WebSocket tunnel against it: start the mock, then
   `HAPPY_EDGE_MOCK_PORT=8444 swift test --filter EdgeMockInteropTests`.
 - `scripts/edge-sso-mock/run-ui-test.sh` (on a Mac) runs
-  `ServerSignInUITests` in a simulator that trusts the mock's CA: the
-  address is entered from Start's scanner, sign-in goes through
-  ASWebAuthenticationSession, the name prompt answers the profile gate,
-  home loads, expired tokens refresh, an ended SSO session shows "Sign in
-  again", signing in again connects, the mock's own instance link opens
-  its artifact, and another installation's or an instance-less link is
-  refused.
+  `ServerSignInUITests` in a simulator that trusts the mock's CA. The
+  simulator has no camera, so each launch hands the scanner its code with
+  `HAPPY_SIMULATED_SCAN` (debug builds only). A code under a path prefix is
+  refused before any request, the code opened as a link is refused, a code
+  naming another installation is refused after sign-in, then the right
+  code (lowercase escapes) signs in through ASWebAuthenticationSession, the
+  name prompt answers the profile gate, home loads, expired tokens
+  refresh, an ended SSO session shows "Sign in again", signing in again
+  connects, the mock's own instance link opens its artifact, another
+  installation's or an instance-less link is refused, and scanning the
+  code again from Settings shows the server and adds nothing.
 - `testDiscoveryAnsweredByTheEdgeOnADevice` runs on a phone with
-  `TEST_RUNNER_HAPPY_EDGE_DEVICE=1`: a plain website answering
+  `TEST_RUNNER_HAPPY_EDGE_DEVICE=1`: a scanned code for a plain website answering
   `/v0/authentication` is refused with the administrator's fix.

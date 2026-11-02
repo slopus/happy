@@ -2,12 +2,17 @@ import XCTest
 
 /// A team server behind an SSO load balancer, end to end against the edge
 /// mock (`scripts/edge-sso-mock/run-ui-test.sh` starts it and trusts its
-/// CA in this simulator only). From Start, the scanner's ⋯ signs in to
-/// https://localhost:8443 by its address. The test signs in through the
-/// browser, gives its name to the profile gate, lands on the server's home,
-/// survives its access tokens being expired (refresh), sees "Sign in again"
-/// once the SSO session ends, signs in again, and opens instance links from
-/// outside: its own installation's, and refuses any other.
+/// CA in this simulator only). The phone adds it only by scanning Happy
+/// Desktop's server code; the simulator has no camera, so each launch hands
+/// the scanner its code (`HAPPY_SIMULATED_SCAN`). The test is refused a
+/// server under a path and the code opened as a link, signs in to a code
+/// naming another installation and is refused after the browser, then
+/// scans the right one: signs in through the browser, gives its name to the
+/// profile gate, lands on the server's home, survives its access tokens
+/// being expired (refresh), sees "Sign in again" once the SSO session ends,
+/// signs in again, opens instance links from outside (its own
+/// installation's, and refuses any other), and scanning the code again
+/// adds nothing.
 @MainActor
 final class ServerSignInUITests: XCTestCase {
     private let app = XCUIApplication()
@@ -16,6 +21,8 @@ final class ServerSignInUITests: XCTestCase {
     private static let server = "https://localhost:8443"
     /// The mock's health `instanceId`.
     private static let instance = "k3x9q2m7p0a4b8c1d5e6f7g2"
+    /// Happy Desktop's code for the mock, its escapes in lowercase hex.
+    private static let code = "happy://\(instance)/server?url=https%3a%2f%2flocalhost%3a8443%2f"
 
     override func setUp() { continueAfterFailure = false }
 
@@ -72,45 +79,82 @@ final class ServerSignInUITests: XCTestCase {
         app.activate()
     }
 
-    /// Start, the scanner's ⋯, "Sign in to a server", and `server` typed in.
-    private func enterServer(_ server: String, shot: String) {
+    /// Launched with the scanner reading `code`.
+    private func launch(scanning code: String) {
+        app.terminate()
+        app.launchEnvironment["HAPPY_SIMULATED_SCAN"] = code
         app.launch()
-        let start = app.buttons["start-button"]
-        XCTAssertTrue(start.waitForExistence(timeout: 30), "no Start")
-        start.tap()
-        let more = app.buttons["scanner-more"]
-        XCTAssertTrue(more.waitForExistence(timeout: 8), "the scanner has no ⋯")
-        // The simulator has no camera; its permission prompt may still ask.
+    }
+
+    /// The camera's permission prompt, which may still ask in the simulator.
+    private func allowCamera() {
         for button in ["Allow", "OK"] where springboard.alerts.buttons[button].exists {
             springboard.alerts.buttons[button].tap()
         }
-        more.tap()
-        let way = app.buttons["Sign in to a server"]
-        XCTAssertTrue(way.waitForExistence(timeout: 5), "no Sign in to a server")
-        way.tap()
+    }
+
+    /// Start, whose scanner reads the launch's code.
+    private func scanFromStart() {
+        let start = app.buttons["start-button"]
+        XCTAssertTrue(start.waitForExistence(timeout: 30), "no Start")
+        start.tap()
+        Thread.sleep(forTimeInterval: 1)
+        allowCamera()
+    }
+
+    /// The sign-in screen a scanned code opened, showing its server, and on.
+    private func continueToSignIn(shot: String) {
         let address = element("server-sign-in-url")
         XCTAssertTrue(address.waitForExistence(timeout: 10), "the sign-in screen didn't open")
-        XCTAssertTrue(address.isEnabled)
-        address.tap()
-        address.typeText(server)
+        XCTAssertFalse(address.isEnabled, "the server can be typed")
+        XCTAssertEqual(address.value as? String, Self.server)
         capture(shot)
         element("server-sign-in-continue").tap()
     }
 
+    private func alert(containing text: String) -> XCUIElement {
+        app.alerts.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
+    }
+
     func testSignInRefreshAndSignInAgain() {
-        enterServer(Self.server, shot: "1-server-address")
-        signInInBrowser("2-identity-provider")
+        // A server under a path can't be reached from a phone yet: nothing starts.
+        launch(scanning: "happy://\(Self.instance)/server?url=https%3A%2F%2Flocalhost%3A8443%2Fhappy%2F")
+        scanFromStart()
+        XCTAssertTrue(alert(containing: "web address path").waitForExistence(timeout: 10), "a server under a path wasn't refused")
+        capture("1-path-prefix")
+        app.alerts.buttons.firstMatch.tap()
+        // A server code opened as a link adds nothing.
+        openFromOutside(URL(string: Self.code)!)
+        XCTAssertTrue(alert(containing: "works only when you scan it").waitForExistence(timeout: 10), "a server code opened as a link")
+        capture("2-scan-only")
+        app.alerts.buttons.firstMatch.tap()
+
+        // A code naming another installation: refused once health answers,
+        // after the sign-in, and nothing is kept.
+        launch(scanning: "happy://zzzzzzzzzzzzzzzzzzzzzzzz/server?url=https%3A%2F%2Flocalhost%3A8443%2F")
+        scanFromStart()
+        continueToSignIn(shot: "3-scanned-other-installation")
+        signInInBrowser(nil)
+        let mismatch = app.staticTexts["This code doesn’t match the server it points to."]
+        XCTAssertTrue(mismatch.waitForExistence(timeout: 30), "another installation's code wasn't refused")
+        capture("4-wrong-server")
+
+        launch(scanning: Self.code)
+        XCTAssertTrue(app.buttons["start-button"].waitForExistence(timeout: 30), "a refused code kept the server")
+        scanFromStart()
+        continueToSignIn(shot: "5-scanned-server")
+        signInInBrowser("6-identity-provider")
 
         // First time on this server: the profile gate wants a name.
         let name = app.alerts.textFields.firstMatch
         XCTAssertTrue(name.waitForExistence(timeout: 20), "no name prompt")
         name.typeText("Steve")
-        capture("3-name")
+        capture("7-name")
         app.alerts.buttons["Continue"].tap()
 
         let task = element("row:space:Behind the SSO load balancer")
         XCTAssertTrue(task.waitForExistence(timeout: 60), "the server's home didn't show")
-        capture("4-home")
+        capture("8-home")
 
         // Expired access tokens: the next requests refresh and carry on.
         control("expire")
@@ -122,7 +166,7 @@ final class ServerSignInUITests: XCTestCase {
         XCTAssertTrue(element("settings:server-sign-in").waitForExistence(timeout: 10))
         XCTAssertTrue(element("settings:server").exists)
         XCTAssertTrue(element("settings:disconnect").exists, "the server can't be signed out of")
-        capture("5-settings")
+        capture("9-settings")
 
         // The SSO session ends: everything is redirected to the IdP and the
         // refresh is refused.
@@ -130,19 +174,19 @@ final class ServerSignInUITests: XCTestCase {
         bounce()
         let needsSignIn = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Sign in again")).firstMatch
         XCTAssertTrue(needsSignIn.waitForExistence(timeout: 30), "no Sign in again")
-        capture("6-needs-sign-in")
+        capture("10-needs-sign-in")
 
         control("restore")
         element("settings:server-sign-in").tap()
         let again = element("server-sign-in-continue")
         XCTAssertTrue(again.waitForExistence(timeout: 10))
-        capture("7-sign-in-again")
+        capture("11-sign-in-again")
         again.tap()
         signInInBrowser(nil)
         let connected = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Connected")).firstMatch
         XCTAssertTrue(connected.waitForExistence(timeout: 60), "not connected again")
         XCTAssertFalse(needsSignIn.exists)
-        capture("8-signed-in-again")
+        capture("12-signed-in-again")
 
         // A link from outside opens only on the installation it names: the
         // mock's health `instanceId`, read while connecting.
@@ -150,28 +194,44 @@ final class ServerSignInUITests: XCTestCase {
         XCTAssertTrue(element("artifact").waitForExistence(timeout: 20), "the instance link didn't open its artifact")
         XCTAssertTrue(app.navigationBars.staticTexts["Q3 report"].waitForExistence(timeout: 10), "not the linked artifact")
         XCTAssertTrue(element("artifact-copy-link").exists, "no Copy Link")
-        capture("9-instance-link")
+        capture("13-instance-link")
         // Another installation's link never falls back to this one.
         openFromOutside(URL(string: "happy://zzzzzzzzzzzzzzzzzzzzzzzz/artifacts/q3report")!)
         let unknown = app.alerts.staticTexts["This link belongs to a Happy server you’re not connected to."]
         XCTAssertTrue(unknown.waitForExistence(timeout: 10), "an unknown installation's link wasn't refused")
-        capture("10-unknown-instance")
+        capture("14-unknown-instance")
         app.alerts.buttons.firstMatch.tap()
         // Nor does one naming no installation open from outside.
         openFromOutside(URL(string: "happy://artifacts/q3report")!)
         XCTAssertTrue(app.alerts.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "doesn’t say which Happy server")).firstMatch.waitForExistence(timeout: 10),
                       "a link naming no installation opened")
         app.alerts.buttons.firstMatch.tap()
+
+        // Scanning the code again shows this server and adds nothing.
+        app.buttons["settings"].firstMatch.tap()
+        let add = element("settings:connect-agent")
+        XCTAssertTrue(add.waitForExistence(timeout: 10), "no Add Agent")
+        add.tap()
+        Thread.sleep(forTimeInterval: 3)
+        allowCamera()
+        XCTAssertFalse(element("server-sign-in-url").exists, "a connected server's code started a sign-in")
+        XCTAssertTrue(task.waitForExistence(timeout: 20), "the server's home didn't come forward")
+        capture("15-already-connected")
     }
 
-    /// On a phone, where the mock isn't reachable: a server whose
+    /// On a phone, where the mock isn't reachable: a scanned server whose
     /// `/v0/authentication` is answered by a plain website (an edge in front
     /// of Happy, as far as the app can tell) is refused with the
     /// administrator's fix, over the real network. Runs only with
     /// `TEST_RUNNER_HAPPY_EDGE_DEVICE=1`.
     func testDiscoveryAnsweredByTheEdgeOnADevice() throws {
         try XCTSkipUnless(ProcessInfo.processInfo.environment["HAPPY_EDGE_DEVICE"] == "1")
-        enterServer("https://example.com", shot: "device-1-server-address")
+        launch(scanning: "happy://\(Self.instance)/server?url=https%3A%2F%2Fexample.com%2F")
+        scanFromStart()
+        let address = element("server-sign-in-url")
+        XCTAssertTrue(address.waitForExistence(timeout: 10), "the sign-in screen didn't open")
+        capture("device-1-scanned-server")
+        element("server-sign-in-continue").tap()
         let refused = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "/v0/authentication")).firstMatch
         XCTAssertTrue(refused.waitForExistence(timeout: 30), "no refusal")
         capture("device-2-edge-answered")

@@ -121,6 +121,15 @@ public final class QRScannerViewController: UIViewController {
         updateScanArea()
     }
 
+    public override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        #if DEBUG
+        // A UI test hands the scanner the code it would have read: the
+        // simulator has no camera, and a phone's can't be aimed.
+        if let code = ProcessInfo.processInfo.environment["HAPPY_SIMULATED_SCAN"], !code.isEmpty { found(code) }
+        #endif
+    }
+
     public override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         capture.stop()

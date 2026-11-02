@@ -1,11 +1,12 @@
 import Foundation
 import HappyWire
 
-/// Adding a team server by its HTTPS address, in the order the screen
-/// walks it: discover how it signs people in, open that in the system
-/// browser, exchange the code, then make sure the token gets in, saving
-/// the person's name first when the server hasn't met them yet. Nothing is
-/// stored until `AccountController.addServer` keeps the result.
+/// Adding the team server a scanned code named, or signing in to one
+/// again, in the order the screen walks it: discover how it signs people
+/// in, open that in the system browser, exchange the code, check the
+/// installation, then make sure the token gets in, saving the person's
+/// name first when the server hasn't met them yet. Nothing is stored until
+/// `AccountController.addServer` keeps the result.
 public struct ServerSignInFlow: Sendable {
     public let origin: AgentOrigin
     public let method: OAuthMethod
@@ -43,11 +44,26 @@ public struct ServerSignInFlow: Sendable {
     }
 
     /// Exchanges the redirect's code, then asks the server who signed in.
-    public func complete(_ request: OAuthSignInRequest, callback: URL) async throws -> SignedIn {
+    /// With `instanceId` (the installation a scanned code named), the
+    /// server's health must report exactly it before anything is kept: a
+    /// code can't send the person's sign-in to another server.
+    public func complete(_ request: OAuthSignInRequest, callback: URL, instanceId: String? = nil) async throws -> SignedIn {
         let (access, grant) = try await tokens.complete(request, callback: callback)
         let who = try await discovery.discover(origin, token: access.token)
         guard who.authenticated else { throw ServerSignInError.rejected }
+        if let instanceId { try await verify(instanceId, token: access.token) }
         return SignedIn(origin: origin, record: ServerSignInRecord(method: method, grant: grant, userId: who.userId), access: access)
+    }
+
+    /// Health (open to a member still being onboarded, API.md) must name
+    /// `instanceId`.
+    private func verify(_ instanceId: String, token: String) async throws {
+        let transport = makeTransport(origin)
+        defer { Task { await transport.close() } }
+        let health = try await transport.request("/v0/health", credential: token)
+        guard health.status == 200 else { throw SignInRequired.check(health) ? ServerSignInError.rejected : ServerSignInError.unreachable }
+        struct Health: Decodable { let instanceId: String? }
+        guard (try? JSONDecoder().decode(Health.self, from: health.body))?.instanceId == instanceId else { throw ServerSignInError.wrongServer }
     }
 
     /// Saves `name` as the person's profile, which makes them a member the

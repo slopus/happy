@@ -20,6 +20,8 @@ public enum HappyCode: Equatable, Sendable {
     case account(publicKey: Data)
     /// A computer to pair with directly.
     case agentConnection(PairingLink)
+    /// A team server to sign in to, from Happy Desktop's code.
+    case server(ServerLink)
     /// A Happy link whose content is broken, expired or from a newer app.
     case invalid(Problem)
     /// Not a Happy code at all.
@@ -29,6 +31,8 @@ public enum HappyCode: Equatable, Sendable {
         case terminal
         case account
         case agentConnection(PairingError)
+        /// A team server's code that isn't well-formed.
+        case server
     }
 
     public init(_ text: String, now: Date = Date()) {
@@ -39,6 +43,10 @@ public enum HappyCode: Equatable, Sendable {
             } catch {
                 self = .invalid(.agentConnection(error as? PairingError ?? .invalidCode))
             }
+            return
+        }
+        if ServerLink.isServerLink(text) {
+            self = ServerLink(text).map { .server($0) } ?? .invalid(.server)
             return
         }
         if let link = LegacyPairingLink(text) {

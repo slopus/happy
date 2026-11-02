@@ -25,8 +25,14 @@ public enum InstanceLinkRoute: Equatable, Sendable {
             return .notOpened
         }
         guard let instance = link.instanceId else { return .notOpened }
+        guard let chosen = connection(for: instance, in: connections, active: active) else { return .unknownInstance }
+        return .open(connection: chosen, link: link)
+    }
+
+    /// The connection to the installation `instance`: `active` when that is
+    /// one, else one still signed in, else any.
+    public static func connection(for instance: String, in connections: [AgentConnection], active: String?) -> String? {
         let matches = connections.filter { $0.instanceId == instance }
-        guard let chosen = matches.first(where: { $0.id == active }) ?? matches.first(where: { !$0.revoked }) ?? matches.first else { return .unknownInstance }
-        return .open(connection: chosen.id, link: link)
+        return (matches.first(where: { $0.id == active }) ?? matches.first(where: { !$0.revoked }) ?? matches.first)?.id
     }
 }

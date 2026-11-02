@@ -4,22 +4,26 @@ import HappyCore
 import HappyWire
 import UIKit
 
-/// Adds a team server by its HTTPS address, or signs one in again: the
+/// Signs in to a team server: one Happy Desktop's code named, or one here
+/// already whose sign-in ended. The address is shown, never typed. The
 /// server's own sign-in opens in the system browser
 /// (`ASWebAuthenticationSession`), which returns to Happy's fixed redirect
-/// URI (`OAuthRedirect`, docs/SERVER-SIGN-IN.md). A server being signed in
-/// again is filled in and can't be changed. Nothing is kept until the server has accepted the sign-in.
-final class ServerSignInViewController: UIViewController, UITextFieldDelegate, ASWebAuthenticationPresentationContextProviding {
+/// URI (`OAuthRedirect`, docs/SERVER-SIGN-IN.md). Nothing is kept until the
+/// server has accepted the sign-in and, when the installation is known,
+/// proved to be it.
+final class ServerSignInViewController: UIViewController, ASWebAuthenticationPresentationContextProviding {
     private let context: AppContext
     private let list = GroupedListView()
     private let form = ServerFormView()
-    /// The server signed in to again, whose address can't be edited here.
-    private let fixed: String?
+    private let server: String
+    /// The installation the server must report (health `instanceId`).
+    private let instanceId: String?
     private var browser: ASWebAuthenticationSession?
 
-    init(context: AppContext, server: String? = nil) {
+    init(context: AppContext, server: String, instanceId: String?) {
         self.context = context
-        fixed = server
+        self.server = server
+        self.instanceId = instanceId
         super.init(nibName: nil, bundle: nil)
         followsTextSize()
     }
@@ -30,43 +34,29 @@ final class ServerSignInViewController: UIViewController, UITextFieldDelegate, A
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        title = fixed != nil && context.account.agentConnections.accounts.contains(where: { $0.server == fixed }) ? Strings.ServerSignIn.signInAgain : Strings.ServerSignIn.title
+        let again = context.account.agentConnections.accounts.contains { $0.server == server }
+        title = again ? Strings.ServerSignIn.signInAgain : Strings.ServerSignIn.title
         view.accessibilityIdentifier = "server-sign-in"
         list.sections = [ItemGroupView(footer: Strings.ServerSignIn.footer, rows: [form])]
         form.saveTitle = Strings.ServerSignIn.continueAction
         form.save.accessibilityIdentifier = "server-sign-in-continue"
+        // Shown, not edited: the code or the account named it.
         form.field.accessibilityIdentifier = "server-sign-in-url"
-        form.field.text = fixed
-        form.field.isEnabled = fixed == nil
-        form.field.delegate = self
-        form.field.addTarget(self, action: #selector(edited), for: .editingChanged)
+        form.field.text = server
+        form.field.isEnabled = false
         form.save.action = { [weak self] in await self?.signIn() }
     }
 
-    func textFieldShouldReturn(_ textField: UITextField) -> Bool {
-        textField.resignFirstResponder()
-        Task { await signIn() }
-        return true
-    }
-
-    @objc private func edited() { form.error = nil }
-
     private func signIn() async {
         guard !form.isValidating else { return }
-        let address = form.field.text ?? ""
-        guard !address.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            form.error = Strings.Server.enterServerUrl
-            return
-        }
-        form.field.resignFirstResponder()
         form.error = nil
         form.isValidating = true
-        defer { form.isValidating = false; form.field.isEnabled = fixed == nil }
+        defer { form.isValidating = false }
         do {
-            let flow = try await ServerSignInFlow.start(address)
+            let flow = try await ServerSignInFlow.start(server)
             let request = try flow.request(redirectUri: OAuthRedirect.uri)
             let callback = try await authenticate(request.url, scheme: OAuthRedirect.scheme)
-            var signedIn = try await flow.complete(request, callback: callback)
+            var signedIn = try await flow.complete(request, callback: callback, instanceId: instanceId)
             if signedIn.needsProfile {
                 guard let name = await askName() else { throw OAuthError.cancelled }
                 signedIn = try await flow.saveProfile(name, for: signedIn)

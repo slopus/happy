@@ -197,6 +197,43 @@ final class SignInRequiredTests: XCTestCase {
         XCTAssertEqual(http.requests.last?.headers["Authorization"], "Bearer t")
         XCTAssertFalse(http.requests.contains { $0.url.query?.contains("t") == true })
     }
+
+    /// A scanned code's installation must be the server's, read from
+    /// health with the new token (the edge blocks it before): another one,
+    /// or none, keeps nothing.
+    func testAScannedCodesInstallationIsCheckedAfterSignIn() async throws {
+        let http = ScriptedHTTP()
+        http.json(acme.tokenUrl, #"{"access_token":"a1","token_type":"Bearer","refresh_token":"r1"}"#)
+        http.json("https://happy.acme.example/v0/authentication", #"{"authenticated":true,"userId":null,"methods":[]}"#)
+        let daemon = Daemon()
+        let flow = ServerSignInFlow(origin: try ServerURL.normalize("https://happy.acme.example"), method: acme, tokens: OAuthTokenClient(http: http),
+                                    discovery: ServerDiscovery(http: http), makeTransport: { _ in daemon })
+        let instance = "k3x9q2m7p0a4b8c1d5e6f7g2"
+        func signIn(_ instanceId: String?) async throws -> ServerSignInFlow.SignedIn {
+            let request = try flow.request(redirectUri: "happy://oauth/callback")
+            return try await flow.complete(request, callback: URL(string: "happy://oauth/callback?code=xyz&state=\(request.state)")!, instanceId: instanceId)
+        }
+        func health(_ body: String) async { await daemon.answer("/v0/health", HTTP1Response(status: 200, body: Data(body.utf8))) }
+
+        await health(#"{"ready":true,"instanceId":"\#(instance)"}"#)
+        let signedIn = try await signIn(instance)
+        XCTAssertEqual(signedIn.record.grant.refreshToken, "r1")
+        let checked = await daemon.seen
+        XCTAssertEqual(checked.map(\.path), ["/v0/health"])
+        XCTAssertEqual(checked.map(\.credential), ["a1"])
+
+        await XCTAssertThrowsAsync(try await signIn("zzzzzzzzzzzzzzzzzzzzzzzz")) { XCTAssertEqual($0 as? ServerSignInError, .wrongServer) }
+        await health(#"{"ready":true}"#)
+        await XCTAssertThrowsAsync(try await signIn(instance)) { XCTAssertEqual($0 as? ServerSignInError, .wrongServer) }
+        // The edge refusing the new token is a refused sign-in.
+        await daemon.answer("/v0/health", HTTP1Response(status: 302, headers: ["location": "https://idp.example/login"]))
+        await XCTAssertThrowsAsync(try await signIn(instance)) { XCTAssertEqual($0 as? ServerSignInError, .rejected) }
+        // Signing in again to a server that never reported one asks nothing.
+        let before = await daemon.seen.count
+        _ = try await signIn(nil)
+        let after = await daemon.seen.count
+        XCTAssertEqual(after, before)
+    }
 }
 
 /// The access token each request carried, and what the daemon answers.

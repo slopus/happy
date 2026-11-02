@@ -193,6 +193,12 @@ final class AgentConnectionsTests: XCTestCase {
         XCTAssertEqual(InstanceLinkRoute.route("happy://session/abc", connections: all, active: "mine"), .notALink)
         XCTAssertEqual(InstanceLinkRoute.route("happy://oauth/callback?code=c", connections: all, active: "mine"), .notALink)
         XCTAssertEqual(InstanceLinkRoute.route("https://example.com", connections: all, active: "mine"), .notALink)
+        // A scanned server code for an installation here shows that one.
+        XCTAssertEqual(InstanceLinkRoute.connection(for: instance, in: all, active: "again"), "again")
+        XCTAssertEqual(InstanceLinkRoute.connection(for: instance, in: all, active: "other"), "mine")
+        XCTAssertNil(InstanceLinkRoute.connection(for: "yyyyyyyyyyyyyyyyyyyyyyyy", in: all, active: "mine"))
+        // It isn't a Happy link, so it opens nothing as one.
+        XCTAssertEqual(InstanceLinkRoute.route("happy://\(instance)/server?url=https%3A%2F%2Fhappy.acme.example%2F", connections: all, active: "mine"), .notOpened)
     }
 
     func testRenameSendsTheNodeNameAndShowsItAtOnce() async throws {

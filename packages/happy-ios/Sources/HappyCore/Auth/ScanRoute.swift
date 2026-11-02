@@ -23,6 +23,8 @@ public enum ScanRoute: Equatable, Sendable {
     case newAccountForComputer(publicKey: Data)
     /// Hand the other device the Happy account in use.
     case linkDevice(publicKey: Data)
+    /// Sign in to the team server Happy Desktop's code names.
+    case signInToServer(ServerLink)
     case problem(ScanProblem)
 
     /// `hasAccount`: a Happy (relay) account is in use, not only a
@@ -33,6 +35,8 @@ public enum ScanRoute: Equatable, Sendable {
         switch code {
         case .agentConnection(let link):
             return .connectAgent(link)
+        case .server(let link):
+            return .signInToServer(link)
         case .terminal(let key):
             return hasAccount && intent == .connect ? .connectComputer(publicKey: key) : .newAccountForComputer(publicKey: key)
         case .account(let key):
@@ -44,6 +48,8 @@ public enum ScanRoute: Equatable, Sendable {
             return .problem(.invalidAccount)
         case .invalid(.agentConnection(let error)):
             return .problem(.agentConnection(error))
+        case .invalid(.server):
+            return .problem(.invalidServer)
         case .notHappy:
             return .problem(.notHappy)
         }
@@ -55,6 +61,8 @@ public enum ScanProblem: Equatable, Sendable {
     case invalidTerminal
     case invalidAccount
     case agentConnection(PairingError)
+    /// A team server's code that isn't well-formed.
+    case invalidServer
     /// Another device's account link, with no Happy account here to give.
     case deviceNeedsAccount
     /// Another device's account link, while the account in use was made

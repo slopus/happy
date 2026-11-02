@@ -59,6 +59,19 @@ final class ScanRouteTests: XCTestCase {
         }
     }
 
+    /// Happy Desktop's server code signs in from any scan; a broken one
+    /// says so.
+    func testAServerCodeSignsInFromAnywhere() throws {
+        let text = "happy://k3x9q2m7p0a4b8c1d5e6f7g2/server?url=https%3A%2F%2Fhappy.acme.example%2F"
+        let link = try XCTUnwrap(ServerLink(text))
+        for intent in [ScanIntent.connect, .addAccount] {
+            for account in [true, false] {
+                XCTAssertEqual(route(text, intent, account: account), .signInToServer(link))
+                XCTAssertEqual(route("happy://k3x9q2m7p0a4b8c1d5e6f7g2/server?url=http%3A%2F%2Fhappy.acme.example%2F", intent, account: account), .problem(.invalidServer))
+            }
+        }
+    }
+
     func testEveryWrongCodeIsAProblem() {
         for intent in [ScanIntent.connect, .addAccount] {
             for account in [true, false] {

@@ -7,9 +7,14 @@ extension Strings {
     enum ServerSignIn {
         static let title = "Sign In to a Server"
         static let signInAgain = "Sign In Again"
-        static let addServer = "Sign in to a server"
+        static let invalidCodeTitle = "Can’t Use This Code"
+        static let invalidCode = "This server code isn’t valid. Show it again in Happy Desktop and scan it."
+        static let scanOnlyTitle = "Scan This Code"
+        static let scanOnly = "A server code works only when you scan it. Open the scanner in Happy and scan the code Happy Desktop shows."
+        static let cantAddTitle = "Can’t Add This Server"
+        static let pathPrefix = "This server is set up under a web address path, which Happy on iPhone can’t connect to yet."
         static let continueAction = "Continue"
-        static let footer = "Your organization’s Happy server. You sign in in the browser with your organization’s account."
+        static let footer = "Your organization’s Happy server, from the code Happy Desktop showed. You sign in in the browser with your organization’s account."
         static let server = "Server"
         static let signOut = "Sign Out"
         static let signOutTitle = "Sign out of this server?"
@@ -21,11 +26,12 @@ extension Strings {
 
         static func failure(_ error: any Error) -> String {
             switch error {
-            case ServerSignInError.invalidURL: return "Enter the server’s https:// address, such as https://happy.example.com."
-            case ServerSignInError.unreachable: return "The server couldn’t be reached. Check the address and your connection."
+            case ServerSignInError.invalidURL: return "This server’s address isn’t a valid https:// address."
+            case ServerSignInError.unreachable: return "The server couldn’t be reached. Check your connection."
             case ServerSignInError.discoveryUnavailable: return "This server doesn’t offer sign-in. It may need a newer version of Happy."
             case ServerSignInError.discoveryBlocked: return "Something in front of this server answered instead of Happy. Ask your administrator to let /v0/authentication through without signing in."
-            case ServerSignInError.noSupportedMethod: return "This server doesn’t offer a way to sign in that this app supports."
+            case ServerSignInError.noSupportedMethod: return "This server can’t be added from a phone: it doesn’t offer a sign-in this app supports."
+            case ServerSignInError.wrongServer: return "This code doesn’t match the server it points to."
             case ServerSignInError.rejected: return "The server didn’t accept this sign-in. Try again, or ask your administrator."
             case OAuthError.cancelled: return "Sign-in was cancelled."
             case OAuthError.stateMismatch: return "The sign-in result didn’t match this attempt. Try again."

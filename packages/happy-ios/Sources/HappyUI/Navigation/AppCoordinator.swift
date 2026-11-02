@@ -253,7 +253,7 @@ public final class AppCoordinator {
                     confirmTitle: Strings.Common.continueAction,
                     on: top
                 ) else { return }
-            case .connectAgent, .problem:
+            case .connectAgent, .signInToServer, .problem:
                 break
             }
             await HappyScan.open(text, intent: .connect, context: context, on: top, start: .openedLink)

@@ -469,7 +469,8 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                     Row(id: "server", title: Strings.ServerSignIn.server, value: URLComponents(string: origin)?.host ?? origin, accessory: .none),
                     Row(id: "server-sign-in", title: revoked ? Strings.ServerSignIn.needsSignIn : Strings.ServerSignIn.signInAgain, accessory: .none, action: { [weak self] in
                         guard let self else { return }
-                        AccountAdding.signInToServer(context: context, from: self, server: origin)
+                        let instanceId = context.account.agentConnections.accounts.first { $0.id == id }?.instanceId
+                        AccountAdding.signInToServer(context: context, from: self, server: origin, instanceId: instanceId)
                     }),
                 ]]
             } ?? []

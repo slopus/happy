@@ -18,6 +18,10 @@ enum HappyScan {
         case accountAdded
         /// The direct pairing screen opened.
         case pairing
+        /// Signing in to a team server opened.
+        case signingIn
+        /// The team server a code named was already here, and is now shown.
+        case serverShown
         /// Left, failed or refused; whatever needed saying was said.
         case ended
     }
@@ -77,6 +81,8 @@ enum HappyScan {
             return await approve(.account(publicKey: key), session: session, start: start, on: controller, busy: busy)
         case .newAccountForComputer(let key):
             return await newAccount(for: key, context: context, start: start, on: controller, busy: busy)
+        case .signInToServer(let link):
+            return await signIn(to: link, context: context, start: start, on: controller)
         case .problem(let problem):
             PairingAnalytics.shared.log(.failed(method: problem.isAgentConnection ? .agentConnection : .relay, start: start))
             report(problem, on: controller)
@@ -175,6 +181,37 @@ enum HappyScan {
         }
     }
 
+    /// A team server's code (edge SSO contract §8), from the scanner only:
+    /// one opened as a link, pasted or tapped in a conversation adds
+    /// nothing. A server already here is shown instead of added again; one
+    /// under a path prefix can't be reached yet, so nothing starts.
+    private static func signIn(to link: ServerLink, context: AppContext, start: PairingStart, on controller: UIViewController) async -> Result {
+        guard start == .scan else {
+            Alerts.show(Strings.ServerSignIn.scanOnlyTitle, Strings.ServerSignIn.scanOnly, on: controller)
+            return .ended
+        }
+        let account = context.account
+        if let id = InstanceLinkRoute.connection(for: link.instanceId, in: account.agentConnections.accounts, active: account.agentConnections.activeID) {
+            do {
+                if !account.showsAgentConnections { await account.setShowsAgentConnections(true) }
+                try await account.switchAccount(to: id)
+                // Already the one shown: its home comes forward.
+                if let root = controller.view.window?.rootViewController, root.presentedViewController != nil { root.dismiss(animated: true) }
+                controller.navigationController?.popToRootViewController(animated: true)
+                return .serverShown
+            } catch {
+                Alerts.show(Strings.Common.error, error.localizedDescription, on: controller)
+                return .ended
+            }
+        }
+        guard link.path == "/" else {
+            Alerts.show(Strings.ServerSignIn.cantAddTitle, Strings.ServerSignIn.pathPrefix, on: controller)
+            return .ended
+        }
+        AccountAdding.signInToServer(context: context, from: controller, server: link.origin.value, instanceId: link.instanceId)
+        return .signingIn
+    }
+
     private static func report(_ problem: ScanProblem, on controller: UIViewController) {
         switch problem {
         case .notHappy:
@@ -183,6 +220,8 @@ enum HappyScan {
             Alerts.show(Strings.Common.error, Strings.Modals.invalidAuthUrl, on: controller)
         case .agentConnection(let error):
             Alerts.show("Could not pair", error.localizedDescription, on: controller)
+        case .invalidServer:
+            Alerts.show(Strings.ServerSignIn.invalidCodeTitle, Strings.ServerSignIn.invalidCode, on: controller)
         case .deviceNeedsAccount:
             Alerts.show(Strings.Scan.deviceNeedsAccountTitle, Strings.Scan.deviceNeedsAccount, on: controller)
         case .accountNotShareable:

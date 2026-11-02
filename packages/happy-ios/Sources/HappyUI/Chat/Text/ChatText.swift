@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import HappyCore
 import HappyLayout
+import HappyWire
 import UIKit
 
 extension ChatWeight {
@@ -127,8 +128,10 @@ enum ChatSpans {
                 continue
             }
             var attributes = style.attributes(color: uiColor, font: spanStyle.font(in: environment), in: environment)
-            // An http(s) link, or a reference this phone wrote (never one an agent typed).
-            if let url = span.url, (everyLink && !url.isEmpty) || LegacyMarkdown.isHTTPLink(url) || HappyReferences.reference(link: url) != nil {
+            // An http(s) link, or a reference this phone wrote (never one an
+            // agent typed). A team server's code is inert text: only the
+            // scanner takes one.
+            if let url = span.url, !ServerLink.isServerLink(url), (everyLink && !url.isEmpty) || LegacyMarkdown.isHTTPLink(url) || HappyReferences.reference(link: url) != nil {
                 attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
                 attributes[.chatLink] = url
             }
