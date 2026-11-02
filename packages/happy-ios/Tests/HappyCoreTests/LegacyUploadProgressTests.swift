@@ -142,7 +142,7 @@ final class LegacyUploadProgressTests: XCTestCase, @unchecked Sendable {
     }
 
     /// A refused upload: the picture fails and is forgotten by the board,
-    /// its text still goes; retried, it uploads in full and is sent.
+    /// and its text fails with it; retried, it uploads in full and both go.
     func testAFailedUploadRetriesFromNothing() async throws {
         let board = UploadProgressBoard()
         let key = UploadProgressBoard.outboxKey("f")
@@ -151,14 +151,15 @@ final class LegacyUploadProgressTests: XCTestCase, @unchecked Sendable {
         transport.http.onRaw("PUT /blob", "busy", status: 503)
         try await engine.flushOutbox()
         XCTAssertEqual(try store.outbox(localId: "f")?.state, .failed)
+        XCTAssertEqual(try store.outbox(localId: "t")?.state, .failed)
         XCTAssertNil(board.phase(key), "a failed upload keeps its share")
-        XCTAssertEqual(try posted(transport), ["t"])
+        XCTAssertEqual(try posted(transport), [], "the text went without its picture")
 
         transport.http.onRaw("PUT /blob", "")
         try await OutboxSender(store: store, sync: engine, filesDirectory: directory).retry(localId: "f")
         await engine.waitForIdle()
         XCTAssertEqual(Array(transport.seen.suffix(5)), [.preparing, .uploading(0.25), .uploading(0.5), .uploading(0.75), .uploading(1)])
-        XCTAssertEqual(try posted(transport), ["t", "f"])
+        XCTAssertEqual(try posted(transport), ["f", "t"])
         XCTAssertTrue(try store.pendingOutbox().isEmpty)
         XCTAssertNil(board.phase(key))
         await engine.stop()

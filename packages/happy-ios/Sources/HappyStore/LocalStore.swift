@@ -724,6 +724,8 @@ public final class LocalStore: Sendable {
         }
     }
 
+    /// A failed file fails the text it goes with, and the rest of its files:
+    /// the message goes whole or not at all, as a direct chat's does.
     public func markOutboxFailed(localId: String, error: String) throws {
         try performWrite { db in
             guard var record = try OutboxRecord.fetchOne(db, key: localId) else { return }
@@ -731,7 +733,39 @@ public final class LocalStore: Sendable {
             record.lastError = error
             record.state = .failed
             try record.update(db)
+            try Self.failSend(db, localId: localId, error: error)
         }
+    }
+
+    /// Fails the rest of the message `localId` belongs to (see `markOutboxFailed`).
+    public func failOutboxSend(localId: String, error: String) throws {
+        try performWrite { db in try Self.failSend(db, localId: localId, error: error) }
+    }
+
+    private static func failSend(_ db: Database, localId: String, error: String) throws {
+        let items = try OutboxRecord.fetchAll(db)
+        for var item in sendGroup(items, localId: localId) where item.localId != localId && item.state == .queued {
+            item.state = .failed
+            item.lastError = error
+            try item.update(db)
+        }
+    }
+
+    /// One message's items: its text and the files sent ahead of it.
+    /// `accept` chains them (each file waits on the one before, the text on
+    /// the last); a text doesn't wait on an earlier text.
+    static func sendGroup(_ items: [OutboxRecord], localId: String) -> [OutboxRecord] {
+        guard var owner = items.first(where: { $0.localId == localId }) else { return [] }
+        while owner.kind == .file, let next = items.first(where: { $0.dependsOn == owner.localId }) {
+            owner = next
+        }
+        var group = [owner]
+        var predecessor = owner.dependsOn
+        while let id = predecessor, let item = items.first(where: { $0.localId == id && $0.kind == .file }) {
+            group.append(item)
+            predecessor = item.dependsOn
+        }
+        return group
     }
 
     public func removeFromOutbox(localId: String) throws {
@@ -769,16 +803,17 @@ public final class LocalStore: Sendable {
         }
     }
 
+    /// Sends the whole message again: a retry on its text or any of its
+    /// files puts all of them back.
     public func retryOutbox(localId: String) throws {
         try performWrite { db in
-            guard var item = try OutboxRecord.fetchOne(db, key: localId) else {
-                return
+            for var item in Self.sendGroup(try OutboxRecord.fetchAll(db), localId: localId) where item.state != .sending {
+                item.state = .queued
+                item.attempts = 0
+                item.nextAttemptAt = 0
+                item.lastError = nil
+                try item.update(db)
             }
-            item.state = .queued
-            item.attempts = 0
-            item.nextAttemptAt = 0
-            item.lastError = nil
-            try item.update(db)
         }
     }
 

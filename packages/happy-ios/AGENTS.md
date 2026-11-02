@@ -172,7 +172,11 @@ nothing here is wired to the release skill or to EAS.
     Unlike happy-app's 30-second watchdog, suspension never fails or deletes
     accepted writes. A cancelled operation returns to queued with its localId.
   - A failed text/POST blocks later sends in that session; those remain queued.
-    A failed attachment upload stays visible but is skipped so its text sends.
+    A failed attachment upload fails its whole message (its text and its
+    other files), which then blocks the session like a failed text; a
+    retry of any of them sends the whole message again. A caption that went
+    without its pictures read to the agent as if they were there. happy-app
+    and Android send nothing when an upload fails, the composer keeping it.
     Retry is idempotent by localId, including after a lost acknowledgement.
   - Unsupported permission modes are refused before acceptance: `send` throws
     `UnsupportedPermissionModeError`, and nothing is enqueued or copied.

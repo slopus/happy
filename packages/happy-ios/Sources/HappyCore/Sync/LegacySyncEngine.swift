@@ -753,12 +753,11 @@ public actor LegacySyncEngine {
             guard !stopped, !backgrounded, !Task.isCancelled else {
                 break
             }
-            // A failed upload is skipped like happy-app; a failed POST retains order.
+            // A failed item holds its session's order until it is retried or
+            // taken out. A failed upload holds its text too: a caption sent
+            // without its pictures reads to the agent as if they were there.
             if item.state == .failed {
-                let uploaded = try store.attachment(outboxLocalId: item.localId)?.ref != nil
-                if item.kind == .message || uploaded {
-                    blocked.insert(item.sessionId)
-                }
+                blocked.insert(item.sessionId)
                 continue
             }
             guard !blocked.contains(item.sessionId) else {
@@ -768,12 +767,9 @@ public actor LegacySyncEngine {
                 blocked.insert(item.sessionId)
                 continue
             }
-            if let dependency = item.dependsOn, let earlier = try store.outbox(localId: dependency) {
-                let skipped = try store.attachment(outboxLocalId: earlier.localId)?.ref == nil
-                if !(earlier.kind == .file && earlier.state == .failed && skipped) {
-                    blocked.insert(item.sessionId)
-                    continue
-                }
+            if let dependency = item.dependsOn, try store.outbox(localId: dependency) != nil {
+                blocked.insert(item.sessionId)
+                continue
             }
             guard let session = try store.session(id: item.sessionId),
                   session.decryptable,
@@ -868,13 +864,15 @@ public actor LegacySyncEngine {
                 }
                 do {
                     try store.updateOutbox(item)
-                    let noRef = try store.attachment(outboxLocalId: item.localId)?.ref == nil
+                    if item.kind == .file, item.state == .failed {
+                        try store.failOutboxSend(localId: item.localId, error: item.lastError ?? "")
+                    }
                     // Its bytes didn't all go: the ring starts over next time.
-                    if item.kind == .file, noRef { options.uploads.clear(key: UploadProgressBoard.outboxKey(item.localId)) }
-                    let skippedUpload = item.kind == .file && item.state == .failed && noRef
+                    if item.kind == .file, try store.attachment(outboxLocalId: item.localId)?.ref == nil {
+                        options.uploads.clear(key: UploadProgressBoard.outboxKey(item.localId))
+                    }
                     // Taken out meanwhile: what waited on it goes on.
-                    let discarded = try store.outbox(localId: item.localId) == nil
-                    if !skippedUpload, !discarded {
+                    if try store.outbox(localId: item.localId) != nil {
                         blocked.insert(item.sessionId)
                     }
                 } catch {
@@ -889,10 +887,6 @@ public actor LegacySyncEngine {
             // Only the head eligible item in each session drives the retry timer.
             var seen = Set<String>()
             let times = pending.compactMap { item -> Int64? in
-                if item.state == .failed && item.kind == .file
-                    && (try? store.attachment(outboxLocalId: item.localId)?.ref) == nil {
-                    return nil
-                }
                 guard seen.insert(item.sessionId).inserted, item.state == .queued else {
                     return nil
                 }
