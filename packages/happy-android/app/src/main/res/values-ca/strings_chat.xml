@@ -34,4 +34,5 @@
     <string name="link_status_updating">sincronitzant…</string>
     <string name="link_status_connecting">connectant…</string>
     <string name="link_status_waiting_for_network">esperant la xarxa…</string>
+    <string name="message_select">Selecciona</string>
 </resources>

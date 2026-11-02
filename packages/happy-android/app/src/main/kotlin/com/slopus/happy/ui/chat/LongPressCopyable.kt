@@ -116,10 +116,31 @@ fun LongPressCopyable(
     horizontalAlignment: Alignment.Horizontal = Alignment.Start,
     /** Rows under Copy (a refused send's Retry and Discard). */
     actions: List<CopyMenuAction> = emptyList(),
+    /** In a chat that lifts its messages ([MessageLift]): the hold lifts this one instead of opening the menu here. */
+    lift: LiftSource? = null,
+    /** The words laid out to select once lifted, as wide as this. */
+    selectable: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val menu = remember { MutableTransitionState(false) }
     val haptics = LocalHapticFeedback.current
+    if (lift != null && selectable != null) {
+        Column(
+            modifier = modifier.liftSource(lift).combinedClickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                hapticFeedbackEnabled = false,
+                onClick = {},
+                onLongClick = {
+                    haptics.light()
+                    lift.lift(text, actions, card = false, selectable)
+                },
+            ),
+            horizontalAlignment = horizontalAlignment,
+            content = content,
+        )
+        return
+    }
+    val menu = remember { MutableTransitionState(false) }
     // Held here, not in the menu: closing the menu would cancel the copy.
     val copy = rememberCopyText()
     Column(
@@ -193,7 +214,7 @@ fun CopyMenuContent(onCopy: () -> Unit, onClose: () -> Unit, actions: List<CopyM
 }
 
 @Composable
-private fun CopyMenuRow(label: String, icon: Ionicon, tag: String, onClick: () -> Unit) {
+internal fun CopyMenuRow(label: String, icon: Ionicon, tag: String, onClick: () -> Unit) {
     val colors = HappyTheme.colors
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()

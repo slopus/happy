@@ -34,4 +34,5 @@
     <string name="link_status_updating">синхронизация…</string>
     <string name="link_status_connecting">подключение…</string>
     <string name="link_status_waiting_for_network">ожидание сети…</string>
+    <string name="message_select">Выбрать</string>
 </resources>

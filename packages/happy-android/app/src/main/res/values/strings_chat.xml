@@ -38,4 +38,5 @@
     <string name="link_status_updating">updating…</string>
     <string name="link_status_connecting">connecting…</string>
     <string name="link_status_waiting_for_network">waiting for network…</string>
+    <string name="message_select">Select</string>
 </resources>

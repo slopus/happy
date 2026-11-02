@@ -75,6 +75,7 @@ import com.slopus.happy.conversation.ConversationRow
 import com.slopus.happy.ui.browser.Link
 import com.slopus.happy.ui.browser.linkAt
 import com.slopus.happy.ui.browser.webLinkGestures
+import com.slopus.happy.ui.chat.AgentSelectable
 import com.slopus.happy.ui.chat.LocalTextReveal
 import com.slopus.happy.ui.chat.LocalTrailingSlot
 import com.slopus.happy.ui.chat.TrailingLine
@@ -85,7 +86,9 @@ import com.slopus.happy.ui.chat.MessageSpec
 import com.slopus.happy.ui.chat.MessageTags
 import com.slopus.happy.ui.chat.TextReveal
 import com.slopus.happy.ui.chat.drawRevealed
+import com.slopus.happy.ui.chat.liftSource
 import com.slopus.happy.ui.chat.rememberCopyText
+import com.slopus.happy.ui.chat.rememberLiftSource
 import com.slopus.happy.ui.chat.revealHeight
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.theme.HappyTheme
@@ -405,7 +408,9 @@ internal fun AnswerProse(source: ProseSource, callbacks: MessageCallbacks, modif
     val prose = rememberProse(source)
     var selecting by remember(source.key) { mutableStateOf<SelectionStart?>(null) }
     val haptics = LocalHapticFeedback.current
-    Box(modifier.revealHeight(reveal)) {
+    // Held, it lifts over the chat on a card (iOS 8c2a92172); without a lift, its words become selectable in place.
+    val lift = rememberLiftSource(source.key)
+    Box(modifier.revealHeight(reveal).liftSource(lift)) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -430,7 +435,11 @@ internal fun AnswerProse(source: ProseSource, callbacks: MessageCallbacks, modif
                         onLongPress = if (reveal == null) {
                             { at ->
                                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                selecting = at
+                                if (lift != null) {
+                                    lift.lift(source.text, card = true) { AgentSelectable(source.blocks, callbacks) }
+                                } else {
+                                    selecting = at
+                                }
                             }
                         } else {
                             null

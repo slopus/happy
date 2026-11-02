@@ -1,9 +1,12 @@
 package com.slopus.happy.ui.chat
 
 import android.content.ClipData
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,7 +19,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.ui.platform.LocalHapticFeedback
 import com.slopus.happy.ui.components.PageProgressIndicator as CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -221,27 +226,46 @@ fun UserMessage(
     }
     val hairline = with(LocalDensity.current) { 1f.toDp() }
     val bubbleShape = RoundedCornerShape(MessageSpec.bubbleRadius)
+    // Held, it lifts over the chat (iOS 8c2a92172); its words are laid out again there to select.
+    val lift = rememberLiftSource(row.key)
+    val haptics = LocalHapticFeedback.current
+    // Set below, once the bubble can lay itself out to select: a refused bubble's own tap retries, so it takes the hold too.
+    val hold = remember { arrayOfNulls<() -> Unit>(1) }
+    val retryLabel = stringResource(R.string.common_retry)
 
+    /** [selectable]: laid out again to select in the lift, its words composed, its time and mark not selectable. */
     @Composable
-    fun Bubble(blocks: List<com.slopus.happy.chat.markdown.MarkdownBlock>, marginBottom: Dp, foot: Boolean = false) {
+    fun Bubble(blocks: List<com.slopus.happy.chat.markdown.MarkdownBlock>, marginBottom: Dp, foot: Boolean = false, selectable: Boolean = false) {
         Box(
             modifier = Modifier
                 .padding(bottom = marginBottom)
-                .testTag(MessageTags.USER_BUBBLE)
+                .then(if (selectable) Modifier else Modifier.testTag(MessageTags.USER_BUBBLE))
                 .clip(bubbleShape)
                 .background(bubble.background)
                 .border(hairline, bubble.border, bubbleShape)
-                .then(if (onRetry != null) Modifier.clickable(role = Role.Button, onClickLabel = stringResource(R.string.common_retry), onClick = onRetry) else Modifier)
+                .then(
+                    if (onRetry != null && !selectable) {
+                        Modifier.combinedClickable(
+                            role = Role.Button,
+                            onClickLabel = retryLabel,
+                            hapticFeedbackEnabled = false,
+                            onLongClick = if (lift != null) ({ hold[0]?.invoke() }) else null,
+                            onClick = onRetry,
+                        )
+                    } else {
+                        Modifier
+                    },
+                )
                 .padding(horizontal = MessageSpec.bubblePaddingHorizontal, vertical = MessageSpec.bubblePaddingVertical),
         ) {
-            val words = @Composable { if (body != null) body(blocks) else MarkdownView(blocks, onOptionPress = callbacks.onOptionPress) }
+            val words = @Composable { if (body != null && !selectable) body(blocks) else MarkdownView(blocks, onOptionPress = callbacks.onOptionPress) }
             if (foot && delivery != null) {
                 val slot = remember { TrailingSlot() }
                 val time = rememberMessageTime(row.time ?: message.createdAt)
                 // A message just sent flies here from the composer (SendFlight); a conversation's words say where themselves.
                 val flight = com.slopus.happy.ui.conversation.LocalSendFlight.current
                 val lands = if (flight != null && body == null) Modifier.onPlaced { flight.place(row.key, it, prose = null) } else Modifier
-                BubbleFoot(slot, status = { MessageStatus(time, delivery, colors.textSecondary, deliveryScale()) }, modifier = lands) {
+                BubbleFoot(slot, status = { DisableSelection { MessageStatus(time, delivery, colors.textSecondary, deliveryScale()) } }, modifier = if (selectable) Modifier else lands) {
                     CompositionLocalProvider(LocalTrailingSlot provides slot) { words() }
                 }
             } else {
@@ -271,14 +295,32 @@ fun UserMessage(
                     .padding(horizontal = MessageSpec.authorPaddingHorizontal),
             )
         }
-        val retryLabel = stringResource(R.string.common_retry)
         val discardLabel = stringResource(R.string.common_discard)
+        val liftBlocks = when (val display = row.display) {
+            is UserDisplay.Text -> display.blocks
+            is UserDisplay.Goal -> display.blocks
+            is UserDisplay.Command -> display.argBlocks.takeIf { display.args != null }
+        }
+        val menuActions = listOfNotNull(
+            onRetry?.let { CopyMenuAction(retryLabel, Ionicon.RefreshOutline, MessageTags.USER_RETRY, it) },
+            onDiscard?.let { CopyMenuAction(discardLabel, Ionicon.TrashOutline, MessageTags.USER_DISCARD, it) },
+        )
+        val selectable: @Composable () -> Unit = {
+            Column(Modifier.fillMaxWidth(), horizontalAlignment = alignment) {
+                if (liftBlocks != null) Bubble(liftBlocks, 0.dp, foot = true, selectable = true) else Text(copyText, style = MessageSpec.author, color = colors.text)
+            }
+        }
+        hold[0] = lift?.let { source ->
+            {
+                haptics.light()
+                source.lift(copyText, menuActions, card = false, selectable)
+            }
+        }
         LongPressCopyable(
             text = copyText,
-            actions = listOfNotNull(
-                onRetry?.let { CopyMenuAction(retryLabel, Ionicon.RefreshOutline, MessageTags.USER_RETRY, it) },
-                onDiscard?.let { CopyMenuAction(discardLabel, Ionicon.TrashOutline, MessageTags.USER_DISCARD, it) },
-            ),
+            lift = lift,
+            selectable = selectable,
+            actions = menuActions,
             modifier = Modifier
                 .testTag(MessageTags.USER_BODY)
                 .alpha(if (showPending) MessageSpec.PENDING_OPACITY else 1f),
@@ -404,8 +446,31 @@ private fun rememberPendingStatusVisible(pending: Boolean, queuedWhileBusy: Bool
  */
 @Composable
 fun AgentMessage(row: ChatRow.AgentText, callbacks: MessageCallbacks, modifier: Modifier = Modifier, reveal: TextReveal? = null) {
+    // Held, it lifts over the chat on a card (iOS 8c2a92172), where Select puts handles on its words.
+    val lift = rememberLiftSource(row.key)
+    val haptics = LocalHapticFeedback.current
     // The reveal's height is a node of its own, so a frame of it measures that node alone.
-    Box(modifier.revealHeight(reveal)) {
+    Box(
+        modifier
+            .revealHeight(reveal)
+            .liftSource(lift)
+            .then(
+                if (lift != null) {
+                    Modifier.combinedClickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        hapticFeedbackEnabled = false,
+                        onClick = {},
+                        onLongClick = {
+                            haptics.light()
+                            lift.lift(row.message.text, card = true) { AgentSelectable(row.blocks, callbacks) }
+                        },
+                    )
+                } else {
+                    Modifier
+                },
+            ),
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -413,13 +478,27 @@ fun AgentMessage(row: ChatRow.AgentText, callbacks: MessageCallbacks, modifier: 
                 .testTag(MessageTags.AGENT),
         ) {
             CompositionLocalProvider(LocalTextReveal provides reveal) {
-                SelectionContainer {
+                if (lift != null) {
                     MarkdownView(row.blocks, modifier = Modifier.fillMaxWidth(), onOptionPress = callbacks.onOptionPress)
+                } else {
+                    SelectionContainer {
+                        MarkdownView(row.blocks, modifier = Modifier.fillMaxWidth(), onOptionPress = callbacks.onOptionPress)
+                    }
                 }
             }
             MessageCopyButton(row.message.text)
         }
     }
+}
+
+/** An answer's words as the lift lays them out to select: AgentMessage's margins, without its copy button. */
+@Composable
+fun AgentSelectable(blocks: List<com.slopus.happy.chat.markdown.MarkdownBlock>, callbacks: MessageCallbacks) {
+    MarkdownView(
+        blocks,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = MessageSpec.agentMarginHorizontal, vertical = MessageSpec.agentMarginVertical),
+        onOptionPress = callbacks.onOptionPress,
+    )
 }
 
 @Composable

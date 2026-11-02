@@ -136,6 +136,7 @@ enum class Ionicon(val codepoint: Int) {
     Stop(0xf59e), // stop
     StopCircle(0xf59f), // stop-circle
     TerminalOutline(0xf5c9), // terminal-outline
+    TextOutline(0xf5cc), // text-outline
     TimeOutline(0xf5de), // time-outline
     TimerOutline(0xf5e1), // timer-outline
     TrashOutline(0xf5f6), // trash-outline

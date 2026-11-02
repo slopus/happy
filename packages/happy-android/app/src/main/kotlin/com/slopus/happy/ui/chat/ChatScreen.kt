@@ -267,10 +267,14 @@ fun ChatScreen(
     glass.travel = keyboard.travel
     // A message sent at the newest end flies from the composer to its row, over everything (SendFlight).
     val flight = remember(session?.id) { SendFlight() }
+    // A held message lifts over the chat, blurred and dimmed behind it (iOS 8c2a92172).
+    val lift = remember(session?.id) { MessageLift() }
+    val blur = with(LocalDensity.current) { MessageLiftSpec.blur.toPx() }
     Box(modifier.fillMaxSize()) {
-        CompositionLocalProvider(LocalSendFlight provides flight) {
+        CompositionLocalProvider(LocalSendFlight provides flight, LocalMessageLift provides lift) {
             GlassBarLayout(
                 modifier = Modifier
+                    .liftBackdrop(lift, blur)
                     .testTag(ChatScreenTags.SCREEN)
                     .fillMaxSize()
                     .background(colors.surface),
@@ -384,5 +388,6 @@ fun ChatScreen(
             }
         }
         SendFlightOverlay(flight, bubble, remember(colors) { ProsePalette.of(colors) })
+        CompositionLocalProvider(LocalMessageLift provides null) { MessageLiftOverlay(lift) }
     }
 }

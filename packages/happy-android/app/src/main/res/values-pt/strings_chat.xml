@@ -34,4 +34,5 @@
     <string name="link_status_updating">sincronizando…</string>
     <string name="link_status_connecting">conectando…</string>
     <string name="link_status_waiting_for_network">aguardando rede…</string>
+    <string name="message_select">Selecionar</string>
 </resources>

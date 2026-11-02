@@ -21,6 +21,11 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import com.slopus.happy.connection.LinkState
 import com.slopus.happy.ui.chat.LinkSpinner
 import com.slopus.happy.ui.chat.LinkStatusSpec
+import com.slopus.happy.ui.chat.LocalMessageLift
+import com.slopus.happy.ui.chat.MessageLift
+import com.slopus.happy.ui.chat.MessageLiftOverlay
+import com.slopus.happy.ui.chat.MessageLiftSpec
+import com.slopus.happy.ui.chat.liftBackdrop
 import com.slopus.happy.ui.chat.linkStatusWords
 import com.slopus.happy.ui.components.PageProgressIndicator as CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -271,219 +276,227 @@ fun ConversationScreen(
         state.rows.isEmpty() -> TranscriptPhase.Empty
         else -> TranscriptPhase.Rows
     }
-    GlassBarLayout(
-        modifier = modifier.testTag(ConversationScreenTags.SCREEN).fillMaxSize().background(colors.surface),
-        ground = colors.surface,
-        source = glass,
-        // Only the transcript runs under the bar; the other states are held below the bar's foot.
-        feathered = phase == TranscriptPhase.Rows,
-        bar = {
-            TopAppBar(
-                title = {
-                    RecomposeProbe.mark(ConversationScreenTags.PROBE_BAR)
-                    // One status line, under the title and nowhere else: the
-                    // connection while it isn't live, otherwise what the agent
-                    // is doing. Its room is always kept, so neither the title nor
-                    // the transcript moves when the link or the work changes.
-                    val working = activityLabel(state.activity)
-                    val syncing = state.syncing || (state.created && !state.loaded)
-                    // The link on its way, or the chat still catching up: said with the spinner, as home's title says it.
-                    val linkWords = if (connection != null) null else linkStatusWords(if (link == LinkState.Online && syncing) LinkState.Syncing else link)
-                    val dot = when {
-                        connection != null || linkWords != null -> null
-                        state.activity == null -> colors.status.connected
-                        state.activity == Activity.AwaitingAnswer -> SessionStatusColors.attention
-                        else -> SessionStatusColors.thinking
-                    }
-                    val style = MaterialTheme.typography.bodySmall
-                    // While work runs (not on a question) the title and the status shimmer, as desktop's busy
-                    // tab and working line do; both keep their colours, with the sheen wiping through.
-                    val running = activityShimmers(state.activity)
-                    // The title opens the agent's page, as iOS's header capsule and Telegram's do.
-                    Box(
-                        Modifier
-                            .clip(MaterialTheme.shapes.small)
-                            .clickable(
-                                enabled = state.created,
-                                role = Role.Button,
-                                onClickLabel = stringResource(R.string.conversation_details),
-                                onClick = actions.onDetails,
-                            )
-                            .testTag(ConversationScreenTags.TITLE_BUTTON),
-                    ) {
-                        TitleWithStatus(
-                            status = BarStatus(
-                                connection ?: linkWords ?: working ?: stringResource(R.string.status_online),
-                                dot,
-                                connection == null && linkWords == null && state.activity != null,
-                                shimmer = connection == null && linkWords == null && running,
-                                spins = linkWords != null,
-                            ),
-                            statusStyle = style,
-                            title = {
-                                // An existing chat is never "New chat", not even before it's read: blank until then.
-                                ShimmerText(
-                                    state.title ?: when {
-                                        !state.created -> stringResource(R.string.session_new_chat)
-                                        state.loaded -> stringResource(R.string.conversation_untitled)
-                                        else -> ""
-                                    },
-                                    style = LocalTextStyle.current,
-                                    baseColor = colors.text,
-                                    highlightColor = ShimmerSpec.sheen(colors.text, colors.surface),
-                                    shimmering = running,
-                                    // The bar stays while the agent works: its sweep runs on the RenderThread, the main thread idle.
-                                    onRenderThread = true,
-                                    modifier = Modifier.testTag(ConversationScreenTags.TITLE),
-                                )
-                            },
-                        ) { status ->
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(if (status.spins) LinkStatusSpec.gap else 6.dp),
-                                modifier = Modifier
-                                    .testTag(ConversationScreenTags.SUBTITLE)
-                                    .semantics { liveRegion = LiveRegionMode.Polite },
-                            ) {
-                                if (status.spins) LinkSpinner(colors.textSecondary)
-                                status.dot?.let { StatusDot(it, pulsing = status.pulsing, onRenderThread = true) }
-                                ShimmerText(
-                                    status.text,
-                                    style = style,
-                                    baseColor = colors.textSecondary,
-                                    highlightColor = ShimmerSpec.sheen(colors.textSecondary, colors.surface),
-                                    shimmering = status.shimmer,
-                                    onRenderThread = true,
-                                    modifier = Modifier.testTag(ConversationScreenTags.STATUS),
-                                )
+    // A held message lifts over the chat, blurred and dimmed behind it (iOS 8c2a92172).
+    val lift = remember { MessageLift() }
+    val blur = with(LocalDensity.current) { MessageLiftSpec.blur.toPx() }
+    Box(modifier.fillMaxSize()) {
+        CompositionLocalProvider(LocalMessageLift provides lift) {
+            GlassBarLayout(
+                modifier = Modifier.liftBackdrop(lift, blur).testTag(ConversationScreenTags.SCREEN).fillMaxSize().background(colors.surface),
+                ground = colors.surface,
+                source = glass,
+                // Only the transcript runs under the bar; the other states are held below the bar's foot.
+                feathered = phase == TranscriptPhase.Rows,
+                bar = {
+                    TopAppBar(
+                        title = {
+                            RecomposeProbe.mark(ConversationScreenTags.PROBE_BAR)
+                            // One status line, under the title and nowhere else: the
+                            // connection while it isn't live, otherwise what the agent
+                            // is doing. Its room is always kept, so neither the title nor
+                            // the transcript moves when the link or the work changes.
+                            val working = activityLabel(state.activity)
+                            val syncing = state.syncing || (state.created && !state.loaded)
+                            // The link on its way, or the chat still catching up: said with the spinner, as home's title says it.
+                            val linkWords = if (connection != null) null else linkStatusWords(if (link == LinkState.Online && syncing) LinkState.Syncing else link)
+                            val dot = when {
+                                connection != null || linkWords != null -> null
+                                state.activity == null -> colors.status.connected
+                                state.activity == Activity.AwaitingAnswer -> SessionStatusColors.attention
+                                else -> SessionStatusColors.thinking
                             }
+                            val style = MaterialTheme.typography.bodySmall
+                            // While work runs (not on a question) the title and the status shimmer, as desktop's busy
+                            // tab and working line do; both keep their colours, with the sheen wiping through.
+                            val running = activityShimmers(state.activity)
+                            // The title opens the agent's page, as iOS's header capsule and Telegram's do.
+                            Box(
+                                Modifier
+                                    .clip(MaterialTheme.shapes.small)
+                                    .clickable(
+                                        enabled = state.created,
+                                        role = Role.Button,
+                                        onClickLabel = stringResource(R.string.conversation_details),
+                                        onClick = actions.onDetails,
+                                    )
+                                    .testTag(ConversationScreenTags.TITLE_BUTTON),
+                            ) {
+                                TitleWithStatus(
+                                    status = BarStatus(
+                                        connection ?: linkWords ?: working ?: stringResource(R.string.status_online),
+                                        dot,
+                                        connection == null && linkWords == null && state.activity != null,
+                                        shimmer = connection == null && linkWords == null && running,
+                                        spins = linkWords != null,
+                                    ),
+                                    statusStyle = style,
+                                    title = {
+                                        // An existing chat is never "New chat", not even before it's read: blank until then.
+                                        ShimmerText(
+                                            state.title ?: when {
+                                                !state.created -> stringResource(R.string.session_new_chat)
+                                                state.loaded -> stringResource(R.string.conversation_untitled)
+                                                else -> ""
+                                            },
+                                            style = LocalTextStyle.current,
+                                            baseColor = colors.text,
+                                            highlightColor = ShimmerSpec.sheen(colors.text, colors.surface),
+                                            shimmering = running,
+                                            // The bar stays while the agent works: its sweep runs on the RenderThread, the main thread idle.
+                                            onRenderThread = true,
+                                            modifier = Modifier.testTag(ConversationScreenTags.TITLE),
+                                        )
+                                    },
+                                ) { status ->
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(if (status.spins) LinkStatusSpec.gap else 6.dp),
+                                        modifier = Modifier
+                                            .testTag(ConversationScreenTags.SUBTITLE)
+                                            .semantics { liveRegion = LiveRegionMode.Polite },
+                                    ) {
+                                        if (status.spins) LinkSpinner(colors.textSecondary)
+                                        status.dot?.let { StatusDot(it, pulsing = status.pulsing, onRenderThread = true) }
+                                        ShimmerText(
+                                            status.text,
+                                            style = style,
+                                            baseColor = colors.textSecondary,
+                                            highlightColor = ShimmerSpec.sheen(colors.textSecondary, colors.surface),
+                                            shimmering = status.shimmer,
+                                            onRenderThread = true,
+                                            modifier = Modifier.testTag(ConversationScreenTags.STATUS),
+                                        )
+                                    }
+                                }
+                            }
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = actions.onBack, modifier = Modifier.testTag(ConversationScreenTags.BACK)) {
+                                Icon(MaterialSymbols.ArrowBack, stringResource(R.string.common_back))
+                            }
+                        },
+                        actions = {
+                            ConversationHeaderActions(state, actions)
+                        },
+                        // On the glass, light and dark: no colour of its own, scrolled or not.
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color.Transparent,
+                            scrolledContainerColor = Color.Transparent,
+                            titleContentColor = colors.text,
+                            navigationIconContentColor = colors.text,
+                            actionIconContentColor = colors.text,
+                        ),
+                        // On the content column, so back and the actions' glyphs sit on the messages' keyline.
+                        modifier = Modifier.contentMaxWidth(LocalWindowLayout.current).testTag(ConversationScreenTags.BAR),
+                    )
+                },
+            ) { top ->
+                Box(Modifier.fillMaxSize()) {
+                    val barFoot = top - GlassSpec.feather
+                    // The loader fades into the transcript, and every state into the next.
+                    Crossfade(phase, label = "transcript") { shown ->
+                        when (shown) {
+                            TranscriptPhase.Loading -> LoadingIndicator(
+                                Modifier.padding(top = barFoot).keyboardPadding(keyboard, dockHeight).testTag(ConversationScreenTags.LOADING),
+                            )
+                            TranscriptPhase.Failed -> StatePage(
+                                title = stringResource(R.string.conversation_load_failed),
+                                body = state.error?.let { problemText(it) },
+                                icon = Ionicon.CloudOfflineOutline,
+                                action = stringResource(R.string.common_retry) to actions.onRetryLoad,
+                                tag = ConversationScreenTags.ERROR,
+                                modifier = Modifier.padding(top = barFoot).keyboardPadding(keyboard, dockHeight),
+                            )
+                            // New work is asked in the middle instead, and the chat it becomes is about to have its first message.
+                            TranscriptPhase.Empty -> if (state.created && state.taken == null) {
+                                StatePage(
+                                    title = null,
+                                    body = stringResource(R.string.conversation_empty),
+                                    art = StateArt.Ready,
+                                    tag = ConversationScreenTags.EMPTY,
+                                    modifier = Modifier.padding(top = barFoot).keyboardPadding(keyboard, dockHeight),
+                                )
+                            } else {
+                                Box(Modifier.fillMaxSize())
+                            }
+                            TranscriptPhase.Rows -> Transcript(state, listState, bubble, rowActions, actions.onLoadOlder, top, dockHeight, glass, keyboard, flight)
                         }
                     }
-                },
-                navigationIcon = {
-                    IconButton(onClick = actions.onBack, modifier = Modifier.testTag(ConversationScreenTags.BACK)) {
-                        Icon(MaterialSymbols.ArrowBack, stringResource(R.string.common_back))
+                    // New work: Task or Bot and a name, centred between the bar and the composer, riding the
+                    // keyboard with it; it fades once the work is made.
+                    // As last chosen, for the fade after it is made.
+                    val last = remember { arrayOfNulls<NewWork>(1) }
+                    (state.newWork?.also { last[0] = it } ?: last[0])?.let { shown ->
+                        NewWorkRoom(state.newWork != null, Modifier.riding(keyboard, 0.5f).padding(top = barFoot).keyboardPadding(keyboard, dockHeight)) {
+                            NewWorkChoicePanel(shown, onChange = actions.onChoiceChange, onReturn = { nameReturns++ })
+                        }
                     }
-                },
-                actions = {
-                    ConversationHeaderActions(state, actions)
-                },
-                // On the glass, light and dark: no colour of its own, scrolled or not.
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor = Color.Transparent,
-                    titleContentColor = colors.text,
-                    navigationIconContentColor = colors.text,
-                    actionIconContentColor = colors.text,
-                ),
-                // On the content column, so back and the actions' glyphs sit on the messages' keyline.
-                modifier = Modifier.contentMaxWidth(LocalWindowLayout.current).testTag(ConversationScreenTags.BAR),
-            )
-        },
-    ) { top ->
-        Box(Modifier.fillMaxSize()) {
-            val barFoot = top - GlassSpec.feather
-            // The loader fades into the transcript, and every state into the next.
-            Crossfade(phase, label = "transcript") { shown ->
-                when (shown) {
-                    TranscriptPhase.Loading -> LoadingIndicator(
-                        Modifier.padding(top = barFoot).keyboardPadding(keyboard, dockHeight).testTag(ConversationScreenTags.LOADING),
+                    // What scrolls under the dock goes soft and pale over the dock's top 48, full width. The fade
+                    // starts at the dock's top, as Telegram's lies inside its input zone (ChatActivityFadeView),
+                    // so the newest message, which rests above the dock, is never under it.
+                    Box(
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .aboveKeyboard(keyboard)
+                            .fillMaxWidth()
+                            .height(dockHeight)
+                            .glassFade(glass, colors.surface, blurs)
+                            .testTag(ConversationScreenTags.FADE),
                     )
-                    TranscriptPhase.Failed -> StatePage(
-                        title = stringResource(R.string.conversation_load_failed),
-                        body = state.error?.let { problemText(it) },
-                        icon = Ionicon.CloudOfflineOutline,
-                        action = stringResource(R.string.common_retry) to actions.onRetryLoad,
-                        tag = ConversationScreenTags.ERROR,
-                        modifier = Modifier.padding(top = barFoot).keyboardPadding(keyboard, dockHeight),
-                    )
-                    // New work is asked in the middle instead, and the chat it becomes is about to have its first message.
-                    TranscriptPhase.Empty -> if (state.created && state.taken == null) {
-                        StatePage(
-                            title = null,
-                            body = stringResource(R.string.conversation_empty),
-                            art = StateArt.Ready,
-                            tag = ConversationScreenTags.EMPTY,
-                            modifier = Modifier.padding(top = barFoot).keyboardPadding(keyboard, dockHeight),
-                        )
-                    } else {
-                        Box(Modifier.fillMaxSize())
+                    if (phase == TranscriptPhase.Rows) Box(Modifier.matchParentSize().aboveKeyboard(keyboard)) { ConversationJump(listState, state.activity, dockHeight) }
+                    Column(
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .riding(keyboard)
+                            .fillMaxWidth()
+                            .keyboardPadding(keyboard)
+                            .onSizeChanged { dock = it.height }
+                            .windowInsetsPadding(WindowInsets.navigationBars),
+                    ) {
+                        RecomposeProbe.mark(ConversationScreenTags.PROBE_DOCK)
+                        state.question?.let { question ->
+                            ConversationQuestionCard(
+                                question = question,
+                                onAnswer = { answers -> actions.onAnswer(question.id, answers) },
+                                secrets = actions.secrets,
+                                // Half the screen at most, so a short one keeps the bar and the composer in view.
+                                maxHeight = minOf(ConversationQuestionSpec.maxHeight, androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp / 2),
+                            )
+                        }
+                        if (state.created && !state.canSend) {
+                            Text(
+                                stringResource(if (state.agent?.archivedAt != null) R.string.conversation_archived else R.string.conversation_read_only),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = colors.textSecondary,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.contentMaxWidth(LocalWindowLayout.current).padding(16.dp).testTag(ConversationScreenTags.READ_ONLY),
+                            )
+                        } else {
+                            ConversationComposer(
+                                state = state,
+                                text = text,
+                                onTextChange = {
+                                    text = it
+                                    actions.onDraftChange(it)
+                                },
+                                onSend = actions.onSend,
+                                onSent = { text = "" },
+                                onStop = actions.onStop,
+                                onModeChange = actions.onModeChange,
+                                // The same centred column as the messages; the bar above stays full width.
+                                modifier = Modifier.contentMaxWidth(LocalWindowLayout.current),
+                                backdrop = glass,
+                                focusAsks = nameReturns,
+                                flight = flight,
+                            )
+                        }
                     }
-                    TranscriptPhase.Rows -> Transcript(state, listState, bubble, rowActions, actions.onLoadOlder, top, dockHeight, glass, keyboard, flight)
+                    SendFlightOverlay(flight, bubble, remember(colors) { ProsePalette.of(colors) })
+                    PictureViewerHost(pictures, store)
                 }
             }
-            // New work: Task or Bot and a name, centred between the bar and the composer, riding the
-            // keyboard with it; it fades once the work is made.
-            // As last chosen, for the fade after it is made.
-            val last = remember { arrayOfNulls<NewWork>(1) }
-            (state.newWork?.also { last[0] = it } ?: last[0])?.let { shown ->
-                NewWorkRoom(state.newWork != null, Modifier.riding(keyboard, 0.5f).padding(top = barFoot).keyboardPadding(keyboard, dockHeight)) {
-                    NewWorkChoicePanel(shown, onChange = actions.onChoiceChange, onReturn = { nameReturns++ })
-                }
-            }
-            // What scrolls under the dock goes soft and pale over the dock's top 48, full width. The fade
-            // starts at the dock's top, as Telegram's lies inside its input zone (ChatActivityFadeView),
-            // so the newest message, which rests above the dock, is never under it.
-            Box(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .aboveKeyboard(keyboard)
-                    .fillMaxWidth()
-                    .height(dockHeight)
-                    .glassFade(glass, colors.surface, blurs)
-                    .testTag(ConversationScreenTags.FADE),
-            )
-            if (phase == TranscriptPhase.Rows) Box(Modifier.matchParentSize().aboveKeyboard(keyboard)) { ConversationJump(listState, state.activity, dockHeight) }
-            Column(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .riding(keyboard)
-                    .fillMaxWidth()
-                    .keyboardPadding(keyboard)
-                    .onSizeChanged { dock = it.height }
-                    .windowInsetsPadding(WindowInsets.navigationBars),
-            ) {
-                RecomposeProbe.mark(ConversationScreenTags.PROBE_DOCK)
-                state.question?.let { question ->
-                    ConversationQuestionCard(
-                        question = question,
-                        onAnswer = { answers -> actions.onAnswer(question.id, answers) },
-                        secrets = actions.secrets,
-                        // Half the screen at most, so a short one keeps the bar and the composer in view.
-                        maxHeight = minOf(ConversationQuestionSpec.maxHeight, androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp / 2),
-                    )
-                }
-                if (state.created && !state.canSend) {
-                    Text(
-                        stringResource(if (state.agent?.archivedAt != null) R.string.conversation_archived else R.string.conversation_read_only),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = colors.textSecondary,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.contentMaxWidth(LocalWindowLayout.current).padding(16.dp).testTag(ConversationScreenTags.READ_ONLY),
-                    )
-                } else {
-                    ConversationComposer(
-                        state = state,
-                        text = text,
-                        onTextChange = {
-                            text = it
-                            actions.onDraftChange(it)
-                        },
-                        onSend = actions.onSend,
-                        onSent = { text = "" },
-                        onStop = actions.onStop,
-                        onModeChange = actions.onModeChange,
-                        // The same centred column as the messages; the bar above stays full width.
-                        modifier = Modifier.contentMaxWidth(LocalWindowLayout.current),
-                        backdrop = glass,
-                        focusAsks = nameReturns,
-                        flight = flight,
-                    )
-                }
-            }
-            SendFlightOverlay(flight, bubble, remember(colors) { ProsePalette.of(colors) })
-            PictureViewerHost(pictures, store)
         }
+        CompositionLocalProvider(LocalMessageLift provides null) { MessageLiftOverlay(lift) }
     }
 }
 
