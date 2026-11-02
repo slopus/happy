@@ -28,7 +28,13 @@ class PushServices(context: Context, graph: AppGraph) {
         store = store,
         installationId = InstallationId(context)::getOrCreate,
         applicationId = context.packageName,
+        unregisters = graph.pushUnregisters,
     )
+
+    init {
+        // Removals a sign-out left behind, from this run or an earlier one.
+        graph.pushUnregisters.drain()
+    }
 
     /** Background work that outlives a screen (a rotated FCM token). */
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -36,9 +42,9 @@ class PushServices(context: Context, graph: AppGraph) {
     companion object {
         @Volatile private var instance: PushServices? = null
 
-        /** AuthContext.tsx logout: [graph]'s logout drops this device's push token first. */
-        fun unregisterOnLogout(context: Context, graph: AppGraph) = graph.beforeLogout { authToken ->
-            get(context).registrar.unregisterOnLogout(authToken)
+        /** AuthContext.tsx logout: [graph]'s logout hands this device's push token to [PushUnregisterQueue]. */
+        fun unregisterOnLogout(context: Context, graph: AppGraph) = graph.beforeLogout { authToken, serverUrl ->
+            get(context).registrar.unregisterOnLogout(authToken, serverUrl)
         }
 
         fun get(context: Context): PushServices = instance ?: synchronized(this) {

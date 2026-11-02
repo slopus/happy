@@ -154,4 +154,24 @@ class MultipleAccountsTest {
         runBlocking { graph.open(account).join() }
         eventually(message = "account again") { openId(graph) == account }
     }
+
+    @Test
+    fun aSignOutTheProcessDidntLiveToFinishIsFinishedAtTheNextStart() {
+        val graph = graph(defaultServer = first.url)
+        runBlocking { graph.auth.restore(backup(first)) }
+        graph.accountStore.select("agent-connection-1")
+        runBlocking { graph.auth.reload() }
+        graph.serverConfig.set(second.url)
+        runBlocking { graph.auth.restore(backup(second)) }
+        val (a, b) = graph.accountStore.registry.value.ordered.map { it.id }
+        assertEquals(b, graph.accountStore.registry.value.activeId)
+        // Killed right after the sign-out of b was written down, before its credentials went.
+        AccountRemovals(context.getSharedPreferences(AccountRemovals.PREFS_NAME, Context.MODE_PRIVATE)).begin(b)
+
+        val again = graph(defaultServer = first.url)
+        // b never comes back: the next start opens a, as the sign-out would have.
+        assertEquals(listOf(a), again.accountStore.registry.value.entries.map { it.id })
+        assertEquals(a, openId(again))
+        assertTrue(AccountRemovals(context.getSharedPreferences(AccountRemovals.PREFS_NAME, Context.MODE_PRIVATE)).pending().isEmpty())
+    }
 }

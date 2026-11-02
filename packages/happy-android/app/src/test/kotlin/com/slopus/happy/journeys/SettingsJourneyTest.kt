@@ -81,8 +81,8 @@ class SettingsJourneyTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val tokens = RegisteredPushTokenStore(context.getSharedPreferences(RegisteredPushTokenStore.PREFS_NAME, Context.MODE_PRIVATE))
         tokens.save("ExponentPushToken[phone]")
-        val registrar = PushRegistrar({ null }, ExpoPushTokenClient(OkHttpClient()), PushApi(graph.http), tokens, { "id" }, "com.slopus.happy.dev")
-        graph.beforeLogout { registrar.unregisterOnLogout(it) }
+        val registrar = PushRegistrar({ null }, ExpoPushTokenClient(OkHttpClient()), PushApi(graph.http), tokens, { "id" }, "com.slopus.happy.dev", graph.pushUnregisters)
+        graph.beforeLogout { token, server -> registrar.unregisterOnLogout(token, server) }
         rule.setContent { HappyApp(graph, onDarkThemeChange = { dark = it }) }
         rule.waitFor(FlatRowTags.ROW)
         assertEquals(false, dark)

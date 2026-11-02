@@ -29,7 +29,10 @@ class PushApi(
     }
 
     /** DELETE /v1/push-tokens/:token */
-    suspend fun unregister(authToken: String, pushToken: String) = backoff {
+    suspend fun unregister(authToken: String, pushToken: String) = backoff { unregisterOnce(authToken, pushToken) }
+
+    /** DELETE /v1/push-tokens/:token, once: [PushUnregisterQueue] retries on its own clock. */
+    suspend fun unregisterOnce(authToken: String, pushToken: String) {
         val path = "/v1/push-tokens/" + URLEncoder.encode(pushToken, "UTF-8").replace("+", "%20")
         requireSuccess(http.send("DELETE", path, token = authToken), "unregister")
     }

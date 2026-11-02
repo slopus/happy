@@ -73,6 +73,12 @@ class AgentConnections(
     private val endpointLock = Any()
     private val endpoints = mutableMapOf<String, AgentEndpoint>()
 
+    init {
+        // Credentials whose entry went in a disconnect the process didn't live to finish.
+        val listed = state.value.mapTo(HashSet()) { it.id }
+        secrets.keys().filterNot { it in listed }.forEach(secrets::deleteItem)
+    }
+
     internal fun transport(id: String, credentials: AgentConnectionCredentials, make: (AgentConnectionCredentials) -> Transport): Transport {
         val endpoint = synchronized(endpointLock) {
             endpoints.getOrPut(id) { AgentEndpoint(credentials) { next -> saveEndpoint(id, next) } }
@@ -380,9 +386,15 @@ class AgentConnections(
         }
     }
 
-    /** [account] gone from this phone: its endpoint, tokens, credentials, picture and entry (its session and caches go with the entry, `AgentSessions`). Holding [lock], on IO. */
+    /**
+     * [account] gone from this phone: its entry first (its session and caches
+     * go with it, `AgentSessions`), so a kill midway never lists it again
+     * (iOS c7d74a4e8); then its endpoint, tokens, credentials and picture.
+     * Holding [lock], on IO.
+     */
     private suspend fun forget(account: AgentConnection, keepEntry: Boolean = false) {
         val id = account.id
+        if (!keepEntry) write(state.value.filterNot { it.id == id })
         synchronized(endpointLock) { endpoints.remove(id) }?.retire()
         synchronized(tokens) {
             tokens.remove(id)
@@ -390,7 +402,6 @@ class AgentConnections(
         }
         secrets.deleteItem(id)
         account.avatarFile?.let { File(it).delete() }
-        if (!keepEntry) write(state.value.filterNot { it.id == id })
     }
 
     private fun read(id: String): AgentConnectionCredentials? = try {

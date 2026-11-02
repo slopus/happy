@@ -2,6 +2,7 @@ package com.slopus.happy
 
 import android.content.Context
 import com.slopus.happy.accounts.AccountDisplay
+import com.slopus.happy.accounts.AccountRemovals
 import com.slopus.happy.accounts.AccountStore
 import com.slopus.happy.accounts.RnServerConfigImporter
 import com.slopus.happy.accounts.accountId
@@ -32,6 +33,8 @@ import com.slopus.happy.payments.PreferencesPurchasesCache
 import com.slopus.happy.payments.PurchaseAccount
 import com.slopus.happy.payments.PurchasesRepository
 import com.slopus.happy.payments.RevenueCatPurchases
+import com.slopus.happy.push.PushApi
+import com.slopus.happy.push.PushUnregisterQueue
 import com.slopus.happy.connection.AgentConnections
 import com.slopus.happy.connection.PairingFlow
 import com.slopus.happy.connection.ServerAuthClient
@@ -68,6 +71,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -141,6 +145,32 @@ class AppGraph(
         importRnServer = { RnServerConfigImporter.read(File(appContext.filesDir, "mmkv"), defaultServerUrl) },
     ).also { it.reconcile() }
 
+    private val removals = AccountRemovals(context.getSharedPreferences(AccountRemovals.PREFS_NAME, Context.MODE_PRIVATE))
+
+    /** A sign-out an earlier run didn't finish took the last account: the language goes back to the device's once it can. */
+    private val wipedAtStart = finishInterruptedRemovals(databaseName != null)
+
+    /**
+     * Sign-outs the process didn't live to finish ([AccountRemovals]): the
+     * account's credentials and database go now, before anything reads
+     * them, and with the last account this phone's preferences too. True
+     * when that took the last account.
+     */
+    private fun finishInterruptedRemovals(onDisk: Boolean): Boolean {
+        val pending = removals.pending()
+        if (pending.isEmpty()) return false
+        for (id in pending) {
+            accountStore.remove(id)
+            if (onDisk) appContext.deleteDatabase("account-$id.db")
+            removals.finish(id)
+        }
+        if (accountStore.registry.value.entries.isNotEmpty()) return false
+        localSettings.clear()
+        for (name in WIPED_PREFS + ChangelogReadMarker.PREFS_NAME) appContext.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear().commit()
+        LocalCaches.wipe(appContext)
+        return true
+    }
+
     /**
      * The server the open Happy account lives on; with none open, the
      * server chosen for signing in. An account added while another is open
@@ -201,6 +231,7 @@ class AppGraph(
 
     /** The UI language (text/index.ts), from the synced preferredLanguage at start. */
     val language = LanguageController(context, context.getSharedPreferences(LanguageController.PREFS_NAME, Context.MODE_PRIVATE))
+        .also { if (wipedAtStart) it.apply(null) }
         .also { it.follow(settings.settings, scope) }
 
     /** The newest What's New entry the user has seen (changelog/storage.ts). */
@@ -472,58 +503,86 @@ class AppGraph(
         }
     }
 
-    private val logoutHooks = CopyOnWriteArrayList<suspend (authToken: String) -> Unit>()
+    private val logoutHooks = CopyOnWriteArrayList<suspend (authToken: String, serverUrl: String) -> Unit>()
 
     /**
-     * [hook] runs first on every logout, while the account's token still
-     * works (AuthContext.tsx unregisters the push token there). It must be
-     * bounded and must not throw.
+     * [hook] runs first on every logout, on IO, with the account's token and
+     * server (AuthContext.tsx unregisters the push token there). The screens
+     * wait for it, so it only hands work on; it must not throw.
      */
-    fun beforeLogout(hook: suspend (authToken: String) -> Unit) {
+    fun beforeLogout(hook: suspend (authToken: String, serverUrl: String) -> Unit) {
         logoutHooks += hook
     }
 
+    /** Signed-out accounts' push tokens, still to be dropped on their servers (iOS c7d74a4e8). */
+    val pushUnregisters = PushUnregisterQueue(
+        items = ExpoSecureStore(
+            prefs = context.getSharedPreferences(PushUnregisterQueue.PREFS_NAME, Context.MODE_PRIVATE),
+            keys = secureStoreKeys,
+            keychainService = PushUnregisterQueue.KEYCHAIN_SERVICE,
+        ),
+        scope = scope,
+        unregister = { removal -> PushApi(HappyHttp(okHttp, { removal.serverUrl }, clientId)).unregisterOnce(removal.authToken, removal.pushToken) },
+    )
+
     /**
-     * Settings > Account > Logout: credentials, local data and device
-     * preferences go; the server choice stays. Runs in the app scope, since
-     * the screen that asked is gone as soon as the account is.
+     * Settings > Account > Logout, as iOS's c7d74a4e8 signs out: the
+     * account leaves the list and the next one (or the first screen) opens
+     * as soon as its sync has stopped; the job completes then. Its push
+     * token's removal is queued ([pushUnregisters]), and its database goes
+     * behind the screens. Written to [removals] first, so a kill from there
+     * on is finished at the next start. With the last account this phone's
+     * preferences and caches go too; the server choice stays. Runs in the
+     * app scope, since the screen that asked is gone as soon as the account is.
      */
     fun logout(): Job = scope.launch {
         accountLock.withLock {
-            voice.stop()
             val leaving = auth.state.value as? AuthState.SignedIn
-            leaving?.let { signedIn -> logoutHooks.forEach { it(signedIn.credentials.token) } }
-            purchases.setAccount(null)
-            stopAccount()
+            val id = leaving?.let { accountId(it.credentials) }
+            val server = serverUrl
             val last = accountStore.registry.value.entries.size <= 1
             withContext(Dispatchers.IO) {
-                store.clearAll()
-                leaving?.let { legacyMediaDirectory(it.publicId)?.deleteRecursively() }
-                // persistence.ts clearPersistence: with the last account, everything in the default MMKV goes; the server choice stays.
-                if (last) {
+                id?.let(removals::begin)
+                leaving?.let { signedIn -> logoutHooks.forEach { it(signedIn.credentials.token, server) } }
+            }
+            purchases.setAccount(null)
+            stopAccount()
+            auth.logout()
+            store.use(database(openAccountId()))
+            if (last) {
+                // After the store moved off the account, so nothing that follows it writes these again.
+                withContext(Dispatchers.IO) {
+                    // persistence.ts clearPersistence: with the last account, everything in the default MMKV goes.
                     localSettings.clear()
                     changelog.clear()
                     for (name in WIPED_PREFS) appContext.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear().commit()
-                    LocalCaches.wipe(appContext)
                 }
-            }
-            if (last) {
                 wipeHooks.forEach { it() }
                 // The language was the account's setting: back to the device's, as after happy-app's reload.
                 language.apply(null)
             }
-            auth.logout()
-            store.use(database(openAccountId()))
-            withContext(Dispatchers.IO) { leaving?.let { forgetDatabase(accountId(it.credentials)) } }
+            if (id != null) forget(id, leaving.publicId, synchronized(databases) { databases.remove(id) }, wipeCaches = last)
         }
     }
 
-    /** The account's database goes with its sign-out, once the store has moved off it. */
-    private fun forgetDatabase(id: String?) {
-        id ?: return
-        val database = synchronized(databases) { databases.remove(id) } ?: return
-        store.retire(database)
-        if (!inMemoryDatabases) appContext.deleteDatabase("account-$id.db")
+    private val removalJobs = CopyOnWriteArrayList<Job>()
+
+    /** What is slow in a sign-out, once the store has moved off [database]: the file, its kept media, the caches with the last account. */
+    private fun forget(id: String, publicId: String?, database: HappyDatabase?, wipeCaches: Boolean) {
+        val job = scope.launch(Dispatchers.IO) {
+            database?.let(store::retire)
+            if (!inMemoryDatabases) appContext.deleteDatabase("account-$id.db")
+            legacyMediaDirectory(publicId)?.deleteRecursively()
+            if (wipeCaches) LocalCaches.wipe(appContext)
+            removals.finish(id)
+        }
+        removalJobs += job
+        job.invokeOnCompletion { removalJobs -= job }
+    }
+
+    /** Every sign-out's work behind the screens, done. */
+    suspend fun awaitRemovals() {
+        removalJobs.toList().joinAll()
     }
 
     private val wipeHooks = CopyOnWriteArrayList<() -> Unit>()

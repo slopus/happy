@@ -79,7 +79,7 @@ class LogoutWipeTest {
         images.memoryCache!![MemoryCache.Key("cached")] = MemoryCache.Value(ColorImage())
 
         val order = Collections.synchronizedList(mutableListOf<String>())
-        graph.beforeLogout { token ->
+        graph.beforeLogout { token, _ ->
             // Still signed in, nothing cleared yet.
             assertEquals(server.token, token)
             assertTrue(graph.store.sessions().isNotEmpty())
@@ -87,7 +87,10 @@ class LogoutWipeTest {
         }
         graph.afterLogoutWipe { order += "wiped:${graph.store.sessions().size}" }
 
-        runBlocking { graph.logout().join() }
+        runBlocking {
+            graph.logout().join()
+            graph.awaitRemovals()
+        }
 
         assertEquals(listOf("hook", "wiped:0"), order)
         assertEquals(AuthState.SignedOut, graph.auth.state.value)

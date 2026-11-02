@@ -14,6 +14,10 @@ import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import mockwebserver3.RecordedRequest
 import okhttp3.OkHttpClient
+import com.slopus.happy.auth.ExpoSecureStore
+import com.slopus.happy.testing.SoftwareKeys
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -69,6 +73,11 @@ class PushRegistrationTest {
             store = store,
             installationId = { "6f1c1a44-5e0b-4d9a-9c0b-2b1f6a0c9e71" },
             applicationId = "com.slopus.happy.dev",
+            unregisters = PushUnregisterQueue(
+                ExpoSecureStore(context.getSharedPreferences(PushUnregisterQueue.PREFS_NAME, Context.MODE_PRIVATE), SoftwareKeys(), keychainService = PushUnregisterQueue.KEYCHAIN_SERVICE),
+                CoroutineScope(Dispatchers.IO),
+                unregister = {},
+            ),
         )
     }
 

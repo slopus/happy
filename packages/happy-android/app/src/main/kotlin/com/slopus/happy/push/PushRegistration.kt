@@ -7,9 +7,7 @@ import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailabilityLight
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlinx.coroutines.withTimeout
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -85,6 +83,7 @@ class PushRegistrar(
     private val store: RegisteredPushTokenStore,
     private val installationId: () -> String,
     private val applicationId: String,
+    private val unregisters: PushUnregisterQueue,
 ) {
     /** getCurrentExpoPushToken, without the permission check. */
     suspend fun currentExpoToken(): String? {
@@ -120,27 +119,18 @@ class PushRegistrar(
     fun forget() = store.clear()
 
     /**
-     * AuthContext.tsx logout: this device's token is dropped on the server
-     * while the account's token still works, so the account stops pushing
-     * here. [PushApi] retries forever and a logout must not hang, so it gets
-     * [timeoutMs]; a token that couldn't be dropped is forgotten all the same.
+     * AuthContext.tsx logout: this device's token is dropped on [serverUrl]
+     * with the account's token, so the account stops pushing here. The
+     * sign-out doesn't wait for it ([PushUnregisterQueue], iOS c7d74a4e8);
+     * the registration is forgotten at once.
      */
-    suspend fun unregisterOnLogout(authToken: String, timeoutMs: Long = LOGOUT_TIMEOUT_MS) {
+    fun unregisterOnLogout(authToken: String, serverUrl: String) {
         val token = store.load() ?: return
-        try {
-            withTimeout(timeoutMs) { api.unregister(authToken, token) }
-        } catch (e: TimeoutCancellationException) {
-            Log.w(TAG, "Unregistering the push token timed out during logout", e)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to unregister push token during logout", e)
-        }
+        unregisters.add(PendingPushRemoval(serverUrl, authToken, token))
         store.clear()
     }
 
     companion object {
         private const val TAG = "PushRegistrar"
-        const val LOGOUT_TIMEOUT_MS = 5_000L
     }
 }
