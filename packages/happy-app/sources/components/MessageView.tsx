@@ -342,6 +342,13 @@ function AgentEventBlock(props: {
       </View>
     );
   }
+  if (props.event.type === 'notice') {
+    return (
+      <View style={styles.agentEventContainer}>
+        <Text style={[styles.agentEventText, styles.agentEventError]}>{props.event.text}</Text>
+      </View>
+    );
+  }
   if (props.event.type === 'limit-reached') {
     const formatTime = (timestamp: number): string => {
       try {
@@ -534,6 +541,9 @@ const styles = StyleSheet.create((theme) => ({
   agentEventText: {
     color: theme.colors.agentEventText,
     fontSize: 14,
+  },
+  agentEventError: {
+    color: theme.colors.textDestructive,
   },
   toolContainer: {
     marginHorizontal: 8,
