@@ -318,12 +318,17 @@ fun ChatComposer(
 private fun PrimaryButton(action: PrimaryAction, aborting: Boolean, onClick: () -> Unit, shake: ShakeState?) {
     val colors = HappyTheme.colors
     val dark = colors.dark
-    val background = when (action) {
-        PrimaryAction.Stop -> if (dark) Color(0xFFF5F5F5) else colors.button.primaryBackground
-        PrimaryAction.Blocked -> colors.surfaceHigh
-        PrimaryAction.Send, PrimaryAction.Voice -> colors.surfaceHighest
-        PrimaryAction.Idle -> if (dark) Color(0xFF3A3A3C) else Color(0xFFD1D1D6)
-    }
+    // The fill changes with the glyph, over its 0.2 s ([PrimaryGlyphMotion]).
+    val background by androidx.compose.animation.animateColorAsState(
+        when (action) {
+            PrimaryAction.Stop -> if (dark) Color(0xFFF5F5F5) else colors.button.primaryBackground
+            PrimaryAction.Blocked -> colors.surfaceHigh
+            PrimaryAction.Send, PrimaryAction.Voice -> colors.surfaceHighest
+            PrimaryAction.Idle -> if (dark) Color(0xFF3A3A3C) else Color(0xFFD1D1D6)
+        },
+        androidx.compose.animation.core.tween(PrimaryGlyphMotion.DURATION_MS),
+        label = "primaryFill",
+    )
     // A locked send still takes the tap, to refuse it.
     val enabled = action != PrimaryAction.Idle
     // Literal in happy-app (AgentInput.tsx accessibilityLabel).
@@ -344,25 +349,27 @@ private fun PrimaryButton(action: PrimaryAction, aborting: Boolean, onClick: () 
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {
-        when {
-            aborting -> CircularProgressIndicator(
-                Modifier.size(20.dp),
-                color = if (action == PrimaryAction.Stop && dark) Color.Black else colors.text,
-                strokeWidth = 2.dp,
-            )
-            action == PrimaryAction.Stop -> Icon(Octicon.Stop, ComposerSpec.primaryIcon, if (dark) Color.Black else Color.White)
-            action == PrimaryAction.Blocked -> Icon(Ionicon.LockClosed, ComposerSpec.lockIcon, colors.textSecondary)
-            action == PrimaryAction.Voice -> androidx.compose.foundation.Image(
-                painter = androidx.compose.ui.res.painterResource(com.slopus.happy.R.drawable.icon_voice_white),
-                contentDescription = null,
-                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(colors.text),
-                modifier = Modifier.size(24.dp),
-            )
-            else -> Icon(
-                Octicon.ArrowUp,
-                ComposerSpec.primaryIcon,
-                if (action == PrimaryAction.Send) colors.text else colors.textSecondary,
-            )
+        PrimaryGlyph(if (aborting) null else action) { shown ->
+            when {
+                shown == null -> CircularProgressIndicator(
+                    Modifier.size(20.dp),
+                    color = if (action == PrimaryAction.Stop && dark) Color.Black else colors.text,
+                    strokeWidth = 2.dp,
+                )
+                shown == PrimaryAction.Stop -> Icon(Octicon.Stop, ComposerSpec.primaryIcon, if (dark) Color.Black else Color.White)
+                shown == PrimaryAction.Blocked -> Icon(Ionicon.LockClosed, ComposerSpec.lockIcon, colors.textSecondary)
+                shown == PrimaryAction.Voice -> androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(com.slopus.happy.R.drawable.icon_voice_white),
+                    contentDescription = null,
+                    colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(colors.text),
+                    modifier = Modifier.size(24.dp),
+                )
+                else -> Icon(
+                    Octicon.ArrowUp,
+                    ComposerSpec.primaryIcon,
+                    if (shown == PrimaryAction.Send) colors.text else colors.textSecondary,
+                )
+            }
         }
     }
 }

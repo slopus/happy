@@ -1112,6 +1112,14 @@ stays silent unless the ringer is normal. The link only runs while the
 connection is open and the app is in the foreground, so on the phone
 When focused and Always chime alike. Appearance shows the setting.
 
+The composers' primary button is one button that changes its glyph
+(`PrimaryGlyph`, iOS `AgentInputPrimaryGlyphMotion`). The glyph going away
+shrinks to 0.5 and fades while the new one grows in, over 0.2 s; Reduce
+Motion keeps only the fade. The relay chat's fill changes over the same
+0.2 s. A stop that fails shakes the button in both chats (Shaker.tsx). The
+Happy Agent field's placeholder is iOS's "Type a message ..."
+(`session_input_placeholder`).
+
 ### Image loading
 
 One Coil 3 `ImageLoader` (`ui/components/RemoteImage.kt`) for every

@@ -79,6 +79,9 @@ import com.slopus.happy.ui.attach.AttachedFileTile
 import com.slopus.happy.ui.attachments.rememberComposerImages
 import com.slopus.happy.ui.attachments.ImagePicker
 import com.slopus.happy.ui.chat.PrimaryAction
+import com.slopus.happy.ui.chat.PrimaryGlyph
+import com.slopus.happy.ui.chat.rememberShake
+import com.slopus.happy.ui.chat.shake
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.RecomposeProbe
 import com.slopus.happy.ui.components.AlertButton
@@ -175,6 +178,13 @@ internal fun ConversationComposer(
     val attached = pictures?.images.orEmpty()
     val hasContent = text.isNotBlank() || attached.isNotEmpty()
     val primary = primaryActionOf(hasContent, state)
+    // A stop that failed shakes the button (desktop Shaker.tsx `shakerRef`, iOS `shakePrimary`).
+    val stopShake = rememberShake()
+    val wasStopping = remember { booleanArrayOf(false) }
+    LaunchedEffect(state.stopping, state.alert) {
+        if (wasStopping[0] && !state.stopping && state.alert != null) stopShake.shake()
+        wasStopping[0] = state.stopping
+    }
     // The field's own words and selection; text set from outside puts the cursor at its end, or where focus asks.
     // Saved, so a rotation or a return from process death keeps the caret where it was.
     val (field, typed) = rememberHoistedTextFieldState(text, onTextChange)
@@ -290,7 +300,7 @@ internal fun ConversationComposer(
                         Box(Modifier.padding(vertical = ConversationComposerSpec.fieldVertical)) {
                             if (field.text.isEmpty()) {
                                 Text(
-                                    stringResource(R.string.common_message),
+                                    stringResource(R.string.session_input_placeholder),
                                     style = MaterialTheme.typography.bodyLarge,
                                     color = colors.textSecondary,
                                     maxLines = 1,
@@ -315,9 +325,8 @@ internal fun ConversationComposer(
                         modifier = Modifier.layoutId(Slot.LABEL).onPlaced { anchors[1] = it },
                     )
                 }
-                val sendLabel = stringResource(if (primary == PrimaryAction.Stop) R.string.conversation_stop else R.string.conversation_send)
                 val live = primary == PrimaryAction.Send || primary == PrimaryAction.Stop
-                Box(Modifier.layoutId(Slot.PRIMARY).padding(end = 6.dp)) {
+                Box(Modifier.layoutId(Slot.PRIMARY).padding(end = 6.dp).shake(stopShake)) {
                     FilledIconButton(
                         onClick = {
                             when (primary) {
@@ -335,14 +344,18 @@ internal fun ConversationComposer(
                         ),
                         modifier = Modifier.size(ConversationComposerSpec.primary).testTag(ConversationComposerTags.PRIMARY),
                     ) {
-                        if (state.stopping || state.newWork?.making == true) {
-                            CircularProgressIndicator(Modifier.size(16.dp), color = colors.surface, strokeWidth = 2.dp)
-                        } else {
-                            Icon(
-                                if (primary == PrimaryAction.Stop) MaterialSymbols.Stop else MaterialSymbols.ArrowUpward,
-                                sendLabel,
-                                Modifier.size(20.dp),
-                            )
+                        // Send and Stop are one button changing its glyph (iOS AgentInputPrimaryGlyphMotion).
+                        val glyph = when {
+                            state.stopping || state.newWork?.making == true -> PrimaryGlyphKind.Busy
+                            primary == PrimaryAction.Stop -> PrimaryGlyphKind.Stop
+                            else -> PrimaryGlyphKind.Send
+                        }
+                        PrimaryGlyph(glyph) { shown ->
+                            when (shown) {
+                                PrimaryGlyphKind.Busy -> CircularProgressIndicator(Modifier.size(16.dp), color = colors.surface, strokeWidth = 2.dp)
+                                PrimaryGlyphKind.Stop -> Icon(MaterialSymbols.Stop, stringResource(R.string.conversation_stop), Modifier.size(20.dp))
+                                PrimaryGlyphKind.Send -> Icon(MaterialSymbols.ArrowUpward, stringResource(R.string.conversation_send), Modifier.size(20.dp))
+                            }
                         }
                     }
                 }
@@ -481,3 +494,6 @@ private fun ComposerPictures(images: List<AttachmentPreview>, onRemove: (String)
         }
     }
 }
+
+/** What the primary button draws, morphing from one to the next ([PrimaryGlyph]). */
+private enum class PrimaryGlyphKind { Send, Stop, Busy }
