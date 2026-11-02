@@ -30,10 +30,40 @@ protocol CameraEngine: AnyObject {
     /// `lock`, held there as a long press does. A point of nil goes back to
     /// continuous focus and exposure in the middle.
     func focus(at point: CGPoint?, lock: Bool)
+    /// The exposure slider's -1...1 (`CameraExposure`); a new focus
+    /// point puts it back to 0.
+    func setExposureBias(_ slider: Double)
     /// The QR mode's rect of interest, in the output's unit space.
     func setScanArea(_ area: CGRect)
+    /// Takes a photo in photo mode, upright as the device is held whatever
+    /// the screen's lock, the front camera's mirrored as its preview is.
+    /// `events` hears the exposure begin, then the photo or a failure.
+    func capturePhoto(_ shot: CameraShot, _ events: @escaping @MainActor (CameraShotEvent) -> Void)
+    /// Whether the scene is dark enough for a front shot's screen flash.
+    func sceneIsDark() async -> Bool
     /// The QR codes read, on the main thread, while in QR mode.
     var onCodes: (@MainActor ([String]) -> Void)? { get set }
+}
+
+/// A photo to take.
+struct CameraShot: Equatable, Sendable {
+    var flash: CameraSettings.Flash
+    /// The shape, long side over short, the photo is cut to once taken.
+    var ratio: Double
+}
+
+/// A photo taken: the camera's own file, HEIF or JPEG as it chose, upright
+/// through its orientation, and the shape it is cut to when it is read.
+struct CameraPhoto: Equatable, Sendable {
+    var data: Data
+    var ratio: Double
+}
+
+enum CameraShotEvent: Equatable, Sendable {
+    /// The exposure begins: the shutter blinks.
+    case capturing
+    case finished(CameraPhoto)
+    case failed
 }
 
 struct CameraConfiguration: Equatable, Sendable {
@@ -97,8 +127,28 @@ struct CameraState: Equatable {
     var videoSize: CGSize?
     /// The preview's clockwise turn (`videoRotationAngle`): 90 in portrait.
     var previewRotation: CGFloat = 90
+    /// The turn a photo gets, from how the device is held whatever the
+    /// screen's lock: 90 upright, 0 with its top to the left, 180 to the
+    /// right, 270 upside down. The full camera turns its buttons by it.
+    var captureRotation: CGFloat = 90
+    /// The camera the session has, once it is configured: a flip is done
+    /// when this is the one asked for.
+    var activePosition: CameraPosition?
     var thermal: CameraThermal = .nominal
     var hasTorch = false
+    /// The camera flashes for photos: the back camera's LED, the front
+    /// one's screen where the system lights it.
+    var hasFlash = false
+    /// An auto flash would fire now.
+    var flashScene = false
+    /// There is another camera to flip to.
+    var canFlip = false
+    /// A photo can be taken now (`AVCapturePhotoOutputReadinessCoordinator`):
+    /// false while the session starts, and between shots while the camera
+    /// can't take another yet.
+    var shutterReady = false
+    /// The exposure slider, -1...1.
+    var exposureBias: Double = 0
     /// Milliseconds from `run` to the first picture on screen, for the run
     /// that last brought one.
     var firstFrameMilliseconds: Double?
@@ -145,12 +195,35 @@ final class CameraPreviewView: UIView {
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
+    /// The layer follows at once, or along with the animation the view's
+    /// own size is changing in (the photo's shape switching).
     override func layoutSubviews() {
         super.layoutSubviews()
+        let duration = UIView.inheritedAnimationDuration
         CATransaction.begin()
-        CATransaction.setDisableActions(true)
+        if duration > 0 {
+            CATransaction.setAnimationDuration(duration)
+            CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeInEaseOut))
+        } else {
+            CATransaction.setDisableActions(true)
+        }
         surface.frame = bounds
         CATransaction.commit()
+    }
+}
+
+/// Where the screens get their camera. Tests swap it; `-camera fake`
+/// gives the app the drawn one for screenshots in the simulator.
+@MainActor
+enum CameraEnvironment {
+    static var engine: () -> CameraEngine = {
+        #if DEBUG || HAPPY_FIXTURES
+        let arguments = ProcessInfo.processInfo.arguments
+        if let index = arguments.firstIndex(of: "-camera"), arguments.indices.contains(index + 1), arguments[index + 1] == "fake" {
+            return FixtureCamera()
+        }
+        #endif
+        return DeviceCamera()
     }
 }
 #endif

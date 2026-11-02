@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import AVFoundation
 import HappyCore
+import HappyLayout
 import ImageIO
 import os
 import PhotosUI
@@ -105,6 +106,9 @@ final class ComposerImagePicker: NSObject, PHPickerViewControllerDelegate {
     }
 
     func add(picture: Data) async { await stage(picture, name: nil) }
+
+    /// A photo from the camera, cut to the shape it was taken in.
+    func add(photo: CameraPhoto) async { await stage(photo.data, name: nil, ratio: photo.ratio) }
 
     /// The pasteboard's picture, attached: what a paste in the text view
     /// does when there is one.
@@ -214,14 +218,14 @@ final class ComposerImagePicker: NSObject, PHPickerViewControllerDelegate {
     }
 
     /// Converts a picture's bytes off the main thread and holds it.
-    private func stage(_ data: Data, name: String?) async {
+    private func stage(_ data: Data, name: String?, ratio: Double? = nil) async {
         let staging = staging
         do {
             let normalized = try await Task.detached {
                 guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
                     throw ComposerImageError.unreadable
                 }
-                return try ComposerImageNormalizer.normalize(source, into: staging)
+                return try ComposerImageNormalizer.normalize(source, into: staging, ratio: ratio)
             }.value
             admit(normalized, name: name)
         } catch {
@@ -320,23 +324,36 @@ struct ComposerNormalizedImage: Sendable {
 }
 
 /// `normalizePickedAssetForUpload` on iOS: upright, the long edge at most
-/// 3072, JPEG at 0.92, measured after writing.
+/// 3072, JPEG at 0.92, measured after writing. A camera photo is first cut
+/// to its shape (`CameraCrop`), read at the size that leaves the cut 3072
+/// long, so a square is the sensor's full height, not 3072 shrunk to 2304.
 enum ComposerImageNormalizer {
-    static func normalize(_ source: CGImageSource, into staging: ComposerAttachmentStaging) throws -> ComposerNormalizedImage {
+    static func normalize(_ source: CGImageSource, into staging: ComposerAttachmentStaging, ratio: Double? = nil) throws -> ComposerNormalizedImage {
         guard CGImageSourceGetCount(source) > 0 else { throw ComposerImageError.unreadable }
         let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any] ?? [:]
         let width = (properties[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue ?? 0
         let height = (properties[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue ?? 0
-        let longEdge = ComposerAttachmentRules.longEdge(width: width, height: height)
+        var longEdge = ComposerAttachmentRules.longEdge(width: width, height: height)
         guard longEdge > 0 else { throw ComposerImageError.unreadable }
+        if let ratio {
+            let cut = CameraCrop.rect(pixels: CGSize(width: width, height: height), ratio: CGFloat(ratio))
+            let full = max(width, height)
+            let cutLong = max(Int(cut.width), Int(cut.height))
+            if cutLong > 0 {
+                longEdge = min(full, ComposerAttachmentRules.longEdge(width: cutLong, height: 0) * full / cutLong)
+            }
+        }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceShouldCacheImmediately: true,
             kCGImageSourceThumbnailMaxPixelSize: longEdge,
         ]
-        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+        guard var image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
             throw ComposerImageError.unreadable
+        }
+        if let ratio, let cut = image.cropping(to: CameraCrop.rect(pixels: CGSize(width: image.width, height: image.height), ratio: CGFloat(ratio))) {
+            image = cut
         }
         let url = try staging.newFile(extension: "jpg")
         guard let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.jpeg.identifier as CFString, 1, nil) else {

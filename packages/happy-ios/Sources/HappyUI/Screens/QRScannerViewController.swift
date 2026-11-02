@@ -45,7 +45,7 @@ public final class QRScannerViewController: UIViewController {
     private static let log = Logger(subsystem: "engineering.happy", category: "scan")
 
     public convenience init() {
-        self.init(camera: DeviceCamera())
+        self.init(camera: CameraEnvironment.engine())
     }
 
     init(camera: CameraEngine) {

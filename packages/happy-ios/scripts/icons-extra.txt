@@ -33,3 +33,12 @@ Ionicons funnel-outline
 Ionicons checkmark-outline
 # Presented recordings (AgentActivityRow.tsx toolGlyph's film-outline).
 Ionicons film-outline
+
+# The iOS camera, which happy-app doesn't have (HappyUI CameraViewController):
+# flash on, off and auto, the flip, the grid, the exposure's sun, the torch.
+Ionicons flash
+Ionicons flash-off
+Ionicons camera-reverse
+Ionicons grid-outline
+Ionicons sunny
+Ionicons flashlight

@@ -4,50 +4,17 @@ import HappyLayout
 import UIKit
 import XCTest
 
-/// A camera that records what the cell asks of it, and on which thread.
-private final class RecordingCaptureSource: AttachCaptureSource, @unchecked Sendable {
-    enum Call: Equatable { case start, stop }
-
-    let access: AttachCameraAccess
-    @MainActor let preview = CALayer()
-    private let lock = NSLock()
-    private var _calls: [Call] = []
-    private var _onMain = false
-
-    @MainActor init(_ access: AttachCameraAccess) {
-        self.access = access
-        preview.backgroundColor = UIColor.systemTeal.cgColor
-    }
-
-    var calls: [Call] { lock.withLock { _calls } }
-    /// Whether any call came on the main thread.
-    var onMain: Bool { lock.withLock { _onMain } }
-
-    func startRunning() -> Bool {
-        record(.start)
-        return true
-    }
-
-    func stopRunning() { record(.stop) }
-
-    private func record(_ call: Call) {
-        let main = Thread.isMainThread
-        lock.withLock {
-            _calls.append(call)
-            _onMain = _onMain || main
-        }
-    }
-}
-
-/// The attach menu's camera cell: live once allowed, in a window and in
-/// front, stopping as each of those ends, and never touching the camera
-/// on the main thread. Without access it stays black with its glyph.
+/// The attach menu's camera cell on a stand-in engine: live once in a
+/// window and in front, stopping as each of those ends, never asking for
+/// access, and lending its running camera to the full one. Without access
+/// it stays black with its glyph.
 ///
 /// With `HAPPY_PREVIEW_DIR` set, the menu with a drawn stand-in for the
 /// camera is kept there as `camera-tile-light.png` and `-dark.png`.
 @MainActor
 final class HostedAttachCameraTests: XCTestCase {
     private var window: UIWindow?
+    private let photo = CameraConfiguration(mode: .photo, position: .back)
 
     override func tearDown() async throws {
         window?.isHidden = true
@@ -71,58 +38,47 @@ final class HostedAttachCameraTests: XCTestCase {
         XCTAssertTrue(condition(), "never reached the expected state", file: file, line: line)
     }
 
-    /// The black and the glyph, over the preview until the first picture.
-    private func fade(of tile: AttachCameraTile) -> UIView? {
-        tile.fade
-    }
-
-    func testAllowedRunsOffTheMainThreadAndShowsThePreview() async throws {
-        let source = RecordingCaptureSource(.authorized)
-        let tile = AttachCameraTile(source: source)
-        XCTAssertEqual(source.calls, [], "started before it had a window")
+    func testInAWindowItRunsThePhotoCameraAndShowsThePreview() async throws {
+        let camera = FixtureCamera()
+        let tile = AttachCameraTile(camera: camera)
+        XCTAssertEqual(camera.calls, [], "started before it had a window")
         _ = try await host(tile)
-        try await wait { source.calls == [.start] && tile.live }
-        XCTAssertFalse(source.onMain, "the camera started on the main thread")
+        // The full camera's own run, without asking.
+        try await wait { camera.calls == [.run(photo, asking: false)] && tile.live }
         XCTAssertTrue(tile.running)
-        XCTAssertNotNil(source.preview.superlayer, "the preview isn't in the cell")
+        XCTAssertTrue(camera.preview.isDescendant(of: tile), "the preview isn't in the cell")
         try await Task.sleep(for: .milliseconds(450))
-        XCTAssertEqual(try XCTUnwrap(fade(of: tile)).alpha, 0, accuracy: 0.001, "the black never faded")
+        XCTAssertEqual(tile.fade.alpha, 0, accuracy: 0.001, "the black never faded")
 
         // Telegram's glyph, top right.
-        let glyph = tile.icon
         let expected = AttachCameraTileLayout(size: tile.bounds.size, screenWidth: 1, scale: tile.traitCollection.displayScale).glyph
         XCTAssertEqual(expected.minX, 100)
-        XCTAssertEqual(glyph.frame.minX, expected.minX, accuracy: 0.001)
-        XCTAssertEqual(glyph.frame.minY, expected.minY, accuracy: 0.001)
-        XCTAssertEqual(glyph.frame.size, expected.size)
+        XCTAssertEqual(tile.icon.frame.minX, expected.minX, accuracy: 0.001)
+        XCTAssertEqual(tile.icon.frame.minY, expected.minY, accuracy: 0.001)
+        XCTAssertEqual(tile.icon.frame.size, expected.size)
         // The preview fills the cell at a full-screen camera's aspect.
-        XCTAssertEqual(source.preview.convert(source.preview.bounds, to: tile.layer).height, 267, accuracy: 0.01)
+        XCTAssertEqual(camera.preview.convert(camera.preview.bounds, to: tile).height, 267, accuracy: 0.01)
 
         tile.removeFromSuperview()
-        try await wait { source.calls == [.start, .stop] }
-        XCTAssertFalse(source.onMain, "the camera stopped on the main thread")
+        XCTAssertEqual(camera.calls.last, .stop)
     }
 
     func testBackgroundStopsAndForegroundStartsAgain() async throws {
-        let source = RecordingCaptureSource(.authorized)
-        let tile = AttachCameraTile(source: source)
+        let camera = FixtureCamera()
+        let tile = AttachCameraTile(camera: camera)
         _ = try await host(tile)
-        try await wait { source.calls == [.start] }
-
         NotificationCenter.default.post(name: UIApplication.didEnterBackgroundNotification, object: UIApplication.shared)
-        try await wait { source.calls == [.start, .stop] }
+        XCTAssertEqual(camera.calls, [.run(photo, asking: false), .stop])
         XCTAssertFalse(tile.running)
-
         NotificationCenter.default.post(name: UIApplication.willEnterForegroundNotification, object: UIApplication.shared)
-        try await wait { source.calls == [.start, .stop, .start] }
+        XCTAssertEqual(camera.calls, [.run(photo, asking: false), .stop, .run(photo, asking: false)])
         XCTAssertTrue(tile.running)
-        XCTAssertFalse(source.onMain)
     }
 
     /// Telegram's `isCameraPreviewVisible`: scrolled out, held; back, live.
     func testScrollingOutPausesAndBackResumes() async throws {
-        let source = RecordingCaptureSource(.authorized)
-        let tile = AttachCameraTile(source: source)
+        let camera = FixtureCamera()
+        let tile = AttachCameraTile(camera: camera)
         let window = hostedKeyWindow(in: try await hostedActiveScene())
         self.window = window
         let scroll = UIScrollView(frame: CGRect(x: 0, y: 0, width: 402, height: 500))
@@ -130,47 +86,53 @@ final class HostedAttachCameraTests: XCTestCase {
         window.rootViewController?.view.addSubview(scroll)
         tile.frame = CGRect(x: 0, y: 0, width: 133, height: 267)
         scroll.addSubview(tile)
-        try await wait { source.calls == [.start] }
+        XCTAssertEqual(camera.calls, [.run(photo, asking: false)])
 
         scroll.contentOffset = CGPoint(x: 0, y: 300)
         XCTAssertFalse(tile.onScreen)
-        try await wait { source.calls == [.start, .stop] }
+        XCTAssertEqual(camera.calls.last, .stop)
         // Still partly in: still live.
         scroll.contentOffset = CGPoint(x: 0, y: 200)
         XCTAssertTrue(tile.onScreen)
-        try await wait { source.calls == [.start, .stop, .start] }
+        XCTAssertEqual(camera.calls.last, .run(photo, asking: false))
     }
 
-    /// A tap hands the camera to the full one at once.
-    func testATapStopsTheCamera() async throws {
-        let source = RecordingCaptureSource(.authorized)
-        let tile = AttachCameraTile(source: source)
-        var tapped = false
-        tile.addAction(UIAction { _ in tapped = true }, for: .touchUpInside)
-        _ = try await host(tile)
-        try await wait { source.calls == [.start] }
-        tile.sendActions(for: .touchUpInside)
-        XCTAssertTrue(tapped)
-        XCTAssertFalse(tile.running)
-        try await wait { source.calls == [.start, .stop] }
+    /// Lent to the full camera, the session runs on whatever happens to the
+    /// cell; given back, the cell has its picture and its rules again.
+    func testALentCameraKeepsRunning() async throws {
+        let camera = FixtureCamera()
+        let tile = AttachCameraTile(camera: camera)
+        let root = try await host(tile)
+        let lent = tile.lend()
+        XCTAssertTrue(lent === camera)
+        let elsewhere = UIView(frame: root.bounds)
+        root.addSubview(elsewhere)
+        elsewhere.addSubview(camera.preview)
+        NotificationCenter.default.post(name: UIApplication.didEnterBackgroundNotification, object: UIApplication.shared)
+        tile.isHidden = true
+        XCTAssertEqual(camera.calls, [.run(photo, asking: false)], "the cell touched a lent camera")
+        NotificationCenter.default.post(name: UIApplication.willEnterForegroundNotification, object: UIApplication.shared)
+        tile.isHidden = false
 
-        tile.start()
-        try await wait { source.calls == [.start, .stop, .start] }
+        tile.takeBack()
+        XCTAssertTrue(camera.preview.isDescendant(of: tile))
+        XCTAssertEqual(camera.preview.transform, .identity)
+        XCTAssertEqual(camera.calls, [.run(photo, asking: false), .run(photo, asking: false)])
+        tile.removeFromSuperview()
+        XCTAssertEqual(camera.calls.last, .stop)
     }
 
-    /// Not asked yet, denied, or no camera: black with the glyph, and the
-    /// camera never touched (the cell never asks for access).
+    /// Not asked yet, denied, or no camera: black with the glyph, and never
+    /// a question (the cell runs without asking; the full camera asks).
     func testWithoutAccessTheCellStaysStill() async throws {
-        for access in [AttachCameraAccess.notDetermined, .denied, .unavailable] {
-            let source = RecordingCaptureSource(access)
-            let tile = AttachCameraTile(source: source)
+        for availability in [CameraAvailability.notDetermined, .denied, .noCamera] {
+            let camera = FixtureCamera(availability: availability)
+            let tile = AttachCameraTile(camera: camera)
             _ = try await host(tile)
-            NotificationCenter.default.post(name: UIApplication.willEnterForegroundNotification, object: UIApplication.shared)
             try await Task.sleep(for: .milliseconds(300))
-            XCTAssertEqual(source.calls, [], "\(access) touched the camera")
-            XCTAssertFalse(tile.running)
+            XCTAssertEqual(camera.calls, [.run(photo, asking: false)], "\(availability)")
             XCTAssertFalse(tile.live)
-            XCTAssertEqual(try XCTUnwrap(fade(of: tile)).alpha, 1, "\(access) uncovered the preview")
+            XCTAssertEqual(tile.fade.alpha, 1, "\(availability) uncovered the preview")
             XCTAssertEqual(tile.accessibilityIdentifier, "attach-camera")
             tile.removeFromSuperview()
             window?.isHidden = true
@@ -179,8 +141,8 @@ final class HostedAttachCameraTests: XCTestCase {
 
     /// The menu with the drawn stand-in, for screenshots.
     func testTheMenuShowsTheCameraLive() async throws {
-        AttachMenuEnvironment.captureSource = { FixtureAttachCaptureSource() }
-        defer { AttachMenuEnvironment.captureSource = { CameraAttachCaptureSource() } }
+        AttachMenuEnvironment.cameraEngine = { FixtureCamera() }
+        defer { AttachMenuEnvironment.cameraEngine = { CameraEnvironment.engine() } }
         let root = UIViewController()
         let window = hostedKeyWindow(in: try await hostedActiveScene(), root: root)
         self.window = window
@@ -190,7 +152,7 @@ final class HostedAttachCameraTests: XCTestCase {
         let tile = try XCTUnwrap(views(sheet.view).compactMap { $0 as? AttachCameraTile }.first)
         try await wait { tile.live }
         try await Task.sleep(for: .milliseconds(450))
-        XCTAssertNotNil(tile.source.preview.contents, "no stand-in frame")
+        XCTAssertNotNil(tile.camera.preview.surface.contents, "no stand-in frame")
 
         guard let directory = ProcessInfo.processInfo.environment["HAPPY_PREVIEW_DIR"] else { return }
         for style in [UIUserInterfaceStyle.light, .dark] {

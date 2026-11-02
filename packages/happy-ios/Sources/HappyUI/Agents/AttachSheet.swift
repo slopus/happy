@@ -28,7 +28,10 @@ import UIKit
 @MainActor
 final class AttachSheetViewController: UIViewController, UICollectionViewDelegate, UIGestureRecognizerDelegate {
     enum Action: Equatable {
+        /// The camera, where the menu can't open its own (no room left).
         case camera
+        /// Taken with the menu's camera.
+        case photo(CameraPhoto)
         /// The system's photo picker, which needs no access.
         case photos
         case files
@@ -184,7 +187,7 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
         grid.alwaysBounceVertical = true
         grid.contentInsetAdjustmentBehavior = .never
         grid.accessibilityIdentifier = "attach-grid"
-        cameraTile.addAction(UIAction { [weak self] _ in self?.finish(.camera) }, for: .touchUpInside)
+        cameraTile.addAction(UIAction { [weak self] _ in self?.openCamera() }, for: .touchUpInside)
         grid.addSubview(cameraTile)
         feed.number = { [weak self] id in self?.number(id) }
         feed.onCheck = { [weak self] index in self?.check(index) }
@@ -220,7 +223,7 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
         placeholder.camera = hasCamera
         placeholder.onPhotos = { [weak self] in self?.finish(.photos) }
         placeholder.onSettings = { Self.openSettings() }
-        placeholder.onCamera = { [weak self] in self?.finish(.camera) }
+        placeholder.onCamera = { [weak self] in self?.openCamera() }
         gallery.addSubview(placeholder)
 
         files.isHidden = true
@@ -668,6 +671,34 @@ final class AttachSheetViewController: UIViewController, UICollectionViewDelegat
     private func finish(_ action: Action) {
         let onAction = onAction
         leave(.closed) { onAction?(action) }
+    }
+
+    /// The full camera over the menu, grown out of the tile and taking its
+    /// running camera; closed, it goes back into the tile. A photo leaves
+    /// with the menu, as Telegram's camera sends from itself.
+    private func openCamera() {
+        guard limit > 0 else { return finish(.camera) }
+        guard presentedViewController == nil, !closing else { return }
+        let fromTile = page == .gallery && !cameraTile.isHidden && cameraTile.window != nil
+        let camera = CameraViewController(camera: cameraTile.lend())
+        camera.tile = { [weak self] in
+            guard let self, fromTile, cameraTile.window != nil else { return nil }
+            return cameraTile.convert(cameraTile.bounds, to: nil)
+        }
+        camera.onWillUse = { [weak self] in self?.view.alpha = 0 }
+        camera.onFinish = { [weak self, weak camera] photo in
+            guard let self else { return }
+            guard let photo else {
+                cameraTile.takeBack()
+                camera?.dismiss(animated: false)
+                return
+            }
+            closing = true
+            hiddenButton?.alpha = 1
+            let onAction = onAction
+            (presentingViewController ?? self).dismiss(animated: false) { onAction?(.photo(photo)) }
+        }
+        present(camera, animated: false)
     }
 
     /// Telegram's out: back into the "+" on glass, else down past the

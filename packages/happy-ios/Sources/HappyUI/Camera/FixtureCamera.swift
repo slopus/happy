@@ -14,6 +14,8 @@ final class FixtureCamera: CameraEngine {
         case zoom(Double, ramp: Bool)
         case focus(CGPoint?, lock: Bool)
         case scanArea(CGRect)
+        case bias(Double)
+        case capture(CameraShot)
     }
 
     private(set) var state = CameraState() {
@@ -26,6 +28,10 @@ final class FixtureCamera: CameraEngine {
     /// What a run comes to.
     var availability: CameraAvailability
     var lenses: CameraLenses
+    /// What `sceneIsDark` answers.
+    var dark = false
+    /// Whether a photo comes back, or a failure.
+    var capturesFail = false
     private var observers: [Int: @MainActor (CameraState) -> Void] = [:]
     private var nextObserver = 0
 
@@ -58,6 +64,10 @@ final class FixtureCamera: CameraEngine {
         if state.configuration?.position != configuration.position || !state.running { next.zoom = lenses.wideZoom }
         next.videoSize = ready ? CGSize(width: 1920, height: 1080) : nil
         next.firstFrameMilliseconds = ready ? 0 : nil
+        next.hasFlash = ready && configuration.position == .back
+        next.canFlip = ready
+        next.activePosition = ready ? configuration.position : state.activePosition
+        next.shutterReady = ready && configuration.mode == .photo
         state = next
     }
 
@@ -66,6 +76,7 @@ final class FixtureCamera: CameraEngine {
         state.configuration = nil
         state.running = false
         state.previewing = false
+        state.shutterReady = false
     }
 
     func setZoom(_ zoom: Double, ramp: Bool) {
@@ -75,10 +86,32 @@ final class FixtureCamera: CameraEngine {
 
     func focus(at point: CGPoint?, lock: Bool) {
         calls.append(.focus(point, lock: lock))
+        if point != nil { state.exposureBias = 0 }
     }
 
     func setScanArea(_ area: CGRect) {
         calls.append(.scanArea(area))
+    }
+
+    func setExposureBias(_ slider: Double) {
+        calls.append(.bias(slider))
+        state.exposureBias = min(1, max(-1, slider))
+    }
+
+    func sceneIsDark() async -> Bool { dark }
+
+    /// The exposure, then the drawn picture as a JPEG, on later turns of
+    /// the main queue as the device's come.
+    func capturePhoto(_ shot: CameraShot, _ events: @escaping @MainActor (CameraShotEvent) -> Void) {
+        calls.append(.capture(shot))
+        guard state.running, state.configuration?.mode == .photo else { return events(.failed) }
+        let fails = capturesFail
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                events(.capturing)
+                events(fails ? .failed : .finished(CameraPhoto(data: FixtureCamera.jpeg, ratio: shot.ratio)))
+            }
+        }
     }
 
     /// What the device would report: an interruption, its end, warmth.
@@ -91,6 +124,8 @@ final class FixtureCamera: CameraEngine {
         guard state.configuration?.mode == .qr else { return }
         onCodes?(codes)
     }
+
+    static let jpeg: Data = picture.jpegData(compressionQuality: 0.9) ?? Data()
 
     /// An evening sky over hills, never a real picture.
     static let picture: UIImage = {

@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 
 /// The composer's "+", the same in every chat: Telegram's attachment menu
 /// (`AttachSheetViewController`) over the screen, then whatever it chose,
-/// the system's photo picker, the camera (a photo or a video) or Files, and
+/// the system's photo picker, the camera or Files, and
 /// what comes back read into the composer's `ComposerImagePicker` in the
 /// order it was picked, within the room left there.
 ///
@@ -58,6 +58,7 @@ final class AttachMenuPresenter: NSObject {
             switch action {
             case .photos: presentSystemPhotos()
             case .camera: presentCamera()
+            case .photo(let photo): take(photo)
             case .files: presentFiles()
             case let .send(ids, caption): send(ids, caption: caption, from: library)
             }
@@ -121,16 +122,27 @@ final class AttachMenuPresenter: NSObject {
         }
     }
 
-    /// A photo or a video, as Telegram's camera takes either.
+    /// The full camera on its own, where the menu couldn't open it.
     private func presentCamera() {
-        guard UIImagePickerController.isSourceTypeAvailable(.camera), pictures.room() > 0, let top else { return settle(added: false) }
-        let camera = UIImagePickerController()
-        camera.sourceType = .camera
-        let available = UIImagePickerController.availableMediaTypes(for: .camera) ?? []
-        camera.mediaTypes = [UTType.image.identifier, UTType.movie.identifier].filter(available.contains)
-        camera.videoQuality = .typeHigh
-        camera.delegate = self
-        top.present(camera, animated: true)
+        guard pictures.room() > 0, let top else { return settle(added: false) }
+        let camera = CameraViewController(camera: CameraEnvironment.engine())
+        camera.onFinish = { [weak self, weak camera] photo in
+            camera?.dismiss(animated: false)
+            guard let self else { return }
+            guard let photo else { return settle(added: false) }
+            take(photo)
+        }
+        top.present(camera, animated: false)
+    }
+
+    /// The camera's photo into the composer, cut to its shape and
+    /// converted as a paste is.
+    private func take(_ photo: CameraPhoto) {
+        Task {
+            let before = pictures.images.count
+            await pictures.add(photo: photo)
+            settle(added: pictures.images.count > before)
+        }
     }
 
     private func presentFiles() {
@@ -181,33 +193,7 @@ final class AttachMenuPresenter: NSObject {
     }
 }
 
-extension AttachMenuPresenter: UIImagePickerControllerDelegate, UINavigationControllerDelegate, UIDocumentPickerDelegate {
-    func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
-        picker.dismiss(animated: true)
-        // A recording: the camera's file is moved in as Files' are.
-        if let movie = info[.mediaURL] as? URL {
-            Task { [weak self] in
-                let pick = await Task.detached(priority: .userInitiated) { LibraryPicker.document(movie, videos: true) }.value
-                guard let self else { return LibraryPicker.discard(pick.map { [$0] } ?? []) }
-                guard let pick else { return settle(added: false) }
-                take([pick])
-            }
-            return
-        }
-        let image = info[.originalImage] as? UIImage
-        guard let data = image?.jpegData(compressionQuality: 0.9) else { return settle(added: false) }
-        Task {
-            let before = pictures.images.count
-            await pictures.add(picture: data)
-            settle(added: pictures.images.count > before)
-        }
-    }
-
-    func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-        picker.dismiss(animated: true)
-        settle(added: false)
-    }
-
+extension AttachMenuPresenter: UIDocumentPickerDelegate {
     func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
         settle(added: false)
     }

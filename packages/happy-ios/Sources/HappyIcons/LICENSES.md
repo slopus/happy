@@ -9,7 +9,7 @@ here, with the strings the font itself carries.
 
 ## Fonts
 
-### Ionicons (`Ionicons.ttf`, 170 icons)
+### Ionicons (`Ionicons.ttf`, 176 icons)
 
 ```
 Ionicons, https://github.com/ionic-team/ionicons
