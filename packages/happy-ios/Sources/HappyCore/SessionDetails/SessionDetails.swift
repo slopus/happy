@@ -9,8 +9,9 @@ import HappyWire
 // en.ts) is kept here verbatim; translated copy stays in HappyUI.
 
 public enum SessionDetails {
-    /// versionUtils.ts `MINIMUM_CLI_VERSION`.
-    public static let minimumCLIVersion = "0.10.0"
+    /// versionUtils.ts `MINIMUM_CLI_VERSION`. Before 0.15.0 the CLI sent
+    /// agent output as retired `output` records (AGENTS.md, record kinds).
+    public static let minimumCLIVersion = "0.15.0"
 
     /// sessionUtils.ts `formatPathRelativeToHome`: the home directory as `~`.
     public static func pathRelativeToHome(_ path: String, homeDir: String?) -> String {

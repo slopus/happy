@@ -10,8 +10,12 @@ import kotlinx.serialization.json.booleanOrNull
 // What session/[id]/info.tsx reads out of a session: utils/resumeCommand.ts,
 // utils/versionUtils.ts and the screen's own formatting helpers.
 
-/** versionUtils.ts `MINIMUM_CLI_VERSION` */
-const val MINIMUM_CLI_VERSION = "0.10.0"
+/**
+ * versionUtils.ts `MINIMUM_CLI_VERSION`. Before 0.15.0 the CLI sent agent
+ * output as raw Claude transcript records (`role: agent`, `output`), which
+ * the chat no longer reads.
+ */
+const val MINIMUM_CLI_VERSION = "0.15.0"
 
 /** info.tsx `isCliOutdated`: a CLI version below [MINIMUM_CLI_VERSION]. */
 fun isCliOutdated(version: String?): Boolean = !version.isNullOrEmpty() && Versions.compare(version, MINIMUM_CLI_VERSION) < 0

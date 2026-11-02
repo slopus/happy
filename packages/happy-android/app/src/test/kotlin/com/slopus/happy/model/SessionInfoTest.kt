@@ -43,7 +43,12 @@ class SessionInfoTest {
 
     @Test fun flagsAnOutdatedCli() {
         assertTrue(isCliOutdated("0.9.9"))
-        assertFalse(isCliOutdated("0.10.0"))
+        // Before 0.15 the CLI sent agent output in a format the chat no longer reads.
+        assertTrue(isCliOutdated("0.10.0"))
+        assertTrue(isCliOutdated("0.14.2"))
+        assertFalse(isCliOutdated("0.15.0"))
+        assertFalse(isCliOutdated("0.15.0-beta.0"))
+        assertFalse(isCliOutdated("1.2.6"))
         assertFalse(isCliOutdated(null))
     }
 

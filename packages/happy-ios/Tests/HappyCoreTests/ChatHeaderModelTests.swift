@@ -98,7 +98,8 @@ final class CliVersionWarningTests: XCTestCase {
         let dismissed = warning?.dismissed(in: ["m2": "0.8.0"])
         XCTAssertEqual(dismissed, ["m1": "0.9.4", "m2": "0.8.0"])
         XCTAssertNil(CliVersionWarning(metadata: old, acknowledged: dismissed ?? [:]))
-        XCTAssertNil(CliVersionWarning(metadata: ["version": "0.10.0", "machineId": "m1"], acknowledged: [:]))
+        XCTAssertNil(CliVersionWarning(metadata: ["version": "0.15.0", "machineId": "m1"], acknowledged: [:]))
+        XCTAssertNotNil(CliVersionWarning(metadata: ["version": "0.10.0", "machineId": "m1"], acknowledged: [:]))
         XCTAssertNil(CliVersionWarning(metadata: ["machineId": "m1"], acknowledged: [:]), "no version")
         XCTAssertNil(CliVersionWarning(metadata: ["version": "0.9.4"], acknowledged: [:])?.dismissed(in: [:]), "no machine to keep it for")
     }

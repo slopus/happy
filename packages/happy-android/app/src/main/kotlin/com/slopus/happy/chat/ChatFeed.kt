@@ -44,6 +44,9 @@ sealed interface ChatRow {
     data class Tool(override val message: ChatMessage.ToolCallMessage) : ChatRow
 
     data class Event(override val message: ChatMessage.Event) : ChatRow
+
+    /** A record the chat can't read: a quiet centred line instead of a silent gap (iOS's unsupported row). */
+    data class Unsupported(override val message: ChatMessage.Unsupported) : ChatRow
 }
 
 /** How a user message renders (MessageView.tsx `UserTextBlock`). */
@@ -177,8 +180,9 @@ class ChatReduction(private val now: () -> Long = System::currentTimeMillis) {
             is ChatMessage.AgentText -> if (message.isThinking) null else ChatRow.AgentText(message, parseMarkdown(message.text))
             is ChatMessage.ToolCallMessage -> ChatRow.Tool(message)
             is ChatMessage.Event -> ChatRow.Event(message)
-            // A retired or unknown record: happy-app's normalizer drops it, so nothing is drawn.
-            is ChatMessage.Unsupported -> null
+            // A retired or unknown record (an agent `output` from a CLI before 0.15, say). happy-app
+            // drops it, which left an old CLI's replies as nothing at all; here it says so, as on iOS.
+            is ChatMessage.Unsupported -> ChatRow.Unsupported(message)
         }
 
         private fun userRow(message: ChatMessage.UserText, isClaudeFlavor: Boolean): ChatRow? {

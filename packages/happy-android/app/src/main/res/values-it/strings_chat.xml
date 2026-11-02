@@ -31,4 +31,5 @@
     <string name="files_update_agent">Aggiorna Happy Agent sul computer per vedere le modifiche di questa sessione.</string>
     <string name="files_no_comparison">Il confronto con origin/main non è disponibile per questo spazio di lavoro.</string>
     <string name="files_no_details">Nessun dettaglio dei file disponibile per questo confronto.</string>
+    <string name="chat_unsupported_message">Questo messaggio non può essere mostrato qui (%1$s)</string>
 </resources>

@@ -79,6 +79,7 @@ object MessageTags {
     const val AGENT = "message.agent"
     const val AGENT_COPY = "message.agent.copy"
     const val EVENT = "message.event"
+    const val UNSUPPORTED = "message.unsupported"
 }
 
 /** MessageView.tsx's stylesheet. */
@@ -157,6 +158,7 @@ fun MessageView(row: ChatRow, bubble: BubblePalette, callbacks: MessageCallbacks
             is ChatRow.User -> UserMessage(row, bubble, callbacks, content)
             is ChatRow.AgentText -> AgentMessage(row, callbacks, content)
             is ChatRow.Event -> EventMessage(row.message.event, content)
+            is ChatRow.Unsupported -> UnsupportedMessage(row.message.kind, content)
             is ChatRow.Tool -> if (row.message.tool.name == "file") FileMessageView(row.message.tool.input, content) else ToolView(row.message, callbacks, content)
         }
     }
@@ -443,6 +445,31 @@ fun EventMessage(event: AgentEvent, modifier: Modifier = Modifier) {
         contentAlignment = Alignment.Center,
     ) {
         Text(text, style = MessageSpec.eventText, color = ChatTheme.colors.agentEventText, textAlign = TextAlign.Center)
+    }
+}
+
+/**
+ * A record the chat can't read (iOS's unsupported row): "This message
+ * can't be shown here (kind)", centred like an event (14, 8 above and
+ * below, the event margins) in the secondary text colour, [kind] naming
+ * the record for a bug report.
+ */
+@Composable
+fun UnsupportedMessage(kind: String, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = MessageSpec.eventMarginHorizontal)
+            .testTag(MessageTags.UNSUPPORTED)
+            .padding(vertical = MessageSpec.eventPaddingVertical),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            stringResource(R.string.chat_unsupported_message, kind),
+            style = MessageSpec.eventText,
+            color = HappyTheme.colors.textSecondary,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 

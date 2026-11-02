@@ -31,4 +31,5 @@
     <string name="files_update_agent">このセッションの変更を見るには、コンピューターの Happy Agent をアップデートしてください。</string>
     <string name="files_no_comparison">このワークスペースでは origin/main との比較を利用できません。</string>
     <string name="files_no_details">この比較にはファイルの詳細がありません。</string>
+    <string name="chat_unsupported_message">このメッセージはここでは表示できません（%1$s）</string>
 </resources>

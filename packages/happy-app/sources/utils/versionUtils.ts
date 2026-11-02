@@ -2,8 +2,10 @@
  * Utility functions for version comparison and validation
  */
 
-// Minimum required CLI version for full compatibility
-export const MINIMUM_CLI_VERSION = '0.10.0';
+// Minimum required CLI version for full compatibility. Before 0.15.0 the CLI
+// sent agent output as raw Claude transcript records (`role: 'agent'`,
+// `content.type: 'output'`); session-protocol envelopes came in 0.15.0-beta.0.
+export const MINIMUM_CLI_VERSION = '0.15.0';
 
 /**
  * Compare two semantic version strings

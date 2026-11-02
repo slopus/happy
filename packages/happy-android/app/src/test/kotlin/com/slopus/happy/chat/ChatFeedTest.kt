@@ -37,10 +37,12 @@ class ChatFeedTest {
     )
 
     /** A send shows from the outbox, then becomes its echo without a second row or a rebuild. */
-    // happy-app's normalizer drops what it cannot read; the transcript draws nothing for it.
+    // happy-app drops what it cannot read, which left a CLI before 0.15's replies as nothing at
+    // all; here each such record is a placeholder row, as on iOS.
     @Test
-    fun unsupportedRecordsAreNotDrawn() {
-        assertEquals(null, ChatReduction.buildRow(ChatMessage.Unsupported("x", 0, "agent.codex.message"), isClaudeFlavor = false))
+    fun unsupportedRecordsAreDrawnAsAPlaceholder() {
+        val message = ChatMessage.Unsupported("x", 0, "agent.output.assistant")
+        assertEquals(ChatRow.Unsupported(message), ChatReduction.buildRow(message, isClaudeFlavor = false))
     }
 
     @Test

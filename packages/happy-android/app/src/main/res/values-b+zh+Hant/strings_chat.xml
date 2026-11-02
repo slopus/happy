@@ -31,4 +31,5 @@
     <string name="files_update_agent">在電腦上更新 Happy Agent 才能查看此工作階段的變更。</string>
     <string name="files_no_comparison">此工作區無法與 origin/main 進行比較。</string>
     <string name="files_no_details">此比較沒有可用的檔案詳細資料。</string>
+    <string name="chat_unsupported_message">此訊息無法在此顯示（%1$s）</string>
 </resources>
