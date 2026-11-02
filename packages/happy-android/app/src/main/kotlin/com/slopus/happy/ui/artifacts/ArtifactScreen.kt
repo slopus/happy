@@ -41,7 +41,6 @@ import com.slopus.happy.chat.markdown.MarkdownBlock
 import com.slopus.happy.conversation.MediaItem
 import com.slopus.happy.ui.browser.BrowserPage
 import com.slopus.happy.ui.browser.BrowserView
-import com.slopus.happy.ui.browser.displayUrl
 import com.slopus.happy.ui.chat.MarkdownView
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
@@ -211,27 +210,5 @@ private fun ArtifactOpenable(file: ArtifactFile, actions: ArtifactActions) {
         ) {
             Text(stringResource(if (state == MediaOpening.Reading) R.string.conversation_media_reading else R.string.artifact_open_with))
         }
-    }
-}
-
-/**
- * A web page on its own screen (iOS's `BrowserViewController` pushed): its
- * host, then its title, in the bar, the address under it; a close (✕) leaves,
- * while system back walks the page's history first.
- */
-@Composable
-fun BrowserScreen(
-    title: String,
-    computer: String,
-    prepare: suspend () -> BrowserPage,
-    onBack: () -> Unit,
-    onTitle: (String) -> Unit,
-    onOpenElsewhere: (String) -> Unit,
-    /** The page's address as it moves, under the title. */
-    url: String? = null,
-    onUrl: (String) -> Unit = {},
-) {
-    PlaceScaffold(title, onBack, "browser.screen", subtitle = url?.let(::displayUrl), closes = true) {
-        BrowserView(prepare = prepare, computer = computer, onTitle = onTitle, onOpenElsewhere = onOpenElsewhere, onUrl = onUrl)
     }
 }

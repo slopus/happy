@@ -31,6 +31,7 @@ import com.slopus.happy.browser.BrowserPolicy
 import com.slopus.happy.browser.BrowserProxy
 import com.slopus.happy.browser.browserWorkspace
 import com.slopus.happy.ui.browser.BrowserPage
+import com.slopus.happy.ui.browser.BrowserScreen
 import com.slopus.happy.ui.browser.openOutside
 import com.slopus.happy.ui.connection.LocalHappyLinks
 import kotlinx.coroutines.flow.filter
