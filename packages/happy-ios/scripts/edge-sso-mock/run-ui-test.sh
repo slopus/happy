@@ -1,6 +1,7 @@
 #!/bin/bash
-# On a Mac: the edge SSO mock, a simulator named "edge-sso-ios" that trusts
-# only its CA, ServerSignInUITests (ad-hoc signed: an unsigned simulator app
+# On a Mac: the edge SSO mock, a simulator named "edge-sso-ios", erased
+# first (Keychain included; KEEP_SIMULATOR=1 skips that) and trusting only
+# its CA, ServerSignInUITests (ad-hoc signed: an unsigned simulator app
 # can't use its Keychain), then the screenshots out of the result bundle.
 # Output goes to $OUT (default: a new directory under $TMPDIR).
 set -uo pipefail
@@ -27,6 +28,10 @@ for rt,ds in json.load(sys.stdin)["devices"].items():
   SIM=$(xcrun simctl create edge-sso-ios "iPhone 17 Pro" "$RT")
 fi
 echo "simulator $SIM"
+if [ "${KEEP_SIMULATOR:-}" != 1 ]; then
+  xcrun simctl shutdown "$SIM" 2>/dev/null
+  xcrun simctl erase "$SIM"
+fi
 xcrun simctl boot "$SIM" 2>/dev/null; xcrun simctl bootstatus "$SIM" -b > /dev/null
 xcrun simctl keychain "$SIM" add-root-cert "$MOCK_DIR/ca.crt"
 xcrun simctl uninstall "$SIM" com.slopus.happy.dev 2>/dev/null

@@ -30,6 +30,9 @@ const state = {
     refresh: new Set(),
     profileName: process.env.ONBOARDED ? "Steve" : null,
     revokeAll: false,
+    // Tokens issued, by grant: a relaunch that restores the session
+    // refreshes without a new authorization code.
+    grants: { authorization_code: 0, refresh_token: 0 },
     log: [],
 };
 
@@ -120,12 +123,14 @@ const handler = async (req, res) => {
             if (!entry || entry.redirect !== form.get("redirect_uri") || b64url(crypto.createHash("sha256").update(verifier).digest()) !== entry.challenge) {
                 return json(res, 400, { error: "invalid_grant" });
             }
+            state.grants.authorization_code++;
             return json(res, 200, issue());
         }
         if (form.get("grant_type") === "refresh_token") {
             const token = form.get("refresh_token");
             if (state.revokeAll || !state.refresh.has(token)) return json(res, 400, { error: "invalid_grant", error_description: "The session ended." });
             state.refresh.delete(token);
+            state.grants.refresh_token++;
             return json(res, 200, issue());
         }
         return json(res, 400, { error: "unsupported_grant_type" });
@@ -136,6 +141,7 @@ const handler = async (req, res) => {
     if (url.pathname === "/control/revoke") { state.revokeAll = true; return json(res, 200, { ok: true }); }
     if (url.pathname === "/control/restore") { state.revokeAll = false; return json(res, 200, { ok: true }); }
     if (url.pathname === "/control/log") return json(res, 200, { ok: true });
+    if (url.pathname === "/control/grants") return json(res, 200, state.grants);
 
     // Discovery: forwarded without edge auth.
     if (url.pathname === "/v0/authentication") {

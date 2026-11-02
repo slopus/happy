@@ -23,6 +23,7 @@ final class AccountsKeychain: AccountKeychainBackend, @unchecked Sendable {
         return try items.add(query, data: data, accessibility: accessibility)
     }
     func update(_ query: KeychainItemQuery, data: Data) throws { try items.update(query, data: data) }
+    func update(_ query: KeychainItemQuery, data: Data, accessibility: KeychainAccessibility) throws { try items.update(query, data: data, accessibility: accessibility) }
     func delete(_ query: KeychainItemQuery) {
         _ = lock.withLock { queries.remove(query) }
         items.delete(query)

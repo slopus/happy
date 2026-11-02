@@ -7,8 +7,10 @@ import XCTest
 /// the scanner its code (`HAPPY_SIMULATED_SCAN`). The test is refused a
 /// server under a path and the code opened as a link, signs in to a code
 /// naming another installation and is refused after the browser, then
-/// scans the right one: signs in through the browser, gives its name to the
-/// profile gate, lands on the server's home, survives its access tokens
+/// scans the right one on the very first screen: signs in through the
+/// browser, gives its name to the profile gate, lands on the server's home,
+/// comes back signed in after being killed and launched again (the
+/// Keychain's refresh token, no browser), survives its access tokens
 /// being expired (refresh), sees "Sign in again" once the SSO session ends,
 /// signs in again, opens instance links from outside (its own
 /// installation's, and refuses any other), and scanning the code again
@@ -45,6 +47,19 @@ final class ServerSignInUITests: XCTestCase {
             done.fulfill()
         }.resume()
         wait(for: [done], timeout: 10)
+    }
+
+    /// Tokens the mock issued, by grant type.
+    private func grants() -> [String: Int] {
+        let done = expectation(description: "grants")
+        var result: [String: Int] = [:]
+        URLSession.shared.dataTask(with: URL(string: "\(Self.server)/control/grants")!) { data, _, error in
+            XCTAssertNil(error, "control grants")
+            result = data.flatMap { try? JSONDecoder().decode([String: Int].self, from: $0) } ?? [:]
+            done.fulfill()
+        }.resume()
+        wait(for: [done], timeout: 10)
+        return result
     }
 
     /// Continue on iOS's "wants to use … to sign in", then the IdP's page.
@@ -156,6 +171,18 @@ final class ServerSignInUITests: XCTestCase {
         XCTAssertTrue(task.waitForExistence(timeout: 60), "the server's home didn't show")
         capture("8-home")
 
+        // Killed and launched again: the Keychain's refresh token restores
+        // the session without the browser or a new authorization code.
+        let before = grants()
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(task.waitForExistence(timeout: 60), "the session didn't come back after a relaunch")
+        XCTAssertFalse(springboard.alerts.buttons["Continue"].exists, "a relaunch asked to sign in")
+        let after = grants()
+        XCTAssertEqual(after["authorization_code"], before["authorization_code"], "a relaunch signed in again")
+        XCTAssertGreaterThan(after["refresh_token"] ?? 0, before["refresh_token"] ?? 0, "a relaunch didn't refresh")
+        capture("9-relaunched")
+
         // Expired access tokens: the next requests refresh and carry on.
         control("expire")
         bounce()
@@ -166,7 +193,7 @@ final class ServerSignInUITests: XCTestCase {
         XCTAssertTrue(element("settings:server-sign-in").waitForExistence(timeout: 10))
         XCTAssertTrue(element("settings:server").exists)
         XCTAssertTrue(element("settings:disconnect").exists, "the server can't be signed out of")
-        capture("9-settings")
+        capture("10-settings")
 
         // The SSO session ends: everything is redirected to the IdP and the
         // refresh is refused.
@@ -174,19 +201,19 @@ final class ServerSignInUITests: XCTestCase {
         bounce()
         let needsSignIn = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Sign in again")).firstMatch
         XCTAssertTrue(needsSignIn.waitForExistence(timeout: 30), "no Sign in again")
-        capture("10-needs-sign-in")
+        capture("11-needs-sign-in")
 
         control("restore")
         element("settings:server-sign-in").tap()
         let again = element("server-sign-in-continue")
         XCTAssertTrue(again.waitForExistence(timeout: 10))
-        capture("11-sign-in-again")
+        capture("12-sign-in-again")
         again.tap()
         signInInBrowser(nil)
         let connected = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Connected")).firstMatch
         XCTAssertTrue(connected.waitForExistence(timeout: 60), "not connected again")
         XCTAssertFalse(needsSignIn.exists)
-        capture("12-signed-in-again")
+        capture("13-signed-in-again")
 
         // A link from outside opens only on the installation it names: the
         // mock's health `instanceId`, read while connecting.
@@ -194,12 +221,12 @@ final class ServerSignInUITests: XCTestCase {
         XCTAssertTrue(element("artifact").waitForExistence(timeout: 20), "the instance link didn't open its artifact")
         XCTAssertTrue(app.navigationBars.staticTexts["Q3 report"].waitForExistence(timeout: 10), "not the linked artifact")
         XCTAssertTrue(element("artifact-copy-link").exists, "no Copy Link")
-        capture("13-instance-link")
+        capture("14-instance-link")
         // Another installation's link never falls back to this one.
         openFromOutside(URL(string: "happy://zzzzzzzzzzzzzzzzzzzzzzzz/artifacts/q3report")!)
         let unknown = app.alerts.staticTexts["This link belongs to a Happy server you’re not connected to."]
         XCTAssertTrue(unknown.waitForExistence(timeout: 10), "an unknown installation's link wasn't refused")
-        capture("14-unknown-instance")
+        capture("15-unknown-instance")
         app.alerts.buttons.firstMatch.tap()
         // Nor does one naming no installation open from outside.
         openFromOutside(URL(string: "happy://artifacts/q3report")!)
@@ -216,7 +243,7 @@ final class ServerSignInUITests: XCTestCase {
         allowCamera()
         XCTAssertFalse(element("server-sign-in-url").exists, "a connected server's code started a sign-in")
         XCTAssertTrue(task.waitForExistence(timeout: 20), "the server's home didn't come forward")
-        capture("15-already-connected")
+        capture("16-already-connected")
     }
 
     /// On a phone, where the mock isn't reachable: a scanned server whose

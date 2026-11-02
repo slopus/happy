@@ -53,8 +53,17 @@ public protocol KeychainBackend: Sendable {
     func add(_ query: KeychainItemQuery, data: Data, accessibility: KeychainAccessibility) throws -> KeychainAddResult
     /// SecItemUpdate of kSecValueData only.
     func update(_ query: KeychainItemQuery, data: Data) throws
+    /// SecItemUpdate of kSecValueData and kSecAttrAccessible, so an item
+    /// written before keeps no looser protection than a new one gets.
+    func update(_ query: KeychainItemQuery, data: Data, accessibility: KeychainAccessibility) throws
     /// SecItemDelete, ignoring the result, as expo does.
     func delete(_ query: KeychainItemQuery)
+}
+
+extension KeychainBackend {
+    public func update(_ query: KeychainItemQuery, data: Data, accessibility: KeychainAccessibility) throws {
+        try update(query, data: data)
+    }
 }
 
 /// One expo-secure-store key: where it is read from, written to and
@@ -203,7 +212,10 @@ public struct SecureStoreCredentialStore: CredentialStore {
 import Security
 
 /// The real Keychain. Queries carry no access group, so they resolve to the
-/// app's default group (team id + bundle id), the same one the RN build used.
+/// app's default group (team id + bundle id), the same one the RN build used;
+/// the app has no `keychain-access-groups` entitlement to share it. Items are
+/// added with `kSecAttrSynchronizable` false (never iCloud Keychain) and no
+/// `SecAccessControl`.
 public struct SecurityKeychainBackend: AccountKeychainBackend {
     public init() {}
 
@@ -245,13 +257,7 @@ public struct SecurityKeychainBackend: AccountKeychainBackend {
     }
 
     public func add(_ query: KeychainItemQuery, data: Data, accessibility: KeychainAccessibility) throws -> KeychainAddResult {
-        var attributes = Self.attributes(query)
-        attributes[kSecValueData as String] = data
-        switch accessibility {
-        case .whenUnlocked: attributes[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
-        case .afterFirstUnlockThisDeviceOnly: attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        }
-        let status = SecItemAdd(attributes as CFDictionary, nil)
+        let status = SecItemAdd(Self.adding(query, data: data, accessibility: accessibility) as CFDictionary, nil)
         switch status {
         case errSecSuccess: return .added
         case errSecDuplicateItem: return .duplicate
@@ -264,8 +270,34 @@ public struct SecurityKeychainBackend: AccountKeychainBackend {
         guard status == errSecSuccess else { throw KeychainStatusError(status) }
     }
 
+    public func update(_ query: KeychainItemQuery, data: Data, accessibility: KeychainAccessibility) throws {
+        let status = SecItemUpdate(Self.attributes(query) as CFDictionary, Self.updating(data, accessibility: accessibility) as CFDictionary)
+        guard status == errSecSuccess else { throw KeychainStatusError(status) }
+    }
+
     public func delete(_ query: KeychainItemQuery) {
         SecItemDelete(Self.attributes(query) as CFDictionary)
+    }
+
+    /// What SecItemAdd gets.
+    static func adding(_ query: KeychainItemQuery, data: Data, accessibility: KeychainAccessibility) -> [String: Any] {
+        var attributes = attributes(query)
+        attributes[kSecValueData as String] = data
+        attributes[kSecAttrAccessible as String] = accessible(accessibility)
+        attributes[kSecAttrSynchronizable as String] = kCFBooleanFalse
+        return attributes
+    }
+
+    /// What SecItemUpdate changes when the protection is rewritten too.
+    static func updating(_ data: Data, accessibility: KeychainAccessibility) -> [String: Any] {
+        [kSecValueData as String: data, kSecAttrAccessible as String: accessible(accessibility)]
+    }
+
+    private static func accessible(_ accessibility: KeychainAccessibility) -> CFString {
+        switch accessibility {
+        case .whenUnlocked: kSecAttrAccessibleWhenUnlocked
+        case .afterFirstUnlockThisDeviceOnly: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        }
     }
 
     static func attributes(_ query: KeychainItemQuery) -> [String: Any] {

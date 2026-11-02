@@ -65,8 +65,19 @@ public struct KeychainAgentConnectionCredentialStore: AgentConnectionCredentialS
         }
         return result
     }
+    /// A team server's refresh token stays on this device and in this app:
+    /// readable after the first unlock (so a refresh works in the
+    /// background), never synced to iCloud Keychain, never restored to or
+    /// migrated onto another device, and rewritten that way when an older
+    /// item had looser protection.
     public func save(_ credentials: AgentConnectionCredentials, id: String) throws {
         let data = try JSONEncoder().encode(credentials)
+        if credentials.signIn != nil {
+            if try backend.add(query(id), data: data, accessibility: .afterFirstUnlockThisDeviceOnly) == .duplicate {
+                try backend.update(query(id), data: data, accessibility: .afterFirstUnlockThisDeviceOnly)
+            }
+            return
+        }
         if try backend.add(query(id), data: data, accessibility: .whenUnlocked) == .duplicate { try backend.update(query(id), data: data) }
     }
     public func remove(id: String) throws { try backend.removeAccount(query(id)) }

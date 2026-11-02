@@ -79,6 +79,10 @@ checked.
 
 ## Sign-in
 
+A fresh install needs nothing else first: no paired computer, Happy
+account or Happy Cloud sign-in. The first screen's Start opens the scanner,
+and a server code scanned there signs in and lands on the server's home.
+
 1. The server comes from a scanned code, or from the connection signing
    in again.
 2. `GET /v0/authentication` (`ServerDiscovery`) runs without a token and
@@ -107,9 +111,26 @@ checked.
 
 - The access token lives in memory only (`ServerAuthorization`).
 - The grant lives in the Keychain inside the account's
-  `happy-ios:direct-device` item (`AgentConnectionCredentials.signIn`,
-  `kSecAttrAccessibleWhenUnlocked`). It holds the refresh token, the
-  refresh URL, the client ID and the resource recorded at sign-in. A
+  `happy-ios:direct-device` item (`AgentConnectionCredentials.signIn`). It
+  holds the refresh token, the refresh URL, the client ID and the resource
+  recorded at sign-in. The item is device-only and app-private:
+  - `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`: readable after the
+    first unlock since boot, so a refresh works in the background. A
+    ThisDeviceOnly item is never migrated to another device: it isn't in
+    an unencrypted backup, and an encrypted backup restores it only onto
+    the same phone. Quick Start and iCloud restores to a new phone leave
+    it behind, and the person signs in again there;
+  - `kSecAttrSynchronizable` false: never in iCloud Keychain;
+  - no `kSecAttrAccessGroup`, and no `keychain-access-groups`
+    entitlement in any target, so it is in the app's own default group
+    (team ID + bundle ID);
+  - no `SecAccessControl`: no biometry or passcode prompt.
+
+  An item an earlier build wrote with looser protection is rewritten this
+  way (`SecItemUpdate` of the data and `kSecAttrAccessible`) the next time
+  the grant is saved. Paired computers' items keep
+  `kSecAttrAccessibleWhenUnlocked`. `ServerTokenKeychainTests` checks the
+  attributes. A
   refresh token goes only to that recorded URL with that client and
   resource, never to a URL a daemon advertises later.
 - A refresh happens 60 seconds before `expires_in` runs out and after a
@@ -222,13 +243,16 @@ scan.
   refusal and a WebSocket tunnel against it: start the mock, then
   `HAPPY_EDGE_MOCK_PORT=8444 swift test --filter EdgeMockInteropTests`.
 - `scripts/edge-sso-mock/run-ui-test.sh` (on a Mac) runs
-  `ServerSignInUITests` in a simulator that trusts the mock's CA. The
+  `ServerSignInUITests` in a freshly erased simulator that trusts the
+  mock's CA. The
   simulator has no camera, so each launch hands the scanner its code with
   `HAPPY_SIMULATED_SCAN` (debug builds only). A code under a path prefix is
   refused before any request, the code opened as a link is refused, a code
   naming another installation is refused after sign-in, then the right
-  code (lowercase escapes) signs in through ASWebAuthenticationSession, the
-  name prompt answers the profile gate, home loads, expired tokens
+  code (lowercase escapes), scanned from the first screen, signs in through
+  ASWebAuthenticationSession, the name prompt answers the profile gate,
+  home loads, a kill and relaunch comes back signed in from the Keychain's
+  refresh token (the mock counts a refresh and no new code), expired tokens
   refresh, an ended SSO session shows "Sign in again", signing in again
   connects, the mock's own instance link opens its artifact, another
   installation's or an instance-less link is refused, and scanning the

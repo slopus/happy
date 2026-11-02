@@ -10,6 +10,7 @@ final class FakeKeychain: KeychainBackend, @unchecked Sendable {
         case copy(String)
         case add(String, String, KeychainAccessibility)
         case update(String, String)
+        case updateProtection(String, String, KeychainAccessibility)
         case delete(String)
     }
 
@@ -77,6 +78,16 @@ final class FakeKeychain: KeychainBackend, @unchecked Sendable {
             _calls.append(.update(query.service, String(decoding: data, as: UTF8.self)))
             guard var item = match(query) else { throw KeychainStatusError(-25300) }
             item.data = data
+            items[key(query)] = item
+        }
+    }
+
+    func update(_ query: KeychainItemQuery, data: Data, accessibility: KeychainAccessibility) throws {
+        try lock.withLock {
+            _calls.append(.updateProtection(query.service, String(decoding: data, as: UTF8.self), accessibility))
+            guard var item = match(query) else { throw KeychainStatusError(-25300) }
+            item.data = data
+            item.accessibility = accessibility
             items[key(query)] = item
         }
     }

@@ -54,6 +54,9 @@ public struct NamespacedKeychainBackend: AccountKeychainBackend {
         try base.add(self.query(query), data: data, accessibility: accessibility)
     }
     public func update(_ query: KeychainItemQuery, data: Data) throws { try base.update(self.query(query), data: data) }
+    public func update(_ query: KeychainItemQuery, data: Data, accessibility: KeychainAccessibility) throws {
+        try base.update(self.query(query), data: data, accessibility: accessibility)
+    }
     public func delete(_ query: KeychainItemQuery) { base.delete(self.query(query)) }
     public func accounts(service: String) throws -> [String] { try base.accounts(service: "\(namespace):\(service)") }
     public func removeAccount(_ query: KeychainItemQuery) throws { try base.removeAccount(self.query(query)) }
