@@ -97,14 +97,21 @@ class AgentConnections(
      * [id]'s credentials to link with. A team server's that are gone (their
      * Keystore key missing: restored or moved to another phone, which never
      * carries it) leave it signed out, "Sign in again", rather than revoked.
+     * [afterRead] runs between the first read and the check (tests).
      */
-    suspend fun linkCredentials(id: String): AgentConnectionCredentials? {
-        val credentials = credentials(id)
-        if (credentials == null && state.value.firstOrNull { it.id == id }?.server != null) {
-            signedOut(id)
-            throw AgentConnectionException(AgentConnectionException.Reason.SignInRequired)
+    suspend fun linkCredentials(id: String, afterRead: suspend () -> Unit = {}): AgentConnectionCredentials? {
+        val grant = grant(id)
+        credentials(id)?.let { return it }
+        afterRead()
+        if (state.value.firstOrNull { it.id == id }?.server == null) return null
+        // Read again and signed out under one hold of the lock: a sign-in that landed since stands.
+        val signedIn = lock.withLock {
+            withContext(Dispatchers.IO) { read(id) } ?: run {
+                if (grant(id) == grant) change(id) { it.copy(signInRequired = true, profileRequired = false) }
+                null
+            }
         }
-        return credentials
+        return signedIn ?: throw AgentConnectionException(AgentConnectionException.Reason.SignInRequired)
     }
 
     /**

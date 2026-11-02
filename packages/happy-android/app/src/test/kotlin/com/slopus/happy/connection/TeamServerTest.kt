@@ -394,6 +394,20 @@ class TeamServerTest {
     }
 
     @Test
+    fun aSignInLandingWhileMissingCredentialsAreCheckedStands(): Unit = runBlocking {
+        val connections = connections()
+        daemon.valid += setOf("access-a", "access-b")
+        val a = connections.addServer(origin, member("u-a", "refresh-a"), AccessToken("access-a", now + 300_000), fallbackName = "happy.acme.example")
+        keys.delete(ExpoSecureStore(secretPrefs, keys, keychainService = AgentConnections.KEYCHAIN_SERVICE).aesAlias(usesKeystoreSuffix = true))
+        // The key is gone when the link reads; the person signs in again before it acts on that.
+        val credentials = connections.linkCredentials(a.id, afterRead = {
+            connections.addServer(origin, member("u-a", "refresh-b"), AccessToken("access-b", now + 300_000), fallbackName = "happy.acme.example", replacing = a.id)
+        })
+        assertEquals("refresh-b", credentials?.oauth?.refreshToken)
+        assertFalse(connections.accounts.value.single().signInRequired)
+    }
+
+    @Test
     fun aServerWhoseKeystoreKeyIsGoneIsSignedOut(): Unit = runBlocking {
         val connections = connections()
         val account = signedIn(connections)
