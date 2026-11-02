@@ -1,5 +1,8 @@
 package com.slopus.happy.ui.chat
 
+import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.text.TextLayoutResult
 import com.slopus.happy.ui.components.rememberHoistedTextFieldState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.background
@@ -55,6 +58,7 @@ import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.Octicon
 import com.slopus.happy.ui.components.StatusDot
+import com.slopus.happy.ui.conversation.SendFlight
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
@@ -186,6 +190,8 @@ fun ChatComposer(
     onPanelPositioned: ((LayoutCoordinates) -> Unit)? = null,
     /** The input takes focus, and with it the keyboard, as it first shows. */
     autoFocus: Boolean = false,
+    /** Where a sent message's words fly from ([SendFlight]), when Send sends them alone. */
+    flight: SendFlight? = null,
 ) {
     val focus = remember { FocusRequester() }
     if (autoFocus) LaunchedEffect(focus) { runCatching { focus.requestFocus() } }
@@ -200,8 +206,24 @@ fun ChatComposer(
         placed = { words -> cursor?.placement?.takeIf { it.text == words }?.selection },
     )
     LaunchedEffect(field, cursor) { snapshotFlow { field.selection }.collect { cursor?.selection = it } }
-    val hairline = with(LocalDensity.current) { 1f.toDp() }
+    val density = LocalDensity.current
+    val hairline = with(density) { 1f.toDp() }
     val shell = RoundedCornerShape(ComposerSpec.shellRadius)
+    // The field's words as last laid out, and where they are: what a sent message flies from.
+    val fieldLayout = remember { arrayOfNulls<() -> TextLayoutResult?>(1) }
+    val fieldAt = remember { arrayOfNulls<LayoutCoordinates>(1) }
+    val press = if (flight == null || primary != PrimaryAction.Send) onPrimary else {
+        {
+            // Taken before the send clears the field; launched once its row is on the way.
+            val sent = field.text.toString()
+            val layout = fieldLayout[0]?.invoke()
+            val at = fieldAt[0]?.takeIf { it.isAttached }
+            onPrimary()
+            if (layout != null && at != null && layout.size.height <= at.size.height + 1) {
+                flight.launch(sent, layout, at.positionInRoot(), density, colors.input.text)
+            }
+        }
+    }
     val layout = LocalWindowLayout.current
     Column(
         modifier = modifier
@@ -252,7 +274,9 @@ fun ChatComposer(
                     inputTransformation = typed,
                     textStyle = ComposerSpec.input.copy(color = colors.input.text),
                     cursorBrush = SolidColor(colors.input.text),
+                    onTextLayout = { result -> fieldLayout[0] = result },
                     modifier = Modifier
+                        .onPlaced { fieldAt[0] = it }
                         .focusRequester(focus)
                         .onPreviewKeyEvent { cursor?.onKey?.invoke(it) == true || onKey(it) }
                         .testTag(ComposerTags.INPUT)
@@ -283,7 +307,7 @@ fun ChatComposer(
                 }
                 // With the row gap on each side: 2 + 8 between the middle and the button, as in RN.
                 Spacer(Modifier.width(ComposerSpec.primaryMarginLeft - ComposerSpec.actionRowGap))
-                PrimaryButton(primary, aborting, onPrimary, primaryShake)
+                PrimaryButton(primary, aborting, press, primaryShake)
             }
         }
         AnimatedFade(showDetails) { bottom() }

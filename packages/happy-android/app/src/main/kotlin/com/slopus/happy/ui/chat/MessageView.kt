@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalDensity
@@ -237,7 +238,10 @@ fun UserMessage(
             if (foot && delivery != null) {
                 val slot = remember { TrailingSlot() }
                 val time = rememberMessageTime(row.time ?: message.createdAt)
-                BubbleFoot(slot, status = { MessageStatus(time, delivery, colors.textSecondary, deliveryScale()) }) {
+                // A message just sent flies here from the composer (SendFlight); a conversation's words say where themselves.
+                val flight = com.slopus.happy.ui.conversation.LocalSendFlight.current
+                val lands = if (flight != null && body == null) Modifier.onPlaced { flight.place(row.key, it, prose = null) } else Modifier
+                BubbleFoot(slot, status = { MessageStatus(time, delivery, colors.textSecondary, deliveryScale()) }, modifier = lands) {
                     CompositionLocalProvider(LocalTrailingSlot provides slot) { words() }
                 }
             } else {

@@ -19,6 +19,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Canvas
@@ -29,7 +30,11 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onPlaced
@@ -39,6 +44,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.util.lerp
 import com.slopus.happy.conversation.ConversationRow
@@ -220,6 +226,10 @@ val LocalSendFlight = staticCompositionLocalOf<SendFlight?> { null }
  *   Where the bubble breaks its lines differently from the field, the
  *   field's words cross-fade into the bubble's. Both are pictures drawn
  *   once, so a frame of the flight shapes no text.
+ * - A row whose words aren't a laid-out [Prose] (the Happy CLI chat's
+ *   Markdown bubble) records itself instead ([flying]): bubble, words,
+ *   time and mark fade in over the field's words as they move, all drawn
+ *   from that recording.
  */
 @Stable
 class SendFlight {
@@ -229,8 +239,14 @@ class SendFlight {
         val progress = Animatable(0f)
     }
 
-    /** A claimed row's words: where they are laid out ([coordinates]), and how ([prose]). */
-    internal class Target(val coordinates: LayoutCoordinates, val prose: Prose, val content: () -> LayoutCoordinates?)
+    /** A claimed row's words: where they are laid out ([coordinates]), and how ([prose]; null for a recorded row). */
+    internal class Target(val coordinates: LayoutCoordinates, val prose: Prose?, val content: () -> LayoutCoordinates?)
+
+    /** A claimed row drawn into [layer] where it is placed ([coordinates]), for the flight to draw instead. */
+    internal class Recording(val layer: GraphicsLayer, val coordinates: LayoutCoordinates)
+
+    internal var recording: Recording? = null
+        private set
 
     internal var flight by mutableStateOf<Flight?>(null)
         private set
@@ -250,11 +266,16 @@ class SendFlight {
     }
 
     /** Whether [row] is the sent message in flight, claiming it if it is the one just sent. */
-    internal fun claim(row: ConversationRow): Boolean {
+    internal fun claim(row: ConversationRow): Boolean =
+        claim(row.key, (row as? ConversationRow.User)?.takeIf { it.pictures.isEmpty() }?.text)
+
+    /** Whether row [key] is the sent message in flight, claiming it if its [text] (null: not a plain message) is what was sent. */
+    fun claim(key: String, text: String?): Boolean {
         val flight = flight ?: return false
-        if (flight.key != null) return flight.key == row.key
-        if (row !is ConversationRow.User || row.pictures.isNotEmpty() || row.text.trim() != flight.text) return false
-        flight.key = row.key
+        if (flight.key != null) return flight.key == key
+        if (text == null || text.trim() != flight.text) return false
+        flight.key = key
+        recording = null
         return true
     }
 
@@ -262,13 +283,35 @@ class SendFlight {
     internal fun hides(key: String): Boolean = flight?.key == key
 
     /** The claimed row [key]'s words are at [coordinates], laid out as [prose]. */
-    internal fun place(key: String, coordinates: LayoutCoordinates, prose: Prose, content: () -> LayoutCoordinates? = { null }) {
+    fun place(key: String, coordinates: LayoutCoordinates, prose: Prose?, content: () -> LayoutCoordinates? = { null }) {
         val flight = flight ?: return
         if (flight.key == key && flight.target == null) flight.target = Target(coordinates, prose, content)
     }
 
+    internal fun record(key: String, layer: GraphicsLayer, coordinates: LayoutCoordinates) {
+        if (flight?.key == key && recording == null) recording = Recording(layer, coordinates)
+    }
+
     internal fun done(flight: Flight) {
-        if (this.flight === flight) this.flight = null
+        if (this.flight === flight) {
+            this.flight = null
+            recording = null
+        }
+    }
+}
+
+/**
+ * The claimed row [key] while its words fly: drawn into a layer the flight
+ * draws over the screen ([SendFlight.Recording]), not in place, until they land.
+ */
+@Composable
+fun Modifier.flying(flight: SendFlight, key: String): Modifier {
+    val layer = rememberGraphicsLayer()
+    val placed = remember { arrayOfNulls<LayoutCoordinates>(1) }
+    return onPlaced { placed[0] = it }.drawWithContent {
+        layer.record { this@drawWithContent.drawContent() }
+        placed[0]?.let { flight.record(key, layer, it) }
+        if (!flight.hides(key)) drawLayer(layer)
     }
 }
 
@@ -300,13 +343,24 @@ internal fun BoxScope.SendFlightOverlay(flight: SendFlight, bubble: BubblePalett
                 val p = current.progress.value
                 // The row follows the list as it moves up for it; the flight lands on it wherever it is.
                 val at = target.coordinates.positionInRoot()
+                val opaque = (p / TranscriptMotionSpec.FLIGHT_OPAQUE).coerceAtMost(1f)
+                if (target.prose == null) {
+                    val recording = flight.recording?.takeIf { it.coordinates.isAttached }
+                    val shift = Offset(lerp(current.origin.x - at.x, 0f, p), lerp(current.origin.y - at.y, 0f, p)) - here
+                    // The field's words go as the row, bubble and all, comes in around them.
+                    translate(at.x + shift.x, at.y + shift.y) { drawPicture(current.words, 1f - opaque) }
+                    if (recording != null) {
+                        val rowAt = recording.coordinates.positionInRoot()
+                        translate(rowAt.x + shift.x, rowAt.y + shift.y) { drawRecording(recording.layer, recording.coordinates.size, opaque) }
+                    }
+                    return@drawBehind
+                }
                 val size = target.coordinates.size.toSize()
                 val segment = target.prose.segments.firstOrNull() as? DrawnSegment
                 val first = segment?.parts?.firstOrNull()?.pieces?.firstOrNull()
                 val line = if (segment != null && first != null) Offset(first.x.toFloat(), (segment.tops[0] + first.y).toFloat()) else Offset.Zero
                 val from = current.origin - (at + line)
                 val shift = Offset(lerp(from.x, 0f, p), lerp(from.y, 0f, p)) - here
-                val opaque = (p / TranscriptMotionSpec.FLIGHT_OPAQUE).coerceAtMost(1f)
                 // The bubble lands on the words with their time and mark around them (BubbleFoot, their parent).
                 val content = target.content()?.takeIf { it.isAttached } ?: target.coordinates
                 val contentAt = content.positionInRoot()
@@ -330,6 +384,16 @@ internal fun BoxScope.SendFlightOverlay(flight: SendFlight, bubble: BubblePalett
                 }
             },
     )
+}
+
+private fun DrawScope.drawRecording(layer: GraphicsLayer, size: IntSize, alpha: Float) {
+    if (alpha <= 0f) return
+    if (alpha >= 1f) return drawLayer(layer)
+    drawIntoCanvas { canvas ->
+        canvas.saveLayer(androidx.compose.ui.geometry.Rect(Offset.Zero, size.toSize()), Paint().apply { this.alpha = alpha })
+        drawLayer(layer)
+        canvas.restore()
+    }
 }
 
 private fun DrawScope.drawPicture(picture: Picture, alpha: Float) {

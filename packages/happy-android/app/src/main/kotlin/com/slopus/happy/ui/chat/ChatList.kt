@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.chat.ChatListItem
 import com.slopus.happy.chat.ChatRow
+import com.slopus.happy.chat.UserDisplay
 import com.slopus.happy.chat.WorkGroupExpansion
 import com.slopus.happy.chat.chatListItems
 import com.slopus.happy.chat.groupChatRowsForDisplay
@@ -66,6 +67,9 @@ import com.slopus.happy.ui.components.RoundButtonSize
 import com.slopus.happy.ui.components.ShimmerSpec
 import com.slopus.happy.ui.components.rememberReduceMotion
 import com.slopus.happy.ui.components.shimmer
+import com.slopus.happy.ui.conversation.LocalSendFlight
+import com.slopus.happy.ui.conversation.SendFlight
+import com.slopus.happy.ui.conversation.flying
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
@@ -225,6 +229,8 @@ fun ChatList(
     foreground: Boolean = true,
     /** The agent is working: the scroll button's arrow shimmers, as iOS's jump does. */
     working: Boolean = false,
+    /** A message sent at the newest end flies from the composer to its row. */
+    flight: SendFlight? = null,
 ) {
     val colors = HappyTheme.colors
     val scope = rememberCoroutineScope()
@@ -288,6 +294,8 @@ fun ChatList(
     val focus = remember(sessionId) { RevealFocus() }
     val streamingKey = focus.update(rows, working)
     val reveal = remember(state) { ListReveal(state, leading = 1) }
+    // Past the footer, with the newest row's foot in view (iOS 3c24acf5c flies within 20 of the end; Android's conversation at it).
+    flight?.atNewest = { state.firstVisibleItemIndex == 0 && state.firstVisibleItemScrollOffset == 0 }
 
     Box(modifier = modifier.fillMaxSize()) {
         LazyColumn(
@@ -299,10 +307,13 @@ fun ChatList(
             item(key = "footer", contentType = "footer") { ChatFooter(controlledByUser) }
             items(listItems, key = { it.key }, contentType = { item -> if (item is ChatListItem.Row) item.row::class else WORK_HEADER }) { item ->
                 when (item) {
-                    is ChatListItem.Row -> CompositionLocalProvider(LocalRevealHost provides reveal) {
+                    is ChatListItem.Row -> CompositionLocalProvider(LocalRevealHost provides reveal, LocalSendFlight provides flight) {
                         val row = item.row
                         val textReveal = if (row is ChatRow.AgentText) rememberTextReveal(row.key, streaming = row.key == streamingKey) { true } else null
-                        MessageView(row, bubble, callbacks, reveal = textReveal)
+                        // Its words are on their way from the composer: it shows once they land.
+                        val sent = (row as? ChatRow.User)?.takeIf { it.display is UserDisplay.Text }?.message?.text
+                        val moves = if (flight != null && flight.claim(row.key, sent)) Modifier.flying(flight, row.key) else Modifier
+                        MessageView(row, bubble, callbacks, moves, reveal = textReveal)
                     }
                     // Toggled by the group, not the row: both headers of an open group drive one state.
                     is ChatListItem.WorkHeader -> AgentWorkGroupHeader(

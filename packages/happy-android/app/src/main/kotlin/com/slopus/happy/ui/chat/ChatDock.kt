@@ -40,6 +40,8 @@ import com.slopus.happy.ui.attachments.ComposerAttachmentStrip
 import com.slopus.happy.ui.attachments.hasComposerImages
 import com.slopus.happy.ui.autocomplete.ComposerSuggestions
 import com.slopus.happy.ui.autocomplete.rememberComposerAutocomplete
+import com.slopus.happy.ui.components.rememberReduceMotion
+import com.slopus.happy.ui.conversation.LocalSendFlight
 import com.slopus.happy.ui.layout.CenteredInputWidth
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.usage.ComposerUsageRow
@@ -157,6 +159,9 @@ private fun ChatComposerFor(
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val panelShake = rememberShake()
+    val flight = LocalSendFlight.current
+    val reduceMotion = rememberReduceMotion()
+    val pictures = hasComposerImages()
     val primaryShake = rememberShake()
     fun abort() {
         if (aborting) return
@@ -228,6 +233,8 @@ private fun ChatComposerFor(
         },
         panelShake = panelShake,
         primaryShake = primaryShake,
+        // A message sent alone flies to its row; pictures come in with theirs (iOS 3c24acf5c).
+        flight = flight?.takeIf { !pictures && !reduceMotion },
         bottom = { ComposerUsageRow(state.snapshot.usage, session.agentState?.usageLimits) },
     )
 }
