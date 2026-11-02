@@ -57,7 +57,7 @@ final class HostedAgentTallRowTests: XCTestCase {
             original?.makeKey()
         }
         root.view.addSubview(transcript)
-        transcript.setViewport(size: transcript.bounds.size, insets: UIEdgeInsets(top: 100, left: 0, bottom: 120, right: 0))
+        transcript.setViewport(frame: CGRect(origin: .zero, size: transcript.bounds.size), insets: UIEdgeInsets(top: 100, left: 0, bottom: 120, right: 0))
         // The newest reply is 12,000 points: the screen rests on its foot.
         transcript.apply([tall("question", height: 300), tall("answer", height: 12_000)])
         window.layoutIfNeeded()

@@ -80,9 +80,21 @@ final class ChatListView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        ultra.list.frame = bounds
-        ultra.setViewport(size: bounds.size, insets: edgeInsets)
+        ultra.setViewport(frame: sidesBand, insets: edgeInsets)
     }
+
+    override func safeAreaInsetsDidChange() {
+        super.safeAreaInsetsDidChange()
+        setNeedsLayout()
+    }
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        ultra.list.takingMargins(super.hitTest(point, with: event), of: self)
+    }
+
+    /// The width the rows are laid out at: this view less the safe area's
+    /// sides, so a phone held sideways keeps them off the camera.
+    var contentWidth: CGFloat { sidesBand.width }
 
     /// The width the current rows were measured at.
     var measuredWidth: CGFloat { model.width }
@@ -121,7 +133,7 @@ final class ChatListView: UIView {
         let oldest = PixelGrid.round(oldest, scale: scale)
         // Flipped: the list's top is the screen's bottom.
         edgeInsets = UIEdgeInsets(top: newest, left: 0, bottom: oldest, right: 0)
-        ultra.setViewport(size: bounds.size, insets: edgeInsets, keyboard: keyboard)
+        ultra.setViewport(frame: sidesBand, insets: edgeInsets, keyboard: keyboard)
     }
 
     func scrollToNewest(animated: Bool) { ultra.scrollToNewest(animated: animated) }

@@ -196,12 +196,26 @@ final class SidebarList: UIView {
         update()
     }
 
-    /// The list at this view's size, laid out now: a new width goes in
-    /// place, before an apply that brings rows or insets.
+    override func safeAreaInsetsDidChange() {
+        super.safeAreaInsetsDidChange()
+        setNeedsLayout()
+    }
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        list.takingMargins(super.hitTest(point, with: event), of: self)
+    }
+
+    /// Where the rows stand: this view less the safe area's sides, so a
+    /// phone held sideways keeps them off the camera.
+    private var band: CGRect { sidesBand }
+
+    /// The list in its band, laid out now: a new width goes in place,
+    /// before an apply that brings rows or insets.
     private func resizeList() {
-        guard bounds.width > 0 else { return }
-        if edge.frame != bounds { edge.frame = bounds }
-        list.resize(to: CGRect(origin: edge.bounds.origin, size: bounds.size))
+        let band = band
+        guard band.width > 0 else { return }
+        if edge.frame != band { edge.frame = band }
+        list.resize(to: CGRect(origin: edge.bounds.origin, size: band.size))
     }
 
     override func willMove(toWindow newWindow: UIWindow?) {
@@ -239,10 +253,10 @@ final class SidebarList: UIView {
     }
 
     private func update() {
-        guard bounds.width > 0 else { return }
+        guard band.width > 0 else { return }
         let traits = traitCollection
         let input = Input(
-            rows: rows, width: bounds.width, dark: traits.userInterfaceStyle == .dark,
+            rows: rows, width: band.width, dark: traits.userInterfaceStyle == .dark,
             displayScale: traits.displayScale > 0 ? traits.displayScale : 3,
             selected: selectedRowId, notice: notice
         )
@@ -325,7 +339,7 @@ final class SidebarList: UIView {
         if animated, next.notice == nil, previousIDs?.first == SidebarNoticeItem.id { departNotice() }
         resizeList()
         ApplyPerf.measure(.homeList) {
-            list.applyChanges(items: shown, newSize: bounds.size, scrollTo: target, anchorMode: .automatic, compensatesInsetChange: false, transition: animated ? .easeInOut(0.25) : .none)
+            list.applyChanges(items: shown, newSize: band.size, scrollTo: target, anchorMode: .automatic, compensatesInsetChange: false, transition: animated ? .easeInOut(0.25) : .none)
             // A notice coming in slides down from above with the rows it
             // pushes, rather than fading in over them where they were.
             if animated, next.notice != nil, previousIDs?.first != SidebarNoticeItem.id {
@@ -333,7 +347,7 @@ final class SidebarList: UIView {
             }
             return touched
         }
-        edge.contentSize = CGSize(width: bounds.width, height: next.contentHeight)
+        edge.contentSize = CGSize(width: band.width, height: next.contentHeight)
         mirror()
         let waiting = waiters
         waiters = []
@@ -405,7 +419,7 @@ final class SidebarList: UIView {
         contentInsets = insets
         edge.contentInset = insets
         resizeList()
-        list.applyChanges(newSize: bounds.width > 0 ? bounds.size : nil, newInsets: .init(top: insets.top, bottom: insets.bottom), anchorMode: keepsTop ? .automatic : .preserveVisibleContent, compensatesInsetChange: keepsTop, transition: .none)
+        list.applyChanges(newSize: band.width > 0 ? band.size : nil, newInsets: .init(top: insets.top, bottom: insets.bottom), anchorMode: keepsTop ? .automatic : .preserveVisibleContent, compensatesInsetChange: keepsTop, transition: .none)
         mirror()
     }
 

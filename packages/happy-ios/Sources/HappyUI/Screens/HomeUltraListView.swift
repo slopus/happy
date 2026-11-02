@@ -334,14 +334,28 @@ class HomeUltraListView: UIView {
     }
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
-    override func layoutSubviews() { super.layoutSubviews(); list.frame = bounds }
+    override func layoutSubviews() { super.layoutSubviews(); list.frame = sidesBand }
+
+    override func safeAreaInsetsDidChange() {
+        super.safeAreaInsetsDidChange()
+        setNeedsLayout()
+    }
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        list.takingMargins(super.hitTest(point, with: event), of: self)
+    }
+
+    /// The width the rows are laid out at: this view less the safe area's
+    /// sides, so a phone held sideways keeps them off the camera.
+    var contentWidth: CGFloat { sidesBand.width }
 
     func apply(rows: [HomeUltraRow]? = nil, top: CGFloat, bottom: CGFloat, archiveToggle: Bool = false) {
         guard top.isFinite, bottom.isFinite else { return }
         if let rows { precondition(Set(rows.map(\.identity)).count == rows.count) }
         // A new width first, alone, so the rows on screen are laid out again
         // in place; the insets and rows follow in their own pass.
-        list.resize(to: bounds)
+        let band = sidesBand
+        list.resize(to: band)
         // Archive rows append at the tail. Start their native-style fade
         // promptly in both directions, without changing other list motion.
         let fade: ListTransition = archiveToggle ? .init(duration: 0.2, curve: .bezier(0, 0, 0.58, 1)) : .easeInOut(0.2)
@@ -354,7 +368,7 @@ class HomeUltraListView: UIView {
         // in its exact commit, and never touch the list-owned row opacity.
         if archiveAppearance { CATransaction.begin(); CATransaction.setDisableActions(true) }
         let beforePass = list.appliedPassCount
-        list.applyChanges(items: rows, newSize: bounds.size, newInsets: .init(top: top, bottom: bottom), anchorMode: .preserveVisibleContent, animatesInsertions: !archiveAppearance, transition: rows == nil || UIAccessibility.isReduceMotionEnabled ? .none : fade)
+        list.applyChanges(items: rows, newSize: band.size, newInsets: .init(top: top, bottom: bottom), anchorMode: .preserveVisibleContent, animatesInsertions: !archiveAppearance, transition: rows == nil || UIAccessibility.isReduceMotionEnabled ? .none : fade)
         if archiveAppearance, list.appliedPassCount != beforePass {
             for case let view as HomeUltraRowView in list.loadedItemViews where inserted.contains(view.identity) { view.beginArchiveAppearance() }
             for view in departing { view.beginArchiveDeparture() }

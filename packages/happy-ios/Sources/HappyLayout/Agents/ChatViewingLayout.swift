@@ -88,7 +88,8 @@ public struct ChatFootLayout: Equatable, Sendable {
         typealias M = Metrics
         let top = max(0, card.minY - M.listGap)
         scrim = DockLayout.scrim(size: size, card: card)
-        jump = CGRect(x: ((size.width - M.jumpSize) / 2).rounded(), y: top - M.jumpGap - M.jumpSize, width: M.jumpSize, height: M.jumpSize)
+        // Over the card's middle, which keeps inside the safe area's sides.
+        jump = CGRect(x: (card.midX - M.jumpSize / 2).rounded(), y: top - M.jumpGap - M.jumpSize, width: M.jumpSize, height: M.jumpSize)
     }
 
     /// Desktop shows the way back once the reader is more than a third of

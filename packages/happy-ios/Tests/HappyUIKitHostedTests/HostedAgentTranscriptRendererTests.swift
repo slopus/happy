@@ -186,7 +186,7 @@ final class HostedAgentTranscriptRendererTests: XCTestCase {
         let window = hostedKeyWindow(in: scene, root: host)
         defer { window.isHidden = true }
         window.layoutIfNeeded()
-        transcript.setViewport(size: transcript.bounds.size, insets: UIEdgeInsets(top: 100, left: 0, bottom: 50, right: 0))
+        transcript.setViewport(frame: CGRect(origin: .zero, size: transcript.bounds.size), insets: UIEdgeInsets(top: 100, left: 0, bottom: 50, right: 0))
         let tall = transcript.viewportHeight + 300
         transcript.apply([ChatRowPlan(id: "older", size: CGSize(width: 393, height: 80), items: []),
                           ChatRowPlan(id: "tall", size: CGSize(width: 393, height: tall), items: [])])

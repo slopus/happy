@@ -581,7 +581,8 @@ final class ChatScreenLayoutTests: XCTestCase {
         assertFrame(resting.scrollButton, rect(447, 301, 32, 32))
         // The backdrop under the dock, down to the screen's bottom.
         assertFrame(resting.scrim, rect(0, 337, 926, 91))
-        assertFrame(resting.placeholder, rect(0, 32, 926, 305))
+        // An empty chat's words keep inside the safe area's sides.
+        assertFrame(resting.placeholder, rect(47, 32, 832, 305))
 
         // A 200 keyboard: the list keeps its frame and the newest end
         // follows the dock through the inset.
@@ -591,7 +592,7 @@ final class ChatScreenLayoutTests: XCTestCase {
         XCTAssertEqual(typing.newestEdgeInset, 187)
         assertFrame(typing.scrollButton, rect(447, 122, 32, 32))
         assertFrame(typing.scrim, rect(0, 158, 926, 270))
-        assertFrame(typing.placeholder, rect(0, 32, 926, 126))
+        assertFrame(typing.placeholder, rect(47, 32, 832, 126))
 
         // Dragged below the resting edge: the dock stays on the safe area.
         let dragged = screen(keyboardTop: 420)

@@ -416,7 +416,15 @@ final class CardListView: UIView {
     }
 
     /// The width the rows are laid out at.
-    var contentWidth: CGFloat { min(bounds.width, maxWidth) }
+    var contentWidth: CGFloat { column.width }
+
+    /// Where the list stands: `maxWidth` at most, centred in what the safe
+    /// area's sides leave, so a phone held sideways keeps the cards off the
+    /// camera. The view itself runs edge to edge.
+    private var column: CGRect {
+        let column = ChatColumn(rowWidth: bounds.width, maxContentWidth: maxWidth, sides: LayoutInsets(safeAreaInsets))
+        return CGRect(x: column.x.rounded(.down), y: 0, width: column.width, height: bounds.height)
+    }
 
     private var listSize: CGSize? { contentWidth > 0 ? CGSize(width: contentWidth, height: bounds.height) : nil }
 
@@ -449,16 +457,24 @@ final class CardListView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let column = CGRect(x: ((bounds.width - contentWidth) / 2).rounded(.down), y: 0, width: contentWidth, height: bounds.height)
         resizeList()
         placeSpinner()
+    }
+
+    override func safeAreaInsetsDidChange() {
+        super.safeAreaInsetsDidChange()
+        setNeedsLayout()
+    }
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        list.takingMargins(super.hitTest(point, with: event), of: self)
     }
 
     /// The list in its column, laid out now: a new width goes in place, on
     /// the curve of the animation it is in, before an apply that brings
     /// rows or insets.
     private func resizeList() {
-        let column = CGRect(x: ((bounds.width - contentWidth) / 2).rounded(.down), y: 0, width: contentWidth, height: bounds.height)
+        let column = column
         guard column.width > 0 else { return }
         if edge.frame != column { edge.frame = column }
         list.resize(to: CGRect(origin: edge.bounds.origin, size: column.size))
@@ -573,7 +589,7 @@ final class CardListView: UIView {
         guard onRefresh != nil else { spinner.alpha = 0; return }
         let room = refreshing ? Self.refreshRoomHeight : pull
         let side = spinner.intrinsicContentSize
-        spinner.frame = CGRect(x: ((bounds.width - side.width) / 2).rounded(), y: (contentInsets.top + (room - side.height) / 2).rounded(), width: side.width, height: side.height)
+        spinner.frame = CGRect(x: (column.midX - side.width / 2).rounded(), y: (contentInsets.top + (room - side.height) / 2).rounded(), width: side.width, height: side.height)
         spinner.alpha = refreshing ? 1 : min(1, pull / Self.refreshPull)
         if !refreshing {
             if pull > 8 { spinner.startAnimating() } else { spinner.stopAnimating() }

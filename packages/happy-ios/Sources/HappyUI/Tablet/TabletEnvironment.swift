@@ -97,12 +97,15 @@ extension UIScrollView {
     /// Holds a scrolling page to the readable column (`ContentWidth`),
     /// centred: the page lays itself out at the width this returns, and the
     /// margins either side are the scroll view's insets, so the page is
-    /// still the window's to scroll. The whole width on a phone.
+    /// still the window's to scroll. The whole width on a phone, less the
+    /// safe area's sides, so a phone held sideways keeps the page off the
+    /// camera.
     func readableColumn(width: CGFloat) -> CGFloat {
-        let column = ChatColumn(rowWidth: width, maxContentWidth: ContentWidth.maxWidth)
-        if contentInset.left != column.x || contentInset.right != column.x {
+        let column = ChatColumn(rowWidth: width, maxContentWidth: ContentWidth.maxWidth, sides: LayoutInsets(safeAreaInsets))
+        let right = max(0, width - column.x - column.width)
+        if contentInset.left != column.x || contentInset.right != right {
             contentInset.left = column.x
-            contentInset.right = column.x
+            contentInset.right = right
         }
         let x = -adjustedContentInset.left
         if contentOffset.x != x { contentOffset.x = x }

@@ -253,7 +253,7 @@ final class SessionListViewController: UIViewController {
             return
         }
         guard let environment = textEnvironment else { return }
-        let key = HeaderKey(banners: state, width: view.bounds.width, maxWidth: ContentWidth.maxWidth, environment: environment)
+        let key = HeaderKey(banners: state, width: rendered.contentWidth, maxWidth: ContentWidth.maxWidth, environment: environment)
         guard key.width > 0, key != headerRequested else { return }
         headerRequested = key
         headerTask = Task { @MainActor [weak self] in
@@ -336,7 +336,7 @@ final class SessionListViewController: UIViewController {
 
     private func updateUltraList() {
         guard isViewLoaded, let environment = textEnvironment else { return }
-        ultraList.update(.init(model: model, width: view.bounds.width, environment: environment, dark: traitCollection.userInterfaceStyle == .dark, selected: selectedSessionId, archiveModels: archiveModels, viewportHeight: view.bounds.height))
+        ultraList.update(.init(model: model, width: rendered.contentWidth, environment: environment, dark: traitCollection.userInterfaceStyle == .dark, selected: selectedSessionId, archiveModels: archiveModels, viewportHeight: view.bounds.height))
     }
 
     func setArchiveModels(_ models: HomeArchiveModels?, settings: HomeArchiveSettings?) {

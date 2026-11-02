@@ -130,7 +130,12 @@ final class AgentChatUltraList: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        list.frame = bounds
+        // Then where the screen puts the rows (`setViewport`).
+        if viewportSize == .zero { list.frame = bounds }
+    }
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        list.takingMargins(super.hitTest(point, with: event), of: self)
     }
 
     /// The room the rows have between the bar and the composer.
@@ -151,7 +156,12 @@ final class AgentChatUltraList: UIView {
         return 0
     }
 
-    func setViewport(size: CGSize, insets: UIEdgeInsets, keyboard: ChatUltraKeyboard.Change? = nil) {
+    /// The rows stand in `frame`, in this view: all of it but the safe
+    /// area's sides (`ChatScreenLayout.list`), so a phone held sideways
+    /// keeps them off the camera while the view runs edge to edge. A touch
+    /// in those margins drags the list.
+    func setViewport(frame: CGRect, insets: UIEdgeInsets, keyboard: ChatUltraKeyboard.Change? = nil) {
+        let size = frame.size
         guard size.width > 0, size.height > 0 else { return }
         let sizeChanged = viewportSize != size
         let changed = self.insets != insets || sizeChanged
@@ -165,13 +175,14 @@ final class AgentChatUltraList: UIView {
                 list.applyChanges(newInsets: .init(top: insets.top, bottom: insets.bottom), anchorMode: .preserveVisibleContent,
                                   compensatesInsetChange: keyboard?.compensates ?? !list.isTracking, transition: keyboard?.transition ?? .none)
             }
-            list.resize(to: CGRect(origin: list.frame.origin, size: size))
+            list.resize(to: frame)
             viewportSize = size
             flight?.follow(in: list)
             return
         }
         self.insets = insets
         viewportSize = size
+        if list.frame.origin != frame.origin { list.frame.origin = frame.origin }
         guard changed else {
             if keyboard?.finishes == true { list.finishViewportTransition() }
             return

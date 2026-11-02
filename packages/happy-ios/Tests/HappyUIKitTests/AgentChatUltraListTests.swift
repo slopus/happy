@@ -35,7 +35,7 @@ final class AgentChatUltraListTests: XCTestCase {
     private func list(_ screen: Screen) -> AgentChatUltraList {
         let list = AgentChatUltraList(frame: CGRect(x: 0, y: 0, width: 390, height: 600))
         list.host = screen
-        list.setViewport(size: CGSize(width: 390, height: 600), insets: UIEdgeInsets(top: 60, left: 0, bottom: 100, right: 0))
+        list.setViewport(frame: CGRect(x: 0, y: 0, width: 390, height: 600), insets: UIEdgeInsets(top: 60, left: 0, bottom: 100, right: 0))
         return list
     }
 

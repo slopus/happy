@@ -192,17 +192,17 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
 
     /// Laid out between `top` and `bottom` in its superview, which it
     /// fills across; it places itself.
-    func layout(width: CGFloat, top: CGFloat, bottom: CGFloat) -> NewWorkLayout {
+    func layout(width: CGFloat, sides: LayoutInsets = .zero, top: CGFloat, bottom: CGFloat) -> NewWorkLayout {
         switch mode {
         case .work:
             return NewWorkLayout(
-                width: width, top: top, bottom: bottom,
+                width: width, sides: sides, top: top, bottom: bottom,
                 kindHeight: kind.intrinsicContentSize.height, rows: 1,
                 note: measuredNote
             )
         case .session:
             return NewWorkLayout(
-                width: width, top: top, bottom: bottom,
+                width: width, sides: sides, top: top, bottom: bottom,
                 kindHeight: kind.isHidden ? nil : kind.intrinsicContentSize.height,
                 givingWay: sessionRows.count,
                 note: note.isHidden ? nil : measuredNote

@@ -41,10 +41,12 @@ public struct NewWorkLayout: Equatable, Sendable {
 
     /// `top` is the bar's foot and `bottom` the composer's top, in the
     /// screen; `kindHeight` is the control's, nil for none; `note` wraps,
-    /// centred, at the block's width.
-    public init(width: CGFloat, top: CGFloat, bottom: CGFloat, kindHeight: CGFloat?, rows count: Int, note: Measurable?) {
+    /// centred, at the block's width. The block stands centred in what the
+    /// safe area's `sides` leave of the screen's `width`.
+    public init(width: CGFloat, sides: LayoutInsets = .zero, top: CGFloat, bottom: CGFloat, kindHeight: CGFloat?, rows count: Int, note: Measurable?) {
         typealias M = Metrics
-        let blockWidth = max(0, min(M.maxWidth, width - 2 * M.side))
+        let band = sides.sides(of: CGSize(width: width, height: 0))
+        let blockWidth = max(0, min(M.maxWidth, band.width - 2 * M.side))
         var y: CGFloat = 0
         if let kindHeight {
             let kindWidth = min(M.kindWidth, blockWidth)
@@ -68,7 +70,7 @@ public struct NewWorkLayout: Equatable, Sendable {
         fits = room >= y + 2 * M.margin
         showsNote = note != nil
         let origin = fits ? top + (room - y) / 2 : top + M.margin
-        block = CGRect(x: (width - blockWidth) / 2, y: origin, width: blockWidth, height: y)
+        block = CGRect(x: band.minX + (band.width - blockWidth) / 2, y: origin, width: blockWidth, height: y)
     }
 
     /// Whether `note` is laid out: with little room it goes first.
@@ -87,9 +89,10 @@ public struct NewWorkLayout: Equatable, Sendable {
     ///               [ Name your bot     ]
     ///               what a bot is              note, dropped first
     ///     composer ────────────────────
-    public init(width: CGFloat, top: CGFloat, bottom: CGFloat, kindHeight: CGFloat?, givingWay count: Int, note: Measurable?) {
+    public init(width: CGFloat, sides: LayoutInsets = .zero, top: CGFloat, bottom: CGFloat, kindHeight: CGFloat?, givingWay count: Int, note: Measurable?) {
         typealias M = Metrics
-        let blockWidth = max(0, min(M.maxWidth, width - 2 * M.side))
+        let band = sides.sides(of: CGSize(width: width, height: 0))
+        let blockWidth = max(0, min(M.maxWidth, band.width - 2 * M.side))
         let room = bottom - top
         let noteHeight = note.map { ceil($0.size(fitting: blockWidth).height) }
         func stack(kindGap: CGFloat, rowGap: CGFloat, withNote: Bool) -> (kind: CGRect?, rows: [CGRect], note: CGRect?, height: CGFloat) {
@@ -126,7 +129,7 @@ public struct NewWorkLayout: Equatable, Sendable {
         showsNote = chosen.note != nil
         fits = room >= chosen.height + 2 * M.margin
         let origin = fits ? top + (room - chosen.height) / 2 : top + M.margin
-        block = CGRect(x: (width - blockWidth) / 2, y: origin, width: blockWidth, height: chosen.height)
+        block = CGRect(x: band.minX + (band.width - blockWidth) / 2, y: origin, width: blockWidth, height: chosen.height)
     }
 }
 

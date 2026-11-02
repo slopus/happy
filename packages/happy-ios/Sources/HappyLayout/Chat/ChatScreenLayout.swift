@@ -54,6 +54,13 @@ import CoreGraphics
 /// (`chatListTopContentInset`'s `headerAccessoryHeight`); on a tablet the
 /// list starts under it and the oldest end's spacer stays as it was. With
 /// no header there is nothing for it to hang from.
+///
+/// What reads or takes a touch keeps inside the safe area's sides
+/// (`LayoutInsets.sides(of:)`), so a phone held sideways keeps it off the
+/// camera and the corners: the bars and the composer, the tab strip, the
+/// buttons and the placeholder. The dock that carries them, the scrims and
+/// the status bar's strip run edge to edge, and so does the list, which
+/// keeps its rows to the same band itself.
 public struct LegacyChatScreenLayout: Equatable, Sendable {
     public enum Metrics {
         /// sessionInputHorizontalPadding on a phone.
@@ -90,7 +97,7 @@ public struct LegacyChatScreenLayout: Equatable, Sendable {
     public struct Accessory {
         public var content: Measurable
         /// In the composer's column, 8 in from its sides; otherwise the
-        /// full width of the screen.
+        /// full width the safe area's sides leave.
         public var inset: Bool
 
         public static func inset(_ content: Measurable) -> Accessory { Accessory(content: content, inset: true) }
@@ -181,41 +188,42 @@ public struct LegacyChatScreenLayout: Equatable, Sendable {
         typealias M = Metrics
         let width = max(0, input.size.width)
         let height = max(0, input.size.height)
+        let band = input.safeArea.sides(of: CGSize(width: width, height: height))
         list = CGRect(x: 0, y: 0, width: width, height: height)
 
-        let column = ChatColumn(rowWidth: width, maxContentWidth: input.maxContentWidth)
+        let column = ChatColumn(rowWidth: width, maxContentWidth: input.maxContentWidth, sides: input.safeArea)
         let accessoryX = column.x + input.accessoryPaddingH
         let accessoryWidth = max(0, column.width - 2 * input.accessoryPaddingH)
         var y: CGFloat = 0
         var frames: [CGRect] = []
         for accessory in input.accessories {
-            let x = accessory.inset ? accessoryX : 0
-            let accessoryWidth = accessory.inset ? accessoryWidth : width
+            let x = accessory.inset ? accessoryX : band.minX
+            let accessoryWidth = accessory.inset ? accessoryWidth : band.width
             let size = accessory.content.height(fitting: accessoryWidth)
             frames.append(CGRect(x: x, y: y, width: accessoryWidth, height: size))
             y += size
         }
         accessories = frames
-        composer = CGRect(x: 0, y: y, width: width, height: max(0, input.composerHeight))
+        composer = CGRect(x: band.minX, y: y, width: band.width, height: max(0, input.composerHeight))
         let dockHeight = y + max(0, input.composerHeight)
 
         let restingBottom = height - input.safeArea.bottom
         let bottom = min(restingBottom, input.keyboardTop ?? restingBottom)
         dock = CGRect(x: 0, y: bottom - dockHeight, width: width, height: dockHeight)
         let accessory = input.hidesHeader ? 0 : max(0, input.headerAccessory)
-        headerAccessory = input.hidesHeader ? nil : CGRect(x: 0, y: input.safeArea.top, width: width, height: accessory)
+        headerAccessory = input.hidesHeader ? nil : CGRect(x: band.minX, y: input.safeArea.top, width: band.width, height: accessory)
         headerBottom = input.safeArea.top + accessory
         newestEdgeInset = max(0, height - dock.minY) + M.newerEdgeExtra
         oldestEdgeInset = headerBottom + M.olderEdgeExtra
         scrollButton = CGRect(
-            x: (width - M.scrollButtonSize) / 2,
+            x: band.minX + (band.width - M.scrollButtonSize) / 2,
             y: dock.minY + composer.minY + min(max(0, input.composerCardOffset), composer.height) - M.scrollButtonGap - M.scrollButtonSize,
             width: M.scrollButtonSize,
             height: M.scrollButtonSize
         )
         scrim = CGRect(x: 0, y: dock.minY - M.scrimExtra, width: width, height: max(0, height - dock.minY + M.scrimExtra))
         headerScrim = HeaderScrim.frame(width: width, barFoot: input.safeArea.top)
-        placeholder = CGRect(x: 0, y: headerBottom, width: width, height: max(0, dock.minY - headerBottom))
+        placeholder = CGRect(x: band.minX, y: headerBottom, width: band.width, height: max(0, dock.minY - headerBottom))
 
         backButton = nil
         statusBarShadow = nil
@@ -231,7 +239,7 @@ public struct LegacyChatScreenLayout: Equatable, Sendable {
         }
         if input.hidesHeader {
             let top = max(0, input.safeArea.top)
-            backButton = CGRect(x: M.backButtonLeft, y: top + M.backButtonTop, width: M.backButtonSize, height: M.backButtonSize)
+            backButton = CGRect(x: band.minX + M.backButtonLeft, y: top + M.backButtonTop, width: M.backButtonSize, height: M.backButtonSize)
             statusBarShadow = CGRect(x: 0, y: 0, width: width, height: top)
         }
     }
@@ -437,14 +445,16 @@ public struct CliWarningPillLayout: Equatable, Sendable {
     public var label: CGRect
     public var close: CGRect
 
-    /// `top` is the header's bottom.
-    public init(width: CGFloat, top: CGFloat, label: Measurable) {
+    /// `top` is the header's bottom. The pill stands centred in what the
+    /// safe area's `sides` leave of the screen's `width`.
+    public init(width: CGFloat, sides: LayoutInsets = .zero, top: CGFloat, label: Measurable) {
         typealias M = Metrics
+        let band = sides.sides(of: CGSize(width: width, height: 0))
         let chrome = 2 * M.paddingH + 2 * M.iconSize + M.iconGap + M.closeGap
-        let labelSize = label.size(fitting: max(0, width - chrome))
+        let labelSize = label.size(fitting: max(0, band.width - chrome))
         let line = max(M.iconSize, labelSize.height)
         let size = CGSize(width: chrome + labelSize.width, height: line + 2 * M.paddingV)
-        pill = CGRect(x: (max(0, width) - size.width) / 2, y: top + M.top, width: size.width, height: size.height)
+        pill = CGRect(x: band.minX + (band.width - size.width) / 2, y: top + M.top, width: size.width, height: size.height)
         let mid = pill.minY + M.paddingV + line / 2
         icon = CGRect(x: pill.minX + M.paddingH, y: mid - M.iconSize / 2, width: M.iconSize, height: M.iconSize)
         self.label = CGRect(x: icon.maxX + M.iconGap, y: mid - labelSize.height / 2, width: labelSize.width, height: labelSize.height)

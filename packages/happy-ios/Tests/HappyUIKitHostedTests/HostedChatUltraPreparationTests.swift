@@ -46,7 +46,7 @@ final class HostedChatUltraPreparationTests: XCTestCase {
         list.frame = root.bounds
         root.addSubview(list)
         list.layoutIfNeeded()
-        adapter.setViewport(size: root.bounds.size, insets: .init(top: 96, left: 0, bottom: 113, right: 0))
+        adapter.setViewport(frame: CGRect(origin: .zero, size: root.bounds.size), insets: .init(top: 96, left: 0, bottom: 113, right: 0))
         let width = root.bounds.width
         let plans = (0..<5).map { index in
             let height: CGFloat = index == 0 ? 160 : 100
@@ -65,7 +65,7 @@ final class HostedChatUltraPreparationTests: XCTestCase {
 
         // The open-question banner can arrive after the initial rows, while
         // their first asynchronous preparation is still in progress.
-        adapter.setViewport(size: root.bounds.size, insets: .init(top: 246, left: 0, bottom: 113, right: 0))
+        adapter.setViewport(frame: CGRect(origin: .zero, size: root.bounds.size), insets: .init(top: 246, left: 0, bottom: 113, right: 0))
         await gate.release()
 
         let committed = await until { adapter.isDisplayReady }
@@ -89,7 +89,7 @@ final class HostedChatUltraPreparationTests: XCTestCase {
         list.frame = root.bounds
         root.addSubview(list)
         list.layoutIfNeeded()
-        adapter.setViewport(size: root.bounds.size, insets: .init(top: 100, left: 0, bottom: 60, right: 0))
+        adapter.setViewport(frame: CGRect(origin: .zero, size: root.bounds.size), insets: .init(top: 100, left: 0, bottom: 60, right: 0))
         let width = root.bounds.width
         func plan(_ id: String, height: CGFloat) -> ChatRowPlan {
             ChatRowPlan(id: id, size: .init(width: width, height: height), items: [.box(ChatBox(frame: .init(x: 0, y: 0, width: width, height: height), fill: Palette.surface))])
@@ -143,7 +143,7 @@ final class HostedChatUltraPreparationTests: XCTestCase {
         list.frame = root.bounds
         root.addSubview(list)
         list.layoutIfNeeded()
-        adapter.setViewport(size: root.bounds.size, insets: .init(top: 100, left: 0, bottom: 60, right: 0))
+        adapter.setViewport(frame: CGRect(origin: .zero, size: root.bounds.size), insets: .init(top: 100, left: 0, bottom: 60, right: 0))
         let width = root.bounds.width
         func plan(_ id: String, height: CGFloat) -> ChatRowPlan {
             ChatRowPlan(id: id, size: .init(width: width, height: height), items: [.box(ChatBox(frame: .init(x: 0, y: 0, width: width, height: height), fill: Palette.surface))])
@@ -169,7 +169,7 @@ final class HostedChatUltraPreparationTests: XCTestCase {
         plans[0] = plan("row0", height: 120)
         adapter.apply(update(), animated: false)
         if insetDelta != 0 {
-            adapter.setViewport(size: root.bounds.size, insets: .init(top: 100 + insetDelta, left: 0, bottom: 60, right: 0))
+            adapter.setViewport(frame: CGRect(origin: .zero, size: root.bounds.size), insets: .init(top: 100 + insetDelta, left: 0, bottom: 60, right: 0))
         }
         await gate.release()
         let committed = await until { adapter.isDisplayReady }

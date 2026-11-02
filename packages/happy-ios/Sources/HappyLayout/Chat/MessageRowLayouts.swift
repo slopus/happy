@@ -18,6 +18,14 @@ public struct ChatColumn: Equatable, Sendable {
         width = min(rowWidth, max(0, maxContentWidth))
         x = (rowWidth - width) / 2
     }
+
+    /// The column of a screen `rowWidth` wide, centred in what the safe
+    /// area's `sides` leave (`LayoutInsets.sides(of:)`).
+    public init(rowWidth: CGFloat, maxContentWidth: CGFloat = .greatestFiniteMagnitude, sides: LayoutInsets) {
+        let band = sides.sides(of: CGSize(width: rowWidth, height: 0))
+        self.init(rowWidth: band.width, maxContentWidth: maxContentWidth)
+        x += band.minX
+    }
 }
 
 /// UserMessageFrame and UserTextBlock:

@@ -697,7 +697,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     /// and goes.
     private func layoutNewWorkPanel(above card: CGRect) {
         guard let newWorkPanel, !newWorkPanelGone else { return }
-        let layout = newWorkPanel.layout(width: view.bounds.width, top: view.safeAreaInsets.top, bottom: card.minY)
+        let layout = newWorkPanel.layout(width: view.bounds.width, sides: LayoutInsets(view.safeAreaInsets), top: view.safeAreaInsets.top, bottom: card.minY)
         newWorkPanel.place(layout)
         newWorkPanel.isHidden = !layout.fits
     }
@@ -965,8 +965,14 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         }
     }
 
+    /// The transcript's width: the screen less the safe area's sides
+    /// (`ChatScreenLayout.list`), which its rows are planned at.
+    private var transcriptWidth: CGFloat {
+        LayoutInsets(view.safeAreaInsets).sides(of: view.bounds.size).width
+    }
+
     private var planKey: ChatPlanner.Key {
-        var key = ChatPlanner.Key(width: view.bounds.width, maxContentWidth: ContentWidth.maxWidth, environment: traitCollection.textEnvironment, references: subagentReferences, subagentTitles: chat.subagentTitles, pageHeights: pageHeights)
+        var key = ChatPlanner.Key(width: transcriptWidth, maxContentWidth: ContentWidth.maxWidth, environment: traitCollection.textEnvironment, references: subagentReferences, subagentTitles: chat.subagentTitles, pageHeights: pageHeights)
         // Only a failure card reads the composer's model; without one the
         // key stays the warm chat's, so its rows planned ahead are taken.
         if chat.items.contains(where: { if case .failure = $0.role { true } else { false } }) {
@@ -1054,7 +1060,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     /// that shows the new width shows them at it. The rest follow with the
     /// whole transcript's plans, which take these.
     private func planInPlace() {
-        let width = view.bounds.width
+        let width = transcriptWidth
         guard let planned, width > 0, abs(planned.key.width - width) > 0.5 else { return }
         let ids = ultra.planIDsNearScreen
         guard !ids.isEmpty else { return }
@@ -1288,7 +1294,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             ultra.list.accessibilityIdentifier = "transcript"
         }
         timeShown()
-        header.maxWidth = ChatTitleLayout.maxWidth(barWidth: view.bounds.width)
+        header.maxWidth = ChatTitleLayout.maxWidth(barWidth: transcriptWidth)
         // From where the keyboard rests, not the finger dragging it: the
         // card keeps its shape through a drag and changes once it settles.
         let compact = compacts
@@ -1316,7 +1322,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         // The transcript starts under the navigation bar and scrolls under
         // it. The list is inverted: its top edge is the composer's edge.
         if ultra.frame != view.bounds { ultra.frame = view.bounds }
-        ultra.setViewport(size: view.bounds.size, insets: UIEdgeInsets(top: screen.listBottom, left: 0, bottom: view.safeAreaInsets.top, right: 0),
+        ultra.setViewport(frame: screen.list, insets: UIEdgeInsets(top: screen.listBottom, left: 0, bottom: view.safeAreaInsets.top, right: 0),
                           keyboard: insetMotion)
         layoutTranscript()
         updateHeaderEdge()
@@ -1354,7 +1360,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         previewTitle.frame = layout.title.offsetBy(dx: -layout.pill.minX, dy: -layout.pill.minY)
         ultra.frame = view.bounds
         // Inverted: the list's top edge is the card's foot.
-        ultra.setViewport(size: view.bounds.size, insets: UIEdgeInsets(top: layout.listBottom, left: 0, bottom: layout.listTop, right: 0))
+        ultra.setViewport(frame: view.bounds, insets: UIEdgeInsets(top: layout.listBottom, left: 0, bottom: layout.listTop, right: 0))
         layoutTranscript()
         previewFade.frame = CGRect(x: 0, y: 0, width: view.bounds.width, height: layout.fadeOpaque)
         previewFade.clearFrom = layout.fadeClear / max(1, layout.fadeOpaque)
@@ -1370,7 +1376,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
 
     private func layoutTranscript() {
         var introLayout: MakeStuffIntroLayout?
-        if intro != nil { introLayout = introView.layout(width: view.bounds.width) }
+        if intro != nil { introLayout = introView.layout(width: transcriptWidth) }
         // Steering the turn hasn't taken waits under the newest settled
         // row, as next in the queue (desktop's
         // `conversationPendingSteering`). What the agent is at is the

@@ -13,18 +13,26 @@ public struct HomeLayout: Equatable, Sendable {
     /// Where the list and what stands in for it go: the whole width on a
     /// phone, and `maxWidth` centred on a window wider than that
     /// (`ContentWidth.maxWidth`, layout.ts), so rows aren't a yard long.
+    /// The list stands in it edge to edge and keeps its rows to `column`.
     public var content: CGRect
+    /// What the rows and the chats home warms are laid out in: `content`
+    /// less the safe area's `sides`, so a phone held sideways keeps them
+    /// off the camera and the corners.
+    public var column: CGRect
 
     /// `contentTop` is where content starts under the header, `chromeTop`
     /// the header's own foot, `listBottom` the room the dock keeps,
-    /// `maxWidth` how wide the content may grow.
-    public init(size: CGSize, contentTop: CGFloat, chromeTop: CGFloat, listBottom: CGFloat, maxWidth: CGFloat = .greatestFiniteMagnitude) {
+    /// `maxWidth` how wide the content may grow, `sides` the safe area's.
+    public init(size: CGSize, contentTop: CGFloat, chromeTop: CGFloat, listBottom: CGFloat, maxWidth: CGFloat = .greatestFiniteMagnitude, sides: LayoutInsets = .zero) {
         let width = max(0, min(size.width, maxWidth))
         let left = ((size.width - width) / 2).rounded()
         content = CGRect(x: left, y: 0, width: width, height: size.height)
+        // The sides' insets past the content's own edges.
+        let inside = LayoutInsets(left: max(0, sides.left - left), right: max(0, sides.right - (size.width - left - width)))
+        column = inside.sides(of: content.size).offsetBy(dx: left, dy: 0)
         listInsets = LayoutInsets(top: contentTop, left: 0, bottom: listBottom, right: 0)
         indicatorInsets = LayoutInsets(top: chromeTop, left: 0, bottom: listBottom, right: 0)
-        empty = CGRect(x: left, y: contentTop, width: width, height: max(0, size.height - contentTop - listBottom))
+        empty = CGRect(x: column.minX, y: contentTop, width: column.width, height: max(0, size.height - contentTop - listBottom))
     }
 }
 

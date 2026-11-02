@@ -58,20 +58,29 @@ private actor ResizeComputer: AgentTransport {
     func close() {}
 }
 
-/// Width changes through every list, frame by frame: a phone turning on
-/// its side and back; a tablet's window narrowed below the split's 768 and
-/// widened again, and its main panel losing and getting back the
-/// sidebar's 320. In the frame of the change and in every frame of its
-/// animation, each row on screen is drawn and drawn at the new width (no
-/// blank row, no row showing its old width's drawing), rows of a fixed
-/// height keep their places, a chat that rests on its newest row stays on
-/// it, and a chat read up into history keeps the row being read where it
-/// was. `RESIZE_REPORT` lines give the main thread's time per change.
+/// Width changes through every list, frame by frame: a phone turned on
+/// either side and back upright, which puts the camera on the left or on
+/// the right; a tablet's window narrowed below the split's 768 and widened
+/// again, and its main panel losing and getting back the sidebar's 320. In
+/// the frame of the change and in every frame of its animation, each row on
+/// screen is drawn and drawn at the new width (no blank row, no row showing
+/// its old width's drawing), rows of a fixed height keep their places, a
+/// chat that rests on its newest row stays on it, a chat read up into
+/// history keeps the row being read where it was, and nothing that reads
+/// or takes a touch crosses into the safe area's sides. `RESIZE_REPORT`
+/// lines give the main thread's time per change.
 @MainActor
 final class HostedListResizeTests: XCTestCase {
     override func setUp() {
         super.setUp()
         LegacyFonts.registerBundledFonts()
+        // A test that failed on its side leaves the phone upright again.
+        addTeardownBlock { @MainActor in
+            guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene, scene.interfaceOrientation != .portrait else { return }
+            scene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
+            let deadline = ContinuousClock.now + .seconds(5)
+            while scene.interfaceOrientation != .portrait, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
+        }
     }
 
     private static let animation: TimeInterval = 0.3
@@ -88,19 +97,64 @@ final class HostedListResizeTests: XCTestCase {
         return nil
     }
 
-    /// The window sizes a width change goes through on this device, each
-    /// from the one before, ending where it started.
-    private static func sizes(of window: UIWindow) -> [(name: String, size: CGSize)] {
+    /// A width change: the window resized, as a split or Stage Manager
+    /// does, or the phone turned, which moves the safe area's sides too.
+    enum Change {
+        case size(CGSize)
+        case turn(UIInterfaceOrientation)
+    }
+
+    /// The width changes this device goes through, each from the one
+    /// before, ending where it started.
+    private static func sizes(of window: UIWindow) -> [(name: String, change: Change)] {
         let size = window.bounds.size
         if UIDevice.current.userInterfaceIdiom == .pad {
             return [
-                ("window narrowed below the split", CGSize(width: 700, height: size.height)),
-                ("window widened back", size),
-                ("sidebar's width taken", CGSize(width: size.width - 320, height: size.height)),
-                ("sidebar's width given back", size),
+                ("window narrowed below the split", .size(CGSize(width: 700, height: size.height))),
+                ("window widened back", .size(size)),
+                ("sidebar's width taken", .size(CGSize(width: size.width - 320, height: size.height))),
+                ("sidebar's width given back", .size(size)),
             ]
         }
-        return [("turned on its side", CGSize(width: size.height, height: size.width)), ("turned upright", size)]
+        return [
+            ("turned on its left side", .turn(.landscapeLeft)),
+            ("turned upright", .turn(.portrait)),
+            ("turned on its right side", .turn(.landscapeRight)),
+            ("turned upright again", .turn(.portrait)),
+        ]
+    }
+
+    /// Whether `window` stands as `change` leaves it.
+    private static func done(_ change: Change, _ window: UIWindow) -> Bool {
+        switch change {
+        case .size(let size): return window.bounds.size == size
+        case .turn(let orientation):
+            return window.windowScene?.interfaceOrientation == orientation && (window.bounds.width > window.bounds.height) == orientation.isLandscape
+        }
+    }
+
+    /// What reads or takes a touch on screen in `window` and crosses into
+    /// the safe area's sides: text, controls, pictures and list rows. The
+    /// bars, which UIKit keeps clear itself, are left out, and so is what
+    /// only shades the screen, which runs edge to edge.
+    private static func intoSides(_ window: UIWindow) -> [String] {
+        let safe = window.safeAreaInsets
+        guard safe.left > 0 || safe.right > 0 else { return [] }
+        let minX = safe.left - 0.5, maxX = window.bounds.width - safe.right + 0.5
+        var found: [String] = []
+        func walk(_ view: UIView) {
+            guard !view.isHidden, view.alpha > 0.01, !(view is UINavigationBar), !(view is UIToolbar) else { return }
+            let frame = view.convert(view.bounds, to: window)
+            let reads = view is UILabel || view is UITextView || view is UITextField || view is UIControl || view is UIImageView || view is ListRowView
+            if reads, frame.width > 1, frame.height > 1, frame.intersects(window.bounds), frame.minX < minX || frame.maxX > maxX {
+                found.append("\(type(of: view)) \(view.accessibilityIdentifier ?? "") at \(frame.integral) crosses the sides \(safe.left), \(safe.right)")
+            }
+            // A row's drawing and views stand inside it.
+            if view is ListRowView { return }
+            view.subviews.forEach(walk)
+        }
+        walk(window)
+        return found
     }
 
     /// The bitmaps drawn under `layer`, in layers that show.
@@ -139,27 +193,42 @@ final class HostedListResizeTests: XCTestCase {
         return problems
     }
 
-    /// Resizes `window` to `size` in an animation as a rotation or a split
-    /// does, then runs `check` in the turn of the change, which the first
+    /// Resizes `window` in an animation as a split does, or turns the
+    /// phone, then runs `check` in the turn of the change, which the first
     /// frame at the new size shows, and on every frame until the motion is
-    /// over and the screens have planned their rows again. Fails with the
+    /// over and the screens have planned their rows again; every frame,
+    /// nothing may cross into the safe area's sides either. Fails with the
     /// problems found, by frame.
-    private func resize(_ window: UIWindow, to size: CGSize, _ label: String, check: @escaping () -> [String]) async throws {
+    private func resize(_ window: UIWindow, to change: Change, _ label: String, check: @escaping () -> [String]) async throws {
         var frames: [[String]] = []
         var ticks: [CFTimeInterval] = [CACurrentMediaTime()]
-        UIView.animate(withDuration: Self.animation) {
-            window.frame = CGRect(origin: window.frame.origin, size: size)
-            window.layoutIfNeeded()
+        switch change {
+        case .size(let size):
+            UIView.animate(withDuration: Self.animation) {
+                window.frame = CGRect(origin: window.frame.origin, size: size)
+                window.layoutIfNeeded()
+            }
+        case .turn(let orientation):
+            let mask: UIInterfaceOrientationMask = orientation == .landscapeLeft ? .landscapeLeft : orientation == .landscapeRight ? .landscapeRight : .portrait
+            window.windowScene?.requestGeometryUpdate(.iOS(interfaceOrientations: mask)) { error in XCTFail("\(label): \(error)") }
         }
-        frames.append(check())
-        let recorder = TickRecorder { time in ticks.append(time); frames.append(check()) }
-        try await Task.sleep(for: .seconds(Self.animation + 0.5))
+        frames.append(check() + Self.intoSides(window))
+        let recorder = TickRecorder { time in ticks.append(time); frames.append(check() + Self.intoSides(window)) }
+        let turned = try await until(seconds: 5) { Self.done(change, window) }
+        XCTAssertTrue(turned, "\(label): the window never got there")
+        try await Task.sleep(for: .seconds(Self.animation + 0.6))
         recorder.stop()
         let gaps = zip(ticks.dropFirst(), ticks).map { ($0 - $1) * 1000 }
         print(String(format: "RESIZE_FRAMES %@ first=%.1fms longest=%.1fms frames=%d", label, gaps.first ?? 0, gaps.max() ?? 0, gaps.count))
         let problems = frames.enumerated().flatMap { frame, problems in problems.map { "frame \(frame): \($0)" } }
         XCTAssertEqual(problems.prefix(12), [], "\(label): \(problems.count) problems over \(frames.count) frames")
         XCTAssertGreaterThan(frames.count, 10, "\(label): too few frames sampled")
+    }
+
+    /// What the first frame at `width` showed: the frame of the change. A
+    /// turn starts a frame or more after it is asked for.
+    private static func first<Value>(_ frames: [(width: CGFloat, boxes: Value)], at width: CGFloat) -> Value? {
+        frames.first { abs($0.width - width) < 0.5 }?.boxes
     }
 
     private func report(_ label: String, _ list: UltraListView) {
@@ -211,10 +280,10 @@ final class HostedListResizeTests: XCTestCase {
 
     func testLegacyHomeKeepsEveryRowDrawnThroughWidthChanges() async throws {
         let app = try await HomeApp.legacy(self)
-        for (name, size) in Self.sizes(of: app.window) {
+        for (name, change) in Self.sizes(of: app.window) {
             let list = try XCTUnwrap(app.legacyList, name)
             let places = Self.places(list)
-            try await resize(app.window, to: size, "legacy home, \(name)") { [app] in
+            try await resize(app.window, to: change, "legacy home, \(name)") { [app] in
                 guard let list = app.legacyList else { return ["the list went"] }
                 return Self.drawnAtWidth(list) + Self.moved(from: places, list)
             }
@@ -230,17 +299,17 @@ final class HostedListResizeTests: XCTestCase {
 
     func testComputersHomeKeepsEveryRowDrawnThroughWidthChanges() async throws {
         let app = try await HomeApp.computer(self)
-        for (name, size) in Self.sizes(of: app.window) {
+        for (name, change) in Self.sizes(of: app.window) {
             let sidebar = try XCTUnwrap(app.sidebar, name)
             let places = Self.places(sidebar.list)
             // Each row's box as the list derives it at the new width, to
             // compare with what the frame of the change shows.
-            var boxes: [[String: CGRect]] = []
-            try await resize(app.window, to: size, "computer's home, \(name)") { [app] in
+            var boxes: [(width: CGFloat, boxes: [String: CGRect])] = []
+            try await resize(app.window, to: change, "computer's home, \(name)") { [app] in
                 guard let sidebar = app.sidebar else { return ["the list went"] }
                 var shown: [String: CGRect] = [:]
                 for case let view as SidebarItemView in sidebar.list.loadedItemViews { shown[view.row.id] = view.box }
-                boxes.append(shown)
+                boxes.append((sidebar.list.bounds.width, shown))
                 return Self.drawnAtWidth(sidebar.list, skip: { $0 == SidebarNoticeItem.id }) + Self.moved(from: places, sidebar.list)
             }
             let after = try XCTUnwrap(app.sidebar)
@@ -248,7 +317,7 @@ final class HostedListResizeTests: XCTestCase {
             report("sidebar \(name)", after.list)
             // The boxes, fills and marks stood where the list's own layout
             // at the new width puts them, from the frame of the change on.
-            if after === sidebar, let first = boxes.first {
+            if after === sidebar, let first = Self.first(boxes, at: after.list.bounds.width) {
                 for case let view as SidebarItemView in after.list.loadedItemViews {
                     guard let box = first[view.row.id] else { continue }
                     XCTAssertEqual(box, view.box, "\(name): \(view.row.id)'s box in the frame of the change")
@@ -296,9 +365,9 @@ final class HostedListResizeTests: XCTestCase {
         show()
         let ready = try await until { !cards.list.loadedItemViews.isEmpty && cards.list.loadedItemViews.allSatisfy(\.isDisplayReady) }
         XCTAssertTrue(ready)
-        for (name, size) in Self.sizes(of: window) {
+        for (name, change) in Self.sizes(of: window) {
             let places = Self.places(cards.list)
-            try await resize(window, to: size, "card list, \(name)") {
+            try await resize(window, to: change, "card list, \(name)") {
                 Self.drawnAtWidth(cards.list) + Self.moved(from: places, cards.list)
             }
             report("cards \(name)", cards.list)
@@ -328,8 +397,8 @@ final class HostedListResizeTests: XCTestCase {
         let window = hostedKeyWindow(in: scene, root: navigation)
         addTeardownBlock { @MainActor in window.isHidden = true }
         window.layoutIfNeeded()
-        for (name, size) in Self.sizes(of: window) {
-            try await resize(window, to: size, "settings, \(name)") {
+        for (name, change) in Self.sizes(of: window) {
+            try await resize(window, to: change, "settings, \(name)") {
                 // The cards stand centred in the page at its new width, in
                 // the readable column the scroll view's insets leave.
                 let bounds = page.view.bounds
@@ -376,12 +445,12 @@ final class HostedListResizeTests: XCTestCase {
                 rows.setVisibleMinY(1200)
                 try await Task.sleep(for: .milliseconds(600))
             }
-            for (name, size) in Self.sizes(of: window) {
+            for (name, change) in Self.sizes(of: window) {
                 let leg = "legacy chat \(reading ? "read up" : "at its newest"), \(name)"
                 let read = Self.readingRow(list)
-                var plans: [[String: CGSize]] = []
-                try await resize(window, to: size, leg) {
-                    plans.append(shownPlans())
+                var plans: [(width: CGFloat, boxes: [String: CGSize])] = []
+                try await resize(window, to: change, leg) {
+                    plans.append((list.bounds.width, shownPlans()))
                     var problems = Self.drawnAtWidth(list, skip: { $0 == "chat:older-end" || $0 == "chat:newer-end" })
                     if reading, let read, let now = Self.share(read, list), abs(now.share - read.share) > 0.12 {
                         problems.append("reading \(read.identity) at \(now.share), was \(read.share), frame \(now.frame) top=\(list.viewportInsets.top)")
@@ -396,7 +465,7 @@ final class HostedListResizeTests: XCTestCase {
                 // The rows showed, from the frame of the change, the plans
                 // the chat's own pipeline makes at the new width.
                 let settled = shownPlans()
-                for (id, size) in plans.first ?? [:] {
+                for (id, size) in Self.first(plans, at: list.bounds.width) ?? [:] {
                     guard let final = settled[id] else { continue }
                     XCTAssertEqual(size, final, "\(leg): \(id) showed another plan in the frame of the change")
                 }
@@ -491,13 +560,13 @@ final class HostedListResizeTests: XCTestCase {
                 list.scrollTo(.init(index: 20, identity: list.items[20].identity), transition: .none)
                 try await Task.sleep(for: .milliseconds(600))
             }
-            for (name, size) in Self.sizes(of: window) {
+            for (name, change) in Self.sizes(of: window) {
                 let leg = "agent chat \(reading ? "read up" : "at its newest"), \(name)"
                 let read = Self.readingRow(list)
-                var plans: [[String: ChatRowPlan]] = []
-                try await resize(window, to: size, leg) {
+                var plans: [(width: CGFloat, boxes: [String: ChatRowPlan])] = []
+                try await resize(window, to: change, leg) {
                     let shown = shownPlans()
-                    plans.append(shown)
+                    plans.append((list.bounds.width, shown))
                     var problems: [String] = []
                     for index in Self.shown(list) {
                         guard let view = list.loadedItemView(at: index) as? AgentChatRowView else { continue }
@@ -513,7 +582,7 @@ final class HostedListResizeTests: XCTestCase {
                 // plans the screen then planned for the whole transcript.
                 let settled = shownPlans()
                 var same = 0, compared = 0
-                for (id, plan) in plans.first ?? [:] {
+                for (id, plan) in Self.first(plans, at: list.bounds.width) ?? [:] {
                     guard let final = settled[id] else { continue }
                     compared += 1
                     if final === plan { same += 1 }

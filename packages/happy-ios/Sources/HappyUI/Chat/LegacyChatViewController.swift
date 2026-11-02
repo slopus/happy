@@ -789,7 +789,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         layoutScreen(keyboard: insetMotion)
         ultraKeyboard?.refresh()
         updatePermissionListMaxHeight()
-        if list.bounds.width != sentRowsView.width || list.traitCollection.textEnvironment != sentRowsView.text.environment {
+        if list.contentWidth != sentRowsView.width || list.traitCollection.textEnvironment != sentRowsView.text.environment {
             scheduleMeasure()
         }
     }
@@ -806,12 +806,15 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     /// composer's, for the list to take its inset on.
     private func layoutScreen(keyboard: ChatUltraKeyboard.Change? = nil) {
         let size = view.bounds.size
-        let composerHeight = composer.composerHeight(fitting: size.width)
+        let safeArea = LayoutInsets(view.safeAreaInsets)
+        // What reads keeps inside the safe area's sides (`LegacyChatScreenLayout`).
+        let band = safeArea.sides(of: size)
+        let composerHeight = composer.composerHeight(fitting: band.width)
         // Restored while answering: it shows in this frame.
         composerReveal.heightRead()
         let screen = LegacyChatScreenLayout(.init(
             size: size,
-            safeArea: LayoutInsets(view.safeAreaInsets),
+            safeArea: safeArea,
             // The guide's top is the safe area's bottom while the keyboard
             // is down, and the layout never goes below that.
             keyboardTop: ultraKeyboard?.keyboardTop(guideTop: keyboardTracker.frame.minY) ?? keyboardTracker.frame.minY,
@@ -833,8 +836,8 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
             tabStrip.maxWidth = ContentWidth.headerMaxWidth
             tabStrip.setLayoutFrame(frame)
         }
-        if !cliWarning.isHidden, let label = cliWarning.label(width: size.width) {
-            cliWarning.place(CliWarningPillLayout(width: size.width, top: screen.headerBottom, label: label))
+        if !cliWarning.isHidden, let label = cliWarning.label(width: band.width) {
+            cliWarning.place(CliWarningPillLayout(width: size.width, sides: safeArea, top: screen.headerBottom, label: label))
         }
         // Loading the session and the deleted state take the whole screen;
         // an empty chat sits between the bar and the dock.
@@ -844,11 +847,11 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
             // keyboard: the panel moves with it, in the same pass.
             let area = screen.placeholder
             composeRoom = area
-            let layout = composeTarget.layout(width: size.width, top: area.minY, bottom: area.maxY)
+            let layout = composeTarget.layout(width: size.width, sides: safeArea, top: area.minY, bottom: area.maxY)
             composeTarget.place(layout)
             composeTarget.isHidden = !layout.fits
         }
-        header.maxWidth = ChatTitleLayout.maxWidth(barWidth: size.width)
+        header.maxWidth = ChatTitleLayout.maxWidth(barWidth: band.width)
         dock.setLayoutFrame(screen.dock)
         for (bar, frame) in zip(dockBars, screen.accessories) { bar.view.setLayoutFrame(frame) }
         composer.setLayoutFrame(screen.composer)
@@ -1772,7 +1775,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     /// has the new one.
     private func applyRows(_ update: ChatRowsUpdate) -> Bool {
         if update.list != nil,
-           update.width != list.bounds.width || update.text != list.traitCollection.textEnvironment {
+           update.width != list.contentWidth || update.text != list.traitCollection.textEnvironment {
             return false
         }
         ApplyPerf.measure(.chatList) {
@@ -1832,7 +1835,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     private func scheduleMeasure() {
         guard let rows else { return }
         let view = ChatRowsView(
-            width: list.bounds.width,
+            width: list.contentWidth,
             maxContentWidth: maxContentWidth,
             text: ChatRowText(environment: list.traitCollection.textEnvironment, words: words),
             permissionListMaxHeight: permissionListMaxHeight,

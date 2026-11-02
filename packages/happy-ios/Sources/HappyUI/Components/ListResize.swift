@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import HappyLayout
 import UIKit
 import UltraView
 
@@ -59,5 +60,22 @@ extension UltraListView {
         if self.frame != frame { self.frame = frame }
         layoutIfNeeded()
     }
+}
+
+extension UltraListView {
+    /// Where a touch that lands on a list's container, in the margins it
+    /// leaves beside the list (`UIView.sidesBand`), goes: to the list's own
+    /// drag, so the list scrolls from the screen's edge as from its rows.
+    /// The container returns this from `hitTest`.
+    func takingMargins(_ hit: UIView?, of container: UIView) -> UIView? {
+        hit === container ? scrollGestureHostView : hit
+    }
+}
+
+extension UIView {
+    /// This view less the safe area's sides (`LayoutInsets.sides(of:)`):
+    /// where a list it holds stands, so a phone held sideways keeps the
+    /// rows off the camera and the corners while the view runs edge to edge.
+    var sidesBand: CGRect { LayoutInsets(safeAreaInsets).sides(of: bounds.size) }
 }
 #endif

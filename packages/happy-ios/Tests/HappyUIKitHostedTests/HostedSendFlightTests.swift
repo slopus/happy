@@ -420,7 +420,7 @@ final class HostedSendFlightTests: XCTestCase {
         let host = WalkHost()
         transcript.host = host
         root.addSubview(transcript)
-        transcript.setViewport(size: root.bounds.size, insets: UIEdgeInsets(top: 120, left: 0, bottom: 100, right: 0))
+        transcript.setViewport(frame: CGRect(origin: .zero, size: root.bounds.size), insets: UIEdgeInsets(top: 120, left: 0, bottom: 100, right: 0))
         let key = ChatPlanner.Key(width: root.bounds.width, maxContentWidth: .greatestFiniteMagnitude, environment: nil)
         let earlier = ChatItem(id: "a1", role: .agent, pieces: [.text("The cache test fails because the file changed under it.")], delivery: .sent)
         func plans(_ delivery: ChatItem.Delivery, words: String) -> [ChatRowPlan] {

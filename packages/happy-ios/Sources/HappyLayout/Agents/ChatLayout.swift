@@ -47,6 +47,9 @@ public struct ChatScreenLayout: Equatable, Sendable {
     /// (`ContextMeterLayout`); nil without one.
     public var meter: CGRect?
     public var headerScrim: CGRect
+    /// The transcript: the screen top to bottom, less the sides' safe
+    /// area, so a phone held sideways keeps its messages off the camera.
+    public var list: CGRect
     /// The transcript's insets inside the whole screen.
     public var listTop: CGFloat
     public var listBottom: CGFloat
@@ -63,9 +66,11 @@ public struct ChatScreenLayout: Equatable, Sendable {
     ///
     /// The card keeps to the transcript's column, `maxContentWidth` wide
     /// and centred (`ChatColumn`), so on a wide iPad window the two line up.
+    /// Both keep inside the safe area's sides; the scrims run edge to edge.
     public init(size: CGSize, safeArea: LayoutInsets, keyboardTop: CGFloat, meter: Bool = false, maxContentWidth: CGFloat = .greatestFiniteMagnitude, cardHeight: (CGFloat) -> CGFloat) {
         typealias M = Metrics
-        let column = ChatColumn(rowWidth: size.width, maxContentWidth: maxContentWidth)
+        list = safeArea.sides(of: size)
+        let column = ChatColumn(rowWidth: size.width, maxContentWidth: maxContentWidth, sides: safeArea)
         let width = max(0, column.width - 2 * M.paddingH)
         let height = cardHeight(width)
         let foot = min(keyboardTop, size.height - safeArea.bottom)

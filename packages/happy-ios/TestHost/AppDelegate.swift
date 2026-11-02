@@ -16,6 +16,10 @@ final class TestHostAppDelegate: UIResponder, UIApplicationDelegate {
         configuration.delegateClass = TestHostSceneDelegate.self
         return configuration
     }
+
+    /// Every way up, as the app turns: the hosted tests turn a phone on
+    /// either side.
+    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask { .all }
 }
 
 /// The scene's one window, key, over an empty screen.
