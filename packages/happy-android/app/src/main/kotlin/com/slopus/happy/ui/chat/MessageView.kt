@@ -316,7 +316,7 @@ fun UserMessage(
         hold[0] = lift?.let { source ->
             {
                 haptics.light()
-                source.lift(copyText, menuActions, card = false, selectable)
+                source.lift(copyText, menuActions, card = false, selectable = selectable)
             }
         }
         LongPressCopyable(

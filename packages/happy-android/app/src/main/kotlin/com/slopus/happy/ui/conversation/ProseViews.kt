@@ -81,6 +81,7 @@ import com.slopus.happy.ui.browser.linkAt
 import com.slopus.happy.ui.browser.webLinkGestures
 import com.slopus.happy.ui.chat.AgentSelectable
 import com.slopus.happy.ui.chat.LocalTextReveal
+import com.slopus.happy.ui.chat.LiftSelection
 import com.slopus.happy.ui.chat.LocalTrailingSlot
 import com.slopus.happy.ui.chat.TrailingLine
 import com.slopus.happy.ui.chat.MarkdownBlockView
@@ -132,7 +133,10 @@ internal fun rememberProse(source: ProseSource): Prose {
  * Where a long press on drawn text asks for the selectable view: the word
  * under it, in the [occurrence]th piece reading [text].
  */
-internal class SelectionStart(val text: AnnotatedString, val occurrence: Int, val range: TextRange)
+internal class SelectionStart(val text: AnnotatedString, val occurrence: Int, val range: TextRange, val code: Boolean = false) {
+    /** What the lift's Select takes: this inline code span whole, or (null) everything. */
+    fun lifted(): LiftSelection? = if (code) LiftSelection(text.text, occurrence, range) else null
+}
 
 /**
  * [prose] as MarkdownView's column: its drawn segments, each one node that
@@ -218,9 +222,12 @@ private fun DrawnProse(prose: Prose, segment: DrawnSegment, index: Int, fill: Bo
                             val at = Offset(position.x / scale[0], position.y / scale[0])
                             val (piece, local) = segment.pieceAt(at, unscaled(size.width.toFloat()), rtl, exact = false) ?: return@detectTapGestures
                             val offset = piece.layout.getOffsetForPosition(local)
-                            val word = piece.layout.getWordBoundary(offset.coerceAtMost((piece.text.length - 1).coerceAtLeast(0)))
+                            val under = offset.coerceAtMost((piece.text.length - 1).coerceAtLeast(0))
+                            // Inline code is taken whole; other words one at a time.
+                            val code = piece.text.getStringAnnotations(INLINE_CODE, under, under + 1).firstOrNull()
+                            val range = code?.let { TextRange(it.start, it.end) } ?: piece.layout.getWordBoundary(under)
                             val occurrence = prose.pieces.takeWhile { it !== piece }.count { it.text.text == piece.text.text }
-                            onLongPress(SelectionStart(piece.text, occurrence, word))
+                            onLongPress(SelectionStart(piece.text, occurrence, range, code = code != null))
                         })
                     }
                 } else {
@@ -442,7 +449,7 @@ internal fun AnswerProse(source: ProseSource, callbacks: MessageCallbacks, modif
                             { at ->
                                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                 if (lift != null) {
-                                    lift.lift(source.text, card = true) { AgentSelectable(source.blocks, callbacks) }
+                                    lift.lift(source.text, card = true, select = at.lifted()) { AgentSelectable(source.blocks, callbacks) }
                                 } else {
                                     selecting = at
                                 }

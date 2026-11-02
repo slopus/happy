@@ -175,6 +175,7 @@ class MessageLift {
         val actions: List<CopyMenuAction>,
         internal val card: Boolean,
         internal val selectable: @Composable () -> Unit,
+        internal val select: LiftSelection? = null,
     )
 
     var lifted by mutableStateOf<Lifted?>(null)
@@ -222,12 +223,21 @@ class LiftSource internal constructor(private val key: String, private val lift:
 
     internal fun hides(): Boolean = lift.hides(key)
 
-    /** Lifts the row: [text] is what Copy takes; [selectable] lays its words out to select, as wide as the row. */
-    fun lift(text: String, actions: List<CopyMenuAction> = emptyList(), card: Boolean = false, selectable: @Composable () -> Unit) {
+    /**
+     * Lifts the row: [text] is what Copy takes; [selectable] lays its words
+     * out to select, as wide as the row; Select takes [select], or all of it.
+     */
+    fun lift(text: String, actions: List<CopyMenuAction> = emptyList(), card: Boolean = false, select: LiftSelection? = null, selectable: @Composable () -> Unit) {
         val at = coordinates?.takeIf { it.isAttached } ?: return
-        lift.open(MessageLift.Lifted(key, layer, Rect(at.positionInRoot(), at.size.toSize()), text, actions, card, selectable))
+        lift.open(MessageLift.Lifted(key, layer, Rect(at.positionInRoot(), at.size.toSize()), text, actions, card, selectable, select))
     }
 }
+
+/**
+ * What Select takes when it isn't everything: [range] in the [occurrence]th
+ * selectable text reading [text] (an inline code span held, desktop 3e08585d).
+ */
+class LiftSelection(val text: String, val occurrence: Int, val range: TextRange)
 
 /** The lift for row [key], when the chat has one ([LocalMessageLift]). */
 @Composable
@@ -411,12 +421,31 @@ private fun SelectingWords(lifted: MessageLift.Lifted, scrolled: Int, onDone: ()
         // The texts lay out and register in the frame they compose.
         withFrameNanos {}
         withFrameNanos {}
-        val total = state.getSelectableTexts().sumOf { it.length }
-        if (total > 0) state.select(TextRange(0, total))
+        val texts = state.getSelectableTexts()
+        val total = texts.sumOf { it.length }
+        val range = lifted.select?.let { within(texts, it) } ?: TextRange(0, total)
+        if (total > 0) state.select(range)
         snapshotFlow { state.selectedTexts.isNotEmpty() }.first { it }
+        LiftSelected.selected?.invoke(state.selectedTexts.joinToString("") { it.text })
         snapshotFlow { state.selectedTexts.isEmpty() }.first { it }
         onDone()
     }
+}
+
+/** What Select selected in a lift; tests read it. */
+internal object LiftSelected {
+    @Volatile var selected: ((String) -> Unit)? = null
+}
+
+/** Where [select] is among [texts] laid end to end; null if they don't read it. */
+private fun within(texts: List<androidx.compose.ui.text.AnnotatedString>, select: LiftSelection): TextRange? {
+    var seen = 0
+    var base = 0
+    for (text in texts) {
+        if (text.text == select.text && seen++ == select.occurrence) return TextRange(base + select.range.start, base + select.range.end)
+        base += text.length
+    }
+    return null
 }
 
 /** The lifted message's menu: Copy, Select, then the row's own (a refused send's Retry and Discard). */

@@ -77,4 +77,6 @@
     <string name="turn_tool_workflow">工作流</string>
     <!-- A person's long message, cut at its first lines (iOS Strings.showFull); Show less is machine_launcher_show_less. -->
     <string name="conversation_show_full">显示全部</string>
+    <!-- A code block's copy button in a Happy Agent chat, said by a screen reader (desktop CopyButton "Copy code"). -->
+    <string name="markdown_copy_code">复制代码</string>
 </resources>

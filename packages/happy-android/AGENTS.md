@@ -1084,6 +1084,14 @@ lines of text height. A tap on the bubble calls `Conversation.toggleMessage`
 and flips `ConversationRow.User.opened`. `FoldHold` keeps the row above the
 message in place, so the bubble opens downward.
 
+Code in a Happy Agent chat works as on desktop (3365ef9f, 3e08585d).
+ConversationScreen provides `LocalCodeCopy` = `CodeCopy.Icon`, so
+MarkdownView's code block shows a quiet 14 copy glyph in a 24 box, 6 in
+from its corner, which turns into a check for 1.6 s. The relay chat keeps
+its "Copy" pill. `proseSpans` marks inline code with `INLINE_CODE`. A long
+press on that code selects the whole span, both in place (`SelectionStart`)
+and in the lift's Select (`LiftSelection`).
+
 ### Image loading
 
 One Coil 3 `ImageLoader` (`ui/components/RemoteImage.kt`) for every

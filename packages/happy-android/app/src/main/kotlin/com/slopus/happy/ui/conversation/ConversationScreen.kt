@@ -22,8 +22,10 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import com.slopus.happy.connection.LinkState
+import com.slopus.happy.ui.chat.CodeCopy
 import com.slopus.happy.ui.chat.LinkSpinner
 import com.slopus.happy.ui.chat.LinkStatusSpec
+import com.slopus.happy.ui.chat.LocalCodeCopy
 import com.slopus.happy.ui.chat.LocalMessageLift
 import com.slopus.happy.ui.chat.MessageLift
 import com.slopus.happy.ui.chat.MessageLiftOverlay
@@ -575,7 +577,7 @@ fun ConversationScreen(
                 }
             }
         }
-        CompositionLocalProvider(LocalMessageLift provides null) { MessageLiftOverlay(lift) }
+        CompositionLocalProvider(LocalMessageLift provides null, LocalCodeCopy provides CodeCopy.Icon) { MessageLiftOverlay(lift) }
     }
 }
 
@@ -609,7 +611,8 @@ private fun Transcript(
     }
     val reveal = remember(listState) { ListReveal(listState) }
     flight.atNewest = { listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0 }
-    CompositionLocalProvider(LocalRevealHost provides reveal, LocalSendFlight provides flight) {
+    // Code blocks offer desktop's quiet copy icon here, not the relay chat's pill.
+    CompositionLocalProvider(LocalRevealHost provides reveal, LocalSendFlight provides flight, LocalCodeCopy provides CodeCopy.Icon) {
         TranscriptList(state, listState, bubble, actions, onLoadOlder, bar, dock, glass, keyboard, reveal, flight, folds)
     }
 }

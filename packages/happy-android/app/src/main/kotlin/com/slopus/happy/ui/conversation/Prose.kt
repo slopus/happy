@@ -211,11 +211,19 @@ internal fun proseSpans(spans: List<MarkdownSpan>): AnnotatedString = buildAnnot
         val url = span.url
         if (url != null && isHttpMarkdownLink(url)) {
             withLink(LinkAnnotation.Url(url)) { withStyle(style.merge(LinkUnderline)) { append(span.text) } }
+        } else if (SpanStyle.Code in span.styles) {
+            // A long press on it takes it whole (desktop 3e08585d), not the word under the finger.
+            pushStringAnnotation(INLINE_CODE, "")
+            withStyle(style) { append(span.text) }
+            pop()
         } else {
             withStyle(style) { append(span.text) }
         }
     }
 }
+
+/** The annotation over an inline code span in a drawn row's text ([proseSpans]). */
+internal const val INLINE_CODE = "inline-code"
 
 /**
  * Lays rows' text out with Compose's own text engine ([TextMeasurer]), so a

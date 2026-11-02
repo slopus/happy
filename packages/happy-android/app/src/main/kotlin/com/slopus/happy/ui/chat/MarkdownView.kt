@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -33,6 +35,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.TextLayoutResult
@@ -53,6 +59,8 @@ import com.slopus.happy.chat.markdown.SpanStyle
 import com.slopus.happy.chat.markdown.SyntaxTokenType
 import com.slopus.happy.chat.markdown.isHttpMarkdownLink
 import com.slopus.happy.chat.markdown.tokenizeCode
+import com.slopus.happy.ui.components.Icon
+import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.MarkdownImage
 import com.slopus.happy.ui.components.MermaidView
 import com.slopus.happy.ui.browser.webLinkGestures
@@ -68,6 +76,7 @@ object MarkdownTags {
     const val LIST = "markdown.list"
     const val CODE_BLOCK = "markdown.codeBlock"
     const val CODE_COPY = "markdown.codeCopy"
+    const val CODE_COPY_GLYPH = "markdown.codeCopy.glyph"
     const val RULE = "markdown.rule"
     const val OPTION = "markdown.option"
     const val TABLE = "markdown.table"
@@ -98,6 +107,13 @@ object MarkdownSpec {
     val codeLanguage = happyTextStyle(fontSize = 12, family = AppMono)
     val codeText = happyTextStyle(fontSize = 14, lineHeight = 20, family = AppMono)
     val copyButtonText = happyTextStyle(fontSize = 12, lineHeight = 16)
+    /** [CodeCopy.Icon]: desktop's quiet button (3e08585d), [copyIconBox] in the code's colour [copyIconInset] in from the corner, reached [copyIconReach] around. */
+    val copyIcon = 14.dp
+    val copyIconBox = 24.dp
+    val copyIconInset = 6.dp
+    val copyIconReach = 40.dp
+    const val COPIED_MILLIS = 1500L
+    const val ICON_COPIED_MILLIS = 1600L
     val ruleMargin = 8.dp
     val optionGap = 8.dp
     val optionRadius = 12.dp
@@ -290,9 +306,10 @@ private fun CodeBlock(content: String, language: String?) {
     val chat = ChatTheme.colors
     val copy = rememberCopyText()
     var copied by remember { mutableStateOf(false) }
+    val style = LocalCodeCopy.current
     LaunchedEffect(copied) {
         if (copied) {
-            delay(1500)
+            delay(if (style == CodeCopy.Icon) MarkdownSpec.ICON_COPIED_MILLIS else MarkdownSpec.COPIED_MILLIS)
             copied = false
         }
     }
@@ -326,28 +343,72 @@ private fun CodeBlock(content: String, language: String?) {
                 )
             }
         }
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 8.dp, end = 8.dp)
-                .testTag(MarkdownTags.CODE_COPY)
-                .clip(RoundedCornerShape(4.dp))
-                .background(if (copied) colors.success else colors.surfaceHighest)
-                .border(1.dp, if (copied) colors.success else colors.divider, RoundedCornerShape(4.dp))
-                .clickable(role = Role.Button) {
-                    copy(content)
-                    copied = true
+        if (style == CodeCopy.Icon) {
+            val label = stringResource(if (copied) R.string.common_copied else R.string.markdown_copy_code)
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(MarkdownSpec.copyIconReach)
+                    .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
+                        copy(content)
+                        copied = true
+                    }
+                    .clearAndSetSemantics {
+                        contentDescription = label
+                        role = Role.Button
+                        testTag = MarkdownTags.CODE_COPY
+                    },
+            ) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = MarkdownSpec.copyIconInset, end = MarkdownSpec.copyIconInset)
+                        .size(MarkdownSpec.copyIconBox)
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(colors.surfaceHighest),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        if (copied) Ionicon.CheckmarkOutline else Ionicon.CopyOutline,
+                        MarkdownSpec.copyIcon,
+                        if (copied) colors.success else colors.textSecondary,
+                        Modifier.testTag(MarkdownTags.CODE_COPY_GLYPH),
+                    )
                 }
-                .padding(horizontal = 8.dp, vertical = 4.dp),
-        ) {
-            Text(
-                text = stringResource(if (copied) R.string.common_copied else R.string.common_copy),
-                style = MarkdownSpec.copyButtonText,
-                color = colors.text,
-            )
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 8.dp, end = 8.dp)
+                    .testTag(MarkdownTags.CODE_COPY)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(if (copied) colors.success else colors.surfaceHighest)
+                    .border(1.dp, if (copied) colors.success else colors.divider, RoundedCornerShape(4.dp))
+                    .clickable(role = Role.Button) {
+                        copy(content)
+                        copied = true
+                    }
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+            ) {
+                Text(
+                    text = stringResource(if (copied) R.string.common_copied else R.string.common_copy),
+                    style = MarkdownSpec.copyButtonText,
+                    color = colors.text,
+                )
+            }
         }
     }
 }
+
+/**
+ * How a code block offers its copy: happy-app's always-shown "Copy" pill
+ * (the relay chat), or desktop's icon (3365ef9f, 3e08585d) that turns into
+ * a check for 1.6 s, which a Happy Agent chat provides.
+ */
+enum class CodeCopy { Pill, Icon }
+
+val LocalCodeCopy = staticCompositionLocalOf { CodeCopy.Pill }
 
 /**
  * Highlighted code blocks by (code, language, palette), most recent first,

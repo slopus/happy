@@ -132,7 +132,7 @@ fun LongPressCopyable(
                 onClick = {},
                 onLongClick = {
                     haptics.light()
-                    lift.lift(text, actions, card = false, selectable)
+                    lift.lift(text, actions, card = false, selectable = selectable)
                 },
             ),
             horizontalAlignment = horizontalAlignment,
