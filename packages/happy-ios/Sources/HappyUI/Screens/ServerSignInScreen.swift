@@ -8,9 +8,11 @@ import UIKit
 /// already whose sign-in ended. The address is shown, never typed. The
 /// server's own sign-in opens in the system browser
 /// (`ASWebAuthenticationSession`), which returns to Happy's fixed redirect
-/// URI (`OAuthRedirect`, docs/SERVER-SIGN-IN.md). Nothing is kept until the
-/// server has accepted the sign-in and, when the installation is known,
-/// proved to be it.
+/// URI (`OAuthRedirect`, docs/SERVER-SIGN-IN.md). How the server signs in is
+/// read as the screen opens, and the host the person will sign in at shows
+/// beside the server's before anything opens; that method is the one used.
+/// Nothing is kept until the server has accepted the sign-in and, when the
+/// installation is known, proved to be it.
 final class ServerSignInViewController: UIViewController, ASWebAuthenticationPresentationContextProviding {
     private let context: AppContext
     private let list = GroupedListView()
@@ -19,6 +21,11 @@ final class ServerSignInViewController: UIViewController, ASWebAuthenticationPre
     /// The installation the server must report (health `instanceId`).
     private let instanceId: String?
     private var browser: ASWebAuthenticationSession?
+    /// Discovery, started as the screen opens; a failed one starts again on
+    /// Continue.
+    private var discovering: Task<ServerSignInFlow, any Error>?
+    private let serverRow = ItemRowView(title: Strings.ServerSignIn.server)
+    private let authorizationRow = ItemRowView(title: Strings.ServerSignIn.signsInAt)
 
     init(context: AppContext, server: String, instanceId: String?) {
         self.context = context
@@ -38,6 +45,9 @@ final class ServerSignInViewController: UIViewController, ASWebAuthenticationPre
         title = again ? Strings.ServerSignIn.signInAgain : Strings.ServerSignIn.title
         view.accessibilityIdentifier = "server-sign-in"
         list.sections = [ItemGroupView(footer: Strings.ServerSignIn.footer, rows: [form])]
+        serverRow.detail = URLComponents(string: server).map { ($0.host ?? server) + ($0.port.map { ":\($0)" } ?? "") }
+        serverRow.accessibilityIdentifier = "server-sign-in-host"
+        authorizationRow.accessibilityIdentifier = "server-sign-in-authorization-host"
         form.saveTitle = Strings.ServerSignIn.continueAction
         form.save.accessibilityIdentifier = "server-sign-in-continue"
         // Shown, not edited: the code or the account named it.
@@ -45,6 +55,31 @@ final class ServerSignInViewController: UIViewController, ASWebAuthenticationPre
         form.field.text = server
         form.field.isEnabled = false
         form.save.action = { [weak self] in await self?.signIn() }
+        _ = discover()
+    }
+
+    /// How the server signs in, once: the method shown is the method used.
+    private func discover() -> Task<ServerSignInFlow, any Error> {
+        if let discovering { return discovering }
+        let task = Task { [server] in try await ServerSignInFlow.start(server) }
+        discovering = task
+        Task { [weak self] in
+            do {
+                let flow = try await task.value
+                self?.show(flow)
+            } catch {
+                guard let self, discovering == task else { return }
+                discovering = nil
+                if !(error is CancellationError), !form.isValidating { form.error = Strings.ServerSignIn.failure(error) }
+            }
+        }
+        return task
+    }
+
+    /// The server's host, and beside it the host the browser will open.
+    private func show(_ flow: ServerSignInFlow) {
+        authorizationRow.detail = flow.method.authorizationHost
+        list.sections = [ItemGroupView(footer: Strings.ServerSignIn.footer, rows: [form]), ItemGroupView(rows: [serverRow, authorizationRow])]
     }
 
     private func signIn() async {
@@ -53,7 +88,7 @@ final class ServerSignInViewController: UIViewController, ASWebAuthenticationPre
         form.isValidating = true
         defer { form.isValidating = false }
         do {
-            let flow = try await ServerSignInFlow.start(server)
+            let flow = try await discover().value
             let request = try flow.request(redirectUri: OAuthRedirect.uri)
             let callback = try await authenticate(request.url, scheme: OAuthRedirect.scheme)
             var signedIn = try await flow.complete(request, callback: callback, instanceId: instanceId)

@@ -44,9 +44,20 @@ private let acme = OAuthMethod(
 
 private func fixed(_ count: Int) -> Data { Data(repeating: 7, count: count) }
 
+/// The server the tests sign in to.
+private let server = OAuthAudience("https://happy.acme.example/")!
+
+/// An access token as an authorization server issues one: a JWT whose
+/// `aud` names `audience` (a string or an array), unsigned.
+func jwt(_ name: String, aud: Any = "https://happy.acme.example/") -> String {
+    func encode(_ object: Any) -> String { CanonicalBase64URL.encode(try! JSONSerialization.data(withJSONObject: object)) }
+    return encode(["alg": "RS256", "typ": "JWT"]) + "." + encode(["aud": aud, "sub": "steve", "jti": name]) + ".c2lnbmF0dXJl"
+}
+private let a1 = jwt("a1"), a2 = jwt("a2")
+
 final class OAuthTests: XCTestCase {
     func testAuthorizationURLCarriesPKCEScopeAndResourceAndKeepsItsOwnParameters() throws {
-        let request = try OAuthSignInRequest(method: acme, redirectUri: "happy://oauth/callback", random: fixed)
+        let request = try OAuthSignInRequest(method: acme, audience: server, redirectUri: "happy://oauth/callback", random: fixed)
         let items = try XCTUnwrap(URLComponents(url: request.url, resolvingAgainstBaseURL: false)?.queryItems)
         let query = Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value ?? "") })
         XCTAssertEqual(request.url.host, "sso.acme.example")
@@ -67,7 +78,7 @@ final class OAuthTests: XCTestCase {
     func testNoResourceOrScopeMeansNoParameter() throws {
         var plain = acme
         plain.resource = nil; plain.scope = nil
-        let request = try OAuthSignInRequest(method: plain, redirectUri: "happy://oauth/callback", random: fixed)
+        let request = try OAuthSignInRequest(method: plain, audience: server, redirectUri: "happy://oauth/callback", random: fixed)
         let names = URLComponents(url: request.url, resolvingAgainstBaseURL: false)?.queryItems?.map(\.name) ?? []
         XCTAssertFalse(names.contains("resource"))
         XCTAssertFalse(names.contains("scope"))
@@ -78,15 +89,17 @@ final class OAuthTests: XCTestCase {
         for url in ["http://sso.acme.example/authorize", "https://user:pass@sso.acme.example/a", "https://sso.acme.example/a#frag", "ftp://sso.acme.example"] {
             var bad = acme
             bad.authorizationUrl = url
-            XCTAssertThrowsError(try OAuthSignInRequest(method: bad, redirectUri: "happy://oauth/callback"), url)
+            XCTAssertThrowsError(try OAuthSignInRequest(method: bad, audience: server, redirectUri: "happy://oauth/callback"), url)
         }
         var loopback = acme
+        loopback.authorizationUrl = "http://127.0.0.1:8080/authorize"
         loopback.tokenUrl = "http://127.0.0.1:8080/token"
-        XCTAssertNoThrow(try OAuthSignInRequest(method: loopback, redirectUri: "happy://oauth/callback"))
+        loopback.refreshUrl = "http://127.0.0.1:8080/token"
+        XCTAssertNoThrow(try OAuthSignInRequest(method: loopback, audience: server, redirectUri: "happy://oauth/callback"))
     }
 
     func testCallbackMustMatchStateAndCarriesErrors() throws {
-        let request = try OAuthSignInRequest(method: acme, redirectUri: "happy://oauth/callback", random: fixed)
+        let request = try OAuthSignInRequest(method: acme, audience: server, redirectUri: "happy://oauth/callback", random: fixed)
         let state = request.state
         XCTAssertEqual(try request.code(from: URL(string: "happy://oauth/callback?code=abc&state=\(state)")!), "abc")
         XCTAssertThrowsError(try request.code(from: URL(string: "happy://oauth/callback?code=abc&state=other")!)) {
@@ -99,22 +112,22 @@ final class OAuthTests: XCTestCase {
 
     func testCodeExchangeAndRefreshSendTheRecordedFormAndKeepAnUnrotatedRefreshToken() async throws {
         let http = ScriptedHTTP()
-        http.json(acme.tokenUrl, #"{"access_token":"a1","token_type":"Bearer","expires_in":300,"refresh_token":"r1"}"#)
+        http.json(acme.tokenUrl, #"{"access_token":"\#(a1)","token_type":"Bearer","expires_in":300,"refresh_token":"r1"}"#)
         let now = Date(timeIntervalSince1970: 1000)
         let client = OAuthTokenClient(http: http, now: { now })
-        let request = try OAuthSignInRequest(method: acme, redirectUri: "happy://oauth/callback", random: fixed)
+        let request = try OAuthSignInRequest(method: acme, audience: server, redirectUri: "happy://oauth/callback", random: fixed)
         let (access, grant) = try await client.complete(request, callback: URL(string: "happy://oauth/callback?code=xyz&state=\(request.state)")!)
-        XCTAssertEqual(access, OAuthAccess(token: "a1", expiresAt: now.addingTimeInterval(300)))
-        XCTAssertEqual(grant, OAuthGrant(refreshToken: "r1", refreshUrl: acme.refreshUrl, clientId: "happy", resource: acme.resource))
+        XCTAssertEqual(access, OAuthAccess(token: a1, expiresAt: now.addingTimeInterval(300)))
+        XCTAssertEqual(grant, OAuthGrant(refreshToken: "r1", refreshUrl: acme.refreshUrl, clientId: "happy", resource: acme.resource, audience: "https://happy.acme.example/"))
         XCTAssertEqual(http.requests[0].headers["Content-Type"], "application/x-www-form-urlencoded")
         XCTAssertEqual(http.form(0), ["grant_type": "authorization_code", "code": "xyz", "redirect_uri": "happy://oauth/callback",
                                       "client_id": "happy", "code_verifier": request.codeVerifier, "resource": "https://happy.acme.example"])
 
         // Refresh goes to the recorded refresh URL only; no refresh_token
         // in the answer keeps the old one.
-        http.json(acme.refreshUrl!, #"{"access_token":"a2","token_type":"bearer"}"#)
+        http.json(acme.refreshUrl!, #"{"access_token":"\#(a2)","token_type":"bearer"}"#)
         let (renewed, kept) = try await client.refresh(grant)
-        XCTAssertEqual(renewed.token, "a2")
+        XCTAssertEqual(renewed.token, a2)
         XCTAssertNil(renewed.expiresAt)
         XCTAssertEqual(kept.refreshToken, "r1")
         XCTAssertEqual(http.requests[1].url.absoluteString, acme.refreshUrl)
@@ -124,7 +137,7 @@ final class OAuthTests: XCTestCase {
     func testTokenErrorsAreReadAndNonBearerRefused() async throws {
         let http = ScriptedHTTP()
         let client = OAuthTokenClient(http: http)
-        let grant = OAuthGrant(refreshToken: "r", refreshUrl: acme.refreshUrl, clientId: "happy")
+        let grant = OAuthGrant(refreshToken: "r", refreshUrl: acme.refreshUrl, clientId: "happy", audience: server.server)
         http.json(acme.refreshUrl!, status: 400, #"{"error":"invalid_grant","error_description":"Expired"}"#)
         await XCTAssertThrowsAsync(try await client.refresh(grant)) { XCTAssertEqual($0 as? OAuthError, .server(code: "invalid_grant", description: "Expired")) }
         http.json(acme.refreshUrl!, #"{"access_token":"a","token_type":"mac"}"#)
@@ -146,6 +159,96 @@ final class OAuthTests: XCTestCase {
         XCTAssertEqual(discovery.methods.map(\.id), ["jwt"])
         XCTAssertEqual(discovery.methods.first?.resource, "https://happy.acme.example")
         XCTAssertNil(discovery.userId)
+    }
+
+    /// API.md, "Binding a sign-in": the token and refresh URLs are the
+    /// authorization URL's origin, compared parsed.
+    func testTheTokenAndRefreshURLsMustBeTheAuthorizationServersOrigin() {
+        XCTAssertTrue(acme.isBoundToItsAuthorizationServer)
+        var spelled = acme
+        spelled.tokenUrl = "HTTPS://SSO.Acme.Example:443/oauth/token"
+        XCTAssertTrue(spelled.isBoundToItsAuthorizationServer, "default port and case are the same origin")
+        for (token, refresh) in [
+            ("https://evil.example/token", acme.refreshUrl), (acme.tokenUrl, "https://evil.example/refresh"),
+            ("https://sso.acme.example.evil.example/token", acme.refreshUrl), ("https://sso.acme.example:8443/token", acme.refreshUrl),
+            ("http://sso.acme.example/token", acme.refreshUrl), ("https://acme.example/token", acme.refreshUrl),
+        ] {
+            var bad = acme
+            bad.tokenUrl = token; bad.refreshUrl = refresh
+            XCTAssertFalse(bad.isBoundToItsAuthorizationServer, "\(token) \(refresh ?? "")")
+            // Plain http is refused as insecure before its origin is compared.
+            XCTAssertThrowsError(try OAuthSignInRequest(method: bad, audience: server, redirectUri: OAuthRedirect.uri)) {
+                XCTAssertEqual($0 as? OAuthError, token.hasPrefix("http:") ? .insecureURL : .crossOrigin)
+            }
+        }
+        var noRefresh = acme
+        noRefresh.refreshUrl = nil
+        XCTAssertTrue(noRefresh.isBoundToItsAuthorizationServer)
+        XCTAssertEqual(acme.authorizationHost, "sso.acme.example")
+    }
+
+    /// A server whose only method sends the code elsewhere can't be
+    /// signed in to; one bound method among others is the one used.
+    func testDiscoveryRefusesAMethodBoundToAnotherSite() async throws {
+        let http = ScriptedHTTP()
+        let url = "https://happy.acme.example/v0/authentication"
+        let split = #"{"type":"oauth","id":"split","name":"Acme SSO","authorizationUrl":"https://sso.acme.example/a","tokenUrl":"https://evil.example/t","clientId":"happy"}"#
+        let bound = #"{"type":"oauth","id":"jwt","name":"Acme SSO","authorizationUrl":"https://sso.acme.example/a","tokenUrl":"https://sso.acme.example/t","clientId":"happy"}"#
+        http.json(url, #"{"authenticated":false,"methods":[\#(split)]}"#)
+        await XCTAssertThrowsAsync(try await ServerSignInFlow.start("https://happy.acme.example", http: http)) { XCTAssertEqual($0 as? OAuthError, .crossOrigin) }
+        http.json(url, #"{"authenticated":false,"methods":[\#(split),\#(bound)]}"#)
+        let flow = try await ServerSignInFlow.start("https://happy.acme.example", http: http)
+        XCTAssertEqual(flow.method.id, "jwt")
+        XCTAssertEqual(try flow.request(redirectUri: OAuthRedirect.uri).audience.server, "https://happy.acme.example/")
+    }
+
+    /// `aud` names the server: its origin and path, a trailing `/` added.
+    func testTheAudienceMustNameTheServer() throws {
+        XCTAssertTrue(server.accepts(jwt("t")))
+        XCTAssertTrue(server.accepts(jwt("t", aud: "https://happy.acme.example")))
+        XCTAssertTrue(server.accepts(jwt("t", aud: "HTTPS://Happy.Acme.Example:443/")))
+        XCTAssertTrue(server.accepts(jwt("t", aud: ["https://other.example/", "https://happy.acme.example"])))
+        XCTAssertFalse(server.accepts(jwt("t", aud: "https://other.example/")))
+        XCTAssertFalse(server.accepts(jwt("t", aud: "https://happy.acme.example/api/")))
+        XCTAssertFalse(server.accepts(jwt("t", aud: "https://happy.acme.example:8443/")))
+        XCTAssertFalse(server.accepts(jwt("t", aud: "happy.acme.example")))
+        XCTAssertFalse(server.accepts(jwt("t", aud: ["happy"])))
+        XCTAssertFalse(server.accepts(jwt("t", aud: 7)))
+        XCTAssertFalse(server.accepts("opaque-token"))
+        XCTAssertFalse(server.accepts("a.b.c"))
+        let prefixed = try XCTUnwrap(OAuthAudience("https://acme.example/happy/"))
+        XCTAssertTrue(prefixed.accepts(jwt("t", aud: "https://acme.example/happy")))
+        XCTAssertFalse(prefixed.accepts(jwt("t", aud: "https://acme.example/")), "the origin alone isn't the server")
+        XCTAssertFalse(OAuthAudience("https://acme.example/")!.accepts(jwt("t", aud: "https://acme.example/happy/")))
+    }
+
+    /// A token for another server is dropped at the code exchange and at
+    /// every refresh, with its refresh token; the sign-in then ends.
+    func testATokenForAnotherServerIsDropped() async throws {
+        let http = ScriptedHTTP()
+        let client = OAuthTokenClient(http: http)
+        let other = jwt("x", aud: "https://other.example/")
+        http.json(acme.tokenUrl, #"{"access_token":"\#(other)","token_type":"Bearer","refresh_token":"stolen"}"#)
+        let request = try OAuthSignInRequest(method: acme, audience: server, redirectUri: OAuthRedirect.uri)
+        await XCTAssertThrowsAsync(try await client.complete(request, callback: URL(string: "happy://oauth/callback?code=c&state=\(request.state)")!)) {
+            XCTAssertEqual($0 as? OAuthError, .wrongAudience)
+        }
+        http.json(acme.tokenUrl, #"{"access_token":"opaque","token_type":"Bearer"}"#)
+        await XCTAssertThrowsAsync(try await client.complete(request, callback: URL(string: "happy://oauth/callback?code=c&state=\(request.state)")!)) {
+            XCTAssertEqual($0 as? OAuthError, .wrongAudience, "not a JWT")
+        }
+
+        http.json(acme.refreshUrl!, #"{"access_token":"\#(other)","token_type":"Bearer","refresh_token":"r2"}"#)
+        let saved = SavedGrants()
+        let authorization = ServerAuthorization(grant: OAuthGrant(refreshToken: "r1", refreshUrl: acme.refreshUrl, clientId: "happy", audience: server.server),
+                                                tokens: client) { await saved.add($0) }
+        await XCTAssertThrowsAsync(try await authorization.bearer()) { XCTAssertEqual($0 as? OAuthError, .wrongAudience) }
+        let state = await authorization.state
+        XCTAssertEqual(state, .needsSignIn)
+        let grants = await saved.grants
+        XCTAssertTrue(grants.isEmpty, "the rotated refresh token wasn't kept")
+        // A grant with no server to check against isn't refreshed at all.
+        XCTAssertFalse(OAuthGrant(refreshToken: "r", refreshUrl: acme.refreshUrl, clientId: "happy").canRefresh)
     }
 
     func testOneRedirectURIAndOnlyItIsTheCallback() {
@@ -203,7 +306,7 @@ final class SignInRequiredTests: XCTestCase {
     /// or none, keeps nothing.
     func testAScannedCodesInstallationIsCheckedAfterSignIn() async throws {
         let http = ScriptedHTTP()
-        http.json(acme.tokenUrl, #"{"access_token":"a1","token_type":"Bearer","refresh_token":"r1"}"#)
+        http.json(acme.tokenUrl, #"{"access_token":"\#(a1)","token_type":"Bearer","refresh_token":"r1"}"#)
         http.json("https://happy.acme.example/v0/authentication", #"{"authenticated":true,"userId":null,"methods":[]}"#)
         let daemon = Daemon()
         let flow = ServerSignInFlow(origin: try ServerURL.normalize("https://happy.acme.example"), method: acme, tokens: OAuthTokenClient(http: http),
@@ -220,7 +323,7 @@ final class SignInRequiredTests: XCTestCase {
         XCTAssertEqual(signedIn.record.grant.refreshToken, "r1")
         let checked = await daemon.seen
         XCTAssertEqual(checked.map(\.path), ["/v0/health"])
-        XCTAssertEqual(checked.map(\.credential), ["a1"])
+        XCTAssertEqual(checked.map(\.credential), [a1])
 
         await XCTAssertThrowsAsync(try await signIn("zzzzzzzzzzzzzzzzzzzzzzzz")) { XCTAssertEqual($0 as? ServerSignInError, .wrongServer) }
         await health(#"{"ready":true}"#)
@@ -271,13 +374,13 @@ final class SignedInTransportTests: XCTestCase {
     }
 
     private func authorization(_ http: ScriptedHTTP, access: OAuthAccess? = OAuthAccess(token: "a1", expiresAt: nil), saved: SavedGrants = SavedGrants()) -> ServerAuthorization {
-        ServerAuthorization(grant: OAuthGrant(refreshToken: "r1", refreshUrl: acme.refreshUrl, clientId: "happy", resource: acme.resource),
+        ServerAuthorization(grant: OAuthGrant(refreshToken: "r1", refreshUrl: acme.refreshUrl, clientId: "happy", resource: acme.resource, audience: server.server),
                             access: access, tokens: OAuthTokenClient(http: http)) { await saved.add($0) }
     }
 
     func testCredentialIsTheAccessTokenAndA401RefreshesOnceAndRepeats() async throws {
         let http = ScriptedHTTP()
-        http.json(acme.refreshUrl!, #"{"access_token":"a2","token_type":"Bearer","refresh_token":"r2"}"#)
+        http.json(acme.refreshUrl!, #"{"access_token":"\#(a2)","token_type":"Bearer","refresh_token":"r2"}"#)
         let saved = SavedGrants()
         let daemon = Daemon()
         await daemon.answer("/v0/bots", HTTP1Response(status: 401, headers: json, body: Data(#"{"error":"Unauthorized","code":"unauthorized"}"#.utf8)),
@@ -286,7 +389,7 @@ final class SignedInTransportTests: XCTestCase {
         let response = try await transport.request(method: "GET", path: "/v0/bots", credential: "", body: nil, headers: [:])
         XCTAssertEqual(response.status, 200)
         let credentials = await daemon.credentials
-        XCTAssertEqual(credentials, ["a1", "a2"])
+        XCTAssertEqual(credentials, ["a1", a2])
         let grants = await saved.grants
         XCTAssertEqual(grants.map(\.refreshToken), ["r2"])
         let state = await transport.authorization.state
@@ -377,12 +480,12 @@ final class SignedInTransportTests: XCTestCase {
 
     func testConcurrentRefusalsShareOneRefresh() async throws {
         let http = ScriptedHTTP()
-        http.json(acme.refreshUrl!, #"{"access_token":"a2","token_type":"Bearer"}"#)
+        http.json(acme.refreshUrl!, #"{"access_token":"\#(a2)","token_type":"Bearer"}"#)
         let auth = authorization(http)
         async let first = auth.renew(after: "a1")
         async let second = auth.renew(after: "a1")
         let results = await [first, second]
-        for result in results { guard case .token("a2") = result else { return XCTFail("\(result)") } }
+        for result in results { guard case .token(a2) = result else { return XCTFail("\(result)") } }
         XCTAssertEqual(http.requests.count, 1)
     }
 

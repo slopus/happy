@@ -67,7 +67,11 @@ public final class AgentConnections {
     /// yet, so the first request refreshes one.
     func authorization(_ credential: AgentConnectionCredentials, for id: String, access: OAuthAccess? = nil) -> ServerAuthorization {
         if let value = authorizations[id] { return value }
-        let value = ServerAuthorization(grant: credential.signIn?.grant ?? OAuthGrant(clientId: ""), access: access, tokens: tokens) { [weak self] grant in
+        var grant = credential.signIn?.grant ?? OAuthGrant(clientId: "")
+        // A grant from before the audience check: the server it was
+        // signed in to, which never changes.
+        if grant.audience == nil, let server = credential.publicUrl.flatMap({ try? AgentOrigin($0) }) { grant.audience = OAuthAudience(origin: server).server }
+        let value = ServerAuthorization(grant: grant, access: access, tokens: tokens) { [weak self] grant in
             try await self?.saveGrant(grant, for: id)
         }
         authorizations[id] = value

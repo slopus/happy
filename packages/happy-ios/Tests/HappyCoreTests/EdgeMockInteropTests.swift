@@ -18,7 +18,7 @@ final class EdgeMockInteropTests: XCTestCase {
 
     /// Signs in as the app does, the mock's consent page standing in for the browser.
     private func signIn(_ port: Int) async throws -> (OAuthAccess, OAuthGrant) {
-        let request = try OAuthSignInRequest(method: method(port), redirectUri: "happy://oauth/callback")
+        let request = try OAuthSignInRequest(method: method(port), audience: OAuthAudience("https://localhost:8443/")!, redirectUri: "happy://oauth/callback")
         let (page, _) = try await URLSession.shared.data(from: request.url)
         let html = String(decoding: page, as: UTF8.self)
         let link = try XCTUnwrap(html.range(of: #"href="([^"]+)""#, options: .regularExpression).map { String(html[$0].dropFirst(6).dropLast()) })

@@ -95,7 +95,7 @@ public actor ServerAuthorization {
             // authorization server refusing it means signing in again.
             if refreshing == task {
                 switch error {
-                case OAuthError.server, OAuthError.invalidResponse, OAuthError.refreshUnavailable: signInRequired()
+                case OAuthError.server, OAuthError.invalidResponse, OAuthError.refreshUnavailable, OAuthError.wrongAudience: signInRequired()
                 default: break
                 }
             }

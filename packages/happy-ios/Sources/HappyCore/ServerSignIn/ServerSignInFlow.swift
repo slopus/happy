@@ -31,7 +31,9 @@ public struct ServerSignInFlow: Sendable {
                              makeTransport: @escaping @Sendable (AgentOrigin) -> any AgentTransport = ServerSignInFlow.transport) async throws -> ServerSignInFlow {
         let origin = try ServerURL.normalize(address)
         let discovery = ServerDiscovery(http: http)
-        guard let method = try await discovery.discover(origin).methods.first else { throw ServerSignInError.noSupportedMethod }
+        let methods = try await discovery.discover(origin).methods
+        guard !methods.isEmpty else { throw ServerSignInError.noSupportedMethod }
+        guard let method = methods.first(where: \.isBoundToItsAuthorizationServer) else { throw OAuthError.crossOrigin }
         return ServerSignInFlow(origin: origin, method: method, tokens: OAuthTokenClient(http: http), discovery: discovery, makeTransport: makeTransport)
     }
 
@@ -40,7 +42,7 @@ public struct ServerSignInFlow: Sendable {
 
     /// The authorization request to open in the browser.
     public func request(redirectUri: String) throws -> OAuthSignInRequest {
-        try OAuthSignInRequest(method: method, redirectUri: redirectUri)
+        try OAuthSignInRequest(method: method, audience: OAuthAudience(origin: origin), redirectUri: redirectUri)
     }
 
     /// Exchanges the redirect's code, then asks the server who signed in.

@@ -30,6 +30,9 @@ const state = {
     refresh: new Set(),
     profileName: process.env.ONBOARDED ? "Steve" : null,
     revokeAll: false,
+    // `/control/audience` mints tokens for another server; `/control/split`
+    // advertises a token URL on another site than the sign-in page.
+    audience: null,
     // Tokens issued, by grant: a relaunch that restores the session
     // refreshes without a new authorization code.
     grants: { authorization_code: 0, refresh_token: 0 },
@@ -68,8 +71,16 @@ function readBody(req) {
     });
 }
 
+// Access tokens are JWTs whose `aud` is the server's public base URL, as
+// `[feature.team.jwt] audience` makes the daemon require; unsigned here.
+const AUDIENCE = process.env.AUDIENCE ?? `${ORIGIN}/`;
+function jwt(aud) {
+    const part = (value) => b64url(Buffer.from(JSON.stringify(value)));
+    return `${part({ alg: "RS256", typ: "JWT" })}.${part({ aud, sub: "steve", jti: b64url(crypto.randomBytes(12)) })}.${b64url(crypto.randomBytes(32))}`;
+}
+
 function issue() {
-    const access = b64url(crypto.randomBytes(24));
+    const access = jwt(state.audience ?? AUDIENCE);
     const refresh = b64url(crypto.randomBytes(24));
     state.access.set(access, Date.now() + ACCESS_TTL * 1000);
     state.refresh.add(refresh);
@@ -142,6 +153,9 @@ const handler = async (req, res) => {
     if (url.pathname === "/control/restore") { state.revokeAll = false; return json(res, 200, { ok: true }); }
     if (url.pathname === "/control/log") return json(res, 200, { ok: true });
     if (url.pathname === "/control/grants") return json(res, 200, state.grants);
+    if (url.pathname === "/control/audience") { state.audience = url.searchParams.get("aud"); return json(res, 200, { ok: true }); }
+    if (url.pathname === "/control/split") { method.tokenUrl = `https://127.0.0.1:${PORT}/oauth/token`; return json(res, 200, { ok: true }); }
+    if (url.pathname === "/control/bind") { method.tokenUrl = `${ORIGIN}/oauth/token`; return json(res, 200, { ok: true }); }
 
     // Discovery: forwarded without edge auth.
     if (url.pathname === "/v0/authentication") {

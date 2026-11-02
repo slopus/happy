@@ -9,6 +9,11 @@ import HappyWire
 /// the daemon that advertised the method never sees the code, the verifier
 /// or a refresh token, and a refresh token goes only to the refresh URL
 /// recorded when it was issued.
+///
+/// A sign-in is bound to its authorization server and to its server
+/// (API.md, "Binding a sign-in"): the token and refresh URLs must be the
+/// authorization URL's origin, everything the attempt needs is frozen when
+/// it starts, and every access token must name this server in `aud`.
 
 /// One `oauth` sign-in method from `GET /v0/authentication`.
 public struct OAuthMethod: Codable, Equatable, Sendable {
@@ -39,6 +44,89 @@ public struct OAuthMethod: Codable, Equatable, Sendable {
             guard resource.count <= 2048, let url = URLComponents(string: resource), url.scheme != nil, url.fragment == nil else { throw OAuthError.invalidResponse }
         }
         return self
+    }
+
+    /// Whether the code, the verifier and the refresh token all go to the
+    /// site the person signs in at: a server advertising the real identity
+    /// provider's page with its own token URL would otherwise get them.
+    public var isBoundToItsAuthorizationServer: Bool {
+        guard let origin = OAuthOrigin(authorizationUrl), OAuthOrigin(tokenUrl) == origin else { return false }
+        return refreshUrl.map { OAuthOrigin($0) == origin } ?? true
+    }
+
+    /// The host the person signs in at, for the screen.
+    public var authorizationHost: String? { URLComponents(string: authorizationUrl)?.host?.lowercased() }
+}
+
+/// A URL's origin, compared parsed and never as a string prefix: the
+/// lowercased scheme, the lowercased host and the port, a missing one being
+/// the scheme's default.
+public struct OAuthOrigin: Equatable, Sendable {
+    public let scheme: String
+    public let host: String
+    public let port: Int
+
+    public init?(_ value: String) {
+        guard let parts = URLComponents(string: value) else { return nil }
+        self.init(parts)
+    }
+
+    init?(_ parts: URLComponents) {
+        guard let scheme = parts.scheme?.lowercased(), let host = parts.host, !host.isEmpty else { return nil }
+        // A host URLComponents left percent-encoded compares decoded; one
+        // spelled in Unicode and one in punycode don't match, which refuses
+        // rather than confuses them.
+        guard let decoded = host.removingPercentEncoding?.lowercased() else { return nil }
+        let port = parts.port ?? (scheme == "https" ? 443 : scheme == "http" ? 80 : -1)
+        guard port > 0 else { return nil }
+        self.scheme = scheme; self.host = decoded; self.port = port
+    }
+}
+
+/// Which server an access token must be for: the server URL frozen when the
+/// sign-in started. The token's `aud` (a string or an array) must hold an
+/// absolute URL with the server's origin and its path, a missing trailing
+/// `/` added. The signature isn't checked: the server does that; this only
+/// keeps a token minted for one server from being handed to another.
+public struct OAuthAudience: Equatable, Sendable {
+    public let server: String
+    private let origin: OAuthOrigin
+    private let path: String
+
+    /// `server` is a base URL such as `https://happy.acme.example/`.
+    public init?(_ server: String) {
+        guard let parts = URLComponents(string: server), let origin = OAuthOrigin(parts) else { return nil }
+        self.server = server; self.origin = origin; path = Self.directory(parts.percentEncodedPath)
+    }
+
+    /// The base URL of the server at `origin` (`https://host[:port]`).
+    public init(origin: AgentOrigin) {
+        self.init(origin.value + "/")!
+    }
+
+    public func accepts(_ token: String) -> Bool {
+        audiences(token).contains { value in
+            guard let parts = URLComponents(string: value), OAuthOrigin(parts) == origin else { return false }
+            return Self.directory(parts.percentEncodedPath) == path
+        }
+    }
+
+    private static func directory(_ path: String) -> String { path.hasSuffix("/") ? path : path + "/" }
+
+    /// The `aud` of a JWT's payload, unverified; none when it isn't one.
+    private func audiences(_ token: String) -> [String] {
+        let segments = token.split(separator: ".", omittingEmptySubsequences: false)
+        guard segments.count == 3, let payload = Self.base64URL(segments[1]),
+              let claims = try? JSONSerialization.jsonObject(with: payload) as? [String: Any] else { return [] }
+        if let single = claims["aud"] as? String { return [single] }
+        return (claims["aud"] as? [Any])?.compactMap { $0 as? String } ?? []
+    }
+
+    private static func base64URL(_ segment: Substring) -> Data? {
+        var text = segment.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        guard !text.contains("=") else { return nil }
+        text += String(repeating: "=", count: (4 - text.count % 4) % 4)
+        return Data(base64Encoded: text)
     }
 }
 
@@ -93,6 +181,10 @@ public enum OAuthError: Error, Equatable, Sendable {
     case refreshUnavailable
     /// The person closed the browser.
     case cancelled
+    /// The token or refresh URL isn't the authorization URL's origin.
+    case crossOrigin
+    /// The access token's `aud` doesn't name this server, or it isn't a JWT.
+    case wrongAudience
 }
 
 enum OAuthURL {
@@ -125,9 +217,13 @@ public enum OAuthRedirect {
     }
 }
 
-/// What a sign-in in progress keeps in memory until its redirect arrives.
+/// What a sign-in in progress keeps in memory until its redirect arrives:
+/// the method and the server as they were when it started, never read
+/// from the server again.
 public struct OAuthSignInRequest: Sendable {
     public let method: OAuthMethod
+    /// The server the tokens must be for.
+    public let audience: OAuthAudience
     public let redirectUri: String
     public let state: String
     public let codeVerifier: String
@@ -135,8 +231,10 @@ public struct OAuthSignInRequest: Sendable {
     public let url: URL
 
     /// `random` gives `count` random bytes; tests pass fixed ones.
-    public init(method: OAuthMethod, redirectUri: String, random: (Int) -> Data = OAuthSignInRequest.randomBytes) throws {
+    public init(method: OAuthMethod, audience: OAuthAudience, redirectUri: String, random: (Int) -> Data = OAuthSignInRequest.randomBytes) throws {
         let method = try method.validated()
+        guard method.isBoundToItsAuthorizationServer else { throw OAuthError.crossOrigin }
+        self.audience = audience
         guard var parts = URLComponents(url: try OAuthURL.secure(method.authorizationUrl), resolvingAgainstBaseURL: false) else { throw OAuthError.insecureURL }
         guard let redirect = URLComponents(string: redirectUri), redirect.scheme != nil, redirect.fragment == nil, redirect.query == nil else { throw OAuthError.insecureURL }
         self.method = method
@@ -184,21 +282,26 @@ public struct OAuthSignInRequest: Sendable {
 }
 
 /// The refresh half of a sign-in, recorded when its tokens were issued and
-/// kept in the Keychain. Its refresh token goes only to `refreshUrl`.
+/// kept in the Keychain. Its refresh token goes only to `refreshUrl`, and
+/// every token it gets must be for `audience`, the server signed in to.
 public struct OAuthGrant: Codable, Equatable, Sendable {
     public var refreshToken: String?
     public var refreshUrl: String?
     public var clientId: String
     public var resource: String?
+    /// The server's base URL, as `OAuthAudience` reads it. Grants from
+    /// before the audience check have none until the connection fills in
+    /// its server.
+    public var audience: String?
 
-    public init(refreshToken: String? = nil, refreshUrl: String? = nil, clientId: String, resource: String? = nil) {
-        self.refreshToken = refreshToken; self.refreshUrl = refreshUrl; self.clientId = clientId; self.resource = resource
+    public init(refreshToken: String? = nil, refreshUrl: String? = nil, clientId: String, resource: String? = nil, audience: String? = nil) {
+        self.refreshToken = refreshToken; self.refreshUrl = refreshUrl; self.clientId = clientId; self.resource = resource; self.audience = audience
     }
 
-    public var canRefresh: Bool { refreshToken != nil && refreshUrl != nil }
+    public var canRefresh: Bool { refreshToken != nil && refreshUrl != nil && audience.flatMap(OAuthAudience.init) != nil }
 
     func refreshForm() throws -> (URL, [(String, String)]) {
-        guard let refreshToken, let refreshUrl else { throw OAuthError.refreshUnavailable }
+        guard let refreshToken, let refreshUrl, audience.flatMap(OAuthAudience.init) != nil else { throw OAuthError.refreshUnavailable }
         var form = [("grant_type", "refresh_token"), ("refresh_token", refreshToken), ("client_id", clientId)]
         if let resource { form.append(("resource", resource)) }
         return (try OAuthURL.secure(refreshUrl), form)
@@ -238,7 +341,8 @@ public struct OAuthTokenClient: Sendable {
     /// Exchanges the code from `callback`: the tokens, and the grant to keep.
     public func complete(_ request: OAuthSignInRequest, callback: URL) async throws -> (OAuthAccess, OAuthGrant) {
         let code = try request.code(from: callback)
-        let grant = OAuthGrant(refreshToken: nil, refreshUrl: request.method.refreshUrl, clientId: request.method.clientId, resource: request.method.resource)
+        let grant = OAuthGrant(refreshToken: nil, refreshUrl: request.method.refreshUrl, clientId: request.method.clientId, resource: request.method.resource,
+                               audience: request.audience.server)
         return try await post(try OAuthURL.secure(request.method.tokenUrl), form: request.exchangeForm(code: code), previous: grant)
     }
 
@@ -267,6 +371,9 @@ public struct OAuthTokenClient: Sendable {
               !tokens.access_token.isEmpty, tokens.access_token.count <= 16384, tokens.token_type.lowercased() == "bearer",
               tokens.refresh_token.map({ !$0.isEmpty && $0.count <= 16384 }) ?? true,
               tokens.expires_in.map({ $0 >= 0 }) ?? true else { throw OAuthError.invalidResponse }
+        // A token for another server is dropped with its refresh token,
+        // before either is stored or sent anywhere.
+        guard let audience = previous.audience.flatMap(OAuthAudience.init), audience.accepts(tokens.access_token) else { throw OAuthError.wrongAudience }
         var grant = previous
         if let refresh = tokens.refresh_token { grant.refreshToken = refresh }
         return (OAuthAccess(token: tokens.access_token, expiresAt: tokens.expires_in.map { now().addingTimeInterval($0) }), grant)

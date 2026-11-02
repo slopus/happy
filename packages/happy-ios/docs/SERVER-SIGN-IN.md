@@ -89,23 +89,65 @@ and a server code scanned there signs in and lands on the server's home.
    doesn't follow redirects. A redirect (3xx but not 304), a 401 or a non-JSON 403 here means the
    load balancer didn't let discovery through, and the screen says so.
    Methods of a type the app doesn't know, or with insecure URLs, are left
-   out.
-3. `ASWebAuthenticationSession` opens `authorizationUrl` with
+   out. This runs as the sign-in screen opens, which then shows the
+   server's host and, beside it, the host the person will sign in at
+   ("Sign In At"). The method discovered then is the one used.
+3. The method must be bound to its authorization server (below), and the
+   attempt freezes it: the token URL, refresh URL, client ID, resource and
+   the server URL from the code are kept in memory
+   (`OAuthSignInRequest`) and never read from the server again, at the
+   callback or at any refresh.
+4. `ASWebAuthenticationSession` opens `authorizationUrl` with
    `response_type=code`, `client_id`, `redirect_uri`, `state`, an S256 PKCE
    challenge, `scope`, and `resource` (RFC 8707) when discovery gives one.
    The session isn't ephemeral, so the organization's SSO cookie in Safari
    is reused.
-4. The code goes to `tokenUrl` as a form (`OAuthTokenClient`, through
+5. The code goes to `tokenUrl` as a form (`OAuthTokenClient`, through
    `NoRedirectURLSessionTransport`, which refuses redirects), with
-   `resource` when present.
-5. `GET /v0/authentication` with the new token confirms
+   `resource` when present. The access token must name this server
+   (below).
+6. `GET /v0/authentication` with the new token confirms
    `authenticated: true`, and health is checked against the code's
    `instanceId` (above). When `userId` is null, the server hasn't met this
    person yet: the app asks for a name and saves it with
    `PATCH /v0/profile` before keeping the account. Otherwise the team-mode
    profile gate would answer 401 to everything.
-6. `AccountController.addServer` keeps it as an agent connection
+7. `AccountController.addServer` keeps it as an agent connection
    (`AgentConnection.server` is the origin) and opens it.
+
+## Binding a sign-in
+
+API.md ("Binding a sign-in", edge SSO contract) closes two ways a
+malicious server, such as one a scanned code points to, could take a
+sign-in:
+
+- **Same origin.** It could advertise the real identity provider's page
+  with its own token URL, and so receive the code and the PKCE verifier.
+  Before the browser opens, `OAuthMethod.isBoundToItsAuthorizationServer`
+  requires `tokenUrl`, and `refreshUrl` when there is one, to have the
+  origin of `authorizationUrl`. Origins are compared parsed
+  (`OAuthOrigin`: lowercased scheme and host, the port or the scheme's
+  default), never as string prefixes. A host spelled in Unicode on one
+  side and punycode on the other doesn't match, which refuses rather than
+  guesses. Otherwise: "This server's sign-in settings would send your
+  sign-in to a different site, so they can't be used."
+  (`OAuthError.crossOrigin`).
+- **Audience.** It could copy the real deployment's method, so the person
+  signs in for real and the app hands it a genuine token. After the code
+  exchange and after every refresh, the access token's JWT payload is
+  decoded (the signature isn't checked; the server does that) and its
+  `aud`, a string or an array, must hold an absolute URL with the server
+  URL's origin and path, a missing trailing `/` added (`OAuthAudience`).
+  The server URL is the code's base URL, kept in the grant as `audience`.
+  A token that doesn't match, or isn't a JWT, is dropped with its refresh
+  token before either is stored or sent: "This sign-in is for a different
+  server." (`OAuthError.wrongAudience`), and a refresh that gets one ends
+  the sign-in. Deployments must set `[feature.team.jwt] audience` to their
+  public base URL. A grant saved before this was added takes its
+  connection's server as its audience.
+- Token requests never follow redirects
+  (`NoRedirectURLSessionTransport`: `willPerformHTTPRedirection` answers
+  nil).
 
 ## Credentials
 
@@ -224,7 +266,8 @@ ported from happy-agent-client's `happyLinks.ts`.
 `Tests/HappyCoreTests/ServerSignInTests.swift`: the authorization URL and
 PKCE, the code and refresh forms, rotation, discovery filtering, the
 needs-sign-in rule, URL normalization, the server code's `instanceId`
-checked after sign-in, refresh-and-retry, a single shared refresh, the WebSocket handshake and
+checked after sign-in, the same-origin rule, the audience check at the
+exchange and at refresh, refresh-and-retry, a single shared refresh, the WebSocket handshake and
 framing, and tunnel classification.
 
 `scripts/edge-sso-mock/server.mjs` plays the load balancer, the identity
@@ -233,6 +276,10 @@ from `certs.sh`) and the same on plain HTTP on 8444. Without a valid
 bearer everything but discovery is a `302` to the IdP, CONNECT is a `405`
 HTML page, and `/control/expire`, `/control/revoke` and `/control/restore`
 expire every access token, end the SSO session, or let it sign in again.
+Access tokens are unsigned JWTs for `https://localhost:8443/`;
+`/control/audience?aud=…` mints them for another server and
+`/control/split` advertises a token URL on another site (`/control/bind`
+undoes it).
 It accepts only `happy://oauth/callback`, PKCE S256 and the `resource`.
 
 `Tests/HappyWireTests/ServerLinkTests.swift`: the server code's grammar,
@@ -247,7 +294,9 @@ scan.
   mock's CA. The
   simulator has no camera, so each launch hands the scanner its code with
   `HAPPY_SIMULATED_SCAN` (debug builds only). A code under a path prefix is
-  refused before any request, the code opened as a link is refused, a code
+  refused before any request, the code opened as a link is refused, a
+  method whose token URL is another site is refused before the browser, a
+  token for another server is dropped after it, a code
   naming another installation is refused after sign-in, then the right
   code (lowercase escapes), scanned from the first screen, signs in through
   ASWebAuthenticationSession, the name prompt answers the profile gate,
