@@ -1475,12 +1475,14 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     /// never comes.
     private var awaitingRecord = false
     private let awaitingRecordTask = TaskHolder()
-    static let recordWait: Duration = .seconds(15)
+    /// How long a missing row is on its way; shorter in tests.
+    var recordWait: Duration = .seconds(15)
 
     private func awaitRecord() {
         awaitingRecord = true
+        let wait = recordWait
         awaitingRecordTask.task = Task { [weak self] in
-            try? await Task.sleep(for: Self.recordWait)
+            try? await Task.sleep(for: wait)
             guard !Task.isCancelled, let self, self.awaitingRecord else { return }
             self.awaitingRecord = false
             self.updateHeader()

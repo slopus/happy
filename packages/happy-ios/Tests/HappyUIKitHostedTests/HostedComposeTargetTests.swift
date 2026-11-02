@@ -26,11 +26,11 @@ private final class TargetSpawns: @unchecked Sendable {
 
 /// The computers: a spawn answers with the new session's id at once and its
 /// row reaches the store `syncDelay` later, as sync delivers it after the
-/// daemon has replied.
+/// daemon has replied; with none, never.
 private struct TargetMachines: HomeOps {
     let store: LocalStore
     let log: TargetSpawns
-    let syncDelay: Duration
+    let syncDelay: Duration?
 
     func machineSpawnNewSession(options: SpawnSessionOptions) async -> SpawnSessionResult {
         log.add(options)
@@ -47,7 +47,7 @@ private struct TargetMachines: HomeOps {
             agentStateVersion: 1, agentStateCipher: nil, agentState: .object(["controlledByUser": .bool(false)]),
             dataKeyCipher: nil, decryptable: true
         )
-        let delay = syncDelay
+        guard let delay = syncDelay else { return .success(sessionId: HostedComposeTargetTests.newSessionId) }
         Task.detached { [store] in
             try? await Task.sleep(for: delay)
             try? store.upsertSessions([record])
@@ -192,7 +192,7 @@ final class HostedComposeTargetTests: XCTestCase {
         return ([old, today], [agent, server])
     }
 
-    private func reportedAccount(syncDelay: Duration = .zero, log: TargetSpawns, sender: (any ChatSending)? = nil, seed: (@Sendable (LocalStore) throws -> Void)? = nil) async throws -> (LegacyHomeViewController, UINavigationController, UIWindow, AccountSession) {
+    private func reportedAccount(syncDelay: Duration? = .zero, log: TargetSpawns, sender: (any ChatSending)? = nil, seed: (@Sendable (LocalStore) throws -> Void)? = nil) async throws -> (LegacyHomeViewController, UINavigationController, UIWindow, AccountSession) {
         let controller = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
@@ -387,6 +387,55 @@ final class HostedComposeTargetTests: XCTestCase {
         try await Self.deleteFreshSession(account.store)
         try await until { Self.showsDeleted(chat) }
         keep(window, "target-4b-real-deletion-still-says-deleted")
+    }
+
+    /// Sends a task from the empty chat with the record wait shortened,
+    /// and returns once the screen is the new session's chat.
+    private func sendTask(_ home: LegacyHomeViewController, _ navigation: UINavigationController, recordWait: Duration) async throws -> LegacyChatViewController {
+        let (chat, card, panel, start) = try await emptyChat(home, navigation)
+        chat.recordWait = recordWait
+        panel.kind.selectedSegmentIndex = try XCTUnwrap(panel.sessionKinds.firstIndex(of: .task))
+        panel.kind.sendActions(for: .valueChanged)
+        try await until { panel.sessionKind == .task && start.drafts.draft.agentType == .rig }
+        card.setText("Fix the login redirect", selection: NSRange(location: 22, length: 0))
+        card.delegate?.agentInputCardDidChangeText(card)
+        card.delegate?.agentInputCardDidPressSend(card)
+        try await until { !chat.isComposing }
+        XCTAssertTrue(chat.isAwaitingRecord)
+        return chat
+    }
+
+    /// A row that hasn't come by the end of the wait is taken for deleted;
+    /// when it comes after all, the chat is the session's.
+    func testARowLaterThanTheWaitSaysDeletedUntilItComes() async throws {
+        let log = TargetSpawns()
+        let (home, navigation, window, _) = try await reportedAccount(syncDelay: .milliseconds(2_500), log: log, sender: TargetAcceptingSender())
+        defer { window.isHidden = true }
+        let chat = try await sendTask(home, navigation, recordWait: .milliseconds(600))
+        XCTAssertFalse(Self.showsDeleted(chat), "waiting, not deleted")
+        try await until { !chat.isAwaitingRecord }
+        try await until { Self.showsDeleted(chat) }
+        try await until { !Self.showsDeleted(chat) }
+        XCTAssertEqual(chat.chatId, Self.newSessionId)
+    }
+
+    /// The session deleted before its row ever reached the phone, which
+    /// then never gets it: the chat waits out the wait, never saying
+    /// deleted early, then says it.
+    func testADeletionBeforeTheRowWasSeenSaysDeletedOnceTheWaitEnds() async throws {
+        let log = TargetSpawns()
+        let (home, navigation, window, _) = try await reportedAccount(syncDelay: nil, log: log, sender: TargetAcceptingSender())
+        defer { window.isHidden = true }
+        let chat = try await sendTask(home, navigation, recordWait: .milliseconds(1_200))
+        let deadline = ContinuousClock.now + .milliseconds(800)
+        while ContinuousClock.now < deadline {
+            chat.view.layoutIfNeeded()
+            XCTAssertFalse(Self.showsDeleted(chat), "deleted before the wait ended")
+            try await Task.sleep(for: .milliseconds(30))
+        }
+        XCTAssertTrue(chat.isAwaitingRecord)
+        try await until { !chat.isAwaitingRecord }
+        try await until { Self.showsDeleted(chat) }
     }
 
     private nonisolated static func deleteFreshSession(_ store: LocalStore) async throws {
