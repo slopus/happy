@@ -1059,6 +1059,22 @@ pages across and is dragged away up or down. A recording plays in its page
 (`VideoPage`). The position reads "N of M" for TalkBack only, as iOS has it
 for VoiceOver (`message.mediaPosition` in happy-app's catalogs).
 
+### Conversation turns
+
+Each run of a Happy Agent conversation is a turn, drawn as desktop draws it
+(iOS 7f6355041). A tool call is one line in plain words:
+`ui/conversation/ToolWords` ports desktop's `toolVerb` / `humanizeToolName`
+/ `toolGlyph`, so it reads "Shell ls", "Edit x.ts +3 −1" or "Explored a.ts",
+in the present tense while the call runs. `ui/chat/ToolView` is not used
+here. Once a run has `endedAt`, `Conversation.derive` adds a
+`ConversationRow.TurnEnd` ("Completed in 12s", which also copies the final
+answer, so that answer has no copy button of its own). `conversation/TurnFold`
+then folds the turn behind a `Trace` row ("View traces · N tools"). Folded,
+the turn keeps the person's words, the answer, file edits, media, artifacts
+and failures. `Conversation.toggleTurn` opens or folds it, and
+`FoldHold` in ConversationScreen keeps the trace row where it was on screen.
+Words are in `strings_turns.xml`.
+
 ### Image loading
 
 One Coil 3 `ImageLoader` (`ui/components/RemoteImage.kt`) for every

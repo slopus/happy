@@ -69,6 +69,8 @@ data class KeptConversation(
             put("id", run.id)
             put("status", run.status)
             run.startedAt?.let { put("startedAt", it) }
+            run.endedAt?.let { put("endedAt", it) }
+            run.reason?.let { put("reason", it) }
             put("messages", JsonArray(run.messages.map(::messageJson)))
         }
 
@@ -109,7 +111,23 @@ data class KeptConversation(
             }
             is Presentation.Exploration -> buildJsonObject {
                 put("type", "exploration")
-                put("operations", buildJsonArray { presentation.operations.forEach { add(buildJsonObject { put("name", it) }) } })
+                put(
+                    "operations",
+                    buildJsonArray {
+                        presentation.operations.forEach { op ->
+                            add(
+                                buildJsonObject {
+                                    put("kind", op.kind)
+                                    op.name?.let { put("name", it) }
+                                    op.target?.let { put("target", it) }
+                                    op.command?.let { put("command", it) }
+                                    op.query?.let { put("query", it) }
+                                    op.path?.let { put("path", it) }
+                                },
+                            )
+                        }
+                    },
+                )
             }
             is Presentation.Search -> buildJsonObject {
                 put("type", "search")
@@ -157,6 +175,33 @@ data class KeptConversation(
                 putJsonObject("answers") {
                     presentation.answers.forEach { (id, values) -> put(id, buildJsonArray { values.forEach { add(JsonPrimitive(it)) } }) }
                 }
+            }
+            is Presentation.FileDiff -> buildJsonObject {
+                put("type", "file_diff")
+                put(
+                    "files",
+                    buildJsonArray {
+                        presentation.files.forEach { file ->
+                            add(
+                                buildJsonObject {
+                                    put("path", file.path)
+                                    put("kind", file.kind)
+                                    file.added?.let { put("added", it) }
+                                    file.deleted?.let { put("deleted", it) }
+                                },
+                            )
+                        }
+                    },
+                )
+            }
+            is Presentation.AgentSpawn -> buildJsonObject {
+                put("type", "agent_spawn")
+                presentation.model?.let { name -> putJsonObject("model") { put("name", name) } }
+            }
+            is Presentation.Terminal -> buildJsonObject {
+                put("type", "background_terminal_interaction")
+                put("input", presentation.input)
+                presentation.command?.let { put("command", it) }
             }
         }
 

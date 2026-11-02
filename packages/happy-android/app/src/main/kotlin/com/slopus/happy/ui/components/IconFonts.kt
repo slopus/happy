@@ -17,10 +17,12 @@ import com.slopus.happy.R
 
 /** The Octicons glyphs happy-app uses (glyphmaps/Octicons.json). */
 enum class Octicon(val codepoint: Int) {
+    Alert(0xf102), // alert
     ArrowDown(0xf107), // arrow-down
     ArrowUp(0xf10d), // arrow-up
     Check(0xf11f), // check
     ChevronRight(0xf126), // chevron-right
+    Code(0xf12e), // code
     CommentDiscussion(0xf138), // comment-discussion
     Cpu(0xf13e), // cpu
     DiffRemoved(0xf14f), // diff-removed

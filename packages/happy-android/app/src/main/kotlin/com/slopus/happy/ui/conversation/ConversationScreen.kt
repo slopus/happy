@@ -184,6 +184,8 @@ class ConversationScreenActions(
     val onChoiceChange: (WorkChoice) -> Unit = {},
     /** Runs one of the agent's slash commands, with what was typed after its name; true when it went. */
     val onCommand: (name: String, arguments: String?) -> Boolean = { _, _ -> false },
+    /** Opens a finished turn on its work, or folds it again, by its run. */
+    val onToggleTurn: (String) -> Unit = {},
 )
 
 /**
@@ -256,7 +258,8 @@ fun ConversationScreen(
     val rows by rememberUpdatedState(state.rows)
     val pictureLabel = stringResource(R.string.conversation_picture)
     val videoLabel = stringResource(R.string.artifact_video)
-    val rowActions = remember(actions, legacy, pictures, media, store, pictureLabel, videoLabel, asks) {
+    val folds = remember(listState) { FoldHold(listState) }
+    val rowActions = remember(actions, legacy, pictures, media, store, pictureLabel, videoLabel, asks, folds) {
         ConversationRowActions(
             legacy = legacy,
             onRetryFailure = actions.onRetryFailure,
@@ -267,6 +270,10 @@ fun ConversationScreen(
             onOpenMedia = { ref -> media.open(ref.key, ref.item) { actions.loadMedia(ref) } },
             mediaOpening = { ref -> media.state(ref.key) },
             asks = asks,
+            onToggleTurn = { turn ->
+                folds.toggle(turn, rows)
+                actions.onToggleTurn(turn)
+            },
         )
     }
     val atNewest by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }
@@ -442,7 +449,7 @@ fun ConversationScreen(
                             } else {
                                 Box(Modifier.fillMaxSize())
                             }
-                            TranscriptPhase.Rows -> Transcript(state, listState, bubble, rowActions, actions.onLoadOlder, top, dockHeight, glass, keyboard, flight)
+                            TranscriptPhase.Rows -> Transcript(state, listState, bubble, rowActions, actions.onLoadOlder, top, dockHeight, glass, keyboard, flight, folds)
                         }
                     }
                     // New work: Task or Bot and a name, centred between the bar and the composer, riding the
@@ -568,6 +575,7 @@ private fun Transcript(
     glass: GlassSource,
     keyboard: KeyboardLift,
     flight: SendFlight,
+    folds: FoldHold,
 ) {
     val nearOldest by remember {
         derivedStateOf {
@@ -584,7 +592,7 @@ private fun Transcript(
     val reveal = remember(listState) { ListReveal(listState) }
     flight.atNewest = { listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0 }
     CompositionLocalProvider(LocalRevealHost provides reveal, LocalSendFlight provides flight) {
-        TranscriptList(state, listState, bubble, actions, onLoadOlder, bar, dock, glass, keyboard, reveal, flight)
+        TranscriptList(state, listState, bubble, actions, onLoadOlder, bar, dock, glass, keyboard, reveal, flight, folds)
     }
 }
 
@@ -601,8 +609,10 @@ private fun TranscriptList(
     keyboard: KeyboardLift,
     reveal: ListReveal,
     flight: SendFlight,
+    folds: FoldHold,
 ) {
     val density = LocalDensity.current
+    folds.apply(state.rows)
     // Rows arriving at the newest end come in as Telegram's do; with Reduce Motion they just appear.
     val motion = remember(listState) { TranscriptMotion(listState) }
     motion.update(state.rows, still = rememberReduceMotion())
@@ -643,6 +653,35 @@ private fun TranscriptList(
                 }
             }
         }
+    }
+}
+
+/**
+ * A turn opens or folds under the finger (iOS `foldMoved`): its fold control
+ * stays where it was on screen, so the rows it brings or takes move the
+ * others and not it, and the list stops following the newest row.
+ */
+internal class FoldHold(private val list: androidx.compose.foundation.lazy.LazyListState) {
+    private var held: Held? = null
+
+    private class Held(val key: String, val offset: Int, val open: Boolean)
+
+    /** [turn]'s control is tapped while the list shows [rows]. */
+    fun toggle(turn: String, rows: List<ConversationRow>) {
+        val key = ConversationRow.traceKey(turn)
+        val trace = list.layoutInfo.visibleItemsInfo.firstOrNull { it.key == key }
+        val open = (rows.firstOrNull { it.key == key } as? ConversationRow.Trace)?.open
+        held = if (trace != null && open != null) Held(key, trace.offset, open) else null
+    }
+
+    /** The rows composed now: once the turn has turned, its control is put back where it was, before they are laid out. */
+    fun apply(rows: List<ConversationRow>) {
+        val held = held ?: return
+        val index = rows.indexOfFirst { it.key == held.key }
+        val trace = rows.getOrNull(index) as? ConversationRow.Trace
+        if (trace != null && trace.open == held.open) return
+        this.held = null
+        if (trace != null) list.requestScrollToItem(index, -held.offset)
     }
 }
 

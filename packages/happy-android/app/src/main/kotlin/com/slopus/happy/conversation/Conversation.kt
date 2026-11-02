@@ -54,6 +54,16 @@ data class ComposerTaken(val serial: Int, val text: String)
 @Immutable
 data class WorkFailure(val kind: WorkKind, val reason: Problem)
 
+/** A run's status, when it began and ended, and why it ended (`run.*` metadata). */
+internal data class RunInfo(val status: String, val startedAt: Long?, val endedAt: Long? = null, val reason: String? = null) {
+    companion object {
+        fun of(run: Run) = RunInfo(run.status, run.startedAt, run.endedAt, run.reason)
+
+        /** An event's run object; [status] where it says none. */
+        fun of(run: JsonObject, status: String) = RunInfo(run["status"].str ?: status, run["startedAt"].long, run["endedAt"].long, run["reason"].str)
+    }
+}
+
 /** Everything a conversation screen draws. [rows] are newest first. */
 @Immutable
 data class ConversationState(
@@ -184,8 +194,10 @@ class Conversation(
     private var snapshot = _state.value
     private val builder = ConversationRowBuilder(typesetter = typesetter)
     private val runs = ArrayList<Pair<String, MutableList<String>>>()
-    /** Each run's status and start as last read, so it is kept as it came. */
-    private val runInfo = HashMap<String, Pair<String, Long?>>()
+    /** Each run's status, start and end as last read, so it is kept as it came. */
+    private val runInfo = HashMap<String, RunInfo>()
+    /** Finished turns opened on their work ([toggleTurn]). */
+    private val expanded = HashSet<String>()
     private val messages = HashMap<String, Message>()
     private val pending = ArrayList<String>()
     private val outgoing = ArrayList<Outgoing>()
@@ -342,7 +354,7 @@ class Conversation(
      * read whole again unless it is known to have finished.
      */
     private fun anchor(): String? {
-        val finished = if (running || runInfo[runs.lastOrNull()?.first]?.first == "running") runs.dropLast(1) else runs
+        val finished = if (running || runInfo[runs.lastOrNull()?.first]?.status == "running") runs.dropLast(1) else runs
         return finished.lastOrNull { it.second.isNotEmpty() }?.second?.last()
     }
 
@@ -396,7 +408,7 @@ class Conversation(
 
     private fun putRun(run: Run) {
         runs += run.id to run.messages.mapTo(ArrayList()) { it.id }
-        runInfo[run.id] = run.status to run.startedAt
+        runInfo[run.id] = RunInfo.of(run)
         run.messages.forEach { messages[it.id] = it }
     }
 
@@ -416,7 +428,7 @@ class Conversation(
                     val came = run.messages.map { it.id }
                     known.second.retainAll { it !in came }
                     known.second += came
-                    runInfo[run.id] = run.status to run.startedAt
+                    runInfo[run.id] = RunInfo.of(run)
                     run.messages.forEach { messages[it.id] = it }
                 }
             }
@@ -435,7 +447,7 @@ class Conversation(
         }
         outgoing.removeAll { it.id in messages }
         running = start.agent.isWorking
-        activeRunStartedAt = runs.lastOrNull()?.first?.let(runInfo::get)?.takeIf { start.agent.isWorking && it.first == "running" }?.second
+        activeRunStartedAt = runs.lastOrNull()?.first?.let(runInfo::get)?.takeIf { start.agent.isWorking && it.status == "running" }?.startedAt
         val events = held.orEmpty()
         held = null
         events.forEach(::receive)
@@ -462,8 +474,8 @@ class Conversation(
         val newest = runs.takeLast(KeptConversation.KEPT_RUNS)
         val kept = KeptConversation(
             runs = newest.map { (id, ids) ->
-                val (status, startedAt) = runInfo[id] ?: ("completed" to null)
-                Run(id, status, startedAt, ids.mapNotNull(messages::get))
+                val info = runInfo[id] ?: RunInfo("completed", null)
+                Run(id, info.status, info.startedAt, ids.mapNotNull(messages::get), info.endedAt, info.reason)
             },
             pending = pending.mapNotNull(messages::get),
             hasMore = snapshot.hasMore || newest.size < runs.size,
@@ -492,7 +504,7 @@ class Conversation(
                     val known = runs.mapTo(HashSet()) { it.first }
                     val older = page.runs.filter { it.id !in known }
                     runs.addAll(0, older.map { run -> run.id to run.messages.mapTo(ArrayList()) { it.id } })
-                    older.forEach { run -> runInfo[run.id] = run.status to run.startedAt }
+                    older.forEach { run -> runInfo[run.id] = RunInfo.of(run) }
                     older.forEach { run -> run.messages.forEach { messages[it.id] = it } }
                 }
                 publish { it.copy(loadingOlder = false, hasMore = page.hasMore) }
@@ -560,22 +572,23 @@ class Conversation(
             }
             "run.started" -> {
                 val run = payload["run"].obj ?: return
-                runs.lastOrNull()?.first?.let { last -> runInfo[last]?.let { runInfo[last] = "completed" to it.second } }
+                runs.lastOrNull()?.first?.let { last -> runInfo[last]?.let { runInfo[last] = it.copy(status = "completed") } }
                 accept(payload["acceptedMessageIds"].strings(), run["id"].str ?: return)
                 activeRunStartedAt = run["startedAt"].long
                 running = true
-                runInfo[run["id"].str!!] = "running" to run["startedAt"].long
+                runInfo[run["id"].str!!] = RunInfo.of(run, "running")
             }
             "run.boundary" -> {
                 val run = payload["startedRun"].obj ?: return
-                runs.lastOrNull()?.first?.let { last -> runInfo[last]?.let { runInfo[last] = "completed" to it.second } }
+                // The steered run ended: when, and why.
+                finish(payload["finishedRun"].obj)
                 accept(payload["acceptedMessageIds"].strings(), run["id"].str ?: return)
                 activeRunStartedAt = run["startedAt"].long
                 running = true
-                runInfo[run["id"].str!!] = "running" to run["startedAt"].long
+                runInfo[run["id"].str!!] = RunInfo.of(run, "running")
             }
             "run.finished" -> {
-                runs.lastOrNull()?.first?.let { last -> runInfo[last] = "completed" to runInfo[last]?.second }
+                finish(payload["run"].obj)
                 activeRunStartedAt = null
                 running = false
                 agent = agent?.copy(status = "idle")
@@ -623,6 +636,20 @@ class Conversation(
     }
 
     private fun kotlinx.serialization.json.JsonElement?.strings(): List<String> = arr.orEmpty().mapNotNull { it.str }
+
+    /** A run ended, as [run] says, else the newest one: no longer running. */
+    private fun finish(run: JsonObject?) {
+        val id = run?.get("id").str ?: runs.lastOrNull()?.first ?: return
+        runInfo[id] = run?.let { RunInfo.of(it, "completed") } ?: runInfo[id]?.copy(status = "completed") ?: RunInfo("completed", null)
+    }
+
+    /** Opens a finished turn on its work, or folds it again. */
+    fun toggleTurn(turn: String) {
+        scope.launch(lane) {
+            if (!expanded.remove(turn)) expanded += turn
+            publish()
+        }
+    }
 
     /** Puts the message in its run; true when that moved it. */
     private fun place(messageId: String, runId: String): Boolean {
@@ -1193,7 +1220,31 @@ class Conversation(
         val waiting = base.question
         for ((runId, ids) in runs) {
             val streaming = working && runId == lastRun
-            for (id in ids) messages[id]?.let { rows += settled(sentAt(builder.rows(it, agentId, parentAgentId, streaming && it.role == "agent")), waiting) }
+            val turn = ArrayList<ConversationRow>()
+            var tools = 0
+            for (id in ids) messages[id]?.let { message ->
+                if (message.role == "agent") tools += message.content.count { it is Block.ToolCall }
+                turn += settled(sentAt(builder.rows(message, agentId, parentAgentId, streaming && message.role == "agent")), waiting)
+            }
+            // Ended: how, after how long, and the answer to copy (desktop's `turnStatus`); then it folds.
+            val info = runInfo[runId]
+            val endedAt = info?.endedAt
+            if (endedAt != null) {
+                val at = turn.indexOfLast { it is ConversationRow.Text }
+                val answer = (turn.getOrNull(at) as? ConversationRow.Text)?.text
+                val ended = ConversationRow.TurnEnd(
+                    key = "$runId:status",
+                    turn = runId,
+                    reason = info.reason ?: "completed",
+                    durationMs = info.startedAt?.let { maxOf(0, endedAt - it) },
+                    tools = tools,
+                    copyText = answer,
+                )
+                // Its copy is how the turn ended, as desktop's: the answer keeps no button of its own.
+                if (ended.complete && answer != null) turn[at] = (turn[at] as ConversationRow.Text).copy(copies = false)
+                turn += ended
+            }
+            rows += TurnFold.fold(runId, turn, runId in expanded)
         }
         // A question waiting on the person is pinned to the end, under the work; a secret's form stays over the composer.
         if (waiting != null && waiting.secret == null) {

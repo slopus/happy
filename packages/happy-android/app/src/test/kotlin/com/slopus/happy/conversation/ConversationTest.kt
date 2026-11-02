@@ -224,7 +224,7 @@ class ConversationTest {
         // Newest first.
         assertEquals(listOf("m3:user", "m2:2", "m2:1", "m2:0", "m1:user"), state.rows.map { it.key })
         assertEquals(Delivery.Pending, (state.rows[0] as ConversationRow.User).delivery)
-        assertEquals("ls", (state.rows[2] as ConversationRow.Tool).detail)
+        assertEquals(Presentation.Command("ls", null), (state.rows[2] as ConversationRow.Tool).tool.presentation)
     }
 
     @Test fun `home's name is the title before anything is read, and the computer's title wins once it is`() = runTest {
@@ -1122,6 +1122,76 @@ class ConversationTest {
         val second = conversation(offline, keeper = store)
         advanceUntilIdle()
         assertEquals(listOf("compact", "code-review"), second.state.value.commands.map { it.name })
+    }
+
+
+    private val endedTurn = """{"runs":[{"id":"r1","status":"completed","startedAt":1000,"endedAt":13000,"reason":"completed","messages":[
+        {"id":"m1","role":"user","createdAt":1,"content":[{"type":"text","text":"Fix it"}],"metadata":{}},
+        {"id":"m2","role":"agent","createdAt":2,"content":[
+            {"type":"reasoning","text":"Look first."},
+            {"type":"tool_call","id":"c1","name":"exec_command","status":"completed","presentation":{"type":"exec_command","command":"ls"}},
+            {"type":"tool_call","id":"c2","name":"apply_patch","status":"completed","presentation":{"type":"file_diff","files":[{"path":"src/a.ts","kind":"update","added":3,"deleted":1}]}},
+            {"type":"text","text":"Done"}
+        ],"metadata":{}}
+    ]}],"hasMore":false}"""
+
+    @Test fun `a finished turn folds its work behind its trace and says how it ended`() = runTest {
+        val agent = FakeAgent().apply { page = endedTurn }
+        val keeper = MemoryKeeper()
+        val chat = conversation(agent, keeper = keeper)
+        advanceUntilIdle()
+        // Folded: the person's words, the file it edited, the control, the answer and how it ended.
+        assertEquals(listOf("r1:status", "m2:3", "r1:trace", "m2:2", "m1:user"), chat.state.value.rows.map { it.key })
+        val ended = chat.state.value.rows[0] as ConversationRow.TurnEnd
+        assertEquals(ConversationRow.TurnEnd("r1:status", "r1", "completed", 12_000, 2, "Done"), ended)
+        assertTrue(ended.complete)
+        // Its copy is the turn's: the answer has none of its own.
+        assertFalse((chat.state.value.rows[1] as ConversationRow.Text).copies)
+        assertEquals(ConversationRow.Trace("r1:trace", "r1", false, 2), chat.state.value.rows[2])
+        val edit = (chat.state.value.rows[3] as ConversationRow.Tool).tool
+        assertEquals("apply_patch", edit.name)
+        assertTrue(edit.isResult)
+
+        // Open: every step, the control riding the first.
+        chat.toggleTurn("r1")
+        advanceUntilIdle()
+        assertEquals(listOf("r1:status", "m2:3", "m2:2", "m2:1", "m2:0", "r1:trace", "m1:user"), chat.state.value.rows.map { it.key })
+        assertTrue((chat.state.value.rows[5] as ConversationRow.Trace).open)
+        // A step right above how it ended keeps it 4 further off; here the answer is.
+        assertFalse((chat.state.value.rows[0] as ConversationRow.TurnEnd).afterStep)
+
+        chat.toggleTurn("r1")
+        advanceUntilIdle()
+        assertEquals("r1:trace", chat.state.value.rows[2].key)
+
+        // When and why it ended are kept with it.
+        val kept = KeptConversation.parse(keeper.value)!!.runs.single()
+        assertEquals(13_000L, kept.endedAt)
+        assertEquals("completed", kept.reason)
+    }
+
+    @Test fun `a turn still running is shown whole and ends when its run finishes`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        signals.emit(event("run.started", """{"agentId":"a1","run":{"id":"r1","status":"running","startedAt":1000},"acceptedMessageIds":[]}"""))
+        signals.emit(event("message.created", """{"agentId":"a1","runId":"r1","message":{"id":"m","role":"agent","createdAt":5,"content":[{"type":"tool_call","id":"c1","name":"exec_command","status":"completed","presentation":{"type":"exec_command","command":"ls"}},{"type":"text","text":"Hi"}],"metadata":{}}}"""))
+        advanceUntilIdle()
+        assertEquals(listOf("m:1", "m:0"), chat.state.value.rows.map { it.key })
+
+        // Steered: the run ends by the boundary, which says why, and offers no copy.
+        signals.emit(event("run.boundary", """{"agentId":"a1","finishedRun":{"id":"r1","status":"completed","startedAt":1000,"endedAt":4000,"reason":"steering"},"startedRun":{"id":"r2","status":"running","startedAt":4000},"acceptedMessageIds":[]}"""))
+        advanceUntilIdle()
+        val steered = chat.state.value.rows.first { it is ConversationRow.TurnEnd } as ConversationRow.TurnEnd
+        assertEquals("steering", steered.reason)
+        assertEquals(3_000L, steered.durationMs)
+        assertFalse(steered.complete)
+
+        signals.emit(event("message.created", """{"agentId":"a1","runId":"r2","message":{"id":"n","role":"agent","createdAt":6,"content":[{"type":"text","text":"Again"}],"metadata":{}}}"""))
+        signals.emit(event("run.finished", """{"agentId":"a1","run":{"id":"r2","status":"completed","startedAt":4000,"endedAt":9000,"reason":"error"}}"""))
+        advanceUntilIdle()
+        val failed = chat.state.value.rows[0] as ConversationRow.TurnEnd
+        assertEquals(ConversationRow.TurnEnd("r2:status", "r2", "error", 5_000, 0, "Again"), failed)
     }
 
 }

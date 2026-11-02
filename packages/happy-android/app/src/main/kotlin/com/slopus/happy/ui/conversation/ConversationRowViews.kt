@@ -35,8 +35,6 @@ import com.slopus.happy.R
 import com.slopus.happy.chat.ChatMessage
 import com.slopus.happy.chat.ChatRow
 import com.slopus.happy.chat.MessageDelivery
-import com.slopus.happy.chat.ToolCall
-import com.slopus.happy.chat.ToolState
 import com.slopus.happy.chat.UserDisplay
 import com.slopus.happy.artifacts.formatDuration
 import com.slopus.happy.conversation.Block
@@ -51,9 +49,9 @@ import androidx.compose.runtime.withFrameNanos
 import com.slopus.happy.conversation.MediaFlow
 import com.slopus.happy.conversation.MediaRef
 import com.slopus.happy.conversation.NoticeKind
+import com.slopus.happy.conversation.ToolUse
 import com.slopus.happy.ui.chat.BubblePalette
 import com.slopus.happy.ui.chat.MessageCallbacks
-import com.slopus.happy.ui.chat.ToolView
 import com.slopus.happy.ui.chat.UserMessage
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
@@ -80,7 +78,7 @@ object ConversationRowTags {
     const val NOTICE = "conversation.notice"
 }
 
-/** The rows' own measures; text, tools and user bubbles are the legacy chat's (MessageSpec, ToolSpec). */
+/** The rows' own measures; text and user bubbles are the legacy chat's (MessageSpec), a turn's own rows [TurnRowSpec]. */
 object ConversationRowSpec {
     val marginHorizontal = 16.dp
     val marginVertical = 6.dp
@@ -112,12 +110,28 @@ class ConversationRowActions(
     val mediaOpening: (MediaRef) -> MediaOpening? = { null },
     /** The waiting question's ticks and answer; null where nothing answers. */
     val asks: AskActions? = null,
+    /** Opens a finished turn on its work, or folds it again, by its run. */
+    val onToggleTurn: (String) -> Unit = {},
 )
 
 /**
- * One conversation row. User bubbles, agent text and tool rows are the
- * legacy chat's own components (MessageView, ToolView in compact form, so
- * tool output stays hidden); the rest are drawn here. Spec: every row here
+ * What a call showed under its line, [TurnRowSpec.resultGap] apart (iOS
+ * `ToolResultLayout`); alone where no call presented it.
+ */
+@Composable
+private fun ToolResult(tool: ToolUse?, modifier: Modifier, body: @Composable (Modifier) -> Unit) {
+    if (tool == null) return body(modifier)
+    Column(modifier) {
+        ToolLine(tool, bottom = TurnRowSpec.resultGap - ConversationRowSpec.marginVertical)
+        body(Modifier)
+    }
+}
+
+/**
+ * One conversation row. User bubbles and agent text are the legacy chat's
+ * own components (MessageView); a tool call is its one line in plain words
+ * and a turn's end and fold control are desktop's ([TurnRowSpec]); the rest
+ * are drawn here. Spec: every row here
  * is 16 in from the sides and 6 above and below. Reasoning: an 13/18
  * semibold "Thinking" line with a 16 chevron in textSecondary, opening to
  * the 14/20 text in textSecondary. Pictures are laid out as iOS lays them
@@ -149,40 +163,26 @@ fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: Co
         when (row) {
             is ConversationRow.User -> UserRow(row, bubble, actions, content)
             is ConversationRow.Text -> TextRow(row, actions, content)
-            is ConversationRow.Tool -> ToolView(
-                ChatMessage.ToolCallMessage(
-                    id = row.key,
-                    createdAt = row.createdAt,
-                    tool = ToolCall(
-                        callId = row.callId,
-                        name = row.name,
-                        state = when (row.status) {
-                            "completed" -> ToolState.Completed
-                            "failed" -> ToolState.Error
-                            else -> ToolState.Running
-                        },
-                        input = row.input,
-                        createdAt = row.createdAt,
-                    ),
-                ),
-                actions.legacy,
-                content,
-            )
+            is ConversationRow.Tool -> ToolLine(row.tool, content)
             is ConversationRow.Reasoning -> ReasoningProse(row, content)
             is ConversationRow.Picture -> Box(content.fillMaxWidth().padding(horizontal = ConversationRowSpec.marginHorizontal, vertical = ConversationRowSpec.marginVertical)) {
                 InlinePictures(row.key, listOf(row.image), actions, MediaFlow.tool, alignEnd = false)
             }
-            is ConversationRow.Media -> MediaRow(row, actions, content)
-            is ConversationRow.Artifact -> InfoCard(
-                icon = Ionicon.LayersOutline,
-                title = row.title.ifEmpty { stringResource(R.string.conversation_artifact) },
-                detail = stringResource(R.string.conversation_artifact_unavailable).takeIf { actions.onOpenArtifact == null },
-                onClick = actions.onOpenArtifact?.let { open -> { open(row) } },
-                modifier = content.testTag(ConversationRowTags.ARTIFACT),
-            )
+            is ConversationRow.Media -> ToolResult(row.tool, content) { MediaRow(row, actions, it) }
+            is ConversationRow.Artifact -> ToolResult(row.tool, content) {
+                InfoCard(
+                    icon = Ionicon.LayersOutline,
+                    title = row.title.ifEmpty { stringResource(R.string.conversation_artifact) },
+                    detail = stringResource(R.string.conversation_artifact_unavailable).takeIf { actions.onOpenArtifact == null },
+                    onClick = actions.onOpenArtifact?.let { open -> { open(row) } },
+                    modifier = it.testTag(ConversationRowTags.ARTIFACT),
+                )
+            }
             is ConversationRow.Collaborator -> CollaboratorProse(row, actions.legacy, content)
             is ConversationRow.Failure -> FailureRow(row, actions, content)
             is ConversationRow.Ask -> AskRow(row, actions.asks, content)
+            is ConversationRow.TurnEnd -> TurnEndRow(row, content)
+            is ConversationRow.Trace -> TraceRow(row, actions.onToggleTurn, content)
             is ConversationRow.Notice -> Text(
                 stringResource(
                     when (row.kind) {
@@ -215,7 +215,7 @@ private fun TextRow(row: ConversationRow.Text, actions: ConversationRowActions, 
     val reveal = rememberTextReveal(row.key, streaming = row.live != null) { row.live?.isFresh() == true }
     val text = live?.text ?: row.text
     val blocks = live?.blocks ?: row.blocks
-    AnswerProse(ProseSource(row.key, ProseKind.Answer, text, blocks), actions.legacy, modifier, reveal)
+    AnswerProse(ProseSource(row.key, ProseKind.Answer, text, blocks), actions.legacy, modifier, reveal, copies = row.copies)
 }
 
 /**

@@ -85,13 +85,36 @@ data class MediaItem(
 /** What a tool call showed the person (`presentation`), when the daemon typed it. */
 sealed interface Presentation {
     data class Command(val command: String, val output: String?) : Presentation
-    data class Exploration(val operations: List<String>) : Presentation
+    /** The steps of a look around: `list` a target, `read` a file by name, `search` by command, query and path. */
+    data class Exploration(val operations: List<Operation>) : Presentation {
+        data class Operation(
+            val kind: String,
+            val name: String? = null,
+            val target: String? = null,
+            val command: String? = null,
+            val query: String? = null,
+            val path: String? = null,
+        )
+
+        companion object {
+            /** Files read, by name. */
+            fun reads(vararg names: String) = Exploration(names.map { Operation("read", name = it) })
+        }
+    }
     data class Search(val query: String, val target: String) : Presentation
     /** [columns] is the grid the producer asked for (`layout` `{type: "columns", columns}`, 1 or 2), else 0: justified rows. */
     data class Media(val items: List<MediaItem>, val columns: Int = 0) : Presentation
     data class Artifact(val artifactId: String, val artifactType: String?, val title: String?, val version: Int?, val shows: String? = null) : Presentation
     /** An answered question as the person was shown it, and the values they gave (`user_input`). */
     data class UserInput(val prompts: List<Question.Prompt>, val answers: Map<String, List<String>>) : Presentation
+    /** Files a call changed (`file_diff`), without their hunks: `kind` is `add`, `delete` or `update`. */
+    data class FileDiff(val files: List<File>) : Presentation {
+        data class File(val path: String, val kind: String, val added: Int? = null, val deleted: Int? = null)
+    }
+    /** A subagent started (`agent_spawn`), with its model's name when said. */
+    data class AgentSpawn(val model: String?) : Presentation
+    /** What was typed into a background terminal (`background_terminal_interaction`), and the command it runs. */
+    data class Terminal(val input: String, val command: String?) : Presentation
 
     companion object {
         fun parse(value: JsonElement?): Presentation? {
@@ -101,7 +124,14 @@ sealed interface Presentation {
                 "exploration" -> Exploration(
                     o["operations"].arr.orEmpty().mapNotNull { op ->
                         val operation = op.obj ?: return@mapNotNull null
-                        operation["name"].str ?: operation["target"].str ?: operation["query"].str ?: operation["command"].str
+                        Exploration.Operation(
+                            kind = operation["kind"].str ?: "search",
+                            name = operation["name"].str,
+                            target = operation["target"].str,
+                            command = operation["command"].str,
+                            query = operation["query"].str,
+                            path = operation["path"].str,
+                        )
                     },
                 )
                 "search" -> Search(o["query"].str ?: return null, o["target"].str ?: "web")
@@ -123,6 +153,14 @@ sealed interface Presentation {
                     }.takeIf { it.isNotEmpty() } ?: return null,
                     o["answers"].obj?.let(Question::answersOf).orEmpty(),
                 )
+                "file_diff" -> FileDiff(
+                    o["files"].arr.orEmpty().mapNotNull { value ->
+                        val file = value.obj ?: return@mapNotNull null
+                        FileDiff.File(file["path"].str ?: return@mapNotNull null, file["kind"].str ?: "update", file["added"].num?.toInt(), file["deleted"].num?.toInt())
+                    },
+                )
+                "agent_spawn" -> AgentSpawn(o["model"].obj?.get("name").str)
+                "background_terminal_interaction" -> Terminal(o["input"].str.orEmpty(), o["command"].str)
                 else -> null
             }
         }
@@ -221,8 +259,19 @@ data class Message(
     }
 }
 
-/** A run of history: the messages one turn of work holds, oldest first. */
-data class Run(val id: String, val status: String, val startedAt: Long?, val messages: List<Message>) {
+/**
+ * A run of history: the messages one turn of work holds, oldest first, and
+ * once it ended when and why (`completed`, `steering`, `abort`, `error`,
+ * `compaction`).
+ */
+data class Run(
+    val id: String,
+    val status: String,
+    val startedAt: Long?,
+    val messages: List<Message>,
+    val endedAt: Long? = null,
+    val reason: String? = null,
+) {
     companion object {
         fun parse(value: JsonElement?): Run? {
             val o = value.obj ?: return null
@@ -231,6 +280,8 @@ data class Run(val id: String, val status: String, val startedAt: Long?, val mes
                 status = o["status"].str ?: "completed",
                 startedAt = o["startedAt"].long,
                 messages = o["messages"].arr.orEmpty().mapNotNull(Message::parse),
+                endedAt = o["endedAt"].long,
+                reason = o["reason"].str,
             )
         }
     }

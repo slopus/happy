@@ -42,6 +42,7 @@ enum class Ionicon(val codepoint: Int) {
     Checkmark(0xf21d), // checkmark
     CheckmarkCircle(0xf21e), // checkmark-circle
     CheckmarkCircleOutline(0xf21f), // checkmark-circle-outline
+    CheckmarkOutline(0xf227), // checkmark-outline
     ChevronBack(0xf229), // chevron-back
     ChevronDown(0xf232), // chevron-down
     ChevronForward(0xf23b), // chevron-forward
@@ -61,6 +62,7 @@ enum class Ionicon(val codepoint: Int) {
     CubeOutline(0xf299), // cube-outline
     DesktopOutline(0xf29f), // desktop-outline
     DiceOutline(0xf2a5), // dice-outline
+    DocumentOutline(0xf2b1), // document-outline
     DocumentTextOutline(0xf2b4), // document-text-outline
     DownloadOutline(0xf2ba), // download-outline
     EllipseOutline(0xf2cc), // ellipse-outline
@@ -69,6 +71,7 @@ enum class Ionicon(val codepoint: Int) {
     ExtensionPuzzleOutline(0xf2e4), // extension-puzzle-outline
     EyeOffOutline(0xf2e8), // eye-off-outline
     EyeOutline(0xf2ea), // eye-outline
+    FilmOutline(0xf2ff), // film-outline
     Filter(0xf301), // filter
     FingerPrintOutline(0xf308), // finger-print-outline
     Flash(0xf316), // flash

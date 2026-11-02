@@ -397,14 +397,15 @@ internal class ProseReveal(private val reveal: TextReveal) {
 
 /**
  * An answer drawn from its laid-out [source]: AgentMessage's spec (16 in,
- * 10 above and below, the copy button under the text) with the text
+ * 10 above and below, the copy button under the text unless its turn's
+ * end offers it, [copies]) with the text
  * drawn, not composed. A long press on the words puts this one answer
  * back in a SelectionContainer over MarkdownView, exactly as it lays out,
  * with the word under the finger selected; once nothing is selected it is
  * drawn again. [reveal] draws streaming words in as AgentMessage's does.
  */
 @Composable
-internal fun AnswerProse(source: ProseSource, callbacks: MessageCallbacks, modifier: Modifier, reveal: TextReveal?) {
+internal fun AnswerProse(source: ProseSource, callbacks: MessageCallbacks, modifier: Modifier, reveal: TextReveal?, copies: Boolean = true) {
     val prose = rememberProse(source)
     var selecting by remember(source.key) { mutableStateOf<SelectionStart?>(null) }
     val haptics = LocalHapticFeedback.current
@@ -447,7 +448,7 @@ internal fun AnswerProse(source: ProseSource, callbacks: MessageCallbacks, modif
                     ) { block -> MarkdownBlockView(block, callbacks.onOptionPress) }
                 }
             }
-            ProseCopyButton(source.text)
+            if (copies) ProseCopyButton(source.text)
         }
     }
 }

@@ -94,7 +94,7 @@ class ConversationLayoutTest {
             listOf(
                 Block.Reasoning("The redirect loop suggests the session cookie is not set before the callback."),
                 Block.ToolCall("c1", "Bash", "completed", Presentation.Command("grep -rn redirect sources/auth", "...")),
-                Block.ToolCall("c2", "Read", "completed", Presentation.Exploration(listOf("sources/auth/callback.ts"))),
+                Block.ToolCall("c2", "Read", "completed", Presentation.Exploration.reads("sources/auth/callback.ts")),
                 Block.Text("Found it: the callback rewrites the URL **before** the cookie is written.\n\n```ts\nawait setSession(token)\nredirect(next)\n```"),
             ),
         ),
@@ -336,7 +336,8 @@ class ConversationLayoutTest {
         rule.setContent {
             com.slopus.happy.ui.theme.HappyTheme(preference = if (dark) com.slopus.happy.ui.theme.ThemePreference.Dark else com.slopus.happy.ui.theme.ThemePreference.Light) {
                 surface = com.slopus.happy.ui.theme.HappyTheme.colors.surface.toArgb()
-                ConversationScreen(ConversationState(created = true, loaded = true, rows = history, agent = agent), null, ConversationScreenActions())
+                // The newest rows only, so no row lies under the bar's right edge, where its colour is read.
+                ConversationScreen(ConversationState(created = true, loaded = true, rows = history.take(2), agent = agent), null, ConversationScreenActions())
             }
         }
         for (mode in listOf(false, true)) {

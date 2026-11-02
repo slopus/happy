@@ -6,8 +6,6 @@ import com.slopus.happy.chat.markdown.parseMarkdown
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
 
 /** Where a message this phone sent stands. */
 @Immutable
@@ -27,10 +25,29 @@ data class MediaRef(val toolCallId: String, val index: Int, val item: MediaItem)
 }
 
 /**
+ * A tool call as its line reads it (iOS `ChatItem.Tool`): its name, where it
+ * stands (`running`, `completed` or `failed`) and what it presented.
+ */
+@Immutable
+data class ToolUse(
+    val name: String,
+    val status: String,
+    val presentation: Presentation? = null,
+    /** The skill a `read_skill` call reads, from its arguments: its line names it. */
+    val skill: String? = null,
+) {
+    val running: Boolean get() = status == "running"
+    val failed: Boolean get() = status == "failed"
+
+    /** A file edit, presented media or an artifact is a result to open: it stays when its turn folds. */
+    val isResult: Boolean get() = presentation is Presentation.FileDiff || presentation is Presentation.Media || presentation is Presentation.Artifact
+}
+
+/**
  * One row of a conversation as the phone draws it. A message becomes one
  * row per block it shows, keyed by message and block, so a streaming block
- * recomposes alone. Tool data is never shown: a tool call is its name,
- * status and the one line its presentation gives.
+ * recomposes alone. Tool data is never shown: a tool call is the one line
+ * its name, status and presentation give.
  */
 @Immutable
 sealed interface ConversationRow {
@@ -53,7 +70,14 @@ sealed interface ConversationRow {
      * a delta changes [live] only, so the list and everything around it stay
      * as they are and only this row redraws. Read [current] for the words now.
      */
-    data class Text(override val key: String, val text: String, val blocks: List<MarkdownBlock>, val live: LiveText? = null) : ConversationRow {
+    data class Text(
+        override val key: String,
+        val text: String,
+        val blocks: List<MarkdownBlock>,
+        val live: LiveText? = null,
+        /** Its own copy button; a finished turn's answer has its turn's instead ([TurnEnd.copyText]). */
+        val copies: Boolean = true,
+    ) : ConversationRow {
         val current: String get() = live?.content?.value?.text ?: text
     }
 
@@ -62,20 +86,22 @@ sealed interface ConversationRow {
         val current: String get() = live?.content?.value?.text ?: text
     }
 
-    /**
-     * A tool call as the chat's tool row shows it: [input] is what its
-     * presentation says (the command, the file, the query) in the input
-     * shape the legacy tool titles read, or the raw arguments where none.
-     */
-    data class Tool(override val key: String, val callId: String?, val name: String, val status: String, val detail: String?, val input: JsonObject?, val createdAt: Long) : ConversationRow
+    /** A tool call's one line (desktop's `AgentToolActivity`): its verb and subject. */
+    data class Tool(override val key: String, val callId: String?, val tool: ToolUse) : ConversationRow {
+        val name: String get() = tool.name
+        val status: String get() = tool.status
+    }
 
     /** A picture inline in a message. */
     data class Picture(override val key: String, val image: Block.Image) : ConversationRow
 
-    /** Pictures, videos and files a tool presented, read on demand; [columns] as the tool asked (0: justified rows). */
-    data class Media(override val key: String, val items: List<MediaRef>, val columns: Int = 0) : ConversationRow
+    /**
+     * Pictures, videos and files a tool presented, read on demand; [columns]
+     * as the tool asked (0: justified rows), under the [tool]'s line.
+     */
+    data class Media(override val key: String, val items: List<MediaRef>, val columns: Int = 0, val tool: ToolUse? = null) : ConversationRow
 
-    /** An artifact a tool made or changed; `shows: "latest"` follows it, else it opens [version]. */
+    /** An artifact a tool made or changed, under the [tool]'s line; `shows: "latest"` follows it, else it opens [version]. */
     data class Artifact(
         override val key: String,
         val artifactId: String,
@@ -83,6 +109,7 @@ sealed interface ConversationRow {
         val type: String?,
         val version: Int? = null,
         val shows: String? = null,
+        val tool: ToolUse? = null,
     ) : ConversationRow {
         val ref: com.slopus.happy.artifacts.ArtifactRef get() = com.slopus.happy.artifacts.ArtifactRef.presented(artifactId, version, type, title, shows)
     }
@@ -102,6 +129,34 @@ sealed interface ConversationRow {
 
     /** One line of housekeeping worth showing (a compaction). */
     data class Notice(override val key: String, val kind: NoticeKind) : ConversationRow
+
+    /**
+     * How a finished turn ended (desktop's `TurnSummary`): "Completed in
+     * 12s", led by a copy of its final answer ([copyText]) when complete.
+     * [afterStep]: it follows a step of the turn, kept 4 more from it.
+     */
+    data class TurnEnd(
+        override val key: String,
+        val turn: String,
+        /** `completed`, `steering`, `abort`, `error` or `compaction`. */
+        val reason: String,
+        val durationMs: Long?,
+        /** Its tool calls, every kind. */
+        val tools: Int,
+        val copyText: String?,
+        val afterStep: Boolean = false,
+    ) : ConversationRow {
+        /** A steered, stopped or failed turn says so and offers no copy. */
+        val complete: Boolean get() = reason == "completed" || reason == "compaction"
+    }
+
+    /** A finished turn's "View traces" / "Hide traces" control ([TurnFold]), keyed [traceKey]. */
+    data class Trace(override val key: String, val turn: String, val open: Boolean, val tools: Int) : ConversationRow
+
+    companion object {
+        /** A turn's fold control, open or folded alike. */
+        fun traceKey(turn: String) = "$turn:trace"
+    }
 }
 
 enum class NoticeKind { Compacting, Compacted, CompactionFailed }
@@ -240,16 +295,14 @@ class ConversationRowBuilder(
                         rows += ConversationRow.Reasoning(key, it, streaming && index == message.content.lastIndex, growing?.invoke(key, it, false))
                     }
                     is Block.Image -> rows += ConversationRow.Picture(key, block)
-                    is Block.ToolCall -> rows += toolRows(key, block, message.createdAt)
+                    is Block.ToolCall -> rows += toolRows(key, block)
                     is Block.Compaction, is Block.Unknown -> Unit
                 }
             }
             return rows
         }
 
-        private fun toolRows(key: String, call: Block.ToolCall, createdAt: Long): List<ConversationRow> {
-            fun tool(detail: String?, input: JsonObject?) =
-                listOf(ConversationRow.Tool(key, call.id, call.name, call.status, detail, input ?: call.arguments as? JsonObject, createdAt))
+        private fun toolRows(key: String, call: Block.ToolCall): List<ConversationRow> {
             if (call.name == Question.TOOL_NAME && call.id != null) {
                 // Answered, as the card the call keeps says, or else its result: it settles here.
                 // Otherwise the conversation decides (Conversation.derive).
@@ -261,20 +314,16 @@ class ConversationRowBuilder(
                 }
                 if (answered != null) return listOf(ConversationRow.Ask(askKey(call.id), answered, AskPhase.Answered))
             }
+            val skill = if (call.name == Conversation.READ_SKILL) (call.arguments as? JsonObject)?.get("name").str else null
+            val tool = ToolUse(call.name, call.status, call.presentation, skill)
             return when (val p = call.presentation) {
                 is Presentation.Media -> if (call.id == null || p.items.isEmpty()) {
-                    tool(null, null)
+                    listOf(ConversationRow.Tool(key, call.id, tool))
                 } else {
-                    listOf(ConversationRow.Media(key, p.items.mapIndexed { index, item -> MediaRef(call.id, index, item) }, p.columns))
+                    listOf(ConversationRow.Media(key, p.items.mapIndexed { index, item -> MediaRef(call.id, index, item) }, p.columns, tool))
                 }
-                is Presentation.Artifact -> listOf(ConversationRow.Artifact(key, p.artifactId, p.title.orEmpty(), p.artifactType, p.version, p.shows))
-                is Presentation.Command -> tool(p.command, buildJsonObject { put("command", p.command); put("cmd", p.command) })
-                is Presentation.Exploration -> p.operations.joinToString(", ").ifEmpty { null }.let { detail ->
-                    tool(detail, detail?.let { buildJsonObject { put("file_path", it); put("path", it); put("pattern", it) } })
-                }
-                is Presentation.Search -> tool(p.query, buildJsonObject { put("query", p.query) })
-                is Presentation.UserInput -> tool(null, null)
-                null -> tool(null, null)
+                is Presentation.Artifact -> listOf(ConversationRow.Artifact(key, p.artifactId, p.title.orEmpty(), p.artifactType, p.version, p.shows, tool))
+                else -> listOf(ConversationRow.Tool(key, call.id, tool))
             }
         }
 
