@@ -749,7 +749,7 @@ final class UITests: XCTestCase {
         let fresh = row("space", "New").firstMatch
         if fresh.exists {
             fresh.press(forDuration: 1.0)
-            let close = app.buttons["Close new work"]
+            let close = app.buttons["Close new task"]
             if close.waitForExistence(timeout: 3) { close.tap() }
             pause(1)
         }
@@ -771,7 +771,7 @@ final class UITests: XCTestCase {
         let fresh = row("space", "New").firstMatch
         if fresh.exists {
             fresh.press(forDuration: 1.0)
-            let discard = app.buttons["Close new work"]
+            let discard = app.buttons["Close new task"]
             if discard.waitForExistence(timeout: 3) { discard.tap() }
             pause(1)
         }
@@ -1780,7 +1780,7 @@ final class UITests: XCTestCase {
         let fresh = row("space", "New").firstMatch
         if fresh.exists {
             fresh.press(forDuration: 1.0)
-            let discard = app.buttons["Close new work"]
+            let discard = app.buttons["Close new task"]
             if discard.waitForExistence(timeout: 3) { discard.tap() }
             pause(1)
         }
@@ -3045,7 +3045,7 @@ final class UITests: XCTestCase {
         let made = app.descendants(matching: .any)["row:space:New"].firstMatch
         if made.waitForExistence(timeout: 3) {
             made.press(forDuration: 1.0)
-            let close = app.buttons["Close new work"]
+            let close = app.buttons["Close new task"]
             if close.waitForExistence(timeout: 3) { close.tap() }
             pause(1.5)
         }
@@ -3286,7 +3286,7 @@ final class UITests: XCTestCase {
             let made = app.descendants(matching: .any)["row:space:New"].firstMatch
             guard made.waitForExistence(timeout: 3) else { break }
             made.press(forDuration: 1.0)
-            let close = app.buttons["Close new work"]
+            let close = app.buttons["Close new task"]
             if close.waitForExistence(timeout: 3) { close.tap() }
             pause(1.5)
         }

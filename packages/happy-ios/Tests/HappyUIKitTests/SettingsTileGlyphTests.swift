@@ -87,7 +87,7 @@ final class SettingsTileGlyphTests: XCTestCase {
 
     /// Every V2 place that draws create-outline by name gets the square-
     /// centred image: Settings' tiles, their search results, and home's
-    /// "New work" quick action (`compose`).
+    /// "New task" quick action (`compose`).
     func testEveryCreateOutlineByNameIsTheComposeImage() {
         XCTAssertTrue(Glyphs.image("create-outline", size: M.glyph) === UIImage.composeIcon(size: M.glyph))
         XCTAssertTrue(Glyphs.image("compose", size: 18) === UIImage.composeIcon(size: 18))
