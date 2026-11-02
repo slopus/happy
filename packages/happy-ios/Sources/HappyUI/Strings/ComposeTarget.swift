@@ -16,27 +16,33 @@ extension Strings {
             return Strings.Composer.lastSeen(lastSeen(ComposerStatus.lastSeen(activeAt: at, now: now)))
         }
 
-        /// The computer row's label: "● Online", or what doesn't answer,
-        /// short enough for the room the row keeps for it.
+        /// The computer row's chip: a dot and a word or two.
         public static func label(_ target: MachineTarget, offline: NewSessionChoices.Offline?, now: Int64) -> String {
             switch offline {
             case nil: return "● Online"
             case .computer(let at): return "● Offline · " + compact(ComposerStatus.lastSeen(activeAt: at, now: now))
-            case .happyAgent: return "● Happy Agent offline"
-            case .happyCLI: return "● Happy CLI offline"
+            case .happyAgent: return "● Agent offline"
+            case .happyCLI: return "● CLI offline"
             }
         }
 
-        /// "now", "5m ago", "2h ago", "3d ago", or the date.
+        /// "now", "5m", "2h", "3d", or the date.
         static func compact(_ lastSeen: ComposerStatus.LastSeen) -> String {
             switch lastSeen {
             case .justNow: return "now"
-            case .minutes(let count): return "\(count)m ago"
-            case .hours(let count): return "\(count)h ago"
-            case .days(let count): return "\(count)d ago"
+            case .minutes(let count): return "\(count)m"
+            case .hours(let count): return "\(count)h"
+            case .days(let count): return "\(count)d"
             case .date: return Self.lastSeen(lastSeen)
             }
         }
+
+        /// The computer row while the account's computers are still
+        /// arriving, and its chip.
+        public static let loading = "Loading computers…"
+        public static let loadingStatus = "● …"
+        /// Send pressed before they are in.
+        public static let stillLoading = "Your computers are still loading. Try again in a moment."
 
         /// The whole of it, at the head of the computer menu and when Send
         /// is pressed.

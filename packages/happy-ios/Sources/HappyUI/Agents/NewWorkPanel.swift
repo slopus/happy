@@ -89,8 +89,9 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
     /// `.session`: what the first send makes.
     private(set) var sessionKind: HomeDockKind = .session
 
-    /// `.session`: the kinds on offer, the one picked, and the bot's name.
-    func setSessionKinds(_ kinds: [HomeDockKind], current: HomeDockKind, botName: String) {
+    /// `.session`: the kinds shown, those that can be picked (the rest
+    /// show disabled), the one picked, and the bot's name.
+    func setSessionKinds(_ kinds: [HomeDockKind], enabled: Set<HomeDockKind>? = nil, current: HomeDockKind, botName: String) {
         guard mode == .session else { return }
         if kinds != sessionKinds {
             sessionKinds = kinds
@@ -98,6 +99,9 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
             for (index, offered) in kinds.enumerated() {
                 kind.insertSegment(withTitle: Strings.Home.composerKind(offered), at: index, animated: false)
             }
+        }
+        for (index, shown) in kinds.enumerated() {
+            kind.setEnabled(enabled?.contains(shown) ?? true, forSegmentAt: index)
         }
         let current = kinds.contains(current) ? current : .session
         kind.selectedSegmentIndex = kinds.firstIndex(of: current) ?? 0
@@ -288,13 +292,14 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
 }
 
 /// One of `.session`'s rows: an icon, what is chosen, and the menu that
-/// chooses it, on the name field's ground. The computer's row also says
-/// whether it answers, in a small label of one fixed frame at its
-/// top-right over a name always set lower (`NewWorkStatusLayout`), so a
-/// status coming, going or turning to a warning never moves the name or
-/// changes the row.
+/// chooses it, on the name field's ground, centred. The computer's row
+/// also says whether it answers, in a small chip on its top-right corner
+/// (`NewWorkStatusLayout`): laid over the row, it takes no part in its
+/// layout, so the icon and the name sit as in any row and a status
+/// coming, going or changing moves nothing.
 final class NewWorkMenuRow: UIButton {
     let showsStatus: Bool
+    private let chip = UIView()
     private let statusLabel = UILabel()
 
     init(icon: Icon, showsStatus: Bool = false) {
@@ -307,9 +312,7 @@ final class NewWorkMenuRow: UIButton {
         configuration.titleLineBreakMode = .byTruncatingMiddle
         configuration.background.backgroundColor = UIColor(Palette.inputBackground)
         configuration.cornerStyle = .capsule
-        // The computer's name sits a fixed step lower, under its status.
-        let drop = showsStatus ? 2 * NewWorkStatusLayout.titleDrop : 0
-        configuration.contentInsets = NSDirectionalEdgeInsets(top: drop, leading: 16, bottom: 0, trailing: 16)
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16)
         configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
             var attributes = attributes
             attributes.font = Fonts.ui(.regular, size: 16)
@@ -318,13 +321,18 @@ final class NewWorkMenuRow: UIButton {
         self.configuration = configuration
         showsMenuAsPrimaryAction = true
         if showsStatus {
-            contentHorizontalAlignment = .leading
-            statusLabel.font = Fonts.ui(.medium, size: 11)
-            statusLabel.textAlignment = .right
+            chip.backgroundColor = UIColor(Palette.surface)
+            chip.layer.cornerRadius = NewWorkStatusLayout.height / 2
+            chip.layer.cornerCurve = .continuous
+            chip.layer.borderWidth = 1
+            chip.layer.borderColor = UIColor(Palette.legacyDivider).cgColor
+            chip.isUserInteractionEnabled = false
+            chip.isHidden = true
+            chip.accessibilityIdentifier = "new-work-machine-status"
+            statusLabel.font = Fonts.ui(.medium, size: NewWorkStatusLayout.fontSize)
             statusLabel.lineBreakMode = .byTruncatingTail
-            statusLabel.isUserInteractionEnabled = false
-            statusLabel.accessibilityIdentifier = "new-work-machine-status"
-            addSubview(statusLabel)
+            chip.addSubview(statusLabel)
+            addSubview(chip)
         }
     }
 
@@ -346,28 +354,37 @@ final class NewWorkMenuRow: UIButton {
         }
     }
 
-    /// The computer's row: "● Online", or a warning ("● Offline · 2h ago",
-    /// "● Happy Agent offline") in its colour; nil for none. Only the
-    /// label's text and colour change.
+    /// The computer's row: "● Online", or a warning ("● Offline · 2h",
+    /// "● Agent offline") in its colour, "● …" while the computers are
+    /// still arriving; nil for no chip.
     var status: (text: String, color: UIColor)? {
         didSet {
             guard showsStatus, status?.text != oldValue?.text || status?.color != oldValue?.color else { return }
             statusLabel.text = status?.text
             statusLabel.textColor = status?.color
-            // Empty rather than hidden: its frame is the same either way.
+            chip.isHidden = status == nil
+            setNeedsLayout()
             updateAccessibility()
         }
     }
 
-    /// The label's text, for tests.
+    /// The chip's text, for tests.
     var statusText: String? { statusLabel.text }
-    /// Where the label is, in the row, for tests.
-    var statusFrame: CGRect { statusLabel.frame }
+    /// Where the chip is, in the row, for tests.
+    var statusFrame: CGRect { chip.frame }
 
     override func layoutSubviews() {
         super.layoutSubviews()
         guard showsStatus else { return }
-        statusLabel.frame = NewWorkStatusLayout.label(rowWidth: bounds.width)
+        let text = statusLabel.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: NewWorkStatusLayout.height))
+        chip.frame = NewWorkStatusLayout.chip(rowWidth: bounds.width, textWidth: text.width)
+        statusLabel.frame = chip.bounds.insetBy(dx: NewWorkStatusLayout.padding, dy: 0)
+        bringSubviewToFront(chip)
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        chip.layer.borderColor = UIColor(Palette.legacyDivider).resolvedColor(with: traitCollection).cgColor
     }
 
     private func updateAccessibility() {

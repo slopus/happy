@@ -1384,10 +1384,11 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         // already offers a session again.
         guard compose.sessionId == nil else { return }
         composeTarget.isLocked = compose.isStarting
-        composeTarget.setSessionKinds(compose.kinds, current: compose.kind, botName: compose.drafts.botName)
-        // A bot or a task lives on a computer and nowhere else: the
-        // computer is asked even on an account with one.
-        composeTarget.showsMachine = compose.asksMachine || compose.kind != .session
+        // Every kind and the computer show from the first frame, whatever
+        // has arrived: a big account's computers can take a while, and the
+        // panel fills in where it stands rather than grow under the keyboard.
+        composeTarget.setSessionKinds(LegacyComposeStart.shownKinds, enabled: compose.enabledKinds, current: compose.kind, botName: compose.drafts.botName)
+        composeTarget.showsMachine = true
         composeTarget.machine.title = compose.machineName
         composeTarget.machine.status = compose.machineStatus
         composeTarget.folder.title = compose.folderName

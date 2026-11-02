@@ -50,7 +50,8 @@ public final class NewSessionComposer {
         self.deriver = deriver
         // A bounded empty catalog supplies initial labels until the actor
         // derives the account's choices. No account rows are read here.
-        choices = NewSessionChoices(.init(draft: drafts.draft, createsBot: drafts.createsBot, createsTask: drafts.createsTask, machines: [], sessions: []))
+        choices = NewSessionChoices(.init(draft: drafts.draft, createsBot: drafts.createsBot, createsTask: drafts.createsTask, machines: [], sessions: [],
+                                          machinesSynced: snapshot.machines.synced))
         draftObservation = drafts.observe { [weak self] _ in self?.draftChanged() }
         refresh()
     }
@@ -195,7 +196,14 @@ public final class NewSessionComposer {
             drafts.setCreatesTask(false)
             return
         }
-        guard let target = choices.preferredMachine(for: kind) else { return }
+        guard let target = choices.preferredMachine(for: kind) else {
+            // The computers are still arriving: it is a bot or a task now,
+            // and goes to a Happy Agent that makes it once one is in
+            // (`reconcile`).
+            guard !choices.machinesSynced else { return }
+            if kind == .bot { drafts.setCreatesBot(true) } else { drafts.setCreatesTask(true) }
+            return
+        }
         let moves = target.id != choices.currentTarget?.id
         if moves { drafts.setMachineId(target.id) }
         if kind == .bot { drafts.setCreatesBot(true) } else { drafts.setCreatesTask(true) }
@@ -337,11 +345,12 @@ public final class NewSessionComposer {
         let kind = self.kind
         if kind != .session, choices.currentTarget?.makes(kind) != true {
             // A bot or a task whose computer can't make it (it left, or its
-            // Happy Agent stopped offering it) goes to one that can; only
-            // with none on the account does it become a session.
+            // Happy Agent stopped offering it, or hasn't arrived) goes to one
+            // that can; it waits while the list is still arriving, and only
+            // with none on the whole account does it become a session.
             if let target = choices.preferredMachine(for: kind) {
                 drafts.setMachineId(target.id)
-            } else {
+            } else if snapshot.machines.synced {
                 drafts.setCreatesBot(false)
                 drafts.setCreatesTask(false)
             }

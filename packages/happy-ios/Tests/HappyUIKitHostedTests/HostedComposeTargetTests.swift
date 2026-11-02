@@ -167,7 +167,32 @@ final class HostedComposeTargetTests: XCTestCase {
         try store.upsertMachine(server)
     }
 
-    private func reportedAccount(syncDelay: Duration = .zero, log: TargetSpawns, sender: (any ChatSending)? = nil) async throws -> (LegacyHomeViewController, UINavigationController, UIWindow, AccountSession) {
+    /// The account's computers as the report has them, each as sync
+    /// delivers it: the old Mac, today's Mac (Happy CLI), its Happy Agent,
+    /// and the server.
+    private nonisolated static func reportedMachines() -> (cli: [MachineRecord], agents: [MachineRecord]) {
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        func machine(_ id: String, createdAt: Int64, active: Bool = true, activeAt: Int64 = now, metadata: JSONValue) -> MachineRecord {
+            MachineRecord(
+                id: id, seq: 1, createdAt: createdAt, updatedAt: createdAt, active: active, activeAt: activeAt,
+                metadataVersion: 1, metadataCipher: "harness", metadata: metadata,
+                daemonStateVersion: 1, daemonStateCipher: nil, daemonState: .object(["status": .string("running")]),
+                dataKeyCipher: nil, decryptable: true
+            )
+        }
+        let base = SeededAccount.base
+        let old = machine(oldMac, createdAt: base, active: false, activeAt: now - 3 * 24 * 3_600_000, metadata: .object([
+            "host": .string("MacBook-Pro.local"), "platform": .string("darwin"), "happyCliVersion": .string("1.2.4"), "homeDir": .string(SeededAccount.home),
+        ]))
+        let today = machine(todaysMac, createdAt: base + 10, metadata: .object([
+            "host": .string("MacBook-Pro-7.local"), "platform": .string("darwin"), "happyCliVersion": .string("1.2.6"), "homeDir": .string(SeededAccount.home),
+        ]))
+        let agent = machine(todaysAgent, createdAt: base + 11, metadata: rigMetadata(host: "Mac", displayName: "Mac — Happy Agent", sibling: todaysMac))
+        let server = machine(Self.server, createdAt: base + 5, metadata: rigMetadata(host: "happy-core", displayName: nil, sibling: nil))
+        return ([old, today], [agent, server])
+    }
+
+    private func reportedAccount(syncDelay: Duration = .zero, log: TargetSpawns, sender: (any ChatSending)? = nil, seed: (@Sendable (LocalStore) throws -> Void)? = nil) async throws -> (LegacyHomeViewController, UINavigationController, UIWindow, AccountSession) {
         let controller = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
@@ -177,7 +202,7 @@ final class HostedComposeTargetTests: XCTestCase {
         try await controller.signIn(Credentials(token: "t", secret: Data(repeating: 9, count: 32)))
         let account = try XCTUnwrap(controller.session)
         let store = account.store
-        try await Task.detached { [store] in try HostedComposeTargetTests.seed(store) }.value
+        try await Task.detached { [store] in try (seed ?? HostedComposeTargetTests.seed)(store) }.value
         let drafts = NewSessionDraftStore.shared(for: controller.localSettings)
         drafts.setMachineId(Self.oldMac)
         drafts.setPath(SeededAccount.project)
@@ -204,7 +229,7 @@ final class HostedComposeTargetTests: XCTestCase {
         let window = hostedKeyWindow(in: scene, root: navigation)
         window.overrideUserInterfaceStyle = .light
         window.layoutIfNeeded()
-        try await until { home.children.contains { $0 is SessionListViewController } && home.canCompose }
+        try await until { (seed != nil || home.children.contains { $0 is SessionListViewController }) && home.canCompose }
         return (home, navigation, window, account)
     }
 
@@ -388,13 +413,12 @@ final class HostedComposeTargetTests: XCTestCase {
         try await until { row.statusText?.hasPrefix("● Offline · ") == true }
         chat.view.layoutIfNeeded()
         XCTAssertEqual(row.title, "MacBook-Pro.local")
-        XCTAssertEqual(row.statusText, "● Offline · 3d ago")
+        XCTAssertEqual(row.statusText, "● Offline · 3d")
+        try assertBalanced(row, "offline")
         let offlineFrame = row.frame
         let offlineName = try XCTUnwrap(row.titleLabel).convert(row.titleLabel!.bounds, to: row)
         let label = row.statusFrame
-        XCTAssertEqual(label.maxX, row.bounds.width - NewWorkStatusLayout.inset, accuracy: 0.5, "at the row's trailing end")
-        XCTAssertEqual(label, NewWorkStatusLayout.label(rowWidth: row.bounds.width), "pinned top-right")
-        XCTAssertFalse(offlineName.intersects(label), "the name never runs under the label")
+        XCTAssertFalse(offlineName.intersects(label), "the name never runs under the chip")
         XCTAssertFalse(offlineName.width < row.titleLabel!.intrinsicContentSize.width - 1, "the name isn't cut")
         XCTAssertEqual(offlineFrame.height, NewWorkLayout.Metrics.rowHeight, "no row of its own")
         XCTAssertEqual(panel.folder.frame.minY, offlineFrame.maxY + NewWorkLayout.Metrics.rowGap, "nothing between the computer and its folder")
@@ -427,20 +451,199 @@ final class HostedComposeTargetTests: XCTestCase {
         chat.view.layoutIfNeeded()
         XCTAssertEqual(row.frame, offlineFrame, "the row neither moved nor grew")
         let onlineName = try XCTUnwrap(row.titleLabel).convert(row.titleLabel!.bounds, to: row)
-        XCTAssertEqual(onlineName.minX, offlineName.minX, accuracy: 0.5, "the name starts where it did")
-        XCTAssertEqual(row.statusFrame.maxX, label.maxX, accuracy: 0.5, "the label ends where it did")
+        XCTAssertEqual(onlineName.midX, offlineName.midX, accuracy: 0.5, "the name is centred where it was")
+        XCTAssertEqual(onlineName.midY, offlineName.midY, accuracy: 0.5)
+        XCTAssertEqual(row.statusFrame.maxX, label.maxX, accuracy: 0.5, "the chip ends where it did")
+        XCTAssertEqual(row.statusFrame.midY, label.midY, accuracy: 0.5)
+        try assertBalanced(row, "online")
         keep(window, "target-6-online-in-row")
+    }
+
+    // MARK: Computers arriving late
+
+    /// The panel's own frame in `view` and each of its rows', with whether
+    /// it shows: what a person would see move.
+    private static func panelFrames(_ panel: NewWorkPanel, in view: UIView) -> [String] {
+        ["panel \(panel.convert(panel.bounds, to: view)) hidden=\(panel.isHidden)"]
+            + panel.subviews.map { "\(type(of: $0)) \($0.frame) hidden=\($0.isHidden) alpha=\($0.alpha)" }
+    }
+
+    /// The computer row is laid out as any row: its icon and name centred
+    /// in it, its content as far in from either end, a row's height. Its
+    /// status chip, when it has one, is on its top-right corner, clear of
+    /// the name, inside the panel and clear of the kind over it.
+    private func assertBalanced(_ row: NewWorkMenuRow, _ what: String, file: StaticString = #filePath, line: UInt = #line) throws {
+        row.superview?.layoutIfNeeded()
+        row.layoutIfNeeded()
+        let name = try XCTUnwrap(row.titleLabel, file: file, line: line)
+        let icon = try XCTUnwrap(row.imageView, file: file, line: line)
+        XCTAssertEqual(name.frame.midY, row.bounds.midY, accuracy: 0.5, "\(what): the name is centred in the row", file: file, line: line)
+        XCTAssertEqual(icon.frame.midY, row.bounds.midY, accuracy: 0.5, "\(what): the icon is centred in the row", file: file, line: line)
+        let insets = try XCTUnwrap(row.configuration?.contentInsets, file: file, line: line)
+        XCTAssertEqual(insets.leading, insets.trailing, "\(what): the content insets are symmetric", file: file, line: line)
+        XCTAssertEqual(insets.top, insets.bottom, "\(what)", file: file, line: line)
+        XCTAssertEqual(icon.frame.minX, row.bounds.width - name.frame.maxX, accuracy: 1, "\(what): the content is as far in from either end", file: file, line: line)
+        XCTAssertEqual(row.bounds.height, NewWorkLayout.Metrics.rowHeight, "\(what): a row's height", file: file, line: line)
+        let plain = NewWorkMenuRow(icon: .ionicons("desktop-outline"))
+        plain.title = row.title
+        plain.frame = row.bounds
+        plain.layoutIfNeeded()
+        XCTAssertEqual(name.frame.midY, try XCTUnwrap(plain.titleLabel).frame.midY, accuracy: 0.5, "\(what): where a row without a status puts it", file: file, line: line)
+        XCTAssertEqual(name.frame.midX, try XCTUnwrap(plain.titleLabel).frame.midX, accuracy: 0.5, "\(what): where a row without a status puts it", file: file, line: line)
+        guard row.statusText != nil, let panel = row.superview as? NewWorkPanel else { return }
+        let chip = row.statusFrame
+        XCTAssertEqual(chip.midY, 0, accuracy: 0.5, "\(what): the chip is on the row's top edge", file: file, line: line)
+        XCTAssertEqual(row.bounds.width - chip.maxX, NewWorkStatusLayout.trailing, accuracy: 0.5, "\(what): at the top-right corner", file: file, line: line)
+        XCTAssertEqual(chip.height, NewWorkStatusLayout.height, "\(what)", file: file, line: line)
+        XCTAssertFalse(chip.intersects(name.frame), "\(what): the chip is clear of the name", file: file, line: line)
+        let inPanel = row.convert(chip, to: panel)
+        XCTAssertTrue(panel.bounds.contains(inPanel), "\(what): the chip is inside the panel: \(inPanel) in \(panel.bounds)", file: file, line: line)
+        if !panel.kind.isHidden {
+            XCTAssertFalse(inPanel.intersects(panel.kind.frame), "\(what): the chip is clear of the kind", file: file, line: line)
+        }
+        let label = try XCTUnwrap(Self.subview(UILabel.self, in: try XCTUnwrap(Self.chipView(row), file: file, line: line)), file: file, line: line)
+        XCTAssertLessThanOrEqual(label.intrinsicContentSize.width, label.bounds.width + 0.5, "\(what): the chip's text is whole", file: file, line: line)
+        XCTAssertEqual(label.font.pointSize, NewWorkStatusLayout.fontSize, "\(what)", file: file, line: line)
+    }
+
+    private static func chipView(_ row: NewWorkMenuRow) -> UIView? {
+        row.subviews.first { $0.accessibilityIdentifier == "new-work-machine-status" }
+    }
+
+    /// The report: a big account opened, the computers not in yet, and a
+    /// Bot picked on an earlier compose. On main the panel showed neither
+    /// the name nor the computer and Send said "Give the bot a name" in an
+    /// alert. Here the kind, the computer (loading) and the name show at
+    /// once; Send asks for the name in place, then says the computers are
+    /// loading; as they arrive (the Happy CLI rows first, Happy Agent's
+    /// later) nothing in the panel moves, the bot stays a bot, and once a
+    /// Happy Agent that makes bots is in it goes there.
+    func testABotWhoseComputersArriveLateShowsItsRowsAndGoesWhereItCan() async throws {
+        let log = TargetSpawns()
+        let (home, navigation, window, account) = try await reportedAccount(log: log, seed: { store in
+            try store.addPendingSettings(["sessionListGrouping": .string("flat")])
+        })
+        defer { window.isHidden = true }
+        let (chat, card, panel, start) = try await emptyChat(home, navigation)
+        start.drafts.setCreatesBot(true)
+        try await until { panel.sessionKind == .bot }
+        try await Task.sleep(for: .milliseconds(400))
+        chat.view.layoutIfNeeded()
+        keep(window, "late-0-loading")
+        XCTAssertFalse(start.composer.choices.machinesSynced)
+        XCTAssertFalse(panel.isHidden)
+        XCTAssertFalse(panel.kind.isHidden)
+        XCTAssertFalse(panel.machine.isHidden)
+        XCTAssertFalse(panel.name.superview!.isHidden, "the name field shows")
+        XCTAssertEqual(panel.machine.title, "Loading computers…")
+        XCTAssertEqual(panel.machine.statusText, "● …")
+        try assertBalanced(panel.machine, "loading")
+        let loading = Self.panelFrames(panel, in: chat.view)
+        let loadingName = panel.machine.titleLabel!.frame
+
+        card.setText("yo", selection: NSRange(location: 2, length: 0))
+        card.delegate?.agentInputCardDidChangeText(card)
+        card.delegate?.agentInputCardDidPressSend(card)
+        try await until { panel.name.isFirstResponder }
+        XCTAssertNil(chat.presentedViewController, "the name is asked for in place")
+        XCTAssertEqual(panel.validation, "Give the bot a name")
+        panel.name.text = "Release Captain"
+        panel.name.sendActions(for: .editingChanged)
+        let composerView = try XCTUnwrap(Self.subview(SessionComposerView.self, in: chat.view))
+        try await until { !composerView.sending }
+        card.delegate?.agentInputCardDidPressSend(card)
+        try await until { chat.presentedViewController is UIAlertController }
+        XCTAssertEqual((chat.presentedViewController as? UIAlertController)?.message, "Your computers are still loading. Try again in a moment.")
+        try await Task.sleep(for: .milliseconds(400))
+        keep(window, "late-1-send-while-loading")
+        try await until {
+            if let alert = chat.presentedViewController, !alert.isBeingPresented { alert.dismiss(animated: false) }
+            return chat.presentedViewController == nil
+        }
+        XCTAssertEqual(card.text, "yo", "the text stays")
+        XCTAssertTrue(log.spawned.isEmpty)
+        try await until { !composerView.sending }
+
+        // Happy CLI's rows arrive first, Happy Agent's not yet.
+        let (cli, agents) = Self.reportedMachines()
+        let store = account.store
+        try await Task.detached { for machine in cli { try store.upsertMachine(machine) } }.value
+        try await until { start.composer.choices.machines.count == 2 }
+        try await Task.sleep(for: .milliseconds(300))
+        chat.view.layoutIfNeeded()
+        keep(window, "late-2-happy-cli-only")
+        XCTAssertTrue(start.drafts.createsBot, "still a bot: Happy Agent may be on its way")
+        XCTAssertEqual(panel.machine.title, "Loading computers…")
+        XCTAssertEqual(Self.panelFrames(panel, in: chat.view), loading, "a computer arriving moved the panel")
+
+        // Happy Agent's arrive and the list is whole.
+        try await Task.detached {
+            for machine in agents { try store.upsertMachine(machine) }
+            try store.setCursor(.machinesLastSync, 1)
+        }.value
+        try await until { panel.machine.title == "MacBook-Pro-7.local" && panel.machine.statusText == "● Online" }
+        try await Task.sleep(for: .milliseconds(300))
+        chat.view.layoutIfNeeded()
+        keep(window, "late-3-arrived")
+        XCTAssertTrue(start.drafts.createsBot)
+        XCTAssertEqual(start.drafts.draft.selectedMachineId, Self.todaysMac, "it went to the Happy Agent that makes bots")
+        XCTAssertEqual(start.drafts.draft.agentType, .rig)
+        XCTAssertEqual(Self.panelFrames(panel, in: chat.view), loading, "the computers arriving moved the panel")
+        try assertBalanced(panel.machine, "arrived")
+        XCTAssertEqual(panel.machine.titleLabel!.frame.midX, loadingName.midX, accuracy: 0.5, "the name is centred where the loading text was")
+        XCTAssertEqual(panel.machine.titleLabel!.frame.midY, loadingName.midY, accuracy: 0.5)
+
+        card.delegate?.agentInputCardDidPressSend(card)
+        try await until { !log.spawned.isEmpty }
+        XCTAssertEqual(log.spawned.map(\.machineId), [Self.todaysAgent])
+        XCTAssertEqual(log.spawned.map(\.happyAgentTarget), [.object(["kind": .string("bot"), "name": .string("Release Captain")])])
+    }
+
+    /// A session on the same account before its computers are in: the
+    /// computer (loading), the folder and the harness show at once, with
+    /// the kinds, and fill in where they stand.
+    func testASessionShowsItsRowsWhileTheComputersArrive() async throws {
+        let log = TargetSpawns()
+        let (home, navigation, window, account) = try await reportedAccount(log: log, seed: { store in
+            try store.addPendingSettings(["sessionListGrouping": .string("flat")])
+        })
+        defer { window.isHidden = true }
+        let (chat, _, panel, start) = try await emptyChat(home, navigation)
+        chat.view.layoutIfNeeded()
+        keep(window, "late-session-0-loading")
+        XCTAssertEqual(panel.sessionKind, .session)
+        XCTAssertEqual([panel.kind, panel.machine, panel.folder, panel.harness].map(\.isHidden), [false, false, false, false])
+        XCTAssertEqual(panel.machine.title, "Loading computers…")
+        XCTAssertNotEqual(panel.harness.title, Strings.Home.harnessHelp, "not setup help before anything is known")
+        XCTAssertEqual(start.enabledKinds, [.session, .bot, .task], "nothing is known yet: every kind can be picked")
+        let loading = Self.panelFrames(panel, in: chat.view)
+
+        let (cli, agents) = Self.reportedMachines()
+        let store = account.store
+        try await Task.detached {
+            for machine in cli + agents { try store.upsertMachine(machine) }
+            try store.setCursor(.machinesLastSync, 1)
+        }.value
+        try await until { panel.machine.title == "MacBook-Pro.local" && panel.machine.statusText?.hasPrefix("● Offline") == true }
+        try await Task.sleep(for: .milliseconds(300))
+        chat.view.layoutIfNeeded()
+        keep(window, "late-session-1-arrived")
+        XCTAssertEqual(Self.panelFrames(panel, in: chat.view), loading, "the computers arriving moved the panel")
+        XCTAssertEqual(panel.harness.title, "Codex")
+        try assertBalanced(panel.machine, "session arrived")
     }
 
     // MARK: Status never moves anything
 
     /// Every view in `root`, depth first, with its frame in `root`; a text
     /// field's own insides are its text and placeholder, not the panel's
-    /// layout, so the field is listed and not entered.
+    /// layout, so the field is listed and not entered. The computer's
+    /// status chip is laid over the row, as wide as what it says, and is
+    /// checked on its own (`assertBalanced`).
     private static func frames(_ root: UIView) -> [String] {
         var out: [String] = []
         func walk(_ view: UIView, _ path: String) {
-            for (index, child) in view.subviews.enumerated() {
+            for (index, child) in view.subviews.enumerated() where child.accessibilityIdentifier != "new-work-machine-status" {
                 let here = "\(path)/\(index):\(type(of: child))"
                 out.append("\(here) \(child.convert(child.bounds, to: root)) hidden=\(child.isHidden) alpha=\(child.alpha)")
                 if !(child is UITextField) { walk(child, here) }
@@ -469,10 +672,12 @@ final class HostedComposeTargetTests: XCTestCase {
         panel.harness.title = "Codex"
         let states: [(String, (text: String, color: UIColor)?)] = [
             ("online", ("● Online", UIColor(Palette.sessionStatusOnline))),
-            ("offline", ("● Offline · 2h ago", UIColor(Palette.warningText))),
+            ("offline", ("● Offline · 2h", UIColor(Palette.warningText))),
             ("unknown", nil),
-            ("agent-offline", ("● Happy Agent offline", UIColor(Palette.warningText))),
+            ("agent-offline", ("● Agent offline", UIColor(Palette.warningText))),
+            ("loading", ("● …", UIColor(Palette.textSecondary))),
         ]
+        var chipAnchor: (maxX: CGFloat, midY: CGFloat)?
         for kind in [HomeDockKind.session, .bot] {
             panel.setSessionKinds([.session, .bot, .task], current: kind, botName: "")
             var reference: [String]?
@@ -482,12 +687,34 @@ final class HostedComposeTargetTests: XCTestCase {
                 window.layoutIfNeeded()
                 let frames = Self.frames(panel) + ["panel \(panel.frame)"]
                 XCTAssertEqual(panel.machine.statusText, status?.text)
+                XCTAssertEqual(Self.chipView(panel.machine)?.isHidden, status == nil, "\(name): a chip only with a status")
+                try assertBalanced(panel.machine, "\(kind) \(name)")
+                if status != nil {
+                    let chip = panel.machine.statusFrame
+                    if let chipAnchor {
+                        XCTAssertEqual(chip.maxX, chipAnchor.maxX, accuracy: 0.5, "\(kind) \(name): the chip's corner moved")
+                        XCTAssertEqual(chip.midY, chipAnchor.midY, accuracy: 0.5, "\(kind) \(name): the chip's corner moved")
+                    } else {
+                        chipAnchor = (chip.maxX, chip.midY)
+                    }
+                }
                 if let reference {
                     XCTAssertEqual(frames, reference, "\(kind) \(name): a view moved")
                 } else {
                     reference = frames
                 }
                 keep(window, "target-8-row-\(kind)-\(name)")
+            }
+            if kind == .session {
+                // A computer's name too long for the row: cut in the middle,
+                // under the chip's line, never under the chip.
+                panel.machine.title = "Kirills-MacBook-Pro-with-a-very-long-hostname.local"
+                panel.machine.status = states[1].1
+                panel.place(panel.layout(width: 393, top: 160, bottom: 600))
+                window.layoutIfNeeded()
+                try assertBalanced(panel.machine, "long name")
+                keep(window, "target-8-row-session-long-name")
+                panel.machine.title = "MacBook-Pro-7.local"
             }
             guard kind == .bot else { continue }
             // The name refused, every status over it, then typed.

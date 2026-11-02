@@ -104,6 +104,19 @@ final class LegacyComposeStart: NSObject {
         HomeDockKind.current(createsBot: drafts.createsBot, createsTask: drafts.createsTask)
     }
 
+    /// Every kind the panel shows, always, so the control never comes or
+    /// goes as the computers arrive.
+    static let shownKinds: [HomeDockKind] = [.session, .bot, .task]
+
+    /// The kinds that can be picked: those some computer makes, the one
+    /// already picked, and while the computers are still arriving, all
+    /// (where it goes is settled when they are in).
+    var enabledKinds: Set<HomeDockKind> {
+        var enabled = Set(kinds).union([kind])
+        if !composer.choices.machinesSynced { enabled.formUnion(Self.shownKinds) }
+        return enabled
+    }
+
     func setKind(_ kind: HomeDockKind) {
         guard !isStarting, sessionId == nil else { return }
         composer.selectKind(kind)
@@ -128,17 +141,18 @@ final class LegacyComposeStart: NSObject {
         }
     }
 
-    /// The machine is asked only when there is more than one to choose.
-    /// Whether it answers never shows or hides the row: an offline
-    /// computer is said in the row's label, and in full on Send.
-    var asksMachine: Bool { composer.choices.machineOptions.count > 1 }
+    /// The machine the first send goes to, as its picker names it; while
+    /// the computers are still arriving, that they are.
+    var machineName: String {
+        let choices = composer.choices
+        if choices.awaitsComputers { return Strings.ComposeTarget.loading }
+        return choices.currentMachine?.name ?? Strings.Home.selectMachine
+    }
 
-    /// The machine the first send goes to, as its picker names it.
-    var machineName: String { composer.choices.currentMachine?.name ?? Strings.Home.selectMachine }
-
-    /// The computer row's label: online in green, or what doesn't answer
-    /// in the warning colour.
+    /// The computer row's chip: online in green, what doesn't answer in
+    /// the warning colour, grey while the computers are still arriving.
     var machineStatus: (text: String, color: UIColor)? {
+        if composer.choices.awaitsComputers { return (Strings.ComposeTarget.loadingStatus, UIColor(Palette.textSecondary)) }
         guard let target = composer.choices.currentTarget else { return nil }
         let offline = composer.choices.offline
         let now = Int64(Date().timeIntervalSince1970 * 1000)
@@ -149,7 +163,8 @@ final class LegacyComposeStart: NSObject {
     /// Why the first send can't reach the computer now, in full; nil while
     /// it can.
     var machineWarning: String? {
-        composer.choices.offline.map(Strings.ComposeTarget.offline)
+        if composer.choices.awaitsComputers { return Strings.ComposeTarget.stillLoading }
+        return composer.choices.offline.map(Strings.ComposeTarget.offline)
     }
 
     /// The status dot a computer wears in the menu, as the session list's.
@@ -291,7 +306,9 @@ final class LegacyComposeStart: NSObject {
     }
 
     /// The harness row with nothing to run: setup help, not a menu.
-    var offersHarnessHelp: Bool { !composer.choices.hasAvailableHarness }
+    /// Nothing to run on the computer: the row is setup help. Not while the
+    /// computers are still arriving, when nothing is known yet.
+    var offersHarnessHelp: Bool { !composer.choices.hasAvailableHarness && !composer.choices.awaitsComputers }
 
     func openHarnessHelp() {
         guard offersHarnessHelp else { return }
@@ -319,6 +336,10 @@ final class LegacyComposeStart: NSObject {
                 image: Self.dot(status.color),
                 state: target.id == selected ? .on : .off
             ) { _ in composer.selectMachine(target.id) }
+        }
+        if actions.isEmpty, composer.choices.awaitsComputers {
+            let loading = UIAction(title: Strings.ComposeTarget.loading, attributes: .disabled) { _ in }
+            return [UIMenu(title: Strings.ComposeTarget.machinesTitle(kind), options: .displayInline, children: [loading])]
         }
         // Tapping the row while the computer is offline says why at the head.
         let title = machineWarning ?? Strings.ComposeTarget.machinesTitle(kind)

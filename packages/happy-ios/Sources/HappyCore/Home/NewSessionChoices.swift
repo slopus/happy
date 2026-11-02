@@ -49,6 +49,9 @@ public struct NewSessionChoices: Equatable, Sendable {
         public var agentDefaultOverrides: [String: JSONValue]
         /// `git worktree list` on the selected computer, when it is asked.
         public var gitWorktrees: [Worktrees.Entry]
+        /// The machine list has been fetched whole at least once; before
+        /// that what is here may be some of the computers, or none.
+        public var machinesSynced: Bool
 
         public init(
             draft: NewSessionDraft,
@@ -58,7 +61,8 @@ public struct NewSessionChoices: Equatable, Sendable {
             sessions: [SessionRecord],
             projectNames: [String: String] = [:],
             agentDefaultOverrides: [String: JSONValue] = [:],
-            gitWorktrees: [Worktrees.Entry] = []
+            gitWorktrees: [Worktrees.Entry] = [],
+            machinesSynced: Bool = true
         ) {
             self.draft = draft
             self.createsBot = createsBot
@@ -68,6 +72,7 @@ public struct NewSessionChoices: Equatable, Sendable {
             self.projectNames = projectNames
             self.agentDefaultOverrides = agentDefaultOverrides
             self.gitWorktrees = gitWorktrees
+            self.machinesSynced = machinesSynced
         }
 
         public init(draft: NewSessionDraft, createsBot: Bool, createsTask: Bool = false, snapshot: LegacyHomeSnapshot, gitWorktrees: [Worktrees.Entry] = []) {
@@ -81,7 +86,8 @@ public struct NewSessionChoices: Equatable, Sendable {
                     project.metadata?["name"]?.stringValue.map { (project.id, $0) }
                 }, uniquingKeysWith: { first, _ in first }),
                 agentDefaultOverrides: AccountSettings(snapshot.settings).agentDefaultOverrides,
-                gitWorktrees: gitWorktrees
+                gitWorktrees: gitWorktrees,
+                machinesSynced: snapshot.machines.synced
             )
         }
     }
@@ -106,6 +112,8 @@ public struct NewSessionChoices: Equatable, Sendable {
     /// The chosen computer, or the daemon the start needs on it, doesn't
     /// answer; nil when it does, or when nothing is chosen.
     public var offline: Offline?
+    /// `Inputs.machinesSynced`.
+    public var machinesSynced: Bool
     public var homeDir: String?
 
     public var projectOptions: [Option]
@@ -176,6 +184,7 @@ public struct NewSessionChoices: Equatable, Sendable {
         offersDraftMachine = selectedChoice != nil
         let kind = HomeDockKind.current(createsBot: inputs.createsBot, createsTask: inputs.createsTask)
         self.kind = kind
+        machinesSynced = inputs.machinesSynced
         let targets = sortedChoices.map(MachineTarget.init)
         self.machines = targets
         currentTarget = selectedChoice.flatMap { choice in targets.first { $0.id == choice.id } }
@@ -404,6 +413,15 @@ public struct NewSessionChoices: Equatable, Sendable {
     /// Where `kind` goes when it is picked (`MachineTarget.preferred`).
     public func preferredMachine(for kind: HomeDockKind) -> MachineTarget? {
         MachineTarget.preferred(machines, for: kind, current: currentTarget?.id)
+    }
+
+    /// The computers are still arriving (a big account's first sync, a
+    /// relaunch before the list is fetched) and none here yet can take the
+    /// first send: a session's computer, or one whose Happy Agent makes the
+    /// bot or task. Where it goes is settled once they are in.
+    public var awaitsComputers: Bool {
+        guard !machinesSynced else { return false }
+        return kind == .session ? currentMachine == nil : currentTarget?.makes(kind) != true
     }
 
     /// `getSupportsWorktree`.
