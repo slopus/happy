@@ -327,9 +327,11 @@ final class HostedComposeTests: XCTestCase {
         let panel = try XCTUnwrap(Self.subview(NewWorkPanel.self, in: chat.view))
         let start = try XCTUnwrap(chat.composeStart)
         try await until { panel.folder.title.contains("happy") }
-        XCTAssertTrue(panel.kind.isHidden, "Happy CLI alone makes sessions: no Session | Bot | Task")
         XCTAssertEqual(start.kinds, [.session])
-        XCTAssertTrue(panel.machine.isHidden, "one computer, and it was asked")
+        XCTAssertFalse(panel.kind.isHidden, "Session | Bot | Task always show")
+        XCTAssertEqual(start.enabledKinds, [.session], "Happy CLI alone makes sessions")
+        XCTAssertEqual((0..<3).map(panel.kind.isEnabledForSegment), [true, false, false], "Bot and Task show disabled")
+        XCTAssertFalse(panel.machine.isHidden, "the computer shows, with whether it answers")
         XCTAssertFalse(panel.folder.isHidden)
         XCTAssertFalse(panel.harness.isHidden)
         XCTAssertGreaterThan(panel.harness.frame.minY, panel.folder.frame.maxY)
@@ -385,8 +387,7 @@ final class HostedComposeTests: XCTestCase {
         let card = try await composerCard(in: chat)
         let panel = try XCTUnwrap(Self.subview(NewWorkPanel.self, in: chat.view))
         let start = try XCTUnwrap(chat.composeStart)
-        try await until { !panel.machine.isHidden }
-        XCTAssertEqual(panel.machine.title, "Harness Mac")
+        try await until { panel.machine.title == "Harness Mac" }
         XCTAssertTrue(panel.folder.title.contains("happy"))
         XCTAssertLessThan(panel.machine.frame.maxY, panel.folder.frame.minY, "the computer is over its folder")
         assertCentred(panel, in: chat)
@@ -439,7 +440,7 @@ final class HostedComposeTests: XCTestCase {
         let card = try await composerCard(in: chat)
         let panel = try XCTUnwrap(Self.subview(NewWorkPanel.self, in: chat.view))
         let start = try XCTUnwrap(chat.composeStart)
-        try await until { !panel.kind.isHidden }
+        try await until { start.kinds == [.session, .bot, .task] }
         XCTAssertEqual(panel.sessionKinds, [.session, .bot, .task])
         XCTAssertEqual(start.drafts.draft.agentType, .claude)
         XCTAssertFalse(panel.folder.isHidden)
@@ -489,7 +490,7 @@ final class HostedComposeTests: XCTestCase {
         let card = try await composerCard(in: chat)
         let panel = try XCTUnwrap(Self.subview(NewWorkPanel.self, in: chat.view))
         let start = try XCTUnwrap(chat.composeStart)
-        try await until { !panel.kind.isHidden }
+        try await until { start.kinds.contains(.bot) }
         try pick(.bot, in: panel)
         try await until { panel.sessionKind == .bot && start.drafts.draft.agentType == .rig }
         XCTAssertTrue(panel.folder.isHidden)

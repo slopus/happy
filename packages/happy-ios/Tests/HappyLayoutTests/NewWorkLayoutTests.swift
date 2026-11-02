@@ -133,20 +133,33 @@ final class NewWorkLayoutTests: XCTestCase {
         XCTAssertEqual(short.block.minY, 103 + M.margin)
     }
 
-    /// The computer's status is one frame, top-right in the row, whatever
-    /// it says, inside the room the row keeps for it.
-    func testTheStatusIsOneFrameTopRight() {
+    /// The computer's status is a chip on the row's top-right corner,
+    /// straddling its top edge: as wide as its text, its trailing end and
+    /// its middle the same whatever it says.
+    func testTheStatusChipSitsOnTheTopRightCorner() {
         typealias S = NewWorkStatusLayout
-        let frame = S.label(rowWidth: 320)
-        XCTAssertEqual(frame, CGRect(x: 320 - 18 - 112, y: 5, width: 112, height: 14))
-        XCTAssertLessThanOrEqual(frame.maxY, M.rowHeight / 2, "in the row's top half")
-        // A 16pt name, its line box about 19 high, set titleDrop below the
-        // middle, starts under the label.
-        XCTAssertGreaterThanOrEqual(M.rowHeight / 2 + S.titleDrop - 19 / 2, frame.maxY - 1)
-        // Inside the capsule (radius half the row) at its top-right corner.
-        let centre = CGPoint(x: 320 - M.rowHeight / 2, y: M.rowHeight / 2)
-        let corner = CGPoint(x: frame.maxX, y: frame.minY)
-        XCTAssertLessThan(hypot(corner.x - centre.x, corner.y - centre.y), M.rowHeight / 2)
+        let online = S.chip(rowWidth: 320, textWidth: 40.3)
+        XCTAssertEqual(online, CGRect(x: 320 - 16 - 55, y: -9, width: 55, height: 18))
+        XCTAssertEqual(online.midY, 0, "on the row's top edge")
+        let offline = S.chip(rowWidth: 320, textWidth: 66)
+        XCTAssertEqual(offline.maxX, online.maxX)
+        XCTAssertEqual(offline.midY, online.midY)
+        XCTAssertEqual(S.chip(rowWidth: 320, textWidth: 400).width, S.maxWidth, "a long text is cut, not the row")
+        XCTAssertLessThan(online.maxY, M.rowHeight / 2 - 19 / 2, "over the name's line box, never on it")
+    }
+
+    /// Over the computer row the chip rises into the gap under the kind
+    /// and clears it, with room and short of it, inside the block.
+    func testTheStatusChipClearsTheKindAndStaysInTheBlock() throws {
+        for bottom: CGFloat in [760, 103 + 32 + M.tightKindToRows + 2 * M.rowHeight + M.tightRowGap + 2 * M.margin] {
+            let layout = bot(bottom: bottom)
+            let kind = try XCTUnwrap(layout.kind)
+            let chip = NewWorkStatusLayout.chip(rowWidth: layout.rows[0].width, textWidth: NewWorkStatusLayout.maxWidth)
+                .offsetBy(dx: layout.rows[0].minX, dy: layout.rows[0].minY)
+            XCTAssertGreaterThanOrEqual(chip.minY - kind.maxY, 5, "\(bottom): clear of the kind")
+            XCTAssertGreaterThanOrEqual(chip.minY, 0, "\(bottom): inside the block")
+            XCTAssertLessThanOrEqual(chip.maxX, layout.block.width, "\(bottom): inside the block")
+        }
     }
 
     /// Legacy with two: computer, folder, harness, with gaps between.

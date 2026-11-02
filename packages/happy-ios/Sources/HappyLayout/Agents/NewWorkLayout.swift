@@ -131,32 +131,37 @@ public struct NewWorkLayout: Equatable, Sendable {
 }
 
 extension NewWorkLayout.Metrics {
-    /// The gaps once the room is short.
-    public static let tightKindToRows: CGFloat = 8
+    /// The gaps once the room is short; under the kind the computer's
+    /// status chip still clears it (`NewWorkStatusLayout.overhang`).
+    public static let tightKindToRows: CGFloat = NewWorkStatusLayout.overhang + 5
     public static let tightRowGap: CGFloat = 6
 }
 
-/// The computer row's status: a label of one fixed frame pinned to the
-/// row's top-right, inside its capsule, over a name set a fixed `titleDrop`
-/// below the row's middle so the two never meet and the name keeps the
-/// row's width, whether the label says "● Online", "● Offline · 2h ago"
-/// or nothing. Nothing else in the row, or in the panel, depends on it, so
-/// a status coming, going or changing moves nothing.
+/// The computer row's status: a small chip pinned to the row's top-right
+/// corner, straddling its top edge like a badge, as wide as what it says.
+/// It is laid over the row and takes no part in its layout: the icon and
+/// the name are centred as in any row, and the chip's text changing, or
+/// the chip going, moves nothing. Its top half rises into the gap over the
+/// row, which is always deeper than `overhang`.
 ///
-///     (                              ● Online )   label: top-right
-///     ( [icon] MacBook-Pro-7.local            )   name: dropped, full width
+///                            ( ● Online )   chip: on the top edge
+///     (   [icon] MacBook-Pro-7.local    )   name: centred, as any row's
 public enum NewWorkStatusLayout {
-    /// How far below the row's middle the name sits, always.
-    public static let titleDrop: CGFloat = 6
-    /// From the row's trailing edge; clear of the capsule's curve at `top`.
-    public static let inset: CGFloat = 18
-    public static let top: CGFloat = 5
-    public static let width: CGFloat = 112
-    public static let height: CGFloat = 14
+    public static let fontSize: CGFloat = 11
+    public static let height: CGFloat = 18
+    /// Either side of the text.
+    public static let padding: CGFloat = 7
+    /// From the row's trailing edge to the chip's, as the icon is from the
+    /// leading one.
+    public static let trailing: CGFloat = 16
+    public static let maxWidth: CGFloat = 150
+    /// How far the chip rises over the row's top.
+    public static let overhang: CGFloat = height / 2
 
-    /// The label's frame in a row of `width`: the same for any text, which
-    /// is right-aligned in it and cut to it.
-    public static func label(rowWidth: CGFloat) -> CGRect {
-        CGRect(x: rowWidth - inset - width, y: top, width: width, height: height)
+    /// The chip, in a row of `rowWidth`, for a text `textWidth` wide: its
+    /// trailing end and its middle are the same for any text.
+    public static func chip(rowWidth: CGFloat, textWidth: CGFloat) -> CGRect {
+        let width = min(maxWidth, ceil(textWidth) + 2 * padding)
+        return CGRect(x: rowWidth - trailing - width, y: -overhang, width: width, height: height)
     }
 }

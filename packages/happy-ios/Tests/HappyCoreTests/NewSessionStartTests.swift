@@ -2253,6 +2253,35 @@ extension NewSessionChoicesTests {
         XCTAssertFalse(composer.drafts.createsBot, "no computer makes bots: a session")
     }
 
+    /// A big account's computers arrive late, Happy CLI's rows before Happy
+    /// Agent's: a bot picked before any are in stays a bot, waits rather
+    /// than become a session, and goes to the Happy Agent that makes bots
+    /// once it is in.
+    @MainActor
+    func testABotWaitsForItsHappyAgentWhileTheComputersArrive() async throws {
+        let machines = reportedMachines()
+        let composer = await composer(NewSessionDraft(selectedMachineId: "old", agentType: .codex, pickedAgentType: .codex), machines: [])
+        composer.update(snapshot: LegacyHomeSnapshot(machines: MachinesSnapshot(synced: false, machines: []), sessions: []))
+        await composer.waitForIdle()
+        XCTAssertFalse(composer.choices.machinesSynced)
+        XCTAssertTrue(composer.choices.awaitsComputers)
+        composer.selectKind(.bot)
+        await composer.waitForIdle()
+        XCTAssertTrue(composer.drafts.createsBot, "picked before anything is in, it is a bot")
+
+        composer.update(snapshot: LegacyHomeSnapshot(machines: MachinesSnapshot(synced: false, machines: Array(machines.prefix(2))), sessions: []))
+        await composer.waitForIdle()
+        XCTAssertTrue(composer.drafts.createsBot, "Happy CLI's rows alone don't make it a session")
+        XCTAssertTrue(composer.choices.awaitsComputers)
+
+        composer.update(snapshot: LegacyHomeSnapshot(machines: MachinesSnapshot(synced: true, machines: machines), sessions: []))
+        await composer.waitForIdle()
+        XCTAssertTrue(composer.drafts.createsBot)
+        XCTAssertFalse(composer.choices.awaitsComputers)
+        XCTAssertEqual(composer.drafts.draft.selectedMachineId, "cli-7", "today's computer, whose Happy Agent makes bots")
+        XCTAssertEqual(composer.drafts.draft.agentType, .rig)
+    }
+
     /// The picker's statuses: online, or last seen; Happy Agent's own for a
     /// bot or a task.
     func testMachineTargetsSayWhatAnswers() {
