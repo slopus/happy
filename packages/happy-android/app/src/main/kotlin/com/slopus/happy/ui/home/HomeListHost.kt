@@ -139,7 +139,10 @@ fun HomeListHost(graph: AppGraph, navigation: HomeNavigation, phone: Boolean = f
     var enteringUrl by remember { mutableStateOf(false) }
     connect.onUnavailable = { enteringUrl = true }
     val switchAccount = rememberHomeAccountSwitch(graph)
-    val actions = remember(navigation, uriHandler, connect, switchAccount) {
+    // The migration card, until this phone has a Happy Agent connection of its own.
+    val agentConnections by graph.agentConnections.accounts.collectAsStateWithLifecycle()
+    val migrates = agentConnections.isEmpty()
+    val actions = remember(navigation, uriHandler, connect, switchAccount, migrates) {
         HomeScreenActions(
             onSettings = navigation.onSettings,
             onNewSession = navigation.onNewSession,
@@ -149,6 +152,7 @@ fun HomeListHost(graph: AppGraph, navigation: HomeNavigation, phone: Boolean = f
             onSwitchAccount = switchAccount,
             onLinkComputer = connect::scan,
             onCompose = navigation.onCompose,
+            onMigrate = navigation.onMigrate.takeIf { migrates },
         )
     }
 

@@ -184,7 +184,7 @@ fun TabletGroupedList(
             .testTag(TabletGroupedTags.LIST),
         contentPadding = PaddingValues(0.dp),
     ) {
-        if (offlineBanner != null || update != null) {
+        if (offlineBanner != null || update != null || actions.onMigrate != null) {
             item(key = "banners", contentType = "banners") { HomeBanners(offlineBanner, update, actions) }
         }
         items(rows, key = { it.key }, contentType = { it::class }) { row ->

@@ -278,6 +278,24 @@ final class SessionListChromeLayoutTests: XCTestCase {
         XCTAssertNil(layout.action)
     }
 
+    /// Home's notices (the move to Happy Agent) sit across the top of the
+    /// safe area; the rest is centred in what is left under them.
+    func testNoSessionsUnderTheNotices() {
+        let layout = NoSessionsLayout(.init(
+            size: phone,
+            safeArea: phoneUnderBar,
+            title: text("No sessions yet", lineHeight: 30),
+            description: text("Start one on a connected machine.", lineHeight: 22),
+            action: nil,
+            header: 80
+        ))
+        assertFrame(layout.header, rect(0, 103, 393, 80))
+        // 80 less room: 40 lower than centred in the whole safe area (364.5).
+        assertFrame(layout.icon, rect(168.5, 404.5, 56, 56))
+        assertFrame(layout.description, rect(64.5, 518.5, 264, 22))
+        XCTAssertNil(NoSessionsLayout(.init(size: phone, safeArea: phoneUnderBar, title: fixed(1, 1), description: fixed(1, 1), action: nil)).header)
+    }
+
     func testNoSessionsWithAnAction() {
         let layout = NoSessionsLayout(.init(
             size: phone,

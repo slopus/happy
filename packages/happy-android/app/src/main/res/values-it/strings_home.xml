@@ -112,4 +112,6 @@
     <string name="home_worktree_unreachable">Impossibile connettersi alla macchina</string>
     <string name="home_worktree_not_git">Non è un repository Git</string>
     <string name="home_worktree_failed">Impossibile creare il worktree</string>
+    <string name="home_migration_title">Passa a Happy Agent</string>
+    <string name="home_migration_subtitle">Collega il telefono direttamente al computer. Happy CLI continua a funzionare.</string>
 </resources>

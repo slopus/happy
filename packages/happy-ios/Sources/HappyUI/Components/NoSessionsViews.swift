@@ -83,6 +83,13 @@ public final class NoSessionsView: UIView {
         didSet { if showsArchivedAction != oldValue { setNeedsLayout() } }
     }
 
+    /// The notices at the top (home's move to Happy Agent, `HomeMigration`);
+    /// nil for none. Drawn once measured with the rest.
+    var banners: HomeBanners? {
+        didSet { if banners != oldValue { setNeedsLayout() } }
+    }
+    let header = HomeListHeaderView()
+
     /// A picture drawn in the glyph's place, the same box, so the
     /// layout is unchanged: home's notice puts a `StateSceneView` here.
     var artwork: UIView? {
@@ -136,6 +143,8 @@ public final class NoSessionsView: UIView {
             scrollView.addSubview(view)
         }
         showArchived.isHidden = true
+        header.isHidden = true
+        scrollView.addSubview(header)
         // The buttons never measure their labels here: until the sizes are
         // in they lay out an empty label, hidden.
         startNewSession.measuredLabelSize = .zero
@@ -164,7 +173,9 @@ public final class NoSessionsView: UIView {
             action: showArchived.label.string,
             width: max(0, bounds.width - LayoutInsets(safeAreaInsets).horizontal),
             text: text,
-            showsArchived: showsArchivedAction
+            showsArchived: showsArchivedAction,
+            banners: banners,
+            bannersMaxWidth: ContentWidth.maxWidth
         )
     }
 
@@ -189,7 +200,8 @@ public final class NoSessionsView: UIView {
             description: .fixed(sizes.description),
             buttonHeight: sizes.buttonHeight,
             buttonLabelWidth: fitsButtonToLabel ? sizes.buttonLabel.width : nil,
-            action: sizes.action.map(Measurable.fixed)
+            action: sizes.action.map(Measurable.fixed),
+            header: sizes.header
         ))
         scrollView.isHidden = false
         scrollView.contentSize = CGSize(width: bounds.width, height: layout.contentHeight)
@@ -204,6 +216,10 @@ public final class NoSessionsView: UIView {
         if let frame = layout.button { startNewSession.setLayoutFrame(frame) }
         showArchived.isHidden = layout.action == nil
         if let frame = layout.action { showArchived.setLayoutFrame(frame) }
+        // The words its height was measured with.
+        header.content = sizes.input.banners ?? HomeBanners()
+        header.isHidden = layout.header == nil
+        if let frame = layout.header { header.setLayoutFrame(frame) }
     }
 
     /// Takes sizes measured for what this view shows now, and refuses any

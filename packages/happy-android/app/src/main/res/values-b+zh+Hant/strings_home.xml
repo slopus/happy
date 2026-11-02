@@ -112,4 +112,6 @@
     <string name="home_worktree_unreachable">無法連線到裝置</string>
     <string name="home_worktree_not_git">不是 Git 儲存庫</string>
     <string name="home_worktree_failed">無法建立 Worktree</string>
+    <string name="home_migration_title">切換到 Happy Agent</string>
+    <string name="home_migration_subtitle">將手機直接連接到電腦。Happy CLI 仍可繼續使用。</string>
 </resources>

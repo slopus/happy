@@ -21,6 +21,12 @@ final class AccountKindNamingTests: XCTestCase {
         "native.accountKind.restoreAnotherFooter",
     ]
 
+    /// The home card that leads a Happy CLI account to Happy Agent.
+    private static let homeKeys = [
+        "native.home.migrationTitle",
+        "native.home.migrationSubtitle",
+    ]
+
     /// "Legacy" as each language would put it before "account": the word
     /// itself, which several keep, and each one's own.
     private static let legacyWords: [String: String] = [
@@ -46,12 +52,12 @@ final class AccountKindNamingTests: XCTestCase {
         let languages = AppLanguage.supported.map(\.code)
         XCTAssertEqual(Set(TranslationCatalog.nativeSources.keys), Set(languages))
         let english = TranslationCatalog.nativeSources["en"] ?? [:]
-        XCTAssertEqual(Set(english.keys), Set(Self.kindKeys))
+        XCTAssertEqual(Set(english.keys), Set(Self.kindKeys + Self.homeKeys))
         for language in languages {
             let words = TranslationCatalog.nativeSources[language] ?? [:]
             let catalog = TranslationCatalog.catalog(for: language)
             XCTAssertEqual(Set(words.keys), Set(english.keys), language)
-            for key in Self.kindKeys {
+            for key in Self.kindKeys + Self.homeKeys {
                 let text = catalog(key, ["name": "Studio Mac"])
                 XCTAssertNotEqual(text, key, "\(language) lacks \(key)")
                 XCTAssertFalse(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "\(language) \(key)")

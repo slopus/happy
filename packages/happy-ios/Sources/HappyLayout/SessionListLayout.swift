@@ -340,6 +340,9 @@ public struct NoSessionsLayout: Equatable, Sendable {
         /// text's margins.
         public var buttonLabelWidth: CGFloat?
         public var action: Measurable?
+        /// The notices over home's list (the move to Happy Agent) at the
+        /// top of the safe area, this tall; 0 for none.
+        public var header: CGFloat
 
         public init(
             size: CGSize,
@@ -349,8 +352,10 @@ public struct NoSessionsLayout: Equatable, Sendable {
             description: Measurable,
             buttonHeight: CGFloat? = nil,
             buttonLabelWidth: CGFloat? = nil,
-            action: Measurable?
+            action: Measurable?,
+            header: CGFloat = 0
         ) {
+            self.header = header
             self.size = size
             self.safeArea = safeArea
             self.icon = icon
@@ -367,13 +372,20 @@ public struct NoSessionsLayout: Equatable, Sendable {
     public var description: CGRect
     public var button: CGRect?
     public var action: CGRect?
+    /// The notices, across the safe area's width at its top; nil for none.
+    public var header: CGRect?
     /// How tall the scrolling content is: the screen's height while the
     /// content fits, more when it doesn't.
     public var contentHeight: CGFloat
 
     public init(_ input: Input) {
         typealias M = Metrics
-        let insets = input.safeArea
+        let outer = input.safeArea
+        let widthAll = max(0, input.size.width - outer.horizontal)
+        header = input.header > 0 ? CGRect(x: outer.left, y: outer.top, width: widthAll, height: input.header) : nil
+        // The rest is centred below the notices.
+        var insets = outer
+        insets.top += max(0, input.header)
         let width = max(0, input.size.width - insets.horizontal)
         let textWidth = max(0, width - M.paddingHorizontal * 2)
         let descriptionWidth = min(M.descriptionMaxWidth, width) - M.paddingHorizontal * 2

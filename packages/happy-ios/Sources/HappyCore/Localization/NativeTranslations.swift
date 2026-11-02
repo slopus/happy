@@ -21,6 +21,8 @@ extension TranslationCatalog {
             "native.accountKind.agentUnreachable": "Can’t reach ${name}.\nCheck the Happy Agent connection, then reload.",
             "native.accountKind.restoreAnotherCLIAccount": "Restore a Happy CLI Account",
             "native.accountKind.restoreAnotherFooter": "Sign in to another Happy CLI account with its secret key, or with a phone that has it. This account stays here.",
+            "native.home.migrationTitle": "Switch to Happy Agent",
+            "native.home.migrationSubtitle": "Connect your phone straight to your computer. Happy CLI keeps working.",
         ],
         "ru": [
             "native.accountKind.addCLIAccount": "Добавить аккаунт Happy CLI",
@@ -35,6 +37,8 @@ extension TranslationCatalog {
             "native.accountKind.agentUnreachable": "Не удаётся связаться с ${name}.\nПроверьте подключение к Happy Agent и обновите страницу.",
             "native.accountKind.restoreAnotherCLIAccount": "Восстановить аккаунт Happy CLI",
             "native.accountKind.restoreAnotherFooter": "Войдите в другой аккаунт Happy CLI с помощью его секретного ключа или телефона, на котором он есть. Этот аккаунт останется здесь.",
+            "native.home.migrationTitle": "Перейдите на Happy Agent",
+            "native.home.migrationSubtitle": "Подключите телефон напрямую к компьютеру. Happy CLI продолжит работать.",
         ],
         "pl": [
             "native.accountKind.addCLIAccount": "Dodaj konto Happy CLI",
@@ -49,6 +53,8 @@ extension TranslationCatalog {
             "native.accountKind.agentUnreachable": "Nie można połączyć się z ${name}.\nSprawdź połączenie z Happy Agent i odśwież stronę.",
             "native.accountKind.restoreAnotherCLIAccount": "Przywróć konto Happy CLI",
             "native.accountKind.restoreAnotherFooter": "Zaloguj się na inne konto Happy CLI za pomocą jego klucza tajnego lub telefonu, na którym jest zalogowane. To konto tu zostanie.",
+            "native.home.migrationTitle": "Przejdź na Happy Agent",
+            "native.home.migrationSubtitle": "Połącz telefon bezpośrednio z komputerem. Happy CLI nadal działa.",
         ],
         "es": [
             "native.accountKind.addCLIAccount": "Añadir cuenta de Happy CLI",
@@ -63,6 +69,8 @@ extension TranslationCatalog {
             "native.accountKind.agentUnreachable": "No se puede acceder a ${name}.\nComprueba la conexión con Happy Agent y vuelve a cargar.",
             "native.accountKind.restoreAnotherCLIAccount": "Restaurar una cuenta de Happy CLI",
             "native.accountKind.restoreAnotherFooter": "Inicia sesión en otra cuenta de Happy CLI con su clave secreta o con un teléfono que la tenga. Esta cuenta se queda aquí.",
+            "native.home.migrationTitle": "Cámbiate a Happy Agent",
+            "native.home.migrationSubtitle": "Conecta tu teléfono directamente a tu ordenador. Happy CLI sigue funcionando.",
         ],
         "it": [
             "native.accountKind.addCLIAccount": "Aggiungi account Happy CLI",
@@ -77,6 +85,8 @@ extension TranslationCatalog {
             "native.accountKind.agentUnreachable": "Impossibile raggiungere ${name}.\nControlla la connessione a Happy Agent, poi ricarica.",
             "native.accountKind.restoreAnotherCLIAccount": "Ripristina un account Happy CLI",
             "native.accountKind.restoreAnotherFooter": "Accedi a un altro account Happy CLI con la sua chiave segreta o con un telefono che lo ha. Questo account resta qui.",
+            "native.home.migrationTitle": "Passa a Happy Agent",
+            "native.home.migrationSubtitle": "Collega il telefono direttamente al computer. Happy CLI continua a funzionare.",
         ],
         "pt": [
             "native.accountKind.addCLIAccount": "Adicionar conta do Happy CLI",
@@ -91,6 +101,8 @@ extension TranslationCatalog {
             "native.accountKind.agentUnreachable": "Não foi possível acessar ${name}.\nVerifique a conexão com o Happy Agent e recarregue.",
             "native.accountKind.restoreAnotherCLIAccount": "Restaurar uma conta do Happy CLI",
             "native.accountKind.restoreAnotherFooter": "Entre em outra conta do Happy CLI com a chave secreta dela ou com um telefone que a tenha. Esta conta continua aqui.",
+            "native.home.migrationTitle": "Mude para o Happy Agent",
+            "native.home.migrationSubtitle": "Conecte o telefone diretamente ao computador. O Happy CLI continua funcionando.",
         ],
         "ca": [
             "native.accountKind.addCLIAccount": "Afegeix un compte de Happy CLI",
@@ -105,6 +117,8 @@ extension TranslationCatalog {
             "native.accountKind.agentUnreachable": "No es pot accedir a ${name}.\nComprova la connexió amb Happy Agent i torna a carregar.",
             "native.accountKind.restoreAnotherCLIAccount": "Restaura un compte de Happy CLI",
             "native.accountKind.restoreAnotherFooter": "Inicia la sessió en un altre compte de Happy CLI amb la seva clau secreta o amb un telèfon que el tingui. Aquest compte es queda aquí.",
+            "native.home.migrationTitle": "Passa a Happy Agent",
+            "native.home.migrationSubtitle": "Connecta el telèfon directament a l’ordinador. Happy CLI continua funcionant.",
         ],
         "zh-Hans": [
             "native.accountKind.addCLIAccount": "添加 Happy CLI 账户",
@@ -119,6 +133,8 @@ extension TranslationCatalog {
             "native.accountKind.agentUnreachable": "无法连接 ${name}。\n请检查与 Happy Agent 的连接，然后重新加载。",
             "native.accountKind.restoreAnotherCLIAccount": "恢复 Happy CLI 账户",
             "native.accountKind.restoreAnotherFooter": "用另一个 Happy CLI 账户的密钥，或用已登录该账户的手机登录它。此账户会保留在这里。",
+            "native.home.migrationTitle": "切换到 Happy Agent",
+            "native.home.migrationSubtitle": "将手机直接连接到电脑。Happy CLI 仍可继续使用。",
         ],
         "zh-Hant": [
             "native.accountKind.addCLIAccount": "新增 Happy CLI 帳戶",
@@ -133,6 +149,8 @@ extension TranslationCatalog {
             "native.accountKind.agentUnreachable": "無法連線到 ${name}。\n請檢查與 Happy Agent 的連線，然後重新載入。",
             "native.accountKind.restoreAnotherCLIAccount": "恢復 Happy CLI 帳戶",
             "native.accountKind.restoreAnotherFooter": "用另一個 Happy CLI 帳戶的金鑰，或用已登入該帳戶的手機登入它。此帳戶會保留在這裡。",
+            "native.home.migrationTitle": "切換到 Happy Agent",
+            "native.home.migrationSubtitle": "將手機直接連接到電腦。Happy CLI 仍可繼續使用。",
         ],
         "ja": [
             "native.accountKind.addCLIAccount": "Happy CLI アカウントを追加",
@@ -147,6 +165,8 @@ extension TranslationCatalog {
             "native.accountKind.agentUnreachable": "${name} に接続できません。\nHappy Agent との接続を確認してから、再読み込みしてください。",
             "native.accountKind.restoreAnotherCLIAccount": "Happy CLI アカウントを復元",
             "native.accountKind.restoreAnotherFooter": "別の Happy CLI アカウントに、そのシークレットキーか、そのアカウントがあるスマートフォンでサインインします。このアカウントはここに残ります。",
+            "native.home.migrationTitle": "Happy Agent に切り替え",
+            "native.home.migrationSubtitle": "スマートフォンをコンピューターに直接接続します。Happy CLI はそのまま使えます。",
         ],
     ]
 }

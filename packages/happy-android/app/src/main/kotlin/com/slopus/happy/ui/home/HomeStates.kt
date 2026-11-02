@@ -39,6 +39,7 @@ object HomeStateTags {
     const val OFFLINE_BANNER = "homeState.offlineBanner"
     const val UPDATE_BANNER = "homeState.updateBanner"
     const val CHANGELOG_BANNER = "homeState.changelogBanner"
+    const val MIGRATION_BANNER = "homeState.migrationBanner"
 }
 
 /** EmptyMainScreen.tsx */
@@ -132,11 +133,12 @@ sealed interface HomeUpdate {
     }
 }
 
-/** HomeListHeader: the offline plaque first (it's about right now), then the update. */
+/** HomeListHeader: the offline plaque first (it's about right now), then the move to Happy Agent, then the update. */
 @Composable
 fun HomeBanners(offline: OfflineBanner?, update: HomeUpdate?, actions: HomeScreenActions) {
     Column(modifier = Modifier.fillMaxWidth()) {
         offline?.let { OfflineMachinesBanner(it, actions.onTroubleshoot) }
+        actions.onMigrate?.let { MigrationBanner(it) }
         when (update) {
             is HomeUpdate.Native -> UpdateBanner(onClick = { actions.onOpenUrl(update.url) })
             HomeUpdate.Changelog -> ChangelogBanner(onClick = actions.onWhatsNew)
@@ -157,6 +159,28 @@ fun OfflineMachinesBanner(banner: OfflineBanner, onTroubleshoot: () -> Unit) {
             icon = { Icon(Ionicon.WarningOutline, size = 28.dp, color = colors.boxWarning.text) },
             showChevron = true,
             onClick = onTroubleshoot,
+        )
+    }
+}
+
+/**
+ * The move from Happy CLI to Happy Agent, on a Happy CLI account's home in
+ * every state until the phone has an agent connection; it can't be
+ * dismissed. The offline plaque's form: a warning glyph (28, warning text,
+ * the yellow), "Switch to Happy Agent", what it means, and a chevron to
+ * Open Happy on your computer, whose code pairs the phone with Happy Agent.
+ * The Happy CLI account stays as it is.
+ */
+@Composable
+fun MigrationBanner(onClick: () -> Unit) {
+    val colors = HappyTheme.colors
+    BannerGroup(Modifier.testTag(HomeStateTags.MIGRATION_BANNER)) {
+        Item(
+            title = stringResource(R.string.home_migration_title),
+            subtitle = stringResource(R.string.home_migration_subtitle),
+            icon = { Icon(Ionicon.FlashOutline, size = 28.dp, color = colors.boxWarning.text) },
+            showChevron = true,
+            onClick = onClick,
         )
     }
 }

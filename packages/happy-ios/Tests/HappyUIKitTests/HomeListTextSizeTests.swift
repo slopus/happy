@@ -84,6 +84,8 @@ final class HomeListTextSizeTests: XCTestCase {
             HomeBanners(nativeUpdate: true),
             HomeBanners(whatsNew: true),
             HomeBanners(offlineTitle: "MacBook Pro is offline", whatsNew: true),
+            HomeBanners(migration: true),
+            HomeBanners(offlineTitle: "MacBook Pro is offline", migration: true, whatsNew: true),
         ]
         for category in categories {
             for scale in scales {
@@ -216,6 +218,9 @@ final class HomeListTextSizeTests: XCTestCase {
         let session = try XCTUnwrap(account.session)
         let context = AppContext(account: account, variant: .development, version: "test")
         let list = SessionListViewController(context: context, session: session)
+        // The rows and the offline plaque, without the move to Happy Agent
+        // this test account would be offered.
+        list.offersMigration = false
         list.apply(model, changeset: RowChangeset(), animated: false)
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
         window.traitOverrides.preferredContentSizeCategory = category
