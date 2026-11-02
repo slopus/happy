@@ -207,14 +207,23 @@ win:
   (`ui/chat/ComposeChat.kt`, iOS's LegacyComposeStart): its composer
   writes the account's new-session draft; centred between the bar and the
   composer (`ui/chat/NewWorkPanel.kt`, iOS's NewWorkPanel/NewWorkLayout)
-  sit the computer (only with two or more) and the folder, each a menu,
-  the folders following the computer; its first send starts the session
-  with that text and images, and the screen then shows that session. A
-  refused or failed start says why and keeps the text; leaving before the
-  computer answers stops the start and the draft stays. On a tablet the
-  sidebar's New session opens the same chat in the detail pane. Legacy
-  compose makes sessions only; a legacy bot is made on the new-session
-  screen (`/new`). An agent connection's empty chat asks Task or Bot and an
+  sit Session | Bot | Task (always shown; a kind no computer's Happy Agent
+  makes is dimmed, all pickable while the computers are still arriving),
+  the computer (always, with an Online / Offline · 3d / Happy Agent offline
+  chip on its corner, "Loading computers…" until they are in), then a
+  session's folder and harness, or a bot's name (a refusal said inside the
+  field), each a menu, the folders following the computer. Bot and Task
+  go to a computer whose Happy Agent makes them and answers
+  (`MachineTarget`, `NewSessionServices.setKind`), moved off an offline
+  one unless the person picked it. Short of room the block drops its note,
+  then tightens. Its first send starts the session, bot or task (Happy
+  Agent's `target: {kind: "task"}`) with that text and images, and the
+  screen then shows it. A send to a computer that doesn't answer, or
+  before the computers are in, is refused in full before anything starts;
+  a refused or failed start says why and keeps the text; leaving before
+  the computer answers stops the start and the draft stays. On a tablet
+  the sidebar's New session opens the same chat in the detail pane. An
+  agent connection's empty chat asks Task or Bot and an
   optional name in the same place; its first send makes that kind under
   that name (`POST /v0/tasks` or `/v0/bots`, once, the same ids on a
   retry) and only then sends, so a refusal keeps the text and says why.

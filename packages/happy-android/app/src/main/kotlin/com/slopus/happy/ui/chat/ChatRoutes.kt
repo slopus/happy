@@ -25,6 +25,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
+import com.slopus.happy.model.ComposeKind
 import com.slopus.happy.chat.ChatActions
 import com.slopus.happy.chat.ChatFeed
 import com.slopus.happy.chat.ChatMessage
@@ -303,9 +304,14 @@ private fun ChatRoute(
         // A compose chat that has started is its session's chat: the checkout's tabs are that session's.
         val slots = rememberSessionScreenSlots(graph, if (compose != null) sessionId else routeId, route.pending, state, onSwitch = { onOpenSession(sessionId, it) }, onBack = onBack)
         val chatSlots = if (compose != null && composing) {
+            val kind by compose.newSession.kind.collectAsStateWithLifecycle()
             ChatScreenSlots(
                 headerSubtitle = compose.progress(),
-                pending = ChatPendingSlot(compose.session, focusComposer = true) { ComposeTarget(compose) },
+                pending = ChatPendingSlot(
+                    compose.session,
+                    focusComposer = true,
+                    composerPlaceholder = if (kind == ComposeKind.Task) stringResource(R.string.compose_task_placeholder) else null,
+                ) { ComposeTarget(compose) },
             )
         } else {
             slots.chat

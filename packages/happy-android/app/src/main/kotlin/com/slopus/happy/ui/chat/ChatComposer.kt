@@ -192,6 +192,8 @@ fun ChatComposer(
     autoFocus: Boolean = false,
     /** Where a sent message's words fly from ([SendFlight]), when Send sends them alone. */
     flight: SendFlight? = null,
+    /** What the empty input asks for; null for "Type a message…". */
+    placeholder: String? = null,
 ) {
     val focus = remember { FocusRequester() }
     if (autoFocus) LaunchedEffect(focus) { runCatching { focus.requestFocus() } }
@@ -286,7 +288,7 @@ fun ChatComposer(
                         Box {
                             if (field.text.isEmpty()) {
                                 Text(
-                                    stringResource(R.string.session_input_placeholder),
+                                    placeholder ?: stringResource(R.string.session_input_placeholder),
                                     style = ComposerSpec.input,
                                     color = colors.input.placeholder,
                                     maxLines = 1,

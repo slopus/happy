@@ -4,7 +4,10 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelected
 import androidx.compose.ui.test.onNodeWithText
@@ -17,6 +20,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.ui.HappyApp
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.model.NewSessionPage
+import com.slopus.happy.model.ComposeKind
 import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.chat.ChatScreenTags
 import com.slopus.happy.ui.chat.ComposeChatTags
@@ -28,6 +32,10 @@ import com.slopus.happy.ui.tablet.TabletSidebarTags
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.putJsonArray
+import kotlinx.serialization.json.putJsonObject
 import com.slopus.happy.ui.chat.ComposerTags
 import com.slopus.happy.ui.components.HeaderTags
 import com.slopus.happy.ui.home.FlatRowTags
@@ -36,6 +44,7 @@ import com.slopus.happy.ui.home.HomeTags
 import com.slopus.happy.ui.node
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -91,7 +100,7 @@ class ComposeJourneyTest {
     }
 
     @Test
-    fun theComputerIsAskedOnlyWithTwoAndTheFoldersFollowIt() {
+    fun theComputerIsAlwaysAskedWithItsStatusAndTheFoldersFollowIt() {
         journey.machine()
         journey.session("s0", updatedAt = 100, title = "Existing chat")
         val graph = journey.graph()
@@ -100,10 +109,12 @@ class ComposeJourneyTest {
         rule.setContent { HappyApp(graph) }
         rule.waitFor(FlatRowTags.ROW)
 
-        // One computer: only its folder, its most recent one, centred over the empty chat. No bot here.
+        // One computer: shown all the same, saying it answers (c9adf9162); its most recent folder. No Happy Agent: Bot and Task dimmed.
         rule.node(HomeTags.COMPOSE).performClick()
         rule.waitFor(NewWorkTags.FOLDER)
-        rule.node(NewWorkTags.MACHINE).assertDoesNotExist()
+        rule.onNode(hasText("● Online") and hasAnyAncestor(hasTestTag(NewWorkTags.MACHINE_STATUS)), useUnmergedTree = true).assertExists()
+        rule.node(ComposeChatTags.kind(ComposeKind.Task)).assertIsNotEnabled()
+        rule.node(ComposeChatTags.kind(ComposeKind.Bot)).assertIsNotEnabled()
         rule.waitUntil(5_000) { newSession.draft.value.selectedPath == "/h/repo" }
         rule.node(NewWorkTags.FOLDER).assertContentDescriptionEquals("~/repo")
         rule.node(NewWorkTags.FOLDER).performClick()
@@ -169,7 +180,73 @@ class ComposeJourneyTest {
         }
     }
 
+    /**
+     * happy-ios 500c1c485, 7f6007fe0: on a computer whose Happy Agent makes
+     * tasks and bots the empty chat offers them. A bot without a name is
+     * said inside its field and nothing starts; a task is made with
+     * `target: {kind: "task"}` alone and the text as its first message.
+     */
+    @Test
+    fun aHappyAgentComputerMakesTasksAndBotsFromTheEmptyChat() {
+        server.addMachine(Journey.MACHINE, Journey.machineMetadata(), 1)
+        server.addMachine(AGENT, happyAgentMetadata(sibling = Journey.MACHINE), 1)
+        journey.session("s0", updatedAt = 100, title = "Existing chat")
+        val spawns = journey.rpc(AGENT, "spawn-happy-session") {
+            server.addSession(NEW, updatedAt = 90_000, metadata = Journey.sessionMetadata("/h/Tasks/release", "Release", machineId = AGENT))
+            buildJsonObject { put("type", "success"); put("sessionId", NEW) }
+        }
+        val graph = journey.graph()
+        journey.signIn(graph)
+        rule.setContent { HappyApp(graph) }
+        rule.waitFor(FlatRowTags.ROW)
+
+        rule.node(HomeTags.COMPOSE).performClick()
+        rule.waitFor(ComposeChatTags.TARGET)
+        // A task asks only the computer, and its composer what it should do.
+        rule.waitUntil(5_000) { rule.onAllNodes(hasTestTag(ComposeChatTags.kind(ComposeKind.Task)) and isEnabled(), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        rule.node(ComposeChatTags.kind(ComposeKind.Task)).performClick()
+        rule.waitForText("What should this task do?")
+        rule.node(NewWorkTags.FOLDER).assertDoesNotExist()
+        rule.node(ComposeChatTags.kind(ComposeKind.Bot)).performClick()
+        rule.waitFor(NewWorkTags.NAME_FIELD)
+        rule.node(NewWorkTags.FOLDER).assertDoesNotExist()
+        rule.node(ComposerTags.INPUT).performTextInput("Own the releases")
+        rule.node(ComposerTags.PRIMARY).performClick()
+        rule.waitForText("Give the bot a name")
+        assertTrue(spawns.isEmpty())
+
+        rule.node(ComposeChatTags.kind(ComposeKind.Task)).performClick()
+        rule.waitUntilDoesNotExist(hasTestTag(NewWorkTags.NAME_FIELD), 5_000)
+        rule.node(ComposerTags.PRIMARY).performClick()
+        rule.waitFor(MessageTags.USER, 15_000)
+        val spawn = spawns.single()
+        assertEquals("happy-agent-spawn", spawn["type"]!!.jsonPrimitive.content)
+        assertEquals(buildJsonObject { put("kind", "task") }, spawn["target"])
+        rule.waitUntil(10_000) { server.sentRecords(NEW).any { "Own the releases" in it.second.toString() } }
+    }
+
+    private fun happyAgentMetadata(sibling: String) = buildJsonObject {
+        put("host", "laptop")
+        put("platform", "darwin")
+        put("happyCliVersion", "1.2.3")
+        put("happyHomeDir", "/h/.happy")
+        put("homeDir", "/h")
+        put("machineKind", "rig")
+        put("siblingMachineId", sibling)
+        putJsonObject("capabilities") { put("newSession", true); put("bots", true); put("tasks", true) }
+        putJsonObject("defaults") { put("providerId", "codex"); put("modelId", "gpt"); put("permissionMode", "auto") }
+        putJsonArray("models") {
+            addJsonObject {
+                put("code", "gpt"); put("value", "GPT"); put("providerId", "codex"); put("id", "gpt")
+                putJsonArray("thinkingLevels") { add("high") }
+                put("defaultThinkingLevel", "high")
+            }
+        }
+        putJsonArray("operatingModes") { addJsonObject { put("code", "auto"); put("value", "Auto") } }
+    }
+
     private companion object {
         const val NEW = "s-new"
+        const val AGENT = "agent1"
     }
 }

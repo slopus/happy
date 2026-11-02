@@ -349,8 +349,15 @@ internal fun startProgressText(step: StartProgress): String = when (step) {
     is StartProgress.CreatingWorkspace -> stringResource(if (step.workspace) R.string.home_dock_creating_workspace else R.string.home_dock_creating_worktree)
     is StartProgress.Starting -> stringResource(R.string.home_dock_starting, step.agentName)
     StartProgress.CreatingBot -> stringResource(R.string.home_dock_creating_bot)
+    StartProgress.CreatingTask -> stringResource(R.string.compose_creating_task)
     StartProgress.Avatar -> stringResource(R.string.home_dock_bot_avatar_progress)
-    is StartProgress.Opening -> stringResource(if (step.bot) R.string.home_dock_opening_bot else R.string.home_dock_opening)
+    is StartProgress.Opening -> stringResource(
+        when {
+            step.bot -> R.string.home_dock_opening_bot
+            step.task -> R.string.compose_opening_task
+            else -> R.string.home_dock_opening
+        },
+    )
 }
 
 /** The 18 high line over the composer naming the start's step, with "To interrupt press stop" while Stop is offered. */

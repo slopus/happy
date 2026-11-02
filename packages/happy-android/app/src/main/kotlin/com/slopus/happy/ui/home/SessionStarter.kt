@@ -73,6 +73,7 @@ enum class StartRefusal(val message: String, @StringRes val text: Int) {
     ),
     WorkspaceUnavailable("The selected Happy Agent workspace is no longer available.", R.string.home_start_workspace_unavailable),
     BotsUnsupported("Happy Agent on this computer cannot create bots yet. Update it and try again.", R.string.home_start_bots_unsupported),
+    TasksUnsupported("Happy Agent on this computer cannot create tasks yet. Update it and try again.", R.string.compose_tasks_unsupported),
 }
 
 sealed interface StartResult {
@@ -143,20 +144,24 @@ class SessionStarter(
      * own place, with [attachments] going out with the first message.
      * [target] is a Happy Agent destination the caller already knows (a
      * chat opened beside another), used instead of resolving the draft's.
-     * [bot] makes a bot on the draft's computer instead: Happy Agent's, with
-     * no first message, then the face. [confirmDirectory] asks whether to
-     * create a missing directory.
+     * [bot] makes a bot on the draft's computer instead: Happy Agent's, then
+     * the face, and only with [botMessage] the draft's text and attachments
+     * as its first message (a compose chat's; the dock's bot takes none).
+     * [task] makes an unnamed task there, the text its first message.
+     * [confirmDirectory] asks whether to create a missing directory.
      */
     suspend fun start(
         draft: NewSessionDraft = drafts.draft.value,
         attachments: List<AttachmentPreview> = emptyList(),
         target: SpawnTargetOverride? = null,
         bot: BotRequest? = null,
+        botMessage: Boolean = false,
+        task: Boolean = false,
         confirmDirectory: suspend (String) -> Boolean,
     ): StartResult {
         if (run != null) return StartResult.Abandoned
         bot?.let { request -> describeBotNameProblem(request.name)?.let { return StartResult.Failed(it) } }
-        val prepared = when (val result = prepare(draft, target, bot)) {
+        val prepared = when (val result = prepare(draft, target, bot, task = task && bot == null, botMessage = botMessage)) {
             is Prepared.Refused -> return StartResult.Refused(result.refusal)
             is Prepared.Unavailable -> return StartResult.Failed(result.message)
             is Prepared.Ready -> result
@@ -165,7 +170,7 @@ class SessionStarter(
         val job = scope.launch {
             outcome.complete(
                 try {
-                    execute(prepared, draft, if (bot != null) emptyList() else attachments, confirmDirectory)
+                    execute(prepared, draft, if (bot != null && !botMessage) emptyList() else attachments, confirmDirectory)
                 } catch (e: CancellationException) {
                     StartResult.Abandoned
                 } catch (e: WorktreeException) {
@@ -200,6 +205,8 @@ class SessionStarter(
             /** The code agent's picks, pinned on the session before the send; Happy Agent's ride the spawn. */
             val modes: Map<AgentModeField, String?>?,
             val bot: BotRequest? = null,
+            /** The draft's text goes as the first message (a session's, a task's, a compose chat's bot). */
+            val sendsMessage: Boolean = true,
         ) : Prepared
     }
 
@@ -207,12 +214,18 @@ class SessionStarter(
     private fun <T> resolveOption(options: List<T>, key: (T) -> String, preferred: List<String?>): T? =
         preferred.firstNotNullOfOrNull { wanted -> wanted?.let { options.find { option -> key(option) == wanted } } } ?: options.firstOrNull()
 
-    private fun prepare(draft: NewSessionDraft, targetOverride: SpawnTargetOverride?, bot: BotRequest? = null): Prepared {
+    private fun prepare(
+        draft: NewSessionDraft,
+        targetOverride: SpawnTargetOverride?,
+        bot: BotRequest? = null,
+        task: Boolean = false,
+        botMessage: Boolean = false,
+    ): Prepared {
         val machines = machines()
         val choice = findMachineChoice(collectMachineChoices(machines), draft.selectedMachineId)
             ?: return Prepared.Refused(if (draft.selectedMachineId != null) StartRefusal.UnknownMachine else StartRefusal.NoMachine)
-        // A bot is Happy Agent's to make, whatever harness the draft last chose.
-        val agent = if (bot != null) AgentType.Rig else resolveNewSessionAgent(choice, draft.agentType, draft.pickedAgentType)
+        // A bot or a task is Happy Agent's to make, whatever harness the draft last chose.
+        val agent = if (bot != null || task) AgentType.Rig else resolveNewSessionAgent(choice, draft.agentType, draft.pickedAgentType)
         val agentChanged = agent != draft.agentType
         val rig = agent == AgentType.Rig
         val machine = resolveAgentMachine(choice, agent)
@@ -220,9 +233,10 @@ class SessionStarter(
         if (!machine.isOnline) return Prepared.Refused(if (rig) StartRefusal.HappyAgentOffline else StartRefusal.HappyCliOffline)
         val rigCreation = if (rig) machine.metadata.rigSessionCreation() ?: return Prepared.Refused(StartRefusal.CannotStartHappyAgent) else null
         if (bot != null && rigCreation?.supportsBots != true) return Prepared.Refused(StartRefusal.BotsUnsupported)
+        if (task && rigCreation?.supportsTasks != true) return Prepared.Refused(StartRefusal.TasksUnsupported)
 
         val draftProjectId = draft.selectedProjectId?.trim()?.takeIf { it.isNotEmpty() }
-        if (bot == null && draftProjectId != null && !rig) return Prepared.Refused(StartRefusal.ProjectNeedsHappyAgent)
+        if (bot == null && !task && draftProjectId != null && !rig) return Prepared.Refused(StartRefusal.ProjectNeedsHappyAgent)
 
         val selectedPath = draft.selectedPath?.trim()?.takeIf { it.isNotEmpty() } ?: "~"
         val directory = resolveAbsolutePath(selectedPath, machine.metadata?.homeDir)
@@ -233,6 +247,9 @@ class SessionStarter(
         // A bot is its own destination, settled before the workspace routes are consulted.
         val target = if (bot != null) {
             HappyAgentSpawnTarget.Bot(bot.name)
+        } else if (task) {
+            // Unnamed: the daemon names it from its first message.
+            HappyAgentSpawnTarget.Task
         } else if (rig && targetOverride != null) {
             targetOverride.target
         } else if (rig) {
@@ -299,7 +316,8 @@ class SessionStarter(
             )
         }
         val signature = listOf(
-            machine.id, agent.wire, draftProjectId?.let { "project:$it" } ?: selectedPath, worktree,
+            // A task has no place but its computer.
+            machine.id, agent.wire, if (task) "task" else draftProjectId?.let { "project:$it" } ?: selectedPath, worktree,
             options.modelMode ?: options.modelId, options.permissionMode, options.effortLevel ?: options.effort,
             bot?.let { "bot:${it.name}:${it.faceSeed}" },
         ).joinToString("\u0000")
@@ -313,6 +331,7 @@ class SessionStarter(
             signature = signature,
             modes = modes,
             bot = bot,
+            sendsMessage = bot == null || botMessage,
         )
     }
 
@@ -345,8 +364,8 @@ class SessionStarter(
                 faceFailure = faces.wear(sessionId, bot.faceSeed)
                 phaseState.value = StartPhase.Opening
             }
-            // A bot takes no first message: the prompt typed for a session stays in the draft.
-            val prompt = if (prepared.bot != null) "" else draft.input.trim()
+            // The dock's bot takes no first message: the prompt typed for a session stays in the draft.
+            val prompt = if (prepared.sendsMessage) draft.input.trim() else ""
             val sent = try {
                 if (prompt.isEmpty() && attachments.isEmpty()) FirstSend(true) else sender.send(sessionId, prompt, attachments) { job?.isActive != false }
             } catch (e: CancellationException) {
@@ -369,7 +388,7 @@ class SessionStarter(
         createdSessions.remove(prepared.signature)
         requestIds.remove(prepared.signature)
         // Only what was consumed is cleared: text typed meanwhile stays.
-        if (prepared.bot == null) drafts.change { current -> if (current.input == draft.input) current.copy(input = "") else current }
+        if (prepared.sendsMessage) drafts.change { current -> if (current.input == draft.input) current.copy(input = "") else current }
         return StartResult.Started(sessionId, notices, faceFailure)
     }
 

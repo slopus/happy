@@ -35,6 +35,8 @@ data class RigSessionCreation(
     val supportsWorktrees: Boolean,
     val supportsBots: Boolean,
     val pendingRetryAfterMs: Long?,
+    /** `capabilities.tasks`: Happy Agent here makes tasks (happy-ios 36b11c5bf). */
+    val supportsTasks: Boolean = false,
 ) {
     private fun modelFor(modelKey: String?): RigModelOption? =
         models.find { it.key == modelKey } ?: models.find { it.key == defaultModelKey }
@@ -87,6 +89,7 @@ fun MachineMetadata?.rigSessionCreation(): RigSessionCreation? {
         supportsWorktrees = capabilities.worktrees == true,
         supportsBots = capabilities.bots == true,
         pendingRetryAfterMs = sessionCreation?.pendingRetryAfterMs?.takeIf { it.isFinite() }?.toLong(),
+        supportsTasks = capabilities.tasks == true,
     )
 }
 

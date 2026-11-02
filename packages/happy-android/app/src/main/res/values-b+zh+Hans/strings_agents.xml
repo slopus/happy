@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_agents.xml in b+zh+Hans: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="compose_tasks_unsupported">这台电脑上的 Happy Agent 还不能创建任务。请更新后重试。</string>
+    <string name="compose_creating_task">正在创建任务…</string>
+    <string name="compose_opening_task">正在打开任务…</string>
+    <string name="compose_task_placeholder">这个任务要做什么？</string>
+    <string name="compose_loading_computers">正在加载电脑…</string>
+    <string name="compose_still_loading">你的电脑仍在加载。请稍后再试。</string>
+    <string name="compose_offline_computer">这台电脑处于离线状态。请在上面启动 Happy，或选择另一台。</string>
+    <string name="compose_offline_happy_agent">这台电脑上的 Happy Agent 处于离线状态。请启动它，或选择另一台电脑。</string>
+    <string name="compose_offline_happy_cli">这台电脑上的 Happy CLI 处于离线状态。请在那里运行 `happy daemon start`，或选择另一台电脑。</string>
+    <string name="compose_machines_bots">Happy Agent 可创建机器人的电脑</string>
+    <string name="compose_machines_tasks">Happy Agent 可创建任务的电脑</string>
+    <string name="compose_chip_happy_agent_offline">Happy Agent 离线</string>
+    <string name="compose_chip_happy_cli_offline">Happy CLI 离线</string>
+    <string name="compose_ago_now">刚刚</string>
+    <string name="compose_ago_minutes">%1$d分钟</string>
+    <string name="compose_ago_hours">%1$d小时</string>
+    <string name="compose_ago_days">%1$d天</string>
+    <string name="compose_ago_weeks">%1$d周</string>
+    <string name="compose_ago_months">%1$d个月</string>
+    <string name="compose_ago_years">%1$d年</string>
+</resources>

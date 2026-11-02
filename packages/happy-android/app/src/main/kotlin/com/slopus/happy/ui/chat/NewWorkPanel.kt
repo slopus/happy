@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,6 +16,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -24,6 +28,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -41,8 +46,10 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
@@ -70,7 +77,9 @@ object NewWorkTags {
     const val NAME_FIELD = "newWork.nameField"
     const val NOTE = "newWork.note"
     const val MACHINE = "newWork.machine"
+    const val MACHINE_STATUS = "newWork.machineStatus"
     const val FOLDER = "newWork.folder"
+    const val HARNESS = "newWork.harness"
 }
 
 /** happy-ios NewWorkLayout's metrics and NewWorkPanel's type. */
@@ -82,6 +91,11 @@ object NewWorkSpec {
     val rowHeight = 44.dp
     val rowGap = 8.dp
     val rowsToNote = 10.dp
+    /** The gaps once the room is short; under the kind the computer's chip still clears it. */
+    val tightKindToRows = NewWorkStatusSpec.overhang + 5.dp
+    val tightRowGap = 6.dp
+    /** A kind no computer makes yet. */
+    const val DISABLED_ALPHA = 0.4f
     /** The least room kept over and under the block; with less it doesn't show. */
     val margin = 12.dp
     /** The name's and the rows' text, in from the capsule's ends. */
@@ -137,83 +151,29 @@ fun NewWorkRoom(shown: Boolean, modifier: Modifier = Modifier, content: @Composa
 @Composable
 fun NewWorkChoicePanel(work: NewWork, onChange: (WorkChoice) -> Unit, onReturn: () -> Unit) {
     val colors = HappyTheme.colors
-    val haptics = LocalHapticFeedback.current
     val enabled = !work.making
     // Typed here and handed on, so the field never waits on the chat to echo it.
     var name by rememberSaveable { mutableStateOf(work.choice.name) }
     Column(Modifier.fillMaxWidth().testTag(NewWorkTags.PANEL), horizontalAlignment = Alignment.CenterHorizontally) {
-        Row(
-            modifier = Modifier
-                .testTag(NewWorkTags.KIND)
-                .width(NewWorkSpec.kindWidth)
-                .heightIn(min = BotFaceSpec.segmentHeight)
-                .clip(RoundedCornerShape(BotFaceSpec.segmentRadius))
-                .background(colors.glass.backgroundSubtle)
-                .padding(BotFaceSpec.segmentPadding),
-        ) {
-            listOf(WorkKind.Task to R.string.new_work_task, WorkKind.Bot to R.string.new_work_bot).forEach { (kind, label) ->
-                val selected = kind == work.choice.kind
-                Box(
-                    modifier = Modifier
-                        .testTag(NewWorkTags.kind(kind))
-                        .weight(1f)
-                        .heightIn(min = BotFaceSpec.segmentHeight - BotFaceSpec.segmentPadding * 2)
-                        .clip(RoundedCornerShape(BotFaceSpec.segmentItemRadius))
-                        .background(if (selected) colors.surfaceHighest else Color.Transparent)
-                        .clickable(enabled = enabled, role = Role.RadioButton) {
-                            if (!selected) {
-                                haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
-                                onChange(WorkChoice(kind, name))
-                            }
-                        }
-                        .semantics { this.selected = selected },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        stringResource(label),
-                        style = BotFaceSpec.segmentLabel,
-                        color = if (selected) colors.text else colors.textSecondary,
-                        maxLines = 1,
-                    )
-                }
-            }
-        }
+        NewWorkSegments(
+            labels = listOf(stringResource(R.string.new_work_task), stringResource(R.string.new_work_bot)),
+            selected = if (work.choice.kind == WorkKind.Bot) 1 else 0,
+            enabled = enabled,
+            tag = { NewWorkTags.kind(if (it == 1) WorkKind.Bot else WorkKind.Task) },
+            onPick = { onChange(WorkChoice(if (it == 1) WorkKind.Bot else WorkKind.Task, name)) },
+        )
         Spacer(Modifier.height(NewWorkSpec.kindToRows))
-        val placeholder = stringResource(R.string.new_work_name)
-        // The capsule holds the field, whose own node is only its line.
-        Box(
-            modifier = Modifier
-                .testTag(NewWorkTags.NAME_FIELD)
-                .fillMaxWidth()
-                .heightIn(min = NewWorkSpec.rowHeight)
-                .clip(CircleShape)
-                .background(colors.input.background)
-                .padding(horizontal = NewWorkSpec.rowInset),
-            contentAlignment = Alignment.Center,
-        ) {
-            BasicTextField(
-                value = name,
-                onValueChange = {
-                    name = it
-                    onChange(WorkChoice(work.choice.kind, it))
-                },
-                enabled = enabled,
-                singleLine = true,
-                textStyle = NewWorkSpec.field.copy(color = colors.input.text, textAlign = TextAlign.Center),
-                cursorBrush = SolidColor(colors.input.text),
-                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Next),
-                keyboardActions = KeyboardActions(onNext = { onReturn() }),
-                decorationBox = { inner ->
-                    Box(contentAlignment = Alignment.Center) {
-                        if (name.isEmpty()) {
-                            Text(placeholder, style = NewWorkSpec.field, color = colors.input.placeholder, textAlign = TextAlign.Center, maxLines = 1)
-                        }
-                        inner()
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().testTag(NewWorkTags.NAME),
-            )
-        }
+        NewWorkNameField(
+            value = name,
+            onValueChange = {
+                name = it
+                onChange(WorkChoice(work.choice.kind, it))
+            },
+            placeholder = stringResource(R.string.new_work_name),
+            enabled = enabled,
+            onReturn = onReturn,
+            capitalization = KeyboardCapitalization.Sentences,
+        )
         Spacer(Modifier.height(NewWorkSpec.rowsToNote))
         Text(
             stringResource(if (work.choice.kind == WorkKind.Bot) R.string.new_work_bot_note else R.string.new_work_task_note),
@@ -228,7 +188,8 @@ fun NewWorkChoicePanel(work: NewWork, onChange: (WorkChoice) -> Unit, onReturn: 
 /**
  * One of a Happy account's rows (happy-ios NewWorkMenuRow): a 44 capsule on
  * the input ground, 16 in, a 16 glyph 8 before what is chosen (16, the
- * middle truncated), opening [menu] under it. Dimmed while fixed.
+ * middle truncated), opening [menu] under it. Dimmed while fixed. The
+ * computer's row wears its [status] as a chip on its top-right corner.
  */
 @Composable
 fun NewWorkMenuRow(
@@ -237,6 +198,7 @@ fun NewWorkMenuRow(
     enabled: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    status: NewWorkStatus? = null,
     menu: @Composable () -> Unit = {},
 ) {
     val colors = HappyTheme.colors
@@ -256,6 +218,253 @@ fun NewWorkMenuRow(
             Icon(icon, NewWorkSpec.rowIcon, colors.input.text)
             Text(title, style = NewWorkSpec.field, color = colors.input.text, maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
         }
+        status?.let {
+            NewWorkStatusChip(
+                it,
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .offset(x = -NewWorkStatusSpec.trailing, y = -NewWorkStatusSpec.overhang),
+            )
+        }
         menu()
+    }
+}
+
+/**
+ * New work's kind control: Home's Session | Bot look (32 high, 2 in,
+ * radius 9; the picked segment surfaceHighest, radius 7; 13 semibold),
+ * [NewWorkSpec.kindWidth] wide. A pick other than [selected] ticks and goes
+ * to [onPick]; a segment off in [segmentEnabled] shows dimmed and takes no
+ * press. [enabled] false fixes the whole control.
+ */
+@Composable
+fun NewWorkSegments(
+    labels: List<String>,
+    selected: Int,
+    enabled: Boolean,
+    tag: (Int) -> String,
+    onPick: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    segmentEnabled: (Int) -> Boolean = { true },
+) {
+    val colors = HappyTheme.colors
+    val haptics = LocalHapticFeedback.current
+    Row(
+        modifier = modifier
+            .testTag(NewWorkTags.KIND)
+            .width(NewWorkSpec.kindWidth)
+            .heightIn(min = BotFaceSpec.segmentHeight)
+            .clip(RoundedCornerShape(BotFaceSpec.segmentRadius))
+            .background(colors.glass.backgroundSubtle)
+            .padding(BotFaceSpec.segmentPadding),
+    ) {
+        labels.forEachIndexed { index, label ->
+            val picked = index == selected
+            val pickable = enabled && segmentEnabled(index)
+            Box(
+                modifier = Modifier
+                    .testTag(tag(index))
+                    .weight(1f)
+                    .heightIn(min = BotFaceSpec.segmentHeight - BotFaceSpec.segmentPadding * 2)
+                    .clip(RoundedCornerShape(BotFaceSpec.segmentItemRadius))
+                    .background(if (picked) colors.surfaceHighest else Color.Transparent)
+                    .clickable(enabled = pickable, role = Role.RadioButton) {
+                        if (!picked) {
+                            haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+                            onPick(index)
+                        }
+                    }
+                    .semantics { this.selected = picked },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    label,
+                    style = BotFaceSpec.segmentLabel,
+                    color = when {
+                        picked -> colors.text
+                        pickable || !enabled -> colors.textSecondary
+                        else -> colors.textSecondary.copy(alpha = NewWorkSpec.DISABLED_ALPHA)
+                    },
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+/** What the computer row's chip says, and in which colour. */
+@Immutable
+data class NewWorkStatus(val text: String, val color: Color)
+
+/**
+ * The computer row's status (happy-ios NewWorkStatusLayout): a chip pinned to
+ * the row's top-right corner, straddling its top edge like a badge, as wide
+ * as what it says. It is drawn over the row and takes no part in its layout,
+ * so the icon and the name stay centred and the chip changing moves nothing.
+ */
+object NewWorkStatusSpec {
+    val text = happyTextStyle(fontSize = 11, weight = FontWeight.Medium)
+    val height = 18.dp
+    val padding = 7.dp
+    /** From the row's end to the chip's, as the icon is from the start. */
+    val trailing = 16.dp
+    val maxWidth = 150.dp
+    /** How far the chip rises over the row's top. */
+    val overhang = height / 2
+}
+
+@Composable
+private fun NewWorkStatusChip(status: NewWorkStatus, modifier: Modifier = Modifier) {
+    val colors = HappyTheme.colors
+    Box(
+        modifier = modifier
+            .testTag(NewWorkTags.MACHINE_STATUS)
+            .widthIn(max = NewWorkStatusSpec.maxWidth)
+            .height(NewWorkStatusSpec.height)
+            .clip(CircleShape)
+            .background(colors.surface)
+            .border(1.dp, colors.divider, CircleShape)
+            .padding(horizontal = NewWorkStatusSpec.padding),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            status.text,
+            style = NewWorkStatusSpec.text,
+            color = status.color,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.wrapContentHeight(unbounded = true),
+        )
+    }
+}
+
+/**
+ * A field-high capsule for a name (the Happy account's bot name): 16 text
+ * centred on the input ground, [placeholder] until typed. With a [problem]
+ * the capsule takes a 1 px red edge and the problem, in red, stands in the
+ * placeholder's place (happy-ios 7f6007fe0): nothing is added around it, so
+ * nothing moves. Return goes on to the composer ([onReturn]).
+ */
+@Composable
+fun NewWorkNameField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    enabled: Boolean,
+    onReturn: () -> Unit,
+    modifier: Modifier = Modifier,
+    problem: String? = null,
+    capitalization: KeyboardCapitalization = KeyboardCapitalization.Words,
+) {
+    val colors = HappyTheme.colors
+    Box(
+        modifier = modifier
+            .testTag(NewWorkTags.NAME_FIELD)
+            .fillMaxWidth()
+            .heightIn(min = NewWorkSpec.rowHeight)
+            .clip(CircleShape)
+            .background(colors.input.background)
+            .then(if (problem != null) Modifier.border(1.dp, colors.textDestructive, CircleShape) else Modifier)
+            .padding(horizontal = NewWorkSpec.rowInset),
+        contentAlignment = Alignment.Center,
+    ) {
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            enabled = enabled,
+            singleLine = true,
+            textStyle = NewWorkSpec.field.copy(color = colors.input.text, textAlign = TextAlign.Center),
+            cursorBrush = SolidColor(colors.input.text),
+            keyboardOptions = KeyboardOptions(capitalization = capitalization, imeAction = ImeAction.Next),
+            keyboardActions = KeyboardActions(onNext = { onReturn() }),
+            decorationBox = { inner ->
+                Box(contentAlignment = Alignment.Center) {
+                    if (value.isEmpty()) {
+                        Text(
+                            problem ?: placeholder,
+                            style = NewWorkSpec.field,
+                            color = if (problem != null) colors.textDestructive else colors.input.placeholder,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    inner()
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag(NewWorkTags.NAME)
+                .semantics { if (problem != null) error(problem) },
+        )
+    }
+}
+
+/**
+ * A Happy account's new work, centred between the bar and the composer
+ * (happy-ios NewWorkLayout(givingWay:)): the optional [kind] control over
+ * field-high [rows] and an optional [note]. What it asks is what the first
+ * send makes, so short of room it gives way instead of going: the note
+ * first, then the gaps close (16 → 14 under the kind, which the computer's
+ * chip still clears; 8 → 6 between rows); only with no room even then is it
+ * pinned 12 under the bar. Going ([shown] false) it fades out over 0.2 s,
+ * ease-out, as [NewWorkRoom].
+ */
+@Composable
+fun NewWorkGivingWay(
+    shown: Boolean,
+    kind: (@Composable () -> Unit)?,
+    rows: List<@Composable () -> Unit>,
+    note: (@Composable () -> Unit)?,
+    modifier: Modifier = Modifier,
+) {
+    val reduceMotion = rememberReduceMotion()
+    val alpha by animateFloatAsState(
+        if (shown) 1f else 0f,
+        if (reduceMotion) snap() else tween(NewWorkSpec.FADE_MILLIS, easing = FastOutSlowInEasing),
+        label = "new work",
+    )
+    if (!shown && alpha == 0f) return
+    val slots = listOfNotNull(kind) + rows + listOfNotNull(note)
+    Layout({ slots.forEach { slot -> Box { slot() } } }, modifier.fillMaxSize().testTag(NewWorkTags.PANEL)) { measurables, constraints ->
+        val width = constraints.maxWidth
+        val height = constraints.maxHeight
+        val blockWidth = NewWorkSpec.blockWidth(width.toDp()).roundToPx()
+        val kindWidth = minOf(NewWorkSpec.kindWidth.roundToPx(), blockWidth)
+        var index = 0
+        val kindPlaceable = kind?.let { measurables[index++].measure(Constraints(maxWidth = kindWidth)) }
+        val rowPlaceables = rows.map { measurables[index++].measure(Constraints(minWidth = blockWidth, maxWidth = blockWidth)) }
+        val notePlaceable = note?.let { measurables[index].measure(Constraints(minWidth = blockWidth, maxWidth = blockWidth)) }
+        fun stackHeight(kindGap: Int, rowGap: Int, withNote: Boolean): Int {
+            var y = kindPlaceable?.let { it.height + kindGap } ?: 0
+            rowPlaceables.forEachIndexed { i, row -> y += row.height + if (i > 0) rowGap else 0 }
+            if (withNote && notePlaceable != null) y += NewWorkSpec.rowsToNote.roundToPx() + notePlaceable.height
+            return y
+        }
+        val margin = NewWorkSpec.margin.roundToPx()
+        val attempts = listOf(
+            Triple(NewWorkSpec.kindToRows.roundToPx(), NewWorkSpec.rowGap.roundToPx(), true),
+            Triple(NewWorkSpec.kindToRows.roundToPx(), NewWorkSpec.rowGap.roundToPx(), false),
+            Triple(NewWorkSpec.tightKindToRows.roundToPx(), NewWorkSpec.tightRowGap.roundToPx(), false),
+        )
+        val (kindGap, rowGap, withNote) = attempts.firstOrNull { (k, r, n) -> height >= stackHeight(k, r, n) + 2 * margin } ?: attempts.last()
+        val total = stackHeight(kindGap, rowGap, withNote)
+        val fits = height >= total + 2 * margin
+        val left = (width - blockWidth) / 2
+        layout(width, height) {
+            var y = if (fits) (height - total) / 2 else margin
+            kindPlaceable?.let {
+                it.placeWithLayer(left + (blockWidth - it.width) / 2, y) { this.alpha = alpha }
+                y += it.height + kindGap
+            }
+            rowPlaceables.forEachIndexed { i, row ->
+                if (i > 0) y += rowGap
+                row.placeWithLayer(left, y) { this.alpha = alpha }
+                y += row.height
+            }
+            notePlaceable?.let {
+                it.placeWithLayer(left, y + NewWorkSpec.rowsToNote.roundToPx()) { this.alpha = if (withNote) alpha else 0f }
+            }
+        }
     }
 }

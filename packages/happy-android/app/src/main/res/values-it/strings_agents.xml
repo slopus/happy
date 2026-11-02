@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_agents.xml in it: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="compose_tasks_unsupported">Happy Agent su questo computer non può ancora creare attività. Aggiornalo e riprova.</string>
+    <string name="compose_creating_task">Creazione dell\'attività…</string>
+    <string name="compose_opening_task">Apertura dell\'attività…</string>
+    <string name="compose_task_placeholder">Cosa deve fare questa attività?</string>
+    <string name="compose_loading_computers">Caricamento dei computer…</string>
+    <string name="compose_still_loading">I tuoi computer si stanno ancora caricando. Riprova tra un momento.</string>
+    <string name="compose_offline_computer">Questo computer è offline. Avvia Happy su di esso o scegline un altro.</string>
+    <string name="compose_offline_happy_agent">Happy Agent è offline su questo computer. Avvialo o scegli un altro computer.</string>
+    <string name="compose_offline_happy_cli">Happy CLI su questo computer è offline. Esegui `happy daemon start` lì o scegli un altro computer.</string>
+    <string name="compose_machines_bots">Computer in cui Happy Agent crea bot</string>
+    <string name="compose_machines_tasks">Computer in cui Happy Agent crea attività</string>
+    <string name="compose_chip_happy_agent_offline">Happy Agent offline</string>
+    <string name="compose_chip_happy_cli_offline">Happy CLI offline</string>
+    <string name="compose_ago_now">ora</string>
+    <string name="compose_ago_minutes">%1$d min</string>
+    <string name="compose_ago_hours">%1$d h</string>
+    <string name="compose_ago_days">%1$d g</string>
+    <string name="compose_ago_weeks">%1$d sett</string>
+    <string name="compose_ago_months">%1$d mesi</string>
+    <string name="compose_ago_years">%1$d a</string>
+</resources>

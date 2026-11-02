@@ -5,6 +5,7 @@ import com.slopus.happy.model.rollBotFaceSeeds
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import com.slopus.happy.model.AgentType
+import com.slopus.happy.model.ComposeKind
 import com.slopus.happy.model.NewSessionDraft
 import com.slopus.happy.model.NewSessionLabels
 import com.slopus.happy.model.NewSessionOptions
@@ -62,7 +63,31 @@ class NewSessionServices(
 
     val draft: StateFlow<NewSessionDraft> = drafts.draft
 
-    private val resolved: StateFlow<Resolved?> = combine(drafts.draft, snapshots, settings, listing) { draft, snapshot, settings, worktrees ->
+    private val botState = MutableStateFlow(BotDraft(seeds = rollBotFaceSeeds()))
+
+    /** useNewSessionDraft's bot fields, in memory: a restarted app offers a session. */
+    val bot: StateFlow<BotDraft> = botState.asStateFlow()
+
+    private val creatingTask = MutableStateFlow(false)
+
+    /** What the first send makes: a session, or a bot or task Happy Agent makes (in memory, as [bot]). */
+    val kind: StateFlow<ComposeKind> = combine(botState, creatingTask) { bot, task ->
+        when {
+            bot.creating -> ComposeKind.Bot
+            task -> ComposeKind.Task
+            else -> ComposeKind.Session
+        }
+    }.stateIn(scope, SharingStarted.Eagerly, ComposeKind.Session)
+
+    /**
+     * The computer the person picked in the compose chat's menu, which a bot
+     * or task is never moved off (happy-ios 9e58785b4). Picking a kind or a
+     * new compose forgets it.
+     */
+    @Volatile
+    var pickedMachineId: String? = null
+
+    private val resolved: StateFlow<Resolved?> = combine(drafts.draft, snapshots, settings, listing, kind) { draft, snapshot, settings, worktrees, kind ->
         snapshot?.let {
             Resolved(
                 draft,
@@ -75,6 +100,8 @@ class NewSessionServices(
                     labels,
                     translate,
                     projectName = { id -> it.projects[id]?.name },
+                    kind = kind,
+                    machinesSynced = it.machinesSynced,
                 ),
             )
         }
@@ -89,8 +116,9 @@ class NewSessionServices(
         // a resolution of the draft as it still is may rewrite it.
         scope.launch {
             resolved.filterNotNull().collect { current ->
-                val machines = snapshots.value?.machines ?: return@collect
-                drafts.change { draft -> if (draft == current.draft) current.options.reconcile(draft, machines, settings.value.agentDefaultOverrides) else draft }
+                val snapshot = snapshots.value ?: return@collect
+                if (routeKind(current.options, snapshot)) return@collect
+                drafts.change { draft -> if (draft == current.draft) current.options.reconcile(draft, snapshot.machines, settings.value.agentDefaultOverrides) else draft }
             }
         }
         // useWorktrees: git is asked when the target changes or a picker opens, never on store updates.
@@ -105,6 +133,77 @@ class NewSessionServices(
     /** A picker is opening: the worktree one lists git's worktrees again. */
     fun onOpenPicker(page: NewSessionPage) {
         if (page == NewSessionPage.Worktree) worktreeRequests.value++
+    }
+
+    /**
+     * happy-ios NewSessionComposer.reconcile's kind half: a bot or task whose
+     * computer can't make it goes to one that can (it waits while the list is
+     * arriving; with none on the whole account it becomes a session), and one
+     * whose Happy Agent doesn't answer goes to one that does, unless the
+     * person picked it. True when it moved the draft or the kind, whose
+     * change comes back here.
+     */
+    private fun routeKind(options: NewSessionOptions, snapshot: HomeSnapshot): Boolean {
+        val kind = options.kind
+        if (kind == ComposeKind.Session) return false
+        // An unknown empty list can't say a kept computer is gone.
+        if (!snapshot.machinesSynced && snapshot.machines.isEmpty()) return false
+        val current = options.currentTarget
+        val target = options.preferredTarget(kind)
+        if (current?.makes(kind) != true) {
+            if (target != null) return moveTo(target.id)
+            if (snapshot.machinesSynced) {
+                setKind(ComposeKind.Session)
+                return true
+            }
+            return false
+        }
+        if (!current.isOnline(kind) && current.id != pickedMachineId && target != null && target.id != current.id) return moveTo(target.id)
+        return false
+    }
+
+    private fun moveTo(machineId: String): Boolean {
+        if (drafts.draft.value.selectedMachineId == machineId) return false
+        drafts.change { it.withMachine(machineId) }
+        return true
+    }
+
+    /**
+     * happy-ios NewSessionComposer.selectKind: a bot or a task goes to a
+     * computer whose Happy Agent makes it and answers, keeping the chosen
+     * one when it can, and its harness becomes Happy Agent, as picked. While
+     * the computers are still arriving it waits for one that can.
+     */
+    fun setKind(kind: ComposeKind) {
+        pickedMachineId = null
+        botState.update { it.copy(creating = kind == ComposeKind.Bot) }
+        creatingTask.value = kind == ComposeKind.Task
+        if (kind == ComposeKind.Session) return
+        val snapshot = snapshots.value ?: return
+        val options = resolveNewSessionOptions(
+            drafts.draft.value, snapshot.machines, snapshot.sessions, settings.value.agentDefaultOverrides,
+            kind = kind, machinesSynced = snapshot.machinesSynced,
+        )
+        val target = options.preferredTarget(kind) ?: return
+        val overrides = settings.value.agentDefaultOverrides
+        drafts.change { draft ->
+            val placed = if (target.id != options.currentTarget?.id) draft.withMachine(target.id) else draft
+            // Already Happy Agent's, the picks stay; the pickers read them against the one it goes to.
+            if (placed.agentType == AgentType.Rig) placed else placed.selectingAgent(AgentType.Rig, picked = true, snapshot.machines, overrides)
+        }
+    }
+
+    /** The compose chat's computer menu: a pick the routing keeps; one that can't make the kind makes a session. */
+    fun selectMachine(machineId: String) {
+        val kind = kind.value
+        if (kind != ComposeKind.Session && options.value?.targets?.find { it.id == machineId }?.makes(kind) == false) setKind(ComposeKind.Session)
+        pickedMachineId = machineId
+        drafts.change { it.withMachine(machineId) }
+    }
+
+    /** A new compose: the routing may move a kept bot or task again. */
+    fun forgetPickedMachine() {
+        pickedMachineId = null
     }
 
     /** A pick from one of the composer's pickers. */
@@ -177,17 +276,19 @@ class NewSessionServices(
     fun resetDraft() {
         drafts.reset()
         botState.value = BotDraft(seeds = rollBotFaceSeeds())
+        creatingTask.value = false
+        pickedMachineId = null
     }
 
     /** The dock's text becomes the draft's at Send (MainView handleHomePromptSubmit). */
     fun setInput(text: String) = drafts.change { it.copy(input = text) }
 
-    private val botState = MutableStateFlow(BotDraft(seeds = rollBotFaceSeeds()))
+    fun setCreatesBot(creating: Boolean) = setKind(if (creating) ComposeKind.Bot else ComposeKind.Session)
 
-    /** useNewSessionDraft's bot fields, in memory: a restarted app offers a session. */
-    val bot: StateFlow<BotDraft> = botState.asStateFlow()
-
-    fun setCreatesBot(creating: Boolean) = botState.update { it.copy(creating = creating) }
+    /** A task was made: the next compose offers a session. */
+    fun taskCreated() {
+        creatingTask.value = false
+    }
 
     fun setBotName(name: String) = botState.update { it.copy(name = name) }
 

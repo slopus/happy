@@ -166,7 +166,13 @@ class ChatScreenSlots(
  * empty chat compose opened).
  */
 @Immutable
-class ChatPendingSlot(val anchor: ChatSessionInfo?, val focusComposer: Boolean = false, val placeholder: @Composable () -> Unit)
+class ChatPendingSlot(
+    val anchor: ChatSessionInfo?,
+    val focusComposer: Boolean = false,
+    /** What the composer asks for while empty (a task's first message); null for the chat's own. */
+    val composerPlaceholder: String? = null,
+    val placeholder: @Composable () -> Unit,
+)
 
 /**
  * One chat (SessionView.tsx). Spec: the header ([ChatHeaderTitle]: back;
@@ -315,6 +321,7 @@ fun ChatScreen(
                             ChatDock(
                                 state, composerSession, draft, actions, now, modes, inactiveHint.takeIf { session != null }, goalBar, activityBar, inputPadding, showDetails,
                                 autoFocus = session == null && pending?.focusComposer == true,
+                                placeholder = pending?.composerPlaceholder.takeIf { session == null },
                                 onPanelPositioned = if (docked) { coordinates ->
                                     cardInset = list[0]?.takeIf { it.isAttached }?.let { it.size.height - it.localPositionOf(coordinates, Offset.Zero).y }
                                 } else null,

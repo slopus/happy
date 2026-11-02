@@ -152,7 +152,39 @@ data class NewSessionOptions(
     val effort: PickerOption?,
     /** The computer's Happy Agent can make bots (`capabilities.bots`): the composer offers Session | Bot. */
     val supportsBots: Boolean = false,
+    /** The computer's Happy Agent can make tasks (`capabilities.tasks`). */
+    val supportsTasks: Boolean = false,
+    /** What the first send makes. */
+    val kind: ComposeKind = ComposeKind.Session,
+    /** Every computer, as the compose chat's computer menu reads them (happy-ios `NewSessionChoices.machines`). */
+    val targets: List<MachineTarget> = emptyList(),
+    /** The chosen computer among [targets]. */
+    val currentTarget: MachineTarget? = null,
+    /** Why the start can't reach the chosen computer now; null while it can, or when none is chosen. */
+    val offline: ComposeOffline? = null,
+    /** The account's computers have been fetched; until then none listed means "not here yet". */
+    val machinesSynced: Boolean = true,
 ) {
+    /** Some computer's Happy Agent makes bots. */
+    val offersBots: Boolean get() = targets.any { it.makesBots }
+
+    /** Some computer's Happy Agent makes tasks. */
+    val offersTasks: Boolean get() = targets.any { it.makesTasks }
+
+    /** What the computer menu lists for [kind]: every computer for a session, else those whose Happy Agent makes it; those that answer first. */
+    fun targets(kind: ComposeKind): List<MachineTarget> = MachineTarget.eligible(targets, kind)
+
+    /** Where [kind] goes when it is picked ([MachineTarget.preferred]). */
+    fun preferredTarget(kind: ComposeKind): MachineTarget? = MachineTarget.preferred(targets, kind, currentTarget?.id)
+
+    /**
+     * The computers are still arriving and none here yet can take the first
+     * send: a session's computer, or one whose Happy Agent makes the bot or
+     * task. Where it goes is settled once they are in.
+     */
+    val awaitsComputers: Boolean
+        get() = !machinesSynced && if (kind == ComposeKind.Session) machine == null else currentTarget?.makes(kind) != true
+
     val hasHarness: Boolean get() = agents.isNotEmpty()
 
     /** new/index.tsx `isOffline`: the daemon that would run this harness is known and offline. */
@@ -208,6 +240,8 @@ fun resolveNewSessionOptions(
     labels: NewSessionLabels = NewSessionLabels(),
     translate: (Int) -> String = { "" },
     projectName: (String) -> String? = { null },
+    kind: ComposeKind = ComposeKind.Session,
+    machinesSynced: Boolean = true,
 ): NewSessionOptions {
     // A person picks a computer, not a daemon: the Happy CLI and Happy Agent pair is offered once.
     val choices = collectMachineChoices(machines)
@@ -277,7 +311,18 @@ fun resolveNewSessionOptions(
         }
     }
 
-    val agents = listMachineChoiceAvailableAgents(choice).map { PickerOption(it.wire, it.displayName) }
+    val available = listMachineChoiceAvailableAgents(choice)
+    val agents = available.map { PickerOption(it.wire, it.displayName) }
+    // A bot or a task is Happy Agent's: on a computer that runs it, the harness settles there.
+    val resolvedAgent = if (kind != ComposeKind.Session && AgentType.Rig in available) AgentType.Rig else resolveNewSessionAgent(choice, agentType, draft.pickedAgentType)
+    // The daemon the start will ask: Happy Agent for a bot or a task, else the harness's.
+    val startAgent = if (kind != ComposeKind.Session) AgentType.Rig else resolvedAgent
+    val offline = choice?.let {
+        if (!it.online) return@let ComposeOffline.Computer(it.activeAt)
+        val daemon = resolveAgentMachine(it, startAgent)
+        if (daemon == null || daemon.isOnline) null else if (startAgent == AgentType.Rig) ComposeOffline.HappyAgent else ComposeOffline.HappyCli
+    }
+    val targets = choices.sortedByDescending { it.online }.map(MachineTarget::of)
     val cliVersion = happyMachine?.metadata?.happyCliVersion
     val defaults = agentDefaults(agentType, rigCreation, overrides, cliVersion)
     // The CLI daemon on the picked computer parses the mode; older ones drop prompts on modes they don't know.
@@ -318,7 +363,7 @@ fun resolveNewSessionOptions(
         worktree = resolvePickerOption(worktreeOptions, listOf(worktreeSelection)),
         agents = agents,
         agent = agents.find { it.key == agentType.wire } ?: agents.firstOrNull() ?: PickerOption(agentType.wire, agentType.displayName),
-        resolvedAgent = resolveNewSessionAgent(choice, agentType, draft.pickedAgentType),
+        resolvedAgent = resolvedAgent,
         models = modelSections,
         model = model,
         permissions = permissions,
@@ -326,5 +371,11 @@ fun resolveNewSessionOptions(
         efforts = efforts,
         effort = effort,
         supportsBots = rigSelection?.supportsBots == true,
+        supportsTasks = rigSelection?.supportsTasks == true,
+        kind = kind,
+        targets = targets,
+        currentTarget = choice?.let { picked -> targets.find { it.id == picked.id } },
+        offline = offline,
+        machinesSynced = machinesSynced,
     )
 }
