@@ -41,6 +41,8 @@ private class FakeAgent {
     val written = LinkedHashMap<String, ByteArray>()
     /** The next file writes refused with this status. */
     var refuseFiles = 0
+    /** The next draft saves don't get through. */
+    var failDrafts = 0
 
     val request: AgentRequest = { method, path, body, _ ->
         requests += Triple(method, path, body as? JsonObject)
@@ -69,6 +71,7 @@ private class FakeAgent {
             route.endsWith("/send") && failSends > 0 -> { failSends--; TransportResponse(503, body = """{"error":"busy"}""".toByteArray()) }
             route.endsWith("/send") -> TransportResponse(sendStatus, body = """{"error":"Unknown model.","code":"invalid_request"}""".toByteArray())
             route == "/v0/config" -> ok(CONFIG)
+            route.endsWith("/draft") && failDrafts > 0 -> { failDrafts--; TransportResponse(503, body = """{"error":"busy"}""".toByteArray()) }
             route.endsWith("/draft") -> ok("""{"draft":${(body as JsonObject).let { """{"value":${it["draft"]},"updatedAt":${it["updatedAt"]}}""" }}}""")
             else -> ok("{}")
         }
@@ -589,6 +592,46 @@ class ConversationTest {
         val saves = agent.requests.filter { it.first == "PUT" }
         assertEquals(1, saves.size)
         assertEquals("\"he\"", saves.single().third!!["draft"]!!.jsonObject["text"].toString())
+    }
+
+    private fun FakeAgent.draftTexts() = requests.filter { it.first == "PUT" && it.second.endsWith("/draft") }
+        .map { it.third!!["draft"]!!.jsonObject["text"].toString().trim('"') }
+
+    /**
+     * Sent offline from a chat then closed: the clear of the draft didn't
+     * get through, so the agent kept the sent words and gave them back to
+     * the composer next time. The delivered send saves the clear again.
+     */
+    @Test fun `a draft clear that could not be saved goes again once the send is delivered`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        chat.setDraft("PDF1: open the attached PDF")
+        advanceUntilIdle()
+        assertEquals(listOf("PDF1: open the attached PDF"), agent.draftTexts())
+        agent.failDrafts = 1
+        chat.send("PDF1: open the attached PDF")
+        chat.close()
+        advanceUntilIdle()
+        assertEquals(listOf("PDF1: open the attached PDF", "", ""), agent.draftTexts())
+        assertEquals(0, agent.failDrafts)
+        assertEquals(1, agent.paths("POST").count { it.endsWith("/send") })
+    }
+
+    @Test fun `a draft that could not be saved goes when the connection comes back`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        agent.failDrafts = 1
+        chat.setDraft("typed offline")
+        advanceUntilIdle()
+        assertEquals(listOf("typed offline"), agent.draftTexts())
+        signals.emit(ConversationSignal.Resync)
+        advanceUntilIdle()
+        assertEquals(listOf("typed offline", "typed offline"), agent.draftTexts())
+        signals.emit(ConversationSignal.Resync)
+        advanceUntilIdle()
+        assertEquals("saved once it went", 2, agent.draftTexts().size)
     }
 
     @Test fun `questions show, answer and clear`() = runTest {

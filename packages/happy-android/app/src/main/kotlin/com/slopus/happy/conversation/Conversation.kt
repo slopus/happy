@@ -225,7 +225,11 @@ class Conversation(
             signals.collect { signal ->
                 if (!created) return@collect
                 when (signal) {
-                    ConversationSignal.Resync -> reload()
+                    ConversationSignal.Resync -> {
+                        // Back online: a draft that couldn't be saved goes now.
+                        if (!draftSynced) saveDraftSoon(0)
+                        reload()
+                    }
                     is ConversationSignal.Event -> held?.add(signal) ?: receive(signal)
                 }
             }
@@ -810,6 +814,11 @@ class Conversation(
                     upload(next.files)
                     val message = withRetries { api.send(agentId, next.id, next.wire, emptyList(), mode) }
                     next.accepted = true
+                    // The send's clear of the draft may have failed offline, and
+                    // the screen may be gone (nothing else would save it again):
+                    // left as it was, the agent's copy of the sent words came back
+                    // into the composer the next time the chat was opened.
+                    if (!draftSynced) saveDraftSoon(0)
                     if (message != null && message.id !in messages) {
                         messages[message.id] = message
                         if (message.runId != null) place(message.id, message.runId)
