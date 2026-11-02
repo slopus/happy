@@ -25,6 +25,15 @@ private final class StoryHold: UILongPressGestureRecognizer {
     override var numberOfTouches: Int { touches }
 }
 
+/// A menu's dismissal that ends when the test says.
+private final class StoryMenuAnimator: NSObject, UIContextMenuInteractionAnimating {
+    private var completions: [() -> Void] = []
+    var previewViewController: UIViewController? { nil }
+    func addAnimations(_ animations: @escaping () -> Void) {}
+    func addCompletion(_ completion: @escaping () -> Void) { completions.append(completion) }
+    func finish() { completions.forEach { $0() }; completions = [] }
+}
+
 /// A computer whose story media never answers (`hangs`) or is gone (404).
 private actor StoryMediaComputer: AgentTransport {
     let hangs: Bool
@@ -69,6 +78,41 @@ final class StoryViewerTests: XCTestCase {
             XCTAssertEqual(preview.target.center, CGPoint(x: more.bounds.midX, y: more.bounds.midY))
             XCTAssertTrue(preview.parameters.shadowPath?.isEmpty == true)
         }
+    }
+
+    func testOpenMenuHoldsTheStoryUntilItHasGoneAndSharesTheHoldWithRepliesAndPressing() throws {
+        let viewer = try viewer(hangs: true)
+        defer { viewer.leave() }
+        let more = try XCTUnwrap(viewer.view.subviews.first { $0.accessibilityLabel == Strings.more } as? UIButton)
+        let media = try XCTUnwrap(viewer.view.subviews.first { $0.accessibilityIdentifier == "storyMediaStage" })
+        let player = try XCTUnwrap(media.subviews.compactMap { ($0 as? StoryPlayerView)?.playerLayer.player }.first)
+        let close = try XCTUnwrap(viewer.view.subviews.first { $0.accessibilityLabel == "Close" })
+        let interaction = UIContextMenuInteraction(delegate: more)
+        let configuration = UIContextMenuConfiguration(identifier: nil, previewProvider: nil, actionProvider: nil)
+        let clock = CADisplayLink(target: viewer, selector: #selector(StoryViewerController.tick(_:)))
+        XCTAssertGreaterThan(player.rate, 0)
+        more.contextMenuInteraction(interaction, willDisplayMenuFor: configuration, animator: nil)
+        XCTAssertEqual(player.rate, 0, "the menu opened over a playing story")
+        XCTAssertEqual(close.alpha, 1, "the menu hid the chrome like a press")
+        viewer.tick(clock)
+        XCTAssertEqual(player.rate, 0); XCTAssertEqual(viewer.index, 0)
+        let hold = StoryHold()
+        _ = viewer.perform(NSSelectorFromString("pressed:"), with: hold)
+        hold.state = .ended; _ = viewer.perform(NSSelectorFromString("pressed:"), with: hold)
+        XCTAssertEqual(player.rate, 0, "a press ending under the menu resumed the story")
+        let going = StoryMenuAnimator()
+        more.contextMenuInteraction(interaction, willEndFor: configuration, animator: going)
+        viewer.tick(clock)
+        XCTAssertEqual(player.rate, 0, "the story resumed before the menu had gone")
+        going.finish()
+        XCTAssertGreaterThan(player.rate, 0, "the story stayed paused after the menu closed")
+        XCTAssertEqual(viewer.index, 0)
+        _ = viewer.perform(NSSelectorFromString("openReplies"))
+        more.contextMenuInteraction(interaction, willDisplayMenuFor: configuration, animator: nil)
+        more.contextMenuInteraction(interaction, willEndFor: configuration, animator: nil)
+        XCTAssertEqual(player.rate, 0, "closing the menu resumed the story under the replies")
+        _ = viewer.perform(NSSelectorFromString("closeReplies"))
+        XCTAssertGreaterThan(player.rate, 0)
     }
 
     func testHoldingPausesPlaybackHidesChromeAndResumesWithoutNavigating() throws {

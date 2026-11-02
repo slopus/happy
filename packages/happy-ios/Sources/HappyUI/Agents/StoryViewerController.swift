@@ -56,6 +56,8 @@ final class StoryViewerController: UIViewController, UITextFieldDelegate, UIGest
     private var held = false
     private let press = UILongPressGestureRecognizer()
     private var pressing = false
+    /// A delete chosen from the ⋯ menu is on its way.
+    private var deleting = false
     private var keyboard: CGFloat = 0
     private static var muted = false
 
@@ -94,6 +96,7 @@ final class StoryViewerController: UIViewController, UITextFieldDelegate, UIGest
         more.setImage(UIImage(systemName: "ellipsis"), for: .normal)
         more.accessibilityLabel = Strings.more
         more.showsMenuAsPrimaryAction = true
+        more.changed = { [weak self] in self?.updatePlayback() }
         mute.addTarget(self, action: #selector(muteTapped), for: .touchUpInside)
         for button in [close, more, mute] { button.tintColor = .white; button.layer.shadowOpacity = 0.4; button.layer.shadowRadius = 3; button.layer.shadowOffset = CGSize(width: 0, height: 1) }
         for button in [close, more, mute] { button.setPreferredSymbolConfiguration(UIImage.SymbolConfiguration(pointSize: 24, weight: .light), forImageIn: .normal) }
@@ -276,7 +279,9 @@ final class StoryViewerController: UIViewController, UITextFieldDelegate, UIGest
         if !story.isPerson { actions.append(UIAction(title: Strings.Stories.repost, image: UIImage(systemName: "arrow.2.squarepath")) { [weak self] _ in self?.repost(story) }) }
         if story.canDelete == true {
             actions.append(UIAction(title: Strings.Stories.delete, image: UIImage(systemName: "trash"), attributes: .destructive) { [weak self, engine] _ in
-                Task { do { try await engine.deleteStory(story.id) } catch { self?.failed() } }
+                // Held until it's gone; the clock, not this, resumes whatever story is left.
+                self?.deleting = true
+                Task { do { try await engine.deleteStory(story.id) } catch { self?.failed() }; self?.deleting = false }
             })
         }
         more.menu = UIMenu(children: actions)
@@ -332,7 +337,7 @@ final class StoryViewerController: UIViewController, UITextFieldDelegate, UIGest
     }
 
     private func updatePlayback() {
-        let hold = pressing || !expanded.isHidden || presentedViewController != nil || reply.isFirstResponder || more.open
+        let hold = pressing || !expanded.isHidden || presentedViewController != nil || reply.isFirstResponder || more.open || deleting
         if hold != held {
             held = hold
             for player in [player, roundPlayer] { hold ? player?.pause() : player?.play() }
@@ -474,8 +479,10 @@ final class StoryViewerController: UIViewController, UITextFieldDelegate, UIGest
 }
 
 /// A ⋯ that knows while its menu is open, for the story to hold still.
+/// It stays open until the menu has gone, so a chosen action holds the story before it resumes.
 private final class MenuButton: UIButton {
-    private(set) var open = false
+    private(set) var open = false { didSet { if open != oldValue { changed?() } } }
+    var changed: (() -> Void)?
     /// An empty preview keeps UIKit from putting material behind the plain glyph.
     private func menuPreview() -> UITargetedPreview? {
         guard window != nil else { return nil }
@@ -491,7 +498,8 @@ private final class MenuButton: UIButton {
     }
     override func contextMenuInteraction(_ interaction: UIContextMenuInteraction, willEndFor configuration: UIContextMenuConfiguration, animator: (any UIContextMenuInteractionAnimating)?) {
         super.contextMenuInteraction(interaction, willEndFor: configuration, animator: animator)
-        open = false
+        guard let animator else { open = false; return }
+        animator.addCompletion { [weak self] in self?.open = false }
     }
 }
 
