@@ -23,8 +23,6 @@ final class SidebarItemView: ListRowView {
     private let seedling = MarkView()
     private let picture = UIImageView()
     private let signal = WorkingSignalView()
-    /// The outline a task's or bot's icon wears while it has a live story.
-    private let ring = UIView()
     private let placeholder = AvatarPlaceholderSlot()
     private let markPicture = MarkPicture()
     /// The mark as last applied, so a row that only changed its title keeps its picture.
@@ -90,11 +88,7 @@ final class SidebarItemView: ListRowView {
         tile.isUserInteractionEnabled = false
         tile.layer.cornerRadius = GroupedSidebarMetrics.tileRadius
         tile.layer.cornerCurve = .continuous
-        ring.isUserInteractionEnabled = false
-        ring.layer.borderWidth = StoryLayout.Metrics.ringWidth
-        ring.layer.cornerCurve = .continuous
-        for view in [fill, drawingView, tile, seedling, picture, signal, ring] { addSubview(view) }
-        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.applyRing() }
+        for view in [fill, drawingView, tile, seedling, picture, signal] { addSubview(view) }
         let tap = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
         addGestureRecognizer(tap)
         let press = PressRecognizer(target: self, action: #selector(pressChanged(_:)))
@@ -130,7 +124,6 @@ final class SidebarItemView: ListRowView {
         picture.tintColor = picture.contentMode == .center ? tint.map { UIColor($0.ink) } ?? UIColor(ink(row)) : nil
         signal.apply(working: row.status == .working)
         signal.accessibilityIdentifier = "corner:\(row.label)"
-        applyRing()
         applyFill()
         applyAccessibility()
         if row.isNew, !previous.isNew || previous.id != row.id, window != nil { pulse() }
@@ -138,13 +131,6 @@ final class SidebarItemView: ListRowView {
     }
 
     // MARK: Look
-
-    private func applyRing() {
-        ring.isHidden = row.story == nil
-        ring.accessibilityIdentifier = row.story.map { "story:\($0):\(row.label)" }
-        let color = row.story == .unseen ? Palette.storyUnseen : Palette.storySeen
-        ring.layer.borderColor = UIColor(color).resolvedColor(with: traitCollection).cgColor
-    }
 
     private func ink(_ row: Row) -> ColorToken {
         selected || row.unread || row.isNew ? Palette.rowTextActive : Palette.rowText
@@ -229,9 +215,6 @@ final class SidebarItemView: ListRowView {
         seedling.frame = mark
         picture.frame = mark
         tile.frame = mark
-        let outline = StoryLayout.ring(around: mark, markRadius: GroupedSidebarMetrics.tileRadius)
-        ring.frame = outline.frame
-        ring.layer.cornerRadius = outline.radius
         signal.frame = frames.corner ?? .zero
         titleBand?.frame = frames.label
     }
@@ -301,7 +284,7 @@ final class SidebarItemView: ListRowView {
         case .clay(let slug): slug
         default: nil
         }
-        let value = [row.isNew ? Strings.newRow : nil, wears, item.entry.drawing.shimmers ? Strings.workingRow : nil, SidebarLineChanges.accessibility(row.lineChanges), row.story.map { $0 == .unseen ? "story unseen" : "story seen" }].compactMap { $0 }
+        let value = [row.isNew ? Strings.newRow : nil, wears, item.entry.drawing.shimmers ? Strings.workingRow : nil, SidebarLineChanges.accessibility(row.lineChanges)].compactMap { $0 }
         accessibilityValue = value.isEmpty ? nil : value.joined(separator: ", ")
     }
 

@@ -20,9 +20,6 @@ final class HomeViewController: UIViewController {
     /// The computer this screen always shows; nil to follow the choice.
     private let fixedAgentConnection: String?
     private let sidebar = SidebarList()
-    /// Who has live stories, over the list's first row; empty while stories are off.
-    private let storiesRow = StoriesRowView()
-    private var gallery: StoryGallery?
     private let empty = EmptyView()
     private var session: Session?
     private var accountsObservation: AccountsObservation?
@@ -98,11 +95,6 @@ final class HomeViewController: UIViewController {
         applyGround()
         registerForTraitChanges([SidebarColumnTrait.self]) { (self: Self, _) in self.applyGround() }
         view.addSubview(sidebar)
-        storiesRow.onOpen = { [weak self] index in self.map { $0.openStories($0.agentHome.posters, start: index) } }
-        storiesRow.onAdd = { [weak self] in
-            guard let self, let session, gallery?.preparing != true else { return }
-            gallery = StoryGallery(from: self, client: session.engine.client, library: session.media)
-        }
         view.addSubview(empty)
         NotificationCenter.default.addObserver(self, selector: #selector(keyboardWillChange(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
         resultsView.isHidden = true
@@ -121,11 +113,6 @@ final class HomeViewController: UIViewController {
         }
         sidebar.preview = { [weak self] row in self?.preview(for: row) }
         sidebar.onOpenPreview = { [weak self] row in self?.open(row, animated: false) }
-        sidebar.onOpenStory = { [weak self] row, _ in
-            guard let self else { return }
-            guard let poster = agentHome.posters.first(where: { !$0.person && $0.stories.contains { $0.belongs(to: row) } }) else { return open(row) }
-            openStories([poster], start: 0)
-        }
         sidebar.onWillBeginDragging = { [weak self] in self?.listWillBeginDragging() }
         sidebar.onScroll = { [weak self] in self?.listDidScroll() }
         sidebar.onMove = { [weak self] in self?.onListScroll?() }
@@ -187,7 +174,6 @@ final class HomeViewController: UIViewController {
         headerWatch = nil; waitingForNetwork = false
         session = id.flatMap { Session.session(for: $0, context: context) }
         sidebar.images = session?.images
-        storiesRow.images = session?.images
         resultsView.list.images = session?.images
         sidebar.apply([])
         snapshot = Snapshot()
@@ -228,9 +214,6 @@ final class HomeViewController: UIViewController {
             sidebar.apply(snapshot.rows)
             if shownBeside != nil { updateSelection() }
         }
-        if storiesRow.posters != home.posters || storiesRow.enabled != home.storiesEnabled || storiesRow.personMark != home.personMark { storiesRow.apply(home.posters, enabled: home.storiesEnabled, personMark: home.personMark); view.setNeedsLayout() }
-        sidebar.stories = home.storiesEnabled ? storiesRow : nil
-        if let viewer = presentedViewController as? StoryViewerController { (viewer.names, viewer.me, viewer.agents) = (storyNames, home.userId, home.allRows); viewer.refresh(home.stories) }
         if search != nil { showResults() }
         warmUp()
         applyChrome()
@@ -416,23 +399,6 @@ final class HomeViewController: UIViewController {
             sidebar.setInsets(insets, indicator: indicator, keepsTop: false)
         }
         empty.frame = layout.empty
-    }
-
-    /// Names by ID for the viewer: members, and the agents tasks and bots run.
-    private var storyNames: [String: String] {
-        agentHome.people.merging(agentHome.allRows.compactMap { row in row.kind == .space ? row.agentId.map { ($0, row.label) } : nil }) { _, row in row }
-    }
-
-    private func openStories(_ posters: [StoryPoster], start: Int) {
-        guard let session, posters.indices.contains(start) else { return }
-        let viewer = StoryViewerController(engine: session.engine, library: session.media, images: session.images, posters: posters, start: start, names: storyNames)
-        viewer.me = agentHome.userId
-        viewer.agents = agentHome.allRows
-        viewer.onChat = { [weak self] id in
-            guard let self, let row = agentHome.allRows.first(where: { $0.agentId == id }) else { return }
-            open(row)
-        }
-        present(viewer, animated: true)
     }
 
 

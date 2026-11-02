@@ -18,8 +18,6 @@ enum SettingsIndex {
     static var changeAgentName: Entry { Entry(id: "change-agent-name", title: Strings.changeAgentName, glyph: "create-outline", tile: .blue) }
     static var changeAgentAvatar: Entry { Entry(id: "change-agent-avatar", title: Strings.changeAgentAvatar, glyph: "image-outline", tile: .orange) }
     static var hideProjects: Entry { Entry(id: "hide-projects", title: "Hide projects", glyph: "folder-outline", tile: .orange) }
-    /// Not in `computer`: it is on the page only while the computer has stories.
-    static var stories: Entry { Entry(id: "stories", title: "Stories", glyph: "flask-outline", tile: .purple) }
     static var connection: Entry { Entry(id: "connection", title: Strings.Connection.title, glyph: "pulse-outline", tile: .teal) }
     static var account: Entry { Entry(id: "account", title: Strings.Settings.account, glyph: "person-circle-outline", tile: .blue) }
     static var backupRestore: Entry { Entry(id: "backup-restore", title: Strings.BackupRestore.title, glyph: "key-outline", tile: .green) }

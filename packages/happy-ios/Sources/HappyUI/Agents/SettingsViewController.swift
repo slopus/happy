@@ -94,10 +94,6 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     private var prioritizing: Bool?
     private var connectionSettingsWatch: Task<Void, Never>?
     private var projectsHidden = false
-    /// The Stories switch, shown only once the computer says it has stories.
-    private var storiesSupported = false
-    private var storiesOn = false
-    private var storiesProbe: Task<Void, Never>?
     /// The person's own profile on the computer shown, for its row.
     private var profileWatch: (id: String, watch: Watch)?
     private var profileName = ""
@@ -357,9 +353,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     private func watchShown() {
         watchProfile()
         connectionSettingsWatch?.cancel(); connectionSettingsWatch = nil
-        storiesProbe?.cancel(); storiesProbe = nil
         projectsHidden = false
-        (storiesSupported, storiesOn) = (false, false)
         prioritizingWatch?.invalidate()
         prioritizingWatch = nil
         prioritizing = nil
@@ -381,16 +375,10 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             for await snapshot in await engine.snapshots() {
                 guard !Task.isCancelled, let self else { return }
                 let hidden = DesktopSettingKeys.projectsHidden(snapshot.settings)
-                let stories = snapshot.settings[Stories.settingKey] == .bool(true)
-                guard hidden != projectsHidden || stories != storiesOn else { continue }
-                (projectsHidden, storiesOn) = (hidden, stories)
+                guard hidden != projectsHidden else { continue }
+                projectsHidden = hidden
                 rebuild()
             }
-        }
-        storiesProbe = Task { [weak self, engine = session.engine] in
-            guard await engine.storiesSupported(), !Task.isCancelled, let self else { return }
-            storiesSupported = true
-            rebuild()
         }
         prioritizingWatch = session.watch { [weak self] snapshot in
             guard let self, prioritizing != snapshot.prioritizing else { return }
@@ -485,7 +473,6 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                     Row(Index.appearance, action: { [weak self] in self?.open(.appearance) }),
                     Row(Index.dataStorage, action: { [weak self] in self?.open(.dataStorage) }),
                 ],
-                storiesRows(id),
                 [Row(Index.supportUs, action: { [weak self] in self?.open(.supportUs) })],
                 aboutRows(),
             ] + removal
@@ -583,18 +570,6 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         ]
     }
 
-    /// The person's `stories` setting, the one desktop's Experimental
-    /// switch writes; nothing while the computer has no stories.
-    private func storiesRows(_ id: String) -> [SettingsRow] {
-        guard storiesSupported else { return [] }
-        return [SettingsRow(SettingsIndex.stories, accessory: .toggle, isOn: storiesOn, toggled: { [weak self] on in
-            guard let self, let engine = context.account.agentConnections.syncEngine(for: id) else { return }
-            storiesOn = on
-            rebuild()
-            Task { try? await engine.setStories(on) }
-        })].withFooter("Experimental. Stories from your tasks and bots show on their icons, and your agents can post them.")
-    }
-
     private func aboutRows() -> [SettingsRow] {
         typealias Row = SettingsRow
         typealias Index = SettingsIndex
@@ -656,7 +631,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         } else if query != nil {
             rows = []
         } else {
-            rows = rowsFor(profile).filter { !$0.isEmpty }
+            rows = rowsFor(profile)
         }
         page?.reload()
         let searching = query != nil

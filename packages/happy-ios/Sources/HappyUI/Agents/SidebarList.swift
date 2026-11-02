@@ -40,8 +40,6 @@ final class SidebarList: UIView {
     var preview: ((Row) -> UIViewController?)?
     /// The preview was tapped: the row opens at once, under it.
     var onOpenPreview: ((Row) -> Void)?
-    /// A tap on an outlined icon: the row's stories, with the picture it wears.
-    var onOpenStory: ((Row, UIImage?) -> Void)?
     var images: Images?
 
     /// The list moved: a finger, a glide or a jump.
@@ -70,7 +68,6 @@ final class SidebarList: UIView {
     }
 
     private(set) var rows: [Row] = []
-    var stories: StoriesRowView? { didSet { if (stories != nil) != (oldValue != nil) { update() } } }
     /// The note over the rows (the last thing the computer refused), the
     /// list's first item: it comes and goes as rows do, the rows under it
     /// moving, and never covers one.
@@ -102,7 +99,6 @@ final class SidebarList: UIView {
         var displayScale: CGFloat
         var selected: String?
         var notice: String?
-        var stories = false
     }
 
     /// The notice over the rows, as worked out off the main thread.
@@ -135,27 +131,25 @@ final class SidebarList: UIView {
         var contentHeight: CGFloat
         var sequence: UInt64
 
-        /// Stories, then the notice, then the list's rows.
-        var identities: [String] { (input.stories ? [SidebarStoriesItem.id] : []) + (notice == nil ? [] : [SidebarNoticeItem.id]) + entries.map(\.row.id) }
+        /// The list's items, the notice first.
+        var identities: [String] { (notice == nil ? [] : [SidebarNoticeItem.id]) + entries.map(\.row.id) }
 
         /// Where the list's item `index` starts in the content.
         func top(at index: Int) -> CGFloat? {
-            if input.stories && index == 0 { return 0 }
-            guard let row = row(at: index) else { return notice != nil && index == (input.stories ? 1 : 0) ? (input.stories ? StoryLayout.Metrics.rowHeight : 0) : nil }
+            guard let row = row(at: index) else { return notice != nil && index == 0 ? 0 : nil }
             return entries[row].top
         }
 
-        /// The row the list's item `index` shows; nil for stories or the notice.
+        /// The row the list's item `index` shows; nil for the notice.
         func row(at index: Int) -> Int? {
-            let row = index - (input.stories ? 1 : 0) - (notice == nil ? 0 : 1)
+            let row = notice == nil ? index : index - 1
             return entries.indices.contains(row) ? row : nil
         }
 
-        /// Each item's box in the content, including stories and the notice.
+        /// Each item's box in the content, the notice first.
         var boxes: [CGRect] {
-            let header = input.stories ? [CGRect(x: 0, y: 0, width: input.width, height: StoryLayout.Metrics.rowHeight)] : []
-            let card = notice.map { [CGRect(origin: CGPoint(x: 0, y: header.last?.maxY ?? 0), size: $0.layout.size)] } ?? []
-            return header + card + entries.map { $0.box.offsetBy(dx: 0, dy: $0.top) }
+            let card = notice.map { [CGRect(origin: .zero, size: $0.layout.size)] } ?? []
+            return card + entries.map { $0.box.offsetBy(dx: 0, dy: $0.top) }
         }
     }
 
@@ -264,7 +258,7 @@ final class SidebarList: UIView {
         let input = Input(
             rows: rows, width: band.width, dark: traits.userInterfaceStyle == .dark,
             displayScale: traits.displayScale > 0 ? traits.displayScale : 3,
-            selected: selectedRowId, notice: notice, stories: stories != nil
+            selected: selectedRowId, notice: notice
         )
         guard input != requested else { return }
         requested = input
@@ -288,7 +282,7 @@ final class SidebarList: UIView {
             sequence += 1
             return Notice(text: text, layout: layout, revision: sequence)
         }
-        let below = (notice?.layout.size.height ?? 0) + (input.stories ? StoryLayout.Metrics.rowHeight : 0)
+        let below = notice?.layout.size.height ?? 0
         let entries = slots.map { slot -> Entry in
             let row = input.rows[slot.row]
             let drawing = SidebarItemDrawing(
@@ -312,7 +306,6 @@ final class SidebarList: UIView {
         let target = startsEachChangeAtTop ? top(next, previous: previousIDs) : anchor(next)
         prepared = next
         var shown: [any ListRow] = []
-        if next.input.stories, let stories { shown.append(SidebarStoriesItem(stories)) }
         if let notice = next.notice {
             let item = noticeItem.flatMap { $0.revision == notice.revision ? $0 : nil } ?? SidebarNoticeItem(notice: notice)
             noticeItem = item
@@ -343,13 +336,13 @@ final class SidebarList: UIView {
         items = kept
         let structural = previousIDs != nil && previousIDs != next.identities
         let animated = structural && !startsEachChangeAtTop && window != nil && !UIAccessibility.isReduceMotionEnabled
-        if animated, next.notice == nil, previousIDs?.contains(SidebarNoticeItem.id) == true { departNotice() }
+        if animated, next.notice == nil, previousIDs?.first == SidebarNoticeItem.id { departNotice() }
         resizeList()
         ApplyPerf.measure(.homeList) {
             list.applyChanges(items: shown, newSize: band.size, scrollTo: target, anchorMode: .automatic, compensatesInsetChange: false, transition: animated ? .easeInOut(0.25) : .none)
             // A notice coming in slides down from above with the rows it
             // pushes, rather than fading in over them where they were.
-            if animated, next.notice != nil, previousIDs?.contains(SidebarNoticeItem.id) != true {
+            if animated, next.notice != nil, previousIDs?.first != SidebarNoticeItem.id {
                 list.animateInsertedBlock(identities: [SidebarNoticeItem.id], from: .top, transition: .easeInOut(0.25))
             }
             return touched
@@ -551,9 +544,6 @@ final class SidebarList: UIView {
         // The touch that opened a hold, let go: the hold stays and that is all.
         guard hold == nil else { return }
         let row = view.row
-        if row.story != nil, let onOpenStory, let mark = view.frames.mark, StoryLayout.ringTarget(around: mark, labelX: view.frames.label.minX).contains(point) {
-            return onOpenStory(row, view.markImage)
-        }
         switch row.kind {
         case .section, .separator:
             // Home folds nothing.
@@ -675,24 +665,6 @@ final class SidebarItem: ListRow {
     func prepareInPlace(width: Double, environment: RenderEnvironment) -> ListInPlacePreparation? { node(at: width).prepareInPlace(width: width, environment: environment) }
     func makeView() -> ListRowView { SidebarItemView(item: self) }
     func apply(to view: ListRowView, transition: ListTransition) { (view as? SidebarItemView)?.apply(self, transition: transition) }
-}
-
-@MainActor
-final class SidebarStoriesItem: ListRow {
-    nonisolated static let id = "home:stories"
-    let identity = SidebarStoriesItem.id
-    let stories: StoriesRowView
-    init(_ stories: StoriesRowView) { self.stories = stories }
-    func makeView() -> ListRowView { SidebarStoriesView(stories) }
-}
-
-@MainActor
-private final class SidebarStoriesView: ListRowView {
-    private let stories: StoriesRowView
-    init(_ stories: StoriesRowView) { self.stories = stories; super.init(frame: .zero); addSubview(stories) }
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-    override func update(width: Double, transition: ListTransition) -> Double { StoryLayout.Metrics.rowHeight }
-    override func layoutSubviews() { super.layoutSubviews(); stories.frame = bounds }
 }
 
 /// The notice at the top of home's list: the last thing the computer

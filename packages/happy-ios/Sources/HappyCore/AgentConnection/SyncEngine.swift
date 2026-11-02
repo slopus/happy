@@ -12,17 +12,9 @@ public struct HomeSnapshot: Equatable, Sendable {
     public var settings: [String: JSONValue] = [:]
     /// The person signed in as a team user; nil outside a team.
     public var userId: String?
-    public var personMark: Row.Mark = .placeholder(seed: "person:")
     public var error: String?
     /// An action the computer refused, said for a moment while it rolls back.
     public var notice: String?
-    /// The live stories, oldest first; empty while stories are off.
-    public var stories: [Story] = []
-    /// The stories row: who posted them, unseen first.
-    public var posters: [StoryPoster] = []
-    public var storiesEnabled = false
-    /// Members' names by ID, for who replied.
-    public var people: [String: String] = [:]
     public init() {}
 }
 
@@ -91,14 +83,6 @@ public actor SyncEngine {
     private var gitWatcher: Task<Void, Never>?
     private var gitInterest: Set<String> = []
     private var gitSnapshots: [String: WorkspaceLineChanges] = [:]
-    /// Stories, read only while the computer has `storyFeed` and the
-    /// person's `stories` setting is on.
-    private var storyFeed: Bool?
-    private var stories: [Story] = []
-    private var storyRead: Task<Void, Never>?
-    private var storyExpiry: Task<Void, Never>?
-    private var storyPeople: Set<String> = []
-    private var storiesOn: Bool { storyFeed == true && snapshot.settings[Stories.settingKey] == .bool(true) }
 
     public init(client: AgentClient, directory: URL?) {
         self.client = client
@@ -167,9 +151,9 @@ public actor SyncEngine {
         generation += 1
         verified = false
         let pausedGeneration = generation
-        let tasks = [runner, refresh, delivery, messageDelivery, usersRead, gitWatcher, storyRead, storyExpiry].compactMap { $0 }
+        let tasks = [runner, refresh, delivery, messageDelivery, usersRead, gitWatcher].compactMap { $0 }
         gitWatcher = nil; gitInterest = []
-        runner = nil; refresh = nil; delivery = nil; messageDelivery = nil; usersRead = nil; storyRead = nil; storyExpiry = nil; storyFeed = nil
+        runner = nil; refresh = nil; delivery = nil; messageDelivery = nil; usersRead = nil
         tasks.forEach { $0.cancel() }
         for task in tasks { await task.value }
         await intents.setOnline(false)
@@ -296,8 +280,6 @@ public actor SyncEngine {
                         snapshot.settings = try await database().settings()
                         derive()
                     }
-                    if event["type"] == .string("story.changed") { receiveStory(event["payload"]?["story"]) }
-                    if event["type"] == .string("story.removed"), let id = event["payload"]?["storyId"]?.stringValue { dropStory(id) }
                     // Events are delivery hints, never a durable checkpoint.
                     // Coalesce catalog invalidations; message token events go
                     // straight to the open conversation without rereading Home.
@@ -409,7 +391,6 @@ public actor SyncEngine {
         }
         derive()
         readAuthors(generation)
-        readStories(generation)
     }
 
     // MARK: Authors
@@ -420,14 +401,9 @@ public actor SyncEngine {
     private func authorChanged(_ id: String?, _ generation: Int) {
         guard let id, let desktop, let me = desktop.profile?.userId else { return }
         if id == me { return scheduleReconcile(generation) }
-        guard authors(desktop).contains(id) else { return }
+        guard SidebarRows.authors(desktop).contains(id) else { return }
         usersMissing.remove(id)
         readAuthors(generation, again: [id])
-    }
-
-    /// The members the listed tasks belong to, and the people stories name.
-    private func authors(_ desktop: DesktopSnapshot) -> Set<String> {
-        SidebarRows.authors(desktop).union(Stories.people(snapshot.stories).union(storyPeople).subtracting([desktop.profile?.userId ?? ""]))
     }
 
     /// Reads the members the listed tasks belong to that this phone doesn't
@@ -441,7 +417,7 @@ public actor SyncEngine {
             while usersDirty && current(generation) {
                 usersDirty = false
                 guard let desktop else { break }
-                let authors = authors(desktop)
+                let authors = SidebarRows.authors(desktop)
                 let wanted = authors.filter { (users[$0] == nil && !usersMissing.contains($0)) || usersAgain.contains($0) }.sorted()
                 usersAgain.subtract(wanted)
                 guard !wanted.isEmpty else { continue }
@@ -477,18 +453,6 @@ public actor SyncEngine {
         try await setSetting(DesktopSettingKeys.projectsVisibility, value: .object(["projectsHidden": .bool(hidden)]))
     }
 
-    /// The person's `stories` setting, desktop's Experimental toggle: what they see, and their agents' tool.
-    public func setStories(_ on: Bool) async throws {
-        try await setSetting(Stories.settingKey, value: .bool(on))
-    }
-
-    /// Whether the computer has stories (`storyFeed`), asked once a connection.
-    public func storiesSupported() async -> Bool {
-        let generation = generation
-        if storyFeed == nil, let health = try? await client.health(), current(generation) { storyFeed = health.capabilities?.storyFeed == true }
-        return storyFeed == true
-    }
-
     public func cachedResource(_ key: String) async throws -> JSONValue? { try await database().checkpoint(key)?.value }
 
     public func keepResource(_ key: String, value: JSONValue) async throws {
@@ -513,7 +477,6 @@ public actor SyncEngine {
         snapshot.settings = try await database.settings()
         derive()
         if deliveryAllowed { beginDelivery(generation) }
-        if key == Stories.settingKey { readStories(generation) }
     }
 
     private func beginDelivery(_ generation: Int) {
@@ -560,21 +523,13 @@ public actor SyncEngine {
 
     private func derive() {
         snapshot.loaded = desktop != nil
-        // What is still live, oldest first: play order.
-        let live = storiesOn ? stories.filter { $0.expiresAt > Date().timeIntervalSince1970 * 1000 }.sorted { $0.postedAt < $1.postedAt } : []
-        snapshot.storiesEnabled = storiesOn
-        snapshot.stories = live
-        expireStories(live)
         if let desktop {
-            snapshot.allRows = Stories.ring(overlay.apply(SidebarRows.make(desktop, settings: snapshot.settings, users: users)), stories: live)
+            snapshot.allRows = overlay.apply(SidebarRows.make(desktop, settings: snapshot.settings, users: users))
             for index in snapshot.allRows.indices {
                 snapshot.allRows[index].lineChanges = snapshot.allRows[index].workspaceId.flatMap { gitSnapshots[$0]?.visible }
             }
             snapshot.rows = Rows.visible(snapshot.allRows)
             snapshot.userId = desktop.profile?.userId
-            snapshot.personMark = desktop.profile?.photo.map { .image(path: snapshot.userId.map(TeamUser.photoPath) ?? "/v0/profile/photo", thumbhash: $0.thumbhash) } ?? .placeholder(seed: "person:\(snapshot.userId ?? "")")
-            snapshot.posters = Stories.posters(live, rows: snapshot.allRows, users: users, profile: desktop.profile)
-            snapshot.people = live.isEmpty ? [:] : users.mapValues(\.name)
         }
         publish()
     }
@@ -619,81 +574,6 @@ public actor SyncEngine {
             changed = true
         }
         if changed { derive() }
-    }
-
-    // MARK: Stories
-
-    /// The feed while the setting is on, from a computer asked once a
-    /// connection whether it has `storyFeed`; nothing is asked while it is
-    /// off. What was seen or arrived here meanwhile is kept.
-    private func readStories(_ generation: Int) {
-        storyRead?.cancel()
-        guard snapshot.settings[Stories.settingKey] == .bool(true) else { stories = []; return }
-        let before = Set(stories.map(\.id))
-        storyRead = Task {
-            if storyFeed == nil, let health = try? await client.health(), current(generation) { storyFeed = health.capabilities?.storyFeed == true }
-            guard storyFeed == true, let feed = try? await client.stories(), current(generation) else { return }
-            let seen = Set(stories.filter(\.seen).map(\.id)), listed = Set(feed.map(\.id))
-            stories = feed.map { var story = $0; story.seen = story.seen || seen.contains(story.id); return story }
-                + stories.filter { !before.contains($0.id) && !listed.contains($0.id) }
-            derive()
-            readAuthors(generation)
-        }
-    }
-
-    private func receiveStory(_ value: JSONValue?) {
-        guard snapshot.settings[Stories.settingKey] == .bool(true), let value, let data = try? JSONEncoder().encode(value),
-              var story = try? JSONDecoder().decode(Story.self, from: data) else { return }
-        story.seen = story.seen || stories.contains { $0.id == story.id && $0.seen }
-        stories.removeAll { $0.id == story.id }
-        stories.append(story)
-        derive()
-        readAuthors(generation)
-    }
-
-    /// Gone for everyone: deleted, or no longer this person's to see.
-    private func dropStory(_ storyId: String) {
-        stories.removeAll { $0.id == storyId }
-        derive()
-    }
-
-    /// Deletes the person's own repost, or a story of a task they own; a
-    /// refusal throws and leaves it.
-    public func deleteStory(_ storyId: String) async throws {
-        try await client.deleteStory(storyId)
-        dropStory(storyId)
-    }
-
-    /// Names `ids` (repliers past the last two) once they are read.
-    public func lookUp(_ ids: Set<String>) {
-        guard !ids.isSubset(of: storyPeople) else { return }
-        storyPeople.formUnion(ids)
-        readAuthors(generation)
-    }
-
-    /// The person's reply, shown at once over the story it answers.
-    public func replied(_ reply: Story.Reply, to storyId: String) {
-        guard let index = stories.firstIndex(where: { $0.id == storyId }), !(stories[index].replies ?? []).contains(reply) else { return }
-        stories[index].replies = Array(((stories[index].replies ?? []) + [reply]).suffix(2))
-        stories[index].replyCount = (stories[index].replyCount ?? 0) + 1
-        derive()
-    }
-
-    /// Takes a story's outline off when it ends, without a read.
-    private func expireStories(_ live: [Story]) {
-        storyExpiry?.cancel()
-        storyExpiry = live.map(\.expiresAt).min().map { next in Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(max(0, next - Date().timeIntervalSince1970 * 1000) + 50))
-            if !Task.isCancelled { await self?.derive() }
-        } }
-    }
-
-    /// The person opened `storyId`: seen here at once, then on their other devices.
-    public func markStorySeen(_ storyId: String) {
-        guard let index = stories.firstIndex(where: { $0.id == storyId }), !stories[index].seen else { return }
-        stories[index].seen = true
-        derive()
-        Task { try? await client.markStorySeen(storyId) }
     }
 
     // MARK: Intents

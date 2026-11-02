@@ -132,8 +132,6 @@ public struct Row: Equatable, Sendable, Identifiable {
     /// minute): what search's recent conversations are ordered by.
     public var activityTime: Double?
     public var lineChanges: GitLineChanges?
-    /// A task's or bot's live stories: the outline its icon wears (`Stories.ring`).
-    public var story: StoryRing?
 
     public init(id: String, nodeId: String, kind: Kind, depth: Int = 0, label: String, mark: Mark = .none, status: Status = .none, unread: Bool = false, collapsed: Bool? = nil, isHappy: Bool = false, agentId: String? = nil, workspaceId: String? = nil, spaceId: String? = nil, targetKind: String? = nil, isUntouchedSeedling: Bool = false) {
         self.id = id
