@@ -223,6 +223,8 @@ final class AgentsPageTests: XCTestCase {
         XCTAssertEqual(AgentsPage.machineRows(machines([9, 1, 5]), online: "online", offline: "offline").map(\.id), rows.map(\.id))
         let choices = MachineChoice.collect(machines([1, 2, 3]).reversed())
         XCTAssertEqual(MachineChoice.sortedForPicking(choices).map(\.id), ["agent", "new", "old"])
+        // The composer's computer menu says the same.
+        XCTAssertEqual(Set(choices.map { MachineTarget($0).daemons }), ["Happy Agent 0.4.111-preview.5", "Happy CLI 1.2.6", "Happy CLI 0.10.0"])
     }
 
     func testAComputerOpensItsReachableDaemon() {

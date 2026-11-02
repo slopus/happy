@@ -12,6 +12,9 @@ public struct MachineTarget: Equatable, Sendable {
     /// The computer's id (`MachineChoice.id`).
     public var id: String
     public var name: String
+    /// What runs on it, with versions (`MachineChoice.daemons`): one
+    /// host's Happy CLI and Happy Agent share its name.
+    public var daemons = ""
     /// Some daemon on it answers.
     public var online: Bool
     /// Its Happy Agent answers.
@@ -48,6 +51,7 @@ public struct MachineTarget: Equatable, Sendable {
             makesTasks: rig?.supportsTasks == true,
             lastSeenAt: choice.online ? 0 : choice.activeAt
         )
+        daemons = choice.daemons
         if let agent = choice.rigMachine, !agent.active { happyAgentLastSeenAt = agent.activeAt }
         happyAgentDefaults = rig.map {
             AgentDefaults.Config(permissionMode: $0.defaultPermissionMode ?? "", modelMode: $0.defaultModelKey ?? "",

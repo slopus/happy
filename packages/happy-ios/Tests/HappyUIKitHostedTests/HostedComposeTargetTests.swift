@@ -476,8 +476,10 @@ final class HostedComposeTargetTests: XCTestCase {
         XCTAssertEqual((elements.first as? UIMenu)?.title, "This computer is offline. Start Happy on it or pick another.", "the menu says why at its head")
         let actions = Self.actions(elements)
         XCTAssertEqual(actions.map(\.title), ["MacBook-Pro-7.local", "happy-core", "MacBook-Pro.local"], "online first")
-        XCTAssertEqual(actions.map { $0.subtitle ?? "" }.prefix(2), ["online", "online"])
-        XCTAssertTrue(actions.last?.subtitle?.hasPrefix("last seen") == true, "\(actions.last?.subtitle ?? "")")
+        // What runs there, then whether it answers.
+        XCTAssertEqual(actions.map { $0.subtitle?.components(separatedBy: " • ").last ?? "" }.prefix(2), ["online", "online"])
+        XCTAssertTrue(actions.allSatisfy { $0.subtitle?.hasPrefix("Happy ") == true }, "\(actions.map(\.subtitle))")
+        XCTAssertTrue(actions.last?.subtitle?.components(separatedBy: " • ").last?.hasPrefix("last seen") == true, "\(actions.last?.subtitle ?? "")")
 
         card.setText("yo", selection: NSRange(location: 2, length: 0))
         card.delegate?.agentInputCardDidChangeText(card)

@@ -349,7 +349,8 @@ final class LegacyComposeStart: NSObject {
             let status = Self.status(target, for: kind)
             return UIAction(
                 title: target.name,
-                subtitle: status.text,
+                // Which daemons, so computers of one name are told apart.
+                subtitle: ([target.daemons, status.text].filter { !$0.isEmpty }).joined(separator: " • "),
                 image: Self.dot(status.color),
                 state: target.id == selected ? .on : .off
             ) { _ in composer.selectMachine(target.id) }
