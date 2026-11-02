@@ -39,6 +39,7 @@ import java.util.Collections
  * home are derived off the thread that collects them, and stay well inside
  * a frame budget's order of magnitude. The bounds are loose on purpose (a
  * shared build host); they catch a quadratic, not a regression of a few ms.
+ * The chat's are ratios between sizes, which a loaded host doesn't move.
  */
 class LargeDataTest {
     private fun millis(block: () -> Unit): Long {
@@ -47,27 +48,40 @@ class LargeDataTest {
         return (System.nanoTime() - start) / 1_000_000
     }
 
+    /** The fastest of [runs]: what the work costs, without what else the host was doing. */
+    private fun fastest(runs: Int = 3, block: () -> Unit): Long = (1..runs).minOf { millis(block) }
+
     @Test
     fun aFiveThousandMessageChatReducesInLinearTime() {
         val records = LargeSessions.records("s", 8_000)
         // Warm the JIT on a smaller run first.
         ChatReduction().apply(ChatPage(records.take(2_000)), null)
         lateinit var rows: List<ChatRow>
-        val full = millis { rows = ChatReduction().apply(ChatPage(records), null).rows }
+        rows = ChatReduction().apply(ChatPage(records), null).rows
         assertEquals(800, rows.count { (it as? ChatRow.Tool)?.message?.children?.isNotEmpty() == true })
-        assertTrue("8000 records reduced in $full ms", full < 3_000)
+        // Linear: four times the records take about four times as long, where a quadratic takes sixteen.
+        // Within the old wall-clock bound, or else compared with each other, which a loaded host slows alike.
+        val quarter = fastest { ChatReduction().apply(ChatPage(records.take(2_000)), null) }
+        val full = fastest { ChatReduction().apply(ChatPage(records), null) }
+        assertTrue("8000 records in $full ms, 2000 in $quarter ms", full < 3_000 || full < 10 * maxOf(quarter, 1))
 
-        // Live messages one at a time on top of 5000: each pass only feeds what is new.
-        val reduction = ChatReduction()
-        var list = records.take(5_000)
-        reduction.apply(ChatPage(list), null)
-        val appends = millis {
-            for (record in records.subList(5_000, 5_100)) {
-                list = list + record
-                reduction.apply(ChatPage(list), null)
+        // Live messages one at a time: a pass over four times the history costs about four times as much
+        // (it reads the page it is given), not sixteen.
+        fun appends(base: Int): Long {
+            val reduction = ChatReduction()
+            var list = records.take(base)
+            reduction.apply(ChatPage(list), null)
+            return millis {
+                for (record in records.subList(base, base + 100)) {
+                    list = list + record
+                    reduction.apply(ChatPage(list), null)
+                }
             }
         }
-        assertTrue("100 live messages over 5000 in $appends ms", appends < 3_000)
+        appends(1_250)
+        val small = (1..3).minOf { appends(1_250) }
+        val large = (1..3).minOf { appends(5_000) }
+        assertTrue("100 live messages over 5000 in $large ms, over 1250 in $small ms", large < 3_000 || large < 12 * maxOf(small, 1))
     }
 
     @Test
