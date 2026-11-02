@@ -29,6 +29,7 @@ final class LibraryPickerSourcesTests: XCTestCase {
         guard case .image(let data, let type) = pick.media else { return XCTFail("not a picture: \(pick.media)") }
         XCTAssertEqual(data, png)
         XCTAssertEqual(type, .png)
+        XCTAssertEqual(pick.name, "swatch.png", "its name goes with it, as Android's does")
         XCTAssertGreaterThan(pick.pixelSize.width, 0)
         // Read, the copy goes.
         XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
@@ -52,6 +53,18 @@ final class LibraryPickerSourcesTests: XCTestCase {
         guard case .file(_, let type) = file.media else { return XCTFail("not a file: \(file.media)") }
         XCTAssertTrue(type.conforms(to: .movie))
         LibraryPicker.discard([movie, file])
+    }
+
+    /// The system picker's copy is named after the photo (`suggestedName`),
+    /// not the temporary file it is read from.
+    func testTheSystemPickersCopyIsNamedAfterThePhoto() {
+        let file = URL(fileURLWithPath: "/tmp/version=1&uuid=9F2A.heic")
+        XCTAssertEqual(LibrarySystemPicker.copyName(suggested: "IMG_0042", file: file), "IMG_0042.heic")
+        XCTAssertEqual(LibrarySystemPicker.copyName(suggested: "matrix-red-square.HEIC", file: file), "matrix-red-square.HEIC")
+        XCTAssertEqual(LibrarySystemPicker.copyName(suggested: "a/b", file: file), "a_b.heic")
+        XCTAssertEqual(LibrarySystemPicker.copyName(suggested: nil, file: file), "version=1&uuid=9F2A.heic")
+        XCTAssertEqual(LibrarySystemPicker.copyName(suggested: "  ", file: file), "version=1&uuid=9F2A.heic")
+        XCTAssertEqual(LibrarySystemPicker.copyName(suggested: "IMG_0042", file: URL(fileURLWithPath: "/tmp/x")), "IMG_0042")
     }
 }
 #endif

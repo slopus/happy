@@ -105,7 +105,10 @@ final class ComposerImagePicker: NSObject, PHPickerViewControllerDelegate {
         return turned ? CGSize(width: height, height: width) : CGSize(width: width, height: height)
     }
 
-    func add(picture: Data) async { await stage(picture, name: nil) }
+    /// A picture's bytes, sent under `name`'s stem as a .jpg when it has
+    /// one (the library's `IMG_0042.HEIC` goes as `IMG_0042.jpg`), else as
+    /// `image_<ms>.jpg`.
+    func add(picture: Data, name: String? = nil) async { await stage(picture, name: name) }
 
     /// A photo from the camera, cut to the shape it was taken in.
     func add(photo: CameraPhoto) async { await stage(photo.data, name: nil, ratio: photo.ratio) }
