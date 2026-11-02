@@ -2,25 +2,36 @@
 import HappyLayout
 import UIKit
 
-/// The main panel beside the sidebar with nothing open: the seedling and a
-/// line pointing at the sidebar, centred in the panel (`EmptyLayout`), in
-/// place of a stretched home.
+/// The main panel beside the sidebar with nothing open: desktop's owl,
+/// without words, centred in the panel (`MainPanelPlaceholderLayout`), in
+/// place of a stretched home. It plays once as the panel appears, and
+/// again on a tap.
 final class MainPanelPlaceholderViewController: UIViewController {
-    private let empty = EmptyView()
+    let scene = StateSceneView(
+        scene: .owl,
+        size: MainPanelPlaceholderLayout.Metrics.scene,
+        replayLabel: Strings.Tablet.replayIllustration
+    )
 
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = UIColor(Palette.surface)
         navigationItem.largeTitleDisplayMode = .never
-        empty.message = Strings.Tablet.nothingOpen
-        empty.showsPair = false
-        empty.accessibilityIdentifier = "main-panel-placeholder"
-        view.addSubview(empty)
+        scene.accessibilityIdentifier = "main-panel-placeholder"
+        view.addSubview(scene)
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // The shell keeps this one controller, so the scene's own first
+        // play happens once; each return to an empty panel (the last chat
+        // closed) is the state appearing again, and plays it again.
+        if isMovingToParent { scene.replay() }
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        empty.frame = view.bounds.inset(by: view.safeAreaInsets)
+        scene.frame = MainPanelPlaceholderLayout(size: view.bounds.size, safeArea: LayoutInsets(view.safeAreaInsets)).scene
     }
 }
 #endif

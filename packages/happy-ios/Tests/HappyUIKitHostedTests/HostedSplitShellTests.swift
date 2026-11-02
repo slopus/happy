@@ -196,6 +196,71 @@ final class HostedSplitShellTests: XCTestCase {
         withExtendedLifetime(app.coordinator) {}
     }
 
+    // MARK: The empty main panel
+
+    private func labels(in view: UIView) -> [UILabel] {
+        view.subviews.flatMap { subview -> [UILabel] in
+            if let label = subview as? UILabel { return [label] }
+            return labels(in: subview)
+        }
+    }
+
+    /// Nothing open: desktop's owl alone, centred in the panel's safe area,
+    /// playing once and holding its last frame; and once more each time the
+    /// panel empties again.
+    func testTheEmptyMainPanelIsTheOwlAlone() async throws {
+        try await theEmptyMainPanelIsTheOwlAlone(style: .light)
+    }
+
+    func testTheEmptyMainPanelIsTheOwlAloneInTheDark() async throws {
+        try await theEmptyMainPanelIsTheOwlAlone(style: .dark)
+    }
+
+    private func theEmptyMainPanelIsTheOwlAlone(style: UIUserInterfaceStyle) async throws {
+        let app = try await app(style: style)
+        let shell = app.shell
+        let home = try XCTUnwrap(home(shell))
+        let placeholder = shell.placeholder
+        XCTAssertEqual(shell.main.viewControllers, [placeholder])
+        placeholder.view.layoutIfNeeded()
+
+        let scene = placeholder.scene
+        XCTAssertEqual(placeholder.view.subviews, [scene], "the owl and nothing else")
+        XCTAssertEqual(scene.scene, .owl)
+        XCTAssertTrue(labels(in: placeholder.view).isEmpty, "no words")
+        XCTAssertEqual(scene.accessibilityIdentifier, "main-panel-placeholder")
+        XCTAssertEqual(scene.accessibilityLabel, Strings.Tablet.replayIllustration)
+        let safe = placeholder.view.bounds.inset(by: placeholder.view.safeAreaInsets)
+        XCTAssertEqual(scene.frame.size, CGSize(width: 128, height: 128))
+        XCTAssertEqual(scene.frame.midX, safe.midX, accuracy: 0.5, "centred across the safe area")
+        XCTAssertEqual(scene.frame.midY, safe.midY, accuracy: 0.5, "centred down the safe area")
+        XCTAssertGreaterThan(safe.minY, 0, "under the main panel's bar")
+
+        try await until("the owl read") { scene.isLoaded }
+        guard !UIAccessibility.isReduceMotionEnabled else { return }
+        try await until("the owl's one play", 10) { !scene.isAnimating && scene.progress == 1 }
+        // The coordinator applies the account's theme on restore: pin the look.
+        app.window.overrideUserInterfaceStyle = style
+        app.window.layoutIfNeeded()
+        try await until("the style applied") { placeholder.traitCollection.userInterfaceStyle == style }
+        try await capture(app, "nothing-open")
+
+        // A chat, then closed again: the empty panel plays the owl once more.
+        home.push(.session(id: "seeded-main"), context: app.context)
+        try await settle(shell)
+        XCTAssertNil(scene.window, "the chat in its place")
+        shell.setStack([home], animated: false)
+        try await settle(shell)
+        XCTAssertEqual(shell.main.viewControllers, [placeholder])
+        try await until("the owl again") { scene.isAnimating }
+        try await until("the owl's second play", 10) { !scene.isAnimating && scene.progress == 1 }
+
+        // A tap plays it again.
+        scene.replay()
+        XCTAssertTrue(scene.isAnimating, "a tap plays it again")
+        withExtendedLifetime(app.coordinator) {}
+    }
+
     // MARK: Readable widths
 
     private func shown<View: UIView>(_ type: View.Type, in view: UIView) -> [View] {

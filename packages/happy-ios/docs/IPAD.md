@@ -39,8 +39,11 @@ rewritten) are `SplitRule`, `MainPanelLayout` and `SplitStack` in
 - **The main panel holds all navigation.** Its screens push on `main`, as
   they would on a phone, with the system back button and swipe back
   (`PopGestureDelegate`). With nothing open it shows
-  `MainPanelPlaceholderViewController`: the seedling and "Choose a chat in
-  the sidebar.", never a stretched home.
+  `MainPanelPlaceholderViewController`: desktop's owl (`StateSceneView`,
+  `.owl`) and no words, in desktop's 128 panel square centred in the safe
+  area (`MainPanelPlaceholderLayout`), never a stretched home. It plays
+  once each time the panel empties and holds its last frame; a tap plays
+  it again.
 - **The selection follows the main panel.** Whenever its root changes the
   shell tells home (`MainPanelFollowing`), which selects that row: the row
   it was opened from, else the row of that conversation or session. On a
