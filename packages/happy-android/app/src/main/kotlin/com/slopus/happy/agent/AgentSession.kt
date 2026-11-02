@@ -107,7 +107,9 @@ class AgentSession internal constructor(
             }
         }
         val renew: (suspend (String) -> String)? = if (credentials.oauth != null) { stale -> connections.renew(connectionId, stale) } else null
-        AgentClient.Link(transport, connections.bearer(connectionId, credentials), renew, credentials.oauth?.let { { profile -> connections.signedOut(connectionId, profile) } })
+        // The sign-in this request is made under: only its refusal signs out, never a newer one's.
+        val grant = connections.grant(connectionId)
+        AgentClient.Link(transport, connections.bearer(connectionId, credentials), renew, credentials.oauth?.let { { profile -> connections.signedOut(connectionId, profile, grant) } })
     }
 
     // Empty until the kept catalog is read off the main thread (init), then live.
@@ -289,6 +291,8 @@ class AgentSession internal constructor(
         while (true) {
             awaitSignedIn()
             if (statusState.value != AgentLinkStatus.Connected) statusState.value = AgentLinkStatus.Connecting
+            // The sign-in this attempt runs under: a refusal it meets signs out only that one.
+            val grant = connections.grant(connectionId)
             try {
                 refreshIdentity()
                 if (!snapshotRead) {
@@ -311,7 +315,7 @@ class AgentSession internal constructor(
                     }
                     AgentConnectionException.Reason.SignInRequired, AgentConnectionException.Reason.ProfileRequired -> {
                         val profile = e.reason == AgentConnectionException.Reason.ProfileRequired
-                        connections.signedOut(connectionId, profile)
+                        connections.signedOut(connectionId, profile, grant)
                         backoff = INITIAL_BACKOFF
                         continue
                     }

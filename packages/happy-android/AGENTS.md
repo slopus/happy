@@ -841,9 +841,14 @@ change its wire behaviour on Android alone.
   signing in again renews their connection; another member gets a new one,
   and the connection they signed in again on is wiped (credentials, entry,
   caches: `AgentSessions` deletes the caches of any connection that goes, open
-  or not, and sweeps orphans at start) and theirs opens. Each grant has a
-  generation: a refresh of an older one that lands after a sign-in is dropped,
-  and its refusal doesn't sign the new one out.
+  or not, and sweeps orphans at start) and theirs opens. The server is asked
+  who it is first and the new credential saved next; only then is the list
+  replaced in one write and the old member's let go, so a cancelled or failed
+  sign-in leaves the old connection whole. Each sign-in has a generation
+  (`AgentConnections.grant`): a refresh of an older one that lands after a
+  sign-in is dropped and its refusal hands back the new token instead of an
+  auth failure; requests sign out only the generation they were made under
+  (`signedOut(…, grant)`), checked and written under one hold of the lock.
 - **Storage**: credentials are sealed by an AES-256-GCM Android Keystore key
   (non-exportable, no user authentication, StrongBox when the phone has one,
   else the TEE: `AndroidKeyStoreKeys`) in app-private preferences, which

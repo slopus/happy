@@ -4,6 +4,7 @@ import android.content.SharedPreferences
 import com.slopus.happy.auth.ExpoSecureStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -164,13 +165,17 @@ class AgentConnections(
 
     /** Updates what is shown for [id] after a refresh, [avatar] kept or let go; a removed account stays removed. */
     suspend fun update(id: String, avatar: NodeAvatar = NodeAvatar.Unchanged, transform: (AgentConnection) -> AgentConnection) = lock.withLock {
+        change(id, avatar, transform)
+    }
+
+    /** [update], holding [lock]. */
+    private suspend fun change(id: String, avatar: NodeAvatar = NodeAvatar.Unchanged, transform: (AgentConnection) -> AgentConnection) =
         withContext(Dispatchers.IO) {
             val list = state.value
             val index = list.indexOfFirst { it.id == id }.takeIf { it >= 0 } ?: return@withContext
             val next = keep(transform(list[index]), avatar)
             if (next != list[index]) write(list.toMutableList().also { it[index] = next })
         }
-    }
 
     /**
      * Keeps a team server signed in with OAuth ([origin], edge SSO): its
@@ -182,57 +187,65 @@ class AgentConnections(
      * session, caches and cursor) is wiped. Its name is the server's own
      * once it answers, else [fallbackName].
      */
-    suspend fun addServer(origin: AgentOrigin, credential: OAuthCredential, access: AccessToken, fallbackName: String, replacing: String? = null): AgentConnection = lock.withLock {
-        withContext(Dispatchers.IO) {
-            val userId = credential.userId
-            fun sameMember(account: AgentConnection) = userId != null && account.server == origin.value && account.userId == userId
-            val replaced = state.value.firstOrNull { it.id == replacing }
-            val existing = replaced?.takeIf(::sameMember) ?: state.value.firstOrNull(::sameMember)
-            // Another member's: nothing of theirs stays for this one to see. Its entry goes with the
-            // write below, so the list changes once, from theirs to this one's.
-            val dropped = replaced?.takeIf { it.id != existing?.id }
-            if (dropped != null) forget(dropped, keepEntry = true)
-            val id = existing?.id ?: "agent-connection-${UUID.randomUUID()}"
-            val credentials = AgentConnectionCredentials(
-                address = origin.host,
-                port = origin.port,
-                deviceId = "",
-                deviceToken = "",
-                publicUrl = origin.value,
-                tailcatAvailable = false,
-                oauth = credential,
-            )
+    suspend fun addServer(origin: AgentOrigin, credential: OAuthCredential, access: AccessToken, fallbackName: String, replacing: String? = null): AgentConnection {
+        val credentials = AgentConnectionCredentials(
+            address = origin.host,
+            port = origin.port,
+            deviceId = "",
+            deviceToken = "",
+            publicUrl = origin.value,
+            tailcatAvailable = false,
+            oauth = credential,
+        )
+        // Who the server is, asked before anything here changes: cancelled or failed, everything stays as it was.
+        val agent = withContext(Dispatchers.IO) {
             val transport = makeTransport(credentials)
-            val agent = try {
+            try {
                 AgentIdentity.refresh(transport, access.value, fallbackName, oauth = true)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
                 null
             } finally {
-                transport.close()
+                withContext(NonCancellable) { transport.close() }
             }
-            secrets.setItem(id, json.encodeToString(AgentConnectionCredentials.serializer(), credentials))
-            synchronized(tokens) {
-                generations[id] = (generations[id] ?: 0) + 1
-                tokens[id] = access
+        }
+        return lock.withLock {
+            withContext(Dispatchers.IO) {
+                val userId = credential.userId
+                fun sameMember(account: AgentConnection) = userId != null && account.server == origin.value && account.userId == userId
+                val replaced = state.value.firstOrNull { it.id == replacing }
+                val existing = replaced?.takeIf(::sameMember) ?: state.value.firstOrNull(::sameMember)
+                // Another member's: nothing of theirs stays for this one to see.
+                val dropped = replaced?.takeIf { it.id != existing?.id }
+                val id = existing?.id ?: "agent-connection-${UUID.randomUUID()}"
+                // This member's credential first: if it can't be kept, nothing else changes.
+                secrets.setItem(id, json.encodeToString(AgentConnectionCredentials.serializer(), credentials))
+                withContext(NonCancellable) {
+                    val account = keep(
+                        AgentConnection(
+                            id = id,
+                            name = agent?.name ?: existing?.name ?: fallbackName,
+                            thumbhash = agent?.thumbhash ?: existing?.thumbhash,
+                            avatarFile = existing?.avatarFile,
+                            avatarETag = existing?.avatarETag,
+                            addedAt = existing?.addedAt ?: now(),
+                            server = origin.value,
+                            instanceId = agent?.instanceId ?: existing?.instanceId,
+                            userId = userId,
+                        ),
+                        agent?.avatar ?: NodeAvatar.Unchanged,
+                    )
+                    synchronized(tokens) {
+                        generations[id] = (generations[id] ?: 0) + 1
+                        tokens[id] = access
+                    }
+                    // One write: the list changes once, from the replaced member's to this one's; then theirs is let go.
+                    write(state.value.filterNot { it.id == id || it.id == dropped?.id } + account)
+                    if (dropped != null) forget(dropped, keepEntry = true)
+                    account
+                }
             }
-            val account = keep(
-                AgentConnection(
-                    id = id,
-                    name = agent?.name ?: existing?.name ?: fallbackName,
-                    thumbhash = agent?.thumbhash ?: existing?.thumbhash,
-                    avatarFile = existing?.avatarFile,
-                    avatarETag = existing?.avatarETag,
-                    addedAt = existing?.addedAt ?: now(),
-                    server = origin.value,
-                    instanceId = agent?.instanceId ?: existing?.instanceId,
-                    userId = userId,
-                ),
-                agent?.avatar ?: NodeAvatar.Unchanged,
-            )
-            write(state.value.filterNot { it.id == id || it.id == dropped?.id } + account)
-            account
         }
     }
 
@@ -253,9 +266,18 @@ class AgentConnections(
      * [id]'s team server wants signing in again ([profileRequired]: only a
      * name): its links wait, and home says so, until the person has.
      */
-    suspend fun signedOut(id: String, profileRequired: Boolean = false) {
-        update(id) { it.copy(signInRequired = true, profileRequired = profileRequired) }
+    suspend fun signedOut(id: String, profileRequired: Boolean = false, grant: Long? = null) = lock.withLock {
+        // Refused under an older sign-in than [id]'s now: the newer one stands.
+        if (grant != null && grant != grant(id)) return@withLock
+        change(id) { it.copy(signInRequired = true, profileRequired = profileRequired) }
     }
+
+    /**
+     * [id]'s current sign-in, counted up by each one: what a request is
+     * made under, so that its failure signs out only that sign-in
+     * ([signedOut]), never one that landed meanwhile.
+     */
+    fun grant(id: String): Long = synchronized(tokens) { generations[id] ?: 0 }
 
     /** After [stale] was refused with a 401: a newer token, refreshed unless another request already did. */
     suspend fun renew(id: String, stale: String): String = refresh(id, stale)
@@ -266,7 +288,7 @@ class AgentConnections(
         val gate = synchronized(tokens) { refreshing.getOrPut(id) { Mutex() } }
         return gate.withLock {
             synchronized(tokens) { tokens[id] }?.takeIf { it.value != stale && fresh(it) }?.let { return@withLock it.value }
-            val generation = synchronized(tokens) { generations[id] }
+            val generation = grant(id)
             val credential = credentials(id)?.oauth ?: throw AgentConnectionException(AgentConnectionException.Reason.SignInRequired)
             val (access, next) = try {
                 val server = state.value.firstOrNull { it.id == id }?.server?.let { runCatching { AgentOrigin.parse(it) }.getOrNull() }
@@ -276,18 +298,24 @@ class AgentConnections(
                 if (e.reason == ServerAuthException.Reason.Unreachable) {
                     throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
                 }
-                // A sign-in since stands: an older grant's refusal doesn't sign it out.
-                val current = lock.withLock { current(id, generation, credential) }
-                if (current) {
-                    synchronized(tokens) { tokens.remove(id) }
-                    signedOut(id)
+                // Checked and signed out under one hold of the lock, so no sign-in lands in between.
+                val signedOutHere = lock.withLock {
+                    current(id, generation, credential).also { current ->
+                        if (current) {
+                            synchronized(tokens) { tokens.remove(id) }
+                            change(id) { it.copy(signInRequired = true, profileRequired = false) }
+                        }
+                    }
                 }
-                throw AgentConnectionException(AgentConnectionException.Reason.SignInRequired).initCause(e)
+                if (signedOutHere) throw AgentConnectionException(AgentConnectionException.Reason.SignInRequired).initCause(e)
+                // A sign-in landed meanwhile and stands: an older grant's refusal is no auth failure, and the request goes on with the new token.
+                return@withLock synchronized(tokens) { tokens[id] }?.value ?: throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
             }
             lock.withLock {
                 // A sign-in landed while this refresh was out: its grant stands, this one is dropped.
                 if (!current(id, generation, credential)) {
-                    return@withLock synchronized(tokens) { tokens[id] }?.value ?: throw AgentConnectionException(AgentConnectionException.Reason.SignInRequired)
+                    // Not an auth failure: the newer sign-in's token, or try again.
+                    return@withLock synchronized(tokens) { tokens[id] }?.value ?: throw AgentConnectionException(AgentConnectionException.Reason.Unavailable)
                 }
                 if (next != credential) {
                     // A rotated refresh token: the old one may already be spent.
@@ -302,9 +330,9 @@ class AgentConnections(
         }
     }
 
-    /** Whether [credential], read at [generation], is still [id]'s grant. Called holding [lock]. */
-    private suspend fun current(id: String, generation: Long?, credential: OAuthCredential): Boolean =
-        synchronized(tokens) { generations[id] } == generation && withContext(Dispatchers.IO) { read(id)?.oauth } == credential
+    /** Whether [credential], read at [generation], is still [id]'s grant. */
+    private suspend fun current(id: String, generation: Long, credential: OAuthCredential): Boolean =
+        grant(id) == generation && withContext(Dispatchers.IO) { read(id)?.oauth } == credential
 
     /**
      * [account] with [avatar] in its file: new bytes go to a file named by

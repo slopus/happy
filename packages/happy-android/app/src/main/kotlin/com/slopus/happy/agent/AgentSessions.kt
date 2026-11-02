@@ -75,11 +75,15 @@ class AgentSessions(
         val credentials = connections.credentials(id) ?: return
         val transport = connections.transport(id, credentials, makeTransport)
         val renew: (suspend (String) -> String)? = if (credentials.oauth != null) { stale -> connections.renew(id, stale) } else null
-        val signedOut: (suspend (Boolean) -> Unit)? = credentials.oauth?.let { { profile -> connections.signedOut(id, profile) } }
-        val client = AgentClient.lazy { AgentClient.Link(transport, connections.bearer(id, credentials), renew, signedOut) }
+        val client = AgentClient.lazy {
+            // The sign-in this request is made under: only its refusal signs out, never a newer one's.
+            val grant = connections.grant(id)
+            AgentClient.Link(transport, connections.bearer(id, credentials), renew, credentials.oauth?.let { { profile -> connections.signedOut(id, profile, grant) } })
+        }
         try {
             while (true) {
                 val known = connections.accounts.value.firstOrNull { it.id == id && !it.revoked } ?: return
+                val grant = connections.grant(id)
                 // A team server that wants signing in again waits for the person.
                 if (!known.signInRequired) try {
                     val etag = known.avatarFile?.takeIf { File(it).isFile }?.let { known.avatarETag }
@@ -94,7 +98,7 @@ class AgentSessions(
                     }
                     if (error.reason == AgentConnectionException.Reason.SignInRequired || error.reason == AgentConnectionException.Reason.ProfileRequired) {
                         val profile = error.reason == AgentConnectionException.Reason.ProfileRequired
-                        connections.signedOut(id, profile)
+                        connections.signedOut(id, profile, grant)
                     }
                     transport.reset()
                 } catch (_: Exception) {

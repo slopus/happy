@@ -7,7 +7,9 @@ import com.slopus.happy.agent.AgentApiException
 import com.slopus.happy.agent.AgentClient
 import com.slopus.happy.agent.AgentSessions
 import com.slopus.happy.auth.ExpoSecureStore
+import com.slopus.happy.auth.SecureStoreKeys
 import com.slopus.happy.testing.SoftwareKeys
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -60,7 +62,7 @@ class TeamServerTest {
     private val secretPrefs get() = context.getSharedPreferences(AgentConnections.SECRETS_PREFS, Context.MODE_PRIVATE)
     private val registryPrefs get() = context.getSharedPreferences(AgentConnections.REGISTRY_PREFS, Context.MODE_PRIVATE)
 
-    private fun connections() = AgentConnections(
+    private fun connections(keys: SecureStoreKeys = this.keys) = AgentConnections(
         secrets = ExpoSecureStore(secretPrefs, keys, keychainService = AgentConnections.KEYCHAIN_SERVICE),
         registry = registryPrefs,
         makeTransport = { daemon },
@@ -78,9 +80,16 @@ class TeamServerTest {
         /** Tokens of a member without a profile: everything but health, profile and discovery is a 401. */
         val noProfile = mutableSetOf<String>()
         val calls = mutableListOf<Pair<String, String>>()
+        /** Set: every request waits on it, after saying so in [held]. */
+        @Volatile var hold: CompletableDeferred<Unit>? = null
+        val held = CompletableDeferred<Unit>()
 
         override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
             calls += path to credential
+            hold?.let { gate ->
+                held.complete(Unit)
+                gate.await()
+            }
             edge?.let { return it }
             if (path == "/v0/authentication") {
                 val ok = credential in valid
@@ -280,12 +289,108 @@ class TeamServerTest {
         daemon.valid += setOf("access-a", "access-b")
         val a = connections.addServer(origin, member("u-a", "refresh-a"), AccessToken("access-a", now), fallbackName = "happy.acme.example")
         sso.enqueue(json("""{"error":"invalid_grant"}""", 400).newBuilder().headersDelay(1, java.util.concurrent.TimeUnit.SECONDS).build())
-        val late = scope.async { runCatching { connections.bearer(a.id, connections.credentials(a.id)!!) } }
+        val late = scope.async { connections.bearer(a.id, connections.credentials(a.id)!!) }
         withTimeout(5_000) { while (sso.requestCount == 0) delay(10) }
         connections.addServer(origin, member("u-a", "refresh-b"), AccessToken("access-b", now + 300_000), fallbackName = "happy.acme.example", replacing = a.id)
-        assertTrue(late.await().isFailure)
+        // Not an auth failure: the request goes on with the new sign-in's token.
+        assertEquals("access-b", late.await())
         assertFalse(connections.accounts.value.single().signInRequired)
         assertEquals("refresh-b", connections.credentials(a.id)?.oauth?.refreshToken)
+    }
+
+    /** [keys] whose Keystore refuses while [failing]: a save that can't be made. */
+    private class FlakyKeys(private val inner: SoftwareKeys) : SecureStoreKeys by inner {
+        @Volatile var failing = false
+        override fun secretKey(alias: String): javax.crypto.SecretKey? = if (failing) throw java.security.GeneralSecurityException("Keystore unavailable") else inner.secretKey(alias)
+    }
+
+    /** A's connection, whole: its entry, its credential and its cache. */
+    private suspend fun assertIntact(connections: AgentConnections, a: AgentConnection, cache: File) {
+        assertEquals(listOf(a.id), connections.accounts.value.map { it.id })
+        assertEquals("u-a", connections.accounts.value.single().userId)
+        assertEquals("refresh-a", connections.credentials(a.id)?.oauth?.refreshToken)
+        assertTrue(cache.exists())
+    }
+
+    @Test
+    fun anotherMemberCancelledWhileTheServerIsAskedLeavesTheFirstWhole(): Unit = runBlocking {
+        val connections = connections()
+        daemon.valid += setOf("access-a", "access-b")
+        val a = connections.addServer(origin, member("u-a", "refresh-a"), AccessToken("access-a", now + 300_000), fallbackName = "happy.acme.example")
+        val dir = kotlin.io.path.createTempDirectory("agent-connections").toFile()
+        val cache = File(dir, "${a.id}.json").apply { writeText("{}") }
+        AgentSessions(connections, scope, dir, openId = MutableStateFlow(null), foreground = MutableStateFlow(false), makeTransport = { daemon })
+        connections.signedOut(a.id)
+        daemon.hold = CompletableDeferred()
+        val b = scope.async { connections.addServer(origin, member("u-b", "refresh-b"), AccessToken("access-b", now + 300_000), fallbackName = "happy.acme.example", replacing = a.id) }
+        withTimeout(5_000) { daemon.held.await() }
+        // The person backs out of the sign-in while the server is asked who it is.
+        b.cancel()
+        daemon.hold = null
+        delay(200)
+        assertTrue(b.isCancelled)
+        assertIntact(connections, a, cache)
+        assertIntact(connections(), a, cache)
+        dir.deleteRecursively()
+    }
+
+    @Test
+    fun anotherMembersCredentialThatCantBeSavedLeavesTheFirstWhole(): Unit = runBlocking {
+        val flaky = FlakyKeys(keys)
+        val connections = connections(flaky)
+        daemon.valid += setOf("access-a", "access-b")
+        val a = connections.addServer(origin, member("u-a", "refresh-a"), AccessToken("access-a", now + 300_000), fallbackName = "happy.acme.example")
+        val dir = kotlin.io.path.createTempDirectory("agent-connections").toFile()
+        val cache = File(dir, "${a.id}.json").apply { writeText("{}") }
+        AgentSessions(connections, scope, dir, openId = MutableStateFlow(null), foreground = MutableStateFlow(false), makeTransport = { daemon })
+        flaky.failing = true
+        try {
+            connections.addServer(origin, member("u-b", "refresh-b"), AccessToken("access-b", now + 300_000), fallbackName = "happy.acme.example", replacing = a.id)
+            fail()
+        } catch (_: java.security.GeneralSecurityException) {
+        }
+        flaky.failing = false
+        delay(200)
+        assertIntact(connections, a, cache)
+        assertIntact(connections(flaky), a, cache)
+        // And the access token in use is still A's.
+        assertEquals("access-a", connections.bearer(a.id, connections.credentials(a.id)!!))
+        dir.deleteRecursively()
+    }
+
+    @Test
+    fun anOlderGrantsRefusedRefreshDoesntSignOutALiveSession(): Unit = runBlocking {
+        val connections = connections()
+        daemon.valid += setOf("access-a", "access-b")
+        // Signed in, its access token expired: the session's first request refreshes it, slowly.
+        val a = connections.addServer(origin, member("u-a", "refresh-a"), AccessToken("access-a", now), fallbackName = "happy.acme.example")
+        sso.enqueue(json("""{"error":"invalid_grant"}""", 400).newBuilder().headersDelay(1, java.util.concurrent.TimeUnit.SECONDS).build())
+        val sessions = AgentSessions(connections, scope, null, openId = MutableStateFlow(a.id), foreground = MutableStateFlow(true), identityRefreshMillis = 60_000, makeTransport = { daemon })
+        val session = sessions.session(a.id)!!
+        withTimeout(5_000) { while (sso.requestCount == 0) delay(10) }
+        // The same member signs in again before the refusal comes back.
+        connections.addServer(origin, member("u-a", "refresh-b"), AccessToken("access-b", now + 300_000), fallbackName = "happy.acme.example", replacing = a.id)
+        // The session and identity refresh go on with the new token; nothing signs the new sign-in out.
+        withTimeout(10_000) { while (daemon.calls.none { it.second == "access-b" && it.first != "/v0/authentication" }) delay(20) }
+        delay(1_500)
+        assertFalse(connections.accounts.value.single().signInRequired)
+        assertEquals(1, sso.requestCount)
+        assertEquals("refresh-b", connections.credentials(a.id)?.oauth?.refreshToken)
+        assertTrue(session.status.value != com.slopus.happy.agent.AgentLinkStatus.Revoked)
+    }
+
+    @Test
+    fun aRefusalUnderAnOlderSignInDoesntSignOutTheNewOne(): Unit = runBlocking {
+        val connections = connections()
+        daemon.valid += setOf("access-a", "access-b")
+        val a = connections.addServer(origin, member("u-a", "refresh-a"), AccessToken("access-a", now + 300_000), fallbackName = "happy.acme.example")
+        val before = connections.grant(a.id)
+        connections.addServer(origin, member("u-a", "refresh-b"), AccessToken("access-b", now + 300_000), fallbackName = "happy.acme.example", replacing = a.id)
+        // A request made under the first sign-in met the edge's 302 after the second landed.
+        connections.signedOut(a.id, grant = before)
+        assertFalse(connections.accounts.value.single().signInRequired)
+        connections.signedOut(a.id, grant = connections.grant(a.id))
+        assertTrue(connections.accounts.value.single().signInRequired)
     }
 
     @Test
