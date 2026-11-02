@@ -770,11 +770,50 @@ final class HostedComposeTargetTests: XCTestCase {
         keep(window, "target-9-live-online-again")
     }
 
-    /// Today's computer, both its daemons, as presence would leave them.
-    private nonisolated static func setPresence(_ store: LocalStore, active: Bool) async throws {
+    /// Every Happy Agent offline when Task is picked (presence from before,
+    /// live presence not in yet): the task goes to today's computer, whose
+    /// Happy Agent is offline. The server's comes online and the task moves
+    /// there; the row's name and chip change, and nothing in the panel or
+    /// the composer moves.
+    func testATaskPickedWithEveryHappyAgentOfflineMovesWhenOneComesOnline() async throws {
+        let log = TargetSpawns()
+        let (home, navigation, window, account) = try await reportedAccount(log: log)
+        defer { window.isHidden = true }
+        try await Self.setPresence(account.store, active: false, ids: [Self.todaysAgent, Self.server])
+        let (chat, card, panel, start) = try await emptyChat(home, navigation)
+        panel.kind.selectedSegmentIndex = try XCTUnwrap(panel.sessionKinds.firstIndex(of: .task))
+        panel.kind.sendActions(for: .valueChanged)
+        try await until { panel.sessionKind == .task && start.drafts.draft.selectedMachineId == Self.todaysMac }
+        try await until { start.composer.choices.offline == .happyAgent && panel.machine.title == "MacBook-Pro-7.local" }
+        try await Task.sleep(for: .milliseconds(300))
+        func frames() -> [String] {
+            chat.view.layoutIfNeeded()
+            return Self.panelFrames(panel, in: chat.view) + ["card \(card.convert(card.bounds, to: chat.view))"]
+        }
+        let before = frames()
+        keep(window, "target-10-task-every-agent-offline")
+
+        try await Self.setPresence(account.store, active: true, ids: [Self.server])
+        try await until { start.drafts.draft.selectedMachineId == Self.server && panel.machine.title == "happy-core" && panel.machine.statusText == "● Online" }
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertTrue(start.drafts.createsTask)
+        XCTAssertEqual(frames(), before, "moving to the Happy Agent that came online moved the panel")
+        try assertBalanced(panel.machine, "moved")
+        keep(window, "target-10-task-moved-to-online-agent")
+
+        card.setText("Ship it", selection: NSRange(location: 7, length: 0))
+        card.delegate?.agentInputCardDidChangeText(card)
+        card.delegate?.agentInputCardDidPressSend(card)
+        try await until { !log.spawned.isEmpty }
+        XCTAssertEqual(log.spawned.map(\.machineId), [Self.server])
+    }
+
+    /// Daemons on the reported account, today's computer's by default, as
+    /// presence would leave them.
+    private nonisolated static func setPresence(_ store: LocalStore, active: Bool, ids: [String] = [todaysMac, todaysAgent]) async throws {
         try await Task.detached {
             let now = Int64(Date().timeIntervalSince1970 * 1000)
-            for id in [todaysMac, todaysAgent] {
+            for id in ids {
                 _ = try store.applyMachineUpdate(id: id, metadata: nil, daemonState: nil, active: active,
                                                  activeAt: now)
             }

@@ -100,8 +100,10 @@ public final class NewSessionComposer {
     // MARK: Picks
 
     /// A computer picked. One that can't make the bot or task being made
-    /// was picked for a session: the kind goes back to Session.
+    /// was picked for a session: the kind goes back to Session. One that
+    /// can stays picked while its Happy Agent is offline.
     public func selectMachine(_ key: String) {
+        drafts.pickedMachineId = key
         let kind = self.kind
         if kind != .session, let target = choices.machines.first(where: { $0.id == key }), !target.makes(kind) {
             drafts.setCreatesBot(false)
@@ -191,6 +193,9 @@ public final class NewSessionComposer {
     /// asks for. Back to Session, the computer and the harness stay until
     /// others are picked.
     public func selectKind(_ kind: HomeDockKind) {
+        // Picking the kind routes it by the rule, past a computer picked
+        // before.
+        drafts.pickedMachineId = nil
         guard kind != .session else {
             drafts.setCreatesBot(false)
             drafts.setCreatesTask(false)
@@ -343,7 +348,8 @@ public final class NewSessionComposer {
         guard snapshot.machines.synced || !snapshot.machines.machines.isEmpty else { return }
         let draft = drafts.draft
         let kind = self.kind
-        if kind != .session, choices.currentTarget?.makes(kind) != true {
+        let current = choices.currentTarget
+        if kind != .session, current?.makes(kind) != true {
             // A bot or a task whose computer can't make it (it left, or its
             // Happy Agent stopped offering it, or hasn't arrived) goes to one
             // that can; it waits while the list is still arriving, and only
@@ -354,6 +360,13 @@ public final class NewSessionComposer {
                 drafts.setCreatesBot(false)
                 drafts.setCreatesTask(false)
             }
+        } else if kind != .session, let current, !current.isOnline(for: kind), current.id != drafts.pickedMachineId,
+                  let target = choices.preferredMachine(for: kind), target.id != current.id {
+            // One that can, but whose Happy Agent doesn't answer (kept from
+            // an earlier compose, or every one looked offline when the kind
+            // was picked) goes to one that answers once there is one, as
+            // picking the kind does; never past one the person picked.
+            drafts.setMachineId(target.id)
         } else if choices.resolvedMachineId != draft.selectedMachineId {
             // A draft from before the pair was coalesced names the computer
             // under its other daemon's id, and keeps its place; a computer

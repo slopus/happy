@@ -59,8 +59,12 @@ final class LegacyComposeStart: NSObject {
 
     init(context: AppContext, account: AccountSession) {
         let snapshot = account.homeFeed.latest ?? LegacyHomeSnapshot(machines: MachinesSnapshot(synced: false, machines: []), sessions: [])
+        let drafts = NewSessionDraftStore.shared(for: context.account.localSettings)
+        // A computer picked on an earlier compose holds a kept bot or task
+        // no longer: this one routes it again.
+        drafts.pickedMachineId = nil
         composer = NewSessionComposer(
-            drafts: NewSessionDraftStore.shared(for: context.account.localSettings),
+            drafts: drafts,
             snapshot: snapshot,
             ops: account.homeOps
         )

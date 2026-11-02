@@ -180,6 +180,12 @@ public final class NewSessionDraftStore {
     /// Making a task: Happy Agent on the chosen computer, named by the
     /// daemon from the first message. Not persisted either. Never both.
     public private(set) var createsTask = false
+    /// The computer the person picked in the computer menu: a bot or a
+    /// task stays on it while its Happy Agent is offline, where one the
+    /// rule picked moves to one that answers (`NewSessionComposer`). Held
+    /// here, not by a composer, so every screen editing the draft agrees.
+    /// Not persisted either.
+    public var pickedMachineId: String?
     public private(set) var botName = ""
     /// The four faces on offer, as seeds; `botFaceSlot` says which one the
     /// bot gets.

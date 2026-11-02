@@ -2282,6 +2282,89 @@ extension NewSessionChoicesTests {
         XCTAssertEqual(composer.drafts.draft.agentType, .rig)
     }
 
+    /// A bot kept from an earlier compose names a computer whose Happy
+    /// Agent is offline: the next compose moves it to one that answers, as
+    /// picking Bot does. Picked by hand, it stays, on any screen editing
+    /// the draft; with no Happy Agent answering anywhere it stays too.
+    @MainActor
+    func testAKeptBotOnAnOfflineHappyAgentMovesUnlessPicked() async throws {
+        let drafts = NewSessionDraftStore(settings: LocalSettings(storage: InMemoryKeyValueStore()))
+        drafts.pickAgentType(.rig)
+        drafts.renameMachineId("rig-core")
+        drafts.setCreatesBot(true)
+        let snapshot = LegacyHomeSnapshot(machines: MachinesSnapshot(synced: true, machines: reportedMachines(serverOnline: false)), sessions: [])
+        let composer = NewSessionComposer(drafts: drafts, snapshot: snapshot, ops: FakeOps())
+        await composer.waitForIdle()
+        XCTAssertTrue(drafts.createsBot)
+        XCTAssertEqual(drafts.draft.selectedMachineId, "cli-7", "a Happy Agent that answers")
+        XCTAssertNil(composer.choices.offline)
+
+        composer.selectMachine("rig-core")
+        await composer.waitForIdle()
+        XCTAssertTrue(drafts.createsBot)
+        XCTAssertEqual(drafts.draft.selectedMachineId, "rig-core", "picked: it stays")
+        XCTAssertEqual(composer.choices.offline, .computer(lastSeenAt: 1), "Happy Agent alone there, so the computer is offline")
+        // Another screen on the same draft agrees.
+        let other = NewSessionComposer(drafts: drafts, snapshot: snapshot, ops: FakeOps())
+        composer.update(snapshot: snapshot)
+        await other.waitForIdle()
+        await composer.waitForIdle()
+        XCTAssertEqual(drafts.draft.selectedMachineId, "rig-core", "and stays as the account changes")
+        withExtendedLifetime(other) {}
+
+        let offline = NewSessionDraftStore(settings: LocalSettings(storage: InMemoryKeyValueStore()))
+        offline.pickAgentType(.rig)
+        offline.renameMachineId("rig-core")
+        offline.setCreatesBot(true)
+        let none = NewSessionComposer(
+            drafts: offline,
+            snapshot: LegacyHomeSnapshot(machines: MachinesSnapshot(synced: true, machines: reportedMachines(serverOnline: false, todayAgentOnline: false)), sessions: []),
+            ops: FakeOps())
+        await none.waitForIdle()
+        XCTAssertTrue(offline.createsBot)
+        XCTAssertEqual(offline.draft.selectedMachineId, "rig-core", "nowhere answers: it stays")
+    }
+
+    /// Every Happy Agent looks offline when Task is picked (the presence
+    /// kept from before, live presence not in yet): the task goes to the
+    /// first that makes tasks. When another comes online it moves there;
+    /// one the person picked doesn't.
+    @MainActor
+    func testATaskPickedWhileEveryHappyAgentLooksOfflineMovesWhenOneAnswers() async throws {
+        let composer = await composer(NewSessionDraft(selectedMachineId: "old", agentType: .codex, pickedAgentType: .codex),
+                                      machines: reportedMachines(serverOnline: false, todayAgentOnline: false))
+        composer.selectKind(.task)
+        await composer.waitForIdle()
+        XCTAssertTrue(composer.drafts.createsTask)
+        XCTAssertEqual(composer.drafts.draft.selectedMachineId, "cli-7")
+        XCTAssertEqual(composer.choices.offline, .happyAgent)
+        composer.selectModel("claude:shared-model")
+        await composer.waitForIdle()
+
+        composer.update(snapshot: LegacyHomeSnapshot(machines: MachinesSnapshot(synced: true, machines: reportedMachines(serverOnline: true, todayAgentOnline: false)), sessions: []))
+        await composer.waitForIdle()
+        XCTAssertTrue(composer.drafts.createsTask)
+        XCTAssertEqual(composer.drafts.draft.selectedMachineId, "rig-core", "to the Happy Agent that came online")
+        XCTAssertNil(composer.choices.offline)
+        XCTAssertEqual(composer.drafts.draft.agentType, .rig)
+        XCTAssertEqual(composer.drafts.draft.modelMode, "claude:shared-model", "the model picked stays")
+        let task = try await composer.launchTaskPrepared(prompt: "Ship it", attachments: []).get()
+        XCTAssertEqual(task.machineId, "rig-core")
+
+        // The same, with today's computer picked by hand while all were
+        // offline: it stays.
+        let picked = await self.composer(NewSessionDraft(selectedMachineId: "old", agentType: .codex, pickedAgentType: .codex),
+                                         machines: reportedMachines(serverOnline: false, todayAgentOnline: false))
+        picked.selectKind(.task)
+        picked.selectMachine("cli-7")
+        await picked.waitForIdle()
+        picked.update(snapshot: LegacyHomeSnapshot(machines: MachinesSnapshot(synced: true, machines: reportedMachines(serverOnline: true, todayAgentOnline: false)), sessions: []))
+        await picked.waitForIdle()
+        XCTAssertTrue(picked.drafts.createsTask)
+        XCTAssertEqual(picked.drafts.draft.selectedMachineId, "cli-7", "picked: it stays")
+        XCTAssertEqual(picked.choices.offline, .happyAgent)
+    }
+
     /// The picker's statuses: online, or last seen; Happy Agent's own for a
     /// bot or a task.
     func testMachineTargetsSayWhatAnswers() {
