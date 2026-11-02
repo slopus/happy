@@ -29,6 +29,9 @@ struct ToolWords: Equatable {
         case "agent_spawn":
             verb = status == "failed" ? W.failedToSpawn : tool.running ? W.spawning : W.spawned
             subject = presentation?.model.map { W.subAgent($0.name) } ?? W.subAgent
+        case "compaction":
+            verb = status == "failed" ? W.failedCall : tool.running ? W.compacting : W.compacted
+            subject = W.compaction(before: presentation?.tokensBefore, after: presentation?.tokensAfter)
         case "search":
             verb = Self.verb(name, status: status, presentation: presentation)
             subject = presentation?.query ?? ""

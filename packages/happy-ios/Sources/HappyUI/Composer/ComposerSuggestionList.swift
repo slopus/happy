@@ -16,6 +16,8 @@ import UIKit
 /// whatever is under it.
 final class ComposerSuggestionListView: UIView {
     var onSelect: ((Int) -> Void)?
+    /// Where a Happy Agent command's picture is read from.
+    weak var images: Images?
 
     private let halo = UIView()
     private let haloBlur = PartialBlurView(fraction: LocalBlurHaloLayout.autocomplete.intensity)
@@ -87,6 +89,7 @@ final class ComposerSuggestionListView: UIView {
             self.suggestions = suggestions
             while rows.count < suggestions.count {
                 let row = ComposerSuggestionRowView()
+                row.images = images
                 row.addTarget(self, action: #selector(rowTapped(_:)), for: .touchUpInside)
                 scrollView.addSubview(row)
                 rows.append(row)
@@ -174,6 +177,10 @@ final class ComposerSuggestionRowView: UIControl {
     private let iconCircle = UIView()
     private let iconView = IconView(size: ComposerSuggestionRowLayout.Metrics.iconGlyphSize, tint: Palette.textSecondary)
     private let tagLabel = UILabel()
+    /// A command's picture, over its circle.
+    private let pictureView = UIImageView()
+    private let picture = MarkPicture()
+    weak var images: Images?
 
     var suggestion: ComposerSuggestion? {
         didSet {
@@ -198,11 +205,14 @@ final class ComposerSuggestionRowView: UIControl {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        for view in [nameLabel, detailLabel, iconCircle, iconView, tagLabel] as [UIView] {
+        for view in [nameLabel, detailLabel, iconCircle, iconView, pictureView, tagLabel] as [UIView] {
             view.isUserInteractionEnabled = false
             addSubview(view)
         }
         iconCircle.layer.cornerRadius = ComposerSuggestionRowLayout.Metrics.iconSize / 2
+        pictureView.contentMode = .scaleAspectFill
+        pictureView.clipsToBounds = true
+        pictureView.layer.cornerRadius = ComposerSuggestionRowLayout.Metrics.iconSize / 2
         isAccessibilityElement = true
         accessibilityTraits = .button
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in
@@ -261,6 +271,7 @@ final class ComposerSuggestionRowView: UIControl {
             iconCircle.isHidden = true
             iconView.isHidden = true
             tagLabel.isHidden = true
+            showPicture(nil)
             accessibilityLabel = description.map { "/\(name), \($0)" } ?? "/\(name)"
         case .file(let name, let path, let isFolder):
             let tag = isFolder ? Strings.Composer.folderLabel : Strings.Composer.fileLabel
@@ -274,11 +285,50 @@ final class ComposerSuggestionRowView: UIControl {
             iconCircle.isHidden = false
             iconView.isHidden = false
             tagLabel.isHidden = false
+            showPicture(nil)
             accessibilityLabel = "\(path + name), \(tag)"
+        case .agentCommand(let command, let imagePath):
+            let tag = command.kind.map(Strings.SlashCommands.kind)
+            nameLabel.attributedText = style(TextStyles.suggestionCommand).attributedString("/\(command.name)", color: UIColor(Palette.text))
+            detailLabel.attributedText = command.description.isEmpty ? nil : style(TextStyles.suggestionDescription).attributedString(
+                command.description, color: UIColor(Palette.textSecondary), lineBreakMode: .byTruncatingTail
+            )
+            tagLabel.attributedText = tag.map { style(TextStyles.suggestionLabel).attributedString($0, color: UIColor(Palette.textSecondary)) }
+            iconView.icon = Self.glyph(command.kind)
+            nameLabel.isHidden = false
+            detailLabel.isHidden = command.description.isEmpty
+            iconCircle.isHidden = false
+            iconView.isHidden = false
+            tagLabel.isHidden = tag == nil
+            showPicture(command.image.map { (imagePath, $0.thumbhash) })
+            accessibilityLabel = [ "/\(command.name)", command.description, tag ?? "" ].filter { !$0.isEmpty }.joined(separator: ", ")
         case nil:
             break
         }
         setNeedsLayout()
+    }
+
+    /// A command with no picture of its own wears its kind's mark, as a
+    /// compaction's row in the transcript does.
+    static func glyph(_ kind: String?) -> Icon {
+        switch kind {
+        case "skill": .ionicons("sparkles-outline")
+        case "compaction": .ionicons("funnel-outline")
+        default: .ionicons("flash-outline")
+        }
+    }
+
+    /// The picture over the circle: its thumbhash at once, then the bytes.
+    private func showPicture(_ picture: (path: String, thumbhash: String)?) {
+        guard let picture else {
+            self.picture.cancel()
+            pictureView.image = nil
+            pictureView.isHidden = true
+            return
+        }
+        pictureView.isHidden = false
+        let pixels = Int((ComposerSuggestionRowLayout.Metrics.iconSize * max(1, traitCollection.displayScale)).rounded(.up))
+        self.picture.load(picture.path, thumbhash: picture.thumbhash, pixels: pixels, images: images, into: pictureView)
     }
 
     private func natural(_ label: UILabel) -> CGSize {
@@ -307,6 +357,21 @@ final class ComposerSuggestionRowView: UIControl {
             iconCircle.setLayoutFrame(layout.icon ?? .zero)
             iconView.setLayoutFrame(layout.iconGlyph ?? .zero)
             detailLabel.setLayoutFrame(layout.path ?? .zero)
+            tagLabel.setLayoutFrame(layout.label ?? .zero)
+        case .agentCommand(let command, _):
+            let layout = ComposerSuggestionRowLayout(
+                width: bounds.width,
+                input: .agentCommand(
+                    name: natural(nameLabel),
+                    description: command.description.isEmpty ? nil : natural(detailLabel),
+                    label: command.kind == nil ? nil : natural(tagLabel)
+                )
+            )
+            iconCircle.setLayoutFrame(layout.icon ?? .zero)
+            iconView.setLayoutFrame(layout.iconGlyph ?? .zero)
+            pictureView.setLayoutFrame(layout.icon ?? .zero)
+            nameLabel.setLayoutFrame(layout.name ?? .zero)
+            detailLabel.setLayoutFrame(layout.description ?? .zero)
             tagLabel.setLayoutFrame(layout.label ?? .zero)
         case nil:
             break

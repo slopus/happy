@@ -18,9 +18,12 @@ public struct QueuedMessage: Codable, Equatable, Sendable {
     public var workspaceID: String?
     public var mode: AgentWire.Mode?
     public var failure: String?
-    public init(id: String, agentID: String, text: String, pictures: [Picture], mode: AgentWire.Mode?, files: [QueuedFile]? = nil, workspaceID: String? = nil) {
+    /// A skill command's `read_skill` request; absent from every other send.
+    public var toolRequest: AgentWire.ToolCallRequest?
+    public init(id: String, agentID: String, text: String, pictures: [Picture], mode: AgentWire.Mode?, files: [QueuedFile]? = nil, workspaceID: String? = nil,
+                toolRequest: AgentWire.ToolCallRequest? = nil) {
         self.id = id; self.agentID = agentID; self.text = text; self.pictures = pictures; self.mode = mode
-        self.files = files; self.workspaceID = workspaceID
+        self.files = files; self.workspaceID = workspaceID; self.toolRequest = toolRequest
     }
 }
 

@@ -126,7 +126,7 @@ public struct Shared: Equatable, Sendable {
                 case .toolCall(let id, _, _, let presentation, _, _):
                     guard let presentation, presentation.type == "media" else { continue }
                     media += (presentation.items ?? []).enumerated().map { .tool(HappyCore.Media(toolCallId: id, index: $0.offset, item: $0.element)) }
-                case .reasoning, .unknown:
+                case .reasoning, .compaction, .unknown:
                     continue
                 }
             }

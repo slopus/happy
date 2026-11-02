@@ -65,6 +65,27 @@ extension Strings {
             "write_stdin": "Terminal input",
         ]
         public static func isRunning(_ tool: String) -> String { "\(tool) is running" }
+        public static let compacting = "Compacting"
+        public static let compacted = "Compacted"
+        /// `compactionSummary`: the context it started from, and what it
+        /// came to once the next inference measured it.
+        public static func compaction(before: Double?, after: Double?) -> String {
+            switch (before, after) {
+            case (nil, nil): "context"
+            case (nil, let after?): "context to \(contextTokens(after)) tokens"
+            case (let before?, nil): "context from \(contextTokens(before)) tokens"
+            case (let before?, let after?): "context \(contextTokens(before)) → \(contextTokens(after)) tokens"
+            }
+        }
+
+        /// `contextTokenCount`: 950, 43.2k, 201k.
+        public static func contextTokens(_ tokens: Double) -> String {
+            if tokens < 1_000 { return String(Int(max(0, tokens.rounded()))) }
+            let thousands = tokens / 1_000
+            guard thousands < 100 else { return "\(Int(thousands.rounded()))k" }
+            let tenths = (thousands * 10).rounded() / 10
+            return tenths == tenths.rounded() ? "\(Int(tenths))k" : "\(tenths)k"
+        }
         public static let creating = "Creating"
         public static let created = "Created"
         public static let updating = "Updating"

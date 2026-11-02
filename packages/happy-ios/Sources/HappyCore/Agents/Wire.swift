@@ -377,6 +377,11 @@ extension AgentWire {
         public var operations: [Operation]?
         public var files: [DiffFile]?
         public var model: SpawnModel?
+        /// A `compaction`'s context before and after, as desktop's
+        /// projection carries them; the phone makes this presentation from
+        /// the service message's compaction block.
+        public var tokensBefore: Double?
+        public var tokensAfter: Double?
 
         /// One `exploration` step: `list` a `target`, `read` a `name`, or
         /// `search` by `command`, with its `query` and `path` when known.
@@ -411,10 +416,12 @@ extension AgentWire {
         }
 
         public init(type: String, items: [MediaItem]? = nil, layout: JSONValue? = nil, artifactId: String? = nil, artifactType: String? = nil, title: String? = nil, version: Int? = nil, shows: String? = nil,
-                    command: String? = nil, input: String? = nil, query: String? = nil, operations: [Operation]? = nil, files: [DiffFile]? = nil, model: SpawnModel? = nil) {
+                    command: String? = nil, input: String? = nil, query: String? = nil, operations: [Operation]? = nil, files: [DiffFile]? = nil, model: SpawnModel? = nil,
+                    tokensBefore: Double? = nil, tokensAfter: Double? = nil) {
             self.type = type; self.items = items; self.layout = layout; self.artifactId = artifactId; self.artifactType = artifactType
             self.title = title; self.version = version; self.shows = shows
             self.command = command; self.input = input; self.query = query; self.operations = operations; self.files = files; self.model = model
+            self.tokensBefore = tokensBefore; self.tokensAfter = tokensAfter
         }
     }
 
@@ -426,6 +433,8 @@ extension AgentWire {
         /// question (`request_user_input`) keeps its raw `arguments` and
         /// result `output`, which say what was asked and answered.
         case toolCall(id: String, name: String, status: String, presentation: Presentation?, arguments: JSONValue? = nil, output: String? = nil)
+        /// One context compaction, inside a service message.
+        case compaction(Compaction)
         case unknown(String)
 
         enum CodingKeys: String, CodingKey { case type, text, mimeType, data, id, name, status, presentation, arguments, result }
@@ -452,6 +461,7 @@ extension AgentWire {
                     arguments: asks ? (try? container.decodeIfPresent(JSONValue.self, forKey: .arguments)) ?? nil : nil,
                     output: (try? result?.decodeIfPresent(String.self, forKey: .output)) ?? nil
                 )
+            case "compaction": self = .compaction(try Compaction(from: decoder))
             default: self = .unknown(type)
             }
         }
@@ -470,8 +480,82 @@ extension AgentWire {
                     var result = container.nestedContainer(keyedBy: ResultKeys.self, forKey: .result)
                     try result.encode(output, forKey: .output)
                 }
+            case .compaction(let compaction):
+                try container.encode("compaction", forKey: .type)
+                try compaction.encode(to: encoder)
             case .unknown(let type): try container.encode(type, forKey: .type)
             }
+        }
+    }
+
+    /// A `compaction` block: `running`, then `completed` or `failed` once.
+    /// `tokensAfter` comes with the first inference after it.
+    public struct Compaction: Equatable, Sendable, Codable {
+        public var status: String
+        public var trigger: String?
+        public var tokensBefore: Double?
+        public var tokensAfter: Double?
+        public var failureReason: String?
+
+        public init(status: String, trigger: String? = nil, tokensBefore: Double? = nil, tokensAfter: Double? = nil, failureReason: String? = nil) {
+            self.status = status; self.trigger = trigger; self.tokensBefore = tokensBefore; self.tokensAfter = tokensAfter; self.failureReason = failureReason
+        }
+    }
+
+    /// One command the agent offers after a `/` (`slashCommands` on every
+    /// focused agent response, `agent.slash_commands.updated`). `name` has
+    /// no slash; `kind` (`skill`, `compaction`, …) is for showing only.
+    public struct SlashCommand: Equatable, Sendable, Codable {
+        public struct Image: Equatable, Sendable, Codable {
+            public var thumbhash: String
+            public init(thumbhash: String) { self.thumbhash = thumbhash }
+        }
+
+        public var name: String
+        public var hasArguments: Bool
+        public var description: String
+        public var kind: String?
+        /// Its picture's thumbhash; the bytes are `imagePath`'s.
+        public var image: Image?
+
+        public init(name: String, hasArguments: Bool, description: String, kind: String? = nil, image: Image? = nil) {
+            self.name = name; self.hasArguments = hasArguments; self.description = description; self.kind = kind; self.image = image
+        }
+
+        public var isSkill: Bool { kind == "skill" }
+
+        /// `GET /v0/agents/:agentId/slash-commands/:name/image`.
+        public func imagePath(agentId: String) -> String {
+            "/v0/agents/\(AgentClient.escape(agentId))/slash-commands/\(AgentClient.escape(name))/image"
+        }
+
+        /// A catalog as sent, one that can't be read left out.
+        static func catalog(_ value: JSONValue?) -> [SlashCommand]? {
+            guard let list = value?.arrayValue else { return nil }
+            return list.compactMap { entry in
+                guard let data = try? JSONEncoder().encode(entry) else { return nil }
+                return try? JSONDecoder().decode(SlashCommand.self, from: data)
+            }
+        }
+    }
+
+    /// A tool a user message asks Happy Agent to run before inference
+    /// (`tool_call_request`): how a skill command loads its skill.
+    public struct ToolCallRequest: Equatable, Sendable, Codable {
+        public var name: String
+        public var arguments: [String: String]
+
+        public init(name: String, arguments: [String: String]) {
+            self.name = name; self.arguments = arguments
+        }
+
+        /// Desktop's skill command (aa8a2529): `read_skill` for the skill named.
+        public static func readSkill(_ name: String) -> ToolCallRequest {
+            ToolCallRequest(name: "read_skill", arguments: ["name": name])
+        }
+
+        var json: JSONValue {
+            .object(["type": .string("tool_call_request"), "name": .string(name), "arguments": .object(arguments.mapValues(JSONValue.string))])
         }
     }
 
@@ -655,6 +739,23 @@ extension AgentWire {
         /// The latest measurement of its conversation's context; nil until
         /// the provider has reported one.
         public var context: ContextUsage?
+        /// The agent's slash commands; absent from an older computer.
+        public var slashCommands: [SlashCommand]?
+
+        enum CodingKeys: String, CodingKey { case agent, mode, draft, pending, cursor, subagents, context, slashCommands }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            agent = try container.decode(Agent.self, forKey: .agent)
+            mode = try container.decodeIfPresent(Mode.self, forKey: .mode)
+            draft = try container.decodeIfPresent(Draft.self, forKey: .draft)
+            pending = try container.decodeIfPresent([Message].self, forKey: .pending)
+            cursor = try container.decodeIfPresent(String.self, forKey: .cursor)
+            subagents = try container.decodeIfPresent([Agent].self, forKey: .subagents)
+            context = try container.decodeIfPresent(ContextUsage.self, forKey: .context)
+            // One command that can't be read never costs the conversation.
+            slashCommands = SlashCommand.catalog(try container.decodeIfPresent(JSONValue.self, forKey: .slashCommands))
+        }
     }
 
     /// `AgentContextUsage`: the latest exact provider measurement of one

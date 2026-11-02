@@ -14,8 +14,11 @@ private struct AgentChatSockets: WebSocketConnector {
 }
 
 /// One agent, `harness`, with forty turns of a question and a few lines of
-/// answer, and nothing streaming.
+/// answer, and nothing streaming. With `slash`, it offers slash commands
+/// (one with a picture), and its last turn is a `/compact`.
 private struct AgentChatComputer: AgentTransport {
+    var slash = false
+
     private static func text(_ text: String) -> JSONValue { .object(["type": .string("text"), "text": .string(text)]) }
 
     private static func message(_ id: String, role: String, _ content: [JSONValue]) -> JSONValue {
@@ -33,12 +36,50 @@ private struct AgentChatComputer: AgentTransport {
         ])
     }
 
+    private static func command(_ name: String, _ description: String, kind: String?, arguments: Bool, thumbhash: String? = nil) -> JSONValue {
+        var command: [String: JSONValue] = ["name": .string(name), "description": .string(description), "hasArguments": .bool(arguments)]
+        if let kind { command["kind"] = .string(kind) }
+        if let thumbhash { command["image"] = .object(["thumbhash": .string(thumbhash)]) }
+        return .object(command)
+    }
+
+    private static let commands: [JSONValue] = [
+        command("compact", "Summarize older messages to free context space.", kind: "compaction", arguments: false),
+        command("code-review", "Review the current changes for bugs and risky edges.", kind: "skill", arguments: true, thumbhash: "1QcSHQRnh493V4dIh4eXh1h4kJUI"),
+        command("commit", "Write a commit message for the staged changes.", kind: "skill", arguments: true),
+        command("deploy", "Ship the current build to staging.", kind: "release", arguments: true),
+        command("context", "Show what is in the context window.", kind: nil, arguments: false),
+    ]
+
+    /// `/compact`'s maintenance run, done.
+    private static let compaction: JSONValue = .object([
+        "id": .string("compaction"), "status": .string("completed"), "startedAt": .number(3_000), "endedAt": .number(4_200), "reason": .string("compaction"),
+        "messages": .array([.object([
+            "id": .string("compaction"), "role": .string("service"), "createdAt": .number(3_000), "metadata": .object([:]),
+            "content": .array([.object([
+                "type": .string("compaction"), "trigger": .string("manual"), "status": .string("completed"),
+                "tokensBefore": .number(201_000), "tokensAfter": .number(43_200), "failureReason": .null,
+                "startedAt": .number(3_000), "completedAt": .number(4_200),
+            ])]),
+        ])]),
+    ])
+
+    /// The code-review command's picture.
+    private static let picture: Data = UIGraphicsImageRenderer(size: CGSize(width: 64, height: 64)).pngData { context in
+        let colors = [UIColor.systemIndigo.cgColor, UIColor.systemPink.cgColor] as CFArray
+        let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 1])!
+        context.cgContext.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: 64, y: 64), options: [])
+    }
+
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         let value: JSONValue
         if path.contains("/agents/harness/messages?") {
-            value = .object(["hasMore": .bool(false), "runs": .array(Self.runs)])
+            value = .object(["hasMore": .bool(false), "runs": .array(Self.runs + (slash ? [Self.compaction] : []))])
         } else if path.hasSuffix("/agents/harness/bootstrap") {
-            value = .object(["agent": .object(["id": .string("harness"), "workspaceId": .string("w"), "status": .string("idle")]), "pending": .array([])])
+            value = .object(["agent": .object(["id": .string("harness"), "workspaceId": .string("w"), "status": .string("idle")]), "pending": .array([]),
+                             "slashCommands": .array(slash ? Self.commands : [])])
+        } else if slash, path.hasSuffix("/slash-commands/code-review/image") {
+            return HTTP1Response(status: 200, body: Self.picture)
         } else {
             throw URLError(.cannotConnectToHost)
         }
@@ -70,7 +111,7 @@ final class AgentChatHarness {
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/agent-chat",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
-            agentConnectionCredentialStore: InMemoryAgentConnectionCredentialStore(), agentTransport: { _ in AgentChatComputer() },
+            agentConnectionCredentialStore: InMemoryAgentConnectionCredentialStore(), agentTransport: { _ in AgentChatComputer(slash: arguments.contains("-slash")) },
             rnServerImport: { .confirmed(ServerConfig.defaultServerURL) }, transport: AgentChatHTTP(), connector: AgentChatSockets()
         )
         self.account = account
@@ -89,6 +130,13 @@ final class AgentChatHarness {
             let probe = ChatScrollProbe(window: window, chat: chat)
             self.probe = probe
             if arguments.contains("-keyboard") { probe.focusComposerWhenFilled() }
+            // `-draft /co`: the composer holds it, as typed.
+            if let index = arguments.firstIndex(of: "-draft"), arguments.indices.contains(index + 1) {
+                let draft = arguments[index + 1]
+                try? await Task.sleep(for: .seconds(1))
+                chat.card.setText(draft, selection: NSRange(location: (draft as NSString).length, length: 0))
+                chat.agentInputCardDidChangeText(chat.card)
+            }
         } catch {
             print("AGENT_CHAT error: \(error)")
         }

@@ -259,8 +259,30 @@ public struct ChatSnapshot: Equatable, Sendable {
     /// The provider's latest measurement of the conversation's context
     /// (the bootstrap's, then each `agent.context.updated`); nil until one.
     public var context: AgentWire.ContextUsage?
+    /// The commands the composer offers after a `/`, in the agent's order:
+    /// the bootstrap's, replaced whole by `agent.slash_commands.updated`,
+    /// and kept with the conversation for when the computer is away.
+    public var slashCommands: [AgentWire.SlashCommand] = []
 
     public init() {}
+}
+
+/// How running a slash command went (`Conversation.run`), for the screen
+/// to say in its own words.
+public enum SlashCommandOutcome: Equatable, Sendable {
+    /// Taken: a skill's message is on its way, or the command was accepted
+    /// and what it does comes as events.
+    case accepted
+    /// The computer has no such command now (404); it left the palette.
+    case unavailable
+    /// It can't run in the agent's current state (409).
+    case busy
+    /// The computer couldn't be reached, or failed.
+    case unreachable
+    /// Refused for another reason (another 4xx).
+    case refused
+    /// A skill's message could not be kept on this phone.
+    case notSaved
 }
 
 /// One conversation over the paired computer's API: its history, read by
@@ -289,6 +311,7 @@ public actor Conversation {
             var files: [QueuedFile]?
             /// When it was sent, in ms; absent in what was kept before it was.
             var at: Double?
+            var toolRequest: AgentWire.ToolCallRequest?
         }
         var runs: [Run]
         var messages: [String: AgentWire.Message]
@@ -296,6 +319,7 @@ public actor Conversation {
         var outgoing: [Send]
         var mode: AgentWire.Mode?
         var hasMore: Bool
+        var slashCommands: [AgentWire.SlashCommand]?
     }
     private var agentId: String
     private let continuation: AsyncStream<ChatSnapshot>.Continuation
@@ -344,6 +368,7 @@ public actor Conversation {
     /// began before the send can take it off the screen.
     private var outgoing: [(id: String, text: String, pictures: [(mimeType: String, data: Data)], accepted: Bool, failure: String?)] = []
     private var outgoingFiles: [String: [QueuedFile]] = [:]
+    private var outgoingTools: [String: AgentWire.ToolCallRequest] = [:]
     /// When each send was made, in ms, for its bubble's time.
     private var outgoingTimes: [String: Double] = [:]
     private var admitting: Set<String> = []
@@ -511,6 +536,7 @@ public actor Conversation {
                 else { outgoing.append(copy) }
                 outgoingModes[queued.id] = queued.mode
                 outgoingFiles[queued.id] = queued.files
+                outgoingTools[queued.id] = queued.toolRequest
                 if outgoingTimes[queued.id] == nil { outgoingTimes[queued.id] = Date().timeIntervalSince1970 * 1000 }
             }
         }
@@ -615,6 +641,7 @@ public actor Conversation {
         let awaiting = activeRun != nil && activeRun?.id == nil && (outgoing.contains { $0.accepted } || !pending.isEmpty)
         snapshot.working = start.agent.isWorking || awaiting
         snapshot.context = start.context
+        if let commands = start.slashCommands { snapshot.slashCommands = commands }
         adoptAgent(start.agent)
         if start.agent.isWorking, let run = history.runs.last, run.status == "running" {
             activeRun = (run.id, run.startedAt)
@@ -743,6 +770,9 @@ public actor Conversation {
             let context = value == .null ? nil : Self.decode(AgentWire.ContextUsage.self, value)
             guard value == .null || context != nil, context != snapshot.context else { return }
             snapshot.context = context
+        case "agent.slash_commands.updated":
+            guard let commands = AgentWire.SlashCommand.catalog(payload["slashCommands"]), commands != snapshot.slashCommands else { return }
+            snapshot.slashCommands = commands
         default:
             return
         }
@@ -828,7 +858,8 @@ public actor Conversation {
     /// task first: refused, nothing is drawn, `sendRefusal` says why, and
     /// false leaves the composer holding what it held.
     @discardableResult
-    public func send(id: String = ClientID.make(), text: String, pictures: [(mimeType: String, data: Data)] = [], attachments: [OutgoingAttachment] = []) async -> Bool {
+    public func send(id: String = ClientID.make(), text: String, pictures: [(mimeType: String, data: Data)] = [], attachments: [OutgoingAttachment] = [],
+                     toolRequest: AgentWire.ToolCallRequest? = nil) async -> Bool {
         guard !outgoing.contains(where: { $0.id == id }), messages[id] == nil else { return false }
         sendRefusal = nil
         if let creation {
@@ -861,6 +892,7 @@ public actor Conversation {
             return false
         }
         outgoingFiles[id] = files
+        outgoingTools[id] = toolRequest
         outgoing.append((id, text, inline, false, nil))
         outgoingModes[id] = mode
         outgoingTimes[id] = Date().timeIntervalSince1970 * 1000
@@ -934,6 +966,7 @@ public actor Conversation {
             outgoing.remove(at: index)
             outgoingModes.removeValue(forKey: id)
             outgoingTimes.removeValue(forKey: id)
+            outgoingTools.removeValue(forKey: id)
             attachmentCleanup.insert(id)
             publish()
             return
@@ -999,7 +1032,8 @@ public actor Conversation {
     }
 
     private func queuedMessage(id: String, text: String, pictures: [(mimeType: String, data: Data)]) -> QueuedMessage {
-        QueuedMessage(id: id, agentID: agentId, text: text, pictures: pictures.map { .init(mimeType: $0.mimeType, data: $0.data) }, mode: outgoingModes[id], files: outgoingFiles[id])
+        QueuedMessage(id: id, agentID: agentId, text: text, pictures: pictures.map { .init(mimeType: $0.mimeType, data: $0.data) }, mode: outgoingModes[id], files: outgoingFiles[id],
+                      toolRequest: outgoingTools[id])
     }
 
     private func restoreConversation() async {
@@ -1013,6 +1047,8 @@ public actor Conversation {
         outgoingModes = Dictionary(kept.outgoing.compactMap { send in send.mode.map { (send.id, $0) } }, uniquingKeysWith: { first, _ in first })
         outgoingFiles = Dictionary(kept.outgoing.compactMap { send in send.files.map { (send.id, $0) } }, uniquingKeysWith: { first, _ in first })
         outgoingTimes = Dictionary(kept.outgoing.compactMap { send in send.at.map { (send.id, $0) } }, uniquingKeysWith: { first, _ in first })
+        outgoingTools = Dictionary(kept.outgoing.compactMap { send in send.toolRequest.map { (send.id, $0) } }, uniquingKeysWith: { first, _ in first })
+        if let commands = kept.slashCommands { snapshot.slashCommands = commands }
         mode = picked ?? kept.mode
         snapshot.mode = mode
         snapshot.hasMore = kept.hasMore
@@ -1063,7 +1099,8 @@ public actor Conversation {
         guard let persistence, snapshot.loaded || !outgoing.isEmpty else { return true }
         let window = Self.kept(runs: runs, messages: messages, pending: pending)
         let kept = KeptConversation(runs: window.runs.map { .init(id: $0.id, messageIds: $0.messageIds, time: times[$0.id]) }, messages: window.messages, pending: pending,
-            outgoing: outgoing.map { .init(id: $0.id, text: $0.text, pictures: $0.pictures.map { .init(mimeType: $0.mimeType, data: $0.data) }, accepted: $0.accepted, failure: $0.failure, mode: outgoingModes[$0.id], files: outgoingFiles[$0.id], at: outgoingTimes[$0.id]) }, mode: mode, hasMore: snapshot.hasMore || window.trimmed)
+            outgoing: outgoing.map { .init(id: $0.id, text: $0.text, pictures: $0.pictures.map { .init(mimeType: $0.mimeType, data: $0.data) }, accepted: $0.accepted, failure: $0.failure, mode: outgoingModes[$0.id], files: outgoingFiles[$0.id], at: outgoingTimes[$0.id],
+                toolRequest: outgoingTools[$0.id]) }, mode: mode, hasMore: snapshot.hasMore || window.trimmed, slashCommands: snapshot.slashCommands)
         guard kept != lastKept || conversationWrite != nil else { return true }
         let key = "conversation:\(agentId)"
         let claim = checkpointClaim(for: key)
@@ -1112,6 +1149,41 @@ public actor Conversation {
         }
         checkpointClaims[key] = claim
         return claim
+    }
+
+    // MARK: Slash commands
+
+    /// Runs one of the agent's commands. A skill goes as a message (desktop
+    /// aa8a2529), drawn at once and kept like any other; every other command
+    /// is asked of the module that offers it, with the mode a message would
+    /// go with, and shows in the transcript through the events it causes.
+    public func run(_ command: AgentWire.SlashCommand, arguments: String?) async -> SlashCommandOutcome {
+        if command.isSkill {
+            let message = SlashCommands.skillMessage(command, arguments: arguments)
+            return await send(text: message.text, toolRequest: message.toolRequest) ? .accepted : .notSaved
+        }
+        do {
+            let mode = try await sendingMode()
+            let commands = try await client.invokeSlashCommand(agentId, name: command.name, arguments: command.hasArguments ? arguments : nil, mode: mode, mutationId: ClientID.make())
+            if let commands, commands != snapshot.slashCommands {
+                snapshot.slashCommands = commands
+                publish()
+            }
+            return .accepted
+        } catch let error as AgentClientError {
+            switch error.status {
+            case 404:
+                // Gone since the palette was drawn: it isn't offered again.
+                snapshot.slashCommands.removeAll { $0.name == command.name }
+                publish()
+                return .unavailable
+            case 409: return .busy
+            case let status? where status < 500 && status != 408 && status != 429: return .refused
+            default: return .unreachable
+            }
+        } catch {
+            return .unreachable
+        }
     }
 
     /// The next message goes with this model, account and effort.
@@ -1599,6 +1671,15 @@ public actor Conversation {
     /// elements), in the order it made them.
     private func items(_ message: AgentWire.Message, shown: inout [String: Media], streaming: Bool) -> [ChatItem] {
         if message.role == "service" {
+            // A compaction is a step of its run, as desktop's projection
+            // makes it a `compact` call.
+            let compactions = message.content.compactMap { block -> AgentWire.Compaction? in
+                guard case .compaction(let compaction) = block else { return nil }
+                return compaction
+            }.enumerated().map { index, compaction in
+                ChatItem(id: index == 0 ? message.id : "\(message.id)/\(index)", role: .tool(Self.compactionTool(compaction)), pieces: [], delivery: .sent)
+            }
+            if !compactions.isEmpty { return compactions }
             // Only a failure is shown, as desktop's card; other service
             // messages are the daemon's housekeeping.
             guard let failure = Failure.of(message) else { return [] }
@@ -1674,12 +1755,19 @@ public actor Conversation {
                 }
                 flush(next: "\(message.id)/\(index + 1)")
                 items.append(ChatItem(id: id, role: .tool(ChatItem.Tool(name: name, status: status, presentation: presentation)), pieces: [], delivery: .sent))
-            case .reasoning, .unknown:
+            case .reasoning, .compaction, .unknown:
                 continue
             }
         }
         flush(next: "")
         return items
+    }
+
+    static func compactionTool(_ compaction: AgentWire.Compaction) -> ChatItem.Tool {
+        let status = ["running", "completed", "failed"].contains(compaction.status) ? compaction.status : "completed"
+        return ChatItem.Tool(name: "compact", status: status, presentation: AgentWire.Presentation(
+            type: "compaction", tokensBefore: compaction.tokensBefore, tokensAfter: compaction.tokensAfter
+        ))
     }
 
     /// What a call showed the person, as pieces of the message: pictures

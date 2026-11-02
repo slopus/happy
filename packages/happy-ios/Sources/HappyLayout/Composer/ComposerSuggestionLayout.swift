@@ -8,7 +8,10 @@ import CoreGraphics
 ///
 /// A command is `/name` in semibold, then 12, then its description taking
 /// what is left on one line. A file is a 32pt round icon, 12, its path on
-/// one line taking what is left, 8, then FILE or FOLDER.
+/// one line taking what is left, 8, then FILE or FOLDER. A Happy Agent
+/// command is the file's 32pt round mark (its picture, or a glyph for its
+/// kind), 12, `/name`, 12, its description in what is left, then its kind
+/// 8 from the end of that.
 public struct ComposerSuggestionRowLayout: Equatable, Sendable {
     public enum Metrics {
         public static let height: CGFloat = 48
@@ -25,6 +28,8 @@ public struct ComposerSuggestionRowLayout: Equatable, Sendable {
         case command(name: CGSize, description: CGSize?)
         /// The single-line sizes of the path and the label.
         case file(path: CGSize, label: CGSize)
+        /// The single-line sizes of `/name`, the description and the kind.
+        case agentCommand(name: CGSize, description: CGSize?, label: CGSize?)
     }
 
     public var size: CGSize
@@ -68,6 +73,29 @@ public struct ComposerSuggestionRowLayout: Equatable, Sendable {
             // flex: 1 — the path takes the room left, whatever its text.
             self.path = centred(pathX, pathWidth, path.height)
             self.label = centred(pathX + pathWidth + M.labelGap, labelWidth, label.height)
+        case .agentCommand(let name, let description, let label):
+            let icon = centred(left, M.iconSize, M.iconSize)
+            self.icon = icon
+            iconGlyph = CGRect(
+                x: icon.midX - M.iconGlyphSize / 2,
+                y: icon.midY - M.iconGlyphSize / 2,
+                width: M.iconGlyphSize,
+                height: M.iconGlyphSize
+            )
+            let start = icon.maxX + M.iconGap
+            // The kind keeps its width at the end, as FILE does.
+            var end = right
+            if let label {
+                let labelWidth = min(label.width, max(0, right - start))
+                self.label = centred(right - labelWidth, labelWidth, label.height)
+                end = max(start, right - labelWidth - M.labelGap)
+            }
+            let nameWidth = min(name.width, max(0, end - start))
+            self.name = centred(start, nameWidth, name.height)
+            if let description {
+                let x = start + nameWidth + M.commandGap
+                self.description = centred(x, min(description.width, max(0, end - x)), description.height)
+            }
         }
     }
 }

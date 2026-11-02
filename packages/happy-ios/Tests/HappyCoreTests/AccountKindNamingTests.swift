@@ -46,7 +46,7 @@ final class AccountKindNamingTests: XCTestCase {
         let languages = AppLanguage.supported.map(\.code)
         XCTAssertEqual(Set(TranslationCatalog.nativeSources.keys), Set(languages))
         let english = TranslationCatalog.nativeSources["en"] ?? [:]
-        XCTAssertEqual(Set(english.keys), Set(Self.kindKeys))
+        XCTAssertEqual(Set(english.keys.filter { $0.hasPrefix("native.accountKind.") }), Set(Self.kindKeys))
         for language in languages {
             let words = TranslationCatalog.nativeSources[language] ?? [:]
             let catalog = TranslationCatalog.catalog(for: language)
