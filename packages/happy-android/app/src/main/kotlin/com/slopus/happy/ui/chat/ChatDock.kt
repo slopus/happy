@@ -155,7 +155,7 @@ private fun ChatComposerFor(
         blocked = blocked,
         canVoice = voiceAction != null,
     )
-    val autocomplete = rememberComposerAutocomplete(draft, actions.onDraftChange)
+    val autocomplete = rememberComposerAutocomplete(draft, onTextChange = actions.onDraftChange)
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val panelShake = rememberShake()

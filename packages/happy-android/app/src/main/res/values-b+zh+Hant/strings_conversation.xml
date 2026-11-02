@@ -44,6 +44,10 @@
     <string name="conversation_ask_no_answer">未回答</string>
     <string name="conversation_ask_submit">提交</string>
     <string name="conversation_ask_not_sent">回答未送出：%1$s</string>
+    <string name="conversation_command_gone">/%1$s 指令已無法使用。</string>
+    <string name="conversation_command_busy">現在無法執行 /%1$s。請在代理閒置後再試一次。</string>
+    <string name="conversation_command_kind_skill">技能</string>
+    <string name="conversation_command_kind_compaction">壓縮</string>
     <string name="conversation_secret_name">此密鑰的名稱</string>
     <string name="conversation_secret_value_placeholder">值</string>
     <string name="conversation_secret_save">儲存並回答</string>

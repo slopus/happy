@@ -318,7 +318,8 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
     val links = remember(nav, computer, conversation.agentId) {
         LinkOpener.agent(context, computer) { url -> nav.navigate(BrowserRoute(route.connectionId, url, conversation.agentId)) }
     }
-    ProvideLinks(links) {
+    // A command's artwork is read and kept as the agent's other pictures are.
+    ProvideLinks(links) { androidx.compose.runtime.CompositionLocalProvider(com.slopus.happy.ui.connection.LocalAgentPictures provides session.pictures) {
         ConversationScreen(
             state = state,
             // Offline says why in words of its own; the link on its way spins (iOS 7aee3a9b8).
@@ -353,6 +354,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                     },
                     onVisible = conversation::setVisible,
                     onChoiceChange = holder::setChoice,
+                    onCommand = conversation::runCommand,
                     // The values typed into a secret go in this one request to the computer and nowhere else.
                     secrets = SecretRequestActions(
                         secrets = { ConversationApi(session.conversationRequest()).secrets() },
@@ -361,7 +363,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                 )
             },
         )
-    }
+    } }
     // New work that could not be made says why; nothing was sent, and the composer keeps it all.
     val message = state.alert?.let { problemText(it) } ?: state.workFailure?.let { failure ->
         stringResource(if (failure.kind == WorkKind.Bot) R.string.new_work_bot_failed else R.string.new_work_task_failed, problemText(failure.reason))

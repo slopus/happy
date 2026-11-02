@@ -11,8 +11,11 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.wrapContentHeight
+import com.slopus.happy.conversation.SlashCommands
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -179,6 +182,8 @@ class ConversationScreenActions(
     val secrets: SecretRequestActions? = null,
     /** A new chat's Task or Bot and name changed. */
     val onChoiceChange: (WorkChoice) -> Unit = {},
+    /** Runs one of the agent's slash commands, with what was typed after its name; true when it went. */
+    val onCommand: (name: String, arguments: String?) -> Boolean = { _, _ -> false },
 )
 
 /**
@@ -221,6 +226,18 @@ fun ConversationScreen(
         text = state.draft
     }
     val bubble = userMessageBubblePalette(bubbleColor, colors.dark)
+    // "/" opens the agent's commands over the composer, as desktop's palette does.
+    val commands by rememberUpdatedState(state.commands)
+    val onCommand by rememberUpdatedState(actions.onCommand)
+    val commandSource = remember(state.agent?.id) { state.agent?.id?.let { id -> ConversationCommands(id, { commands }) { command -> onCommand(command.name, null) } } }
+    val autocomplete = com.slopus.happy.ui.autocomplete.rememberComposerAutocomplete(
+        text,
+        onTextChange = {
+            text = it
+            actions.onDraftChange(it)
+        },
+        source = commandSource,
+    )
     val legacy = remember(actions) {
         MessageCallbacks(
             onOptionPress = { actions.onSend(it, emptyList()) },
@@ -470,6 +487,20 @@ fun ConversationScreen(
                                 maxHeight = minOf(ConversationQuestionSpec.maxHeight, androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp / 2),
                             )
                         }
+                        if (state.created && state.canSend) {
+                            // Over the transcript, in the pill's width and 8 above it (the composer's own margin under it).
+                            Box(
+                                Modifier
+                                    .contentMaxWidth(LocalWindowLayout.current)
+                                    .fillMaxWidth()
+                                    .height(0.dp)
+                                    .offset(y = ConversationComposerSpec.margin.calculateTopPadding())
+                                    .padding(horizontal = 12.dp)
+                                    .wrapContentHeight(Alignment.Bottom, unbounded = true),
+                            ) {
+                                com.slopus.happy.ui.autocomplete.ComposerSuggestions(autocomplete, backdrop = glass)
+                            }
+                        }
                         if (state.created && !state.canSend) {
                             Text(
                                 stringResource(if (state.agent?.archivedAt != null) R.string.conversation_archived else R.string.conversation_read_only),
@@ -487,6 +518,12 @@ fun ConversationScreen(
                                     actions.onDraftChange(it)
                                 },
                                 onSend = { words, attachments ->
+                                    // "/name" and what follows runs that command; its words are never a message.
+                                    val invoked = if (attachments.isEmpty()) SlashCommands.invocation(words.trim(), state.commands) else null
+                                    if (invoked != null) {
+                                        flight.grounded = true
+                                        return@ConversationComposer actions.onCommand(invoked.command.name, invoked.arguments)
+                                    }
                                     // A question waiting takes what is typed as its answer, as on desktop: each
                                     // prompt its ticks, else the words. Words no prompt needed still go as a message.
                                     val waiting = state.question?.takeIf { it.secret == null && !state.answering }
@@ -504,6 +541,7 @@ fun ConversationScreen(
                                 backdrop = glass,
                                 focusAsks = nameReturns,
                                 flight = flight,
+                                cursor = autocomplete.cursor,
                             )
                         }
                     }

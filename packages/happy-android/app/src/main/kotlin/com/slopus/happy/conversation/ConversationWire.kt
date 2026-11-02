@@ -326,8 +326,18 @@ data class AgentInfo(
     }
 }
 
-/** `GET /v0/agents/:id/bootstrap`: the agent, its mode and draft, and what waits to be taken. */
-data class Bootstrap(val agent: AgentInfo, val mode: Mode?, val draft: Draft?, val pending: List<Message>, val cursor: String?) {
+/**
+ * `GET /v0/agents/:id/bootstrap`: the agent, its mode and draft, what waits
+ * to be taken, and its slash commands (null from a daemon that sends none).
+ */
+data class Bootstrap(
+    val agent: AgentInfo,
+    val mode: Mode?,
+    val draft: Draft?,
+    val pending: List<Message>,
+    val cursor: String?,
+    val slashCommands: List<SlashCommand>? = null,
+) {
     companion object {
         fun parse(value: JsonElement?): Bootstrap? {
             val o = value.obj ?: return null
@@ -337,6 +347,7 @@ data class Bootstrap(val agent: AgentInfo, val mode: Mode?, val draft: Draft?, v
                 draft = Draft.parse(o["draft"]),
                 pending = o["pending"].arr.orEmpty().mapNotNull(Message::parse),
                 cursor = o["cursor"].str,
+                slashCommands = SlashCommand.parseAll(o["slashCommands"]),
             )
         }
     }

@@ -44,6 +44,10 @@
     <string name="conversation_ask_no_answer">Sin respuesta</string>
     <string name="conversation_ask_submit">Enviar</string>
     <string name="conversation_ask_not_sent">No se envió la respuesta: %1$s</string>
+    <string name="conversation_command_gone">El comando /%1$s ya no está disponible.</string>
+    <string name="conversation_command_busy">Ahora no se puede ejecutar /%1$s. Vuelve a intentarlo cuando el agente esté inactivo.</string>
+    <string name="conversation_command_kind_skill">Habilidad</string>
+    <string name="conversation_command_kind_compaction">Compactación</string>
     <string name="conversation_secret_name">Nombre para este secreto</string>
     <string name="conversation_secret_value_placeholder">Valor</string>
     <string name="conversation_secret_save">Guardar y responder</string>

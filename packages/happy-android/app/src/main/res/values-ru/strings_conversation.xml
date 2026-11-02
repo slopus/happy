@@ -44,6 +44,10 @@
     <string name="conversation_ask_no_answer">Нет ответа</string>
     <string name="conversation_ask_submit">Отправить</string>
     <string name="conversation_ask_not_sent">Ответ не отправлен: %1$s</string>
+    <string name="conversation_command_gone">Команда /%1$s больше недоступна.</string>
+    <string name="conversation_command_busy">Сейчас нельзя выполнить /%1$s. Повторите, когда агент освободится.</string>
+    <string name="conversation_command_kind_skill">Навык</string>
+    <string name="conversation_command_kind_compaction">Сжатие</string>
     <string name="conversation_secret_name">Имя для этого секрета</string>
     <string name="conversation_secret_value_placeholder">Значение</string>
     <string name="conversation_secret_save">Сохранить и ответить</string>

@@ -43,6 +43,9 @@ private class FakeAgent {
     var refuseFiles = 0
     /** A question's answer is refused with this status. */
     var answerStatus: Int? = null
+    /** A slash command's invocation answers this status; accepted, with [commandsAfter] as the catalog. */
+    var commandStatus = 202
+    var commandsAfter = """[{"name":"compact","hasArguments":false,"description":"Summarize.","kind":"compaction"}]"""
 
     val request: AgentRequest = { method, path, body, _ ->
         requests += Triple(method, path, body as? JsonObject)
@@ -71,6 +74,11 @@ private class FakeAgent {
             route.endsWith("/send") && failSends > 0 -> { failSends--; TransportResponse(503, body = """{"error":"busy"}""".toByteArray()) }
             route.endsWith("/send") -> TransportResponse(sendStatus, body = """{"error":"Unknown model.","code":"invalid_request"}""".toByteArray())
             route.endsWith("/answer") && answerStatus != null -> TransportResponse(answerStatus!!, body = """{"error":"busy"}""".toByteArray())
+            method == "POST" && "/slash-commands/" in route -> if (commandStatus == 202) {
+                TransportResponse(202, body = """{"agent":{"id":"a1","workspaceId":"w1","status":"working","title":"Fix it"},"profiles":[],"slashCommands":$commandsAfter,"command":{"name":"compact","hasArguments":false,"description":"Summarize."},"cursor":"c1"}""".toByteArray())
+            } else {
+                TransportResponse(commandStatus, body = """{"error":"The daemon's own words.","code":"conflict"}""".toByteArray())
+            }
             route == "/v0/config" -> ok(CONFIG)
             route.endsWith("/draft") -> ok("""{"draft":${(body as JsonObject).let { """{"value":${it["draft"]},"updatedAt":${it["updatedAt"]}}""" }}}""")
             else -> ok("{}")
@@ -992,6 +1000,130 @@ class ConversationTest {
         )
         assertEquals(kept, KeptConversation.parse(Json.parseToJsonElement(kept.json().toString()).jsonObject))
     }
+
+    private val catalog = """[{"name":"compact","hasArguments":false,"description":"Summarize older messages to free context space.","kind":"compaction"},""" +
+        """{"name":"code-review","hasArguments":true,"description":"Review the current changes.","kind":"skill","image":{"thumbhash":"1QcSHQRnh493V4dIh4eXh1h4kJUI"}}]"""
+
+    private fun FakeAgent.withCommands() = apply {
+        bootstrap = """{"agent":{"id":"a1","workspaceId":"w1","status":"idle","title":"Fix it"},"mode":${FakeAgent.MODE},"draft":{"value":null,"updatedAt":null},"pending":[],"slashCommands":$catalog}"""
+    }
+
+    @Test fun `the agent's slash commands come with its bootstrap and an update replaces them whole`() = runTest {
+        val chat = conversation(FakeAgent().withCommands())
+        advanceUntilIdle()
+        assertEquals(
+            listOf(
+                SlashCommand("compact", false, "Summarize older messages to free context space.", "compaction"),
+                SlashCommand("code-review", true, "Review the current changes.", "skill", image = true, thumbhash = "1QcSHQRnh493V4dIh4eXh1h4kJUI"),
+            ),
+            chat.state.value.commands,
+        )
+        signals.emit(event("agent.slash_commands.updated", """{"agentId":"a1","slashCommands":[{"name":"deploy","hasArguments":true,"description":"Ship it."}]}"""))
+        advanceUntilIdle()
+        assertEquals(listOf(SlashCommand("deploy", true, "Ship it.")), chat.state.value.commands)
+        // An update that carries no list leaves what is known.
+        signals.emit(event("agent.slash_commands.updated", """{"agentId":"a1"}"""))
+        advanceUntilIdle()
+        assertEquals(listOf("deploy"), chat.state.value.commands.map { it.name })
+    }
+
+    @Test fun `a command runs on its module under the composer's mode and is never a message`() = runTest {
+        val agent = FakeAgent().withCommands()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        chat.setDraft("/compact")
+        assertTrue(chat.runCommand("compact", "ignored, it takes none"))
+        advanceUntilIdle()
+        val (method, path, body) = agent.requests.single { "/slash-commands/" in it.second }
+        assertEquals("POST", method)
+        assertEquals("/v0/agents/a1/slash-commands/compact", path)
+        assertEquals(setOf("mode", "mutationId"), body!!.keys)
+        assertEquals(Mode.parse(Json.parseToJsonElement(FakeAgent.MODE)), Mode.parse(body["mode"]))
+        assertTrue(agent.paths("POST").none { it.endsWith("/send") })
+        assertEquals("", chat.state.value.draft)
+        // The answer's catalog replaces the one known.
+        assertEquals(listOf("compact"), chat.state.value.commands.map { it.name })
+        assertNull(chat.state.value.alert)
+    }
+
+    @Test fun `a command's arguments go as one string when it takes them`() = runTest {
+        val agent = FakeAgent().apply {
+            bootstrap = """{"agent":{"id":"a1","workspaceId":"w1","status":"idle"},"mode":${FakeAgent.MODE},"pending":[],"slashCommands":[{"name":"deploy now","hasArguments":true,"description":"Ship."}]}"""
+        }
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        chat.runCommand("deploy now", "  to staging, quietly ")
+        advanceUntilIdle()
+        val (_, path, body) = agent.requests.single { "/slash-commands/" in it.second }
+        assertEquals("/v0/agents/a1/slash-commands/deploy%20now", path)
+        assertEquals("to staging, quietly", body!!["arguments"]!!.toString().trim('"'))
+    }
+
+    @Test fun `a command gone or busy says so in the phone's words`() = runTest {
+        val agent = FakeAgent().withCommands()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        agent.commandStatus = 404
+        chat.runCommand("compact", null)
+        advanceUntilIdle()
+        assertEquals(Problem.CommandGone("compact"), chat.state.value.alert)
+        chat.dismissAlert()
+        agent.commandStatus = 409
+        chat.runCommand("compact", null)
+        advanceUntilIdle()
+        assertEquals(Problem.CommandBusy("compact"), chat.state.value.alert)
+        chat.dismissAlert()
+        agent.commandStatus = 400
+        chat.runCommand("compact", null)
+        advanceUntilIdle()
+        assertEquals(Problem.Said("The daemon's own words."), chat.state.value.alert)
+        chat.dismissAlert()
+        // One the phone doesn't know isn't asked for at all.
+        val asked = agent.requests.size
+        chat.runCommand("nonsense", null)
+        advanceUntilIdle()
+        assertEquals(Problem.CommandGone("nonsense"), chat.state.value.alert)
+        assertEquals(asked, agent.requests.size)
+    }
+
+    @Test fun `a skill goes as the person's message asking for read_skill first`() = runTest {
+        val agent = FakeAgent().withCommands()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        chat.runCommand("code-review", "focus on auth")
+        advanceUntilIdle()
+        assertTrue(agent.requests.none { "/slash-commands/" in it.second })
+        val body = agent.requests.single { it.second.endsWith("/send") }.third!!
+        assertEquals("/code-review focus on auth", body["text"]!!.toString().trim('"'))
+        assertEquals(
+            Json.parseToJsonElement("""[{"type":"tool_call_request","name":"read_skill","arguments":{"name":"code-review"}}]"""),
+            body["content"],
+        )
+        chat.runCommand("code-review", "  ")
+        advanceUntilIdle()
+        assertEquals("/code-review", agent.requests.last { it.second.endsWith("/send") }.third!!["text"]!!.toString().trim('"'))
+    }
+
+    @Test fun `the commands are kept with the history and shown offline`() = runTest {
+        val store = object : ConversationKeeper {
+            var kept: JsonObject? = null
+            override fun read() = kept
+            override fun write(value: JsonObject) { kept = value }
+        }
+        val history = FakeAgent().withCommands().apply {
+            page = """{"runs":[{"id":"r1","status":"completed","messages":[{"id":"m1","role":"user","createdAt":1,"content":[{"type":"text","text":"hi"}]}]}],"hasMore":false}"""
+        }
+        val first = conversation(history, keeper = store)
+        advanceUntilIdle()
+        first.close()
+        advanceUntilIdle()
+        assertEquals(2, KeptConversation.parse(store.kept)!!.slashCommands!!.size)
+        val offline = FakeAgent().apply { beforeBootstrap = { throw AgentConnectionException(AgentConnectionException.Reason.Unavailable) } }
+        val second = conversation(offline, keeper = store)
+        advanceUntilIdle()
+        assertEquals(listOf("compact", "code-review"), second.state.value.commands.map { it.name })
+    }
+
 }
 
 private fun preview(uri: String, mimeType: String, size: Long, name: String = uri.substringAfterLast('/')) =

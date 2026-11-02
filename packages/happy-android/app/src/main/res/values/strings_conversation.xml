@@ -44,6 +44,10 @@
     <string name="conversation_ask_no_answer">No answer</string>
     <string name="conversation_ask_submit">Submit</string>
     <string name="conversation_ask_not_sent">Answer not sent: %1$s</string>
+    <string name="conversation_command_gone">The /%1$s command isn\'t available any more.</string>
+    <string name="conversation_command_busy">/%1$s can\'t run right now. Try again once the agent is idle.</string>
+    <string name="conversation_command_kind_skill">Skill</string>
+    <string name="conversation_command_kind_compaction">Compaction</string>
     <string name="conversation_secret_name">Name for this secret</string>
     <string name="conversation_secret_name_placeholder" translatable="false">deploy-api</string>
     <string name="conversation_secret_value_placeholder">Value</string>

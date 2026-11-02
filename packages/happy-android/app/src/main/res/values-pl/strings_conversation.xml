@@ -44,6 +44,10 @@
     <string name="conversation_ask_no_answer">Brak odpowiedzi</string>
     <string name="conversation_ask_submit">Wyślij</string>
     <string name="conversation_ask_not_sent">Nie wysłano odpowiedzi: %1$s</string>
+    <string name="conversation_command_gone">Polecenie /%1$s nie jest już dostępne.</string>
+    <string name="conversation_command_busy">Nie można teraz uruchomić /%1$s. Spróbuj ponownie, gdy agent będzie bezczynny.</string>
+    <string name="conversation_command_kind_skill">Umiejętność</string>
+    <string name="conversation_command_kind_compaction">Kompaktowanie</string>
     <string name="conversation_secret_name">Nazwa tego sekretu</string>
     <string name="conversation_secret_value_placeholder">Wartość</string>
     <string name="conversation_secret_save">Zapisz i odpowiedz</string>

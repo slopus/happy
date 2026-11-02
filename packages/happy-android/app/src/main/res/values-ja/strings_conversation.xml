@@ -44,6 +44,10 @@
     <string name="conversation_ask_no_answer">回答なし</string>
     <string name="conversation_ask_submit">送信</string>
     <string name="conversation_ask_not_sent">回答を送信できませんでした: %1$s</string>
+    <string name="conversation_command_gone">/%1$s コマンドは利用できなくなりました。</string>
+    <string name="conversation_command_busy">今は /%1$s を実行できません。エージェントが待機中になってから再度お試しください。</string>
+    <string name="conversation_command_kind_skill">スキル</string>
+    <string name="conversation_command_kind_compaction">圧縮</string>
     <string name="conversation_secret_name">このシークレットの名前</string>
     <string name="conversation_secret_value_placeholder">値</string>
     <string name="conversation_secret_save">保存して回答</string>

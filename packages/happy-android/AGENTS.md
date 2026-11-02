@@ -1250,3 +1250,20 @@ ChatComposer's `overlay` slot and the shared `ComposerCursor` into its
 `cursor` parameter (the composer reports the selection, places the cursor
 after an insert, and offers hardware keys to `cursor.onKey` first: arrows,
 Enter/Tab and Escape drive the list while it shows).
+
+Happy Agent chats reuse the same list and cursor for the agent's own slash
+commands (desktop d04fbfef, 4078fd44, aa8a2529). The catalog is
+`ConversationState.commands`: the bootstrap's and every focused agent
+response's `slashCommands`, replaced whole by `agent.slash_commands.updated`,
+and kept offline with the conversation. `conversation/SlashCommands.kt` holds
+desktop's rules: the list shows only while the whole draft is `/` plus a word
+some command begins, commands before skills; a submitted `/name args` with an
+offered name runs instead of sending. `ui/conversation/ConversationCommands`
+is the `SuggestionSource`, through three hooks the CLI source leaves at their
+defaults: `query` (the whole draft, not the word at the cursor), `pick` (a
+command runs at once and the draft clears) and `draft` (a skill becomes
+`/name ` for its arguments). `Conversation.runCommand` invokes a command with
+`POST /slash-commands/:name` and the composer's mode (404 and 409 are
+`Problem.CommandGone`/`CommandBusy`); a skill is a user message `/name args`
+carrying one `read_skill` tool_call_request, as desktop sends it. The command's
+words never go out as a message otherwise.

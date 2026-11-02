@@ -34,6 +34,8 @@ data class KeptConversation(
     val hasMore: Boolean,
     val agent: AgentInfo?,
     val mode: Mode?,
+    /** The agent's slash commands as last read; null when none were. */
+    val slashCommands: List<SlashCommand>? = null,
 ) {
     fun json(): JsonObject = buildJsonObject {
         put("version", VERSION)
@@ -42,6 +44,7 @@ data class KeptConversation(
         put("hasMore", hasMore)
         agent?.let { put("agent", agentJson(it)) }
         mode?.let { put("mode", it.json()) }
+        slashCommands?.let { put("slashCommands", SlashCommand.json(it)) }
     }
 
     companion object {
@@ -58,6 +61,7 @@ data class KeptConversation(
                 hasMore = o["hasMore"].bool ?: true,
                 agent = AgentInfo.parse(o["agent"]),
                 mode = Mode.parse(o["mode"]),
+                slashCommands = SlashCommand.parseAll(o["slashCommands"]),
             )
         }
 

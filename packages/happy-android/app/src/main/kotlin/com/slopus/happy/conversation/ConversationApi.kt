@@ -37,6 +37,12 @@ data class NewTask(val taskId: String, val workspaceId: String, val agentId: Str
     }
 }
 
+/** A tool the agent runs before it reads the message that asks for it (`tool_call_request`). */
+data class ToolRequest(val name: String, val arguments: Map<String, String>)
+
+/** What a slash command's invocation answered: the agent, and its commands as they now are. */
+data class CommandInvoked(val agent: AgentInfo?, val slashCommands: List<SlashCommand>?)
+
 /** What new work is made as. */
 enum class WorkKind { Task, Bot }
 
@@ -113,15 +119,25 @@ open class ConversationApi(private val request: AgentRequest) {
      * is the same message. Always steering, as desktop sends: mid-turn it is
      * taken at the next boundary; idle, it starts a run.
      */
-    open suspend fun send(agentId: String, id: String, text: String, images: List<Block.Image>, mode: Mode): Message? {
+    open suspend fun send(agentId: String, id: String, text: String, images: List<Block.Image>, mode: Mode, toolRequest: ToolRequest? = null): Message? {
         val body = buildJsonObject {
             put("id", id)
             // The API requires top-level text; a picture alone goes with a short caption.
             put("text", if (text.isEmpty() && images.isNotEmpty()) (if (images.size == 1) "Attached image." else "Attached images.") else text)
             put("delivery", "steer")
             put("clientMetadata", buildJsonObject { put("composer", "mobile") })
-            if (images.isNotEmpty()) put("content", buildJsonArray {
+            if (images.isNotEmpty() || toolRequest != null) put("content", buildJsonArray {
                 images.forEach { add(buildJsonObject { put("type", "image"); put("mimeType", it.mimeType); put("data", it.data) }) }
+                // A tool request rides the words (desktop aa8a2529); the words go once, as `text`.
+                toolRequest?.let { request ->
+                    add(
+                        buildJsonObject {
+                            put("type", "tool_call_request")
+                            put("name", request.name)
+                            put("arguments", JsonObject(request.arguments.mapValues { (_, value) -> JsonPrimitive(value) }))
+                        },
+                    )
+                }
             })
             put("mode", mode.json())
         }
@@ -148,6 +164,22 @@ open class ConversationApi(private val request: AgentRequest) {
             if (answer?.get("code").str == "hash_mismatch" && answer?.get("hash").str == hash) return
         }
         if (decode(response)["hash"].str != hash) throw invalid()
+    }
+
+    /**
+     * Runs one slash command on the module that offers it (API.md `POST
+     * …/slash-commands/:name`): its [arguments] when it takes any, under the
+     * composer's whole [mode]. 404 is a command unknown or just removed, 409
+     * one that can't run now. The answer carries the catalog as it now is.
+     */
+    open suspend fun invokeCommand(agentId: String, name: String, arguments: String?, mode: Mode): CommandInvoked {
+        val body = buildJsonObject {
+            arguments?.let { put("arguments", it) }
+            put("mode", mode.json())
+            put("mutationId", clientId())
+        }
+        val answer = call("POST", "/v0/agents/${escape(agentId)}/slash-commands/${escape(name)}", body)
+        return CommandInvoked(AgentInfo.parse(answer["agent"]), SlashCommand.parseAll(answer["slashCommands"]))
     }
 
     open suspend fun abort(agentId: String) {

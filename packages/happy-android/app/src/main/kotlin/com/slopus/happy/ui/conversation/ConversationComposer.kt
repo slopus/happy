@@ -51,6 +51,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
@@ -166,6 +167,8 @@ internal fun ConversationComposer(
     focusAsks: Int = 0,
     /** Where a sent message's words fly from ([SendFlight]). */
     flight: SendFlight? = null,
+    /** Shares the caret with the command list over the composer; it sees hardware keys first. */
+    cursor: com.slopus.happy.ui.autocomplete.ComposerCursor? = null,
 ) {
     RecomposeProbe.mark(ConversationScreenTags.PROBE_COMPOSER)
     val colors = HappyTheme.colors
@@ -176,6 +179,7 @@ internal fun ConversationComposer(
     // Saved, so a rotation or a return from process death keeps the caret where it was.
     val (field, typed) = rememberHoistedTextFieldState(text, onTextChange)
     val focus = remember { FocusRequester() }
+    LaunchedEffect(field, cursor) { androidx.compose.runtime.snapshotFlow { field.selection }.collect { cursor?.selection = it } }
     val keyboard = LocalSoftwareKeyboardController.current
     var focused by remember { mutableStateOf(false) }
     var attaching by rememberSaveable { mutableStateOf(false) }
@@ -299,6 +303,7 @@ internal fun ConversationComposer(
                         .layoutId(Slot.FIELD)
                         .focusRequester(focus)
                         .onFocusChanged { focused = it.isFocused }
+                        .onPreviewKeyEvent { cursor?.onKey?.invoke(it) == true }
                         .onPlaced { fieldAt[0] = it }
                         .testTag(ConversationComposerTags.INPUT),
                 )

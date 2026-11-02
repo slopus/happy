@@ -72,6 +72,8 @@ data class ConversationState(
     val mode: Mode? = null,
     /** What the composer can pick from; null until the computer's configuration is read. */
     val catalog: ModeCatalog? = null,
+    /** The slash commands the agent offers, in its order; empty until read, and where it offers none. */
+    val commands: List<SlashCommand> = emptyList(),
     val working: Boolean = false,
     val activity: Activity? = null,
     /** The composer's text as this conversation keeps it, and a count that moves only when it came from elsewhere. */
@@ -157,6 +159,8 @@ class Conversation(
         val text: String,
         val images: List<Block.Image>,
         val files: List<OutgoingFile> = emptyList(),
+        /** A tool the agent runs before it reads this (a skill's `read_skill`). */
+        val toolRequest: ToolRequest? = null,
         var accepted: Boolean = false,
         var failure: Problem? = null,
         val sentAt: Long,
@@ -387,7 +391,7 @@ class Conversation(
         }
         agent = agent ?: kept.agent
         mode = picked ?: mode ?: kept.mode
-        publish { it.copy(loaded = true, hasMore = kept.hasMore) }
+        publish { it.copy(loaded = true, hasMore = kept.hasMore, commands = kept.slashCommands ?: it.commands) }
     }
 
     private fun putRun(run: Run) {
@@ -435,7 +439,7 @@ class Conversation(
         val events = held.orEmpty()
         held = null
         events.forEach(::receive)
-        publish { it.copy(loaded = true, syncing = false, hasMore = read.hasMore, error = null) }
+        publish { it.copy(loaded = true, syncing = false, hasMore = read.hasMore, error = null, commands = start.slashCommands ?: it.commands) }
         if (start.agent.pendingQuestionId != null) readQuestion() else publish { it.copy(question = null) }
         if (visible) markRead()
         keepSoon()
@@ -465,6 +469,7 @@ class Conversation(
             hasMore = snapshot.hasMore || newest.size < runs.size,
             agent = agent,
             mode = mode,
+            slashCommands = snapshot.commands,
         )
         try {
             withContext(disk + NonCancellable) { keeper.write(kept.json()) }
@@ -606,6 +611,11 @@ class Conversation(
                 }
             }
             "agent.draft.updated" -> Draft.parse(payload["draft"])?.let(::adoptDraft)
+            // The whole catalog, which replaces what was known.
+            "agent.slash_commands.updated" -> {
+                val commands = SlashCommand.parseAll(payload["slashCommands"]) ?: return
+                publish { it.copy(commands = commands) }
+            }
             else -> return
         }
         publish()
@@ -746,6 +756,55 @@ class Conversation(
         }
     }
 
+    /**
+     * Runs a slash command as desktop does: a skill goes as the person's
+     * message, `/name` and its arguments, asking the agent to read the skill
+     * first (`read_skill`, desktop aa8a2529); any other command runs on the
+     * module that offers it, under the composer's mode, and what it does
+     * comes as events. Its words are never sent as a message otherwise. The
+     * draft that ran it is cleared; a refusal says why
+     * ([Problem.CommandGone], [Problem.CommandBusy]).
+     */
+    fun runCommand(name: String, arguments: String?): Boolean {
+        if (!created) return false
+        scope.launch(lane) {
+            val command = snapshot.commands.firstOrNull { it.name == name }
+            if (command == null) {
+                publish { it.copy(alert = Problem.CommandGone(name)) }
+                return@launch
+            }
+            val given = arguments?.trim()?.takeIf { it.isNotEmpty() && command.hasArguments }
+            setDraftNow("")
+            if (command.isSkill) {
+                val text = if (given == null) "/$name" else "/$name $given"
+                outgoing += Outgoing(ConversationApi.clientId(), text, emptyList(), toolRequest = ToolRequest(READ_SKILL, mapOf("name" to name)), sentAt = now())
+                publish()
+                pump()
+                return@launch
+            }
+            publish()
+            try {
+                val mode = sendingMode() ?: throw IllegalStateException("No model is set up on this computer.")
+                val answer = withRetries { api.invokeCommand(agentId, name, given, mode) }
+                answer.agent?.let { agent = it }
+                publish { it.copy(commands = answer.slashCommands ?: it.commands) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ConversationApiException) {
+                val problem = when (e.status) {
+                    404 -> Problem.CommandGone(name)
+                    409 -> Problem.CommandBusy(name)
+                    else -> describe(e)
+                }
+                publish { it.copy(alert = problem) }
+            } catch (e: Exception) {
+                publish { it.copy(alert = describe(e)) }
+            }
+            keepSoon()
+        }
+        return true
+    }
+
     /** A new chat's Task or Bot and name, as picked; fixed once its first send is making it. */
     fun setChoice(next: WorkChoice) {
         scope.launch(lane) {
@@ -817,7 +876,7 @@ class Conversation(
                     ensureCreated()
                     val mode = sendingMode() ?: throw IllegalStateException("No model is set up on this computer.")
                     upload(next.files)
-                    val message = withRetries { api.send(agentId, next.id, next.wire, next.images, mode) }
+                    val message = withRetries { api.send(agentId, next.id, next.wire, next.images, mode, next.toolRequest) }
                     next.accepted = true
                     if (message != null && message.id !in messages) {
                         messages[message.id] = message
@@ -1179,6 +1238,9 @@ class Conversation(
     }
 
     companion object {
+        /** The tool a skill's invocation asks the agent to run first. */
+        const val READ_SKILL = "read_skill"
+
         /** Pages of catch-up read after the kept history before reading the newest page whole instead. */
         const val MAX_CATCH_UP_PAGES = 4
 
