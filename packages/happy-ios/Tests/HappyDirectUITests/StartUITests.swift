@@ -74,12 +74,13 @@ final class StartUITests: XCTestCase {
         XCTAssertTrue(dots.exists, "the slides have no dots")
         XCTAssertEqual(dots.value as? String, "page 1 of 4")
         app.staticTexts["Any\u{00A0}team. Any\u{00A0}model. One\u{00A0}app."].swipeLeft()
-        pause(1)
+        // Its animation has played (about 3 s) and holds its last frame.
+        pause(3.5)
         XCTAssertEqual(dots.value as? String, "page 2 of 4")
         XCTAssertTrue(app.staticTexts["Natively multiplayer"].exists)
         capture("1b-start-slide-2")
         app.staticTexts["Natively multiplayer"].swipeLeft()
-        pause(1)
+        pause(3.5)
         capture("1c-start-slide-3")
 
         // ⋯: entering a link, restoring, the server, help.
@@ -113,7 +114,7 @@ final class StartUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars.firstMatch.exists, "it has a bar")
         XCTAssertTrue(app.staticTexts["Install Happy on your computer"].exists)
         XCTAssertTrue(app.links["install-desktop-site"].exists, "happy.engineering is missing")
-        pause(1)
+        pause(3.5)
         capture("4-install-desktop")
         app.buttons["install-desktop-more"].tap()
         XCTAssertTrue(app.buttons["Restore Happy CLI account"].waitForExistence(timeout: 5))

@@ -1,6 +1,7 @@
 package com.slopus.happy.ui.start
 
 import android.view.accessibility.AccessibilityManager
+import androidx.annotation.RawRes
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
@@ -25,9 +26,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,7 +40,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -55,6 +57,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.slopus.happy.R
+import com.slopus.happy.ui.components.SceneAnimation
 import com.slopus.happy.ui.components.rememberReduceMotion
 import com.slopus.happy.ui.onboarding.OnboardingContentSpec
 import com.slopus.happy.ui.onboarding.cappedScale
@@ -78,20 +81,21 @@ data class StartSlide(val art: Art, val title: Int, val body: Int) {
     sealed interface Art {
         /** The Happy mark, in the words' colour. */
         data object Logo : Art
-        data class Emoji(val text: String) : Art
+        /** One of desktop's scenes (res/raw), played as its slide arrives. */
+        data class Scene(@RawRes val raw: Int) : Art
     }
 }
 
 /**
  * happy-desktop's welcome deck (happyAgentWelcomeSlides.ts) without
  * "Secure and compliant", which desktop dropped: its logo, then its scenes
- * as their emoji, still (👾 alien-monster, 🦙 llama, 🪄 wand).
+ * (alien-monster, llama, wand), the same Lottie files as desktop's.
  */
 val StartSlides = listOf(
     StartSlide(StartSlide.Art.Logo, R.string.start_slide_happy_title, R.string.start_slide_happy_body),
-    StartSlide(StartSlide.Art.Emoji("👾"), R.string.start_slide_team_title, R.string.start_slide_team_body),
-    StartSlide(StartSlide.Art.Emoji("🦙"), R.string.start_slide_mix_title, R.string.start_slide_mix_body),
-    StartSlide(StartSlide.Art.Emoji("🪄"), R.string.start_slide_open_title, R.string.start_slide_open_body),
+    StartSlide(StartSlide.Art.Scene(R.raw.state_alien_monster), R.string.start_slide_team_title, R.string.start_slide_team_body),
+    StartSlide(StartSlide.Art.Scene(R.raw.state_llama), R.string.start_slide_mix_title, R.string.start_slide_mix_body),
+    StartSlide(StartSlide.Art.Scene(R.raw.state_wand), R.string.start_slide_open_title, R.string.start_slide_open_body),
 )
 
 /** iOS's StartLayout.Metrics, in dp. */
@@ -100,7 +104,7 @@ object StartGallerySpec {
     val art = 96.dp
     val artRegular = 128.dp
     val artCompact = 56.dp
-    /** The emoji fills this much of its square, and the Happy mark too. */
+    /** The Happy mark fills this much of its square; a scene fills all of it. */
     const val ART_FILL = 0.8f
     val artGap = 24.dp
     val artGapCompact = 16.dp
@@ -145,8 +149,11 @@ object StartGallerySpec {
  * title nor the dots move as the slides change. They move on by themselves
  * every [StartGallerySpec.ADVANCE_MILLIS] while the screen is resumed and
  * nothing is being dragged, wrapping to the first with a crossfade; any
- * change starts the wait again. With animations removed, or TalkBack on,
- * nothing moves by itself and the dots change slides without the slide.
+ * change starts the wait again. A slide's scene plays once each time the
+ * slide settles in place and holds its last frame; a tap plays it again.
+ * With animations removed, or TalkBack on, nothing moves by itself and the
+ * dots change slides without the slide; with animations removed the scenes
+ * only show their last frame.
  *
  * [art] is the square for the window ([StartGallerySpec.artFor]).
  */
@@ -167,6 +174,19 @@ fun StartGallery(
     val dragged by pager.interactionSource.collectIsDraggedAsState()
     val fade = remember { Animatable(1f) }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
+    // Each slide's arrivals, the plays its scene is asked for; the last one counted, so a rotation counts none.
+    var arrivals by rememberSaveable { mutableStateOf(IntArray(slides.size)) }
+    var arrived by rememberSaveable { mutableIntStateOf(-1) }
+    fun play(page: Int, times: Int) {
+        arrivals = arrivals.copyOf().also { it[page] = times }
+    }
+    LaunchedEffect(pager.settledPage) {
+        val page = pager.settledPage
+        if (page != arrived) {
+            arrived = page
+            play(page, arrivals[page] + 1)
+        }
+    }
 
     // A jump of more than one slide (the wrap, a far dot) crossfades
     // rather than running past the others.
@@ -182,11 +202,12 @@ fun StartGallery(
         }
     }
 
-    LaunchedEffect(pager.currentPage, dragged, reduceMotion, touchExploration, slides.size) {
+    LaunchedEffect(pager.settledPage, dragged, reduceMotion, touchExploration, slides.size) {
         if (reduceMotion || touchExploration || dragged || slides.size < 2) return@LaunchedEffect
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             delay(StartGallerySpec.ADVANCE_MILLIS)
-            show((pager.currentPage + 1) % slides.size)
+            // Not in this effect: the move changes the page, which restarts the effect, and would stop it half done (the crossfade at 0).
+            scope.launch { show((pager.settledPage + 1) % slides.size) }
         }
     }
 
@@ -199,7 +220,14 @@ fun StartGallery(
             verticalAlignment = Alignment.Top,
         ) { page ->
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                SlideArt(slides[page].art, art, textColor, Modifier.testTag(StartGalleryTags.art(page)))
+                SlideArt(
+                    art = slides[page].art,
+                    side = art,
+                    tint = textColor,
+                    plays = arrivals[page],
+                    onReplay = { played -> play(page, played + 1) },
+                    modifier = Modifier.testTag(StartGalleryTags.art(page)),
+                )
                 Spacer(Modifier.height(artGap))
                 // Every slide's words, one over another; only this page's are seen or read.
                 Box(
@@ -246,23 +274,16 @@ fun StartGallery(
 }
 
 @Composable
-private fun SlideArt(art: StartSlide.Art, side: Dp, tint: Color, modifier: Modifier) {
-    Box(modifier.size(side).clearAndSetSemantics {}, contentAlignment = Alignment.Center) {
-        val inner = side * StartGallerySpec.ART_FILL
+private fun SlideArt(art: StartSlide.Art, side: Dp, tint: Color, plays: Int, onReplay: (Int) -> Unit, modifier: Modifier) {
+    Box(modifier.size(side), contentAlignment = Alignment.Center) {
         when (art) {
             StartSlide.Art.Logo -> Image(
                 painter = painterResource(R.drawable.logo_black),
                 contentDescription = null,
                 colorFilter = ColorFilter.tint(tint),
-                modifier = Modifier.size(inner),
+                modifier = Modifier.size(side * StartGallerySpec.ART_FILL),
             )
-            // The emoji at the size of its square, whatever the font scale.
-            is StartSlide.Art.Emoji -> Text(
-                text = art.text,
-                fontSize = with(LocalDensity.current) { inner.toSp() },
-                lineHeight = with(LocalDensity.current) { side.toSp() },
-                textAlign = TextAlign.Center,
-            )
+            is StartSlide.Art.Scene -> SceneAnimation(art.raw, plays, onReplay, size = side)
         }
     }
 }

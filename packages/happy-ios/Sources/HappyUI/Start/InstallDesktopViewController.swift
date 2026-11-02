@@ -5,10 +5,11 @@ import UIKit
 
 /// After the first screen's Start: get Happy for the computer, whose setup
 /// ends by offering this phone a code, then scan it. happy-app's Link Your
-/// Computer checklist in its own words, on one page: the computer glyph,
-/// "Install Happy on your computer", what to choose there, happy.engineering
-/// (a link, opening the site), and Scan QR code (`AccountAdding.begin`, the
-/// scanner as ever). On the first screen's Grain Gradient, so the two read
+/// Computer checklist in its own words, on one page: the animated laptop,
+/// "Install Happy on your computer", what to choose there and
+/// happy.engineering (a link, opening the site), with Scan QR code
+/// (`AccountAdding.begin`, the scanner as ever) at the bottom where Start
+/// was. On the first screen's Grain Gradient, so the two read
 /// as one flow, under the standard bar (clear over it) with the first
 /// screen's ⋯ (`StartMenu`), so the other ways in are still a tap away.
 /// `InstallDesktopLayout` places it.
@@ -16,7 +17,7 @@ final class InstallDesktopViewController: UIViewController {
     private let context: AppContext
     private let gradient = GrainGradientView(palette: StartViewController.Colors.grain)
     private let scroll = UIScrollView()
-    private let icon = IconView(.ionicons("desktop-outline"), size: InstallDesktopLayout.Metrics.iconSize, tint: Palette.startTextSecondary)
+    private let art = StateSceneView(scene: .laptop, size: InstallDesktopLayout.Metrics.art, replayLabel: Strings.Start.replay(Strings.Onboarding.installStep))
     private let titleLabel = StyledLabel(style: TextStyles.emptyStateTitle, color: Palette.startText, alignment: .center)
     private let site = SiteLink()
     private let descriptionLabel = StyledLabel(style: TextStyles.emptyStateDescription, color: Palette.startTextSecondary, alignment: .center)
@@ -59,7 +60,6 @@ final class InstallDesktopViewController: UIViewController {
         scroll.contentInsetAdjustmentBehavior = .never
         scroll.alwaysBounceVertical = false
         view.addSubview(scroll)
-        icon.contentMode = .center
         titleLabel.string = Strings.Onboarding.installStep
         titleLabel.accessibilityTraits = .header
         // The checklist's second step: setup there offers this phone its code.
@@ -67,7 +67,7 @@ final class InstallDesktopViewController: UIViewController {
         site.onTap = { UIApplication.shared.open(Strings.Onboarding.desktopURL) }
         scan.accessibilityIdentifier = "install-desktop-scan"
         scan.onTap = { [weak self] in self?.startScan() }
-        for subview in [icon, titleLabel, site, descriptionLabel, scan] {
+        for subview in [art, titleLabel, site, descriptionLabel, scan] {
             scroll.addSubview(subview)
         }
     }
@@ -84,7 +84,7 @@ final class InstallDesktopViewController: UIViewController {
         )
         scroll.frame = view.bounds
         scroll.contentSize = CGSize(width: view.bounds.width, height: layout.contentHeight)
-        icon.setLayoutFrame(layout.icon)
+        art.setLayoutFrame(layout.art)
         titleLabel.setLayoutFrame(layout.title)
         site.setLayoutFrame(layout.link)
         site.apply(layout)

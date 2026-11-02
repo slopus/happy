@@ -1,6 +1,5 @@
 package com.slopus.happy.ui.start
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -37,7 +36,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -53,6 +54,7 @@ import com.slopus.happy.R
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.RoundButton
+import com.slopus.happy.ui.components.SceneAnimation
 import com.slopus.happy.ui.components.StackHeader
 import com.slopus.happy.ui.home.EmptyStateSpec
 import com.slopus.happy.ui.theme.HappyTheme
@@ -60,7 +62,7 @@ import com.slopus.happy.ui.theme.HappyTheme
 object InstallDesktopTags {
     const val BACKGROUND = "installDesktop.background"
     const val CONTENT = "installDesktop.content"
-    const val ICON = "installDesktop.icon"
+    const val ART = "installDesktop.art"
     const val TITLE = "installDesktop.title"
     const val DESCRIPTION = "installDesktop.description"
     const val SCAN = "installDesktop.scan"
@@ -73,20 +75,23 @@ object InstallDesktopTags {
  * ends by offering this phone a code, then scan it. happy-app's Link Your
  * Computer checklist in its own words, laid out as iOS's
  * InstallDesktopViewController (InstallDesktopLayout), centred, on the
- * first screen's Grain Gradient so the two read as one flow:
+ * first screen's Grain Gradient so the two read as one flow. Scan QR code
+ * is where Start was; the rest is centred between the bar and it:
  *
- *   desktop glyph      56
- *   title              "Install Happy on your computer", 20 under the glyph
+ *   laptop scene       96, the slides' art square: plays once on arrival,
+ *                      a tap plays it again (res/raw/state_laptop.json,
+ *                      Google's Noto animated 💻, CC BY 4.0: happy-ios
+ *                      Resources/Animations/PROVENANCE.md)
+ *   title              "Install Happy on your computer", 24 under it
  *   description        "Open Happy and choose Link Mobile App.", 8 under
  *   happy.engineering  4 under: a globe and the domain underlined, a 40
- *                      tall target opening the site; before Scan, since
- *                      getting Happy comes first
- *   Scan QR code       20 under, as wide as its label (at least 200): the
- *                      app's Add flow, the scanner as ever
+ *                      tall target opening the site
+ *   Scan QR code       as wide as its label (at least 200), 48 above the
+ *                      bottom inset: the app's Add flow, the scanner as ever
  *
  * The standard bar, clear over the gradient, with back and the first
  * screen's ⋮ ([StartMenu]), so the other ways in are still a tap away. If
- * it outgrows the window it scrolls.
+ * it outgrows the window it scrolls, 16 kept above and below the words.
  */
 @Composable
 fun InstallDesktopScreen(
@@ -136,19 +141,23 @@ fun InstallDesktopScreen(
                         .fillMaxWidth()
                         .verticalScroll(rememberScrollState())
                         .heightIn(min = viewport)
-                        .padding(bottom = 32.dp)
+                        .padding(bottom = StartSpec.bottomPadding)
                         .testTag(InstallDesktopTags.CONTENT),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center,
                 ) {
-                    Icon(Ionicon.DesktopOutline, EmptyStateSpec.stateIcon, secondary, Modifier.testTag(InstallDesktopTags.ICON))
+                    Spacer(Modifier.height(StartGallerySpec.margin))
+                    Spacer(Modifier.weight(1f))
+                    var plays by rememberSaveable { mutableIntStateOf(1) }
+                    Box(Modifier.testTag(InstallDesktopTags.ART)) {
+                        SceneAnimation(R.raw.state_laptop, plays, { plays = it + 1 }, size = StartGallerySpec.art)
+                    }
                     Text(
                         text = stringResource(R.string.onboarding_install_step),
                         style = EmptyStateSpec.stateTitle,
                         color = text,
                         textAlign = TextAlign.Center,
                         modifier = Modifier
-                            .padding(top = EmptyStateSpec.stateIconGap, bottom = 8.dp)
+                            .padding(top = StartGallerySpec.artGap, bottom = StartGallerySpec.titleGap)
                             .padding(horizontal = EmptyStateSpec.sidePadding)
                             .semantics { heading() }
                             .testTag(InstallDesktopTags.TITLE),
@@ -165,7 +174,8 @@ fun InstallDesktopScreen(
                             .testTag(InstallDesktopTags.DESCRIPTION),
                     )
                     SiteLink(text, onOpenSite, Modifier.padding(top = 4.dp))
-                    Spacer(Modifier.height(20.dp))
+                    Spacer(Modifier.weight(1f))
+                    Spacer(Modifier.height(StartGallerySpec.margin))
                     RoundButton(
                         title = stringResource(R.string.onboarding_scan_button),
                         onClick = onScan,

@@ -80,14 +80,32 @@ object StateAnimationTags {
  */
 @Composable
 fun StateAnimation(art: StateArt, modifier: Modifier = Modifier, size: Dp = 128.dp) {
+    // Plays asked for; kept through recreation, so a rotation doesn't replay it.
+    var requested by rememberSaveable(art) { mutableIntStateOf(1) }
+    SceneAnimation(art.raw, requested, { requested = it + 1 }, modifier, size)
+}
+
+/**
+ * [raw] as [StateAnimation] plays it, for a caller that says when: it plays
+ * once each time [requested] passes the plays it has finished, and
+ * otherwise holds its last frame. A tap asks [onReplay] for one more, with
+ * the plays finished so far; null, it can't be tapped.
+ */
+@Composable
+fun SceneAnimation(
+    @RawRes raw: Int,
+    requested: Int,
+    onReplay: ((played: Int) -> Unit)?,
+    modifier: Modifier = Modifier,
+    size: Dp = 128.dp,
+) {
     val reduceMotion = rememberReduceMotion()
-    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(art.raw))
+    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(raw))
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     val active = lifecycle.isAtLeast(Lifecycle.State.RESUMED)
     val animatable = rememberLottieAnimatable()
-    // Plays asked for and plays finished; kept through recreation, so a rotation doesn't replay it.
-    var requested by rememberSaveable(art) { mutableIntStateOf(1) }
-    var played by rememberSaveable(art) { mutableIntStateOf(0) }
+    // Plays finished; kept through recreation with [requested].
+    var played by rememberSaveable(raw) { mutableIntStateOf(0) }
     LaunchedEffect(composition, reduceMotion, active, requested) {
         val loaded = composition ?: return@LaunchedEffect
         if (reduceMotion || played >= requested) {
@@ -96,7 +114,8 @@ fun StateAnimation(art: StateArt, modifier: Modifier = Modifier, size: Dp = 128.
         }
         if (!active) return@LaunchedEffect
         // Stopped by the background, it goes on from where it was; a replay starts over.
-        val from = animatable.progress.takeIf { animatable.composition == loaded && it < 1f } ?: 0f
+        val resuming = animatable.composition == loaded && played == requested - 1
+        val from = animatable.progress.takeIf { resuming && it < 1f } ?: 0f
         animatable.animate(loaded, iterations = 1, initialProgress = from)
         played = requested
     }
@@ -106,12 +125,12 @@ fun StateAnimation(art: StateArt, modifier: Modifier = Modifier, size: Dp = 128.
             .size(size)
             .testTag(StateAnimationTags.ANIMATION)
             .then(
-                if (reduceMotion) Modifier else Modifier.clickable(
+                if (reduceMotion || onReplay == null) Modifier else Modifier.clickable(
                     interactionSource = null,
                     indication = null,
                     role = Role.Button,
                     onClickLabel = label,
-                ) { if (played >= requested) requested = played + 1 }.semantics { contentDescription = label },
+                ) { if (played >= requested) onReplay(played) }.semantics { contentDescription = label },
             ),
     ) {
         if (composition != null) LottieAnimation(composition, { animatable.progress }, Modifier.fillMaxSize())

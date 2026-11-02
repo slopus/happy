@@ -71,7 +71,6 @@ final class StartLayoutTests: XCTestCase {
         XCTAssertEqual(layout.mark.width, 96 * 0.8, accuracy: 0.001)
         XCTAssertEqual(layout.mark.midX, layout.art.midX, accuracy: 0.001)
         XCTAssertEqual(layout.mark.midY, layout.art.midY, accuracy: 0.001)
-        XCTAssertEqual(layout.artFontSize, 96 * 0.8, accuracy: 0.001)
         XCTAssertEqual(Set(layout.titles.map(\.minY)), [120])
         for (title, body) in zip(layout.titles, layout.bodies) {
             XCTAssertEqual(title.minX, 24)

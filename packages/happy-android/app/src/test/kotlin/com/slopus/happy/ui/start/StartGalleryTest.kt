@@ -4,6 +4,11 @@ import android.provider.Settings
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
@@ -14,6 +19,7 @@ import androidx.compose.ui.unit.height
 import androidx.compose.ui.unit.width
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.slopus.happy.R
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.assertBox
 import com.slopus.happy.ui.assertDp
@@ -22,11 +28,13 @@ import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import java.security.MessageDigest
 
 /** The first screen's slides: what they are, how they page, and when they move by themselves. */
 @RunWith(AndroidJUnit4::class)
@@ -56,11 +64,42 @@ class StartGalleryTest {
     fun theSlidesAreDesktopsFour() {
         assertEquals(4, StartSlides.size)
         assertEquals(StartSlide.Art.Logo, StartSlides[0].art)
-        assertEquals(listOf("👾", "🦙", "🪄"), StartSlides.drop(1).map { (it.art as StartSlide.Art.Emoji).text })
+        assertEquals(
+            listOf(R.raw.state_alien_monster, R.raw.state_llama, R.raw.state_wand),
+            StartSlides.drop(1).map { (it.art as StartSlide.Art.Scene).raw },
+        )
         show()
         rule.onNodeWithText("Any\u00A0team. Any\u00A0model. One\u00A0app.").assertExists()
         rule.onNodeWithText("Secure and compliant").assertDoesNotExist()
         selected(0)
+    }
+
+    /** happy-desktop assets/animations/PROVENANCE.md's alien-monster and llama, and Noto's laptop (CC BY 4.0): the same bytes, unmodified. */
+    @Test
+    fun theScenesAreTheirExactBytes() {
+        val resources = ApplicationProvider.getApplicationContext<android.content.Context>().resources
+        for ((raw, hash) in listOf(
+            R.raw.state_alien_monster to "e0875ef4ae4aa214",
+            R.raw.state_llama to "ff16ee4b8a19a782",
+            R.raw.state_laptop to "b351e45cbfc249c7",
+        )) {
+            val bytes = resources.openRawResource(raw).use { it.readBytes() }
+            val actual = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+            assertEquals(resources.getResourceEntryName(raw), hash, actual.take(16))
+        }
+    }
+
+    /** A slide's scene can be played again with a tap, and is a fixed square while it loads and plays. */
+    @Test
+    fun aScenePlaysAgainOnATap() {
+        show()
+        rule.node(StartGalleryTags.dot(1)).performClick()
+        rule.waitForIdle()
+        val art = rule.node(StartGalleryTags.art(1)).bounds
+        assertDp("art square", 96, art.width)
+        rule.mainClock.advanceTimeBy(1_500)
+        assertEquals(art, rule.node(StartGalleryTags.art(1)).bounds)
+        rule.onNodeWithContentDescription("Play again").assertHasClickAction()
     }
 
     /** A swipe brings the next slide; its title is where the first one's was, and the dots stay put. */
@@ -104,6 +143,14 @@ class StartGalleryTest {
         rule.mainClock.advanceTimeBy(8_000)
         rule.mainClock.advanceTimeBy(1_000)
         selected(0)
+        // The wrap's crossfade comes all the way back: the first title is drawn.
+        assertTrue("the first title is seen after the wrap", inked(StartGalleryTags.title(0)))
+    }
+
+    /** Whether any of the node's pixels is as dark as the light palette's text. */
+    private fun inked(tag: String): Boolean {
+        val pixels = rule.node(tag).captureToImage().toPixelMap()
+        return (0 until pixels.width).any { x -> (0 until pixels.height).any { y -> pixels[x, y].luminance() < 0.2f } }
     }
 
     /** With animations removed nothing moves by itself; the dots still work. */

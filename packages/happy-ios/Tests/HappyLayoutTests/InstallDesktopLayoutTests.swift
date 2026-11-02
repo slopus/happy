@@ -17,15 +17,22 @@ final class InstallDesktopLayoutTests: XCTestCase {
         )
     }
 
-    /// Glyph, title, the line, the site, then Scan: download before scanning.
-    func testTheSiteComesBeforeScan() {
+    /// Scan QR code is where Start was: 48 above the bottom inset, at least 200 wide.
+    func testScanIsAtTheBottomWhereStartWas() {
         let layout = layout()
-        XCTAssertEqual(layout.icon.size, CGSize(width: 56, height: 56))
-        XCTAssertEqual(layout.title.minY, layout.icon.maxY + 20)
+        XCTAssertEqual(layout.button, CGRect(x: 96.5, y: 852 - 34 - 48 - 56, width: 200, height: 56))
+        XCTAssertEqual(layout.contentHeight, 852)
+    }
+
+    /// The art, title, the line, then the site, centred between the bar and Scan.
+    func testTheWordsAreCentredAboveScan() {
+        let layout = layout()
+        XCTAssertEqual(layout.art.size, CGSize(width: 96, height: 96))
+        XCTAssertEqual(layout.title.minY, layout.art.maxY + 24)
         XCTAssertEqual(layout.description.minY, layout.title.maxY + 8)
         XCTAssertEqual(layout.link.minY, layout.description.maxY + 4)
-        XCTAssertEqual(layout.button.minY, layout.link.maxY + 20)
-        for frame in [layout.icon, layout.title, layout.description, layout.link, layout.button] {
+        XCTAssertEqual(layout.art.minY - 103, layout.button.minY - layout.link.maxY, accuracy: 0.001)
+        for frame in [layout.art, layout.title, layout.description, layout.link, layout.button] {
             XCTAssertEqual(frame.midX, 196.5, accuracy: 0.001)
         }
     }
@@ -38,18 +45,10 @@ final class InstallDesktopLayoutTests: XCTestCase {
         XCTAssertEqual(layout.linkLabel, CGRect(x: 36, y: 10, width: 130, height: 20))
     }
 
-    func testCentredAboveTheBottomMargin() {
-        let layout = layout()
-        let height: CGFloat = 56 + 20 + 30 + 8 + 22 + 4 + 40 + 20 + 56
-        let available: CGFloat = 852 - 103 - 34 - 32
-        XCTAssertEqual(layout.icon.minY, 103 + (available - height) / 2, accuracy: 0.001)
-        XCTAssertEqual(layout.button.width, 200)
-        XCTAssertEqual(layout.contentHeight, 852)
-    }
-
-    func testTooTallItStartsAtTheTopAndScrolls() {
+    func testTooTallItKeepsSixteenAroundTheWordsAndScrolls() {
         let layout = layout(size: CGSize(width: 393, height: 300))
-        XCTAssertEqual(layout.icon.minY, 103)
-        XCTAssertEqual(layout.contentHeight, layout.button.maxY + 32 + 34)
+        XCTAssertEqual(layout.art.minY, 103 + 16)
+        XCTAssertEqual(layout.button.minY, layout.link.maxY + 16)
+        XCTAssertEqual(layout.contentHeight, layout.button.maxY + 48 + 34)
     }
 }

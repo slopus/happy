@@ -10,6 +10,8 @@ extension Strings {
         public static let enterLink = "Enter link manually"
         public static let enterLinkTitle = "Enter Link"
         public static var enterLinkMessage: String { AccountKind.enterLinkMessage }
+        /// A slide's animation, as desktop's deck labels its replay (WelcomeDeck.tsx).
+        public static func replay(_ title: String) -> String { "Play the \(title) animation again" }
 
         /// happy-desktop's welcome deck (happy-desktop-app
         /// sources/onboarding/happyAgentWelcomeSlides.ts): its titles as

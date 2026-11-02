@@ -28,7 +28,7 @@ public struct StartLayout: Equatable, Sendable {
         public static let art: CGFloat = 96
         public static let artRegular: CGFloat = 128
         public static let artCompact: CGFloat = 56
-        /// The emoji fills this much of its square, and the Happy mark too.
+        /// The Happy mark fills this much of the square.
         public static let artFill: CGFloat = 0.8
         public static let artGap: CGFloat = 24
         public static let artGapCompact: CGFloat = 16
@@ -67,11 +67,10 @@ public struct StartLayout: Equatable, Sendable {
     public var pager: CGRect
     /// In `gallery`: the dots, centred under the pager.
     public var dots: CGRect
-    /// In a page: the art's square, the Happy mark in it, and the emoji's
-    /// point size.
+    /// In a page: the art's square (a scene fills it) and the Happy mark
+    /// in it.
     public var art: CGRect
     public var mark: CGRect
-    public var artFontSize: CGFloat
     /// In a page: each slide's title and line.
     public var titles: [CGRect]
     public var bodies: [CGRect]
@@ -115,7 +114,6 @@ public struct StartLayout: Equatable, Sendable {
         art = CGRect(x: (width - side) / 2, y: 0, width: side, height: side)
         let markSide = side * M.artFill
         mark = CGRect(x: art.midX - markSide / 2, y: art.midY - markSide / 2, width: markSide, height: markSide)
-        artFontSize = markSide
         let columnX = (width - column) / 2
         let titleY = side + artGap
         titles = measured.map { CGRect(x: columnX, y: titleY, width: column, height: $0.title) }

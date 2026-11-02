@@ -24,7 +24,9 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-/** The screen after Start: its words, Scan QR code, the site, and the first screen's ⋮ under the standard bar. */
+private const val PHONE_HEIGHT = 891
+
+/** The screen after Start: the laptop and its words, Scan QR code at the bottom, the site, and the first screen's ⋮ under the standard bar. */
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = PHONE)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -57,20 +59,23 @@ class InstallDesktopScreenTest {
         rule.onNodeWithText("Open Happy and choose Link\u00A0Mobile\u00A0App.").assertExists()
         rule.node(InstallDesktopTags.BACKGROUND).assertExists()
 
-        // Centred: glyph 56, title 20 under it, the line 8 under that, the site 4 under, Scan 20 under: download first.
-        val icon = rule.node(InstallDesktopTags.ICON).bounds
+        // The laptop 96, the title 24 under it, the line 8 under that, the site 4 under; Scan 48 above the bottom, the words centred above it.
+        val art = rule.node(InstallDesktopTags.ART).bounds
         val title = rule.node(InstallDesktopTags.TITLE).bounds
         val description = rule.node(InstallDesktopTags.DESCRIPTION).bounds
         val scan = rule.node(InstallDesktopTags.SCAN).bounds
         val site = rule.node(InstallDesktopTags.SITE).bounds
-        assertDp("icon", 56, icon.width)
-        assertDp("title 20 under the icon", icon.bottom + 20.dp, title.top)
+        val content = rule.node(InstallDesktopTags.CONTENT).bounds
+        assertDp("art", 96, art.width)
+        assertDp("art square", 96, art.height)
+        assertDp("title 24 under the art", art.bottom + 24.dp, title.top)
         assertDp("description 8 under the title", title.bottom + 8.dp, description.top)
         assertDp("site 4 under the description", description.bottom + 4.dp, site.top)
         assertDp("site a 40 target", 40, site.height)
-        assertDp("scan 20 under the site", site.bottom + 20.dp, scan.top)
+        assertDp("scan 48 above the bottom", PHONE_HEIGHT.dp - 48.dp, scan.bottom)
+        assertDp("words centred above scan", art.top - content.top, scan.top - site.bottom)
         assertTrue("scan at least 200 wide", scan.width >= 200.dp - 0.34.dp)
-        for ((name, box) in listOf("icon" to icon, "title" to title, "scan" to scan, "site" to site)) {
+        for ((name, box) in listOf("art" to art, "title" to title, "scan" to scan, "site" to site)) {
             assertDp("$name centred", (PHONE_WIDTH / 2f).dp, (box.left + box.right) / 2)
         }
         rule.assertActionsLabelled()
@@ -107,5 +112,6 @@ class InstallDesktopScreenTest {
         show(dark = true)
         val scan = rule.node(InstallDesktopTags.SCAN).bounds
         assertDp("scan centred", (PHONE_WIDTH / 2f).dp, (scan.left + scan.right) / 2)
+        assertDp("scan 48 above the bottom", PHONE_HEIGHT.dp - 48.dp, scan.bottom)
     }
 }

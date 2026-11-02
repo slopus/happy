@@ -30,3 +30,18 @@ desktop and here: a glyph at most.
 came from the Happy Coder app (https://github.com/slopus/happy), MIT,
 Copyright (c) 2024 Happy Coder Contributors — a different copyright holder from
 happy-desktop, whose licence requires the notice to travel.
+
+## The first screens' art
+
+Three more files draw the first screen's slides and the screen after it
+(`StartGalleryView`, `InstallDesktopViewController`):
+
+| File                 | SHA-256                                                            | Where from |
+| -------------------- | ------------------------------------------------------------------ | ---------- |
+| `alien-monster.json` | `e0875ef4ae4aa214a3d9de567ea39e9429465addabc91d177ea883302146ae89` | happy-desktop's, as above (its welcome deck's "Natively multiplayer"); MIT, Happy Coder Contributors |
+| `llama.json`         | `ff16ee4b8a19a782b5e5b12dbe103d145410f16b8801af5723b6636c56a0a0ff` | happy-desktop's, as above (its welcome deck's "One harness. Every agent."), supplied by its owner; upstream unrecorded there |
+| `laptop.json`        | `b351e45cbfc249c734fd6cf4fbd6f49715ce8020177357a89b3844cc061f62a4` | Google's Noto Animated Emoji, 💻 U+1F4BB, `https://fonts.gstatic.com/s/e/notoemoji/latest/1f4bb/lottie.json`, as served on 2 November 2026; CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/), "Noto Emoji Animation" © Google |
+
+`laptop.json` is the one file here with a time remap and an effect (Fill,
+which tints its keys): Lottie draws the remap; the tint is decoration.
+

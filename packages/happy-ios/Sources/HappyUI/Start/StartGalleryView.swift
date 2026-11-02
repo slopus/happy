@@ -6,7 +6,9 @@ import UIKit
 /// on a phone. Each is its art over its title and a line; they page by a
 /// swipe or a dot, and move on by themselves every `advanceInterval`,
 /// wrapping to the first with a crossfade. Any change, by hand or by
-/// itself, starts the wait again; a drag holds it.
+/// itself, starts the wait again; a drag holds it. A slide's animation
+/// plays once each time the slide arrives and holds its last frame, as
+/// desktop's deck remounts its scene on every visit; a tap plays it again.
 ///
 /// With Reduce Motion on (or VoiceOver running) nothing moves by itself and
 /// the dots change pages without the slide. Off screen, it waits
@@ -15,12 +17,12 @@ final class StartGalleryView: UIView, UIScrollViewDelegate {
     enum Art: Equatable {
         /// The Happy mark, in the words' colour.
         case logo
-        case emoji(String)
+        /// One of desktop's animated scenes.
+        case scene(StateScene)
     }
 
-    /// Desktop's art for each slide: its logo, then its scenes as their
-    /// emoji (👾 alien-monster, 🦙 llama, 🪄 wand), still.
-    static let arts: [Art] = [.logo, .emoji("👾"), .emoji("🦙"), .emoji("🪄")]
+    /// Desktop's art for each slide: its logo, then its scenes (👾, 🦙, 🪄).
+    static let arts: [Art] = [.logo, .scene(.alienMonster), .scene(.llama), .scene(.wand)]
 
     /// Desktop holds a slide 15 s for its longer words; a phone's are one
     /// line.
@@ -36,7 +38,11 @@ final class StartGalleryView: UIView, UIScrollViewDelegate {
 
     /// The screen is showing: only then does it move on by itself.
     var isRunning = false {
-        didSet { if isRunning != oldValue { schedule() } }
+        didSet {
+            guard isRunning != oldValue else { return }
+            schedule()
+            if isRunning { pages[index].arrive() }
+        }
     }
 
     /// Whether it moves on by itself: never with Reduce Motion or VoiceOver.
@@ -116,6 +122,7 @@ final class StartGalleryView: UIView, UIScrollViewDelegate {
         dots.currentPage = number
         updateAccessibility()
         schedule()
+        pages[number].arrive()
     }
 
     /// One wait for the next slide, from now.
@@ -170,32 +177,32 @@ final class StartGalleryView: UIView, UIScrollViewDelegate {
 private final class Page: UIView {
     let title = StyledLabel(style: TextStyles.startSlideTitle, color: Palette.startText, alignment: .center)
     let body = StyledLabel(style: TextStyles.startSlideBody, color: Palette.startTextSecondary, alignment: .center)
-    private let art: StartGalleryView.Art
-    private let emoji = UILabel()
     private let mark = UIImageView()
+    private let scene: StateSceneView?
 
     init(art: StartGalleryView.Art, title: String, body: String) {
-        self.art = art
+        switch art {
+        case .logo:
+            scene = nil
+        case .scene(let name):
+            // Held on its last frame until its slide arrives (`arrive`).
+            scene = StateSceneView(scene: name, size: StartLayout.Metrics.art, play: .onDemand, replayLabel: Strings.Start.replay(title))
+        }
         super.init(frame: .zero)
         self.title.string = title
         self.title.accessibilityTraits = .header
         self.body.string = body
         // The title breaks only between its sentences (`Strings.Start.slides`).
         self.body.decoration = Self.noOrphan
-        switch art {
-        case .logo:
+        if case .logo = art {
             mark.image = UIImage.happy("logo-black")?.withRenderingMode(.alwaysTemplate)
             mark.tintColor = UIColor(Palette.startText)
             mark.contentMode = .scaleAspectFit
+            // The mark says nothing the title doesn't.
+            mark.isAccessibilityElement = false
             addSubview(mark)
-        case .emoji(let text):
-            emoji.text = text
-            emoji.textAlignment = .center
-            addSubview(emoji)
         }
-        // The art says nothing the title doesn't.
-        mark.isAccessibilityElement = false
-        emoji.isAccessibilityElement = false
+        if let scene { addSubview(scene) }
         addSubview(self.title)
         addSubview(self.body)
     }
@@ -211,10 +218,14 @@ private final class Page: UIView {
         }
     }
 
+    /// The slide is showing now: its animation plays from the start.
+    func arrive() {
+        scene?.replay()
+    }
+
     func apply(_ layout: StartLayout, number: Int) {
         mark.setLayoutFrame(layout.mark)
-        emoji.setLayoutFrame(layout.art)
-        if emoji.font.pointSize != layout.artFontSize { emoji.font = .systemFont(ofSize: layout.artFontSize) }
+        scene?.setLayoutFrame(layout.art)
         title.setLayoutFrame(layout.titles[number])
         body.setLayoutFrame(layout.bodies[number])
     }
