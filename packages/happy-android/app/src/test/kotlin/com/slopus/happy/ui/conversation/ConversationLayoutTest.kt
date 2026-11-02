@@ -14,6 +14,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasStateDescription
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -48,6 +49,8 @@ import com.slopus.happy.ui.chat.MessageCallbacks
 import com.slopus.happy.ui.chat.PrimaryAction
 import com.slopus.happy.ui.chat.userMessageBubblePalette
 import com.slopus.happy.ui.node
+import com.slopus.happy.ui.chat.DeliveryTags
+import com.slopus.happy.ui.chat.MessageTags
 import com.slopus.happy.ui.layout.ProvideWindowLayout
 import com.slopus.happy.ui.setHappyContent
 import androidx.compose.ui.unit.dp
@@ -279,8 +282,10 @@ class ConversationLayoutTest {
             ConversationState(created = true, loaded = true, rows = listOf(failed), agent = agent),
             actions = ConversationScreenActions(onRetrySend = { retries += it }),
         )
-        rule.onNodeWithText("Not sent: Unknown model.", substring = true).assertIsDisplayed()
-        rule.onNodeWithText("Retry").performClick()
+        // iOS 65f9eb1a0: the red mark says it, with no line under the bubble; a tap sends it again.
+        rule.onNodeWithText("Not sent: Unknown model.", substring = true).assertDoesNotExist()
+        rule.onNode(hasTestTag(DeliveryTags.MARK) and hasStateDescription("Message failed to send."), useUnmergedTree = true).assertExists()
+        rule.node(MessageTags.USER_BUBBLE).performClick()
         assertEquals(listOf("x"), retries)
         shot("failed-send")
     }

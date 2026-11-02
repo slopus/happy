@@ -157,6 +157,7 @@ class Conversation(
         val files: List<OutgoingFile> = emptyList(),
         var accepted: Boolean = false,
         var failure: Problem? = null,
+        val sentAt: Long,
     ) {
         val wire: String = WorkspaceUploads.text(text, files)
     }
@@ -652,7 +653,7 @@ class Conversation(
         }
         val id = ConversationApi.clientId()
         scope.launch(lane) {
-            outgoing += Outgoing(id, trimmed, images)
+            outgoing += Outgoing(id, trimmed, images, sentAt = now())
             setDraftNow("")
             publish()
             pump()
@@ -690,7 +691,7 @@ class Conversation(
                 publish { it.copy(draftArrivals = it.draftArrivals + if (restore) 1 else 0, alert = Problem.PicturesUnreadable) }
                 return@launch
             }
-            outgoing += Outgoing(id, trimmed, images, files)
+            outgoing += Outgoing(id, trimmed, images, files, sentAt = now())
             setDraftNow("")
             publish()
             pump()
@@ -727,7 +728,7 @@ class Conversation(
                 return@launch
             }
             making = false
-            outgoing += Outgoing(id, text, images, files)
+            outgoing += Outgoing(id, text, images, files, sentAt = now())
             setDraftNow("")
             publish { it.copy(taken = ComposerTaken((it.taken?.serial ?: 0) + 1, text)) }
             pump()
@@ -1072,6 +1073,16 @@ class Conversation(
         _state.value = snapshot
     }
 
+    /** Each sent message's time as its bubble first showed it, by message id (iOS's ChatPlanner times, 65f9eb1a0). */
+    private val shownAt = HashMap<String, Long>()
+
+    /** [rows] with a person's message keeping the time its send showed: the echo's stamp is the computer's. */
+    private fun sentAt(rows: List<ConversationRow>): List<ConversationRow> {
+        val user = rows.singleOrNull() as? ConversationRow.User ?: return rows
+        val shown = shownAt[user.messageId] ?: return rows
+        return if (shown == user.createdAt) rows else listOf(user.copy(createdAt = shown))
+    }
+
     private fun derive(base: ConversationState): ConversationState {
         val agent = agent
         val working = running || agent?.isWorking == true || outgoing.any { it.accepted }
@@ -1080,12 +1091,13 @@ class Conversation(
         val lastRun = runs.lastOrNull()?.first
         for ((runId, ids) in runs) {
             val streaming = working && runId == lastRun
-            for (id in ids) messages[id]?.let { rows += builder.rows(it, agentId, parentAgentId, streaming && it.role == "agent") }
+            for (id in ids) messages[id]?.let { rows += sentAt(builder.rows(it, agentId, parentAgentId, streaming && it.role == "agent")) }
         }
-        for (id in pending) messages[id]?.let { rows += builder.rows(it, agentId, parentAgentId, false) }
+        for (id in pending) messages[id]?.let { rows += sentAt(builder.rows(it, agentId, parentAgentId, false)) }
         for (send in outgoing) {
             val delivery = send.failure?.let(Delivery::Failed) ?: if (send.accepted) Delivery.Pending else Delivery.Sending
-            rows += ConversationRow.User("${send.id}:user", send.id, send.wire, com.slopus.happy.chat.markdown.parseMarkdown(send.wire), send.images, delivery)
+            val time = shownAt.getOrPut(send.id) { send.sentAt }
+            rows += ConversationRow.User("${send.id}:user", send.id, send.wire, com.slopus.happy.chat.markdown.parseMarkdown(send.wire), send.images, delivery, time)
         }
         builder.forget(messages.keys)
         val produced = lastRun != null && running &&

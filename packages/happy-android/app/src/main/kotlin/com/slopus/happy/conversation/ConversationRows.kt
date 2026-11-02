@@ -43,6 +43,8 @@ sealed interface ConversationRow {
         val blocks: List<MarkdownBlock>,
         val pictures: List<Block.Image>,
         val delivery: Delivery,
+        /** The time the bubble shows: the send's own, kept when its echo comes. */
+        val createdAt: Long = 0,
     ) : ConversationRow
 
     /**
@@ -204,7 +206,7 @@ class ConversationRowBuilder(
                 val pictures = message.content.filterIsInstance<Block.Image>()
                 if (text.isEmpty() && pictures.isEmpty()) return emptyList()
                 val delivery = if (message.status == "pending") Delivery.Pending else Delivery.Sent
-                return listOf(ConversationRow.User("$id:user", id, text, parseMarkdown(text), pictures, delivery))
+                return listOf(ConversationRow.User("$id:user", id, text, parseMarkdown(text), pictures, delivery, message.createdAt))
             }
             val rows = ArrayList<ConversationRow>()
             message.content.forEachIndexed { index, block ->

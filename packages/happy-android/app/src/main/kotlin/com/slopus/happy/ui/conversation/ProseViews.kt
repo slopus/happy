@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.MeasurePolicy
 import androidx.compose.ui.layout.onPlaced
@@ -75,6 +76,8 @@ import com.slopus.happy.ui.browser.Link
 import com.slopus.happy.ui.browser.linkAt
 import com.slopus.happy.ui.browser.webLinkGestures
 import com.slopus.happy.ui.chat.LocalTextReveal
+import com.slopus.happy.ui.chat.LocalTrailingSlot
+import com.slopus.happy.ui.chat.TrailingLine
 import com.slopus.happy.ui.chat.MarkdownBlockView
 import com.slopus.happy.ui.chat.MarkdownView
 import com.slopus.happy.ui.chat.MessageCallbacks
@@ -603,8 +606,31 @@ internal fun UserProse(row: ConversationRow.User, callbacks: MessageCallbacks) {
     val prose = rememberProse(ProseSource(row.key, ProseKind.User, row.text, row.blocks))
     // A message just sent: its words fly here from the composer, and land where these are placed.
     val flight = LocalSendFlight.current
-    val placed = if (flight != null) Modifier.onPlaced { flight.place(row.key, it, prose) } else Modifier
-    ProseColumn(prose, fill = false, modifier = placed) { block ->
+    // An own bubble's time rides up onto the last line when it can (MessageDelivery's BubbleFoot).
+    val trailing = LocalTrailingSlot.current
+    val placed = if (flight != null) Modifier.onPlaced { flight.place(row.key, it, prose) { trailing?.content } } else Modifier
+    val foot = if (trailing != null) Modifier.layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints)
+        // A layout made for another width is drawn scaled to this one (DrawnProse); so is its last line.
+        val scale = if (constraints.hasBoundedWidth) constraints.maxWidth.toFloat() / prose.available else 1f
+        trailing.line = prose.trailing()?.let { TrailingLine(it.right * scale, it.below * scale) }
+        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    } else Modifier
+    ProseColumn(prose, fill = false, modifier = placed.then(foot)) { block ->
         MarkdownBlockView(block, callbacks.onOptionPress)
     }
+}
+
+/** Where the last line ends when the prose ends in a paragraph or a header; null after a list, code or a table. */
+internal fun Prose.trailing(): TrailingLine? {
+    val segment = segments.lastOrNull() as? DrawnSegment ?: return null
+    val index = segment.parts.lastIndex
+    val part = segment.parts.getOrNull(index) ?: return null
+    if (part.block !is MarkdownBlock.Text && part.block !is MarkdownBlock.Header) return null
+    val piece = part.pieces.lastOrNull() ?: return null
+    val last = piece.layout.lineCount - 1
+    if (last < 0) return null
+    val right = piece.x + piece.layout.getLineRight(last) - minOf(piece.layout.getLineLeft(last), 0f)
+    val foot = segment.tops[index] + piece.y + piece.layout.getLineBottom(last)
+    return TrailingLine(right, segment.height - foot)
 }

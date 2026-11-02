@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -189,12 +190,22 @@ fun UserMessage(
     attachments: (@Composable () -> Unit)? = null,
     /** Draws the bubble's words instead of [MarkdownView]: a conversation's laid-out row ([com.slopus.happy.ui.conversation.ProseColumn]). */
     body: (@Composable (List<com.slopus.happy.chat.markdown.MarkdownBlock>) -> Unit)? = null,
+    /** False drops the status line: a conversation's own bubble says everything with its mark. */
+    statusLine: Boolean = true,
+    /** Tapping the bubble sends a refused message again. */
+    onRetry: (() -> Unit)? = null,
+    /** A refused message's long-press menu also offers to throw it away. */
+    onDiscard: (() -> Unit)? = null,
 ) {
     val message = row.message
     val colors = HappyTheme.colors
     val chat = ChatTheme.colors
     val fromOther = message.isOtherParticipant
-    val showPending = rememberPendingStatusVisible(message.pending, message.meta?.queuedWhileBusy == true, message.createdAt)
+    val delivery = row.delivery.takeIf { !fromOther }
+    // An own bubble's mark says it is on its way: no dimming, no "Sending…".
+    val showPending = delivery == null &&
+        rememberPendingStatusVisible(message.pending, message.meta?.queuedWhileBusy == true, message.createdAt)
+    val queued = message.pending && message.meta?.queuedWhileBusy == true
     val copyText = when (val display = row.display) {
         is UserDisplay.Text -> display.text
         is UserDisplay.Goal -> display.goal
@@ -203,7 +214,7 @@ fun UserMessage(
     val alignment = if (fromOther) Alignment.Start else Alignment.End
     val statusText = when {
         message.sendError != null -> stringResource(R.string.message_send_failed, message.sendError.ifEmpty { stringResource(R.string.chat_send_failed) })
-        showPending && message.meta?.queuedWhileBusy == true -> stringResource(R.string.message_sends_after_this_turn)
+        (showPending || delivery != null) && queued -> stringResource(R.string.message_sends_after_this_turn)
         showPending -> stringResource(R.string.message_sending)
         else -> ""
     }
@@ -211,7 +222,7 @@ fun UserMessage(
     val bubbleShape = RoundedCornerShape(MessageSpec.bubbleRadius)
 
     @Composable
-    fun Bubble(blocks: List<com.slopus.happy.chat.markdown.MarkdownBlock>, marginBottom: Dp) {
+    fun Bubble(blocks: List<com.slopus.happy.chat.markdown.MarkdownBlock>, marginBottom: Dp, foot: Boolean = false) {
         Box(
             modifier = Modifier
                 .padding(bottom = marginBottom)
@@ -219,9 +230,19 @@ fun UserMessage(
                 .clip(bubbleShape)
                 .background(bubble.background)
                 .border(hairline, bubble.border, bubbleShape)
+                .then(if (onRetry != null) Modifier.clickable(role = Role.Button, onClickLabel = stringResource(R.string.common_retry), onClick = onRetry) else Modifier)
                 .padding(horizontal = MessageSpec.bubblePaddingHorizontal, vertical = MessageSpec.bubblePaddingVertical),
         ) {
-            if (body != null) body(blocks) else MarkdownView(blocks, onOptionPress = callbacks.onOptionPress)
+            val words = @Composable { if (body != null) body(blocks) else MarkdownView(blocks, onOptionPress = callbacks.onOptionPress) }
+            if (foot && delivery != null) {
+                val slot = remember { TrailingSlot() }
+                val time = rememberMessageTime(row.time ?: message.createdAt)
+                BubbleFoot(slot, status = { MessageStatus(time, delivery, colors.textSecondary, deliveryScale()) }) {
+                    CompositionLocalProvider(LocalTrailingSlot provides slot) { words() }
+                }
+            } else {
+                words()
+            }
         }
     }
 
@@ -246,17 +267,23 @@ fun UserMessage(
                     .padding(horizontal = MessageSpec.authorPaddingHorizontal),
             )
         }
+        val retryLabel = stringResource(R.string.common_retry)
+        val discardLabel = stringResource(R.string.common_discard)
         LongPressCopyable(
             text = copyText,
+            actions = listOfNotNull(
+                onRetry?.let { CopyMenuAction(retryLabel, Ionicon.RefreshOutline, MessageTags.USER_RETRY, it) },
+                onDiscard?.let { CopyMenuAction(discardLabel, Ionicon.TrashOutline, MessageTags.USER_DISCARD, it) },
+            ),
             modifier = Modifier
                 .testTag(MessageTags.USER_BODY)
                 .alpha(if (showPending) MessageSpec.PENDING_OPACITY else 1f),
             horizontalAlignment = alignment,
         ) {
             when (val display = row.display) {
-                is UserDisplay.Text -> Bubble(display.blocks, MessageSpec.bubbleMarginBottom)
+                is UserDisplay.Text -> Bubble(display.blocks, MessageSpec.bubbleMarginBottom, foot = true)
                 is UserDisplay.Goal -> {
-                    Bubble(display.blocks, MessageSpec.bubbleMarginBottomAnnotated)
+                    Bubble(display.blocks, MessageSpec.bubbleMarginBottomAnnotated, foot = true)
                     Row(
                         modifier = Modifier
                             .padding(bottom = 4.dp)
@@ -270,7 +297,7 @@ fun UserMessage(
                     }
                 }
                 is UserDisplay.Command -> {
-                    if (display.args != null) Bubble(display.argBlocks, MessageSpec.bubbleMarginBottomAnnotated)
+                    if (display.args != null) Bubble(display.argBlocks, MessageSpec.bubbleMarginBottomAnnotated, foot = true)
                     val chipShape = RoundedCornerShape(MessageSpec.chipRadius)
                     Box(
                         modifier = Modifier
@@ -289,7 +316,9 @@ fun UserMessage(
         }
         attachments?.invoke()
         val failed = row.failedLocalId
-        if (failed == null) {
+        if (!statusLine) {
+            Spacer(Modifier.height(MessageSpec.statusMarginBottom))
+        } else if (failed == null) {
             StatusLine(statusText, if (message.sendError != null) colors.textDestructive else chat.agentEventText)
         } else {
             Row(

@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasStateDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.performClick
@@ -27,6 +28,7 @@ import com.slopus.happy.ui.assertActionsLabelled
 import com.slopus.happy.ui.chat.ChatScreenTags
 import com.slopus.happy.ui.chat.ComposerTags
 import com.slopus.happy.ui.chat.MessageTags
+import com.slopus.happy.ui.chat.DeliveryTags
 import com.slopus.happy.ui.home.FlatRowTags
 import com.slopus.happy.ui.home.HomeTags
 import com.slopus.happy.ui.node
@@ -47,7 +49,7 @@ import org.robolectric.annotation.GraphicsMode
 
 /**
  * Journey 4, losing the server and getting it back: home says the
- * connection dropped; a message typed meanwhile stays "Sending…" while the
+ * connection dropped; a message typed meanwhile keeps its clock while the
  * server refuses it, and so does a backlog of 150 more; once the server is
  * back everything goes out, in order, in posts of at most 100, and none
  * fails. Leaving the app with a message unsent schedules "Message not
@@ -113,7 +115,8 @@ class OfflineJourneyTest {
         rule.node(FlatRowTags.ROW).performClick()
         rule.waitFor(ChatScreenTags.SCREEN)
         send("written on the train")
-        rule.waitUntilAtLeastOneExists(hasTestTag(MessageTags.USER_STATUS) and hasText("Sending…"), 10_000)
+        // The clock sits inside the bubble's long-press target, so it is found in the unmerged tree.
+        rule.waitUntil(10_000) { rule.onAllNodes(hasTestTag(DeliveryTags.MARK) and hasStateDescription("Sending…"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         val cipher = server.encryption.dataKeyCipher(server.dataKey("s1"))
         val backlog = (1..150).map { "b%03d".format(it) }
         graph.store.enqueueOutbox(backlog.map { id ->
@@ -134,7 +137,7 @@ class OfflineJourneyTest {
         assertEquals(backlog, server.sentRecords("s1").drop(1).map { it.first })
         rule.waitUntil(10_000) { graph.store.outbox("s1").none { it.state == OutboxState.QUEUED || it.state == OutboxState.SENDING } }
         assertTrue(graph.store.outbox("s1").none { it.state == OutboxState.FAILED })
-        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Sending…"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty() }
+        rule.waitUntil(10_000) { rule.onAllNodes(hasStateDescription("Sending…"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty() }
     }
 
     @Test
@@ -152,7 +155,7 @@ class OfflineJourneyTest {
 
         refuseSends()
         send("sent while leaving")
-        rule.waitFor(MessageTags.USER_STATUS)
+        rule.waitUntil(10_000) { rule.onAllNodes(hasTestTag(DeliveryTags.MARK), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         assertNull(alarms.nextScheduledAlarm)
 
         // Home pressed: the app is behind, the message still unsent.
@@ -168,6 +171,6 @@ class OfflineJourneyTest {
         rule.waitUntil(5_000) { alarms.nextScheduledAlarm == null }
         online()
         rule.waitUntil(10_000) { server.sentRecords("s1").isNotEmpty() }
-        rule.waitUntil(10_000) { rule.onAllNodes(hasText("Sending…"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty() }
+        rule.waitUntil(10_000) { rule.onAllNodes(hasStateDescription("Sending…"), useUnmergedTree = true).fetchSemanticsNodes().isEmpty() }
     }
 }

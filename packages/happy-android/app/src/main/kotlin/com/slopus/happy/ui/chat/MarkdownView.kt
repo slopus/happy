@@ -29,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -148,8 +149,12 @@ fun MarkdownView(
         CompositionLocalProvider(LocalMarkdownLinks provides onLink) { MarkdownView(blocks, modifier, onOptionPress, null, image) }
         return
     }
+    // An own bubble's time rides up onto its last line when that is a paragraph or a header.
+    val trailing = LocalTrailingSlot.current
+    val last = blocks.lastOrNull()
+    if (trailing != null && last !is MarkdownBlock.Text && last !is MarkdownBlock.Header) trailing.line = null
     Column(modifier = modifier) {
-        for (block in blocks) MarkdownBlockView(block, onOptionPress, image)
+        for (block in blocks) MarkdownBlockView(block, onOptionPress, image, trailing.takeIf { block === last })
     }
 }
 
@@ -163,7 +168,10 @@ internal fun MarkdownBlockView(
     block: MarkdownBlock,
     onOptionPress: ((String) -> Unit)? = null,
     image: (@Composable (MarkdownBlock.Image) -> Unit)? = null,
+    /** This is an own bubble's last block: report its last line ([TrailingSlot.report]). */
+    trailing: TrailingSlot? = null,
 ) {
+    val density = LocalDensity.current
     when (block) {
         is MarkdownBlock.Text -> SpansText(
             spans = block.content,
@@ -172,6 +180,7 @@ internal fun MarkdownBlockView(
             modifier = Modifier
                 .padding(top = MarkdownSpec.textMarginTop, bottom = MarkdownSpec.textMarginBottom)
                 .testTag(MarkdownTags.TEXT),
+            onLayout = trailing?.let { slot -> { slot.report(it, with(density) { MarkdownSpec.textMarginBottom.toPx() }) } },
         )
         is MarkdownBlock.Header -> {
             val (style, margins) = MarkdownSpec.headers[(block.level - 1).coerceIn(0, 5)]
@@ -180,6 +189,7 @@ internal fun MarkdownBlockView(
                 style = style,
                 color = HappyTheme.colors.text,
                 modifier = Modifier.padding(top = margins.first, bottom = margins.second).testTag(MarkdownTags.HEADER),
+                onLayout = trailing?.let { slot -> { slot.report(it, with(density) { margins.second.toPx() }) } },
             )
         }
         is MarkdownBlock.BulletList -> ListBlock(
@@ -214,14 +224,17 @@ private fun rememberSpans(spans: List<MarkdownSpan>): AnnotatedString {
  * screen's [LinkOpener][com.slopus.happy.ui.browser.LinkOpener] where there is one.
  */
 @Composable
-private fun SpansText(spans: List<MarkdownSpan>, style: TextStyle, color: Color, modifier: Modifier = Modifier) {
+private fun SpansText(spans: List<MarkdownSpan>, style: TextStyle, color: Color, modifier: Modifier = Modifier, onLayout: ((TextLayoutResult) -> Unit)? = null) {
     val text = rememberSpans(spans)
     val layout = remember { mutableStateOf<TextLayoutResult?>(null) }
     Text(
         text = text,
         style = style,
         color = color,
-        onTextLayout = { layout.value = it },
+        onTextLayout = {
+            layout.value = it
+            onLayout?.invoke(it)
+        },
         modifier = modifier.webLinkGestures(text, layout).revealText(layout),
     )
 }

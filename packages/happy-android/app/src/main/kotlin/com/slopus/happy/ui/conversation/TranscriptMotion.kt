@@ -230,7 +230,7 @@ class SendFlight {
     }
 
     /** A claimed row's words: where they are laid out ([coordinates]), and how ([prose]). */
-    internal class Target(val coordinates: LayoutCoordinates, val prose: Prose)
+    internal class Target(val coordinates: LayoutCoordinates, val prose: Prose, val content: () -> LayoutCoordinates?)
 
     internal var flight by mutableStateOf<Flight?>(null)
         private set
@@ -262,9 +262,9 @@ class SendFlight {
     internal fun hides(key: String): Boolean = flight?.key == key
 
     /** The claimed row [key]'s words are at [coordinates], laid out as [prose]. */
-    internal fun place(key: String, coordinates: LayoutCoordinates, prose: Prose) {
+    internal fun place(key: String, coordinates: LayoutCoordinates, prose: Prose, content: () -> LayoutCoordinates? = { null }) {
         val flight = flight ?: return
-        if (flight.key == key && flight.target == null) flight.target = Target(coordinates, prose)
+        if (flight.key == key && flight.target == null) flight.target = Target(coordinates, prose, content)
     }
 
     internal fun done(flight: Flight) {
@@ -307,9 +307,13 @@ internal fun BoxScope.SendFlightOverlay(flight: SendFlight, bubble: BubblePalett
                 val from = current.origin - (at + line)
                 val shift = Offset(lerp(from.x, 0f, p), lerp(from.y, 0f, p)) - here
                 val opaque = (p / TranscriptMotionSpec.FLIGHT_OPAQUE).coerceAtMost(1f)
-                val box = Size(size.width + 2 * padding.x, size.height + 2 * padding.y)
+                // The bubble lands on the words with their time and mark around them (BubbleFoot, their parent).
+                val content = target.content()?.takeIf { it.isAttached } ?: target.coordinates
+                val contentAt = content.positionInRoot()
+                val contentSize = content.size.toSize()
+                val box = Size(maxOf(size.width, contentSize.width) + 2 * padding.x, maxOf(size.height, contentSize.height) + 2 * padding.y)
                 val shape = RoundedCornerShape(radius).createOutline(box, layoutDirection, this)
-                translate(at.x - padding.x + shift.x, at.y - padding.y + shift.y) {
+                translate(minOf(at.x, contentAt.x) - padding.x + shift.x, minOf(at.y, contentAt.y) - padding.y + shift.y) {
                     drawOutline(shape, bubble.background, alpha = opaque)
                     drawOutline(shape, bubble.border, alpha = opaque, style = Stroke(1f))
                 }

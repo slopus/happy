@@ -34,7 +34,7 @@ import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.chat.ChatMessage
 import com.slopus.happy.chat.ChatRow
-import com.slopus.happy.chat.MessageMeta
+import com.slopus.happy.chat.MessageDelivery
 import com.slopus.happy.chat.ToolCall
 import com.slopus.happy.chat.ToolState
 import com.slopus.happy.chat.UserDisplay
@@ -65,8 +65,6 @@ import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
 
 object ConversationRowTags {
     /** Every row's outermost box, as tall as it is drawn. */
@@ -233,29 +231,31 @@ internal fun framed(live: LiveText): LiveText.Content {
 
 @Composable
 private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: ConversationRowActions, modifier: Modifier) {
-    val failed = (row.delivery as? Delivery.Failed)?.let { problemText(it.reason) }
-    // A send waiting behind a running turn reads "Sends after this turn"; one on its way, "Sending…".
-    val message = remember(row, failed) {
-        ChatMessage.UserText(
-            id = row.key,
-            localId = row.messageId,
-            createdAt = if (row.delivery == Delivery.Sending) System.currentTimeMillis() else 0,
-            text = row.text,
-            meta = if (row.delivery == Delivery.Pending) MessageMeta(buildJsonObject { put("queuedWhileBusy", JsonPrimitive(true)) }) else null,
-            pending = row.delivery == Delivery.Sending || row.delivery == Delivery.Pending,
-            sendError = failed,
-        )
+    val failed = row.delivery is Delivery.Failed
+    // The mark says where it stands (iOS 3c24acf5c): the clock on its way, one check
+    // taken by the agent's API, two once a run took it, a red mark if refused.
+    val delivery = when (row.delivery) {
+        Delivery.Sending -> MessageDelivery.Sending
+        Delivery.Pending -> MessageDelivery.Received
+        Delivery.Sent -> MessageDelivery.Accepted
+        is Delivery.Failed -> MessageDelivery.Failed
+    }
+    val message = remember(row) {
+        ChatMessage.UserText(id = row.key, localId = row.messageId, createdAt = row.createdAt, text = row.text)
     }
     // The photos go under the words, against the right edge as the bubble is.
     val photos = @Composable {
         InlinePictures(row.key, row.pictures, actions, MediaFlow.message, alignEnd = true, measure = MediaFlow::messageMeasure, limit = true)
     }
-    if (row.text.isNotEmpty() || failed != null) {
+    if (row.text.isNotEmpty() || failed) {
         UserMessage(
-            ChatRow.User(message, UserDisplay.Text(row.text, row.blocks), failedLocalId = row.messageId.takeIf { failed != null }),
+            ChatRow.User(message, UserDisplay.Text(row.text, row.blocks), delivery = delivery, time = row.createdAt),
             bubble,
             actions.legacy,
             modifier.fillMaxWidth(),
+            statusLine = false,
+            onRetry = if (failed) ({ actions.legacy.onRetry(row.messageId) }) else null,
+            onDiscard = if (failed) ({ actions.legacy.onDiscard(row.messageId) }) else null,
             attachments = if (row.pictures.isEmpty()) null else {
                 { Box(Modifier.padding(top = ConversationRowSpec.photosGap)) { photos() } }
             },

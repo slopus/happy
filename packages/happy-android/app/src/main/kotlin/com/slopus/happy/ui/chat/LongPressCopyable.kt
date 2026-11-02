@@ -87,9 +87,9 @@ private val exitEasing = CubicBezierEasing(0.32f, 0f, 0.67f, 0f)
  * window's bottom); its right edge on the anchor's, at least 12 from either
  * side.
  */
-fun copyMenuPosition(anchor: IntRect, window: IntSize, density: Density): IntOffset = with(density) {
+fun copyMenuPosition(anchor: IntRect, window: IntSize, density: Density, rows: Int = 1): IntOffset = with(density) {
     val width = CopyMenuSpec.width.roundToPx()
-    val height = CopyMenuSpec.height.roundToPx()
+    val height = CopyMenuSpec.height.roundToPx() * rows
     val gap = CopyMenuSpec.gap.roundToPx()
     val margin = CopyMenuSpec.screenMargin.roundToPx()
     val above = anchor.top - height - gap
@@ -114,6 +114,8 @@ fun LongPressCopyable(
     text: String,
     modifier: Modifier = Modifier,
     horizontalAlignment: Alignment.Horizontal = Alignment.Start,
+    /** Rows under Copy (a refused send's Retry and Discard). */
+    actions: List<CopyMenuAction> = emptyList(),
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val menu = remember { MutableTransitionState(false) }
@@ -134,17 +136,17 @@ fun LongPressCopyable(
         horizontalAlignment = horizontalAlignment,
     ) {
         content()
-        if (menu.currentState || menu.targetState) CopyMenu(menu, onCopy = { copy(text) }, onClose = { menu.targetState = false })
+        if (menu.currentState || menu.targetState) CopyMenu(menu, actions, onCopy = { copy(text) }, onClose = { menu.targetState = false })
     }
 }
 
 @Composable
-private fun CopyMenu(menu: MutableTransitionState<Boolean>, onCopy: () -> Unit, onClose: () -> Unit) {
+private fun CopyMenu(menu: MutableTransitionState<Boolean>, actions: List<CopyMenuAction>, onCopy: () -> Unit, onClose: () -> Unit) {
     val density = LocalDensity.current
     val position = remember(density) {
         object : PopupPositionProvider {
             override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize) =
-                copyMenuPosition(anchorBounds, windowSize, density)
+                copyMenuPosition(anchorBounds, windowSize, density, rows = 1 + actions.size)
         }
     }
     // Only the open menu takes focus and Back; a closing one just fades.
@@ -156,19 +158,20 @@ private fun CopyMenu(menu: MutableTransitionState<Boolean>, onCopy: () -> Unit, 
                 slideInVertically(tween(CopyMenuSpec.ENTER_MS, easing = enterEasing)) { with(density) { CopyMenuSpec.enterOffset.roundToPx() } },
             exit = fadeOut(tween(CopyMenuSpec.EXIT_MS, easing = exitEasing)),
         ) {
-            CopyMenuContent(onCopy, onClose)
+            CopyMenuContent(onCopy, onClose, actions)
         }
     }
 }
 
+/** One more row of the copy menu. */
+class CopyMenuAction(val label: String, val icon: Ionicon, val tag: String, val onClick: () -> Unit)
+
 /** The menu itself, without the popup, for layout tests. */
 @Composable
-fun CopyMenuContent(onCopy: () -> Unit, onClose: () -> Unit) {
+fun CopyMenuContent(onCopy: () -> Unit, onClose: () -> Unit, actions: List<CopyMenuAction> = emptyList()) {
     val colors = HappyTheme.colors
     val hairline = with(LocalDensity.current) { 1f.toDp() }
     val shape = RoundedCornerShape(CopyMenuSpec.radius)
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
     Column(
         modifier = Modifier
             .testTag(CopyMenuTags.MENU)
@@ -178,22 +181,34 @@ fun CopyMenuContent(onCopy: () -> Unit, onClose: () -> Unit) {
             .background(colors.surface)
             .border(hairline, colors.divider, shape),
     ) {
-        Row(
-            modifier = Modifier
-                .testTag(CopyMenuTags.COPY)
-                .width(CopyMenuSpec.width)
-                .height(CopyMenuSpec.height)
-                .background(if (pressed) colors.surfaceSelected else colors.surface)
-                .clickable(interactionSource = interaction, indication = null, role = Role.Button) {
-                    onCopy()
-                    onClose()
-                }
-                .padding(horizontal = CopyMenuSpec.paddingHorizontal),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(CopyMenuSpec.iconGap),
-        ) {
-            Icon(Ionicon.CopyOutline, CopyMenuSpec.icon, colors.text)
-            Text(stringResource(R.string.common_copy), style = CopyMenuSpec.label, color = colors.text)
+        CopyMenuRow(stringResource(R.string.common_copy), Ionicon.CopyOutline, CopyMenuTags.COPY) {
+            onCopy()
+            onClose()
         }
+        for (action in actions) CopyMenuRow(action.label, action.icon, action.tag) {
+            onClose()
+            action.onClick()
+        }
+    }
+}
+
+@Composable
+private fun CopyMenuRow(label: String, icon: Ionicon, tag: String, onClick: () -> Unit) {
+    val colors = HappyTheme.colors
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    Row(
+        modifier = Modifier
+            .testTag(tag)
+            .width(CopyMenuSpec.width)
+            .height(CopyMenuSpec.height)
+            .background(if (pressed) colors.surfaceSelected else colors.surface)
+            .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick)
+            .padding(horizontal = CopyMenuSpec.paddingHorizontal),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(CopyMenuSpec.iconGap),
+    ) {
+        Icon(icon, CopyMenuSpec.icon, colors.text)
+        Text(label, style = CopyMenuSpec.label, color = colors.text)
     }
 }
