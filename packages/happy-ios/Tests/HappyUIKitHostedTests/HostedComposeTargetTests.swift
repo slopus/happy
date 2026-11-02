@@ -335,7 +335,6 @@ final class HostedComposeTargetTests: XCTestCase {
         keep(window, "target-7-bot-larger-text")
         let composerTop = card.convert(CGPoint.zero, to: chat.view).y
         let bar = navigation.navigationBar.frame.maxY
-        print("TEXTSIZE panel hidden=\(panel.isHidden) frame=\(panel.frame) bar=\(bar) composerTop=\(composerTop)")
         XCTAssertFalse(panel.isHidden, "the bot's name and computer are on screen")
         for row in [panel.kind, panel.machine, panel.name] as [UIView] {
             let frame = row.convert(row.bounds, to: chat.view)
