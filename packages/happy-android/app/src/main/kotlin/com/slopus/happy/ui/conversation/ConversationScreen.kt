@@ -31,6 +31,7 @@ import com.slopus.happy.ui.chat.MessageLift
 import com.slopus.happy.ui.chat.MessageLiftOverlay
 import com.slopus.happy.ui.chat.MessageLiftSpec
 import com.slopus.happy.ui.chat.liftBackdrop
+import com.slopus.happy.ui.chat.liftClear
 import com.slopus.happy.ui.chat.linkStatusWords
 import com.slopus.happy.ui.components.PageProgressIndicator as CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -317,13 +318,13 @@ fun ConversationScreen(
         state.rows.isEmpty() -> TranscriptPhase.Empty
         else -> TranscriptPhase.Rows
     }
-    // A held message lifts over the chat, blurred and dimmed behind it (iOS 8c2a92172).
+    // A held message lifts over the chat, blurred and veiled behind it above the composer (iOS 8c2a92172).
     val lift = remember { MessageLift() }
     val blur = with(LocalDensity.current) { MessageLiftSpec.blur.toPx() }
     Box(modifier.fillMaxSize()) {
         CompositionLocalProvider(LocalMessageLift provides lift) {
             GlassBarLayout(
-                modifier = Modifier.liftBackdrop(lift, blur).testTag(ConversationScreenTags.SCREEN).fillMaxSize().background(colors.surface),
+                modifier = Modifier.testTag(ConversationScreenTags.SCREEN).fillMaxSize().background(colors.surface),
                 ground = colors.surface,
                 source = glass,
                 // Only the transcript runs under the bar; the other states are held below the bar's foot.
@@ -437,14 +438,15 @@ fun ConversationScreen(
                             actionIconContentColor = colors.text,
                         ),
                         // On the content column, so back and the actions' glyphs sit on the messages' keyline.
-                        modifier = Modifier.contentMaxWidth(LocalWindowLayout.current).testTag(ConversationScreenTags.BAR),
+                        modifier = Modifier.liftBackdrop(lift, blur).contentMaxWidth(LocalWindowLayout.current).testTag(ConversationScreenTags.BAR),
                     )
                 },
             ) { top ->
                 Box(Modifier.fillMaxSize()) {
                     val barFoot = top - GlassSpec.feather
                     // The loader fades into the transcript, and every state into the next.
-                    Crossfade(phase, label = "transcript") { shown ->
+                    // The chat blurs behind a held message; the composer stays sharp ([liftClear]).
+                    Crossfade(phase, Modifier.liftBackdrop(lift, blur), label = "transcript") { shown ->
                         when (shown) {
                             TranscriptPhase.Loading -> LoadingIndicator(
                                 Modifier.padding(top = barFoot).keyboardPadding(keyboard, dockHeight).testTag(ConversationScreenTags.LOADING),
@@ -501,6 +503,7 @@ fun ConversationScreen(
                             .fillMaxWidth()
                             .keyboardPadding(keyboard)
                             .onSizeChanged { dock = it.height }
+                            .liftClear(lift)
                             .windowInsetsPadding(WindowInsets.navigationBars),
                     ) {
                         RecomposeProbe.mark(ConversationScreenTags.PROBE_DOCK)

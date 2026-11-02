@@ -45,17 +45,22 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.GraphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
@@ -107,10 +112,21 @@ object MessageLiftSpec {
     const val MENU_FADE_MS = 50
     const val DISMISS_MS = 200
 
-    /** The dim over the chat: light `0x000a26` at 0.2, dark black at 0.6. */
-    val dimLight = Color(0xFF000A26).copy(alpha = 0.2f)
+    /**
+     * The veil over the chat above the composer, which stays sharp: light a
+     * white frost (iOS's `.light` blur reads grey under its `0x000a26` dim,
+     * and the light chat should read white), dark black at 0.6 as iOS's.
+     */
+    val dimLight = Color.White.copy(alpha = 0.6f)
     val dimDark = Color.Black.copy(alpha = 0.6f)
     val blur = 12.dp
+
+    /** A card's shadow on the white veil: just enough to part white from white. */
+    val cardShadow = Color.Black.copy(alpha = 0.08f)
+    val cardShadowRadius = 12.dp
+    val cardShadowY = 2.dp
+    /** The menu's, lower than a pressed copy menu's 8: its shade stays off the composer under it. */
+    val menuElevation = 4.dp
 
     /** An answer lifts on a card, 8 in from the row's sides. */
     val cardInset = 8.dp
@@ -191,6 +207,9 @@ class MessageLift {
     /** How far the chat behind has blurred and dimmed, 0 to 1. */
     internal val backdrop = Animatable(0f)
 
+    /** The composer's top in the window ([liftClear]): below it nothing is veiled. NaN without one. */
+    internal var clear by mutableFloatStateOf(Float.NaN)
+
     /** Whether row [key] is lifted, and so drawn by the overlay, not in place. */
     fun hides(key: String): Boolean = lifted?.key == key
 
@@ -259,7 +278,10 @@ fun Modifier.liftSource(source: LiftSource?): Modifier = if (source == null) thi
         if (!source.hides()) drawLayer(source.layer)
     }
 
-/** The chat behind a lifted message, blurred as it dims ([MessageLift.backdrop]). */
+/** The composer, which a lift leaves sharp and unveiled: the veil stops at its top. */
+fun Modifier.liftClear(lift: MessageLift): Modifier = onGloballyPositioned { lift.clear = it.positionInRoot().y }
+
+/** The chat behind a lifted message, blurred as it dims ([MessageLift.backdrop]); not the composer. */
 fun Modifier.liftBackdrop(lift: MessageLift, blur: Float): Modifier = graphicsLayer {
     val p = lift.backdrop.value
     renderEffect = if (p > 0f && glassBlurs()) BlurEffect(blur * p, blur * p, TileMode.Decal) else null
@@ -306,14 +328,20 @@ fun BoxScope.MessageLiftOverlay(lift: MessageLift) {
     val top = WindowInsets.statusBars.getTop(density).toFloat()
     val bottom = WindowInsets.navigationBars.getBottom(density).toFloat()
     val dim = if (colors.dark) MessageLiftSpec.dimDark else MessageLiftSpec.dimLight
+    val shadow = if (colors.dark) Color.Transparent else MessageLiftSpec.cardShadow
     val selecting = lift.selecting && !closing
+    // This box's top in the window, as placing found it, for the veil's foot.
+    val origin = remember { floatArrayOf(0f) }
     Layout(
         contents = listOf(
             {
                 Box(
                     Modifier
                         .testTag(MessageLiftTags.SCRIM)
-                        .drawBehind { drawRect(dim, alpha = lift.backdrop.value) }
+                        .drawBehind {
+                            val foot = lift.clear.takeIf { !it.isNaN() }?.let { (it - origin[0]).coerceIn(0f, size.height) } ?: size.height
+                            drawRect(dim, size = Size(size.width, foot), alpha = lift.backdrop.value)
+                        }
                         .pointerInput(lift) { detectTapGestures { lift.close() } },
                 )
             },
@@ -333,7 +361,7 @@ fun BoxScope.MessageLiftOverlay(lift: MessageLift) {
                         )
                         .drawBehind {
                             if (selecting) return@drawBehind
-                            if (lifted.card) drawCard(colors.surface, lift.backdrop.value)
+                            if (lifted.card) drawCard(colors.surface, shadow, lift.backdrop.value)
                             clipRect {
                                 translate(0f, -placed[0].offset - scrolled) { drawLayer(lifted.layer) }
                             }
@@ -373,8 +401,10 @@ fun BoxScope.MessageLiftOverlay(lift: MessageLift) {
         // Selecting drops the menu, not its room: the message stays put.
         if (menu != null) menuSize[0] = Size(menu.width.toFloat(), menu.height.toFloat())
         // The source is in the window's terms, this box maybe not (a tablet's chat pane).
+        // The composer stays clear: the message and its menu keep above it.
         fun layoutFrom(here: Offset) = MessageLiftLayout.of(
-            screen, top, bottom, lifted.source.translate(-here), menuSize[0],
+            screen, top, lift.clear.takeIf { !it.isNaN() }?.let { max(bottom, screen.height - (it - here.y)) } ?: bottom,
+            lifted.source.translate(-here), menuSize[0],
             leading = lifted.source.center.x - here.x <= screen.width / 2f,
         ) { with(density) { it.toPx() } }
         // How big the message is doesn't hang on where this box is; where it goes does, known once placing.
@@ -382,6 +412,7 @@ fun BoxScope.MessageLiftOverlay(lift: MessageLift) {
         val message = messages.first().measure(Constraints.fixed(viewport.width.toInt().coerceAtLeast(0), viewport.height.toInt().coerceAtLeast(0)))
         layout(constraints.maxWidth, constraints.maxHeight) {
             val here = coordinates?.positionInRoot() ?: Offset.Zero
+            origin[0] = here.y
             val layout = layoutFrom(here)
             placed[0] = layout
             scrim.place(0, 0)
@@ -393,13 +424,25 @@ fun BoxScope.MessageLiftOverlay(lift: MessageLift) {
     }
 }
 
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCard(color: Color, alpha: Float = 1f) {
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCard(color: Color, shadow: Color, alpha: Float = 1f) {
     val inset = MessageLiftSpec.cardInset.toPx()
+    val radius = MessageLiftSpec.cardRadius.toPx()
+    if (shadow.alpha > 0f) {
+        drawIntoCanvas { canvas ->
+            val paint = Paint().asFrameworkPaint().apply {
+                isAntiAlias = true
+                this.color = color.copy(alpha = color.alpha * alpha).toArgb()
+                setShadowLayer(MessageLiftSpec.cardShadowRadius.toPx(), 0f, MessageLiftSpec.cardShadowY.toPx(), shadow.copy(alpha = shadow.alpha * alpha).toArgb())
+            }
+            canvas.nativeCanvas.drawRoundRect(inset, 0f, size.width - inset, size.height, radius, radius, paint)
+        }
+        return
+    }
     drawRoundRect(
         color,
         topLeft = Offset(inset, 0f),
         size = Size(size.width - 2 * inset, size.height),
-        cornerRadius = CornerRadius(MessageLiftSpec.cardRadius.toPx()),
+        cornerRadius = CornerRadius(radius),
         alpha = alpha,
     )
 }
@@ -412,7 +455,7 @@ private fun SelectingWords(lifted: MessageLift.Lifted, scrolled: Int, onDone: ()
     Box(
         Modifier
             .fillMaxSize()
-            .then(if (lifted.card) Modifier.drawBehind { drawCard(colors.surface) } else Modifier)
+            .then(if (lifted.card) Modifier.drawBehind { drawCard(colors.surface, if (colors.dark) Color.Transparent else MessageLiftSpec.cardShadow) } else Modifier)
             .verticalScroll(rememberScrollState(scrolled)),
     ) {
         SelectionContainer(state) { lifted.selectable() }
@@ -458,7 +501,7 @@ private fun LiftMenu(lifted: MessageLift.Lifted, onCopy: () -> Unit, onSelect: (
         modifier = modifier
             .testTag(MessageLiftTags.MENU)
             .width(CopyMenuSpec.width)
-            .shadow(CopyMenuSpec.elevation, shape)
+            .shadow(MessageLiftSpec.menuElevation, shape)
             .clip(shape)
             .background(colors.surface)
             .border(hairline, colors.divider, shape),

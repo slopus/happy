@@ -1092,6 +1092,14 @@ its "Copy" pill. `proseSpans` marks inline code with `INLINE_CODE`. A long
 press on that code selects the whole span, both in place (`SelectionStart`)
 and in the lift's Select (`LiftSelection`).
 
+A held message lifts over the chat (MessageLift). Only the header and the
+transcript blur (`liftBackdrop`). The veil stops at the composer's top
+(`liftClear` sets `MessageLift.clear`), so the input stays sharp and
+undimmed. The lifted message and its menu keep 10 above the composer. The
+light veil is white at 0.6, so the chat reads frosted white, not grey; the
+dark veil is black at 0.6. A card's shadow (8% black, 12 blur) and the
+menu's 4 elevation part white from white without shading the composer.
+
 ### Image loading
 
 One Coil 3 `ImageLoader` (`ui/components/RemoteImage.kt`) for every

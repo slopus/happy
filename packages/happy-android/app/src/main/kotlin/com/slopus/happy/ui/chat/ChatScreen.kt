@@ -267,14 +267,13 @@ fun ChatScreen(
     glass.travel = keyboard.travel
     // A message sent at the newest end flies from the composer to its row, over everything (SendFlight).
     val flight = remember(session?.id) { SendFlight() }
-    // A held message lifts over the chat, blurred and dimmed behind it (iOS 8c2a92172).
+    // A held message lifts over the chat, blurred and veiled behind it above the composer (iOS 8c2a92172).
     val lift = remember(session?.id) { MessageLift() }
     val blur = with(LocalDensity.current) { MessageLiftSpec.blur.toPx() }
     Box(modifier.fillMaxSize()) {
         CompositionLocalProvider(LocalSendFlight provides flight, LocalMessageLift provides lift) {
             GlassBarLayout(
                 modifier = Modifier
-                    .liftBackdrop(lift, blur)
                     .testTag(ChatScreenTags.SCREEN)
                     .fillMaxSize()
                     .background(colors.surface),
@@ -283,7 +282,7 @@ fun ChatScreen(
                 // Only the transcript runs under the bar; what stands in for it is held below the bar's foot.
                 feathered = showsList,
                 bar = {
-                    Column {
+                    Column(Modifier.liftBackdrop(lift, blur)) {
                         Header(
                             left = { HeaderBackButton(actions.onBack) },
                             titleContent = {
@@ -331,7 +330,8 @@ fun ChatScreen(
                             .onPlaced { list[0] = it },
                     ) {
                         // The list runs under the bar and the floating dock; anything else keeps to the room between them.
-                        Box(Modifier.fillMaxSize().padding(top = if (showsList) 0.dp else top - GlassSpec.feather, bottom = if (showsList) 0.dp else dockInset)) {
+                        // The chat blurs behind a held message; the composer stays sharp ([liftClear]).
+                        Box(Modifier.fillMaxSize().liftBackdrop(lift, blur).padding(top = if (showsList) 0.dp else top - GlassSpec.feather, bottom = if (showsList) 0.dp else dockInset)) {
                             when {
                                 session == null && pending != null -> pending.placeholder()
                                 !state.sessionLoaded -> Spinner(Modifier.align(Alignment.Center).testTag(ChatScreenTags.LOADING))
@@ -378,12 +378,13 @@ fun ChatScreen(
                                 Modifier
                                     .align(Alignment.BottomCenter)
                                     .onSizeChanged { dockHeight = it.height }
+                                    .liftClear(lift)
                                     .windowInsetsPadding(WindowInsets.navigationBars),
                                 Modifier,
                             )
                         }
                     }
-                    if (!docked) dock(Modifier, Modifier.windowInsetsPadding(WindowInsets.navigationBars))
+                    if (!docked) dock(Modifier.liftClear(lift), Modifier.windowInsetsPadding(WindowInsets.navigationBars))
                 }
             }
         }

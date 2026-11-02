@@ -111,7 +111,10 @@ class MessageLiftTest {
         shot("lift-bubble")
         val message = rule.node(MessageLiftTags.MESSAGE).bounds
         val menu = rule.node(MessageLiftTags.MENU).bounds
-        assertEquals("lifted where it rested", bubble, message)
+        // The composer stays clear: a bubble resting on it rises just enough for its menu to keep 10 above.
+        assertEquals("as it rested, across", bubble.left to bubble.right, message.left to message.right)
+        assertDp("as tall as it rested", bubble.bottom - bubble.top, message.bottom - message.top)
+        assertDp("its menu 10 above the composer", 10, rule.node(ChatScreenTags.DOCK).bounds.top - menu.bottom)
         assertTrue("the lifted bubble draws its words", inked(rule.node(MessageLiftTags.MESSAGE).captureToImage().asAndroidBitmap()) > 50)
         assertDp("the menu 7 under it", 7, menu.top - message.bottom)
         assertDp("leaning 7 in from its trailing edge", 7, message.right - menu.right)
@@ -141,7 +144,9 @@ class MessageLiftTest {
         val bubble = rule.node(MessageTags.USER_BODY).bounds
         rule.node(MessageTags.USER_BODY).performTouchInput { longClick() }
         rule.waitForIdle()
-        assertEquals("lifted where it rested", bubble, rule.node(MessageLiftTags.MESSAGE).bounds)
+        val message = rule.node(MessageLiftTags.MESSAGE).bounds
+        assertEquals("over where it rested, across", bubble.left to bubble.right, message.left to message.right)
+        assertDp("its menu 10 above the pane's composer", 10, rule.node(ChatScreenTags.DOCK).bounds.top - rule.node(MessageLiftTags.MENU).bounds.bottom)
     }
 
     @Test
@@ -171,9 +176,9 @@ class MessageLiftTest {
         // The row's words, and the lift's own laid out to select.
         assertEquals(2, rule.onAllNodesWithText("Hello there", useUnmergedTree = true).fetchSemanticsNodes().size)
         val words = rule.onAllNodesWithText("Hello there", useUnmergedTree = true)
-        val rowWords = rule.node(MessageTags.USER_BODY).bounds
+        val message = rule.node(MessageLiftTags.MESSAGE).bounds
         val laid = (0..1).map { words[it].bounds }
-        assertTrue("laid out on the lifted bubble's words: $laid vs $rowWords", laid.all { it.top >= rowWords.top - 0.5.dp && it.bottom <= rowWords.bottom + 0.5.dp })
+        assertTrue("laid out on the lifted bubble's words: $laid vs $message", laid.any { it.top >= message.top - 0.5.dp && it.bottom <= message.bottom + 0.5.dp })
     }
 
     @Test
@@ -187,7 +192,7 @@ class MessageLiftTest {
         val message = rule.node(MessageLiftTags.MESSAGE).bounds
         val menu = rule.node(MessageLiftTags.MENU).bounds
         assertDp("a full-width answer's menu keeps 12 from the screen's side", 12, menu.left)
-        assertTrue("lifted around the answer's words", message.top <= row.top && message.bottom >= row.bottom)
+        assertTrue("lifted around the answer's words", message.bottom - message.top >= row.bottom - row.top)
         assertTrue("the card draws the answer's words", inked(rule.node(MessageLiftTags.MESSAGE).captureToImage().asAndroidBitmap()) > 50)
         rule.node(MessageLiftTags.COPY).performClick()
         rule.waitForIdle()
@@ -239,5 +244,68 @@ class MessageLiftTest {
         rule.node(MessageLiftTags.COPY).performClick()
         rule.waitForIdle()
         assertEquals("Looking at the callback first.", clipboard.primaryClip?.getItemAt(0)?.text?.toString())
+    }
+
+    /** [bitmap]'s mean red, green and blue over [x] by [y] at its centre, 0 to 255. */
+    private fun tone(bitmap: Bitmap, x: Int, y: Int): Int {
+        var sum = 0L
+        val n = 9
+        for (dy in -1..1) for (dx in -1..1) {
+            val c = bitmap.getPixel(x + dx, y + dy)
+            sum += android.graphics.Color.red(c) + android.graphics.Color.green(c) + android.graphics.Color.blue(c)
+        }
+        return (sum / (3 * n)).toInt()
+    }
+
+    /** How far two colours are apart, in the channel that moved most. */
+    private fun apart(a: Int, b: Int): Int = maxOf(
+        kotlin.math.abs(android.graphics.Color.red(a) - android.graphics.Color.red(b)),
+        kotlin.math.abs(android.graphics.Color.green(a) - android.graphics.Color.green(b)),
+        kotlin.math.abs(android.graphics.Color.blue(a) - android.graphics.Color.blue(b)),
+    )
+
+    private fun liftAnAnswerOverTheComposer(dark: Boolean): Triple<Bitmap, Bitmap, androidx.compose.ui.unit.DpRect> {
+        val rows = listOf(ConversationRow.Text("m:0", "Looking at the callback first.", parseMarkdown("Looking at the callback first.")))
+        rule.setHappyContent(dark = dark) { ConversationScreen(ConversationState(created = true, loaded = true, rows = rows, agent = agent), null, ConversationScreenActions()) }
+        rule.waitForIdle()
+        val before = rule.onRoot().captureToImage().asAndroidBitmap()
+        rule.onAllNodesWithTag(MessageTags.AGENT, useUnmergedTree = true)[0].performTouchInput { longClick() }
+        rule.waitForIdle()
+        rule.mainClock.advanceTimeBy(1_000)
+        rule.waitForIdle()
+        return Triple(before, rule.onRoot().captureToImage().asAndroidBitmap(), rule.node(com.slopus.happy.ui.conversation.ConversationComposerTags.COMPOSER).bounds)
+    }
+
+    @Test
+    fun theComposerStaysSharpAndTheLightVeilIsWhite() {
+        val (before, after, composer) = liftAnAnswerOverTheComposer(dark = false)
+        shot("lift-veil-light")
+        val density = RuntimeEnvironment.getApplication().resources.displayMetrics.density
+        // The composer's pill draws as it did, unveiled and unblurred.
+        val top = (composer.top.value * density).toInt() + 4
+        val bottom = (composer.bottom.value * density).toInt() - 4
+        var moved = 0
+        val rows = sortedSetOf<Int>()
+        for (y in top until bottom step 3) for (x in 0 until before.width step 3) if (apart(before.getPixel(x, y), after.getPixel(x, y)) > 16) { moved++; rows += y }
+        assertEquals("the composer is neither veiled nor dimmed (top $top, rows $rows)", 0, moved)
+        // Above it the chat reads white and frosted, not grey.
+        assertTrue("white veil: ${tone(after, 40, top - 120)}", tone(after, 40, top - 120) > 240)
+        // The lifted card and its menu keep above the composer.
+        assertTrue(rule.node(MessageLiftTags.MESSAGE).bounds.bottom <= composer.top)
+        assertTrue(rule.node(MessageLiftTags.MENU).bounds.bottom <= composer.top)
+    }
+
+    @Test
+    fun theDarkVeilIsDarkAndLeavesTheComposerToo() {
+        val (before, after, composer) = liftAnAnswerOverTheComposer(dark = true)
+        shot("lift-veil-dark")
+        val density = RuntimeEnvironment.getApplication().resources.displayMetrics.density
+        val top = (composer.top.value * density).toInt() + 4
+        val bottom = (composer.bottom.value * density).toInt() - 4
+        var moved = 0
+        val rows = sortedSetOf<Int>()
+        for (y in top until bottom step 3) for (x in 0 until before.width step 3) if (apart(before.getPixel(x, y), after.getPixel(x, y)) > 16) { moved++; rows += y }
+        assertEquals("the composer is neither veiled nor dimmed (top $top, rows $rows)", 0, moved)
+        assertTrue("dark veil: ${tone(after, 40, top - 120)}", tone(after, 40, top - 120) < 40)
     }
 }
