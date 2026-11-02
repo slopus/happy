@@ -117,9 +117,12 @@ object ChatNormalizer {
             is SessionEvent.Rejected ->
                 message(Body.Event(AgentEvent.UserMessageRejected(ev.ref, ev.reason)), sidechain = false, turn = null, usage = null)
             SessionEvent.TurnEnd -> message(Body.Event(AgentEvent.Ready), sidechain = false, usage = null)
-            is SessionEvent.Service -> message(
-                Body.Agent(if (isUsageOnlyServiceEvent) emptyList() else listOf(AgentContent.Text(ev.text, e.id, parentUUID))),
-            )
+            is SessionEvent.Service -> when {
+                isUsageOnlyServiceEvent -> message(Body.Agent(emptyList()))
+                // Happy Agent's provider errors, outside a subagent's task: an error line, not the agent's words.
+                !isSidechain && AgentEvent.Notice.isProviderError(ev.text) -> message(Body.Event(AgentEvent.Notice(ev.text)))
+                else -> message(Body.Agent(listOf(AgentContent.Text(ev.text, e.id, parentUUID))))
+            }
             is SessionEvent.Text -> {
                 val visible = stripLeadingTaskNotificationWrappers(ev.text)
                 if (visible != ev.text && visible.isBlank()) return null

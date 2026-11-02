@@ -68,6 +68,19 @@ data class UsageData(
 sealed interface AgentEvent {
     data class Switch(val mode: String) : AgentEvent
     data class Message(val message: String) : AgentEvent
+    /**
+     * A provider error Happy Agent reports on the run (a `service`
+     * envelope, mapHappyMessages.ts): a retry after one, or a failed run.
+     * Shown as an error line, never as the agent's reply, which is how
+     * happy-app shows every `service` text. The others (another agent's
+     * words, a subagent starting) stay agent text.
+     */
+    data class Notice(val text: String) : AgentEvent {
+        companion object {
+            fun isProviderError(text: String): Boolean =
+                text.startsWith("Retrying after an error") || text.startsWith("The run failed:")
+        }
+    }
     data class LimitReached(val endsAt: Long) : AgentEvent
     data object Ready : AgentEvent
     /** The agent took the message with server id [ref] into context. Never rendered. */

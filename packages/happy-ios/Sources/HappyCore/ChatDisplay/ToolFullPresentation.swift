@@ -201,6 +201,7 @@ extension ToolFullPresentation {
         case .modeSwitch(let mode): .object(["type": .string("switch"), "mode": .string(mode)])
         case .message(let message): .object(["type": .string("message"), "message": .string(message)])
         case .limitReached(let endsAt): .object(["type": .string("limit-reached"), "endsAt": .number(Double(endsAt))])
+        case .notice(let text): .object(["type": .string("notice"), "text": .string(text)])
         case .ready: .object(["type": .string("ready")])
         case .userMessageAccepted(let ref): .object(["type": .string("user-message-accepted"), "ref": .string(ref)])
         case .userMessageRejected(let ref, let reason): .object(["type": .string("user-message-rejected"), "ref": .string(ref), "reason": .string(reason)])

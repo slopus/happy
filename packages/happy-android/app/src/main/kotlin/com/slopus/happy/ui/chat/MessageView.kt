@@ -423,13 +423,15 @@ private fun MessageCopyButton(text: String) {
 /**
  * An agent event (`AgentEventBlock`). Spec: 8 side margins, 8 above and
  * below, centred 14pt text in agentEventText: the mode switch, the agent's
- * message, the usage limit's end time, or "Unknown event".
+ * message, the usage limit's end time, or "Unknown event". The harness's
+ * notice ([AgentEvent.Notice]) is an error, in the destructive colour.
  */
 @Composable
 fun EventMessage(event: AgentEvent, modifier: Modifier = Modifier) {
     val text = when (event) {
         is AgentEvent.Switch -> stringResource(R.string.message_switched_to_mode, event.mode)
         is AgentEvent.Message -> event.message
+        is AgentEvent.Notice -> event.text
         is AgentEvent.LimitReached -> stringResource(
             R.string.message_usage_limit_until,
             DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(event.endsAt * 1000)),
@@ -444,7 +446,8 @@ fun EventMessage(event: AgentEvent, modifier: Modifier = Modifier) {
             .padding(vertical = MessageSpec.eventPaddingVertical),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, style = MessageSpec.eventText, color = ChatTheme.colors.agentEventText, textAlign = TextAlign.Center)
+        val color = if (event is AgentEvent.Notice) HappyTheme.colors.textDestructive else ChatTheme.colors.agentEventText
+        Text(text, style = MessageSpec.eventText, color = color, textAlign = TextAlign.Center)
     }
 }
 
