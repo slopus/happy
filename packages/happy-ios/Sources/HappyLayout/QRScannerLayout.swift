@@ -22,6 +22,8 @@ public struct QRScannerLayout: Equatable, Sendable {
         public static let closeButtonMargin: CGFloat = 8
         public static let messageButtonSpacing: CGFloat = 24
         public static let messageButtonMaxWidth: CGFloat = 280
+        /// Past this the picture jumps about too much to aim.
+        public static let maxFocusZoom: CGFloat = 3
     }
 
     public enum Mode {
@@ -63,6 +65,62 @@ public struct QRScannerLayout: Equatable, Sendable {
         let area = converted.standardized.intersection(whole)
         guard !area.isNull, area.width > 0.05, area.height > 0.05 else { return whole }
         return area
+    }
+
+    /// The viewfinder as the camera output's rect of interest, worked out
+    /// from what the preview shows rather than asked of the preview layer,
+    /// which answers nonsense until its session runs and its connection
+    /// has a format.
+    ///
+    /// - `preview`: the preview layer's size, filled aspect-fill.
+    /// - `video`: the camera's picture as the sensor delivers it, landscape
+    ///   with (0, 0) at the top left, which is also the output's unit space.
+    /// - `rotation`: the preview connection's `videoRotationAngle`, the
+    ///   clockwise turn that stands that picture upright on screen: 90 in
+    ///   portrait, 0 in landscape right, 180 in landscape left, 270 upside
+    ///   down.
+    public static func scanArea(viewfinder: CGRect, preview: CGSize, video: CGSize, rotation: CGFloat) -> CGRect {
+        let whole = CGRect(x: 0, y: 0, width: 1, height: 1)
+        guard rotation.isFinite, video.width > 0, video.height > 0, preview.width > 0, preview.height > 0 else { return whole }
+        let quarter = ((Int((rotation / 90).rounded()) % 4) + 4) % 4
+        let upright = quarter % 2 == 1 ? CGSize(width: video.height, height: video.width) : video
+        let scale = max(preview.width / upright.width, preview.height / upright.height)
+        let shown = CGSize(width: upright.width * scale, height: upright.height * scale)
+        let left = (preview.width - shown.width) / 2
+        let top = (preview.height - shown.height) / 2
+        // The viewfinder in the upright picture's unit space…
+        let x = (viewfinder.minX - left) / shown.width
+        let y = (viewfinder.minY - top) / shown.height
+        let width = viewfinder.width / shown.width
+        let height = viewfinder.height / shown.height
+        // …turned back to the sensor's.
+        let area = switch quarter {
+        case 1: CGRect(x: y, y: 1 - x - width, width: height, height: width)
+        case 2: CGRect(x: 1 - x - width, y: 1 - y - height, width: width, height: height)
+        case 3: CGRect(x: 1 - y - height, y: x, width: height, height: width)
+        default: CGRect(x: x, y: y, width: width, height: height)
+        }
+        return scanArea(area)
+    }
+
+    /// The zoom that lets a code as small as Happy shows one fill the rect
+    /// of interest while still in focus, after Apple's AVCamBarcode: a
+    /// camera that can't focus close (the iPhone 15 Pro's wide one focuses
+    /// no nearer than about 20 cm) would otherwise be held so near that
+    /// the code is a blur and never reads. 1 when it can focus that near
+    /// or says nothing of its distance.
+    ///
+    /// - `minimumFocusDistance`: millimetres, -1 when unknown.
+    /// - `fieldOfView`: degrees across the picture's long side.
+    /// - `fill`: the share of that side the rect of interest spans.
+    public static func focusZoom(minimumFocusDistance: Float, fieldOfView: Float, fill: CGFloat) -> CGFloat {
+        guard minimumFocusDistance > 0, fieldOfView > 0, fieldOfView < 180, fill > 0, fill <= 1 else { return 1 }
+        // The desktop's code is about 32 mm across, the CLI's about 45.
+        let codeSize: Float = 30
+        let halfAngle = fieldOfView / 2 * .pi / 180
+        let distance = codeSize / (2 * Float(fill) * tan(halfAngle))
+        guard distance < minimumFocusDistance else { return 1 }
+        return min(CGFloat(minimumFocusDistance / distance), Metrics.maxFocusZoom)
     }
 
     public static func buttonWidth(size: CGSize, safeArea: LayoutInsets) -> CGFloat {

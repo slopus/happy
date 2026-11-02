@@ -24,13 +24,17 @@ enum HappyScan {
 
     static let log = Logger(subsystem: "engineering.happy", category: "scan")
 
-    /// The camera; the first code it reads, nil when closed.
+    /// The camera; the first code it reads, nil when closed. Over whatever
+    /// `controller` already shows: UIKit drops a second presentation
+    /// without a word, and the scan would never end.
     static func read(from controller: UIViewController, otherWays: [ScannerWay] = []) async -> String? {
         await withCheckedContinuation { continuation in
             let scanner = QRScannerViewController()
             scanner.otherWays = otherWays
             scanner.onFinish = { continuation.resume(returning: $0) }
-            controller.present(scanner, animated: true)
+            var presenter = controller
+            while let next = presenter.presentedViewController, !next.isBeingDismissed { presenter = next }
+            presenter.present(scanner, animated: true)
         }
     }
 

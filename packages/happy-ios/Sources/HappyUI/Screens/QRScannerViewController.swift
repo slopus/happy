@@ -26,8 +26,12 @@ public final class QRScannerViewController: UIViewController {
         didSet { updateMode() }
     }
 
-    private let capture = CaptureSession()
+    /// Internal so a test can hand its delegate a code.
+    let capture = ScannerCapture()
     private let previewLayer: AVCaptureVideoPreviewLayer
+    /// Keeps the picture upright as the device and the window turn.
+    private var rotation: AVCaptureDevice.RotationCoordinator?
+    private var rotationObservation: NSKeyValueObservation?
     private let overlay = ScannerOverlayView()
     private let hintLabel = StyledLabel(style: TextStyles.scannerHint, color: ColorToken(light: .white, dark: .white), alignment: .center)
     private let messageLabel = StyledLabel(style: TextStyles.scannerMessage, color: Palette.text, alignment: .center)
@@ -35,8 +39,7 @@ public final class QRScannerViewController: UIViewController {
     private let closeButton = UIButton(type: .system)
     private let moreButton = UIButton(type: .system)
     private var finished = false
-    /// The session is running: only then does the preview layer convert
-    /// the viewfinder into the output's space correctly.
+    /// The session is running, so the camera's picture size is known.
     private var running = false
     private var viewfinder: CGRect?
     private static let log = Logger(subsystem: "engineering.happy", category: "scan")
@@ -88,6 +91,9 @@ public final class QRScannerViewController: UIViewController {
         })
         moreButton.isHidden = otherWays.isEmpty
         view.addSubview(moreButton)
+        // Before the camera starts, so a code handed to the delegate is
+        // never dropped.
+        capture.onCode = { [weak self] value in self?.found(value) }
         updateMode()
         start()
     }
@@ -111,7 +117,8 @@ public final class QRScannerViewController: UIViewController {
         closeButton.setLayoutFrame(layout.close)
         // The close button's mirror at the right.
         moreButton.setLayoutFrame(CGRect(x: view.bounds.width - layout.close.maxX, y: layout.close.minY, width: layout.close.width, height: layout.close.height))
-        updateScanArea(layout.viewfinder)
+        viewfinder = layout.viewfinder
+        updateScanArea()
     }
 
     public override func viewDidDisappear(_ animated: Bool) {
@@ -138,21 +145,48 @@ public final class QRScannerViewController: UIViewController {
         view.setNeedsLayout()
     }
 
+    /// No camera says so without asking for one; the simulator has none.
     private func start() {
+        guard capture.device != nil else { return mode = .unavailable }
         Task { @MainActor [weak self] in
             guard await Self.cameraAccess() else {
                 self?.mode = .denied
                 return
             }
-            let started = await self?.capture.start { [weak self] value in
-                self?.found(value)
-            }
+            let started = await self?.capture.start()
             Self.log.debug("capture started: \(String(describing: started), privacy: .public)")
             guard let self else { return }
             if started == false { return mode = .unavailable }
             running = true
-            updateScanArea(viewfinder)
+            followRotation()
+            updateScanArea()
         }
+    }
+
+    /// The preview stands upright whichever way the device or the window
+    /// turns (an iPad's split, Slide Over and windows included), as the
+    /// coordinator works it out from both; the scan area follows.
+    private func followRotation() {
+        guard let device = capture.device else { return }
+        let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: previewLayer)
+        rotation = coordinator
+        rotate(to: coordinator.videoRotationAngleForHorizonLevelPreview)
+        rotationObservation = coordinator.observe(\.videoRotationAngleForHorizonLevelPreview, options: [.new]) { [weak self] coordinator, _ in
+            let angle = coordinator.videoRotationAngleForHorizonLevelPreview
+            Task { @MainActor in self?.rotate(to: angle) }
+        }
+    }
+
+    private func rotate(to angle: CGFloat) {
+        guard let connection = previewLayer.connection, connection.isVideoRotationAngleSupported(angle) else { return }
+        if connection.videoRotationAngle != angle {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            connection.videoRotationAngle = angle
+            CATransaction.commit()
+        }
+        Self.log.debug("preview rotation \(angle, privacy: .public)")
+        updateScanArea()
     }
 
     private static func cameraAccess() async -> Bool {
@@ -163,16 +197,17 @@ public final class QRScannerViewController: UIViewController {
         }
     }
 
-    /// Reads only inside the viewfinder, so a second code nearby is ignored.
-    /// Converted before the session runs, the rect comes out empty and the
-    /// camera reads nothing at all; so only once it runs, and the whole
-    /// frame whenever the conversion is unusable.
-    private func updateScanArea(_ viewfinder: CGRect?) {
-        self.viewfinder = viewfinder
-        guard running, let viewfinder, previewLayer.frame.width > 0 else { return }
-        let area = QRScannerLayout.scanArea(previewLayer.metadataOutputRectConverted(fromLayerRect: viewfinder))
-        Self.log.debug("scan area \(String(describing: area), privacy: .public)")
-        capture.setRectOfInterest(area)
+    /// Reads only inside the viewfinder, so a second code nearby is ignored:
+    /// on every layout and every turn, from the picture the preview shows
+    /// (`QRScannerLayout.scanArea`). The layer's own conversion is logged
+    /// beside it, to compare on a device.
+    private func updateScanArea() {
+        guard running, let viewfinder, let video = capture.videoSize, previewLayer.bounds.width > 0 else { return }
+        let rotation = previewLayer.connection?.videoRotationAngle ?? 90
+        let area = QRScannerLayout.scanArea(viewfinder: viewfinder, preview: previewLayer.bounds.size, video: video, rotation: rotation)
+        let converted = previewLayer.metadataOutputRectConverted(fromLayerRect: viewfinder)
+        Self.log.debug("scan area \(String(describing: area), privacy: .public), the layer's \(String(describing: converted), privacy: .public), rotation \(rotation, privacy: .public)")
+        capture.setScanArea(area)
     }
 
     private func found(_ value: String) {
@@ -255,21 +290,47 @@ final class ScannerOverlayView: UIView {
     }
 }
 
-/// The capture session and its queue. AVCaptureSession is not Sendable and
-/// startRunning blocks, so every call goes through one serial queue.
-private final class CaptureSession: NSObject, AVCaptureMetadataOutputObjectsDelegate, @unchecked Sendable {
+/// The camera, its session and their queue. AVCaptureSession is not
+/// Sendable and startRunning blocks, so every call goes through one serial
+/// queue.
+final class ScannerCapture: NSObject, AVCaptureMetadataOutputObjectsDelegate, @unchecked Sendable {
     let session = AVCaptureSession()
+    /// The back camera that reads codes best; nil without one, as in the
+    /// simulator.
+    let device: AVCaptureDevice? = ScannerCapture.camera()
+    /// The picture's size as the sensor delivers it. Written on the queue
+    /// before `start` returns, read on the main queue after.
+    private(set) var videoSize: CGSize?
+    /// Read and written on the main queue only.
+    @MainActor var onCode: ((String) -> Void)?
     private let queue = DispatchQueue(label: "engineering.happy.scanner")
     private let output = AVCaptureMetadataOutput()
     private var configured = false
-    // Read and written on the main queue only.
-    private var onCode: (@MainActor (String) -> Void)?
+    /// The zoom at which the picture is the wide camera's, the Camera
+    /// app's 1×.
+    private var baseZoom: CGFloat = 1
+    private static let log = Logger(subsystem: "engineering.happy", category: "scan")
 
-    /// Configures on first use and starts. False when there is no camera.
-    @MainActor
-    func start(onCode: @escaping @MainActor (String) -> Void) async -> Bool {
-        self.onCode = onCode
-        return await withCheckedContinuation { continuation in
+    override init() {
+        super.init()
+        NotificationCenter.default.addObserver(self, selector: #selector(interrupted(_:)), name: AVCaptureSession.wasInterruptedNotification, object: session)
+    }
+
+    /// A virtual camera with an ultra wide one switches to it for a code
+    /// held close, as the Camera app does for macro; the wide camera alone
+    /// focuses no nearer than about 20 cm on recent iPhones, and a code held
+    /// nearer to fill the viewfinder is a blur that never reads.
+    private static func camera() -> AVCaptureDevice? {
+        for type: AVCaptureDevice.DeviceType in [.builtInTripleCamera, .builtInDualWideCamera, .builtInWideAngleCamera] {
+            if let device = AVCaptureDevice.default(type, for: .video, position: .back) { return device }
+        }
+        return AVCaptureDevice.default(for: .video)
+    }
+
+    /// Configures on first use and starts. False when the camera can't
+    /// read QR codes.
+    func start() async -> Bool {
+        await withCheckedContinuation { continuation in
             queue.async {
                 guard self.configureIfNeeded() else {
                     continuation.resume(returning: false)
@@ -291,29 +352,75 @@ private final class CaptureSession: NSObject, AVCaptureMetadataOutputObjectsDele
         }
     }
 
-    func setRectOfInterest(_ rect: CGRect) {
+    /// The rect of interest, and the zoom that keeps a code filling it in
+    /// focus.
+    func setScanArea(_ area: CGRect) {
         queue.async {
-            guard self.configured else { return }
-            self.output.rectOfInterest = rect
+            guard self.configured, let device = self.device else { return }
+            self.output.rectOfInterest = area
+            // A virtual camera switches to its ultra wide one instead.
+            let focus = device.isVirtualDevice || area.width >= 1 ? 1 : QRScannerLayout.focusZoom(
+                minimumFocusDistance: Float(device.minimumFocusDistance),
+                fieldOfView: device.activeFormat.videoFieldOfView,
+                fill: area.width
+            )
+            self.zoom(to: self.baseZoom * focus)
         }
     }
 
     private func configureIfNeeded() -> Bool {
         if configured { return true }
-        guard let device = AVCaptureDevice.default(for: .video),
-              let input = try? AVCaptureDeviceInput(device: device) else {
+        guard let device, let input = try? AVCaptureDeviceInput(device: device) else {
             return false
         }
         session.beginConfiguration()
-        defer { session.commitConfiguration() }
-        guard session.canAddInput(input), session.canAddOutput(output) else { return false }
+        // On an iPad another app in front, in a split, Slide Over or a
+        // window, would stop the camera.
+        if session.isMultitaskingCameraAccessSupported {
+            session.isMultitaskingCameraAccessEnabled = true
+        }
+        guard session.canAddInput(input), session.canAddOutput(output) else {
+            session.commitConfiguration()
+            return false
+        }
         session.addInput(input)
         session.addOutput(output)
         output.setMetadataObjectsDelegate(self, queue: .main)
-        guard output.availableMetadataObjectTypes.contains(.qr) else { return false }
+        guard output.availableMetadataObjectTypes.contains(.qr) else {
+            session.commitConfiguration()
+            return false
+        }
         output.metadataObjectTypes = [.qr]
+        session.commitConfiguration()
+        let dimensions = CMVideoFormatDescriptionGetDimensions(device.activeFormat.formatDescription)
+        videoSize = CGSize(width: CGFloat(dimensions.width), height: CGFloat(dimensions.height))
+        // A virtual camera's 1 is its ultra wide one; the wide one takes over
+        // at the first switch-over.
+        baseZoom = device.virtualDeviceSwitchOverVideoZoomFactors.first.map { CGFloat($0.doubleValue) } ?? 1
+        if (try? device.lockForConfiguration()) != nil {
+            if device.isFocusModeSupported(.continuousAutoFocus) {
+                device.focusMode = .continuousAutoFocus
+            }
+            device.unlockForConfiguration()
+        }
+        zoom(to: baseZoom)
+        Self.log.debug("camera \(device.deviceType.rawValue, privacy: .public), \(dimensions.width, privacy: .public)×\(dimensions.height, privacy: .public), focuses from \(device.minimumFocusDistance, privacy: .public) mm, zoom \(self.baseZoom, privacy: .public)")
         configured = true
         return true
+    }
+
+    private func zoom(to factor: CGFloat) {
+        guard let device, (try? device.lockForConfiguration()) != nil else { return }
+        defer { device.unlockForConfiguration() }
+        let factor = min(max(factor, device.minAvailableVideoZoomFactor), device.maxAvailableVideoZoomFactor)
+        if device.videoZoomFactor != factor {
+            device.videoZoomFactor = factor
+        }
+    }
+
+    @objc private func interrupted(_ notification: Notification) {
+        let reason = notification.userInfo?[AVCaptureSessionInterruptionReasonKey] as? Int
+        Self.log.debug("camera interrupted: \(String(describing: reason), privacy: .public)")
     }
 
     func metadataOutput(_ output: AVCaptureMetadataOutput, didOutput metadataObjects: [AVMetadataObject], from connection: AVCaptureConnection) {
