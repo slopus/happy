@@ -46,6 +46,10 @@ private actor StoriesComputer: AgentTransport {
             ])
         case "/v0/health":
             return try json(["ready": .bool(true), "capabilities": storyFeed ? ["storyFeed": .bool(true)] : [:]])
+        case "/v0/user-settings/stories" where method == "PUT":
+            let value = try JSONDecoder().decode(JSONValue.self, from: body ?? Data())["value"] ?? .null
+            settingOn = value == .bool(true)
+            return try json(["setting": ["key": "stories", "value": value, "version": "2"]])
         case "/v0/stories":
             let answer = feed
             if holding { await withCheckedContinuation { held.append($0) } }
@@ -234,6 +238,43 @@ final class StoriesTests: XCTestCase {
             XCTAssertEqual(healthReads.count, asks, "off, the computer was asked; or asked twice")
             await engine.stop()
         }
+    }
+
+    /// Settings' Stories switch: shown only for a computer with `storyFeed`;
+    /// it writes the person's `stories` setting, and off takes the row and
+    /// every outline away again.
+    func testTheStoriesSwitchWritesThePersonsSettingAndOffTakesEverythingAway() async throws {
+        let older = await engine(StoriesComputer(storyFeed: false, settingOn: false))
+        let supportedOnOlder = await older.storiesSupported()
+        XCTAssertFalse(supportedOnOlder, "a computer without storyFeed offered the switch")
+        await older.stop()
+
+        let computer = StoriesComputer(settingOn: false)
+        await computer.post(Self.story("s1", task: "task1"))
+        let engine = await engine(computer)
+        let off = try await wait(engine) { $0.live && $0.loaded }
+        XCTAssertFalse(off.storiesEnabled, "stories are on by default")
+        XCTAssertEqual(off.posters, []); XCTAssertTrue(off.allRows.allSatisfy { $0.story == nil })
+        let supported = await engine.storiesSupported()
+        XCTAssertTrue(supported)
+
+        try await engine.setStories(true)
+        let on = try await wait(engine) { $0.storiesEnabled && Self.ring($0, "Launch") == .unseen }
+        XCTAssertEqual(on.settings[Stories.settingKey], .bool(true))
+        XCTAssertEqual(on.posters.count, 1)
+        let paths = await computer.paths()
+        XCTAssertTrue(paths.contains("PUT /v0/user-settings/stories"), "the switch didn't write the person's setting: \(paths)")
+        let stored = await computer.settingOn
+        XCTAssertTrue(stored)
+
+        try await engine.setStories(false)
+        let offAgain = try await wait(engine) { !$0.storiesEnabled }
+        XCTAssertEqual(offAgain.posters, []); XCTAssertEqual(offAgain.stories, [])
+        XCTAssertTrue(offAgain.allRows.allSatisfy { $0.story == nil }, "an outline stayed with stories off")
+        try await Task.sleep(for: .milliseconds(200))
+        let storedOff = await computer.settingOn
+        XCTAssertFalse(storedOff)
+        await engine.stop()
     }
 
     /// A story's outline goes when it ends, with no read.

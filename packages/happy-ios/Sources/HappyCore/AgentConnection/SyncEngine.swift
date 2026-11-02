@@ -473,6 +473,18 @@ public actor SyncEngine {
         try await setSetting(DesktopSettingKeys.projectsVisibility, value: .object(["projectsHidden": .bool(hidden)]))
     }
 
+    /// The person's `stories` setting, desktop's Experimental toggle: what they see, and their agents' tool.
+    public func setStories(_ on: Bool) async throws {
+        try await setSetting(Stories.settingKey, value: .bool(on))
+    }
+
+    /// Whether the computer has stories (`storyFeed`), asked once a connection.
+    public func storiesSupported() async -> Bool {
+        let generation = generation
+        if storyFeed == nil, let health = try? await client.health(), current(generation) { storyFeed = health.capabilities?.storyFeed == true }
+        return storyFeed == true
+    }
+
     public func cachedResource(_ key: String) async throws -> JSONValue? { try await database().checkpoint(key)?.value }
 
     public func keepResource(_ key: String, value: JSONValue) async throws {

@@ -29,7 +29,10 @@ private actor ProfileDaemon: AgentTransport {
     var conflicts = 0
     var failing = false
 
-    init(photo: Data?) { self.photo = photo }
+    /// Whether its health says it has stories (`storyFeed`).
+    private let storyFeed: Bool
+
+    init(photo: Data?, storyFeed: Bool = false) { self.photo = photo; self.storyFeed = storyFeed }
 
     static func version(_ n: Int) -> String { String(format: "0199a000-0000-7000-8000-%012d", n) }
 
@@ -48,6 +51,8 @@ private actor ProfileDaemon: AgentTransport {
         switch (method, path) {
         case ("GET", "/v0/profile"):
             return answer()
+        case ("GET", "/v0/health") where storyFeed:
+            return HTTP1Response(status: 200, body: Data(#"{"ready":true,"capabilities":{"storyFeed":true}}"#.utf8))
         case ("PATCH", "/v0/profile"):
             if holdingPatches { await withCheckedContinuation { held.append($0) } }
             if failing { return HTTP1Response(status: 500, body: Data(#"{"error":"The disk is full.","code":"internal"}"#.utf8)) }
@@ -146,8 +151,8 @@ final class HostedProfileSettingsTests: XCTestCase {
         let computerID: String
     }
 
-    private func rig(photo: Bool = false, signedIn: Bool = false) async throws -> Rig {
-        let daemon = ProfileDaemon(photo: photo ? Self.picture().jpegData(compressionQuality: 0.9) : nil)
+    private func rig(photo: Bool = false, signedIn: Bool = false, stories: Bool = false) async throws -> Rig {
+        let daemon = ProfileDaemon(photo: photo ? Self.picture().jpegData(compressionQuality: 0.9) : nil, storyFeed: stories)
         let controller = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
@@ -204,6 +209,7 @@ final class HostedProfileSettingsTests: XCTestCase {
         XCTAssertTrue(cards.contains(["profile"]), "the Profile row is not a card of its own: \(cards)")
         XCTAssertEqual(cards.firstIndex(of: ["profile"]), 1, "Profile is not right under the accounts")
         XCTAssertEqual(cards[2], ["appearance", "data-storage"], "a card is left between Profile and Appearance: \(cards)")
+        XCTAssertNil(settings.shownRow("stories"), "a computer without stories offered the switch")
         XCTAssertEqual(settings.shownRow("profile")?.title, "Profile")
         XCTAssertTrue(settings.agentButton.isDescendant(of: settings.view) && !settings.agentButton.isHidden, "the agent's picture isn't on the page")
         XCTAssertTrue(settings.navigationItem.rightBarButtonItems?.isEmpty ?? true, "the bar still has a button left of search")
@@ -253,6 +259,34 @@ final class HostedProfileSettingsTests: XCTestCase {
         window.overrideUserInterfaceStyle = .dark
         try await Task.sleep(for: .milliseconds(300))
         capture(window, "profile")
+        withExtendedLifetime(rig.controller) {}
+    }
+
+    /// A computer with stories offers the Stories switch, off until it is
+    /// turned on; on writes the person's `stories` setting, desktop's.
+    func testTheStoriesSwitchIsOffUntilTurnedOnAndWritesThePersonsSetting() async throws {
+        let rig = try await rig(stories: true)
+        let settings = SettingsViewController(context: rig.context, computer: rig.computerID)
+        let (_, window) = try await host(settings)
+        try await until { settings.shownRow("stories") != nil }
+        let row = try XCTUnwrap(settings.shownRow("stories"))
+        XCTAssertEqual(row.title, "Stories")
+        XCTAssertEqual(row.accessory, .toggle)
+        XCTAssertFalse(row.isOn, "Stories is on by default")
+        XCTAssertTrue(row.footer?.hasPrefix("Experimental") == true)
+        XCTAssertEqual(settings.shownRowIDs.firstIndex(of: ["stories"]), 3, "Stories isn't the card after Appearance")
+        try await Task.sleep(for: .milliseconds(300))
+        capture(window, "settings-stories-off")
+
+        row.toggled?(true)
+        try await until { settings.shownRow("stories")?.isOn == true }
+        let engine = rig.session.engine
+        try await until {
+            for await snapshot in await engine.snapshots() { return snapshot.settings[Stories.settingKey] == .bool(true) }
+            return false
+        }
+        try await Task.sleep(for: .milliseconds(300))
+        capture(window, "settings-stories-on")
         withExtendedLifetime(rig.controller) {}
     }
 
