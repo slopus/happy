@@ -840,21 +840,15 @@ public actor Conversation {
         }
         admitting.insert(id)
         defer { admitting.remove(id) }
-        var inline = pictures
+        // Pictures and files alike go into the agent's workspace and the
+        // message names their paths: the agent opens what it needs.
+        let inline: [(mimeType: String, data: Data)] = []
         var files: [QueuedFile] = []
         do {
-            let staged = try AttachmentRules.stage(attachments, messageID: id,
-                directory: persistence?.attachmentDirectory ?? temporaryAttachments)
-            var inlineBytes = inline.reduce(0) { $0 + $1.data.count }
-            for file in staged {
-                let supportedImage = ["image/jpeg", "image/png", "image/gif", "image/webp"].contains(file.mimeType)
-                if supportedImage, file.size <= AttachmentRules.maxInlineImageBytes,
-                   inlineBytes + file.size <= AttachmentRules.maxInlineImageTotalBytes {
-                    let bytes = try Data(contentsOf: file.fileURL)
-                    guard bytes.count == file.size else { throw AttachmentRules.invalid("The attachment changed while being read.") }
-                    inline.append((file.mimeType, bytes)); inlineBytes += bytes.count
-                } else { files.append(file) }
-            }
+            let directory = persistence?.attachmentDirectory ?? temporaryAttachments
+            files = try AttachmentRules.stage(attachments, messageID: id, directory: directory)
+            files += try AttachmentRules.pictureFiles(pictures.map { .init(mimeType: $0.mimeType, data: $0.data) },
+                messageID: id, directory: directory)
         } catch {
             snapshot.error = Store.describe(error)
             publish()
@@ -973,7 +967,8 @@ public actor Conversation {
                     try Task.checkCancellation()
                     if let persistence, !(await persistence.deliveryAllowed) { return }
                     do {
-                        var payload = queuedMessage(id: id, text: send.text, pictures: send.pictures)
+                        var payload = try AttachmentRules.migratePictures(queuedMessage(id: id, text: send.text, pictures: send.pictures),
+                            directory: temporaryAttachments)
                         payload.mode = mode
                         try await client.deliverMessage(payload) { _ in }
                         break

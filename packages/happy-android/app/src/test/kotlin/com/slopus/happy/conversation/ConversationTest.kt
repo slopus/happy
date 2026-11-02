@@ -731,17 +731,32 @@ class ConversationTest {
         assertEquals(picked.json(), agent.requests.last { it.second.endsWith("/send") }.third!!["mode"])
     }
 
-    @Test fun `pictures go inline with the words, in order`() = runTest {
+    @Test fun `pictures go by path, drawn from the phone until the computer has them, in order`() = runTest {
         val agent = FakeAgent()
         val chat = conversation(agent)
         advanceUntilIdle()
-        val files = listOf(preview("a.jpg", "image/jpeg", 10))
+        val dir = kotlin.io.path.createTempDirectory("uploads").toFile()
+        val photo = java.io.File(dir, "a.jpg").apply { writeBytes(byteArrayOf(9, 8, 7)) }
+        val files = listOf(preview(photo.toURI().toString(), "image/jpeg", 3, name = "a.jpg"))
         assertTrue(chat.send("Look", files) { list -> list.map { Block.Image("image/jpeg", it.name) } })
         chat.send("After")
         advanceUntilIdle()
         val sends = agent.requests.filter { it.second.endsWith("/send") }.map { it.third!! }
-        assertEquals(listOf("Look", "After"), sends.map { it["text"]!!.toString().trim('"') })
-        assertEquals("""[{"type":"image","mimeType":"image/jpeg","data":"a.jpg"}]""", sends[0]["content"].toString())
+        val id = sends[0]["id"]!!.toString().trim('"')
+        // Accepted, before the computer's copy arrives: drawn from the phone.
+        val waiting = chat.state.value.rows.filterIsInstance<ConversationRow.User>().single { it.messageId == id }
+        assertEquals(listOf(Block.Image("image/jpeg", "a.jpg")), waiting.pictures)
+        assertEquals(listOf("w1:.happy-uploads/$id/0-a.jpg"), agent.written.keys.toList())
+        assertEquals(listOf<Byte>(9, 8, 7), agent.written.values.first().toList())
+        assertEquals(
+            listOf(
+                "Look\n\nThe user attached 1 image. It was saved on this machine and not loaded into your context; " +
+                    "open it with your file-reading or image-viewing tool only if you need to see it:\n- ./.happy-uploads/$id/0-a.jpg",
+                "After",
+            ),
+            sends.map { (it["text"] as kotlinx.serialization.json.JsonPrimitive).content },
+        )
+        assertTrue(sends.all { it["content"] == null })
     }
 
     @Test fun `unreadable pictures send nothing and give the words back`() = runTest {
@@ -762,8 +777,9 @@ class ConversationTest {
         val dir = kotlin.io.path.createTempDirectory("uploads").toFile()
         val video = java.io.File(dir, "clip.mp4").apply { writeBytes(byteArrayOf(1, 2, 3)) }
         val doc = java.io.File(dir, "notes.pdf").apply { writeBytes(byteArrayOf(4, 5)) }
+        val photo = java.io.File(dir, "a.jpg").apply { writeBytes(byteArrayOf(6)) }
         val attachments = listOf(
-            preview("a.jpg", "image/jpeg", 10),
+            preview(photo.toURI().toString(), "image/jpeg", 1, name = "a.jpg"),
             preview(video.toURI().toString(), "video/mp4", 3, name = "clip.mp4"),
             preview(doc.toURI().toString(), "application/pdf", 2, name = "notes.pdf"),
         )
@@ -771,15 +787,20 @@ class ConversationTest {
         advanceUntilIdle()
         val send = agent.requests.last { it.second.endsWith("/send") }
         val id = send.third!!["id"]!!.toString().trim('"')
-        assertEquals(listOf("w1:.happy-uploads/$id/1-clip.mp4", "w1:.happy-uploads/$id/2-notes.pdf"), agent.written.keys.toList())
-        assertEquals(listOf<Byte>(1, 2, 3), agent.written.values.first().toList())
+        assertEquals(
+            listOf("w1:.happy-uploads/$id/0-a.jpg", "w1:.happy-uploads/$id/1-clip.mp4", "w1:.happy-uploads/$id/2-notes.pdf"),
+            agent.written.keys.toList(),
+        )
+        assertEquals(listOf<Byte>(1, 2, 3), agent.written.values.toList()[1].toList())
         val puts = agent.requests.indexOfFirst { it.first == "PUT" }
         assertTrue("uploads before the send", puts < agent.requests.indexOf(send))
         assertEquals(
-            "Look\n\nAttached files:\n- ./.happy-uploads/$id/1-clip.mp4\n- ./.happy-uploads/$id/2-notes.pdf",
+            "Look\n\nThe user attached 3 files. They were saved on this machine and not loaded into your context; " +
+                "open them with your file-reading or image-viewing tool only if you need to see them:\n" +
+                "- ./.happy-uploads/$id/0-a.jpg\n- ./.happy-uploads/$id/1-clip.mp4\n- ./.happy-uploads/$id/2-notes.pdf",
             (send.third!!["text"] as kotlinx.serialization.json.JsonPrimitive).content,
         )
-        assertEquals(1, (send.third!!["content"] as kotlinx.serialization.json.JsonArray).size)
+        assertNull(send.third!!["content"])
         val row = chat.state.value.rows.filterIsInstance<ConversationRow.User>().first()
         assertTrue(row.text.contains("./.happy-uploads/$id/1-clip.mp4"))
     }

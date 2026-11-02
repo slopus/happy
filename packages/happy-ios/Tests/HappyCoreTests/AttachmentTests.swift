@@ -197,17 +197,39 @@ final class AttachmentTests: XCTestCase {
         XCTAssertThrowsError(try AttachmentRules.stage([input], messageID: "different-message", directory: root))
     }
 
-    func testOldPictureQueueDecodesAndLargePictureMovesToDirectFile() throws {
+    func testOldPictureQueueDecodesAndEveryPictureMovesToDirectFile() throws {
         let old = Data(#"{"id":"old-message","agentID":"recipient","text":"hello","pictures":[{"mimeType":"image/png","data":"AQID"}]}"#.utf8)
         var message = try JSONDecoder().decode(QueuedMessage.self, from: old)
         XCTAssertNil(message.files)
         XCTAssertNil(message.workspaceID)
         XCTAssertEqual(message.pictures.first?.data, Data([1, 2, 3]))
-        message.pictures = [.init(mimeType: "image/png", data: Data(repeating: 7, count: 6 * 1024 * 1024))]
+        message.pictures.append(.init(mimeType: "image/jpeg", data: Data(repeating: 7, count: 6 * 1024 * 1024)))
         let migrated = try AttachmentRules.migratePictures(message, directory: directory())
         XCTAssertTrue(migrated.pictures.isEmpty)
-        XCTAssertEqual(migrated.files?.first?.size, 6 * 1024 * 1024)
-        XCTAssertEqual(try Data(contentsOf: XCTUnwrap(migrated.files?.first).fileURL), message.pictures.first?.data)
+        XCTAssertEqual(migrated.files?.map(\.path), [".happy-uploads/old-message/image-0.png", ".happy-uploads/old-message/image-1.jpg"])
+        XCTAssertEqual(migrated.files?.map(\.size), [3, 6 * 1024 * 1024])
+        XCTAssertEqual(try Data(contentsOf: XCTUnwrap(migrated.files?.first).fileURL), Data([1, 2, 3]))
+        XCTAssertEqual(try AttachmentRules.migratePictures(migrated, directory: directory()), migrated)
+    }
+
+    /// Every Happy client tells the agent where attachments are in the same
+    /// words as happy-cli's `formatAttachmentNote`, so it reads them alike.
+    func testMessageNamesItsFilesInTheSharedAttachmentNote() {
+        func file(_ name: String, _ mimeType: String) -> QueuedFile {
+            QueuedFile(fileURL: URL(fileURLWithPath: "/x"), name: name, mimeType: mimeType, size: 1, path: ".happy-uploads/m/\(name)")
+        }
+        XCTAssertEqual(AttachmentRules.text("Look", files: [file("0-a.jpg", "image/jpeg")]), """
+            Look
+
+            The user attached 1 image. It was saved on this machine and not loaded into your context; open it with your file-reading or image-viewing tool only if you need to see it:
+            - ./.happy-uploads/m/0-a.jpg
+            """)
+        XCTAssertEqual(AttachmentRules.text("", files: [file("0-a.png", "image/png"), file("1-b.pdf", "application/pdf")]), """
+            The user attached 2 files. They were saved on this machine and not loaded into your context; open them with your file-reading or image-viewing tool only if you need to see them:
+            - ./.happy-uploads/m/0-a.png
+            - ./.happy-uploads/m/1-b.pdf
+            """)
+        XCTAssertEqual(AttachmentRules.text("Look", files: []), "Look")
     }
 
     func testInlineImagePreservesSingleCaptionAndUsesPublicMimeTypeField() async throws {
@@ -297,6 +319,43 @@ final class AttachmentTests: XCTestCase {
         let requests = await server.saved()
         XCTAssertEqual(requests.filter { $0.0 == "POST" && $0.1.hasSuffix("/send") }.count, 1)
         await reopened.stop()
+    }
+
+    /// A small picked photo, which once went inline as an image block, is
+    /// written into the agent's workspace like any other file and named by
+    /// path, so a remote computer has it on its own disk.
+    func testPickedPictureGoesToTheWorkspaceAndTheMessageNamesItsPath() async throws {
+        let root = try directory()
+        let source = root.appendingPathComponent("shot.png")
+        let bytes = Data([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3])
+        try bytes.write(to: source)
+        let server = AttachmentServer()
+        let client = AgentClient(transport: server, token: "paired-device-token")
+        let engine = SyncEngine(client: client, directory: root.appendingPathComponent("account"))
+        let conversation = Conversation(client: client, store: engine.spaces, agentId: "recipient", mode: mode, persistence: engine)
+        let saved = await conversation.send(id: "picture-send", text: "What is this?", attachments: [
+            .init(fileURL: source, name: "shot.png", mimeType: "image/png", size: bytes.count),
+        ])
+        XCTAssertTrue(saved)
+        await engine.start()
+        for _ in 0..<200 {
+            if try await engine.queuedMessages(for: "recipient").isEmpty { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        await engine.stop()
+        await conversation.stop()
+
+        let stored = await server.bytes(".happy-uploads/picture-send/0-shot.png")
+        XCTAssertEqual(stored, bytes)
+        let requests = await server.saved()
+        let send = try XCTUnwrap(requests.last { $0.0 == "POST" && $0.1.hasSuffix("/send") })
+        XCTAssertNil(send.2?["content"])
+        XCTAssertEqual(send.2?["text"]?.stringValue, """
+            What is this?
+
+            The user attached 1 image. It was saved on this machine and not loaded into your context; open it with your file-reading or image-viewing tool only if you need to see it:
+            - ./.happy-uploads/picture-send/0-shot.png
+            """)
     }
 
     func testLateOldConversationCannotRestoreDeletedFilesAndStillQueuesNewSends() async throws {

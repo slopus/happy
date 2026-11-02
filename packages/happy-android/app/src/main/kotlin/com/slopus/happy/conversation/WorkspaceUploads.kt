@@ -16,43 +16,55 @@ class OutgoingFile(val file: File, val name: String, val mimeType: String, val s
 
 /**
  * What a message with attachments sends (iOS's AttachmentRules and
- * `Conversation.send`): pictures of the four types the model reads, up to
- * 5 MB each and 29 MB together, travel inline as image blocks; everything
- * else (videos, documents, a picture past those limits) is written into the
- * agent's workspace under `.happy-uploads/<message>/<n>-<name>`, at most
- * 50 MB a file, and the message text lists their paths so the agent can
- * open them.
+ * `Conversation.send`): every attachment, pictures included, is written into
+ * the agent's workspace under `.happy-uploads/<message>/<n>-<name>`, at most
+ * 50 MB a file, and the message text lists their paths. The agent opens
+ * what it needs to see; nothing is pushed into its context as an image
+ * block. Pictures of the four types the phone draws, up to 5 MB each and
+ * 29 MB together, are also read here to show in the bubble while it goes.
  */
 object WorkspaceUploads {
     const val DIRECTORY = ".happy-uploads"
-    private val inlineTypes = setOf("image/jpeg", "image/png", "image/gif", "image/webp")
+    private val drawnTypes = setOf("image/jpeg", "image/png", "image/gif", "image/webp")
 
-    /** [attachments] split into inline pictures and workspace files, in their order, for message [messageId]. */
+    /**
+     * For message [messageId]: the pictures the bubble draws from the
+     * phone's copies, and every attachment as a workspace file, in order.
+     */
     fun split(messageId: String, attachments: List<AttachmentPreview>): Pair<List<AttachmentPreview>, List<OutgoingFile>> {
-        val inline = ArrayList<AttachmentPreview>()
+        val drawn = ArrayList<AttachmentPreview>()
         val files = ArrayList<OutgoingFile>()
-        var inlineBytes = 0L
+        var drawnBytes = 0L
         attachments.forEachIndexed { index, attachment ->
             val size = attachment.size
-            if (attachment.mimeType in inlineTypes && size <= InlinePictures.MAX_BYTES && inlineBytes + size <= InlinePictures.MAX_TOTAL_BYTES) {
-                inline += attachment
-                inlineBytes += size
-            } else {
-                val local = localFile(attachment.uri)
-                val name = "$index-${safeAttachmentName(attachment.name)}"
-                files += OutgoingFile(local, attachment.name, attachment.mimeType, size, "$DIRECTORY/$messageId/$name")
+            if (attachment.mimeType in drawnTypes && size <= InlinePictures.MAX_BYTES && drawnBytes + size <= InlinePictures.MAX_TOTAL_BYTES) {
+                drawn += attachment
+                drawnBytes += size
             }
+            val local = localFile(attachment.uri)
+            val name = "$index-${safeAttachmentName(attachment.name)}"
+            files += OutgoingFile(local, attachment.name, attachment.mimeType, size, "$DIRECTORY/$messageId/$name")
         }
-        return inline to files
+        return drawn to files
     }
 
     /** The staged copy a `file:` URI names. */
     fun localFile(uri: String): File = File(runCatching { java.net.URI(uri).path }.getOrNull() ?: uri.removePrefix("file://"))
 
-    /** iOS AttachmentRules.text: the message's words, then the files it carries, by path. */
+    /**
+     * iOS AttachmentRules.text: the message's words, then where its files
+     * are, in the words every Happy client gives the agent (happy-cli's
+     * `formatAttachmentNote`), with paths relative to its workspace.
+     */
     fun text(text: String, files: List<OutgoingFile>): String {
         if (files.isEmpty()) return text
-        val heading = if (files.size == 1) "Attached file:" else "Attached files:"
+        val one = files.size == 1
+        val noun = if (files.all { it.mimeType.startsWith("image/") }) "image" else "file"
+        val count = if (one) "1 $noun" else "${files.size} ${noun}s"
+        val pronoun = if (one) "It was" else "They were"
+        val obj = if (one) "it" else "them"
+        val heading = "The user attached $count. $pronoun saved on this machine and not loaded into your context; " +
+            "open $obj with your file-reading or image-viewing tool only if you need to see $obj:"
         val paths = files.joinToString("\n") { "- ./${it.path}" }
         return (if (text.isEmpty()) "" else "$text\n\n") + heading + "\n" + paths
     }

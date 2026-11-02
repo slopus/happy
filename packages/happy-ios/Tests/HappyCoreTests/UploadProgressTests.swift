@@ -235,22 +235,63 @@ final class UploadProgressTests: XCTestCase {
         return nil
     }
 
-    /// A send that fails keeps its pictures, marked failed: its ring turns
-    /// to retry and waits; retried, it goes and its ring is let go.
+    /// The sent-file tile a piece draws, if it is one.
+    private func sentFile(_ piece: ChatItem.Piece?) -> ChatItem.SentFile? {
+        if case .sentFile(let file)? = piece { file } else { nil }
+    }
+
+    /// A picture goes into the workspace and the message names its path:
+    /// the agent opens it only if it needs to see it.
+    func testAPictureGoesAsAWorkspaceFileTheMessageNames() async throws {
+        let computer = UploadComputer(board: .shared)
+        let (conversation, _) = conversation(computer)
+        let id = "path-\(UUID().uuidString)"
+        let picture = Data(repeating: 9, count: 1200)
+        let saved = await conversation.send(id: id, text: "What is this?", pictures: [("image/png", picture)])
+        XCTAssertTrue(saved)
+        // Drawn at once from the phone's copy, ringed while it uploads.
+        let drawn = await item(conversation, id) { $0 != nil }
+        let tile = try XCTUnwrap(sentFile(drawn?.pieces.last))
+        XCTAssertEqual(drawn?.pieces.first, .text("What is this?"))
+        XCTAssertEqual(tile.id, UploadProgressBoard.fileKey(id, 0))
+        XCTAssertEqual(tile.mimeType, "image/png")
+        XCTAssertTrue(tile.isVisual)
+        XCTAssertEqual(try Data(contentsOf: tile.file), picture)
+
+        await conversation.start()
+        _ = await item(conversation, id) { $0?.delivery == .pending }
+        let uploads = await computer.uploadBodies
+        let upload = try JSONDecoder().decode(JSONValue.self, from: XCTUnwrap(uploads.first))
+        XCTAssertEqual(upload["path"]?.stringValue, ".happy-uploads/\(id)/image-0.png")
+        XCTAssertEqual(upload["content"]?.stringValue, picture.base64EncodedString())
+        let sends = await computer.sends
+        XCTAssertEqual(sends.count, 1)
+        XCTAssertNil(sends.first?["content"])
+        XCTAssertEqual(sends.first?["text"]?.stringValue, """
+            What is this?
+
+            The user attached 1 image. It was saved on this machine and not loaded into your context; open it with your file-reading or image-viewing tool only if you need to see it:
+            - ./.happy-uploads/\(id)/image-0.png
+            """)
+        await conversation.stop()
+    }
+
+    /// A send that fails keeps its pictures, marked failed; retried, they
+    /// go again and their rings are let go.
     func testAFailedSendKeepsItsPicturesAndARetrySendsThem() async throws {
         let computer = UploadComputer(board: .shared)
         await computer.configure(rejectSends: 1)
         let (conversation, _) = conversation(computer)
         let id = "fail-\(UUID().uuidString)"
-        let key = UploadProgressBoard.pictureKey(id, 0)
+        let key = UploadProgressBoard.fileKey(id, 0)
         let picture = Data(repeating: 7, count: 3000)
         let saved = await conversation.send(id: id, text: "", pictures: [("image/png", picture)])
         XCTAssertTrue(saved)
         // A conversation without an outbox sends what it holds once it follows.
         await conversation.start()
         let failed = await item(conversation, id) { if case .failed = $0?.delivery { true } else { false } }
-        XCTAssertEqual(failed?.pieces, [.picture(id: key, mimeType: "image/png", data: picture)])
-        XCTAssertEqual(UploadProgressBoard.shared.phase(key), .preparing)
+        XCTAssertEqual(failed?.pieces.count, 1)
+        XCTAssertEqual(sentFile(failed?.pieces.first)?.id, key)
 
         await conversation.retry(id)
         let sent = await item(conversation, id) { $0?.delivery == .pending }
@@ -258,7 +299,8 @@ final class UploadProgressTests: XCTestCase {
         XCTAssertNil(UploadProgressBoard.shared.phase(key))
         let sends = await computer.sends
         XCTAssertEqual(sends.count, 1)
-        XCTAssertEqual(sends.first?["content"]?.arrayValue?.first?["data"]?.stringValue, picture.base64EncodedString())
+        XCTAssertNil(sends.first?["content"])
+        XCTAssertTrue(sends.first?["text"]?.stringValue?.hasSuffix("\n- ./.happy-uploads/\(id)/image-0.png") == true)
         await conversation.stop()
     }
 
@@ -272,18 +314,22 @@ final class UploadProgressTests: XCTestCase {
         let first = Data(repeating: 1, count: 2000), second = Data(repeating: 2, count: 2000)
         _ = await conversation.send(id: id, text: "Two", pictures: [("image/png", first), ("image/png", second)])
         await conversation.start()
-        // The first write is out, and the send waits on the next.
+        // The first write is out, and the upload waits on the next.
         for _ in 0..<400 where await computer.written == 0 { try await Task.sleep(for: .milliseconds(5)) }
-        guard case .uploading = UploadProgressBoard.shared.phase(UploadProgressBoard.pictureKey(id, 0)) else { return XCTFail("the first picture is uploading") }
+        guard case .uploading = UploadProgressBoard.shared.phase(UploadProgressBoard.fileKey(id, 0)) else { return XCTFail("the first picture is uploading") }
 
-        await conversation.removeAttachment(id, key: UploadProgressBoard.pictureKey(id, 0))
+        await conversation.removeAttachment(id, key: UploadProgressBoard.fileKey(id, 0))
         await computer.release()
         let sent = await item(conversation, id) { $0?.delivery == .pending }
-        XCTAssertEqual(sent?.pieces, [.text("Two"), .picture(id: UploadProgressBoard.pictureKey(id, 0), mimeType: "image/png", data: second)])
+        XCTAssertEqual(sent?.pieces.first, .text("Two"))
+        XCTAssertEqual(sent?.pieces.count, 2)
+        XCTAssertEqual(try sentFile(sent?.pieces.last).map { try Data(contentsOf: $0.file) }, second)
         let sends = await computer.sends
         XCTAssertEqual(sends.count, 1)
-        XCTAssertEqual(sends.first?["text"]?.stringValue, "Two")
-        XCTAssertEqual(sends.first?["content"]?.arrayValue?.compactMap { $0["data"]?.stringValue }, [second.base64EncodedString()])
+        let text = try XCTUnwrap(sends.first?["text"]?.stringValue)
+        XCTAssertTrue(text.hasPrefix("Two\n\nThe user attached 1 image."))
+        XCTAssertTrue(text.hasSuffix("\n- ./.happy-uploads/\(id)/image-1.png"))
+        XCTAssertNil(sends.first?["content"])
         await conversation.stop()
 
         // A picture alone: its cross takes the message back whole.
@@ -294,7 +340,7 @@ final class UploadProgressTests: XCTestCase {
         _ = await other.send(id: lone, text: "", pictures: [("image/png", first)])
         await other.start()
         for _ in 0..<400 where await computer.written == before { try await Task.sleep(for: .milliseconds(5)) }
-        await other.removeAttachment(lone, key: UploadProgressBoard.pictureKey(lone, 0))
+        await other.removeAttachment(lone, key: UploadProgressBoard.fileKey(lone, 0))
         let gone = await item(other, lone) { $0 == nil }
         XCTAssertNil(gone)
         await computer.release()
@@ -304,8 +350,9 @@ final class UploadProgressTests: XCTestCase {
         await other.stop()
     }
 
-    /// The account's outbox: a queued message's picture is taken out while
-    /// it uploads, and the rest is what reaches the computer.
+    /// The account's outbox: a message queued with inline pictures by an
+    /// older version sends them as files; one taken out while it uploads
+    /// never reaches the computer.
     func testCancelInTheOutboxStopsItsDeliveryAndSendsTheRest() async throws {
         let computer = UploadComputer(board: .shared)
         await computer.configure(chunk: 500, held: true)
@@ -319,13 +366,17 @@ final class UploadProgressTests: XCTestCase {
         await engine.start()
         for _ in 0..<400 where await computer.written == 0 { try await Task.sleep(for: .milliseconds(5)) }
 
-        let result = try await engine.removeAttachment(id, .picture(1))
+        let result = try await engine.removeAttachment(id, .file(1))
         XCTAssertTrue(result.removed)
-        XCTAssertEqual(result.message?.pictures.map(\.data), [first])
+        XCTAssertEqual(result.message?.pictures.count, 0)
+        XCTAssertEqual(result.message?.files?.map(\.name), ["image-0.png"])
         await computer.release()
         for _ in 0..<400 where try await !engine.queuedMessages(for: "a").isEmpty { try await Task.sleep(for: .milliseconds(5)) }
         let sends = await computer.sends
-        XCTAssertEqual(sends.last?["content"]?.arrayValue?.compactMap { $0["data"]?.stringValue }, [first.base64EncodedString()])
+        XCTAssertNil(sends.last?["content"])
+        let text = try XCTUnwrap(sends.last?["text"]?.stringValue)
+        XCTAssertTrue(text.hasSuffix("\n- ./.happy-uploads/\(id)/image-0.png"))
+        XCTAssertFalse(text.contains("image-1"))
         await engine.stop()
     }
 }

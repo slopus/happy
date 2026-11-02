@@ -79,36 +79,43 @@ public enum AttachmentRules {
         .status(400, code: "invalid_attachment", message: message)
     }
 
-    /// Older versions persisted images up to the relay limit. Keep those
-    /// sends deliverable by moving images beyond model limits to file uploads.
-    static func migratePictures(_ queued: QueuedMessage, directory: URL) throws -> QueuedMessage {
-        var message = queued
-        var inline: [QueuedMessage.Picture] = []
-        var total = 0
-        for (index, picture) in queued.pictures.enumerated() {
-            if picture.data.count <= maxInlineImageBytes, total + picture.data.count <= maxInlineImageTotalBytes {
-                inline.append(picture); total += picture.data.count
-                continue
-            }
+    /// Pictures go to the agent as files it opens by path, never as image
+    /// blocks: it decides what to look at, and a picture it never needs
+    /// costs it nothing. Each is written under the message's folder.
+    static func pictureFiles(_ pictures: [QueuedMessage.Picture], messageID: String, directory: URL) throws -> [QueuedFile] {
+        guard !pictures.isEmpty else { return [] }
+        let group = directory.appendingPathComponent(messageID, isDirectory: true)
+        try FileManager.default.createDirectory(at: group, withIntermediateDirectories: true)
+        return try pictures.enumerated().map { index, picture in
             guard picture.data.count <= maxFileBytes else { throw invalid("An image exceeds the 50 MB file limit.") }
             let ext = ["image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif"][picture.mimeType] ?? "bin"
             let name = "image-\(index).\(ext)"
-            let group = directory.appendingPathComponent(queued.id, isDirectory: true)
-            try FileManager.default.createDirectory(at: group, withIntermediateDirectories: true)
             let file = group.appendingPathComponent(name)
             try picture.data.write(to: file, options: .atomic)
-            var files = message.files ?? []
-            files.append(QueuedFile(fileURL: file, name: name, mimeType: picture.mimeType, size: picture.data.count,
-                path: ".happy-uploads/\(queued.id)/\(name)"))
-            message.files = files
+            return QueuedFile(fileURL: file, name: name, mimeType: picture.mimeType, size: picture.data.count,
+                path: ".happy-uploads/\(messageID)/\(name)")
         }
-        message.pictures = inline
+    }
+
+    /// Older versions persisted pictures to send inline; they go as files too.
+    static func migratePictures(_ queued: QueuedMessage, directory: URL) throws -> QueuedMessage {
+        guard !queued.pictures.isEmpty else { return queued }
+        var message = queued
+        message.files = (queued.files ?? []) + (try pictureFiles(queued.pictures, messageID: queued.id, directory: directory))
+        message.pictures = []
         return message
     }
 
+    /// The message's words, then where its files are, in the words every
+    /// Happy client gives the agent (happy-cli's `formatAttachmentNote`),
+    /// with paths relative to the agent's workspace.
     static func text(_ text: String, files: [QueuedFile]) -> String {
         guard !files.isEmpty else { return text }
-        let heading = files.count == 1 ? "Attached file:" : "Attached files:"
+        let one = files.count == 1
+        let noun = files.allSatisfy({ $0.mimeType.hasPrefix("image/") }) ? "image" : "file"
+        let count = one ? "1 \(noun)" : "\(files.count) \(noun)s"
+        let object = one ? "it" : "them"
+        let heading = "The user attached \(count). \(one ? "It was" : "They were") saved on this machine and not loaded into your context; open \(object) with your file-reading or image-viewing tool only if you need to see \(object):"
         let paths = files.map { "- ./\($0.path)" }.joined(separator: "\n")
         return (text.isEmpty ? "" : text + "\n\n") + heading + "\n" + paths
     }
