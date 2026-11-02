@@ -13,4 +13,12 @@
     <string name="start_enter_link_title">Inserir link</string>
     <string name="start_enter_link_message">Cole o link do Happy no seu computador ou do Happy Agent.</string>
     <string name="start_account_code">Este código adiciona um telefone a uma conta. Escaneie-o com um telefone conectado à conta.</string>
+    <string name="start_slide_happy_title">Qualquer equipe. Qualquer modelo. Um só app.</string>
+    <string name="start_slide_happy_body">O Happy integra modelos, equipes e computação em um único app de código aberto.</string>
+    <string name="start_slide_team_title">Multijogador por natureza</string>
+    <string name="start_slide_team_body">Reúna sua equipe em uma sessão com todos os agentes.</string>
+    <string name="start_slide_mix_title">Um app. Todos os agentes.</string>
+    <string name="start_slide_mix_body">Deixe o Claude planejar, o Codex construir e o Grok revisar, ou execute-os lado a lado.</string>
+    <string name="start_slide_open_title">Seu para executar. Seu para mudar.</string>
+    <string name="start_slide_open_body">Execute-o no seu hardware, na sua nuvem ou na nossa.</string>
 </resources>

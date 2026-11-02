@@ -63,6 +63,8 @@ import com.slopus.happy.ui.conversation.composeConversation
 import com.slopus.happy.ui.conversation.conversationRoutes
 import com.slopus.happy.ui.conversation.openConversation
 import com.slopus.happy.ui.session.SessionInfoRoute
+import com.slopus.happy.ui.start.InstallDesktop
+import com.slopus.happy.ui.start.InstallDesktopRoute
 import com.slopus.happy.ui.start.Start
 import com.slopus.happy.ui.server.ServerScreen
 import com.slopus.happy.ui.settings.LocalizedContent
@@ -136,6 +138,7 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                     val motion = rememberNavMotion()
                     RetainedNavHost(nav, start, motion, modifier = Modifier.backdrop(nav)) {
                         page<StartRoute> { Start(graph, nav, add) }
+                        page<InstallDesktopRoute> { InstallDesktop(graph, nav, add) }
                         page<HomeRoute> {
                         // A switch made in Settings changes the covered home too.
                         key(open.key) {

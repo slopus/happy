@@ -10,5 +10,20 @@ extension Strings {
         public static let enterLink = "Enter link manually"
         public static let enterLinkTitle = "Enter Link"
         public static var enterLinkMessage: String { AccountKind.enterLinkMessage }
+
+        /// happy-desktop's welcome deck (happy-desktop-app
+        /// sources/onboarding/happyAgentWelcomeSlides.ts): its titles as
+        /// they are, each line cut down to its first words for a phone.
+        /// "Secure and compliant" is left out, as desktop left it out
+        /// (its "No telemetry" no longer holds), and "harness" reads "app"
+        /// (Steve). No-break spaces hold each short sentence of a title
+        /// together, so a title breaks only between them.
+        public static let slides: [(title: String, body: String)] = [
+            ("Any\u{00A0}team. Any\u{00A0}model. One\u{00A0}app.", "Happy integrates models, teams, and compute into one open-source app."),
+            ("Natively multiplayer", "Bring your team into one session with every agent."),
+            // A word joiner keeps the dash on review's line.
+            ("One\u{00A0}app. Every\u{00A0}agent.", "Let Claude plan, Codex build, and Grok review\u{2060}—or run them side by side."),
+            ("Yours\u{00A0}to\u{00A0}run. Yours\u{00A0}to\u{00A0}change.", "Run it on your hardware, in your cloud, or in ours."),
+        ]
     }
 }

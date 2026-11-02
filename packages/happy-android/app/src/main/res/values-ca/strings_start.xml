@@ -13,4 +13,12 @@
     <string name="start_enter_link_title">Introdueix l\'enllaç</string>
     <string name="start_enter_link_message">Enganxa l\'enllaç de Happy a l\'ordinador o de Happy Agent.</string>
     <string name="start_account_code">Aquest codi afegeix un telèfon a un compte. Escaneja\'l amb un telèfon que tingui la sessió iniciada.</string>
+    <string name="start_slide_happy_title">Qualsevol equip. Qualsevol model. Una sola app.</string>
+    <string name="start_slide_happy_body">Happy integra models, equips i capacitat de càlcul en una única app de codi obert.</string>
+    <string name="start_slide_team_title">Multijugador de manera nativa</string>
+    <string name="start_slide_team_body">Reuneix el teu equip en una sessió amb tots els agents.</string>
+    <string name="start_slide_mix_title">Una app. Tots els agents.</string>
+    <string name="start_slide_mix_body">Deixa que Claude planifiqui, Codex construeixi i Grok revisi, o executa\'ls l\'un al costat de l\'altre.</string>
+    <string name="start_slide_open_title">Teu per executar. Teu per canviar.</string>
+    <string name="start_slide_open_body">Executa\'l al teu maquinari, al teu núvol o al nostre.</string>
 </resources>

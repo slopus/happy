@@ -5,10 +5,13 @@ import UIKit
 
 /// The first screen, shown while the phone has no Happy account and no
 /// agent connection; Android's (ui/start). No bar: Grain Gradient fills
-/// the window behind the status bar, the logotype centred above Start,
-/// Start (48 above the bottom, as wide as its label) scans a code of any kind (`HappyScan` routes it), and ⋯ at the
-/// top right has the other ways in: enter a link, restore, the server, and
-/// help. There is no Create account: a computer's code makes one. `StartLayout` places it all.
+/// the window behind the status bar. ⋯ at the top right has the other ways
+/// in (enter a link, restore, the server) and help, with the logotype,
+/// small, on its row; desktop's welcome slides (`StartGalleryView`) are in
+/// the middle; Start (48 above the bottom, as wide as its label) opens
+/// `InstallDesktopViewController`, which says to get Happy for the
+/// computer and scans its code. There is no Create account: a computer's
+/// code makes one. `StartLayout` places it all.
 ///
 /// The palette is Android's: deep blue and violet over near-black in dark
 /// mode, their pale tints over lavender white in light; every colour behind
@@ -19,7 +22,7 @@ final class StartViewController: UIViewController {
             back: dynamic(0x06050F, 0xF4F2FF),
             colors: [dynamic(0x4338CA, 0x818CF8), dynamic(0x7C3AED, 0xC4B5FD), dynamic(0x1D4ED8, 0x93C5FD), dynamic(0x2A00FF, 0xA78BFA)]
         )
-        static let text = dynamic(0xFFFFFF, 0x14112E)
+        static let text = UIColor(Palette.startText)
 
         private static func dynamic(_ dark: UInt32, _ light: UInt32) -> UIColor {
             UIColor { $0.userInterfaceStyle == .dark ? rgb(dark) : rgb(light) }
@@ -34,6 +37,7 @@ final class StartViewController: UIViewController {
     private let gradient = GrainGradientView(palette: Colors.grain)
     private let scroll = UIScrollView()
     private let logo = UIImageView()
+    private let gallery = StartGalleryView()
     private let start = RoundButton(title: Strings.Start.button)
     private let more = UIButton(type: .system)
     private var busy = false {
@@ -64,14 +68,18 @@ final class StartViewController: UIViewController {
         logo.accessibilityTraits = .header
         scroll.addSubview(logo)
         start.accessibilityIdentifier = "start-button"
-        start.onTap = { [weak self] in self?.scan() }
+        start.onTap = { [weak self] in self?.next() }
+        scroll.addSubview(gallery)
         scroll.addSubview(start)
         more.setImage(UIImage(systemName: "ellipsis", withConfiguration: UIImage.SymbolConfiguration(pointSize: 20, weight: .semibold)), for: .normal)
         more.tintColor = Colors.text
         more.accessibilityLabel = Strings.Start.more
         more.accessibilityIdentifier = "start-more"
         more.showsMenuAsPrimaryAction = true
-        more.menu = UIMenu(children: [UIDeferredMenuElement.uncached { [weak self] done in done(self?.menuItems() ?? []) }])
+        more.menu = UIMenu(children: [UIDeferredMenuElement.uncached { [weak self] done in
+            guard let self else { return done([]) }
+            done(StartMenu.items(context: context, from: self, busy: busy) { [weak self] in self?.busy = $0 })
+        }])
         view.addSubview(more)
         updateLogo()
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.updateLogo() }
@@ -82,8 +90,14 @@ final class StartViewController: UIViewController {
         navigationController?.setNavigationBarHidden(true, animated: animated)
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        gallery.isRunning = true
+    }
+
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        gallery.isRunning = false
         // The screens it opens have their bar.
         if navigationController?.topViewController !== self {
             navigationController?.setNavigationBarHidden(false, animated: animated)
@@ -93,10 +107,18 @@ final class StartViewController: UIViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let bounds = view.bounds
-        let layout = StartLayout(size: bounds.size, safeArea: LayoutInsets(view.safeAreaInsets), button: start.layout(width: StartLayout.Metrics.buttonMinWidth).size)
+        let layout = StartLayout(
+            size: bounds.size,
+            safeArea: LayoutInsets(view.safeAreaInsets),
+            button: start.layout(width: StartLayout.Metrics.buttonMinWidth).size,
+            slides: gallery.slides,
+            dots: gallery.dotsSize
+        )
         scroll.frame = bounds
         scroll.contentSize = CGSize(width: bounds.width, height: view.safeAreaInsets.top + layout.contentHeight + view.safeAreaInsets.bottom)
         logo.frame = layout.logo
+        gallery.setLayoutFrame(layout.gallery)
+        gallery.apply(layout)
         start.frame = layout.button
         more.frame = layout.more
     }
@@ -106,10 +128,20 @@ final class StartViewController: UIViewController {
         logo.image = UIImage.happy(traitCollection.userInterfaceStyle == .dark ? "logotype-light" : "logotype-dark")
     }
 
-    /// The ways in besides scanning (`AccountAdding`), and help.
-    private func menuItems() -> [UIMenuElement] {
+    /// Getting Happy for the computer, then its code.
+    private func next() {
+        guard !busy else { return }
+        navigationController?.pushViewController(InstallDesktopViewController(context: context), animated: true)
+    }
+}
+
+/// ⋯'s menu on the first screen and the one after it: the ways in besides
+/// scanning (`AccountAdding`), and help.
+@MainActor
+enum StartMenu {
+    static func items(context: AppContext, from controller: UIViewController, busy: Bool, setBusy: @escaping (Bool) -> Void) -> [UIMenuElement] {
         let enabled: UIMenuElement.Attributes = busy ? .disabled : []
-        let ways = AccountAdding.otherWays(context: context, from: self) { [weak self] in self?.busy = $0 }.map { way in
+        let ways = AccountAdding.otherWays(context: context, from: controller, busy: setBusy).map { way in
             let action = UIAction(title: way.title, image: UIImage(systemName: way.symbol), attributes: enabled) { _ in way.run() }
             if way.symbol == "server.rack" { action.subtitle = context.customServerHost ?? Strings.Onboarding.settingsServerDefault }
             return action
@@ -117,18 +149,12 @@ final class StartViewController: UIViewController {
         return [
             UIMenu(options: .displayInline, children: ways),
             UIMenu(options: .displayInline, children: [
-                UIAction(title: Strings.Onboarding.getHelp, image: UIImage(systemName: "questionmark.circle")) { [weak self] _ in
-                    guard let self else { return }
-                    Alerts.help(on: self)
+                UIAction(title: Strings.Onboarding.getHelp, image: UIImage(systemName: "questionmark.circle")) { [weak controller] _ in
+                    guard let controller else { return }
+                    Alerts.help(on: controller)
                 },
             ]),
         ]
-    }
-
-    /// The scanner; whatever it reads, `HappyScan` routes.
-    private func scan() {
-        guard !busy else { return }
-        AccountAdding.begin(context: context, from: self) { [weak self] in self?.busy = $0 }
     }
 }
 #endif

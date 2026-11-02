@@ -1,0 +1,222 @@
+#if canImport(UIKit)
+import HappyLayout
+import UIKit
+
+/// The first screen's slides: happy-desktop's welcome deck (WelcomeDeck.tsx)
+/// on a phone. Each is its art over its title and a line; they page by a
+/// swipe or a dot, and move on by themselves every `advanceInterval`,
+/// wrapping to the first with a crossfade. Any change, by hand or by
+/// itself, starts the wait again; a drag holds it.
+///
+/// With Reduce Motion on (or VoiceOver running) nothing moves by itself and
+/// the dots change pages without the slide. Off screen, it waits
+/// (`isRunning`). `StartLayout` places everything; `apply` only sets frames.
+final class StartGalleryView: UIView, UIScrollViewDelegate {
+    enum Art: Equatable {
+        /// The Happy mark, in the words' colour.
+        case logo
+        case emoji(String)
+    }
+
+    /// Desktop's art for each slide: its logo, then its scenes as their
+    /// emoji (👾 alien-monster, 🦙 llama, 🪄 wand), still.
+    static let arts: [Art] = [.logo, .emoji("👾"), .emoji("🦙"), .emoji("🪄")]
+
+    /// Desktop holds a slide 15 s for its longer words; a phone's are one
+    /// line.
+    static let advanceInterval: TimeInterval = 8
+    static let crossfade: TimeInterval = 0.35
+
+    private let pager = UIScrollView()
+    let dots = UIPageControl()
+    private let pages: [Page]
+    private(set) var index = 0
+    private var timer: Timer?
+    private var layout: StartLayout?
+
+    /// The screen is showing: only then does it move on by itself.
+    var isRunning = false {
+        didSet { if isRunning != oldValue { schedule() } }
+    }
+
+    /// Whether it moves on by itself: never with Reduce Motion or VoiceOver.
+    static var advances: Bool { !UIAccessibility.isReduceMotionEnabled && !UIAccessibility.isVoiceOverRunning }
+
+    override init(frame: CGRect) {
+        pages = zip(Self.arts, Strings.Start.slides).map { Page(art: $0, title: $1.title, body: $1.body) }
+        super.init(frame: frame)
+        pager.isPagingEnabled = true
+        pager.showsHorizontalScrollIndicator = false
+        pager.contentInsetAdjustmentBehavior = .never
+        pager.scrollsToTop = false
+        pager.delegate = self
+        pages.forEach(pager.addSubview)
+        addSubview(pager)
+        dots.numberOfPages = pages.count
+        dots.hidesForSinglePage = true
+        dots.currentPageIndicatorTintColor = UIColor(Palette.startText)
+        dots.pageIndicatorTintColor = UIColor(Palette.startDot)
+        dots.accessibilityIdentifier = "start-dots"
+        dots.addTarget(self, action: #selector(dotChosen), for: .valueChanged)
+        addSubview(dots)
+        updateAccessibility()
+        for name in [UIAccessibility.reduceMotionStatusDidChangeNotification, UIAccessibility.voiceOverStatusDidChangeNotification] {
+            NotificationCenter.default.addObserver(self, selector: #selector(motionChanged), name: name, object: nil)
+        }
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    /// Every slide's words, for `StartLayout` to give them the tallest's room.
+    var slides: [StartLayout.Slide] {
+        pages.map { StartLayout.Slide(title: $0.title.measurable, body: $0.body.measurable) }
+    }
+
+    /// The dots' own size.
+    var dotsSize: CGSize {
+        dots.size(forNumberOfPages: pages.count)
+    }
+
+    /// Takes the screen's layout: `frame` must already be its `gallery`.
+    func apply(_ layout: StartLayout) {
+        self.layout = layout
+        pager.setLayoutFrame(layout.pager)
+        pager.contentSize = layout.pagerContent(count: pages.count)
+        for (number, page) in pages.enumerated() {
+            page.setLayoutFrame(layout.page(number))
+            page.apply(layout, number: number)
+        }
+        dots.setLayoutFrame(layout.dots)
+        // A new width (a rotation) keeps the slide that was showing.
+        if !pager.isDragging, !pager.isDecelerating {
+            pager.contentOffset = layout.page(index).origin
+        }
+    }
+
+    /// Shows slide `number`. The next or the previous slides in; a jump
+    /// further (the wrap back to the first, a far dot) crossfades rather
+    /// than running past the others.
+    func show(_ number: Int, animated: Bool) {
+        guard let layout, pages.indices.contains(number) else { return }
+        let offset = layout.page(number).origin
+        let animated = animated && !UIAccessibility.isReduceMotionEnabled
+        if animated, abs(number - index) > 1 {
+            UIView.transition(with: pager, duration: Self.crossfade, options: [.transitionCrossDissolve, .allowUserInteraction]) {
+                self.pager.contentOffset = offset
+            }
+        } else {
+            pager.setContentOffset(offset, animated: animated)
+        }
+        settle(on: number)
+    }
+
+    private func settle(on number: Int) {
+        guard number != index else { return }
+        index = number
+        dots.currentPage = number
+        updateAccessibility()
+        schedule()
+    }
+
+    /// One wait for the next slide, from now.
+    private func schedule() {
+        timer?.invalidate()
+        timer = nil
+        guard isRunning, Self.advances, pages.count > 1, !pager.isTracking else { return }
+        timer = Timer.scheduledTimer(withTimeInterval: Self.advanceInterval, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.show((self.index + 1) % self.pages.count, animated: true)
+            }
+        }
+    }
+
+    /// Only the slide showing is read out.
+    private func updateAccessibility() {
+        for (number, page) in pages.enumerated() {
+            page.accessibilityElementsHidden = number != index
+        }
+    }
+
+    @objc private func dotChosen() {
+        show(dots.currentPage, animated: true)
+    }
+
+    @objc private func motionChanged() {
+        schedule()
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+        // Only a drag picks the slide from where the pager is; the dots and
+        // the timer pick it themselves.
+        guard let layout, scrollView.isTracking || scrollView.isDecelerating else { return }
+        settle(on: layout.pageShowing(offset: scrollView.contentOffset.x, count: pages.count))
+    }
+
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+        schedule()
+    }
+
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+        if !decelerate { schedule() }
+    }
+
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+        schedule()
+    }
+}
+
+/// One slide: the art, the title, the line.
+private final class Page: UIView {
+    let title = StyledLabel(style: TextStyles.startSlideTitle, color: Palette.startText, alignment: .center)
+    let body = StyledLabel(style: TextStyles.startSlideBody, color: Palette.startTextSecondary, alignment: .center)
+    private let art: StartGalleryView.Art
+    private let emoji = UILabel()
+    private let mark = UIImageView()
+
+    init(art: StartGalleryView.Art, title: String, body: String) {
+        self.art = art
+        super.init(frame: .zero)
+        self.title.string = title
+        self.title.accessibilityTraits = .header
+        self.body.string = body
+        // The title breaks only between its sentences (`Strings.Start.slides`).
+        self.body.decoration = Self.noOrphan
+        switch art {
+        case .logo:
+            mark.image = UIImage.happy("logo-black")?.withRenderingMode(.alwaysTemplate)
+            mark.tintColor = UIColor(Palette.startText)
+            mark.contentMode = .scaleAspectFit
+            addSubview(mark)
+        case .emoji(let text):
+            emoji.text = text
+            emoji.textAlignment = .center
+            addSubview(emoji)
+        }
+        // The art says nothing the title doesn't.
+        mark.isAccessibilityElement = false
+        emoji.isAccessibilityElement = false
+        addSubview(self.title)
+        addSubview(self.body)
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    /// A centred line never ends on one word alone.
+    private static let noOrphan: (NSMutableAttributedString) -> Void = { text in
+        text.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: text.length)) { value, range, _ in
+            guard let style = (value as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle else { return }
+            style.lineBreakStrategy = .pushOut
+            text.addAttribute(.paragraphStyle, value: style, range: range)
+        }
+    }
+
+    func apply(_ layout: StartLayout, number: Int) {
+        mark.setLayoutFrame(layout.mark)
+        emoji.setLayoutFrame(layout.art)
+        if emoji.font.pointSize != layout.artFontSize { emoji.font = .systemFont(ofSize: layout.artFontSize) }
+        title.setLayoutFrame(layout.titles[number])
+        body.setLayoutFrame(layout.bodies[number])
+    }
+}
+#endif

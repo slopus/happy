@@ -63,7 +63,7 @@ class StartLayoutTest {
                 StartScreen(
                     connecting = false,
                     customServerLabel = server,
-                    onConnect = { taps += "connect" },
+                    onStart = { taps += "start" },
                     onEnterLink = { taps += "link" },
                     onRestore = { taps += "restore" },
                     onServer = { taps += "server" },
@@ -76,11 +76,13 @@ class StartLayoutTest {
         }
     }
 
-    /** Start 48 above [bottom]; the logo centred in the space between [top] and Start. */
-    private fun assertMiddle(logo: DpRect, connect: DpRect, bottom: Dp, top: Dp = 0.dp) {
+    /** Start 48 above [bottom]; the slides centred between ⋮'s row (52 under [top]) and Start. */
+    private fun assertMiddle(gallery: DpRect, connect: DpRect, bottom: Dp, top: Dp = 0.dp) {
         assertDp("start 48 above the bottom", bottom - 48.dp, connect.bottom)
-        assertDp("logo centred above start", logo.top - top, connect.top - logo.bottom)
+        assertDp("slides centred above start", gallery.top - (top + 52.dp), connect.top - gallery.bottom)
     }
+
+    private val gallery get() = rule.node(StartGalleryTags.GALLERY).bounds
 
     @Test
     fun phoneLayout() {
@@ -99,16 +101,31 @@ class StartLayoutTest {
         assertDp("connect height", 50, connect.height)
         assertDp("connect centred", (PHONE_WIDTH / 2f).dp, (connect.left + connect.right) / 2)
 
-        // Start 48 above the bottom, the logo centred in the space above it.
+        // The logotype, small, centred on ⋮'s row.
         val logo = rule.node(StartTags.LOGO).bounds
-        assertDp("logo width", 220, logo.width)
-        assertDp("logo keeps the logotype's aspect", (220f * 319f / 1200f).dp, logo.height)
+        assertDp("logo width", 88, logo.width)
+        assertDp("logo keeps the logotype's aspect", (88f * 319f / 1200f).dp, logo.height)
         assertDp("logo centred across", (PHONE_WIDTH / 2f).dp, (logo.left + logo.right) / 2)
-        assertMiddle(logo, connect, PHONE_HEIGHT.dp)
+        assertDp("logo on more's row", 4 + 24, (logo.top + logo.bottom) / 2)
+
+        // Start 48 above the bottom, the slides centred in the space above it.
+        assertMiddle(gallery, connect, PHONE_HEIGHT.dp)
+        // The art's 96 square, then the title 24 under it and its line 8 under that, in a 24-inset column.
+        val art = rule.node(StartGalleryTags.art(0)).bounds
+        assertBox("art", art, ((PHONE_WIDTH - 96) / 2f).dp, gallery.top, 96.dp, 96.dp)
+        val title = rule.node(StartGalleryTags.title(0)).bounds
+        assertBox("title", title, 24.dp, art.bottom + 24.dp, (PHONE_WIDTH - 48).dp, title.height)
+        val body = rule.node(StartGalleryTags.body(0)).bounds
+        assertDp("body 8 under the title", title.bottom + 8.dp, body.top)
+        // Four dots, 24 targets, centred 24 under the tallest slide's words.
+        val dots = rule.node(StartGalleryTags.DOTS).bounds
+        assertBox("dots", dots, ((PHONE_WIDTH - 96) / 2f).dp, dots.top, 96.dp, 24.dp)
+        assertTrue("dots under the words", dots.top >= body.bottom + 24.dp - 0.34.dp)
+        assertDp("dots end the slides", gallery.bottom, dots.bottom)
         rule.assertActionsLabelled()
     }
 
-    /** Connect scans; everything else is in the ⋮ drop-down. */
+    /** Start goes on; everything else is in the ⋮ drop-down. */
     @Test
     fun theMenuHoldsTheOtherWaysIn() {
         show()
@@ -124,7 +141,7 @@ class StartLayoutTest {
             rule.node(StartTags.MENU).assertDoesNotExist()
             assertEquals(tap, taps.last())
         }
-        assertEquals(listOf("connect", "link", "restore", "server"), taps)
+        assertEquals(listOf("start", "link", "restore", "server"), taps)
 
         rule.onNodeWithContentDescription("More").performClick()
         rule.onNodeWithText("happy.example.com").assertExists()
@@ -158,7 +175,7 @@ class StartLayoutTest {
         assertBox("background", rule.node(StartTags.BACKGROUND).bounds, 0.dp, 0.dp, PHONE_WIDTH.dp, PHONE_HEIGHT.dp)
         assertBox("content", rule.node(StartTags.CONTENT).bounds, 0.dp, 24.dp, PHONE_WIDTH.dp, (PHONE_HEIGHT - 24 - 48).dp)
         assertDp("more under the status bar", 24 + 4, rule.node(StartTags.MORE).bounds.top)
-        assertMiddle(rule.node(StartTags.LOGO).bounds, rule.node(StartTags.CONNECT).bounds, (PHONE_HEIGHT - 48).dp, top = 24.dp)
+        assertMiddle(gallery, rule.node(StartTags.CONNECT).bounds, (PHONE_HEIGHT - 48).dp, top = 24.dp)
     }
 
     /** Nothing here takes text: a keyboard (a dialog's) leaves the screen where it is. */
@@ -179,7 +196,7 @@ class StartLayoutTest {
         assertEquals(before, rule.node(StartTags.CONNECT).bounds)
     }
 
-    /** At font scale 2.0 Connect's label grows along the sp curve and the button with it; icons and the logo don't. */
+    /** At font scale 2.0 the words and Start's label grow along the sp curve; the title stops at 1.2; icons, the art and the logo don't grow. */
     @Test
     fun largeText() {
         show(density = LARGE_TEXT)
@@ -187,9 +204,12 @@ class StartLayoutTest {
         val logo = rule.node(StartTags.LOGO).bounds
         assertTrue("connect holds its 2x line", connect.height >= with(LARGE_TEXT) { 22.sp.toDp() })
         assertDp("connect centred", (PHONE_WIDTH / 2f).dp, (connect.left + connect.right) / 2)
-        assertMiddle(logo, connect, PHONE_HEIGHT.dp)
-        assertDp("logo keeps its size", 220, logo.width)
+        assertDp("logo keeps its size", 88, logo.width)
+        assertDp("art keeps its size", 96, rule.node(StartGalleryTags.art(0)).bounds.width)
         assertDp("more keeps its size", 48, rule.node(StartTags.MORE).bounds.width)
+        // At least 16 kept between more's row and the slides, and between them and Start.
+        assertTrue("16 under more's row", gallery.top >= (52 + 16).dp - 0.34.dp)
+        assertTrue("16 over start", connect.top - gallery.bottom >= 16.dp - 0.34.dp)
     }
 
     /** Large text on a short window: the screen scrolls from the top instead of squeezing. */
@@ -197,7 +217,7 @@ class StartLayoutTest {
     fun largeTextOnAShortWindowScrolls() {
         show(density = LARGE_TEXT, height = 120)
         val content = rule.node(StartTags.CONTENT).bounds
-        assertDp("logo starts at the top", content.top, rule.node(StartTags.LOGO).bounds.top)
+        assertTrue("logo on the top row", rule.node(StartTags.LOGO).bounds.top < content.top + 52.dp)
         rule.node(StartTags.CONNECT).performScrollTo()
         assertTrue("connect scrolls into view", rule.node(StartTags.CONNECT).bounds.bottom <= content.bottom + 0.34.dp)
     }
@@ -205,7 +225,7 @@ class StartLayoutTest {
     @Test
     fun darkModeLaysOutTheSame() {
         show(dark = true)
-        assertMiddle(rule.node(StartTags.LOGO).bounds, rule.node(StartTags.CONNECT).bounds, PHONE_HEIGHT.dp)
-        assertDp("logo width", 220, rule.node(StartTags.LOGO).bounds.width)
+        assertMiddle(gallery, rule.node(StartTags.CONNECT).bounds, PHONE_HEIGHT.dp)
+        assertDp("logo width", 88, rule.node(StartTags.LOGO).bounds.width)
     }
 }

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.displayCutout
@@ -80,9 +81,14 @@ object StartSpec {
     )
     val darkText = Color(0xFFFFFFFF)
     val lightText = Color(0xFF14112E)
+    /** A slide's line: the text at 87%, still AA (4.6:1 at least) on every colour of the gradient. */
+    const val SECONDARY_ALPHA = 0.87f
+    /** The dots of the slides not showing. */
+    val darkDot = Color(0x4DFFFFFF)
+    val lightDot = Color(0x4014112E)
 
-    /** logotype_*.png is 1200 × 319. */
-    val logoWidth = 220.dp
+    /** logotype_*.png is 1200 × 319; small, on ⋮'s row. */
+    val logoWidth = 88.dp
     const val LOGO_ASPECT = 1200f / 319f
     val connectMinWidth = 200.dp
     val bottomPadding = 48.dp
@@ -101,18 +107,21 @@ object StartSpec {
  *
  *   ⋮ (top right)  a drop-down: enter a link, restore a legacy account,
  *                  and the legacy server. A new Happy account is
- *                  only ever made by Start (a terminal code)
- *   logo           centred in the space above Start
+ *                  only ever made by a terminal code
+ *   logo           88 wide, centred on ⋮'s row
+ *   slides         [StartGallery], centred between ⋮'s row and Start
  *   Start          centred across, as wide as its label (at least 200),
- *                  48 above the bottom inset: scan a code, routed by kind
+ *                  48 above the bottom inset: the next screen
+ *                  ([InstallDesktopScreen]), which scans
  *
- * If it all outgrows the window (large text) it scrolls.
+ * If it all outgrows the window (large text, a phone on its side) it
+ * scrolls, 16 kept above and below the slides.
  */
 @Composable
 fun StartScreen(
     connecting: Boolean,
     customServerLabel: String?,
-    onConnect: () -> Unit,
+    onStart: () -> Unit,
     onEnterLink: () -> Unit,
     onRestore: () -> Unit,
     onServer: () -> Unit,
@@ -133,6 +142,8 @@ fun StartScreen(
                 .testTag(StartTags.CONTENT),
         ) {
             val viewport = maxHeight
+            val art = StartGallerySpec.artFor(maxWidth, maxHeight)
+            val compact = maxHeight < StartGallerySpec.compactHeight
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -141,17 +152,31 @@ fun StartScreen(
                     .padding(bottom = StartSpec.bottomPadding),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
+                Box(
+                    Modifier.fillMaxWidth().padding(top = StartSpec.controlsPadding).height(StartSpec.control),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Image(
+                        painter = painterResource(if (dark) R.drawable.logotype_light else R.drawable.logotype_dark),
+                        contentDescription = stringResource(R.string.start_logo),
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.width(StartSpec.logoWidth).aspectRatio(StartSpec.LOGO_ASPECT).testTag(StartTags.LOGO),
+                    )
+                }
+                Spacer(Modifier.height(StartGallerySpec.margin))
                 Spacer(Modifier.weight(1f))
-                Image(
-                    painter = painterResource(if (dark) R.drawable.logotype_light else R.drawable.logotype_dark),
-                    contentDescription = stringResource(R.string.start_logo),
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.width(StartSpec.logoWidth).aspectRatio(StartSpec.LOGO_ASPECT).testTag(StartTags.LOGO),
+                StartGallery(
+                    textColor = tint,
+                    secondaryColor = tint.copy(alpha = StartSpec.SECONDARY_ALPHA),
+                    dotColor = if (dark) StartSpec.darkDot else StartSpec.lightDot,
+                    art = art,
+                    compact = compact,
                 )
                 Spacer(Modifier.weight(1f))
+                Spacer(Modifier.height(StartGallerySpec.margin))
                 RoundButton(
                     title = stringResource(R.string.start_button),
-                    onClick = onConnect,
+                    onClick = onStart,
                     loading = connecting,
                     modifier = Modifier
                         .widthIn(min = StartSpec.connectMinWidth)
@@ -197,9 +222,9 @@ private fun StartControl(icon: Ionicon, description: String, tint: Color, onClic
     }
 }
 
-/** The ⋮ drop-down: the ways in besides scanning. */
+/** The ⋮ drop-down: the ways in besides scanning. The next screen has it too. */
 @Composable
-private fun StartMenu(
+internal fun StartMenu(
     open: Boolean,
     enabled: Boolean,
     customServerLabel: String?,

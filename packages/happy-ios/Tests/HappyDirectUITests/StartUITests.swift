@@ -4,8 +4,10 @@ import XCTest
 
 /// The first screen on a simulator with no account and no agent connection
 /// (a fresh install on a simulator of its own, never a phone with accounts):
-/// Start, its ⋯ with the other ways in, Restore pushed under a bar, and the
-/// scanner Start opens with the same ways under its own ⋯. Each step is
+/// Start with its slides, its ⋯ with the other ways in, Restore pushed under
+/// a bar, the screen Start opens (get Happy for the computer) with the same
+/// ⋯, and the scanner its Scan QR code opens with the same ways under its
+/// own ⋯. Each step is
 /// checked and pictured; the pictures go to the repository's
 /// `.context/evidence/start` when that folder's parent exists, and are
 /// attached to the result either way.
@@ -67,6 +69,19 @@ final class StartUITests: XCTestCase {
         pause(1)
         capture("1-start")
 
+        // The slides page by a swipe; the dots follow.
+        let dots = app.pageIndicators["start-dots"]
+        XCTAssertTrue(dots.exists, "the slides have no dots")
+        XCTAssertEqual(dots.value as? String, "page 1 of 4")
+        app.staticTexts["Any\u{00A0}team. Any\u{00A0}model. One\u{00A0}app."].swipeLeft()
+        pause(1)
+        XCTAssertEqual(dots.value as? String, "page 2 of 4")
+        XCTAssertTrue(app.staticTexts["Natively multiplayer"].exists)
+        capture("1b-start-slide-2")
+        app.staticTexts["Natively multiplayer"].swipeLeft()
+        pause(1)
+        capture("1c-start-slide-3")
+
         // ⋯: entering a link, restoring, the server, help.
         app.buttons["start-more"].tap()
         let restore = app.buttons["Restore Happy CLI account"]
@@ -90,9 +105,30 @@ final class StartUITests: XCTestCase {
         pause(1)
         XCTAssertFalse(app.navigationBars.firstMatch.exists, "the bar hides again on Start")
 
-        // Start opens the scanner; the simulator has no camera, so it says
-        // so, and its ⋯ has the same ways in.
+        // Start opens the step before the scanner, under a bar, with the
+        // same ⋯.
         start.tap()
+        let scan = app.buttons["install-desktop-scan"]
+        XCTAssertTrue(scan.waitForExistence(timeout: 5), "Start opens Install Happy on your computer")
+        XCTAssertTrue(app.navigationBars.firstMatch.exists, "it has a bar")
+        XCTAssertTrue(app.staticTexts["Install Happy on your computer"].exists)
+        XCTAssertTrue(app.links["install-desktop-site"].exists, "happy.engineering is missing")
+        pause(1)
+        capture("4-install-desktop")
+        app.buttons["install-desktop-more"].tap()
+        XCTAssertTrue(app.buttons["Restore Happy CLI account"].waitForExistence(timeout: 5))
+        for title in ["Enter link manually", "Get help"] {
+            XCTAssertTrue(app.buttons[title].exists, "\(title) is missing from its ⋯")
+        }
+        pause(0.6)
+        capture("5-install-desktop-menu")
+        // Out of the menu without choosing.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.92)).tap()
+        pause(0.6)
+
+        // Scan QR code opens the scanner; the simulator has no camera, so
+        // it says so, and its ⋯ has the same ways in.
+        scan.tap()
         let more = app.buttons["scanner-more"]
         XCTAssertTrue(more.waitForExistence(timeout: 8), "the scanner has no ⋯")
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
@@ -100,12 +136,12 @@ final class StartUITests: XCTestCase {
             springboard.alerts.buttons[button].tap()
         }
         pause(1)
-        capture("4-scanner")
+        capture("6-scanner")
         more.tap()
         XCTAssertTrue(app.buttons["Restore Happy CLI account"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Enter link manually"].exists)
         XCTAssertTrue(app.buttons["Happy CLI server"].exists)
         pause(0.6)
-        capture("5-scanner-menu")
+        capture("7-scanner-menu")
     }
 }

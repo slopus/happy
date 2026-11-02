@@ -77,7 +77,7 @@ object OnboardingContentSpec {
  * multiple of the font size, so lines stay in proportion.
  */
 @Composable
-private fun cappedScale(style: TextStyle, maxScale: Float): TextStyle {
+internal fun cappedScale(style: TextStyle, maxScale: Float): TextStyle {
     val density = LocalDensity.current
     val limit = (style.fontSize.value * maxScale).dp
     if (with(density) { style.fontSize.toDp() } <= limit) return style
