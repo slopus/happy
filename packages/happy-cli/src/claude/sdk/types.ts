@@ -29,6 +29,8 @@ export type CanCallToolOptions = Parameters<CanUseTool>[2]
  */
 export interface QueryOptions {
     abort?: AbortSignal
+    /** Directories Claude may read and edit besides `cwd` (`--add-dir`). */
+    additionalDirectories?: string[]
     allowedTools?: string[]
     appendSystemPrompt?: string
     customSystemPrompt?: string

@@ -10,6 +10,7 @@ import { Credentials, readSettings } from '@/persistence';
 import { EnhancedMode, PermissionMode } from './loop';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
+import { pruneAttachmentDirs } from '@/utils/attachmentFiles';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { configuration } from '@/configuration';
@@ -633,6 +634,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // attachment (or null). drainAttachmentsForUserMessage on the next text
     // claims the in-flight set atomically; later file events go into a fresh
     // bucket bound to the next message — no shared push-array between batches.
+    // Attachments are saved as files Claude opens by path; old sessions' go.
+    void pruneAttachmentDirs({ keepSessionId: session.sessionId });
     session.onFileEvent((fileEvent) => {
         const ev = fileEvent.content.data.ev;
         logger.debug(`[loop] File event received: ${ev.name} (${ev.size} bytes, ref: ${ev.ref})`);

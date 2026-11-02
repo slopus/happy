@@ -22,6 +22,8 @@ export async function claudeRemote(opts: {
     // Fixed parameters
     sessionId: string | null,
     path: string,
+    /** Readable without a permission prompt, e.g. where attachments are saved. */
+    additionalDirectories?: string[],
     mcpServers?: Record<string, any>,
     claudeEnvVars?: Record<string, string>,
     claudeArgs?: string[],
@@ -128,6 +130,7 @@ export async function claudeRemote(opts: {
     let mode = initial.mode;
     const sdkOptions: QueryOptions = {
         cwd: opts.path,
+        additionalDirectories: opts.additionalDirectories,
         resume: startFrom ?? undefined,
         mcpServers: opts.mcpServers,
         plugins: pluginsFromArgs(opts.claudeArgs, opts.path),
