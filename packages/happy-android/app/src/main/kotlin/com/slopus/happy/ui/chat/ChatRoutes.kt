@@ -152,8 +152,10 @@ private fun ChatRoute(
     route.SeedDraft(draft)
     val resources = LocalResources.current
     val metadata = state.session?.metadata
-    val modes = remember(metadata, mirror, settings.agentDefaultOverrides) {
-        ComposerModeResolver.resolve(metadata, mirror, settings.agentDefaultOverrides, resources::getString)
+    // No session yet: the chips are the new-session draft's, which the start sends.
+    val draftOptions by remember(compose) { compose?.newSession?.options ?: flowOf(null) }.collectAsStateWithLifecycle(null)
+    val modes = remember(drafting, draftOptions, metadata, mirror, settings.agentDefaultOverrides) {
+        if (drafting) composeChatModes(draftOptions) else ComposerModeResolver.resolve(metadata, mirror, settings.agentDefaultOverrides, resources::getString)
     }
     val latestMirror by rememberUpdatedState(mirror)
     val local by graph.localSettings.values.collectAsStateWithLifecycle()
@@ -270,7 +272,8 @@ private fun ChatRoute(
                     }
                 }
             },
-            onModeChange = { field, option ->
+            onModeChange = onModeChange@{ field, option ->
+                if (compose != null && compose.composing) return@onModeChange compose.selectMode(field, option)
                 val patch = ComposerModeResolver.patch(field, option, latestState.session?.metadata, latestMirror)
                 scope.launch {
                     try {
