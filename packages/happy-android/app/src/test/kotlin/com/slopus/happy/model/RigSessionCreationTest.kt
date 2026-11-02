@@ -79,6 +79,22 @@ class RigSessionCreationTest {
         assertEquals("max", creation.defaultEffortForModel("claude:shared-model"))
     }
 
+    /** Happy Agent names its built-in accounts all "Current CLI": as headings they go by their provider. */
+    @Test fun theBuiltInAccountsGoByTheirProvider() {
+        val creation = rig(
+            models = listOf(
+                mapOf("providerId" to "codex", "id" to "gpt", "providerName" to "Current CLI", "levels" to listOf("high"), "default" to "high"),
+                mapOf("providerId" to "claude", "id" to "opus", "providerName" to "Current CLI", "levels" to listOf("max"), "default" to "max"),
+                mapOf("providerId" to "claude-work", "id" to "opus", "providerName" to "alex@acme.com", "levels" to listOf("max"), "default" to "max"),
+            ),
+        ).rigSessionCreation()!!
+        assertEquals(setOf("Codex", "Claude", "alex@acme.com"), creation.models.map { it.providerName }.toSet())
+        assertEquals("Grok", rigProviderName("Current CLI", "grok", "grok"))
+        assertEquals("Claude", rigProviderName(" Current CLI ", null, "claude"))
+        assertEquals("Current CLI", rigProviderName("Current CLI", "custom", "mine"))
+        assertEquals("work", rigProviderName(null, null, "work"))
+    }
+
     @Test fun onlyAHappyAgentThatCanStartSessionsHasACatalog() {
         assertNull(machineMetadata().rigSessionCreation())
         assertNull(machineMetadata { put("machineKind", "rig") }.rigSessionCreation())

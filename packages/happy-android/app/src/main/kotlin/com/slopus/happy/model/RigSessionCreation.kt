@@ -64,7 +64,7 @@ fun MachineMetadata?.rigSessionCreation(): RigSessionCreation? {
             id = id,
             providerId = providerId,
             name = nonEmpty(model.name) ?: nonEmpty(model.value) ?: id,
-            providerName = nonEmpty(model.providerName) ?: nonEmpty(model.provider?.name) ?: providerId,
+            providerName = rigProviderName(nonEmpty(model.providerName) ?: model.provider?.name, model.provider?.kind ?: model.providerKind, providerId),
             thinkingLevels = levels,
             defaultThinkingLevel = declared?.takeIf { it in levels } ?: levels.firstOrNull(),
         )

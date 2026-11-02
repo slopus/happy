@@ -362,7 +362,9 @@ public struct RigIdentity: Equatable, Sendable {
         let current = Self.currentModel(metadata)
         clientName = nonEmpty(metadata["client"]?["name"]) ?? "Rig"
         clientVersion = nonEmpty(metadata["client"]?["version"])
-        providerName = nonEmpty(metadata["provider"]?["name"])
+        providerName = metadata["provider"]?["id"]?.stringValue.map {
+            RigCatalog.providerName(nonEmpty(metadata["provider"]?["name"]), kind: metadata["provider"]?["kind"]?.stringValue, providerId: $0)
+        } ?? nonEmpty(metadata["provider"]?["name"])
             ?? current?.providerName
             ?? nonEmpty(metadata["flavor"])
             ?? "Provider"
@@ -388,18 +390,19 @@ public struct RigIdentity: Equatable, Sendable {
             else { continue }
             return (
                 nonEmpty(model["name"]) ?? nonEmpty(model["value"]) ?? modelId,
-                nonEmpty(model["provider"]?["name"]) ?? nonEmpty(model["providerName"]) ?? modelProvider,
+                RigCatalog.providerName(nonEmpty(model["provider"]?["name"]) ?? nonEmpty(model["providerName"]),
+                                        kind: nonEmpty(model["provider"]?["kind"]) ?? nonEmpty(model["providerKind"]), providerId: modelProvider),
                 nonEmpty(model["provider"]?["kind"]) ?? nonEmpty(model["providerKind"]) ?? "custom"
             )
         }
         let providerName: String?
         let providerKind: String?
         if metadata["provider"]?["id"]?.stringValue == providerId {
-            providerName = nonEmpty(metadata["provider"]?["name"])
+            providerName = RigCatalog.providerName(nonEmpty(metadata["provider"]?["name"]), kind: metadata["provider"]?["kind"]?.stringValue, providerId: providerId)
             providerKind = metadata["provider"]?["kind"]?.stringValue
         } else {
             let provider = metadata["providers"]?.arrayValue?.first { $0["id"]?.stringValue == providerId }
-            providerName = provider?["name"]?.stringValue ?? providerId
+            providerName = RigCatalog.providerName(provider?["name"]?.stringValue, kind: provider?["kind"]?.stringValue, providerId: providerId)
             providerKind = provider?["kind"]?.stringValue ?? "custom"
         }
         return (id, providerName, providerKind)

@@ -44,6 +44,30 @@ final class RigSessionCreationTests: XCTestCase {
         return .object(object)
     }
 
+    /// Happy Agent names its built-in accounts all "Current CLI": as
+    /// headings they go by their provider; a named account keeps its name.
+    func testTheBuiltInAccountsGoByTheirProvider() throws {
+        func model(_ provider: String, _ name: String, kind: String? = nil) -> JSONValue {
+            var object: [String: JSONValue] = ["providerId": .string(provider), "id": .string("m"), "providerName": .string(name), "thinkingLevels": .array([.string("high")])]
+            if let kind { object["provider"] = .object(["id": .string(provider), "kind": .string(kind), "name": .string(name)]) }
+            return .object(object)
+        }
+        let creation = try XCTUnwrap(RigSessionCreation(metadata: with(Self.rigMachine, [
+            "models": .array([model("codex", "Current CLI"), model("claude", "Current CLI"), model("grok-2", "Current CLI", kind: "grok"), model("claude-work", "alex@acme.com", kind: "claude")]),
+        ])))
+        XCTAssertEqual(Set(creation.models.map(\.providerName)), ["Codex", "Claude", "Grok", "alex@acme.com"])
+        XCTAssertEqual(RigCatalog.providerName("Current CLI", kind: "custom", providerId: "mine"), "Current CLI")
+        XCTAssertEqual(RigCatalog.providerName(nil, kind: nil, providerId: "work"), "work")
+
+        let session: JSONValue = .object([
+            "client": .object(["id": .string("rig"), "name": .string("Happy Agent")]),
+            "provider": .object(["id": .string("codex"), "kind": .string("codex"), "name": .string("Current CLI")]),
+            "models": .array([model("codex", "Current CLI", kind: "codex")]),
+        ])
+        XCTAssertEqual(RigIdentity(session)?.providerName, "Codex")
+        XCTAssertEqual(RigCatalog.models(session).map(\.providerName), ["Codex"])
+    }
+
     func testProviderQualifiedOptionsAndModelDefaults() throws {
         let creation = try XCTUnwrap(RigSessionCreation(metadata: Self.rigMachine))
         XCTAssertEqual(creation.defaultModelKey, "codex:shared-model")

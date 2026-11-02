@@ -76,7 +76,7 @@ public enum RigCatalog {
                 id: id,
                 providerId: providerId,
                 name: nonEmpty(model["name"], model["value"]) ?? id,
-                providerName: nonEmpty(model["provider"]?["name"], model["providerName"]) ?? providerId,
+                providerName: providerName(nonEmpty(model["provider"]?["name"], model["providerName"]), kind: nonEmpty(model["provider"]?["kind"], model["providerKind"]), providerId: providerId),
                 providerKind: nonEmpty(model["provider"]?["kind"], model["providerKind"]) ?? "custom",
                 contextWindow: model["contextWindow"]?.numberValue,
                 serviceTiers: strings(model["serviceTiers"]),
@@ -124,7 +124,7 @@ public enum RigCatalog {
             id: selected.id,
             providerId: selected.providerId,
             name: selected.id,
-            providerName: provider?["name"]?.stringValue ?? selected.providerId,
+            providerName: providerName(provider?["name"]?.stringValue, kind: provider?["kind"]?.stringValue, providerId: selected.providerId),
             providerKind: provider?["kind"]?.stringValue ?? "custom",
             isUnavailable: true
         )
@@ -202,6 +202,32 @@ public enum RigCatalog {
     // MARK: JSON
 
     /// A string with something in it besides whitespace, untrimmed.
+    /// What Happy Agent names its built-in Claude, Codex and Grok accounts
+    /// (happy-agent API.md `providers.<id>.name`).
+    public static let currentCLIProviderName = "Current CLI"
+
+    /// The provider a kind of account is with, for a heading; nil for a
+    /// kind of its own.
+    static func providerKindName(_ kind: String?) -> String? {
+        switch kind?.trimmingCharacters(in: .whitespaces).lowercased() {
+        case "claude": "Claude"
+        case "codex": "Codex"
+        case "grok": "Grok"
+        case "kimi": "Kimi"
+        default: nil
+        }
+    }
+
+    /// An account's name as a heading: what Happy Agent calls it, except
+    /// its built-in accounts' shared "Current CLI", which would head
+    /// Claude, Codex and Grok alike; those go by their provider (`kind`,
+    /// else the built-in `providerId`).
+    public static func providerName(_ name: String?, kind: String?, providerId: String) -> String {
+        let named = name?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let named, !named.isEmpty, named != currentCLIProviderName { return named }
+        return providerKindName(kind) ?? providerKindName(providerId) ?? (named?.isEmpty == false ? named : nil) ?? providerId
+    }
+
     static func nonEmpty(_ values: JSONValue?...) -> String? {
         for value in values {
             if let string = value?.stringValue, !string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {

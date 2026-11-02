@@ -59,6 +59,31 @@ function nonEmpty(value: unknown): string | null {
     return typeof value === 'string' && value.trim().length > 0 ? value : null;
 }
 
+/** What Happy Agent names its built-in Claude, Codex and Grok accounts (happy-agent API.md `providers.<id>.name`). */
+export const CURRENT_CLI_PROVIDER_NAME = 'Current CLI';
+
+function providerKindName(kind: string | null | undefined): string | null {
+    switch (kind?.trim().toLowerCase()) {
+        case 'claude': return 'Claude';
+        case 'codex': return 'Codex';
+        case 'grok': return 'Grok';
+        case 'kimi': return 'Kimi';
+        default: return null;
+    }
+}
+
+/**
+ * An account's name as a heading: what Happy Agent calls it, except its
+ * built-in accounts' shared "Current CLI", which would head Claude, Codex
+ * and Grok alike; those go by their provider (`kind`, else the built-in
+ * `providerId`).
+ */
+export function getRigProviderName(name: string | null | undefined, kind: string | null | undefined, providerId: string): string {
+    const named = name?.trim() || null;
+    if (named && named !== CURRENT_CLI_PROVIDER_NAME) return named;
+    return providerKindName(kind) ?? providerKindName(providerId) ?? named ?? providerId;
+}
+
 export function getRigModels(metadata: Metadata | null | undefined): RigModelDescriptor[] {
     if (!isRigMetadata(metadata)) return [];
 
@@ -75,9 +100,11 @@ export function getRigModels(metadata: Metadata | null | undefined): RigModelDes
             id,
             providerId,
             name: nonEmpty(model.name) ?? nonEmpty(model.value) ?? id,
-            providerName: nonEmpty(model.provider?.name)
-                ?? nonEmpty(model.providerName)
-                ?? providerId,
+            providerName: getRigProviderName(
+                nonEmpty(model.provider?.name) ?? nonEmpty(model.providerName),
+                nonEmpty(model.provider?.kind) ?? nonEmpty(model.providerKind),
+                providerId,
+            ),
             providerKind: nonEmpty(model.provider?.kind)
                 ?? nonEmpty(model.providerKind)
                 ?? 'custom',
@@ -147,8 +174,11 @@ export function getRigCurrentModel(metadata: Metadata | null | undefined): RigMo
         providerId: selected.providerId,
         name: selected.id,
         providerName: metadata?.provider?.id === selected.providerId
-            ? metadata.provider.name
-            : metadata?.providers?.find((provider) => provider.id === selected.providerId)?.name ?? selected.providerId,
+            ? getRigProviderName(metadata.provider.name, metadata.provider.kind, selected.providerId)
+            : (() => {
+                const provider = metadata?.providers?.find((candidate) => candidate.id === selected.providerId);
+                return getRigProviderName(provider?.name, provider?.kind, selected.providerId);
+            })(),
         providerKind: metadata?.provider?.id === selected.providerId
             ? metadata.provider.kind
             : metadata?.providers?.find((provider) => provider.id === selected.providerId)?.kind ?? 'custom',
@@ -171,7 +201,7 @@ export function getRigIdentity(metadata: Metadata | null | undefined): {
     return {
         clientName: nonEmpty(metadata?.client?.name) ?? 'Rig',
         clientVersion: nonEmpty(metadata?.client?.version),
-        providerName: nonEmpty(metadata?.provider?.name)
+        providerName: (metadata?.provider ? getRigProviderName(metadata.provider.name, metadata.provider.kind, metadata.provider.id) : null)
             ?? currentModel?.providerName
             ?? nonEmpty(metadata?.flavor)
             ?? 'Provider',

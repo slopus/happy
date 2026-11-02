@@ -701,7 +701,8 @@ class ConversationTest {
             listOf("claude/anthropic/opus-5", "codex/openai/gpt-5.6-sol", "codex/openai/gpt-5.6-luna"),
             catalog.models.map { "${it.providerId}/${it.modelId}" },
         )
-        assertEquals(listOf("Current CLI", "Codex", "Codex"), catalog.models.map { it.providerName })
+        // The built-in account Happy Agent names "Current CLI" goes by its provider.
+        assertEquals(listOf("Claude", "Codex", "Codex"), catalog.models.map { it.providerName })
         assertEquals("Opus 5 1M", catalog.models[0].name)
         assertEquals(Mode("claude", "anthropic/opus-5", "high", null, "auto"), catalog.defaults)
     }
