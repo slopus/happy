@@ -5,7 +5,6 @@
 -->
 <resources>
     <string name="team_server_title">サーバーにサインイン</string>
-    <string name="team_server_address_hint">組織の Happy サーバーです。サインインはブラウザで行います。</string>
     <string name="team_server_checking">%1$s を確認しています…</string>
     <string name="team_server_continue_with">%1$s で続ける</string>
     <string name="team_server_browser_host">ブラウザで %1$s にサインインします。</string>
@@ -19,8 +18,8 @@
     <string name="team_server_failed">サインインできませんでした</string>
     <string name="team_server_try_again">もう一度試す</string>
     <string name="team_server_no_browser">サインインページを開けるブラウザがありません。</string>
-    <string name="team_server_error_invalid_address">サーバーの https:// アドレスをパスなしで入力してください。</string>
-    <string name="team_server_error_no_sign_in">このサーバーはサインインに対応していません。管理者にお問い合わせください。</string>
+    <string name="team_server_error_invalid_address">このサーバーのアドレスは有効な https:// アドレスではありません。</string>
+    <string name="team_server_error_no_sign_in">このサーバーには電話で使えるサインイン方法がないため、ここでは追加できません。管理者に問い合わせてください。</string>
     <string name="team_server_error_edge_blocked">サーバーのロードバランサーがサインインを通しませんでした。/v0/authentication をサインインなしで許可するよう管理者に依頼してください。</string>
     <string name="team_server_error_unreachable">サーバーに接続できませんでした。アドレスと接続を確認してください。</string>
     <string name="team_server_error_denied">サインインがキャンセルされたか拒否されました。</string>
@@ -36,4 +35,8 @@
     <string name="team_server_add_name">名前を追加</string>
     <string name="happy_link_unknown_title">リンクを開けません</string>
     <string name="happy_link_unknown_server">このリンクは、接続していない Happy サーバーのものです。</string>
+    <string name="team_server_code_invalid">このサーバーコードは使用できません。コンピューターの Happy に表示されたコードをもう一度スキャンしてください。</string>
+    <string name="team_server_error_wrong_server">このコードは、指しているサーバーと一致しません。</string>
+    <string name="team_server_code_path">このサーバーは Web アドレスのパスの下に設定されているため、Android 版 Happy はまだ接続できません。</string>
+    <string name="team_server_code_scan_only">サーバーコードはスキャンしたときだけ使えます。コンピューターの Happy に表示されたコードをスキャンしてください。</string>
 </resources>

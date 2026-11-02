@@ -10,7 +10,6 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
-import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.connection.AgentConnection
 import com.slopus.happy.connection.OAuthMethod
@@ -39,26 +38,15 @@ class ServerSignInScreenTest {
 
     @Test
     fun eachStateShowsWhatToDoNext() {
-        var state by mutableStateOf<ServerSignInState>(ServerSignInState.Enter())
-        val addresses = mutableListOf<String>()
+        var state by mutableStateOf<ServerSignInState>(ServerSignInState.Checking("https://happy.acme.example"))
         val names = mutableListOf<String>()
         var browser = 0
         var retried = 0
         rule.setHappyContent {
-            ServerSignInScreen(state, onSubmitAddress = { addresses += it }, onOpenBrowser = { browser++ }, onSubmitName = { names += it }, onRetry = { retried++ }, onBack = {})
+            ServerSignInScreen(state, onOpenBrowser = { browser++ }, onSubmitName = { names += it }, onRetry = { retried++ }, onBack = {})
         }
         rule.onNode(isHeading(), useUnmergedTree = true).assertExists()
         rule.onNodeWithText("Sign in to a server").assertExists()
-        // The field: 24 from each side of the 411 phone, at least 44 high.
-        val field = rule.node(ServerSignInTags.ADDRESS).assertHeightIsAtLeast(ServerSignInSpec.fieldMinHeight).bounds
-        assertEquals(24f, field.left.value, 0.34f)
-        assertEquals(411f - 24f, field.right.value, 0.34f)
-        rule.node(ServerSignInTags.CONTINUE).assertIsNotEnabled()
-        rule.node(ServerSignInTags.ADDRESS).performTextInput("happy.acme.example")
-        rule.node(ServerSignInTags.CONTINUE).performClick()
-        assertEquals(listOf("happy.acme.example"), addresses)
-
-        state = ServerSignInState.Checking("https://happy.acme.example")
         rule.node(ServerSignInTags.SPINNER).assertExists()
         rule.onNodeWithText("happy.acme.example", substring = true).assertExists()
 
@@ -74,6 +62,11 @@ class ServerSignInScreenTest {
         assertEquals(2, browser)
 
         state = ServerSignInState.NeedsName("https://happy.acme.example")
+        // The field: 24 from each side of the 411 phone, at least 44 high.
+        val field = rule.node(ServerSignInTags.NAME).assertHeightIsAtLeast(ServerSignInSpec.fieldMinHeight).bounds
+        assertEquals(24f, field.left.value, 0.34f)
+        assertEquals(411f - 24f, field.right.value, 0.34f)
+        rule.node(ServerSignInTags.CONTINUE).assertIsNotEnabled()
         rule.node(ServerSignInTags.NAME).performTextInput("Steve")
         rule.node(ServerSignInTags.CONTINUE).performClick()
         assertEquals(listOf("Steve"), names)
@@ -82,6 +75,9 @@ class ServerSignInScreenTest {
         rule.onNodeWithText("/v0/authentication", substring = true).assertExists()
         rule.node(ServerSignInTags.RETRY).performClick()
         assertEquals(1, retried)
+
+        state = ServerSignInState.Failed("https://happy.acme.example", ServerAuthException.Reason.WrongServer)
+        rule.onNodeWithText("This code doesn't match the server it points to.", substring = true).assertExists()
 
         state = ServerSignInState.Done(AgentConnection(id = "c1", name = "Acme", addedAt = 0, server = "https://happy.acme.example"))
         rule.node(ServerSignInTags.SPINNER).assertExists()

@@ -5,7 +5,6 @@
 -->
 <resources>
     <string name="team_server_title">Accedi a un server</string>
-    <string name="team_server_address_hint">Il server Happy della tua organizzazione. Accedi dal browser.</string>
     <string name="team_server_checking">Verifica di %1$s…</string>
     <string name="team_server_continue_with">Continua con %1$s</string>
     <string name="team_server_browser_host">Accederai su %1$s nel browser.</string>
@@ -19,8 +18,8 @@
     <string name="team_server_failed">Impossibile accedere</string>
     <string name="team_server_try_again">Riprova</string>
     <string name="team_server_no_browser">Nessun browser può aprire la pagina di accesso.</string>
-    <string name="team_server_error_invalid_address">Inserisci l\'indirizzo https:// del server, senza percorso.</string>
-    <string name="team_server_error_no_sign_in">Questo server non offre l\'accesso. Chiedi al tuo amministratore.</string>
+    <string name="team_server_error_invalid_address">L\'indirizzo di questo server non è un indirizzo https:// valido.</string>
+    <string name="team_server_error_no_sign_in">Questo server non offre un accesso utilizzabile da un telefono, quindi non può essere aggiunto qui. Chiedi al tuo amministratore.</string>
     <string name="team_server_error_edge_blocked">Il bilanciatore di carico del server non ha lasciato passare l\'accesso. Chiedi all\'amministratore di consentire /v0/authentication senza accesso.</string>
     <string name="team_server_error_unreachable">Impossibile raggiungere il server. Controlla l\'indirizzo e la connessione.</string>
     <string name="team_server_error_denied">L\'accesso è stato annullato o rifiutato.</string>
@@ -36,4 +35,8 @@
     <string name="team_server_add_name">Aggiungi il tuo nome</string>
     <string name="happy_link_unknown_title">Impossibile aprire il link</string>
     <string name="happy_link_unknown_server">Questo link appartiene a un server Happy a cui non sei connesso.</string>
+    <string name="team_server_code_invalid">Questo codice server non può essere usato. Scansiona di nuovo il codice di Happy sul computer.</string>
+    <string name="team_server_error_wrong_server">Questo codice non corrisponde al server a cui rimanda.</string>
+    <string name="team_server_code_path">Questo server è configurato sotto un percorso di un indirizzo web, e Happy per Android non può ancora collegarsi a un server così.</string>
+    <string name="team_server_code_scan_only">Un codice server funziona solo se lo scansioni. Scansiona il codice di Happy sul computer.</string>
 </resources>

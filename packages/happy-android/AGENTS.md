@@ -802,6 +802,21 @@ A Happy Agent server behind an HTTPS load balancer that enforces SSO is an
 instead of a device token. The contract is shared with iOS and desktop; don't
 change its wire behaviour on Android alone.
 
+- **Adding one: by QR code only** (§8, Steve's decision; `connection/ServerInvite.kt`).
+  A phone never takes a typed or pasted server address: there is no address
+  field or menu item. Desktop shows `happy://<instanceId>/server?url=<percent-encoded
+  base URL>`, no secret in it; any of the app's scanners reads it
+  (`HappyCode.Server`, by shape, so a malformed one is refused as one).
+  `ServerInvite.parse` takes the grammar exactly (normalized `https:` base URL,
+  nothing else in the link, at most 4,096 characters) and repairs nothing.
+  Pasted into "Enter link manually", from the OS, or in a conversation it does
+  nothing (it isn't a `HappyUrls` link). A connection already on that
+  `instanceId` just opens; otherwise a base URL under a path prefix stops with
+  "…can't connect to yet" (the transport is origin-only), and an origin starts
+  the sign-in below. After the token exchange, health's `instanceId` must equal
+  the code's (`ServerSignInFlow.verify`; a new member's health behind the
+  profile gate is checked after the name); a mismatch, or none, drops the
+  credential and reads "This code doesn't match the server it points to."
 - **Sign-in** (`connection/ServerSignInFlow.kt`, `ServerAuth.kt`): `GET
   /v0/authentication` lists the methods, then OAuth authorization code + PKCE
   S256 in a Custom Tab (never a WebView), with RFC 8707 `resource` on
@@ -821,7 +836,8 @@ change its wire behaviour on Android alone.
   Happy-JSON 401 first asks `GET /v0/authentication` with the same bearer
   (`AgentClient.recover`); an edge's 401 stands. `AgentConnection.signInRequired`
   stops the account's links at once (`AgentSession`) and home shows "Sign in
-  again", which reopens the flow replacing the same connection. Paired agents
+  again", which reopens the flow replacing the same connection (and checks
+  the `instanceId` it had). Paired agents
   keep 401 = Revoked.
 - **Tunnels**: over HTTPS, the in-app browser prefers the WebSocket twin of a
   CONNECT route (`<route>/websocket`, `WebSocketTunnel`) when health reports

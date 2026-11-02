@@ -19,6 +19,7 @@ import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.connection.PairingFlow
 import com.slopus.happy.connection.PairingState
+import com.slopus.happy.connection.ServerInvite
 import com.slopus.happy.connection.ServerSignInFlow
 import com.slopus.happy.connection.ServerSignInState
 import com.slopus.happy.ui.artifacts.artifactRoutes
@@ -38,10 +39,10 @@ import kotlinx.serialization.Serializable
 @Serializable data object ServerSignInRoute
 
 /**
- * Where a team server's address goes to be signed in to (null: the
- * person types it), provided at the app's root; null where nothing can.
+ * Where a scanned team server code goes to be signed in to (the only way
+ * a phone adds one), provided at the app's root; null where nothing can.
  */
-val LocalServerSignIn: androidx.compose.runtime.ProvidableCompositionLocal<((String?) -> Unit)?> = androidx.compose.runtime.compositionLocalOf { null }
+val LocalServerSignIn: androidx.compose.runtime.ProvidableCompositionLocal<((ServerInvite) -> Boolean)?> = androidx.compose.runtime.compositionLocalOf { null }
 
 /** The Protocol V2 screens, signed in or out. HappyApp's NavHost calls this once. */
 fun NavGraphBuilder.agentConnectionRoutes(graph: AppGraph, nav: NavHostController) {
@@ -89,8 +90,26 @@ private class PairingHolder(private val graph: AppGraph) : ViewModel() {
     }
 }
 
-/** Starts signing in to the team server at [address] (null: asked for), or [replacing] again, and shows it. */
-fun NavHostController.signInToServer(graph: AppGraph, address: String?, replacing: String? = null) {
+/**
+ * The team server a scanned code names (contract §8): opens the connection
+ * already on that installation, adding nothing; otherwise starts signing
+ * in to it, and shows that. False, with nothing asked or kept, for a new
+ * server under a path prefix, which connections can't reach yet.
+ */
+fun NavHostController.signInToServer(graph: AppGraph, invite: ServerInvite): Boolean {
+    val known = graph.agentConnections.accounts.value.firstOrNull { it.instanceId == invite.instanceId }
+    if (known != null) {
+        graph.open(known.id)
+        return true
+    }
+    val origin = invite.origin ?: return false
+    graph.startServerSignIn(origin.value, instanceId = invite.instanceId)
+    navigate(ServerSignInRoute) { launchSingleTop = true }
+    return true
+}
+
+/** Signs [replacing], the team server at [address], in again, and shows it. */
+fun NavHostController.signInToServerAgain(graph: AppGraph, address: String, replacing: String) {
     graph.startServerSignIn(address, replacing)
     navigate(ServerSignInRoute) { launchSingleTop = true }
 }
@@ -100,7 +119,7 @@ private fun ServerSignIn(graph: AppGraph, nav: NavHostController) {
     val holder = viewModel { ServerSignInHolder(graph) }
     val flow by graph.serverSignIn.collectAsStateWithLifecycle()
     LaunchedEffect(flow) { flow?.let { holder.flow = it } }
-    val state = key(flow) { flow?.state?.collectAsStateWithLifecycle()?.value } ?: ServerSignInState.Enter()
+    val state = key(flow) { flow?.state?.collectAsStateWithLifecycle()?.value } ?: ServerSignInState.Checking("")
     val context = androidx.compose.ui.platform.LocalContext.current
     val dark = com.slopus.happy.ui.theme.HappyTheme.colors.dark
     LaunchedEffect(state) {
@@ -110,7 +129,6 @@ private fun ServerSignIn(graph: AppGraph, nav: NavHostController) {
     }
     ServerSignInScreen(
         state = state,
-        onSubmitAddress = { flow?.submit(it) },
         onOpenBrowser = { flow?.browserUrl()?.let { url -> openSignInPage(context, url, dark) } },
         onSubmitName = { flow?.submitName(it) },
         onRetry = { flow?.retry() },

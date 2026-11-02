@@ -1,6 +1,7 @@
 package com.slopus.happy.ui.connect
 
 import com.slopus.happy.auth.TERMINAL_URL_PREFIX
+import com.slopus.happy.connection.ServerInvite
 import com.slopus.happy.crypto.AccountLink
 
 /**
@@ -25,6 +26,14 @@ sealed interface HappyCode {
         override fun toString() = "AgentPairing(…)"
     }
 
+    /**
+     * `happy://<instanceId>/server?url=…`: a team server's code, shown by
+     * desktop ([com.slopus.happy.connection.ServerInvite]). Classified by
+     * shape alone, so a malformed one is still this kind and is refused as
+     * one. It holds no secret.
+     */
+    data class Server(val text: String) : HappyCode
+
     /** A `happy:` link of no kind this app knows. */
     data class UnknownHappy(val text: String) : HappyCode
 
@@ -40,6 +49,7 @@ sealed interface HappyCode {
                 isAgentPairing(text) -> AgentPairing(text)
                 text.startsWith(TERMINAL_URL_PREFIX) -> Terminal(text)
                 text.startsWith(AccountLink.URL_PREFIX) -> Account(text)
+                ServerInvite.isServerCode(text) -> Server(text)
                 lower.startsWith("happy:") -> UnknownHappy(text)
                 else -> NotHappy(text)
             }

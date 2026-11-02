@@ -5,7 +5,6 @@
 -->
 <resources>
     <string name="team_server_title">Войти на сервер</string>
-    <string name="team_server_address_hint">Сервер Happy вашей организации. Вход выполняется в браузере.</string>
     <string name="team_server_checking">Проверка %1$s…</string>
     <string name="team_server_continue_with">Продолжить через %1$s</string>
     <string name="team_server_browser_host">Вход откроется в браузере на %1$s.</string>
@@ -19,8 +18,8 @@
     <string name="team_server_failed">Не удалось войти</string>
     <string name="team_server_try_again">Попробовать снова</string>
     <string name="team_server_no_browser">Нет браузера, который может открыть страницу входа.</string>
-    <string name="team_server_error_invalid_address">Введите адрес сервера https:// без пути.</string>
-    <string name="team_server_error_no_sign_in">Этот сервер не поддерживает вход. Обратитесь к администратору.</string>
+    <string name="team_server_error_invalid_address">Адрес этого сервера не является корректным адресом https://.</string>
+    <string name="team_server_error_no_sign_in">Этот сервер не предлагает вход, доступный с телефона, поэтому добавить его здесь нельзя. Обратитесь к администратору.</string>
     <string name="team_server_error_edge_blocked">Балансировщик нагрузки сервера не пропустил вход. Попросите администратора разрешить /v0/authentication без входа.</string>
     <string name="team_server_error_unreachable">Не удалось подключиться к серверу. Проверьте адрес и соединение.</string>
     <string name="team_server_error_denied">Вход отменён или отклонён.</string>
@@ -36,4 +35,8 @@
     <string name="team_server_add_name">Указать имя</string>
     <string name="happy_link_unknown_title">Не удаётся открыть ссылку</string>
     <string name="happy_link_unknown_server">Эта ссылка относится к серверу Happy, к которому вы не подключены.</string>
+    <string name="team_server_code_invalid">Этот код сервера нельзя использовать. Отсканируйте код из Happy на компьютере ещё раз.</string>
+    <string name="team_server_error_wrong_server">Этот код не соответствует серверу, на который он указывает.</string>
+    <string name="team_server_code_path">Этот сервер настроен по пути внутри веб-адреса, а Happy для Android пока не умеет к таким подключаться.</string>
+    <string name="team_server_code_scan_only">Код сервера работает, только если его отсканировать. Отсканируйте код из Happy на компьютере.</string>
 </resources>

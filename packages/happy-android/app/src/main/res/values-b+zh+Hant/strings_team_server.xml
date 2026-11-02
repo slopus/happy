@@ -5,7 +5,6 @@
 -->
 <resources>
     <string name="team_server_title">登入伺服器</string>
-    <string name="team_server_address_hint">你所屬組織的 Happy 伺服器。你會在瀏覽器中登入。</string>
     <string name="team_server_checking">正在檢查 %1$s…</string>
     <string name="team_server_continue_with">使用 %1$s 繼續</string>
     <string name="team_server_browser_host">你會在瀏覽器中登入 %1$s。</string>
@@ -19,8 +18,8 @@
     <string name="team_server_failed">無法登入</string>
     <string name="team_server_try_again">再試一次</string>
     <string name="team_server_no_browser">沒有瀏覽器可以開啟登入頁面。</string>
-    <string name="team_server_error_invalid_address">請輸入伺服器的 https:// 位址,不含路徑。</string>
-    <string name="team_server_error_no_sign_in">此伺服器不提供登入。請洽詢管理員。</string>
+    <string name="team_server_error_invalid_address">此伺服器的位址不是有效的 https:// 位址。</string>
+    <string name="team_server_error_no_sign_in">此伺服器沒有可在手機上使用的登入方式，因此無法在這裡新增。請聯絡管理員。</string>
     <string name="team_server_error_edge_blocked">伺服器的負載平衡器沒有放行登入。請要求管理員允許無需登入存取 /v0/authentication。</string>
     <string name="team_server_error_unreachable">無法連線到伺服器。請檢查位址和網路連線。</string>
     <string name="team_server_error_denied">登入已取消或遭拒。</string>
@@ -36,4 +35,8 @@
     <string name="team_server_add_name">新增名字</string>
     <string name="happy_link_unknown_title">無法開啟此連結</string>
     <string name="happy_link_unknown_server">此連結屬於你未連線的 Happy 伺服器。</string>
+    <string name="team_server_code_invalid">無法使用此伺服器代碼。請重新掃描電腦上 Happy 中顯示的代碼。</string>
+    <string name="team_server_error_wrong_server">此代碼與它指向的伺服器不相符。</string>
+    <string name="team_server_code_path">此伺服器設定在某個網址路徑下，Android 版 Happy 暫時無法連線這樣的伺服器。</string>
+    <string name="team_server_code_scan_only">伺服器代碼只能透過掃描使用。請掃描電腦上 Happy 中顯示的代碼。</string>
 </resources>

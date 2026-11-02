@@ -5,7 +5,6 @@
 -->
 <resources>
     <string name="team_server_title">Iniciar sesión en un servidor</string>
-    <string name="team_server_address_hint">El servidor de Happy de tu organización. Inicias sesión en él desde el navegador.</string>
     <string name="team_server_checking">Comprobando %1$s…</string>
     <string name="team_server_continue_with">Continuar con %1$s</string>
     <string name="team_server_browser_host">Iniciarás sesión en %1$s desde el navegador.</string>
@@ -19,8 +18,8 @@
     <string name="team_server_failed">No se pudo iniciar sesión</string>
     <string name="team_server_try_again">Intentar de nuevo</string>
     <string name="team_server_no_browser">Ningún navegador puede abrir la página de inicio de sesión.</string>
-    <string name="team_server_error_invalid_address">Escribe la dirección https:// del servidor, sin ruta.</string>
-    <string name="team_server_error_no_sign_in">Este servidor no ofrece inicio de sesión. Pregunta a tu administrador.</string>
+    <string name="team_server_error_invalid_address">La dirección de este servidor no es una dirección https:// válida.</string>
+    <string name="team_server_error_no_sign_in">Este servidor no ofrece un inicio de sesión que pueda usar un teléfono, así que no se puede añadir aquí. Pregunta a tu administrador.</string>
     <string name="team_server_error_edge_blocked">El balanceador de carga del servidor no dejó pasar el inicio de sesión. Pide a tu administrador que permita /v0/authentication sin iniciar sesión.</string>
     <string name="team_server_error_unreachable">No se pudo conectar con el servidor. Revisa la dirección y tu conexión.</string>
     <string name="team_server_error_denied">El inicio de sesión se canceló o se rechazó.</string>
@@ -36,4 +35,8 @@
     <string name="team_server_add_name">Añadir tu nombre</string>
     <string name="happy_link_unknown_title">No se puede abrir el enlace</string>
     <string name="happy_link_unknown_server">Este enlace pertenece a un servidor de Happy al que no estás conectado.</string>
+    <string name="team_server_code_invalid">No se puede usar este código de servidor. Vuelve a escanear el código de Happy en tu ordenador.</string>
+    <string name="team_server_error_wrong_server">Este código no coincide con el servidor al que apunta.</string>
+    <string name="team_server_code_path">Este servidor está configurado en una ruta de una dirección web, y Happy para Android todavía no puede conectarse a él.</string>
+    <string name="team_server_code_scan_only">Un código de servidor solo funciona si lo escaneas. Escanea el código de Happy en tu ordenador.</string>
 </resources>

@@ -221,8 +221,8 @@ class TeamServerTest {
         val connections = connections()
         // The daemon's origin is this mock (discovery and profile), and so is the SSO.
         val server = "https://localhost:${sso.port}"
-        val flow = ServerSignInFlow(scope, connections, auth)
-        sso.enqueue(json("""{"authenticated":false,"userId":null,"methods":[{"type":"oauth","id":"jwt","name":"Acme SSO","authorizationUrl":"$server/authorize","tokenUrl":"$server/token","refreshUrl":"$server/token","clientId":"happy","resource":"https://happy.acme.example"}]}"""))
+        val flow = ServerSignInFlow(scope, connections, auth, expectedInstance = INSTANCE)
+        sso.enqueue(discovery(server))
         flow.start(server)
         val ready = withTimeout(5_000) { flow.state.first { it is ServerSignInState.Ready } } as ServerSignInState.Ready
         assertEquals("Acme SSO", ready.method.name)
@@ -233,6 +233,8 @@ class TeamServerTest {
         assertTrue(flow.state.value is ServerSignInState.InBrowser)
         sso.enqueue(json("""{"access_token":"access-1","token_type":"Bearer","expires_in":600,"refresh_token":"refresh-1"}"""))
         sso.enqueue(json("""{"authenticated":true,"userId":null,"methods":[]}"""))
+        // The code's installation, checked before the name.
+        sso.enqueue(health(INSTANCE))
         daemon.valid += "access-1"
         flow.callback("happy://oauth/callback?code=c1&state=$state")
         withTimeout(5_000) { flow.state.first { it is ServerSignInState.NeedsName } }
@@ -244,7 +246,76 @@ class TeamServerTest {
         val done = withTimeout(5_000) { flow.state.first { it is ServerSignInState.Done } } as ServerSignInState.Done
         assertEquals(server, done.account.server)
         assertEquals("refresh-2", connections.credentials(done.account.id)?.oauth?.refreshToken)
-        val patches = (0 until sso.requestCount).map { sso.takeRequest() }.filter { it.method == "PATCH" }
+        val requests = (0 until sso.requestCount).map { sso.takeRequest() }
+        val patches = requests.filter { it.method == "PATCH" }
         assertEquals(listOf("Bearer access-1", "Bearer access-2"), patches.map { it.headers["Authorization"] })
+        assertEquals(listOf("Bearer access-1"), requests.filter { it.target == "/v0/health" }.map { it.headers["Authorization"] })
+    }
+
+    private fun discovery(server: String) =
+        json("""{"authenticated":false,"userId":null,"methods":[{"type":"oauth","id":"jwt","name":"Acme SSO","authorizationUrl":"$server/authorize","tokenUrl":"$server/token","refreshUrl":"$server/token","clientId":"happy","resource":"https://happy.acme.example"}]}""")
+
+    private fun health(instanceId: String?) =
+        json("""{"healthy":true,"ready":true,"version":{"protocol":33,"daemon":"1"}${instanceId?.let { ",\"instanceId\":\"$it\"" }.orEmpty()}}""")
+
+    /** A sign-in to this mock for [INSTANCE], through discovery and the browser, the code exchanged and checked as [userId]'s. */
+    private suspend fun throughBrowser(flow: ServerSignInFlow, userId: String?, vararg then: MockResponse) {
+        val server = "https://localhost:${sso.port}"
+        sso.enqueue(discovery(server))
+        flow.start(server)
+        withTimeout(5_000) { flow.state.first { it is ServerSignInState.Ready } }
+        val state = flow.browserUrl()!!.toHttpUrl().queryParameter("state")!!
+        sso.enqueue(json("""{"access_token":"access-1","token_type":"Bearer","expires_in":600,"refresh_token":"refresh-1"}"""))
+        sso.enqueue(json("""{"authenticated":true,"userId":${userId?.let { "\"$it\"" } ?: "null"},"methods":[]}"""))
+        then.forEach(sso::enqueue)
+        daemon.valid += "access-1"
+        flow.callback("happy://oauth/callback?code=c1&state=$state")
+    }
+
+    @Test
+    fun anotherInstallationAtTheCodesAddressIsNotKept() = runBlocking {
+        val connections = connections()
+        val flow = ServerSignInFlow(scope, connections, auth, expectedInstance = INSTANCE)
+        throughBrowser(flow, "u1", health("z9y8x7w6v5u4t3s2r1q0p9o8"))
+        val failed = withTimeout(5_000) { flow.state.first { it is ServerSignInState.Failed } } as ServerSignInState.Failed
+        assertEquals(ServerAuthException.Reason.WrongServer, failed.reason)
+        assertEquals(emptyList<AgentConnection>(), connections.accounts.value)
+    }
+
+    @Test
+    fun aHealthWithoutAnInstanceCantBeVerified() = runBlocking {
+        val connections = connections()
+        val flow = ServerSignInFlow(scope, connections, auth, expectedInstance = INSTANCE)
+        throughBrowser(flow, "u1", health(null))
+        val failed = withTimeout(5_000) { flow.state.first { it is ServerSignInState.Failed } } as ServerSignInState.Failed
+        assertEquals(ServerAuthException.Reason.WrongServer, failed.reason)
+        assertEquals(emptyList<AgentConnection>(), connections.accounts.value)
+    }
+
+    @Test
+    fun aMembersServerIsKeptWhenItIsTheCodesInstallation() = runBlocking {
+        val connections = connections()
+        val flow = ServerSignInFlow(scope, connections, auth, expectedInstance = INSTANCE)
+        throughBrowser(flow, "u1", health(INSTANCE))
+        val done = withTimeout(5_000) { flow.state.first { it is ServerSignInState.Done } } as ServerSignInState.Done
+        assertEquals("https://localhost:${sso.port}", done.account.server)
+    }
+
+    @Test
+    fun aNewMembersHealthBehindTheProfileGateIsCheckedAfterTheName() = runBlocking {
+        val connections = connections()
+        val flow = ServerSignInFlow(scope, connections, auth, expectedInstance = INSTANCE)
+        throughBrowser(flow, null, json("""{"error":"Unauthorized","code":"unauthorized"}""", 401))
+        withTimeout(5_000) { flow.state.first { it is ServerSignInState.NeedsName } }
+        sso.enqueue(json("""{"profile":{}}"""))
+        sso.enqueue(health("z9y8x7w6v5u4t3s2r1q0p9o8"))
+        flow.submitName("Steve")
+        val failed = withTimeout(5_000) { flow.state.first { it is ServerSignInState.Failed } } as ServerSignInState.Failed
+        assertEquals(ServerAuthException.Reason.WrongServer, failed.reason)
+        assertEquals(emptyList<AgentConnection>(), connections.accounts.value)
+    }
+
+    private companion object {
+        const val INSTANCE = "k3x9q2m7p0a4b8c1d5e6f7g2"
     }
 }

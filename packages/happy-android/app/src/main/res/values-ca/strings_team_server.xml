@@ -5,7 +5,6 @@
 -->
 <resources>
     <string name="team_server_title">Inicia sessió en un servidor</string>
-    <string name="team_server_address_hint">El servidor de Happy de la teva organització. Hi inicies sessió des del navegador.</string>
     <string name="team_server_checking">Comprovant %1$s…</string>
     <string name="team_server_continue_with">Continua amb %1$s</string>
     <string name="team_server_browser_host">Iniciaràs sessió a %1$s des del navegador.</string>
@@ -19,8 +18,8 @@
     <string name="team_server_failed">No s\'ha pogut iniciar sessió</string>
     <string name="team_server_try_again">Torna-ho a provar</string>
     <string name="team_server_no_browser">Cap navegador pot obrir la pàgina d\'inici de sessió.</string>
-    <string name="team_server_error_invalid_address">Escriu l\'adreça https:// del servidor, sense camí.</string>
-    <string name="team_server_error_no_sign_in">Aquest servidor no ofereix inici de sessió. Pregunta a l\'administrador.</string>
+    <string name="team_server_error_invalid_address">L\'adreça d\'aquest servidor no és una adreça https:// vàlida.</string>
+    <string name="team_server_error_no_sign_in">Aquest servidor no ofereix cap inici de sessió que pugui fer servir un telèfon, així que no es pot afegir aquí. Pregunta-ho a l\'administrador.</string>
     <string name="team_server_error_edge_blocked">L\'equilibrador de càrrega del servidor no ha deixat passar l\'inici de sessió. Demana a l\'administrador que permeti /v0/authentication sense iniciar sessió.</string>
     <string name="team_server_error_unreachable">No s\'ha pogut connectar amb el servidor. Comprova l\'adreça i la connexió.</string>
     <string name="team_server_error_denied">L\'inici de sessió s\'ha cancel·lat o s\'ha rebutjat.</string>
@@ -36,4 +35,8 @@
     <string name="team_server_add_name">Afegeix el teu nom</string>
     <string name="happy_link_unknown_title">No es pot obrir l\'enllaç</string>
     <string name="happy_link_unknown_server">Aquest enllaç pertany a un servidor de Happy al qual no estàs connectat.</string>
+    <string name="team_server_code_invalid">No es pot fer servir aquest codi de servidor. Torna a escanejar el codi de Happy a l\'ordinador.</string>
+    <string name="team_server_error_wrong_server">Aquest codi no coincideix amb el servidor al qual apunta.</string>
+    <string name="team_server_code_path">Aquest servidor està configurat sota un camí d\'una adreça web, i Happy per a Android encara no s\'hi pot connectar.</string>
+    <string name="team_server_code_scan_only">Un codi de servidor només funciona si l\'escaneges. Escaneja el codi de Happy a l\'ordinador.</string>
 </resources>

@@ -48,6 +48,8 @@ class ServerAuthException(val reason: Reason, cause: Throwable? = null) : Except
         Rejected,
         /** The access token expired and can't be refreshed: sign in again. */
         SignInRequired,
+        /** The server at the code's address is another installation than the code names, or names none (edge SSO §8). */
+        WrongServer,
     }
 }
 
@@ -209,8 +211,8 @@ class ServerAuthClient(
     /**
      * Saves the new member's [name] (`PATCH /v0/profile`): until a team
      * member has a profile, the daemon refuses everything else with `401`.
+     * An expired [token] is SignInRequired.
      */
-    /** `PATCH /v0/profile` with the person's [name]; an expired [token] is SignInRequired. */
     suspend fun saveName(origin: AgentOrigin, token: String, name: String) {
         val body = Json.encodeToString(JsonObject.serializer(), JsonObject(mapOf("name" to JsonPrimitive(name))))
         val (status, _, _) = call(
@@ -227,6 +229,20 @@ class ServerAuthClient(
                 else -> ServerAuthException.Reason.Rejected
             },
         )
+    }
+
+    /**
+     * Health's `instanceId` at [origin] with [token] (edge SSO §8): the
+     * installation a server QR code names; null from a daemon without one.
+     */
+    suspend fun instanceId(origin: AgentOrigin, token: String): String? {
+        val (status, type, body) = call(
+            Request.Builder().url("${origin.value}/v0/health").header("Accept", "application/json").header("Authorization", "Bearer $token").build(),
+        )
+        if (SignInRule.requiresSignIn(status, type, body)) throw ServerAuthException(ServerAuthException.Reason.SignInRequired)
+        if (status != 200) throw ServerAuthException(ServerAuthException.Reason.Unreachable)
+        val root = parse(body) ?: throw ServerAuthException(ServerAuthException.Reason.Unreachable)
+        return (root["instanceId"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf(com.slopus.happy.agent.HappyUrls::isInstanceId)
     }
 
     /** Starts a sign-in with [method]: a fresh state and verifier, and the page to open. */

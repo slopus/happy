@@ -25,7 +25,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
@@ -44,7 +43,6 @@ import com.slopus.happy.ui.theme.happyTextStyle
 import com.slopus.happy.ui.components.PageProgressIndicator as CircularProgressIndicator
 
 object ServerSignInTags {
-    const val ADDRESS = "serverSignIn.address"
     const val NAME = "serverSignIn.name"
     const val CONTINUE = "serverSignIn.continue"
     const val BROWSER = "serverSignIn.browser"
@@ -66,8 +64,8 @@ object ServerSignInSpec {
 /**
  * Signing in to a team server (edge SSO), PairingScreen's layout: the
  * standard header, then one centred column 24 in from the sides, 16
- * between parts, by [state]: the address field and Continue; a spinner while
- * the server is asked; the server's sign-in name on a button with the host
+ * between parts, by [state]: a spinner while the server a scanned code
+ * named is asked; the server's sign-in name on a button with the host
  * the browser will show under it; waiting for the browser, with Open
  * browser again; a spinner while the code is exchanged; a new member's
  * name; or why it failed with Try again. Field 15, at least 44 high,
@@ -76,7 +74,6 @@ object ServerSignInSpec {
 @Composable
 fun ServerSignInScreen(
     state: ServerSignInState,
-    onSubmitAddress: (String) -> Unit,
     onOpenBrowser: () -> Unit,
     onSubmitName: (String) -> Unit,
     onRetry: () -> Unit,
@@ -131,24 +128,6 @@ fun ServerSignInScreen(
             )
 
             when (state) {
-                is ServerSignInState.Enter -> {
-                    var address by rememberSaveable(state) { mutableStateOf(state.address) }
-                    Line(stringResource(R.string.team_server_address_hint), body, secondary = true)
-                    Field(
-                        address,
-                        { address = it },
-                        stringResource(R.string.team_server_address_placeholder),
-                        ServerSignInTags.ADDRESS,
-                        keyboard = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false, imeAction = ImeAction.Go),
-                    )
-                    Spacer(Modifier.height(8.dp))
-                    RoundButton(
-                        stringResource(R.string.common_continue),
-                        { onSubmitAddress(address) },
-                        Modifier.testTag(ServerSignInTags.CONTINUE),
-                        enabled = address.isNotBlank(),
-                    )
-                }
                 is ServerSignInState.Checking -> {
                     Spinner()
                     Line(stringResource(R.string.team_server_checking, host(state.server)), body)
@@ -222,4 +201,5 @@ internal fun failureText(reason: ServerAuthException.Reason): Int = when (reason
     ServerAuthException.Reason.InvalidToken -> R.string.team_server_error_invalid_token
     ServerAuthException.Reason.Rejected -> R.string.team_server_error_rejected
     ServerAuthException.Reason.SignInRequired -> R.string.team_server_error_sign_in_required
+    ServerAuthException.Reason.WrongServer -> R.string.team_server_error_wrong_server
 }

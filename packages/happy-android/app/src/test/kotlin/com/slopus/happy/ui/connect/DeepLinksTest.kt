@@ -93,6 +93,8 @@ class DeepLinksTest {
             "happy://$instance/",
             "happy://$instance/session/s1",
             "happy://${instance.uppercase()}/artifacts/abc123",
+            // A team server's link is taken only from the app's own scanner (§8).
+            "happy://$instance/server?url=https%3A%2F%2Fhappy.acme.example%2F",
         ).forEach { assertNull(it, parseDeepLink(it)) }
         // The mobile routes are untouched.
         assertEquals(DeepLink.Session("s1"), parseDeepLink("happy://session/s1"))

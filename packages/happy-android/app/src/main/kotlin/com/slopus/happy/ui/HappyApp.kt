@@ -51,6 +51,8 @@ import com.slopus.happy.ui.connection.LocalServerSignIn
 import com.slopus.happy.ui.connection.LocalHappyLinks
 import com.slopus.happy.ui.connection.rememberHappyLinks
 import com.slopus.happy.ui.connection.signInToServer
+import com.slopus.happy.ui.connection.signInToServerAgain
+import com.slopus.happy.connection.ServerInvite
 import com.slopus.happy.ui.connect.rememberAddFlow
 import com.slopus.happy.ui.tablet.TabletShell
 import com.slopus.happy.ui.connect.connectRoutes
@@ -129,7 +131,7 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
             val openSession = { id: String -> nav.navigate(SessionRoute(id)) }
             val troubleshoot = { nav.navigate(TroubleshootRoute) }
             val connectAgent = remember(nav) { { code: String -> nav.connectAgent(graph, code) } }
-            val signInToServer = remember(nav) { { address: String? -> nav.signInToServer(graph, address) } }
+            val signInToServer = remember(nav) { { invite: ServerInvite -> nav.signInToServer(graph, invite) } }
             // Happy URLs (edge SSO §7): external ones only on their own installation's connection.
             val happyLinks = rememberHappyLinks(graph, nav, agent)
             // Every scanner, signed in or out, sends happy://direct? codes here.
@@ -159,7 +161,7 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                                     onSettingsRow = { row -> nav.openAgentSettingsRow(account.id, row) },
                                     onOpenArtifacts = { nav.navigate(AgentArtifactsRoute(account.id)) },
                                     onOpenSurface = { nav.navigate(AgentSurfaceRoute(account.id, it.id, it.type, it.name)) },
-                                    onSignIn = { server -> nav.signInToServer(graph, server, replacing = account.id) },
+                                    onSignIn = { server -> nav.signInToServerAgain(graph, server, replacing = account.id) },
                                 )
                                 is OpenAccount.Happy -> LegacyHome(graph, nav, onOpenSession = openSession, onTroubleshoot = troubleshoot)
                                 OpenAccount.None -> Unit

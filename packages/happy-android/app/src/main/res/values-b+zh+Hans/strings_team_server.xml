@@ -5,7 +5,6 @@
 -->
 <resources>
     <string name="team_server_title">登录服务器</string>
-    <string name="team_server_address_hint">你所在组织的 Happy 服务器。你将在浏览器中登录。</string>
     <string name="team_server_checking">正在检查 %1$s…</string>
     <string name="team_server_continue_with">使用 %1$s 继续</string>
     <string name="team_server_browser_host">你将在浏览器中登录 %1$s。</string>
@@ -19,8 +18,8 @@
     <string name="team_server_failed">无法登录</string>
     <string name="team_server_try_again">重试</string>
     <string name="team_server_no_browser">没有浏览器可以打开登录页面。</string>
-    <string name="team_server_error_invalid_address">请输入服务器的 https:// 地址,不带路径。</string>
-    <string name="team_server_error_no_sign_in">此服务器不提供登录。请联系管理员。</string>
+    <string name="team_server_error_invalid_address">此服务器的地址不是有效的 https:// 地址。</string>
+    <string name="team_server_error_no_sign_in">此服务器没有可在手机上使用的登录方式，因此无法在这里添加。请联系管理员。</string>
     <string name="team_server_error_edge_blocked">服务器的负载均衡器没有放行登录。请让管理员允许无需登录访问 /v0/authentication。</string>
     <string name="team_server_error_unreachable">无法连接到服务器。请检查地址和网络连接。</string>
     <string name="team_server_error_denied">登录已取消或被拒绝。</string>
@@ -36,4 +35,8 @@
     <string name="team_server_add_name">添加名字</string>
     <string name="happy_link_unknown_title">无法打开此链接</string>
     <string name="happy_link_unknown_server">此链接属于你未连接的 Happy 服务器。</string>
+    <string name="team_server_code_invalid">无法使用此服务器代码。请重新扫描电脑上 Happy 中显示的代码。</string>
+    <string name="team_server_error_wrong_server">此代码与它指向的服务器不匹配。</string>
+    <string name="team_server_code_path">此服务器设置在某个网址路径下，Android 版 Happy 暂时无法连接这样的服务器。</string>
+    <string name="team_server_code_scan_only">服务器代码只能通过扫描使用。请扫描电脑上 Happy 中显示的代码。</string>
 </resources>

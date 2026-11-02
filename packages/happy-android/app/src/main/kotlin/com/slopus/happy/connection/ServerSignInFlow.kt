@@ -10,9 +10,6 @@ import kotlinx.coroutines.launch
 
 /** Where one team server sign-in stands, as its screen draws it. */
 sealed interface ServerSignInState {
-    /** Asks for the server's address. */
-    data class Enter(val address: String = "") : ServerSignInState
-
     data class Checking(val server: String) : ServerSignInState
 
     /** The server's sign-in, shown with the authorization server's host before the browser opens. */
@@ -33,27 +30,34 @@ sealed interface ServerSignInState {
 
 /**
  * Signing in to a team server behind an SSO load balancer (edge SSO
- * contract): the address, `GET /v0/authentication`, the authorization
+ * contract): from a server QR code desktop shows ([ServerInvite]), the
+ * only way a phone adds one, `GET /v0/authentication`, the authorization
  * code flow with PKCE in the system browser (a Custom Tab, never a
  * WebView), back through [REDIRECT_URI], the code exchanged, the token
- * checked with the server, a name if the person is new there, and the
- * server kept as an agent connection. [replacing] signs an existing one in
- * again. The verifier and state live only in this object: a sign-in the
- * app was killed during starts over.
+ * checked with the server, a name if the person is new there, health's
+ * `instanceId` checked against [expectedInstance], and the server kept as
+ * an agent connection. [replacing] signs an existing one in again. The
+ * verifier and state live only in this object: a sign-in the app was
+ * killed during starts over.
  */
 class ServerSignInFlow(
     private val scope: CoroutineScope,
     private val connections: AgentConnections,
     private val auth: ServerAuthClient,
     val replacing: String? = null,
+    /** The installation the server must be: the code's, or the one signing in again was. Null: not checked (an older daemon has none). */
+    private val expectedInstance: String? = null,
 ) {
-    private val mutableState = MutableStateFlow<ServerSignInState>(ServerSignInState.Enter())
+    private val mutableState = MutableStateFlow<ServerSignInState>(ServerSignInState.Checking(""))
     val state: StateFlow<ServerSignInState> = mutableState.asStateFlow()
 
     private var origin: AgentOrigin? = null
     private var method: OAuthMethod? = null
     private var pending: PendingOAuth? = null
     private var grant: Pair<OAuthGrant, OAuthCredential>? = null
+
+    /** This grant's health named [expectedInstance] ([verify]). */
+    private var verified = false
     private var job: Job? = null
 
     /**
@@ -70,13 +74,8 @@ class ServerSignInFlow(
         mutableState.value = ServerSignInState.NeedsName(address)
     }
 
-    /** Starts at [address] when it is known (a server signing in again), else asks for it. */
-    fun start(address: String?) {
-        if (address == null) mutableState.value = ServerSignInState.Enter() else submit(address)
-    }
-
-    /** The address the person typed. */
-    fun submit(address: String) {
+    /** Starts signing in to [address]: a scanned code's origin, or a server signing in again. */
+    fun start(address: String) {
         val parsed = try {
             ServerAuthClient.parseAddress(address)
         } catch (e: ServerAuthException) {
@@ -114,9 +113,13 @@ class ServerSignInFlow(
         run(server) {
             val signedIn = auth.complete(pending, uri)
             grant = signedIn
+            verified = false
             val (authenticated, userId) = auth.check(pending.origin, signedIn.first.access.value)
             if (!authenticated) throw ServerAuthException(ServerAuthException.Reason.Rejected)
-            if (userId == null) mutableState.value = ServerSignInState.NeedsName(server) else finish()
+            if (userId != null) return@run finish()
+            // A new member: checked before the name, so none is saved on another server, unless health is behind the profile gate too.
+            verify(pending.origin, signedIn.first.access.value, beforeProfile = true)
+            mutableState.value = ServerSignInState.NeedsName(server)
         }
     }
 
@@ -139,11 +142,20 @@ class ServerSignInFlow(
                     if (e.reason != ServerAuthException.Reason.SignInRequired) throw e
                     auth.saveName(origin, renewed(token) ?: throw e, trimmed)
                 }
-                finish()
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
                 mutableState.value = ServerSignInState.NeedsName(origin.value, failed = true)
+                return@launch
+            }
+            try {
+                finish()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ServerAuthException) {
+                mutableState.value = ServerSignInState.Failed(origin.value, e.reason)
+            } catch (_: Exception) {
+                mutableState.value = ServerSignInState.Failed(origin.value, ServerAuthException.Reason.Unreachable)
             }
         }
     }
@@ -157,14 +169,11 @@ class ServerSignInFlow(
         return access.value
     }
 
-    /** After a failure: the address again, or the server's sign-in if it was found. */
+    /** After a failure: the server's sign-in if it was found, else the server asked again. Without an address there is nothing to retry. */
     fun retry() {
-        val origin = origin
+        val origin = origin ?: return
         val method = method
-        mutableState.value = when {
-            origin != null && method != null -> ServerSignInState.Ready(origin.value, method)
-            else -> ServerSignInState.Enter(origin?.value.orEmpty())
-        }
+        if (method != null) mutableState.value = ServerSignInState.Ready(origin.value, method) else start(origin.value)
     }
 
     fun close() {
@@ -183,9 +192,36 @@ class ServerSignInFlow(
             return
         }
         val (granted, credential) = grant ?: return
+        if (!verified) verify(origin, granted.access.value)
         val account = connections.addServer(origin, credential, granted.access, fallbackName = origin.host, replacing = replacing)
         grant = null
         mutableState.value = ServerSignInState.Done(account)
+    }
+
+    /**
+     * Keeps the sign-in only if health at [origin] names [expectedInstance]
+     * (contract §8): the code's installation, or the one signing in again
+     * was. Otherwise the credential is dropped and it is WrongServer, as it
+     * is for a health that names none. [beforeProfile]: a new member's
+     * health may be behind the profile gate, and is then checked after the
+     * name instead.
+     */
+    private suspend fun verify(origin: AgentOrigin, token: String, beforeProfile: Boolean = false) {
+        if (expectedInstance == null) {
+            verified = true
+            return
+        }
+        val instanceId = try {
+            auth.instanceId(origin, token)
+        } catch (e: ServerAuthException) {
+            if (beforeProfile && e.reason == ServerAuthException.Reason.SignInRequired) return
+            throw e
+        }
+        if (instanceId != expectedInstance) {
+            grant = null
+            throw ServerAuthException(ServerAuthException.Reason.WrongServer)
+        }
+        verified = true
     }
 
     private fun run(server: String, block: suspend () -> Unit) {

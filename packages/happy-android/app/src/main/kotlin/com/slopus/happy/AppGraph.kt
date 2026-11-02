@@ -356,13 +356,16 @@ class AppGraph(
     val serverSignIn: StateFlow<ServerSignInFlow?> = serverSignInState.asStateFlow()
 
     /**
-     * Starts signing in to a team server at [address] (null: the person
-     * types it), or signing [replacing] in again; replaces any unfinished one.
+     * Starts signing in to the team server at [address] (a scanned code's),
+     * or signing [replacing] in again; replaces any unfinished one. It is
+     * kept only as [instanceId]'s installation: the code's, or the one
+     * [replacing] was.
      */
-    fun startServerSignIn(address: String?, replacing: String? = null) {
+    fun startServerSignIn(address: String, replacing: String? = null, instanceId: String? = null) {
         serverSignInState.value?.close()
-        val onboarding = agentConnections.accounts.value.firstOrNull { it.id == replacing && it.profileRequired }?.server
-        serverSignInState.value = ServerSignInFlow(scope, agentConnections, serverAuth, replacing)
+        val existing = agentConnections.accounts.value.firstOrNull { it.id == replacing }
+        val onboarding = existing?.takeIf { it.profileRequired }?.server
+        serverSignInState.value = ServerSignInFlow(scope, agentConnections, serverAuth, replacing, instanceId ?: existing?.instanceId)
             .also { flow -> if (onboarding != null) flow.onboard(onboarding) else flow.start(address) }
     }
 

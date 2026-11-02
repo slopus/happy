@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.ui.PHONE
+import com.slopus.happy.ui.connection.LocalServerSignIn
 import com.slopus.happy.ui.setHappyContent
 import java.util.concurrent.CopyOnWriteArrayList
 import org.junit.Assert.assertEquals
@@ -20,8 +21,8 @@ import org.robolectric.annotation.Config
 
 /**
  * Every kind of code against every way in, as one table. A code either is
- * approved here, pairs an agent, or says exactly where it belongs; nothing
- * is ever ignored. The ways in differ only by [ConnectKind]:
+ * approved here, pairs an agent, signs in to a team server, or says exactly
+ * where it belongs; nothing is ever ignored. The ways in differ only by [ConnectKind]:
  *
  * - [ConnectKind.Add] is the first screen's Start and the account menu's
  *   Add: the same flow (`LocalAddFlow`), signed out or in.
@@ -42,6 +43,9 @@ class ScanRouteTableTest {
         /** It went to agent pairing, with the code it passed on. */
         data class Pairs(val code: String) : Lands
 
+        /** It went to team server sign-in, for this base URL. */
+        data class SignsIn(val url: String) : Lands
+
         /** It was refused, with exactly this message. */
         data class Says(val message: String) : Lands
     }
@@ -51,12 +55,19 @@ class ScanRouteTableTest {
     private val pairing = "happy://direct?eyJ2IjoxfQ"
     private val unknownHappy = "happy://something?else"
     private val notHappy = "https://example.com"
+    private val server = "happy://k3x9q2m7p0a4b8c1d5e6f7g2/server?url=https%3A%2F%2Fhappy.acme.example%2F"
+    private val serverAtPath = "happy://k3x9q2m7p0a4b8c1d5e6f7g2/server?url=https%3A%2F%2Facme.example%2Fhappy%2F"
+    private val serverMalformed = "happy://k3x9q2m7p0a4b8c1d5e6f7g2/server?url=http%3A%2F%2Fhappy.acme.example%2F"
+    private val servers = setOf(server, serverAtPath, serverMalformed)
 
     private val notHappyHere = "This QR code isn't a Happy code."
     private val terminalElsewhere = "This code connects a terminal. Scan it from Settings › Scan QR code to authenticate."
     private val accountElsewhere = "This code links a new device. Scan it from Settings › Backup & Restore › Link New Device."
     private val accountNeedsPhone = "This code adds a phone to an account. Scan it with a phone that's signed in."
     private val invalidUrl = "Invalid authentication URL"
+    private val serverInvalid = "This server code can't be used. Scan the code from Happy on your computer again."
+    private val serverPathUnsupported = "This server is set up under a web address path, which Happy on Android can't connect to yet."
+    private val serverScanOnly = "A server code works only when you scan it. Scan the code from Happy on your computer."
 
     /**
      * The table, read as: taken at this way in, this code lands here. Each
@@ -71,6 +82,9 @@ class ScanRouteTableTest {
         Triple(ConnectKind.Add, account, Lands.Says(accountNeedsPhone)),
         Triple(ConnectKind.Add, unknownHappy, Lands.Says(notHappyHere)),
         Triple(ConnectKind.Add, notHappy, Lands.Says(notHappyHere)),
+        Triple(ConnectKind.Add, server, Lands.SignsIn("https://happy.acme.example/")),
+        Triple(ConnectKind.Add, serverAtPath, Lands.Says(serverPathUnsupported)),
+        Triple(ConnectKind.Add, serverMalformed, Lands.Says(serverInvalid)),
 
         // Settings > Scan QR code: this account authenticates a terminal.
         Triple(ConnectKind.Terminal, terminal, Lands.Approved(terminal)),
@@ -78,6 +92,9 @@ class ScanRouteTableTest {
         Triple(ConnectKind.Terminal, account, Lands.Says(accountElsewhere)),
         Triple(ConnectKind.Terminal, unknownHappy, Lands.Says(notHappyHere)),
         Triple(ConnectKind.Terminal, notHappy, Lands.Says(notHappyHere)),
+        Triple(ConnectKind.Terminal, server, Lands.SignsIn("https://happy.acme.example/")),
+        Triple(ConnectKind.Terminal, serverAtPath, Lands.Says(serverPathUnsupported)),
+        Triple(ConnectKind.Terminal, serverMalformed, Lands.Says(serverInvalid)),
 
         // Settings > Account > Link New Device: this account takes another phone.
         Triple(ConnectKind.Account, account, Lands.Approved(account)),
@@ -85,10 +102,14 @@ class ScanRouteTableTest {
         Triple(ConnectKind.Account, terminal, Lands.Says(terminalElsewhere)),
         Triple(ConnectKind.Account, unknownHappy, Lands.Says(notHappyHere)),
         Triple(ConnectKind.Account, notHappy, Lands.Says(notHappyHere)),
+        Triple(ConnectKind.Account, server, Lands.SignsIn("https://happy.acme.example/")),
+        Triple(ConnectKind.Account, serverAtPath, Lands.Says(serverPathUnsupported)),
+        Triple(ConnectKind.Account, serverMalformed, Lands.Says(serverInvalid)),
     )
 
     private val approved = CopyOnWriteArrayList<String>()
     private val paired = CopyOnWriteArrayList<String>()
+    private val signedIn = CopyOnWriteArrayList<String>()
     private var kind by mutableStateOf(ConnectKind.Add)
     private var code by mutableStateOf("")
 
@@ -101,7 +122,7 @@ class ScanRouteTableTest {
     /** One composition for the whole table: the rule takes content once. */
     private fun start() {
         rule.setHappyContent {
-            CompositionLocalProvider(LocalQrScanner provides scanner, LocalAgentPairing provides { paired += it }) {
+            CompositionLocalProvider(LocalQrScanner provides scanner, LocalAgentPairing provides { paired += it }, LocalServerSignIn provides { invite -> invite.origin != null && signedIn.add(invite.url) }) {
                 key(row) {
                     val approve: suspend (String) -> Unit = { url -> approved += url }
                     flow = when (kind) {
@@ -118,6 +139,7 @@ class ScanRouteTableTest {
     private fun land(kind: ConnectKind, code: String, paste: Boolean): Lands {
         approved.clear()
         paired.clear()
+        signedIn.clear()
         rule.runOnIdle {
             this.kind = kind
             this.code = code
@@ -129,6 +151,7 @@ class ScanRouteTableTest {
 
         approved.firstOrNull()?.let { return Lands.Approved(it) }
         paired.firstOrNull()?.let { return Lands.Pairs(it) }
+        signedIn.firstOrNull()?.let { return Lands.SignsIn(it) }
         val said = flow.alert?.message ?: error("$kind + $code: nothing happened, and nothing was said")
         rule.onNodeWithText(said).assertExists()
         rule.onNodeWithText("OK").performClick()
@@ -150,13 +173,18 @@ class ScanRouteTableTest {
      * terminal link typed into Link New Device names Settings' terminal
      * scanner, rather than being called invalid. The one difference is a
      * link of no kind this app knows, which says "Invalid authentication
-     * URL" instead of talking about a QR code that nobody scanned.
+     * URL" instead of talking about a QR code that nobody scanned, and a
+     * team server's, which is taken only from the camera.
      */
     @Test
     fun aPastedLinkGoesWhereTheScannedOneGoes() {
         start()
         val wrong = table.mapNotNull { (kind, code, scanned) ->
-            val expected = if (scanned == Lands.Says(notHappyHere)) Lands.Says(invalidUrl) else scanned
+            val expected = when {
+                code in servers -> Lands.Says(serverScanOnly)
+                scanned == Lands.Says(notHappyHere) -> Lands.Says(invalidUrl)
+                else -> scanned
+            }
             val actual = land(kind, code, paste = true)
             if (actual == expected) null else "$kind pasting $code: expected $expected, got $actual"
         }
