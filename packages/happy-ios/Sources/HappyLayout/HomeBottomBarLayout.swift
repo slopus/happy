@@ -22,6 +22,9 @@ public struct HomeBottomBarLayout: Equatable, Sendable {
 /// layout followed the toolbar's return, so a long list ended under the
 /// search field. Home keeps the room it stood with until it stands again,
 /// unless its size changed meanwhile.
+///
+/// A field in the navigation bar, as an iPad's window too narrow for the
+/// split puts it, is in the bar's room: the list's foot is the safe area's.
 public struct HomeListRoom: Equatable, Sendable {
     public var size: CGSize
     public var insets: HomeContentInsets
@@ -33,7 +36,8 @@ public struct HomeListRoom: Equatable, Sendable {
         }
         self.size = size
         var insets = HomeContentInsets(underBar: safeArea, dock: 0)
-        insets.listBottom = HomeBottomBarLayout(height: size.height, safeBottom: safeArea.bottom, control: control).bottomInset
+        let toolbar = control.flatMap { $0.minY >= safeArea.top ? $0 : nil }
+        insets.listBottom = HomeBottomBarLayout(height: size.height, safeBottom: safeArea.bottom, control: toolbar).bottomInset
         self.insets = insets
     }
 }

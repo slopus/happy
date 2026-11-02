@@ -153,19 +153,22 @@ final class AgentChatUltraList: UIView {
 
     func setViewport(size: CGSize, insets: UIEdgeInsets, keyboard: ChatUltraKeyboard.Change? = nil) {
         guard size.width > 0, size.height > 0 else { return }
-        var sizeChanged = viewportSize != size
+        let sizeChanged = viewportSize != size
         let changed = self.insets != insets || sizeChanged
         if abs(viewportSize.width - size.width) > 0.5 {
-            // A new width first, alone, so the rows on screen are laid out
-            // again in place (`showInPlace`), on the curve of the animation
-            // it is in.
-            list.resize(to: CGRect(origin: list.frame.origin, size: size))
-            sizeChanged = false
-            if self.insets == insets {
-                viewportSize = size
-                flight?.follow(in: list)
-                return
+            // New insets first, at the old width, then the new width alone:
+            // the rows the change puts on screen are laid out again in
+            // place (`showInPlace`), where the new insets put them, on the
+            // curve of the animation it is in.
+            if self.insets != insets {
+                self.insets = insets
+                list.applyChanges(newInsets: .init(top: insets.top, bottom: insets.bottom), anchorMode: .preserveVisibleContent,
+                                  compensatesInsetChange: keyboard?.compensates ?? !list.isTracking, transition: keyboard?.transition ?? .none)
             }
+            list.resize(to: CGRect(origin: list.frame.origin, size: size))
+            viewportSize = size
+            flight?.follow(in: list)
+            return
         }
         self.insets = insets
         viewportSize = size

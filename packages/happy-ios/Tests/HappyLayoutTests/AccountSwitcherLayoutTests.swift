@@ -48,6 +48,15 @@ final class AccountSwitcherLayoutTests: XCTestCase {
         XCTAssertEqual(searching.insets.contentTop, 128)
     }
 
+    /// An iPad's window narrower than the split: the field sits in the
+    /// navigation bar, at its top right, and the list runs to the safe
+    /// area's foot.
+    func testAFieldInTheBarLeavesTheFootToTheSafeArea() {
+        let room = HomeListRoom(size: CGSize(width: 700, height: 1210), safeArea: LayoutInsets(top: 86, bottom: 25), control: CGRect(x: 446, y: 32, width: 240, height: 44), standing: true, kept: nil)
+        XCTAssertEqual(room.insets.listBottom, 25)
+        XCTAssertEqual(room.insets.chromeTop, 86)
+    }
+
     /// Mid-pop, UIKit lays home out with the toolbar on its way back: the
     /// home indicator's 34 and no field. Home keeps the room it stood with.
     func testHomeComingOrGoingKeepsTheRoomItStoodWith() {
