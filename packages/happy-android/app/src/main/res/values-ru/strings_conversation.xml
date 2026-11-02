@@ -37,6 +37,13 @@
     <string name="conversation_permission_from">%1$s запрашивает разрешение</string>
     <string name="conversation_answer">Ответить</string>
     <string name="conversation_answer_placeholder">Ваш ответ</string>
+    <string name="conversation_ask_choose_one">Выберите один</string>
+    <string name="conversation_ask_choose_any">Выберите любые</string>
+    <string name="conversation_ask_reply_in_composer">Ответьте в поле сообщения</string>
+    <string name="conversation_ask_answered">Отвечено</string>
+    <string name="conversation_ask_no_answer">Нет ответа</string>
+    <string name="conversation_ask_submit">Отправить</string>
+    <string name="conversation_ask_not_sent">Ответ не отправлен: %1$s</string>
     <string name="conversation_secret_name">Имя для этого секрета</string>
     <string name="conversation_secret_value_placeholder">Значение</string>
     <string name="conversation_secret_save">Сохранить и ответить</string>

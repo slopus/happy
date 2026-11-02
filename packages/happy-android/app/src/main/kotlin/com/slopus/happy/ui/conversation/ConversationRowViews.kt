@@ -110,6 +110,8 @@ class ConversationRowActions(
     val onOpenMedia: ((MediaRef) -> Unit)? = null,
     /** What that is doing: reading, or why it could not open. */
     val mediaOpening: (MediaRef) -> MediaOpening? = { null },
+    /** The waiting question's ticks and answer; null where nothing answers. */
+    val asks: AskActions? = null,
 )
 
 /**
@@ -180,6 +182,7 @@ fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: Co
             )
             is ConversationRow.Collaborator -> CollaboratorProse(row, actions.legacy, content)
             is ConversationRow.Failure -> FailureRow(row, actions, content)
+            is ConversationRow.Ask -> AskRow(row, actions.asks, content)
             is ConversationRow.Notice -> Text(
                 stringResource(
                     when (row.kind) {

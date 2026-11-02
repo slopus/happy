@@ -41,6 +41,8 @@ private class FakeAgent {
     val written = LinkedHashMap<String, ByteArray>()
     /** The next file writes refused with this status. */
     var refuseFiles = 0
+    /** A question's answer is refused with this status. */
+    var answerStatus: Int? = null
 
     val request: AgentRequest = { method, path, body, _ ->
         requests += Triple(method, path, body as? JsonObject)
@@ -68,6 +70,7 @@ private class FakeAgent {
             route.endsWith("/messages") -> ok(page)
             route.endsWith("/send") && failSends > 0 -> { failSends--; TransportResponse(503, body = """{"error":"busy"}""".toByteArray()) }
             route.endsWith("/send") -> TransportResponse(sendStatus, body = """{"error":"Unknown model.","code":"invalid_request"}""".toByteArray())
+            route.endsWith("/answer") && answerStatus != null -> TransportResponse(answerStatus!!, body = """{"error":"busy"}""".toByteArray())
             route == "/v0/config" -> ok(CONFIG)
             route.endsWith("/draft") -> ok("""{"draft":${(body as JsonObject).let { """{"value":${it["draft"]},"updatedAt":${it["updatedAt"]}}""" }}}""")
             else -> ok("{}")
@@ -606,6 +609,54 @@ class ConversationTest {
         val answer = agent.requests.single { it.second.endsWith("/answer") }
         assertEquals("/v0/agents/a1/question/q1/answer", answer.second)
         assertEquals(Json.parseToJsonElement("""{"p1":["Postgres"]}"""), answer.third!!["answers"])
+    }
+
+    @Test fun `a question waits at the end and settles answered in its turn`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        val args = """{"questions":[{"id":"p1","header":"DB","question":"Which?","multiSelect":false,"options":[{"label":"Postgres"},{"label":"SQLite"}]}]}"""
+        signals.emit(event("run.started", """{"agentId":"a1","run":{"id":"r1","status":"running","startedAt":5},"acceptedMessageIds":[]}"""))
+        signals.emit(event("message.created", """{"agentId":"a1","runId":"r1","message":{"id":"m","role":"agent","createdAt":5,"content":[{"type":"text","text":"Picking storage."},{"type":"tool_call","id":"q1","name":"request_user_input","status":"running","arguments":$args}],"metadata":{}}}"""))
+        advanceUntilIdle()
+        // Asked, not yet read as a question: the call's row is left out rather than shown as a tool.
+        assertTrue(chat.state.value.rows.none { it is ConversationRow.Tool })
+        signals.emit(event("question.created", """{"question":{"id":"q1","agentId":"a1","status":"pending","questions":[{"id":"p1","header":"DB","question":"Which?","multiSelect":false,"options":[{"label":"Postgres"},{"label":"SQLite"}]}]}}"""))
+        advanceUntilIdle()
+        // Waiting: pinned to the end, under the work (rows are newest first).
+        val waiting = chat.state.value.rows.first() as ConversationRow.Ask
+        assertEquals(AskPhase.Pending, waiting.phase)
+        assertEquals(1, chat.state.value.rows.count { it is ConversationRow.Ask })
+        chat.answer("q1", mapOf("p1" to listOf("Postgres")))
+        advanceUntilIdle()
+        // Answered: it stays where it was asked, under the words before it, saying what was answered.
+        val rows = chat.state.value.rows.asReversed()
+        val settled = rows.single { it is ConversationRow.Ask } as ConversationRow.Ask
+        assertEquals(AskPhase.Answered, settled.phase)
+        assertEquals(mapOf("p1" to listOf("Postgres")), settled.question.answers)
+        assertEquals(waiting.key, settled.key)
+        assertEquals(rows.indexOfFirst { it is ConversationRow.Text } + 1, rows.indexOf(settled))
+        // History read again says the same from the call's result.
+        val output = "Request q1:\nWhich?\nStatus: Answered\nAnswer:\nSelected: Postgres"
+        signals.emit(event("message.updated", """{"agentId":"a1","runId":"r1","message":{"id":"m","role":"agent","createdAt":5,"content":[{"type":"text","text":"Picking storage."},{"type":"tool_call","id":"q1","name":"request_user_input","status":"completed","arguments":$args,"result":{"output":${Json.encodeToString(kotlinx.serialization.json.JsonPrimitive(output))}}}],"metadata":{}}}"""))
+        advanceUntilIdle()
+        val read = chat.state.value.rows.single { it is ConversationRow.Ask } as ConversationRow.Ask
+        assertEquals(AskPhase.Answered, read.phase)
+        assertEquals(listOf("Postgres"), read.question.answers?.get("p1"))
+    }
+
+    @Test fun `a refused answer says why and may go again`() = runTest {
+        val agent = FakeAgent()
+        agent.answerStatus = 500
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        signals.emit(event("question.created", """{"question":{"id":"q1","agentId":"a1","status":"pending","questions":[{"id":"p1","question":"Which?","options":[{"label":"Postgres"}]}]}}"""))
+        advanceUntilIdle()
+        runCatching { chat.answer("q1", mapOf("p1" to listOf("Postgres"))) }
+        advanceUntilIdle()
+        val ask = chat.state.value.rows.first() as ConversationRow.Ask
+        assertTrue(ask.phase is AskPhase.Failed)
+        assertEquals("q1", chat.state.value.question?.id)
     }
 
     @Test fun `working line follows the agent's status`() = runTest {

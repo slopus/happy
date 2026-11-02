@@ -39,6 +39,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -227,6 +228,10 @@ fun ConversationScreen(
             onDiscard = actions.onDiscardSend,
         )
     }
+    val answerScope = rememberCoroutineScope()
+    val onAnswer by rememberUpdatedState(actions.onAnswer)
+    val asks = remember { AskActions(answerScope) { id, answers -> onAnswer(id, answers) } }
+    LaunchedEffect(state.question?.id) { asks.keepOnly(state.question?.id) }
     val pictures = rememberPictureViewer()
     val media = rememberMediaOpener()
     val store = rememberConversationMediaStore(actions.loadMedia, actions.loadMediaRange)
@@ -234,7 +239,7 @@ fun ConversationScreen(
     val rows by rememberUpdatedState(state.rows)
     val pictureLabel = stringResource(R.string.conversation_picture)
     val videoLabel = stringResource(R.string.artifact_video)
-    val rowActions = remember(actions, legacy, pictures, media, store, pictureLabel, videoLabel) {
+    val rowActions = remember(actions, legacy, pictures, media, store, pictureLabel, videoLabel, asks) {
         ConversationRowActions(
             legacy = legacy,
             onRetryFailure = actions.onRetryFailure,
@@ -244,6 +249,7 @@ fun ConversationScreen(
             loadVideo = store::poster,
             onOpenMedia = { ref -> media.open(ref.key, ref.item) { actions.loadMedia(ref) } },
             mediaOpening = { ref -> media.state(ref.key) },
+            asks = asks,
         )
     }
     val atNewest by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }
@@ -454,7 +460,8 @@ fun ConversationScreen(
                             .windowInsetsPadding(WindowInsets.navigationBars),
                     ) {
                         RecomposeProbe.mark(ConversationScreenTags.PROBE_DOCK)
-                        state.question?.let { question ->
+                        // A secret's form stays over the composer; any other question waits in the transcript.
+                        state.question?.takeIf { it.secret != null }?.let { question ->
                             ConversationQuestionCard(
                                 question = question,
                                 onAnswer = { answers -> actions.onAnswer(question.id, answers) },
@@ -479,7 +486,16 @@ fun ConversationScreen(
                                     text = it
                                     actions.onDraftChange(it)
                                 },
-                                onSend = actions.onSend,
+                                onSend = { words, attachments ->
+                                    // A question waiting takes what is typed as its answer, as on desktop: each
+                                    // prompt its ticks, else the words. Words no prompt needed still go as a message.
+                                    val waiting = state.question?.takeIf { it.secret == null && !state.answering }
+                                    val answered = waiting != null && attachments.isEmpty() && words.isNotBlank() && asks.typed(waiting, words.trim())
+                                    flight.grounded = answered
+                                    // The words went as the answer: the draft they were goes with them, as a send's does.
+                                    if (answered) actions.onDraftChange("")
+                                    answered || actions.onSend(words, attachments)
+                                },
                                 onSent = { text = "" },
                                 onStop = actions.onStop,
                                 onModeChange = actions.onModeChange,

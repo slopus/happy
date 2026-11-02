@@ -254,8 +254,15 @@ class SendFlight {
     /** Whether the transcript is at its newest end, where a sent message's row shows; the transcript sets it. */
     internal var atNewest: () -> Boolean = { false }
 
+    /** The send being taken makes no message (it answered a question): its words don't fly. Each send sets it. */
+    internal var grounded = false
+
     /** The composer sent [text], laid out in its field as [layout] at [origin] (in the root). */
     internal fun launch(text: String, layout: TextLayoutResult, origin: Offset, density: Density, color: Color) {
+        if (grounded) {
+            grounded = false
+            return
+        }
         if (text.isBlank() || layout.lineCount > TranscriptMotionSpec.FLIGHT_LINES || !atNewest()) return
         val size = layout.size.toSize()
         val picture = Picture()

@@ -37,6 +37,13 @@
     <string name="conversation_permission_from">%1$s pide permiso</string>
     <string name="conversation_answer">Responder</string>
     <string name="conversation_answer_placeholder">Tu respuesta</string>
+    <string name="conversation_ask_choose_one">Elige una</string>
+    <string name="conversation_ask_choose_any">Elige las que quieras</string>
+    <string name="conversation_ask_reply_in_composer">Responde en el cuadro de mensaje</string>
+    <string name="conversation_ask_answered">Respondida</string>
+    <string name="conversation_ask_no_answer">Sin respuesta</string>
+    <string name="conversation_ask_submit">Enviar</string>
+    <string name="conversation_ask_not_sent">No se envió la respuesta: %1$s</string>
     <string name="conversation_secret_name">Nombre para este secreto</string>
     <string name="conversation_secret_value_placeholder">Valor</string>
     <string name="conversation_secret_save">Guardar y responder</string>

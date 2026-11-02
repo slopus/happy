@@ -37,6 +37,13 @@
     <string name="conversation_permission_from">%1$s demana permís</string>
     <string name="conversation_answer">Respon</string>
     <string name="conversation_answer_placeholder">La teva resposta</string>
+    <string name="conversation_ask_choose_one">Tria\'n una</string>
+    <string name="conversation_ask_choose_any">Tria\'n les que vulguis</string>
+    <string name="conversation_ask_reply_in_composer">Respon al quadre de missatge</string>
+    <string name="conversation_ask_answered">Respost</string>
+    <string name="conversation_ask_no_answer">Sense resposta</string>
+    <string name="conversation_ask_submit">Envia</string>
+    <string name="conversation_ask_not_sent">No s\'ha enviat la resposta: %1$s</string>
     <string name="conversation_secret_name">Nom per a aquest secret</string>
     <string name="conversation_secret_value_placeholder">Valor</string>
     <string name="conversation_secret_save">Desa i respon</string>

@@ -93,11 +93,29 @@ sealed interface ConversationRow {
     /** A turn that failed, with Retry while it can help and nobody acted on it yet. */
     data class Failure(override val key: String, val messageId: String, val reason: FailureReason, val retryable: Boolean, val resolved: Boolean) : ConversationRow
 
+    /**
+     * A question the agent asked (iOS 7f6355041 `ChatItem.Ask`): waiting, it
+     * is pinned to the transcript's end; answered, it stays in its turn where
+     * it was asked, saying what was answered.
+     */
+    data class Ask(override val key: String, val question: Question, val phase: AskPhase) : ConversationRow
+
     /** One line of housekeeping worth showing (a compaction). */
     data class Notice(override val key: String, val kind: NoticeKind) : ConversationRow
 }
 
 enum class NoticeKind { Compacting, Compacted, CompactionFailed }
+
+/** Where a question's answer stands. */
+@Immutable
+sealed interface AskPhase {
+    data object Pending : AskPhase
+    /** The answer is on its way. */
+    data object Submitting : AskPhase
+    /** Refused or lost: why, and the answer may go again. */
+    data class Failed(val reason: Problem) : AskPhase
+    data object Answered : AskPhase
+}
 
 /** What the working line says (desktop's `AgentWorkingStatus`), first match wins. */
 enum class Activity { AwaitingAnswer, WaitingForModel, Thinking, PreparingTools, RunningTools, Working, Delegating }
@@ -232,6 +250,17 @@ class ConversationRowBuilder(
         private fun toolRows(key: String, call: Block.ToolCall, createdAt: Long): List<ConversationRow> {
             fun tool(detail: String?, input: JsonObject?) =
                 listOf(ConversationRow.Tool(key, call.id, call.name, call.status, detail, input ?: call.arguments as? JsonObject, createdAt))
+            if (call.name == Question.TOOL_NAME && call.id != null) {
+                // Answered, as the card the call keeps says, or else its result: it settles here.
+                // Otherwise the conversation decides (Conversation.derive).
+                val shown = call.presentation as? Presentation.UserInput
+                val answered = if (shown != null) {
+                    Question(call.id, "answered", Question.asked(call.id, call.arguments, null)?.context, shown.prompts, null, false, shown.answers)
+                } else {
+                    Question.asked(call.id, call.arguments, call.output)?.takeIf { it.status == "answered" }
+                }
+                if (answered != null) return listOf(ConversationRow.Ask(askKey(call.id), answered, AskPhase.Answered))
+            }
             return when (val p = call.presentation) {
                 is Presentation.Media -> if (call.id == null || p.items.isEmpty()) {
                     tool(null, null)
@@ -244,9 +273,13 @@ class ConversationRowBuilder(
                     tool(detail, detail?.let { buildJsonObject { put("file_path", it); put("path", it); put("pattern", it) } })
                 }
                 is Presentation.Search -> tool(p.query, buildJsonObject { put("query", p.query) })
+                is Presentation.UserInput -> tool(null, null)
                 null -> tool(null, null)
             }
         }
+
+        /** A question's row, one key waiting at the end or settled in its turn, so it moves rather than swaps. */
+        fun askKey(questionId: String): String = "ask:$questionId"
 
         /** What another agent said, without the addressing line the daemon puts ahead of it. */
         fun inboundText(text: String, agentId: String): String {

@@ -81,6 +81,8 @@ data class ConversationState(
     val composerFocus: ComposerFocus? = null,
     val question: Question? = null,
     val answering: Boolean = false,
+    /** Why the last answer to [question] didn't go; it may go again. */
+    val answerFailure: Problem? = null,
     val stopping: Boolean = false,
     /** Why history could not be read. */
     val error: Problem? = null,
@@ -199,6 +201,8 @@ class Conversation(
     private var reading: Job? = null
     private var olderReading: Job? = null
     private var questionReading: Job? = null
+    /** Questions answered while this was open, as the computer took them: they settle in their turn before history says so. */
+    private val answered = HashMap<String, Question>()
     private var pumping: Job? = null
     private var creating: Deferred<Unit>? = null
     private var choice = initialChoice
@@ -508,7 +512,7 @@ class Conversation(
             } catch (_: Exception) {
                 return@launch
             }
-            publish { it.copy(question = question?.takeIf { q -> q.status == "pending" }) }
+            publish { it.copy(question = question?.takeIf { q -> q.status == "pending" }, answerFailure = null) }
         }
     }
 
@@ -582,17 +586,24 @@ class Conversation(
                 }
                 if ("pendingQuestionId" in changes) {
                     val now = changes["pendingQuestionId"].str
-                    if (now == null) publish { it.copy(question = null) } else if (now != before) readQuestion()
+                    // One whose answer is on its way stays until the answer settles it.
+                    if (now == null) { if (!snapshot.answering) publish { it.copy(question = null) } } else if (now != before) readQuestion()
                 }
             }
             "question.created" -> {
                 val question = Question.parse(payload["question"]) ?: return
-                publish { it.copy(question = question.takeIf { q -> q.status == "pending" }) }
+                publish { it.copy(question = question.takeIf { q -> q.status == "pending" }, answerFailure = null) }
             }
             "question.updated" -> {
                 val id = payload["questionId"].str ?: return
-                val status = payload["changes"].obj?.get("status").str
-                if (snapshot.question?.id == id && status != null && status != "pending") publish { it.copy(question = null) }
+                val changes = payload["changes"].obj
+                val status = changes?.get("status").str
+                val current = snapshot.question
+                if (current?.id == id && status != null && status != "pending") {
+                    // Answered here or elsewhere: it settles in its turn, as answered.
+                    if (status == "answered") answered[id] = current.copy(status = status, answers = changes?.get("answers").obj?.let(Question::answersOf) ?: current.answers)
+                    publish { it.copy(question = null) }
+                }
             }
             "agent.draft.updated" -> Draft.parse(payload["draft"])?.let(::adoptDraft)
             else -> return
@@ -960,19 +971,25 @@ class Conversation(
     suspend fun answer(questionId: String, answers: Map<String, List<String>>) {
         withContext(lane) {
             if (snapshot.answering) return@withContext
-            publish { it.copy(answering = true) }
+            val asked = snapshot.question?.takeIf { it.id == questionId }
+            publish { it.copy(answering = true, answerFailure = null) }
             try {
                 api.answer(agentId, questionId, answers)
+                asked?.let { answered[questionId] = it.copy(status = "answered", answers = answers) }
                 publish { it.copy(answering = false, question = it.question?.takeIf { q -> q.id != questionId }) }
             } catch (e: CancellationException) {
+                publish { it.copy(answering = false) }
                 throw e
             } catch (e: ConversationApiException) {
                 // Answered elsewhere or no longer asked: what stands now is read again.
+                if (e.status != 409) {
+                    publish { it.copy(answering = false, answerFailure = describe(e)) }
+                    throw e
+                }
                 publish { it.copy(answering = false) }
-                if (e.status != 409) throw e
                 readQuestion()
             } catch (e: Exception) {
-                publish { it.copy(answering = false) }
+                publish { it.copy(answering = false, answerFailure = describe(e)) }
                 throw e
             }
         }
@@ -1083,15 +1100,50 @@ class Conversation(
         return if (shown == user.createdAt) rows else listOf(user.copy(createdAt = shown))
     }
 
+    /**
+     * [rows] with their questions where they stand (iOS 7f6355041): the one
+     * [waiting] is pinned to the end instead, one answered here settles as
+     * answered before its result is read, and one still asked with nothing
+     * to show yet is left out. Others are tool rows.
+     */
+    private fun settled(rows: List<ConversationRow>, waiting: Question?): List<ConversationRow> {
+        if (rows.none { it is ConversationRow.Ask || (it is ConversationRow.Tool && it.name == Question.TOOL_NAME) }) return rows
+        return rows.mapNotNull { row ->
+            when {
+                row is ConversationRow.Ask -> row.takeIf { it.question.id != waiting?.id }
+                row is ConversationRow.Tool && row.name == Question.TOOL_NAME && row.callId != null -> {
+                    val settles = answered[row.callId]
+                    when {
+                        row.callId == waiting?.id -> null
+                        settles != null -> ConversationRow.Ask(ConversationRowBuilder.askKey(row.callId), settles, AskPhase.Answered)
+                        row.status == "running" -> null
+                        else -> row
+                    }
+                }
+                else -> row
+            }
+        }
+    }
+
     private fun derive(base: ConversationState): ConversationState {
         val agent = agent
         val working = running || agent?.isWorking == true || outgoing.any { it.accepted }
         val parentAgentId = agent?.parentAgentId
         val rows = ArrayList<ConversationRow>()
         val lastRun = runs.lastOrNull()?.first
+        val waiting = base.question
         for ((runId, ids) in runs) {
             val streaming = working && runId == lastRun
-            for (id in ids) messages[id]?.let { rows += sentAt(builder.rows(it, agentId, parentAgentId, streaming && it.role == "agent")) }
+            for (id in ids) messages[id]?.let { rows += settled(sentAt(builder.rows(it, agentId, parentAgentId, streaming && it.role == "agent")), waiting) }
+        }
+        // A question waiting on the person is pinned to the end, under the work; a secret's form stays over the composer.
+        if (waiting != null && waiting.secret == null) {
+            val phase = when {
+                base.answering -> AskPhase.Submitting
+                base.answerFailure != null -> AskPhase.Failed(base.answerFailure)
+                else -> AskPhase.Pending
+            }
+            rows += ConversationRow.Ask(ConversationRowBuilder.askKey(waiting.id), waiting, phase)
         }
         for (id in pending) messages[id]?.let { rows += sentAt(builder.rows(it, agentId, parentAgentId, false)) }
         for (send in outgoing) {

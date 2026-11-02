@@ -37,6 +37,13 @@
     <string name="conversation_permission_from">%1$s 请求权限</string>
     <string name="conversation_answer">回答</string>
     <string name="conversation_answer_placeholder">你的回答</string>
+    <string name="conversation_ask_choose_one">选择一项</string>
+    <string name="conversation_ask_choose_any">可多选</string>
+    <string name="conversation_ask_reply_in_composer">在消息框中回复</string>
+    <string name="conversation_ask_answered">已回答</string>
+    <string name="conversation_ask_no_answer">未回答</string>
+    <string name="conversation_ask_submit">提交</string>
+    <string name="conversation_ask_not_sent">回答未发送：%1$s</string>
     <string name="conversation_secret_name">此密钥的名称</string>
     <string name="conversation_secret_value_placeholder">值</string>
     <string name="conversation_secret_save">保存并回答</string>

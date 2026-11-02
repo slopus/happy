@@ -37,6 +37,13 @@
     <string name="conversation_permission_from">%1$s が許可を求めています</string>
     <string name="conversation_answer">回答</string>
     <string name="conversation_answer_placeholder">あなたの回答</string>
+    <string name="conversation_ask_choose_one">1つ選択</string>
+    <string name="conversation_ask_choose_any">複数選択可</string>
+    <string name="conversation_ask_reply_in_composer">メッセージ欄で返信</string>
+    <string name="conversation_ask_answered">回答済み</string>
+    <string name="conversation_ask_no_answer">回答なし</string>
+    <string name="conversation_ask_submit">送信</string>
+    <string name="conversation_ask_not_sent">回答を送信できませんでした: %1$s</string>
     <string name="conversation_secret_name">このシークレットの名前</string>
     <string name="conversation_secret_value_placeholder">値</string>
     <string name="conversation_secret_save">保存して回答</string>

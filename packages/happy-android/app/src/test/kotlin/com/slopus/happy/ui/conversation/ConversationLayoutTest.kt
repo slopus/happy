@@ -41,6 +41,7 @@ import com.slopus.happy.conversation.ModeCatalog
 import com.slopus.happy.conversation.ModelChoice
 import com.slopus.happy.conversation.Presentation
 import com.slopus.happy.conversation.Problem
+import com.slopus.happy.conversation.AskPhase
 import com.slopus.happy.conversation.Question
 import com.slopus.happy.chat.markdown.parseMarkdown
 import com.slopus.happy.ui.PHONE
@@ -315,14 +316,16 @@ class ConversationLayoutTest {
         shot("failed-send")
     }
 
-    @Test fun `a question shows over the composer and answers`() {
+    @Test fun `a question waits in the transcript, not over the composer`() {
         val question = Question(
             "q1", "pending", "The billing service needs storage.",
             listOf(Question.Prompt("p1", "Database", "Which database should it use?", false, listOf(Question.Option("PostgreSQL", "Matches the stack."), Question.Option("SQLite", null)), null)),
             null, false,
         )
-        show(ConversationState(created = true, loaded = true, rows = history, agent = agent, question = question, activity = Activity.AwaitingAnswer))
-        rule.node(ConversationQuestionTags.CARD).assertIsDisplayed()
+        val rows = listOf(ConversationRow.Ask(ConversationRowBuilder.askKey("q1"), question, AskPhase.Pending)) + history
+        show(ConversationState(created = true, loaded = true, rows = rows, agent = agent, question = question, activity = Activity.AwaitingAnswer))
+        rule.node(ConversationQuestionTags.CARD).assertDoesNotExist()
+        rule.node(AskTags.ROW).assertIsDisplayed()
         rule.onNodeWithText("Waiting for your answer").assertIsDisplayed()
         shot("question")
     }
@@ -543,7 +546,8 @@ class ConversationLayoutTest {
     private fun tallQuestion() {
         val question = Question(
             "q2", "pending", (1..12).joinToString("\n\n") { "Step $it of the migration touches another table." },
-            listOf(Question.Prompt("p1", "Plan", "Which order should the tables move in?", false, emptyList(), null)),
+            // A secret's form is the one question still over the composer.
+            listOf(Question.Prompt("p1", "Plan", "Which key should the migration use?", false, emptyList(), Question.SecretRequest("stripe", "Billing's key.", listOf(Question.SecretVariable("STRIPE_KEY", null))))),
             null, false,
         )
         show(ConversationState(created = true, loaded = true, rows = history, agent = agent, question = question, activity = Activity.AwaitingAnswer))

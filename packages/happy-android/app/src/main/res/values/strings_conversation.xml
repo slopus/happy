@@ -37,6 +37,13 @@
     <string name="conversation_permission_from">%1$s asks for permission</string>
     <string name="conversation_answer">Answer</string>
     <string name="conversation_answer_placeholder">Your answer</string>
+    <string name="conversation_ask_choose_one">Choose one</string>
+    <string name="conversation_ask_choose_any">Choose any</string>
+    <string name="conversation_ask_reply_in_composer">Reply in the message box</string>
+    <string name="conversation_ask_answered">Answered</string>
+    <string name="conversation_ask_no_answer">No answer</string>
+    <string name="conversation_ask_submit">Submit</string>
+    <string name="conversation_ask_not_sent">Answer not sent: %1$s</string>
     <string name="conversation_secret_name">Name for this secret</string>
     <string name="conversation_secret_name_placeholder" translatable="false">deploy-api</string>
     <string name="conversation_secret_value_placeholder">Value</string>

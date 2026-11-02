@@ -90,6 +90,8 @@ sealed interface Presentation {
     /** [columns] is the grid the producer asked for (`layout` `{type: "columns", columns}`, 1 or 2), else 0: justified rows. */
     data class Media(val items: List<MediaItem>, val columns: Int = 0) : Presentation
     data class Artifact(val artifactId: String, val artifactType: String?, val title: String?, val version: Int?, val shows: String? = null) : Presentation
+    /** An answered question as the person was shown it, and the values they gave (`user_input`). */
+    data class UserInput(val prompts: List<Question.Prompt>, val answers: Map<String, List<String>>) : Presentation
 
     companion object {
         fun parse(value: JsonElement?): Presentation? {
@@ -105,6 +107,22 @@ sealed interface Presentation {
                 "search" -> Search(o["query"].str ?: return null, o["target"].str ?: "web")
                 "media" -> Media(o["items"].arr.orEmpty().mapNotNull(MediaItem::parse), columns(o["layout"]))
                 "artifact" -> Artifact(o["artifactId"].str ?: return null, o["artifactType"].str, o["title"].str, o["version"].num?.toInt(), o["shows"].str)
+                "user_input" -> UserInput(
+                    o["questions"].arr.orEmpty().mapNotNull { value ->
+                        val q = value.obj ?: return@mapNotNull null
+                        Question.Prompt(
+                            id = q["id"].str ?: return@mapNotNull null,
+                            header = q["header"].str,
+                            question = q["question"].str.orEmpty(),
+                            multiSelect = q["multiSelect"].bool ?: false,
+                            options = q["options"].arr.orEmpty().mapNotNull { option ->
+                                option.obj?.let { opt -> opt["label"].str?.let { Question.Option(it, opt["description"].str?.takeIf(String::isNotEmpty)) } }
+                            },
+                            secret = null,
+                        )
+                    }.takeIf { it.isNotEmpty() } ?: return null,
+                    o["answers"].obj?.let(Question::answersOf).orEmpty(),
+                )
                 else -> null
             }
         }
@@ -123,8 +141,19 @@ sealed interface Block {
     data class Reasoning(val text: String) : Block
     /** `data` is base64; history may leave a large picture's bytes out, and then it is [Unknown]. */
     data class Image(val mimeType: String, val data: String) : Block
-    /** [arguments] are the raw input, sent only where no presentation stands for it. */
-    data class ToolCall(val id: String?, val name: String, val status: String, val presentation: Presentation?, val arguments: JsonElement? = null) : Block
+    /**
+     * [arguments] are the raw input, sent only where no presentation stands
+     * for it. Only a question ([Question.TOOL_NAME]) keeps its result's
+     * [output], which says how it was answered.
+     */
+    data class ToolCall(
+        val id: String?,
+        val name: String,
+        val status: String,
+        val presentation: Presentation?,
+        val arguments: JsonElement? = null,
+        val output: String? = null,
+    ) : Block
     /** One context compaction, inside a service message: `running`, then `completed` or `failed`. */
     data class Compaction(val status: String) : Block
     data class Unknown(val type: String) : Block
@@ -140,13 +169,17 @@ sealed interface Block {
                     val data = o["data"].str
                     if (mimeType != null && data != null) Image(mimeType, data) else Unknown(type)
                 }
-                "tool_call" -> ToolCall(
-                    id = o["id"].str,
-                    name = o["name"].str.orEmpty(),
-                    status = o["status"].str ?: "running",
-                    presentation = Presentation.parse(o["presentation"]),
-                    arguments = o["arguments"]?.takeIf { it is JsonObject },
-                )
+                "tool_call" -> {
+                    val name = o["name"].str.orEmpty()
+                    ToolCall(
+                        id = o["id"].str,
+                        name = name,
+                        status = o["status"].str ?: "running",
+                        presentation = Presentation.parse(o["presentation"]),
+                        arguments = o["arguments"]?.takeIf { it is JsonObject },
+                        output = if (name == Question.TOOL_NAME) o["result"].obj?.get("output").str else null,
+                    )
+                }
                 "compaction" -> Compaction(o["status"].str ?: "running")
                 else -> Unknown(type)
             }
@@ -321,6 +354,8 @@ data class Question(
     /** Who asks for permission, by display name; null for the agent's own question. */
     val permissionFrom: String?,
     val isPermission: Boolean,
+    /** Each prompt's values by its ID, once answered. */
+    val answers: Map<String, List<String>>? = null,
 ) {
     data class Option(val label: String, val description: String?)
 
@@ -351,6 +386,93 @@ data class Question(
     val answerable: Boolean get() = prompts.isNotEmpty()
 
     companion object {
+        /** The tool that asks a question; its call's ID is the question's. */
+        const val TOOL_NAME = "request_user_input"
+
+        /**
+         * A question as its call asked it (`request_user_input` arguments)
+         * and, from the result the agent was given (`formatUserInputForModel`),
+         * how it was answered; null when the call says neither (iOS
+         * 7f6355041 `AgentWire.Question.asked`).
+         */
+        fun asked(id: String, arguments: JsonElement?, output: String?): Question? {
+            val args = arguments.obj ?: return null
+            // One question may come bare, as the batch's `question_1`.
+            val entries = args["questions"].arr?.takeIf { it.isNotEmpty() }
+                ?: args.takeIf { it["question"].str != null }?.let { listOf(it) }
+                ?: return null
+            val prompts = entries.mapIndexed { offset, entry ->
+                val e = entry.obj ?: return null
+                val question = e["question"].str ?: return null
+                // Options come as a list, or as `{ choices, multiSelect }`.
+                val options = e["options"]
+                val choices = options.arr ?: options.obj?.get("choices").arr
+                Prompt(
+                    id = e["id"].str ?: "question_${offset + 1}",
+                    header = e["header"].str,
+                    question = question,
+                    multiSelect = e["multiSelect"].bool ?: options.obj?.get("multiSelect").bool ?: false,
+                    options = choices.orEmpty().mapNotNull { choice ->
+                        choice.obj?.get("label").str?.let { Option(it, choice.obj?.get("description").str) }
+                    },
+                    secret = null,
+                )
+            }
+            val asked = Question(id, "pending", args["context"].str, prompts, null, false)
+            if (output == null) return asked
+            if (!output.contains("\nStatus: Answered")) return asked.copy(status = "canceled")
+            return asked.copy(status = "answered", answers = answers(output, prompts))
+        }
+
+        /**
+         * Each prompt's values from a result's `Answer:` section: `id: value`
+         * lines, a value `Selected: a, b` then any text typed under it.
+         */
+        internal fun answers(output: String, prompts: List<Prompt>): Map<String, List<String>> {
+            val start = output.indexOf("\nAnswer:\n").takeIf { it >= 0 } ?: return emptyMap()
+            val lines = output.substring(start + "\nAnswer:\n".length).split("\n")
+            val values = LinkedHashMap<String, MutableList<String>>()
+            var current: String? = null
+            for (line in lines) {
+                val prompt = prompts.firstOrNull { line.startsWith("${it.id}: ") }
+                when {
+                    prompt != null -> {
+                        current = prompt.id
+                        values[prompt.id] = mutableListOf(line.substring(prompt.id.length + 2))
+                    }
+                    current != null -> values.getOrPut(current) { mutableListOf() } += line
+                    // A single question's answer carries no ID.
+                    prompts.size == 1 -> {
+                        current = prompts[0].id
+                        values[prompts[0].id] = mutableListOf(line)
+                    }
+                }
+            }
+            val answers = LinkedHashMap<String, List<String>>()
+            for (prompt in prompts) {
+                val body = values[prompt.id]?.takeIf { it.isNotEmpty() } ?: continue
+                val picked = ArrayList<String>()
+                var rest: List<String> = body
+                if (body[0].startsWith("Selected: ")) {
+                    val selected = body[0].removePrefix("Selected: ")
+                    // Labels may hold ", " themselves: the known ones are read whole.
+                    picked += prompt.options.map { it.label }.filter {
+                        selected == it || selected.startsWith("$it, ") || selected.endsWith(", $it") || selected.contains(", $it, ")
+                    }
+                    if (picked.isEmpty()) picked += selected.split(", ")
+                    rest = body.drop(1)
+                }
+                val text = rest.joinToString("\n").trim()
+                if (text.isNotEmpty()) picked += text
+                answers[prompt.id] = picked
+            }
+            return answers
+        }
+
+        /** `{ promptId: [values] }`, as `answers` and `question.updated` carry them. */
+        fun answersOf(value: JsonObject): Map<String, List<String>> =
+            value.mapValues { (_, values) -> values.arr.orEmpty().mapNotNull { it.str } }
+
         fun parse(value: JsonElement?): Question? {
             val o = value.obj ?: return null
             val permission = o["permissionRequest"].obj
@@ -383,6 +505,7 @@ data class Question(
                 },
                 permissionFrom = permission?.let { it["serverTitle"].str ?: it["server"].str },
                 isPermission = permission != null,
+                answers = o["answers"].obj?.let(::answersOf),
             )
         }
     }

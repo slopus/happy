@@ -91,6 +91,7 @@ data class KeptConversation(
                 put("status", block.status)
                 block.presentation?.let { put("presentation", presentationJson(it)) }
                 block.arguments?.let { put("arguments", it) }
+                block.output?.let { putJsonObject("result") { put("output", it) } }
             }
             is Block.Compaction -> buildJsonObject { put("type", "compaction"); put("status", block.status) }
             is Block.Unknown -> buildJsonObject { put("type", block.type) }
@@ -123,6 +124,35 @@ data class KeptConversation(
                 presentation.title?.let { put("title", it) }
                 presentation.version?.let { put("version", it) }
                 presentation.shows?.let { put("shows", it) }
+            }
+            is Presentation.UserInput -> buildJsonObject {
+                put("type", "user_input")
+                put(
+                    "questions",
+                    buildJsonArray {
+                        presentation.prompts.forEach { prompt ->
+                            add(
+                                buildJsonObject {
+                                    put("id", prompt.id)
+                                    prompt.header?.let { put("header", it) }
+                                    put("question", prompt.question)
+                                    put("multiSelect", prompt.multiSelect)
+                                    put(
+                                        "options",
+                                        buildJsonArray {
+                                            prompt.options.forEach { option ->
+                                                add(buildJsonObject { put("label", option.label); option.description?.let { put("description", it) } })
+                                            }
+                                        },
+                                    )
+                                },
+                            )
+                        }
+                    },
+                )
+                putJsonObject("answers") {
+                    presentation.answers.forEach { (id, values) -> put(id, buildJsonArray { values.forEach { add(JsonPrimitive(it)) } }) }
+                }
             }
         }
 
