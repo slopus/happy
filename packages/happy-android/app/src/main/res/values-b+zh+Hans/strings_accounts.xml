@@ -6,7 +6,4 @@
 <resources>
     <string name="account_menu_title">账户</string>
     <string name="account_menu_add">添加</string>
-    <string name="account_menu_unnamed_account">Happy 账户</string>
-    <string name="account_menu_unnamed_agent">智能体</string>
-    <string name="account_menu_agent">智能体连接</string>
 </resources>

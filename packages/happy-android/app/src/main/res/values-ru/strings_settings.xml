@@ -12,16 +12,11 @@
     <string name="settings_edit_name">Изменить имя</string>
     <string name="settings_hide_projects">Скрыть проекты</string>
     <string name="settings_hide_projects_footer">Главный экран не показывает ваши проекты — здесь и в Happy Desktop.</string>
-    <string name="settings_sign_out_title">Выйти?</string>
-    <string name="settings_disconnect_title">Отключить агента?</string>
-    <string name="settings_happy_account">Аккаунт Happy</string>
     <string name="settings_backup_restore">Резервная копия и восстановление</string>
     <string name="settings_show_secret_key">Показать секретный ключ</string>
     <string name="settings_hide_secret_key">Скрыть секретный ключ</string>
     <string name="settings_copy_secret_key">Скопировать секретный ключ</string>
     <string name="settings_link_device_footer">Отсканируйте код, который другой телефон показывает в разделе «Восстановить», чтобы войти на нём в этот аккаунт.</string>
-    <string name="settings_restore_account">Восстановить аккаунт</string>
-    <string name="settings_restore_account_footer">Войдите в другой аккаунт по его секретному ключу или с телефона, на котором он есть. Этот аккаунт останется здесь.</string>
     <string name="settings_copy_id_footer">Нажмите на ID, чтобы скопировать его.</string>
     <string name="settings_change_photo">Сменить фото</string>
     <string name="settings_remove_photo">Удалить фото</string>

@@ -6,7 +6,4 @@
 <resources>
     <string name="account_menu_title">Accounts</string>
     <string name="account_menu_add">Add</string>
-    <string name="account_menu_unnamed_account">Happy account</string>
-    <string name="account_menu_unnamed_agent">Agent</string>
-    <string name="account_menu_agent">Agent connection</string>
 </resources>

@@ -129,10 +129,10 @@ class AgentConnectionSettingsTest {
     fun disconnectingAsksAndCancelKeepsTheConnection() {
         show()
         rule.node(SettingsPageTags.REMOVE).performScrollTo().performClick()
-        rule.onNodeWithText("Disconnect agent?").assertIsDisplayed()
+        rule.onNodeWithText("Disconnect Happy Agent?").assertIsDisplayed()
         rule.onNodeWithText("Cancel").performClick()
         rule.waitForIdle()
-        rule.onNodeWithText("Disconnect agent?").assertDoesNotExist()
+        rule.onNodeWithText("Disconnect Happy Agent?").assertDoesNotExist()
         assertEquals(emptyList<String>(), done)
 
         rule.node(SettingsPageTags.REMOVE).performClick()

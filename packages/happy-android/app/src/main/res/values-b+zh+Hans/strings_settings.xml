@@ -12,16 +12,11 @@
     <string name="settings_edit_name">编辑名称</string>
     <string name="settings_hide_projects">隐藏项目</string>
     <string name="settings_hide_projects_footer">主页不显示你的项目，此处和 Happy Desktop 中均如此。</string>
-    <string name="settings_sign_out_title">登出？</string>
-    <string name="settings_disconnect_title">断开智能体连接？</string>
-    <string name="settings_happy_account">Happy 账户</string>
     <string name="settings_backup_restore">备份与恢复</string>
     <string name="settings_show_secret_key">显示密钥</string>
     <string name="settings_hide_secret_key">隐藏密钥</string>
     <string name="settings_copy_secret_key">复制密钥</string>
     <string name="settings_link_device_footer">扫描另一部手机在“恢复”中显示的代码，让它登录此账户。</string>
-    <string name="settings_restore_account">恢复账户</string>
-    <string name="settings_restore_account_footer">使用另一个账户的密钥或已登录它的手机登录该账户。此账户会保留在这里。</string>
     <string name="settings_copy_id_footer">点按 ID 即可复制。</string>
     <string name="settings_change_photo">更换照片</string>
     <string name="settings_remove_photo">移除照片</string>

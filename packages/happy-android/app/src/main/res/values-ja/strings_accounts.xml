@@ -6,7 +6,4 @@
 <resources>
     <string name="account_menu_title">アカウント</string>
     <string name="account_menu_add">追加</string>
-    <string name="account_menu_unnamed_account">Happy アカウント</string>
-    <string name="account_menu_unnamed_agent">エージェント</string>
-    <string name="account_menu_agent">エージェント接続</string>
 </resources>

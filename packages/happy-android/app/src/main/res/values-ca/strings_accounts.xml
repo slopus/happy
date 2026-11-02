@@ -6,7 +6,4 @@
 <resources>
     <string name="account_menu_title">Comptes</string>
     <string name="account_menu_add">Afegeix</string>
-    <string name="account_menu_unnamed_account">Compte de Happy</string>
-    <string name="account_menu_unnamed_agent">Agent</string>
-    <string name="account_menu_agent">Connexió d\'agent</string>
 </resources>

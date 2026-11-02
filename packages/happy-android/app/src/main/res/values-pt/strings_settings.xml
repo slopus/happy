@@ -12,16 +12,11 @@
     <string name="settings_edit_name">Editar nome</string>
     <string name="settings_hide_projects">Ocultar projetos</string>
     <string name="settings_hide_projects_footer">A tela inicial deixa seus projetos de fora, aqui e no Happy Desktop.</string>
-    <string name="settings_sign_out_title">Sair?</string>
-    <string name="settings_disconnect_title">Desconectar o agente?</string>
-    <string name="settings_happy_account">Conta Happy</string>
     <string name="settings_backup_restore">Backup e restauração</string>
     <string name="settings_show_secret_key">Mostrar chave secreta</string>
     <string name="settings_hide_secret_key">Ocultar chave secreta</string>
     <string name="settings_copy_secret_key">Copiar chave secreta</string>
     <string name="settings_link_device_footer">Escaneie o código que outro telefone mostra em Restaurar para entrar nesta conta nele.</string>
-    <string name="settings_restore_account">Restaurar uma conta</string>
-    <string name="settings_restore_account_footer">Entre em outra conta com a chave secreta dela ou com um telefone que a tenha. Esta conta continua aqui.</string>
     <string name="settings_copy_id_footer">Toque em um ID para copiá-lo.</string>
     <string name="settings_change_photo">Alterar foto</string>
     <string name="settings_remove_photo">Remover foto</string>

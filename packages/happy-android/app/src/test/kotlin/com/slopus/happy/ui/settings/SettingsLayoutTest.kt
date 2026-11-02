@@ -164,7 +164,7 @@ class SettingsLayoutTest {
 
         rule.node(SettingsPageTags.account("agent-connection-1")).performTouchInput { longClick() }
         rule.onNodeWithText("Disconnect").performClick()
-        rule.onNodeWithText("Disconnect agent?").assertIsDisplayed()
+        rule.onNodeWithText("Disconnect Happy Agent?").assertIsDisplayed()
         rule.onNode(hasText("Disconnect") and hasAnyAncestor(isDialog())).performClick()
         rule.waitForIdle()
         assertEquals(listOf("agent-connection-1"), removed)
@@ -174,7 +174,7 @@ class SettingsLayoutTest {
     fun logoutAsksFirst() {
         show()
         rule.node(SettingsPageTags.REMOVE).performScrollTo().performClick()
-        rule.onNodeWithText("Sign out?").assertIsDisplayed()
+        rule.onNodeWithText("Sign out of Happy CLI?").assertIsDisplayed()
         rule.onNodeWithText("Cancel").performClick()
         rule.waitForIdle()
         assertEquals(emptyList<String>(), opened)

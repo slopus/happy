@@ -12,16 +12,11 @@
     <string name="settings_edit_name">名前を編集</string>
     <string name="settings_hide_projects">プロジェクトを隠す</string>
     <string name="settings_hide_projects_footer">ホームにプロジェクトを表示しません（ここと Happy Desktop の両方）。</string>
-    <string name="settings_sign_out_title">サインアウトしますか？</string>
-    <string name="settings_disconnect_title">エージェントを切断しますか？</string>
-    <string name="settings_happy_account">Happy アカウント</string>
     <string name="settings_backup_restore">バックアップと復元</string>
     <string name="settings_show_secret_key">シークレットキーを表示</string>
     <string name="settings_hide_secret_key">シークレットキーを隠す</string>
     <string name="settings_copy_secret_key">シークレットキーをコピー</string>
     <string name="settings_link_device_footer">別のスマートフォンの「復元」に表示されるコードをスキャンすると、そのスマートフォンがこのアカウントにサインインします。</string>
-    <string name="settings_restore_account">アカウントを復元</string>
-    <string name="settings_restore_account_footer">別のアカウントにそのシークレットキーか、そのアカウントを持つスマートフォンでサインインします。このアカウントはここに残ります。</string>
     <string name="settings_copy_id_footer">ID をタップするとコピーできます。</string>
     <string name="settings_change_photo">写真を変更</string>
     <string name="settings_remove_photo">写真を削除</string>

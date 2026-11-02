@@ -312,19 +312,21 @@ private fun SettingsIndex(graph: AppGraph, nav: NavHostController, scroll: Scrol
     val registry by graph.accountStore.registry.collectAsStateWithLifecycle()
     val connect = rememberTerminalConnect(graph)
     var enteringUrl by remember { mutableStateOf(false) }
-    val kind = stringResource(R.string.settings_happy_account)
+    val kind = stringResource(R.string.account_kind_cli)
     val id = accountId(signedIn.credentials) ?: stored.id
     // The store follows a switch a moment after the account: until it is this one's, the switcher's copy.
     val profile = stored.takeIf { it.id.isNotEmpty() && it.id == signedIn.publicId }
     val display = registry.entry(id)?.display
     val login = profile?.github?.login ?: display?.username
     val switcher = LocalAccountSwitcher.current
+    val name = profile?.displayName ?: display?.name ?: login ?: kind
 
     SettingsScreen(
         profile = SettingsProfile(
             id = id,
-            name = profile?.displayName ?: display?.name ?: login ?: kind,
-            subtitle = login?.let { "@$it" } ?: kind,
+            name = name,
+            // One with no name of its own is already called by its kind (iOS's SettingsViewController).
+            subtitle = if (name == kind) "" else kindSubtitle(kind, login?.let { "@$it" }),
             imageUri = profile?.avatarUrl ?: display?.avatarUrl,
             thumbhash = profile?.avatar?.thumbhash ?: display?.avatarThumbhash,
         ),

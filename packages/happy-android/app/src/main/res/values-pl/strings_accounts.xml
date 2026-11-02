@@ -6,7 +6,4 @@
 <resources>
     <string name="account_menu_title">Konta</string>
     <string name="account_menu_add">Dodaj</string>
-    <string name="account_menu_unnamed_account">Konto Happy</string>
-    <string name="account_menu_unnamed_agent">Agent</string>
-    <string name="account_menu_agent">Połączenie z agentem</string>
 </resources>

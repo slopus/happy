@@ -178,8 +178,9 @@ fun happySettingsSections(actions: HappySettingsActions, connectingTerminal: Boo
 
 /**
  * A Happy account's Settings, as iOS's SettingsViewController lays out a
- * Happy account's page: its picture, name and "@username" (or "Happy
- * account") at the top ([SettingsHeader]); every account on the phone with
+ * Happy account's page: its picture, name and "Happy CLI · @username"
+ * (an account with no name goes by "Happy CLI", iOS 64edb6a34) at the top
+ * ([SettingsHeader]); every account on the phone with
  * Add Agent ([AccountsCard]); Account and Backup & Restore; Appearance,
  * Language, Voice Assistant and Agents; the terminal's Scan QR code and
  * Enter URL; Support us; About; and Logout. Rows carry iOS's coloured

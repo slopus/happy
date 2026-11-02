@@ -12,16 +12,11 @@
     <string name="settings_edit_name">Edita el nom</string>
     <string name="settings_hide_projects">Amaga els projectes</string>
     <string name="settings_hide_projects_footer">L\'inici no mostra els teus projectes, aquí i a Happy Desktop.</string>
-    <string name="settings_sign_out_title">Vols tancar la sessió?</string>
-    <string name="settings_disconnect_title">Vols desconnectar l\'agent?</string>
-    <string name="settings_happy_account">Compte de Happy</string>
     <string name="settings_backup_restore">Còpia de seguretat i restauració</string>
     <string name="settings_show_secret_key">Mostra la clau secreta</string>
     <string name="settings_hide_secret_key">Amaga la clau secreta</string>
     <string name="settings_copy_secret_key">Copia la clau secreta</string>
     <string name="settings_link_device_footer">Escaneja el codi que un altre telèfon mostra a Restaura per iniciar-hi la sessió amb aquest compte.</string>
-    <string name="settings_restore_account">Restaura un compte</string>
-    <string name="settings_restore_account_footer">Inicia la sessió en un altre compte amb la seva clau secreta o amb un telèfon que el tingui. Aquest compte es queda aquí.</string>
     <string name="settings_copy_id_footer">Toca un ID per copiar-lo.</string>
     <string name="settings_change_photo">Canvia la foto</string>
     <string name="settings_remove_photo">Elimina la foto</string>

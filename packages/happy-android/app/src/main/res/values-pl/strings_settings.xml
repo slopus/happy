@@ -12,16 +12,11 @@
     <string name="settings_edit_name">Edytuj nazwę</string>
     <string name="settings_hide_projects">Ukryj projekty</string>
     <string name="settings_hide_projects_footer">Ekran główny pomija Twoje projekty, tutaj i w Happy Desktop.</string>
-    <string name="settings_sign_out_title">Wylogować się?</string>
-    <string name="settings_disconnect_title">Rozłączyć agenta?</string>
-    <string name="settings_happy_account">Konto Happy</string>
     <string name="settings_backup_restore">Kopia zapasowa i przywracanie</string>
     <string name="settings_show_secret_key">Pokaż klucz tajny</string>
     <string name="settings_hide_secret_key">Ukryj klucz tajny</string>
     <string name="settings_copy_secret_key">Kopiuj klucz tajny</string>
     <string name="settings_link_device_footer">Zeskanuj kod, który inny telefon pokazuje w sekcji Przywróć, aby zalogować go do tego konta.</string>
-    <string name="settings_restore_account">Przywróć konto</string>
-    <string name="settings_restore_account_footer">Zaloguj się do innego konta za pomocą jego klucza tajnego lub telefonu, który je ma. To konto zostanie tutaj.</string>
     <string name="settings_copy_id_footer">Dotknij identyfikatora, aby go skopiować.</string>
     <string name="settings_change_photo">Zmień zdjęcie</string>
     <string name="settings_remove_photo">Usuń zdjęcie</string>

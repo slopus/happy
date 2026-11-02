@@ -227,16 +227,14 @@ fun settingsSearchResults(query: String, profiles: List<SettingsEntry>, asks: Li
  */
 @Composable
 fun settingsProfileEntries(accounts: AccountMenu, onSwitch: (String) -> Unit): List<SettingsEntry> {
-    val agentKind = stringResource(R.string.account_menu_agent)
-    val accountKind = stringResource(R.string.settings_happy_account)
-    val unnamedAgent = stringResource(R.string.account_menu_unnamed_agent)
-    val unnamedAccount = stringResource(R.string.account_menu_unnamed_account)
+    val agentKind = stringResource(R.string.account_kind_agent)
+    val cliKind = stringResource(R.string.account_kind_cli)
     return accounts.entries.map { entry ->
         SettingsEntry(
             id = SettingsSearchTags.profile(entry.id),
-            title = entry.name ?: if (entry.agent) unnamedAgent else unnamedAccount,
+            title = entry.name ?: if (entry.agent) agentKind else cliKind,
             icon = { Avatar(entry.seed, SettingsPageSpec.accountAvatar, imageUri = entry.imageUrl, thumbhash = entry.thumbhash, animated = entry.liveSeed != null) },
-            detail = if (entry.agent) agentKind else accountKind,
+            detail = if (entry.agent) agentKind else cliKind,
             onClick = { if (!entry.active) onSwitch(entry.id) },
             closesSearch = true,
         )

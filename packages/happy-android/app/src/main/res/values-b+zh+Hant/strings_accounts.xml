@@ -6,7 +6,4 @@
 <resources>
     <string name="account_menu_title">帳戶</string>
     <string name="account_menu_add">新增</string>
-    <string name="account_menu_unnamed_account">Happy 帳戶</string>
-    <string name="account_menu_unnamed_agent">代理程式</string>
-    <string name="account_menu_agent">代理程式連線</string>
 </resources>

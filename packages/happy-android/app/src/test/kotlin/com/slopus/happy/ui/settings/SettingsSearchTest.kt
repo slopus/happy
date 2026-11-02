@@ -10,6 +10,7 @@ import androidx.compose.ui.test.hasText
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -123,7 +124,9 @@ class SettingsSearchTest {
         // The accounts whose name holds it lead; Logout, which signs out, is never offered.
         assertEquals(listOf("Ada Lovelace", "Work", "Studio"), titles.take(3))
         assertTrue("no sign out in $titles", titles.none { it == "Logout" })
-        rule.onNodeWithText("Agent connection", useUnmergedTree = true).assertExists()
+        // Each says its kind by its product: Happy Agent, or Happy CLI for a Happy account (iOS 64edb6a34).
+        rule.onNodeWithText("Happy Agent", useUnmergedTree = true).assertExists()
+        rule.onAllNodesWithText("Happy CLI", useUnmergedTree = true).assertCountEquals(2)
         rule.node(SettingsSearchTags.profile("fedcba9876543210")).performClick()
         assertEquals(listOf("switch:fedcba9876543210"), done)
         // The search closed: the page is back.

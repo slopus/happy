@@ -6,7 +6,4 @@
 <resources>
     <string name="account_menu_title">Cuentas</string>
     <string name="account_menu_add">Añadir</string>
-    <string name="account_menu_unnamed_account">Cuenta de Happy</string>
-    <string name="account_menu_unnamed_agent">Agente</string>
-    <string name="account_menu_agent">Conexión de agente</string>
 </resources>

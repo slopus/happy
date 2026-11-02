@@ -6,7 +6,4 @@
 <resources>
     <string name="account_menu_title">Аккаунты</string>
     <string name="account_menu_add">Добавить</string>
-    <string name="account_menu_unnamed_account">Аккаунт Happy</string>
-    <string name="account_menu_unnamed_agent">Агент</string>
-    <string name="account_menu_agent">Подключение агента</string>
 </resources>

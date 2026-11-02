@@ -68,6 +68,7 @@ import com.slopus.happy.ui.settings.rememberSettingsSearch
 import com.slopus.happy.ui.settings.settingsProfileEntries
 import com.slopus.happy.ui.settings.settingsSearchResults
 import com.slopus.happy.ui.settings.supportEntry
+import com.slopus.happy.ui.settings.kindSubtitle
 import com.slopus.happy.ui.settings.SettingsTiles
 import com.slopus.happy.ui.settings.rememberAboutActions
 import com.slopus.happy.ui.settings.rememberAboutInfo
@@ -395,8 +396,8 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
         profile = SettingsProfile(
             id = connectionId,
             seed = accounts.entries.firstOrNull { it.id == connectionId }?.seed ?: connectionId,
-            name = agent.name,
-            subtitle = statusText(status),
+            name = agent.name.ifEmpty { stringResource(R.string.account_kind_agent) },
+            subtitle = kindSubtitle(stringResource(R.string.account_kind_agent), statusText(status)),
             imageUri = agent.avatarFile?.let { "file://$it" },
             thumbhash = agent.thumbhash,
         ),

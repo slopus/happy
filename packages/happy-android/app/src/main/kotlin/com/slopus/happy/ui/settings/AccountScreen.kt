@@ -334,9 +334,9 @@ fun BackupScreen(
                     modifier = Modifier.revealRow(AccountTags.LINK_DEVICE),
                 )
             }
-            ItemGroup(footer = stringResource(R.string.settings_restore_account_footer)) {
+            ItemGroup(footer = stringResource(R.string.account_kind_restore_another_footer)) {
                 Item(
-                    title = stringResource(R.string.settings_restore_account),
+                    title = stringResource(R.string.account_kind_restore_another_cli_account),
                     icon = { SettingsTile(Ionicon.KeyOutline, SettingsTiles.blue) },
                     onClick = onRestore,
                     modifier = Modifier.revealRow(AccountTags.RESTORE),
@@ -397,7 +397,7 @@ fun backupPageEntries(open: (row: String) -> Unit): List<SettingsEntry> = listOf
     ),
     SettingsEntry(
         id = AccountTags.RESTORE,
-        title = stringResource(R.string.settings_restore_account),
+        title = stringResource(R.string.account_kind_restore_another_cli_account),
         icon = { SettingsTile(Ionicon.KeyOutline, SettingsTiles.blue) },
         onClick = { open(AccountTags.RESTORE) },
         page = true,
