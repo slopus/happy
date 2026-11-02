@@ -41,6 +41,7 @@ public struct NewSessionChoices: Equatable, Sendable {
     public struct Inputs: Sendable {
         public var draft: NewSessionDraft
         public var createsBot: Bool
+        public var createsTask: Bool
         public var machines: [MachineRecord]
         /// Newest first, as the session list keeps them.
         public var sessions: [SessionRecord]
@@ -52,6 +53,7 @@ public struct NewSessionChoices: Equatable, Sendable {
         public init(
             draft: NewSessionDraft,
             createsBot: Bool = false,
+            createsTask: Bool = false,
             machines: [MachineRecord],
             sessions: [SessionRecord],
             projectNames: [String: String] = [:],
@@ -60,6 +62,7 @@ public struct NewSessionChoices: Equatable, Sendable {
         ) {
             self.draft = draft
             self.createsBot = createsBot
+            self.createsTask = createsTask && !createsBot
             self.machines = machines
             self.sessions = sessions
             self.projectNames = projectNames
@@ -67,10 +70,11 @@ public struct NewSessionChoices: Equatable, Sendable {
             self.gitWorktrees = gitWorktrees
         }
 
-        public init(draft: NewSessionDraft, createsBot: Bool, snapshot: LegacyHomeSnapshot, gitWorktrees: [Worktrees.Entry] = []) {
+        public init(draft: NewSessionDraft, createsBot: Bool, createsTask: Bool = false, snapshot: LegacyHomeSnapshot, gitWorktrees: [Worktrees.Entry] = []) {
             self.init(
                 draft: draft,
                 createsBot: createsBot,
+                createsTask: createsTask,
                 machines: snapshot.machines.machines,
                 sessions: snapshot.sessions,
                 projectNames: Dictionary(snapshot.projects.compactMap { project in
@@ -92,6 +96,16 @@ public struct NewSessionChoices: Equatable, Sendable {
     public var resolvedMachineId: String?
     /// The draft names a computer offered here, under either daemon's id.
     public var offersDraftMachine: Bool
+    /// What the first send makes, as the draft says.
+    public var kind: HomeDockKind
+    /// Every computer, in `machineOptions`' order, with what its Happy
+    /// Agent makes and whether it answers.
+    public var machines: [MachineTarget]
+    /// The chosen computer's, when it is listed.
+    public var currentTarget: MachineTarget?
+    /// The chosen computer, or the daemon the start needs on it, doesn't
+    /// answer; nil when it does, or when nothing is chosen.
+    public var offline: Offline?
     public var homeDir: String?
 
     public var projectOptions: [Option]
@@ -160,6 +174,11 @@ public struct NewSessionChoices: Equatable, Sendable {
         currentMachine = Self.resolve(machineOptions, [selectedChoice?.id])
         resolvedMachineId = Self.resolveMachineSelection(selectedChoice?.id ?? draft.selectedMachineId, available: machineOptions.map(\.key))
         offersDraftMachine = selectedChoice != nil
+        let kind = HomeDockKind.current(createsBot: inputs.createsBot, createsTask: inputs.createsTask)
+        self.kind = kind
+        let targets = sortedChoices.map(MachineTarget.init)
+        self.machines = targets
+        currentTarget = selectedChoice.flatMap { choice in targets.first { $0.id == choice.id } }
         let homeDir = selectedChoice?.happyMachine?.metadata?["homeDir"]?.stringValue
             ?? selectedChoice?.rigMachine?.metadata?["homeDir"]?.stringValue
         self.homeDir = homeDir
@@ -241,9 +260,21 @@ public struct NewSessionChoices: Equatable, Sendable {
         let available = (selectedChoice?.availableAgents ?? []).compactMap(NewSessionDraft.Agent.init(rawValue:))
         agentOptions = available.map { Option(key: $0.rawValue, name: $0.name) }
         hasAvailableHarness = !agentOptions.isEmpty
-        resolvedAgent = selectedChoice.flatMap {
+        // A bot or a task is Happy Agent's: on a computer that runs it, the
+        // harness settles there.
+        let kindNeedsRig = kind != .session && available.contains(.rig)
+        resolvedAgent = kindNeedsRig ? .rig : selectedChoice.flatMap {
             NewSessionDraft.Agent(rawValue: $0.resolveNewSessionAgent(stored: agent.rawValue, picked: draft.pickedAgentType?.rawValue))
         } ?? agent
+        // The daemon the start will ask: Happy Agent for a bot or a task,
+        // else the harness's.
+        let startAgent = kind != .session ? NewSessionDraft.Agent.rig : resolvedAgent
+        offline = selectedChoice.flatMap { choice in
+            guard choice.online else { return .computer(lastSeenAt: choice.activeAt) }
+            let needed = startAgent
+            guard let daemon = choice.machine(forAgent: needed.rawValue), !daemon.active else { return nil }
+            return needed == .rig ? .happyAgent : .happyCLI
+        }
         currentAgent = agentOptions.first { $0.key == agent.rawValue }
             ?? agentOptions.first
             ?? Option(key: agent.rawValue, name: agent.name)
@@ -353,6 +384,26 @@ public struct NewSessionChoices: Equatable, Sendable {
             )
         }
         return AgentDefaults.resolve(agentDefaultOverrides, AgentDefaults.Agent(flavor: agent.rawValue), cliVersion: cliVersion)
+    }
+
+    // MARK: Computers for a kind
+
+    /// Some computer's Happy Agent on the account makes bots: Bot is
+    /// offered, and picking it goes there.
+    public var offersBots: Bool { machines.contains(where: \.makesBots) }
+    /// The same for tasks.
+    public var offersTasks: Bool { machines.contains(where: \.makesTasks) }
+
+    /// What the computer picker lists for `kind`: every computer for a
+    /// session; for a bot or a task only those whose Happy Agent makes it.
+    /// Those that answer for it come first.
+    public func machines(for kind: HomeDockKind) -> [MachineTarget] {
+        MachineTarget.eligible(machines, for: kind)
+    }
+
+    /// Where `kind` goes when it is picked (`MachineTarget.preferred`).
+    public func preferredMachine(for kind: HomeDockKind) -> MachineTarget? {
+        MachineTarget.preferred(machines, for: kind, current: currentTarget?.id)
     }
 
     /// `getSupportsWorktree`.

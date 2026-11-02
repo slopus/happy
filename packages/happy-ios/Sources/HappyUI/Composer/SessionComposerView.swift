@@ -113,6 +113,8 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     /// (`stopRequested`), so a late status update can't leave it up.
     private var stopRequested = false
     private var isSending = false
+    /// A send is on its way, for tests.
+    var sending: Bool { isSending }
     /// Picked images wait here until the outbox has its own copies.
     private let staging: ComposerAttachmentStaging
     private let images: ComposerImagePicker

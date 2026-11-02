@@ -50,17 +50,17 @@ public final class NewSessionComposer {
         self.deriver = deriver
         // A bounded empty catalog supplies initial labels until the actor
         // derives the account's choices. No account rows are read here.
-        choices = NewSessionChoices(.init(draft: drafts.draft, createsBot: drafts.createsBot, machines: [], sessions: []))
+        choices = NewSessionChoices(.init(draft: drafts.draft, createsBot: drafts.createsBot, createsTask: drafts.createsTask, machines: [], sessions: []))
         draftObservation = drafts.observe { [weak self] _ in self?.draftChanged() }
         refresh()
     }
 
     /// The draft the choices were last built from. Names and faces remain
     /// immediate UI changes; they never enter the picker derivation actor.
-    private var builtFrom: (draft: NewSessionDraft, createsBot: Bool)?
+    private var builtFrom: (draft: NewSessionDraft, createsBot: Bool, createsTask: Bool)?
 
     private func draftChanged() {
-        if let built = builtFrom, built.draft == drafts.draft, built.createsBot == drafts.createsBot, !refreshing {
+        if let built = builtFrom, built.draft == drafts.draft, built.createsBot == drafts.createsBot, built.createsTask == drafts.createsTask, !refreshing {
             onChange?()
             return
         }
@@ -98,8 +98,20 @@ public final class NewSessionComposer {
 
     // MARK: Picks
 
+    /// A computer picked. One that can't make the bot or task being made
+    /// was picked for a session: the kind goes back to Session.
     public func selectMachine(_ key: String) {
+        let kind = self.kind
+        if kind != .session, let target = choices.machines.first(where: { $0.id == key }), !target.makes(kind) {
+            drafts.setCreatesBot(false)
+            drafts.setCreatesTask(false)
+        }
         drafts.setMachineId(key)
+    }
+
+    /// What the first send makes, as the draft says.
+    public var kind: HomeDockKind {
+        HomeDockKind.current(createsBot: drafts.createsBot, createsTask: drafts.createsTask)
     }
 
     /// A project row. A catalog project is named by identity, and only
@@ -168,27 +180,31 @@ public final class NewSessionComposer {
         drafts.setEffortLevel(key)
     }
 
-    /// What the first send makes, as far as the computer can make it. A bot
-    /// or a task is Happy Agent's (`NewSessionLaunch.resolve`), so picking
-    /// one moves the harness there, as a catalog project does: the model,
-    /// permission and effort pickers then offer Happy Agent's own, and
-    /// what they pick is what the spawn asks for. Back to Session, the
-    /// harness stays Happy Agent's until another is picked.
+    /// What the first send makes. A bot or a task is Happy Agent's
+    /// (`NewSessionLaunch.resolve`), made on a computer whose Happy Agent
+    /// advertises it, so picking one goes to such a computer
+    /// (`NewSessionChoices.preferredMachine`): the one chosen if it can and
+    /// answers, else one that answers. The harness moves to Happy Agent, as
+    /// a catalog project moves it: the model, permission and effort pickers
+    /// then offer Happy Agent's own, and what they pick is what the spawn
+    /// asks for. Back to Session, the computer and the harness stay until
+    /// others are picked.
     public func selectKind(_ kind: HomeDockKind) {
-        switch kind {
-        case .session:
+        guard kind != .session else {
             drafts.setCreatesBot(false)
             drafts.setCreatesTask(false)
             return
-        case .bot:
-            guard choices.supportsBots else { return }
-            drafts.setCreatesBot(true)
-        case .task:
-            guard choices.supportsTasks else { return }
-            drafts.setCreatesTask(true)
         }
-        if drafts.draft.agentType != .rig, choices.agentOptions.contains(where: { $0.key == NewSessionDraft.Agent.rig.rawValue }) {
-            selectAgent(.rig, picked: true)
+        guard let target = choices.preferredMachine(for: kind) else { return }
+        let moves = target.id != choices.currentTarget?.id
+        if moves { drafts.setMachineId(target.id) }
+        if kind == .bot { drafts.setCreatesBot(true) } else { drafts.setCreatesTask(true) }
+        // Already Happy Agent's, the picks stay; the pickers read them
+        // against the Happy Agent it goes to.
+        guard drafts.draft.agentType != .rig else { return }
+        // Read on the computer it goes to: these choices are another's.
+        if let defaults = moves ? target.happyAgentDefaults : choices.defaults(for: .rig) {
+            drafts.selectAgent(.rig, picked: true, defaults: defaults)
         }
     }
 
@@ -274,13 +290,14 @@ public final class NewSessionComposer {
         let revision = snapshotRevision
         let draft = drafts.draft
         let createsBot = drafts.createsBot
+        let createsTask = drafts.createsTask
         let worktrees = gitWorktrees
         let deriver = self.deriver
         refreshTask?.cancel()
         refreshTask = Task { [weak self] in
             guard !Task.isCancelled else { return }
             let next = await deriver.choices(snapshot: snapshot, revision: revision, generation: generation, draft: draft,
-                                             createsBot: createsBot, worktrees: worktrees)
+                                             createsBot: createsBot, createsTask: createsTask, worktrees: worktrees)
             guard !Task.isCancelled, let next, let self, self.refreshGeneration == generation else { return }
             self.canonicalSessions = next.sessions
             if next.revision != self.appliedChoiceRevision {
@@ -289,7 +306,7 @@ public final class NewSessionComposer {
                 self.pendingChoiceChange = self.pendingChoiceChange || next.renderedRevision != self.appliedRenderedRevision
                 self.appliedRenderedRevision = next.renderedRevision
             }
-            self.builtFrom = (draft, createsBot)
+            self.builtFrom = (draft, createsBot, createsTask)
             self.refreshing = true
             self.needsRefresh = false
             self.reconcile()
@@ -317,22 +334,27 @@ public final class NewSessionComposer {
         // catalog cannot establish that a persisted target disappeared.
         guard snapshot.machines.synced || !snapshot.machines.machines.isEmpty else { return }
         let draft = drafts.draft
-        // A draft from before the pair was coalesced names the computer
-        // under its other daemon's id, and keeps its place; a computer that
-        // left is replaced by the first one offered, whose folders are its
-        // own, so the left one's place goes with it.
-        if choices.resolvedMachineId != draft.selectedMachineId {
+        let kind = self.kind
+        if kind != .session, choices.currentTarget?.makes(kind) != true {
+            // A bot or a task whose computer can't make it (it left, or its
+            // Happy Agent stopped offering it) goes to one that can; only
+            // with none on the account does it become a session.
+            if let target = choices.preferredMachine(for: kind) {
+                drafts.setMachineId(target.id)
+            } else {
+                drafts.setCreatesBot(false)
+                drafts.setCreatesTask(false)
+            }
+        } else if choices.resolvedMachineId != draft.selectedMachineId {
+            // A draft from before the pair was coalesced names the computer
+            // under its other daemon's id, and keeps its place; a computer
+            // that left is replaced by the first one offered, whose folders
+            // are its own, so the left one's place goes with it.
             if choices.offersDraftMachine {
                 drafts.renameMachineId(choices.resolvedMachineId)
             } else {
                 drafts.setMachineId(choices.resolvedMachineId)
             }
-        }
-        if drafts.createsBot && !choices.supportsBots {
-            drafts.setCreatesBot(false)
-        }
-        if drafts.createsTask && !choices.supportsTasks {
-            drafts.setCreatesTask(false)
         }
         if !choices.supportsWorktree && !choices.picksWorkspaces && draft.sessionType == .worktree {
             drafts.setSessionType(.simple)

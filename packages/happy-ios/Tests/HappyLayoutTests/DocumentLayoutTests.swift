@@ -107,7 +107,8 @@ final class DocumentLayoutTests: XCTestCase {
         assertFrame(layout.strip, rect(8, 2, 317, 52))
         assertFrame(layout.buttons[0], rect(4, 4, 44, 44))
         assertFrame(layout.buttons[1], rect(50, 4, 44, 44))
-        XCTAssertEqual(layout.content.width, 4 + 12 * 44 + 11 * 2 + 4)
+        let contentWidth: CGFloat = 4 + 12 * 44 + 11 * 2 + 4
+        XCTAssertEqual(layout.content.width, contentWidth)
         let few = DocumentToolbarLayout(width: 393, safeArea: .zero, count: 2)
         XCTAssertEqual(few.content.width, 317, "never narrower than the strip")
     }

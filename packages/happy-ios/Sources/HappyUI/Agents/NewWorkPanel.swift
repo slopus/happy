@@ -27,10 +27,32 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
     let name = UITextField()
     private let field = UIView()
     /// `.session`'s rows.
-    let machine = NewWorkMenuRow(icon: .ionicons("desktop-outline"))
+    let machine = NewWorkMenuRow(icon: .ionicons("desktop-outline"), showsStatus: true)
     let folder = NewWorkMenuRow(icon: .ionicons("folder-outline"))
     let harness = NewWorkMenuRow(icon: .ionicons("hardware-chip-outline"))
     private let note = UILabel()
+    /// `.session`: under the bot's name, why it is refused.
+    private let validationLabel = UILabel()
+
+    /// `.session`: why the bot's name is refused, under the field, until
+    /// it is typed into.
+    var validation: String? {
+        didSet {
+            guard validation != oldValue else { return }
+            validationLabel.text = validation
+            validationLabel.isHidden = validation == nil || field.isHidden
+            field.layer.borderWidth = validation == nil ? 0 : 1
+            superview?.setNeedsLayout()
+        }
+    }
+
+    /// `.session`: the bot needs a name before it is made. The field takes
+    /// the keyboard and says why.
+    func askName(_ reason: String) {
+        validation = reason
+        name.becomeFirstResponder()
+        Haptics.play(.pick)
+    }
 
     /// Every change, as it is made.
     var onChange: ((NewTask.Choice) -> Void)?
@@ -86,6 +108,7 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
         harness.isHidden = current != .session
         field.isHidden = current != .bot
         note.isHidden = current != .bot
+        if current != .bot { validation = nil }
         if current != .bot, name.isFirstResponder { onReturn?() }
         superview?.setNeedsLayout()
     }
@@ -133,7 +156,14 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
             folder.accessibilityIdentifier = "new-work-folder"
             harness.accessibilityIdentifier = "new-work-harness"
             machine.isHidden = true
-            for view in [kind, machine, folder, harness, field, note] { addSubview(view) }
+            field.layer.borderColor = UIColor(Palette.textDestructive).cgColor
+            validationLabel.font = Fonts.ui(.regular, size: 13)
+            validationLabel.textColor = UIColor(Palette.textDestructive)
+            validationLabel.textAlignment = .center
+            validationLabel.numberOfLines = 0
+            validationLabel.isHidden = true
+            validationLabel.accessibilityIdentifier = "new-work-validation"
+            for view in [kind, machine, folder, harness, field, validationLabel, note] { addSubview(view) }
         }
     }
 
@@ -146,15 +176,17 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
         ])
     }
 
-    /// `.session`'s rows, top to bottom, as the kind shows them.
+    /// `.session`'s rows, top to bottom, as the kind shows them: each
+    /// caption under the control it speaks for.
     private var sessionRows: [UIView] {
-        [machine, folder, harness, field].filter { !$0.isHidden }
+        [machine, folder, harness, field, validationLabel].filter { !$0.isHidden }
     }
 
-    private var measuredNote: Measurable {
-        let note = note
-        return Measurable { width in
-            let size = note.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+    private var measuredNote: Measurable { Self.measured(note) }
+
+    private static func measured(_ label: UILabel) -> Measurable {
+        Measurable { width in
+            let size = label.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
             return CGSize(width: ceil(size.width), height: ceil(size.height))
         }
     }
@@ -173,7 +205,7 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
             return NewWorkLayout(
                 width: width, top: top, bottom: bottom,
                 kindHeight: kind.isHidden ? nil : kind.intrinsicContentSize.height,
-                rows: sessionRows.count,
+                rows: sessionRows.map { row in (row as? UILabel).map { .caption(Self.measured($0)) } ?? .field },
                 note: note.isHidden ? nil : measuredNote
             )
         }
@@ -188,6 +220,8 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
             field.frame = layout.rows[0]
         case .session:
             for (row, frame) in zip(sessionRows, layout.rows) { row.frame = frame }
+            // Short of room the note gives way first (`NewWorkLayout`).
+            note.alpha = layout.showsNote ? 1 : 0
         }
         name.frame = field.bounds.insetBy(dx: 16, dy: 0)
     }
@@ -246,6 +280,7 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
         case .work:
             onChange?(choice)
         case .session:
+            validation = nil
             guard let kept = onBotName?(name.text ?? ""), kept != name.text else { return }
             name.text = kept
         }
@@ -258,9 +293,17 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
 }
 
 /// One of `.session`'s rows: an icon, what is chosen, and the menu that
-/// chooses it, on the name field's ground.
+/// chooses it, on the name field's ground. The computer's row also says
+/// whether it answers, in a small label of one fixed frame at its
+/// top-right over a name always set lower (`NewWorkStatusLayout`), so a
+/// status coming, going or turning to a warning never moves the name or
+/// changes the row.
 final class NewWorkMenuRow: UIButton {
-    init(icon: Icon) {
+    let showsStatus: Bool
+    private let statusLabel = UILabel()
+
+    init(icon: Icon, showsStatus: Bool = false) {
+        self.showsStatus = showsStatus
         super.init(frame: .zero)
         var configuration = UIButton.Configuration.plain()
         configuration.image = .icon(icon, size: 16)
@@ -269,7 +312,9 @@ final class NewWorkMenuRow: UIButton {
         configuration.titleLineBreakMode = .byTruncatingMiddle
         configuration.background.backgroundColor = UIColor(Palette.inputBackground)
         configuration.cornerStyle = .capsule
-        configuration.contentInsets = NSDirectionalEdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16)
+        // The computer's name sits a fixed step lower, under its status.
+        let drop = showsStatus ? 2 * NewWorkStatusLayout.titleDrop : 0
+        configuration.contentInsets = NSDirectionalEdgeInsets(top: drop, leading: 16, bottom: 0, trailing: 16)
         configuration.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer { attributes in
             var attributes = attributes
             attributes.font = Fonts.ui(.regular, size: 16)
@@ -277,6 +322,15 @@ final class NewWorkMenuRow: UIButton {
         }
         self.configuration = configuration
         showsMenuAsPrimaryAction = true
+        if showsStatus {
+            contentHorizontalAlignment = .leading
+            statusLabel.font = Fonts.ui(.medium, size: 11)
+            statusLabel.textAlignment = .right
+            statusLabel.lineBreakMode = .byTruncatingTail
+            statusLabel.isUserInteractionEnabled = false
+            statusLabel.accessibilityIdentifier = "new-work-machine-status"
+            addSubview(statusLabel)
+        }
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -286,7 +340,7 @@ final class NewWorkMenuRow: UIButton {
         set {
             guard configuration?.title != newValue else { return }
             configuration?.title = newValue
-            accessibilityValue = newValue
+            updateAccessibility()
         }
     }
 
@@ -295,6 +349,34 @@ final class NewWorkMenuRow: UIButton {
             guard let icon, icon != oldValue else { return }
             configuration?.image = .icon(icon, size: 16)
         }
+    }
+
+    /// The computer's row: "● Online", or a warning ("● Offline · 2h ago",
+    /// "● Happy Agent offline") in its colour; nil for none. Only the
+    /// label's text and colour change.
+    var status: (text: String, color: UIColor)? {
+        didSet {
+            guard showsStatus, status?.text != oldValue?.text || status?.color != oldValue?.color else { return }
+            statusLabel.text = status?.text
+            statusLabel.textColor = status?.color
+            // Empty rather than hidden: its frame is the same either way.
+            updateAccessibility()
+        }
+    }
+
+    /// The label's text, for tests.
+    var statusText: String? { statusLabel.text }
+    /// Where the label is, in the row, for tests.
+    var statusFrame: CGRect { statusLabel.frame }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard showsStatus else { return }
+        statusLabel.frame = NewWorkStatusLayout.label(rowWidth: bounds.width)
+    }
+
+    private func updateAccessibility() {
+        accessibilityValue = [title, status?.text].compactMap { $0 }.joined(separator: ", ")
     }
 }
 #endif
