@@ -503,6 +503,7 @@ final class HostedComposeTests: XCTestCase {
         try await until { panel.name.isFirstResponder }
         XCTAssertNil(chat.presentedViewController, "asked in place, not in an alert")
         XCTAssertEqual(panel.validation, "Give the bot a name")
+        XCTAssertEqual(panel.name.attributedPlaceholder?.string, "Give the bot a name")
         XCTAssertTrue(chat.isComposing)
         XCTAssertEqual(card.text, "Plan the release", "the text stays to send again")
         XCTAssertTrue(log.spawned.isEmpty)

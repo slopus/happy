@@ -256,6 +256,7 @@ final class HostedComposeTargetTests: XCTestCase {
         }
         let machines = Self.actions(start.machineMenuElements()).map(\.title)
         XCTAssertEqual(Set(machines), ["MacBook-Pro-7.local", "happy-core"], "only computers whose Happy Agent makes bots")
+        let asked = Self.frames(chat.view).filter { $0.contains(":NewWorkPanel") } + ["panel \(panel.convert(panel.bounds, to: chat.view))"]
 
         card.setText("yo", selection: NSRange(location: 2, length: 0))
         card.delegate?.agentInputCardDidChangeText(card)
@@ -263,11 +264,15 @@ final class HostedComposeTargetTests: XCTestCase {
         try await until { panel.name.isFirstResponder }
         XCTAssertNil(chat.presentedViewController, "no alert: the name is asked for in place")
         XCTAssertEqual(panel.validation, "Give the bot a name")
+        XCTAssertEqual(panel.name.attributedPlaceholder?.string, "Give the bot a name", "said in the field")
         XCTAssertTrue(chat.isComposing)
         XCTAssertEqual(card.text, "yo")
         XCTAssertTrue(log.spawned.isEmpty)
         try await Task.sleep(for: .milliseconds(400))
+        chat.view.layoutIfNeeded()
         keep(window, "target-2-bot-needs-name")
+        let refused = Self.frames(chat.view).filter { $0.contains(":NewWorkPanel") } + ["panel \(panel.convert(panel.bounds, to: chat.view))"]
+        XCTAssertEqual(refused, asked, "asking for the name moved the panel")
 
         panel.name.text = "Release Captain"
         panel.name.sendActions(for: .editingChanged)
@@ -429,14 +434,16 @@ final class HostedComposeTargetTests: XCTestCase {
 
     // MARK: Status never moves anything
 
-    /// Every view in `root`, depth first, with its frame in `root`.
+    /// Every view in `root`, depth first, with its frame in `root`; a text
+    /// field's own insides are its text and placeholder, not the panel's
+    /// layout, so the field is listed and not entered.
     private static func frames(_ root: UIView) -> [String] {
         var out: [String] = []
         func walk(_ view: UIView, _ path: String) {
             for (index, child) in view.subviews.enumerated() {
                 let here = "\(path)/\(index):\(type(of: child))"
                 out.append("\(here) \(child.convert(child.bounds, to: root)) hidden=\(child.isHidden) alpha=\(child.alpha)")
-                walk(child, here)
+                if !(child is UITextField) { walk(child, here) }
             }
         }
         walk(root, "")
@@ -445,7 +452,8 @@ final class HostedComposeTargetTests: XCTestCase {
 
     /// The panel alone at an iPhone 14 Pro's width: online, offline and
     /// unknown (no status) lay out every view of the panel, the computer
-    /// row's own included, at the same frame, for a session and a bot.
+    /// row's own included, at the same frame, for a session and a bot; and
+    /// for the bot, a name refused and then typed moves nothing either.
     func testStatusStatesLeaveEveryFrameOfThePanelAlone() async throws {
         let scene = try await hostedActiveScene()
         let host = UIViewController()
@@ -480,6 +488,25 @@ final class HostedComposeTargetTests: XCTestCase {
                     reference = frames
                 }
                 keep(window, "target-8-row-\(kind)-\(name)")
+            }
+            guard kind == .bot else { continue }
+            // The name refused, every status over it, then typed.
+            let names: [(String, String, String?)] = [
+                ("refused", "", "Give the bot a name"),
+                ("named", "Release Captain", nil),
+            ]
+            for (name, typed, validation) in names {
+                for (statusName, status) in states {
+                    panel.name.text = typed
+                    panel.validation = validation
+                    panel.machine.status = status
+                    panel.place(panel.layout(width: 393, top: 160, bottom: 600))
+                    window.layoutIfNeeded()
+                    let frames = Self.frames(panel) + ["panel \(panel.frame)"]
+                    XCTAssertEqual(frames, reference, "bot \(name) \(statusName): a view moved")
+                    XCTAssertEqual(panel.name.attributedPlaceholder?.string, validation ?? "Name your bot")
+                }
+                keep(window, "target-8-row-bot-name-\(name)")
             }
         }
     }

@@ -31,27 +31,29 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
     let folder = NewWorkMenuRow(icon: .ionicons("folder-outline"))
     let harness = NewWorkMenuRow(icon: .ionicons("hardware-chip-outline"))
     private let note = UILabel()
-    /// `.session`: under the bot's name, why it is refused.
-    private let validationLabel = UILabel()
 
-    /// `.session`: why the bot's name is refused, under the field, until
-    /// it is typed into.
+    /// `.session`: why the bot's name is refused, until it is typed into:
+    /// a red edge on the field and the reason, in red, in place of its
+    /// placeholder. Nothing is added around the field, so nothing moves.
     var validation: String? {
         didSet {
             guard validation != oldValue else { return }
-            validationLabel.text = validation
-            validationLabel.isHidden = validation == nil || field.isHidden
             field.layer.borderWidth = validation == nil ? 0 : 1
-            superview?.setNeedsLayout()
+            name.attributedPlaceholder = validation.map { Self.placeholder($0, color: UIColor(Palette.textDestructive)) }
+                ?? Self.placeholder(NewSessionChoices.botNamePlaceholder)
+            name.accessibilityHint = validation
         }
     }
 
     /// `.session`: the bot needs a name before it is made. The field takes
-    /// the keyboard and says why.
-    func askName(_ reason: String) {
+    /// the keyboard and says why; false when what is typed hides the
+    /// reason, for the caller to say it another way.
+    @discardableResult
+    func askName(_ reason: String) -> Bool {
         validation = reason
         name.becomeFirstResponder()
         Haptics.play(.pick)
+        return name.text?.isEmpty ?? true
     }
 
     /// Every change, as it is made.
@@ -157,29 +159,22 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
             harness.accessibilityIdentifier = "new-work-harness"
             machine.isHidden = true
             field.layer.borderColor = UIColor(Palette.textDestructive).cgColor
-            validationLabel.font = Fonts.ui(.regular, size: 13)
-            validationLabel.textColor = UIColor(Palette.textDestructive)
-            validationLabel.textAlignment = .center
-            validationLabel.numberOfLines = 0
-            validationLabel.isHidden = true
-            validationLabel.accessibilityIdentifier = "new-work-validation"
-            for view in [kind, machine, folder, harness, field, validationLabel, note] { addSubview(view) }
+            for view in [kind, machine, folder, harness, field, note] { addSubview(view) }
         }
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
-    private static func placeholder(_ text: String) -> NSAttributedString {
+    private static func placeholder(_ text: String, color: UIColor = UIColor(Palette.inputPlaceholder)) -> NSAttributedString {
         NSAttributedString(string: text, attributes: [
             .font: Fonts.ui(.regular, size: 16),
-            .foregroundColor: UIColor(Palette.inputPlaceholder),
+            .foregroundColor: color,
         ])
     }
 
-    /// `.session`'s rows, top to bottom, as the kind shows them: each
-    /// caption under the control it speaks for.
+    /// `.session`'s rows, top to bottom, as the kind shows them.
     private var sessionRows: [UIView] {
-        [machine, folder, harness, field, validationLabel].filter { !$0.isHidden }
+        [machine, folder, harness, field].filter { !$0.isHidden }
     }
 
     private var measuredNote: Measurable { Self.measured(note) }
@@ -205,7 +200,7 @@ final class NewWorkPanel: UIView, UITextFieldDelegate {
             return NewWorkLayout(
                 width: width, top: top, bottom: bottom,
                 kindHeight: kind.isHidden ? nil : kind.intrinsicContentSize.height,
-                rows: sessionRows.map { row in (row as? UILabel).map { .caption(Self.measured($0)) } ?? .field },
+                givingWay: sessionRows.count,
                 note: note.isHidden ? nil : measuredNote
             )
         }

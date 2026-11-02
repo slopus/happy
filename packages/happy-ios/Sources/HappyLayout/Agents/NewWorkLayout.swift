@@ -71,14 +71,6 @@ public struct NewWorkLayout: Equatable, Sendable {
         block = CGRect(x: (width - blockWidth) / 2, y: origin, width: blockWidth, height: y)
     }
 
-    /// One of a legacy account's rows: a field-high control, or a line
-    /// under the control before it (why the computer can't be reached, why
-    /// the name is refused), as tall as it wraps.
-    public enum Row {
-        case field
-        case caption(Measurable)
-    }
-
     /// Whether `note` is laid out: with little room it goes first.
     public var showsNote: Bool
 
@@ -86,25 +78,19 @@ public struct NewWorkLayout: Equatable, Sendable {
     /// asks (the kind, the computer, a bot's name) is what the first send
     /// makes, so with the keyboard up on a small phone the note goes, then
     /// the gaps close, and only when even that has no room (a phone held
-    /// sideways) does it not fit.
+    /// sideways) does it not fit. Nothing a row says (a computer offline, a
+    /// name refused) adds to it: that is said inside the row.
     ///
     ///     bar ─────────────────────────
     ///               [ Session | Bot | Task ]
     ///               [ computer          ]
-    ///                 offline: start Happy…    caption under its row
     ///               [ Name your bot     ]
-    ///                 Give the bot a name      caption
     ///               what a bot is              note, dropped first
     ///     composer ────────────────────
-    public init(width: CGFloat, top: CGFloat, bottom: CGFloat, kindHeight: CGFloat?, rows: [Row], note: Measurable?) {
+    public init(width: CGFloat, top: CGFloat, bottom: CGFloat, kindHeight: CGFloat?, givingWay count: Int, note: Measurable?) {
         typealias M = Metrics
         let blockWidth = max(0, min(M.maxWidth, width - 2 * M.side))
         let room = bottom - top
-        // Captions measured once, at the block's width.
-        let heights = rows.map { row -> CGFloat? in
-            if case .caption(let caption) = row { return ceil(caption.size(fitting: blockWidth - 2 * M.captionInset).height) }
-            return nil
-        }
         let noteHeight = note.map { ceil($0.size(fitting: blockWidth).height) }
         func stack(kindGap: CGFloat, rowGap: CGFloat, withNote: Bool) -> (kind: CGRect?, rows: [CGRect], note: CGRect?, height: CGFloat) {
             var y: CGFloat = 0
@@ -115,16 +101,10 @@ public struct NewWorkLayout: Equatable, Sendable {
                 y = kindHeight + kindGap
             }
             var frames: [CGRect] = []
-            for (index, height) in heights.enumerated() {
-                if let height {
-                    y += M.captionGap
-                    frames.append(CGRect(x: M.captionInset, y: y, width: blockWidth - 2 * M.captionInset, height: height))
-                    y += height
-                } else {
-                    if index > 0 { y += rowGap }
-                    frames.append(CGRect(x: 0, y: y, width: blockWidth, height: M.rowHeight))
-                    y += M.rowHeight
-                }
+            for index in 0..<max(0, count) {
+                if index > 0 { y += rowGap }
+                frames.append(CGRect(x: 0, y: y, width: blockWidth, height: M.rowHeight))
+                y += M.rowHeight
             }
             var noteFrame: CGRect?
             if withNote, let noteHeight {
@@ -154,9 +134,6 @@ extension NewWorkLayout.Metrics {
     /// The gaps once the room is short.
     public static let tightKindToRows: CGFloat = 8
     public static let tightRowGap: CGFloat = 6
-    /// A caption's gap under its row, and how far in from the row's sides.
-    public static let captionGap: CGFloat = 4
-    public static let captionInset: CGFloat = 12
 }
 
 /// The computer row's status: a label of one fixed frame pinned to the

@@ -82,18 +82,15 @@ final class NewWorkLayoutTests: XCTestCase {
 
     // MARK: A legacy account's Bot, giving way rather than going
 
-    /// A one-line caption (18pt) and the bot's four-line note (72pt).
-    private let caption = Measurable { CGSize(width: $0, height: 18) }
+    /// The bot's four-line note (72pt).
     private let botNote = Measurable { CGSize(width: $0, height: 72) }
 
-    /// Kind, computer with its offline warning, name with why it's refused,
-    /// and the note.
+    /// Kind, computer, name, and the note.
     private func bot(top: CGFloat = 103, bottom: CGFloat) -> NewWorkLayout {
-        NewWorkLayout(width: 393, top: top, bottom: bottom, kindHeight: 32,
-                      rows: [.field, .caption(caption), .field, .caption(caption)], note: botNote)
+        NewWorkLayout(width: 393, top: top, bottom: bottom, kindHeight: 32, givingWay: 2, note: botNote)
     }
 
-    /// With room, everything shows, each caption under its row.
+    /// With room, everything shows.
     func testABotShowsEverythingWithRoom() throws {
         let layout = bot(bottom: 760)
         XCTAssertTrue(layout.fits)
@@ -101,12 +98,10 @@ final class NewWorkLayoutTests: XCTestCase {
         let machine = 32 + M.kindToRows
         XCTAssertEqual(layout.rows, [
             CGRect(x: 0, y: machine, width: 320, height: M.rowHeight),
-            CGRect(x: M.captionInset, y: machine + M.rowHeight + M.captionGap, width: 320 - 2 * M.captionInset, height: 18),
-            CGRect(x: 0, y: machine + M.rowHeight + M.captionGap + 18 + M.rowGap, width: 320, height: M.rowHeight),
-            CGRect(x: M.captionInset, y: machine + 2 * M.rowHeight + 2 * M.captionGap + 18 + M.rowGap, width: 320 - 2 * M.captionInset, height: 18),
+            CGRect(x: 0, y: machine + M.rowHeight + M.rowGap, width: 320, height: M.rowHeight),
         ])
         let note = try XCTUnwrap(layout.note)
-        XCTAssertEqual(note.minY, layout.rows[3].maxY + M.rowsToNote)
+        XCTAssertEqual(note.minY, layout.rows[1].maxY + M.rowsToNote)
         XCTAssertEqual(layout.block.height, note.maxY)
         XCTAssertEqual(layout.block.midY, (103 + 760) / 2, accuracy: 0.001)
     }
@@ -115,23 +110,23 @@ final class NewWorkLayoutTests: XCTestCase {
     /// bigger text size: the note goes first, and the kind, the computer
     /// and the name stay, centred.
     func testShortOfRoomTheNoteGoesFirst() {
-        let rows = 32 + M.kindToRows + 2 * M.rowHeight + M.rowGap + 2 * (M.captionGap + 18)
+        let rows = 32 + M.kindToRows + 2 * M.rowHeight + M.rowGap
         let layout = bot(bottom: 103 + rows + 2 * M.margin)
         XCTAssertTrue(layout.fits, "the kind, the computer and the name are on screen")
         XCTAssertFalse(layout.showsNote)
         XCTAssertNil(layout.note)
         XCTAssertNotNil(layout.kind)
-        XCTAssertEqual(layout.rows.count, 4)
+        XCTAssertEqual(layout.rows.count, 2)
         XCTAssertEqual(layout.block.height, rows)
     }
 
     /// Shorter still: the gaps close before anything else goes.
     func testShorterStillTheGapsClose() throws {
-        let tight = 32 + M.tightKindToRows + 2 * M.rowHeight + M.tightRowGap + 2 * (M.captionGap + 18)
+        let tight = 32 + M.tightKindToRows + 2 * M.rowHeight + M.tightRowGap
         let layout = bot(bottom: 103 + tight + 2 * M.margin)
         XCTAssertTrue(layout.fits)
         XCTAssertEqual(layout.rows[0].minY, 32 + M.tightKindToRows)
-        XCTAssertEqual(layout.rows.map(\.height), [M.rowHeight, 18, M.rowHeight, 18], "controls keep their height")
+        XCTAssertEqual(layout.rows.map(\.height), [M.rowHeight, M.rowHeight], "controls keep their height")
         XCTAssertEqual(layout.block.height, tight)
         let short = bot(bottom: 103 + tight + 2 * M.margin - 1)
         XCTAssertFalse(short.fits, "a phone held sideways")
