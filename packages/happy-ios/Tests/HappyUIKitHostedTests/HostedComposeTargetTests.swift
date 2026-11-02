@@ -701,6 +701,70 @@ final class HostedComposeTargetTests: XCTestCase {
         return out
     }
 
+    /// Every chip the computer's row can wear, in every language the
+    /// screens speak, at its longest age: the text is whole, and the chip
+    /// clears the kind and the name, with room and short of it.
+    func testEveryStatusChipIsWholeAndClearOfTheKind() async throws {
+        let now: Int64 = 1_800_000_000_000
+        let day: Int64 = 86_400_000
+        let target = MachineTarget(id: "m", name: "Mac", online: false, happyAgentOnline: false, makesBots: true, makesTasks: true, lastSeenAt: 1)
+        let ages: [Int64] = [0, 59 * 60_000, 23 * 3_600_000, 6 * day, 29 * day, 364 * day, 99 * 365 * day]
+        let english = [nil, .happyAgent, .happyCLI].map { Strings.ComposeTarget.label(target, offline: $0, now: now) }
+            + ages.map { Strings.ComposeTarget.label(target, offline: .computer(lastSeenAt: now - $0), now: now) }
+        XCTAssertEqual(english, [
+            "● Online", "● Happy Agent offline", "● Happy CLI offline",
+            "● Offline · now", "● Offline · 59m", "● Offline · 23h", "● Offline · 6d",
+            "● Offline · 4w", "● Offline · 12mo", "● Offline · 99y",
+        ])
+        var labels = english + [Strings.ComposeTarget.loadingStatus]
+        // Catalogs are decoded off the main thread.
+        let languages = await Task.detached { () -> [(online: String, offline: String)] in
+            AppLanguage.supported.map { language in
+                let words = TranslationCatalog.catalog(for: language.code)
+                return (words("status.online"), words("status.offline"))
+            }
+        }.value
+        XCTAssertGreaterThan(languages.count, 1)
+        for words in languages {
+            for offline in [nil, NewSessionChoices.Offline.computer(lastSeenAt: now - 364 * day)] {
+                labels.append(Strings.ComposeTarget.label(offline: offline, now: now, online: words.online, offlineWord: words.offline))
+            }
+        }
+
+        let scene = try await hostedActiveScene()
+        let host = UIViewController()
+        host.view.backgroundColor = .white
+        let window = hostedKeyWindow(in: scene, root: host)
+        window.overrideUserInterfaceStyle = .light
+        defer { window.isHidden = true }
+        let panel = NewWorkPanel(mode: .session)
+        host.view.addSubview(panel)
+        panel.showsMachine = true
+        panel.machine.title = "MacBook-Pro-7.local"
+        panel.setSessionKinds([.session, .bot, .task], current: .bot, botName: "")
+        // With room, and with the least room the panel still shows in,
+        // where the gap under the kind is tightest.
+        typealias M = NewWorkLayout.Metrics
+        let tightest = 160 + panel.kind.intrinsicContentSize.height + M.tightKindToRows + 2 * M.rowHeight + M.tightRowGap + 2 * M.margin
+        for bottom in [600, tightest] {
+            let layout = panel.layout(width: 393, top: 160, bottom: bottom)
+            XCTAssertTrue(layout.fits, "\(bottom)")
+            if bottom == tightest {
+                XCTAssertEqual(try XCTUnwrap(layout.rows.first).minY - (try XCTUnwrap(layout.kind).maxY), M.tightKindToRows, "the tight gaps")
+            }
+            for label in labels {
+                panel.machine.status = (label, UIColor(Palette.warningText))
+                panel.place(layout)
+                window.layoutIfNeeded()
+                try assertBalanced(panel.machine, "\(label) at \(bottom)")
+            }
+        }
+        panel.machine.status = (labels.max { $0.count < $1.count } ?? "", UIColor(Palette.warningText))
+        panel.place(panel.layout(width: 393, top: 160, bottom: tightest))
+        window.layoutIfNeeded()
+        keep(window, "target-11-widest-chip-tight")
+    }
+
     /// The panel alone at an iPhone 14 Pro's width: online, offline and
     /// unknown (no status) lay out every view of the panel, the computer
     /// row's own included, at the same frame, for a session and a bot; and
@@ -722,7 +786,7 @@ final class HostedComposeTargetTests: XCTestCase {
             ("online", ("● Online", UIColor(Palette.sessionStatusOnline))),
             ("offline", ("● Offline · 2h", UIColor(Palette.warningText))),
             ("unknown", nil),
-            ("agent-offline", ("● Agent offline", UIColor(Palette.warningText))),
+            ("agent-offline", ("● Happy Agent offline", UIColor(Palette.warningText))),
             ("loading", ("● …", UIColor(Palette.textSecondary))),
         ]
         var chipAnchor: (maxX: CGFloat, midY: CGFloat)?

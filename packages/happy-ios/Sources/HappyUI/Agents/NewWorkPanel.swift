@@ -355,7 +355,7 @@ final class NewWorkMenuRow: UIButton {
     }
 
     /// The computer's row: "● Online", or a warning ("● Offline · 2h",
-    /// "● Agent offline") in its colour, "● …" while the computers are
+    /// "● Happy Agent offline") in its colour, "● …" while the computers are
     /// still arriving; nil for no chip.
     var status: (text: String, color: UIColor)? {
         didSet {

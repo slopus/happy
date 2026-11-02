@@ -16,25 +16,42 @@ extension Strings {
             return Strings.Composer.lastSeen(lastSeen(ComposerStatus.lastSeen(activeAt: at, now: now)))
         }
 
-        /// The computer row's chip: a dot and a word or two.
+        /// The computer row's chip: a dot and a word or two, "online" and
+        /// "offline" in the screens' language. A daemon not answering is
+        /// named as the product, in English, and fits in every language,
+        /// where its translated "offline" would not.
         public static func label(_ target: MachineTarget, offline: NewSessionChoices.Offline?, now: Int64) -> String {
+            label(offline: offline, now: now, online: Strings.Status.online, offlineWord: Strings.Status.offline)
+        }
+
+        /// `label` with the words given, for the widest of every language.
+        static func label(offline: NewSessionChoices.Offline?, now: Int64, online: String, offlineWord: String) -> String {
             switch offline {
-            case nil: return "● Online"
-            case .computer(let at): return "● Offline · " + compact(ComposerStatus.lastSeen(activeAt: at, now: now))
-            case .happyAgent: return "● Agent offline"
-            case .happyCLI: return "● CLI offline"
+            case nil: return "● " + capitalized(online)
+            case .computer(let at): return "● " + capitalized(offlineWord) + " · " + compact(activeAt: at, now: now)
+            case .happyAgent: return "● Happy Agent offline"
+            case .happyCLI: return "● Happy CLI offline"
             }
         }
 
-        /// "now", "5m", "2h", "3d", or the date.
-        static func compact(_ lastSeen: ComposerStatus.LastSeen) -> String {
-            switch lastSeen {
+        /// "now", "5m", "2h", "3d", "2w", "4mo", "1y": never a date, which
+        /// the chip has no room for.
+        static func compact(activeAt: Int64, now: Int64) -> String {
+            switch ComposerStatus.lastSeen(activeAt: activeAt, now: now) {
             case .justNow: return "now"
             case .minutes(let count): return "\(count)m"
             case .hours(let count): return "\(count)h"
             case .days(let count): return "\(count)d"
-            case .date: return Self.lastSeen(lastSeen)
+            case .date:
+                let days = max(0, now - activeAt) / 86_400_000
+                if days < 30 { return "\(days / 7)w" }
+                if days < 365 { return "\(days / 30)mo" }
+                return "\(days / 365)y"
             }
+        }
+
+        private static func capitalized(_ word: String) -> String {
+            word.prefix(1).localizedUppercase + word.dropFirst()
         }
 
         /// The computer row while the account's computers are still
@@ -49,7 +66,7 @@ extension Strings {
         public static func offline(_ offline: NewSessionChoices.Offline) -> String {
             switch offline {
             case .computer: "This computer is offline. Start Happy on it or pick another."
-            case .happyAgent: "Happy Agent on this computer is offline. Start it or pick another computer."
+            case .happyAgent: Strings.NewSession.happyAgentOffline + ". Start it or pick another computer."
             case .happyCLI: "Happy CLI on this computer is offline. Run `happy daemon start` there or pick another computer."
             }
         }
