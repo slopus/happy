@@ -398,6 +398,8 @@ private fun MenuOption(page: NewSessionPage, option: PickerOption, selected: Boo
         supporting = option.description,
         selected = selected,
         enabled = !option.disabled,
+        // A computer that can't be picked says why, in full.
+        labelLines = if (option.disabled) 2 else 1,
         modifier = Modifier.testTag(ComposeChatTags.option(page, option.key)),
     )
 }

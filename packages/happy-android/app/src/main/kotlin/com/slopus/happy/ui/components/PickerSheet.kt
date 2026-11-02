@@ -211,7 +211,8 @@ fun PickerSheetOption(
                     Text(label, style = PickerSheetSpec.label, color = colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             } else {
-                Text(label, style = PickerSheetSpec.label, color = colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                // A row that can't be picked says why, in full.
+                Text(label, style = PickerSheetSpec.label, color = colors.text, maxLines = if (disabled) 2 else 1, overflow = TextOverflow.Ellipsis)
             }
             if (description != null) {
                 Text(
