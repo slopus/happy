@@ -96,7 +96,8 @@ final class HostedQRScannerTests: XCTestCase {
 
     private func deliver(_ objects: [AVMetadataObject], to scanner: QRScannerViewController) {
         let output = AVCaptureMetadataOutput()
-        scanner.capture.metadataOutput(output, didOutput: objects, from: AVCaptureConnection(inputPorts: [], output: output))
+        let core = (scanner.camera as! DeviceCamera).core
+        core.metadataOutput(output, didOutput: objects, from: AVCaptureConnection(inputPorts: [], output: output))
     }
 
     func testACLICodeTheCameraReadsConnectsTheComputer() async throws {
@@ -147,7 +148,7 @@ final class HostedQRScannerTests: XCTestCase {
         deliver([], to: scanner)
         try await Task.sleep(for: .milliseconds(300))
         XCTAssertTrue(navigation.presentedViewController === scanner)
-        scanner.capture.onCode?("done")
+        scanner.camera.onCodes?(["done"])
         try await wait { navigation.presentedViewController == nil }
     }
 
@@ -157,11 +158,11 @@ final class HostedQRScannerTests: XCTestCase {
         let (_, scanner) = try await openScanner { host in
             Task { _ = await HappyScan.read(from: host) }
         }
-        XCTAssertNil(scanner.capture.device)
+        try await wait { scanner.camera.state.availability == .noCamera }
         scanner.view.layoutIfNeeded()
         let texts = scanner.view.subviews.compactMap { ($0 as? StyledLabel).flatMap { $0.isHidden ? nil : $0.string } }
         XCTAssertEqual(texts, [Strings.Scanner.unavailable])
-        scanner.capture.onCode?("done")
+        scanner.camera.onCodes?(["done"])
     }
 
     /// A scan started over a sheet still opens, over the sheet: UIKit would
