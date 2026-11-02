@@ -689,7 +689,8 @@ class Sync {
                     });
                 }
                 failed++;
-                // Skip this attachment; do not abort the whole message send.
+                // Counted, and the rest are still tried: the alert says how
+                // many didn't go. sendMessage then sends nothing.
             }
         }
 
@@ -802,6 +803,10 @@ class Sync {
                     t('imageUpload.uploadFailedMessage', { count: failed }),
                     [{ text: t('common.ok'), style: 'cancel' }],
                 );
+                // Nothing goes: the text and pictures stay in the composer
+                // for another Send. A caption sent without its pictures
+                // reads to the agent as if they were there.
+                return false;
             }
 
             if (uploaded.length > 0) {
