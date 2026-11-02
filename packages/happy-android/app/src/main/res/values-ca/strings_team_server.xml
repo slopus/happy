@@ -39,4 +39,6 @@
     <string name="team_server_error_wrong_server">Aquest codi no coincideix amb el servidor al qual apunta.</string>
     <string name="team_server_code_path">Aquest servidor està configurat sota un camí d\'una adreça web, i Happy per a Android encara no s\'hi pot connectar.</string>
     <string name="team_server_code_scan_only">Un codi de servidor només funciona si l\'escaneges. Escaneja el codi de Happy a l\'ordinador.</string>
+    <string name="team_server_error_cross_origin">La configuració d\'inici de sessió d\'aquest servidor enviaria el teu inici de sessió a un altre lloc, així que no es pot fer servir.</string>
+    <string name="team_server_error_wrong_audience">Aquest inici de sessió és per a un altre servidor.</string>
 </resources>

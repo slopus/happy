@@ -39,4 +39,6 @@
     <string name="team_server_error_wrong_server">このコードは、指しているサーバーと一致しません。</string>
     <string name="team_server_code_path">このサーバーは Web アドレスのパスの下に設定されているため、Android 版 Happy はまだ接続できません。</string>
     <string name="team_server_code_scan_only">サーバーコードはスキャンしたときだけ使えます。コンピューターの Happy に表示されたコードをスキャンしてください。</string>
+    <string name="team_server_error_cross_origin">このサーバーのサインイン設定ではサインイン情報が別のサイトに送られるため、使用できません。</string>
+    <string name="team_server_error_wrong_audience">このサインインは別のサーバー用です。</string>
 </resources>

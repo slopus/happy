@@ -824,7 +824,32 @@ change its wire behaviour on Android alone.
   on every flavor (`ServerSignInFlow.REDIRECT_URI`); the manifest's `happy`
   scheme filter carries it, and MainActivity hands it to the flow before
   `DeepLinks`. `authenticated` with no `userId` asks for a name (`PATCH
-  /v0/profile`) before the server is kept.
+  /v0/profile`) before the server is kept. A malformed callback (any app can
+  send the redirect URI) is ignored, never thrown.
+- **Binding the sign-in** (API.md, Steve-approved): a method whose `tokenUrl`
+  or `refreshUrl` isn't on `authorizationUrl`'s origin (parsed scheme, host,
+  port) is refused before the browser (`OAuthMethod.oneSite`, "…would send your
+  sign-in to a different site…"). The attempt (`PendingOAuth`) keeps the origin
+  and the method as found; the credential keeps `refreshUrl`, `client_id`,
+  `resource`; nothing is re-read from the server. After the exchange and every
+  refresh the access token's JWT `aud` (string or array, signature not
+  checked) must name the server: same origin, path `/` with a trailing slash
+  added (`ServerAuthClient.audienceIs`); otherwise it is dropped unused ("This
+  sign-in is for a different server."). Token requests never follow redirects.
+- **One member per connection** (as iOS: origin + `userId`): the `userId` is
+  kept with the credential and on the `AgentConnection`. The same member
+  signing in again renews their connection; another member gets a new one,
+  and the connection they signed in again on is wiped (credentials, entry,
+  caches: `AgentSessions` deletes the caches of any connection that goes, open
+  or not, and sweeps orphans at start) and theirs opens. Each grant has a
+  generation: a refresh of an older one that lands after a sign-in is dropped,
+  and its refusal doesn't sign the new one out.
+- **Storage**: credentials are sealed by an AES-256-GCM Android Keystore key
+  (non-exportable, no user authentication, StrongBox when the phone has one,
+  else the TEE: `AndroidKeyStoreKeys`) in app-private preferences, which
+  `data_extraction_rules.xml` / `backup_rules.xml` keep out of cloud backup and
+  device transfer (`CredentialStorageTest`). A team server whose key is gone
+  (restored or moved) reads as signed out.
 - **Tokens**: the refresh token lives with the credentials (Keystore,
   `ExpoSecureStore`); access tokens are in memory only (`AgentConnections.bearer`,
   refreshed 60 s before expiry, one refresh at a time per connection, rotation

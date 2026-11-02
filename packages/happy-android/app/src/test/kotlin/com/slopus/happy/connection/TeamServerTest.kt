@@ -150,14 +150,15 @@ class TeamServerTest {
     fun anExpiringTokenIsRefreshedAndTheRotationKept() = runBlocking {
         val connections = connections()
         val account = signedIn(connections, expiresIn = 30_000)
-        sso.enqueue(json("""{"access_token":"access-2","token_type":"Bearer","expires_in":600,"refresh_token":"refresh-2"}"""))
-        daemon.valid += "access-2"
+        val access2 = jwt("https://happy.acme.example", tag = "access-2")
+        sso.enqueue(json("""{"access_token":"$access2","token_type":"Bearer","expires_in":600,"refresh_token":"refresh-2"}"""))
+        daemon.valid += access2
         // Within a minute of expiry: refreshed before it is sent.
-        assertEquals("access-2", connections.bearer(account.id, connections.credentials(account.id)!!))
+        assertEquals(access2, connections.bearer(account.id, connections.credentials(account.id)!!))
         assertEquals("refresh-2", connections().credentials(account.id)?.oauth?.refreshToken)
         assertEquals("/oauth/token", sso.takeRequest().target)
         // Fresh now: no second refresh.
-        assertEquals("access-2", connections.bearer(account.id, connections.credentials(account.id)!!))
+        assertEquals(access2, connections.bearer(account.id, connections.credentials(account.id)!!))
         assertEquals(1, sso.requestCount)
     }
 
@@ -167,11 +168,12 @@ class TeamServerTest {
         val account = signedIn(connections)
         // The IdP revoked access-1 early: the daemon refuses it.
         daemon.valid.clear()
-        daemon.valid += "access-2"
-        sso.enqueue(json("""{"access_token":"access-2","token_type":"Bearer","expires_in":600}"""))
+        val access2 = jwt("https://happy.acme.example", tag = "access-2")
+        daemon.valid += access2
+        sso.enqueue(json("""{"access_token":"$access2","token_type":"Bearer","expires_in":600}"""))
         val client = client(connections, account.id)
         assertEquals(200, client.send("GET", "/v0/projects").status)
-        assertEquals(listOf("/v0/projects" to "access-1", "/v0/authentication" to "access-1", "/v0/projects" to "access-2"), daemon.calls.filter { it.first == "/v0/projects" || it.first == "/v0/authentication" })
+        assertEquals(listOf("/v0/projects" to "access-1", "/v0/authentication" to "access-1", "/v0/projects" to access2), daemon.calls.filter { it.first == "/v0/projects" || it.first == "/v0/authentication" })
         // A refusal from the daemon itself is an ordinary error, not a sign-in.
         try { client.send("GET", "/v0/forbidden"); fail() } catch (e: AgentApiException) { assertEquals("forbidden", e.code) }
     }
@@ -261,7 +263,7 @@ class TeamServerTest {
         daemon.valid += setOf("access-a", "access-b")
         val a = connections.addServer(origin, member("u-a", "refresh-a"), AccessToken("access-a", now), fallbackName = "happy.acme.example")
         // A's refresh is slow; the person signs in again (as B) before it answers.
-        sso.enqueue(json("""{"access_token":"access-late","token_type":"Bearer","expires_in":600,"refresh_token":"refresh-late"}""").newBuilder().headersDelay(1, java.util.concurrent.TimeUnit.SECONDS).build())
+        sso.enqueue(json("""{"access_token":"${jwt("https://happy.acme.example", tag = "late")}","token_type":"Bearer","expires_in":600,"refresh_token":"refresh-late"}""").newBuilder().headersDelay(1, java.util.concurrent.TimeUnit.SECONDS).build())
         val late = scope.async { connections.bearer(a.id, connections.credentials(a.id)!!) }
         withTimeout(5_000) { while (sso.requestCount == 0) delay(10) }
         val b = connections.addServer(origin, member("u-a", "refresh-b"), AccessToken("access-b", now + 300_000), fallbackName = "happy.acme.example", replacing = a.id)
@@ -329,16 +331,18 @@ class TeamServerTest {
             assertTrue(it, flow.state.value is ServerSignInState.InBrowser)
         }
         assertEquals(null, ServerAuthClient.query("happy://oauth/callback?state=%"))
-        sso.enqueue(json("""{"access_token":"access-1","token_type":"Bearer","expires_in":600,"refresh_token":"refresh-1"}"""))
+        val access1 = jwt(server, tag = "access-1")
+        val access2 = jwt(server, tag = "access-2")
+        sso.enqueue(json("""{"access_token":"$access1","token_type":"Bearer","expires_in":600,"refresh_token":"refresh-1"}"""))
         sso.enqueue(json("""{"authenticated":true,"userId":null,"methods":[]}"""))
         // The code's installation, checked before the name.
         sso.enqueue(health(INSTANCE))
-        daemon.valid += "access-1"
+        daemon.valid += access1
         flow.callback("happy://oauth/callback?code=c1&state=$state")
         withTimeout(5_000) { flow.state.first { it is ServerSignInState.NeedsName } }
         // The access token expired while the name was typed: refreshed (rotating) once, and saved.
         sso.enqueue(json("""{"error":"Unauthorized","code":"unauthorized"}""", 401))
-        sso.enqueue(json("""{"access_token":"access-2","token_type":"Bearer","expires_in":600,"refresh_token":"refresh-2"}"""))
+        sso.enqueue(json("""{"access_token":"$access2","token_type":"Bearer","expires_in":600,"refresh_token":"refresh-2"}"""))
         sso.enqueue(json("""{"profile":{}}"""))
         sso.enqueue(json("""{"authenticated":true,"userId":"u1","methods":[]}"""))
         flow.submitName("Steve")
@@ -350,8 +354,8 @@ class TeamServerTest {
         assertEquals("u1", connections.credentials(done.account.id)?.oauth?.userId)
         val requests = (0 until sso.requestCount).map { sso.takeRequest() }
         val patches = requests.filter { it.method == "PATCH" }
-        assertEquals(listOf("Bearer access-1", "Bearer access-2"), patches.map { it.headers["Authorization"] })
-        assertEquals(listOf("Bearer access-1"), requests.filter { it.target == "/v0/health" }.map { it.headers["Authorization"] })
+        assertEquals(listOf("Bearer $access1", "Bearer $access2"), patches.map { it.headers["Authorization"] })
+        assertEquals(listOf("Bearer $access1"), requests.filter { it.target == "/v0/health" }.map { it.headers["Authorization"] })
     }
 
     private fun discovery(server: String) =
@@ -367,10 +371,11 @@ class TeamServerTest {
         flow.start(server)
         withTimeout(5_000) { flow.state.first { it is ServerSignInState.Ready } }
         val state = flow.browserUrl()!!.toHttpUrl().queryParameter("state")!!
-        sso.enqueue(json("""{"access_token":"access-1","token_type":"Bearer","expires_in":600,"refresh_token":"refresh-1"}"""))
+        val access1 = jwt(server, tag = "access-1")
+        sso.enqueue(json("""{"access_token":"$access1","token_type":"Bearer","expires_in":600,"refresh_token":"refresh-1"}"""))
         sso.enqueue(json("""{"authenticated":true,"userId":${userId?.let { "\"$it\"" } ?: "null"},"methods":[]}"""))
         then.forEach(sso::enqueue)
-        daemon.valid += "access-1"
+        daemon.valid += access1
         flow.callback("happy://oauth/callback?code=c1&state=$state")
     }
 
@@ -415,6 +420,44 @@ class TeamServerTest {
         val failed = withTimeout(5_000) { flow.state.first { it is ServerSignInState.Failed } } as ServerSignInState.Failed
         assertEquals(ServerAuthException.Reason.WrongServer, failed.reason)
         assertEquals(emptyList<AgentConnection>(), connections.accounts.value)
+    }
+
+    @Test
+    fun aMethodWhoseTokenEndpointIsElsewhereIsRefusedBeforeTheBrowser(): Unit = runBlocking {
+        val server = "https://localhost:${sso.port}"
+        val flow = ServerSignInFlow(scope, connections(), auth, expectedInstance = INSTANCE)
+        sso.enqueue(json("""{"authenticated":false,"userId":null,"methods":[{"type":"oauth","id":"jwt","name":"Acme SSO","authorizationUrl":"https://sso.acme.example/authorize","tokenUrl":"$server/token","clientId":"happy"}]}"""))
+        flow.start(server)
+        val failed = withTimeout(5_000) { flow.state.first { it is ServerSignInState.Failed } } as ServerSignInState.Failed
+        assertEquals(ServerAuthException.Reason.CrossOrigin, failed.reason)
+        assertEquals(null, flow.browserUrl())
+    }
+
+    @Test
+    fun aTokenForAnotherServerIsNeitherKeptNorSent(): Unit = runBlocking {
+        val connections = connections()
+        val server = "https://localhost:${sso.port}"
+        val flow = ServerSignInFlow(scope, connections, auth, expectedInstance = INSTANCE)
+        sso.enqueue(discovery(server))
+        flow.start(server)
+        withTimeout(5_000) { flow.state.first { it is ServerSignInState.Ready } }
+        val state = flow.browserUrl()!!.toHttpUrl().queryParameter("state")!!
+        sso.enqueue(json("""{"access_token":"${jwt("https://happy.other.example/", tag = "stolen")}","token_type":"Bearer","expires_in":600,"refresh_token":"refresh-1"}"""))
+        flow.callback("happy://oauth/callback?code=c1&state=$state")
+        val failed = withTimeout(5_000) { flow.state.first { it is ServerSignInState.Failed } } as ServerSignInState.Failed
+        assertEquals(ServerAuthException.Reason.WrongAudience, failed.reason)
+        assertEquals(emptyList<AgentConnection>(), connections.accounts.value)
+        // Only discovery and the exchange: the token went nowhere.
+        assertEquals(2, sso.requestCount)
+    }
+
+    @Test
+    fun aRefreshedTokenForAnotherServerSignsOut(): Unit = runBlocking {
+        val connections = connections()
+        val account = signedIn(connections, expiresIn = 30_000)
+        sso.enqueue(json("""{"access_token":"${jwt("https://happy.acme.example/other/", tag = "x")}","token_type":"Bearer","expires_in":600}"""))
+        try { connections.bearer(account.id, connections.credentials(account.id)!!); fail() } catch (e: AgentConnectionException) { assertEquals(AgentConnectionException.Reason.SignInRequired, e.reason) }
+        assertTrue(connections.accounts.value.single().signInRequired)
     }
 
     private companion object {

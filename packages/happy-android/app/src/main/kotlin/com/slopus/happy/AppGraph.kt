@@ -365,7 +365,8 @@ class AppGraph(
         serverSignInState.value?.close()
         val existing = agentConnections.accounts.value.firstOrNull { it.id == replacing }
         val onboarding = existing?.takeIf { it.profileRequired }?.server
-        serverSignInState.value = ServerSignInFlow(scope, agentConnections, serverAuth, replacing, instanceId ?: existing?.instanceId)
+        // Another member signing in again on [replacing]: their own connection takes its place, and opens.
+        serverSignInState.value = ServerSignInFlow(scope, agentConnections, serverAuth, replacing, instanceId ?: existing?.instanceId, onReplaced = { open(it) })
             .also { flow -> if (onboarding != null) flow.onboard(onboarding) else flow.start(address) }
     }
 

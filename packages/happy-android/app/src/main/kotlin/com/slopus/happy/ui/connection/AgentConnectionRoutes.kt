@@ -124,8 +124,9 @@ private fun ServerSignIn(graph: AppGraph, nav: NavHostController) {
     val dark = com.slopus.happy.ui.theme.HappyTheme.colors.dark
     LaunchedEffect(state) {
         val done = state as? ServerSignInState.Done ?: return@LaunchedEffect
-        // Signed in again: back where the person was; a new server opens, as a new agent does.
-        if (flow?.replacing != null) nav.popBackStack() else graph.open(done.account.id)
+        // Signed in again: back where the person was. A new server opens, as a new agent does, and so
+        // does another member's connection, which took the place of the one signed in again on.
+        if (flow?.replacing == done.account.id) nav.popBackStack() else graph.open(done.account.id)
     }
     ServerSignInScreen(
         state = state,

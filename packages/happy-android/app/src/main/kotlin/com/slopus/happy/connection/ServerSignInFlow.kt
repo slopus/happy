@@ -47,6 +47,8 @@ class ServerSignInFlow(
     val replacing: String? = null,
     /** The installation the server must be: the code's, or the one signing in again was. Null: not checked (an older daemon has none). */
     private val expectedInstance: String? = null,
+    /** Another member signed in again on [replacing]: the id of the connection of their own that took its place. */
+    private val onReplaced: (String) -> Unit = {},
 ) {
     private val mutableState = MutableStateFlow<ServerSignInState>(ServerSignInState.Checking(""))
     val state: StateFlow<ServerSignInState> = mutableState.asStateFlow()
@@ -90,6 +92,8 @@ class ServerSignInFlow(
         run(parsed.value) {
             // Display order: the first sign-in this app knows is the server's own choice.
             val first = auth.discover(parsed).first()
+            // Refused before the browser: its token endpoint would be another site's.
+            if (!first.oneSite) throw ServerAuthException(ServerAuthException.Reason.CrossOrigin)
             method = first
             mutableState.value = ServerSignInState.Ready(parsed.value, first)
         }
@@ -99,7 +103,12 @@ class ServerSignInFlow(
     fun browserUrl(): String? {
         val origin = origin ?: return null
         val method = method ?: return null
-        val next = auth.begin(origin, method, REDIRECT_URI)
+        val next = try {
+            auth.begin(origin, method, REDIRECT_URI)
+        } catch (e: ServerAuthException) {
+            mutableState.value = ServerSignInState.Failed(origin.value, e.reason)
+            return null
+        }
         pending = next
         mutableState.value = ServerSignInState.InBrowser(origin.value, method)
         return next.authorizeUrl
@@ -169,7 +178,7 @@ class ServerSignInFlow(
     private suspend fun renewed(stale: String): String? {
         val (_, credential) = grant ?: return replacing?.let { connections.renew(it, stale) }
         if (!credential.canRefresh) return null
-        val (access, next) = auth.refresh(credential)
+        val (access, next) = auth.refresh(credential, origin ?: return null)
         grant = OAuthGrant(access, next.refreshToken) to next
         return access.value
     }
@@ -204,6 +213,7 @@ class ServerSignInFlow(
         val account = connections.addServer(origin, credential.copy(userId = userId), granted.access, fallbackName = origin.host, replacing = replacing)
         grant = null
         mutableState.value = ServerSignInState.Done(account)
+        if (replacing != null && account.id != replacing) onReplaced(account.id)
     }
 
     /**

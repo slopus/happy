@@ -202,4 +202,6 @@ internal fun failureText(reason: ServerAuthException.Reason): Int = when (reason
     ServerAuthException.Reason.Rejected -> R.string.team_server_error_rejected
     ServerAuthException.Reason.SignInRequired -> R.string.team_server_error_sign_in_required
     ServerAuthException.Reason.WrongServer -> R.string.team_server_error_wrong_server
+    ServerAuthException.Reason.CrossOrigin -> R.string.team_server_error_cross_origin
+    ServerAuthException.Reason.WrongAudience -> R.string.team_server_error_wrong_audience
 }

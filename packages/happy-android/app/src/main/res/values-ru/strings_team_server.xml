@@ -39,4 +39,6 @@
     <string name="team_server_error_wrong_server">Этот код не соответствует серверу, на который он указывает.</string>
     <string name="team_server_code_path">Этот сервер настроен по пути внутри веб-адреса, а Happy для Android пока не умеет к таким подключаться.</string>
     <string name="team_server_code_scan_only">Код сервера работает, только если его отсканировать. Отсканируйте код из Happy на компьютере.</string>
+    <string name="team_server_error_cross_origin">Настройки входа этого сервера отправили бы ваши данные входа на другой сайт, поэтому их нельзя использовать.</string>
+    <string name="team_server_error_wrong_audience">Этот вход предназначен для другого сервера.</string>
 </resources>

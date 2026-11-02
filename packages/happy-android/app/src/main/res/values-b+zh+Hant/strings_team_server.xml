@@ -39,4 +39,6 @@
     <string name="team_server_error_wrong_server">此代碼與它指向的伺服器不相符。</string>
     <string name="team_server_code_path">此伺服器設定在某個網址路徑下，Android 版 Happy 暫時無法連線這樣的伺服器。</string>
     <string name="team_server_code_scan_only">伺服器代碼只能透過掃描使用。請掃描電腦上 Happy 中顯示的代碼。</string>
+    <string name="team_server_error_cross_origin">此伺服器的登入設定會把你的登入資訊傳送到其他網站，因此無法使用。</string>
+    <string name="team_server_error_wrong_audience">此登入屬於其他伺服器。</string>
 </resources>

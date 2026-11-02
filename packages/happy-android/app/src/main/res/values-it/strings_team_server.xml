@@ -39,4 +39,6 @@
     <string name="team_server_error_wrong_server">Questo codice non corrisponde al server a cui rimanda.</string>
     <string name="team_server_code_path">Questo server è configurato sotto un percorso di un indirizzo web, e Happy per Android non può ancora collegarsi a un server così.</string>
     <string name="team_server_code_scan_only">Un codice server funziona solo se lo scansioni. Scansiona il codice di Happy sul computer.</string>
+    <string name="team_server_error_cross_origin">Le impostazioni di accesso di questo server invierebbero il tuo accesso a un altro sito, quindi non possono essere usate.</string>
+    <string name="team_server_error_wrong_audience">Questo accesso è per un altro server.</string>
 </resources>

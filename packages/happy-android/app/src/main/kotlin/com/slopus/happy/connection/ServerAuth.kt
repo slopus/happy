@@ -50,6 +50,10 @@ class ServerAuthException(val reason: Reason, cause: Throwable? = null) : Except
         SignInRequired,
         /** The server at the code's address is another installation than the code names, or names none (edge SSO §8). */
         WrongServer,
+        /** The method's token or refresh URL isn't on its authorization URL's origin: the code and verifier would go elsewhere. */
+        CrossOrigin,
+        /** The token's `aud` names no audience that is this server: it was issued for another (or isn't a JWT). */
+        WrongAudience,
     }
 }
 
@@ -94,6 +98,18 @@ data class OAuthMethod(
     val scope: String? = null,
     val resource: String? = null,
 ) {
+    /**
+     * Whether the token and refresh URLs are on the authorization URL's
+     * origin (scheme, host and port, parsed): a server can't pair the real
+     * authorization page with a token endpoint of its own, which would get
+     * the code and the verifier.
+     */
+    val oneSite: Boolean get() {
+        val authorization = authorizationUrl.toHttpUrlOrNull() ?: return false
+        fun same(url: String?) = url?.toHttpUrlOrNull()?.let { it.scheme == authorization.scheme && it.host == authorization.host && it.port == authorization.port } == true
+        return same(tokenUrl) && (refreshUrl == null || same(refreshUrl))
+    }
+
     /** The authorization server's host, shown before the browser opens. */
     val authorizationHost: String get() = authorizationUrl.toHttpUrlOrNull()?.host.orEmpty()
 }
@@ -247,9 +263,16 @@ class ServerAuthClient(
         return (root["instanceId"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.takeIf(com.slopus.happy.agent.HappyUrls::isInstanceId)
     }
 
-    /** Starts a sign-in with [method]: a fresh state and verifier, and the page to open. */
-    fun begin(origin: AgentOrigin, method: OAuthMethod, redirectUri: String): PendingOAuth =
-        PendingOAuth(origin, method, redirectUri, state = token(16), verifier = token(48))
+    /**
+     * Starts a sign-in with [method]: a fresh state and verifier, and the
+     * page to open. The attempt keeps [origin] and the method's URLs, client
+     * and resource as they are now; nothing is read from the server again.
+     * Throws CrossOrigin for a method whose token endpoint is elsewhere.
+     */
+    fun begin(origin: AgentOrigin, method: OAuthMethod, redirectUri: String): PendingOAuth {
+        if (!method.oneSite) throw ServerAuthException(ServerAuthException.Reason.CrossOrigin)
+        return PendingOAuth(origin, method, redirectUri, state = token(16), verifier = token(48))
+    }
 
     /**
      * The browser came back to [callback]: checks it is [pending]'s and
@@ -272,6 +295,7 @@ class ServerAuthClient(
             .apply { method.resource?.let { add("resource", it) } }
             .build()
         val grant = token(method.tokenUrl, form) ?: throw ServerAuthException(ServerAuthException.Reason.Denied)
+        if (!audienceIs(grant.access.value, pending.origin)) throw ServerAuthException(ServerAuthException.Reason.WrongAudience)
         return grant to OAuthCredential(method.id, method.clientId, method.refreshUrl, grant.refreshToken, method.resource)
     }
 
@@ -282,7 +306,8 @@ class ServerAuthClient(
      * SignInRequired when there is none or the server refuses it, and
      * Unreachable when it couldn't ask.
      */
-    suspend fun refresh(credential: OAuthCredential): Pair<AccessToken, OAuthCredential> {
+    /** A new access token for [server]'s [credential], checked to be [server]'s like the first. */
+    suspend fun refresh(credential: OAuthCredential, server: AgentOrigin): Pair<AccessToken, OAuthCredential> {
         val url = credential.refreshUrl ?: throw ServerAuthException(ServerAuthException.Reason.SignInRequired)
         val refreshToken = credential.refreshToken ?: throw ServerAuthException(ServerAuthException.Reason.SignInRequired)
         val form = FormBody.Builder()
@@ -292,6 +317,7 @@ class ServerAuthClient(
             .apply { credential.resource?.let { add("resource", it) } }
             .build()
         val grant = token(url, form) ?: throw ServerAuthException(ServerAuthException.Reason.SignInRequired)
+        if (!audienceIs(grant.access.value, server)) throw ServerAuthException(ServerAuthException.Reason.WrongAudience)
         return grant.access to credential.copy(refreshToken = grant.refreshToken ?: refreshToken)
     }
 
@@ -327,6 +353,34 @@ class ServerAuthClient(
         private val json = Json { ignoreUnknownKeys = true }
 
         private fun parse(body: ByteArray): JsonObject? = runCatching { json.parseToJsonElement(body.decodeToString()) as? JsonObject }.getOrNull()
+
+        /**
+         * Whether [token], a JWT, is for [server]: one entry of its `aud`
+         * (a string or an array; the signature isn't checked, the server
+         * does that) is an absolute URL on [server]'s origin whose path, with
+         * a trailing `/` when it has none, is the server's (`/`). A token
+         * that isn't a JWT is for no one.
+         */
+        internal fun audienceIs(token: String, server: AgentOrigin): Boolean {
+            val parts = token.split('.')
+            if (parts.size != 3) return false
+            val claims = try {
+                parse(Base64.getUrlDecoder().decode(parts[1]))
+            } catch (_: IllegalArgumentException) {
+                null
+            } ?: return false
+            val audiences = when (val aud = claims["aud"]) {
+                is JsonPrimitive -> listOfNotNull(aud.takeIf { it.isString }?.content)
+                is JsonArray -> aud.mapNotNull { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content }
+                else -> emptyList()
+            }
+            val base = "${server.value}/".toHttpUrlOrNull() ?: return false
+            return audiences.any { audience ->
+                val url = audience.toHttpUrlOrNull() ?: return@any false
+                url.scheme == base.scheme && url.host == base.host && url.port == base.port &&
+                    url.encodedPath.let { if (it.endsWith("/")) it else "$it/" } == base.encodedPath
+            }
+        }
 
         /** The methods this app can use: `oauth` ones with valid URLs; others are skipped, as API.md asks. */
         internal fun methods(element: kotlinx.serialization.json.JsonElement?): List<OAuthMethod> =

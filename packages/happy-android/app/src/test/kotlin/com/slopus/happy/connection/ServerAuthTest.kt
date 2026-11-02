@@ -114,9 +114,10 @@ class ServerAuthTest {
         assertReason(ServerAuthException.Reason.Denied) { auth.complete(pending, "$redirect?error=access_denied&state=${pending.state}") }
         assertEquals(0, server.requestCount)
 
-        server.enqueue(json("""{"access_token":"access-1","token_type":"bearer","expires_in":300,"refresh_token":"refresh-1"}"""))
+        val access1 = jwt("$base/", tag = "access-1")
+        server.enqueue(json("""{"access_token":"$access1","token_type":"bearer","expires_in":300,"refresh_token":"refresh-1"}"""))
         val (grant, credential) = auth.complete(pending, "$redirect?code=the%20code&state=${pending.state}")
-        assertEquals("access-1", grant.access.value)
+        assertEquals(access1, grant.access.value)
         assertEquals(1_000_000L + 300_000, grant.access.expiresAtMillis)
         assertEquals(OAuthCredential("jwt", "happy", "$base/oauth/refresh", "refresh-1", "https://happy.acme.example"), credential)
         val request = server.takeRequest()
@@ -145,23 +146,70 @@ class ServerAuthTest {
     @Test
     fun refreshGoesOnlyToTheRecordedUrlAndRotates() = runBlocking {
         val credential = OAuthCredential("jwt", "happy", "$base/oauth/refresh", "refresh-1", "https://happy.acme.example")
-        server.enqueue(json("""{"access_token":"access-2","token_type":"Bearer","refresh_token":"refresh-2"}"""))
-        val (access, rotated) = auth.refresh(credential)
-        assertEquals("access-2", access.value)
+        val access2 = jwt(base, tag = "access-2")
+        server.enqueue(json("""{"access_token":"$access2","token_type":"Bearer","refresh_token":"refresh-2"}"""))
+        val (access, rotated) = auth.refresh(credential, origin)
+        assertEquals(access2, access.value)
         assertNull(access.expiresAtMillis)
         assertEquals("refresh-2", rotated.refreshToken)
         val body = form(server.takeRequest().also { assertEquals("/oauth/refresh", it.target) }.body!!.utf8())
         assertEquals(mapOf("grant_type" to "refresh_token", "refresh_token" to "refresh-1", "client_id" to "happy", "resource" to "https://happy.acme.example"), body)
 
         // No new refresh token: the old one stays.
-        server.enqueue(json("""{"access_token":"access-3","token_type":"Bearer"}"""))
-        assertEquals("refresh-2", auth.refresh(rotated).second.refreshToken)
+        server.enqueue(json("""{"access_token":"${jwt(base, tag = "access-3")}","token_type":"Bearer"}"""))
+        assertEquals("refresh-2", auth.refresh(rotated, origin).second.refreshToken)
         // Refused: sign in again. Unreachable: try later.
         server.enqueue(json("""{"error":"invalid_grant"}""", 400))
-        assertReason(ServerAuthException.Reason.SignInRequired) { auth.refresh(rotated) }
+        assertReason(ServerAuthException.Reason.SignInRequired) { auth.refresh(rotated, origin) }
         server.enqueue(json("""{}""", 503))
-        assertReason(ServerAuthException.Reason.Unreachable) { auth.refresh(rotated) }
-        assertReason(ServerAuthException.Reason.SignInRequired) { auth.refresh(rotated.copy(refreshUrl = null)) }
+        assertReason(ServerAuthException.Reason.Unreachable) { auth.refresh(rotated, origin) }
+        assertReason(ServerAuthException.Reason.SignInRequired) { auth.refresh(rotated.copy(refreshUrl = null), origin) }
+    }
+
+    @Test
+    fun aMethodMustKeepItsTokenEndpointsOnItsAuthorizationOrigin() {
+        assertTrue(method().oneSite)
+        // The default port is the same origin; a path or query doesn't matter.
+        assertTrue(OAuthMethod("j", "n", "https://sso.example/a?x=1", "https://sso.example:443/t", "https://SSO.example/r", "c").oneSite)
+        listOf(
+            OAuthMethod("j", "n", "https://sso.example/a", "https://evil.example/t", null, "c"),
+            OAuthMethod("j", "n", "https://sso.example/a", "https://sso.example/t", "https://evil.example/r", "c"),
+            OAuthMethod("j", "n", "https://sso.example/a", "https://sso.example:8443/t", null, "c"),
+            OAuthMethod("j", "n", "https://sso.example/a", "http://sso.example/t", null, "c"),
+            OAuthMethod("j", "n", "https://sso.example/a", "https://sso.example.evil.example/t", null, "c"),
+        ).forEach { method ->
+            assertFalse(method.toString(), method.oneSite)
+            assertReason(ServerAuthException.Reason.CrossOrigin) { auth.begin(origin, method, redirect) }
+        }
+    }
+
+    @Test
+    fun aTokenIsForTheServerItsAudienceNames() {
+        val acme = AgentOrigin.parse("https://happy.acme.example")
+        assertTrue(ServerAuthClient.audienceIs(jwt("https://happy.acme.example"), acme))
+        assertTrue(ServerAuthClient.audienceIs(jwt("https://happy.acme.example/"), acme))
+        assertTrue(ServerAuthClient.audienceIs(jwt("https://happy.acme.example:443/"), acme))
+        assertTrue(ServerAuthClient.audienceIs(jwt("happy-api", "https://happy.acme.example/"), acme))
+        listOf(
+            jwt("https://happy.acme.example/happy/"),
+            jwt("https://acme.example/"),
+            jwt("https://happy.acme.example:8443/"),
+            jwt("http://happy.acme.example/"),
+            jwt("happy.acme.example"),
+            jwt("happy-api", "urn:x"),
+            "not-a-jwt",
+            "a.b.c",
+            "a.${java.util.Base64.getUrlEncoder().encodeToString("{}".toByteArray())}.c",
+        ).forEach { assertFalse(it, ServerAuthClient.audienceIs(it, acme)) }
+    }
+
+    @Test
+    fun aTokenForAnotherServerIsRefused() = runBlocking {
+        val pending = auth.begin(origin, method(), redirect)
+        server.enqueue(json("""{"access_token":"${jwt("https://happy.other.example/")}","token_type":"Bearer","refresh_token":"r"}"""))
+        assertReason(ServerAuthException.Reason.WrongAudience) { auth.complete(pending, "$redirect?code=abc&state=${pending.state}") }
+        server.enqueue(json("""{"access_token":"opaque","token_type":"Bearer"}"""))
+        assertReason(ServerAuthException.Reason.WrongAudience) { auth.refresh(OAuthCredential("jwt", "happy", "$base/oauth/refresh", "r"), origin) }
     }
 
     @Test

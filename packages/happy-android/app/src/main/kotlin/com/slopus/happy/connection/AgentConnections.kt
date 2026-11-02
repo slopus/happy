@@ -188,8 +188,10 @@ class AgentConnections(
             fun sameMember(account: AgentConnection) = userId != null && account.server == origin.value && account.userId == userId
             val replaced = state.value.firstOrNull { it.id == replacing }
             val existing = replaced?.takeIf(::sameMember) ?: state.value.firstOrNull(::sameMember)
-            // Another member's: nothing of theirs stays for this one to see.
-            if (replaced != null && replaced.id != existing?.id) forget(replaced)
+            // Another member's: nothing of theirs stays for this one to see. Its entry goes with the
+            // write below, so the list changes once, from theirs to this one's.
+            val dropped = replaced?.takeIf { it.id != existing?.id }
+            if (dropped != null) forget(dropped, keepEntry = true)
             val id = existing?.id ?: "agent-connection-${UUID.randomUUID()}"
             val credentials = AgentConnectionCredentials(
                 address = origin.host,
@@ -229,7 +231,7 @@ class AgentConnections(
                 ),
                 agent?.avatar ?: NodeAvatar.Unchanged,
             )
-            write(state.value.filterNot { it.id == id } + account)
+            write(state.value.filterNot { it.id == id || it.id == dropped?.id } + account)
             account
         }
     }
@@ -267,7 +269,9 @@ class AgentConnections(
             val generation = synchronized(tokens) { generations[id] }
             val credential = credentials(id)?.oauth ?: throw AgentConnectionException(AgentConnectionException.Reason.SignInRequired)
             val (access, next) = try {
-                serverAuth?.refresh(credential) ?: throw ServerAuthException(ServerAuthException.Reason.SignInRequired)
+                val server = state.value.firstOrNull { it.id == id }?.server?.let { runCatching { AgentOrigin.parse(it) }.getOrNull() }
+                    ?: throw ServerAuthException(ServerAuthException.Reason.SignInRequired)
+                serverAuth?.refresh(credential, server) ?: throw ServerAuthException(ServerAuthException.Reason.SignInRequired)
             } catch (e: ServerAuthException) {
                 if (e.reason == ServerAuthException.Reason.Unreachable) {
                     throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
@@ -342,7 +346,7 @@ class AgentConnections(
     }
 
     /** [account] gone from this phone: its endpoint, tokens, credentials, picture and entry (its session and caches go with the entry, `AgentSessions`). Holding [lock], on IO. */
-    private suspend fun forget(account: AgentConnection) {
+    private suspend fun forget(account: AgentConnection, keepEntry: Boolean = false) {
         val id = account.id
         synchronized(endpointLock) { endpoints.remove(id) }?.retire()
         synchronized(tokens) {
@@ -351,7 +355,7 @@ class AgentConnections(
         }
         secrets.deleteItem(id)
         account.avatarFile?.let { File(it).delete() }
-        write(state.value.filterNot { it.id == id })
+        if (!keepEntry) write(state.value.filterNot { it.id == id })
     }
 
     private fun read(id: String): AgentConnectionCredentials? = try {

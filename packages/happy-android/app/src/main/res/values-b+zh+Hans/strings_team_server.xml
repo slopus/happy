@@ -39,4 +39,6 @@
     <string name="team_server_error_wrong_server">此代码与它指向的服务器不匹配。</string>
     <string name="team_server_code_path">此服务器设置在某个网址路径下，Android 版 Happy 暂时无法连接这样的服务器。</string>
     <string name="team_server_code_scan_only">服务器代码只能通过扫描使用。请扫描电脑上 Happy 中显示的代码。</string>
+    <string name="team_server_error_cross_origin">此服务器的登录设置会把你的登录信息发送到其他网站，因此无法使用。</string>
+    <string name="team_server_error_wrong_audience">此登录属于其他服务器。</string>
 </resources>
