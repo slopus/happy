@@ -118,7 +118,7 @@ final class HomeUltraListTests: XCTestCase {
         let initialRows = initial
         XCTAssertEqual(initialRows.count, 2)
         let overlay = initialRows[0].makeOverlay
-        XCTAssertEqual(overlay().bounds.width, 430, "obsolete width must never mount")
+        XCTAssertEqual(overlay(initialRows[0].plan).bounds.width, 430, "obsolete width must never mount")
         first.title = "Newest title"
         adapter.update(.init(model: model(first), width: 430, environment: environment, dark: false, selected: "second"))
         let changed = await bridge.nextSnapshot()

@@ -137,7 +137,7 @@ actor ChatPlanner {
     /// are kept for the next `plans`, which takes them for rows that
     /// haven't changed meanwhile; a row not planned in time is left out.
     nonisolated func plansInPlace(_ ids: [String], width: CGFloat, until deadline: DispatchTime) -> [String: ChatRowPlan] {
-        let rows = ids.compactMap { id in cache[id].map { (id, $0) } }.filter { abs($0.1.key.width - width) > 0.5 }
+        let rows = ids.compactMap { id in self.cache[id].map { (id, $0) } }.filter { abs($0.1.key.width - width) > 0.5 }
         guard !rows.isEmpty else { return [:] }
         let cache = cache, syntax = syntax
         let planned = Cache()

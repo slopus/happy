@@ -483,7 +483,7 @@ final class HostedListResizeTests: XCTestCase {
     private static func readingRow(_ list: UltraListView) -> Reading? {
         for index in list.loadedIndexRange {
             guard let frame = list.settledFrame(at: index), frame.minY <= 0, frame.maxY > 0, frame.height > 0 else { continue }
-            return (list.items[index].identity, -frame.minY / frame.height, list.viewportInsets.top)
+            return (list.items[index].identity, -frame.minY / frame.height, CGFloat(list.viewportInsets.top))
         }
         return nil
     }
