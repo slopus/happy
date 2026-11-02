@@ -5,9 +5,10 @@ import UIKit
 
 /// After the first screen's Start: get Happy for the computer, whose setup
 /// ends by offering this phone a code, then scan it. happy-app's Link Your
-/// Computer checklist in its own words, on one page: the animated laptop,
-/// "Install Happy on your computer", what to choose there and
-/// happy.engineering (a link, opening the site), with Scan QR code
+/// Computer checklist on one page, in Kirill's words: the animated TV,
+/// "Open Happy on your computer", where it offers this phone its code
+/// (Link Mobile App in its onboarding, or Settings › Mobile Access) and
+/// "Download from happy.engineering" (a link, opening the site), with Scan QR code
 /// (`AccountAdding.begin`, the scanner as ever) at the bottom where Start
 /// was. On the first screen's Grain Gradient, so the two read
 /// as one flow, under the standard bar (clear over it) with the first
@@ -17,10 +18,13 @@ final class InstallDesktopViewController: UIViewController {
     private let context: AppContext
     private let gradient = GrainGradientView(palette: StartViewController.Colors.grain)
     private let scroll = UIScrollView()
-    private let art = StateSceneView(scene: .laptop, size: InstallDesktopLayout.Metrics.art, replayLabel: Strings.Start.replay(Strings.Onboarding.installStep))
-    private let titleLabel = StyledLabel(style: TextStyles.emptyStateTitle, color: Palette.startText, alignment: .center)
+    /// The first screen's slides, measured and never shown, so this one lines up with it.
+    private let slides = StartGalleryView.Measure()
+    private let art = StateSceneView(scene: .tv, size: StartLayout.Metrics.art, replayLabel: Strings.Start.replay(Strings.Onboarding.offlineOpenStep))
+    /// A slide's title and line, as the first screen draws them.
+    private let titleLabel = StartGalleryView.titleLabel(Strings.Onboarding.offlineOpenStep)
     private let site = SiteLink()
-    private let descriptionLabel = StyledLabel(style: TextStyles.emptyStateDescription, color: Palette.startTextSecondary, alignment: .center)
+    private let descriptionLabel = StartGalleryView.bodyLabel("\(Strings.Start.installChoose)\n\(Strings.Start.installSettings)")
     private let scan = RoundButton(title: Strings.Onboarding.scanButton)
     private lazy var more = UIBarButtonItem(
         image: UIImage(systemName: "ellipsis"),
@@ -60,27 +64,36 @@ final class InstallDesktopViewController: UIViewController {
         scroll.contentInsetAdjustmentBehavior = .never
         scroll.alwaysBounceVertical = false
         view.addSubview(scroll)
-        titleLabel.string = Strings.Onboarding.installStep
-        titleLabel.accessibilityTraits = .header
-        // The checklist's second step: setup there offers this phone its code.
-        descriptionLabel.string = "\(Strings.Onboarding.openStep)."
+        titleLabel.decoration = StartGalleryView.noOrphan
         site.onTap = { UIApplication.shared.open(Strings.Onboarding.desktopURL) }
         scan.accessibilityIdentifier = "install-desktop-scan"
         scan.onTap = { [weak self] in self?.startScan() }
         for subview in [art, titleLabel, site, descriptionLabel, scan] {
             scroll.addSubview(subview)
         }
+        for label in slides.labels.flatMap({ [$0.title, $0.body] }) {
+            label.isHidden = true
+            view.addSubview(label)
+        }
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        // The first screen's safe area: without this one's bar, which sits over its top row.
+        var insets = view.safeAreaInsets
+        if let bar = navigationController?.navigationBar, !bar.isHidden {
+            insets.top = max(0, insets.top - bar.frame.height)
+        }
+        let safeArea = LayoutInsets(insets)
+        let button = scan.layout(width: StartLayout.Metrics.buttonMinWidth).size
         let layout = InstallDesktopLayout(
             size: view.bounds.size,
-            safeArea: LayoutInsets(view.safeAreaInsets),
+            safeArea: safeArea,
+            start: StartLayout(size: view.bounds.size, safeArea: safeArea, button: button, slides: slides.slides, dots: slides.dotsSize),
             title: titleLabel.measurable,
             link: site.label.measurable,
             description: descriptionLabel.measurable,
-            button: scan.layout(width: StartLayout.Metrics.buttonMinWidth).size
+            button: button
         )
         scroll.frame = view.bounds
         scroll.contentSize = CGSize(width: view.bounds.width, height: layout.contentHeight)
@@ -99,24 +112,26 @@ final class InstallDesktopViewController: UIViewController {
     }
 }
 
-/// happy.engineering underlined behind a globe, a 40 tall target, in the
-/// gradient's text colour (the link colour is under AA on its light
-/// tints): read out as "Download Happy from happy.engineering", a link.
+/// "Download from happy.engineering", the domain underlined, a 40 tall
+/// target in the gradient's text colour (the link colour is under AA on
+/// its light tints), read out as it reads, a link.
 private final class SiteLink: UIControl {
     let label = StyledLabel(style: TextStyles.secondaryAction, color: Palette.startText, lines: 1)
-    private let globe = IconView(.ionicons("globe-outline"), size: InstallDesktopLayout.Metrics.linkIcon, tint: Palette.startText)
     var onTap: (() -> Void)?
 
     init() {
         super.init(frame: .zero)
-        label.string = Strings.Onboarding.installBodyLink
-        label.decoration = { $0.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: NSRange(location: 0, length: $0.length)) }
+        let prefix = Strings.Start.installDownloadPrefix
+        label.string = prefix + Strings.Onboarding.installBodyLink
+        label.decoration = { text in
+            let domain = NSRange(location: (prefix as NSString).length, length: text.length - (prefix as NSString).length)
+            text.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: domain)
+        }
         label.isUserInteractionEnabled = false
-        addSubview(globe)
         addSubview(label)
         layer.cornerRadius = TextActionLayout.Metrics.cornerRadius
         isAccessibilityElement = true
-        accessibilityLabel = Strings.Onboarding.installBodyPrefix + Strings.Onboarding.installBodyLink
+        accessibilityLabel = label.string
         accessibilityTraits = .link
         accessibilityIdentifier = "install-desktop-site"
         addTarget(self, action: #selector(tapped), for: .touchUpInside)
@@ -125,7 +140,6 @@ private final class SiteLink: UIControl {
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     func apply(_ layout: InstallDesktopLayout) {
-        globe.setLayoutFrame(layout.linkIcon)
         label.setLayoutFrame(layout.linkLabel)
     }
 

@@ -13,7 +13,7 @@
     <string name="start_enter_link_title">Inserisci link</string>
     <string name="start_enter_link_message">Incolla il link di Happy sul computer o di Happy Agent.</string>
     <string name="start_account_code">Questo codice aggiunge un telefono a un account. Scansionalo con un telefono che ha già effettuato l\'accesso.</string>
-    <string name="start_slide_happy_title">Qualsiasi team. Qualsiasi modello. Un\'unica app.</string>
+    <string name="start_slide_happy_title">Qualsiasi modello. Il tuo team. Un\'unica app.</string>
     <string name="start_slide_happy_body">Happy integra modelli, team e capacità di calcolo in un\'unica app open source.</string>
     <string name="start_slide_team_title">Multiplayer per natura</string>
     <string name="start_slide_team_body">Riunisci il tuo team in una sessione con ogni agente.</string>
@@ -21,4 +21,7 @@
     <string name="start_slide_mix_body">Lascia che Claude pianifichi, Codex costruisca e Grok revisioni, oppure eseguili fianco a fianco.</string>
     <string name="start_slide_open_title">Tuo da eseguire. Tuo da cambiare.</string>
     <string name="start_slide_open_body">Eseguilo sul tuo hardware, nel tuo cloud o nel nostro.</string>
+    <string name="start_install_choose">Scegli Link\u00A0Mobile\u00A0App durante la configurazione.</string>
+    <string name="start_install_settings">Oppure vai su Settings\u00A0›\u00A0Mobile\u00A0Access.</string>
+    <string name="start_install_download">Scaricalo da %1$s</string>
 </resources>

@@ -15,7 +15,7 @@
     <string name="start_enter_link_message">Paste the link from Happy on your computer or from Happy Agent.</string>
     <string name="start_account_code">This code adds a phone to an account. Scan it with a phone that\'s signed in.</string>
     <!-- happy-desktop's welcome deck (happyAgentWelcomeSlides.ts): its titles, each line cut to its first words. -->
-    <string name="start_slide_happy_title">Any\u00A0team. Any\u00A0model. One\u00A0app.</string>
+    <string name="start_slide_happy_title">Any\u00A0model. Your\u00A0team. One\u00A0app.</string>
     <string name="start_slide_happy_body">Happy integrates models, teams, and compute into one open-source app.</string>
     <string name="start_slide_team_title">Natively multiplayer</string>
     <string name="start_slide_team_body">Bring your team into one session with every agent.</string>
@@ -23,4 +23,8 @@
     <string name="start_slide_mix_body">Let Claude plan, Codex build, and Grok review\u2060—or run them side by side.</string>
     <string name="start_slide_open_title">Yours\u00A0to\u00A0run. Yours\u00A0to\u00A0change.</string>
     <string name="start_slide_open_body">Run it on your hardware, in your cloud, or in ours.</string>
+    <!-- The screen after Start (Kirill's words); Link Mobile App and Settings › Mobile Access are desktop's own names. -->
+    <string name="start_install_choose">Choose Link\u00A0Mobile\u00A0App during onboarding.</string>
+    <string name="start_install_settings">Or go to Settings\u00A0›\u00A0Mobile\u00A0Access.</string>
+    <string name="start_install_download">Download from %1$s</string>
 </resources>

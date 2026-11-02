@@ -19,8 +19,8 @@ final class StateSceneTests: XCTestCase {
         .owl: "95402270d116a310aa4b1606f88a2bbc79d2b4d947b5d84181c0b126c7aaba59",
         .alienMonster: "e0875ef4ae4aa214a3d9de567ea39e9429465addabc91d177ea883302146ae89",
         .llama: "ff16ee4b8a19a782b5e5b12dbe103d145410f16b8801af5723b6636c56a0a0ff",
-        // Noto Animated Emoji's 💻, not desktop's (PROVENANCE.md).
-        .laptop: "b351e45cbfc249c734fd6cf4fbd6f49715ce8020177357a89b3844cc061f62a4",
+        // The 📺 sticker Kirill supplied, not desktop's (PROVENANCE.md).
+        .tv: "3aad5efeefedef3fcbb2020a12873a40866141ec898a05f7eb67f15482f765fe",
     ]
 
     private func url(_ scene: StateScene) throws -> URL {
@@ -61,11 +61,8 @@ final class StateSceneTests: XCTestCase {
             let assetLayers = ((json["assets"] as? [[String: Any]]) ?? []).flatMap { ($0["layers"] as? [[String: Any]]) ?? [] }
             for layer in layers + assetLayers {
                 let name = (layer["nm"] as? String) ?? "?"
-                // Noto's laptop remaps time (which Lottie draws) and tints its keys with a Fill effect (decoration).
-                if scene != .laptop {
-                    XCTAssertNil(layer["ef"], "\(scene.rawValue): layer \(name) has an effect")
-                    XCTAssertNil(layer["tm"], "\(scene.rawValue): layer \(name) is time-remapped")
-                }
+                XCTAssertNil(layer["ef"], "\(scene.rawValue): layer \(name) has an effect")
+                XCTAssertNil(layer["tm"], "\(scene.rawValue): layer \(name) is time-remapped")
                 XCTAssertEqual(layer["td"] as? Int ?? 0, 0, "\(scene.rawValue): layer \(name) is a matte")
                 XCTAssertEqual(layer["tt"] as? Int ?? 0, 0, "\(scene.rawValue): layer \(name) is masked by a matte")
                 // 5 is a text layer, which needs fonts we do not ship.

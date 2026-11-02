@@ -13,7 +13,7 @@
     <string name="start_enter_link_title">輸入連結</string>
     <string name="start_enter_link_message">貼上電腦上 Happy 或 Happy Agent 中的連結。</string>
     <string name="start_account_code">此代碼用於將手機加入帳戶。請用已登入的手機掃描。</string>
-    <string name="start_slide_happy_title">任何團隊。任何模型。一個應用程式。</string>
+    <string name="start_slide_happy_title">任何模型。你的團隊。一個應用程式。</string>
     <string name="start_slide_happy_body">Happy 將模型、團隊和算力整合進一個開源應用程式。</string>
     <string name="start_slide_team_title">原生多人協作</string>
     <string name="start_slide_team_body">讓你的團隊和所有代理進入同一個工作階段。</string>
@@ -21,4 +21,7 @@
     <string name="start_slide_mix_body">讓 Claude 規劃、Codex 建構、Grok 審查\u2060——或者讓它們並排執行。</string>
     <string name="start_slide_open_title">由你執行。由你改變。</string>
     <string name="start_slide_open_body">在你的硬體、你的雲端或我們的雲端上執行它。</string>
+    <string name="start_install_choose">在初始設定中選擇 Link\u00A0Mobile\u00A0App。</string>
+    <string name="start_install_settings">或前往 Settings\u00A0›\u00A0Mobile\u00A0Access。</string>
+    <string name="start_install_download">從 %1$s 下載</string>
 </resources>

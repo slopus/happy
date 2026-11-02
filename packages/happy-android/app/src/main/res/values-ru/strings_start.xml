@@ -13,7 +13,7 @@
     <string name="start_enter_link_title">Введите ссылку</string>
     <string name="start_enter_link_message">Вставьте ссылку из Happy на компьютере или из Happy Agent.</string>
     <string name="start_account_code">Этот код добавляет телефон в аккаунт. Отсканируйте его телефоном, на котором выполнен вход.</string>
-    <string name="start_slide_happy_title">Любая команда. Любая модель. Одно приложение.</string>
+    <string name="start_slide_happy_title">Любая модель. Ваша команда. Одно приложение.</string>
     <string name="start_slide_happy_body">Happy объединяет модели, команды и вычисления в одном приложении с открытым исходным кодом.</string>
     <string name="start_slide_team_title">Многопользовательский изначально</string>
     <string name="start_slide_team_body">Соберите команду в одной сессии со всеми агентами.</string>
@@ -21,4 +21,7 @@
     <string name="start_slide_mix_body">Пусть Claude планирует, Codex пишет, а Grok проверяет\u2060 — или запустите их бок о бок.</string>
     <string name="start_slide_open_title">Запускайте сами. Меняйте сами.</string>
     <string name="start_slide_open_body">Запускайте его на своём оборудовании, в своём облаке или в нашем.</string>
+    <string name="start_install_choose">Выберите Link\u00A0Mobile\u00A0App при первой настройке.</string>
+    <string name="start_install_settings">Или откройте Settings\u00A0›\u00A0Mobile\u00A0Access.</string>
+    <string name="start_install_download">Скачать с %1$s</string>
 </resources>

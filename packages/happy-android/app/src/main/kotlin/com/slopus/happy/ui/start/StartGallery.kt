@@ -145,8 +145,8 @@ object StartGallerySpec {
  * The first screen's slides, WelcomeDeck.tsx on a phone: the art in a fixed
  * square, then the title and its line, swiped across with dots under them.
  * Every slide's words are laid over one another in each page and only its
- * own are seen, so the pager is as tall as the tallest slide and neither a
- * title nor the dots move as the slides change. They move on by themselves
+ * own are seen ([SlideWordsRoom]), so no title, line or dot moves as the
+ * slides change. They move on by themselves
  * every [StartGallerySpec.ADVANCE_MILLIS] while the screen is resumed and
  * nothing is being dragged, wrapping to the first with a crossfade; any
  * change starts the wait again. A slide's scene plays once each time the
@@ -229,25 +229,7 @@ fun StartGallery(
                     modifier = Modifier.testTag(StartGalleryTags.art(page)),
                 )
                 Spacer(Modifier.height(artGap))
-                // Every slide's words, one over another; only this page's are seen or read.
-                Box(
-                    Modifier
-                        .padding(horizontal = StartGallerySpec.sidePadding)
-                        .widthIn(max = StartGallerySpec.columnMaxWidth)
-                        .fillMaxWidth(),
-                ) {
-                    slides.forEachIndexed { index, slide ->
-                        val own = index == page
-                        SlideWords(
-                            slide = slide,
-                            textColor = textColor,
-                            secondaryColor = secondaryColor,
-                            tags = own,
-                            index = index,
-                            modifier = if (own) Modifier else Modifier.alpha(0f).clearAndSetSemantics {},
-                        )
-                    }
-                }
+                SlideWordsRoom(slides, own = page, textColor = textColor, secondaryColor = secondaryColor)
             }
         }
         Spacer(Modifier.height(dotsGap))
@@ -288,24 +270,59 @@ private fun SlideArt(art: StartSlide.Art, side: Dp, tint: Color, plays: Int, onR
     }
 }
 
+/**
+ * Every slide's words, one over another in two rooms: every title in the
+ * tallest title's, then 8, then every line in the tallest line's. So
+ * nothing moves as the slides change: each title starts where the others
+ * do, and each line too, under a short title as under a long one. Only
+ * slide [own]'s are seen or read; with none, it is the room alone, which
+ * the next screen keeps so its words fall where these are.
+ */
 @Composable
-private fun SlideWords(slide: StartSlide, textColor: Color, secondaryColor: Color, tags: Boolean, index: Int, modifier: Modifier) {
-    Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            text = stringResource(slide.title),
-            style = cappedScale(StartGallerySpec.title, OnboardingContentSpec.TITLE_MAX_SCALE),
-            color = textColor,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().semantics { heading() }.then(if (tags) Modifier.testTag(StartGalleryTags.title(index)) else Modifier),
-        )
+internal fun SlideWordsRoom(
+    slides: List<StartSlide>,
+    own: Int?,
+    textColor: Color,
+    secondaryColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    fun Modifier.seen(index: Int) = if (index == own) this else alpha(0f).clearAndSetSemantics {}
+    Column(
+        modifier
+            .padding(horizontal = StartGallerySpec.sidePadding)
+            .widthIn(max = StartGallerySpec.columnMaxWidth)
+            .fillMaxWidth(),
+    ) {
+        Box {
+            slides.forEachIndexed { index, slide ->
+                Text(
+                    text = stringResource(slide.title),
+                    style = cappedScale(StartGallerySpec.title, OnboardingContentSpec.TITLE_MAX_SCALE),
+                    color = textColor,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .then(if (index == own) Modifier.testTag(StartGalleryTags.title(index)) else Modifier)
+                        .seen(index)
+                        .fillMaxWidth()
+                        .semantics { heading() },
+                )
+            }
+        }
         Spacer(Modifier.height(StartGallerySpec.titleGap))
-        Text(
-            text = stringResource(slide.body),
-            style = StartGallerySpec.body.copy(lineBreak = LineBreak.Paragraph),
-            color = secondaryColor,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().then(if (tags) Modifier.testTag(StartGalleryTags.body(index)) else Modifier),
-        )
+        Box {
+            slides.forEachIndexed { index, slide ->
+                Text(
+                    text = stringResource(slide.body),
+                    style = StartGallerySpec.body.copy(lineBreak = LineBreak.Paragraph),
+                    color = secondaryColor,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .then(if (index == own) Modifier.testTag(StartGalleryTags.body(index)) else Modifier)
+                        .seen(index)
+                        .fillMaxWidth(),
+                )
+            }
+        }
     }
 }
 

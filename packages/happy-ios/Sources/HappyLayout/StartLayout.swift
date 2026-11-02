@@ -10,9 +10,10 @@ import CoreGraphics
 /// are centred in the space between.
 ///
 /// The slides are happy-desktop's welcome deck (WelcomeDeck.tsx): the art
-/// in a fixed square, then the title and its line. Every slide's words get
-/// the room of the tallest, so neither the titles nor the dots move as the
-/// slides change. When it all outgrows the window (large text, a phone on
+/// in a fixed square, then the title and its line. Every slide's title gets
+/// the room of the tallest title and every line the room of the tallest
+/// line, so nothing moves as the slides change: the art, each title's
+/// first line, each line's first line and the dots stay where they are. When it all outgrows the window (large text, a phone on
 /// its side) nothing is free and it scrolls.
 public struct StartLayout: Equatable, Sendable {
     public enum Metrics {
@@ -71,6 +72,8 @@ public struct StartLayout: Equatable, Sendable {
     /// in it.
     public var art: CGRect
     public var mark: CGRect
+    /// Between the art and the words (less in a short window).
+    public var artGap: CGFloat
     /// In a page: each slide's title and line.
     public var titles: [CGRect]
     public var bodies: [CGRect]
@@ -90,11 +93,11 @@ public struct StartLayout: Equatable, Sendable {
         let artGap = compact ? M.artGapCompact : M.artGap
         let dotsGap = compact ? M.dotsGapCompact : M.dotsGap
 
-        // The words: every slide's title with its line under it, as tall
-        // as the tallest slide's.
+        // The words: the tallest title's room, then the tallest line's.
         let column = min(M.columnMaxWidth, max(0, width - M.sidePadding * 2))
         let measured = slides.map { (title: $0.title.height(fitting: column), body: $0.body.height(fitting: column)) }
-        let words = measured.map { $0.title + M.titleGap + $0.body }.max() ?? 0
+        let titleRoom = measured.map(\.title).max() ?? 0
+        let words = measured.isEmpty ? 0 : titleRoom + M.titleGap + (measured.map(\.body).max() ?? 0)
         let pagerHeight = side + artGap + words
         let dotsWidth = min(width, dotsSize.width)
         let galleryHeight = pagerHeight + dotsGap + dotsSize.height
@@ -117,7 +120,8 @@ public struct StartLayout: Equatable, Sendable {
         let columnX = (width - column) / 2
         let titleY = side + artGap
         titles = measured.map { CGRect(x: columnX, y: titleY, width: column, height: $0.title) }
-        bodies = measured.map { CGRect(x: columnX, y: titleY + $0.title + M.titleGap, width: column, height: $0.body) }
+        bodies = measured.map { CGRect(x: columnX, y: titleY + titleRoom + M.titleGap, width: column, height: $0.body) }
+        self.artGap = artGap
 
         let logoSize = CGSize(width: M.logoWidth, height: M.logoWidth / M.logoAspect)
         logo = CGRect(

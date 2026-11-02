@@ -65,20 +65,27 @@ final class StartLayoutTests: XCTestCase {
         XCTAssertEqual(layout.dots, CGRect(x: 136.5, y: layout.pager.maxY + 24, width: 120, height: 26))
     }
 
+    /// Nothing moves as the slides change: every title starts where the
+    /// others do, and every line under the tallest title's room, even
+    /// under a shorter title.
     func testEverySlidesWordsStartWhereTheOthersDo() {
-        let layout = layout()
+        let layout = layout(slides: slides([(1, 2), (2, 1), (1, 1), (2, 2)]))
         XCTAssertEqual(layout.art, CGRect(x: 148.5, y: 0, width: 96, height: 96))
         XCTAssertEqual(layout.mark.width, 96 * 0.8, accuracy: 0.001)
         XCTAssertEqual(layout.mark.midX, layout.art.midX, accuracy: 0.001)
         XCTAssertEqual(layout.mark.midY, layout.art.midY, accuracy: 0.001)
         XCTAssertEqual(Set(layout.titles.map(\.minY)), [120])
+        XCTAssertEqual(Set(layout.bodies.map(\.minY)), [120 + 68 + 8])
         for (title, body) in zip(layout.titles, layout.bodies) {
             XCTAssertEqual(title.minX, 24)
             XCTAssertEqual(title.width, 345)
-            XCTAssertEqual(body.minY, title.maxY + 8)
             XCTAssertEqual(body.width, 345)
         }
-        XCTAssertEqual(layout.bodies[2].maxY, layout.pager.height)
+        XCTAssertEqual(layout.titles[0].height, 34)
+        XCTAssertEqual(layout.bodies[3].maxY, layout.pager.height)
+        // The room is the tallest title's and the tallest line's, though no one slide has both.
+        let mixed = self.layout(slides: slides([(1, 2), (2, 1)]))
+        XCTAssertEqual(mixed.pager.height, 96 + 24 + 68 + 8 + 48)
     }
 
     func testPagesSitSideBySide() {

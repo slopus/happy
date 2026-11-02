@@ -7,7 +7,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.displayCutout
-import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -18,6 +18,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextDecoration
 import com.slopus.happy.ui.components.LocalBarOnGlass
 import androidx.compose.foundation.layout.Box
@@ -57,6 +60,8 @@ import com.slopus.happy.ui.components.RoundButton
 import com.slopus.happy.ui.components.SceneAnimation
 import com.slopus.happy.ui.components.StackHeader
 import com.slopus.happy.ui.home.EmptyStateSpec
+import com.slopus.happy.ui.onboarding.OnboardingContentSpec
+import com.slopus.happy.ui.onboarding.cappedScale
 import com.slopus.happy.ui.theme.HappyTheme
 
 object InstallDesktopTags {
@@ -71,27 +76,33 @@ object InstallDesktopTags {
 }
 
 /**
- * After the first screen's Start: get Happy for the computer, whose setup
- * ends by offering this phone a code, then scan it. happy-app's Link Your
- * Computer checklist in its own words, laid out as iOS's
- * InstallDesktopViewController (InstallDesktopLayout), centred, on the
- * first screen's Grain Gradient so the two read as one flow. Scan QR code
- * is where Start was; the rest is centred between the bar and it:
+ * After the first screen's Start: open Happy on the computer, which offers
+ * this phone a code (in its onboarding, or later in its settings), or get
+ * it first; then scan the code. Kirill's words, laid out as iOS's
+ * InstallDesktopViewController (InstallDesktopLayout), on the first
+ * screen's Grain Gradient and in its frame, so the two read as one: the
+ * art in the slides' square at the slides' place, Scan QR code where Start
+ * was, and the words where the slides' words and dots were (their room is
+ * kept, unseen: [SlideWordsRoom]; words that need more move it all up, as
+ * the first screen centres its slides):
  *
- *   laptop scene       96, the slides' art square: plays once on arrival,
- *                      a tap plays it again (res/raw/state_laptop.json,
- *                      Google's Noto animated 💻, CC BY 4.0: happy-ios
+ *   TV scene           the slides' square: plays once on arrival,
+ *                      a tap plays it again (res/raw/state_tv.json, the
+ *                      📺 sticker Kirill supplied: happy-ios
  *                      Resources/Animations/PROVENANCE.md)
- *   title              "Install Happy on your computer", 24 under it
- *   description        "Open Happy and choose Link Mobile App.", 8 under
- *   happy.engineering  4 under: a globe and the domain underlined, a 40
- *                      tall target opening the site
+ *   title              "Open Happy on your computer", 24 under it, in a
+ *                      slide's title type
+ *   description        "Choose Link Mobile App during onboarding." and
+ *                      "Or go to Settings › Mobile Access.", 8 under, in
+ *                      a slide's line type
+ *   the site           4 under: "Download from happy.engineering", the
+ *                      domain underlined, a 40 tall target opening it
  *   Scan QR code       as wide as its label (at least 200), 48 above the
  *                      bottom inset: the app's Add flow, the scanner as ever
  *
  * The standard bar, clear over the gradient, with back and the first
  * screen's ⋮ ([StartMenu]), so the other ways in are still a tap away. If
- * it outgrows the window it scrolls, 16 kept above and below the words.
+ * it outgrows the window it scrolls, as the first screen does.
  */
 @Composable
 fun InstallDesktopScreen(
@@ -113,8 +124,83 @@ fun InstallDesktopScreen(
             palette = if (dark) StartSpec.darkPalette else StartSpec.lightPalette,
             modifier = Modifier.fillMaxSize().testTag(InstallDesktopTags.BACKGROUND),
         )
-        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal)))) {
-            // Clear: the gradient shows through the bar.
+        // The first screen's frame (StartScreen): what is in it falls where that screen's is.
+        BoxWithConstraints(
+            Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout)),
+        ) {
+            val viewport = maxHeight
+            val art = StartGallerySpec.artFor(maxWidth, maxHeight)
+            val compact = maxHeight < StartGallerySpec.compactHeight
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .heightIn(min = viewport)
+                    .padding(bottom = StartSpec.bottomPadding)
+                    .testTag(InstallDesktopTags.CONTENT),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                // Under the bar, as the first screen's logo row.
+                Spacer(Modifier.height(StartSpec.controlsPadding + StartSpec.control))
+                Spacer(Modifier.height(StartGallerySpec.margin))
+                Spacer(Modifier.weight(1f))
+                var plays by rememberSaveable { mutableIntStateOf(1) }
+                Box(Modifier.testTag(InstallDesktopTags.ART)) {
+                    SceneAnimation(R.raw.state_tv, plays, { plays = it + 1 }, size = art)
+                }
+                Spacer(Modifier.height(if (compact) StartGallerySpec.artGapCompact else StartGallerySpec.artGap))
+                // The slides' words and dots, unseen, keep their room: these words take it.
+                Box(contentAlignment = Alignment.TopCenter) {
+                    Column(Modifier.fillMaxWidth()) {
+                        SlideWordsRoom(StartSlides, own = null, textColor = text, secondaryColor = secondary)
+                        Spacer(Modifier.height((if (compact) StartGallerySpec.dotsGapCompact else StartGallerySpec.dotsGap) + StartGallerySpec.dotTarget))
+                    }
+                    // A slide's title and line, in the slides' column.
+                    Column(
+                        Modifier
+                            .padding(horizontal = StartGallerySpec.sidePadding)
+                            .widthIn(max = StartGallerySpec.columnMaxWidth)
+                            .fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.onboarding_offline_open_step),
+                            style = cappedScale(StartGallerySpec.title.copy(lineBreak = LineBreak.Heading), OnboardingContentSpec.TITLE_MAX_SCALE),
+                            color = text,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = StartGallerySpec.titleGap)
+                                .semantics { heading() }
+                                .testTag(InstallDesktopTags.TITLE),
+                        )
+                        Text(
+                            text = stringResource(R.string.start_install_choose) + "\n" + stringResource(R.string.start_install_settings),
+                            style = StartGallerySpec.body.copy(lineBreak = LineBreak.Paragraph),
+                            color = secondary,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth().testTag(InstallDesktopTags.DESCRIPTION),
+                        )
+                        SiteLink(text, onOpenSite, Modifier.padding(top = 4.dp))
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                Spacer(Modifier.height(StartGallerySpec.margin))
+                RoundButton(
+                    title = stringResource(R.string.onboarding_scan_button),
+                    onClick = onScan,
+                    loading = scanning,
+                    modifier = Modifier
+                        .widthIn(min = StartSpec.connectMinWidth)
+                        .width(IntrinsicSize.Max)
+                        .testTag(InstallDesktopTags.SCAN),
+                )
+            }
+        }
+        // Clear: the gradient shows through the bar, over the first screen's top row.
+        Box(Modifier.windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))) {
             CompositionLocalProvider(LocalBarOnGlass provides true) {
                 StackHeader(title = "", onBack = onBack) {
                     Box {
@@ -134,71 +220,20 @@ fun InstallDesktopScreen(
                     }
                 }
             }
-            BoxWithConstraints(Modifier.fillMaxSize()) {
-                val viewport = maxHeight
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState())
-                        .heightIn(min = viewport)
-                        .padding(bottom = StartSpec.bottomPadding)
-                        .testTag(InstallDesktopTags.CONTENT),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Spacer(Modifier.height(StartGallerySpec.margin))
-                    Spacer(Modifier.weight(1f))
-                    var plays by rememberSaveable { mutableIntStateOf(1) }
-                    Box(Modifier.testTag(InstallDesktopTags.ART)) {
-                        SceneAnimation(R.raw.state_laptop, plays, { plays = it + 1 }, size = StartGallerySpec.art)
-                    }
-                    Text(
-                        text = stringResource(R.string.onboarding_install_step),
-                        style = EmptyStateSpec.stateTitle,
-                        color = text,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .padding(top = StartGallerySpec.artGap, bottom = StartGallerySpec.titleGap)
-                            .padding(horizontal = EmptyStateSpec.sidePadding)
-                            .semantics { heading() }
-                            .testTag(InstallDesktopTags.TITLE),
-                    )
-                    // The checklist's second step: setup there offers this phone its code.
-                    Text(
-                        text = stringResource(R.string.onboarding_open_step) + ".",
-                        style = EmptyStateSpec.description,
-                        color = secondary,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .widthIn(max = EmptyStateSpec.descriptionMaxWidth)
-                            .padding(horizontal = EmptyStateSpec.sidePadding)
-                            .testTag(InstallDesktopTags.DESCRIPTION),
-                    )
-                    SiteLink(text, onOpenSite, Modifier.padding(top = 4.dp))
-                    Spacer(Modifier.weight(1f))
-                    Spacer(Modifier.height(StartGallerySpec.margin))
-                    RoundButton(
-                        title = stringResource(R.string.onboarding_scan_button),
-                        onClick = onScan,
-                        loading = scanning,
-                        modifier = Modifier
-                            .widthIn(min = StartSpec.connectMinWidth)
-                            .width(IntrinsicSize.Max)
-                            .testTag(InstallDesktopTags.SCAN),
-                    )
-                }
-            }
         }
     }
 }
 
 /**
- * happy.engineering underlined behind a globe, in the gradient's text
- * colour (the link colour is under AA on its light tints): a 40 tall
- * target read out as "Download Happy from happy.engineering".
+ * "Download from happy.engineering", the domain underlined, in the
+ * gradient's text colour (the link colour is under AA on its light
+ * tints): a 40 tall target read out as it reads.
  */
 @Composable
 private fun SiteLink(color: Color, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val site = stringResource(R.string.onboarding_install_body_prefix) + stringResource(R.string.onboarding_install_body_link)
+    val domain = stringResource(R.string.onboarding_install_body_link)
+    val site = stringResource(R.string.start_install_download, domain)
+    val start = site.indexOf(domain)
     Row(
         modifier = modifier
             .testTag(InstallDesktopTags.SITE)
@@ -209,12 +244,13 @@ private fun SiteLink(color: Color, onClick: () -> Unit, modifier: Modifier = Mod
             .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Ionicon.GlobeOutline, 16.dp, color)
         Text(
-            text = stringResource(R.string.onboarding_install_body_link),
-            style = EmptyStateSpec.secondaryAction.copy(textDecoration = TextDecoration.Underline),
+            text = buildAnnotatedString {
+                append(site)
+                if (start >= 0) addStyle(SpanStyle(textDecoration = TextDecoration.Underline), start, start + domain.length)
+            },
+            style = EmptyStateSpec.secondaryAction,
             color = color,
-            modifier = Modifier.padding(start = 6.dp),
         )
     }
 }

@@ -83,6 +83,50 @@ final class StartGalleryView: UIView, UIScrollViewDelegate {
         dots.size(forNumberOfPages: pages.count)
     }
 
+    /// The slides' words alone, drawn as a page draws them but never
+    /// shown: for the next screen to lay itself out as this one is
+    /// (`InstallDesktopLayout`). Keep them in the view hierarchy, hidden,
+    /// so they measure at the person's text size.
+    @MainActor final class Measure {
+        let labels: [(title: StyledLabel, body: StyledLabel)] = Strings.Start.slides.map {
+            (StartGalleryView.titleLabel($0.title), StartGalleryView.bodyLabel($0.body))
+        }
+        private let dots = UIPageControl()
+
+        var slides: [StartLayout.Slide] {
+            labels.map { StartLayout.Slide(title: $0.title.measurable, body: $0.body.measurable) }
+        }
+
+        var dotsSize: CGSize {
+            dots.size(forNumberOfPages: labels.count)
+        }
+    }
+
+    /// A slide's title as a page draws it.
+    static func titleLabel(_ string: String) -> StyledLabel {
+        let label = StyledLabel(style: TextStyles.startSlideTitle, color: Palette.startText, alignment: .center)
+        label.string = string
+        label.accessibilityTraits = .header
+        return label
+    }
+
+    /// A slide's line as a page draws it: a centred line never ends on one word alone.
+    static func bodyLabel(_ string: String) -> StyledLabel {
+        let label = StyledLabel(style: TextStyles.startSlideBody, color: Palette.startTextSecondary, alignment: .center)
+        label.string = string
+        label.decoration = noOrphan
+        return label
+    }
+
+    /// A centred line never ends on one word alone.
+    static let noOrphan: (NSMutableAttributedString) -> Void = { text in
+        text.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: text.length)) { value, range, _ in
+            guard let style = (value as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle else { return }
+            style.lineBreakStrategy = .pushOut
+            text.addAttribute(.paragraphStyle, value: style, range: range)
+        }
+    }
+
     /// Takes the screen's layout: `frame` must already be its `gallery`.
     func apply(_ layout: StartLayout) {
         self.layout = layout
@@ -175,8 +219,8 @@ final class StartGalleryView: UIView, UIScrollViewDelegate {
 
 /// One slide: the art, the title, the line.
 private final class Page: UIView {
-    let title = StyledLabel(style: TextStyles.startSlideTitle, color: Palette.startText, alignment: .center)
-    let body = StyledLabel(style: TextStyles.startSlideBody, color: Palette.startTextSecondary, alignment: .center)
+    let title: StyledLabel
+    let body: StyledLabel
     private let mark = UIImageView()
     private let scene: StateSceneView?
 
@@ -188,12 +232,9 @@ private final class Page: UIView {
             // Held on its last frame until its slide arrives (`arrive`).
             scene = StateSceneView(scene: name, size: StartLayout.Metrics.art, play: .onDemand, replayLabel: Strings.Start.replay(title))
         }
+        self.title = StartGalleryView.titleLabel(title)
+        self.body = StartGalleryView.bodyLabel(body)
         super.init(frame: .zero)
-        self.title.string = title
-        self.title.accessibilityTraits = .header
-        self.body.string = body
-        // The title breaks only between its sentences (`Strings.Start.slides`).
-        self.body.decoration = Self.noOrphan
         if case .logo = art {
             mark.image = UIImage.happy("logo-black")?.withRenderingMode(.alwaysTemplate)
             mark.tintColor = UIColor(Palette.startText)
@@ -208,15 +249,6 @@ private final class Page: UIView {
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    /// A centred line never ends on one word alone.
-    private static let noOrphan: (NSMutableAttributedString) -> Void = { text in
-        text.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: text.length)) { value, range, _ in
-            guard let style = (value as? NSParagraphStyle)?.mutableCopy() as? NSMutableParagraphStyle else { return }
-            style.lineBreakStrategy = .pushOut
-            text.addAttribute(.paragraphStyle, value: style, range: range)
-        }
-    }
 
     /// The slide is showing now: its animation plays from the start.
     func arrive() {

@@ -20,8 +20,15 @@ extension Strings {
         /// (its "No telemetry" no longer holds), and "harness" reads "app"
         /// (Steve). No-break spaces hold each short sentence of a title
         /// together, so a title breaks only between them.
+        /// The screen after Start (Kirill's words): where desktop offers
+        /// this phone its code, during its onboarding or later in its
+        /// settings, and where to get it. Desktop's own names for the two.
+        public static let installChoose = "Choose Link\u{00A0}Mobile\u{00A0}App during onboarding."
+        public static let installSettings = "Or go to Settings\u{00A0}›\u{00A0}Mobile\u{00A0}Access."
+        public static let installDownloadPrefix = "Download from "
+
         public static let slides: [(title: String, body: String)] = [
-            ("Any\u{00A0}team. Any\u{00A0}model. One\u{00A0}app.", "Happy integrates models, teams, and compute into one open-source app."),
+            ("Any\u{00A0}model. Your\u{00A0}team. One\u{00A0}app.", "Happy integrates models, teams, and compute into one open-source app."),
             ("Natively multiplayer", "Bring your team into one session with every agent."),
             // A word joiner keeps the dash on review's line.
             ("One\u{00A0}app. Every\u{00A0}agent.", "Let Claude plan, Codex build, and Grok review\u{2060}—or run them side by side."),

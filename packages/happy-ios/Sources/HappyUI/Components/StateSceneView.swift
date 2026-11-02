@@ -10,7 +10,7 @@ import UIKit
 ///
 /// The files are desktop's own, compacted back to the exact bytes its
 /// `assets/animations/PROVENANCE.md` records, so iOS and Android ship the
-/// same files; the laptop is Noto's. See `Resources/Animations/PROVENANCE.md`.
+/// same files; the TV is the sticker Kirill chose. See `Resources/Animations/PROVENANCE.md`.
 ///
 /// Errors, offline, and small inline tiles get no picture, as on desktop:
 /// a glyph at most.
@@ -29,8 +29,8 @@ public enum StateScene: String, CaseIterable, Sendable {
     /// session, and every agent in one app.
     case alienMonster = "alien-monster"
     case llama
-    /// The screen after Start: Happy for the computer (Noto's 💻).
-    case laptop
+    /// The screen after Start: Happy on the computer (a 📺 sticker).
+    case tv
 }
 
 /// One state picture in a fixed square, drawn the way desktop draws it

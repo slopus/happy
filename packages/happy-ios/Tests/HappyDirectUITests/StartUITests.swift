@@ -73,7 +73,7 @@ final class StartUITests: XCTestCase {
         let dots = app.pageIndicators["start-dots"]
         XCTAssertTrue(dots.exists, "the slides have no dots")
         XCTAssertEqual(dots.value as? String, "page 1 of 4")
-        app.staticTexts["Any\u{00A0}team. Any\u{00A0}model. One\u{00A0}app."].swipeLeft()
+        app.staticTexts["Any\u{00A0}model. Your\u{00A0}team. One\u{00A0}app."].swipeLeft()
         // Its animation has played (about 3 s) and holds its last frame.
         pause(3.5)
         XCTAssertEqual(dots.value as? String, "page 2 of 4")
@@ -110,10 +110,12 @@ final class StartUITests: XCTestCase {
         // same ⋯.
         start.tap()
         let scan = app.buttons["install-desktop-scan"]
-        XCTAssertTrue(scan.waitForExistence(timeout: 5), "Start opens Install Happy on your computer")
+        XCTAssertTrue(scan.waitForExistence(timeout: 5), "Start opens Open Happy on your computer")
         XCTAssertTrue(app.navigationBars.firstMatch.exists, "it has a bar")
-        XCTAssertTrue(app.staticTexts["Install Happy on your computer"].exists)
-        XCTAssertTrue(app.links["install-desktop-site"].exists, "happy.engineering is missing")
+        XCTAssertTrue(app.staticTexts["Open Happy on your computer"].exists)
+        let site = app.links["install-desktop-site"]
+        XCTAssertTrue(site.exists, "happy.engineering is missing")
+        XCTAssertEqual(site.label, "Download from happy.engineering")
         pause(3.5)
         capture("4-install-desktop")
         app.buttons["install-desktop-more"].tap()

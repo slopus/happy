@@ -69,19 +69,19 @@ class StartGalleryTest {
             StartSlides.drop(1).map { (it.art as StartSlide.Art.Scene).raw },
         )
         show()
-        rule.onNodeWithText("Any\u00A0team. Any\u00A0model. One\u00A0app.").assertExists()
+        rule.onNodeWithText("Any\u00A0model. Your\u00A0team. One\u00A0app.").assertExists()
         rule.onNodeWithText("Secure and compliant").assertDoesNotExist()
         selected(0)
     }
 
-    /** happy-desktop assets/animations/PROVENANCE.md's alien-monster and llama, and Noto's laptop (CC BY 4.0): the same bytes, unmodified. */
+    /** happy-desktop assets/animations/PROVENANCE.md's alien-monster and llama, and the 📺 sticker Kirill supplied: the same bytes, unmodified. */
     @Test
     fun theScenesAreTheirExactBytes() {
         val resources = ApplicationProvider.getApplicationContext<android.content.Context>().resources
         for ((raw, hash) in listOf(
             R.raw.state_alien_monster to "e0875ef4ae4aa214",
             R.raw.state_llama to "ff16ee4b8a19a782",
-            R.raw.state_laptop to "b351e45cbfc249c7",
+            R.raw.state_tv to "3aad5efeefedef3f",
         )) {
             val bytes = resources.openRawResource(raw).use { it.readBytes() }
             val actual = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
@@ -107,13 +107,20 @@ class StartGalleryTest {
     fun aSwipePagesAndNothingMoves() {
         rule.mainClock.autoAdvance = true
         show()
+        val art = rule.node(StartGalleryTags.art(0)).bounds
         val title = rule.node(StartGalleryTags.title(0)).bounds
+        val body = rule.node(StartGalleryTags.body(0)).bounds
         val dots = rule.node(StartGalleryTags.DOTS).bounds
         rule.node(StartGalleryTags.PAGER).performTouchInput { swipeLeft() }
         rule.waitForIdle()
         rule.onNodeWithText("Natively multiplayer").assertExists()
         selected(1)
+        assertEquals(art, rule.node(StartGalleryTags.art(1)).bounds)
         assertDp("the title's top stays", title.top, rule.node(StartGalleryTags.title(1)).bounds.top)
+        // A one-line title after a two-line one: the line under it stays where it was.
+        val next = rule.node(StartGalleryTags.title(1)).bounds
+        assertTrue("one title line here, two before", next.height < title.height)
+        assertDp("the line's top stays", body.top, rule.node(StartGalleryTags.body(1)).bounds.top)
         assertEquals(dots, rule.node(StartGalleryTags.DOTS).bounds)
     }
 

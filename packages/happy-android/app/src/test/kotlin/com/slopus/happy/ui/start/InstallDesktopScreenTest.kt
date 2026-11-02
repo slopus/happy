@@ -1,5 +1,8 @@
 package com.slopus.happy.ui.start
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -26,7 +29,7 @@ import org.robolectric.annotation.GraphicsMode
 
 private const val PHONE_HEIGHT = 891
 
-/** The screen after Start: the laptop and its words, Scan QR code at the bottom, the site, and the first screen's ⋮ under the standard bar. */
+/** The screen after Start: the TV and its words, Scan QR code at the bottom, the site, and the first screen's ⋮ under the standard bar. */
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = PHONE)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -55,17 +58,17 @@ class InstallDesktopScreenTest {
     fun phoneLayout() {
         show()
         rule.node(HeaderTags.BAR).assertExists()
-        rule.onNodeWithText("Install Happy on your computer").assertExists()
-        rule.onNodeWithText("Open Happy and choose Link\u00A0Mobile\u00A0App.").assertExists()
+        rule.onNodeWithText("Open Happy on your computer").assertExists()
+        rule.onNodeWithText("Choose Link\u00A0Mobile\u00A0App during onboarding.\nOr go to Settings\u00A0›\u00A0Mobile\u00A0Access.").assertExists()
+        rule.onNodeWithContentDescription("Download from happy.engineering").assertExists()
         rule.node(InstallDesktopTags.BACKGROUND).assertExists()
 
-        // The laptop 96, the title 24 under it, the line 8 under that, the site 4 under; Scan 48 above the bottom, the words centred above it.
+        // The TV 96, the title 24 under it, the two lines 8 under that, the site 4 under; Scan 48 above the bottom.
         val art = rule.node(InstallDesktopTags.ART).bounds
         val title = rule.node(InstallDesktopTags.TITLE).bounds
         val description = rule.node(InstallDesktopTags.DESCRIPTION).bounds
         val scan = rule.node(InstallDesktopTags.SCAN).bounds
         val site = rule.node(InstallDesktopTags.SITE).bounds
-        val content = rule.node(InstallDesktopTags.CONTENT).bounds
         assertDp("art", 96, art.width)
         assertDp("art square", 96, art.height)
         assertDp("title 24 under the art", art.bottom + 24.dp, title.top)
@@ -73,7 +76,6 @@ class InstallDesktopScreenTest {
         assertDp("site 4 under the description", description.bottom + 4.dp, site.top)
         assertDp("site a 40 target", 40, site.height)
         assertDp("scan 48 above the bottom", PHONE_HEIGHT.dp - 48.dp, scan.bottom)
-        assertDp("words centred above scan", art.top - content.top, scan.top - site.bottom)
         assertTrue("scan at least 200 wide", scan.width >= 200.dp - 0.34.dp)
         for ((name, box) in listOf("art" to art, "title" to title, "scan" to scan, "site" to site)) {
             assertDp("$name centred", (PHONE_WIDTH / 2f).dp, (box.left + box.right) / 2)
@@ -81,11 +83,32 @@ class InstallDesktopScreenTest {
         rule.assertActionsLabelled()
     }
 
+    /** The TV is where the first screen's slides have their art, and Scan where Start is. */
+    @Test
+    fun theArtAndTheButtonAreWhereTheFirstScreensAre() {
+        var install by mutableStateOf(false)
+        rule.setHappyContent {
+            if (install) {
+                InstallDesktopScreen(false, null, {}, {}, {}, {}, {}, {})
+            } else {
+                StartScreen(connecting = false, customServerLabel = null, onStart = {}, onEnterLink = {}, onRestore = {}, onServer = {})
+            }
+        }
+        val slideArt = rule.node(StartGalleryTags.art(0)).bounds
+        val start = rule.node(StartTags.CONNECT).bounds
+        install = true
+        rule.waitForIdle()
+        assertEquals(slideArt, rule.node(InstallDesktopTags.ART).bounds)
+        val scan = rule.node(InstallDesktopTags.SCAN).bounds
+        assertDp("scan's top", start.top, scan.top)
+        assertDp("scan's bottom", start.bottom, scan.bottom)
+    }
+
     @Test
     fun scanTheSiteAndBack() {
         show()
         rule.onNodeWithText("Scan QR code").performClick()
-        rule.onNodeWithContentDescription("Download Happy from happy.engineering").performClick()
+        rule.onNodeWithContentDescription("Download from happy.engineering").performClick()
         rule.node(HeaderTags.LEFT).performClick()
         assertEquals(listOf("scan", "site", "back"), taps)
     }
