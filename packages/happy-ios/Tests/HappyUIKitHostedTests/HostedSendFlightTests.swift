@@ -316,7 +316,11 @@ final class HostedSendFlightTests: XCTestCase {
         let moved = sampler.samples.compactMap(\.previous)
         let before = try XCTUnwrap(moved.first), after = try XCTUnwrap(moved.last)
         XCTAssertEqual(before.minY - after.minY, plan.size.height, accuracy: 1, "\(label): the rows above made room for the new row\n\(log(sampler.samples))")
-        let steepest = (0..<300).map { CGFloat(vertical.value(at: Double($0 + 1) / 300) - vertical.value(at: Double($0) / 300)) * 300 }.max() ?? 1
+        let slopes: [CGFloat] = (0..<300).map { (index: Int) -> CGFloat in
+            let rise: Double = vertical.value(at: Double(index + 1) / 300) - vertical.value(at: Double(index) / 300)
+            return CGFloat(rise) * 300
+        }
+        let steepest: CGFloat = slopes.max() ?? 1
         let share = plan.size.height * steepest * CGFloat(frame * 2 / duration) + 1
         let step = zip(moved, moved.dropFirst()).map { abs($1.minY - $0.minY) }.max() ?? 0
         XCTAssertLessThanOrEqual(step, share, "\(label): a row jumped \(step)pt in a frame\n\(log(sampler.samples))")

@@ -28,6 +28,7 @@ actor NewSessionChoiceDeriver {
         var catalog: UInt64
         var draft: NewSessionDraft
         var createsBot: Bool
+        var createsTask: Bool
         var worktrees: [Worktrees.Entry]
     }
 
@@ -54,7 +55,7 @@ actor NewSessionChoiceDeriver {
     }
 
     func choices(snapshot: LegacyHomeSnapshot, revision: UInt64, generation: UInt64, draft: NewSessionDraft,
-                 createsBot: Bool, worktrees: [Worktrees.Entry]) async -> DerivedChoices? {
+                 createsBot: Bool, createsTask: Bool = false, worktrees: [Worktrees.Entry]) async -> DerivedChoices? {
         guard generation >= latestGeneration else { return nil }
         latestGeneration = generation
         await beforeDerivation(snapshot, draft)
@@ -99,11 +100,11 @@ actor NewSessionChoiceDeriver {
         var pickerDraft = draft
         pickerDraft.input = ""
         pickerDraft.updatedAt = 0
-        let nextRequest = Request(catalog: catalogVersion, draft: pickerDraft, createsBot: createsBot, worktrees: worktrees)
+        let nextRequest = Request(catalog: catalogVersion, draft: pickerDraft, createsBot: createsBot, createsTask: createsTask, worktrees: worktrees)
         result?.sessions = orderedSessions
         if nextRequest == request, let result { return result }
         let next = NewSessionChoices(.init(
-            draft: pickerDraft, createsBot: createsBot, machines: snapshot.machines.machines,
+            draft: pickerDraft, createsBot: createsBot, createsTask: createsTask, machines: snapshot.machines.machines,
             sessions: orderedSessions, projectNames: catalog?.projectNames ?? [:],
             agentDefaultOverrides: catalog?.overrides ?? [:], gitWorktrees: worktrees))
         derivationCount += 1

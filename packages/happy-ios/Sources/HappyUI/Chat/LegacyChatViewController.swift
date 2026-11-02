@@ -323,6 +323,11 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
             composeTarget.onSessionKind = { [weak compose] in compose?.setKind($0) }
             composeTarget.onBotName = { [weak compose] in compose?.setBotName($0) ?? $0 }
             composeTarget.onReturn = { [weak self] in self?.composer.focus() }
+            compose.askName = { [weak self] reason in
+                guard let self, !composeTarget.isHidden, composeTarget.sessionKind == .bot else { return false }
+                composeTarget.askName(reason)
+                return true
+            }
             view.addSubview(composeTarget)
             #if DEBUG
             if ComposeTrace.isOn { composeTrace = ComposeTrace(self) }
@@ -976,6 +981,10 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
 
     private func sessionChanged(_ state: ChatSessionState) {
         session = state
+        if awaitingRecord, state.record != nil {
+            awaitingRecord = false
+            awaitingRecordTask.task?.cancel()
+        }
         sessionApplied = true
         rows?.update { $0.session = state }
         updateHeader()
@@ -1082,7 +1091,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         // a stand-in's title is "New chat" for as long as it stands.
         let pending = PendingChats.isPendingChatId(sessionId)
         let headerRecord = session.record ?? (pending ? anchorRecord : nil)
-        var model = ChatHeaderModel(session: headerRecord, dataReady: session.dataReady || isFixture, gitStatus: gitStatus, pending: pending && headerRecord == nil)
+        var model = ChatHeaderModel(session: headerRecord, dataReady: (session.dataReady && !awaitingRecord) || isFixture, gitStatus: gitStatus, pending: pending && headerRecord == nil)
         if pending, model.title != .loading { model.title = .name(nil) }
         var title = switch model.title {
         case .loading: ""
@@ -1095,7 +1104,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         if let checkout {
             title = checkout.workspaceName ?? model.subtitle ?? checkout.projectName
         }
-        if isComposing { title = Strings.Session.newChat }
+        if isComposing || (awaitingRecord && session.record == nil) { title = Strings.Session.newChat }
         navigationItem.title = title
         headerTitle = title
         applyTitleAndStatus()
@@ -1381,6 +1390,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         // computer is asked even on an account with one.
         composeTarget.showsMachine = compose.asksMachine || compose.kind != .session
         composeTarget.machine.title = compose.machineName
+        composeTarget.machine.status = compose.machineStatus
         composeTarget.folder.title = compose.folderName
         // Nothing to run: the row is setup help, as home's dock had it.
         let help = compose.offersHarnessHelp
@@ -1445,6 +1455,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
     /// place, keeping the composer, its keyboard and whatever was typed
     /// since (`becomeChat`).
     private func composeStarted(_ real: String) {
+        awaitRecord()
         becomeChat(real)
         composing?.cancel()
         composing = nil
@@ -1454,6 +1465,31 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         updatePlaceholder()
         list.scrollToNewest(animated: true)
     }
+
+    /// A session this screen just made, whose row the account's home
+    /// snapshot hasn't brought yet: the daemon has answered and the store
+    /// confirmed it (`ensureSessionReady`), but the shared snapshot the chat
+    /// reads can still be the one from before. Until the record is seen,
+    /// a missing one is on its way, not deleted: the chat waits with its
+    /// composer. A record seen and then gone is deleted, as is one that
+    /// never comes.
+    private var awaitingRecord = false
+    private let awaitingRecordTask = TaskHolder()
+    static let recordWait: Duration = .seconds(15)
+
+    private func awaitRecord() {
+        awaitingRecord = true
+        awaitingRecordTask.task = Task { [weak self] in
+            try? await Task.sleep(for: Self.recordWait)
+            guard !Task.isCancelled, let self, self.awaitingRecord else { return }
+            self.awaitingRecord = false
+            self.updateHeader()
+            self.updatePlaceholder()
+        }
+    }
+
+    /// Whether the screen is waiting for its fresh session's row, for tests.
+    var isAwaitingRecord: Bool { awaitingRecord }
 
     private func pendingChatChanged(_ chat: PendingChat?) {
         guard chat != pendingChat else { return }
@@ -1549,6 +1585,9 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         } else if isComposing {
             // The empty chat: the composer, and where it goes.
             content = nil
+        } else if awaitingRecord {
+            // Just made, its row on its way: the composer stays.
+            content = .loading
         } else if isPendingChat {
             // The composer stays: it is the one thing on this screen that
             // survives the chat's arrival.

@@ -80,6 +80,80 @@ final class NewWorkLayoutTests: XCTestCase {
         XCTAssertEqual(layout.block.midY, (106 + 420) / 2, accuracy: 0.001)
     }
 
+    // MARK: A legacy account's Bot, giving way rather than going
+
+    /// A one-line caption (18pt) and the bot's four-line note (72pt).
+    private let caption = Measurable { CGSize(width: $0, height: 18) }
+    private let botNote = Measurable { CGSize(width: $0, height: 72) }
+
+    /// Kind, computer with its offline warning, name with why it's refused,
+    /// and the note.
+    private func bot(top: CGFloat = 103, bottom: CGFloat) -> NewWorkLayout {
+        NewWorkLayout(width: 393, top: top, bottom: bottom, kindHeight: 32,
+                      rows: [.field, .caption(caption), .field, .caption(caption)], note: botNote)
+    }
+
+    /// With room, everything shows, each caption under its row.
+    func testABotShowsEverythingWithRoom() throws {
+        let layout = bot(bottom: 760)
+        XCTAssertTrue(layout.fits)
+        XCTAssertTrue(layout.showsNote)
+        let machine = 32 + M.kindToRows
+        XCTAssertEqual(layout.rows, [
+            CGRect(x: 0, y: machine, width: 320, height: M.rowHeight),
+            CGRect(x: M.captionInset, y: machine + M.rowHeight + M.captionGap, width: 320 - 2 * M.captionInset, height: 18),
+            CGRect(x: 0, y: machine + M.rowHeight + M.captionGap + 18 + M.rowGap, width: 320, height: M.rowHeight),
+            CGRect(x: M.captionInset, y: machine + 2 * M.rowHeight + 2 * M.captionGap + 18 + M.rowGap, width: 320 - 2 * M.captionInset, height: 18),
+        ])
+        let note = try XCTUnwrap(layout.note)
+        XCTAssertEqual(note.minY, layout.rows[3].maxY + M.rowsToNote)
+        XCTAssertEqual(layout.block.height, note.maxY)
+        XCTAssertEqual(layout.block.midY, (103 + 760) / 2, accuracy: 0.001)
+    }
+
+    /// An iPhone 14 Pro with the keyboard and a two-line composer up, or a
+    /// bigger text size: the note goes first, and the kind, the computer
+    /// and the name stay, centred.
+    func testShortOfRoomTheNoteGoesFirst() {
+        let rows = 32 + M.kindToRows + 2 * M.rowHeight + M.rowGap + 2 * (M.captionGap + 18)
+        let layout = bot(bottom: 103 + rows + 2 * M.margin)
+        XCTAssertTrue(layout.fits, "the kind, the computer and the name are on screen")
+        XCTAssertFalse(layout.showsNote)
+        XCTAssertNil(layout.note)
+        XCTAssertNotNil(layout.kind)
+        XCTAssertEqual(layout.rows.count, 4)
+        XCTAssertEqual(layout.block.height, rows)
+    }
+
+    /// Shorter still: the gaps close before anything else goes.
+    func testShorterStillTheGapsClose() throws {
+        let tight = 32 + M.tightKindToRows + 2 * M.rowHeight + M.tightRowGap + 2 * (M.captionGap + 18)
+        let layout = bot(bottom: 103 + tight + 2 * M.margin)
+        XCTAssertTrue(layout.fits)
+        XCTAssertEqual(layout.rows[0].minY, 32 + M.tightKindToRows)
+        XCTAssertEqual(layout.rows.map(\.height), [M.rowHeight, 18, M.rowHeight, 18], "controls keep their height")
+        XCTAssertEqual(layout.block.height, tight)
+        let short = bot(bottom: 103 + tight + 2 * M.margin - 1)
+        XCTAssertFalse(short.fits, "a phone held sideways")
+        XCTAssertEqual(short.block.minY, 103 + M.margin)
+    }
+
+    /// The computer's status is one frame, top-right in the row, whatever
+    /// it says, inside the room the row keeps for it.
+    func testTheStatusIsOneFrameTopRight() {
+        typealias S = NewWorkStatusLayout
+        let frame = S.label(rowWidth: 320)
+        XCTAssertEqual(frame, CGRect(x: 320 - 18 - 112, y: 5, width: 112, height: 14))
+        XCTAssertLessThanOrEqual(frame.maxY, M.rowHeight / 2, "in the row's top half")
+        // A 16pt name, its line box about 19 high, set titleDrop below the
+        // middle, starts under the label.
+        XCTAssertGreaterThanOrEqual(M.rowHeight / 2 + S.titleDrop - 19 / 2, frame.maxY - 1)
+        // Inside the capsule (radius half the row) at its top-right corner.
+        let centre = CGPoint(x: 320 - M.rowHeight / 2, y: M.rowHeight / 2)
+        let corner = CGPoint(x: frame.maxX, y: frame.minY)
+        XCTAssertLessThan(hypot(corner.x - centre.x, corner.y - centre.y), M.rowHeight / 2)
+    }
+
     /// Legacy with two: computer, folder, harness, with gaps between.
     func testTwoComputersAskTheComputerOverTheFolderAndHarness() {
         let layout = NewWorkLayout(width: 393, top: 106, bottom: 420, kindHeight: nil, rows: 3, note: nil)

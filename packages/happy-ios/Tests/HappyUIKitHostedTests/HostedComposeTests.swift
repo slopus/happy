@@ -475,7 +475,8 @@ final class HostedComposeTests: XCTestCase {
         try await until { panel.isHidden }
     }
 
-    /// A bot needs its name: without one it is refused and the text stays;
+    /// A bot needs its name: without one the name field asks for it in
+    /// place (no alert), and the text stays;
     /// named, it is made on Happy Agent, and a face that couldn't be
     /// painted is offered again over the chat.
     func testLegacyBotNeedsItsNameAndTakesTheFirstMessage() async throws {
@@ -499,9 +500,9 @@ final class HostedComposeTests: XCTestCase {
         card.setText("Plan the release", selection: NSRange(location: 16, length: 0))
         card.delegate?.agentInputCardDidChangeText(card)
         card.delegate?.agentInputCardDidPressSend(card)
-        try await until { chat.presentedViewController is UIAlertController }
-        XCTAssertEqual((chat.presentedViewController as? UIAlertController)?.message, "Give the bot a name")
-        try await dismissAlert(on: chat)
+        try await until { panel.name.isFirstResponder }
+        XCTAssertNil(chat.presentedViewController, "asked in place, not in an alert")
+        XCTAssertEqual(panel.validation, "Give the bot a name")
         XCTAssertTrue(chat.isComposing)
         XCTAssertEqual(card.text, "Plan the release", "the text stays to send again")
         XCTAssertTrue(log.spawned.isEmpty)
@@ -510,6 +511,8 @@ final class HostedComposeTests: XCTestCase {
         panel.name.sendActions(for: .editingChanged)
         XCTAssertEqual(start.drafts.botName, "Release Captain")
         XCTAssertEqual(panel.name.text, "Release Captain")
+        let composerView = try XCTUnwrap(Self.subview(SessionComposerView.self, in: chat.view))
+        try await until { !composerView.sending }
         card.delegate?.agentInputCardDidPressSend(card)
         try await until { chat.presentedViewController is UIAlertController }
         let offer = try XCTUnwrap(chat.presentedViewController as? UIAlertController)
