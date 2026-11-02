@@ -464,7 +464,8 @@ class AgentSessionTest {
         eventually({ surfaces(session) }) { it == listOf("s2") }
         eventually({ agent.calls }) { "POST /v0/surfaces/s1/leave" in it }
         // A second press while the first is on its way sends nothing more and shares its answer.
-        val again = async { session.leaveSurface("s1") }
+        // Undispatched, so it is pressed before the gate opens and not after the first is answered.
+        val again = async(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { session.leaveSurface("s1") }
         gate.complete(Unit)
         assertNull(answer.await())
         assertNull(again.await())
