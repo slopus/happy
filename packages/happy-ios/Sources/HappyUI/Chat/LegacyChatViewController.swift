@@ -325,8 +325,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
             composeTarget.onReturn = { [weak self] in self?.composer.focus() }
             compose.askName = { [weak self] reason in
                 guard let self, !composeTarget.isHidden, composeTarget.sessionKind == .bot else { return false }
-                composeTarget.askName(reason)
-                return true
+                return composeTarget.askName(reason)
             }
             view.addSubview(composeTarget)
             #if DEBUG
