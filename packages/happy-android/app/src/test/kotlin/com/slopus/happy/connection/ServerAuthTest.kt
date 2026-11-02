@@ -110,6 +110,7 @@ class ServerAuthTest {
         val pending = auth.begin(origin, method(), redirect)
         assertReason(ServerAuthException.Reason.Expired) { auth.complete(pending, "$redirect?code=abc&state=other") }
         assertReason(ServerAuthException.Reason.Expired) { auth.complete(pending, "com.example.other:/oauth/callback?code=abc&state=${pending.state}") }
+        assertReason(ServerAuthException.Reason.Expired) { auth.complete(pending, "$redirect?code=abc&state=%") }
         assertReason(ServerAuthException.Reason.Denied) { auth.complete(pending, "$redirect?error=access_denied&state=${pending.state}") }
         assertEquals(0, server.requestCount)
 

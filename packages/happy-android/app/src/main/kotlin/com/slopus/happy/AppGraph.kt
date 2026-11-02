@@ -87,7 +87,7 @@ class AppGraph(
     context: Context,
     private val clientId: String,
     defaultServerUrl: String,
-    secureStoreKeys: SecureStoreKeys = AndroidKeyStoreKeys(),
+    secureStoreKeys: SecureStoreKeys = AndroidKeyStoreKeys(strongBox = AndroidKeyStoreKeys.hasStrongBox(context)),
     databaseName: String? = HappyDatabase.NAME,
 ) {
     private val appContext: Context = context.applicationContext ?: context
@@ -377,7 +377,13 @@ class AppGraph(
 
     /** The browser came back to [ServerSignInFlow.REDIRECT_URI] (MainActivity). */
     fun oauthCallback(uri: String) {
-        serverSignInState.value?.callback(uri)
+        // Any app can send the redirect URI: nothing it holds takes the app down.
+        try {
+            serverSignInState.value?.callback(uri)
+        } catch (e: RuntimeException) {
+            // Only the kind: the callback may carry a code.
+            android.util.Log.w("ServerSignIn", "Ignored a callback that couldn't be read: ${e.javaClass.simpleName}")
+        }
     }
 
     /** What the agent lists this phone as: the name the person gave it, else the model. */

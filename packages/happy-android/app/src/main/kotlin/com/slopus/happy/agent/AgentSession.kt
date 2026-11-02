@@ -102,7 +102,7 @@ class AgentSession internal constructor(
     val client: AgentClient = AgentClient.lazy {
         val (credentials, transport) = linkLock.withLock {
             route ?: run {
-                val credentials = connections.credentials(connectionId) ?: throw AgentConnectionException(AgentConnectionException.Reason.Revoked)
+                val credentials = connections.linkCredentials(connectionId) ?: throw AgentConnectionException(AgentConnectionException.Reason.Revoked)
                 (credentials to connections.transport(connectionId, credentials, makeTransport)).also { route = it }
             }
         }

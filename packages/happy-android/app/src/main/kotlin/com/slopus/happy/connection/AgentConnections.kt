@@ -37,6 +37,12 @@ data class AgentConnection(
     val profileRequired: Boolean = false,
     /** Health's `instanceId` when last read: external `happy://<instanceId>/…` links open here (edge SSO §7). */
     val instanceId: String? = null,
+    /**
+     * The team server's member signed in here ([OAuthCredential.userId]). A
+     * connection is one person's on one server: another person signing in
+     * gets one of their own, never this one's sessions, caches or cursor.
+     */
+    val userId: String? = null,
 )
 
 /**
@@ -60,6 +66,8 @@ class AgentConnections(
     /** Team servers' access tokens: in memory only, by connection id. */
     private val tokens = mutableMapOf<String, AccessToken>()
     private val refreshing = mutableMapOf<String, Mutex>()
+    /** Each connection's current grant, counted up by every sign-in: a refresh of an older one is dropped. */
+    private val generations = mutableMapOf<String, Long>()
     private val state = MutableStateFlow(readRegistry())
     private val endpointLock = Any()
     private val endpoints = mutableMapOf<String, AgentEndpoint>()
@@ -83,6 +91,20 @@ class AgentConnections(
 
     /** The credentials of [id], read from the secure store; null when gone. */
     suspend fun credentials(id: String): AgentConnectionCredentials? = withContext(Dispatchers.IO) { read(id) }
+
+    /**
+     * [id]'s credentials to link with. A team server's that are gone (their
+     * Keystore key missing: restored or moved to another phone, which never
+     * carries it) leave it signed out, "Sign in again", rather than revoked.
+     */
+    suspend fun linkCredentials(id: String): AgentConnectionCredentials? {
+        val credentials = credentials(id)
+        if (credentials == null && state.value.firstOrNull { it.id == id }?.server != null) {
+            signedOut(id)
+            throw AgentConnectionException(AgentConnectionException.Reason.SignInRequired)
+        }
+        return credentials
+    }
 
     /**
      * What [id]'s placeholder picture is picked by (happy-ios's
@@ -153,13 +175,21 @@ class AgentConnections(
     /**
      * Keeps a team server signed in with OAuth ([origin], edge SSO): its
      * [credential] (the refresh token, Keystore-encrypted like a device
-     * token) and [access] (in memory). Signing in to a server already on the
-     * phone, or [replacing] one, renews that connection in place. Its name
-     * is the server's own once it answers, else [fallbackName].
+     * token, and who signed in) and [access] (in memory). A connection is
+     * one member's on one server, as on iOS: the same member signing in to
+     * a server already on the phone, or [replacing] one, renews it in place;
+     * another member gets a new connection, and the one they replaced (its
+     * session, caches and cursor) is wiped. Its name is the server's own
+     * once it answers, else [fallbackName].
      */
     suspend fun addServer(origin: AgentOrigin, credential: OAuthCredential, access: AccessToken, fallbackName: String, replacing: String? = null): AgentConnection = lock.withLock {
         withContext(Dispatchers.IO) {
-            val existing = state.value.firstOrNull { it.id == replacing } ?: state.value.firstOrNull { it.server == origin.value }
+            val userId = credential.userId
+            fun sameMember(account: AgentConnection) = userId != null && account.server == origin.value && account.userId == userId
+            val replaced = state.value.firstOrNull { it.id == replacing }
+            val existing = replaced?.takeIf(::sameMember) ?: state.value.firstOrNull(::sameMember)
+            // Another member's: nothing of theirs stays for this one to see.
+            if (replaced != null && replaced.id != existing?.id) forget(replaced)
             val id = existing?.id ?: "agent-connection-${UUID.randomUUID()}"
             val credentials = AgentConnectionCredentials(
                 address = origin.host,
@@ -181,7 +211,10 @@ class AgentConnections(
                 transport.close()
             }
             secrets.setItem(id, json.encodeToString(AgentConnectionCredentials.serializer(), credentials))
-            synchronized(tokens) { tokens[id] = access }
+            synchronized(tokens) {
+                generations[id] = (generations[id] ?: 0) + 1
+                tokens[id] = access
+            }
             val account = keep(
                 AgentConnection(
                     id = id,
@@ -192,6 +225,7 @@ class AgentConnections(
                     addedAt = existing?.addedAt ?: now(),
                     server = origin.value,
                     instanceId = agent?.instanceId ?: existing?.instanceId,
+                    userId = userId,
                 ),
                 agent?.avatar ?: NodeAvatar.Unchanged,
             )
@@ -230,6 +264,7 @@ class AgentConnections(
         val gate = synchronized(tokens) { refreshing.getOrPut(id) { Mutex() } }
         return gate.withLock {
             synchronized(tokens) { tokens[id] }?.takeIf { it.value != stale && fresh(it) }?.let { return@withLock it.value }
+            val generation = synchronized(tokens) { generations[id] }
             val credential = credentials(id)?.oauth ?: throw AgentConnectionException(AgentConnectionException.Reason.SignInRequired)
             val (access, next) = try {
                 serverAuth?.refresh(credential) ?: throw ServerAuthException(ServerAuthException.Reason.SignInRequired)
@@ -237,23 +272,35 @@ class AgentConnections(
                 if (e.reason == ServerAuthException.Reason.Unreachable) {
                     throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
                 }
-                synchronized(tokens) { tokens.remove(id) }
-                signedOut(id)
+                // A sign-in since stands: an older grant's refusal doesn't sign it out.
+                val current = lock.withLock { current(id, generation, credential) }
+                if (current) {
+                    synchronized(tokens) { tokens.remove(id) }
+                    signedOut(id)
+                }
                 throw AgentConnectionException(AgentConnectionException.Reason.SignInRequired).initCause(e)
             }
-            if (next != credential) {
-                // A rotated refresh token: the old one may already be spent.
-                lock.withLock {
+            lock.withLock {
+                // A sign-in landed while this refresh was out: its grant stands, this one is dropped.
+                if (!current(id, generation, credential)) {
+                    return@withLock synchronized(tokens) { tokens[id] }?.value ?: throw AgentConnectionException(AgentConnectionException.Reason.SignInRequired)
+                }
+                if (next != credential) {
+                    // A rotated refresh token: the old one may already be spent.
                     withContext(Dispatchers.IO) {
                         val saved = read(id) ?: return@withContext
                         secrets.setItem(id, json.encodeToString(AgentConnectionCredentials.serializer(), saved.copy(oauth = next)))
                     }
                 }
+                synchronized(tokens) { tokens[id] = access }
+                access.value
             }
-            synchronized(tokens) { tokens[id] = access }
-            access.value
         }
     }
+
+    /** Whether [credential], read at [generation], is still [id]'s grant. Called holding [lock]. */
+    private suspend fun current(id: String, generation: Long?, credential: OAuthCredential): Boolean =
+        synchronized(tokens) { generations[id] } == generation && withContext(Dispatchers.IO) { read(id)?.oauth } == credential
 
     /**
      * [account] with [avatar] in its file: new bytes go to a file named by
@@ -289,12 +336,22 @@ class AgentConnections(
      */
     suspend fun remove(id: String) = lock.withLock {
         withContext(Dispatchers.IO) {
-            synchronized(endpointLock) { endpoints.remove(id) }?.retire()
-            synchronized(tokens) { tokens.remove(id) }
-            secrets.deleteItem(id)
-            state.value.firstOrNull { it.id == id }?.avatarFile?.let { File(it).delete() }
-            write(state.value.filterNot { it.id == id })
+            val account = state.value.firstOrNull { it.id == id }
+            if (account != null) forget(account)
         }
+    }
+
+    /** [account] gone from this phone: its endpoint, tokens, credentials, picture and entry (its session and caches go with the entry, `AgentSessions`). Holding [lock], on IO. */
+    private suspend fun forget(account: AgentConnection) {
+        val id = account.id
+        synchronized(endpointLock) { endpoints.remove(id) }?.retire()
+        synchronized(tokens) {
+            tokens.remove(id)
+            generations.remove(id)
+        }
+        secrets.deleteItem(id)
+        account.avatarFile?.let { File(it).delete() }
+        write(state.value.filterNot { it.id == id })
     }
 
     private fun read(id: String): AgentConnectionCredentials? = try {

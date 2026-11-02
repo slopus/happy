@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 11 and older (android:fullBackupContent): what data_extraction_rules.xml
+  keeps off a new phone on 12+. Backup is off (allowBackup="false"); this holds
+  if it is ever turned on.
+-->
+<full-backup-content>
+    <exclude domain="sharedpref" path="SecureStore.xml" />
+    <exclude domain="sharedpref" path="account-credentials.xml" />
+    <exclude domain="sharedpref" path="agent-connection-credentials.xml" />
+</full-backup-content>

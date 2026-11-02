@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 12+ (android:dataExtractionRules). Credentials never leave this phone:
+  not in a cloud backup (off anyway: allowBackup="false") and not in a transfer to
+  a new phone, which allowBackup doesn't stop on 12+. The Keystore keys that seal
+  them never move either, so a credential that did would read as absent (signed
+  out). backup_rules.xml says the same for Android 11 and older.
+  SecureStore: the Happy account (happy-app's item); account-credentials: the
+  other Happy accounts; agent-connection-credentials: paired agents' device
+  tokens and team servers' refresh tokens.
+-->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="sharedpref" path="SecureStore.xml" />
+        <exclude domain="sharedpref" path="account-credentials.xml" />
+        <exclude domain="sharedpref" path="agent-connection-credentials.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="sharedpref" path="SecureStore.xml" />
+        <exclude domain="sharedpref" path="account-credentials.xml" />
+        <exclude domain="sharedpref" path="agent-connection-credentials.xml" />
+    </device-transfer>
+</data-extraction-rules>

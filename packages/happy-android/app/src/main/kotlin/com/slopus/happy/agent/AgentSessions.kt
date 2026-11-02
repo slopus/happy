@@ -8,6 +8,7 @@ import com.slopus.happy.connection.AgentIdentity
 import com.slopus.happy.connection.AgentConnectionException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
@@ -53,17 +54,19 @@ class AgentSessions(
             }
         }
         scope.launch {
+            var known: Set<String>? = null
             connections.accounts.collect { list ->
                 val ids = list.map { it.id }.toSet()
                 val gone = synchronized(sessions) { sessions.keys.filter { it !in ids }.map { sessions.remove(it)!! } }
-                gone.forEach { session ->
-                    session.close()
-                    cacheFile(session.connectionId)?.let { file ->
-                        file.delete()
-                        // And what is kept beside it: resources and conversations (`AgentSession.keepResource`), pictures.
-                        file.parentFile?.listFiles { f -> f.name.startsWith(file.nameWithoutExtension + ".") }?.forEach { it.deleteRecursively() }
-                    }
+                gone.forEach { it.close() }
+                // Every connection that went, open or not (another member's replaced, one forgotten), and at the
+                // start whatever a connection gone while the app wasn't running left behind.
+                val wiped = known?.let { it - ids }.orEmpty() + gone.map { it.connectionId }
+                withContext(Dispatchers.IO) {
+                    wiped.forEach(::deleteCache)
+                    if (known == null) sweep(ids)
                 }
+                known = ids
             }
         }
     }
@@ -120,6 +123,21 @@ class AgentSessions(
                     makeTransport = makeTransport,
                 )
             }
+        }
+    }
+
+    /** [connectionId]'s catalog and what is kept beside it: resources and conversations (`AgentSession.keepResource`), pictures. */
+    private fun deleteCache(connectionId: String) {
+        val file = cacheFile(connectionId) ?: return
+        file.delete()
+        file.parentFile?.listFiles { f -> f.name.startsWith(file.nameWithoutExtension + ".") }?.forEach { it.deleteRecursively() }
+    }
+
+    /** Deletes the caches of connections not in [ids]. */
+    private fun sweep(ids: Set<String>) {
+        val keep = ids.mapNotNull { cacheFile(it)?.nameWithoutExtension }.toSet()
+        cacheDir?.listFiles()?.forEach { f ->
+            if (f.name.substringBefore('.') !in keep) f.deleteRecursively()
         }
     }
 

@@ -1,9 +1,13 @@
 package com.slopus.happy.auth
 
+import android.content.Context
 import android.content.SharedPreferences
+import android.content.pm.PackageManager
+import android.os.Build
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyPermanentlyInvalidatedException
 import android.security.keystore.KeyProperties
+import android.security.keystore.StrongBoxUnavailableException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -15,6 +19,7 @@ import java.security.GeneralSecurityException
 import java.security.KeyStore
 import java.security.NoSuchAlgorithmException
 import java.security.PrivateKey
+import java.security.ProviderException
 import java.util.Base64
 import javax.crypto.BadPaddingException
 import javax.crypto.Cipher
@@ -38,23 +43,43 @@ interface SecureStoreKeys {
     fun delete(alias: String)
 }
 
-class AndroidKeyStoreKeys : SecureStoreKeys {
+/**
+ * Keys in the Android Keystore: never exportable, and gone when the app is
+ * uninstalled or its data moves to another phone (a backup or a transfer
+ * never carries them), so what they sealed then reads as absent. With
+ * [strongBox] (the phone has a StrongBox Keymaster) a new key is made in
+ * it, else in the TEE.
+ */
+class AndroidKeyStoreKeys(
+    private val strongBox: Boolean = false,
+    /** Makes the key [spec] describes in the Keystore; swapped in tests. */
+    private val generate: (KeyGenParameterSpec) -> Unit = { spec ->
+        KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, PROVIDER).run {
+            init(spec)
+            generateKey()
+        }
+    },
+) : SecureStoreKeys {
     private val keyStore: KeyStore by lazy { KeyStore.getInstance(PROVIDER).apply { load(null) } }
 
     override fun secretKey(alias: String): SecretKey? = entry<KeyStore.SecretKeyEntry>(alias)?.secretKey
 
     override fun createSecretKey(alias: String): SecretKey {
-        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, keyStore.provider)
-        generator.init(
-            KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
-                .setKeySize(256)
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setUserAuthenticationRequired(false)
-                .build(),
-        )
-        generator.generateKey()
+        makeKey(alias)
         return secretKey(alias) ?: throw GeneralSecurityException("Could not retrieve the newly generated secret key entry")
+    }
+
+    /** The key under [alias]: in StrongBox when asked for, and in the TEE when StrongBox can't make it. */
+    internal fun makeKey(alias: String) {
+        if (strongBox && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            try {
+                return generate(spec(alias, strongBox = true))
+            } catch (e: ProviderException) {
+                // StrongBox can't make it: the TEE does.
+                if (e !is StrongBoxUnavailableException) throw e
+            }
+        }
+        generate(spec(alias, strongBox = false))
     }
 
     override fun privateKey(alias: String): PrivateKey? = entry<KeyStore.PrivateKeyEntry>(alias)?.privateKey
@@ -67,8 +92,27 @@ class AndroidKeyStoreKeys : SecureStoreKeys {
             ?: throw GeneralSecurityException("The entry for the keystore alias \"$alias\" is not a ${E::class.java.simpleName}")
     }
 
-    private companion object {
-        const val PROVIDER = "AndroidKeyStore"
+    companion object {
+        private const val PROVIDER = "AndroidKeyStore"
+
+        /**
+         * AESEncryptor.initializeKeyStoreEntry's key: AES-256, GCM, no
+         * padding, a fresh IV each time, and no user authentication (no
+         * biometry), in StrongBox when [strongBox].
+         */
+        fun spec(alias: String, strongBox: Boolean): KeyGenParameterSpec =
+            KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+                .setKeySize(256)
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setRandomizedEncryptionRequired(true)
+                .setUserAuthenticationRequired(false)
+                .apply { if (strongBox && Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) setIsStrongBoxBacked(true) }
+                .build()
+
+        /** Whether this phone has a StrongBox Keymaster to keep keys in. */
+        fun hasStrongBox(context: Context): Boolean =
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && context.packageManager.hasSystemFeature(PackageManager.FEATURE_STRONGBOX_KEYSTORE)
     }
 }
 

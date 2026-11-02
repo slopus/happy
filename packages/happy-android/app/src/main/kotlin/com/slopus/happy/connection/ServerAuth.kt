@@ -112,6 +112,8 @@ data class OAuthCredential(
     val refreshUrl: String? = null,
     val refreshToken: String? = null,
     val resource: String? = null,
+    /** Who signed in: `GET /v0/authentication`'s `userId`, once the member has a profile. */
+    val userId: String? = null,
 ) {
     val canRefresh: Boolean get() = refreshUrl != null && refreshToken != null
     override fun toString() = "OAuthCredential(methodId=$methodId, clientId=$clientId, canRefresh=$canRefresh)"
@@ -256,7 +258,7 @@ class ServerAuthClient(
      */
     suspend fun complete(pending: PendingOAuth, callback: String): Pair<OAuthGrant, OAuthCredential> {
         if (!pending.isCallback(callback)) throw ServerAuthException(ServerAuthException.Reason.Expired)
-        val query = query(callback)
+        val query = query(callback) ?: throw ServerAuthException(ServerAuthException.Reason.Expired)
         if (query["state"] != pending.state) throw ServerAuthException(ServerAuthException.Reason.Expired)
         if (query["error"] != null) throw ServerAuthException(ServerAuthException.Reason.Denied)
         val code = query["code"]?.takeIf { it.isNotEmpty() } ?: throw ServerAuthException(ServerAuthException.Reason.Denied)
@@ -356,16 +358,24 @@ class ServerAuthClient(
             }
         }
 
-        /** A callback's query parameters, decoded; the first of each name. */
-        internal fun query(callback: String): Map<String, String> {
+        /**
+         * A callback's query parameters, decoded; the first of each name.
+         * Null for a malformed one (a bad escape): any app can send the
+         * redirect URI, so it is never trusted to parse.
+         */
+        internal fun query(callback: String): Map<String, String>? {
             val raw = callback.substringAfter('?', "").substringBefore('#')
             if (raw.isEmpty()) return emptyMap()
-            return raw.split('&').mapNotNull { part ->
-                if (part.isEmpty()) return@mapNotNull null
-                val name = URLDecoder.decode(part.substringBefore('='), "UTF-8")
-                val value = URLDecoder.decode(part.substringAfter('=', ""), "UTF-8")
-                name to value
-            }.distinctBy { it.first }.toMap()
+            return try {
+                raw.split('&').mapNotNull { part ->
+                    if (part.isEmpty()) return@mapNotNull null
+                    val name = URLDecoder.decode(part.substringBefore('='), "UTF-8")
+                    val value = URLDecoder.decode(part.substringAfter('=', ""), "UTF-8")
+                    name to value
+                }.distinctBy { it.first }.toMap()
+            } catch (_: IllegalArgumentException) {
+                null
+            }
         }
 
         /**

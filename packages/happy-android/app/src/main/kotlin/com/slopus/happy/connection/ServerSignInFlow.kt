@@ -58,6 +58,9 @@ class ServerSignInFlow(
 
     /** This grant's health named [expectedInstance] ([verify]). */
     private var verified = false
+
+    /** Who this grant signed in, once the server says (a new member: after their name is saved). */
+    private var member: String? = null
     private var job: Job? = null
 
     /**
@@ -106,7 +109,8 @@ class ServerSignInFlow(
     fun callback(uri: String) {
         val pending = pending ?: return
         // A page left open from an earlier try comes back with another state: not this sign-in's.
-        if (!pending.isCallback(uri) || ServerAuthClient.query(uri)["state"] != pending.state || mutableState.value !is ServerSignInState.InBrowser) return
+        // A malformed one (any app can send it) is not this sign-in's either.
+        if (!pending.isCallback(uri) || ServerAuthClient.query(uri)?.get("state") != pending.state || mutableState.value !is ServerSignInState.InBrowser) return
         this.pending = null
         val server = pending.origin.value
         mutableState.value = ServerSignInState.Finishing(server)
@@ -116,6 +120,7 @@ class ServerSignInFlow(
             verified = false
             val (authenticated, userId) = auth.check(pending.origin, signedIn.first.access.value)
             if (!authenticated) throw ServerAuthException(ServerAuthException.Reason.Rejected)
+            member = userId
             if (userId != null) return@run finish()
             // A new member: checked before the name, so none is saved on another server, unless health is behind the profile gate too.
             verify(pending.origin, signedIn.first.access.value, beforeProfile = true)
@@ -193,7 +198,10 @@ class ServerSignInFlow(
         }
         val (granted, credential) = grant ?: return
         if (!verified) verify(origin, granted.access.value)
-        val account = connections.addServer(origin, credential, granted.access, fallbackName = origin.host, replacing = replacing)
+        // Kept as this member's: another's connection on this server is never reused.
+        val userId = member ?: auth.check(origin, granted.access.value).let { (authenticated, userId) -> userId.takeIf { authenticated } }
+            ?: throw ServerAuthException(ServerAuthException.Reason.Rejected)
+        val account = connections.addServer(origin, credential.copy(userId = userId), granted.access, fallbackName = origin.host, replacing = replacing)
         grant = null
         mutableState.value = ServerSignInState.Done(account)
     }
