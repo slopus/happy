@@ -40,6 +40,8 @@ final class MonitorViewController: UIViewController, UISearchResultsUpdating, UI
     struct Output: Sendable {
         var items: [CardItem]
         var width: CGFloat
+        /// The same items at another width, for a width change.
+        var replan: @Sendable (CGFloat) -> [CardItem]
     }
 
     init(session: Session, surface: AgentWire.Surface) {
@@ -188,13 +190,21 @@ final class MonitorViewController: UIViewController, UISearchResultsUpdating, UI
         var input = input
         input.now = (input.state.sample?.sampledAt ?? 0) / 1000
         var table = input.state.processes.continuing(applied.table)
+        let planned = table
         let next = MonitorListItems.items(input, table: &table)
         var counter = applied.counter
         let items = CardItems.revise(next, previous: applied.items, counter: &counter)
         let order = items.map(\.id)
         let state = Applied(items: Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }), order: order, counter: counter, table: table)
         guard order != applied.order || items.contains(where: { applied.items[$0.id]?.revision != $0.revision }) else { return nil }
-        return (Output(items: items, width: input.width), state)
+        let fixedInput = input
+        let replan: @Sendable (CGFloat) -> [CardItem] = { width in
+            var input = fixedInput
+            input.width = width
+            var table = planned
+            return MonitorListItems.items(input, table: &table)
+        }
+        return (Output(items: items, width: input.width, replan: replan), state)
     }
 
     /// The longest a result took to apply on the main thread, in ms.
@@ -203,7 +213,7 @@ final class MonitorViewController: UIViewController, UISearchResultsUpdating, UI
     private func show(_ output: Output) -> Bool {
         guard output.width == list.contentWidth else { return false }
         let start = CACurrentMediaTime()
-        list.apply(output.items, animated: false)
+        list.apply(output.items, animated: false, replan: output.replan)
         longestApply = max(longestApply, (CACurrentMediaTime() - start) * 1000)
         return true
     }

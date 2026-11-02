@@ -113,28 +113,51 @@ final class CardListRow: ListRow {
     let item: CardItem
     let node: NodeRow
     weak var owner: CardListView?
+    /// The screen's items at another width (`CardListView.replan`).
+    var replan: ListReplan<CardItem>? { owner?.replan }
     var measuresAsynchronously: Bool { true }
+    /// A heading is one line at any width. A row or a note may wrap; once
+    /// prepared, a row says so itself (its root's height is in points).
+    var hasFixedHeight: Bool { item.kind == .heading }
 
     init(item: CardItem, owner: CardListView) {
         identity = item.id
         revision = item.revision
         self.item = item
         self.owner = owner
-        let drawing = CardNodeDrawing(drawing: item.drawing)
-        let height = item.size.height
-        node = NodeRow(identity: item.id, revision: item.revision) {
-            var style = Style()
-            style.height = .points(height)
-            let root = UltraNode(style: style)
-            root.drawing = drawing
-            return root
+        node = NodeRow(identity: item.id, revision: item.revision) { Self.root(item) }
+    }
+
+    private nonisolated static func root(_ item: CardItem) -> UltraNode {
+        var style = Style()
+        style.height = .points(item.size.height)
+        let root = UltraNode(style: style)
+        root.drawing = CardNodeDrawing(drawing: item.drawing)
+        return root
+    }
+
+    /// The item as the list shows it at `width`: its own, or the one made
+    /// there for a width change, once it is made.
+    func item(at width: Double) -> CardItem {
+        guard abs(width - item.size.width) > 0.5, let replan else { return item }
+        return replan.made(identity, width: CGFloat(width)) ?? item
+    }
+
+    /// The node row at `width`: its own, or one that makes the item again
+    /// there before it is measured and drawn.
+    private func node(at width: Double) -> NodeRow {
+        guard let replan, abs(width - item.size.width) > 0.5 else { return node }
+        let id = identity, kept = item
+        return NodeRow(identity: identity, revision: revision) {
+            Self.root(replan.value(id, width: CGFloat(width)) ?? kept)
         }
     }
 
     var trailingSwipeActions: [ListSwipeAction] { owner?.swipeActions?(identity) ?? [] }
     var leadingSwipeActions: [ListSwipeAction] { owner?.leadingSwipeActions?(identity) ?? [] }
 
-    func prepare(width: Double, environment: RenderEnvironment) async -> ListPreparation? { await node.prepare(width: width, environment: environment) }
+    func prepare(width: Double, environment: RenderEnvironment) async -> ListPreparation? { await node(at: width).prepare(width: width, environment: environment) }
+    func prepareInPlace(width: Double, environment: RenderEnvironment) -> ListInPlacePreparation? { node(at: width).prepareInPlace(width: width, environment: environment) }
     func makeView() -> ListRowView { CardListRowView(row: self) }
     func apply(to view: ListRowView, transition: ListTransition) { (view as? CardListRowView)?.apply(self, transition: transition) }
 }
@@ -144,6 +167,9 @@ final class CardListRow: ListRow {
 @MainActor
 final class CardListRowView: ListRowView, UIContextMenuInteractionDelegate, UIGestureRecognizerDelegate {
     private(set) var row: CardListRow
+    /// What the slot shows: its row's item, or the one a width change made
+    /// for it (`CardListRow.item(at:)`).
+    private var shown: CardItem
     /// Clips the card's part to the row: the part is drawn a radius
     /// taller on the side it joins the next row, so a row shorter than
     /// two radii still rounds its own corners whole.
@@ -161,6 +187,7 @@ final class CardListRowView: ListRowView, UIContextMenuInteractionDelegate, UIGe
 
     init(row: CardListRow) {
         self.row = row
+        shown = row.item
         drawingView = row.node.makeView()
         super.init(frame: .zero)
         clip.clipsToBounds = true
@@ -186,10 +213,15 @@ final class CardListRowView: ListRowView, UIContextMenuInteractionDelegate, UIGe
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     func apply(_ next: CardListRow, transition: ListTransition) {
-        let previous = row
+        let previous = shown
         row = next
         next.node.apply(to: drawingView, transition: transition)
-        if previous.item.overlays != next.item.overlays || previous.identity != next.identity {
+        show(next.item, replacing: previous)
+    }
+
+    private func show(_ item: CardItem, replacing previous: CardItem) {
+        shown = item
+        if previous.overlays != item.overlays || previous.id != item.id {
             for view in overlays.values { view.removeFromSuperview() }
             overlays = [:]
         }
@@ -201,7 +233,7 @@ final class CardListRowView: ListRowView, UIContextMenuInteractionDelegate, UIGe
     func overlay(_ key: String) -> UIView? { overlays[key] }
 
     private func applyRow() {
-        let item = row.item
+        let item = shown
         clip.isHidden = item.card == nil
         var corners: CACornerMask = []
         if item.place.first { corners.formUnion([.layerMinXMinYCorner, .layerMaxXMinYCorner]) }
@@ -240,32 +272,37 @@ final class CardListRowView: ListRowView, UIContextMenuInteractionDelegate, UIGe
         super.layoutSubviews()
         content.frame = bounds
         drawingView.frame = bounds
-        let box = row.item.card.map { CGRect(x: $0.minX, y: 0, width: $0.width, height: bounds.height) } ?? .zero
+        let box = shown.card.map { CGRect(x: $0.minX, y: 0, width: $0.width, height: bounds.height) } ?? .zero
         clip.frame = box
-        let place = row.item.place
+        let place = shown.place
         let radius = CardListMetrics.radius
         let above: CGFloat = place.first ? 0 : radius
         let below: CGFloat = place.last ? 0 : radius
         let part = CGRect(x: 0, y: -above, width: box.width, height: box.height + above + below)
         card.frame = part
         pressFill.frame = part
-        for overlay in row.item.overlays {
+        for overlay in shown.overlays {
             overlays[overlay.key]?.frame = overlay.frame
         }
     }
 
     override func applyPreparation(_ preparation: ListPreparation, width: Double, environment: RenderEnvironment) {
         drawingView.applyPreparation(preparation, width: width, environment: environment)
+        // Drawn for a width change: the card and the screen's views follow
+        // the drawing in the same pass.
+        let item = row.item(at: width)
+        guard abs(item.size.width - shown.size.width) > 0.5 else { return }
+        show(item, replacing: shown)
     }
 
-    override func update(width: Double, transition: ListTransition) -> Double { row.item.size.height }
+    override func update(width: Double, transition: ListTransition) -> Double { shown.size.height }
 
     // MARK: Touch
 
     /// iOS's cell timings: the fill comes in quickly and leaves slowly.
     private func setPressed(_ pressed: Bool, animated: Bool) {
         self.pressed = pressed
-        let alpha: CGFloat = pressed && row.item.opens ? 1 : 0
+        let alpha: CGFloat = pressed && shown.opens ? 1 : 0
         guard pressFill.alpha != alpha else { return }
         guard animated else { pressFill.layer.removeAllAnimations(); pressFill.alpha = alpha; return }
         UIView.animate(withDuration: alpha > 0 ? RowHighlight.fadeIn : RowHighlight.fadeOut, delay: 0, options: [.beginFromCurrentState, .curveEaseOut]) {
@@ -275,7 +312,7 @@ final class CardListRowView: ListRowView, UIContextMenuInteractionDelegate, UIGe
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
         super.touchesBegan(touches, with: event)
-        if row.item.opens { setPressed(true, animated: true) }
+        if shown.opens { setPressed(true, animated: true) }
     }
 
     override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
@@ -303,13 +340,13 @@ final class CardListRowView: ListRowView, UIContextMenuInteractionDelegate, UIGe
     }
 
     @objc private func tapped() {
-        guard row.item.opens else { return }
+        guard shown.opens else { return }
         if let selectAt = row.owner?.onSelectAt { return selectAt(row.identity, tap.location(in: self)) }
         row.owner?.onSelect?(row.identity)
     }
 
     override func accessibilityActivate() -> Bool {
-        guard row.item.opens else { return false }
+        guard shown.opens else { return false }
         row.owner?.onSelect?(row.identity)
         return true
     }
@@ -322,7 +359,7 @@ final class CardListRowView: ListRowView, UIContextMenuInteractionDelegate, UIGe
     }
 
     func contextMenuInteraction(_ interaction: UIContextMenuInteraction, previewForHighlightingMenuWithConfiguration configuration: UIContextMenuConfiguration) -> UITargetedPreview? {
-        guard let box = row.item.card, window != nil else { return nil }
+        guard let box = shown.card, window != nil else { return nil }
         let parameters = UIPreviewParameters()
         parameters.visiblePath = UIBezierPath(roundedRect: CGRect(x: box.minX, y: 0, width: box.width, height: bounds.height), cornerRadius: CardListMetrics.radius)
         parameters.backgroundColor = UIColor(Palette.groupedCard)
@@ -359,6 +396,10 @@ final class CardListView: UIView {
     var onScroll: (() -> Void)?
 
     private(set) var items: [CardItem] = []
+    /// The items at another width, for a width change that lays the rows
+    /// on screen out again before the screen derives them there; nil keeps
+    /// their drawings as they are, at the new width.
+    private(set) var replan: ListReplan<CardItem>?
     private var rows: [String: CardListRow] = [:]
     private var tops: [CGFloat] = []
     private(set) var contentInsets = UIEdgeInsets.zero
@@ -409,17 +450,27 @@ final class CardListView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         let column = CGRect(x: ((bounds.width - contentWidth) / 2).rounded(.down), y: 0, width: contentWidth, height: bounds.height)
-        if edge.frame != column {
-            edge.frame = column
-            list.frame = CGRect(origin: edge.bounds.origin, size: column.size)
-            list.applyChanges(newSize: column.size, transition: .none)
-        }
+        resizeList()
         placeSpinner()
     }
 
+    /// The list in its column, laid out now: a new width goes in place, on
+    /// the curve of the animation it is in, before an apply that brings
+    /// rows or insets.
+    private func resizeList() {
+        let column = CGRect(x: ((bounds.width - contentWidth) / 2).rounded(.down), y: 0, width: contentWidth, height: bounds.height)
+        guard column.width > 0 else { return }
+        if edge.frame != column { edge.frame = column }
+        list.resize(to: CGRect(origin: edge.bounds.origin, size: column.size))
+    }
+
     /// Shows `next`, worked out off the main thread at this list's width.
-    /// Rows whose revision didn't move are kept as they are.
-    func apply(_ next: [CardItem], animated: Bool) {
+    /// Rows whose revision didn't move are kept as they are. `replan` makes
+    /// the same items at another width, off the main thread.
+    func apply(_ next: [CardItem], animated: Bool, replan: (@Sendable (CGFloat) -> [CardItem])? = nil) {
+        self.replan = replan.map { replan in
+            ListReplan { width in Dictionary(replan(width).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }) }
+        }
         let previousIDs = items.map(\.id)
         var shown: [any ListRow] = []
         var kept: [String: CardListRow] = [:]
@@ -437,6 +488,7 @@ final class CardListView: UIView {
         tops = next.map { item in defer { y += item.size.height }; return y }
         let structural = previousIDs != next.map(\.id)
         let moves = animated && structural && !previousIDs.isEmpty && window != nil && !UIAccessibility.isReduceMotionEnabled
+        resizeList()
         ApplyPerf.measure(.screen) {
             list.applyChanges(items: shown, newSize: listSize, anchorMode: .automatic, transition: moves ? .easeInOut(0.25) : .none)
             return touched
@@ -470,6 +522,7 @@ final class CardListView: UIView {
     private func applyInsets(animated: Bool, keepsTop: Bool = true) {
         let top = contentInsets.top + refreshRoom
         edge.contentInset = UIEdgeInsets(top: top, left: 0, bottom: contentInsets.bottom, right: 0)
+        resizeList()
         list.applyChanges(newSize: listSize, newInsets: .init(top: top, bottom: contentInsets.bottom), anchorMode: keepsTop ? .automatic : .preserveVisibleContent, compensatesInsetChange: keepsTop, transition: animated && window != nil ? .easeInOut(0.3) : .none)
         mirror()
     }

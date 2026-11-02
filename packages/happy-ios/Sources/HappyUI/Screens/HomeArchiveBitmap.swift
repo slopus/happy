@@ -35,17 +35,23 @@ final class HomeArchiveBitmapView: ListRowView {
         self.plan = plan
         super.init(frame: .zero)
         isUserInteractionEnabled = false
+        // A bitmap drawn for another width keeps its size at the leading
+        // edge until its redraw, as UltraView keeps a node row's: stretched,
+        // its text and avatar would change shape.
+        layer.contentsGravity = effectiveUserInterfaceLayoutDirection == .rightToLeft ? .right : .left
         apply(plan: plan, bitmap: bitmap)
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
+    /// A plan without its bitmap keeps showing the last one until it is
+    /// drawn, so the row doesn't blank between them.
     func apply(plan: HomeRowDrawing, bitmap: HomeArchiveBitmap?) {
         generation += 1; render?.cancel(); render = nil
         self.plan = plan; ready = false
         if let bitmap { show(bitmap) }
-        else { layer.contents = nil; drawIfVisible() }
+        else { drawIfVisible() }
     }
 
     override func didMoveToWindow() { super.didMoveToWindow(); drawIfVisible() }

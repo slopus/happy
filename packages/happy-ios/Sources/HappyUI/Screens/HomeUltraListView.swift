@@ -16,8 +16,14 @@ final class HomeUltraRow: ListRow {
     let revision: UInt64
     let node: NodeRow
     let plan: HomeRowDrawing
+    /// The width `plan` was made at.
+    let plannedWidth: CGFloat
+    /// Makes the row's plan at another width, off the main thread, for a
+    /// width change that lays the rows out again before home plans them.
+    let replan: (@Sendable (CGFloat) -> HomeRowDrawing)?
+    private let replanned = ReplannedAtWidth<HomeRowDrawing>()
     let selected: Bool
-    let makeOverlay: @MainActor () -> UIView
+    let makeOverlay: @MainActor (HomeRowDrawing) -> UIView
     let select: (@MainActor () -> Void)?
     let longPress: (@MainActor () -> Void)?
     let archive: (@MainActor () -> Void)?
@@ -28,6 +34,9 @@ final class HomeUltraRow: ListRow {
     let usesArchiveBitmap: Bool
     let selectsOnRelease: Bool
     var measuresAsynchronously: Bool { !usesArchiveBitmap }
+    /// A home row is lines of one-line text in a box of its own height, at
+    /// any width; the banner over them wraps.
+    let hasFixedHeight: Bool
     var trailingSwipeActions: [ListSwipeAction] {
         guard let archive else { return [] }
         if leaves {
@@ -36,8 +45,9 @@ final class HomeUltraRow: ListRow {
         return [ListSwipeAction(title: Strings.SessionInfo.archiveSession, image: .icon(.ionicons("archive-outline"), size: 20), color: UIColor(Palette.statusError), isDestructive: true) { archive() }]
     }
 
-    init(identity: String, revision: UInt64, plan: HomeRowDrawing, selected: Bool = false,
-         makeOverlay: @escaping @MainActor () -> UIView,
+    init(identity: String, revision: UInt64, plan: HomeRowDrawing, plannedWidth: CGFloat? = nil,
+         replan: (@Sendable (CGFloat) -> HomeRowDrawing)? = nil, hasFixedHeight: Bool = true, selected: Bool = false,
+         makeOverlay: @escaping @MainActor (HomeRowDrawing) -> UIView,
          select: (@MainActor () -> Void)? = nil, longPress: (@MainActor () -> Void)? = nil,
          archive: (@MainActor () -> Void)? = nil, leaves: Bool = false, createWorkspace: (@MainActor () -> Void)? = nil,
          usesArchiveBitmap: Bool = false, archiveBitmap: HomeArchiveBitmap? = nil, selectsOnRelease: Bool = false) {
@@ -46,17 +56,37 @@ final class HomeUltraRow: ListRow {
         self.archive = archive; self.leaves = leaves; self.createWorkspace = createWorkspace
         self.usesArchiveBitmap = usesArchiveBitmap; self.archiveBitmap = archiveBitmap
         self.selectsOnRelease = selectsOnRelease
-        let content = HomeNodeDrawing(plan: plan)
-        node = NodeRow(identity: identity, revision: revision) {
-            var style = Style()
-            style.height = .points(plan.size.height)
-            let root = UltraNode(style: style)
-            root.drawing = content
-            return root
+        self.plannedWidth = plannedWidth ?? plan.size.width; self.replan = replan; self.hasFixedHeight = hasFixedHeight
+        node = NodeRow(identity: identity, revision: revision) { Self.root(plan) }
+    }
+
+    private nonisolated static func root(_ plan: HomeRowDrawing) -> UltraNode {
+        var style = Style()
+        style.height = .points(plan.size.height)
+        let root = UltraNode(style: style)
+        root.drawing = HomeNodeDrawing(plan: plan)
+        return root
+    }
+
+    /// The plan the row shows at `width`: its own, or the one made there.
+    func plan(at width: Double) -> HomeRowDrawing {
+        abs(width - plannedWidth) <= 0.5 ? plan : replanned.plan(at: width) ?? plan
+    }
+
+    /// The node row at `width`: its own, or one that plans the row again
+    /// there before it is measured and drawn.
+    private func node(at width: Double) -> NodeRow {
+        guard let replan, abs(width - plannedWidth) > 0.5 else { return node }
+        let replanned = replanned
+        return NodeRow(identity: identity, revision: revision) {
+            let plan = replan(CGFloat(width))
+            replanned.store(plan, width: width)
+            return Self.root(plan)
         }
     }
 
-    func prepare(width: Double, environment: RenderEnvironment) async -> ListPreparation? { await node.prepare(width: width, environment: environment) }
+    func prepare(width: Double, environment: RenderEnvironment) async -> ListPreparation? { await node(at: width).prepare(width: width, environment: environment) }
+    func prepareInPlace(width: Double, environment: RenderEnvironment) -> ListInPlacePreparation? { node(at: width).prepareInPlace(width: width, environment: environment) }
     func makeView() -> ListRowView { HomeUltraRowView(row: self) }
     func apply(to view: ListRowView, transition: ListTransition) { (view as? HomeUltraRowView)?.apply(self, transition: transition) }
 }
@@ -67,6 +97,9 @@ final class HomeUltraRow: ListRow {
 @MainActor
 private final class HomeUltraRowView: ListRowView, UIGestureRecognizerDelegate {
     private var row: HomeUltraRow
+    /// What the row shows: its plan, or the one a width change made for it
+    /// (`HomeUltraRow.plan(at:)`).
+    private var plan: HomeRowDrawing
     private let background = UIView()
     private let pressFill = UIView()
     /// The drawing and its overlay, dimmed together.
@@ -109,8 +142,9 @@ private final class HomeUltraRowView: ListRowView, UIGestureRecognizerDelegate {
 
     init(row: HomeUltraRow) {
         self.row = row
+        plan = row.plan
         drawingView = row.usesArchiveBitmap ? HomeArchiveBitmapView(plan: row.plan, bitmap: row.archiveBitmap) : row.node.makeView()
-        overlayView = row.makeOverlay()
+        overlayView = row.makeOverlay(row.plan)
         super.init(frame: .zero)
         clipsToBounds = true
         for view in [background, pressFill, content] { view.isUserInteractionEnabled = view === content; addSubview(view) }
@@ -133,6 +167,7 @@ private final class HomeUltraRowView: ListRowView, UIGestureRecognizerDelegate {
     func apply(_ next: HomeUltraRow, transition: ListTransition) {
         let changesDrawingKind = row.usesArchiveBitmap != next.usesArchiveBitmap
         row = next
+        plan = next.plan
         if changesDrawingKind {
             drawingView.removeFromSuperview()
             drawingView = next.usesArchiveBitmap ? HomeArchiveBitmapView(plan: next.plan, bitmap: next.archiveBitmap) : next.node.makeView()
@@ -143,27 +178,31 @@ private final class HomeUltraRowView: ListRowView, UIGestureRecognizerDelegate {
         } else {
             next.node.apply(to: drawingView, transition: transition)
         }
-        (overlayView as? HomeUltraOverlay)?.deactivate()
-        overlayView.removeFromSuperview(); overlayView = next.makeOverlay()
-        content.addSubview(overlayView)
+        replaceOverlay()
         applyRow(); setNeedsLayout()
+    }
+
+    private func replaceOverlay() {
+        (overlayView as? HomeUltraOverlay)?.deactivate()
+        overlayView.removeFromSuperview(); overlayView = row.makeOverlay(plan)
+        content.addSubview(overlayView)
     }
 
     private func applyRow() {
         // The page, then the row's part of its card over it. As the iPad's
         // sidebar there is no page: the system's sidebar shows through.
-        let page = row.plan.background.flatMap { traitCollection.isSidebarColumn && Self.grounds.contains($0) ? nil : $0 }
-        if let card = row.plan.card {
-            backgroundColor = page.map(row.plan.resolved)
-            background.backgroundColor = row.plan.resolved(card.color)
+        let page = plan.background.flatMap { traitCollection.isSidebarColumn && Self.grounds.contains($0) ? nil : $0 }
+        if let card = plan.card {
+            backgroundColor = page.map(plan.resolved)
+            background.backgroundColor = plan.resolved(card.color)
         } else {
             backgroundColor = nil
-            background.backgroundColor = page.map(row.plan.resolved)
+            background.backgroundColor = page.map(plan.resolved)
         }
         for view in [background, pressFill] {
             var corners: CACornerMask = []
-            if row.plan.card?.roundsTop == true { corners.formUnion([.layerMinXMinYCorner, .layerMaxXMinYCorner]) }
-            if row.plan.card?.roundsBottom == true { corners.formUnion([.layerMinXMaxYCorner, .layerMaxXMaxYCorner]) }
+            if plan.card?.roundsTop == true { corners.formUnion([.layerMinXMinYCorner, .layerMaxXMinYCorner]) }
+            if plan.card?.roundsBottom == true { corners.formUnion([.layerMinXMaxYCorner, .layerMaxXMaxYCorner]) }
             view.layer.cornerCurve = .continuous
             view.layer.cornerRadius = corners.isEmpty ? 0 : HomeCardLayout.Metrics.radius
             view.layer.maskedCorners = corners
@@ -176,9 +215,9 @@ private final class HomeUltraRowView: ListRowView, UIGestureRecognizerDelegate {
     }
 
     private func applyAccessibility() {
-        isAccessibilityElement = !row.plan.accessibilityLabel.isEmpty
-        accessibilityLabel = row.plan.accessibilityLabel; accessibilityValue = row.plan.accessibilityValue
-        accessibilityTraits = row.plan.isHeading ? .header : row.select == nil ? .staticText : .button
+        isAccessibilityElement = !plan.accessibilityLabel.isEmpty
+        accessibilityLabel = plan.accessibilityLabel; accessibilityValue = plan.accessibilityValue
+        accessibilityTraits = plan.isHeading ? .header : row.select == nil ? .staticText : .button
         if row.selected { accessibilityTraits.insert(.selected) }
         var actions: [UIAccessibilityCustomAction] = []
         if row.longPress != nil {
@@ -187,7 +226,7 @@ private final class HomeUltraRowView: ListRowView, UIGestureRecognizerDelegate {
             }))
         }
         if row.createWorkspace != nil {
-            actions.append(UIAccessibilityCustomAction(name: Strings.Home.createWorkspaceIn(row.plan.accessibilityLabel), actionHandler: { [weak self] _ in
+            actions.append(UIAccessibilityCustomAction(name: Strings.Home.createWorkspaceIn(plan.accessibilityLabel), actionHandler: { [weak self] _ in
                 self?.row.createWorkspace?(); return self?.row.createWorkspace != nil
             }))
         }
@@ -197,10 +236,10 @@ private final class HomeUltraRowView: ListRowView, UIGestureRecognizerDelegate {
     /// The table's timings: a dim flips, a fill fades up in 70ms and away
     /// over 240ms (RowHighlight).
     private func showPress(animated: Bool) {
-        let press = pressed && row.select != nil ? row.plan.press : .none
+        let press = pressed && row.select != nil ? plan.press : .none
         content.alpha = press == .dim ? 0.5 : 1
         var fill: CGFloat = 0
-        if case .fill(let color) = press { pressFill.backgroundColor = row.plan.resolved(color); fill = 1 }
+        if case .fill(let color) = press { pressFill.backgroundColor = plan.resolved(color); fill = 1 }
         guard pressFill.alpha != fill else { return }
         guard animated else { pressFill.layer.removeAllAnimations(); pressFill.alpha = fill; return }
         UIView.animate(withDuration: fill > 0 ? RowHighlight.fadeIn : RowHighlight.fadeOut, delay: 0, options: [.beginFromCurrentState, .curveEaseOut]) {
@@ -253,13 +292,20 @@ private final class HomeUltraRowView: ListRowView, UIGestureRecognizerDelegate {
         super.layoutSubviews()
         for view in [content, drawingView, overlayView] { view.frame = bounds }
         // A card's row fills only its part of the card.
-        let card = row.plan.card.map { CGRect(x: $0.frame.minX, y: 0, width: $0.frame.width, height: bounds.height) } ?? bounds
+        let card = plan.card.map { CGRect(x: $0.frame.minX, y: 0, width: $0.frame.width, height: bounds.height) } ?? bounds
         for view in [background, pressFill] { view.frame = card }
     }
     override func applyPreparation(_ preparation: ListPreparation, width: Double, environment: RenderEnvironment) {
         drawingView.applyPreparation(preparation, width: width, environment: environment)
+        // Drawn for a width change: the card, the press and the live views
+        // follow the drawing in the same pass.
+        let shown = row.plan(at: width)
+        guard abs(shown.size.width - plan.size.width) > 0.5 else { return }
+        plan = shown
+        replaceOverlay()
+        applyRow(); setNeedsLayout()
     }
-    override func update(width: Double, transition: ListTransition) -> Double { row.plan.size.height }
+    override func update(width: Double, transition: ListTransition) -> Double { plan.size.height }
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         var target = touch.view
         while let view = target, view !== self {
@@ -293,6 +339,9 @@ class HomeUltraListView: UIView {
     func apply(rows: [HomeUltraRow]? = nil, top: CGFloat, bottom: CGFloat, archiveToggle: Bool = false) {
         guard top.isFinite, bottom.isFinite else { return }
         if let rows { precondition(Set(rows.map(\.identity)).count == rows.count) }
+        // A new width first, alone, so the rows on screen are laid out again
+        // in place; the insets and rows follow in their own pass.
+        list.resize(to: bounds)
         // Archive rows append at the tail. Start their native-style fade
         // promptly in both directions, without changing other list motion.
         let fade: ListTransition = archiveToggle ? .init(duration: 0.2, curve: .bezier(0, 0, 0.58, 1)) : .easeInOut(0.2)

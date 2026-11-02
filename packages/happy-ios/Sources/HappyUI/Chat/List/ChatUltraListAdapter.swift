@@ -79,45 +79,83 @@ final class ChatUltraRow: ListRow {
     let reveals: Bool
     /// The plan's height, or less while its words are coming out.
     let height: CGFloat
+    /// The width `plan` was made at.
+    let plannedWidth: CGFloat
+    /// Plans the row again at another width, off the main thread, for a
+    /// width change that lays the rows on screen out again before the
+    /// pipeline plans them there.
+    let replan: (@Sendable (CGFloat) -> ChatRowPlan)?
+    private let replanned = ReplannedAtWidth<ChatRowPlan>()
     weak var adapter: ChatUltraListAdapter?
     var measuresAsynchronously: Bool { !reveals }
 
-    init(identity: String, revision: UInt64, plan: ChatRowPlan, contentY: CGFloat, adapter: ChatUltraListAdapter, preparedNode: NodeRow? = nil, reveals: Bool = false, height: CGFloat? = nil) {
+    init(identity: String, revision: UInt64, plan: ChatRowPlan, contentY: CGFloat, adapter: ChatUltraListAdapter, preparedNode: NodeRow? = nil, reveals: Bool = false, height: CGFloat? = nil,
+         plannedWidth: CGFloat? = nil, replan: (@Sendable (CGFloat) -> ChatRowPlan)? = nil) {
         self.identity = identity; self.revision = revision; self.plan = plan; self.contentY = contentY; self.adapter = adapter
         self.reveals = reveals
         self.height = height ?? plan.size.height
+        self.plannedWidth = plannedWidth ?? plan.size.width
+        self.replan = replan
         usesNativeDrawing = reveals || Self.requiresNativeDrawing(plan)
         if let preparedNode { node = preparedNode; return }
         let native = usesNativeDrawing
         let dark = adapter.list.traitCollection.userInterfaceStyle == .dark
         let scale = adapter.list.traitCollection.displayScale
         node = NodeRow(identity: identity, revision: revision, measurer: adapter.measurer) {
-            var style = Style()
-            style.height = .points(plan.size.height)
-            let root = UltraNode(style: style)
-            if native { return root }
-            // Long messages exceed a single bitmap's pixel cap. Fixed
-            // vertical tiles keep them drawable at every text size.
-            var y: CGFloat = 0
-            while y < plan.size.height {
-                var tileStyle = Style()
-                let height = min(512, plan.size.height - y)
-                tileStyle.height = .points(height)
-                tileStyle.flexShrink = 0
-                let tile = UltraNode(style: tileStyle)
-                tile.drawing = ChatNodeDrawing(plan: plan, dark: dark, scale: scale, y: y)
-                root.addChild(tile)
-                y += height
-            }
-            return root
+            Self.root(plan, native: native, dark: dark, scale: scale)
         }
     }
 
-    func prepare(width: Double, environment: RenderEnvironment) async -> ListPreparation? { await node.prepare(width: width, environment: environment) }
+    /// The plan's static marks, in vertical tiles. Its height is the tiles',
+    /// not points of its own: a message's height follows its width, so a
+    /// width change measures it again rather than keeping it in place.
+    private nonisolated static func root(_ plan: ChatRowPlan, native: Bool, dark: Bool, scale: CGFloat) -> UltraNode {
+        var style = Style()
+        style.minHeight = .points(plan.size.height)
+        style.maxHeight = .points(plan.size.height)
+        let root = UltraNode(style: style)
+        if native { return root }
+        // Long messages exceed a single bitmap's pixel cap. Fixed
+        // vertical tiles keep them drawable at every text size.
+        var y: CGFloat = 0
+        while y < plan.size.height {
+            var tileStyle = Style()
+            let height = min(512, plan.size.height - y)
+            tileStyle.height = .points(height)
+            tileStyle.flexShrink = 0
+            let tile = UltraNode(style: tileStyle)
+            tile.drawing = ChatNodeDrawing(plan: plan, dark: dark, scale: scale, y: y)
+            root.addChild(tile)
+            y += height
+        }
+        return root
+    }
+
+    /// The plan the row shows at `width`: its own, or the one made there.
+    func plan(at width: Double) -> ChatRowPlan {
+        abs(width - plannedWidth) <= 0.5 ? plan : replanned.plan(at: width) ?? plan
+    }
+
+    /// The node row at `width`: its own, or one that plans the row again
+    /// there before it is measured and drawn.
+    private func node(at width: Double) -> NodeRow {
+        guard let replan, let adapter, !reveals, abs(width - plannedWidth) > 0.5 else { return node }
+        let replanned = replanned
+        let dark = adapter.list.traitCollection.userInterfaceStyle == .dark
+        let scale = adapter.list.traitCollection.displayScale
+        return NodeRow(identity: identity, revision: revision, measurer: adapter.measurer) {
+            let plan = replan(CGFloat(width))
+            replanned.store(plan, width: width)
+            return Self.root(plan, native: Self.requiresNativeDrawing(plan), dark: dark, scale: scale)
+        }
+    }
+
+    func prepare(width: Double, environment: RenderEnvironment) async -> ListPreparation? { await node(at: width).prepare(width: width, environment: environment) }
+    func prepareInPlace(width: Double, environment: RenderEnvironment) -> ListInPlacePreparation? { node(at: width).prepareInPlace(width: width, environment: environment) }
     func makeView() -> ListRowView { ChatUltraRowView(row: self) }
     func apply(to view: ListRowView, transition: ListTransition) { (view as? ChatUltraRowView)?.apply(self, transition: transition) }
 
-    private static func requiresNativeDrawing(_ plan: ChatRowPlan) -> Bool {
+    nonisolated static func requiresNativeDrawing(_ plan: ChatRowPlan) -> Bool {
         guard plan.size.height <= 4096 else { return true }
         // A single bitmap is below the live overlay. If a later static
         // mark overlaps earlier live content, retain the original painter
@@ -142,6 +180,9 @@ final class ChatUltraRow: ListRow {
 @MainActor
 final class ChatUltraRowView: ListRowView, UIGestureRecognizerDelegate {
     private(set) var row: ChatUltraRow
+    /// What the row shows: its plan, or the one a width change made for it
+    /// (`ChatUltraRow.plan(at:)`).
+    private(set) var plan: ChatRowPlan
     private let drawing: ListRowView
     let canvas = ChatPlanView()
     private let hold = UILongPressGestureRecognizer()
@@ -151,6 +192,7 @@ final class ChatUltraRowView: ListRowView, UIGestureRecognizerDelegate {
 
     init(row: ChatUltraRow) {
         self.row = row
+        plan = row.plan
         drawing = row.node.makeView()
         super.init(frame: .zero)
         transform = ChatListView.flip
@@ -174,6 +216,7 @@ final class ChatUltraRowView: ListRowView, UIGestureRecognizerDelegate {
 
     func apply(_ row: ChatUltraRow, transition: ListTransition) {
         self.row = row
+        plan = row.plan
         row.node.apply(to: drawing, transition: transition)
         applyCanvas()
     }
@@ -188,13 +231,13 @@ final class ChatUltraRowView: ListRowView, UIGestureRecognizerDelegate {
     }
 
     private func applyCanvas() {
-        canvas.drawsStaticContent = row.usesNativeDrawing
+        canvas.drawsStaticContent = plan === row.plan ? row.usesNativeDrawing : ChatUltraRow.requiresNativeDrawing(plan)
         // Words that stream are drawn off the main thread as they grow.
         canvas.drawsTextOffMain = row.reveals
         let veiled = row.adapter?.veiled == row.identity
-        drawing.alpha = veiled ? 0 : row.plan.alpha
+        drawing.alpha = veiled ? 0 : plan.alpha
         canvas.veiled = veiled
-        canvas.apply(row.plan)
+        canvas.apply(plan)
         layoutCanvas()
         // In the same transaction as the plan it draws: none of its new
         // words show before they come out.
@@ -206,9 +249,9 @@ final class ChatUltraRowView: ListRowView, UIGestureRecognizerDelegate {
         }
         isAccessibilityElement = true
         accessibilityTraits = .staticText
-        accessibilityLabel = row.plan.accessibilityLabel
+        accessibilityLabel = plan.accessibilityLabel
         // A long press's actions, for VoiceOver.
-        let whole = row.plan.selection?.whole
+        let whole = plan.selection?.whole
         accessibilityCustomActions = whole.map { whole in
             [
                 UIAccessibilityCustomAction(name: Strings.Chat.copy) { _ in UIPasteboard.general.string = whole; return true },
@@ -219,7 +262,7 @@ final class ChatUltraRowView: ListRowView, UIGestureRecognizerDelegate {
                 },
             ]
         }
-        isLifted = row.adapter?.liftedId == row.plan.id
+        isLifted = row.adapter?.liftedId == plan.id
     }
 
     override func layoutSubviews() {
@@ -229,19 +272,25 @@ final class ChatUltraRowView: ListRowView, UIGestureRecognizerDelegate {
     }
     /// Shown again after a send's copy landed on it.
     func unveil() {
-        drawing.alpha = row.plan.alpha
+        drawing.alpha = plan.alpha
         canvas.veiled = false
     }
     /// The plan at its own size from the row's top: a row coming out is
     /// shorter, and clips what is still to come.
     private func layoutCanvas() {
-        let frame = CGRect(x: 0, y: 0, width: bounds.width, height: max(bounds.height, row.plan.size.height))
+        let frame = CGRect(x: 0, y: 0, width: bounds.width, height: max(bounds.height, plan.size.height))
         if canvas.frame != frame { canvas.frame = frame }
         reveal.layout(frame)
     }
     override func update(width: Double, transition: ListTransition) -> Double { row.height }
     override func applyPreparation(_ preparation: ListPreparation, width: Double, environment: RenderEnvironment) {
         drawing.applyPreparation(preparation, width: width, environment: environment)
+        // Drawn for a width change: the live marks follow the drawing in
+        // the same pass.
+        let shown = row.plan(at: width)
+        guard shown !== plan else { return }
+        plan = shown
+        applyCanvas()
     }
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         var target = touch.view
@@ -398,8 +447,19 @@ final class ChatUltraListAdapter {
     /// a transition's viewport curve.
     func setViewport(size: CGSize, insets: UIEdgeInsets, keyboard: ChatUltraKeyboard.Change? = nil) {
         guard size.width > 0, size.height > 0 else { return }
-        let sizeChanged = viewportSize != size
+        var sizeChanged = viewportSize != size
         let changed = self.insets != insets || sizeChanged
+        if abs(viewportSize.width - size.width) > 0.5 {
+            // A new width first, alone, so the rows on screen are laid out
+            // again in place, on the curve of the animation it is in.
+            list.resize(to: CGRect(origin: list.frame.origin, size: size))
+            sizeChanged = false
+            if self.insets == insets {
+                viewportSize = size
+                flight?.follow(in: list)
+                return
+            }
+        }
         self.insets = insets
         viewportSize = size
         guard changed else {
@@ -465,7 +525,8 @@ final class ChatUltraListAdapter {
         // revealing row growing a line.
         var moved = false
         var grew = false
-        func descriptor(_ plan: ChatRowPlan, identity: String, y: CGFloat) -> ChatUltraRow {
+        let plannedWidth = update.model.width
+        func descriptor(_ plan: ChatRowPlan, identity: String, y: CGFloat, input: ChatRowInput? = nil, replan: (@Sendable (CGFloat) -> ChatRowPlan)? = nil) -> ChatUltraRow {
             let reveals = revealed.contains(identity)
             let revealing = reveal.height(identity)
             let height = revealing ?? plan.size.height
@@ -473,17 +534,18 @@ final class ChatUltraListAdapter {
                 if revealing != nil { grew = true } else { moved = true }
             }
             if let cached = rows[identity], cached.plan === plan, cached.reveals == reveals, cached.height == height {
-                let row = cached.contentY == y ? cached : ChatUltraRow(identity: identity, revision: cached.revision, plan: plan, contentY: y, adapter: self, preparedNode: cached.node, reveals: reveals, height: height)
+                let row = cached.contentY == y ? cached : ChatUltraRow(identity: identity, revision: cached.revision, plan: plan, contentY: y, adapter: self, preparedNode: cached.node, reveals: reveals, height: height, plannedWidth: cached.plannedWidth, replan: cached.replan)
                 next[identity] = row; return row
             }
             // The revision is never reused, even after removing an identity.
             revision &+= 1
-            let row = ChatUltraRow(identity: identity, revision: revision, plan: plan, contentY: y, adapter: self, reveals: reveals, height: height)
+            let replan = replan ?? input.map { input -> @Sendable (CGFloat) -> ChatRowPlan in { ChatRowRenderer.plan(input, width: $0) } }
+            let row = ChatUltraRow(identity: identity, revision: revision, plan: plan, contentY: y, adapter: self, reveals: reveals, height: height, plannedWidth: plannedWidth, replan: replan)
             next[identity] = row
             return row
         }
         var items: [any ListRow] = []
-        if let footer = update.footer { items.append(descriptor(footer, identity: "chat:newer-end", y: 0)) }
+        if let footer = update.footer { items.append(descriptor(footer, identity: "chat:newer-end", y: 0, replan: update.footerReplan)) }
         if landing == nil, let flight, let plan = update.plans.first, rows["chat:message:\(plan.id)"] == nil, flight.awaits(plan) {
             landing = ("chat:message:\(plan.id)", plan)
             veiled = "chat:message:\(plan.id)"
@@ -493,7 +555,8 @@ final class ChatUltraListAdapter {
         var held: CGFloat = 0
         for (index, plan) in update.plans.enumerated() {
             let identity = "chat:message:\(plan.id)"
-            let row = descriptor(plan, identity: identity, y: update.model.frame(ofRow: index).minY - held)
+            let input = update.inputs.indices.contains(index) && update.inputs[index].id == plan.id ? update.inputs[index] : nil
+            let row = descriptor(plan, identity: identity, y: update.model.frame(ofRow: index).minY - held, input: input)
             held += plan.size.height - row.height
             items.append(row)
         }

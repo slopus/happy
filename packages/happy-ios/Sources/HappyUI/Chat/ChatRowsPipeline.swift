@@ -93,6 +93,12 @@ struct ChatListUpdate: Sendable {
     var pinning: String?
     /// The agent is at work: its newest words may still be arriving.
     var streaming = false
+    /// What each of `plans` was planned from, for planning a row again at
+    /// another width (a width change lays the rows on screen out again
+    /// before this pipeline plans them there).
+    var inputs: [ChatRowInput] = []
+    /// The footer planned again at another width, likewise.
+    var footerReplan: (@Sendable (CGFloat) -> ChatRowPlan)?
 }
 
 /// One chat update for the main thread. Every optional is nil when its
@@ -234,7 +240,9 @@ enum ChatRows {
         if !result.changeset.isEmpty || footer != nil || model != applied.model || pinning != nil {
             update.list = ChatListUpdate(
                 ids: result.rows.ids, plans: result.rows.plans, model: model, footer: footer,
-                changeset: result.changeset, pinning: pinning, streaming: session.thinking
+                changeset: result.changeset, pinning: pinning, streaming: session.thinking,
+                inputs: result.rows.inputs,
+                footerReplan: { [controlledByUser = session.controlledByUser] in ChatRowRenderer.footer(controlledByUser: controlledByUser, width: $0, in: environment) }
             )
             // The newest of the agent's words may be streaming: where they
             // are is worked out here, off the main thread.

@@ -137,6 +137,7 @@ final class ChatListView: UIView {
     func apply(_ update: ChatListUpdate, animated: Bool) -> Int {
         var complete = update
         complete.footer = update.footer ?? latest?.footer
+        complete.footerReplan = update.footerReplan ?? latest?.footerReplan
         latest = complete
         plans = update.plans
         model = update.model

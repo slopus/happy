@@ -272,7 +272,9 @@ final class SessionListViewController: UIViewController {
         // The words the height was measured with.
         banners.content = key.banners
         banners.frame = CGRect(x: 0, y: 0, width: key.width, height: height)
-        ultraList.setBanner(banners, height: height)
+        ultraList.setBanner(banners, height: height) { width in
+            HomeRowMeasurer.headerHeight(key.banners, width: width, maxWidth: key.maxWidth, environment: key.environment)
+        }
     }
 
     private func openTroubleshoot() {

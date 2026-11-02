@@ -26,11 +26,61 @@ actor ChatPlanner {
         var modelNames: [String: String] = [:]
     }
 
+    /// A row as it was planned, and what from.
+    struct Planned: @unchecked Sendable {
+        var item: ChatItem
+        var key: Key
+        var copied: Bool
+        var opened: Bool
+        var proposals: [ProposalShown?]
+        var plan: ChatRowPlan
+    }
+
+    final class Cache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var rows: [String: Planned] = [:]
+
+        subscript(id: String) -> Planned? {
+            get { lock.withLock { rows[id] } }
+            set { lock.withLock { rows[id] = newValue } }
+        }
+
+        var plans: [String: ChatRowPlan] { lock.withLock { rows.mapValues(\.plan) } }
+
+        func replace(with next: [String: Planned]) {
+            lock.withLock {
+                // A row planned again at another width while these were
+                // planned at the old one is kept for the next pass.
+                var next = next
+                for id in adopted {
+                    guard let row = rows[id], let planned = next[id], planned.item == row.item, planned.key != row.key else { continue }
+                    next[id] = row
+                }
+                adopted = []
+                rows = next
+            }
+        }
+
+        private var adopted: Set<String> = []
+
+        /// `next` in place of `row`, if `row` is still what is kept.
+        func adopt(_ next: Planned, replacing row: Planned, id: String) {
+            lock.withLock {
+                guard let kept = rows[id], kept.plan === row.plan else { return }
+                rows[id] = next
+                adopted.insert(id)
+            }
+        }
+    }
+
     /// An inline page's height until it has measured itself.
     static let pageHeight: CGFloat = 120
 
     private let syntax: CodeSyntaxService
-    private var cache: [String: (item: ChatItem, key: Key, copied: Bool, opened: Bool, proposals: [ProposalShown?], plan: ChatRowPlan)] = [:]
+    /// Each row as last planned, by item ID. Behind a lock rather than the
+    /// actor, so a width change can plan rows again while the main thread
+    /// waits (`plansInPlace`).
+    private let cache = Cache()
     /// The time each person's message first showed, which it keeps while
     /// it is shown: the computer's time for a send replaces this phone's
     /// when it is taken, and may be a minute on ("12:59" to "1:00"), which
@@ -44,7 +94,7 @@ actor ChatPlanner {
     /// `proposals` are the sidebar proposals the items show, as they stand;
     /// `opened` the other agents' messages opened to read.
     func plans(_ items: [ChatItem], key: Key, copied: String?, opened: Set<String> = [], proposals: [String: ProposalShown] = [:]) -> [ChatRowPlan] {
-        var next: [String: (item: ChatItem, key: Key, copied: Bool, opened: Bool, proposals: [ProposalShown?], plan: ChatRowPlan)] = [:]
+        var next: [String: Planned] = [:]
         var plans: [ChatRowPlan] = []
         // Only a failure card reads the composer's model: another pick
         // plans no other row again.
@@ -68,16 +118,47 @@ actor ChatPlanner {
             } else {
                 plan = Self.plan(item, key: reads, copied: isCopied, opened: isOpened, syntax: syntax, proposals: proposals)
             }
-            next[item.id] = (item, reads, isCopied, isOpened, shown, plan)
+            next[item.id] = Planned(item: item, key: reads, copied: isCopied, opened: isOpened, proposals: shown, plan: plan)
             if plan.size.height > 0 { plans.append(plan) }
         }
-        cache = next
+        cache.replace(with: next)
         times = shownTimes
         // The newest of the agent's words may be streaming: where they are
         // is worked out here, off the main thread, for showing them as
         // they come.
         plans.last(where: \.revealable)?.warmReveal()
         return plans
+    }
+
+    /// Plans the rows `ids` again at `width`, each as it was last planned
+    /// but for the width, while the main thread waits, until `deadline` at
+    /// the latest: a width change shows them at the new width in its own
+    /// frame. The rows plan side by side, off the main thread. Their plans
+    /// are kept for the next `plans`, which takes them for rows that
+    /// haven't changed meanwhile; a row not planned in time is left out.
+    nonisolated func plansInPlace(_ ids: [String], width: CGFloat, until deadline: DispatchTime) -> [String: ChatRowPlan] {
+        let rows = ids.compactMap { id in cache[id].map { (id, $0) } }.filter { abs($0.1.key.width - width) > 0.5 }
+        guard !rows.isEmpty else { return [:] }
+        let cache = cache, syntax = syntax
+        let planned = Cache()
+        let group = DispatchGroup()
+        for (id, row) in rows {
+            group.enter()
+            DispatchQueue.global(qos: .userInteractive).async {
+                defer { group.leave() }
+                var key = row.key
+                key.width = width
+                var proposals: [String: ProposalShown] = [:]
+                for (proposal, shown) in zip(row.item.proposalIds, row.proposals) { proposals[proposal] = shown }
+                var next = row
+                next.key = key
+                next.plan = Self.plan(row.item, key: key, copied: row.copied, opened: row.opened, syntax: syntax, proposals: proposals)
+                cache.adopt(next, replacing: row, id: id)
+                planned[id] = next
+            }
+        }
+        _ = group.wait(timeout: deadline)
+        return planned.plans
     }
 
     static func plan(_ item: ChatItem, key: Key, copied: Bool, opened: Bool = false, syntax: CodeSyntaxService, proposals: [String: ProposalShown] = [:]) -> ChatRowPlan {

@@ -1048,6 +1048,28 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         Task { await conversation.answer(ask.picked) }
     }
 
+    /// The width changed (a rotation, the sidebar, a window drag): the rows
+    /// near the screen are planned again at the new width while the main
+    /// thread waits, within UltraView's in-place time limit, so the frame
+    /// that shows the new width shows them at it. The rest follow with the
+    /// whole transcript's plans, which take these.
+    private func planInPlace() {
+        let width = view.bounds.width
+        guard let planned, width > 0, abs(planned.key.width - width) > 0.5 else { return }
+        let ids = ultra.planIDsNearScreen
+        guard !ids.isEmpty else { return }
+        let started = CACurrentMediaTime()
+        let plans = planner.plansInPlace(ids, width: width, until: .now() + ultra.list.inPlaceResizeTimeLimit)
+        ultra.showInPlace(plans)
+        inPlaceMilliseconds = (CACurrentMediaTime() - started) * 1000
+        inPlaceRows = plans.count
+    }
+
+    /// The last width change's wait for the rows near the screen, for the
+    /// tests: main-thread milliseconds, and the rows planned in time.
+    private(set) var inPlaceMilliseconds: Double = 0
+    private(set) var inPlaceRows = 0
+
     /// Plans the rows off the main thread, then shows them in one frame.
     private func replan() {
         let key = planKey
@@ -1258,6 +1280,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         if previewing { return layoutPreview() }
+        planInPlace()
         replan()
         if firstFrame == nil {
             firstFrame = drawn

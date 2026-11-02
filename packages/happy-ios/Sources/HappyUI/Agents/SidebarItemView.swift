@@ -30,11 +30,14 @@ final class SidebarItemView: ListRowView {
     /// The finger came down on a list still gliding: it stops the list, and opens nothing.
     private var stoppedGlide = false
 
+    /// What the slot shows: its item's, or the one a width change laid out
+    /// for it (`SidebarItem.entry(at:)`).
+    private var entry: SidebarList.Entry
     var row: Row { item.entry.row }
     /// The row's frames, from the slot's top-left.
-    var frames: SidebarLayout.Frame { item.entry.drawing.frame }
+    var frames: SidebarLayout.Frame { entry.drawing.frame }
     /// The row's box, from the slot's top-left.
-    var box: CGRect { item.entry.box }
+    var box: CGRect { entry.box }
     var selected = false {
         didSet { if selected != oldValue { applyFill() } }
     }
@@ -72,6 +75,7 @@ final class SidebarItemView: ListRowView {
 
     init(item: SidebarItem) {
         self.item = item
+        entry = item.entry
         drawingView = item.node.makeView()
         super.init(frame: .zero)
         fill.isUserInteractionEnabled = false
@@ -105,6 +109,7 @@ final class SidebarItemView: ListRowView {
         // The view was made from `item`'s node: only another one draws anew.
         let fresh = next !== item
         item = next
+        entry = next.entry
         if fresh { next.node.apply(to: drawingView, transition: transition) }
         applyTitleBand(next.entry, fresh: fresh)
         selected = next.entry.drawing.selected
@@ -216,9 +221,17 @@ final class SidebarItemView: ListRowView {
 
     override func applyPreparation(_ preparation: ListPreparation, width: Double, environment: RenderEnvironment) {
         drawingView.applyPreparation(preparation, width: width, environment: environment)
+        // Drawn for a width change: the fill, the mark and the sheen follow
+        // the drawing in the same pass.
+        let shown = item.entry(at: width)
+        guard abs(shown.size.width - entry.size.width) > 0.5 else { return }
+        entry = shown
+        applyTitleBand(shown, fresh: true)
+        applyFill()
+        setNeedsLayout()
     }
 
-    override func update(width: Double, transition: ListTransition) -> Double { item.entry.size.height }
+    override func update(width: Double, transition: ListTransition) -> Double { entry.size.height }
 
     override func didMoveToWindow() {
         super.didMoveToWindow()

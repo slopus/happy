@@ -13,7 +13,7 @@ private actor DelayedChatMeasurer: NodeRowMeasuring {
     func hold(height: CGFloat) { heldHeight = height }
     func release() { continuation?.resume(); continuation = nil }
     func measure(_ root: UltraNode, width: CGFloat, environment: RenderEnvironment) async -> CGSize {
-        if root.style.height == .points(heldHeight ?? -1) {
+        if root.style.minHeight == .points(heldHeight ?? -1) {
             heldHeight = nil
             await withCheckedContinuation { continuation = $0 }
         }

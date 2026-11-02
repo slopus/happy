@@ -17,6 +17,8 @@ final class HomeUltraListAdapter {
     private var bottomInset: CGFloat = 0
     private var banner: UIView?
     private var bannerHeight: CGFloat = 0
+    /// The banner's height at another width, off the main thread.
+    private var bannerMeasure: (@Sendable (CGFloat) -> CGFloat)?
     private var plans: Prepared?
     private var cachedRows: [HomeListRow.ID: HomeUltraRow] = [:]
     private var cachedHiddenToggle: HomeUltraRow?
@@ -198,9 +200,12 @@ final class HomeUltraListAdapter {
         topInset = top; bottomInset = bottom
         view.apply(top: top, bottom: bottom)
     }
-    func setBanner(_ banner: UIView?, height: CGFloat) {
+    /// `measure` gives the banner's height at another width, off the main
+    /// thread, for a width change that lays the rows out again before the
+    /// screen measures the banner there.
+    func setBanner(_ banner: UIView?, height: CGFloat, measure: (@Sendable (CGFloat) -> CGFloat)? = nil) {
         if banner == nil, self.banner == nil, height == 0, bannerHeight == 0 { return }
-        self.banner = banner; bannerHeight = height; bannerRevision += 1; publish()
+        self.banner = banner; bannerHeight = height; bannerMeasure = measure; bannerRevision += 1; publish()
     }
 
     func deactivate() {
@@ -234,11 +239,28 @@ final class HomeUltraListAdapter {
         if let banner, bannerHeight > 0 {
             var plan = HomeRowDrawing(environment: prepared.input.environment, dark: prepared.input.dark)
             plan.size = CGSize(width: prepared.input.width, height: bannerHeight)
-            rows.append(HomeUltraRow(identity: "home:banner", revision: bannerRevision, plan: plan, makeOverlay: { banner }))
+            let (environment, dark) = (prepared.input.environment, prepared.input.dark)
+            let replan = bannerMeasure.map { measure -> @Sendable (CGFloat) -> HomeRowDrawing in
+                { width in
+                    var plan = HomeRowDrawing(environment: environment, dark: dark)
+                    plan.size = CGSize(width: width, height: measure(width))
+                    return plan
+                }
+            }
+            rows.append(HomeUltraRow(identity: "home:banner", revision: bannerRevision, plan: plan, replan: replan, hasFixedHeight: false, makeOverlay: { _ in banner }))
         }
+        let input = prepared.input
+        let catalog = TranslationCatalog.catalog(for: input.language)
         func makeRow(_ id: HomeListRow.ID, _ entry: Entry) -> HomeUltraRow {
             let plan = entry.plan
-            let overlay: @MainActor () -> UIView = { [weak self] in
+            // The row at another width, as the derivation makes it.
+            let replan: (@Sendable (CGFloat) -> HomeRowDrawing)? = entry.row.map { row in
+                let (place, selected) = (entry.place, entry.selected)
+                return { width in
+                    HomeRowDrawing.make(row, width: width, grouped: input.model.grouped, selected: selected, place: place, carded: true, environment: input.environment, dark: input.dark, catalog: catalog, deferArchiveText: true)
+                }
+            }
+            let overlay: @MainActor (HomeRowDrawing) -> UIView = { [weak self] plan in
                 let view = HomeUltraOverlay(plan: plan, style: model.avatarStyle, monochrome: model.avatarMonochrome, pictures: self?.pictures)
                 view.onCreateWorkspace = { [weak self] in self?.onCreateWorkspace?(id) }
                 return view
@@ -271,7 +293,7 @@ final class HomeUltraListAdapter {
             case .flat(.archiveToggle)?, .project(.archiveToggle)?: selectsOnRelease = true
             default: selectsOnRelease = false
             }
-            return HomeUltraRow(identity: id.ultraIdentity, revision: entry.revision, plan: plan, selected: entry.selected, makeOverlay: overlay,
+            return HomeUltraRow(identity: id.ultraIdentity, revision: entry.revision, plan: plan, plannedWidth: input.width, replan: replan, selected: entry.selected, makeOverlay: overlay,
                 select: select, longPress: hold, archive: archive, leaves: leaves, createWorkspace: createWorkspace,
                 usesArchiveBitmap: entry.usesArchiveBitmap, archiveBitmap: entry.bitmap, selectsOnRelease: selectsOnRelease)
         }

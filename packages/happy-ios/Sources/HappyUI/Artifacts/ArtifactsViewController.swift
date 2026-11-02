@@ -37,6 +37,8 @@ final class ArtifactsViewController: UIViewController, UISearchResultsUpdating {
         var artifacts: [String: ArtifactSummary]
         var width: CGFloat
         var refreshing: Bool
+        /// The same items at another width, for a width change.
+        var replan: @Sendable (CGFloat) -> [CardItem]
     }
 
     init(session: Session) {
@@ -165,13 +167,18 @@ final class ArtifactsViewController: UIViewController, UISearchResultsUpdating {
         var artifacts: [String: ArtifactSummary] = [:]
         for artifact in input.state.items { artifacts[artifact.id] = artifact }
         let state = Applied(items: Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }), order: order, counter: counter, refreshing: refreshing)
-        return (Output(items: items, artifacts: artifacts, width: input.width, refreshing: refreshing), state)
+        let replan: @Sendable (CGFloat) -> [CardItem] = { width in
+            var input = input
+            input.width = width
+            return ArtifactListItems.items(input)
+        }
+        return (Output(items: items, artifacts: artifacts, width: input.width, refreshing: refreshing, replan: replan), state)
     }
 
     private func show(_ output: Output) -> Bool {
         guard output.width == list.contentWidth else { return false }
         artifacts = output.artifacts
-        list.apply(output.items, animated: true)
+        list.apply(output.items, animated: true, replan: output.replan)
         if pulled, !output.refreshing {
             pulled = false
             list.refreshing = false

@@ -59,6 +59,8 @@ final class TodoListViewController: UIViewController, UITextFieldDelegate, UIGes
         var active: [String]
         var state: TodoListState
         var width: CGFloat
+        /// The rows at another width, for a width change (`CardListView.replan`).
+        var replan: @Sendable (CGFloat) -> [CardItem]
     }
 
     init(session: Session, surface: AgentWire.Surface, mode: TodoListInput.Mode = .list) {
@@ -216,7 +218,12 @@ final class TodoListViewController: UIViewController, UITextFieldDelegate, UIGes
         let moved = order != applied.order || items.contains { applied.items[$0.id]?.revision != $0.revision }
         guard moved || applied.state != input.state else { return nil }
         let next = Applied(items: Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }), order: order, counter: counter, state: input.state)
-        return (Output(items: items, geometry: made.geometry, active: made.active, state: input.state, width: input.width), next)
+        let replan: @Sendable (CGFloat) -> [CardItem] = { width in
+            var input = input
+            input.width = width
+            return TodoListItems.items(input).items
+        }
+        return (Output(items: items, geometry: made.geometry, active: made.active, state: input.state, width: input.width, replan: replan), next)
     }
 
     private func show(_ output: Output) -> Bool {
@@ -224,7 +231,7 @@ final class TodoListViewController: UIViewController, UITextFieldDelegate, UIGes
         state = output.state
         geometry = output.geometry
         activeOrder = output.active
-        list.apply(output.items, animated: true)
+        list.apply(output.items, animated: true, replan: output.replan)
         if let drag { list.rowView(TodoListItems.rowID(drag.id))?.alpha = 0 }
         focusEditor()
         return true

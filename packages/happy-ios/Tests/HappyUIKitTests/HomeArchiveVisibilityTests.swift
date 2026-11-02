@@ -30,7 +30,7 @@ final class HomeArchiveVisibilityTests: XCTestCase {
         }.value
         let bitmaps = await Task.detached { plans.map(HomeArchiveBitmap.draw) }.value
         let rows = zip(plans, bitmaps).enumerated().map { index, pair in
-            HomeUltraRow(identity: "appearance-\(index)", revision: 1, plan: pair.0, makeOverlay: { UIView() }, usesArchiveBitmap: true, archiveBitmap: pair.1)
+            HomeUltraRow(identity: "appearance-\(index)", revision: 1, plan: pair.0, makeOverlay: { _ in UIView() }, usesArchiveBitmap: true, archiveBitmap: pair.1)
         }
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 700))
         let controller = UIViewController(); window.rootViewController = controller

@@ -36,6 +36,8 @@ final class TodoListsViewController: UIViewController {
         var items: [CardItem]
         var surfaces: [String: AgentWire.Surface]
         var width: CGFloat
+        /// The rows at another width, for a width change (`CardListView.replan`).
+        var replan: @Sendable (CGFloat) -> [CardItem]
     }
 
     init(session: Session) {
@@ -148,13 +150,18 @@ final class TodoListsViewController: UIViewController {
         guard !unchanged else { return nil }
         let surfaces = Dictionary(input.state.of("todo").map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let state = Applied(items: Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }), order: order, counter: counter)
-        return (Output(items: items, surfaces: surfaces, width: input.width), state)
+        let replan: @Sendable (CGFloat) -> [CardItem] = { width in
+            var input = input
+            input.width = width
+            return TodoListsItems.items(input)
+        }
+        return (Output(items: items, surfaces: surfaces, width: input.width, replan: replan), state)
     }
 
     private func show(_ output: Output) -> Bool {
         guard output.width == list.contentWidth else { return false }
         surfaces = output.surfaces
-        list.apply(output.items, animated: true)
+        list.apply(output.items, animated: true, replan: output.replan)
         if pulled {
             pulled = false
             list.refreshing = false
