@@ -26,6 +26,10 @@ public enum AttachmentRules {
     public static let maxFileBytes = 50 * 1024 * 1024
     public static let maxInlineImageBytes = 5 * 1024 * 1024
     public static let maxInlineImageTotalBytes = 29 * 1024 * 1024
+    /// Keeps the uploads folder out of git: written before a workspace's
+    /// first upload (`AgentClient.keepUploadsOutOfGit`).
+    static let ignorePath = ".happy-uploads/.gitignore"
+    static let ignoreContent = "*"
 
     public static func safeName(_ name: String) -> String {
         let basename = name.replacingOccurrences(of: "\\", with: "/").split(separator: "/").last.map(String.init) ?? ""
@@ -140,6 +144,7 @@ extension AgentClient {
                     try await persist(message)
                 }
                 guard let workspace = message.workspaceID else { throw AgentClientError.invalidResponse }
+                if (message.files ?? []).contains(where: { !$0.uploaded }) { await keepUploadsOutOfGit(workspace) }
                 for index in (message.files ?? []).indices {
                     try Task.checkCancellation()
                     guard let file = message.files?[index], !file.uploaded else { continue }
@@ -168,6 +173,28 @@ extension AgentClient {
             for key in pictureKeys + fileKeys where board.phase(key) != .done { board.set(key, .preparing) }
             throw error
         }
+    }
+
+    /// `.happy-uploads/.gitignore` (`*`), written before the first upload
+    /// into the workspace so what the phone puts there never shows as a
+    /// change to commit. Already there (409) counts as written; any other
+    /// failure is let go, never holding the upload up, and tried again
+    /// before the next one.
+    func keepUploadsOutOfGit(_ workspaceID: String) async {
+        guard !ignoredUploads.contains(workspaceID) else { return }
+        let body = JSONValue.object([
+            "path": .string(AttachmentRules.ignorePath),
+            "content": .string(Data(AttachmentRules.ignoreContent.utf8).base64EncodedString()),
+            "expectedHash": .null,
+        ])
+        do {
+            _ = try await send("PUT", "/v0/workspaces/\(Self.escape(workspaceID))/file", json: body)
+        } catch AgentClientError.status(409, _, _) {
+            // Already there: the person's own, left as it is.
+        } catch {
+            return
+        }
+        ignoredUploads.insert(workspaceID)
     }
 
     /// `progress` hears the share of the file's bytes written, once read

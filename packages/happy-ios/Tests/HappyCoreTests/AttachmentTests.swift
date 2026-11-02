@@ -62,7 +62,7 @@ private actor AttachmentServer: AgentTransport {
                 return try response(409, .object(["code": .string("hash_mismatch"), "hash": .string(hash(existing))]))
             }
             stored[name] = bytes
-            if loseUploadAcknowledgement { loseUploadAcknowledgement = false; throw URLError(.networkConnectionLost) }
+            if loseUploadAcknowledgement, name != AttachmentRules.ignorePath { loseUploadAcknowledgement = false; throw URLError(.networkConnectionLost) }
             return try response(200, .object(["hash": .string(hash(bytes))]))
         }
         if method == "POST", path.hasSuffix("/send"), let id = value?["id"]?.stringValue {
@@ -121,9 +121,9 @@ final class AttachmentTests: XCTestCase {
         try await client.deliverMessage(restored) { try await reopened.updateMessage($0) }
         let requests = await server.saved()
         XCTAssertEqual(requests.filter { $0.0 == "GET" }.count, 1)
-        XCTAssertEqual(requests.filter { $0.0 == "PUT" }.map(\.1), [
-            "/v0/workspaces/actual-execution-workspace/file", "/v0/workspaces/actual-execution-workspace/file",
-        ])
+        // The folder kept out of git once, then the file twice.
+        XCTAssertEqual(requests.filter { $0.0 == "PUT" }.compactMap { $0.2?["path"]?.stringValue }, [AttachmentRules.ignorePath, attachment.path, attachment.path])
+        XCTAssertEqual(Set(requests.filter { $0.0 == "PUT" }.map(\.1)), ["/v0/workspaces/actual-execution-workspace/file"])
         XCTAssertEqual(requests.last?.1, "/v0/agents/recipient/send")
         XCTAssertEqual(requests.last?.2?["id"]?.stringValue, message.id)
         XCTAssertTrue(requests.last?.2?["text"]?.stringValue?.contains("./\(attachment.path)") == true)

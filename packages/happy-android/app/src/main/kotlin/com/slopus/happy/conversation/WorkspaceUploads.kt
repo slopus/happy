@@ -25,6 +25,9 @@ class OutgoingFile(val file: File, val name: String, val mimeType: String, val s
  */
 object WorkspaceUploads {
     const val DIRECTORY = ".happy-uploads"
+    /** Keeps the folder out of git: written before a workspace's first upload ([ConversationApi.ignoreUploads]). */
+    const val IGNORE_PATH = "$DIRECTORY/.gitignore"
+    const val IGNORE_CONTENT = "*"
     private val drawnTypes = setOf("image/jpeg", "image/png", "image/gif", "image/webp")
 
     /**

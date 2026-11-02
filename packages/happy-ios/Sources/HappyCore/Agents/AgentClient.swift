@@ -16,6 +16,15 @@ public enum AgentClientError: Error, Equatable, Sendable {
     }
 }
 
+/// Workspace ids, shared between tasks.
+final class WorkspaceSet: @unchecked Sendable {
+    private let lock = NSLock()
+    private var ids: Set<String> = []
+
+    func contains(_ id: String) -> Bool { lock.withLock { ids.contains(id) } }
+    func insert(_ id: String) { _ = lock.withLock { ids.insert(id) } }
+}
+
 /// The Happy Agent API over one paired device's private tunnel. Every route is
 /// one a device token may use (happy-agent `API.md`, "Mobile connector").
 public final class AgentClient: Sendable {
@@ -24,6 +33,8 @@ public final class AgentClient: Sendable {
     /// A team server signed in to: refused, it wants signing in again,
     /// not pairing.
     public let signsIn: Bool
+    /// The workspaces whose uploads this client has kept out of git.
+    let ignoredUploads = WorkspaceSet()
 
     init(transport: any AgentTransport, token: String, signsIn: Bool = false) {
         self.transport = transport

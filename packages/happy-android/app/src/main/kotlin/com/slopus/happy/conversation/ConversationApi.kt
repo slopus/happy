@@ -16,6 +16,8 @@ import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.net.URLEncoder
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.coroutines.cancellation.CancellationException
 import java.security.SecureRandom
 
 /** A refused request: the daemon's status, with its error `code` and words when it sent them. */
@@ -57,6 +59,8 @@ data class UnsentWork(val task: NewTask, val choice: WorkChoice, val draft: Stri
  * [ConversationApiException].
  */
 open class ConversationApi(private val request: AgentRequest) {
+    /** The workspaces whose uploads this connection has kept out of git. */
+    private val ignoredUploads: MutableSet<String> = ConcurrentHashMap.newKeySet()
 
     private suspend fun call(method: String, path: String, body: JsonElement? = null, category: RequestCategory = RequestCategory.Query): JsonObject =
         decode(request(method, path, body, category))
@@ -148,6 +152,30 @@ open class ConversationApi(private val request: AgentRequest) {
             if (answer?.get("code").str == "hash_mismatch" && answer?.get("hash").str == hash) return
         }
         if (decode(response)["hash"].str != hash) throw invalid()
+    }
+
+    /**
+     * [WorkspaceUploads.IGNORE_PATH] (`*`), written before the first upload
+     * into [workspaceId] so what the phone puts there never shows as a
+     * change to commit (iOS `AgentClient.keepUploadsOutOfGit`). Already
+     * there (409) counts as written; any other failure is let go, never
+     * holding the upload up, and tried again before the next one.
+     */
+    open suspend fun ignoreUploads(workspaceId: String) {
+        if (workspaceId in ignoredUploads) return
+        val body = buildJsonObject {
+            put("path", WorkspaceUploads.IGNORE_PATH)
+            put("content", java.util.Base64.getEncoder().encodeToString(WorkspaceUploads.IGNORE_CONTENT.toByteArray()))
+            put("expectedHash", JsonNull)
+        }
+        val status = try {
+            request("PUT", "/v0/workspaces/${escape(workspaceId)}/file", body, RequestCategory.Query).status
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return
+        }
+        if (status in 200..299 || status == 409) ignoredUploads += workspaceId
     }
 
     open suspend fun abort(agentId: String) {

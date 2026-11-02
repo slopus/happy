@@ -829,13 +829,15 @@ class Conversation(
 
     /**
      * Writes a send's [files] into the agent's workspace, each once: a retry
-     * skips what went up, and the same bytes again count as written.
+     * skips what went up, and the same bytes again count as written. The
+     * folder is kept out of git first, best effort.
      */
     private suspend fun upload(files: List<OutgoingFile>) {
         if (files.all { it.uploaded }) return
         val workspaceId = agent?.workspaceId
             ?: withRetries { api.bootstrap(agentId) }.agent.workspaceId
             ?: throw IllegalStateException("This chat has no folder on the computer to put files in.")
+        api.ignoreUploads(workspaceId)
         for (file in files) {
             if (file.uploaded) continue
             val bytes = withContext(io) { file.file.readBytes() }

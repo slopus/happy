@@ -17,12 +17,16 @@ private actor UploadComputer: AgentTransport {
     private(set) var sends: [JSONValue] = []
     private(set) var sendBodies: [Data] = []
     private(set) var uploadBodies: [Data] = []
+    /// Every workspace file written, "route:path", with its body.
+    private(set) var writes: [(path: String, body: JSONValue)] = []
+    /// What a write of `.happy-uploads/.gitignore` answers; nil writes it.
+    var ignoreStatus: Int?
     private(set) var written = 0
 
     init(board: UploadProgressBoard) { self.board = board }
 
-    func configure(chunk: Int = 1000, held: Bool = false, rejectSends: Int = 0, watched: [String] = []) {
-        self.chunk = chunk; self.held = held; self.rejectSends = rejectSends; self.watched = watched
+    func configure(chunk: Int = 1000, held: Bool = false, rejectSends: Int = 0, watched: [String] = [], ignoreStatus: Int? = nil) {
+        self.chunk = chunk; self.held = held; self.rejectSends = rejectSends; self.watched = watched; self.ignoreStatus = ignoreStatus
     }
     func release() { held = false }
 
@@ -65,6 +69,10 @@ private actor UploadComputer: AgentTransport {
         if path.contains("/messages?") { return try response(200, .object(["runs": .array([]), "hasMore": .bool(false)])) }
         if method == "GET", path.hasPrefix("/v0/agents/") {
             return try response(200, .object(["agent": .object(["id": .string("a"), "workspaceId": .string("w"), "status": .string("idle")])]))
+        }
+        if method == "PUT", path.hasSuffix("/file"), let value, let written = value["path"]?.stringValue {
+            writes.append(("\(path):\(written)", value))
+            if written == ".happy-uploads/.gitignore", let ignoreStatus { return try response(ignoreStatus, .object(["code": .string("conflict")])) }
         }
         if method == "PUT", let content = value?["content"]?.stringValue, let bytes = Data(base64Encoded: content) {
             return try response(200, .object(["hash": .string(Hashing.sha256(bytes).map { String(format: "%02x", $0) }.joined())]))
@@ -186,6 +194,67 @@ final class UploadProgressTests: XCTestCase {
         XCTAssertEqual(Array(snapshots.prefix(writes)).map { $0[0] }, expected)
         XCTAssertEqual(expected.last, .uploading(1))
         XCTAssertEqual(board.phase(key), .done)
+    }
+
+    // MARK: Keeping uploads out of git
+
+    private func fileMessage(_ id: String, in root: URL) throws -> QueuedMessage {
+        let bytes = Data(id.utf8)
+        let url = root.appendingPathComponent("\(id).txt")
+        try bytes.write(to: url)
+        let file = QueuedFile(fileURL: url, name: "\(id).txt", mimeType: "text/plain", size: bytes.count, path: ".happy-uploads/\(id)/0-\(id).txt")
+        return QueuedMessage(id: id, agentID: "a", text: "", pictures: [], mode: mode, files: [file])
+    }
+
+    private func temporaryRoot() throws -> URL {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        return root
+    }
+
+    /// The first upload into a workspace writes `.happy-uploads/.gitignore`
+    /// (`*`, new only) before the file; the next upload doesn't again.
+    func testTheFirstUploadKeepsTheFolderOutOfGitOnce() async throws {
+        let computer = UploadComputer(board: .shared)
+        let client = AgentClient(transport: computer, token: "t")
+        let root = try temporaryRoot()
+
+        try await client.deliverMessage(try fileMessage("m1", in: root), board: UploadProgressBoard()) { _ in }
+        try await client.deliverMessage(try fileMessage("m2", in: root), board: UploadProgressBoard()) { _ in }
+
+        let writes = await computer.writes
+        XCTAssertEqual(writes.map(\.path), [
+            "/v0/workspaces/w/file:.happy-uploads/.gitignore",
+            "/v0/workspaces/w/file:.happy-uploads/m1/0-m1.txt",
+            "/v0/workspaces/w/file:.happy-uploads/m2/0-m2.txt",
+        ])
+        let ignore = try XCTUnwrap(writes.first?.body)
+        XCTAssertEqual(ignore["content"]?.stringValue.flatMap { Data(base64Encoded: $0) }, Data("*".utf8))
+        XCTAssertEqual(ignore["expectedHash"], .null)
+        let sends = await computer.sends
+        XCTAssertEqual(sends.count, 2)
+    }
+
+    /// A `.gitignore` already there (409) is left alone and counts as
+    /// written; a refused one never holds the upload up and is tried again
+    /// before the next.
+    func testAGitignoreThereOrRefusedNeverHoldsTheUploadUp() async throws {
+        for (status, attempts) in [(409, 1), (500, 2)] {
+            let computer = UploadComputer(board: .shared)
+            await computer.configure(ignoreStatus: status)
+            let client = AgentClient(transport: computer, token: "t")
+            let root = try temporaryRoot()
+
+            try await client.deliverMessage(try fileMessage("m1", in: root), board: UploadProgressBoard()) { _ in }
+            try await client.deliverMessage(try fileMessage("m2", in: root), board: UploadProgressBoard()) { _ in }
+
+            let writes = await computer.writes.map(\.path)
+            XCTAssertEqual(writes.filter { $0.hasSuffix(".gitignore") }.count, attempts, "\(status)")
+            XCTAssertEqual(writes.filter { !$0.hasSuffix(".gitignore") }.count, 2, "\(status)")
+            let sends = await computer.sends
+            XCTAssertEqual(sends.count, 2, "\(status)")
+        }
     }
 
     /// Inline pictures share the /send body: the first fills while the
