@@ -23,6 +23,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.slopus.happy.ui.components.PageProgressIndicator as CircularProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -282,17 +284,26 @@ fun ChatList(
         }
     }
 
+    // Only the newest reply comes out as it arrives (iOS 0a0ff3084, 70c8f6de7).
+    val focus = remember(sessionId) { RevealFocus() }
+    val streamingKey = focus.update(rows, working)
+    val reveal = remember(state) { ListReveal(state, leading = 1) }
+
     Box(modifier = modifier.fillMaxSize()) {
         LazyColumn(
             state = state,
             reverseLayout = true,
             contentPadding = PaddingValues(top = topInset, bottom = ChatListSpec.newestPadding + bottomInset),
-            modifier = Modifier.testTag(ChatListTags.LIST).fillMaxSize(),
+            modifier = Modifier.testTag(ChatListTags.LIST).fillMaxSize().graphicsLayer { translationY = reveal.lag() },
         ) {
             item(key = "footer", contentType = "footer") { ChatFooter(controlledByUser) }
             items(listItems, key = { it.key }, contentType = { item -> if (item is ChatListItem.Row) item.row::class else WORK_HEADER }) { item ->
                 when (item) {
-                    is ChatListItem.Row -> MessageView(item.row, bubble, callbacks)
+                    is ChatListItem.Row -> CompositionLocalProvider(LocalRevealHost provides reveal) {
+                        val row = item.row
+                        val textReveal = if (row is ChatRow.AgentText) rememberTextReveal(row.key, streaming = row.key == streamingKey) { true } else null
+                        MessageView(row, bubble, callbacks, reveal = textReveal)
+                    }
                     // Toggled by the group, not the row: both headers of an open group drive one state.
                     is ChatListItem.WorkHeader -> AgentWorkGroupHeader(
                         group = item.group,
@@ -432,5 +443,30 @@ fun ChatFooter(controlledByUser: Boolean, modifier: Modifier = Modifier) {
                 )
             }
         }
+    }
+}
+
+/**
+ * Which reply reveals in the relay chat (iOS's `RevealFocus`): the newest
+ * row, while the agent works, when it arrived alone while the chat was
+ * open. Never the history the chat opens with, nor several rows in one
+ * update (a catch-up); a row that stops being the newest finishes.
+ */
+internal class RevealFocus {
+    private var known: Set<String>? = null
+    private var revealing: String? = null
+
+    /** Takes the rows as composed now (newest first); the key that streams now, if any. */
+    fun update(rows: List<ChatRow>, working: Boolean): String? {
+        val before = known
+        known = rows.mapTo(HashSet(rows.size * 2)) { it.key }
+        val newest = rows.firstOrNull()
+        if (before.isNullOrEmpty()) {
+            revealing = null
+        } else if (newest != null && newest.key !in before) {
+            val added = rows.count { it.key !in before }
+            revealing = newest.key.takeIf { added == 1 && newest is ChatRow.AgentText && working }
+        }
+        return revealing?.takeIf { working && it == newest?.key }
     }
 }

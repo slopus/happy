@@ -148,7 +148,7 @@ val LocalChatRowObserver = staticCompositionLocalOf<((String) -> Unit)?> { null 
 
 /** One chat row, dispatched by kind (MessageView.tsx `RenderBlock`). */
 @Composable
-fun MessageView(row: ChatRow, bubble: BubblePalette, callbacks: MessageCallbacks, modifier: Modifier = Modifier) {
+fun MessageView(row: ChatRow, bubble: BubblePalette, callbacks: MessageCallbacks, modifier: Modifier = Modifier, reveal: TextReveal? = null) {
     LocalChatRowObserver.current?.let { observe -> SideEffect { observe(row.key) } }
     // `messageContainer` / `messageContent`: each message centred and held to layout.maxWidth.
     val layout = LocalWindowLayout.current
@@ -156,7 +156,7 @@ fun MessageView(row: ChatRow, bubble: BubblePalette, callbacks: MessageCallbacks
         val content = Modifier.contentMaxWidth(layout)
         when (row) {
             is ChatRow.User -> UserMessage(row, bubble, callbacks, content)
-            is ChatRow.AgentText -> AgentMessage(row, callbacks, content)
+            is ChatRow.AgentText -> AgentMessage(row, callbacks, content, reveal)
             is ChatRow.Event -> EventMessage(row.message.event, content)
             is ChatRow.Tool -> if (row.message.tool.name == "file") FileMessageView(row.message.tool.input, content) else ToolView(row.message, callbacks, content)
         }

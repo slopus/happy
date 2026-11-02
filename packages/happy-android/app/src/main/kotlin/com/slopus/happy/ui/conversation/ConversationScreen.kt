@@ -89,6 +89,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import com.slopus.happy.ui.components.GlassSource
 import com.slopus.happy.ui.components.RecomposeProbe
+import com.slopus.happy.ui.chat.ListReveal
 import com.slopus.happy.ui.chat.LocalRevealHost
 import com.slopus.happy.ui.chat.RevealHost
 import androidx.compose.runtime.CompositionLocalProvider
@@ -505,44 +506,10 @@ private fun Transcript(
     LaunchedEffect(nearOldest, state.hasMore, state.loadingOlder, state.olderFailed) {
         if (nearOldest && state.hasMore && !state.loadingOlder && !state.olderFailed) loadOlder(false)
     }
-    val reveal = remember(listState) { TranscriptReveal(listState) }
+    val reveal = remember(listState) { ListReveal(listState) }
     flight.atNewest = { listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0 }
     CompositionLocalProvider(LocalRevealHost provides reveal, LocalSendFlight provides flight) {
         TranscriptList(state, listState, bubble, actions, onLoadOlder, bar, dock, glass, keyboard, reveal, flight)
-    }
-}
-
-/**
- * The transcript's side of a streaming row's reveal. The row grows from its
- * foot, which rests at the list's newest end: read there, the list follows
- * it up, drawn [lag] lower while the row's height eases in, so the 250 ms
- * of a line are one layer moving. Scrolled into the row, the reader's words
- * stay put and the growth goes under the dock; scrolled above it, nothing
- * the reader sees moves at all.
- */
-@Stable
-private class TranscriptReveal(private val list: LazyListState) : RevealHost {
-    private var key: Any? = null
-    private var pixels by mutableFloatStateOf(0f)
-
-    override fun grew(key: Any, delta: Int) {
-        val offset = list.firstVisibleItemScrollOffset
-        if (offset > 0 && list.layoutInfo.visibleItemsInfo.firstOrNull()?.key == key) {
-            list.requestScrollToItem(list.firstVisibleItemIndex, offset + delta)
-        }
-    }
-
-    override fun lag(key: Any, pixels: Float) {
-        if (pixels == 0f && this.key != key) return
-        this.key = key
-        this.pixels = pixels
-    }
-
-    /** How much lower the list is drawn this frame; read only in its layer. */
-    fun lag(): Float {
-        val pixels = pixels
-        if (pixels == 0f || list.firstVisibleItemIndex != 0 || list.firstVisibleItemScrollOffset != 0) return 0f
-        return if (list.layoutInfo.visibleItemsInfo.firstOrNull()?.key == key) pixels else 0f
     }
 }
 
@@ -557,7 +524,7 @@ private fun TranscriptList(
     dock: Dp,
     glass: GlassSource,
     keyboard: KeyboardLift,
-    reveal: TranscriptReveal,
+    reveal: ListReveal,
     flight: SendFlight,
 ) {
     val density = LocalDensity.current

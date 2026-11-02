@@ -7,6 +7,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -65,6 +67,12 @@ object TextRevealSpec {
     val fade = 50.dp
     const val HEIGHT_MILLIS = 250
 
+    /** Once no more words will come, what is left comes out in this long (iOS 70c8f6de7). */
+    const val FINISH_SECONDS = 0.3f
+
+    /** Words growing by more than this at once (a catch-up, a whole message) show at once (iOS's RevealFocus). */
+    const val BURST_CHARS = 400
+
     /** `ChatListItemAnimator.DEFAULT_INTERPOLATOR`. */
     val easing = CubicBezierEasing(0.199f, 0.011f, 0.279f, 0.910f)
 }
@@ -79,6 +87,43 @@ interface RevealHost {
 }
 
 val LocalRevealHost = staticCompositionLocalOf<RevealHost?> { null }
+
+/**
+ * A transcript's side of a streaming row's reveal. The row grows from its
+ * foot, which rests at the list's newest end: read there, the list follows
+ * it up, drawn [lag] lower while the row's height eases in, so the 250 ms
+ * of a line are one layer moving. Scrolled into the row, the reader's words
+ * stay put and the growth goes under the dock; scrolled above it, nothing
+ * the reader sees moves at all. [leading] items sit at the newest end
+ * before the rows (the legacy list's footer).
+ */
+@Stable
+class ListReveal(private val list: LazyListState, private val leading: Int = 0) : RevealHost {
+    private var key: Any? = null
+    private var pixels by mutableFloatStateOf(0f)
+
+    override fun grew(key: Any, delta: Int) {
+        val offset = list.firstVisibleItemScrollOffset
+        if (offset > 0 && list.layoutInfo.visibleItemsInfo.firstOrNull()?.key == key) {
+            list.requestScrollToItem(list.firstVisibleItemIndex, offset + delta)
+        }
+    }
+
+    override fun lag(key: Any, pixels: Float) {
+        if (pixels == 0f && this.key != key) return
+        this.key = key
+        this.pixels = pixels
+    }
+
+    /** How much lower the list is drawn this frame; read only in its layer. */
+    fun lag(): Float {
+        val pixels = pixels
+        if (pixels == 0f || list.firstVisibleItemIndex != 0 || list.firstVisibleItemScrollOffset != 0) return 0f
+        val visible = list.layoutInfo.visibleItemsInfo
+        for (i in 0..minOf(leading, visible.lastIndex)) if (visible[i].key == key) return pixels
+        return 0f
+    }
+}
 
 /** The reveal the texts under this point register with; null outside a revealing row. */
 val LocalTextReveal = staticCompositionLocalOf<TextReveal?> { null }
@@ -156,6 +201,10 @@ class TextReveal internal constructor(
     private var x = 0f
     private var speed = TextRevealSpec.MIN_SPEED_DP_PER_SECOND * density
     private var lastFrame = 0L
+    /** No more words will come: the rest is on its way out in [TextRevealSpec.FINISH_SECONDS]. */
+    private var finishing = false
+    /** The characters the texts held at the last step. */
+    private var chars = 0
 
     internal var root: LayoutCoordinates? = null
     /** The row's whole height, as last measured. */
@@ -185,6 +234,11 @@ class TextReveal internal constructor(
         pieces -= piece
         if (caret === piece) caret = null
         version++
+    }
+
+    /** Shows everything there now and reveals only what comes after (the app went to the background). */
+    internal fun showWhole() {
+        startPending = true
     }
 
     /** Runs the reveal until it is [done]; [streaming] false once no more words will come. */
@@ -221,6 +275,9 @@ class TextReveal internal constructor(
         }.sortedWith(compareBy<Piece>({ it.top }, { it.left }))
         if (order.isEmpty()) return if (streaming) true else finish(frame)
 
+        val total = order.sumOf { it.layout.value?.layoutInput?.text?.length ?: 0 }
+        if (total - chars > TextRevealSpec.BURST_CHARS) startPending = true
+        chars = total
         if (startPending) {
             startPending = false
             caret = order.last()
@@ -238,7 +295,11 @@ class TextReveal internal constructor(
         val changed = order.any { it.layout.value !== it.seen }
         order.forEach { it.seen = it.layout.value }
         clamp(order[index])
-        if (changed) speed = max(TextRevealSpec.MIN_SPEED_DP_PER_SECOND * density, remaining(order, index) / TextRevealSpec.TARGET_SECONDS)
+        if (changed && !finishing) speed = max(TextRevealSpec.MIN_SPEED_DP_PER_SECOND * density, remaining(order, index) / TextRevealSpec.TARGET_SECONDS)
+        if (!streaming && !finishing) {
+            finishing = true
+            speed = max(speed, remaining(order, index) / TextRevealSpec.FINISH_SECONDS)
+        }
 
         index = advance(order, index, speed * dt)
         val end = atEnd(order, index)
@@ -351,7 +412,10 @@ fun rememberTextReveal(key: Any, streaming: Boolean, fresh: () -> Boolean): Text
         else TextReveal(density.density, startAtEnd = !fresh(), with(density) { MessageSpec.agentMarginVertical.toPx() }, key, host)
     } ?: return null
     val live = rememberUpdatedState(streaming)
-    com.slopus.happy.ui.components.StartedEffect(reveal) { reveal.run(live) }
+    com.slopus.happy.ui.components.StartedEffect(reveal) {
+        // Stopped mid-reveal (backgrounded, covered): back on screen it shows whole, as iOS's driver does.
+        try { reveal.run(live) } finally { reveal.showWhole() }
+    }
     // A row scrolled away mid-ease leaves the list where it is.
     DisposableEffect(reveal) { onDispose { reveal.host?.lag(reveal.key, 0f) } }
     return reveal.takeIf { !it.done }
