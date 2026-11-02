@@ -178,7 +178,8 @@ public struct NewSessionChoices: Equatable, Sendable {
         let sortedChoices = choices.enumerated().sorted { lhs, rhs in
             lhs.element.online != rhs.element.online ? lhs.element.online : lhs.offset < rhs.offset
         }.map(\.element)
-        machineOptions = sortedChoices.map { Option(key: $0.id, name: $0.name) }
+        // What runs there: one host's daemons and Happy CLI homes all share its name.
+        machineOptions = sortedChoices.map { Option(key: $0.id, name: $0.name, description: $0.daemons.isEmpty ? nil : $0.daemons) }
         currentMachine = Self.resolve(machineOptions, [selectedChoice?.id])
         resolvedMachineId = Self.resolveMachineSelection(selectedChoice?.id ?? draft.selectedMachineId, available: machineOptions.map(\.key))
         offersDraftMachine = selectedChoice != nil

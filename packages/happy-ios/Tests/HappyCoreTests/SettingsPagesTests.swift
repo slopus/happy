@@ -184,16 +184,45 @@ final class ChangelogPageTests: XCTestCase {
 
 /// app/(app)/settings/agents.tsx.
 final class AgentsPageTests: XCTestCase {
-    func testMachinesOnlineFirstThenMostRecent() {
+    /// Online first, then the newest; the most recently active no longer
+    /// moves up (equal ages fall back to the id).
+    func testMachinesOnlineFirstNeverByActivity() {
         let rows = AgentsPage.machineRows([
             machine("m1", activeAt: 5, ["host": .string("old"), "platform": .string("darwin")]),
             machine("m2", active: true, activeAt: 3, ["displayName": .string("Work"), "platform": .string("linux")]),
             machine("m3", activeAt: 9, ["host": .string("mini")]),
         ], online: "online", offline: "offline")
-        XCTAssertEqual(rows.map(\.name), ["Work", "mini", "old"])
-        XCTAssertEqual(rows.map(\.subtitle), ["linux • online", "offline", "darwin • offline"])
+        XCTAssertEqual(rows.map(\.name), ["Work", "old", "mini"])
+        XCTAssertEqual(rows.map(\.subtitle), ["linux • Happy CLI • online", "darwin • Happy CLI • offline", "Happy CLI • offline"])
         XCTAssertEqual(rows.map(\.online), [true, false, false])
-        XCTAssertEqual(rows.map(\.targetMachineId), ["m2", "m3", "m1"])
+        XCTAssertEqual(rows.map(\.targetMachineId), ["m2", "m1", "m3"])
+    }
+
+    /// One host with two Happy CLI homes and a Happy Agent on the relay:
+    /// three rows of one name, told apart by what runs there, and kept in
+    /// place when a heartbeat moves their activity.
+    func testOneHostsDaemonsAreToldApartAndStayPut() {
+        let host: [String: JSONValue] = ["host": .string("MacBook-Pro-Denis.local"), "platform": .string("darwin")]
+        func machines(_ activity: [Int64]) -> [MachineRecord] {
+            [
+                machine("new", active: true, activeAt: activity[0], host.merging(["happyCliVersion": .string("1.2.6")]) { $1 }),
+                machine("agent", active: true, activeAt: activity[1], host.merging([
+                    "machineKind": .string("rig"), "happyCliVersion": .string("0.4.111"),
+                    "client": .object(["id": .string("rig"), "name": .string("Happy Agent"), "version": .string("0.4.111-preview.5")]),
+                ]) { $1 }),
+                machine("old", active: true, activeAt: activity[2], host.merging(["happyCliVersion": .string("0.10.0")]) { $1 }),
+            ]
+        }
+        let rows = AgentsPage.machineRows(machines([1, 2, 3]), online: "online", offline: "offline")
+        XCTAssertEqual(Set(rows.map(\.name)), ["MacBook-Pro-Denis.local"])
+        XCTAssertEqual(rows.map(\.subtitle), [
+            "darwin • Happy Agent 0.4.111-preview.5 • online",
+            "darwin • Happy CLI 1.2.6 • online",
+            "darwin • Happy CLI 0.10.0 • online",
+        ])
+        XCTAssertEqual(AgentsPage.machineRows(machines([9, 1, 5]), online: "online", offline: "offline").map(\.id), rows.map(\.id))
+        let choices = MachineChoice.collect(machines([1, 2, 3]).reversed())
+        XCTAssertEqual(MachineChoice.sortedForPicking(choices).map(\.id), ["agent", "new", "old"])
     }
 
     func testAComputerOpensItsReachableDaemon() {
@@ -205,7 +234,7 @@ final class AgentsPageTests: XCTestCase {
         XCTAssertEqual(rows.count, 1)
         XCTAssertEqual(rows[0].id, "h1")
         XCTAssertEqual(rows[0].name, "Box")
-        XCTAssertEqual(rows[0].subtitle, "darwin • online")
+        XCTAssertEqual(rows[0].subtitle, "darwin • Happy CLI 1.2.6 + Happy Agent • online")
         XCTAssertEqual(rows[0].targetMachineId, "r1")
         XCTAssertEqual(AgentsPage.defaultsCLIVersion(machines), "1.2.6")
         XCTAssertNil(AgentsPage.defaultsCLIVersion([]))
@@ -341,29 +370,23 @@ final class AgentsPageDerivationTests: XCTestCase {
         XCTAssertEqual(update.output.rebuilt, [])
         let rows = try XCTUnwrap(update.output.machineRows)
         XCTAssertEqual(rows.updated.map(\.id), ["m1"])
-        XCTAssertEqual(rows.updated.first?.subtitle, "offline")
+        XCTAssertEqual(rows.updated.first?.subtitle, "Happy CLI • offline")
         XCTAssertEqual(rows.inserted, [])
         XCTAssertEqual(rows.removed, [])
         XCTAssertNil(rows.order, "both keep their place")
         XCTAssertEqual(rows.count, 1)
-        XCTAssertEqual(update.state.machines.map(\.subtitle), ["offline", "offline"])
+        XCTAssertEqual(update.state.machines.map(\.subtitle), ["Happy CLI • offline", "Happy CLI • offline"])
     }
 
-    /// A thousand computers, one of them seen again and moving up among the
-    /// offline ones: no row changes what it shows, the rows only move.
-    func testAHeartbeatThatReordersMovesRowsAndBuildsNone() throws {
+    /// A thousand computers, one of them seen again: the rows stay where
+    /// they are. They used to move up by last activity, so rows of one name
+    /// swapped places under a finger.
+    func testAHeartbeatNeverMovesTheComputers() throws {
         let machines = thousandComputers()
         let before = try shown(input(machines))
         var beat = machines
         beat[900].activeAt = 100_000 - 15
-        let update = try XCTUnwrap(AgentsPage.derive(input(beat), applied: before))
-        XCTAssertEqual(update.output.rebuilt, [])
-        let rows = try XCTUnwrap(update.output.machineRows)
-        XCTAssertEqual(rows.count, 0)
-        XCTAssertEqual(rows.removed, [])
-        XCTAssertEqual(rows.order?.count, 1000)
-        XCTAssertEqual(rows.order?[3], "m900", "first of the offline computers")
-        XCTAssertEqual(rows.order, update.state.machines.map(\.id))
+        XCTAssertNil(AgentsPage.derive(input(beat), applied: before))
     }
 
     func testComputersComingAndGoingAreBuiltAndDroppedByThemselves() throws {
@@ -389,15 +412,15 @@ final class AgentsPageDerivationTests: XCTestCase {
         XCTAssertNil(gone.output.machineRows)
     }
 
-    /// The code defaults follow the first computer's CLI; the computers'
-    /// own rows don't show it.
+    /// The code defaults follow the first computer's CLI; the computer's
+    /// row says the new version in place.
     func testANewCLIRebuildsTheAgentsItChangesAndNotTheComputers() throws {
         let old = [machine("m1", active: true, activeAt: 5, ["host": .string("box")])]
         let before = try shown(input(old))
         let new = [machine("m1", active: true, activeAt: 5, ["host": .string("box"), "happyCliVersion": .string("1.3.0")])]
         let update = try XCTUnwrap(AgentsPage.derive(input(new), applied: before))
         XCTAssertFalse(update.output.rebuilt.contains(.machines))
-        XCTAssertNil(update.output.machineRows)
+        XCTAssertEqual(update.output.machineRows?.updated.map(\.subtitle), ["Happy CLI 1.3.0 • online"])
         XCTAssertFalse(update.output.rebuilt.contains(.defaults))
         XCTAssertTrue(update.output.rebuilt.contains(.agent(.claude)))
         XCTAssertEqual(update.state.agents[0].fields[1].detail, "Default (Opus 5.5)")
@@ -449,16 +472,16 @@ final class AgentsPageDerivationTests: XCTestCase {
     func testTheLanguageInTheInputSaysTheWords() throws {
         let machines = [machine("m1", active: true, activeAt: 5, ["host": .string("box")])]
         let english = try shown(input(machines))
-        XCTAssertEqual(english.machines.map(\.subtitle), ["online"])
+        XCTAssertEqual(english.machines.map(\.subtitle), ["Happy CLI • online"])
         var japanese = input(machines)
         japanese.language = "ja"
         let update = try XCTUnwrap(AgentsPage.derive(japanese, applied: english))
-        XCTAssertEqual(update.state.machines.map(\.subtitle), ["オンライン"])
+        XCTAssertEqual(update.state.machines.map(\.subtitle), ["Happy CLI • オンライン"])
         // The computer's row says its words in place; the group stays.
         XCTAssertEqual(update.output.rebuilt, [])
         let rows = try XCTUnwrap(update.output.machineRows)
         XCTAssertEqual(rows.updated.map(\.id), ["m1"])
-        XCTAssertEqual(rows.updated.map(\.subtitle), ["オンライン"])
+        XCTAssertEqual(rows.updated.map(\.subtitle), ["Happy CLI • オンライン"])
         XCTAssertNil(rows.order)
     }
 
@@ -495,14 +518,14 @@ final class AgentsPageDerivationTests: XCTestCase {
         }
         await flips.value
         await applyPerfWait(timeout: 30) {
-            english.applied?.machines.first?.subtitle == "offline" && japanese.applied?.machines.first?.subtitle == "オフライン"
+            english.applied?.machines.first?.subtitle == "Happy CLI • offline" && japanese.applied?.machines.first?.subtitle == "Happy CLI • オフライン"
         }
         let englishWords = Set(englishOutputs.outputs.flatMap { $0.content.machines.map(\.subtitle) })
         let japaneseWords = Set(japaneseOutputs.outputs.flatMap { $0.content.machines.map(\.subtitle) })
         XCTAssertFalse(englishOutputs.outputs.isEmpty)
         XCTAssertFalse(japaneseOutputs.outputs.isEmpty)
-        XCTAssertTrue(englishWords.isSubset(of: ["online", "offline"]), "\(englishWords)")
-        XCTAssertTrue(japaneseWords.isSubset(of: ["オンライン", "オフライン"]), "\(japaneseWords)")
+        XCTAssertTrue(englishWords.isSubset(of: ["Happy CLI • online", "Happy CLI • offline"]), "\(englishWords)")
+        XCTAssertTrue(japaneseWords.isSubset(of: ["Happy CLI • オンライン", "Happy CLI • オフライン"]), "\(japaneseWords)")
         english.cancel()
         japanese.cancel()
     }

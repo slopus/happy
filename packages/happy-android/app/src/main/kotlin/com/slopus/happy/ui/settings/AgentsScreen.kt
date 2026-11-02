@@ -16,6 +16,8 @@ import com.slopus.happy.R
 import com.slopus.happy.model.AgentType
 import com.slopus.happy.model.Machine
 import com.slopus.happy.model.MachineChoice
+import com.slopus.happy.model.daemons
+import com.slopus.happy.model.sortMachineChoices
 import com.slopus.happy.model.settings.AgentDefaultField
 import com.slopus.happy.model.settings.AgentDefaultOverrides
 import com.slopus.happy.model.settings.AgentDefaults
@@ -53,8 +55,7 @@ private fun optionName(options: List<ModeOption>, key: String?): String =
     if (key.isNullOrEmpty()) "none" else options.find { it.key == key }?.name ?: key
 
 /** The machines group's order: online first, then most recently active. */
-fun sortAgentMachines(choices: List<MachineChoice>): List<MachineChoice> =
-    choices.sortedWith(compareByDescending<MachineChoice> { it.online }.thenByDescending { it.activeAt })
+fun sortAgentMachines(choices: List<MachineChoice>): List<MachineChoice> = sortMachineChoices(choices)
 
 /** The CLI version code defaults are described for: the first listed computer with Happy CLI. */
 fun agentDefaultsCliVersion(sorted: List<MachineChoice>): String? =
@@ -73,7 +74,8 @@ private data class FieldConfig(
  *
  * Machines: one row per computer ([machines], already sorted by
  * [sortAgentMachines]), a desktop icon in the connected or disconnected
- * colour, "platform • online" under the name, offline rows at 50%; tapping
+ * colour, "platform • Happy CLI 1.2.6 • online" under the name (what runs
+ * there, [daemons]), offline rows at 50%; tapping
  * opens the online daemon's machine, else the computer's own. With none, a
  * disabled "No connected machines" row. Defaults: Clear Overrides, disabled
  * while nothing is overridden. Then a group per configurable agent, titled
@@ -165,7 +167,8 @@ fun AgentsScreen(
                 for (choice in machines) {
                     val machine = choice.happyMachine ?: choice.rigMachine
                     val platform = machine?.metadata?.platform?.trim()
-                    val subtitle = listOfNotNull(platform?.takeIf { it.isNotEmpty() }, if (choice.online) online else offline).joinToString(" • ")
+                    // What runs there too: one host's daemons and Happy CLI homes all share its name.
+                    val subtitle = listOfNotNull(platform?.takeIf { it.isNotEmpty() }, choice.daemons.takeIf { it.isNotEmpty() }, if (choice.online) online else offline).joinToString(" • ")
                     val target = listOfNotNull(choice.happyMachine, choice.rigMachine).find { it.isOnline } ?: machine
                     Item(
                         title = choice.name,

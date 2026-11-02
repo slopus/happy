@@ -66,7 +66,7 @@ class NewSessionOptionsTest {
     @Test fun computersOnlineFirstAndAStaleMachineBecomesTheFirst() {
         val options = resolve(NewSessionDraft(selectedMachineId = "gone"))
         assertEquals(listOf("m1", "m2"), options.machines.map { it.key })
-        assertEquals(listOf("online", "seen 3"), options.machines.map { it.description })
+        assertEquals(listOf("Happy CLI 1.0.0 • online", "Happy CLI 1.0.0 • seen 3"), options.machines.map { it.description })
         assertEquals("m1", options.resolvedMachineId)
         // An empty catalog (still syncing) keeps the persisted pick.
         assertEquals("gone", resolve(NewSessionDraft(selectedMachineId = "gone"), machines = emptyList()).resolvedMachineId)

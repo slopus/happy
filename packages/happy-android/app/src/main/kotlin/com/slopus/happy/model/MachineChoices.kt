@@ -149,6 +149,39 @@ fun collectMachineChoices(machines: List<Machine>): List<MachineChoice> {
     return choices
 }
 
+/**
+ * What runs on this computer, by product and version ("Happy CLI 1.2.6",
+ * "Happy CLI 0.10.0 + Happy Agent 0.4.111"). Two daemons on one host share
+ * its name, and two Happy CLI homes on it are two machines, so the pickers
+ * tell them apart by this. Product names are never translated.
+ */
+val MachineChoice.daemons: String
+    get() = listOfNotNull(
+        happyMachine?.let { daemonName("Happy CLI", it.metadata?.happyCliVersion) },
+        rigMachine?.let { daemonName("Happy Agent", it.metadata?.client?.version ?: it.metadata?.happyCliVersion) },
+    ).joinToString(" + ")
+
+private fun daemonName(product: String, version: String?) =
+    version?.trim()?.takeIf { it.isNotEmpty() }?.let { "$product $it" } ?: product
+
+/** When the newest of this computer's daemons registered. */
+val MachineChoice.createdAt: Long
+    get() = maxOf(happyMachine?.createdAt ?: 0, rigMachine?.createdAt ?: 0)
+
+/**
+ * The order the pickers and Settings › Agents list computers in (iOS's
+ * `MachineChoice.sortedForPicking`): reachable ones first, then the newest,
+ * then by id. Never by last activity, which every heartbeat moves: rows of
+ * one name swapped places under a finger and a session started on the
+ * wrong computer.
+ */
+fun sortMachineChoices(choices: List<MachineChoice>): List<MachineChoice> =
+    choices.sortedWith(
+        compareByDescending<MachineChoice> { it.online }
+            .thenByDescending { it.createdAt }
+            .thenBy { it.id },
+    )
+
 /** The computer a stored machine id belongs to, whichever of its daemons was stored. */
 fun findMachineChoice(choices: List<MachineChoice>, machineId: String?): MachineChoice? {
     if (machineId.isNullOrEmpty()) return null

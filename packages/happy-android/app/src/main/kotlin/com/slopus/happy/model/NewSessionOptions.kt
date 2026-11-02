@@ -212,8 +212,10 @@ fun resolveNewSessionOptions(
     // A person picks a computer, not a daemon: the Happy CLI and Happy Agent pair is offered once.
     val choices = collectMachineChoices(machines)
     val choice = findMachineChoice(choices, draft.selectedMachineId)
-    val machineOptions = choices.sortedByDescending { it.online }.map {
-        PickerOption(it.id, it.name, if (it.online) labels.online else labels.lastSeen(it.activeAt))
+    // What runs there beside the status: one host's daemons and homes all share its name.
+    val machineOptions = sortMachineChoices(choices).map {
+        val status = if (it.online) labels.online else labels.lastSeen(it.activeAt)
+        PickerOption(it.id, it.name, listOf(it.daemons, status).filter(String::isNotEmpty).joinToString(" • "))
     }
     val currentMachine = resolvePickerOption(machineOptions, listOf(choice?.id))
     val resolvedMachineId = resolveHomeDockMachineSelection(choice?.id ?: draft.selectedMachineId, machineOptions.map { it.key })

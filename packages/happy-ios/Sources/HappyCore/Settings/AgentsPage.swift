@@ -9,7 +9,8 @@ public enum AgentsPage {
     public struct MachineRow: Equatable, Sendable {
         public var id: String
         public var name: String
-        /// `platform • online`, without the platform when it is unknown.
+        /// `platform • Happy CLI 1.2.6 • online` (what runs there,
+        /// `MachineChoice.daemons`), without the platform when it is unknown.
         public var subtitle: String
         public var online: Bool
         /// The machine a tap opens: a reachable daemon first, else the one
@@ -17,7 +18,7 @@ public enum AgentsPage {
         public var targetMachineId: String?
     }
 
-    /// Computers online first, then the most recently active.
+    /// Computers online first, then the newest (`MachineChoice.sortedForPicking`).
     public static func machineRows(_ machines: [MachineRecord], online: String, offline: String) -> [MachineRow] {
         machineRows(sorted: sortedChoices(machines), online: online, offline: offline)
     }
@@ -27,7 +28,7 @@ public enum AgentsPage {
             let machine = choice.happyMachine ?? choice.rigMachine
             let platform = machine?.metadata?["platform"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
             let status = choice.online ? online : offline
-            let subtitle = [platform, status].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " • ")
+            let subtitle = [platform, choice.daemons, status].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " • ")
             let target = [choice.happyMachine, choice.rigMachine].compactMap { $0 }.first(where: \.active) ?? machine
             return MachineRow(id: choice.id, name: choice.name, subtitle: subtitle, online: choice.online, targetMachineId: target?.id)
         }
@@ -45,13 +46,7 @@ public enum AgentsPage {
     }
 
     static func sortedChoices(_ machines: [MachineRecord]) -> [MachineChoice] {
-        // Array.sort isn't stable; the index keeps ties in collect order, as
-        // JavaScript's stable sort does.
-        MachineChoice.collect(machines).enumerated().sorted { left, right in
-            if left.element.online != right.element.online { return left.element.online }
-            if left.element.activeAt != right.element.activeAt { return left.element.activeAt > right.element.activeAt }
-            return left.offset < right.offset
-        }.map(\.element)
+        MachineChoice.sortedForPicking(MachineChoice.collect(machines))
     }
 
     /// One field row of an agent's group and the choices it opens.

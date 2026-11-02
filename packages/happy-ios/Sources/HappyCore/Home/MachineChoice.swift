@@ -52,6 +52,38 @@ public struct MachineChoice: Equatable, Sendable {
         return choices
     }
 
+    /// What runs on this computer, by product and version ("Happy CLI
+    /// 1.2.6", "Happy CLI 0.10.0 + Happy Agent 0.4.111"). Both daemons on a
+    /// host share its name, and two Happy CLI homes on it are two machines,
+    /// so the pickers tell them apart by this. Product names are never
+    /// translated (rule 10).
+    public var daemons: String {
+        [
+            happyMachine.map { Self.daemonName("Happy CLI", $0.metadata?["happyCliVersion"]?.stringValue) },
+            rigMachine.map { Self.daemonName("Happy Agent", $0.metadata?["client"]?["version"]?.stringValue ?? $0.metadata?["happyCliVersion"]?.stringValue) },
+        ].compactMap { $0 }.joined(separator: " + ")
+    }
+
+    private static func daemonName(_ product: String, _ version: String?) -> String {
+        nonEmpty(version?.trimmingCharacters(in: .whitespaces)).map { "\(product) \($0)" } ?? product
+    }
+
+    /// When the newest of its daemons registered.
+    var createdAt: Int64 {
+        max(happyMachine?.createdAt ?? 0, rigMachine?.createdAt ?? 0)
+    }
+
+    /// Settings › Agents' order, the pickers' own: reachable first, then
+    /// the newest computer, then by id. Never by last activity, which every
+    /// heartbeat moves, so rows of one name swapped places under a finger.
+    public static func sortedForPicking(_ choices: [MachineChoice]) -> [MachineChoice] {
+        choices.sorted { left, right in
+            if left.online != right.online { return left.online }
+            if left.createdAt != right.createdAt { return left.createdAt > right.createdAt }
+            return left.id < right.id
+        }
+    }
+
     /// happy-app's `isRigMachine`: any of the marks Happy Agent leaves.
     public static func isRigMachine(_ metadata: JSONValue?) -> Bool {
         metadata?["machineKind"]?.stringValue == "rig"

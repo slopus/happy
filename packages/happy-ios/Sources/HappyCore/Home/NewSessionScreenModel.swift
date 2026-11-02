@@ -131,6 +131,8 @@ public struct NewSessionScreenModel: Equatable, Sendable {
             Item(
                 key: choice.id,
                 label: choice.name,
+                // One host's daemons and Happy CLI homes all share its name.
+                subtitle: choice.daemons.isEmpty ? nil : choice.daemons,
                 isDimmed: !choice.online,
                 status: choice.online ? .online : .lastSeen(ComposerStatus.lastSeen(activeAt: choice.activeAt, now: now))
             )

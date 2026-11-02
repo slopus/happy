@@ -40,8 +40,8 @@ import kotlinx.serialization.json.put
 
 /**
  * happy-app settings/agents.tsx. Machines: one row per computer, online
- * first then most recently active, "platform • online|offline" under the
- * name; tapping opens the online daemon. No machines: a "No connected
+ * first then the newest (never by activity), "platform • Happy CLI x.y •
+ * online|offline" under the name; tapping opens the online daemon. No machines: a "No connected
  * machines" row. Defaults: Clear Overrides, disabled with no overrides.
  * One group per configurable agent (Claude Code, Codex, Antigravity; never
  * the retired Gemini or OpenClaw) with Permission, Model and Effort rows
@@ -66,7 +66,7 @@ class AgentsLayoutTest {
             machine("new", machineMetadata("new.local") { put("happyCliVersion", "1.2.6") }, active = true, activeAt = 10),
             machine("idle", machineMetadata("idle.local"), active = false, activeAt = 20),
         )
-        assertEquals(listOf("new", "old", "idle"), sorted.map { it.id })
+        assertEquals(listOf("new", "idle", "old"), sorted.map { it.id })
         assertEquals("1.2.6", agentDefaultsCliVersion(sorted))
         assertEquals(null, agentDefaultsCliVersion(emptyList()))
     }
@@ -96,8 +96,8 @@ class AgentsLayoutTest {
         )
         var opened: String? = null
         rule.setHappyContent { AgentsScreen(machines, AgentDefaultOverrides(), {}, { opened = it.id }, {}) }
-        rule.onNodeWithText("darwin • online").assertIsDisplayed()
-        rule.onNodeWithText("darwin • offline").assertIsDisplayed()
+        rule.onNodeWithText("darwin • Happy CLI 1.0.0 • online").assertIsDisplayed()
+        rule.onNodeWithText("darwin • Happy CLI 1.0.0 • offline").assertIsDisplayed()
         val rows = rule.onAllNodesWithTag(ItemTags.ROW, useUnmergedTree = true)
         val laptop = rows[0].bounds
         val desk = rows[1].bounds

@@ -559,7 +559,9 @@ final class NewSessionViewController: UIViewController {
 
     private func optionRow(_ item: NewSessionScreenModel.Item, selected: String?, select: @escaping (String) -> Void) -> NewSessionOptionRow {
         let isSelected = item.key == selected
-        let detail = item.status.map(Self.statusText) ?? item.subtitle
+        // A computer says what runs there beside its state.
+        let parts = [item.subtitle, item.status.map(Self.statusText)].compactMap { $0 }
+        let detail = parts.isEmpty ? nil : parts.joined(separator: " • ")
         let row = NewSessionOptionRow(
             icon: .octicons(isSelected ? "check-circle-fill" : "circle"),
             iconSize: 16,
