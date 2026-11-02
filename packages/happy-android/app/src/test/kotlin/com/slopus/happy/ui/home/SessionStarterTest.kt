@@ -258,9 +258,9 @@ class SessionStarterTest {
 
     @Test fun imagesGoWithTheFirstMessageEvenWithoutText() = runTest {
         val h = harness(draft = NewSessionDraft(selectedMachineId = "m1"))
-        h.sender.notices = listOf(AttachmentNotice.UploadFailed(1))
+        h.sender.notices = listOf(AttachmentNotice.NotSupported)
         assertEquals(
-            StartResult.Started("s1", listOf(AttachmentNotice.UploadFailed(1))),
+            StartResult.Started("s1", listOf(AttachmentNotice.NotSupported)),
             h.starter.start(attachments = listOf(image), confirmDirectory = yes),
         )
         assertEquals(listOf("s1" to ""), h.sent)

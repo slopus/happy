@@ -1019,9 +1019,13 @@ Verify focus, recording and communication mode on a device after changes.
 - **Sending**: the composer's images are normalized at pick time (upright,
   long edge ≤ 3072, JPEG 0.92, `<stem>.jpg`, ≤ 10 MB − 40 so the encrypted
   blob fits), uploaded on send (`prepareAttachmentSend`: flavor and rig
-  policy, then upload; a failed image is counted, not fatal), and handed to
+  policy, then upload), and handed to
   `ChatActions.send(..., attachments = fileEventRecords(uploaded))`, which
-  queues sync.ts's `file` session events ahead of the text.
+  queues sync.ts's `file` session events ahead of the text. A failed image
+  is counted for the alert and nothing is sent: the text and images stay
+  in the composer for another Send, as happy-app does and as iOS holds the
+  text behind its failed upload. A caption sent alone read to the agent as
+  if its pictures were there.
 - **Picking**: the add button and the conversation's [+] open the
   attachment sheet (`ui/attach/`), Telegram's ChatAttachAlert ported with
   its numbers (`research/attachment-menu.md`, pinned by `AttachSpecTest`):
