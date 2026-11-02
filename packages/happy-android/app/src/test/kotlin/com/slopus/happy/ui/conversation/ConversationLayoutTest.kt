@@ -137,13 +137,15 @@ class ConversationLayoutTest {
         rule.onNodeWithText("New chat").assertDoesNotExist()
     }
 
-    @Test fun `a new chat asks Task or Bot, with compose and overflow in the header`() {
+    @Test fun `a new chat asks Task or Bot, with Back and overflow alone in the header`() {
         show(ConversationState(created = false, loaded = true, newWork = com.slopus.happy.conversation.NewWork(com.slopus.happy.conversation.WorkChoice())))
-        rule.node(ConversationScreenTags.TITLE).assertIsDisplayed()
-        rule.onNodeWithText("New chat").assertIsDisplayed()
+        // No name and no compose until the first send (iOS 323fb2e9f); the overflow keeps the permission mode.
+        rule.onNodeWithText("New chat").assertDoesNotExist()
+        rule.node(ConversationScreenTags.TITLE_BUTTON).assertDoesNotExist()
+        rule.node(ConversationScreenTags.BACK).assertIsDisplayed()
         rule.node(com.slopus.happy.ui.chat.NewWorkTags.PANEL).assertIsDisplayed()
         rule.node(ConversationScreenTags.EMPTY).assertDoesNotExist()
-        rule.node(ConversationScreenTags.COMPOSE).assertIsDisplayed()
+        rule.node(ConversationScreenTags.COMPOSE).assertDoesNotExist()
         rule.node(ConversationScreenTags.MORE).assertIsDisplayed()
         rule.node(ConversationScreenTags.DETAILS).assertDoesNotExist()
         // The composer runs edge to edge, 8 in, above the navigation bar.
@@ -151,6 +153,40 @@ class ConversationLayoutTest {
         assertDp("composer left", 0, composer.left)
         assertDp("composer width", 411, composer.width)
         shot("new-chat")
+    }
+
+    @Test fun `the name, status and compose fade in with the first send`() {
+        var created by androidx.compose.runtime.mutableStateOf(false)
+        rule.setHappyContent {
+            ConversationScreen(
+                ConversationState(created = created, loaded = true, knownTitle = "Fix it", newWork = if (created) null else com.slopus.happy.conversation.NewWork(com.slopus.happy.conversation.WorkChoice())),
+                null,
+                ConversationScreenActions(),
+            )
+        }
+        rule.node(ConversationScreenTags.TITLE_BUTTON).assertDoesNotExist()
+        fun darkestNow(): Int {
+            val image = rule.onRoot().captureToImage().asAndroidBitmap()
+            val title = rule.node(ConversationScreenTags.TITLE).bounds
+            val density = image.width / 411f
+            return ((title.left.value * density).toInt() until (title.right.value * density).toInt()).minOf { x ->
+                ((title.top.value * density).toInt() until (title.bottom.value * density).toInt()).minOf { y -> image.getPixel(x, y) and 0xff }
+            }
+        }
+        rule.mainClock.autoAdvance = false
+        created = true
+        // Frame by frame, as the screen draws them: from the fade's first frame to half its time.
+        var frames = 0
+        while (darkestNow() == 0xff && frames++ < 10) rule.mainClock.advanceTimeByFrame()
+        repeat(ConversationHeaderSpec.FADE_MILLIS / 2 / 16) { rule.mainClock.advanceTimeByFrame() }
+        val half = darkestNow()
+        rule.mainClock.autoAdvance = true
+        rule.waitForIdle()
+        val whole = darkestNow()
+        // Ease-out: more than half shown at half the time, and black once over.
+        assertTrue("half way: $half, then $whole", half in 0x10 until 0x80 && whole < 0x10)
+        rule.node(ConversationScreenTags.TITLE).assertTextEquals("Fix it")
+        rule.node(ConversationScreenTags.COMPOSE).assertIsDisplayed()
     }
 
     @Test fun `history renders text, tools, media and a failure, with the connection state in the header`() {

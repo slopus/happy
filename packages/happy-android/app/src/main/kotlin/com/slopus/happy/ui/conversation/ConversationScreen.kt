@@ -55,6 +55,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -339,9 +342,18 @@ fun ConversationScreen(
                             // While work runs (not on a question) the title and the status shimmer, as desktop's busy
                             // tab and working line do; both keep their colours, with the sheen wiping through.
                             val running = activityShimmers(state.activity)
+                            // Until the chat exists the bar is Back alone: it is plainly the empty chat. Its name
+                            // and status fade in with the first send (iOS 323fb2e9f, ConversationHeader).
+                            val shown by animateFloatAsState(
+                                if (state.created) 1f else 0f,
+                                tween(ConversationHeaderSpec.FADE_MILLIS, easing = ConversationHeaderSpec.easing),
+                                label = "title",
+                            )
                             // The title opens the agent's page, as iOS's header capsule and Telegram's do.
                             Box(
                                 Modifier
+                                    .graphicsLayer { alpha = shown }
+                                    .then(if (state.created) Modifier else Modifier.clearAndSetSemantics {})
                                     .clip(MaterialTheme.shapes.small)
                                     .clickable(
                                         enabled = state.created,

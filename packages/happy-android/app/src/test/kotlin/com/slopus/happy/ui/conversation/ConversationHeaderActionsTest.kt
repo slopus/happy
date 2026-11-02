@@ -53,13 +53,18 @@ class ConversationHeaderActionsTest {
             rule.runOnIdle { direction = if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr }
             for (exists in listOf(false, true)) {
                 rule.runOnIdle { created = exists }
-                rule.onNodeWithText(String(Character.toChars(Ionicon.CreateOutline.codepoint))).assertExists()
-                val compose = rule.node(ConversationScreenTags.COMPOSE).bounds
-                val more = rule.node(ConversationScreenTags.MORE).bounds
-                val title = rule.node(ConversationScreenTags.TITLE).bounds
-                assertTrue("compose/overflow order", if (rtl) more.right <= compose.left else compose.right <= more.left)
-                assertTrue("title leaves both actions clear", if (rtl) title.left >= compose.right else title.right <= compose.left)
-                rule.node(ConversationScreenTags.COMPOSE).performClick()
+                if (exists) {
+                    rule.onNodeWithText(String(Character.toChars(Ionicon.CreateOutline.codepoint))).assertExists()
+                    val compose = rule.node(ConversationScreenTags.COMPOSE).bounds
+                    val more = rule.node(ConversationScreenTags.MORE).bounds
+                    val title = rule.node(ConversationScreenTags.TITLE).bounds
+                    assertTrue("compose/overflow order", if (rtl) more.right <= compose.left else compose.right <= more.left)
+                    assertTrue("title leaves both actions clear", if (rtl) title.left >= compose.right else title.right <= compose.left)
+                    rule.node(ConversationScreenTags.COMPOSE).performClick()
+                } else {
+                    // Until the chat exists: no compose, and no name to tap.
+                    rule.node(ConversationScreenTags.COMPOSE).assertDoesNotExist()
+                }
                 rule.node(ConversationScreenTags.MORE).performClick()
                 if (exists) rule.node(ConversationScreenTags.DETAILS).assertIsDisplayed()
                 else rule.node(ConversationScreenTags.DETAILS).assertDoesNotExist()
@@ -80,7 +85,7 @@ class ConversationHeaderActionsTest {
                 }
             }
         }
-        assertEquals(4, composed)
+        assertEquals(2, composed)
         assertEquals(2, details)
     }
 }

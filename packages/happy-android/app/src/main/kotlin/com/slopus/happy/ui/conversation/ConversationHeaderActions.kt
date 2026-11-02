@@ -1,5 +1,10 @@
 package com.slopus.happy.ui.conversation
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.layout.PaddingValues
@@ -26,10 +31,19 @@ import com.slopus.happy.ui.theme.HappyTheme
 
 private enum class HeaderMenu { Actions, Permissions }
 
+/** The header of a chat that doesn't exist yet (iOS 323fb2e9f, ConversationHeader). */
+object ConversationHeaderSpec {
+    /** Its name, status and compose fade in with the first send, ease-out, mostly over early. */
+    const val FADE_MILLIS = 250
+    val easing = CubicBezierEasing(0f, 0f, 0.58f, 1f)
+}
+
 /**
  * Two 48 dp header targets: compose (the square-and-pencil glyph, same as
- * Home), then three dots. Compose starts a new empty chat; the menu holds
- * permissions and, once a chat exists, its details. Menus open below the
+ * Home), then three dots. Compose starts a new empty chat, so a chat that
+ * doesn't exist yet has none until its first send; the menu holds
+ * permissions (here, unlike iOS, for new work too) and, once a chat
+ * exists, its details. Menus open below the
  * three-dot button and keep the composer/IME active, including selections.
  */
 @Composable
@@ -37,8 +51,15 @@ internal fun ConversationHeaderActions(state: ConversationState, actions: Conver
     val colors = HappyTheme.colors
     val current = state.mode ?: state.catalog?.defaults
     var menu by rememberSaveable { mutableStateOf<HeaderMenu?>(null) }
-    IconButton(onClick = actions.onCompose, modifier = Modifier.testTag(ConversationScreenTags.COMPOSE)) {
-        GlyphIcon(Ionicon.CreateOutline, 24.dp, colors.text, Modifier.testTag(ConversationScreenTags.COMPOSE_ICON), stringResource(R.string.session_new_chat))
+    // Composing another from the empty chat has nothing to leave: compose comes with the first send.
+    AnimatedVisibility(
+        visible = state.created,
+        enter = fadeIn(tween(ConversationHeaderSpec.FADE_MILLIS, easing = ConversationHeaderSpec.easing)),
+        exit = ExitTransition.None,
+    ) {
+        IconButton(onClick = actions.onCompose, modifier = Modifier.testTag(ConversationScreenTags.COMPOSE)) {
+            GlyphIcon(Ionicon.CreateOutline, 24.dp, colors.text, Modifier.testTag(ConversationScreenTags.COMPOSE_ICON), stringResource(R.string.session_new_chat))
+        }
     }
     Box {
         IconButton(
