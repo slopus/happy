@@ -22,10 +22,13 @@ final class AccountKindNamingTests: XCTestCase {
     ]
 
     /// The app's other own words: the home card that leads a Happy CLI
-    /// account to Happy Agent, and where a phone keeps its secret key.
+    /// account to Happy Agent, a computer an old Happy CLI linked, and
+    /// where a phone keeps its secret key.
     private static let otherKeys = [
         "native.home.migrationTitle",
         "native.home.migrationSubtitle",
+        "native.machine.needsRelogin",
+        "native.machine.reloginHint",
         "native.onboarding.secretKeyBody",
     ]
 

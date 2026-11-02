@@ -52,6 +52,9 @@ class NewSessionLabels(
     val createWorktree: String = "Create New Worktree",
     val enterCustomPath: String = "Enter custom path",
     val online: String = "online",
+    /** A computer an old Happy CLI linked ([needsRelogin]), and what to run on it. */
+    val needsRelogin: String = "Computer with an old Happy CLI sign-in",
+    val reloginHint: String = "Run happy auth login --force on it",
     val notSupportedBy: (harness: String) -> String = { "Not supported by $it" },
     val lastSeen: (activeAt: Long) -> String = { "" },
 )
@@ -214,11 +217,14 @@ fun resolveNewSessionOptions(
     val choice = findMachineChoice(choices, draft.selectedMachineId)
     // What runs there beside the status: one host's daemons and homes all share its name.
     val machineOptions = sortMachineChoices(choices).map {
+        // Shown, so the person learns what it needs, but nothing starts there.
+        if (it.needsRelogin) return@map PickerOption(it.id, labels.needsRelogin, labels.reloginHint, disabled = true)
         val status = if (it.online) labels.online else labels.lastSeen(it.activeAt)
         PickerOption(it.id, it.name, listOf(it.daemons, status).filter(String::isNotEmpty).joinToString(" • "))
     }
-    val currentMachine = resolvePickerOption(machineOptions, listOf(choice?.id))
-    val resolvedMachineId = resolveHomeDockMachineSelection(choice?.id ?: draft.selectedMachineId, machineOptions.map { it.key })
+    val usable = machineOptions.filterNot { it.disabled }
+    val currentMachine = resolvePickerOption(usable, listOf(choice?.id))
+    val resolvedMachineId = resolveHomeDockMachineSelection(choice?.id ?: draft.selectedMachineId, usable.map { it.key })
     val homeDir = choice?.happyMachine?.metadata?.homeDir ?: choice?.rigMachine?.metadata?.homeDir
 
     val placeMachineIds = choice?.machineIds.orEmpty()

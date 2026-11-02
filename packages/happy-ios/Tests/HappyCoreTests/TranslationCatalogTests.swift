@@ -208,7 +208,7 @@ final class TranslationCatalogTests: XCTestCase {
         // Home's: Strings.swift, Strings/Home.swift, Strings/SettingsPages.swift.
         XCTAssertEqual(counts["Strings.swift"]?.strings, 204)
         XCTAssertEqual(counts["Strings.swift"]?.functions, 7)
-        XCTAssertEqual(counts["Home.swift"]?.strings, 38)
+        XCTAssertEqual(counts["Home.swift"]?.strings, 40)
         XCTAssertEqual(counts["Home.swift"]?.functions, 1)
         XCTAssertEqual(counts["SettingsPages.swift"]?.strings, 1)
         XCTAssertEqual(counts["SettingsPages.swift"]?.functions, 0)

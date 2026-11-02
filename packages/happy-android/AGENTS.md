@@ -11,7 +11,10 @@ architectures comparable (local store, delta sync, crypto layer).
   sync and encryption code (`sources/sync`, `sources/encryption`,
   `sources/auth`) are the source of truth. Do not port legacy protocol paths:
   sessions and machines without a `dataEncryptionKey` are skipped, not
-  decrypted with the account secret.
+  decrypted with the account secret. The one exception: such a machine is
+  kept unread (`MachineRecord.isLegacy`), so the person sees a computer an
+  old Happy CLI linked and is told to run `happy auth login --force` there,
+  as iOS does.
 - **Voice** uses Happy's server-controlled allowance and RevenueCat paywalls,
   with ElevenLabs over WebRTC. The pinned SDK source patch in
   `vendor/elevenlabs` fixes audio focus, teardown and call-local mute.

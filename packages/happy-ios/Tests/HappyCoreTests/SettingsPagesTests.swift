@@ -227,6 +227,33 @@ final class AgentsPageTests: XCTestCase {
         XCTAssertEqual(Set(choices.map { MachineTarget($0).daemons }), ["Happy Agent 0.4.111-preview.5", "Happy CLI 1.2.6", "Happy CLI 0.10.0"])
     }
 
+    /// Happy CLI 0.9.1 signed in with the account secret: its machine has
+    /// no data key, so nothing of it opens. It stays listed, named for
+    /// that, saying what to run, and opens nothing.
+    func testAComputerAnOldHappyCLILinkedSaysWhatToRun() {
+        let legacy = MachineRecord(
+            id: "old", seq: 0, createdAt: 1, updatedAt: 1, active: true, activeAt: 1,
+            metadataVersion: 1, metadataCipher: "c", metadata: nil,
+            daemonStateVersion: 0, daemonStateCipher: nil, daemonState: nil, dataKeyCipher: nil, decryptable: false
+        )
+        // A key that fails to open is something else.
+        var unreadable = machine("broken", active: true)
+        unreadable.decryptable = false
+        XCTAssertTrue(legacy.needsRelogin)
+        XCTAssertFalse(unreadable.needsRelogin)
+
+        let rows = AgentsPage.machineRows([machine("new", active: true, ["host": .string("box")]), legacy], online: "online", offline: "offline")
+        XCTAssertEqual(rows.map(\.name), ["box", "Computer with an old Happy CLI sign-in"])
+        XCTAssertEqual(rows.last?.subtitle, "Run happy auth login --force on it")
+        XCTAssertNil(rows.last?.targetMachineId, "opens nothing")
+
+        let targets = MachineChoice.collect([machine("new", active: true, ["host": .string("box")]), legacy]).map(MachineTarget.init)
+        XCTAssertEqual(MachineTarget.eligible(targets, for: .session).map(\.id), ["new"], "never picked")
+        XCTAssertEqual(MachineTarget.listed(targets, for: .session).map(\.id), ["new", "old"], "but listed")
+        XCTAssertEqual(MachineTarget.listed(targets, for: .bot).map(\.id), [])
+        XCTAssertEqual(targets.last?.daemons, "")
+    }
+
     func testAComputerOpensItsReachableDaemon() {
         let machines = [
             machine("r1", active: true, activeAt: 4, ["machineKind": .string("rig"), "siblingMachineId": .string("h1"), "host": .string("box")]),

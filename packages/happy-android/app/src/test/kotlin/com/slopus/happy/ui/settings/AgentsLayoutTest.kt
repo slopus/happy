@@ -111,6 +111,22 @@ class AgentsLayoutTest {
         rule.onAllNodesWithText("Default (Default)")[0].assertIsDisplayed()
     }
 
+    /** A computer an old Happy CLI linked: listed, saying what to run on it, opening nothing. */
+    @Test
+    fun aComputerNeedingAFreshSignInSaysWhatToRun() {
+        val machines = choices(
+            machine("old", null, activeAt = 50).copy(needsRelogin = true),
+            machine("online", machineMetadata("online.local") { put("displayName", "Laptop"); put("happyCliVersion", "1.0.0") }),
+        )
+        var opened: String? = null
+        rule.setHappyContent { AgentsScreen(machines, AgentDefaultOverrides(), {}, { opened = it.id }, {}) }
+        rule.onNodeWithTag(AgentsTags.RELOGIN, useUnmergedTree = true).assertIsDisplayed()
+        rule.onNodeWithText("Computer with an old Happy CLI sign-in").assertIsDisplayed()
+        rule.onNodeWithText("Run happy auth login --force on it").assertIsDisplayed()
+        rule.onNodeWithText("Computer with an old Happy CLI sign-in").performClick()
+        assertEquals(null, opened)
+    }
+
     @Test
     fun permissionExpandsAndOverrides() {
         var overrides by mutableStateOf(AgentDefaultOverrides())

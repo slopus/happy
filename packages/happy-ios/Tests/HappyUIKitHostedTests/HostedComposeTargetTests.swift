@@ -652,6 +652,30 @@ final class HostedComposeTargetTests: XCTestCase {
     /// A session on the same account before its computers are in: the
     /// computer (loading), the folder and the harness show at once, with
     /// the kinds, and fill in where they stand.
+    /// Happy CLI 0.9.1 linked a computer with the account secret: nothing
+    /// of it opens. The menu lists it last, says what to run there, and
+    /// it can't be picked (it said "Unknown machine" and took sessions).
+    func testAComputerAnOldHappyCLILinkedSaysWhatToRunAndCantBePicked() async throws {
+        let log = TargetSpawns()
+        let (home, navigation, window, _) = try await reportedAccount(log: log, seed: { store in
+            try HostedComposeTargetTests.seed(store)
+            try store.upsertMachine(MachineRecord(
+                id: "legacy", seq: 1, createdAt: SeededAccount.base + 20, updatedAt: SeededAccount.base + 20, active: true,
+                activeAt: Int64(Date().timeIntervalSince1970 * 1000), metadataVersion: 1, metadataCipher: "harness", metadata: nil,
+                daemonStateVersion: 0, daemonStateCipher: nil, daemonState: nil, dataKeyCipher: nil, decryptable: false
+            ))
+        })
+        defer { window.isHidden = true }
+        let (_, _, _, start) = try await emptyChat(home, navigation)
+        let actions = Self.actions(start.machineMenuElements())
+        XCTAssertFalse(actions.contains { $0.title == "Unknown machine" }, "\(actions.map(\.title))")
+        let legacy = try XCTUnwrap(actions.last)
+        XCTAssertEqual(legacy.title, "Computer with an old Happy CLI sign-in")
+        XCTAssertEqual(legacy.subtitle, "Run happy auth login --force on it")
+        XCTAssertTrue(legacy.attributes.contains(.disabled))
+        XCTAssertEqual(actions.dropLast().map(\.title), ["MacBook-Pro-7.local", "happy-core", "MacBook-Pro.local"])
+    }
+
     func testASessionShowsItsRowsWhileTheComputersArrive() async throws {
         let log = TargetSpawns()
         let (home, navigation, window, account) = try await reportedAccount(log: log, seed: { store in

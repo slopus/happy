@@ -2,6 +2,14 @@ import Foundation
 import HappyStore
 import HappyWire
 
+extension MachineRecord {
+    /// Linked by a Happy CLI before 0.9's data keys, still signed in with
+    /// the account secret: nothing on it opens or can be reached until
+    /// `happy auth login --force` there. (A key that fails to open is
+    /// another matter, and keeps its name.)
+    public var needsRelogin: Bool { !decryptable && dataKeyCipher == nil }
+}
+
 /// One computer, as a person sees it. Mirrors happy-app's
 /// sync/machineChoices.ts.
 ///
@@ -58,7 +66,8 @@ public struct MachineChoice: Equatable, Sendable {
     /// so the pickers tell them apart by this. Product names are never
     /// translated (rule 10).
     public var daemons: String {
-        [
+        guard !needsRelogin else { return "" }
+        return [
             happyMachine.map { Self.daemonName("Happy CLI", $0.metadata?["happyCliVersion"]?.stringValue) },
             rigMachine.map { Self.daemonName("Happy Agent", $0.metadata?["client"]?["version"]?.stringValue ?? $0.metadata?["happyCliVersion"]?.stringValue) },
         ].compactMap { $0 }.joined(separator: " + ")
@@ -92,6 +101,17 @@ public struct MachineChoice: Equatable, Sendable {
             || metadata?["cliAvailability"]?["rig"]?.boolValue == true
     }
 
+    /// A computer an old Happy CLI linked (`MachineRecord.needsRelogin`),
+    /// where no words of the person's language reach; Settings and the
+    /// pickers say it in theirs (`native.machine.needsRelogin`).
+    public static let needsReloginName = "Computer with an old Happy CLI sign-in"
+    /// What to run on it (`native.machine.reloginHint`).
+    public static let reloginHint = "Run happy auth login --force on it"
+
+    /// Linked by a Happy CLI before 0.9's data keys: shown, but nothing can
+    /// start there until `happy auth login --force` on it.
+    public var needsRelogin: Bool { (happyMachine ?? rigMachine)?.needsRelogin == true }
+
     /// `displayName || host || 'Unknown machine'`; empty strings fall through.
     public static func machineName(_ machine: MachineRecord) -> String {
         nonEmpty(machine.metadata?["displayName"]?.stringValue)
@@ -103,6 +123,8 @@ public struct MachineChoice: Equatable, Sendable {
     /// from its sibling, so a computer with only Happy Agent goes by host.
     static func computerName(happy: MachineRecord?, rig: MachineRecord?) -> String {
         guard let named = happy ?? rig else { return "Unknown machine" }
+        // Nothing of it can be read: named for what it is.
+        if named.needsRelogin { return needsReloginName }
         if happy == nil, let host = nonEmpty(named.metadata?["host"]?.stringValue) {
             return host
         }

@@ -15,6 +15,9 @@ public struct MachineTarget: Equatable, Sendable {
     /// What runs on it, with versions (`MachineChoice.daemons`): one
     /// host's Happy CLI and Happy Agent share its name.
     public var daemons = ""
+    /// Linked by an old Happy CLI (`MachineChoice.needsRelogin`): listed,
+    /// never picked.
+    public var needsRelogin = false
     /// Some daemon on it answers.
     public var online: Bool
     /// Its Happy Agent answers.
@@ -52,6 +55,7 @@ public struct MachineTarget: Equatable, Sendable {
             lastSeenAt: choice.online ? 0 : choice.activeAt
         )
         daemons = choice.daemons
+        needsRelogin = choice.needsRelogin
         if let agent = choice.rigMachine, !agent.active { happyAgentLastSeenAt = agent.activeAt }
         happyAgentDefaults = rig.map {
             AgentDefaults.Config(permissionMode: $0.defaultPermissionMode ?? "", modelMode: $0.defaultModelKey ?? "",
@@ -62,7 +66,7 @@ public struct MachineTarget: Equatable, Sendable {
     /// Whether this computer can make `kind`.
     public func makes(_ kind: HomeDockKind) -> Bool {
         switch kind {
-        case .session: true
+        case .session: !needsRelogin
         case .bot: makesBots
         case .task: makesTasks
         }
@@ -86,6 +90,13 @@ public struct MachineTarget: Equatable, Sendable {
     public static func eligible(_ targets: [MachineTarget], for kind: HomeDockKind) -> [MachineTarget] {
         let able = targets.filter { $0.makes(kind) }
         return able.filter { $0.isOnline(for: kind) } + able.filter { !$0.isOnline(for: kind) }
+    }
+
+    /// What the menu lists for `kind`: those that can make it, then, for
+    /// a session, the computers an old Happy CLI linked, which say what
+    /// they need and can't be picked.
+    public static func listed(_ targets: [MachineTarget], for kind: HomeDockKind) -> [MachineTarget] {
+        eligible(targets, for: kind) + (kind == .session ? targets.filter(\.needsRelogin) : [])
     }
 
     /// Where `kind` goes when it is picked: the computer already chosen if

@@ -179,9 +179,16 @@ public struct NewSessionChoices: Equatable, Sendable {
             lhs.element.online != rhs.element.online ? lhs.element.online : lhs.offset < rhs.offset
         }.map(\.element)
         // What runs there: one host's daemons and Happy CLI homes all share its name.
-        machineOptions = sortedChoices.map { Option(key: $0.id, name: $0.name, description: $0.daemons.isEmpty ? nil : $0.daemons) }
-        currentMachine = Self.resolve(machineOptions, [selectedChoice?.id])
-        resolvedMachineId = Self.resolveMachineSelection(selectedChoice?.id ?? draft.selectedMachineId, available: machineOptions.map(\.key))
+        machineOptions = sortedChoices.map { choice in
+            // Shown, so the person learns what it needs, but nothing starts there.
+            if choice.needsRelogin {
+                return Option(key: choice.id, name: MachineChoice.needsReloginName, description: MachineChoice.reloginHint, isDisabled: true)
+            }
+            return Option(key: choice.id, name: choice.name, description: choice.daemons.isEmpty ? nil : choice.daemons)
+        }
+        let usable = machineOptions.filter { !$0.isDisabled }
+        currentMachine = Self.resolve(usable, [selectedChoice?.id])
+        resolvedMachineId = Self.resolveMachineSelection(selectedChoice?.id ?? draft.selectedMachineId, available: usable.map(\.key))
         offersDraftMachine = selectedChoice != nil
         let kind = HomeDockKind.current(createsBot: inputs.createsBot, createsTask: inputs.createsTask)
         self.kind = kind
@@ -492,6 +499,7 @@ extension NewSessionLaunch {
         case machineOffline
         case happyCLIOffline
         case cannotStartHappyAgent
+        case needsRelogin
         case cannotCreateBots
         case cannotCreateTasks
         case configurationUnavailable
@@ -508,6 +516,7 @@ extension NewSessionLaunch {
             case .machineOffline: "Machine is offline"
             case .happyCLIOffline: "Happy CLI is offline on your computer. Run `happy daemon start` on your computer, then try again."
             case .cannotStartHappyAgent: "This machine cannot start Happy agent sessions"
+            case .needsRelogin: "This computer was linked by an old Happy CLI, so nothing can start there. Run happy auth login --force on it, then try again."
             case .cannotCreateBots: "Happy Agent on this computer cannot create bots yet. Update it and try again."
             // The bot's words, for a task (happy-app has none).
             case .cannotCreateTasks: "Happy Agent on this computer cannot create tasks yet. Update it and try again."
@@ -544,6 +553,7 @@ extension NewSessionLaunch {
         guard let choice = MachineChoice.find(in: choices, machineId: draft.selectedMachineId) else {
             return .failure(draft.selectedMachineId == nil ? .selectMachine : .machineNotRegistered)
         }
+        if choice.needsRelogin { return .failure(.needsRelogin) }
         let botName = bot?.name.trimmingCharacters(in: .whitespacesAndNewlines)
         if let botName, let problem = BotName.problem(botName) {
             return .failure(.botName(problem))

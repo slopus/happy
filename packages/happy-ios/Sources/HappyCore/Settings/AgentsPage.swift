@@ -23,8 +23,15 @@ public enum AgentsPage {
         machineRows(sorted: sortedChoices(machines), online: online, offline: offline)
     }
 
-    private static func machineRows(sorted: [MachineChoice], online: String, offline: String) -> [MachineRow] {
+    private static func machineRows(
+        sorted: [MachineChoice], online: String, offline: String,
+        relogin: (name: String, hint: String) = (MachineChoice.needsReloginName, MachineChoice.reloginHint)
+    ) -> [MachineRow] {
         sorted.map { choice in
+            // Nothing of it can be read: it says what it needs, and opens nothing.
+            if choice.needsRelogin {
+                return MachineRow(id: choice.id, name: relogin.name, subtitle: relogin.hint, online: choice.online, targetMachineId: nil)
+            }
             let machine = choice.happyMachine ?? choice.rigMachine
             let platform = machine?.metadata?["platform"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
             let status = choice.online ? online : offline
@@ -165,10 +172,13 @@ extension AgentsPage {
         public var hasOverrides: Bool
         public var agents: [AgentGroup]
 
-        public init(overrides: [String: JSONValue], machines: [MachineRecord], open: OpenField?, online: String, offline: String) {
+        public init(
+            overrides: [String: JSONValue], machines: [MachineRecord], open: OpenField?, online: String, offline: String,
+            relogin: (name: String, hint: String) = (MachineChoice.needsReloginName, MachineChoice.reloginHint)
+        ) {
             let sorted = AgentsPage.sortedChoices(machines)
             let cliVersion = AgentsPage.defaultsCLIVersion(sorted: sorted)
-            self.machines = AgentsPage.machineRows(sorted: sorted, online: online, offline: offline)
+            self.machines = AgentsPage.machineRows(sorted: sorted, online: online, offline: offline, relogin: relogin)
             self.hasOverrides = !overrides.isEmpty
             self.agents = AgentDefaults.Agent.configurable.map { agent in
                 AgentGroup(
@@ -247,7 +257,8 @@ extension AgentsPage {
             machines: machines.machines,
             open: input.open,
             online: words("status.online"),
-            offline: words("status.offline")
+            offline: words("status.offline"),
+            relogin: (words("native.machine.needsRelogin"), words("native.machine.reloginHint"))
         )
         guard content != applied else { return nil }
         return (update(from: applied, to: content), content)

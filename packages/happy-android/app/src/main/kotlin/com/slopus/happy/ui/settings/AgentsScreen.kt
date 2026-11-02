@@ -17,6 +17,7 @@ import com.slopus.happy.model.AgentType
 import com.slopus.happy.model.Machine
 import com.slopus.happy.model.MachineChoice
 import com.slopus.happy.model.daemons
+import com.slopus.happy.model.needsRelogin
 import com.slopus.happy.model.sortMachineChoices
 import com.slopus.happy.model.settings.AgentDefaultField
 import com.slopus.happy.model.settings.AgentDefaultOverrides
@@ -38,6 +39,7 @@ import androidx.compose.ui.unit.dp
 
 object AgentsTags {
     const val CHECK = "agents.check"
+    const val RELOGIN = "agents.relogin"
 }
 
 /** settings/agents.tsx: field icons are #5856D6, Clear Overrides #FF9500, checkmarks 20. */
@@ -165,6 +167,17 @@ fun AgentsScreen(
                     )
                 }
                 for (choice in machines) {
+                    if (choice.needsRelogin) {
+                        // Linked by an old Happy CLI: nothing of it can be read, so it says what it needs.
+                        Item(
+                            title = stringResource(R.string.machine_needs_relogin),
+                            subtitle = stringResource(R.string.machine_relogin_hint),
+                            icon = { ItemIcon(Ionicon.DesktopOutline, colors.boxWarning.text) },
+                            showChevron = false,
+                            modifier = Modifier.testTag(AgentsTags.RELOGIN),
+                        )
+                        continue
+                    }
                     val machine = choice.happyMachine ?: choice.rigMachine
                     val platform = machine?.metadata?.platform?.trim()
                     // What runs there too: one host's daemons and Happy CLI homes all share its name.

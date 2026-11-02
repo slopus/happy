@@ -72,6 +72,20 @@ class NewSessionOptionsTest {
         assertEquals("gone", resolve(NewSessionDraft(selectedMachineId = "gone"), machines = emptyList()).resolvedMachineId)
     }
 
+    /** A computer an old Happy CLI linked is listed with what to run on it, and never picked. */
+    @Test fun aComputerNeedingAFreshSignInIsShownButNeverPicked() {
+        val old = machine("old", null, activeAt = 9).copy(needsRelogin = true)
+        val options = resolve(NewSessionDraft(selectedMachineId = "old"), listOf(old, laptop))
+        val shown = options.machines.first { it.key == "old" }
+        assertEquals("Computer with an old Happy CLI sign-in", shown.name)
+        assertEquals("Run happy auth login --force on it", shown.description)
+        assertTrue(shown.disabled)
+        assertEquals("m2", options.resolvedMachineId)
+        assertEquals("m2", options.machine?.key)
+        // Alone, nothing is picked for the person.
+        assertNull(resolve(NewSessionDraft(), listOf(old)).machine)
+    }
+
     @Test fun placesAreNamedRelativeToHomeAndProjectsByName() {
         val sessions = listOf(
             session("a", metadata(path = "/Users/dev/code") { put("machineId", "m1") }),

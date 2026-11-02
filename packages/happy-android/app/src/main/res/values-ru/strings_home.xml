@@ -114,4 +114,7 @@
     <string name="home_worktree_failed">Не удалось создать worktree</string>
     <string name="home_migration_title">Перейдите на Happy Agent</string>
     <string name="home_migration_subtitle">Подключите телефон напрямую к компьютеру. Happy CLI продолжит работать.</string>
+    <string name="machine_needs_relogin">Компьютер со старым входом Happy CLI</string>
+    <string name="machine_relogin_hint">Выполните на нём happy auth login --force</string>
+    <string name="home_start_needs_relogin">Этот компьютер привязан старым Happy CLI, поэтому на нём ничего нельзя запустить. Выполните на нём happy auth login --force и попробуйте снова.</string>
 </resources>

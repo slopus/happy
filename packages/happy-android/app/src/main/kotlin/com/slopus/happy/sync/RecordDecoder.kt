@@ -16,7 +16,8 @@ import com.slopus.happy.model.parseSessionAvatarRevision
  *
  * A record this device cannot read decodes to null: one from the retired
  * protocol (no data key), or one whose key or payload does not open. One bad
- * record must not stop the rest.
+ * record must not stop the rest. A machine of the retired protocol is the
+ * exception ([machine]): it is kept, unread, so the person sees it.
  */
 class RecordDecoder(val encryption: AccountEncryption) {
     private val ciphers = object : LinkedHashMap<String, PayloadCipher>(64, 0.75f, true) {
@@ -57,8 +58,26 @@ class RecordDecoder(val encryption: AccountEncryption) {
         )
     }
 
+    /**
+     * A machine with no data key is a computer a Happy CLI before the data
+     * keys (0.9) linked, still signed in with the account secret. It is not
+     * decrypted ([MachineRecord.LEGACY_KEY], nothing read): it is kept so the
+     * person sees it, named for what it needs, `happy auth login --force`.
+     */
     fun machine(machine: ApiMachine): MachineRecord? {
-        val wrapped = machine.dataEncryptionKey ?: return null
+        val wrapped = machine.dataEncryptionKey ?: return MachineRecord(
+            id = machine.id,
+            seq = machine.seq,
+            createdAt = machine.createdAt,
+            updatedAt = machine.updatedAt,
+            active = machine.active,
+            activeAt = machine.activeAt,
+            metadataJson = null,
+            metadataVersion = machine.metadataVersion,
+            daemonStateJson = null,
+            daemonStateVersion = machine.daemonStateVersion,
+            wrappedDataKey = MachineRecord.LEGACY_KEY,
+        )
         val cipher = cipher(wrapped) ?: return null
         val metadata = cipher.decryptFromBase64(machine.metadata) ?: return null
         val daemonState = machine.daemonState?.let { cipher.decryptFromBase64(it) ?: return null }

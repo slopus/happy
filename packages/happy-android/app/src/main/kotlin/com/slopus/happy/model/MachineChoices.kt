@@ -97,11 +97,22 @@ private fun preferLiveliest(machines: List<Machine>): Machine? =
 
 private fun computerName(happy: Machine?, rig: Machine?): String {
     val named = happy ?: rig ?: return "Unknown machine"
+    // Nothing of it can be read: named for what it is. Settings and the pickers say it in the person's language.
+    if (named.needsRelogin) return NEEDS_RELOGIN_NAME
     // A lone Happy Agent is named by its host, not the suffixed display name it publishes.
     val host = named.metadata?.host
     if (happy == null && !host.isNullOrEmpty()) return host
     return named.displayName()
 }
+
+/**
+ * Linked by a Happy CLI before 0.9's data keys ([Machine.needsRelogin]):
+ * shown, but nothing can start there until `happy auth login --force` on it.
+ */
+val MachineChoice.needsRelogin: Boolean get() = (happyMachine ?: rigMachine)?.needsRelogin == true
+
+/** A [needsRelogin] computer's name where no words of the person's language reach (`machine_needs_relogin`). */
+const val NEEDS_RELOGIN_NAME = "Computer with an old Happy CLI sign-in"
 
 /** Every machine reachable through pairing pointers, followed all the way out. */
 private fun connectedMachineIds(start: Machine, machines: List<Machine>, byId: Map<String, Machine>): List<String> {
@@ -156,7 +167,7 @@ fun collectMachineChoices(machines: List<Machine>): List<MachineChoice> {
  * tell them apart by this. Product names are never translated.
  */
 val MachineChoice.daemons: String
-    get() = listOfNotNull(
+    get() = if (needsRelogin) "" else listOfNotNull(
         happyMachine?.let { daemonName("Happy CLI", it.metadata?.happyCliVersion) },
         rigMachine?.let { daemonName("Happy Agent", it.metadata?.client?.version ?: it.metadata?.happyCliVersion) },
     ).joinToString(" + ")

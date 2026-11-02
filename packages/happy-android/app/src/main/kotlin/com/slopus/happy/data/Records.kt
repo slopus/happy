@@ -53,7 +53,15 @@ data class MachineRecord(
     val daemonStateJson: String?,
     val daemonStateVersion: Long,
     val wrappedDataKey: String,
-)
+) {
+    /** Signed in with the account secret: nothing on it can be read or reached. */
+    val isLegacy: Boolean get() = wrappedDataKey == LEGACY_KEY
+
+    companion object {
+        /** [wrappedDataKey] of a machine with none (`RecordDecoder.machine`). */
+        const val LEGACY_KEY = ""
+    }
+}
 
 /**
  * What is stored of a session's messages: the contiguous run

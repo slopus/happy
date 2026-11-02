@@ -44,6 +44,9 @@ public struct NewSessionScreenModel: Equatable, Sendable {
     public enum MachineStatus: Equatable, Sendable {
         case online
         case lastSeen(ComposerStatus.LastSeen)
+        /// Linked by an old Happy CLI (`MachineChoice.needsRelogin`):
+        /// named for that, saying what to run, never picked.
+        case needsRelogin
     }
 
     /// One row of the composer's settings popover.
@@ -128,7 +131,10 @@ public struct NewSessionScreenModel: Equatable, Sendable {
             lhs.element.online != rhs.element.online ? lhs.element.online : lhs.offset < rhs.offset
         }.map(\.element)
         machineItems = sorted.map { choice in
-            Item(
+            if choice.needsRelogin {
+                return Item(key: choice.id, label: MachineChoice.needsReloginName, isDimmed: true, status: .needsRelogin)
+            }
+            return Item(
                 key: choice.id,
                 label: choice.name,
                 // One host's daemons and Happy CLI homes all share its name.

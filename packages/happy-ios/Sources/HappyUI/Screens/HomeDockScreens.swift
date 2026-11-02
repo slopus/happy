@@ -806,13 +806,15 @@ final class HomeDockFocusViewController: UIViewController {
         let draft = composer.drafts.draft
         func section(_ title: String?, _ options: [NewSessionChoices.Option], selected: String?, subtitles: Bool = false, select: @escaping (String) -> Void) -> UIMenu {
             UIMenu(title: title ?? "", options: .displayInline, children: options.map { option in
+                // A computer an old Happy CLI linked, in the person's words.
+                let relogin = subtitles && option.isDisabled && option.name == MachineChoice.needsReloginName
                 let action = UIAction(
-                    title: option.name,
+                    title: relogin ? Strings.Home.machineNeedsRelogin : option.name,
                     attributes: option.isDisabled ? .disabled : [],
                     state: !option.isAction && option.key == selected ? .on : .off
                 ) { _ in select(option.key) }
                 // A computer's daemons: one host's all share its name.
-                if subtitles { action.subtitle = option.description }
+                if subtitles { action.subtitle = relogin ? Strings.Home.machineReloginHint : option.description }
                 return action
             })
         }

@@ -316,6 +316,36 @@ class LiveUpdatesTest {
         eventually { store.machine("m2") == null }
     }
 
+    /** A computer an old Happy CLI linked arrives live, unread, and only whether it answers moves. */
+    @Test
+    fun aMachineWithoutADataKeyArrivesUnreadAndStaysSo() {
+        h.startAndSync()
+        server.emitUpdate(buildJsonObject {
+            put("t", "new-machine")
+            put("machineId", "old")
+            put("seq", 1)
+            put("metadata", "AAAA")
+            put("metadataVersion", 1)
+            put("daemonStateVersion", 0)
+            put("active", true)
+            put("activeAt", 10)
+            put("createdAt", 1)
+            put("updatedAt", 1)
+        })
+        eventually { store.machine("old")?.isLegacy == true }
+
+        server.emitUpdate(buildJsonObject {
+            put("t", "update-machine")
+            put("machineId", "old")
+            put("active", false)
+            put("activeAt", 20)
+            put("daemonState", buildJsonObject { put("version", 1); put("value", "AAAA") })
+        })
+        eventually { store.machine("old")?.active == false }
+        assertNull(store.machine("old")!!.daemonStateJson)
+        assertEquals(20L, store.machine("old")!!.activeAt)
+    }
+
     @Test
     fun updateAccountMergesProfileAndSettings() {
         h.startAndSync()
