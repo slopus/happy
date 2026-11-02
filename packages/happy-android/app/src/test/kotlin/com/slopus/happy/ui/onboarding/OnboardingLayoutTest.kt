@@ -190,5 +190,20 @@ class OnboardingLayoutTest {
         assertBox("restore button", button, 24.dp, input.bottom + 24.dp, (PHONE_WIDTH - 48).dp, 50.dp)
     }
 
+    /** Both point where the key and Link New Device are on a phone: Settings › Backup & Restore. */
+    @Test
+    fun restoreHintsPointToBackupAndRestore() {
+        rule.setHappyContent { RestoreScreen(RestoreCode.Waiting, onBack = {}, onRetry = {}, onUseSecretKey = {}) }
+        rule.node(RestoreTags.PATH).assertTextEquals("Happy › Settings › Backup & Restore › Link New Device")
+    }
+
+    @Test
+    fun theSecretKeyHintPointsToBackupAndRestore() {
+        rule.setHappyContent {
+            RestoreManualScreen(secretKey = "", onSecretKeyChange = {}, restoring = false, onRestore = {}, onBack = {}, autoFocus = false)
+        }
+        rule.node(RestoreTags.KEY_BODY).assertTextEquals("Paste your secret key. It is in Happy › Settings › Backup & Restore on your other device.")
+    }
+
     private fun assertDp(message: String, expected: Float, actual: Float) = assertDp(message, expected.dp, actual.dp)
 }

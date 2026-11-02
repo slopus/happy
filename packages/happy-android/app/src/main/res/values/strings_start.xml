@@ -27,4 +27,5 @@
     <string name="start_install_choose">Choose Link\u00A0Mobile\u00A0App during onboarding.</string>
     <string name="start_install_settings">Or go to Settings\u00A0›\u00A0Mobile\u00A0Access.</string>
     <string name="start_install_download">Download from %1$s</string>
+    <string name="restore_secret_key_body">Paste your secret key. It is in %1$s on your other device.</string>
 </resources>

@@ -84,10 +84,16 @@ public enum Strings {
         public static var logoutConfirmBody: String { localized("onboarding.logoutConfirmBody", "You will go back to Create account. Nothing on your computer changes.") }
         public static var restoreTitle: String { localized("onboarding.restoreTitle", "Restore Account") }
         public static var restoreScan: String { localized("onboarding.restoreScan", "Scan this code with your other phone.") }
-        public static var restoreScanPath: String { localized("onboarding.restoreScanPath", "Happy › Settings › Account › Link New Device") }
+        /// Where Link New Device is on the other phone (Settings › Backup &
+        /// Restore on iOS and Android), as that phone names it.
+        public static var restoreScanPath: String { "\(backupRestorePath) › \(SettingsAccount.linkNewDevice)" }
         public static var restoreUseKey: String { localized("onboarding.restoreUseKey", "Use a secret key instead") }
         public static var secretKeyTitle: String { localized("onboarding.secretKeyTitle", "Secret Key") }
-        public static var secretKeyBody: String { localized("onboarding.secretKeyBody", "Paste your secret key. It is in Happy › Settings › Account on your other device.") }
+        public static var secretKeyBody: String {
+            let path = backupRestorePath
+            return localized("native.onboarding.secretKeyBody", ["path": .text(path)], "Paste your secret key. It is in \(path) on your other device.")
+        }
+        private static var backupRestorePath: String { "Happy › \(Settings.title) › \(BackupRestore.title)" }
         public static var restoreButton: String { localized("onboarding.restoreButton", "Restore") }
         public static let desktopURL = URL(string: "https://happy.engineering")!
     }

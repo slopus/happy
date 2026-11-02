@@ -20,6 +20,19 @@ final class LocalizedStringsTests: XCTestCase {
         XCTAssertEqual(Strings.Troubleshoot.bannerTitleOne(name: "mini"), "mini is offline")
     }
 
+    /// Restoring points to where a phone keeps its key and Link New Device:
+    /// Settings › Backup & Restore, in that phone's own words.
+    func testRestoreHintsPointToBackupAndRestore() async {
+        AppLocalization.use(nil)
+        XCTAssertEqual(Strings.Onboarding.restoreScanPath, "Happy › Settings › Backup & Restore › Link New Device")
+        XCTAssertEqual(Strings.Onboarding.secretKeyBody, "Paste your secret key. It is in Happy › Settings › Backup & Restore on your other device.")
+        let russian = await TranslationCatalog.load("ru")
+        AppLocalization.use(russian)
+        let path = "Happy › \(russian("settings.title")) › Backup & Restore"
+        XCTAssertEqual(Strings.Onboarding.restoreScanPath, "\(path) › \(russian("settingsAccount.linkNewDevice"))")
+        XCTAssertEqual(Strings.Onboarding.secretKeyBody, "Вставьте секретный ключ. Он находится в разделе \(path) на другом устройстве.")
+    }
+
     func testAnotherLanguageReadsItsCatalog() async {
         let japanese = await TranslationCatalog.load("ja")
         let russian = await TranslationCatalog.load("ru")
