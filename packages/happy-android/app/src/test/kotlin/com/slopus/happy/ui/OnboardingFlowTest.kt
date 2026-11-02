@@ -169,12 +169,33 @@ class OnboardingFlowTest {
         assertNull(DeepLinks.pending.value)
     }
 
+    /**
+     * The first screen: a terminal's link opened from outside the app is
+     * taken as if pasted into Enter link manually (it was dropped).
+     */
     @Test
-    fun aTerminalLinkWhileSignedOutIsDropped() {
-        DeepLinks.offer(DeepLink.Terminal("abc"))
-        rule.waitForIdle()
-        assertNull(DeepLinks.pending.value)
+    fun aTerminalLinkFromOutsideOnTheFirstScreenCreatesAnAccountThatApprovesIt() {
+        val terminal = Sodium.boxKeypair()
+        server.addTerminalRequest(terminal.publicKey, supportsV2 = false)
         rule.onNodeWithText("Start").assertExists()
+        DeepLinks.offer(DeepLink.Terminal(encodeBase64(terminal.publicKey, Base64Variant.Url)))
+
+        val key = encodeBase64(terminal.publicKey)
+        rule.waitUntil(5_000) { synchronized(server) { server.terminalRequests.getValue(key).response != null } }
+        rule.waitUntilAtLeastOneExists(hasTestTag(HomeTags.LINK), 5_000)
+        assertNull(DeepLinks.pending.value)
+        val account = graph.auth.state.value as AuthState.SignedIn
+        val response = synchronized(server) { server.terminalRequests.getValue(key).response!! }
+        assertArrayEquals(account.credentials.secretBytes(), decryptBox(decodeBase64(response), terminal.secretKey))
+    }
+
+    /** One that can't be approved says so, as a pasted one does, and keeps no account. */
+    @Test
+    fun aBadTerminalLinkFromOutsideOnTheFirstScreenSaysSo() {
+        DeepLinks.offer(DeepLink.Terminal("abc"))
+        rule.waitUntilAtLeastOneExists(hasText("Failed to connect terminal"), 5_000)
+        assertNull(DeepLinks.pending.value)
+        assertEquals(AuthState.SignedOut, graph.auth.state.value)
         rule.onNodeWithText("Accept Connection").assertDoesNotExist()
     }
 }

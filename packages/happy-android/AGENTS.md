@@ -796,7 +796,9 @@ one fingerprint, presumably Play's app-signing key that the React Native app
 verifies with, so a Play-distributed build should verify as it does; a build
 signed with only the upload key won't. Signed out, only the screens that need
 no account (server, restore, troubleshoot, changelog, onboarding settings)
-open; other links are dropped rather than pushed onto empty signed-in screens.
+open, and a terminal's link goes to the first screen's Add as if pasted into
+Enter link manually (an account is made that approves it); other links are
+dropped rather than pushed onto empty signed-in screens.
 
 ### Team servers behind SSO (edge SSO)
 
