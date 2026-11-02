@@ -504,6 +504,11 @@ public actor LegacySyncEngine {
             refresh: { await sessions.invalidateAndAwait() },
             sleep: sleep
         )
+        // 0.10.0 lost a new session's first message every time.
+        if SessionDetails.waitsForCLIBeforeFirstMessage(try store.session(id: sessionId)?.metadata) {
+            let presence = presence
+            _ = try await SessionReadiness.awaitCLIHeard(heardAt: { await presence.heardAt(sessionId) }, sleep: sleep)
+        }
     }
 
     private func sessionReady(_ id: String) throws -> Bool {

@@ -17,6 +17,8 @@ import com.slopus.happy.sync.SendOptions
 import com.slopus.happy.sync.SendResult
 import com.slopus.happy.sync.SpawnSessionOptions
 import com.slopus.happy.sync.SpawnSessionResult
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** The machine RPCs a start runs (ops.ts), as [MachineOps] answers them; tests use a fake. */
 interface MachineActions {
@@ -47,6 +49,21 @@ class LiveMachineActions(private val ops: () -> MachineOps?) : MachineActions {
     private companion object {
         const val SIGNED_OUT = "Not signed in"
     }
+}
+
+/**
+ * Before an old CLI's first message ([com.slopus.happy.model.waitsForCliBeforeFirstMessage]):
+ * waits until the new session is heard from ([heardAt], its first heartbeat,
+ * which says its socket is up), then [settleMs] more for the startup event it
+ * sends then. After [timeoutMs] the message goes anyway, as it always did.
+ * True when it was heard.
+ */
+suspend fun awaitCliHeard(heardAt: () -> Long?, timeoutMs: Long = 15_000, settleMs: Long = 1_500, pollMs: Long = 200): Boolean {
+    val heard = withTimeoutOrNull(timeoutMs) {
+        while (heardAt() == null) delay(pollMs)
+    } != null
+    if (heard) delay(settleMs)
+    return heard
 }
 
 /** What a first send did: whether it went out, and the alerts it raised on the way (imageUpload.*). */

@@ -91,9 +91,21 @@ class Presence(private val clock: () -> Long = System::currentTimeMillis) {
         publishMachines()
     }
 
+    /** When each session's own heartbeat was last heard here, its row in yet or not. */
+    private val heard = HashMap<String, Long>()
+
+    /**
+     * When this phone last heard [id] say it is alive (an `activity`
+     * heartbeat, which only a connected client sends); null if never. A new
+     * session's first one says its CLI is listening ([com.slopus.happy.model.waitsForCliBeforeFirstMessage]).
+     */
+    @Synchronized
+    fun heardAt(id: String): Long? = heard[id]
+
     /** An `activity` ephemeral. Unknown sessions wait for their row; stale packets are ignored. */
     @Synchronized
     fun activity(id: String, active: Boolean, activeAt: Long, thinking: Boolean) {
+        if (active) heard[id] = clock()
         val entry = sessionEntries[id] ?: return
         if (activeAt < entry.latestAt) return
         if (update(entry, active, active && thinking, activeAt)) sessionState.value = sessionState.value + (id to entry.shown)
@@ -124,6 +136,7 @@ class Presence(private val clock: () -> Long = System::currentTimeMillis) {
 
     @Synchronized
     fun removeSession(id: String) {
+        heard.remove(id)
         if (sessionEntries.remove(id) != null) publishSessions()
         if (id in usageState.value) usageState.value = usageState.value - id
     }

@@ -53,6 +53,21 @@ public enum SessionDetails {
         return 0
     }
 
+    /// The first Happy CLI that never loses a new session's first message.
+    public static let firstMessageSafeCLIVersion = "1.2.1"
+
+    /// A Happy CLI before 1.2.1 can lose a brand new session's first
+    /// message: before 0.15 it reads messages only from its socket and never
+    /// catches up on one sent before it connected; until 1.2.1 its receive
+    /// cursor could step over one sent while its startup event was in
+    /// flight. Such a session is sent its first message only once the CLI is
+    /// heard from. Happy Agent, and a session naming no version, at once.
+    public static func waitsForCLIBeforeFirstMessage(_ metadata: JSONValue?) -> Bool {
+        guard let version = metadata?["version"]?.stringValue, !version.isEmpty,
+              metadata?["client"]?["id"]?.stringValue != "rig" else { return false }
+        return compareVersions(version, firstMessageSafeCLIVersion) < 0
+    }
+
     /// versionUtils.ts `isVersionSupported`.
     public static func isVersionSupported(_ version: String?, minimum: String = minimumCLIVersion) -> Bool {
         guard let version, !version.isEmpty else { return false }

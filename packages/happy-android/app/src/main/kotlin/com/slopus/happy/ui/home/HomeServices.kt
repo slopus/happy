@@ -19,6 +19,7 @@ import com.slopus.happy.model.SessionListGrouping
 import com.slopus.happy.model.SessionListInputs
 import com.slopus.happy.model.SessionMetadata
 import com.slopus.happy.model.buildSessionListViewData
+import com.slopus.happy.model.waitsForCliBeforeFirstMessage
 import com.slopus.happy.model.worktreeTabSuccessor
 import com.slopus.happy.net.HappyHttp
 import com.slopus.happy.projects.GitStatusServices
@@ -326,16 +327,24 @@ class HomeServices private constructor(private val graph: AppGraph) {
     /** offerBotFaceRetry's Try again: only the face, on the bot already made. */
     suspend fun retryBotFace(context: Context, sessionId: String, seed: String): BotFaceFailure? = botFaceWearer(context).wear(sessionId, seed)
 
-    /** sync.ts ensureSessionReady: the new session's row in the store, pulled in by a sync if need be. */
+    /**
+     * sync.ts ensureSessionReady: the new session's row in the store, pulled
+     * in by a sync if need be. A CLI that could miss its first message is
+     * heard from first ([awaitCliHeard]): 0.10.0 lost it every time.
+     */
     private suspend fun awaitSession(id: String): Boolean {
-        suspend fun stored() = withContext(Dispatchers.IO) { store.session(id) != null }
+        suspend fun stored() = withContext(Dispatchers.IO) { store.session(id) }
         var attempt = 0
-        while (!stored() && attempt < 3) {
+        while (stored() == null && attempt < 3) {
             if (attempt > 0) delay(300L * attempt)
             account.value?.let { withTimeoutOrNull(4_000) { it.syncNow() } }
             attempt++
         }
-        return stored()
+        val session = stored() ?: return false
+        if (session.metadataJson?.let(SessionMetadata::parse).waitsForCliBeforeFirstMessage()) {
+            account.value?.presence?.let { presence -> awaitCliHeard({ presence.heardAt(id) }) }
+        }
+        return true
     }
 
     companion object {

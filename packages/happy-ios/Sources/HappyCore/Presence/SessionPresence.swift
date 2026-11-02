@@ -34,6 +34,8 @@ public actor SessionPresence {
     private var timer: Task<Void, Never>?
     private var seeded = false
     private var stopped = false
+    /// When each session's own heartbeat was last heard, its row in or not.
+    private var heard: [String: Int64] = [:]
 
     public init(store: LocalStore, options: Options = Options(), now: @escaping @Sendable () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) }) {
         self.store = store
@@ -57,9 +59,16 @@ public actor SessionPresence {
         }
     }
 
+    /// When this phone last heard `id` say it is alive (an `activity`
+    /// heartbeat, which only a connected client sends); nil if never. A new
+    /// session's first one says its CLI is listening
+    /// (`SessionDetails.waitsForCLIBeforeFirstMessage`).
+    public func heardAt(_ id: String) -> Int64? { heard[id] }
+
     public func activity(id: String, active: Bool, activeAt: Int64, thinking: Bool) async {
         guard !stopped else { return }
         let time = now()
+        if active { heard[id] = time }
         if sessions[id] == nil, let row = try? store.session(id: id) { seed(row) }
         guard var state = sessions[id], activeAt >= state.latestAt else { return }
         let criticalTimestamp = activeAt - state.persistedAt > options.persistenceIntervalMs
@@ -137,6 +146,7 @@ public actor SessionPresence {
     var trackedCounts: (sessions: Int, machines: Int) { (sessions.count, machines.count) }
 
     func removeSession(_ id: String) {
+        heard.removeValue(forKey: id)
         sessions.removeValue(forKey: id)
         dirtySessions.remove(id)
         store.clearSessionPresenceOverlay(id: id)

@@ -52,6 +52,21 @@ class SessionInfoTest {
         assertFalse(isCliOutdated(null))
     }
 
+    @Test fun anOldCliIsHeardFromBeforeItsFirstMessage() {
+        assertTrue(metadata { put("version", "0.10.0") }.waitsForCliBeforeFirstMessage())
+        assertTrue(metadata { put("version", "1.2.0") }.waitsForCliBeforeFirstMessage())
+        assertFalse(metadata { put("version", "1.2.1") }.waitsForCliBeforeFirstMessage())
+        assertFalse(metadata { put("version", "1.2.6") }.waitsForCliBeforeFirstMessage())
+        assertFalse(metadata().waitsForCliBeforeFirstMessage())
+        assertFalse((null as SessionMetadata?).waitsForCliBeforeFirstMessage())
+        assertFalse(
+            metadata {
+                put("version", "0.4.111")
+                putJsonObject("client") { put("id", "rig"); put("name", "Happy Agent"); put("version", "0.4.111") }
+            }.waitsForCliBeforeFirstMessage(),
+        )
+    }
+
     @Test fun sandboxAndPermissionSummaries() {
         assertEquals(SandboxSummary.Disabled, sandboxSummary(null, null))
         assertEquals(SandboxSummary.Disabled, sandboxSummary(JsonNull, null))
