@@ -1033,9 +1033,11 @@ Verify focus, recording and communication mode on a device after changes.
   files, Paste, and the files sent from here before, `RecentFiles`). Picks
   are copied into the cache on Send (`AttachmentStaging`: photos normalized
   as below, the rest as they are). What a chat offers is `AttachAccepts`:
-  a Happy Agent conversation takes photos, videos and files (pictures
-  inline, the rest written into the agent's workspace first,
-  `conversation/WorkspaceUploads`, as iOS does); a relay session takes
+  a Happy Agent conversation takes photos, videos and files (all written
+  into the agent's workspace first and named by path in the message, so the
+  agent opens only what it needs; pictures are drawn from the phone's copies
+  until the computer has the message, `conversation/WorkspaceUploads`, as
+  iOS does); a relay session takes
   pictures only, since happy-cli reads only images from `file` events,
   unless a rig v1 policy lists more. No thumbhash on Android, as on
   happy-app native.

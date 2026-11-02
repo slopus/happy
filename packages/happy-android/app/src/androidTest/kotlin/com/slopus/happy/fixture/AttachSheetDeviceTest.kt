@@ -38,11 +38,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -176,17 +176,24 @@ class AttachSheetDeviceTest {
         waitGone(AttachTags.SHEET)
         capture("06-sent")
 
-        val puts = transport.bodies.filter { it.first.endsWith("/file") }
+        val writes = transport.bodies.filter { it.first.endsWith("/file") }
         val send = transport.bodies.single { it.first.endsWith("/send") }.second as JsonObject
         val id = (send["id"] as JsonPrimitive).content
-        // The clip, picked second, went into the workspace; the two pictures inline.
-        assertEquals(listOf("PUT /v0/workspaces/fx-workspace/file"), puts.map { it.first })
-        assertEquals(".happy-uploads/$id/1-attach_fixture_clip.mp4", ((puts.single().second as JsonObject)["path"] as JsonPrimitive).content)
-        assertEquals(
-            "Here they are\n\nAttached file:\n- ./.happy-uploads/$id/1-attach_fixture_clip.mp4",
-            (send["text"] as JsonPrimitive).content,
-        )
-        assertEquals(2, (send["content"] as JsonArray).size)
+        // The folder is kept out of git before the first file goes in.
+        val ignore = writes.first().second as JsonObject
+        assertEquals(".happy-uploads/.gitignore", (ignore["path"] as JsonPrimitive).content)
+        assertEquals("*", String(android.util.Base64.decode((ignore["content"] as JsonPrimitive).content, android.util.Base64.DEFAULT)))
+        val puts = writes.drop(1)
+        // All three went into the workspace, in the order picked, and the
+        // message names them; nothing goes inline.
+        assertEquals(List(3) { "PUT /v0/workspaces/fx-workspace/file" }, puts.map { it.first })
+        val paths = puts.map { ((it.second as JsonObject)["path"] as JsonPrimitive).content }
+        assertEquals(".happy-uploads/$id/1-attach_fixture_clip.mp4", paths[1])
+        assertTrue(paths.all { it.startsWith(".happy-uploads/$id/") })
+        val text = (send["text"] as JsonPrimitive).content
+        assertTrue(text.startsWith("Here they are\n\nThe user attached 3 files."))
+        assertTrue(text.endsWith(paths.joinToString("\n", prefix = "\n") { "- ./$it" }))
+        assertNull(send["content"])
         assertTrue("file before send", transport.requests.indexOfFirst { it.endsWith("/file") } < transport.requests.indexOfFirst { it.endsWith("/send") })
     }
 

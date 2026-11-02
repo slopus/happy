@@ -189,7 +189,7 @@ final class SyncEngineTests: XCTestCase {
         await engine.start()
         _ = try await wait(engine) { $0.live }
         let mode = AgentWire.Mode(providerId: "test", modelId: "chosen-model", effort: "high", serviceTier: nil, permissionMode: "auto")
-        try await engine.enqueueMessage(.init(id: "same-message", agentID: "chat", text: "Keep this exact text", pictures: [.init(mimeType: "image/png", data: Data([1, 2, 3]))], mode: mode))
+        try await engine.enqueueMessage(.init(id: "same-message", agentID: "chat", text: "Keep this exact text", pictures: [], mode: mode))
         for _ in 0..<100 {
             if !(await transport.savedSends()).isEmpty { break }
             try await Task.sleep(for: .milliseconds(10))

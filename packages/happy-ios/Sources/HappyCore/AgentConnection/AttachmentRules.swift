@@ -26,6 +26,10 @@ public enum AttachmentRules {
     public static let maxFileBytes = 50 * 1024 * 1024
     public static let maxInlineImageBytes = 5 * 1024 * 1024
     public static let maxInlineImageTotalBytes = 29 * 1024 * 1024
+    /// Keeps the uploads folder out of git: written before a workspace's
+    /// first upload (`AgentClient.keepUploadsOutOfGit`).
+    static let ignorePath = ".happy-uploads/.gitignore"
+    static let ignoreContent = "*"
 
     public static func safeName(_ name: String) -> String {
         let basename = name.replacingOccurrences(of: "\\", with: "/").split(separator: "/").last.map(String.init) ?? ""
@@ -79,36 +83,43 @@ public enum AttachmentRules {
         .status(400, code: "invalid_attachment", message: message)
     }
 
-    /// Older versions persisted images up to the relay limit. Keep those
-    /// sends deliverable by moving images beyond model limits to file uploads.
-    static func migratePictures(_ queued: QueuedMessage, directory: URL) throws -> QueuedMessage {
-        var message = queued
-        var inline: [QueuedMessage.Picture] = []
-        var total = 0
-        for (index, picture) in queued.pictures.enumerated() {
-            if picture.data.count <= maxInlineImageBytes, total + picture.data.count <= maxInlineImageTotalBytes {
-                inline.append(picture); total += picture.data.count
-                continue
-            }
+    /// Pictures go to the agent as files it opens by path, never as image
+    /// blocks: it decides what to look at, and a picture it never needs
+    /// costs it nothing. Each is written under the message's folder.
+    static func pictureFiles(_ pictures: [QueuedMessage.Picture], messageID: String, directory: URL) throws -> [QueuedFile] {
+        guard !pictures.isEmpty else { return [] }
+        let group = directory.appendingPathComponent(messageID, isDirectory: true)
+        try FileManager.default.createDirectory(at: group, withIntermediateDirectories: true)
+        return try pictures.enumerated().map { index, picture in
             guard picture.data.count <= maxFileBytes else { throw invalid("An image exceeds the 50 MB file limit.") }
             let ext = ["image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif"][picture.mimeType] ?? "bin"
             let name = "image-\(index).\(ext)"
-            let group = directory.appendingPathComponent(queued.id, isDirectory: true)
-            try FileManager.default.createDirectory(at: group, withIntermediateDirectories: true)
             let file = group.appendingPathComponent(name)
             try picture.data.write(to: file, options: .atomic)
-            var files = message.files ?? []
-            files.append(QueuedFile(fileURL: file, name: name, mimeType: picture.mimeType, size: picture.data.count,
-                path: ".happy-uploads/\(queued.id)/\(name)"))
-            message.files = files
+            return QueuedFile(fileURL: file, name: name, mimeType: picture.mimeType, size: picture.data.count,
+                path: ".happy-uploads/\(messageID)/\(name)")
         }
-        message.pictures = inline
+    }
+
+    /// Older versions persisted pictures to send inline; they go as files too.
+    static func migratePictures(_ queued: QueuedMessage, directory: URL) throws -> QueuedMessage {
+        guard !queued.pictures.isEmpty else { return queued }
+        var message = queued
+        message.files = (queued.files ?? []) + (try pictureFiles(queued.pictures, messageID: queued.id, directory: directory))
+        message.pictures = []
         return message
     }
 
+    /// The message's words, then where its files are, in the words every
+    /// Happy client gives the agent (happy-cli's `formatAttachmentNote`),
+    /// with paths relative to the agent's workspace.
     static func text(_ text: String, files: [QueuedFile]) -> String {
         guard !files.isEmpty else { return text }
-        let heading = files.count == 1 ? "Attached file:" : "Attached files:"
+        let one = files.count == 1
+        let noun = files.allSatisfy({ $0.mimeType.hasPrefix("image/") }) ? "image" : "file"
+        let count = one ? "1 \(noun)" : "\(files.count) \(noun)s"
+        let object = one ? "it" : "them"
+        let heading = "The user attached \(count). \(one ? "It was" : "They were") saved on this machine and not loaded into your context; open \(object) with your file-reading or image-viewing tool only if you need to see \(object):"
         let paths = files.map { "- ./\($0.path)" }.joined(separator: "\n")
         return (text.isEmpty ? "" : text + "\n\n") + heading + "\n" + paths
     }
@@ -133,6 +144,7 @@ extension AgentClient {
                     try await persist(message)
                 }
                 guard let workspace = message.workspaceID else { throw AgentClientError.invalidResponse }
+                if (message.files ?? []).contains(where: { !$0.uploaded }) { await keepUploadsOutOfGit(workspace) }
                 for index in (message.files ?? []).indices {
                     try Task.checkCancellation()
                     guard let file = message.files?[index], !file.uploaded else { continue }
@@ -161,6 +173,28 @@ extension AgentClient {
             for key in pictureKeys + fileKeys where board.phase(key) != .done { board.set(key, .preparing) }
             throw error
         }
+    }
+
+    /// `.happy-uploads/.gitignore` (`*`), written before the first upload
+    /// into the workspace so what the phone puts there never shows as a
+    /// change to commit. Already there (409) counts as written; any other
+    /// failure is let go, never holding the upload up, and tried again
+    /// before the next one.
+    func keepUploadsOutOfGit(_ workspaceID: String) async {
+        guard !ignoredUploads.contains(workspaceID) else { return }
+        let body = JSONValue.object([
+            "path": .string(AttachmentRules.ignorePath),
+            "content": .string(Data(AttachmentRules.ignoreContent.utf8).base64EncodedString()),
+            "expectedHash": .null,
+        ])
+        do {
+            _ = try await send("PUT", "/v0/workspaces/\(Self.escape(workspaceID))/file", json: body)
+        } catch AgentClientError.status(409, _, _) {
+            // Already there: the person's own, left as it is.
+        } catch {
+            return
+        }
+        ignoredUploads.insert(workspaceID)
     }
 
     /// `progress` hears the share of the file's bytes written, once read

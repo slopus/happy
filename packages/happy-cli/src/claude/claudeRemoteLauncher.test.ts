@@ -4,6 +4,7 @@ import { claudeRemoteLauncher } from './claudeRemoteLauncher';
 import { closeClaudeTurnWithStatus, mapClaudeLogMessageToSessionEnvelopes, type ClaudeSessionProtocolState } from './utils/sessionProtocolMapper';
 import { CLAUDE_LOGIN_EXPIRED_MESSAGE } from './utils/providerAuth';
 import type { SessionEnvelope } from '@slopus/happy-wire';
+import { ensureAttachmentDir, saveAttachmentFiles } from '@/utils/attachmentFiles';
 
 // Exercise the real outgoing queue, SDK converter and protocol mapper without
 // a terminal, credential store, provider process, relay or push service.
@@ -20,7 +21,15 @@ vi.mock('./utils/permissionHandler', () => ({
         setOnPermissionRequest = vi.fn();
         getResponseLookup = () => new Map();
         handleToolCall = vi.fn();
+        handleModeChange = vi.fn();
     },
+}));
+vi.mock('@/utils/attachmentFiles', async (importOriginal) => ({
+    ...await importOriginal<typeof import('@/utils/attachmentFiles')>(),
+    ensureAttachmentDir: vi.fn(async ({ sessionId }: { sessionId: string }) => `/fixture/attachments/${sessionId}`),
+    saveAttachmentFiles: vi.fn(async () => [
+        { path: '/fixture/attachments/fixture-happy-session/x.png', mimeType: 'image/png', size: 8, isImage: true },
+    ]),
 }));
 
 function fixture() {
@@ -93,5 +102,43 @@ describe('claudeRemoteLauncher provider auth', () => {
         expect(JSON.stringify(session.client.sendSessionEvent.mock.calls)).not.toContain('fixture-secret');
         expect(notification).not.toHaveBeenCalled();
         expect(claudeRemote).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe('claudeRemoteLauncher attachments', () => {
+    beforeEach(() => { vi.mocked(claudeRemote).mockReset(); });
+
+    it('gives Claude the session attachment folder and a picture as a path in a block array', async () => {
+        const { session, stop } = fixture();
+        const mode = { permissionMode: 'default' };
+        const queued = [{
+            message: 'what is this?',
+            mode,
+            isolate: false,
+            hash: 'h',
+            attachments: [{ data: new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), mimeType: 'image/png', name: 'a.png' }],
+        }];
+        (session as any).queue = { size: () => 0, waitForMessagesAndGetAsString: vi.fn(async () => queued.shift() ?? null) };
+        let first: unknown;
+        vi.mocked(claudeRemote).mockImplementation(async opts => {
+            first = await opts.nextMessage();
+            stop();
+        });
+
+        await claudeRemoteLauncher(session as any);
+
+        expect(ensureAttachmentDir).toHaveBeenCalledWith({ sessionId: 'fixture-happy-session' });
+        expect(vi.mocked(claudeRemote).mock.calls[0][0].additionalDirectories).toEqual(['/fixture/attachments/fixture-happy-session']);
+        expect(saveAttachmentFiles).toHaveBeenCalledWith(
+            [expect.objectContaining({ name: 'a.png' })],
+            { sessionId: 'fixture-happy-session', rootDir: undefined },
+        );
+        expect(first).toEqual({
+            message: [
+                { type: 'text', text: 'what is this?' },
+                { type: 'text', text: expect.stringContaining('\n- /fixture/attachments/fixture-happy-session/x.png') },
+            ],
+            mode,
+        });
     });
 });
