@@ -23,7 +23,7 @@ import { projectPath } from '../projectPath';
 import { resolve } from 'node:path';
 import { startOfflineReconnection, connectionState } from '@/utils/serverConnectionErrors';
 import { claudeLocal } from '@/claude/claudeLocal';
-import { createSessionScanner } from '@/claude/utils/sessionScanner';
+import { createSessionScanner, readSessionPermissionMode } from '@/claude/utils/sessionScanner';
 import {
     CLAUDE_GOAL_ACTION_CONFIRMATIONS,
     claudeGoalActionCapabilities,
@@ -533,6 +533,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     // Forward messages to the queue
     // Permission modes: Use the unified 7-mode type, mapping happens at SDK boundary in claudeRemote.ts
     let currentPermissionMode: PermissionMode | undefined = initialPermissionMode;
+    // Share one read across app messages at takeover, before applying their picks.
+    let terminalPermissionModeSync: Promise<void> | undefined =
+        currentRunMode === 'remote' ? Promise.resolve() : undefined;
     // Undefined means "no override" and lets Claude resolve the model itself —
     // same contract as the mid-session reset below (meta.model null → undefined).
     let currentModel: string | undefined = options.model;
@@ -665,6 +668,15 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // Claim every file attachment that arrived strictly before this text.
         // New file events from this point on belong to the next user message.
         const attachmentsForThisMessage = await session.drainAttachmentsForUserMessage();
+
+        if (!terminalPermissionModeSync && currentSession?.sessionId) {
+            terminalPermissionModeSync = readSessionPermissionMode(currentSession.path, currentSession.sessionId).then(mode => {
+                if (mode !== undefined) {
+                    currentPermissionMode = applySandboxPermissionPolicy(mode, sandboxEnabled);
+                }
+            });
+        }
+        await terminalPermissionModeSync;
 
         // Resolve permission mode from meta - pass through as-is, mapping happens at SDK boundary
         let messagePermissionMode: PermissionMode | undefined = currentPermissionMode;
@@ -946,6 +958,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         allowedTools: happyServer.toolNames.map(toolName => `mcp__happy__${toolName}`),
         onModeChange: (newMode) => {
             currentRunMode = newMode;
+            if (newMode === 'local') terminalPermissionModeSync = undefined;
             session.sendSessionEvent({ type: 'switch', mode: newMode });
             session.updateAgentState((currentState) => ({
                 ...currentState,
