@@ -163,7 +163,10 @@ private struct SplitComposeMachine: HomeOps, HomeSessionOps {
 /// `-resizeLoop` narrows and widens the window in turn, `-narrow` leaves
 /// an iPad's window 600 wide, `-animated` pushes the chat `-open` opens as
 /// a tap does, for a recording of the push, `-linkLoop` has the switcher
-/// say the link is down and up again in turn, `-probe` reads the open chat's list
+/// say the link is down and up again in turn, `-pushLoop <chat id,
+/// artifacts or settings>` pushes it from home and pops it in turn,
+/// `-infoLoop` does the same with the open chat's detail, for recordings
+/// of the header's glass going over, `-probe` reads the open chat's list
 /// (`ChatScrollProbe`), `-pageProbe` the open page's scroll view
 /// (`PageScrollProbe`), `-long` gives the agent's conversation 60 more
 /// rounds, `-composeMachine` lets compose's first send make a session on
@@ -247,6 +250,21 @@ final class SplitAppHarness {
                 shell.setSidebarHidden(true)
             }
             if arguments.contains("-resizeLoop") { await Self.resizeLoop(window) }
+            if arguments.contains("-pushLoop") {
+                await Self.pushLoop(option("-pushLoop"), from: home, context: context, agent: agent)
+            }
+            if arguments.contains("-infoLoop"), let id = option("-open"), let chat = shell.topViewController {
+                for _ in 0..<3 {
+                    try? await Task.sleep(for: .seconds(2))
+                    if let legacy = chat as? LegacyChatViewController {
+                        legacy.push(.sessionInfo(id: legacy.sessionId), context: context)
+                    } else if let session = controller.agentConnections.activeID.flatMap({ Session.session(for: $0, context: context) }) {
+                        chat.navigationController?.pushViewController(SessionDetailViewController(session: session, agentId: id, title: "iPad split view", spaceId: nil), animated: true)
+                    }
+                    try? await Task.sleep(for: .seconds(2))
+                    chat.navigationController?.popToViewController(chat, animated: true)
+                }
+            }
             if arguments.contains("-linkLoop"), let bar = home.navigationController?.navigationBar {
                 func find(_ view: UIView) -> AccountSwitcherButton? {
                     if let button = view as? AccountSwitcherButton { return button }
@@ -269,6 +287,31 @@ final class SplitAppHarness {
             try? await Task.sleep(for: .seconds(3))
             let width = step.isMultiple(of: 2) ? 600 : whole.width
             window.frame = CGRect(x: 0, y: 0, width: width, height: whole.height)
+        }
+    }
+
+    /// Pushes and pops in turn, every 2 s, for a recording of the header's
+    /// glass going over: `what` is a chat's id (session or agent),
+    /// `artifacts` or `settings`.
+    private static func pushLoop(_ what: String?, from home: UIViewController, context: AppContext, agent: Bool) async {
+        guard let what, let navigation = home.navigationController else { return }
+        for _ in 0..<3 {
+            try? await Task.sleep(for: .seconds(2))
+            switch what {
+            case "settings":
+                if agent {
+                    SettingsViewController.open(context: context, computer: context.account.agentConnections.activeID, from: home)
+                } else {
+                    home.push(.settings, context: context)
+                }
+            case "artifacts":
+                guard let session = context.account.agentConnections.activeID.flatMap({ Session.session(for: $0, context: context) }) else { return }
+                navigation.pushViewController(ArtifactsViewController(session: session), animated: true)
+            default:
+                open(what, from: home, context: context, agent: agent, animated: true)
+            }
+            try? await Task.sleep(for: .seconds(2))
+            navigation.popToRootViewController(animated: true)
         }
     }
 

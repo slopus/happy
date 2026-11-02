@@ -28,8 +28,16 @@ final class GlassCapsuleView: UIVisualEffectView {
         fatalError("init(coder:) is not supported")
     }
 
+    /// Whether the glass is there; what it carries stays either way. Set
+    /// inside an animation, the glass materializes or dissolves as the
+    /// system's own does.
+    var showsGlass = true {
+        didSet { if showsGlass != oldValue { applyGlass() } }
+    }
+
     /// Telegram's panel tint: white at 10% in the light, 2.5% in the dark.
     private func applyGlass() {
+        guard showsGlass else { effect = nil; return }
         let glass = UIGlassEffect(style: .regular)
         if tinted { glass.tintColor = UIColor(white: 1, alpha: traitCollection.userInterfaceStyle == .dark ? 0.025 : 0.1) }
         glass.isInteractive = interactive

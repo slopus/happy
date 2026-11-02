@@ -471,6 +471,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        header.ride(transitionCoordinator, appearing: true)
         appeared = true
         startConstruction()
         // An empty compose has no transcript to stage: built now, its
@@ -765,6 +766,7 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        header.ride(transitionCoordinator, appearing: false)
         MessageLiftOverlay.putBack(from: self)
         if contentInstalled { keepStripOffset() }
         if ultraKeyboard?.isDriving == true { ultraKeyboard?.dismissImmediately() }

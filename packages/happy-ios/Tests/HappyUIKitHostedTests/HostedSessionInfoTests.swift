@@ -252,8 +252,9 @@ final class HostedSessionInfoTests: XCTestCase {
     }
 
     /// The legacy chat's header is the agent chat's: its name and its
-    /// session's status on one glass capsule, in the bar from the push's
-    /// first layout, nothing measured first; the status is nowhere else.
+    /// session's status on one capsule, in the bar from the push's first
+    /// layout, nothing measured first, its glass on once the push is over
+    /// (`ChatHeaderView.ride`); the status is nowhere else.
     func testTheLegacyChatHasItsCapsuleFromThePushesFirstLayout() async throws {
         let (controller, account) = try await signedIn(agentState: .object(["controlledByUser": .bool(false)]), connector: ForeverConnecting())
         let context = AppContext(account: controller, variant: .development, version: "test")
@@ -275,7 +276,7 @@ final class HostedSessionInfoTests: XCTestCase {
             // The first layout pass of the push.
             let header = try XCTUnwrap(chat.navigationItem.titleView as? ChatHeaderView, "a plain title at the push's start")
             XCTAssertNotNil(header.window, "the capsule isn't in the bar as the push starts")
-            XCTAssertTrue(header.capsule.effect is UIGlassEffect)
+            XCTAssertNil(header.capsule.effect, "the capsule goes over with its glass on")
             XCTAssertGreaterThan(header.capsule.bounds.width, 100)
             XCTAssertEqual(header.titleView.text, "Session info screen")
             let status = try XCTUnwrap(Self.allViews(UILabel.self, in: header.capsule.contentView).first { $0.accessibilityIdentifier == "chat-status" })
@@ -290,6 +291,7 @@ final class HostedSessionInfoTests: XCTestCase {
             XCTAssertTrue(settled)
             XCTAssertTrue(chat.navigationItem.titleView === header, "the capsule was swapped once the chat was built")
             try await Task.sleep(for: .milliseconds(600))
+            XCTAssertTrue(header.capsule.effect is UIGlassEffect, "the capsule's glass isn't back once pushed")
             XCTAssertEqual(status.text, Strings.Composer.online)
             // Not over the composer as well: the status is the header's.
             let elsewhere = Self.allViews(UILabel.self, in: chat.view).filter {

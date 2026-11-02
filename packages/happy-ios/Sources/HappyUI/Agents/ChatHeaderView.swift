@@ -191,6 +191,48 @@ final class ChatHeaderView: UIView {
         if let frame = layout.spinner { spinner.frame = frame.offsetBy(dx: -origin.x, dy: -origin.y) }
     }
 
+    /// The capsule's glass through a push or pop of its screen, from the
+    /// screen's `viewWillAppear` (`appearing`) and `viewWillDisappear`:
+    /// the name and status go over as a plain title does, and the glass
+    /// is there only while the screen stands still.
+    ///
+    /// iOS 26 morphs a bar item's glass into the next screen's (home's
+    /// switcher into Back, its gear into Compose) but carries a title view
+    /// across with the screen's content. The capsule's own glass went over
+    /// as a second shape, on top of the switcher shrinking into Back and of
+    /// the right button, and under the next screen's ground as it slid in
+    /// (a hard edge across the capsule). A title view can't wear the bar's
+    /// glass, and a bar item can't sit in the bar's middle (the bar ignores
+    /// a fixed space's width, and a clear item before it goes through the
+    /// morph as a dark rectangle), so the glass leaves for the transition:
+    /// it goes as the transition starts and materializes once the screen
+    /// has come, or come back from a swipe let go of.
+    func ride(_ coordinator: UIViewControllerTransitionCoordinator?, appearing: Bool) {
+        guard let coordinator, coordinator.isAnimated else {
+            capsule.showsGlass = true
+            return
+        }
+        // At once: the bar has a leaving title under the next screen's
+        // right button within two frames, too soon for a dissolve to show.
+        UIView.performWithoutAnimation { capsule.showsGlass = false }
+        coordinator.animate(alongsideTransition: nil) { [weak self] context in
+            // Shown now, or back from a swipe let go of: the glass comes
+            // back. Gone or covered: it is back for whenever it shows.
+            guard let self else { return }
+            let shown = appearing != context.isCancelled
+            guard shown, window != nil else {
+                UIView.performWithoutAnimation { self.capsule.showsGlass = true }
+                return
+            }
+            UIView.animate(withDuration: Self.glassMaterialize, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
+                self.capsule.showsGlass = true
+            }
+        }
+    }
+
+    /// How long the glass takes to come once its screen has come.
+    static let glassMaterialize: TimeInterval = 0.3
+
     /// Only the capsule takes a touch; the bar around it stays the bar's.
     override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
         capsule.frame.contains(point)
