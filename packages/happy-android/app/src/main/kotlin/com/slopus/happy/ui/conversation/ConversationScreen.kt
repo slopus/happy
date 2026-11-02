@@ -18,6 +18,10 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import com.slopus.happy.connection.LinkState
+import com.slopus.happy.ui.chat.LinkSpinner
+import com.slopus.happy.ui.chat.LinkStatusSpec
+import com.slopus.happy.ui.chat.linkStatusWords
 import com.slopus.happy.ui.components.PageProgressIndicator as CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -197,6 +201,8 @@ fun ConversationScreen(
     actions: ConversationScreenActions,
     modifier: Modifier = Modifier,
     bubbleColor: String? = null,
+    /** The link as the header shows it, debounced: on its way somewhere, said with a spinner (iOS 7aee3a9b8). */
+    link: LinkState = LinkState.Online,
 ) {
     RecomposeProbe.mark(ConversationScreenTags.PROBE_SCREEN)
     val colors = HappyTheme.colors
@@ -281,9 +287,10 @@ fun ConversationScreen(
                     // the transcript moves when the link or the work changes.
                     val working = activityLabel(state.activity)
                     val syncing = state.syncing || (state.created && !state.loaded)
+                    // The link on its way, or the chat still catching up: said with the spinner, as home's title says it.
+                    val linkWords = if (connection != null) null else linkStatusWords(if (link == LinkState.Online && syncing) LinkState.Syncing else link)
                     val dot = when {
-                        connection != null -> null
-                        syncing -> colors.status.connecting
+                        connection != null || linkWords != null -> null
                         state.activity == null -> colors.status.connected
                         state.activity == Activity.AwaitingAnswer -> SessionStatusColors.attention
                         else -> SessionStatusColors.thinking
@@ -306,11 +313,11 @@ fun ConversationScreen(
                     ) {
                         TitleWithStatus(
                             status = BarStatus(
-                                connection ?: if (syncing) stringResource(R.string.status_syncing)
-                                else working ?: stringResource(R.string.status_online),
+                                connection ?: linkWords ?: working ?: stringResource(R.string.status_online),
                                 dot,
-                                connection == null && (syncing || state.activity != null),
-                                shimmer = connection == null && !syncing && running,
+                                connection == null && linkWords == null && state.activity != null,
+                                shimmer = connection == null && linkWords == null && running,
+                                spins = linkWords != null,
                             ),
                             statusStyle = style,
                             title = {
@@ -333,11 +340,12 @@ fun ConversationScreen(
                         ) { status ->
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                horizontalArrangement = Arrangement.spacedBy(if (status.spins) LinkStatusSpec.gap else 6.dp),
                                 modifier = Modifier
                                     .testTag(ConversationScreenTags.SUBTITLE)
                                     .semantics { liveRegion = LiveRegionMode.Polite },
                             ) {
+                                if (status.spins) LinkSpinner(colors.textSecondary)
                                 status.dot?.let { StatusDot(it, pulsing = status.pulsing, onRenderThread = true) }
                                 ShimmerText(
                                     status.text,
@@ -575,7 +583,7 @@ private fun TranscriptList(
 private enum class TranscriptPhase { Loading, Failed, Empty, Rows }
 
 /** The bar's status line: its words, dot, whether the dot pulses and whether the words shimmer. */
-private data class BarStatus(val text: String, val dot: Color?, val pulsing: Boolean, val shimmer: Boolean = false)
+private data class BarStatus(val text: String, val dot: Color?, val pulsing: Boolean, val shimmer: Boolean = false, val spins: Boolean = false)
 
 /**
  * Whether the agent's work is running, so the bar's title and status

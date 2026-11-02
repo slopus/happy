@@ -97,6 +97,22 @@ class LinkStateDebounce(shown: LinkState = LinkState.Online, wanted: LinkState, 
 }
 
 /**
+ * A Happy account's link (iOS's `LegacyLink.headerState`): its socket
+ * retries for as long as the account is signed in, so a socket that is
+ * down is one on its way back.
+ */
+fun accountLinkState(connected: Boolean, catchingUp: Boolean, network: Boolean): LinkState = when {
+    !network -> LinkState.WaitingForNetwork
+    !connected -> LinkState.Connecting
+    catchingUp -> LinkState.Syncing
+    else -> LinkState.Online
+}
+
+/** Whether a header says [this] with a spinner before the words: the link on its way somewhere. */
+val LinkState.spins: Boolean
+    get() = this == LinkState.Syncing || this == LinkState.Connecting || this == LinkState.WaitingForNetwork
+
+/**
  * What a header shows of this flow of link states, debounced by
  * [LinkStateDebounce]. Starts showing online: a launch shows the title, and
  * a slow first connection says so after [LinkStateDebounce.SHOW_AFTER_MS].

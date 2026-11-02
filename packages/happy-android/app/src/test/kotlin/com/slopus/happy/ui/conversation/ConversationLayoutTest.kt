@@ -24,6 +24,7 @@ import androidx.compose.ui.test.swipe
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.slopus.happy.connection.LinkState
 import com.slopus.happy.conversation.Activity
 import com.slopus.happy.conversation.AgentInfo
 import com.slopus.happy.conversation.Block
@@ -45,6 +46,7 @@ import com.slopus.happy.chat.markdown.parseMarkdown
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
+import com.slopus.happy.ui.chat.LinkStatusTags
 import com.slopus.happy.ui.chat.MessageCallbacks
 import com.slopus.happy.ui.chat.PrimaryAction
 import com.slopus.happy.ui.chat.userMessageBubblePalette
@@ -216,22 +218,25 @@ class ConversationLayoutTest {
     @Test fun `the link and the work coming and going move neither the title nor the transcript`() {
         var state by mutableStateOf(ConversationState(created = true, loaded = true, rows = history, agent = agent))
         var connection by mutableStateOf<String?>(null)
-        rule.setHappyContent { ConversationScreen(state, connection, ConversationScreenActions()) }
+        var link by mutableStateOf(LinkState.Online)
+        rule.setHappyContent { ConversationScreen(state, connection, ConversationScreenActions(), link = link) }
         val bar = rule.node(ConversationScreenTags.BAR).bounds
         val title = rule.node(ConversationScreenTags.TITLE).bounds
         val list = rule.node(ConversationScreenTags.LIST).bounds
         val idle = state
-        val flips = listOf<Triple<String?, Activity?, Boolean>>(
-            Triple("connecting", null, false), Triple(null, null, false),
-            Triple("offline", Activity.Thinking, false), Triple(null, Activity.Thinking, true),
-            Triple(null, Activity.Thinking, false), Triple(null, Activity.AwaitingAnswer, false),
-            Triple("connecting", Activity.AwaitingAnswer, false), Triple(null, null, false),
+        // (offline words, link, activity, chat syncing)
+        val flips = listOf<Flip>(
+            Flip(null, LinkState.Connecting, null, false), Flip(null, LinkState.Online, null, false),
+            Flip("offline", LinkState.Offline, Activity.Thinking, false), Flip(null, LinkState.Online, Activity.Thinking, true),
+            Flip(null, LinkState.WaitingForNetwork, Activity.Thinking, false), Flip(null, LinkState.Online, Activity.AwaitingAnswer, false),
+            Flip(null, LinkState.Syncing, Activity.AwaitingAnswer, false), Flip(null, LinkState.Online, null, false),
         )
-        for ((link, activity, syncing) in flips) {
-            val at = "${link ?: "live"}, ${activity ?: "idle"}"
+        for (flip in flips) {
+            val at = "${flip.link}, ${flip.activity ?: "idle"}, syncing ${flip.syncing}"
             rule.mainClock.autoAdvance = false
-            connection = link
-            state = idle.copy(working = activity != null, activity = activity, syncing = syncing)
+            connection = flip.words
+            link = flip.link
+            state = idle.copy(working = flip.activity != null, activity = flip.activity, syncing = flip.syncing)
             Snapshot.sendApplyNotifications()
             rule.mainClock.advanceTimeByFrame()
             rule.mainClock.advanceTimeBy(64)
@@ -244,14 +249,34 @@ class ConversationLayoutTest {
             assertEquals("title, $at", title, rule.node(ConversationScreenTags.TITLE).bounds)
             assertEquals("transcript, $at", list, rule.node(ConversationScreenTags.LIST).bounds)
             rule.node(ConversationScreenTags.SUBTITLE).assertExists()
-            val label = link ?: when {
-                syncing -> "syncing"
-                activity == Activity.Thinking -> "Thinking…"
-                activity == Activity.AwaitingAnswer -> "Waiting for your answer"
+            val label = flip.words ?: when {
+                flip.link == LinkState.Connecting -> "connecting…"
+                flip.link == LinkState.WaitingForNetwork -> "waiting for network…"
+                flip.link == LinkState.Syncing || flip.syncing -> "updating…"
+                flip.activity == Activity.Thinking -> "Thinking…"
+                flip.activity == Activity.AwaitingAnswer -> "Waiting for your answer"
                 else -> "online"
             }
             rule.onNodeWithText(label, useUnmergedTree = true).assertExists()
+            // The link on its way, or the chat catching up, turns a spinner before the words (iOS 7aee3a9b8).
+            val spins = label.endsWith("…") && label != "Thinking…"
+            assertEquals("spinner, $at", spins, rule.onAllNodesWithTag(LinkStatusTags.SPINNER, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
         }
+    }
+
+    private data class Flip(val words: String?, val link: LinkState, val activity: Activity?, val syncing: Boolean)
+
+    @Test fun `a link on its way says so with a 14 spinner 5 before its words`() {
+        rule.setHappyContent {
+            ConversationScreen(ConversationState(created = true, loaded = true, rows = history, agent = agent), null, ConversationScreenActions(), link = LinkState.Connecting)
+        }
+        val spinner = rule.node(LinkStatusTags.SPINNER).bounds
+        val words = rule.onNodeWithText("connecting…", useUnmergedTree = true).bounds
+        assertDp("14 wide", 14, spinner.right - spinner.left)
+        assertDp("14 high", 14, spinner.bottom - spinner.top)
+        assertDp("5 before the words", 5, words.left - spinner.right)
+        assertDp("centred on their line", (words.top + words.bottom) / 2, (spinner.top + spinner.bottom) / 2)
+        shot("link-connecting")
     }
 
     @Test fun `a sent message stays in view, and reading older history is left alone`() {

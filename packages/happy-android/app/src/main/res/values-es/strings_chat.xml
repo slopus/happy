@@ -31,4 +31,7 @@
     <string name="files_update_agent">Actualiza Happy Agent en tu ordenador para ver los cambios de esta sesión.</string>
     <string name="files_no_comparison">La comparación con origin/main no está disponible para este espacio de trabajo.</string>
     <string name="files_no_details">No hay detalles de archivos para esta comparación.</string>
+    <string name="link_status_updating">sincronizando…</string>
+    <string name="link_status_connecting">conectando…</string>
+    <string name="link_status_waiting_for_network">esperando red…</string>
 </resources>

@@ -38,6 +38,7 @@ import com.slopus.happy.chat.ChatSessionInfo
 import com.slopus.happy.chat.ChatState
 import com.slopus.happy.chat.ComposerModes
 import com.slopus.happy.chat.isCurrentTurnComplete
+import com.slopus.happy.connection.LinkState
 import com.slopus.happy.model.GitStatus
 import com.slopus.happy.model.SessionState
 import com.slopus.happy.model.settings.ModeOption
@@ -220,6 +221,8 @@ fun ChatScreen(
     goalBar: (@Composable () -> Unit)? = null,
     /** The activity bar (RigActivityBar), just over the composer; fades with the details. */
     activityBar: (@Composable () -> Unit)? = null,
+    /** The account's link as headers show it, debounced ([rememberShownLinkState]). */
+    link: LinkState = LinkState.Online,
 ) {
     val colors = HappyTheme.colors
     val session = state.session
@@ -280,7 +283,7 @@ fun ChatScreen(
                         Header(
                             left = { HeaderBackButton(actions.onBack) },
                             titleContent = {
-                                ChatHeaderTitle(slots.headerTitle ?: title, session, gitStatus, onClick = if (session != null) actions.onInfo else null, subtitleOverride = slots.headerSubtitle, working = state.sessionState == SessionState.Thinking)
+                                ChatHeaderTitle(slots.headerTitle ?: title, session, gitStatus, onClick = if (session != null) actions.onInfo else null, subtitleOverride = slots.headerSubtitle, working = state.sessionState == SessionState.Thinking, link = link)
                             },
                             right = { ChatHeaderActions(session, modes, session?.metadata ?: pending?.anchor?.metadata, actions) },
                         )

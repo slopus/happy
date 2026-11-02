@@ -1,5 +1,8 @@
 package com.slopus.happy.ui.chat
 
+import com.slopus.happy.connection.accountLinkState
+import com.slopus.happy.connection.networkPath
+import com.slopus.happy.net.ConnectionStatus
 import com.slopus.happy.ui.page
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -291,6 +294,12 @@ private fun ChatRoute(
         LocalSuggestionSource provides rememberSessionSuggestions(graph, sessionId, state.session?.metadata),
         LocalUsageDisplay provides UsageDisplay(settings.alwaysShowContextSize, settings.usageLimitShowRemaining),
     ) {
+        // The account's link, as home reads it: its socket, its catch-up and the network (iOS's LegacyLink).
+        val socket by graph.connectionStatus.collectAsStateWithLifecycle()
+        val catchingUp by graph.isSyncing.collectAsStateWithLifecycle()
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val network by remember(context) { context.networkPath() }.collectAsStateWithLifecycle(initialValue = true)
+        val link = rememberShownLinkState(accountLinkState(socket == ConnectionStatus.CONNECTED, catchingUp, network))
         // A compose chat that has started is its session's chat: the checkout's tabs are that session's.
         val slots = rememberSessionScreenSlots(graph, if (compose != null) sessionId else routeId, route.pending, state, onSwitch = { onOpenSession(sessionId, it) }, onBack = onBack)
         val chatSlots = if (compose != null && composing) {
@@ -303,6 +312,7 @@ private fun ChatRoute(
         }
         ChatScreen(
             state = state,
+            link = link,
             draft = draft.text,
             bubbleColor = settings.userMessageBubbleColor,
             actions = screenActions,

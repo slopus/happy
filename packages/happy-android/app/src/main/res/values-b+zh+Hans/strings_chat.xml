@@ -31,4 +31,7 @@
     <string name="files_update_agent">在电脑上更新 Happy Agent 才能查看此会话的更改。</string>
     <string name="files_no_comparison">此工作区无法与 origin/main 进行比较。</string>
     <string name="files_no_details">此比较没有可用的文件详情。</string>
+    <string name="link_status_updating">同步中…</string>
+    <string name="link_status_connecting">连接中…</string>
+    <string name="link_status_waiting_for_network">等待网络…</string>
 </resources>

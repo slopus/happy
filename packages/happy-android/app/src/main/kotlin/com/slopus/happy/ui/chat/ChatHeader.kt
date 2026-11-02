@@ -35,6 +35,7 @@ import com.slopus.happy.R
 import com.slopus.happy.chat.ChatSessionInfo
 import com.slopus.happy.chat.ComposerModes
 import com.slopus.happy.chat.resolveChatHeaderGit
+import com.slopus.happy.connection.LinkState
 import com.slopus.happy.model.GitStatus
 import com.slopus.happy.model.SessionMetadata
 import com.slopus.happy.model.compactCount
@@ -59,11 +60,14 @@ internal fun ChatHeaderTitle(
     subtitleOverride: String? = null,
     /** The agent is working: the title shimmers, desktop's busy tab. */
     working: Boolean = false,
+    /** The account's link as headers show it: on its way, it takes the subtitle's place with a spinner (iOS 7aee3a9b8). */
+    link: LinkState = LinkState.Online,
 ) {
     val colors = HappyTheme.colors
     val header = remember(session?.metadata, gitStatus) { resolveChatHeaderGit(session?.metadata, gitStatus) }
-    val subtitle = subtitleOverride ?: header.subtitle
-    val git = header.changes
+    val linkWords = linkStatusWords(link)
+    val subtitle = linkWords ?: subtitleOverride ?: header.subtitle
+    val git = header.changes.takeIf { linkWords == null }
     Column(
         modifier = Modifier
             .testTag(ChatScreenTags.TITLE_BUTTON)
@@ -86,7 +90,8 @@ internal fun ChatHeaderTitle(
             modifier = Modifier.testTag(HeaderTags.TITLE),
         )
         if (subtitle != null || git != null) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(ChatScreenSpec.gitGap)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(if (linkWords != null) LinkStatusSpec.gap else ChatScreenSpec.gitGap)) {
+                if (linkWords != null) LinkSpinner(colors.textSecondary)
                 if (subtitle != null) {
                     Text(
                         text = subtitle,

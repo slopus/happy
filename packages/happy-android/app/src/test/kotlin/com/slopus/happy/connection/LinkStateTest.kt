@@ -4,6 +4,8 @@ import com.slopus.happy.connection.LinkState.Connecting
 import com.slopus.happy.connection.LinkState.Online
 import com.slopus.happy.connection.LinkState.Syncing
 import com.slopus.happy.connection.LinkState.WaitingForNetwork
+import com.slopus.happy.agent.AgentLinkStatus
+import com.slopus.happy.ui.conversation.linkState
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
@@ -124,5 +126,27 @@ class LinkStateTest {
         advanceTimeBy(1_000); runCurrent()
         job.cancel()
         assertEquals(listOf(0L to Online, 3_100L to Connecting, 3_700L to Online), shown)
+    }
+
+    // iOS LegacyLink.headerState: no network first, then the socket, then its catch-up.
+    @Test fun aHappyAccountsLinkIsItsSocketItsCatchUpAndTheNetwork() {
+        assertEquals(WaitingForNetwork, accountLinkState(connected = true, catchingUp = false, network = false))
+        assertEquals(Connecting, accountLinkState(connected = false, catchingUp = true, network = true))
+        assertEquals(Syncing, accountLinkState(connected = true, catchingUp = true, network = true))
+        assertEquals(Online, accountLinkState(connected = true, catchingUp = false, network = true))
+    }
+
+    @Test fun anAgentsLinkSaysOfflineOnItsOwn() {
+        assertEquals(WaitingForNetwork, AgentLinkStatus.Offline.linkState(syncing = false, network = false))
+        assertEquals(Connecting, AgentLinkStatus.Connecting.linkState(syncing = false, network = true))
+        assertEquals(Syncing, AgentLinkStatus.Connected.linkState(syncing = true, network = true))
+        assertEquals(Online, (null as AgentLinkStatus?).linkState(syncing = false, network = true))
+        for (away in listOf(AgentLinkStatus.Offline, AgentLinkStatus.Revoked, AgentLinkStatus.UpdateRequired, AgentLinkStatus.SignInRequired)) {
+            assertEquals(away.name, LinkState.Offline, away.linkState(syncing = false, network = true))
+        }
+    }
+
+    @Test fun onlyTheLinkOnItsWaySpins() {
+        assertEquals(listOf(Syncing, Connecting, WaitingForNetwork), LinkState.entries.filter { it.spins })
     }
 }

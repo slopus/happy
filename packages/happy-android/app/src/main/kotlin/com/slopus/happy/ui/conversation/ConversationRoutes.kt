@@ -1,5 +1,8 @@
 package com.slopus.happy.ui.conversation
 
+import com.slopus.happy.connection.LinkState
+import com.slopus.happy.connection.networkPath
+import com.slopus.happy.ui.chat.rememberShownLinkState
 import com.slopus.happy.ui.page
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -265,6 +268,14 @@ internal fun SavedStateHandle.takePrefill(prefill: String?): String? {
 
 private const val PREFILLED = "prefilled"
 
+/** An agent connection's link as its chats' headers say it: a computer that didn't answer, or a pairing to redo, is offline. */
+internal fun AgentLinkStatus?.linkState(syncing: Boolean, network: Boolean): LinkState = when {
+    !network -> LinkState.WaitingForNetwork
+    this == null || this == AgentLinkStatus.Connected -> if (syncing) LinkState.Syncing else LinkState.Online
+    this == AgentLinkStatus.Connecting -> LinkState.Connecting
+    else -> LinkState.Offline
+}
+
 @Composable
 internal fun linkStatusText(status: AgentLinkStatus?, syncing: Boolean = false): String? = when (status) {
     null, AgentLinkStatus.Connected -> if (syncing) stringResource(R.string.status_syncing) else null
@@ -301,6 +312,8 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
     DisposableEffect(conversation) { onDispose { conversation.setVisible(false) } }
     // A link in this chat browses through this chat's agent's workspace (iOS's openBrowser(session:agentID:)).
     val context = LocalContext.current
+    val network by remember(context) { context.networkPath() }.collectAsStateWithLifecycle(initialValue = true)
+    val link = rememberShownLinkState(status.linkState(syncing, network))
     val computer = computerName(graph, route.connectionId)
     val links = remember(nav, computer, conversation.agentId) {
         LinkOpener.agent(context, computer) { url -> nav.navigate(BrowserRoute(route.connectionId, url, conversation.agentId)) }
@@ -308,7 +321,9 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
     ProvideLinks(links) {
         ConversationScreen(
             state = state,
-            connection = linkStatusText(status, syncing),
+            // Offline says why in words of its own; the link on its way spins (iOS 7aee3a9b8).
+            connection = if (link == LinkState.Offline) linkStatusText(status) ?: stringResource(R.string.status_offline) else null,
+            link = link,
             bubbleColor = settings.userMessageBubbleColor,
             actions = remember(conversation, nav) {
                 ConversationScreenActions(
