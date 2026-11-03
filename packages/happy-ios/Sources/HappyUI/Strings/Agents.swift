@@ -83,10 +83,6 @@ extension Strings {
     public static let unanswered = "The computer did not answer."
     /// An action the computer refused, undone here.
     public static let refused = "The computer refused that, so it was undone."
-    /// New work's first message couldn't make it; nothing was sent.
-    public static func newWorkFailed(_ kind: NewTask.Kind, _ reason: String) -> String {
-        "The \(kind == .bot ? "bot" : "task") could not be started.\(reason.isEmpty ? "" : " \(reason)") Your text and attachments are still here."
-    }
 
     // New work (MakeStuffView.tsx).
     public static let introLine = "Say what it is — it’ll find its place."

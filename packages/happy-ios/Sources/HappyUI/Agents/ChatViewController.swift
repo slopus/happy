@@ -1531,7 +1531,6 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         let conversation = conversation
         let store = session.store
         let staged = pictures
-        let kind = newTask?.choice.kind ?? .task
         #if DEBUG
         composeTrace?.event("send choice=\(String(describing: newTask?.choice))")
         #endif
@@ -1539,6 +1538,8 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         newWorkPanel?.isLocked = true
         Task {
             await store.attentionInput()
+            // New work's first message is drawn at once; the task is made
+            // behind it, and a refusal leaves it failed, to retry.
             let accepted = await conversation.send(id: id, text: text, attachments: picked)
             acceptingSend = false
             if !accepted, !newWorkPanelGone { newWorkPanel?.isLocked = false }
@@ -1548,8 +1549,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
                 }
                 staged.removeSent(pickedIDs)
             } else {
-                let refusal = await conversation.sendRefusal
-                let message = refusal.map { Strings.newWorkFailed(kind, $0) } ?? "The message could not be saved. Your text and attachments are still here."
+                let message = "The message could not be saved. Your text and attachments are still here."
                 let alert = UIAlertController(title: Strings.Common.error, message: message, preferredStyle: .alert)
                 alert.addAction(UIAlertAction(title: Strings.Common.ok, style: .default))
                 present(alert, animated: true)

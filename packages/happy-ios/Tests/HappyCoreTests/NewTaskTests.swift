@@ -128,30 +128,66 @@ final class NewTaskTests: XCTestCase {
         XCTAssertNil(creates.first?.body?["name"], "a blank name was sent")
     }
 
-    /// A refused make draws nothing and sends nothing, says why, and the
-    /// next send asks again under the same names.
-    func testARefusedMakeDrawsNothingAndTriesAgainUnderTheSameNames() async throws {
+    /// Lazy: the first message is drawn the moment it is sent, while the
+    /// computer is still making the task, and goes into it once it is made.
+    func testTheFirstMessageIsDrawnBeforeTheTaskIsMade() async throws {
         let computer = TaskComputer()
         let store = Store(client: AgentClient(transport: computer, token: "t"))
         let task = await store.newTask()
         let (chat, _) = conversation(computer, task)
+        var updates = chat.updates.makeAsyncIterator()
+        await chat.start()
+
+        await computer.holdCreates()
+        let sent = await chat.send(id: "m1", text: "Audit the billing exports")
+        XCTAssertTrue(sent, "the send waited for the task")
+        var drawn: ChatItem?
+        while drawn == nil, let snapshot = await updates.next() {
+            drawn = snapshot.items.first { $0.id == "m1" }
+        }
+        XCTAssertEqual(drawn?.delivery, .sending)
+        XCTAssertEqual(drawn?.text, "Audit the billing exports")
+        let made = await task.isMade
+        XCTAssertFalse(made, "drawn only after the task was made")
+        var writes = await computer.writes
+        XCTAssertFalse(writes.contains { $0.path.hasSuffix("/send") }, "a message went before its task was made")
+
+        await computer.releaseCreates()
+        for _ in 0..<100 where !writes.contains(where: { $0.path.hasSuffix("/send") }) {
+            try await Task.sleep(for: .milliseconds(20))
+            writes = await computer.writes
+        }
+        XCTAssertEqual(writes.map(\.path), ["/v0/tasks", "/v0/agents/\(task.agentId)/send"])
+        await chat.stop()
+    }
+
+    /// A refused make leaves the message drawn, failed and unsent; its
+    /// retry asks again under the same names, then sends it, once.
+    func testARefusedMakeFailsTheMessageAndItsRetryMakesTheSameTask() async throws {
+        let computer = TaskComputer()
+        let store = Store(client: AgentClient(transport: computer, token: "t"))
+        let task = await store.newTask()
+        let (chat, _) = conversation(computer, task)
+        var updates = chat.updates.makeAsyncIterator()
         await chat.start()
 
         await computer.refuseCreates(409, "No room for another task")
-        let refused = await chat.send(id: "m1", text: "Audit the billing exports")
-        XCTAssertFalse(refused)
-        let reason = await chat.sendRefusal
-        XCTAssertEqual(reason, "No room for another task")
+        let sent = await chat.send(id: "m1", text: "Audit the billing exports")
+        XCTAssertTrue(sent, "a refused make took the message back")
+        var failure: String?
+        while failure == nil, let snapshot = await updates.next() {
+            if case .failed(let reason) = snapshot.items.first(where: { $0.id == "m1" })?.delivery { failure = reason }
+        }
+        XCTAssertEqual(failure, "No room for another task")
         var writes = await computer.writes
         XCTAssertEqual(writes.map(\.path), ["/v0/tasks"])
         let made = await task.isMade
         XCTAssertFalse(made)
+        let again = await store.newTask()
+        XCTAssertTrue(again === task, "the unsent work was let go of")
 
         await computer.refuseCreates(nil, nil)
-        let sent = await chat.send(id: "m2", text: "Audit the billing exports")
-        XCTAssertTrue(sent)
-        let cleared = await chat.sendRefusal
-        XCTAssertNil(cleared)
+        await chat.retry("m1")
         for _ in 0..<100 where !writes.contains(where: { $0.path.hasSuffix("/send") }) {
             try await Task.sleep(for: .milliseconds(20))
             writes = await computer.writes
@@ -159,7 +195,7 @@ final class NewTaskTests: XCTestCase {
         let creates = writes.filter { $0.path == "/v0/tasks" }
         XCTAssertEqual(creates.count, 2)
         XCTAssertEqual(creates[0].body, creates[1].body, "the retry named another task")
-        XCTAssertEqual(writes.filter { $0.path.hasSuffix("/send") }.compactMap { $0.body?["id"]?.stringValue }, ["m2"], "the refused message was sent")
+        XCTAssertEqual(writes.filter { $0.path.hasSuffix("/send") }.compactMap { $0.body?["id"]?.stringValue }, ["m1"])
         await chat.stop()
     }
 }

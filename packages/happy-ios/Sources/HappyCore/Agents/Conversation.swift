@@ -396,9 +396,6 @@ public actor Conversation {
     /// A task its first message makes (`NewTask`): until then nothing of it
     /// is on the computer, and everything that goes there waits for it.
     private var creation: NewTask?
-    /// Why the last send was refused before anything was drawn: the task
-    /// its first message makes could not be made.
-    public private(set) var sendRefusal: String?
     private var visible = false
     /// On screen, the reader at the newest message and at rest.
     private var readsNewest = false
@@ -440,8 +437,10 @@ public actor Conversation {
             snapshot.error = "Could not open this conversation on this device."; publish(); return
         }
         if let creation {
-            // A new task has nothing to read yet: it is shown at once, empty,
-            // and followed once its first message has made it.
+            // A new task has nothing to read yet: it is shown at once, with
+            // what was sent into it while it was being made (left and opened
+            // again meanwhile), and followed once it has been made.
+            await restoreConversation()
             snapshot.loaded = true
             publish()
             defaultMode = Task { [client] in try await client.defaultMode() }
@@ -870,21 +869,14 @@ public actor Conversation {
 
     // MARK: Sending
 
-    /// Draws the message and sends it. A new task's first message makes the
-    /// task first: refused, nothing is drawn, `sendRefusal` says why, and
-    /// false leaves the composer holding what it held.
+    /// Draws the message and sends it. A new task's first message is drawn
+    /// at once, before the task is made: it goes once the computer has made
+    /// it, and if the computer refuses, it stays, failed, to be retried
+    /// under the same names (`NewTask`), which never makes a second task.
     @discardableResult
     public func send(id: String = ClientID.make(), text: String, pictures: [(mimeType: String, data: Data)] = [], attachments: [OutgoingAttachment] = [],
                      toolRequest: AgentWire.ToolCallRequest? = nil) async -> Bool {
         guard !outgoing.contains(where: { $0.id == id }), messages[id] == nil else { return false }
-        sendRefusal = nil
-        if let creation {
-            do { agentId = try await creation.make() }
-            catch {
-                sendRefusal = Store.describe(error)
-                return false
-            }
-        }
         admitting.insert(id)
         defer { admitting.remove(id) }
         var inline = pictures
@@ -916,9 +908,15 @@ public actor Conversation {
             failed(id, "Could not save this message on this device. Retry when storage is available.")
             return false
         }
+        // Drawn now; it goes once the task is made.
+        if creation != nil {
+            admitting.remove(id)
+            publish()
+            deliver(id)
+            return true
+        }
         if let persistence {
             do {
-                if let creation { agentId = try await creation.make() }
                 try await checkpointClaim(for: "conversation:\(agentId)").value
                 try await persistence.enqueueMessage(queuedMessage(id: id, text: text, pictures: inline))
             }
@@ -935,6 +933,11 @@ public actor Conversation {
         guard let index = outgoing.firstIndex(where: { $0.id == id }), outgoing[index].failure != nil else { return }
         outgoing[index].failure = nil
         publish()
+        // Not made yet: the task is asked for again, under the same names.
+        if creation != nil {
+            deliver(id)
+            return
+        }
         if let persistence {
             let send = outgoing[index]
             let payload = queuedMessage(id: id, text: send.text, pictures: send.pictures)
@@ -1000,8 +1003,15 @@ public actor Conversation {
                 if let persistence, !(await persistence.deliveryAllowed) { return }
                 guard await saveConversationNow() else { failed(id, "Could not save this message on this device."); return }
                 // A new task: its conversation exists once the computer has
-                // made it, under the ID the computer gave it.
-                if let creation { agentId = try await creation.make() }
+                // made it, under the ID the computer gave it. Refused (after
+                // its own retries), the message shows failed, to retry.
+                if let creation {
+                    do { agentId = try await creation.make() }
+                    catch {
+                        failed(id, Store.describe(error))
+                        return
+                    }
+                }
                 if let persistence, !(await persistence.deliveryAllowed) { return }
                 guard let outgoingIndex = outgoing.firstIndex(where: { $0.id == id }) else { return }
                 let send = outgoing[outgoingIndex]
