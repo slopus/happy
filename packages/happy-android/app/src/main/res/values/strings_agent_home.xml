@@ -24,6 +24,21 @@
     <string name="agent_search_clear">Clear</string>
     <string name="agent_search_actions">Quick actions</string>
     <string name="agent_search_open_settings">Open settings</string>
+    <!-- What search also finds, as desktop's ⌘K palette (28342477): its sections, and the kinds a query finds a row by too. -->
+    <string name="agent_search_documents">Documents</string>
+    <string name="agent_search_todos">Todos</string>
+    <string name="agent_search_shared">Shared</string>
+    <string name="agent_search_kind_todo">Todo list</string>
+    <string name="agent_search_kind_document">Document</string>
+    <string name="agent_search_kind_calendar">Calendar</string>
+    <string name="agent_search_kind_system_monitor">System monitor</string>
+    <string name="agent_search_kind_chat">Chat</string>
+    <string name="agent_search_kind_markdown" translatable="false">Markdown</string>
+    <string name="agent_search_kind_web_page">Web page</string>
+    <string name="agent_search_kind_image">Image</string>
+    <string name="agent_search_kind_image_series">Image series</string>
+    <string name="agent_search_kind_video">Video</string>
+    <string name="agent_search_kind_artifact">Artifact</string>
 
     <string name="agent_settings_edit_name">Edit name</string>
     <string name="agent_settings_edit_avatar">Edit avatar</string>

@@ -47,6 +47,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -69,6 +70,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
 import com.slopus.happy.R
+import com.slopus.happy.artifacts.ArtifactRef
 import com.slopus.happy.ui.conversation.signalsFor
 import com.slopus.happy.ui.conversation.conversationRequest
 import com.slopus.happy.ui.conversation.conversationKeeper
@@ -80,6 +82,7 @@ import com.slopus.happy.ui.chat.MessageCallbacks
 import com.slopus.happy.conversation.ConversationApi
 import com.slopus.happy.conversation.Conversation
 import com.slopus.happy.agent.AgentSession
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.DisposableEffect
 import com.slopus.happy.ui.chat.MessageLiftSpec
@@ -110,7 +113,9 @@ import com.slopus.happy.ui.home.rememberAccountMenu
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Everything an agent connection's home asks of the app. */
 @Immutable
@@ -125,9 +130,10 @@ class AgentHomeActions(
     val onSwitchAccount: (String) -> Unit,
     /** Scans a code and adds the Happy account or agent connection it is for. */
     val onAdd: () -> Unit,
-    /** Opens the agent's artifacts, and one Surface. */
+    /** Opens the agent's artifacts, one Surface, and one artifact. */
     val onOpenArtifacts: () -> Unit = {},
     val onOpenSurface: (AgentFeedRow.Surface) -> Unit = {},
+    val onOpenArtifact: (ArtifactRef) -> Unit = {},
     /**
      * Leaves a Surface ([com.slopus.happy.agent.AgentSession.leaveSurface]):
      * null once left, else the agent's words for its refusal, empty where
@@ -224,6 +230,8 @@ fun AgentHomeScreen(
     preview: (@Composable (AgentFeedRow.Conversation) -> Unit)? = null,
     /** Home's list; [AgentHome] keeps its place across the tablet's breakpoint and the sidebar's hiding ([rememberAgentHomeListState]). */
     listState: LazyListState = rememberLazyListState(),
+    /** What search finds beyond home's rows, read while it is open ([AgentSearchSources.read]). */
+    searchSources: suspend () -> AgentSearchSources = { AgentSearchSources.None },
 ) {
     val colors = HappyTheme.colors
     val reduceMotion = rememberReduceMotion()
@@ -253,8 +261,12 @@ fun AgentHomeScreen(
     val searchEntries = rememberSearchEntries(actions, closeSearch)
     val untitled = stringResource(R.string.session_new_chat)
     val artifacts = stringResource(R.string.artifacts_title)
-    val headings = stringResource(R.string.agent_search_actions) to stringResource(R.string.settings_title)
-    val results = remember(feed, query, searchEntries) {
+    val words = rememberAgentSearchWords()
+    // Read as search opens, and again as home changes under it.
+    val sources by produceState(AgentSearchSources.None, searching, feed) {
+        if (searching) value = searchSources()
+    }
+    val results = remember(feed, query, searchEntries, sources) {
         val label = { row: AgentFeedRow ->
             when (row) {
                 is AgentFeedRow.Conversation -> row.title ?: untitled
@@ -264,7 +276,7 @@ fun AgentHomeScreen(
                 is AgentFeedRow.Section -> null
             }
         }
-        agentSearchResults(feed, query, label, headings, searchEntries.first, searchEntries.second)
+        agentSearchResults(feed, query, label, words, searchEntries.first, searchEntries.second, sources)
     }
 
     // One ground under the bar and the page, the chat's own (surface), light and dark; the cards sit on it, as on iOS.
@@ -430,6 +442,10 @@ fun AgentHomeScreen(
                             focus.clearFocus()
                             actions.onOpenSurface(surface)
                         },
+                        onOpenArtifact = { artifact ->
+                            focus.clearFocus()
+                            actions.onOpenArtifact(artifact)
+                        },
                         onPull = { focus.clearFocus() },
                         onClose = closeSearch,
                         selected = sidebar?.selected,
@@ -502,6 +518,45 @@ private fun LeaveSurfaceDialogs(
 
 /** What home's page shows under the bar. */
 private enum class HomePhase { Loading, Offline, Empty, List }
+
+/** Search's section headings and the kinds' names, in the person's language. */
+@Composable
+private fun rememberAgentSearchWords(): AgentSearchWords {
+    val resources = LocalContext.current.resources
+    val configuration = LocalConfiguration.current
+    return remember(resources, configuration) {
+        AgentSearchWords(
+            actions = resources.getString(R.string.agent_search_actions),
+            settings = resources.getString(R.string.settings_title),
+            documents = resources.getString(R.string.agent_search_documents),
+            todos = resources.getString(R.string.agent_search_todos),
+            artifacts = resources.getString(R.string.artifacts_title),
+            shared = resources.getString(R.string.agent_search_shared),
+            surfaceType = { type -> resources.getString(surfaceTypeName(type)) },
+            artifactType = { type -> resources.getString(artifactTypeName(type)) },
+        )
+    }
+}
+
+/** A Surface kind's name (desktop's `surfaceTypeLabel`), which a query finds it by too. */
+private fun surfaceTypeName(type: String): Int = when (type) {
+    SurfaceReader.TODO -> R.string.agent_search_kind_todo
+    "calendar" -> R.string.agent_search_kind_calendar
+    "system_monitor" -> R.string.agent_search_kind_system_monitor
+    "chat" -> R.string.agent_search_kind_chat
+    else -> R.string.agent_search_kind_document
+}
+
+/** An artifact type's name (desktop's `happyAgentArtifactTypeLabel`). */
+private fun artifactTypeName(type: String): Int = when (type) {
+    "markdown" -> R.string.agent_search_kind_markdown
+    "html" -> R.string.agent_search_kind_web_page
+    "image" -> R.string.agent_search_kind_image
+    "image_series" -> R.string.agent_search_kind_image_series
+    "video" -> R.string.agent_search_kind_video
+    "document" -> R.string.agent_search_kind_document
+    else -> R.string.agent_search_kind_artifact
+}
 
 /**
  * The quick actions and settings search offers, and where each goes. The
@@ -621,6 +676,7 @@ fun AgentHome(
     onComposeWithPicture: () -> Unit = onCompose,
     onOpenArtifacts: () -> Unit = {},
     onOpenSurface: (AgentFeedRow.Surface) -> Unit = {},
+    onOpenArtifact: (ArtifactRef) -> Unit = {},
     /** Signs the team server at [server] in again ([AgentConnection.server]). */
     onSignIn: (server: String) -> Unit = {},
 ) {
@@ -636,7 +692,7 @@ fun AgentHome(
     ReportDrawnWhen { feed.loaded || status != AgentLinkStatus.Connecting }
     val add = LocalAddFlow.current
     val switchAccount = rememberHomeAccountSwitch(graph)
-    val actions = remember(graph, session, onOpenConversation, onCompose, onComposeWithPicture, onSettings, onSettingsRow, onOpenArtifacts, onOpenSurface, add, switchAccount, onSignIn) {
+    val actions = remember(graph, session, onOpenConversation, onCompose, onComposeWithPicture, onSettings, onSettingsRow, onOpenArtifacts, onOpenSurface, onOpenArtifact, add, switchAccount, onSignIn) {
         AgentHomeActions(
             onOpenConversation = onOpenConversation,
             onCompose = onCompose,
@@ -647,6 +703,7 @@ fun AgentHome(
             onAdd = { add?.scan() },
             onOpenArtifacts = onOpenArtifacts,
             onOpenSurface = onOpenSurface,
+            onOpenArtifact = onOpenArtifact,
             onLeaveSurface = { session.leaveSurface(it.id) },
             onSignIn = { graph.agentConnections.accounts.value.firstOrNull { it.id == id }?.server?.let(onSignIn) },
         )
@@ -663,6 +720,9 @@ fun AgentHome(
             notice = notice,
             preview = { row -> ConversationPreview(session, row, settings.userMessageBubbleColor) },
             listState = rememberAgentHomeListState(graph, id),
+            searchSources = remember(session) {
+                { withContext(Dispatchers.IO) { AgentSearchSources.read(session.catalog.value, session.feed.value, session::cachedResource) } }
+            },
         )
     }
 }

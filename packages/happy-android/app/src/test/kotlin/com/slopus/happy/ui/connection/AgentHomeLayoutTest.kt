@@ -87,7 +87,9 @@ class AgentHomeLayoutTest {
         onAdd = {},
         onOpenArtifacts = { artifacts++ },
         onOpenSurface = { surfaces += it },
+        onOpenArtifact = { openedArtifacts += it.id },
     )
+    private val openedArtifacts = mutableListOf<String>()
     private val accounts = AccountMenu(listOf(AccountMenuEntry("agent-connection-1", "Studio", agent = true, active = true)))
 
     companion object {
@@ -528,6 +530,44 @@ class AgentHomeLayoutTest {
         rule.node(AgentSearchTags.FIELD).performTextReplacement("disconnect")
         rule.waitForIdle()
         rule.node(AgentSearchTags.NO_RESULTS).assertExists()
+    }
+
+    /**
+     * Desktop's ⌘K sources (28342477) after home's rows: a Surface not
+     * joined, an open todo and an artifact, each under its heading, read
+     * while search is open; a todo opens its list, an artifact itself.
+     */
+    @Test
+    fun searchFindsSurfacesTodosAndArtifactsAfterHomesRows() {
+        var reads = 0
+        val errands = AgentFeedRow.Surface("l2", "Errands", "todo")
+        val sources = AgentSearchSources(
+            surfaces = listOf(AgentSearchSources.Surface(AgentFeedRow.Surface("d2", "Plan for Q3", "document"), joined = false)),
+            todos = listOf(AgentSearchSources.Todo("todo1", "Plan the offsite", errands)),
+            artifacts = listOf(com.slopus.happy.artifacts.ArtifactRef("a1", 2, "html", "Sprint plan", followsLatest = true)),
+        )
+        rule.setHappyContent { AgentHomeScreen("Studio", feed(), AgentLinkStatus.Connected, accounts, actions, searchSources = { reads++; sources }) }
+        assertEquals(0, reads)
+        rule.node(AgentHomeTags.SEARCH).performClick()
+        rule.node(AgentSearchTags.FIELD).performTextInput("plan")
+        rule.waitForIdle()
+        assertTrue(reads >= 1)
+        for (heading in listOf("Documents", "Todos", "Artifacts")) {
+            rule.onNode(androidx.compose.ui.test.hasText(heading) and androidx.compose.ui.test.hasAnyAncestor(androidx.compose.ui.test.hasTestTag(AgentSearchTags.RESULTS)), useUnmergedTree = true).assertExists()
+        }
+        val home = rule.node(AgentSearchTags.result("agent-at3")).bounds
+        val document = rule.node(AgentSearchTags.result("surface-d2")).bounds
+        val todo = rule.node(AgentSearchTags.result("todo-todo1")).bounds
+        val artifact = rule.node(AgentSearchTags.result("artifact-a1")).bounds
+        assertTrue(home.bottom < document.top && document.bottom < todo.top && todo.bottom < artifact.top)
+        // iOS's rows: 48 high, as home's.
+        for (row in listOf(document, todo, artifact)) assertDp("result row height", 48, row.height)
+        rule.node(AgentSearchTags.result("todo-todo1")).performClick()
+        assertEquals(listOf(errands), surfaces)
+        rule.node(AgentSearchTags.result("artifact-a1")).performClick()
+        assertEquals(listOf("a1"), openedArtifacts)
+        // What a result opens leaves the search for coming back.
+        rule.node(AgentSearchTags.FIELD).assertExists()
     }
 
     /**

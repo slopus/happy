@@ -33,6 +33,7 @@ import com.slopus.happy.payments.PaywallHost
 import com.slopus.happy.ui.artifacts.AgentArtifactsRoute
 import com.slopus.happy.ui.artifacts.BrowserRoute
 import com.slopus.happy.ui.artifacts.computerName
+import com.slopus.happy.ui.artifacts.openArtifact
 import com.slopus.happy.ui.browser.LinkOpener
 import com.slopus.happy.ui.browser.ProvideLinks
 import androidx.compose.ui.platform.LocalContext
@@ -166,6 +167,7 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                                 onSettingsRow = { row -> go.open(null) { nav.openAgentSettingsRow(account.id, row) } },
                                 onOpenArtifacts = { go.open(MainPanelKey.ARTIFACTS) { nav.navigate(AgentArtifactsRoute(account.id)) } },
                                 onOpenSurface = { go.open(MainPanelKey.surface(it.id)) { nav.navigate(AgentSurfaceRoute(account.id, it.id, it.type, it.name)) } },
+                                onOpenArtifact = { go.open(null) { nav.openArtifact(account.id, it) } },
                                 onSignIn = { server -> go.open(null) { nav.signInToServerAgain(graph, server, replacing = account.id) } },
                             )
                             is OpenAccount.Happy -> LegacyHome(graph, nav, onOpenSession = openSession, onTroubleshoot = troubleshoot, go = go)
