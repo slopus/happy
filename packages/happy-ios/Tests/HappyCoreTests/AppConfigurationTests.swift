@@ -44,6 +44,7 @@ final class AppConfigurationTests: XCTestCase {
             "HappyAppVariant", "CFBundleDisplayName", "NSCameraUsageDescription",
             "NSLocalNetworkUsageDescription", "NSAppTransportSecurity",
             "HappyGuestPreviewInvites",
+            "CFBundleShortVersionString", "CFBundleVersion",
         ]
         func shared(_ info: [String: Any]) throws -> Data {
             let filtered = info.filter { !variantKeys.contains($0.key) }
@@ -58,6 +59,14 @@ final class AppConfigurationTests: XCTestCase {
         // `happy` also carries the server sign-in's redirect (`OAuthRedirect`).
         XCTAssertEqual(schemes, ["happy"])
         XCTAssertEqual(schemes?.contains(OAuthRedirect.scheme), true)
+    }
+
+    func testVersionsPreservePreviewAndContinueProduction() throws {
+        for variant in AppVariant.allCases {
+            let info = try plist(variant)
+            XCTAssertEqual(info["CFBundleShortVersionString"] as? String, variant == .production ? "2.0.0" : "2026.10.1")
+            XCTAssertEqual(info["CFBundleVersion"] as? String, variant == .production ? "155" : "1")
+        }
     }
 
     func testBuildFilesUseTheRNBundleIds() throws {
