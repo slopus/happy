@@ -37,7 +37,7 @@ import org.robolectric.annotation.GraphicsMode
 /**
  * The voice call's bar over the window ([CallFrame]): it pushes what is under
  * it down by its height, never covers it, and lays its row out at its foot.
- * The test window has no status bar, so the bar is its 40 dp least.
+ * The test window has no status bar, so the bar is its 48 dp least.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = PHONE)
@@ -76,6 +76,12 @@ class CallBarLayoutTest {
         // Mute and end take a touch in 48 dp squares on the bar's foot, at its ends.
         assertBox("mute", rule.node(CallBarTags.MUTE).bounds, 0.dp, bar.bottom - 48.dp, 48.dp, 48.dp)
         assertBox("end", rule.node(CallBarTags.END).bounds, 411.dp - 48.dp, bar.bottom - 48.dp, 48.dp, 48.dp)
+        // With no status bar above, the whole of each box is inside the window: 48 usable, none cut off.
+        for (tag in listOf(CallBarTags.MUTE, CallBarTags.END)) {
+            val box = rule.node(tag).bounds
+            assertTrue("$tag starts inside the window (${box.top})", box.top >= 0.dp)
+            assertTrue("$tag is 48 tall (${box.height})", box.height >= 48.dp)
+        }
         // "Happy" and the clock, centred together in the row.
         val title = rule.node(CallBarTags.TITLE).bounds
         val clock = rule.node(CallBarTags.SUBTITLE).bounds
@@ -152,7 +158,7 @@ class CallBarLayoutTest {
 
     @Test
     fun theHeightIsTheStatusBarAndARow() {
-        assertDp("no status bar", 40, CallBarSpec.height(0.dp))
+        assertDp("no status bar", 48, CallBarSpec.height(0.dp))
         assertDp("a 24 status bar", 48, CallBarSpec.height(24.dp))
         assertDp("a punch hole's 52", 76, CallBarSpec.height(52.dp))
     }

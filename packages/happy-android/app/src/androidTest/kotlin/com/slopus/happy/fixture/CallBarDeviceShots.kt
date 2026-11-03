@@ -56,6 +56,8 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -170,6 +172,28 @@ class CallBarDeviceShots {
         rule.waitForIdle()
         rule.onNodeWithTag(AgentHomeTags.VOICE, useUnmergedTree = true).performClick()
         capture("real-tap")
+    }
+
+    /** With the status bar hidden, the bar is its 48 dp least: Mute and End take a whole 48 dp touch, none of it off screen. */
+    @Test
+    fun withoutStatusBar() {
+        show(onVoice = {})
+        rule.runOnUiThread {
+            val window = rule.activity.window
+            WindowCompat.getInsetsController(window, window.decorView).hide(WindowInsetsCompat.Type.statusBars())
+        }
+        // The status bar's own slide away, before the call.
+        run(1_500)
+        state.value = CallState.Active(CallActivity.Listening, false, SystemClock.elapsedRealtime() - 42_000)
+        capture("no-status-bar")
+        run(500)
+        val least = (48 * app.resources.displayMetrics.density).toInt() - 1
+        for (name in listOf(R.string.call_mute, R.string.call_end)) {
+            val box = device.findObject(By.desc(app.getString(name))).visibleBounds
+            android.util.Log.i("CallBarShots", "no status bar: ${app.getString(name)}=$box")
+            assertTrue("${app.getString(name)} starts on screen ($box)", box.top >= 0)
+            assertTrue("${app.getString(name)} is a whole 48 dp touch ($box, $least)", box.height() >= least && box.width() >= least)
+        }
     }
 
     @Test

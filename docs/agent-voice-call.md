@@ -86,7 +86,9 @@ ID, biometrics, store confirmations) stay above it.
   - The QR scanner is an activity of its own. It counts as the app being in
     the foreground, so the call isn't hung up, and it shows the bar too.
   - Mute and End take touches in 48 dp squares (Android's least) around
-    glyphs placed as Telegram's 44 pt slots place them.
+    glyphs placed as Telegram's 44 pt slots place them. The bar is never
+    shorter than 48 dp, so with no status bar above it (landscape,
+    immersive) the squares still fit inside the window.
 
 ## Free time, counted on the device
 

@@ -118,8 +118,8 @@ import kotlinx.coroutines.flow.StateFlow
 object CallBarSpec {
     /** The row at the bar's foot the words and buttons share. */
     val row = 24.dp
-    /** The bar never gets shorter than this. */
-    val minHeight = 40.dp
+    /** The bar never gets shorter than this: a whole [touch] box, with no status bar above (landscape). */
+    val minHeight = 48.dp
     /**
      * A button's glyph, its 44 dp slot in the row (Telegram's), and the box
      * that takes a touch: 48 dp, Android's least, reaching past the slot
