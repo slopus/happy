@@ -632,7 +632,7 @@ private fun SharedSections(state: AgentPageState, actions: AgentPageActions) {
                             when (one) {
                                 is SharedMedia.Presented -> {
                                     if (!one.ref.item.isVisual) {
-                                        opener.open(one.ref.key, one.ref.item) { store.file(one.ref) }
+                                        opener.open(one.ref.key, one.ref.item, inApp = true) { store.file(one.ref) }
                                         return@MediaCell
                                     }
                                     // A picture not here yet is read first, as a tap on its ring does.
@@ -666,6 +666,7 @@ private fun SharedSections(state: AgentPageState, actions: AgentPageActions) {
         }
     }
     viewing?.let { index -> SharedViewer(shared.media.filter { it.isVisual }, index, store) { viewing = null } }
+    MediaPreview(opener)
 }
 
 /** [count] squares, three to a row and 2 apart, the last column ending on the card's edge. */

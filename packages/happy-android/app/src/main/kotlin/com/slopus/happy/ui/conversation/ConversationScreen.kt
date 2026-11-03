@@ -293,7 +293,7 @@ fun ConversationScreen(
             onOpenArtifact = actions.onOpenArtifact,
             onOpenPicture = { key -> pictures.show(ConversationViewing.entries(rows, pictureLabel, videoLabel), key) },
             loadVideo = store::poster,
-            onOpenMedia = { ref -> media.open(ref.key, ref.item) { store.file(ref) } },
+            onOpenMedia = { ref -> media.open(ref.key, ref.item, inApp = true) { store.file(ref) } },
             mediaOpening = { ref -> media.state(ref.key) },
             asks = asks,
             onToggleTurn = { turn ->
@@ -617,6 +617,7 @@ fun ConversationScreen(
                     }
                     SendFlightOverlay(flight, bubble, remember(colors) { ProsePalette.of(colors) })
                     PictureViewerHost(pictures, store)
+                    MediaPreview(media)
                 }
             }
         }

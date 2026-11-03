@@ -12,6 +12,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalResources
 import androidx.core.content.FileProvider
 import com.slopus.happy.R
@@ -49,8 +50,18 @@ class MediaOpener internal constructor(
 
     fun state(key: String): MediaOpening? = states[key]
 
-    /** Reads [item] with [load] and opens it; tapped again while reading, it stops. */
-    fun open(key: String, item: MediaItem, load: suspend () -> ByteArray) {
+    /** A presented text, source or Markdown file shown in the app ([MediaPreview]); null when none is. */
+    var preview: PresentedFile? by mutableStateOf(null)
+        internal set
+
+    /**
+     * Reads [item] with [load] and opens it; tapped again while reading, it
+     * stops. With [inApp], a file whose name says it is Markdown, source or
+     * text (and not over [PresentedFile.MAX_BYTES]) opens in the app's own
+     * file viewer when its bytes read as text (desktop 24f532b3, 30b9e165);
+     * anything else goes to whatever on the phone opens it.
+     */
+    fun open(key: String, item: MediaItem, inApp: Boolean = false, load: suspend () -> ByteArray) {
         running.remove(key)?.let {
             it.cancel()
             states.remove(key)
@@ -60,6 +71,14 @@ class MediaOpener internal constructor(
         running[key] = scope.launch {
             try {
                 val bytes = load()
+                if (inApp && PresentedFile.previews(item)) {
+                    val shown = withContext(Dispatchers.Default) { com.slopus.happy.ui.files.fileLoadOf(item.name, bytes) }
+                    if (shown is com.slopus.happy.ui.files.FileLoad.Loaded) {
+                        preview = PresentedFile(item.name, bytes, shown)
+                        states.remove(key)
+                        return@launch
+                    }
+                }
                 val file = withContext(Dispatchers.IO) { MediaFiles.stage(context.cacheDir, key, item, bytes) }
                 val uri = FileProvider.getUriForFile(context, "${context.packageName}.conversation.media", file)
                 val intent = Intent(Intent.ACTION_VIEW)
@@ -82,6 +101,48 @@ class MediaOpener internal constructor(
             }
         }
     }
+}
+
+/** A presented file read whole and shown in the app's file viewer. */
+class PresentedFile(val name: String, val bytes: ByteArray, val load: com.slopus.happy.ui.files.FileLoad) {
+    companion object {
+        /** desktop 24f532b3: a file over 2 MB is not read for a preview. */
+        const val MAX_BYTES = 2L * 1024 * 1024
+
+        private val TEXT = setOf("txt", "text", "log", "csv", "tsv", "toml", "ini", "cfg", "conf", "env", "diff", "patch", "gradle", "kts", "h", "hpp", "m", "mm", "cs", "scala", "lua", "r", "pl", "dart", "vue", "svelte", "zsh", "fish", "ps1", "proto", "graphql", "tex", "rst", "adoc")
+
+        /** Its name says it reads as text: Markdown, source or plain text (desktop takes the kind from the name). */
+        fun previews(item: MediaItem): Boolean {
+            if ((item.size ?: 0.0) > MAX_BYTES) return false
+            val name = item.name.substringAfterLast('/')
+            val extension = name.substringAfterLast('.', "").lowercase()
+            return com.slopus.happy.ui.files.isMarkdownPath(name) || com.slopus.happy.ui.files.fileLanguage(name) != null ||
+                extension in TEXT || name in setOf("Makefile", "Dockerfile", "LICENSE", "README")
+        }
+    }
+}
+
+/**
+ * The opener's in-app preview, over everything: the file viewer (text with
+ * its syntax, Markdown rendered with its source a tab away) with a save to
+ * the phone from its bar; back closes it.
+ */
+@Composable
+internal fun MediaPreview(opener: MediaOpener) {
+    val shown = opener.preview ?: return
+    val save = com.slopus.happy.ui.files.rememberFileSave(shown.name) { shown.bytes }
+    androidx.compose.ui.window.Dialog(
+        onDismissRequest = { opener.preview = null },
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
+    ) {
+        androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.testTag(MediaPreviewTags.PREVIEW)) {
+            com.slopus.happy.ui.files.FileScreen(shown.load, shown.name, onBack = { opener.preview = null }, save = save)
+        }
+    }
+}
+
+object MediaPreviewTags {
+    const val PREVIEW = "mediaPreview"
 }
 
 internal data class MediaOpenerText(val noApp: String, val failed: String)
