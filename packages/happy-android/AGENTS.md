@@ -223,6 +223,10 @@ win:
   that name (`POST /v0/tasks` or `/v0/bots`, once, the same ids on a
   retry) and only then sends, so a refusal keeps the text and says why.
   Left unsent, the next compose opens it as it was (`AgentSession.unsentWork`).
+  The keyboard waits for a tap in the composer: the empty chat opens with
+  it down (on both kinds), and a menu, a dialog or a scroll never raises
+  it. Only an explicit ask moves focus there (Return in new work's name,
+  text put in the composer from elsewhere).
 - **Home cards:** the legacy home's rows sit in the agent home's inset
   cards (`HomeCardRow`: 16 in, radius 26, 24 between cards, hairlines
   inside). Day and section headings become gaps; a computer heads its

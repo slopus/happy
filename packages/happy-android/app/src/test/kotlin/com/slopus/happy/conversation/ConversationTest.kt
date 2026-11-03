@@ -401,9 +401,9 @@ class ConversationTest {
         advanceUntilIdle()
         assertFalse(chat.state.value.created)
         assertTrue(chat.state.value.loaded)
-        // A task unless a bot is picked, unnamed, and the keyboard up in the composer.
+        // A task unless a bot is picked, unnamed, and the keyboard down until the composer is tapped.
         assertEquals(NewWork(WorkChoice(WorkKind.Task, "")), chat.state.value.newWork)
-        assertEquals(ComposerFocus(1, 0), chat.state.value.composerFocus)
+        assertNull(chat.state.value.composerFocus)
         // Only the picker's models are read.
         assertEquals(listOf("/v0/config"), agent.paths("GET"))
         assertTrue(agent.paths("POST").isEmpty())

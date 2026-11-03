@@ -299,7 +299,7 @@ private fun ChatRoute(
         val chatSlots = if (compose != null && composing) {
             ChatScreenSlots(
                 headerSubtitle = compose.progress(),
-                pending = ChatPendingSlot(compose.session, focusComposer = true) { ComposeTarget(compose) },
+                pending = ChatPendingSlot(compose.session) { ComposeTarget(compose) },
             )
         } else {
             slots.chat

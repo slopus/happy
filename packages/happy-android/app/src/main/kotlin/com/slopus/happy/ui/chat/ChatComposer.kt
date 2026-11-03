@@ -33,8 +33,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.KeyEvent
@@ -184,11 +182,8 @@ fun ChatComposer(
     showDetails: Boolean = true,
     /** Where the card lands, for what floats just above it (the scroll-to-bottom button). */
     onPanelPositioned: ((LayoutCoordinates) -> Unit)? = null,
-    /** The input takes focus, and with it the keyboard, as it first shows. */
-    autoFocus: Boolean = false,
 ) {
-    val focus = remember { FocusRequester() }
-    if (autoFocus) LaunchedEffect(focus) { runCatching { focus.requestFocus() } }
+    // No focus is ever asked for: the keyboard comes up only for a tap in the field.
     val colors = HappyTheme.colors
     // A suggestion put in places the cursor after it ([ComposerCursor.placement]); typing lets that go.
     val (field, typed) = rememberHoistedTextFieldState(
@@ -253,7 +248,6 @@ fun ChatComposer(
                     textStyle = ComposerSpec.input.copy(color = colors.input.text),
                     cursorBrush = SolidColor(colors.input.text),
                     modifier = Modifier
-                        .focusRequester(focus)
                         .onPreviewKeyEvent { cursor?.onKey?.invoke(it) == true || onKey(it) }
                         .testTag(ComposerTags.INPUT)
                         .fillMaxWidth()

@@ -170,8 +170,7 @@ class Conversation(
             draft = initialDraft,
             knownTitle = knownTitle,
             newWork = newTask?.let { NewWork(initialChoice) },
-            // New work opens with the keyboard up, in its composer (iOS's focus with the push).
-            composerFocus = newTask?.let { ComposerFocus(1, initialDraft.length) },
+            // New work opens with the keyboard down: it comes up for a tap in the composer.
         ),
     )
     val state: StateFlow<ConversationState> = _state.asStateFlow()

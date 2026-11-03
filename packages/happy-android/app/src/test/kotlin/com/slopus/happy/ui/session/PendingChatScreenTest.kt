@@ -4,6 +4,7 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -70,6 +71,8 @@ class PendingChatScreenTest {
         rule.node(SessionBarTags.PENDING).assertIsDisplayed()
         rule.node(ChatScreenTags.DELETED).assertDoesNotExist()
         rule.node(ComposerTags.INPUT).assertIsDisplayed()
+        // The keyboard waits for a tap in the field.
+        rule.node(ComposerTags.INPUT).assertIsNotFocused()
     }
 
     @Test
