@@ -99,9 +99,6 @@ public struct Row: Equatable, Sendable, Identifiable {
     public var label: String
     /// A space's row has a name of its own; without one its label is "New".
     public var titled = false
-    /// A task's or bot's row: its own name as the computer has it, or as the
-    /// person renamed it here; nil when it has none. Never a fallback.
-    public var name: String?
     public var mark: Mark
     public var status: Status
     public var unread: Bool
@@ -262,7 +259,6 @@ public enum Rows {
         )
         if row.workspaceId == nil, let agentId = row.agentId { row.workspaceId = places.agent(agentId)?.workspaceId }
         row.titled = space.title != nil
-        row.name = space.title
         row.targetId = space.target.id
         // Looped in by someone and not yet read.
         row.isNew = space.target.kind == "task" && places.task(space.target.id)?.membership?.unread != nil

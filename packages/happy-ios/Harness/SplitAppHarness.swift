@@ -50,6 +50,8 @@ private actor DemoComputer: AgentTransport {
     private var eventId = 0
     /// The turns each message sent has made, by agent.
     private var sent: [String: [JSONValue]] = [:]
+    /// Work the live call's computer made while it ran (`answer`).
+    private var made: [JSONValue] = []
 
     private static func run(_ id: String, _ startedAt: Double, _ endedAt: Double?, reason: String = "completed", _ messages: [JSONValue]) -> JSONValue {
         var run: [String: JSONValue] = ["id": .string(id), "status": .string(endedAt == nil ? "running" : "completed"), "startedAt": .number(startedAt),
@@ -112,6 +114,17 @@ private actor DemoComputer: AgentTransport {
                     tasks.append(.object(["id": .string("fixture\(n)"), "name": .string("Fixture task \(n)"),
                                           "agent": .object(["id": .string("fixture\(n)-agent"), "workspaceId": .string("w"), "status": .string("idle")])]))
                     memberships.append(.object(["taskId": .string("fixture\(n)")]))
+                }
+                // A subtask under Ship the cache, as the sidebar nests it.
+                if let index = tasks.firstIndex(where: { $0["id"] == .string("cache") }), case .object(var task) = tasks[index], case .object(var agent)? = task["agent"] {
+                    agent["subtasks"] = .array([.object(["id": .string("hitrate-agent"), "workspaceId": .string("w"), "parentAgentId": .string("cache-agent"),
+                                                         "title": .string("Measure the hit rate"), "status": .string("idle")])])
+                    task["agent"] = .object(agent)
+                    tasks[index] = .object(task)
+                }
+                for task in made {
+                    tasks.insert(task, at: 3)
+                    if let id = task["id"] { memberships.append(.object(["taskId": id])) }
                 }
                 home["tasks"] = .array(tasks)
                 home["taskMemberships"] = .array(memberships)
@@ -194,6 +207,19 @@ private actor DemoComputer: AgentTransport {
         let finished = Self.run(runId, started, Date().timeIntervalSince1970 * 1000, reason: agentId == "notes-agent" ? "error" : "completed", [user, ended])
         sent[agentId, default: []].append(finished)
         emit("run.finished", ["agentId": agent, "run": finished])
+        // Its first answer makes new work, which the computer calls "New
+        // Task" until a moment later it has a name, as the daemon does.
+        if agentId == "cache-agent", made.isEmpty {
+            await pause()
+            func task(_ name: String) -> JSONValue {
+                .object(["id": .string("bench"), "name": .string(name), "agent": .object(["id": .string("bench-agent"), "workspaceId": .string("w"), "status": .string("idle")])])
+            }
+            made = [task("New Task")]
+            emit("task.created", ["taskId": .string("bench")])
+            try? await Task.sleep(for: .milliseconds(400))
+            made = [task("Benchmark the cache")]
+            emit("task.updated", ["taskId": .string("bench")])
+        }
     }
 
     func reset() {}

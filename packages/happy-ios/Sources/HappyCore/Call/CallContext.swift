@@ -20,10 +20,12 @@ public struct CallUpdate: Equatable, Sendable {
 /// once it is complete and whole, and an error that stopped it: never its
 /// words as they stream, its tools, its state or the person's messages.
 ///
-/// The directory is the account's named bots and tasks (`CallTarget.isListed`);
-/// a new one is added to the context as it comes. Any other conversation,
-/// a subtask included, is the call's only once the person opened it
-/// themselves: the tools never reach one before.
+/// The directory is the sidebar's: every bot, task, subtask and project
+/// conversation the person sees, in its order and nesting, as indented
+/// lines that give each its reference. What changes in it settles for a
+/// second (`Limits.settle`) and goes as the whole directory again. Updates
+/// name a conversation by its title and what it sits under, never by its
+/// reference, unless that alone leaves it unclear.
 public actor CallContext {
     public enum Limits {
         public static let totalBytes = 32 * 1024
@@ -33,7 +35,12 @@ public actor CallContext {
         public static let turns = 5
         public static let messageBytes = 4 * 1024
         public static let errorBytes = 1024
+        /// Conversations a directory snapshot shows, and its size.
         public static let directory = 100
+        public static let directoryBytes = 12 * 1024
+        /// One `directory_entries` event's size: the entries a snapshot
+        /// couldn't show go in as many as they take.
+        public static let entriesBytes = 4 * 1024
         public static let page = 50
         /// Conversations the call hears from: the last ones visited, the one on screen included.
         public static let visited = 4
@@ -41,6 +48,9 @@ public actor CallContext {
         public static let messages = 20
         public static let textBytes = 8 * 1024
         public static let toolDeadline: Duration = .seconds(8)
+        /// From the first change to the directory to the one update that
+        /// tells it; later changes never put that off.
+        public static let settle: Duration = .seconds(1)
     }
 
     private let targets: any CallTargets
@@ -56,14 +66,17 @@ public actor CallContext {
     private var begun = false
     /// Newest first.
     private var visited: [String] = []
-    /// Every conversation the account has, listed or not, as last seen.
+    /// The sidebar's conversations as last seen, in order and by ID.
+    private var entries: [CallTarget] = []
     private var directory: [String: CallTarget] = [:]
-    private var removed: Set<String> = []
-    /// Conversations the person opened themselves during the call: the only
-    /// ones besides bots and tasks the tools reach.
-    private var opened: Set<String> = []
+    /// The directory the agent last had whole: the first snapshot's, or
+    /// the last `directory` event's.
+    private var listed: [Listing] = []
+    /// What the agent has been told each conversation is: by a directory
+    /// snapshot, an entry or `listSessions`.
+    private var told: [String: Listing] = [:]
     private var heard: [String: Heard] = [:]
-    private var told = 0
+    private var spoken = 0
     /// Sends whose answer the agent may not have had, by target and text:
     /// the same words to the same conversation again go under the same ID,
     /// which the conversation takes once.
@@ -82,8 +95,23 @@ public actor CallContext {
         /// the order told.
         var said: [String: (at: Int, event: String)] = [:]
         var errors: Set<String> = []
-        /// The errors this call told of, by turn, with what it said.
-        var told: [String: String?] = [:]
+        /// The errors this call told of, by turn, with the event that told it.
+        var told: [String: String] = [:]
+    }
+
+    /// A conversation as the directory tells it: never its status.
+    private struct Listing: Equatable {
+        var agentId: String
+        var title: String
+        var kind: CallTarget.Kind
+        var parents: [CallTarget.Parent]
+
+        init(_ target: CallTarget) {
+            agentId = target.agentId
+            title = target.title
+            kind = target.kind
+            parents = target.parents
+        }
     }
 
     public init(targets: any CallTargets, now: @escaping @Sendable () -> Double = { Date().timeIntervalSince1970 },
@@ -104,18 +132,14 @@ public actor CallContext {
     // MARK: The first snapshot
 
     /// `initialConversationContext`, the hosted prompt's one variable: the
-    /// account's directory, and the conversation on screen with its last
-    /// five turns.
+    /// directory, and the conversation on screen with its last five turns.
     public func initial() async -> String {
         begun = true
-        let all = await targets.directory()
-        for entry in all { directory[entry.agentId] = entry }
-        let entries = all.filter(\.isListed)
+        see(await targets.directory())
+        listed = entries.map(Listing.init)
         focus = await targets.focused()
         var focused: CallTargetState?
         if let focus {
-            // On screen before the call: the person's own choice.
-            opened.insert(focus)
             visit(focus)
             if let state = await targets.state(of: focus) {
                 focused = state
@@ -123,18 +147,17 @@ public actor CallContext {
             }
         }
         var envelope: [String: Any] = [
-            "schema": 1,
+            "schema": 2,
             "at": Self.timestamp(now()),
             "tools": CallTool.allCases.map(\.rawValue),
             "focusRevision": focusRevision,
         ]
-        var rows = entries.prefix(Limits.directory).map { row($0) }
-        envelope["directoryTruncated"] = entries.count > Limits.directory
         var turns = focused.map(Self.recent) ?? []
-        func encode() -> Data {
+        var budget = Limits.directoryBytes
+        func encode(telling: Bool = false) -> Data {
             var value = envelope
-            value["focus"] = focused.map { body($0, turns: turns) } ?? NSNull()
-            value["directory"] = rows
+            value["focus"] = focused.map { state in body(state, turns: turns, as: address(state.target)) } ?? NSNull()
+            value["directory"] = directoryText(bytes: budget, showing: focused?.target, telling: telling)
             return Self.data(value)
         }
         var data = encode()
@@ -143,84 +166,89 @@ public actor CallContext {
             turns.removeFirst()
             data = encode()
         }
-        while data.count > Limits.totalBytes, !rows.isEmpty {
-            rows.removeLast()
-            envelope["directoryTruncated"] = true
+        while data.count > Limits.totalBytes, budget > 512 {
+            budget /= 2
             data = encode()
         }
+        data = encode(telling: true)
         return String(decoding: data, as: UTF8.self)
     }
 
     // MARK: What changes
 
-    /// The account's conversations came, went or were renamed: silently,
-    /// and not for a status, which a read gives. A new bot or task is
-    /// `added`, once; a new subtask or other conversation says nothing. What
-    /// the first snapshot held is never news. A conversation that went away
-    /// can't be named again this call, and is no longer heard from.
-    public func directoryChanged(_ entries: [CallTarget]) -> CallUpdate {
+    /// The sidebar changed, a status maybe and nothing more. True when what
+    /// the agent last had of the directory is no longer so: something came,
+    /// went, moved or was renamed. Then `flushDirectory` is due once
+    /// `Limits.settle` has passed since the first such change, and no later.
+    public func directoryChanged(_ now: [CallTarget]) -> Bool {
+        guard !closed, begun else { return false }
+        see(now)
+        return entries.map(Listing.init) != listed
+    }
+
+    /// The directory, settled: read again as it is now, and if it isn't
+    /// what the agent last had, told whole (`directory`). What came and
+    /// went before this says nothing; work nobody has named yet goes by
+    /// the sidebar's own label. Entries a snapshot can't show that are new
+    /// or changed since the last one follow in `directory_entries`, as many
+    /// as they take. A conversation that went away is no longer heard from,
+    /// and its reference reaches it again only if it comes back.
+    public func flushDirectory() async -> CallUpdate {
         guard !closed, begun else { return CallUpdate() }
-        var added: [[String: Any]] = []
-        var changed: [[String: Any]] = []
-        let ids = Set(entries.map(\.agentId))
-        for entry in entries {
-            let old = directory[entry.agentId]
-            directory[entry.agentId] = entry
-            guard entry.isListed else { continue }
-            if old == nil || old?.isListed == false {
-                added.append(row(entry))
-            } else if old?.title != entry.title || old?.kind != entry.kind || old?.project != entry.project {
-                changed.append(row(entry))
-            }
-        }
-        var gone: [String] = []
-        for id in directory.keys where !ids.contains(id) {
-            directory[id] = nil
-            removed.insert(id)
-            opened.remove(id)
+        let now = await targets.directory()
+        guard !closed else { return CallUpdate() }
+        see(now)
+        for id in visited where directory[id] == nil {
             visited.removeAll { $0 == id }
             heard[id] = nil
-            if refs[id] != nil { gone.append(ref(id)) }
         }
-        guard !added.isEmpty || !changed.isEmpty || !gone.isEmpty else { return CallUpdate() }
-        var event: [String: Any] = ["event": "directory"]
-        if !added.isEmpty { event["added"] = Array(added.prefix(Limits.directory)) }
-        if !changed.isEmpty { event["changed"] = Array(changed.prefix(Limits.directory)) }
-        if !gone.isEmpty { event["removed"] = gone.sorted() }
-        return CallUpdate(context: [Self.string(event)])
+        told = told.filter { directory[$0.key] != nil }
+        let listing = entries.map(Listing.init)
+        guard listing != listed else { return CallUpdate() }
+        let before = Dictionary(listed.map { ($0.agentId, $0) }, uniquingKeysWith: { first, _ in first })
+        listed = listing
+        let text = directoryText(bytes: Limits.directoryBytes, telling: true)
+        let missed = entries.filter { told[$0.agentId] != Listing($0) && before[$0.agentId] != Listing($0) }
+        return CallUpdate(context: [Self.string(["event": "directory", "text": text])] + entryEvents(missed))
     }
 
     /// Something on screen changed which conversation is in front. A
     /// conversation becomes the latest visited; the fifth one back is no
-    /// longer heard from. Settings or home in front keep them all. The
-    /// person put it there, so the tools may reach it from now on, a
-    /// subtask included.
-    public func focusChanged(to agentId: String?) -> CallUpdate {
+    /// longer heard from. Settings or home in front keep them all.
+    public func focusChanged(to agentId: String?) async -> CallUpdate {
         guard !closed, agentId != focus else { return CallUpdate() }
-        if let agentId { opened.insert(agentId) }
+        // Newer than the directory as last seen: as the sidebar has it now.
+        if let agentId, directory[agentId] == nil {
+            see(await targets.directory())
+            guard !closed, agentId != focus else { return CallUpdate() }
+        }
         return moveFocus(to: agentId)
     }
 
-    /// The focus moves, by the person or by `openSession`; only the person's
-    /// opens make a conversation reachable (`focusChanged`).
-    private func moveFocus(to agentId: String?) -> CallUpdate {
+    /// The focus moves, by the person or by `openSession`. A conversation
+    /// the agent doesn't know as it is now is told first (`directory_entries`).
+    private func moveFocus(to agentId: String?, telling: Bool = true) -> CallUpdate {
         guard !closed, agentId != focus else { return CallUpdate() }
         focus = agentId
         focusRevision += 1
-        var event: [String: Any] = ["event": "focus", "focusRevision": focusRevision, "targetRef": NSNull()]
+        var context: [String] = []
+        var event: [String: Any] = ["event": "focus", "focusRevision": focusRevision, "title": NSNull()]
         if let agentId {
             visit(agentId)
-            event["targetRef"] = ref(agentId)
-            if let title = directory[agentId]?.title { event["title"] = title }
+            if let entry = directory[agentId] {
+                if telling { context += tell(entry) }
+                event.merge(address(entry)) { _, new in new }
+            }
         }
-        return CallUpdate(context: [Self.string(event)])
+        return CallUpdate(context: context + [Self.string(event)])
     }
 
     /// One visited conversation's newest state. The first one the call
     /// sees is what was there already, and says nothing; after it, each of
     /// its agent's messages once it is complete (`CallMessage.final`), whole
     /// (`assistant_text`), never while it grows; and a turn an error ended
-    /// (`session_error`). Nothing is told twice.
+    /// (`session_error`). Nothing is told twice. A conversation the agent
+    /// doesn't know as it is now (new, renamed) is told first.
     public func targetChanged(_ state: CallTargetState) -> CallUpdate {
         let id = state.target.agentId
         guard !closed, visited.contains(id) else { return CallUpdate() }
@@ -228,50 +256,66 @@ public actor CallContext {
             listen(state)
             return CallUpdate()
         }
+        let address = address(state.target)
         var context: [String] = []
+        let ended = Set(state.turns.map(\.id))
+        var last: [String: String] = [:]
+        for message in state.messages where message.role == .assistant { if let turn = message.turn { last[turn] = message.id } }
         for message in state.messages.suffix(Limits.messages) where message.role == .assistant && message.final {
             guard !known.had.contains(message.id), !message.text.isEmpty else { continue }
             known.had.insert(message.id)
             let text = Self.truncated(message.text, bytes: Limits.messageBytes)
-            var event: [String: Any] = ["event": "assistant_text", "target": ref(id), "messageId": message.id, "text": text]
+            var event = address
+            event["event"] = "assistant_text"
+            event["text"] = text
             if text.utf8.count < message.text.utf8.count { event["truncated"] = true }
+            // Its run is over and these were its last words.
+            if let turn = message.turn, ended.contains(turn), last[turn] == message.id { event["finishedTurn"] = true }
             let line = Self.string(event)
-            told += 1
-            known.said[message.id] = (told, line)
+            spoken += 1
+            known.said[message.id] = (spoken, line)
             context.append(line)
         }
         for turn in state.turns where turn.ended == "error" && !known.errors.contains(turn.id) {
-            let reason = turn.error.flatMap { $0.isEmpty ? nil : Self.truncated($0, bytes: Limits.errorBytes) }
-            known.told[turn.id] = .some(reason)
-            context.append(stopped(id, reason: reason))
+            var event = address
+            event["event"] = "session_error"
+            if let reason = turn.error, !reason.isEmpty { event["reason"] = Self.truncated(reason, bytes: Limits.errorBytes) }
+            let line = Self.string(event)
+            known.told[turn.id] = line
+            context.append(line)
         }
         known.errors = Set(state.turns.filter { $0.ended == "error" }.map(\.id))
         known.told = known.told.filter { known.errors.contains($0.key) }
         heard[id] = known
-        return CallUpdate(context: context)
+        guard !context.isEmpty else { return CallUpdate() }
+        return CallUpdate(context: tell(state.target) + context)
     }
 
     /// The context waiting for the call was too much and went unsent
     /// (`CallSession.pendingBytes`): what the agent now has wrong is put
-    /// right in one go, within half of `Limits.totalBytes` so it never
-    /// overflows the wait itself. The focus as it is now, marked `resync`,
-    /// then the errors this call told of and each message it told, as it
-    /// told it, the most recent kept first. What doesn't fit is counted in `omitted`; a read
-    /// (`getSessionContext`) has it.
+    /// right in one go. The directory as it is, then the focus, marked
+    /// `resync`, then the errors this call told of and each message it
+    /// told, as it told it, the most recent kept first, within half of
+    /// `Limits.totalBytes`. What doesn't fit is counted in `omitted`; a
+    /// read (`getSessionContext`) has it.
     public func resync() -> CallUpdate {
         guard !closed else { return CallUpdate() }
+        told = [:]
+        listed = entries.map(Listing.init)
+        let directoryEvent = Self.string(["event": "directory", "text": directoryText(bytes: Limits.directoryBytes, telling: true)])
         var errors: [String] = []
         var streamed: [(at: Int, event: String)] = []
         for id in visited {
             guard let known = heard[id] else { continue }
             streamed += known.said.values.map { ($0.at, $0.event) }
-            for turn in known.told.keys.sorted() { errors.append(stopped(id, reason: known.told[turn] ?? nil)) }
+            for turn in known.told.keys.sorted() { errors.append(known.told[turn]!) }
         }
         let items = errors + streamed.sorted { $0.at > $1.at }.map(\.event)
-        var focusEvent: [String: Any] = ["event": "focus", "focusRevision": focusRevision, "targetRef": NSNull(), "resync": true]
-        if let focus {
-            focusEvent["targetRef"] = ref(focus)
-            if let title = directory[focus]?.title { focusEvent["title"] = title }
+        var focusEvent: [String: Any] = ["event": "focus", "focusRevision": focusRevision, "title": NSNull(), "resync": true]
+        var entry: [String] = []
+        if let focus, let target = directory[focus] {
+            entry = tell(target)
+            focusEvent.merge(address(target)) { _, new in new }
         }
         var kept: [String] = []
         var bytes = Self.string(focusEvent).utf8.count + 32
@@ -282,13 +326,100 @@ public actor CallContext {
         if kept.count < items.count { focusEvent["omitted"] = items.count - kept.count }
         // Oldest first, as they would have come.
         let errorCount = kept.prefix { errors.contains($0) }.count
-        return CallUpdate(context: [Self.string(focusEvent)] + kept.prefix(errorCount) + kept.dropFirst(errorCount).reversed())
+        return CallUpdate(context: [directoryEvent] + entry + [Self.string(focusEvent)] + kept.prefix(errorCount) + kept.dropFirst(errorCount).reversed())
     }
 
-    private func stopped(_ agentId: String, reason: String?) -> String {
-        var event: [String: Any] = ["event": "session_error", "target": ref(agentId)]
-        if let reason { event["reason"] = reason }
-        return Self.string(event)
+    // MARK: The directory
+
+    /// The sidebar's conversations, as just read.
+    private func see(_ now: [CallTarget]) {
+        entries = now
+        directory = Dictionary(now.map { ($0.agentId, $0) }, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// The directory as the agent reads it: a line for each conversation,
+    /// indented under what it sits in, with its kind and reference; a
+    /// project or a worktree a heading without one. Within `bytes` and
+    /// `Limits.directory` conversations, the rest counted at the end;
+    /// `showing` goes after them when it was among the rest. `telling`
+    /// marks each one shown as told.
+    private func directoryText(bytes: Int, showing: CallTarget? = nil, telling: Bool) -> String {
+        let marker = 96
+        var (text, shown, taken) = lines(entries, header: "Conversation directory:", bytes: bytes - marker, count: Limits.directory)
+        let omitted = entries.count - taken
+        if let showing, !shown.contains(showing.agentId) {
+            let extra = lines([showing], header: "\nOn screen:", bytes: Limits.entriesBytes, count: 1)
+            text += extra.text
+            shown += extra.shown
+        }
+        if omitted > 0 { text += "\n… and \(omitted) more; listSessions finds them by title." }
+        if telling { for id in shown { if let entry = directory[id] { told[id] = Listing(entry) } } }
+        return text
+    }
+
+    /// Entries the agent doesn't have as they are now, in `directory_entries`
+    /// events of up to `Limits.entriesBytes`, each with what it sits under.
+    private func entryEvents(_ list: [CallTarget]) -> [String] {
+        var rest = list[...]
+        var events: [String] = []
+        while !rest.isEmpty {
+            let (text, shown, taken) = lines(Array(rest), header: "More of the conversation directory:", bytes: Limits.entriesBytes, count: rest.count)
+            guard taken > 0 else { break }
+            rest = rest.dropFirst(taken)
+            for id in shown { if let entry = list.first(where: { $0.agentId == id }) ?? directory[id] { told[id] = Listing(entry) } }
+            events.append(Self.string(["event": "directory_entries", "text": text]))
+        }
+        return events
+    }
+
+    /// `entry` told as it is now, if the agent doesn't have it so.
+    private func tell(_ entry: CallTarget) -> [String] {
+        told[entry.agentId] == Listing(entry) ? [] : entryEvents([entry])
+    }
+
+    /// `list` as indented lines under `header`, as many as fit, each with
+    /// whatever it sits under that the lines before didn't show. The
+    /// conversations shown, the ones they sit under included, by ID; the
+    /// first `count` of `list` at most.
+    private func lines(_ list: [CallTarget], header: String, bytes: Int, count: Int) -> (text: String, shown: [String], taken: Int) {
+        var text = header
+        var path: [String] = []
+        var shown: [String] = []
+        var taken = 0
+        for entry in list where taken < count {
+            let keys = entry.parents.map { $0.agentId ?? $0.id }
+            let common = zip(path, keys).prefix { $0 == $1 }.count
+            var chunk = ""
+            var under: [String] = []
+            for (depth, parent) in entry.parents.enumerated().dropFirst(common) {
+                let indent = String(repeating: "  ", count: depth)
+                if let agentId = parent.agentId {
+                    chunk += "\n\(indent)\(parent.title) [\(parent.kind); ref=\(ref(agentId))]"
+                    under.append(agentId)
+                } else {
+                    chunk += "\n\(indent)\(parent.title) [\(parent.kind)]"
+                }
+            }
+            chunk += "\n\(String(repeating: "  ", count: entry.parents.count))\(entry.title) [\(entry.kind.rawValue); ref=\(ref(entry.agentId))]"
+            guard text.utf8.count + chunk.utf8.count <= bytes else { break }
+            text += chunk
+            path = keys + [entry.agentId]
+            shown += under + [entry.agentId]
+            taken += 1
+        }
+        return (text, shown, taken)
+    }
+
+    /// How updates name a conversation: its title and the titles of what
+    /// it sits under, outermost first. Its reference too, only when those
+    /// leave it unclear: another one is named the same under the same, or
+    /// it has no name of its own yet ("New Task").
+    private func address(_ target: CallTarget) -> [String: Any] {
+        let parents = target.parents.map(\.title)
+        var value: [String: Any] = ["title": target.title, "parents": parents]
+        let twins = entries.filter { $0.title == target.title && $0.parents.map(\.title) == parents }.count
+        if twins > 1 || CallTarget.placeholders.contains(target.title) { value["ref"] = ref(target.agentId) }
+        return value
     }
 
     // MARK: Tools
@@ -335,29 +466,31 @@ public actor CallContext {
             guard let cursor = Self.optionalString(arguments["cursor"]) else { return .refused("cursor must be a string.") }
             let needle = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             guard let start = cursor.isEmpty ? 0 : Int(cursor), start >= 0 else { return .refused("That isn't a cursor listSessions gave.") }
-            let all = await targets.directory()
-            for entry in all { directory[entry.agentId] = entry }
-            let entries = all.filter(\.isListed)
+            see(await targets.directory())
             let matching = needle.isEmpty ? entries : entries.filter { $0.title.lowercased().contains(needle) }
             let page = matching.dropFirst(start).prefix(Limits.page)
+            // A directory query: what it gives, the agent has.
+            for entry in page { told[entry.agentId] = Listing(entry) }
             var value: [String: Any] = ["sessions": page.map { row($0) }]
             if start + page.count < matching.count { value["nextCursor"] = String(start + page.count) }
             return .json(value)
 
         case .getSessionContext:
-            guard let id = resolve(arguments["targetRef"]) else { return .refused("No such conversation.") }
+            guard let id = await resolve(arguments["targetRef"]) else { return .refused("No such conversation.") }
             guard let state = await targets.state(of: id) else { return .refused("That conversation can't be read now.") }
             // Within the snapshot's budget too: the oldest turns give way.
+            // Asked for by its reference, it is named by its title alone.
+            let name: [String: Any] = ["title": state.target.title, "parents": state.target.parents.map(\.title)]
             var turns = Self.recent(state)
-            var value = body(state, turns: turns)
+            var value = body(state, turns: turns, as: name)
             while Self.data(value).count > Limits.totalBytes, !turns.isEmpty {
                 turns.removeFirst()
-                value = body(state, turns: turns)
+                value = body(state, turns: turns, as: name)
             }
             return .json(value)
 
         case .openSession:
-            guard let id = resolve(arguments["targetRef"]) else { return .refused("No such conversation.") }
+            guard let id = await resolve(arguments["targetRef"]) else { return .refused("No such conversation.") }
             let asOf = Self.revision(arguments["focusRevision"])
             guard asOf == focusRevision else { return Self.stale }
             // Past its deadline the answer is gone: nothing moves on screen after it.
@@ -366,11 +499,12 @@ public actor CallContext {
             // In front now as far as the call goes, with the revision the
             // next step takes. The screen says so too; whichever of the two
             // comes second says nothing.
-            _ = moveFocus(to: id)
+            // The agent named it by its reference, so it needs no telling.
+            _ = moveFocus(to: id, telling: false)
             return .json(["opened": true, "targetRef": ref(id), "focusRevision": focusRevision])
 
         case .sendMessage:
-            guard let id = resolve(arguments["targetRef"]) else { return .refused("No such conversation.") }
+            guard let id = await resolve(arguments["targetRef"]) else { return .refused("No such conversation.") }
             guard let text = arguments["text"] as? String, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 return .refused("There's nothing to send.")
             }
@@ -409,12 +543,13 @@ public actor CallContext {
         return made
     }
 
-    /// The conversation a reference names, if the tools may reach it: a bot
-    /// or a task, or one the person opened themselves this call.
-    private func resolve(_ value: Any?) -> String? {
-        guard let ref = value as? String, let id = agents[ref], !removed.contains(id) else { return nil }
-        guard directory[id]?.isListed == true || opened.contains(id) else { return nil }
-        return id
+    /// The conversation a reference names, while the sidebar lists it:
+    /// one that went away isn't reached, and is again if it comes back,
+    /// under the same reference.
+    private func resolve(_ value: Any?) async -> String? {
+        guard let ref = value as? String, let id = agents[ref] else { return nil }
+        see(await targets.directory())
+        return directory[id] == nil ? nil : id
     }
 
     /// `agentId` becomes the latest visited; the oldest past the limit is
@@ -438,9 +573,10 @@ public actor CallContext {
         heard[state.target.agentId] = known
     }
 
+    /// One of `listSessions`' answers.
     private func row(_ target: CallTarget) -> [String: Any] {
         var value: [String: Any] = ["targetRef": ref(target.agentId), "title": target.title, "kind": target.kind.rawValue, "status": target.status.rawValue]
-        if let project = target.project { value["project"] = project }
+        if !target.parents.isEmpty { value["parents"] = target.parents.map(\.title) }
         return value
     }
 
@@ -457,8 +593,11 @@ public actor CallContext {
         state.turns.filter { $0.user?.isEmpty == false || $0.reply?.isEmpty == false || $0.ended == "error" }
     }
 
-    private func body(_ state: CallTargetState, turns: [CallTurn]) -> [String: Any] {
-        var value = row(state.target)
+    /// A conversation as read: `name`, then whether it works or waits for
+    /// the person, and its turns. Never its kind, status or reference
+    /// beyond what `name` holds: the directory has those.
+    private func body(_ state: CallTargetState, turns: [CallTurn], as name: [String: Any]) -> [String: Any] {
+        var value = name
         value["working"] = state.working
         value["needsInput"] = state.needsInput
         value["turns"] = turns.map(Self.turn)
@@ -579,5 +718,37 @@ public actor CallContext {
             if first { continuation.resume(returning: result) }
             return first
         }
+    }
+}
+
+/// A call's one directory update on its way (`CallContext.flushDirectory`):
+/// due `delay` after the first change it tells, whatever comes after; a
+/// change after it has gone starts the next. Cancelled with its call.
+@MainActor
+public final class DirectorySettle {
+    private let delay: Duration
+    private let flush: @MainActor () async -> Void
+    private var waiting: Task<Void, Never>?
+
+    public init(delay: Duration = CallContext.Limits.settle, flush: @escaping @MainActor () async -> Void) {
+        self.delay = delay
+        self.flush = flush
+    }
+
+    /// The directory changed: the flush in `delay`, or the one already due.
+    public func changed() {
+        guard waiting == nil else { return }
+        let delay = delay
+        waiting = Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled, let self else { return }
+            self.waiting = nil
+            await self.flush()
+        }
+    }
+
+    public func cancel() {
+        waiting?.cancel()
+        waiting = nil
     }
 }

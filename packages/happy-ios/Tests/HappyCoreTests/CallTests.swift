@@ -49,12 +49,17 @@ final class CallContextTests: XCTestCase {
     func testTheFirstSnapshotHoldsTheFocusWithItsLastFiveTurnsThePendingMessageOneOfThem() async throws {
         let context = CallContext(targets: backend(), now: { 1_700_000_000 })
         let snapshot = try object(await context.initial())
-        XCTAssertEqual(snapshot["schema"] as? Int, 1)
+        XCTAssertEqual(snapshot["schema"] as? Int, 2)
         XCTAssertEqual(snapshot["focusRevision"] as? Int, 0)
         XCTAssertEqual(snapshot["tools"] as? [String], ["listSessions", "getSessionContext", "openSession", "sendMessage"])
         let focus = try XCTUnwrap(snapshot["focus"] as? [String: Any])
-        XCTAssertEqual(focus["targetRef"] as? String, "s1")
+        // Named as the directory names it, which alone gives its reference.
         XCTAssertEqual(focus["title"] as? String, "Backend")
+        XCTAssertEqual(focus["parents"] as? [String], [])
+        XCTAssertNil(focus["ref"])
+        XCTAssertNil(focus["targetRef"])
+        XCTAssertNil(focus["kind"])
+        XCTAssertNil(focus["status"])
         XCTAssertNil(focus["hasDraft"])
         XCTAssertNil(focus["messages"])
         // Four finished turns and the message waiting: five. The steered one has the person's half only.
@@ -66,9 +71,7 @@ final class CallContextTests: XCTestCase {
         let pending = try XCTUnwrap(focus["pendingUserMessage"] as? [String: Any])
         XCTAssertEqual(pending["text"] as? String, "still waiting")
         XCTAssertEqual(pending["delivery"] as? String, "accepted")
-        let directory = try XCTUnwrap(snapshot["directory"] as? [[String: Any]])
-        XCTAssertEqual(directory.map { $0["targetRef"] as? String }, ["s1", "s2"])
-        XCTAssertEqual(directory[1]["status"] as? String, "running")
+        XCTAssertEqual(snapshot["directory"] as? String, "Conversation directory:\nBackend [bot; ref=s1]\nDocs [task; ref=s2]")
         let followed = await context.followed
         XCTAssertEqual(followed, ["a"])
     }
@@ -82,7 +85,9 @@ final class CallContextTests: XCTestCase {
         let text = await CallContext(targets: targets).initial()
         XCTAssertLessThanOrEqual(text.utf8.count, CallContext.Limits.totalBytes)
         let snapshot = try object(text)
-        XCTAssertEqual(snapshot["directoryTruncated"] as? Bool, true)
+        let directory = try XCTUnwrap(snapshot["directory"] as? String)
+        XCTAssertTrue(directory.hasSuffix("more; listSessions finds them by title."), directory)
+        XCTAssertLessThanOrEqual(directory.utf8.count, CallContext.Limits.directoryBytes)
         let focus = try XCTUnwrap(snapshot["focus"] as? [String: Any])
         let shown = try XCTUnwrap(focus["turns"] as? [[String: Any]])
         XCTAssertLessThanOrEqual(shown.count, CallContext.Limits.turns)
@@ -188,7 +193,7 @@ final class CallContextTests: XCTestCase {
         _ = await context.focusChanged(to: "b")
         let settings = try events(await context.focusChanged(to: nil))
         XCTAssertEqual(settings.first?["event"] as? String, "focus")
-        XCTAssertTrue(settings.first?["targetRef"] is NSNull)
+        XCTAssertTrue(settings.first?["title"] is NSNull)
         XCTAssertEqual(settings.first?["focusRevision"] as? Int, 2)
         let followed = await context.followed
         XCTAssertEqual(followed, ["b", "a"])
@@ -206,8 +211,10 @@ final class CallContextTests: XCTestCase {
         _ = await context.initial()
         let focus = try events(await context.focusChanged(to: "a"))
         XCTAssertEqual(focus.count, 1)
-        XCTAssertEqual(focus[0]["targetRef"] as? String, "s1")
         XCTAssertEqual(focus[0]["title"] as? String, "Backend")
+        XCTAssertEqual(focus[0]["parents"] as? [String], [])
+        XCTAssertNil(focus[0]["ref"])
+        XCTAssertNil(focus[0]["targetRef"])
         XCTAssertNil(focus[0]["turns"])
         XCTAssertFalse(focus.description.contains("answer"))
     }
@@ -296,8 +303,12 @@ final class CallContextTests: XCTestCase {
         let done = try events(await context.targetChanged(state("Looking at it. Done.", working: false)))
         XCTAssertEqual(done.map { $0["event"] as? String }, ["assistant_text"])
         XCTAssertEqual(done.first?["text"] as? String, "Looking at it. Done.")
-        XCTAssertEqual(done.first?["messageId"] as? String, "r")
-        XCTAssertEqual(done.first?["target"] as? String, "s1")
+        // By its title, never an ID or a reference.
+        XCTAssertEqual(done.first?["title"] as? String, "Backend")
+        XCTAssertEqual(done.first?["parents"] as? [String], [])
+        XCTAssertNil(done.first?["messageId"])
+        XCTAssertNil(done.first?["target"])
+        XCTAssertNil(done.first?["ref"])
         XCTAssertNil(done.first?["delta"])
         XCTAssertNil(done.first?["final"])
         XCTAssertFalse(done.description.contains("third answer"))
@@ -324,14 +335,12 @@ final class CallContextTests: XCTestCase {
             CallMessage(id: "p1", role: .assistant, text: "Let me check the logs."),
             CallMessage(id: "p2", role: .assistant, text: "They show", final: false),
         ])))
-        XCTAssertEqual(checked.map { $0["messageId"] as? String }, ["p1"])
         XCTAssertEqual(checked.map { $0["text"] as? String }, ["Let me check the logs."])
         let rest = try events(await context.targetChanged(state([
             CallMessage(id: "p1", role: .assistant, text: "Let me check the logs."),
             CallMessage(id: "u", role: .user, text: "and?"),
             CallMessage(id: "p2", role: .assistant, text: "They show a timeout."),
         ], working: false)))
-        XCTAssertEqual(rest.map { $0["messageId"] as? String }, ["p2"])
         XCTAssertEqual(rest.map { $0["text"] as? String }, ["They show a timeout."])
     }
 
@@ -357,13 +366,16 @@ final class CallContextTests: XCTestCase {
                                                         turns: [CallTurn(id: "x", ended: "error", error: "Boom")]))
         // Say every one of those was lost: the agent gets the focus as it is, and each message as told.
         let fixed = try events(await context.resync())
-        XCTAssertEqual(fixed.first?["event"] as? String, "focus")
-        XCTAssertEqual(fixed.first?["resync"] as? Bool, true)
-        XCTAssertEqual(fixed.first?["focusRevision"] as? Int, 2)
-        XCTAssertEqual(fixed.first?["targetRef"] as? String, "s1")
-        XCTAssertEqual(fixed.dropFirst().map { $0["event"] as? String }, ["session_error", "assistant_text"])
+        // The directory as it is, the focus, then what was told.
+        XCTAssertEqual(fixed.first?["event"] as? String, "directory")
+        XCTAssertEqual(fixed.first?["text"] as? String, "Conversation directory:\nBackend [bot; ref=s1]\nDocs [task; ref=s2]")
+        XCTAssertEqual(fixed[1]["event"] as? String, "focus")
+        XCTAssertEqual(fixed[1]["resync"] as? Bool, true)
+        XCTAssertEqual(fixed[1]["focusRevision"] as? Int, 2)
+        XCTAssertEqual(fixed[1]["title"] as? String, "Backend")
+        XCTAssertEqual(fixed.dropFirst(2).map { $0["event"] as? String }, ["session_error", "assistant_text"])
         XCTAssertEqual(fixed.last?["text"] as? String, "Half way")
-        XCTAssertEqual(fixed.last?["messageId"] as? String, "r")
+        XCTAssertLessThanOrEqual(fixed.reduce(0) { $0 + (try! JSONSerialization.data(withJSONObject: $1)).count }, 32 * 1024)
         // What was there at first sight was never told, so none of it comes back.
         XCTAssertFalse(fixed.description.contains("third answer"))
     }
@@ -382,7 +394,7 @@ final class CallContextTests: XCTestCase {
     /// own message coming in after says nothing of that.
     func testASnapshotsWordsAreCompleteOnceTheAgentWentOnPastThem() {
         let target = CallTarget(agentId: "a", title: "A", kind: .task, status: .idle)
-        func agent(_ id: String, _ text: String) -> ChatItem { ChatItem(id: id, role: .agent, pieces: [.text(text)], delivery: .sent) }
+        func agent(_ id: String, _ text: String) -> ChatItem { ChatItem(id: id, role: .agent, pieces: [.text(text)], delivery: .sent, turn: "r1") }
         var snapshot = ChatSnapshot()
         snapshot.loaded = true
         snapshot.working = true
@@ -392,7 +404,7 @@ final class CallContextTests: XCTestCase {
         snapshot.items.append(ChatItem(id: "u", role: .user, pieces: [.text("hurry")], delivery: .sending))
         XCTAssertEqual(CallTargetState.from(snapshot, target: target).messages.filter { $0.role == .assistant }.map(\.final), [false])
         // A tool call after them: complete.
-        snapshot.items.insert(ChatItem(id: "t", role: .tool(ChatItem.Tool(name: "exec_command", status: "running")), pieces: [], delivery: .sent), at: 1)
+        snapshot.items.insert(ChatItem(id: "t", role: .tool(ChatItem.Tool(name: "exec_command", status: "running")), pieces: [], delivery: .sent, turn: "r1"), at: 1)
         XCTAssertEqual(CallTargetState.from(snapshot, target: target).messages.filter { $0.role == .assistant }.map(\.final), [true])
         // More words after the call: those are the ones still growing.
         snapshot.items.insert(agent("m1/2", "Found it"), at: 2)
@@ -428,7 +440,8 @@ final class CallContextTests: XCTestCase {
         let stopped = try events(await context.targetChanged(state))
         XCTAssertEqual(stopped.map { $0["event"] as? String }, ["session_error"])
         XCTAssertEqual(stopped.first?["reason"] as? String, "The model refused")
-        XCTAssertEqual(stopped.first?["target"] as? String, "s1")
+        XCTAssertEqual(stopped.first?["title"] as? String, "Backend")
+        XCTAssertNil(stopped.first?["target"])
         let again = await context.targetChanged(state)
         XCTAssertTrue(again.isEmpty)
         // Stopped by the person is no error.
@@ -592,167 +605,377 @@ final class CallContextTests: XCTestCase {
         XCTAssertNil(paged["nextCursor"])
     }
 
-    func testTheDirectorySaysWhatCameWentOrWasRenamedButNoStatus() async throws {
-        let context = CallContext(targets: backend())
-        // Its watch answering at once, ahead of the snapshot that holds it all: nothing to say.
-        let early = await context.directoryChanged([backendTarget, docsTarget])
-        XCTAssertTrue(early.isEmpty)
+    // MARK: The directory: what the person sees
+
+    /// Bots, tasks, subtasks at any depth and a project's conversations,
+    /// in the sidebar's order: the sidebar's own rows, nothing it hides.
+    static let sidebar = #"""
+    {"cursor":"c","profile":{"userId":null},"userSettings":[],
+     "projects":[{"id":"p1","name":"App","status":"active","orderKey":"a","agents":[{"id":"root","workspaceId":"p1","title":"Root chat","status":"idle"}]}],
+     "workspaces":[{"id":"w1","projectId":"p1","parentId":"p1","name":"Feature","kind":"worktree","status":"active","orderKey":"a","agents":[{"id":"wchat","workspaceId":"w1","title":"Feature chat","status":"idle"}]}],
+     "bots":[
+       {"id":"arch","name":"Architect","status":"active","agent":{"id":"arch-agent","workspaceId":"aw","status":"idle"}},
+       {"id":"quiet","name":"Hidden bot","status":"active","agent":{"id":"quiet-agent","workspaceId":"qw","status":"idle"}}],
+     "tasks":[
+       {"id":"t1","name":"Release notes","agent":{"id":"t1-agent","workspaceId":"t1w","status":"idle","subtasks":[
+         {"id":"sub1","workspaceId":"t1w","parentAgentId":"t1-agent","title":"Fix cache race","status":"idle","subtasks":[
+           {"id":"subsub","workspaceId":"t1w","parentAgentId":"sub1","title":"Check the lock","status":"idle"}]},
+         {"id":"gone","workspaceId":"t1w","parentAgentId":"t1-agent","title":"Archived one","status":"idle","archivedAt":1}]}},
+       {"id":"t2","name":"New Task","agent":{"id":"t2-agent","workspaceId":"t2w","status":"idle"}},
+       {"id":"t3","name":"Old","status":"archived","agent":{"id":"t3-agent","workspaceId":"t3w","status":"idle"}}],
+     "taskMemberships":[{"taskId":"t1"},{"taskId":"t2"},{"taskId":"t3"}],
+     "surfaces":[{"id":"chat","name":"Team chat","type":"chat","chatAgentId":"surface-agent","members":[{"userId":null,"orderKey":"a"}]}]}
+    """#
+
+    private func sidebarRows() throws -> [Row] {
+        let desktop = try JSONDecoder().decode(DesktopSnapshot.self, from: Data(Self.sidebar.utf8))
+        return SidebarRows.make(desktop, settings: ["happy-desktop.bot.quiet": .object(["hidden": .bool(true)])])
+    }
+
+    func testTheDirectoryIsTheSidebarsConversationsNestedAsItShowsThem() async throws {
+        let rows = try sidebarRows()
+        let list = CallTarget.list(rows)
+        // Exactly the rows that open a conversation, in their order: no
+        // filter of the call's own.
+        let opening = rows.filter { ($0.kind == .space || $0.kind == .session) && $0.agentId != nil && $0.targetKind != "surface" }.compactMap(\.agentId)
+        XCTAssertEqual(list.map(\.agentId), opening)
+        XCTAssertEqual(list.map(\.agentId), ["arch-agent", "t1-agent", "sub1", "subsub", "t2-agent", "root", "wchat"])
+        XCTAssertEqual(list.map(\.kind), [.bot, .task, .subtask, .subtask, .task, .conversation, .conversation])
+        XCTAssertEqual(list[3].parents.map(\.title), ["Release notes", "Fix cache race"])
+        XCTAssertEqual(list[6].parents.map(\.title), ["App", "Feature"])
+        // The sidebar's own label, a placeholder too.
+        XCTAssertEqual(list[4].title, "New Task")
+
+        let context = CallContext(targets: FakeCallTargets(directory: list, states: [:], focus: nil))
+        let initial = try object(await context.initial())
+        XCTAssertEqual(initial["directory"] as? String, """
+        Conversation directory:
+        Architect [bot; ref=s1]
+        Release notes [task; ref=s2]
+          Fix cache race [subtask; ref=s3]
+            Check the lock [subtask; ref=s4]
+        New Task [task; ref=s5]
+        App [project]
+          Root chat [conversation; ref=s6]
+          Feature [workspace]
+            Feature chat [conversation; ref=s7]
+        """)
+        // No IDs of the computer's in what the agent reads.
+        for id in ["arch-agent", "t1-agent", "sub1", "subsub", "root", "wchat"] { XCTAssertFalse((initial["directory"] as? String ?? "").contains(id), id) }
+        let listed = try object(await tool(context, "listSessions", #"{"query":"lock"}"#).text)
+        let found = try XCTUnwrap((listed["sessions"] as? [[String: Any]])?.first)
+        XCTAssertEqual(found["targetRef"] as? String, "s4")
+        XCTAssertEqual(found["kind"] as? String, "subtask")
+        XCTAssertEqual(found["parents"] as? [String], ["Release notes", "Fix cache race"])
+    }
+
+    private let releaseTarget = CallTarget(agentId: "t", title: "Release notes", kind: .task, status: .idle)
+    private var fixTarget: CallTarget {
+        CallTarget(agentId: "c", title: "Fix cache race", kind: .subtask, status: .running, parents: [CallTarget.Parent(id: "task:t", title: "Release notes", kind: "task", agentId: "t")])
+    }
+
+    /// A subtask is reached like anything else listed, by its reference,
+    /// whether or not the person ever opened it.
+    func testEveryListedConversationIsReachedSubtasksToo() async throws {
+        let targets = FakeCallTargets(directory: [releaseTarget, fixTarget], states: [
+            "t": CallTargetState(target: releaseTarget),
+            "c": CallTargetState(target: fixTarget, turns: [CallTurn(id: "r", user: "sub ask", reply: "sub answer")]),
+        ], focus: nil)
+        let context = CallContext(targets: targets)
         _ = await context.initial()
-        var docs = docsTarget
-        docs.status = .idle
-        let status = await context.directoryChanged([backendTarget, docs])
-        XCTAssertTrue(status.isEmpty)
-        docs.title = "Docs site"
-        let renamed = try events(await context.directoryChanged([backendTarget, docs]))
-        XCTAssertEqual((renamed.first?["changed"] as? [[String: Any]])?.map { $0["title"] as? String }, ["Docs site"])
-        // Gone, its reference can't be used, and it isn't heard from.
-        let gone = await context.directoryChanged([docs])
-        XCTAssertTrue(gone.context[0].contains(#""removed":["s1"]"#))
-        let read = await tool(context, "getSessionContext", #"{"targetRef":"s1"}"#)
-        XCTAssertTrue(read.isError)
+        let read = try object(await tool(context, "getSessionContext", #"{"targetRef":"s2"}"#).text)
+        XCTAssertEqual(read["title"] as? String, "Fix cache race")
+        XCTAssertEqual(read["parents"] as? [String], ["Release notes"])
+        XCTAssertNil(read["targetRef"])
+        XCTAssertNil(read["ref"])
+        XCTAssertEqual((read["turns"] as? [[String: Any]])?.first?["assistant"] as? String, "sub answer")
+        let opened = try object(await tool(context, "openSession", #"{"targetRef":"s2","focusRevision":0}"#).text)
+        XCTAssertEqual(opened["opened"] as? Bool, true)
+        let sent = try object(await tool(context, "sendMessage", #"{"targetRef":"s2","text":"go on","focusRevision":1}"#).text)
+        XCTAssertEqual(sent["status"] as? String, "queued")
+        let sends = await targets.sends
+        XCTAssertEqual(sends.map(\.agentId), ["c"])
+        // A reference no one gave reaches nothing.
+        let forged = await tool(context, "getSessionContext", #"{"targetRef":"s9"}"#)
+        XCTAssertTrue(forged.isError)
+    }
+
+    /// New work settles for a second, then goes as the whole directory,
+    /// by the sidebar's label whatever it is then; a status alone is no change.
+    func testANewEntryGoesOnceSettledAsTheWholeDirectory() async throws {
+        let targets = FakeCallTargets(directory: [releaseTarget], states: [:], focus: nil)
+        let context = CallContext(targets: targets)
+        // Its watch answering ahead of the first snapshot: nothing due.
+        let early = await context.directoryChanged([releaseTarget])
+        XCTAssertFalse(early)
+        _ = await context.initial()
+        var running = releaseTarget
+        running.status = .running
+        let status = await context.directoryChanged([running])
+        XCTAssertFalse(status)
+        // New, and nobody named it yet: due, and goes as the label is at the flush.
+        let fresh = CallTarget(agentId: "n", title: "New Task", kind: .task, status: .idle)
+        let due = await context.directoryChanged([releaseTarget, fresh])
+        XCTAssertTrue(due)
+        await targets.setDirectory([releaseTarget, fresh])
+        let flushed = try events(await context.flushDirectory())
+        XCTAssertEqual(flushed.map { $0["event"] as? String }, ["directory"])
+        XCTAssertEqual(flushed.first?["text"] as? String, "Conversation directory:\nRelease notes [task; ref=s1]\nNew Task [task; ref=s2]")
+        // Told: the same again is nothing.
+        let same = await context.directoryChanged([releaseTarget, fresh])
+        XCTAssertFalse(same)
+        let none = await context.flushDirectory()
+        XCTAssertTrue(none.isEmpty)
+        // Named later: the same reference, the new title.
+        var named = fresh
+        named.title = "Ship 2.0"
+        let renamed = await context.directoryChanged([releaseTarget, named])
+        XCTAssertTrue(renamed)
+        await targets.setDirectory([releaseTarget, named])
+        let again = try events(await context.flushDirectory())
+        XCTAssertEqual(again.first?["text"] as? String, "Conversation directory:\nRelease notes [task; ref=s1]\nShip 2.0 [task; ref=s2]")
+    }
+
+    /// The flush reads the sidebar as it is then: a name that came in the
+    /// second goes, work that went away in it never does.
+    func testTheFlushTellsTheSidebarAsItIsThen() async throws {
+        let targets = FakeCallTargets(directory: [releaseTarget], states: [:], focus: nil)
+        let context = CallContext(targets: targets)
+        _ = await context.initial()
+        let fresh = CallTarget(agentId: "n", title: "New Task", kind: .task, status: .idle)
+        _ = await context.directoryChanged([releaseTarget, fresh])
+        var named = fresh
+        named.title = "Fix the login redirect"
+        await targets.setDirectory([releaseTarget, named])
+        let titled = try events(await context.flushDirectory())
+        XCTAssertEqual(titled.first?["text"] as? String, "Conversation directory:\nRelease notes [task; ref=s1]\nFix the login redirect [task; ref=s2]")
+        XCTAssertFalse(titled.description.contains("New Task"))
+        // Came and went within the second: nothing at all.
+        let brief = CallTarget(agentId: "b", title: "Brief", kind: .task, status: .idle)
+        let due = await context.directoryChanged([releaseTarget, named, brief])
+        XCTAssertTrue(due)
+        await targets.setDirectory([releaseTarget, named])
+        let gone = await context.flushDirectory()
+        XCTAssertTrue(gone.isEmpty)
+    }
+
+    /// One flush, due a fixed time after the first change: later changes
+    /// never put it off, and a cancelled one never goes.
+    @MainActor
+    func testTheSettleIsNeverPutOff() async throws {
+        let delay = Duration.milliseconds(400)
+        var flushes: [ContinuousClock.Instant] = []
+        let settle = DirectorySettle(delay: delay) { flushes.append(.now) }
+        // Changes without a pause for two seconds: a flush put off by each
+        // would never come; one due from the first comes in the first.
+        let start = ContinuousClock.now
+        while ContinuousClock.now - start < .seconds(2) {
+            settle.changed()
+            try await Task.sleep(for: .milliseconds(40))
+        }
+        XCTAssertGreaterThanOrEqual(flushes.count, 1)
+        let first = try XCTUnwrap(flushes.first)
+        XCTAssertGreaterThanOrEqual(first - start, delay)
+        XCTAssertLessThan(first - start, .seconds(2))
+        // One at a time: never two within `delay` of each other.
+        for (earlier, later) in zip(flushes, flushes.dropFirst()) { XCTAssertGreaterThanOrEqual(later - earlier, delay) }
+        // A cancelled one never goes.
+        try await Task.sleep(for: delay * 2)
+        let count = flushes.count
+        settle.changed()
+        settle.cancel()
+        try await Task.sleep(for: delay * 2)
+        XCTAssertEqual(flushes.count, count)
+    }
+
+    /// A snapshot within its size shows what it can and counts the rest;
+    /// whatever is new or changed among the rest still goes, in as many
+    /// `directory_entries` as it takes, each with what it sits under.
+    func testWhatTheSnapshotCantShowThatIsNewStillGoes() async throws {
+        let many = (0..<150).map { CallTarget(agentId: "x\($0)", title: "Task \($0)", kind: .task, status: .idle) }
+        let targets = FakeCallTargets(directory: many, states: [:], focus: nil)
+        let context = CallContext(targets: targets)
+        let initial = try object(await context.initial())
+        XCTAssertTrue((initial["directory"] as? String ?? "").hasSuffix("… and 50 more; listSessions finds them by title."))
+        let newOnes = (0..<40).map { CallTarget(agentId: "n\($0)", title: "Late \($0) " + String(repeating: "z", count: 150), kind: .subtask, status: .idle,
+                                                parents: [CallTarget.Parent(id: "task:x149", title: "Task 149", kind: "task", agentId: "x149")]) }
+        await targets.setDirectory(many + newOnes)
+        _ = await context.directoryChanged(many + newOnes)
+        let flushed = try events(await context.flushDirectory())
+        XCTAssertEqual(flushed.first?["event"] as? String, "directory")
+        let pages = flushed.dropFirst()
+        XCTAssertGreaterThan(pages.count, 1)
+        var told = ""
+        for page in pages {
+            XCTAssertEqual(page["event"] as? String, "directory_entries")
+            let text = try XCTUnwrap(page["text"] as? String)
+            XCTAssertLessThanOrEqual(text.utf8.count, CallContext.Limits.entriesBytes)
+            // Each page says what its entries sit under.
+            XCTAssertTrue(text.contains("\nTask 149 [task; ref="), text)
+            told += text
+        }
+        for index in 0..<40 { XCTAssertTrue(told.contains("  Late \(index) "), "Late \(index)") }
+        // What was cut and hasn't changed isn't paged out.
+        XCTAssertFalse(told.contains("Task 120 ["))
+        XCTAssertLessThanOrEqual(flushed.reduce(0) { $0 + (try! JSONSerialization.data(withJSONObject: $1)).count }, 32 * 1024)
+    }
+
+    /// A reference reaches a conversation while the sidebar lists it; gone,
+    /// it reaches nothing and isn't heard from; back, it reaches it again.
+    func testAReferenceReachesWhatIsListedNow() async throws {
+        let docs = docsTarget
+        let targets = FakeCallTargets(directory: [backendTarget, docs], states: [
+            "a": CallTargetState(target: backendTarget), "b": CallTargetState(target: docs),
+        ], focus: "b")
+        let context = CallContext(targets: targets)
+        _ = await context.initial()
+        await targets.setDirectory([backendTarget])
+        _ = await context.directoryChanged([backendTarget])
+        let flushed = try events(await context.flushDirectory())
+        XCTAssertEqual(flushed.first?["text"] as? String, "Conversation directory:\nBackend [bot; ref=s1]")
         let followed = await context.followed
         XCTAssertTrue(followed.isEmpty)
-    }
-
-    // MARK: Bots and tasks only
-
-    private let childTarget = CallTarget(agentId: "c", title: "Backend's subtask", kind: .conversation, status: .running)
-    private let projectTarget = CallTarget(agentId: "p", title: "A project's conversation", kind: .conversation, status: .idle)
-
-    private func withChildren(focus: String? = nil) -> FakeCallTargets {
-        FakeCallTargets(directory: [backendTarget, childTarget, docsTarget, projectTarget], states: [
-            "a": CallTargetState(target: backendTarget),
-            "b": CallTargetState(target: docsTarget),
-            "c": CallTargetState(target: childTarget, turns: [CallTurn(id: "r", user: "sub ask", reply: "sub answer")]),
-            "p": CallTargetState(target: projectTarget),
-        ], focus: focus)
-    }
-
-    func testOnlyBotsAndTasksAreListed() async throws {
-        let context = CallContext(targets: withChildren())
-        let initial = try object(await context.initial())
-        let titles = (initial["directory"] as? [[String: Any]])?.compactMap { $0["title"] as? String }
-        XCTAssertEqual(titles, ["Backend", "Docs"])
-        let listed = try object(await tool(context, "listSessions", "{}").text)
-        XCTAssertEqual((listed["sessions"] as? [[String: Any]])?.compactMap { $0["title"] as? String }, ["Backend", "Docs"])
-        let searched = try object(await tool(context, "listSessions", #"{"query":"subtask"}"#).text)
-        XCTAssertEqual((searched["sessions"] as? [Any])?.count, 0)
-    }
-
-    /// A subtask the person never opened can't be reached, by any reference.
-    func testTheToolsNeverReachASubtaskThePersonDidntOpen() async throws {
-        let targets = withChildren()
-        let context = CallContext(targets: targets)
-        _ = await context.initial()
-        for ref in ["s3", "s4", "s99", "c"] {
-            let read = await tool(context, "getSessionContext", #"{"targetRef":"\#(ref)"}"#)
-            XCTAssertTrue(read.isError, ref)
-            let open = await tool(context, "openSession", #"{"targetRef":"\#(ref)","focusRevision":0}"#)
-            XCTAssertTrue(open.isError, ref)
-            let send = await tool(context, "sendMessage", #"{"targetRef":"\#(ref)","text":"hi","focusRevision":0}"#)
-            XCTAssertTrue(send.isError, ref)
+        for name in ["getSessionContext", "openSession", "sendMessage"] {
+            let refused = await tool(context, name, #"{"targetRef":"s2","text":"hi","focusRevision":0}"#)
+            XCTAssertTrue(refused.isError, name)
         }
-        let opens = await targets.opens
-        let sends = await targets.sends
-        XCTAssertTrue(opens.isEmpty)
-        XCTAssertTrue(sends.isEmpty)
-    }
-
-    /// One the person opened is the call's: its focus names it, a read
-    /// gives its context, and it is heard from among the last four.
-    func testASubtaskThePersonOpenedIsTheCallsFromThen() async throws {
-        let targets = withChildren()
-        let context = CallContext(targets: targets)
-        _ = await context.initial()
-        let focus = try events(await context.focusChanged(to: "c"))
-        let ref = try XCTUnwrap(focus.first?["targetRef"] as? String)
-        XCTAssertEqual(focus.first?["title"] as? String, "Backend's subtask")
-        let read = try object(await tool(context, "getSessionContext", #"{"targetRef":"\#(ref)"}"#).text)
-        XCTAssertEqual((read["turns"] as? [[String: Any]])?.first?["assistant"] as? String, "sub answer")
-        let followed = await context.followed
-        XCTAssertEqual(followed, ["c"])
-        // Back home, it stays reachable: the agent may open it again.
-        _ = await context.focusChanged(to: nil)
-        let reopened = try object(await tool(context, "openSession", #"{"targetRef":"\#(ref)","focusRevision":2}"#).text)
-        XCTAssertEqual(reopened["opened"] as? Bool, true)
-        // Still never listed.
-        let listed = try object(await tool(context, "listSessions", "{}").text)
-        XCTAssertFalse(listed.description.contains("subtask"))
-    }
-
-    /// On screen when the call began: the person's own choice.
-    func testASubtaskOnScreenAtTheStartIsTheCalls() async throws {
-        let context = CallContext(targets: withChildren(focus: "c"))
-        let initial = try object(await context.initial())
-        let focus = try XCTUnwrap(initial["focus"] as? [String: Any])
-        XCTAssertEqual(focus["title"] as? String, "Backend's subtask")
-        let ref = try XCTUnwrap(focus["targetRef"] as? String)
-        let read = await tool(context, "getSessionContext", #"{"targetRef":"\#(ref)"}"#)
+        await targets.setDirectory([backendTarget, docs])
+        _ = await context.directoryChanged([backendTarget, docs])
+        let back = try events(await context.flushDirectory())
+        XCTAssertEqual(back.first?["text"] as? String, "Conversation directory:\nBackend [bot; ref=s1]\nDocs [task; ref=s2]")
+        let read = await tool(context, "getSessionContext", #"{"targetRef":"s2"}"#)
         XCTAssertFalse(read.isError)
     }
 
-    /// A new bot or task is added to the context once, on its own, saying
-    /// nothing to the person; a new subtask isn't; a status isn't.
-    func testANewBotOrTaskIsAddedOnceAndASubtaskIsNot() async throws {
-        let targets = withChildren()
+    /// The agent has a conversation's line before any update about it: new
+    /// work the person opens before the directory settles, a rename before
+    /// its words.
+    func testAConversationIsToldBeforeItsFocusOrItsWords() async throws {
+        let targets = FakeCallTargets(directory: [releaseTarget], states: ["t": CallTargetState(target: releaseTarget)], focus: nil)
         let context = CallContext(targets: targets)
         _ = await context.initial()
-        // The same as the first snapshot held: nothing.
-        let same = await context.directoryChanged([backendTarget, childTarget, docsTarget, projectTarget])
-        XCTAssertTrue(same.isEmpty)
-        let newTask = CallTarget(agentId: "n", title: "Ship the release", kind: .task, status: .running)
-        let newChild = CallTarget(agentId: "nc", title: "Release's subtask", kind: .conversation, status: .running)
-        let added = try events(await context.directoryChanged([backendTarget, childTarget, docsTarget, projectTarget, newTask, newChild]))
-        XCTAssertEqual(added.count, 1)
-        XCTAssertEqual(added[0]["event"] as? String, "directory")
-        let rows = try XCTUnwrap(added[0]["added"] as? [[String: Any]])
-        XCTAssertEqual(rows.map { $0["title"] as? String }, ["Ship the release"])
-        XCTAssertEqual(rows.first?["kind"] as? String, "task")
-        XCTAssertNotNil(rows.first?["targetRef"] as? String)
-        XCTAssertNil(added[0]["changed"])
-        XCTAssertFalse(added.description.contains("Release's subtask"))
-        // Again, or with only its status changed: nothing more.
-        var running = newTask
-        running.status = .idle
-        let again = await context.directoryChanged([backendTarget, childTarget, docsTarget, projectTarget, running, newChild])
-        XCTAssertTrue(again.isEmpty)
-        // It is listed, and reachable, from then on.
-        let ref = try XCTUnwrap(rows.first?["targetRef"] as? String)
-        await targets.setDirectory([backendTarget, childTarget, docsTarget, projectTarget, running, newChild])
-        let listed = try object(await tool(context, "listSessions", #"{"query":"release"}"#).text)
-        XCTAssertEqual((listed["sessions"] as? [[String: Any]])?.first?["targetRef"] as? String, ref)
-        let newBot = CallTarget(agentId: "nb", title: "Triage", kind: .bot, status: .idle)
-        let bot = try events(await context.directoryChanged([backendTarget, childTarget, docsTarget, projectTarget, running, newChild, newBot]))
-        XCTAssertEqual((bot.first?["added"] as? [[String: Any]])?.map { $0["kind"] as? String }, ["bot"])
+        let fresh = fixTarget
+        await targets.setDirectory([releaseTarget, fresh])
+        let due = await context.directoryChanged([releaseTarget, fresh])
+        XCTAssertTrue(due)
+        // Opened before the second is out.
+        let focus = try events(await context.focusChanged(to: "c"))
+        XCTAssertEqual(focus.map { $0["event"] as? String }, ["directory_entries", "focus"])
+        XCTAssertEqual(focus[0]["text"] as? String, "More of the conversation directory:\nRelease notes [task; ref=s1]\n  Fix cache race [subtask; ref=s2]")
+        XCTAssertEqual(focus[1]["title"] as? String, "Fix cache race")
+        XCTAssertEqual(focus[1]["parents"] as? [String], ["Release notes"])
+        // The flush still goes, whole.
+        let flushed = try events(await context.flushDirectory())
+        XCTAssertEqual(flushed.map { $0["event"] as? String }, ["directory"])
+        // Renamed, then its words: the new name first.
+        _ = await context.targetChanged(CallTargetState(target: fresh, working: true))
+        var renamed = fresh
+        renamed.title = "Fix the cache race"
+        let words = try events(await context.targetChanged(CallTargetState(target: renamed, messages: [CallMessage(id: "m", role: .assistant, text: "Fixed.")])))
+        XCTAssertEqual(words.map { $0["event"] as? String }, ["directory_entries", "assistant_text"])
+        XCTAssertTrue((words[0]["text"] as? String ?? "").hasSuffix("  Fix the cache race [subtask; ref=s2]"))
+        XCTAssertEqual(words[1]["title"] as? String, "Fix the cache race")
+        // Told once: its next words come alone.
+        let next = try events(await context.targetChanged(CallTargetState(target: renamed, messages: [
+            CallMessage(id: "m", role: .assistant, text: "Fixed."), CallMessage(id: "m2", role: .assistant, text: "And tested."),
+        ])))
+        XCTAssertEqual(next.map { $0["event"] as? String }, ["assistant_text"])
     }
 
-    /// New work the computer hasn't named yet ("New Task", "New Bot", or
-    /// none) isn't listed; it is added once its first message names it.
-    func testWorkWithoutANameIsListedOnceNamed() async throws {
-        func row(_ agentId: String, kind: String, name: String?) -> Row {
-            var row = Row(id: "\(kind):\(agentId)", nodeId: "\(kind):\(agentId)", kind: .space, label: name ?? "Untitled", agentId: agentId, targetKind: kind)
-            row.name = name
-            return row
+    /// Title and what it sits under name it; a reference only when that
+    /// leaves it unclear, or it has no name of its own yet.
+    func testAnUpdateHasAReferenceOnlyWhenItsNameIsUnclear() async throws {
+        let parent = CallTarget.Parent(id: "task:t", title: "Release notes", kind: "task", agentId: "t")
+        let one = CallTarget(agentId: "c1", title: "Fix", kind: .subtask, status: .idle, parents: [parent])
+        let two = CallTarget(agentId: "c2", title: "Fix", kind: .subtask, status: .idle, parents: [parent])
+        let elsewhere = CallTarget(agentId: "c3", title: "Fix", kind: .task, status: .idle)
+        let unnamed = CallTarget(agentId: "u", title: "New Task", kind: .task, status: .idle)
+        let all = [releaseTarget, one, two, elsewhere, unnamed]
+        let context = CallContext(targets: FakeCallTargets(directory: all, states: [:], focus: nil))
+        _ = await context.initial()
+        func focus(_ id: String) async throws -> [String: Any] {
+            let update = await context.focusChanged(to: id)
+            return try XCTUnwrap(try events(update).last)
         }
-        let fresh = try XCTUnwrap(CallTarget.from(row("n", kind: "task", name: "New Task")))
-        XCTAssertFalse(fresh.isListed)
-        XCTAssertFalse(try XCTUnwrap(CallTarget.from(row("nb", kind: "bot", name: "New Bot"))).isListed)
-        XCTAssertFalse(try XCTUnwrap(CallTarget.from(row("x", kind: "task", name: "  "))).isListed)
-        // No name of its own: the row's "Untitled" is no name.
-        let none = try XCTUnwrap(CallTarget.from(row("y", kind: "task", name: nil)))
-        XCTAssertFalse(none.isListed)
-        let named = try XCTUnwrap(CallTarget.from(row("n", kind: "task", name: "Fix the login redirect")))
-        XCTAssertTrue(named.isListed)
-        XCTAssertEqual(named.title, "Fix the login redirect")
+        let first = try await focus("c1")
+        XCTAssertEqual(first["ref"] as? String, "s2")
+        XCTAssertEqual(first["parents"] as? [String], ["Release notes"])
+        let other = try await focus("c3")
+        XCTAssertNil(other["ref"])
+        XCTAssertEqual(other["parents"] as? [String], [])
+        let fresh = try await focus("u")
+        XCTAssertEqual(fresh["ref"] as? String, "s5")
+        let plain = try await focus("t")
+        XCTAssertNil(plain["ref"])
+    }
 
-        let context = CallContext(targets: FakeCallTargets(directory: [backendTarget, fresh], states: [:], focus: nil))
-        let initial = try object(await context.initial())
-        XCTAssertEqual((initial["directory"] as? [[String: Any]])?.compactMap { $0["title"] as? String }, ["Backend"])
-        let still = await context.directoryChanged([backendTarget, fresh])
-        XCTAssertTrue(still.isEmpty)
-        let added = try events(await context.directoryChanged([backendTarget, named]))
-        XCTAssertEqual((added.first?["added"] as? [[String: Any]])?.map { $0["title"] as? String }, ["Fix the login redirect"])
-        XCTAssertNil(added.first?["changed"])
+    // MARK: Complete words, by their own run
+
+    private func chat(_ items: [ChatItem], working: Bool = true) -> ChatSnapshot {
+        var snapshot = ChatSnapshot()
+        snapshot.loaded = true
+        snapshot.working = working
+        snapshot.items = items
+        return snapshot
+    }
+
+    private func said(_ id: String, _ text: String, run: String?, role: ChatItem.Role = .agent) -> ChatItem {
+        ChatItem(id: id, role: role, pieces: [.text(text)], delivery: .sent, turn: run)
+    }
+
+    private func finals(_ snapshot: ChatSnapshot) -> [String: Bool] {
+        let state = CallTargetState.from(snapshot, target: CallTarget(agentId: "a", title: "A", kind: .task, status: .idle))
+        return Dictionary(uniqueKeysWithValues: state.messages.filter { $0.role == .assistant }.map { ($0.id, $0.final) })
+    }
+
+    /// The person's new message while the agent writes completes nothing.
+    func testThePersonsMessageMidStreamCompletesNothing() {
+        let streaming = [said("u1", "fix it", run: "r1", role: .user), said("a1", "Looking", run: "r1")]
+        XCTAssertEqual(finals(chat(streaming)), ["a1": false])
+        // Queued on the phone, then taken by the computer, before a run picks it up.
+        XCTAssertEqual(finals(chat(streaming + [ChatItem(id: "u2", role: .user, pieces: [.text("and the tests")], delivery: .sending)])), ["a1": false])
+        XCTAssertEqual(finals(chat(streaming + [ChatItem(id: "u2", role: .user, pieces: [.text("and the tests")], delivery: .pending)])), ["a1": false])
+    }
+
+    /// A boundary that starts the next run at once, still working: the
+    /// last run's words are complete, the new run's still grow.
+    func testARunThatStartsTheNextCompletesTheLastOnesWords() {
+        let end = ChatItem(id: "r1:status", role: .turnEnd(ChatItem.TurnEnd(reason: "completed", durationMs: 5, tools: 0, copyText: "Done.")), pieces: [], delivery: .sent, turn: "r1")
+        let first = [said("u1", "fix it", run: "r1", role: .user), said("a1", "Done.", run: "r1")]
+        XCTAssertEqual(finals(chat(first + [end, said("u2", "next", run: "r2", role: .user)])), ["a1": true])
+        // No end item yet, but a newer run has begun: still complete.
+        XCTAssertEqual(finals(chat(first + [said("u2", "next", run: "r2", role: .user)])), ["a1": true])
+        XCTAssertEqual(finals(chat(first + [said("a2", "On it", run: "r2")])), ["a1": true, "a2": false])
+        let state = CallTargetState.from(chat(first + [end, said("a2", "On it", run: "r2")]), target: CallTarget(agentId: "a", title: "A", kind: .task, status: .idle))
+        XCTAssertEqual(state.messages.first { $0.id == "a1" }?.turn, "r1")
+    }
+
+    /// Anything that isn't the agent's own next step in that run (another
+    /// agent reporting in) completes nothing.
+    func testUnrelatedChangesCompleteNothing() {
+        let streaming = [said("u1", "fix it", run: "r1", role: .user), said("a1", "Looking", run: "r1")]
+        let other = ChatItem(id: "co", role: .collaborator(agentId: "other", explanation: "helping"), pieces: [.text("hi")], delivery: .sent)
+        XCTAssertEqual(finals(chat(streaming + [other])), ["a1": false])
+    }
+
+    /// Words that ended their run say so (`finishedTurn`); words the agent
+    /// went on from mid-run don't.
+    func testWordsThatEndedTheirTurnSaySo() async throws {
+        let context = CallContext(targets: backend())
+        _ = await context.initial()
+        _ = await context.targetChanged(CallTargetState(target: backendTarget))
+        let midRun = try events(await context.targetChanged(CallTargetState(target: backendTarget, messages: [
+            CallMessage(id: "p1", role: .assistant, text: "Checking.", turn: "r9"),
+            CallMessage(id: "p2", role: .assistant, text: "Still", final: false, turn: "r9"),
+        ], working: true)))
+        XCTAssertEqual(midRun.map { $0["text"] as? String }, ["Checking."])
+        XCTAssertNil(midRun.first?["finishedTurn"])
+        let ended = try events(await context.targetChanged(CallTargetState(target: backendTarget, messages: [
+            CallMessage(id: "p1", role: .assistant, text: "Checking.", turn: "r9"),
+            CallMessage(id: "p2", role: .assistant, text: "Still fine.", turn: "r9"),
+        ], turns: [CallTurn(id: "r9", reply: "Still fine.")])))
+        XCTAssertEqual(ended.map { $0["text"] as? String }, ["Still fine."])
+        XCTAssertEqual(ended.first?["finishedTurn"] as? Bool, true)
     }
 
     func testAChatSnapshotReadsAsTurnsOfPublicWordsOnly() {

@@ -1,12 +1,32 @@
 import Foundation
 
-/// One conversation a call can talk about: a bot, a task or another
-/// conversation of the account the call is bound to. Only bots and tasks
-/// are listed (`isTopLevel`); any other conversation, a subtask included,
-/// is the call's only once the person opens it themselves.
+/// One conversation a call can talk about, as the sidebar lists it: a bot,
+/// a task, a subtask under any of them, or a project's conversation. The
+/// call sees what the person sees, nothing more and nothing less.
 public struct CallTarget: Equatable, Sendable {
     public enum Kind: String, Equatable, Sendable, Encodable {
-        case bot, task, conversation
+        case bot, task, subtask
+        /// A project's or a worktree's own conversation.
+        case conversation
+    }
+
+    /// What a conversation sits under in the sidebar, outermost first: a
+    /// project or a worktree heading, or the conversation a subtask is of.
+    public struct Parent: Equatable, Sendable {
+        /// The sidebar row's ID, unique among the rows.
+        public var id: String
+        public var title: String
+        /// `project` or `workspace` for a heading, else the conversation's kind.
+        public var kind: String
+        /// The conversation's, for one; nil for a heading.
+        public var agentId: String?
+
+        public init(id: String, title: String, kind: String, agentId: String? = nil) {
+            self.id = id
+            self.title = title
+            self.kind = kind
+            self.agentId = agentId
+        }
     }
 
     public enum Status: String, Equatable, Sendable, Encodable {
@@ -19,39 +39,54 @@ public struct CallTarget: Equatable, Sendable {
     }
 
     public var agentId: String
+    /// The sidebar's label, whatever it is: "New Task" or "Untitled" too.
     public var title: String
     public var kind: Kind
-    public var project: String?
     public var status: Status
-    /// It has a name of its own: not none, and not the one the computer
-    /// gives new work until its first message names it ("New Task", "New
-    /// Bot"). A bot or task without one isn't listed until it has one. A
-    /// name the person chose that is exactly one of those reads the same.
-    public var named: Bool
+    public var parents: [Parent]
 
-    public init(agentId: String, title: String, kind: Kind, project: String? = nil, status: Status, named: Bool = true) {
+    public init(agentId: String, title: String, kind: Kind, status: Status, parents: [Parent] = []) {
         self.agentId = agentId
         self.title = title
         self.kind = kind
-        self.project = project
         self.status = status
-        self.named = named
+        self.parents = parents
     }
 
-    /// A bot or a task, as the account owns them; never a subtask or a
-    /// project's conversation.
-    public var isTopLevel: Bool { kind == .bot || kind == .task }
+    /// The labels the sidebar shows for work nobody has named yet: the
+    /// computer's, until the first message names it (`AgentClient.createTask`,
+    /// `createBot`), and the rows' own for none.
+    public static let placeholders: Set<String> = ["", "New Task", "New Bot", "Untitled"]
 
-    /// What the call lists: a bot or a task with a name.
-    public var isListed: Bool { isTopLevel && named }
+    /// Longest a title goes into the call, in UTF-8.
+    static let titleBytes = 200
 
-    /// The names the computer gives a task or a bot made without one
-    /// (`AgentClient.createTask`, `createBot`), until its first message names it.
-    public static let unnamed: Set<String> = ["New Task", "New Bot"]
+    /// Every conversation the sidebar's rows open, in their order, once
+    /// each (the first row wins), with what each sits under. Rows that
+    /// open none (surfaces, artifacts, todos) are skipped; a project or a
+    /// worktree is a heading.
+    public static func list(_ rows: [Row]) -> [CallTarget] {
+        var result: [CallTarget] = []
+        var seen = Set<String>()
+        var path: [(depth: Int, parent: Parent)] = []
+        for row in rows {
+            while let last = path.last, last.depth >= row.depth { path.removeLast() }
+            if row.kind == .space, row.agentId == nil, let kind = row.targetKind, kind == "project" || kind == "workspace" {
+                path.append((row.depth, Parent(id: row.id, title: clean(row.label), kind: kind)))
+                continue
+            }
+            guard var target = from(row) else { continue }
+            if target.kind == .conversation, path.last?.parent.agentId != nil { target.kind = .subtask }
+            target.parents = path.map(\.parent)
+            path.append((row.depth, Parent(id: row.id, title: target.title, kind: target.kind.rawValue, agentId: target.agentId)))
+            if seen.insert(target.agentId).inserted { result.append(target) }
+        }
+        return result
+    }
 
-    /// A sidebar row's conversation; nil for rows that open none. A row is
-    /// a bot or a task by what it is the conversation of (`targetKind`, the
-    /// bot or task that owns it), never by where it sits.
+    /// A sidebar row's conversation, as it stands alone; nil for rows that
+    /// open none. A row is a bot or a task by what it is the conversation
+    /// of (`targetKind`), never by where it sits. `list` says what it is under.
     public static func from(_ row: Row) -> CallTarget? {
         guard row.kind == .space || row.kind == .session, let agentId = row.agentId, row.targetKind != "surface" else { return nil }
         let kind: Kind = switch row.targetKind {
@@ -65,10 +100,13 @@ public struct CallTarget: Equatable, Sendable {
         case .awaitingInput: .needsInput
         case .none: .idle
         }
-        // A bot's or task's own name, never the row's stand-in for none.
-        let name = row.name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let named = !name.isEmpty && !unnamed.contains(name)
-        return CallTarget(agentId: agentId, title: kind == .conversation || !named ? row.label : name, kind: kind, status: status, named: named)
+        return CallTarget(agentId: agentId, title: clean(row.label), kind: kind, status: status)
+    }
+
+    /// A label on one line, cut at `titleBytes`.
+    static func clean(_ label: String) -> String {
+        let line = label.split(whereSeparator: \.isNewline).joined(separator: " ").trimmingCharacters(in: .whitespaces)
+        return CallContext.truncated(line, bytes: titleBytes)
     }
 }
 
@@ -91,14 +129,17 @@ public struct CallMessage: Equatable, Sendable {
     /// the agent's last words while it still works.
     public var final: Bool
     public var delivery: Delivery?
+    /// The agent's run it is of (`ChatItem.turn`), for the agent's words.
+    public var turn: String?
 
-    public init(id: String, role: Role, text: String, time: Double? = nil, final: Bool = true, delivery: Delivery? = nil) {
+    public init(id: String, role: Role, text: String, time: Double? = nil, final: Bool = true, delivery: Delivery? = nil, turn: String? = nil) {
         self.id = id
         self.role = role
         self.text = text
         self.time = time
         self.final = final
         self.delivery = delivery
+        self.turn = turn
     }
 }
 
@@ -188,7 +229,7 @@ public struct CallTargetState: Equatable, Sendable {
             case .agent:
                 let text = item.text
                 guard !text.isEmpty else { continue }
-                messages.append(CallMessage(id: item.id, role: .assistant, text: text, time: item.time))
+                messages.append(CallMessage(id: item.id, role: .assistant, text: text, time: item.time, turn: item.turn))
             case .failure(let failure):
                 if let turn = item.turn { failures[turn] = failure.reason }
             case .turnEnd(let end):
@@ -201,11 +242,15 @@ public struct CallTargetState: Equatable, Sendable {
                 continue
             }
         }
-        // The agent's words are complete once it went on past them; while it
-        // works, its last words may still grow. The person's messages, or
-        // another agent's, coming in after them say nothing of that.
-        if snapshot.working, let step = snapshot.items.last(where: Self.isStep), step.role == .agent,
-           let index = messages.lastIndex(where: { $0.role == .assistant && $0.id == step.id }) {
+        // The agent's words are complete once it went on past them in their
+        // run, or the run is over. As the transcript itself has it, only the
+        // newest run while the agent works may end mid-block; in it, words
+        // with a step of that run after them (a tool call, more words, the
+        // run's end) are complete. Anything else coming after them, the
+        // person's message or another agent's, says nothing of that.
+        if snapshot.working, let live = snapshot.items.last(where: { $0.turn != nil })?.turn,
+           let last = snapshot.items.last(where: { $0.turn == live && Self.isStep($0) }), last.role == .agent,
+           let index = messages.lastIndex(where: { $0.role == .assistant && $0.id == last.id }) {
             messages[index].final = false
         }
         let finished = Set(turns.map(\.id))
@@ -223,8 +268,8 @@ public struct CallTargetState: Equatable, Sendable {
 }
 
 extension CallTargetState {
-    /// What the agent itself does in a turn: its words, a tool call, the
-    /// turn's end or failure.
+    /// What the agent itself does in a run: its words, a tool call, the
+    /// run's end or failure.
     static func isStep(_ item: ChatItem) -> Bool {
         switch item.role {
         case .agent, .tool, .turnEnd, .failure: true

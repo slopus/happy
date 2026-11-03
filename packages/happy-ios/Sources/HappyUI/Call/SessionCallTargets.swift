@@ -32,14 +32,8 @@ final class SessionCallTargets: CallTargets {
     /// Home's rows, then the spaces sidebar's, once each.
     private var allRows: [Row] { session.home.allRows + session.snapshot.allRows }
 
-    /// Every conversation the account's rows open, once each: as its bot
-    /// or task when any row says it is one, which is what the call lists.
-    var rows: [CallTarget] {
-        let all = allRows.compactMap(CallTarget.from)
-        let top = Set(all.filter(\.isTopLevel).map(\.agentId))
-        var seen = Set<String>()
-        return all.filter { ($0.isTopLevel || !top.contains($0.agentId)) && seen.insert($0.agentId).inserted }
-    }
+    /// Every conversation the rows open, in their order and nesting, once each.
+    var rows: [CallTarget] { CallTarget.list(allRows) }
 
     private func target(_ agentId: String) -> CallTarget? {
         rows.first { $0.agentId == agentId }
