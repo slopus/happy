@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="guest_more">更多</string>
+    <string name="guest_report">举报对话</string>
+    <string name="guest_leave">离开对话</string>
+    <string name="guest_join_title">加入 Happy 机器人</string>
+    <string name="guest_reconnect">重新连接</string>
+    <string name="guest_name">你的名字</string>
+    <string name="guest_join">加入</string>
+    <string name="guest_join_notice">通过此链接加入的每个人都能看到这个聊天，包括之前的消息。名字由成员自行选择，未经验证。</string>
+    <string name="guest_message_as">以 %1$s 的身份发消息</string>
+    <string name="guest_message">消息</string>
+    <string name="guest_send">发送</string>
+    <string name="guest_you">你</string>
+    <string name="guest_member">成员</string>
+    <string name="guest_status_invalid">此邀请链接无效。</string>
+    <string name="guest_status_opening">正在打开邀请…</string>
+    <string name="guest_status_open_failed">无法打开安全的访客会话。请重试。</string>
+    <string name="guest_status_enter_name">输入你的名字开始聊天。</string>
+    <string name="guest_status_name_invalid">使用 1–40 个字母或数字。允许空格以及 . \' - _</string>
+    <string name="guest_status_joining">正在加入…</string>
+    <string name="guest_status_connecting">正在连接…</string>
+    <string name="guest_status_live">访客对话 · 仅限受邀访问</string>
+    <string name="guest_status_bot_offline">机器人离线。正在重新连接…</string>
+    <string name="guest_status_read_only">只读 · 你可以查看此对话。</string>
+    <string name="guest_status_not_confirmed">消息未确认。重新连接以重试。</string>
+    <string name="guest_status_connection_lost">连接已断开。正在重新连接…</string>
+    <string name="guest_status_sending">正在发送…</string>
+    <string name="guest_status_too_long">请使用不超过 4,000 个字符。</string>
+    <string name="guest_status_limit_reached">已达到消息上限。你仍可阅读此对话。</string>
+    <string name="guest_status_rejected">消息被拒绝。编辑后重新发送（最多 4,000 个字符）。</string>
+    <string name="guest_status_report_sent">举报已发送给机器人所有者。</string>
+    <string name="guest_status_report_failed">无法发送举报。请重试。</string>
+    <string name="guest_status_invite_full">此邀请已满，没有空余名额。</string>
+    <string name="guest_status_expired">此邀请已过期。请向所有者索要新链接。</string>
+    <string name="guest_status_revoked">此邀请已不可用。</string>
+    <string name="guest_status_already_used">此邀请已在另一台设备上使用。</string>
+    <string name="guest_status_left">你已离开此对话。</string>
+    <string name="guest_status_remove_failed">访问已结束。无法删除已保存的访客会话。</string>
+</resources>

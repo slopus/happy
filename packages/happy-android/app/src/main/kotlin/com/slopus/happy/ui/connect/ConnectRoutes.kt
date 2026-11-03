@@ -1,5 +1,7 @@
 package com.slopus.happy.ui.connect
 
+import com.slopus.happy.ui.guest.GuestChatEntry
+import com.slopus.happy.ui.guest.GuestChatRoute
 import com.slopus.happy.ui.page
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -37,6 +39,7 @@ fun NavGraphBuilder.connectRoutes(graph: AppGraph, nav: NavHostController) {
         )
     }
     page<TerminalWebRoute> { TerminalWebScreen(onBack = { nav.popBackStack() }) }
+    page<GuestChatRoute> { entry -> GuestChatEntry(nav, entry.toRoute()) }
 }
 
 /**
@@ -73,6 +76,11 @@ fun DeepLinkEffect(
             connectAgent?.invoke(link.code)
             return@LaunchedEffect
         }
+        // A guest chat needs no account, and is no account's: it opens over whatever is up.
+        if (link is DeepLink.GuestInvite) {
+            nav.navigate(GuestChatRoute(link.url))
+            return@LaunchedEffect
+        }
         if (!signedIn) {
             if (link is DeepLink.Screen && link.signedOut) nav.navigate(link.route)
             return@LaunchedEffect
@@ -83,7 +91,7 @@ fun DeepLinkEffect(
             is DeepLink.Session -> onOpenSession?.invoke(link.id)
             is DeepLink.Screen -> nav.navigate(link.route)
             DeepLink.Home -> nav.popBackStack(HomeRoute, inclusive = false)
-            is DeepLink.AgentPairing, is DeepLink.Instance, is DeepLink.OnConnection -> Unit
+            is DeepLink.AgentPairing, is DeepLink.Instance, is DeepLink.OnConnection, is DeepLink.GuestInvite -> Unit
         }
     }
 }

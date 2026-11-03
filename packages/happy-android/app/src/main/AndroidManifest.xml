@@ -63,6 +63,14 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="happy" />
             </intent-filter>
+            <!-- A bot invitation (guest/GuestInvitation.kt, happy-ios docs/APP-CLIP.md): this one path, in every
+                 build; production's overlay (src/release) takes the host's other paths as well. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="app.happy.engineering" android:pathPrefix="/bot/invite/" />
+            </intent-filter>
         </activity>
         <!-- Our QR scanner (ui/connect/QrScanner.kt): a full-screen camera, started for a result. -->
         <activity

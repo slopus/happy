@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="guest_more">Més</string>
+    <string name="guest_report">Denuncia la conversa</string>
+    <string name="guest_leave">Surt de la conversa</string>
+    <string name="guest_join_title">Uneix-te a un bot de Happy</string>
+    <string name="guest_reconnect">Torna a connectar</string>
+    <string name="guest_name">El teu nom</string>
+    <string name="guest_join">Uneix-te</string>
+    <string name="guest_join_notice">Tothom qui s’uneixi amb aquest enllaç pot veure aquest xat, inclosos els missatges anteriors. Els membres trien els seus noms i no es verifiquen.</string>
+    <string name="guest_message_as">Missatge com a %1$s</string>
+    <string name="guest_message">Missatge</string>
+    <string name="guest_send">Envia</string>
+    <string name="guest_you">Tu</string>
+    <string name="guest_member">Membre</string>
+    <string name="guest_status_invalid">Aquest enllaç d’invitació no és vàlid.</string>
+    <string name="guest_status_opening">S’està obrint la invitació…</string>
+    <string name="guest_status_open_failed">No s’ha pogut obrir la sessió segura de convidat. Torna-ho a provar.</string>
+    <string name="guest_status_enter_name">Escriu el teu nom per començar a xatejar.</string>
+    <string name="guest_status_name_invalid">Fes servir d’1 a 40 lletres o números. S’admeten espais i . \' - _</string>
+    <string name="guest_status_joining">T’estàs unint…</string>
+    <string name="guest_status_connecting">S’està connectant…</string>
+    <string name="guest_status_live">Conversa de convidat · Accés només per invitació</string>
+    <string name="guest_status_bot_offline">El bot està desconnectat. S’està tornant a connectar…</string>
+    <string name="guest_status_read_only">Només lectura · Pots veure aquesta conversa.</string>
+    <string name="guest_status_not_confirmed">Missatge sense confirmar. Torna a connectar per reintentar-ho.</string>
+    <string name="guest_status_connection_lost">S’ha perdut la connexió. S’està tornant a connectar…</string>
+    <string name="guest_status_sending">S’està enviant…</string>
+    <string name="guest_status_too_long">Fes servir 4.000 caràcters o menys.</string>
+    <string name="guest_status_limit_reached">S’ha arribat al límit de missatges. Encara pots llegir aquesta conversa.</string>
+    <string name="guest_status_rejected">Missatge rebutjat. Edita’l i torna’l a enviar (màxim 4.000 caràcters).</string>
+    <string name="guest_status_report_sent">S’ha enviat la denúncia al propietari del bot.</string>
+    <string name="guest_status_report_failed">No s’ha pogut enviar la denúncia. Torna-ho a provar.</string>
+    <string name="guest_status_invite_full">Aquesta invitació és plena. No queden places lliures.</string>
+    <string name="guest_status_expired">Aquesta invitació ha caducat. Demana un enllaç nou al propietari.</string>
+    <string name="guest_status_revoked">Aquesta invitació ja no està disponible.</string>
+    <string name="guest_status_already_used">Aquesta invitació ja s’ha fet servir en un altre dispositiu.</string>
+    <string name="guest_status_left">Has sortit d’aquesta conversa.</string>
+    <string name="guest_status_remove_failed">Accés finalitzat. No s’ha pogut eliminar la sessió de convidat desada.</string>
+</resources>

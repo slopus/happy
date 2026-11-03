@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="guest_more">その他</string>
+    <string name="guest_report">会話を報告</string>
+    <string name="guest_leave">会話から退出</string>
+    <string name="guest_join_title">Happyボットに参加</string>
+    <string name="guest_reconnect">再接続</string>
+    <string name="guest_name">名前</string>
+    <string name="guest_join">参加</string>
+    <string name="guest_join_notice">このリンクから参加した人は全員、以前のメッセージも含めてこのチャットを見られます。名前はメンバーが自分で決めたもので、確認されていません。</string>
+    <string name="guest_message_as">%1$sとしてメッセージ</string>
+    <string name="guest_message">メッセージ</string>
+    <string name="guest_send">送信</string>
+    <string name="guest_you">あなた</string>
+    <string name="guest_member">メンバー</string>
+    <string name="guest_status_invalid">この招待リンクは無効です。</string>
+    <string name="guest_status_opening">招待を開いています…</string>
+    <string name="guest_status_open_failed">安全なゲストセッションを開けませんでした。もう一度お試しください。</string>
+    <string name="guest_status_enter_name">名前を入力してチャットを始めましょう。</string>
+    <string name="guest_status_name_invalid">1〜40文字の文字または数字を使ってください。スペースと . \' - _ も使えます。</string>
+    <string name="guest_status_joining">参加しています…</string>
+    <string name="guest_status_connecting">接続中…</string>
+    <string name="guest_status_live">ゲストの会話 · 招待されたユーザーのみ</string>
+    <string name="guest_status_bot_offline">ボットはオフラインです。再接続しています…</string>
+    <string name="guest_status_read_only">読み取り専用 · この会話を閲覧できます。</string>
+    <string name="guest_status_not_confirmed">メッセージが確認されていません。再接続して再試行してください。</string>
+    <string name="guest_status_connection_lost">接続が切れました。再接続しています…</string>
+    <string name="guest_status_sending">送信中…</string>
+    <string name="guest_status_too_long">4,000文字以内にしてください。</string>
+    <string name="guest_status_limit_reached">メッセージの上限に達しました。会話は引き続き読めます。</string>
+    <string name="guest_status_rejected">メッセージが拒否されました。編集して再送信してください（最大4,000文字）。</string>
+    <string name="guest_status_report_sent">ボットのオーナーに報告を送信しました。</string>
+    <string name="guest_status_report_failed">報告を送信できませんでした。もう一度お試しください。</string>
+    <string name="guest_status_invite_full">この招待は満員です。空きがありません。</string>
+    <string name="guest_status_expired">この招待は期限切れです。オーナーに新しいリンクを依頼してください。</string>
+    <string name="guest_status_revoked">この招待は利用できなくなりました。</string>
+    <string name="guest_status_already_used">この招待はすでに別のデバイスで使われています。</string>
+    <string name="guest_status_left">この会話から退出しました。</string>
+    <string name="guest_status_remove_failed">アクセスは終了しました。保存されたゲストセッションを削除できませんでした。</string>
+</resources>

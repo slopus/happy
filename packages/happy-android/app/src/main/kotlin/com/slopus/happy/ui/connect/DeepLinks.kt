@@ -3,6 +3,7 @@ package com.slopus.happy.ui.connect
 import android.content.Intent
 import com.slopus.happy.agent.HappyLink
 import com.slopus.happy.agent.HappyUrls
+import com.slopus.happy.guest.GuestInvitation
 import com.slopus.happy.push.ACTION_OPEN_PUSH
 import com.slopus.happy.push.EXTRA_PUSH_SESSION_ID
 import com.slopus.happy.ui.RestoreManualRoute
@@ -75,6 +76,15 @@ sealed interface DeepLink {
     /** [link] on [connectionId], taken by that connection's back stack once it is open (an [Instance] link's, after switching to it). */
     data class OnConnection(val connectionId: String, val link: HappyLink) : DeepLink
 
+    /**
+     * `https://app.happy.engineering/bot/invite/<token>`: someone's bot,
+     * to chat with as a guest ([com.slopus.happy.guest.GuestInvitation]).
+     * Opens signed in or out. The link is the capability, so it never prints.
+     */
+    data class GuestInvite(val url: String) : DeepLink {
+        override fun toString() = "GuestInvite(…)"
+    }
+
     /** `/`, and app paths with no screen on Android (excluded features, or none at all): Home. */
     data object Home : DeepLink
 }
@@ -92,6 +102,7 @@ sealed interface DeepLink {
  */
 fun parseDeepLink(link: String): DeepLink? {
     if (HappyCode.isAgentPairing(link)) return DeepLink.AgentPairing(link.trim())
+    GuestInvitation.parse(link)?.let { return DeepLink.GuestInvite(it.url) }
     if (HappyUrls.owns(link.trim())) {
         val url = HappyUrls.parse(link.trim()) ?: return null
         return url.instanceId?.let { DeepLink.Instance(it, url.link) }

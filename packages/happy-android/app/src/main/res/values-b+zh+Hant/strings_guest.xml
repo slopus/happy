@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="guest_more">更多</string>
+    <string name="guest_report">檢舉對話</string>
+    <string name="guest_leave">離開對話</string>
+    <string name="guest_join_title">加入 Happy 機器人</string>
+    <string name="guest_reconnect">重新連線</string>
+    <string name="guest_name">你的名字</string>
+    <string name="guest_join">加入</string>
+    <string name="guest_join_notice">透過此連結加入的每個人都能看到這個聊天，包括先前的訊息。名字由成員自行選擇，未經驗證。</string>
+    <string name="guest_message_as">以 %1$s 的身分傳訊息</string>
+    <string name="guest_message">訊息</string>
+    <string name="guest_send">傳送</string>
+    <string name="guest_you">你</string>
+    <string name="guest_member">成員</string>
+    <string name="guest_status_invalid">此邀請連結無效。</string>
+    <string name="guest_status_opening">正在開啟邀請…</string>
+    <string name="guest_status_open_failed">無法開啟安全的訪客工作階段。請再試一次。</string>
+    <string name="guest_status_enter_name">輸入你的名字開始聊天。</string>
+    <string name="guest_status_name_invalid">使用 1–40 個字母或數字。允許空格以及 . \' - _</string>
+    <string name="guest_status_joining">正在加入…</string>
+    <string name="guest_status_connecting">正在連線…</string>
+    <string name="guest_status_live">訪客對話 · 僅限受邀存取</string>
+    <string name="guest_status_bot_offline">機器人離線。正在重新連線…</string>
+    <string name="guest_status_read_only">唯讀 · 你可以查看此對話。</string>
+    <string name="guest_status_not_confirmed">訊息未確認。重新連線以重試。</string>
+    <string name="guest_status_connection_lost">連線中斷。正在重新連線…</string>
+    <string name="guest_status_sending">正在傳送…</string>
+    <string name="guest_status_too_long">請使用不超過 4,000 個字元。</string>
+    <string name="guest_status_limit_reached">已達訊息上限。你仍可閱讀此對話。</string>
+    <string name="guest_status_rejected">訊息遭拒。編輯後重新傳送（最多 4,000 個字元）。</string>
+    <string name="guest_status_report_sent">檢舉已傳送給機器人擁有者。</string>
+    <string name="guest_status_report_failed">無法傳送檢舉。請再試一次。</string>
+    <string name="guest_status_invite_full">此邀請已額滿，沒有空位。</string>
+    <string name="guest_status_expired">此邀請已過期。請向擁有者索取新連結。</string>
+    <string name="guest_status_revoked">此邀請已無法使用。</string>
+    <string name="guest_status_already_used">此邀請已在另一部裝置上使用。</string>
+    <string name="guest_status_left">你已離開此對話。</string>
+    <string name="guest_status_remove_failed">存取已結束。無法移除已儲存的訪客工作階段。</string>
+</resources>

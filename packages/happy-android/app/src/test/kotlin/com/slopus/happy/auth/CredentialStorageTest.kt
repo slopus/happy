@@ -1,5 +1,6 @@
 package com.slopus.happy.auth
 
+import com.slopus.happy.guest.KeystoreGuestStorage
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
@@ -28,7 +29,9 @@ class CredentialStorageTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
 
     /** The preference files that hold credentials, by the names the stores use. */
-    private val secretFiles = listOf(ExpoSecureStore.PREFS_NAME, AccountStore.CREDENTIALS_PREFS_NAME, AgentConnections.SECRETS_PREFS).map { "$it.xml" }
+    private val secretFiles = listOf(
+        ExpoSecureStore.PREFS_NAME, AccountStore.CREDENTIALS_PREFS_NAME, AgentConnections.SECRETS_PREFS, KeystoreGuestStorage.PREFS_NAME,
+    ).map { "$it.xml" }
 
     @Test
     fun theKeyIsAES256GCMWithoutUserAuthentication() {

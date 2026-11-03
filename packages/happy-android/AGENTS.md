@@ -316,6 +316,20 @@ win:
   best-answer one. What a result opens leaves the search for coming back;
   new work, Cancel or back, and a pull down from the results' top end it.
   The Happy CLI home has no search, as on iOS.
+- **Bot invitations** (happy-ios HappyGuest, docs/APP-CLIP.md; `guest/`,
+  `ui/guest/`): `https://app.happy.engineering/bot/invite/<token>` opens a
+  guest chat with someone's bot, signed in or out, over whatever is up. The
+  manifest's autoVerify filter takes that path alone (production's overlay
+  already takes the whole host). The guest names themselves once, joins, and
+  chats as plain text with "Message as <name>"; ⋮ reports or leaves. Its
+  transport is its own (no cookies, cache, redirects or owner credential),
+  and its sessions live in their own Keystore-sealed store
+  (`guest-sessions`, service `bot-guest`), off backups and transfers, never
+  the accounts'. Expiry, revocation, a full invite and Leave wipe that
+  invitation's session; one a day past expiry is pruned; with none left the
+  item goes. A debug build reaches a local bridge with
+  `adb shell setprop debug.happy.guest_api http://127.0.0.1:<port>`, never
+  from the link. iOS Preview's demo host isn't taken.
 - **QR codes:** every scan is classified (terminal, account, agent
   connection, or not ours) and routed. A code the screen can't use shows an
   error; nothing is silently ignored. Scanning works while signed in.

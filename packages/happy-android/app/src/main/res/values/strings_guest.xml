@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  A bot invitation's guest chat (ui/guest, guest/), in iOS's words
+  (HappyGuestUI/GuestChatViewController.swift). Translated in values-*/.
+-->
+<resources>
+    <string name="guest_title" translatable="false">Happy</string>
+    <string name="guest_more">More</string>
+    <string name="guest_report">Report conversation</string>
+    <string name="guest_leave">Leave conversation</string>
+    <string name="guest_join_title">Join a Happy bot</string>
+    <string name="guest_reconnect">Reconnect</string>
+    <string name="guest_name">Your name</string>
+    <string name="guest_join">Join</string>
+    <string name="guest_join_notice">Everyone who joins this link can see this chat, including earlier messages. Names are chosen by members and aren’t verified.</string>
+    <string name="guest_message_as">Message as %1$s</string>
+    <string name="guest_message">Message</string>
+    <string name="guest_send">Send</string>
+    <string name="guest_you">You</string>
+    <string name="guest_member">Member</string>
+    <string name="guest_status_invalid">This invitation link is invalid.</string>
+    <string name="guest_status_opening">Opening invitation…</string>
+    <string name="guest_status_open_failed">Couldn’t open the secure guest session. Try again.</string>
+    <string name="guest_status_enter_name">Enter your name to start chatting.</string>
+    <string name="guest_status_name_invalid">Use 1–40 letters or numbers. Spaces and . \' - _ are allowed.</string>
+    <string name="guest_status_joining">Joining…</string>
+    <string name="guest_status_connecting">Connecting…</string>
+    <string name="guest_status_live">Guest conversation · Invitation access only</string>
+    <string name="guest_status_bot_offline">Bot is offline. Reconnecting…</string>
+    <string name="guest_status_read_only">Read only · You can view this conversation.</string>
+    <string name="guest_status_not_confirmed">Message not confirmed. Reconnect to retry.</string>
+    <string name="guest_status_connection_lost">Connection lost. Reconnecting…</string>
+    <string name="guest_status_sending">Sending…</string>
+    <string name="guest_status_too_long">Use 4,000 characters or fewer.</string>
+    <string name="guest_status_limit_reached">Message limit reached. You can still read this conversation.</string>
+    <string name="guest_status_rejected">Message rejected. Edit it and send again (4,000 characters maximum).</string>
+    <string name="guest_status_report_sent">Report sent to the bot owner.</string>
+    <string name="guest_status_report_failed">Couldn’t send the report. Try again.</string>
+    <string name="guest_status_invite_full">This invite is full. There are no free seats.</string>
+    <string name="guest_status_expired">This invitation has expired. Ask the owner for a new link.</string>
+    <string name="guest_status_revoked">This invitation is no longer available.</string>
+    <string name="guest_status_already_used">This invitation was already used on another device.</string>
+    <string name="guest_status_left">You left this conversation.</string>
+    <string name="guest_status_remove_failed">Access ended. Couldn’t remove the saved guest session.</string>
+</resources>

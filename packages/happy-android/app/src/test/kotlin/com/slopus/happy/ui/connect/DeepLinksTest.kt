@@ -41,6 +41,20 @@ class DeepLinksTest {
         DeepLinks.pending.value?.let(DeepLinks::consume)
     }
 
+    /** happy-ios docs/APP-CLIP.md: only the exact invitation path is a guest chat; the host's other paths keep their routes. */
+    @Test
+    fun aBotInvitationOpensTheGuestChatAndNothingElseDoes() {
+        val link = "https://app.happy.engineering/bot/invite/abcdefghijklmnop_123-456"
+        assertEquals(DeepLink.GuestInvite(link), parseDeepLink(link))
+        assertEquals("GuestInvite(…)", parseDeepLink(link).toString())
+        assertEquals(DeepLink.Home, parseDeepLink("https://app.happy.engineering/bot/invite/short"))
+        assertEquals(DeepLink.Home, parseDeepLink("$link/extra"))
+        assertEquals(DeepLink.Home, parseDeepLink("$link?server=https://evil.example"))
+        assertNull(parseDeepLink("https://evil.example/bot/invite/abcdefghijklmnop"))
+        assertTrue(DeepLinks.offer(Intent(Intent.ACTION_VIEW, Uri.parse(link))))
+        assertEquals(DeepLink.GuestInvite(link), DeepLinks.pending.value)
+    }
+
     @Test
     fun theTerminalSchemeOpensTheConfirmScreen() {
         assertEquals(DeepLink.Terminal(key), parseDeepLink("happy://terminal?$key"))

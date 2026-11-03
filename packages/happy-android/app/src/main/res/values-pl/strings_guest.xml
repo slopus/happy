@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="guest_more">Więcej</string>
+    <string name="guest_report">Zgłoś rozmowę</string>
+    <string name="guest_leave">Opuść rozmowę</string>
+    <string name="guest_join_title">Dołącz do bota Happy</string>
+    <string name="guest_reconnect">Połącz ponownie</string>
+    <string name="guest_name">Twoje imię</string>
+    <string name="guest_join">Dołącz</string>
+    <string name="guest_join_notice">Każdy, kto dołączy przez ten link, widzi ten czat, także wcześniejsze wiadomości. Imiona wybierają sami uczestnicy i nie są weryfikowane.</string>
+    <string name="guest_message_as">Wiadomość jako %1$s</string>
+    <string name="guest_message">Wiadomość</string>
+    <string name="guest_send">Wyślij</string>
+    <string name="guest_you">Ty</string>
+    <string name="guest_member">Uczestnik</string>
+    <string name="guest_status_invalid">Ten link z zaproszeniem jest nieprawidłowy.</string>
+    <string name="guest_status_opening">Otwieranie zaproszenia…</string>
+    <string name="guest_status_open_failed">Nie udało się otworzyć bezpiecznej sesji gościa. Spróbuj ponownie.</string>
+    <string name="guest_status_enter_name">Wpisz swoje imię, aby zacząć rozmowę.</string>
+    <string name="guest_status_name_invalid">Użyj od 1 do 40 liter lub cyfr. Dozwolone są spacje oraz . \' - _</string>
+    <string name="guest_status_joining">Dołączanie…</string>
+    <string name="guest_status_connecting">Łączenie…</string>
+    <string name="guest_status_live">Rozmowa gościa · Dostęp tylko z zaproszenia</string>
+    <string name="guest_status_bot_offline">Bot jest offline. Ponowne łączenie…</string>
+    <string name="guest_status_read_only">Tylko do odczytu · Możesz przeglądać tę rozmowę.</string>
+    <string name="guest_status_not_confirmed">Wiadomość niepotwierdzona. Połącz ponownie, aby ponowić.</string>
+    <string name="guest_status_connection_lost">Utracono połączenie. Ponowne łączenie…</string>
+    <string name="guest_status_sending">Wysyłanie…</string>
+    <string name="guest_status_too_long">Użyj najwyżej 4000 znaków.</string>
+    <string name="guest_status_limit_reached">Osiągnięto limit wiadomości. Nadal możesz czytać tę rozmowę.</string>
+    <string name="guest_status_rejected">Wiadomość odrzucona. Popraw ją i wyślij ponownie (najwyżej 4000 znaków).</string>
+    <string name="guest_status_report_sent">Zgłoszenie wysłano właścicielowi bota.</string>
+    <string name="guest_status_report_failed">Nie udało się wysłać zgłoszenia. Spróbuj ponownie.</string>
+    <string name="guest_status_invite_full">To zaproszenie jest pełne. Brak wolnych miejsc.</string>
+    <string name="guest_status_expired">To zaproszenie wygasło. Poproś właściciela o nowy link.</string>
+    <string name="guest_status_revoked">To zaproszenie nie jest już dostępne.</string>
+    <string name="guest_status_already_used">To zaproszenie zostało już użyte na innym urządzeniu.</string>
+    <string name="guest_status_left">Opuszczono tę rozmowę.</string>
+    <string name="guest_status_remove_failed">Dostęp zakończony. Nie udało się usunąć zapisanej sesji gościa.</string>
+</resources>

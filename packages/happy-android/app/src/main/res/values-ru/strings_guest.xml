@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="guest_more">Ещё</string>
+    <string name="guest_report">Пожаловаться на чат</string>
+    <string name="guest_leave">Покинуть чат</string>
+    <string name="guest_join_title">Присоединиться к боту Happy</string>
+    <string name="guest_reconnect">Переподключиться</string>
+    <string name="guest_name">Ваше имя</string>
+    <string name="guest_join">Присоединиться</string>
+    <string name="guest_join_notice">Все, кто присоединится по этой ссылке, видят этот чат, включая прежние сообщения. Имена выбирают сами участники, и они не проверяются.</string>
+    <string name="guest_message_as">Сообщение от имени %1$s</string>
+    <string name="guest_message">Сообщение</string>
+    <string name="guest_send">Отправить</string>
+    <string name="guest_you">Вы</string>
+    <string name="guest_member">Участник</string>
+    <string name="guest_status_invalid">Эта ссылка-приглашение недействительна.</string>
+    <string name="guest_status_opening">Открываем приглашение…</string>
+    <string name="guest_status_open_failed">Не удалось открыть защищённую гостевую сессию. Попробуйте ещё раз.</string>
+    <string name="guest_status_enter_name">Введите имя, чтобы начать общение.</string>
+    <string name="guest_status_name_invalid">Используйте от 1 до 40 букв или цифр. Можно пробелы и . \' - _</string>
+    <string name="guest_status_joining">Присоединяемся…</string>
+    <string name="guest_status_connecting">Подключение…</string>
+    <string name="guest_status_live">Гостевой чат · Доступ только по приглашению</string>
+    <string name="guest_status_bot_offline">Бот не в сети. Переподключаемся…</string>
+    <string name="guest_status_read_only">Только чтение · Вы можете просматривать этот чат.</string>
+    <string name="guest_status_not_confirmed">Сообщение не подтверждено. Переподключитесь, чтобы повторить.</string>
+    <string name="guest_status_connection_lost">Соединение потеряно. Переподключаемся…</string>
+    <string name="guest_status_sending">Отправка…</string>
+    <string name="guest_status_too_long">Не больше 4000 символов.</string>
+    <string name="guest_status_limit_reached">Лимит сообщений исчерпан. Чат по-прежнему можно читать.</string>
+    <string name="guest_status_rejected">Сообщение отклонено. Измените его и отправьте снова (не больше 4000 символов).</string>
+    <string name="guest_status_report_sent">Жалоба отправлена владельцу бота.</string>
+    <string name="guest_status_report_failed">Не удалось отправить жалобу. Попробуйте ещё раз.</string>
+    <string name="guest_status_invite_full">Приглашение заполнено: свободных мест нет.</string>
+    <string name="guest_status_expired">Срок приглашения истёк. Попросите у владельца новую ссылку.</string>
+    <string name="guest_status_revoked">Это приглашение больше недоступно.</string>
+    <string name="guest_status_already_used">Это приглашение уже использовано на другом устройстве.</string>
+    <string name="guest_status_left">Вы покинули этот чат.</string>
+    <string name="guest_status_remove_failed">Доступ закрыт. Не удалось удалить сохранённую гостевую сессию.</string>
+</resources>

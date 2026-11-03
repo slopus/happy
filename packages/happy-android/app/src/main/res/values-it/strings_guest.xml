@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="guest_more">Altro</string>
+    <string name="guest_report">Segnala conversazione</string>
+    <string name="guest_leave">Esci dalla conversazione</string>
+    <string name="guest_join_title">Unisciti a un bot Happy</string>
+    <string name="guest_reconnect">Riconnetti</string>
+    <string name="guest_name">Il tuo nome</string>
+    <string name="guest_join">Unisciti</string>
+    <string name="guest_join_notice">Chiunque si unisca con questo link può vedere questa chat, compresi i messaggi precedenti. I nomi sono scelti dai membri e non sono verificati.</string>
+    <string name="guest_message_as">Messaggio come %1$s</string>
+    <string name="guest_message">Messaggio</string>
+    <string name="guest_send">Invia</string>
+    <string name="guest_you">Tu</string>
+    <string name="guest_member">Membro</string>
+    <string name="guest_status_invalid">Questo link di invito non è valido.</string>
+    <string name="guest_status_opening">Apertura dell’invito…</string>
+    <string name="guest_status_open_failed">Impossibile aprire la sessione ospite protetta. Riprova.</string>
+    <string name="guest_status_enter_name">Inserisci il tuo nome per iniziare a chattare.</string>
+    <string name="guest_status_name_invalid">Usa da 1 a 40 lettere o numeri. Sono ammessi spazi e . \' - _</string>
+    <string name="guest_status_joining">Accesso in corso…</string>
+    <string name="guest_status_connecting">Connessione…</string>
+    <string name="guest_status_live">Conversazione ospite · Accesso solo su invito</string>
+    <string name="guest_status_bot_offline">Il bot è offline. Riconnessione…</string>
+    <string name="guest_status_read_only">Sola lettura · Puoi vedere questa conversazione.</string>
+    <string name="guest_status_not_confirmed">Messaggio non confermato. Riconnetti per riprovare.</string>
+    <string name="guest_status_connection_lost">Connessione persa. Riconnessione…</string>
+    <string name="guest_status_sending">Invio…</string>
+    <string name="guest_status_too_long">Usa al massimo 4.000 caratteri.</string>
+    <string name="guest_status_limit_reached">Limite di messaggi raggiunto. Puoi ancora leggere questa conversazione.</string>
+    <string name="guest_status_rejected">Messaggio rifiutato. Modificalo e invialo di nuovo (massimo 4.000 caratteri).</string>
+    <string name="guest_status_report_sent">Segnalazione inviata al proprietario del bot.</string>
+    <string name="guest_status_report_failed">Impossibile inviare la segnalazione. Riprova.</string>
+    <string name="guest_status_invite_full">Questo invito è al completo. Non ci sono posti liberi.</string>
+    <string name="guest_status_expired">Questo invito è scaduto. Chiedi un nuovo link al proprietario.</string>
+    <string name="guest_status_revoked">Questo invito non è più disponibile.</string>
+    <string name="guest_status_already_used">Questo invito è già stato usato su un altro dispositivo.</string>
+    <string name="guest_status_left">Sei uscito da questa conversazione.</string>
+    <string name="guest_status_remove_failed">Accesso terminato. Impossibile rimuovere la sessione ospite salvata.</string>
+</resources>
