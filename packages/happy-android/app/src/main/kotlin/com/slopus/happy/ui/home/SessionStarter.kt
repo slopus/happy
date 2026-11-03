@@ -64,9 +64,9 @@ enum class StartRefusal(val message: String, @StringRes val text: Int) {
     ),
     HappyAgentMissing("Happy Agent is not running on this computer", R.string.home_start_happy_agent_missing),
     HappyCliMissing("Happy CLI is not available on your computer. Run `happy daemon start` on your computer, then try again.", R.string.home_start_happy_cli_missing),
-    HappyAgentOffline("Machine is offline", R.string.home_start_machine_offline),
+    HappyAgentOffline("Machine is offline", R.string.new_session_machine_offline),
     HappyCliOffline("Happy CLI is offline on your computer. Run `happy daemon start` on your computer, then try again.", R.string.home_start_happy_cli_offline),
-    CannotStartHappyAgent("This machine cannot start Happy agent sessions", R.string.home_start_cannot_start_happy_agent),
+    CannotStartHappyAgent("This machine cannot start Happy Agent sessions", R.string.home_start_cannot_start_happy_agent),
     ProjectNeedsHappyAgent(
         "Only Happy Agent knows where this project is, so no other harness can open it. Switch the harness back to Happy Agent, or pick the project’s folder.",
         R.string.home_start_project_needs_happy_agent,

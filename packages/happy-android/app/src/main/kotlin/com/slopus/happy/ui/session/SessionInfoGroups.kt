@@ -89,12 +89,12 @@ internal fun ActivityGroup(session: Session, zone: ZoneId) {
 @Composable
 internal fun RawJsonGroup(session: Session, agentState: JsonObject?, composer: ComposerMirror) {
     val metadata = session.metadata
-    ItemGroup(title = stringResource(R.string.home_info_raw_json), modifier = Modifier.testTag(SessionInfoTags.RAW_JSON)) {
+    ItemGroup(title = stringResource(R.string.tools_full_view_raw_json_dev_mode), modifier = Modifier.testTag(SessionInfoTags.RAW_JSON)) {
         agentState?.let {
-            RawJson(stringResource(R.string.home_info_raw_agent_state), Ionicon.CodeWorkingOutline, SessionInfoSpec.orange, it)
+            RawJson(stringResource(R.string.session_info_agent_state), Ionicon.CodeWorkingOutline, SessionInfoSpec.orange, it)
         }
         metadata?.let {
-            RawJson(stringResource(R.string.home_info_raw_metadata), Ionicon.InformationCircleOutline, SessionInfoSpec.purple, it.raw)
+            RawJson(stringResource(R.string.session_info_metadata), Ionicon.InformationCircleOutline, SessionInfoSpec.purple, it.raw)
         }
         RawJson(
             stringResource(R.string.home_info_raw_status),

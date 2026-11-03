@@ -5,20 +5,13 @@
 -->
 <resources>
     <string name="agent_home_working">Al lavoro…</string>
-    <string name="agent_home_show_subtasks">Mostra sottoattività</string>
-    <string name="agent_home_hide_subtasks">Nascondi sottoattività</string>
-    <string name="agent_home_connecting">Connessione a %1$s…</string>
     <string name="agent_home_empty_title">Ancora nessuna conversazione</string>
     <string name="agent_home_empty_body">Avvia una chat con questo agente e comparirà qui.</string>
     <string name="agent_home_offline_title">Impossibile raggiungere %1$s</string>
     <string name="agent_home_offline_body">Verifica che l\'agente sia in esecuzione e online. Happy si riconnette da solo.</string>
     <string name="agent_home_revoked">Questo telefono è stato rimosso in Happy Agent. Ricollega l\'agente per usarlo.</string>
     <string name="agent_home_update_required">Questo agente richiede una versione più recente di Happy. Aggiorna l\'app per usarlo.</string>
-    <string name="agent_home_status_offline">offline</string>
-    <string name="agent_home_status_revoked">rimosso</string>
-    <string name="agent_home_status_update">aggiornamento necessario</string>
     <string name="agent_artifacts_untitled">Senza titolo</string>
-    <string name="agent_artifacts_empty">Ancora nessun artefatto.</string>
     <string name="agent_artifacts_failed">Impossibile leggere gli artefatti</string>
     <string name="agent_surface_add_todo">Aggiungi attività</string>
     <string name="agent_surface_no_todos">Ancora niente qui.</string>

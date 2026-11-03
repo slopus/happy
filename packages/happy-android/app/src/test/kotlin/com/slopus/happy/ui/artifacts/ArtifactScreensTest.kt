@@ -159,7 +159,7 @@ class ArtifactScreensTest {
         rule.mainClock.advanceTimeBy(1_000)
         shot("artifacts-loading")
         state = ArtifactListState(emptyList(), null, loaded = true)
-        rule.onNodeWithText("No artifacts yet.").assertExists()
+        rule.onNodeWithText("No artifacts yet").assertExists()
         shot("artifacts-empty")
         state = ArtifactListState(emptyList(), null, failed = true, loaded = true, reason = Problem.Said("Could not reach the agent."))
         rule.onNodeWithText("Could not reach the agent.").assertExists()

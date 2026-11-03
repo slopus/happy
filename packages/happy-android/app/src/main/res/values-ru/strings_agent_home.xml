@@ -5,20 +5,13 @@
 -->
 <resources>
     <string name="agent_home_working">Работает…</string>
-    <string name="agent_home_show_subtasks">Показать подзадачи</string>
-    <string name="agent_home_hide_subtasks">Скрыть подзадачи</string>
-    <string name="agent_home_connecting">Подключение к %1$s…</string>
     <string name="agent_home_empty_title">Пока нет разговоров</string>
     <string name="agent_home_empty_body">Начните чат с этим агентом, и он появится здесь.</string>
     <string name="agent_home_offline_title">Не удаётся связаться с %1$s</string>
     <string name="agent_home_offline_body">Проверьте, что агент запущен и в сети. Happy переподключится сам.</string>
     <string name="agent_home_revoked">Этот телефон удалён в Happy Agent. Подключите агента снова, чтобы им пользоваться.</string>
     <string name="agent_home_update_required">Этому агенту нужна более новая версия Happy. Обновите приложение, чтобы им пользоваться.</string>
-    <string name="agent_home_status_offline">не в сети</string>
-    <string name="agent_home_status_revoked">удалён</string>
-    <string name="agent_home_status_update">требуется обновление</string>
     <string name="agent_artifacts_untitled">Без названия</string>
-    <string name="agent_artifacts_empty">Пока нет артефактов.</string>
     <string name="agent_artifacts_failed">Не удалось прочитать артефакты</string>
     <string name="agent_surface_add_todo">Добавить задачу</string>
     <string name="agent_surface_no_todos">Здесь пока ничего нет.</string>

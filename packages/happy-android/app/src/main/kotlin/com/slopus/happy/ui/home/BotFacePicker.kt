@@ -218,7 +218,7 @@ fun BotKindHeader(creatingBot: Boolean, onChange: (Boolean) -> Unit, modifier: M
                 .semantics { contentDescription = what }
                 .padding(BotFaceSpec.segmentPadding),
         ) {
-            listOf(false to R.string.home_dock_kind_session, true to R.string.home_dock_kind_bot).forEach { (bot, label) ->
+            listOf(false to R.string.home_dock_kind_session, true to R.string.new_work_bot).forEach { (bot, label) ->
                 val selected = bot == creatingBot
                 Box(
                     modifier = Modifier

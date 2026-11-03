@@ -36,12 +36,8 @@
     <string name="home_info_running">実行中 %1$s</string>
     <string name="home_info_tasks">タスク</string>
     <string name="home_info_tasks_detail">進行中 %1$s · 保留中 %2$s</string>
-    <string name="home_info_raw_json">生の JSON（開発者モード）</string>
-    <string name="home_info_raw_agent_state">エージェントの状態</string>
-    <string name="home_info_raw_metadata">メタデータ</string>
     <string name="home_info_raw_status">セッションの状態</string>
     <string name="home_info_raw_session">セッションオブジェクト全体</string>
-    <string name="home_dock_placeholder">計画、質問、構築…</string>
     <string name="home_dock_ask">%1$s に聞く</string>
     <string name="home_dock_send">送信</string>
     <string name="home_dock_add_image">画像を追加</string>
@@ -74,7 +70,6 @@
     <string name="home_create_directory_title">ディレクトリを作成しますか？</string>
     <string name="home_create_directory_message">ディレクトリ「%1$s」は存在しません。作成しますか？</string>
     <string name="home_dock_kind_session">セッション</string>
-    <string name="home_dock_kind_bot">ボット</string>
     <string name="home_dock_bot_kind">作成するもの</string>
     <string name="home_dock_bot_lede">ボットは、リリースや競合分析などの定期的な作業や、複数のプロジェクトと Worktree にまたがる大きな機能の担当に最適な仮想の同僚です</string>
     <string name="home_dock_bot_name_placeholder">ボットに名前を付ける</string>
@@ -95,7 +90,6 @@
     <string name="home_start_unknown_machine">このセッションのコンピューターはこのアカウントに登録されていないため、セッションを開始できません。Happy がそこで実行中で、このアカウントにサインインしていることを確認してください。</string>
     <string name="home_start_happy_agent_missing">このコンピューターで Happy Agent が実行されていません</string>
     <string name="home_start_happy_cli_missing">コンピューターで Happy CLI を利用できません。コンピューターで `happy daemon start` を実行してから、もう一度お試しください。</string>
-    <string name="home_start_machine_offline">マシンはオフラインです</string>
     <string name="home_start_happy_cli_offline">コンピューターの Happy CLI はオフラインです。コンピューターで `happy daemon start` を実行してから、もう一度お試しください。</string>
     <string name="home_start_cannot_start_happy_agent">このマシンでは Happy Agent のセッションを開始できません</string>
     <string name="home_start_project_needs_happy_agent">このプロジェクトの場所を知っているのは Happy Agent だけなので、ほかのハーネスでは開けません。ハーネスを Happy Agent に戻すか、プロジェクトのフォルダを選んでください。</string>

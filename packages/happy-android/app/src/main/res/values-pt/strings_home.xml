@@ -36,12 +36,8 @@
     <string name="home_info_running">%1$s em execução</string>
     <string name="home_info_tasks">Tarefas</string>
     <string name="home_info_tasks_detail">%1$s em andamento · %2$s pendentes</string>
-    <string name="home_info_raw_json">JSON bruto (modo desenvolvedor)</string>
-    <string name="home_info_raw_agent_state">Estado do agente</string>
-    <string name="home_info_raw_metadata">Metadados</string>
     <string name="home_info_raw_status">Status da sessão</string>
     <string name="home_info_raw_session">Objeto de sessão completo</string>
-    <string name="home_dock_placeholder">Planeje, pergunte, construa…</string>
     <string name="home_dock_ask">Perguntar a %1$s</string>
     <string name="home_dock_send">Enviar</string>
     <string name="home_dock_add_image">Adicionar imagem</string>
@@ -74,7 +70,6 @@
     <string name="home_create_directory_title">Criar diretório?</string>
     <string name="home_create_directory_message">O diretório “%1$s” não existe. Deseja criá-lo?</string>
     <string name="home_dock_kind_session">Sessão</string>
-    <string name="home_dock_kind_bot">Bot</string>
     <string name="home_dock_bot_kind">O que criar</string>
     <string name="home_dock_bot_lede">Bots são colegas virtuais ótimos para trabalho recorrente, como lançamentos, análise da concorrência ou cuidar de um grande recurso em vários projetos e worktrees</string>
     <string name="home_dock_bot_name_placeholder">Dê um nome ao seu bot</string>
@@ -95,7 +90,6 @@
     <string name="home_start_unknown_machine">O computador desta sessão não está registrado nesta conta, então não é possível iniciar uma sessão nele. Verifique se o Happy está em execução lá e conectado a esta conta.</string>
     <string name="home_start_happy_agent_missing">O Happy Agent não está em execução neste computador</string>
     <string name="home_start_happy_cli_missing">O Happy CLI não está disponível no seu computador. Execute `happy daemon start` no computador e tente de novo.</string>
-    <string name="home_start_machine_offline">A máquina está offline</string>
     <string name="home_start_happy_cli_offline">O Happy CLI está offline no seu computador. Execute `happy daemon start` no computador e tente de novo.</string>
     <string name="home_start_cannot_start_happy_agent">Esta máquina não pode iniciar sessões do Happy Agent</string>
     <string name="home_start_project_needs_happy_agent">Só o Happy Agent sabe onde está este projeto, então nenhum outro ambiente pode abri-lo. Volte o ambiente para o Happy Agent ou escolha a pasta do projeto.</string>

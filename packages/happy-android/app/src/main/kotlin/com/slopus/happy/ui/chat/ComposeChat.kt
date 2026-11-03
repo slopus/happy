@@ -408,7 +408,7 @@ fun ComposeTarget(compose: ComposeChat, onReturn: () -> Unit = {}) {
     }
     val kindLabels = listOf(
         stringResource(R.string.home_dock_kind_session),
-        stringResource(R.string.home_dock_kind_bot),
+        stringResource(R.string.new_work_bot),
         stringResource(R.string.new_work_task),
     )
     val kindLabel = stringResource(R.string.home_dock_bot_kind)

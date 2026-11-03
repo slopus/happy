@@ -5,20 +5,13 @@
 -->
 <resources>
     <string name="agent_home_working">作業中…</string>
-    <string name="agent_home_show_subtasks">サブタスクを表示</string>
-    <string name="agent_home_hide_subtasks">サブタスクを隠す</string>
-    <string name="agent_home_connecting">%1$s に接続中…</string>
     <string name="agent_home_empty_title">まだ会話はありません</string>
     <string name="agent_home_empty_body">このエージェントとチャットを始めると、ここに表示されます。</string>
     <string name="agent_home_offline_title">%1$s に接続できません</string>
     <string name="agent_home_offline_body">エージェントが起動していてオンラインか確認してください。Happy は自動で再接続します。</string>
     <string name="agent_home_revoked">このスマートフォンは Happy Agent で削除されました。使うにはエージェントをもう一度接続してください。</string>
     <string name="agent_home_update_required">このエージェントには新しいバージョンの Happy が必要です。使うにはアプリを更新してください。</string>
-    <string name="agent_home_status_offline">オフライン</string>
-    <string name="agent_home_status_revoked">削除済み</string>
-    <string name="agent_home_status_update">要アップデート</string>
     <string name="agent_artifacts_untitled">無題</string>
-    <string name="agent_artifacts_empty">アーティファクトはまだありません。</string>
     <string name="agent_artifacts_failed">アーティファクトを読み込めませんでした</string>
     <string name="agent_surface_add_todo">ToDo を追加</string>
     <string name="agent_surface_no_todos">まだ何もありません。</string>

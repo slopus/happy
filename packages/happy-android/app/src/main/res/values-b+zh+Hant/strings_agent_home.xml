@@ -5,20 +5,13 @@
 -->
 <resources>
     <string name="agent_home_working">工作中…</string>
-    <string name="agent_home_show_subtasks">顯示子任務</string>
-    <string name="agent_home_hide_subtasks">隱藏子任務</string>
-    <string name="agent_home_connecting">正在連線到 %1$s…</string>
     <string name="agent_home_empty_title">還沒有對話</string>
     <string name="agent_home_empty_body">與此代理程式開始聊天，對話會顯示在這裡。</string>
     <string name="agent_home_offline_title">無法連線到 %1$s</string>
     <string name="agent_home_offline_body">請確認代理程式正在執行且在線上。Happy 會自動重新連線。</string>
     <string name="agent_home_revoked">此手機已在 Happy Agent 中移除。請重新連線代理程式後再使用。</string>
     <string name="agent_home_update_required">此代理程式需要較新版本的 Happy。請更新 App 後再使用。</string>
-    <string name="agent_home_status_offline">離線</string>
-    <string name="agent_home_status_revoked">已移除</string>
-    <string name="agent_home_status_update">需要更新</string>
     <string name="agent_artifacts_untitled">無標題</string>
-    <string name="agent_artifacts_empty">還沒有工件。</string>
     <string name="agent_artifacts_failed">無法讀取工件</string>
     <string name="agent_surface_add_todo">新增待辦</string>
     <string name="agent_surface_no_todos">這裡還沒有內容。</string>

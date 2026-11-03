@@ -36,12 +36,8 @@
     <string name="home_info_running">%1$s работают</string>
     <string name="home_info_tasks">Задачи</string>
     <string name="home_info_tasks_detail">%1$s в работе · %2$s ожидают</string>
-    <string name="home_info_raw_json">Сырой JSON (режим разработчика)</string>
-    <string name="home_info_raw_agent_state">Состояние агента</string>
-    <string name="home_info_raw_metadata">Метаданные</string>
     <string name="home_info_raw_status">Статус сессии</string>
     <string name="home_info_raw_session">Полный объект сессии</string>
-    <string name="home_dock_placeholder">Планируйте, спрашивайте, создавайте…</string>
     <string name="home_dock_ask">Спросить %1$s</string>
     <string name="home_dock_send">Отправить</string>
     <string name="home_dock_add_image">Добавить изображение</string>
@@ -74,7 +70,6 @@
     <string name="home_create_directory_title">Создать папку?</string>
     <string name="home_create_directory_message">Папки «%1$s» не существует. Создать её?</string>
     <string name="home_dock_kind_session">Сессия</string>
-    <string name="home_dock_kind_bot">Бот</string>
     <string name="home_dock_bot_kind">Что создать</string>
     <string name="home_dock_bot_lede">Боты — виртуальные коллеги, отлично подходящие для повторяющейся работы вроде релизов, анализа конкурентов или ведения большой функции в нескольких проектах и worktree</string>
     <string name="home_dock_bot_name_placeholder">Назовите бота</string>
@@ -95,7 +90,6 @@
     <string name="home_start_unknown_machine">Компьютер этой сессии не зарегистрирован в этом аккаунте, поэтому на нём нельзя запустить сессию. Проверьте, что Happy там запущен и вошёл в этот аккаунт.</string>
     <string name="home_start_happy_agent_missing">Happy Agent не запущен на этом компьютере</string>
     <string name="home_start_happy_cli_missing">Happy CLI недоступен на вашем компьютере. Выполните `happy daemon start` на компьютере и попробуйте снова.</string>
-    <string name="home_start_machine_offline">Машина не в сети</string>
     <string name="home_start_happy_cli_offline">Happy CLI на вашем компьютере не в сети. Выполните `happy daemon start` на компьютере и попробуйте снова.</string>
     <string name="home_start_cannot_start_happy_agent">Эта машина не может запускать сессии Happy Agent</string>
     <string name="home_start_project_needs_happy_agent">Только Happy Agent знает, где этот проект, поэтому другая среда не может его открыть. Переключите среду обратно на Happy Agent или выберите папку проекта.</string>
