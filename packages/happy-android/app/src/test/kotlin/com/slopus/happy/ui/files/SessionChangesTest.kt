@@ -232,9 +232,11 @@ class SessionChangesTest {
         )
         assertNull(cache.file("s", "/repo/a.kt")?.diff)
 
-        // A failure shows over the copy and leaves the cache alone.
+        // A failure (offline) leaves the kept copy up under its alert, and the cache alone (iOS b6982bd92).
         read = ReadFileResult(false, error = "gone")
-        assertEquals(FileLoad.Failed(Words.Said("gone")), ops.fileLoads(cache, "s", "/repo/a.kt", "/repo", "a.kt").toList().last())
+        assertEquals(FileLoad.Loaded("c\n", null, stale = Words.Said("gone")), ops.fileLoads(cache, "s", "/repo/a.kt", "/repo", "a.kt").toList().last())
+        // With nothing kept, it is the failure.
+        assertEquals(FileLoad.Failed(Words.Said("gone")), ops.fileLoads(cache, "s", "/repo/b.kt", "/repo", "b.kt").toList().last())
         assertEquals("c\n", cache.file("s", "/repo/a.kt")?.content)
         // Binary by extension caches as binary; a deleted session's files go.
         assertEquals(listOf(FileLoad.Binary), ops.fileLoads(cache, "s", "/repo/logo.png", "/repo", "logo.png").toList())

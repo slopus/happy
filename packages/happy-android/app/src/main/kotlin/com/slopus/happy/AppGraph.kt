@@ -41,6 +41,7 @@ import com.slopus.happy.connection.ServerAuthClient
 import com.slopus.happy.connection.ServerSignInFlow
 import com.slopus.happy.connection.TailcatTransport
 import com.slopus.happy.sync.AccountSync
+import com.slopus.happy.sync.SessionFileCache
 import com.slopus.happy.ui.changelog.ChangelogReadMarker
 import com.slopus.happy.ui.home.HomeServices
 import com.slopus.happy.ui.home.NewSessionDraftStore
@@ -152,7 +153,7 @@ class AppGraph(
 
     /**
      * Sign-outs the process didn't live to finish ([AccountRemovals]): the
-     * account's credentials and database go now, before anything reads
+     * account's credentials, database and kept file reads go now, before anything reads
      * them, and with the last account this phone's preferences too. True
      * when that took the last account.
      */
@@ -161,7 +162,10 @@ class AppGraph(
         if (pending.isEmpty()) return false
         for (id in pending) {
             accountStore.remove(id)
-            if (onDisk) appContext.deleteDatabase("account-$id.db")
+            if (onDisk) {
+                appContext.deleteDatabase("account-$id.db")
+                SessionFileCache.directory(appContext.noBackupFilesDir, id).deleteRecursively()
+            }
             removals.finish(id)
         }
         if (accountStore.registry.value.entries.isNotEmpty()) return false
@@ -567,12 +571,14 @@ class AppGraph(
 
     private val removalJobs = CopyOnWriteArrayList<Job>()
 
-    /** What is slow in a sign-out, once the store has moved off [database]: the file, its kept media, the caches with the last account. */
+    /** What is slow in a sign-out, once the store has moved off [database]: the file, its kept media and file reads, the caches with the last account. */
     private fun forget(id: String, publicId: String?, database: HappyDatabase?, wipeCaches: Boolean) {
         val job = scope.launch(Dispatchers.IO) {
             database?.let(store::retire)
             if (!inMemoryDatabases) appContext.deleteDatabase("account-$id.db")
             legacyMediaDirectory(publicId)?.deleteRecursively()
+            // The file viewer's kept reads go with the account (its cache closed with its sync).
+            SessionFileCache.directory(appContext.noBackupFilesDir, id).deleteRecursively()
             if (wipeCaches) LocalCaches.wipe(appContext)
             removals.finish(id)
         }
@@ -599,7 +605,10 @@ class AppGraph(
         stopAccount()
         store.use(database((state as? AuthState.SignedIn)?.let { accountId(it.credentials) }))
         if (state !is AuthState.SignedIn) return
+        val fileCache = accountId(state.credentials)?.let { SessionFileCache.directory(appContext.noBackupFilesDir, it) }
+        fileCache?.let { withContext(Dispatchers.IO) { it.mkdirs() } }
         val account = AccountSync(
+            fileCacheDirectory = fileCache,
             http = http,
             okHttp = okHttp,
             serverUrl = { serverUrl },

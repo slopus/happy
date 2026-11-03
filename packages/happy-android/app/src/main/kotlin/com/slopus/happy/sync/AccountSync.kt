@@ -54,6 +54,8 @@ class AccountSync(
     clock: () -> Long = System::currentTimeMillis,
     private val io: CoroutineDispatcher = Dispatchers.IO,
     reconnectDelayMs: (Int) -> Long = { socketIoBackoff(it) },
+    /** Where the file viewer keeps its reads across launches (made ready by the caller); null keeps them in memory only. */
+    fileCacheDirectory: java.io.File? = null,
 ) {
     private val job = SupervisorJob(parent)
     private val scope = CoroutineScope(job + io)
@@ -80,8 +82,8 @@ class AccountSync(
         auth = ::handshake,
     )
 
-    /** The file viewer's and changes screen's last reads, shown while they fetch again. */
-    val fileCache = SessionFileCache()
+    /** The file viewer's and changes screen's last reads, shown while they fetch again; the viewer's kept on disk too. */
+    val fileCache = SessionFileCache(fileCacheDirectory)
 
     val live = LiveUpdates(store, decoder, presence, messages, requestSync = deltaSync::invalidate, onSessionDeleted = fileCache::forgetSession)
 
@@ -189,6 +191,8 @@ class AccountSync(
     suspend fun stop() {
         socket.disconnect()
         job.cancelAndJoin()
+        // Once closed nothing more is written, so a sign-out can remove the directory.
+        fileCache.close()
     }
 
     private val viewingRefreshes = MutableSharedFlow<Set<String>>(extraBufferCapacity = 8, onBufferOverflow = BufferOverflow.DROP_OLDEST)

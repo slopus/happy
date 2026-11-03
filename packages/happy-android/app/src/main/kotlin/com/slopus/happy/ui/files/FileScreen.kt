@@ -95,7 +95,8 @@ sealed interface FileLoad {
     data object Loading : FileLoad
     data class Failed(val message: Words) : FileLoad
     data object Binary : FileLoad
-    data class Loaded(val content: String, val diff: String?) : FileLoad
+    /** [stale]: the copy kept from an earlier read, shown because this one failed (offline), and why. */
+    data class Loaded(val content: String, val diff: String?, val stale: Words? = null) : FileLoad
 
     /** A picture's bytes and its size in pixels (desktop's FilePreview shows it rather than calling it binary). */
     class Picture(val bytes: ByteArray, val width: Int, val height: Int) : FileLoad
@@ -198,12 +199,15 @@ suspend fun SessionFileOps.loadFile(sessionId: String, filePath: String, session
 
 /**
  * file.tsx over storage.ts `sessionFileCache`: the cached copy at once, with
- * no spinner, then the fetch, which replaces it and is cached in turn. A
- * fetch that finds no diff leaves the cached one up (file.tsx only sets its
- * diff when one comes back); a failure replaces the copy and caches nothing.
+ * no spinner (from memory, else from the account's disk, read off the main
+ * thread), then the fetch, which replaces it and is cached in turn. A fetch
+ * that finds no diff leaves the cached one up (file.tsx only sets its diff
+ * when one comes back). A failure caches nothing; with a text copy kept it
+ * leaves that copy up under its alert (iOS b6982bd92, offline), else it
+ * replaces it.
  */
 fun SessionFileOps.fileLoads(cache: SessionFileCache?, sessionId: String, filePath: String, sessionPath: String?, gitDiffPath: String?): Flow<FileLoad> = flow {
-    val cached = cache?.file(sessionId, filePath)
+    val cached = cache?.file(sessionId, filePath) ?: cache?.snapshot(sessionId, filePath)
     if (cached != null) emit(if (cached.isBinary) FileLoad.Binary else FileLoad.Loaded(cached.content.orEmpty(), cached.diff))
     when (val fresh = loadFile(sessionId, filePath, sessionPath, gitDiffPath)) {
         FileLoad.Binary -> {
@@ -214,6 +218,7 @@ fun SessionFileOps.fileLoads(cache: SessionFileCache?, sessionId: String, filePa
             cache?.putFile(sessionId, filePath, fresh.content, fresh.diff, false)
             emit(fresh.copy(diff = fresh.diff ?: cached?.diff))
         }
+        is FileLoad.Failed -> emit(if (cached != null && !cached.isBinary) FileLoad.Loaded(cached.content.orEmpty(), cached.diff, stale = fresh.message) else fresh)
         else -> emit(fresh)
     }
 }
@@ -318,6 +323,13 @@ private enum class Mode { Diff, Rendered, File }
 @Composable
 private fun LoadedFile(load: FileLoad.Loaded, filePath: String, line: Int?, column: Int?) {
     val colors = HappyTheme.colors
+    var staleShown by remember(load) { mutableStateOf(load.stale != null) }
+    if (staleShown && load.stale != null) {
+        HappyAlert(
+            Alert(stringResource(R.string.common_error), wordsResource(load.stale), listOf(AlertButton(stringResource(R.string.common_ok)))),
+            onDismiss = { staleShown = false },
+        )
+    }
     val border = glassBorder(colors.dark)
     val requested = line?.takeIf { it > 0 }
     val markdown = isMarkdownPath(filePath) && load.content.isNotEmpty()

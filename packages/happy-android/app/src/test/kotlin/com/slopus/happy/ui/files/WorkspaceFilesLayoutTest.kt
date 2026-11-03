@@ -119,7 +119,8 @@ class WorkspaceFilesLayoutTest {
         show { FileScreen(FileLoad.Loaded("# Title\n\nSome **bold** text.", null), "docs/README.md", onBack = {}) }
         rule.node(FileTags.RENDERED_TAB).assertIsSelected()
         rule.node(FileTags.RENDERED).assertExists()
-        rule.onNodeWithText("Title", useUnmergedTree = true).assertExists()
+        // Parsed off the main thread; idle doesn't wait for it.
+        rule.waitUntil(5_000) { rule.onAllNodesWithText("Title", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithText("Source", useUnmergedTree = true).performClick()
         rule.waitForIdle()
         rule.node(FileTags.CODE).assertExists()
