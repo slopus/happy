@@ -233,8 +233,9 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                 catalog.surfaces.values
                     .filter { it.string("status") != "archived" && it["archivedAt"].isNullish() }
                     .mapNotNull { surface ->
+                        // A computer with no Happy account has one person, with no ID on either side (iOS SidebarRows).
                         val member = (surface["members"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>()
-                            .firstOrNull { catalog.userId != null && it.string("userId") == catalog.userId } ?: return@mapNotNull null
+                            .firstOrNull { it.string("userId") == catalog.userId } ?: return@mapNotNull null
                         surface to member.string("orderKey").orEmpty()
                     }
                     .sortedWith(compareBy({ it.second }, { it.first.string("id") }))

@@ -1,5 +1,7 @@
 package com.slopus.happy.agent
 
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -321,6 +323,22 @@ class AgentFeedTest {
             rows.map { it.key },
         )
         assertEquals(AgentFeedRow.Surface("s3", "Week", "calendar"), rows[3])
+    }
+
+    @Test
+    fun aComputerWithNoAccountListsItsOnePersonsSurfaces() {
+        fun local(id: String, name: String, orderKey: String) = buildJsonObject {
+            put("id", id); put("name", name); put("type", "todo"); put("status", "active"); put("archivedAt", JsonNull)
+            put("members", JsonArray(listOf(buildJsonObject { put("userId", JsonNull); put("orderKey", orderKey) })))
+        }
+        val bootstrap = JsonObject(
+            Wire.bootstrap(surfaces = listOf(local("s1", "Groceries", "2"), local("s2", "Launch", "1"))) +
+                ("profile" to buildJsonObject { put("userId", JsonNull) }),
+        )
+        assertEquals(
+            listOf("section-places", "artifacts", "surface-s2", "surface-s1"),
+            AgentFeed.derive(catalog(bootstrap)).rows.map { it.key },
+        )
     }
 
     @Test
