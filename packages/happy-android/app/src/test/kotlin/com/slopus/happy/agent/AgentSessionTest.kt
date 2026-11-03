@@ -527,18 +527,119 @@ class AgentSessionTest {
     }
 
     @Test
-    fun aRefusalWithNoWordsIsEmptyAndGoneAlreadyCountsAsLeft(): Unit = runBlocking {
+    fun aLeaveTheAgentCantTakeYetStaysAndGoneAlreadyCountsAsLeft(): Unit = runBlocking {
         val gate = CompletableDeferred<Unit>().apply { complete(Unit) }
         val failing = leavingSession(gate, 500)
         eventually({ surfaces(failing) }) { it == listOf("s1", "s2") }
-        assertEquals("", failing.leaveSurface("s2"))
-        eventually({ surfaces(failing) }) { it == listOf("s1", "s2") }
+        // Not a no: kept and tried again (iOS IntentOutbox), the row gone meanwhile.
+        assertNull(failing.leaveSurface("s2"))
+        eventually({ surfaces(failing) }) { it == listOf("s1") }
+        assertEquals(listOf("s2"), failing.intents.pending.value.map { it.target })
         failing.close()
+        agent.calls.clear()
 
+        // Kept through the relaunch, it goes as the link is back; gone already (404) is left.
+        agent.frames = Channel(Channel.UNLIMITED)
         val gone = leavingSession(gate, 404, "Not found.")
-        eventually({ surfaces(gone) }) { it == listOf("s1", "s2") }
-        assertNull(gone.leaveSurface("s2"))
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ agent.calls }) { "POST /v0/surfaces/s2/leave" in it }
+        eventually({ gone.intents.pending.value }) { it.isEmpty() }
         eventually({ surfaces(gone) }) { it == listOf("s1") }
+    }
+
+    /**
+     * iOS 36e59d9f6's intents: a chat read here has no dot at once, and the
+     * read is kept through a relaunch until the computer has it.
+     */
+    @Test
+    fun aReadIsKeptUntilTheComputerHasItAndItsDotGoesAtOnce(): Unit = runBlocking {
+        agent.bootstrap = Wire.bootstrap(bots = listOf(Wire.bot("b1", "Happy", Wire.agent("ab1", unread = true))))
+        val reads = java.util.concurrent.atomic.AtomicInteger()
+        val answering = java.util.concurrent.atomic.AtomicBoolean(false)
+        val transport = { _: AgentConnectionCredentials ->
+            object : Transport by agent {
+                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
+                    if (path != "/v0/agents/ab1/read") return agent.request(method, path, credential, body, headers)
+                    reads.incrementAndGet()
+                    return if (answering.get()) TransportResponse(200, body = "{}".toByteArray()) else TransportResponse(503, body = "{\"code\":\"busy\"}".toByteArray())
+                }
+            }
+        }
+        val first = sessions(transport = transport).session(id)!!
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ first.feed.value.conversations.firstOrNull { it.agentId == "ab1" }?.unread }) { it == true }
+        first.markRead("ab1")
+        eventually({ first.feed.value.conversations.first { it.agentId == "ab1" }.unread }) { !it }
+        eventually({ reads.get() }) { it >= 1 }
+        first.close()
+
+        // A relaunch: the computer still says unread, the kept read still clears it, and goes once it can.
+        answering.set(true)
+        agent.frames = Channel(Channel.UNLIMITED)
+        val second = sessions(transport = transport).session(id)!!
+        eventually({ second.intents.pending.value.map { it.kind } }) { it == listOf(Intent.READ) }
+        assertEquals(false, second.feed.value.conversations.firstOrNull { it.agentId == "ab1" }?.unread ?: false)
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ second.intents.pending.value }) { it.isEmpty() }
+        assertTrue(reads.get() >= 2)
+    }
+
+    @Test
+    fun aTakenLeaveAndRenameShowAtOnceAndTheLeftTaskStaysGone(): Unit = runBlocking {
+        agent.bootstrap = Wire.bootstrap(
+            bots = listOf(Wire.bot("b1", "Happy", Wire.agent("ab1"))),
+            tasks = listOf(Wire.task("t1", "Fix login", Wire.agent("at1")), Wire.task("t2", "Ship", Wire.agent("at2"))),
+            memberships = listOf(Wire.membership("t1", "1"), Wire.membership("t2", "2")),
+        )
+        val bodies = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val transport = { _: AgentConnectionCredentials ->
+            object : Transport by agent {
+                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
+                    if (method == "GET" && path == "/v0/bots/b1") return TransportResponse(200, body = "{\"bot\":{\"id\":\"b1\",\"version\":\"v3\"}}".toByteArray())
+                    if (method == "GET" || path == "/v0/health" || path == "/v0/config") return agent.request(method, path, credential, body, headers)
+                    agent.calls += "$method $path ${headers["If-Match"].orEmpty()}".trim()
+                    bodies += body?.decodeToString().orEmpty()
+                    return TransportResponse(200, body = "{}".toByteArray())
+                }
+            }
+        }
+        val session = sessions(transport = transport).session(id)!!
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ session.feed.value.conversations.map { it.agentId } }) { "at1" in it && "at2" in it }
+        val leave = session.leave("task", "t1")
+        val rename = session.rename("bot", "b1", "Chief")
+        eventually({ agent.calls }) { "POST /v0/tasks/t1/leave" in it && "PATCH /v0/bots/b1 v3" in it }
+        eventually({ session.intents.pending.value }) { it.isEmpty() }
+        assertTrue(bodies.any { "\"mutationId\":\"${leave.id}\"" in it })
+        assertTrue(bodies.any { "\"name\":\"Chief\"" in it && "\"mutationId\":\"${rename.id}\"" in it })
+        // Taken, the left task stays gone before the computer's event says so.
+        eventually({ session.feed.value.conversations.map { it.agentId } }) { "at1" !in it && "at2" in it }
+        assertEquals("Chief", session.feed.value.title("ab1"))
+    }
+
+    @Test
+    fun aRefusedArchiveBringsTheTaskBackAndHomeSaysWhy(): Unit = runBlocking {
+        val transport = { _: AgentConnectionCredentials ->
+            object : Transport by agent {
+                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
+                    agent.calls += "$method $path"
+                    return when {
+                        method == "GET" && path == "/v0/tasks/t1" -> TransportResponse(200, body = "{\"task\":{\"id\":\"t1\",\"version\":\"v7\"}}".toByteArray())
+                        path == "/v0/tasks/t1/archive" -> TransportResponse(403, body = "{\"error\":\"Only the owner can archive this task.\",\"code\":\"forbidden\"}".toByteArray())
+                        else -> agent.request(method, path, credential, body, headers)
+                    }
+                }
+            }
+        }
+        val session = sessions(transport = transport).session(id)!!
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ session.feed.value.conversations.map { it.agentId } }) { "at1" in it }
+        session.archive("task", "t1")
+        // Gone at once, back when the computer says no, with its words on home's notice.
+        eventually({ session.feed.value.conversations.map { it.agentId } }) { "at1" !in it || session.notice.value != null }
+        eventually({ session.notice.value }) { it == "Only the owner can archive this task." }
+        eventually({ session.feed.value.conversations.map { it.agentId } }) { "at1" in it }
+        assertTrue("POST /v0/tasks/t1/archive" in agent.calls)
     }
 
     @Test

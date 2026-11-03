@@ -246,6 +246,7 @@ internal class ConversationHolder(
             },
             keeper = session.conversationKeeper(agentId),
             typesetter = typesetter,
+            read = session::markRead,
         )
         conversation.start()
         saved.takePrefill(route.prefill)?.let(conversation::prefill)

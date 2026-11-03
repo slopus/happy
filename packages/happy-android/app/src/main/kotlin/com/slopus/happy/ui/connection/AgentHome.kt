@@ -191,6 +191,8 @@ fun AgentHomeScreen(
     profileRequired: Boolean = false,
     /** What the title shows of the link, debounced ([rememberShownLinkState]) by [AgentHome]; as [status] stands by default. */
     link: LinkState = status.linkState(syncing = false, network = true),
+    /** The computer's refusal of something done here, for a few seconds ([com.slopus.happy.agent.AgentSession.notice]). */
+    notice: String? = null,
 ) {
     val colors = HappyTheme.colors
     val reduceMotion = rememberReduceMotion()
@@ -304,7 +306,7 @@ fun AgentHomeScreen(
                         contentPadding = PaddingValues(top = top),
                         // The notice is the list's first row (iOS ba0d7da0e): it comes and goes as a row does, the rows it
                         // pushes sliding with it, and a reader further down keeps their place.
-                        header = noticeMessage(status, profileRequired)?.let { text ->
+                        header = noticeMessage(status, profileRequired, notice)?.let { text ->
                             val action = signInAction(status, actions, profileRequired)
                             val header: LazyListScope.() -> Unit = {
                                 item(key = "banner", contentType = "banner") {
@@ -467,12 +469,14 @@ private fun statusMessage(status: AgentLinkStatus, profileRequired: Boolean = fa
 
 /**
  * The notice heading home's list: why the agent can't be reached for good,
- * or "The computer did not answer." while it doesn't (iOS's
+ * the computer's refusal of something done here (iOS SyncEngine's
+ * `notice`), or "The computer did not answer." while it doesn't (iOS's
  * `Strings.unanswered`); the title keeps the name meanwhile ([BarTitle]).
  */
 @Composable
-private fun noticeMessage(status: AgentLinkStatus, profileRequired: Boolean): String? =
-    statusMessage(status, profileRequired) ?: if (status == AgentLinkStatus.Offline) stringResource(R.string.agent_home_unanswered) else null
+private fun noticeMessage(status: AgentLinkStatus, profileRequired: Boolean, refusal: String?): String? =
+    statusMessage(status, profileRequired) ?: refusal?.takeIf { it.isNotBlank() }
+        ?: if (status == AgentLinkStatus.Offline) stringResource(R.string.agent_home_unanswered) else null
 
 /** The notice row's motion, the rows' own ([agentHomeRows]). */
 private val BANNER_FADE_IN = tween<Float>(180)
@@ -532,6 +536,7 @@ fun AgentHome(
     val feed by session.feed.collectAsStateWithLifecycle()
     val status by session.status.collectAsStateWithLifecycle()
     val syncing by session.isSyncing.collectAsStateWithLifecycle()
+    val notice by session.notice.collectAsStateWithLifecycle()
     val link = rememberShownLinkState(status.linkState(syncing, rememberNetworkPath()))
     // Fully drawn (cold start's timeToFullDisplay, research/cold-start.md): home past its loader.
     ReportDrawnWhen { feed.loaded || status != AgentLinkStatus.Connecting }
@@ -561,6 +566,7 @@ fun AgentHome(
             actions = actions,
             profileRequired = agents.firstOrNull { it.id == id }?.profileRequired == true,
             link = link,
+            notice = notice,
         )
     }
 }

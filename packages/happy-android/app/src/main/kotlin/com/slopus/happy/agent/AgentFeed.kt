@@ -139,10 +139,19 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
          * subagents and Stem Cells' Surfaces are left out, and the projects
          * altogether while the person hides them on the desktop
          * ([AgentCatalog.projectsHidden]), and the Surfaces being left
-         * ([leaving]), gone at once while the agent is asked.
+         * ([leaving]), gone at once while the agent is asked. What this
+         * phone has on its way ([intents]) shows already: a chat read has
+         * no dot, a task, bot, subtask or Surface archived or left is gone,
+         * a task or bot renamed wears its new name.
          */
-        fun derive(catalog: AgentCatalog, leaving: Set<String> = emptySet(), git: Map<String, WorkspaceLineChanges> = emptyMap()): AgentFeed {
+        fun derive(
+            catalog: AgentCatalog,
+            leaving: Set<String> = emptySet(),
+            git: Map<String, WorkspaceLineChanges> = emptyMap(),
+            intents: IntentOverlay = IntentOverlay(),
+        ): AgentFeed {
             if (!catalog.loaded) return Empty
+            val removed = intents.removed
             val rows = ArrayList<AgentFeedRow>()
             val shown = HashSet<String>()
 
@@ -157,6 +166,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                 /** A bot muted on the desktop: listed, its subtasks too, without activity or unread (iOS SidebarRows' `muted`). */
                 muted: Boolean = false,
             ): Boolean {
+                if (agentId in removed) return false
                 val agent = catalog.agents[agentId] ?: return false
                 val wire = AgentCatalog.decodeAgent(agent) ?: return false
                 if (wire.archivedAt != null || !wire.visible || !shown.add(agentId)) return false
@@ -171,7 +181,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                     seed = seed,
                     happy = happy,
                     working = !muted && wire.working,
-                    unread = !muted && wire.unread != null,
+                    unread = !muted && wire.unread != null && agentId !in intents.read,
                     blocked = !muted && wire.pendingQuestionId != null,
                     activityAt = wire.unread?.since ?: wire.updatedAt,
                     parentId = parentId,
@@ -229,7 +239,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                     }
                     .sortedWith(compareBy({ it.second }, { it.first.string("id") }))
                     .forEach { (surface, _) ->
-                        val id = surface.string("id")?.takeIf { it !in leaving } ?: return@forEach
+                        val id = surface.string("id")?.takeIf { it !in leaving && it !in removed } ?: return@forEach
                         rows += AgentFeedRow.Surface(id, surface.string("name").orEmpty(), surface.string("type").orEmpty())
                     }
             }
@@ -238,12 +248,12 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                     val agentId = (bot["agent"] as? JsonObject)?.string("id") ?: return@forEach
                     val id = bot.string("id") ?: return@forEach
                     // Hidden or muted on the desktop, as its sidebar has it (desktop 731c8bbc, 1dc8b566).
-                    if (DesktopSettings.botHidden(catalog.settingValues, id)) return@forEach
+                    if (DesktopSettings.botHidden(catalog.settingValues, id) || id in removed) return@forEach
                     val avatar = bot["avatar"] as? JsonObject
                     val picture = avatar?.let { "/v0/bots/${AgentClient.escape(id)}/avatar" }
                     val happy = bot.string("systemKey") == "chief_of_staff"
                     agentRows(
-                        agentId, bot.string("name"), ConversationKind.Bot, 0, picture, avatar?.string("thumbhash"), seed = id, happy = happy,
+                        agentId, intents.titles[id] ?: bot.string("name"), ConversationKind.Bot, 0, picture, avatar?.string("thumbhash"), seed = id, happy = happy,
                         muted = DesktopSettings.botMuted(catalog.settingValues, id),
                     )
                 }
@@ -251,7 +261,9 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
             section(AgentFeedSection.Tasks) {
                 tasks.forEach { task ->
                     val agentId = (task["agent"] as? JsonObject)?.string("id") ?: return@forEach
-                    agentRows(agentId, task.string("name"), ConversationKind.Task, 0, seed = task.string("id") ?: agentId)
+                    val id = task.string("id")
+                    if (id != null && id in removed) return@forEach
+                    agentRows(agentId, id?.let(intents.titles::get) ?: task.string("name"), ConversationKind.Task, 0, seed = id ?: agentId)
                 }
             }
             if (!catalog.projectsHidden) section(AgentFeedSection.Projects) {

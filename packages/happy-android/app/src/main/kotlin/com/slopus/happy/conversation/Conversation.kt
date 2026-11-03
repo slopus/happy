@@ -159,6 +159,8 @@ class Conversation(
     private val keepDelayMillis: Long = 1_000,
     /** Lays out the rows' text on [lane] before each publish, so the screen only draws it; null leaves it to the screen. */
     private val typesetter: RowTypesetter? = null,
+    /** Reads the chat: the connection's outbox, kept until the computer hears ([com.slopus.happy.agent.AgentSession.markRead]); null asks [api] once. */
+    private val read: (suspend (String) -> Unit)? = null,
 ) {
     /**
      * A send on its way: the person's [text], its pictures inline and its
@@ -1200,7 +1202,7 @@ class Conversation(
         if (!created) return
         scope.launch(lane) {
             try {
-                api.markRead(agentId)
+                read?.invoke(agentId) ?: api.markRead(agentId)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {

@@ -10,10 +10,8 @@ import com.slopus.happy.conversation.UnsentWork
 import com.slopus.happy.data.DiskThread
 import com.slopus.happy.diagnostics.traced
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
@@ -45,7 +43,6 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.scan
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -53,6 +50,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -138,13 +136,29 @@ class AgentSession internal constructor(
      */
     val events: SharedFlow<AgentEvent> = eventFlow.asSharedFlow()
 
-    /** The Surfaces being left, each with the agent's answer on its way ([leaveSurface]). */
-    private val leaving = MutableStateFlow<Map<String, Deferred<String?>>>(emptyMap())
     private val gitSnapshots = MutableStateFlow<Map<String, WorkspaceLineChanges>>(emptyMap())
     private val gitRenewal = MutableStateFlow(0)
 
+    /**
+     * What the person did here that the computer has yet to hear: reads,
+     * archives, leaves and renames (iOS's `IntentOutbox`), kept beside the
+     * catalog through a kill and sent while the link is up. Another
+     * library adds its own kinds with [IntentOutbox.handle].
+     */
+    val intents = IntentOutbox(
+        scope,
+        cacheFile?.let { FileIntentStorage(File(it.parentFile, it.nameWithoutExtension + ".intents.json")) } ?: MemoryIntentStorage(),
+    )
+
+    private val noticeState = MutableStateFlow<String?>(null)
+
+    /** A refusal the computer gave to something done here, for home's notice; it clears after [NOTICE_MILLIS]. */
+    val notice: StateFlow<String?> = noticeState.asStateFlow()
+
     /** Home's rows, derived off the main thread; equal rows keep their instances. */
-    val feed: StateFlow<AgentFeed> = combine(catalogState, leaving, gitSnapshots) { catalog, leaving, git -> AgentFeed.derive(catalog, leaving.keys, git) }
+    val feed: StateFlow<AgentFeed> = combine(catalogState, intents.pending, gitSnapshots) { catalog, pending, git ->
+        AgentFeed.derive(catalog, git = git, intents = IntentOverlay.of(pending))
+    }
         .distinctUntilChanged()
         .scan(null as AgentFeed?) { previous, next -> AgentFeed.reuse(previous, next) }
         // The seed is no feed: never shown, so a cached home never blinks empty.
@@ -226,36 +240,103 @@ class AgentSession internal constructor(
     }
 
     /**
-     * Leaves a Surface (`POST /v0/surfaces/:id/leave`), as iOS's
-     * `leave(surfaceId:)`: its row goes from home at once and comes back if
-     * the agent refuses. It takes the Surface out of the person's own list;
-     * its content stays for everyone in it. A second ask while one is on its
-     * way sends nothing and shares its answer. Gone already on the agent
-     * (404) counts as left. Null once left; otherwise the agent's own words
-     * for the refusal, empty where it gave none (the screen says it in its
-     * own). The request runs in the session, so leaving the screen doesn't
-     * cancel it.
+     * Opening a chat reads it (iOS's `markRead`): its dot goes from home at
+     * once and stays gone until the computer has heard, through a kill.
+     */
+    suspend fun markRead(agentId: String) {
+        if (intents.pending.value.any { it.kind == Intent.READ && it.target == agentId }) return
+        intents.enqueue(Intent.READ, agentId)
+    }
+
+    /** Archives a task, bot (`kind`) or subtask (`agent`): its row goes at once, with what nests under it, and comes back only if the computer refuses. */
+    suspend fun archive(kind: String, id: String): Intent = intents.enqueue(Intent.ARCHIVE, id, of(kind))
+
+    /** Leaves a task or Surface (`kind`): out of this person's list at once. */
+    suspend fun leave(kind: String, id: String): Intent = intents.enqueue(Intent.LEAVE, id, of(kind))
+
+    /** Names a task or bot (`kind`): the row wears it at once. */
+    suspend fun rename(kind: String, id: String, title: String): Intent =
+        intents.enqueue(Intent.RENAME, id, buildJsonObject { put("kind", kind); put("title", title) })
+
+    /**
+     * Leaves a Surface (iOS's `leave(surfaceId:)`): its row goes from home
+     * at once and comes back if the agent refuses. It takes the Surface out
+     * of the person's own list; its content stays for everyone in it. The
+     * leave is tried at once and kept until the computer hears it, so one
+     * that can't go yet goes when the link is back. Null once left or on
+     * its way; otherwise the
+     * agent's own words for the refusal, empty where it gave none (the
+     * screen says it in its own).
      */
     suspend fun leaveSurface(surfaceId: String): String? {
-        val answer = CompletableDeferred<String?>()
-        val pending = leaving.updateAndGet { if (surfaceId in it) it else it + (surfaceId to answer) }.getValue(surfaceId)
-        if (pending !== answer) return pending.await()
-        scope.launch {
-            val refusal = try {
-                client.send("POST", "/v0/surfaces/${AgentClient.escape(surfaceId)}/leave", buildJsonObject { put("mutationId", AgentClient.newId()) })
-                null
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: AgentApiException) {
-                if (e.status == 404) null else e.message.orEmpty()
-            } catch (_: Exception) {
-                ""
+        // A second ask while one is on its way sends nothing more and shares its answer.
+        val intent = intents.pending.value.firstOrNull { it.kind == Intent.LEAVE && it.target == surfaceId } ?: leave("surface", surfaceId)
+        // The person confirmed and waits on it: tried at once, link or not (iOS's `attempt`).
+        return (intents.attempt(intent.id) as? IntentOutbox.Verdict.Refused)?.reason
+    }
+
+    private fun of(kind: String) = buildJsonObject { put("kind", kind) }
+
+    /**
+     * Sends [intent] (iOS SyncEngine's `deliver`). Gone already (404)
+     * counts as done; any other 4xx but a timeout or rate limit is the
+     * computer's no, and drops it; everything else is tried again.
+     */
+    private suspend fun deliver(intent: Intent) {
+        val id = AgentClient.escape(intent.target)
+        val mutation = buildJsonObject { put("mutationId", intent.id) }
+        try {
+            when (intent.kind) {
+                Intent.READ -> client.send("POST", "/v0/agents/$id/read", JsonObject(emptyMap()))
+                Intent.LEAVE -> client.send("POST", if (intent.of == "surface") "/v0/surfaces/$id/leave" else "/v0/tasks/$id/leave", mutation)
+                Intent.ARCHIVE -> when (intent.of) {
+                    "agent" -> client.send("POST", "/v0/agents/$id/archive", mutation)
+                    "bot" -> archiveAt("/v0/bots/$id", "bot")
+                    else -> archiveAt("/v0/tasks/$id", "task")
+                }
+                Intent.RENAME -> {
+                    val title = (intent.value["title"] as? JsonPrimitive)?.contentOrNull ?: return
+                    when (intent.of) {
+                        "bot" -> renameAt("/v0/bots/$id", "bot", title, intent.id)
+                        "surface" -> renameAt("/v0/surfaces/$id", "surface", title, intent.id)
+                        else -> renameAt("/v0/tasks/$id", "task", title, intent.id)
+                    }
+                }
+                else -> throw IntentRefusal("")
             }
-            if (refusal == null) catalogLock.withLock { catalogState.update { it.withoutSurface(surfaceId) } }
-            leaving.update { it - surfaceId }
-            answer.complete(refusal)
-        }.invokeOnCompletion { cause -> if (cause != null) answer.complete("") }
-        return answer.await()
+        } catch (e: AgentApiException) {
+            if (e.status in 400..499 && e.status != 404 && e.status != 408 && e.status != 429) throw IntentRefusal(e.message.orEmpty())
+            if (e.status != 404) throw e
+        }
+        // Left or archived: out of the catalog too, so it stays gone once the intent is.
+        if (intent.kind == Intent.LEAVE || intent.kind == Intent.ARCHIVE) {
+            catalogLock.withLock { catalogState.update { it.withoutListed(intent.of ?: "task", intent.target) } }
+        }
+        val title = (intent.value["title"] as? JsonPrimitive)?.contentOrNull
+        if (intent.kind == Intent.RENAME && title != null) catalogLock.withLock { catalogState.update { it.withName(intent.of ?: "task", intent.target, title) } }
+    }
+
+    /** Archival names the version it archives (`If-Match`). */
+    private suspend fun archiveAt(path: String, key: String) {
+        val version = versionOf(path, key)
+        client.send("POST", "$path/archive", JsonObject(emptyMap()), headers = mapOf("If-Match" to version))
+    }
+
+    /** A rename names the version it renames (`If-Match`); one that lost a race reads the newer version and renames that. */
+    private suspend fun renameAt(path: String, key: String, name: String, mutationId: String) {
+        repeat(2) { attempt ->
+            try {
+                client.send("PATCH", path, buildJsonObject { put("name", name); put("mutationId", mutationId) }, headers = mapOf("If-Match" to versionOf(path, key)))
+                return
+            } catch (e: AgentApiException) {
+                if (e.status != 409 || attempt == 1) throw e
+            }
+        }
+    }
+
+    private suspend fun versionOf(path: String, key: String): String {
+        val body = AgentClient.json.parseToJsonElement(client.send("GET", path).text) as? JsonObject
+        return ((body?.get(key) as? JsonObject)?.get("version") as? JsonPrimitive)?.contentOrNull ?: throw AgentApiException(500, "invalid_response", null)
     }
 
     /** A bot as `POST /v0/bots` answered: home lists it before `bot.created` comes. */
@@ -271,6 +352,18 @@ class AgentSession internal constructor(
     @Volatile var unsentWork: UnsentWork? = null
 
     init {
+        intents.handle(setOf(Intent.READ, Intent.ARCHIVE, Intent.LEAVE, Intent.RENAME), ::deliver)
+        // Sent while the link is up; every connect sends what waits at once.
+        scope.launch { statusState.collect { intents.setOnline(it == AgentLinkStatus.Connected) } }
+        scope.launch {
+            intents.rejections.collectLatest { rejection ->
+                // A refused read is nothing to tell; a screen that heard the refusal said it already.
+                if (rejection.intent.kind == Intent.READ || rejection.heard) return@collectLatest
+                noticeState.value = rejection.reason
+                delay(NOTICE_MILLIS)
+                if (noticeState.value == rejection.reason) noticeState.value = null
+            }
+        }
         scope.launch {
             // The kept catalog first: home draws it, and the link resumes from its cursor.
             traced("AgentSession.readCache") { readCache() }?.let { cached -> catalogLock.withLock { catalogState.update { if (it.loaded) it else cached } } }
@@ -626,6 +719,9 @@ class AgentSession internal constructor(
         /** Surface events that come together read the snapshot once. */
         const val SNAPSHOT_COALESCE = 300L
         const val INITIAL_BACKOFF = 1_000L
+
+        /** How long a refusal stays in home's notice (iOS SyncEngine's 5 s). */
+        const val NOTICE_MILLIS = 5_000L
         const val MAX_BACKOFF = 5_000L
         const val JITTER = 0.5
     }
