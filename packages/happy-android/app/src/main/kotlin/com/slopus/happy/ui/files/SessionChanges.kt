@@ -376,6 +376,39 @@ class AgentChanges(
         }
     }
 
+    /**
+     * A newer snapshot taken in place, for a live change (desktop's Changes
+     * follow `git.updated`): what shows stays until it arrives, and the
+     * files whose entry is the same keep the sides already read; the rest
+     * that were asked for are read again.
+     */
+    fun update() {
+        if (!supported) return
+        val shown = mutable.value.load as? Load.Ready ?: return refresh()
+        if (job?.isActive == true) return
+        job = scope.launch {
+            val git = try {
+                ops.gitState(sessionId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // What shows stays; the next change or return reads again.
+                return@launch
+            }
+            if (mutable.value.load !== shown) return@launch
+            val request = ++revision
+            val before = shown.git.files.associateBy { it.path }
+            val kept = git.files.filter { it == before[it.path] }.map { it.path }.toSet()
+            val again = requested.filter { path -> git.files.any { it.path == path } }
+            requested.clear()
+            inFlight.clear()
+            val ready = Load.Ready(git, request)
+            mutable.update { it.copy(load = ready, results = it.results.filterKeys { path -> path in kept && git.base == shown.git.base }) }
+            requested += again
+            pump(ready)
+        }
+    }
+
     /** DiffFilesList asks for an expanded file's sides. */
     fun requestContent(path: String) {
         val ready = mutable.value.load as? Load.Ready ?: return

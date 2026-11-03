@@ -148,6 +148,32 @@ class SessionChangesTest {
         assertEquals(2, changes.state.value.fileCount)
     }
 
+    /** A live change (git.updated): the same entry keeps its sides, a changed one is read again, nothing blanks meanwhile. */
+    @Test
+    fun agentUpdateKeepsWhatDidNotChange() = runTest(StandardTestDispatcher()) {
+        val a = GitFile("a.kt", status = "modified", staged = false, unstaged = true, binary = false, insertions = 3, deletions = 1)
+        val b = GitFile("b.kt", status = "modified", staged = false, unstaged = true, binary = false, insertions = 1, deletions = 0)
+        fun state(vararg files: GitFile) = GitState(GitFacts("main", false, null, null, 0, 0), "ready", "a".repeat(40), files.size.toLong(), 4, 1, true, false, files.toList(), false, 0.0)
+        val ops = FakeOps().apply { state = state(a, b) }
+        val changes = AgentChanges(this as TestScope, ops, "s", supported = true)
+        changes.refresh()
+        advanceUntilIdle()
+        changes.requestContent("a.kt")
+        changes.requestContent("b.kt")
+        advanceUntilIdle()
+        assertEquals(listOf("a.kt", "b.kt"), ops.reads)
+
+        val b2 = b.copy(insertions = 5)
+        ops.state = state(a, b2)
+        changes.update()
+        assertTrue("what shows stays while the new state is read", changes.state.value.load is AgentChanges.Load.Ready)
+        assertTrue(changes.state.value.results.keys.containsAll(listOf("a.kt", "b.kt")))
+        advanceUntilIdle()
+        assertEquals(listOf("a.kt", "b.kt", "b.kt"), ops.reads)
+        assertEquals(5, changes.state.value.items()[1].additions)
+        assertTrue(changes.state.value.items().all { it.source != null })
+    }
+
     @Test
     fun agentFailureIsAMessage() = runTest(StandardTestDispatcher()) {
         val changes = AgentChanges(this as TestScope, FakeOps(), "s", supported = true)
