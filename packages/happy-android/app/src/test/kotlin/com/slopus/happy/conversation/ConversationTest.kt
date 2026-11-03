@@ -22,6 +22,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import kotlinx.coroutines.test.runCurrent
 import org.junit.Test
 
 /** A paired agent answering conversation routes from memory, recording every request. */
@@ -886,6 +887,64 @@ class ConversationTest {
         assertEquals(1, (send.third!!["content"] as kotlinx.serialization.json.JsonArray).size)
         val row = chat.state.value.rows.filterIsInstance<ConversationRow.User>().first()
         assertTrue(row.text.contains("./.happy-uploads/$id/1-clip.mp4"))
+    }
+
+    /** desktop 01659140: a send in hand when the screen goes stays with its conversation, which the next screen takes back. */
+    @Test fun `a conversation left mid-send is kept for its next screen and closed once its sends are taken`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        val gate = CompletableDeferred<Unit>()
+        agent.gate = gate
+        chat.send("Ship it")
+        runCurrent()
+        assertTrue(chat.state.value.unsettledSends)
+        val parked = ParkedConversations(CoroutineScope(StandardTestDispatcher(testScheduler) + SupervisorJob().also { jobs += it }))
+        parked.park(chat)
+        assertTrue("the next screen for the agent takes the same conversation", parked.adopt("a1") === chat)
+        assertNull(parked.adopt("a1"))
+        parked.park(chat)
+        agent.gate = null
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertFalse(chat.state.value.unsettledSends)
+        assertNull("settled, it is closed and no longer kept", parked.adopt("a1"))
+        assertEquals("sent once", 1, agent.requests.count { it.second.endsWith("/send") })
+    }
+
+    /** A failed send is in hand too: the reopened chat still shows it failed, and its Retry goes under the same id. */
+    @Test fun `a conversation left with a failed send comes back with it failed and retries it once`() = runTest {
+        val agent = FakeAgent()
+        agent.sendStatus = 400
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        chat.send("Hello")
+        advanceUntilIdle()
+        assertTrue(chat.state.value.holdsSends)
+        val parked = ParkedConversations(CoroutineScope(StandardTestDispatcher(testScheduler) + SupervisorJob().also { jobs += it }))
+        parked.park(chat)
+        advanceUntilIdle()
+        val back = parked.adopt("a1")
+        assertTrue("kept while failed", back === chat)
+        val row = back!!.state.value.rows.single() as ConversationRow.User
+        assertEquals(Delivery.Failed(Problem.Said("Unknown model.")), row.delivery)
+        parked.park(back)
+        agent.sendStatus = 202
+        back.retrySend(row.messageId)
+        advanceUntilIdle()
+        assertFalse(back.state.value.holdsSends)
+        assertNull("taken, it is closed and no longer kept", parked.adopt("a1"))
+        val ids = agent.requests.filter { it.second.endsWith("/send") }.map { it.third!!["id"] }
+        assertEquals(2, ids.size)
+        assertEquals("the retry is the same send", ids[0], ids[1])
+    }
+
+    @Test fun `a conversation left with nothing in hand is closed at once`() = runTest {
+        val chat = conversation(FakeAgent())
+        advanceUntilIdle()
+        val parked = ParkedConversations(CoroutineScope(StandardTestDispatcher(testScheduler) + SupervisorJob().also { jobs += it }))
+        parked.park(chat)
+        assertNull(parked.adopt("a1"))
     }
 
     @Test fun `a refused upload fails the send and a retry writes only what is missing`() = runTest {

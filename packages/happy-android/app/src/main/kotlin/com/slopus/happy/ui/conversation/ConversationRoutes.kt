@@ -229,7 +229,8 @@ internal class ConversationHolder(
         )
         unsent?.let { setChoiceSaved(it.choice) }
         val agentId = route.agentId ?: task!!.agentId
-        conversation = Conversation(
+        // A send still on its way when this chat was last left: the same conversation, so it shows and never goes twice.
+        conversation = route.agentId?.let(session.parkedConversations::adopt) ?: Conversation(
             api = ConversationApi(session.conversationRequest()),
             signals = session.events.signalsFor(agentId),
             scope = scope,
@@ -270,7 +271,8 @@ internal class ConversationHolder(
         if (task != null && work != null && !work.making && saved.get<Boolean>(CREATED) != true) {
             session.unsentWork = UnsentWork(task, work.choice, state.draft)
         }
-        conversation.close()
+        // Closed unless a send is in hand: then it finishes in this conversation (desktop 01659140).
+        session.parkedConversations.park(conversation)
     }
 
     private companion object {

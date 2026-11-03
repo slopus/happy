@@ -110,6 +110,8 @@ data class ConversationState(
     val taken: ComposerTaken? = null,
     /** Why new work could not be made, shown once. */
     val workFailure: WorkFailure? = null,
+    /** A send the agent hasn't taken yet: on its way (its files going up first) or failed. */
+    val unsettledSends: Boolean = false,
 ) {
     val title: String? get() = agent?.title?.takeIf { it.isNotBlank() } ?: knownTitle?.takeIf { it.isNotBlank() }
     /** As the agent says ([AgentInfo.sendable]): an internal subagent, driven by its parent, or an archived chat takes no messages. */
@@ -1396,6 +1398,7 @@ class Conversation(
             working = working,
             activity = activity,
             draft = draft,
+            unsettledSends = outgoing.any { !it.accepted },
         )
     }
 
