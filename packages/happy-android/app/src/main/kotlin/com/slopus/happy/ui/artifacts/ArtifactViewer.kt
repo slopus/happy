@@ -39,6 +39,7 @@ fun ArtifactViewer(items: List<ArtifactMediaItem>, index: Int, media: ArtifactMe
     val scope = rememberCoroutineScope()
     val source = remember(media) {
         object : ViewerSource {
+            override fun cached(key: String): ByteArray? = media.cached(key)
             override suspend fun bytes(key: String): ByteArray? = media.data(key)
             // Kept, a recording that plays reads on to the end behind the player.
             override fun video(key: String): MediaDataSource? = media.videoSource(key)?.also { scope.launch { media.play(key) } }

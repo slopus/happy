@@ -694,6 +694,7 @@ private fun MediaCell(media: SharedMedia, store: ConversationMediaStore, opener:
     Box(
         Modifier
             .fillMaxSize()
+            .then(if (media.isVisual) Modifier.viewerOrigin(media.key) else Modifier)
             .testTag(AgentPageTags.MEDIA_CELL)
             .background(colors.surfacePressed)
             .clickable(role = Role.Button, onClick = onClick)

@@ -115,6 +115,44 @@ object PictureViewing {
     /** "N of M" as the page's position reads; null for a viewer of one. */
     fun position(index: Int, count: Int): Pair<Int, Int>? = if (count > 1 && index in 0 until count) index + 1 to count else null
 
+    /** A rectangle in px, left and top first. */
+    data class Box(val x: Float, val y: Float, val width: Float, val height: Float) {
+        val centerX: Float get() = x + width / 2
+        val centerY: Float get() = y + height / 2
+        fun meets(other: Box): Boolean = width > 0 && height > 0 && x < other.x + other.width && other.x < x + width && y < other.y + other.height && other.y < y + height
+    }
+
+    /**
+     * The picture on its way between its thumbnail and its place in the
+     * viewer (Telegram's PhotoViewer opening from and closing into its
+     * `PlaceProviderObject`), at [progress] (0 on the thumbnail, 1 at rest).
+     * The picture keeps its resting layout ([frame]) and is scaled about
+     * its middle by [scale] and moved by [dx], [dy]; what shows of it is
+     * the window between the thumbnail and the frame, in the picture's own
+     * px ([clip], rounded by [radius]), so it starts filling the thumbnail
+     * as the thumbnail crops it, corners and all.
+     */
+    data class Flight(val scale: Float, val dx: Float, val dy: Float, val clip: Box, val radius: Float)
+
+    fun flight(origin: Box, frame: Box, originRadius: Float, progress: Float): Flight {
+        val t = progress.coerceIn(0f, 1f)
+        fun lerp(from: Float, to: Float) = from + (to - from) * t
+        // Filling the thumbnail, cropped as it crops: the larger of the two ratios.
+        val cover = if (frame.width > 0 && frame.height > 0) max(origin.width / frame.width, origin.height / frame.height) else 1f
+        val scale = lerp(cover, 1f)
+        val windowWidth = lerp(origin.width, frame.width)
+        val windowHeight = lerp(origin.height, frame.height)
+        val clipWidth = windowWidth / scale
+        val clipHeight = windowHeight / scale
+        return Flight(
+            scale = scale,
+            dx = lerp(origin.centerX, frame.centerX) - frame.centerX,
+            dy = lerp(origin.centerY, frame.centerY) - frame.centerY,
+            clip = Box((frame.width - clipWidth) / 2, (frame.height - clipHeight) / 2, clipWidth, clipHeight),
+            radius = lerp(originRadius, 0f) / scale,
+        )
+    }
+
     private fun rounded(value: Float): Float = if (value >= 0) floor(value + 0.5f) else -floor(-value + 0.5f)
 }
 

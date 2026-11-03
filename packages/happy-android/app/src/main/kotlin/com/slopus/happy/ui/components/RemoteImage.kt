@@ -17,10 +17,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import coil3.BitmapImage
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
@@ -108,6 +110,17 @@ fun isRemoteImageUrl(url: String?): Boolean = url != null && (url.startsWith("ht
 
 /** A picture kept on this phone (`file://`), which [RemoteImage] also loads: an agent connection's own picture. */
 fun isFileImageUri(uri: String?): Boolean = uri != null && uri.startsWith("file://", ignoreCase = true)
+
+/**
+ * What the shared loader already holds in memory under [cacheKey] (a
+ * thumbnail drawn in the chat), for a larger view of the same picture to
+ * show from its first frame while its own reads; null when it holds nothing.
+ */
+@Composable
+fun rememberMemoryImage(cacheKey: String): ImageBitmap? {
+    val loader = rememberImageLoader()
+    return remember(loader, cacheKey) { (loader.memoryCache?.get(MemoryCache.Key(cacheKey))?.image as? BitmapImage)?.bitmap?.asImageBitmap() }
+}
 
 /**
  * A picture loaded by the shared loader: [model] is a URL, or decrypted

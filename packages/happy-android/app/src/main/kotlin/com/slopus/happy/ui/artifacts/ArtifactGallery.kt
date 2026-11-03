@@ -56,6 +56,7 @@ import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.conversation.MediaStatus
 import com.slopus.happy.ui.conversation.PlayFill
 import com.slopus.happy.ui.conversation.PlayGlyph
+import com.slopus.happy.ui.conversation.viewerOrigin
 import com.slopus.happy.ui.theme.happyTextStyle
 
 object ArtifactGalleryTags {
@@ -147,6 +148,7 @@ internal fun MediaTile(item: ArtifactMediaItem, media: ArtifactMedia, modifier: 
     val phase = media.phase(item.key)
     Box(
         modifier
+            .viewerOrigin(item.key, 8.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(colors.surfaceHighest)
             .clickable(role = Role.Image, onClick = onClick)
@@ -172,7 +174,8 @@ internal fun MediaTile(item: ArtifactMediaItem, media: ArtifactMedia, modifier: 
             bytes?.let {
                 RemoteImage(
                     model = it,
-                    cacheKey = "artifact/${media.artifactId}/${media.version}/${item.key}",
+                    // The viewer's key too: it opens on what this drew.
+                    cacheKey = item.key,
                     contentDescription = null,
                     contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize(),

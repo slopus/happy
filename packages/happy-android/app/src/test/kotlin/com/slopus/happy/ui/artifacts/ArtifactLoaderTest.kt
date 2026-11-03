@@ -120,7 +120,7 @@ class ArtifactLoaderTest {
             ),
         )
         val ui = settled(loader) as ArtifactUi.Gallery
-        assertEquals(listOf("artifact/1.png", "artifact/2.png"), ui.items.map { it.key })
+        assertEquals(listOf("artifact/a1/1/1.png", "artifact/a1/1/2.png"), ui.items.map { it.key })
         assertFalse(ui.items.any { it.isVideo })
     }
 

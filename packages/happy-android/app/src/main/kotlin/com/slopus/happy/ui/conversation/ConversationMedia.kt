@@ -147,6 +147,8 @@ fun MediaTile(
     Box(
         modifier
             .testTag(ConversationMediaTags.TILE)
+            // The viewer opens from it and closes into it, by the key it pages by.
+            .then(if (onClick != null) Modifier.viewerOrigin(cacheKey, ConversationMediaSpec.radius) else Modifier)
             .clip(shape)
             .background(colors.surfacePressed)
             .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)

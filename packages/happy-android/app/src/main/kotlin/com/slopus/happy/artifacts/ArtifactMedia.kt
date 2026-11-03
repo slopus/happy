@@ -71,7 +71,7 @@ class ArtifactMedia(
     val durations = mutableStateMapOf<String, Double>()
 
     fun media(file: ArtifactFile, label: String): ArtifactMediaItem {
-        val key = key(file.path)
+        val key = resourceId(file)
         sources[key] = Source.FileItem(file)
         return ArtifactMediaItem(key, file.isVideo, label)
     }
@@ -90,6 +90,9 @@ class ArtifactMedia(
     }
 
     fun source(key: String): Source? = sources[key]
+
+    /** The item's bytes if they are in memory already, for the viewer's first frame. */
+    fun cached(key: String): ByteArray? = bytes.get(key)
 
     /** The item's bytes, read once however many ask; null when they can't be had. */
     suspend fun data(key: String): ByteArray? {
@@ -160,7 +163,11 @@ class ArtifactMedia(
         return RangedSource(file.size) { start, end -> runBlocking { files.file(artifactId, version, file.path, "bytes=$start-$end") } }
     }
 
-    /** Where a version's file is kept: a numbered version never changes. */
+    /**
+     * Where a version's file is kept, and its key everywhere else (the
+     * memory cache's, the viewer's): a numbered version never changes, and
+     * two artifacts' "one.png" are not the same picture.
+     */
     fun resourceId(file: ArtifactFile): String = "artifact/$artifactId/$version/${file.path}"
 
     /** Its bytes from the file route, a range at a time. */
@@ -257,7 +264,6 @@ class ArtifactMedia(
     }
 
     companion object {
-        fun key(path: String) = "artifact/$path"
 
         /** Upright pixels from a picture's header: EXIF's quarter turns swap them. */
         fun pictureSize(data: ByteArray): Extent? {

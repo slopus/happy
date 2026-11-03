@@ -1059,6 +1059,20 @@ pages across and is dragged away up or down. A recording plays in its page
 (`VideoPage`). The position reads "N of M" for TalkBack only, as iOS has it
 for VoiceOver (`message.mediaPosition` in happy-app's catalogs).
 
+A picture opens out of its thumbnail and closes back into it, as
+Telegram's PhotoViewer does. A thumbnail that opens the viewer carries
+`Modifier.viewerOrigin(key, radius)`, keyed as the viewer keys the item
+(a chat tile by its cache key, an artifact file by
+`ArtifactMedia.resourceId`). It says where it is on the screen in
+`ViewerOrigins.Shared` and draws nothing while it is `hidden`. The viewer
+lays the picture out at rest and scales, moves and clips it there
+(`PictureViewing.flight`), so it starts from Coil's memory copy of the
+thumbnail (`rememberMemoryImage`). It hides the thumbnail only once its
+dialog window has focus. It closes into the thumbnail if that is on the
+screen, by tap, back or a drag, and otherwise fades. Then it waits for the
+thumbnail to draw again (`ViewerOrigins.drawn`) before it goes, so there
+is no hole. A recording neither flies nor hides its tile.
+
 ### Conversation turns
 
 Each run of a Happy Agent conversation is a turn, drawn as desktop draws it
