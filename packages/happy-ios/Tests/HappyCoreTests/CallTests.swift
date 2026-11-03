@@ -184,6 +184,28 @@ final class CallContextTests: XCTestCase {
         XCTAssertFalse(focus.description.contains("answer"))
     }
 
+    /// "queued" is no receipt: a send that fails afterwards is said by
+    /// nothing on its own, and read where the agent looks for it.
+    func testASendThatFailsLaterIsReadNotAnnounced() async throws {
+        let targets = backend()
+        let context = CallContext(targets: targets)
+        _ = await context.initial()
+        let sent = try object(await tool(context, "sendMessage", #"{"targetRef":"s1","text":"run it","focusRevision":0}"#).text)
+        XCTAssertEqual(sent["status"] as? String, "queued")
+        let before = await targets.state(of: "a")
+        var state = try XCTUnwrap(before)
+        let failed = CallMessage(id: "run", role: .user, text: "run it", delivery: .failed)
+        state.messages.append(failed)
+        state.unanswered = failed
+        await targets.set("a", state)
+        let quiet = await context.targetChanged(state)
+        XCTAssertTrue(quiet.isEmpty)
+        let read = try object(await tool(context, "getSessionContext", #"{"targetRef":"s1"}"#).text)
+        let pending = try XCTUnwrap(read["pendingUserMessage"] as? [String: Any])
+        XCTAssertEqual(pending["text"] as? String, "run it")
+        XCTAssertEqual(pending["delivery"] as? String, "failed")
+    }
+
     func testOpeningGivesTheRevisionTheNextStepTakes() async throws {
         let context = CallContext(targets: backend(focus: nil))
         _ = await context.initial()

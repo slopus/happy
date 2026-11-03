@@ -4,6 +4,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -107,6 +112,31 @@ class CallBarLayoutTest {
         rule.node(CallBarTags.MUTE).assertDoesNotExist()
         rule.node(CallBarTags.SUBTITLE).assertDoesNotExist()
         assertTrue(rule.node("page").bounds.top >= CallBarSpec.minHeight)
+    }
+
+    /** What TalkBack is given: one polite summary, and two buttons that say what they do. */
+    @Test
+    fun theBarReadsAsOneSummaryAndTwoButtons() {
+        show()
+        rule.mainClock.autoAdvance = false
+        val since = android.os.SystemClock.elapsedRealtime() - 42_000
+        state.value = CallState.Active(CallActivity.Listening, muted = false, since = since)
+        rule.mainClock.advanceTimeBy(CallBarSpec.MOTION_MS + 100L)
+        val summary = rule.onNode(hasContentDescription("Voice call, Listening", substring = true)).fetchSemanticsNode()
+        val said = summary.config[SemanticsProperties.ContentDescription].single()
+        assertTrue(said, said.matches(Regex("Voice call, Listening, \\d+:\\d\\d")))
+        assertEquals(LiveRegionMode.Polite, summary.config[SemanticsProperties.LiveRegion])
+        for ((tag, words) in listOf(CallBarTags.MUTE to "Mute microphone", CallBarTags.END to "End call")) {
+            val button = rule.node(tag).fetchSemanticsNode()
+            assertEquals(listOf(words), button.config[SemanticsProperties.ContentDescription])
+            assertEquals(Role.Button, button.config[SemanticsProperties.Role])
+            assertTrue(button.config.contains(SemanticsActions.OnClick))
+        }
+        rule.node(CallBarTags.MUTE).performClick()
+        assertEquals(1, mutes)
+        state.value = CallState.Active(CallActivity.Listening, muted = true, since = since)
+        rule.mainClock.advanceTimeBy(100L)
+        assertEquals(listOf("Unmute microphone"), rule.node(CallBarTags.MUTE).fetchSemanticsNode().config[SemanticsProperties.ContentDescription])
     }
 
     @Test

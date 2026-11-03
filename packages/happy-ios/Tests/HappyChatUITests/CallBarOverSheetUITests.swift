@@ -34,6 +34,17 @@ final class CallBarOverSheetUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(app.buttons["End call"].waitForExistence(timeout: 10))
         keep("bar-over-home")
+        // What VoiceOver is given over home: one summary that says the
+        // state and the clock, and two buttons with room for a finger.
+        let summary = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Voice call'")).firstMatch
+        XCTAssertTrue(summary.exists)
+        XCTAssertTrue(summary.label.contains("Listening"), summary.label)
+        for name in ["Mute microphone", "End call"] {
+            let button = app.buttons[name]
+            XCTAssertTrue(button.exists, name)
+            XCTAssertGreaterThanOrEqual(button.frame.width, 44, name)
+            XCTAssertGreaterThanOrEqual(button.frame.height, 44, name)
+        }
         // The sheet is up: UIKit no longer reads the bar's window, so the
         // sheet carries its echo, one element at the bar's place.
         let echo = app.descendants(matching: .any)["call-bar-echo"]

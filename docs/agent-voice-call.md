@@ -165,6 +165,11 @@ commentary or tool output), plus the person's latest message when no
 finished turn answers it yet, labelled `pendingUserMessage`. Each text is
 cut at 4 KB.
 
+`queued` is not a receipt. A message the call sent that later fails to
+reach the computer shows as `pendingUserMessage.delivery: "failed"` on the
+next `getSessionContext`, and in the chat as any failed message does.
+No update announces it.
+
 **Sizes:** the first snapshot is capped at 32 KB (the older turn gives way,
 then the directory's tail). Context that arrives before the call is live
 waits, up to 32 KB. Past that it is let go whole rather than cut, since a

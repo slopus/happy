@@ -195,6 +195,22 @@ class CallContextTest {
         assertFalse(focus.toString().contains("answer"))
     }
 
+    /** "queued" is no receipt: a send that fails afterwards is said by nothing on its own, and read where the agent looks for it. */
+    @Test
+    fun aSendThatFailsLaterIsReadNotAnnounced() = runBlocking {
+        val targets = backend()
+        val context = CallContext(targets)
+        context.initial()
+        assertEquals("queued", obj(context.tool("sendMessage", """{"targetRef":"s1","text":"run it","focusRevision":0}""").text).str("status"))
+        val failed = CallMessage("run", CallMessage.Role.User, "run it", delivery = CallMessage.Delivery.Failed)
+        val state = targets.states.getValue("a").let { it.copy(messages = it.messages + failed, unanswered = failed) }
+        targets.states["a"] = state
+        assertTrue(context.targetChanged(state).isEmpty)
+        val pending = obj(context.tool("getSessionContext", """{"targetRef":"s1"}""").text)["pendingUserMessage"]!!.jsonObject
+        assertEquals("run it", pending.str("text"))
+        assertEquals("failed", pending.str("delivery"))
+    }
+
     @Test
     fun openingGivesTheRevisionTheNextStepTakes() = runBlocking {
         val context = CallContext(backend(focus = null))
