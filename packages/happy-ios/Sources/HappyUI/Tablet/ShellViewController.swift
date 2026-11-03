@@ -560,6 +560,7 @@ enum MainPanelKey {
         if controller is SettingsViewController { return "settings" }
         if controller is ArtifactsViewController { return "artifacts" }
         if controller is TodoListsViewController { return "todos" }
+        if controller is FeedViewController { return "feed" }
         return nil
     }
 }

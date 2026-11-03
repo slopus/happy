@@ -7,7 +7,9 @@ extension TranslationCatalog {
     ///
     /// The two kinds of account are named by their products, Happy Agent
     /// and Happy CLI, which no language translates.
-    static let nativeSources: [String: [String: String]] = [
+    static let nativeSources: [String: [String: String]] = accountAndCommandSources.merging(feedSources) { kept, feed in kept.merging(feed) { first, _ in first } }
+
+    private static let accountAndCommandSources: [String: [String: String]] = [
         "en": [
             "native.accountKind.addCLIAccount": "Add Happy CLI account",
             "native.accountKind.connectAgent": "Connect Happy Agent",

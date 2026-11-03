@@ -97,6 +97,8 @@ enum Glyphs {
         case "more": .materialIcons("more-horiz")
         case "terminal": .ionicons("terminal-outline")
         case "home": .ionicons("home-outline")
+        // Desktop's `feed`: what happened, as a paper reads it.
+        case "feed": .ionicons("newspaper-outline")
         default: .ionicons(name)
         }
     }

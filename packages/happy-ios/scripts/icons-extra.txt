@@ -42,3 +42,8 @@ Ionicons camera-reverse
 Ionicons grid-outline
 Ionicons sunny
 Ionicons flashlight
+
+# The Feed, which happy-app doesn't have (HappyUI FeedViewController): its
+# row's and empty list's glyph, as desktop's `feed` icon is, and Mark All Read.
+Ionicons newspaper-outline
+Ionicons checkmark-done-outline

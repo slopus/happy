@@ -132,6 +132,9 @@ public struct Row: Equatable, Sendable, Identifiable {
     /// minute): what search's recent conversations are ordered by.
     public var activityTime: Double?
     public var lineChanges: GitLineChanges?
+    /// A count at the row's end, as iOS's lists show one (the Feed's unread
+    /// entries); nil for none.
+    public var count: Int?
 
     public init(id: String, nodeId: String, kind: Kind, depth: Int = 0, label: String, mark: Mark = .none, status: Status = .none, unread: Bool = false, collapsed: Bool? = nil, isHappy: Bool = false, agentId: String? = nil, workspaceId: String? = nil, spaceId: String? = nil, targetKind: String? = nil, isUntouchedSeedling: Bool = false) {
         self.id = id

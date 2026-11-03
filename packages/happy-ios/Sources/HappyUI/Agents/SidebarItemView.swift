@@ -295,7 +295,7 @@ final class SidebarItemView: ListRowView {
         case .clay(let slug): slug
         default: nil
         }
-        let value = [row.isNew ? Strings.newRow : nil, wears, item.entry.drawing.shimmers ? Strings.workingRow : nil, SidebarLineChanges.accessibility(row.lineChanges)].compactMap { $0 }
+        let value = [row.isNew ? Strings.newRow : nil, wears, item.entry.drawing.shimmers ? Strings.workingRow : nil, SidebarLineChanges.accessibility(row.lineChanges), row.count.map(Strings.Feed.unreadCount)].compactMap { $0 }
         accessibilityValue = value.isEmpty ? nil : value.joined(separator: ", ")
     }
 

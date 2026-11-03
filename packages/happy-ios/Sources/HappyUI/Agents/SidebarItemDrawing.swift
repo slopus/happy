@@ -33,7 +33,7 @@ struct SidebarItemDrawing: Drawing, Equatable {
             && a.row.kind == b.row.kind && a.row.label == b.row.label && a.row.unread == b.row.unread
             && a.row.isNew == b.row.isNew && a.row.status == b.row.status && a.row.collapsed == b.row.collapsed
             && a.row.hasHiddenSessions == b.row.hasHiddenSessions && a.row.lineChanges == b.row.lineChanges
-            && a.row.targetKind == b.row.targetKind
+            && a.row.targetKind == b.row.targetKind && a.row.count == b.row.count
     }
 
     #if DEBUG
@@ -80,7 +80,8 @@ struct SidebarItemDrawing: Drawing, Equatable {
         }
         SidebarTypography.draw(title, in: frame.label, scale: displayScale)
         if let box = frame.lineChanges {
-            SidebarLineChanges.draw(row.lineChanges, in: box, scale: displayScale)
+            if let count = row.count { SidebarLineChanges.draw(count: count, in: box, scale: displayScale) }
+            else { SidebarLineChanges.draw(row.lineChanges, in: box, scale: displayScale) }
         }
         if (row.kind == .space || row.kind == .session) && row.collapsed != nil, let glyph = frame.chevronGlyph {
             Self.drawGlyph(chevron(Metrics.chevronGlyph), color: UIColor(Palette.rowText), in: glyph)
