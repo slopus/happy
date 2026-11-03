@@ -56,6 +56,9 @@ public actor SyncEngine {
     /// agent, still to be written over it.
     private var desktopValue: JSONValue?
     private var unsaved: [String: AgentPatch.Update] = [:]
+    /// The agents' changes streamed in while the catalog is read, placed
+    /// again over the read when it lands.
+    private var journal: [AgentPatch.Update]?
     private var saving: Task<Void, Never>?
     /// Home snapshots published: what the changeset tests count.
     private(set) var published = 0
@@ -296,7 +299,11 @@ public actor SyncEngine {
                     // read. Message token events and an agent's conversation
                     // state go straight to the open conversation without
                     // rereading Home.
-                    if let update = AgentPatch.update(event), applyInPlace(update) { continue }
+                    if let update = AgentPatch.update(event) {
+                        // A gap while the catalog is read waits for the read.
+                        journal?.append(update)
+                        if applyInPlace(update) || journal != nil { continue }
+                    }
                     if let type = event["type"]?.stringValue,
                        ["project.", "workspace.", "bot.", "task.", "agent.", "surface.", "user_settings."].contains(where: type.hasPrefix),
                        !Self.conversationEvents.contains(type) { scheduleReconcile(generation) }
@@ -373,14 +380,10 @@ public actor SyncEngine {
     /// and the catalog must be read again. A change nothing on Home shows
     /// (a token's `updatedAt`) publishes and writes nothing.
     private func applyInPlace(_ update: AgentPatch.Update) -> Bool {
-        guard let held = desktop, let next = AgentPatch.apply(update, to: held) else { return false }
-        desktop = next
-        if var merged = unsaved[update.agentId] {
-            merged.changes.merge(update.changes) { _, new in new }
-            merged.version = update.version
-            unsaved[update.agentId] = merged
-        } else {
-            unsaved[update.agentId] = update
+        switch place(update) {
+        case .unplaced: return false
+        case .held: return true
+        case .applied: break
         }
         let before = snapshot
         derive(publishing: false)
@@ -397,6 +400,22 @@ public actor SyncEngine {
         return true
     }
 
+    /// `update` into the held catalog, Home not told.
+    private func place(_ update: AgentPatch.Update) -> AgentPatch.Placement {
+        guard let held = desktop else { return .unplaced }
+        let placement = AgentPatch.place(update, in: held)
+        guard case .applied(let next) = placement else { return placement }
+        desktop = next
+        if var merged = unsaved[update.agentId] {
+            merged.changes.merge(update.changes) { _, new in new }
+            merged.version = update.version
+            unsaved[update.agentId] = merged
+        } else {
+            unsaved[update.agentId] = update
+        }
+        return placement
+    }
+
     /// The bootstrap with the changes applied since, written for the next launch.
     private func keepDesktop() async {
         guard var value = desktopValue, !unsaved.isEmpty, let database = try? database() else { return }
@@ -410,6 +429,8 @@ public actor SyncEngine {
         let revision = revision
         reads += 1
         let read = reads
+        journal = []
+        defer { journal = nil }
         let database = try database()
         let settingRevision = await database.confirmedSettingsRevision()
         let value = try await client.decode(JSONValue.self, "GET", "/v0/bootstrap/desktop")
@@ -439,6 +460,14 @@ public actor SyncEngine {
         self.desktop = desktop
         desktopValue = value
         unsaved = [:]
+        // What streamed in during the read: a change it already has is
+        // skipped and a later one placed over it, as desktop replays the feed
+        // it read ahead. Without this a read that lands under a working
+        // agent breaks the chain, and the next token reads again, for good.
+        for update in journal ?? [] {
+            if case .unplaced = place(update) { scheduleReconcile(generation); break }
+        }
+        journal = nil
         verified = true
         cursor = desktop.cursor
         snapshot.settings = try await database.settings()

@@ -90,7 +90,12 @@ phone holds is merged into the held catalog, as desktop's
 `connectHappyAgent` does. The daemon sends one with every streamed token,
 so this is what keeps a working agent from re-reading the catalog several
 times a second. Home publishes only when a row it shows changed, and the
-kept catalog is written at most every 2 s, only then.
+kept catalog is written at most every 2 s, only then. A change the held
+catalog already has (a redelivery, or one a later read carries; versions
+are time-ordered) is skipped. While the catalog is read, what streams in
+is kept and placed again over the read when it lands, as desktop replays
+the feed it reads ahead; without that, a read landing under a working
+agent would break its chain and every token after would read again.
 
 Anything else (a version gap, an agent not held, `unread`, archival,
 order, subtasks) and every other `project.`, `workspace.`, `bot.`,
@@ -108,7 +113,8 @@ never re-read Home.
   classic and never reads the sidebar document.
   `AgentPatchTests` checks that 200 streamed `agent.updated` read the
   catalog 0 times and publish Home exactly twice (working, then idle),
-  and that a version gap reads it once.
+  that a version gap reads it once, and that tokens streamed during a
+  read are placed over it with no second read.
 - `ClassicSidebarUITests` (HappyDirectUITests), against a throwaway daemon
   with a driver: the list without titles, and a relaunch.
 - `HostedHomeNoticeRowTests` (HappyUIKitHostedTests): the notice comes and

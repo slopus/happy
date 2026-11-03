@@ -8,8 +8,9 @@ import HappyWire
 /// The daemon sends one with every streamed token while an agent works
 /// (`status` and `updatedAt`), so reading the whole catalog again for each
 /// one kept the phone busy and the radio up for as long as anything worked.
-/// A change this can't place (an agent not held, a version gap, or a key
-/// that moves rows between owners) is left to a full read.
+/// A change the held copy already has is skipped. One this can't place (an
+/// agent not held, a version gap, or a key that moves rows between owners)
+/// is left to a full read.
 enum AgentPatch {
     struct Update: Equatable, Sendable {
         var agentId: String
@@ -39,9 +40,25 @@ enum AgentPatch {
         return Update(agentId: agentId, previousVersion: previous, version: version, changes: changes)
     }
 
-    /// `desktop` with the change applied to every copy of its agent, or nil
-    /// when none is held or one isn't the version the change follows.
-    static func apply(_ update: Update, to desktop: DesktopSnapshot) -> DesktopSnapshot? {
+    /// Where a change lands in the held catalog.
+    enum Placement: Equatable {
+        /// The catalog with the change applied to every copy of its agent.
+        case applied(DesktopSnapshot)
+        /// Every copy is already at the change's version or past it (a
+        /// redelivery, or a read that was made after it): nothing to do.
+        case held
+        /// No copy is held, or one isn't the version the change follows.
+        case unplaced
+
+        var applied: DesktopSnapshot? {
+            if case .applied(let desktop) = self { return desktop }
+            return nil
+        }
+    }
+
+    /// The change over `desktop`. Versions are time-ordered (UUIDv7), and
+    /// compared as desktop's `refetchAgent` compares them.
+    static func place(_ update: Update, in desktop: DesktopSnapshot) -> Placement {
         var walk = Walk(update: update)
         var next = desktop
         for index in next.projects.indices { next.projects[index].agents = next.projects[index].agents.map { walk.visit($0) } }
@@ -54,8 +71,8 @@ enum AgentPatch {
             for index in tasks.indices { tasks[index].agent = tasks[index].agent.map { walk.visit($0) } }
             next.tasks = tasks
         }
-        guard walk.found, !walk.stale else { return nil }
-        return next
+        guard walk.found, !walk.stale else { return .unplaced }
+        return walk.patched == nil ? .held : .applied(next)
     }
 
     /// The bootstrap as the computer sent it, with the change merged into
@@ -102,8 +119,11 @@ enum AgentPatch {
         mutating func visit(_ agent: AgentWire.Agent) -> AgentWire.Agent {
             if agent.id == update.agentId {
                 found = true
-                guard agent.version == update.previousVersion else { stale = true; return agent }
-                if patched == nil { patched = AgentPatch.patch(agent, update) }
+                guard agent.version == update.previousVersion else {
+                    if let version = agent.version, version >= update.version { return agent }
+                    stale = true; return agent
+                }
+                if patched == nil { patched = AgentPatch.streamed(agent, update) ?? AgentPatch.patch(agent, update) }
                 guard let patched else { stale = true; return agent }
                 return patched
             }
@@ -114,6 +134,21 @@ enum AgentPatch {
         private static func holds(_ agent: AgentWire.Agent, _ id: String) -> Bool {
             agent.id == id || (agent.subtasks ?? []).contains { holds($0, id) }
         }
+    }
+
+    /// What a streamed token changes (its status and times), set without the
+    /// JSON round trip `patch` makes; nil for any other change.
+    private static func streamed(_ agent: AgentWire.Agent, _ update: Update) -> AgentWire.Agent? {
+        var status = agent.status, updatedAt = agent.updatedAt, lastActivityAt = agent.lastActivityAt
+        for (key, value) in update.changes {
+            switch (key, value) {
+            case ("status", .string(let next)): status = next
+            case ("updatedAt", .number(let next)): updatedAt = next
+            case ("lastActivityAt", .number(let next)): lastActivityAt = next
+            default: return nil
+            }
+        }
+        return agent.with(subtasks: agent.subtasks, status: status, version: update.version, lastActivityAt: lastActivityAt, updatedAt: updatedAt)
     }
 
     /// One agent with the change merged over it: its own JSON, a few hundred bytes.
@@ -128,6 +163,11 @@ enum AgentPatch {
 extension AgentWire.Agent {
     /// The same agent over another list of subtasks.
     func with(subtasks: [AgentWire.Agent]?) -> AgentWire.Agent {
+        with(subtasks: subtasks, status: status, version: version, lastActivityAt: lastActivityAt, updatedAt: updatedAt)
+    }
+
+    /// The same agent over these subtasks, status, version and times.
+    func with(subtasks: [AgentWire.Agent]?, status: String, version: String?, lastActivityAt: Double?, updatedAt: Double?) -> AgentWire.Agent {
         AgentWire.Agent(
             id: id, workspaceId: workspaceId, parentAgentId: parentAgentId, title: title, status: status, wait: wait,
             subtasks: subtasks, pendingQuestionId: pendingQuestionId, unread: unread, canSendMessages: canSendMessages,

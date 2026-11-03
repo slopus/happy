@@ -17,6 +17,14 @@ private actor StreamingFixture: AgentTransport {
     """#
     var requested: [String] = []
     var continuations: [AsyncThrowingStream<Data, Error>.Continuation] = []
+    /// What the next catalog read answers, and what streams in while it is out.
+    var bootstrap = fixture
+    var duringRead: [JSONValue] = []
+
+    func answer(_ bootstrap: String, streaming: [JSONValue]) {
+        self.bootstrap = bootstrap
+        duringRead = streaming
+    }
 
     func catalogReads() -> Int { requested.filter { $0 == "/v0/bootstrap/desktop" }.count }
 
@@ -30,7 +38,15 @@ private actor StreamingFixture: AgentTransport {
 
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         requested.append(path)
-        if path == "/v0/bootstrap/desktop" { return .init(status: 200, body: Data(Self.fixture.utf8)) }
+        if path == "/v0/bootstrap/desktop" {
+            let body = bootstrap
+            if !duringRead.isEmpty {
+                emit(duringRead)
+                duringRead = []
+                try await Task.sleep(for: .milliseconds(150))
+            }
+            return .init(status: 200, body: Data(body.utf8))
+        }
         return .init(status: 404, body: Data("{}".utf8))
     }
 
@@ -73,7 +89,7 @@ final class AgentPatchTests: XCTestCase {
 
     func testAStatusChangeIsAppliedToTheHeldAgent() throws {
         let update = try XCTUnwrap(AgentPatch.update(updated("t-agent", "v0", "v1", ["status": "working", "updatedAt": 1792141201000])))
-        let next = try XCTUnwrap(AgentPatch.apply(update, to: try desktop()))
+        let next = try XCTUnwrap(AgentPatch.place(update, in: try desktop()).applied)
         let agent = try XCTUnwrap(next.tasks?.first?.agent)
         XCTAssertEqual(agent.status, "working")
         XCTAssertEqual(agent.version, "v1")
@@ -85,19 +101,39 @@ final class AgentPatchTests: XCTestCase {
 
     func testASubtaskIsPatchedInsideItsParent() throws {
         let update = try XCTUnwrap(AgentPatch.update(updated("child", "c1", "c2", ["status": "working"])))
-        let next = try XCTUnwrap(AgentPatch.apply(update, to: try desktop()))
+        let next = try XCTUnwrap(AgentPatch.place(update, in: try desktop()).applied)
         let parent = try XCTUnwrap(next.bots?.first?.agent)
         XCTAssertEqual(parent.version, "b1")
         XCTAssertEqual(parent.subtasks?.first?.status, "working")
         XCTAssertEqual(parent.subtasks?.first?.version, "c2")
     }
 
+    /// Beyond a token's status and times, the agent's own JSON takes the change.
+    func testAnyOtherOwnChangeIsMergedOverTheAgent() throws {
+        let line: JSONValue = .object(["text": "Drafting", "updatedAt": 1792141202000])
+        let update = try XCTUnwrap(AgentPatch.update(updated("t-agent", "v0", "v1", ["title": "Renamed", "statusLine": line, "status": "working"])))
+        let agent = try XCTUnwrap(AgentPatch.place(update, in: try desktop()).applied?.tasks?.first?.agent)
+        XCTAssertEqual(agent.title, "Renamed")
+        XCTAssertEqual(agent.statusLine, AgentWire.AgentStatusLine(text: "Drafting", updatedAt: 1792141202000))
+        XCTAssertEqual(agent.status, "working")
+        XCTAssertEqual(agent.version, "v1")
+        XCTAssertEqual(agent.lastActivityAt, 1792141200000)
+    }
+
+    /// A redelivery, or a change a later read already carries, is no gap.
+    func testAChangeTheCatalogHasIsSkipped() throws {
+        let again = try XCTUnwrap(AgentPatch.update(updated("t-agent", "u9", "v0", ["status": "working"])))
+        XCTAssertEqual(AgentPatch.place(again, in: try desktop()), .held)
+        let older = try XCTUnwrap(AgentPatch.update(updated("child", "c0", "c1", ["status": "working"])))
+        XCTAssertEqual(AgentPatch.place(older, in: try desktop()), .held)
+    }
+
     /// A gap, an agent not held, or a change that moves rows: a full read.
     func testWhatCantBePlacedIsLeftToARead() throws {
         let gap = try XCTUnwrap(AgentPatch.update(updated("t-agent", "v7", "v8", ["status": "working"])))
-        XCTAssertNil(AgentPatch.apply(gap, to: try desktop()))
+        XCTAssertEqual(AgentPatch.place(gap, in: try desktop()), .unplaced)
         let unknown = try XCTUnwrap(AgentPatch.update(updated("nobody", "v0", "v1", ["status": "working"])))
-        XCTAssertNil(AgentPatch.apply(unknown, to: try desktop()))
+        XCTAssertEqual(AgentPatch.place(unknown, in: try desktop()), .unplaced)
         for key in ["archivedAt", "orderKey", "subtasks", "subtaskOrderKey", "workspaceId", "unread"] {
             XCTAssertNil(AgentPatch.update(updated("t-agent", "v0", "v1", [key: .null])), key)
         }
@@ -113,7 +149,7 @@ final class AgentPatchTests: XCTestCase {
         XCTAssertEqual(child?["version"], "c2")
         // Read back, it is the patched catalog.
         let typed = try JSONDecoder().decode(DesktopSnapshot.self, from: JSONEncoder().encode(kept))
-        XCTAssertEqual(typed, AgentPatch.apply(update, to: try desktop()))
+        XCTAssertEqual(typed, AgentPatch.place(update, in: try desktop()).applied)
     }
 
     /// 200 tokens streamed: no read of the catalog, and Home hears exactly
@@ -168,6 +204,35 @@ final class AgentPatchTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(600))
         let readsLast = await transport.catalogReads()
         XCTAssertEqual(readsLast - readsAfter, 0)
+        await engine.stop()
+    }
+
+    /// A read that lands while an agent streams carries some of what streamed
+    /// during it and not the rest. The rest is placed over it and the chain
+    /// goes on: one read, never a read for every token after.
+    func testWhatStreamsDuringAReadIsPlacedOverIt() async throws {
+        let transport = StreamingFixture()
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        await engine.start()
+        _ = try await wait(engine) { $0.live && $0.loaded }
+        try await Task.sleep(for: .milliseconds(400))
+        await transport.emit((0..<3).map { updated("t-agent", "v\($0)", "v\($0 + 1)", ["status": "working"]) })
+        _ = try await wait(engine) { $0.rows.contains { $0.label == "Streaming task" && $0.status == .working } }
+        let reads = await transport.catalogReads()
+
+        // The computer is read again (a task changed) while tokens stream: it
+        // answers as of v5, and v4 to v7 arrive while it is out.
+        let asOfV5 = StreamingFixture.fixture.replacingOccurrences(
+            of: #""status":"idle","version":"v0""#, with: #""status":"working","version":"v5""#)
+        await transport.answer(asOfV5, streaming: (3..<7).map { updated("t-agent", "v\($0)", "v\($0 + 1)", ["status": "working"]) })
+        await transport.emit([.object(["type": "task.updated", "payload": .object(["taskId": "t"])])])
+        try await Task.sleep(for: .milliseconds(600))
+        await transport.emit([updated("t-agent", "v7", "v8", ["status": "idle"])])
+        _ = try await wait(engine) { $0.rows.contains { $0.label == "Streaming task" && $0.status == .none } }
+        try await Task.sleep(for: .milliseconds(500))
+
+        let readsAfter = await transport.catalogReads()
+        XCTAssertEqual(readsAfter - reads, 1)
         await engine.stop()
     }
 }
