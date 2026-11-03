@@ -26,6 +26,8 @@ import com.slopus.happy.model.InfoSetting
 import com.slopus.happy.model.SandboxSummary
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.settings.SettingsTile
+import com.slopus.happy.ui.settings.SettingsTiles
 import com.slopus.happy.ui.components.Item
 import com.slopus.happy.ui.theme.HappyTheme
 import kotlinx.coroutines.launch
@@ -37,7 +39,7 @@ internal fun InfoRow(title: String, subtitle: String, icon: Ionicon, modifier: M
         title = title,
         modifier = modifier,
         subtitle = subtitle,
-        icon = { Icon(icon, size = SessionInfoSpec.icon, color = SessionInfoSpec.purple) },
+        icon = { SettingsTile(icon, SettingsTiles.purple) },
         showChevron = false,
     )
 }
@@ -47,7 +49,7 @@ internal fun DetailRow(title: String, detail: String, icon: Ionicon) {
     Item(
         title = title,
         detail = detail,
-        icon = { Icon(icon, size = SessionInfoSpec.icon, color = SessionInfoSpec.purple) },
+        icon = { SettingsTile(icon, SettingsTiles.purple) },
         showChevron = false,
     )
 }
@@ -60,7 +62,7 @@ internal fun CopyableItem(command: String, copyToClipboard: (String) -> Boolean)
     Item(
         title = stringResource(R.string.home_info_resume_command),
         subtitle = command,
-        icon = { Icon(Ionicon.PlayCircleOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.green) },
+        icon = { SettingsTile(Ionicon.PlayCircleOutline, SettingsTiles.green) },
         showChevron = false,
         rightElement = {
             Icon(
@@ -84,7 +86,7 @@ internal fun CopyableItem(command: String, copyToClipboard: (String) -> Boolean)
 @Composable
 internal fun RawJson(title: String, icon: Ionicon, color: Color, json: JsonObject) {
     val colors = HappyTheme.colors
-    Item(title = title, icon = { Icon(icon, size = SessionInfoSpec.icon, color = color) }, showChevron = false)
+    Item(title = title, icon = { SettingsTile(icon, color) }, showChevron = false)
     Box(
         modifier = Modifier
             .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)

@@ -59,10 +59,11 @@ import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.settings.SettingsTile
+import com.slopus.happy.ui.settings.SettingsTiles
 import com.slopus.happy.ui.components.Item
 import com.slopus.happy.ui.components.ItemGroup
 import com.slopus.happy.ui.components.ItemList
-import com.slopus.happy.ui.components.Octicon
 import com.slopus.happy.ui.components.confirm
 import com.slopus.happy.ui.home.ArchiveResult
 import com.slopus.happy.ui.home.taskFailureMessage
@@ -163,7 +164,7 @@ internal fun SessionInfoContent(
             val git = metadata.gitPresentation(live.gitStatus, live.gitStatusFiles)
             Item(
                 title = stringResource(R.string.files_changes),
-                icon = { Icon(Octicon.FileDiff, size = SessionInfoSpec.changesIcon, color = SessionInfoSpec.blue) },
+                icon = { SettingsTile(Ionicon.GitCompareOutline, SettingsTiles.blue) },
                 rightElement = if (git.changedFileCount != null || git.changes != null) {
                     {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -184,7 +185,7 @@ internal fun SessionInfoContent(
                 Item(
                     title = stringResource(R.string.session_info_view_machine),
                     subtitle = stringResource(R.string.session_info_view_machine_subtitle),
-                    icon = { Icon(Ionicon.ServerOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.blue) },
+                    icon = { SettingsTile(Ionicon.ServerOutline, SettingsTiles.blue) },
                     onClick = { actions.onOpenMachine(machineId) },
                     modifier = Modifier.testTag(SessionInfoTags.MACHINE),
                 )
@@ -193,7 +194,7 @@ internal fun SessionInfoContent(
                 Item(
                     title = stringResource(R.string.session_info_resume_session),
                     subtitle = resumeSubtitle,
-                    icon = { Icon(Ionicon.PlayCircleOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.blue) },
+                    icon = { SettingsTile(Ionicon.PlayCircleOutline, SettingsTiles.blue) },
                     onClick = {
                         val machineId = metadata?.machineId
                         if (!resume.canResume || machineId == null) {
@@ -215,7 +216,7 @@ internal fun SessionInfoContent(
                 Item(
                     title = stringResource(R.string.session_fork_action),
                     subtitle = stringResource(R.string.session_fork_subtitle),
-                    icon = { Icon(Ionicon.GitBranchOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.blue) },
+                    icon = { SettingsTile(Ionicon.GitBranchOutline, SettingsTiles.blue) },
                     loading = forking,
                     onClick = {
                         val source = forkSource ?: return@Item show(errorTitle, missingMetadata)
@@ -233,7 +234,7 @@ internal fun SessionInfoContent(
                 Item(
                     title = stringResource(R.string.session_duplicate_action),
                     subtitle = stringResource(R.string.session_duplicate_subtitle),
-                    icon = { Icon(Ionicon.TimeOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.blue) },
+                    icon = { SettingsTile(Ionicon.TimeOutline, SettingsTiles.blue) },
                     onClick = { duplicating = true },
                     modifier = Modifier.testTag(SessionInfoTags.DUPLICATE),
                 )
@@ -242,7 +243,7 @@ internal fun SessionInfoContent(
                 Item(
                     title = stringResource(R.string.session_forked_from_label),
                     subtitle = stringResource(R.string.session_forked_from_subtitle),
-                    icon = { Icon(Ionicon.ReturnUpBackOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.purple) },
+                    icon = { SettingsTile(Ionicon.ReturnUpBackOutline, SettingsTiles.purple) },
                     onClick = { actions.onOpenSession(parent) },
                     modifier = Modifier.testTag(SessionInfoTags.PARENT),
                 )
@@ -257,7 +258,8 @@ internal fun SessionInfoContent(
             if (task && session.canLeaveTask) {
                 Item(
                     title = stringResource(R.string.task_leave),
-                    icon = { Icon(Ionicon.ExitOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.red) },
+                    icon = { SettingsTile(Ionicon.ExitOutline, SettingsTiles.red) },
+                    destructive = true,
                     loading = archiving,
                     onClick = {
                         archiving = true
@@ -277,7 +279,8 @@ internal fun SessionInfoContent(
                 Item(
                     title = stringResource(if (task) R.string.task_archive else R.string.session_info_archive_session),
                     subtitle = if (task) null else stringResource(R.string.session_info_archive_session_subtitle),
-                    icon = { Icon(Ionicon.ArchiveOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.red) },
+                    icon = { SettingsTile(Ionicon.ArchiveOutline, SettingsTiles.red) },
+                    destructive = true,
                     loading = archiving,
                     onClick = {
                         archiving = true
@@ -299,7 +302,8 @@ internal fun SessionInfoContent(
                 Item(
                     title = deleteTitle,
                     subtitle = stringResource(R.string.session_info_delete_session_subtitle),
-                    icon = { Icon(Ionicon.TrashOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.red) },
+                    icon = { SettingsTile(Ionicon.TrashOutline, SettingsTiles.red) },
+                    destructive = true,
                     loading = deleting,
                     onClick = {
                         alert = Alert(
@@ -332,7 +336,7 @@ internal fun SessionInfoContent(
                 Item(
                     title = stringResource(R.string.session_info_cli_version_outdated),
                     subtitle = stringResource(R.string.session_info_update_cli_instructions),
-                    icon = { Icon(Ionicon.WarningOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.orange) },
+                    icon = { SettingsTile(Ionicon.WarningOutline, SettingsTiles.orange) },
                     showChevron = false,
                     // handleCopyUpdateCommand: a refused copy says Error / Error.
                     onClick = { copy(SessionInfoSpec.UPDATE_COMMAND, SessionInfoSpec.UPDATE_COMMAND, errorTitle) },
@@ -347,7 +351,7 @@ internal fun SessionInfoContent(
             Item(
                 title = stringResource(R.string.session_info_happy_session_id),
                 subtitle = shortId(session.id),
-                icon = { Icon(Ionicon.FingerPrintOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.blue) },
+                icon = { SettingsTile(Ionicon.FingerPrintOutline, SettingsTiles.blue) },
                 onClick = { copy(session.id, sessionIdCopied, sessionIdFailed) },
                 modifier = Modifier.testTag(SessionInfoTags.SESSION_ID),
             )
@@ -357,7 +361,7 @@ internal fun SessionInfoContent(
                 Item(
                     title = stringResource(R.string.session_info_claude_code_session_id),
                     subtitle = shortId(id),
-                    icon = { Icon(Ionicon.CodeOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.magenta) },
+                    icon = { SettingsTile(Ionicon.CodeOutline, SettingsTiles.orange) },
                     onClick = { copy(id, copied, failed) },
                 )
             }
@@ -367,7 +371,7 @@ internal fun SessionInfoContent(
                 Item(
                     title = stringResource(R.string.session_info_codex_thread_id),
                     subtitle = shortId(id),
-                    icon = { Icon(Ionicon.TerminalOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.codex) },
+                    icon = { SettingsTile(Ionicon.TerminalOutline, SettingsTiles.gray) },
                     onClick = { copy(id, copied, failed) },
                 )
             }
@@ -377,25 +381,25 @@ internal fun SessionInfoContent(
             Item(
                 title = stringResource(R.string.session_info_connection_status),
                 detail = stringResource(if (session.isOnline) R.string.status_online else R.string.status_offline),
-                icon = { Icon(Ionicon.PulseOutline, size = SessionInfoSpec.icon, color = if (session.isOnline) SessionInfoSpec.online else SessionInfoSpec.gray) },
+                icon = { SettingsTile(Ionicon.PulseOutline, if (session.isOnline) SettingsTiles.green else SettingsTiles.gray) },
                 showChevron = false,
             )
             Item(
                 title = stringResource(R.string.session_info_created),
                 subtitle = formatLocaleDateTime(session.createdAt, zone),
-                icon = { Icon(Ionicon.CalendarOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.blue) },
+                icon = { SettingsTile(Ionicon.CalendarOutline, SettingsTiles.blue) },
                 showChevron = false,
             )
             Item(
                 title = stringResource(R.string.session_info_last_updated),
                 subtitle = formatLocaleDateTime(session.updatedAt, zone),
-                icon = { Icon(Ionicon.TimeOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.blue) },
+                icon = { SettingsTile(Ionicon.TimeOutline, SettingsTiles.blue) },
                 showChevron = false,
             )
             Item(
                 title = stringResource(R.string.session_info_sequence),
                 detail = session.seq.toString(),
-                icon = { Icon(Ionicon.GitCommitOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.blue) },
+                icon = { SettingsTile(Ionicon.GitCommitOutline, SettingsTiles.blue) },
                 showChevron = false,
             )
         }
@@ -413,7 +417,7 @@ internal fun SessionInfoContent(
                         title = stringResource(R.string.session_info_cli_version),
                         subtitle = version,
                         detail = if (outdated) "⚠️" else null,
-                        icon = { Icon(Ionicon.GitBranchOutline, size = SessionInfoSpec.icon, color = if (outdated) SessionInfoSpec.orange else SessionInfoSpec.purple) },
+                        icon = { SettingsTile(Ionicon.GitBranchOutline, if (outdated) SettingsTiles.orange else SettingsTiles.purple) },
                         showChevron = false,
                     )
                 }
@@ -447,13 +451,13 @@ internal fun SessionInfoContent(
                 val metadataFailed = stringResource(R.string.session_info_failed_to_copy_metadata)
                 Item(
                     title = stringResource(R.string.session_info_copy_metadata),
-                    icon = { Icon(Ionicon.CopyOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.blue) },
+                    icon = { SettingsTile(Ionicon.CopyOutline, SettingsTiles.blue) },
                     onClick = { copy(prettyJson(metadata.raw), metadataCopied, metadataFailed) },
                     modifier = Modifier.testTag(SessionInfoTags.COPY_METADATA),
                 )
                 Item(
                     title = stringResource(R.string.session_info_copy_metadata) + "\n& Client Logs",
-                    icon = { Icon(Ionicon.DocumentTextOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.blue) },
+                    icon = { SettingsTile(Ionicon.DocumentTextOutline, SettingsTiles.blue) },
                     onClick = {
                         scope.launch {
                             val logs = actions.clientLogs()
@@ -497,7 +501,7 @@ private fun PermissionGroup(permission: SessionInfoPermission, metadata: Session
         Box {
             Item(
                 title = stringResource(R.string.conversation_details_permission_mode),
-                icon = { Icon(Ionicon.ShieldCheckmarkOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.blue) },
+                icon = { SettingsTile(Ionicon.ShieldCheckmarkOutline, SettingsTiles.blue) },
                 detail = current?.name,
                 onClick = { open = true },
                 showChevron = false,

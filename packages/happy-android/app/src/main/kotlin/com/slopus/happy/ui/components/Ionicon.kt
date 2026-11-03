@@ -85,6 +85,7 @@ enum class Ionicon(val codepoint: Int) {
     FolderOutline(0xf329), // folder-outline
     GitBranchOutline(0xf33b), // git-branch-outline
     GitCommitOutline(0xf33e), // git-commit-outline
+    GitCompareOutline(0xf341), // git-compare-outline
     GitNetworkOutline(0xf347), // git-network-outline
     GlobeOutline(0xf350), // globe-outline
     HardwareChipOutline(0xf365), // hardware-chip-outline
