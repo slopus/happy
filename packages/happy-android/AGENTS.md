@@ -1120,6 +1120,18 @@ Motion keeps only the fade. The relay chat's fill changes over the same
 Happy Agent field's placeholder is iOS's "Type a message ..."
 (`session_input_placeholder`).
 
+Composer pictures come and go as on iOS 8eed293c9 (`PictureStripMotion`):
+one added grows from 0.2 and fades in, one taken out shrinks to 0.2 and fades
+where it was while the rest slide, over 0.4 s on the (0.38, 0.7, 0.125, 1)
+curve. Both strips use it (the Happy Agent composer's and `AttachmentStrip`).
+A lazy row never redraws an item it is taking out, so `PictureStripFrame`
+draws the leaving picture itself, under the row at its last place. The strip
+records a picture as leaving during composition, so it shows in the same
+frame the row drops it. The picker hands over its own list, which it changes
+in place, so the strip keeps a copy to compare against. The last picture
+keeps the strip open until it has gone. Pictures already there when the
+composer is made arrive without animating.
+
 ### Image loading
 
 One Coil 3 `ImageLoader` (`ui/components/RemoteImage.kt`) for every

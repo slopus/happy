@@ -76,30 +76,42 @@ object AttachmentStripTags {
  * 64x64, radius 8, a 1 divider border, the image cropped to fill. Its
  * remove button is an 18 circle in surfaceHigh straddling the top right
  * corner (6 outside on both edges), close 10 in text, at 0.7 while
- * pressed. Nothing when there are no images.
+ * pressed. Nothing when there are no images. Pictures grow in and shrink
+ * out ([PictureStripMotion]).
  */
 @Composable
 fun AttachmentStrip(images: List<AttachmentPreview>, onRemove: (String) -> Unit, modifier: Modifier = Modifier) {
-    if (images.isEmpty()) return
-    LazyRow(
-        modifier = modifier
+    val strip = rememberPictureStrip(images)
+    PictureStripVisibility(images.isNotEmpty()) { AttachmentRow(images, strip, onRemove, modifier) }
+}
+
+@Composable
+private fun AttachmentRow(images: List<AttachmentPreview>, strip: PictureStripState, onRemove: (String) -> Unit, modifier: Modifier) {
+    PictureStripFrame(
+        strip,
+        modifier
             .testTag(AttachmentStripTags.STRIP)
             .fillMaxWidth()
             .padding(horizontal = AttachmentStripSpec.marginHorizontal)
             .padding(bottom = AttachmentStripSpec.marginBottom),
-        // Room above for the remove buttons, which stick out of each thumbnail.
-        contentPadding = PaddingValues(horizontal = AttachmentStripSpec.contentPaddingHorizontal, vertical = AttachmentStripSpec.removeOffset),
-        horizontalArrangement = Arrangement.spacedBy(AttachmentStripSpec.gap),
+        thumb = { AttachmentThumbnail(it, onRemove = {}) },
     ) {
-        items(images, key = { it.id }) { image -> AttachmentThumbnail(image, onRemove) }
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            // Room above for the remove buttons, which stick out of each thumbnail.
+            contentPadding = PaddingValues(horizontal = AttachmentStripSpec.contentPaddingHorizontal, vertical = AttachmentStripSpec.removeOffset),
+            horizontalArrangement = Arrangement.spacedBy(AttachmentStripSpec.gap),
+        ) {
+            items(images, key = { it.id }) { image -> AttachmentThumbnail(image, onRemove, pictureMotion(image.id, strip)) }
+        }
     }
 }
 
 @Composable
-private fun AttachmentThumbnail(image: AttachmentPreview, onRemove: (String) -> Unit) {
+private fun AttachmentThumbnail(image: AttachmentPreview, onRemove: (String) -> Unit, motion: Modifier = Modifier) {
     val colors = HappyTheme.colors
     val shape = RoundedCornerShape(AttachmentStripSpec.radius)
-    Box(modifier = Modifier.size(AttachmentStripSpec.thumb).testTag(AttachmentStripTags.THUMB)) {
+    Box(modifier = motion.size(AttachmentStripSpec.thumb).testTag(AttachmentStripTags.THUMB)) {
         Box(
             modifier = Modifier
                 .size(AttachmentStripSpec.thumb)

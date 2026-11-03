@@ -77,6 +77,11 @@ import com.slopus.happy.attachments.AttachAccepts
 import com.slopus.happy.ui.attach.AttachSheet
 import com.slopus.happy.ui.attach.AttachedFileTile
 import com.slopus.happy.ui.attachments.rememberComposerImages
+import com.slopus.happy.ui.attachments.PictureStripFrame
+import com.slopus.happy.ui.attachments.PictureStripState
+import com.slopus.happy.ui.attachments.PictureStripVisibility
+import com.slopus.happy.ui.attachments.pictureMotion
+import com.slopus.happy.ui.attachments.rememberPictureStrip
 import com.slopus.happy.ui.attachments.ImagePicker
 import com.slopus.happy.ui.chat.PrimaryAction
 import com.slopus.happy.ui.chat.PrimaryGlyph
@@ -176,6 +181,7 @@ internal fun ConversationComposer(
     RecomposeProbe.mark(ConversationScreenTags.PROBE_COMPOSER)
     val colors = HappyTheme.colors
     val attached = pictures?.images.orEmpty()
+    val strip = rememberPictureStrip(attached)
     val hasContent = text.isNotBlank() || attached.isNotEmpty()
     val primary = primaryActionOf(hasContent, state)
     // A stop that failed shakes the button (desktop Shaker.tsx `shakerRef`, iOS `shakePrimary`).
@@ -272,8 +278,8 @@ internal fun ConversationComposer(
                 .animateContentSize(if (reduceMotion || compact) snap() else spring(stiffness = 700f))
                 .testTag(ConversationComposerTags.PILL),
         ) {
-            if (attached.isNotEmpty() && !compact) {
-                ComposerPictures(attached, onRemove = { pictures?.remove(it) })
+            PictureStripVisibility(attached.isNotEmpty() && !compact, immediate = compact) {
+                ComposerPictures(attached, strip, onRemove = { pictures?.remove(it) })
             }
             ComposerLayout(open, compact, if (compact || !open) minimumCompact else minimumActions) {
                 Box(Modifier.layoutId(Slot.MORE)) {
@@ -371,7 +377,7 @@ internal fun ConversationComposer(
             modifier = Modifier.testTag(ConversationComposerTags.MENU),
         ) {
             LazyColumn(contentPadding = PaddingValues(vertical = 8.dp)) {
-                item { ComposerPictures(attached, onRemove = { pictures?.remove(it) }) }
+                item { ComposerPictures(attached, strip, onRemove = { pictures?.remove(it) }) }
                 item {
                     HappyMenuItem(
                         label = stringResource(R.string.attach_title),
@@ -471,26 +477,32 @@ private fun ComposerViewport(minimumOpen: Dp, minimumCompact: Dp, modifier: Modi
 }
 
 @Composable
-private fun ComposerPictures(images: List<AttachmentPreview>, onRemove: (String) -> Unit) {
-    LazyRow(
-        contentPadding = PaddingValues(horizontal = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.padding(top = 12.dp).testTag(ConversationComposerTags.PICTURES),
-    ) {
-        items(images, key = { it.id }) { picture ->
-            Box(Modifier.size(64.dp)) {
-                if (picture.mimeType.startsWith("image/")) {
-                    RemoteImage(picture.uri, contentDescription = picture.name, contentScale = ContentScale.Crop, modifier = Modifier.size(64.dp).clip(MaterialTheme.shapes.medium))
-                } else {
-                    AttachedFileTile(picture.name, Modifier.size(64.dp).clip(MaterialTheme.shapes.medium))
-                }
-                FilledTonalIconButton(
-                    onClick = { onRemove(picture.id) },
-                    modifier = Modifier.align(Alignment.TopEnd).padding(2.dp).size(24.dp).testTag(ConversationComposerTags.PICTURE_REMOVE),
-                ) {
-                    Icon(MaterialSymbols.Close, stringResource(R.string.conversation_remove_picture), Modifier.size(16.dp))
-                }
-            }
+private fun ComposerPictures(images: List<AttachmentPreview>, strip: PictureStripState, onRemove: (String) -> Unit) {
+    PictureStripFrame(strip, Modifier.fillMaxWidth().padding(top = 12.dp).testTag(ConversationComposerTags.PICTURES), thumb = { ComposerPicture(it, onRemove = {}) }) {
+        // Full width, so a picture sliding into a place freed is never cut at the row's end.
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            items(images, key = { it.id }) { picture -> ComposerPicture(picture, onRemove, pictureMotion(picture.id, strip)) }
+        }
+    }
+}
+
+@Composable
+private fun ComposerPicture(picture: AttachmentPreview, onRemove: (String) -> Unit, modifier: Modifier = Modifier) {
+    Box(modifier.size(64.dp)) {
+        if (picture.mimeType.startsWith("image/")) {
+            RemoteImage(picture.uri, contentDescription = picture.name, contentScale = ContentScale.Crop, modifier = Modifier.size(64.dp).clip(MaterialTheme.shapes.medium))
+        } else {
+            AttachedFileTile(picture.name, Modifier.size(64.dp).clip(MaterialTheme.shapes.medium))
+        }
+        FilledTonalIconButton(
+            onClick = { onRemove(picture.id) },
+            modifier = Modifier.align(Alignment.TopEnd).padding(2.dp).size(24.dp).testTag(ConversationComposerTags.PICTURE_REMOVE),
+        ) {
+            Icon(MaterialSymbols.Close, stringResource(R.string.conversation_remove_picture), Modifier.size(16.dp))
         }
     }
 }
