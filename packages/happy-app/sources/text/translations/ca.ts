@@ -876,6 +876,14 @@ export const ca: TranslationStructure = {
 
     onboarding: {
         ...en.onboarding,
+        // Get help, and the server row's default (also the first screen's ⋯ on the native apps).
+        getHelp: 'Obtén ajuda',
+        helpMessage: 'T\'has encallat? Pregunta\'ns.',
+        helpDiscord: 'Pregunta a Discord',
+        helpBra1nDump: 'Escriu a @bra1n_dump a X',
+        helpEx3ndr: 'Escriu a @Ex3NDR a X',
+        helpIssues: 'Problemes coneguts',
+        settingsServerDefault: 'Per defecte',
     },
 
     troubleshoot: {

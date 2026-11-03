@@ -153,6 +153,12 @@ class StartLayoutTest {
         rule.onNodeWithText("Get help").performClick()
         rule.node(StartTags.MENU).assertDoesNotExist()
         rule.onNodeWithText("Stuck? Come ask us.").assertExists()
+        // One under another, Cancel last: side by side "Browse known issues" broke a letter at a time.
+        val discord = rule.onNodeWithText("Ask on Discord").bounds
+        val issues = rule.onNodeWithText("Browse known issues").bounds
+        val cancel = rule.onNodeWithText("Cancel").bounds
+        assertTrue("stacked", discord.bottom <= issues.top && issues.bottom <= cancel.top)
+        assertTrue("on one line", issues.height < discord.height * 1.5f)
         assertEquals(listOf("start", "link", "restore", "server"), taps)
     }
 

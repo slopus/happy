@@ -882,6 +882,14 @@ export const ru: TranslationStructure = {
 
     onboarding: {
         ...en.onboarding,
+        // Get help, and the server row's default (also the first screen's ⋯ on the native apps).
+        getHelp: 'Помощь',
+        helpMessage: 'Застряли? Спросите нас.',
+        helpDiscord: 'Спросить в Discord',
+        helpBra1nDump: 'Написать @bra1n_dump в X',
+        helpEx3ndr: 'Написать @Ex3NDR в X',
+        helpIssues: 'Известные проблемы',
+        settingsServerDefault: 'По умолчанию',
     },
 
     troubleshoot: {

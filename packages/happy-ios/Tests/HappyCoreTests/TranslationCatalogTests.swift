@@ -57,12 +57,12 @@ final class TranslationCatalogTests: XCTestCase {
                 checked += 1
             }
         }
-        XCTAssertEqual(checked, 8210)
+        XCTAssertEqual(checked, 8600)
     }
 
     func testEveryCatalogHasEnglishsKeys() {
         let english = Set(TranslationCatalog.english.keys)
-        XCTAssertEqual(english.filter { !$0.hasPrefix("native.") }.count, 900)
+        XCTAssertEqual(english.filter { !$0.hasPrefix("native.") }.count, 909)
         for language in AppLanguage.supported.map(\.code) {
             XCTAssertEqual(Set(TranslationCatalog.catalog(for: language).keys), english, language)
         }

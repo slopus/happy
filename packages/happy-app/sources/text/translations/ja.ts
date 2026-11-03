@@ -877,6 +877,14 @@ export const ja: TranslationStructure = {
 
     onboarding: {
         ...en.onboarding,
+        // Get help, and the server row's default (also the first screen's ⋯ on the native apps).
+        getHelp: 'ヘルプ',
+        helpMessage: 'お困りですか？お気軽にご質問ください。',
+        helpDiscord: 'Discord で質問',
+        helpBra1nDump: 'X で @bra1n_dump に DM',
+        helpEx3ndr: 'X で @Ex3NDR に DM',
+        helpIssues: '既知の問題を見る',
+        settingsServerDefault: 'デフォルト',
     },
 
     troubleshoot: {

@@ -892,6 +892,14 @@ export const pl: TranslationStructure = {
 
     onboarding: {
         ...en.onboarding,
+        // Get help, and the server row's default (also the first screen's ⋯ on the native apps).
+        getHelp: 'Pomoc',
+        helpMessage: 'Utknąłeś? Zapytaj nas.',
+        helpDiscord: 'Zapytaj na Discordzie',
+        helpBra1nDump: 'Napisz do @bra1n_dump na X',
+        helpEx3ndr: 'Napisz do @Ex3NDR na X',
+        helpIssues: 'Znane problemy',
+        settingsServerDefault: 'Domyślny',
     },
 
     troubleshoot: {
