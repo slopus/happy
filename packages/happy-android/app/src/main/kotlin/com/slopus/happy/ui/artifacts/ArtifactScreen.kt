@@ -40,6 +40,7 @@ import com.slopus.happy.artifacts.documentPictureSize
 import com.slopus.happy.chat.markdown.MarkdownBlock
 import com.slopus.happy.conversation.MediaItem
 import com.slopus.happy.ui.browser.BrowserPage
+import com.slopus.happy.ui.browser.BrowserControls
 import com.slopus.happy.ui.browser.BrowserView
 import com.slopus.happy.ui.browser.rememberBrowserState
 import com.slopus.happy.ui.chat.MarkdownView
@@ -95,8 +96,14 @@ class ArtifactActions(
 fun ArtifactScreen(title: String, ui: ArtifactUi, media: ArtifactMedia?, computer: String, actions: ArtifactActions) {
     var viewing by remember { mutableStateOf<Pair<List<ArtifactMediaItem>, Int>?>(null) }
     var missing by remember { mutableStateOf(false) }
+    // A page's browser buttons go in this bar, and the artifact's title stays (iOS 34aa464e1).
     val browser = rememberBrowserState()
-    PlaceScaffold(title.ifBlank { stringResource(R.string.artifact_untitled) }, actions.onBack, ArtifactTags.SCREEN) {
+    PlaceScaffold(
+        title.ifBlank { stringResource(R.string.artifact_untitled) },
+        actions.onBack,
+        ArtifactTags.SCREEN,
+        actions = { if (ui is ArtifactUi.Page) BrowserControls(browser) },
+    ) {
         when (ui) {
             ArtifactUi.Loading -> LoadingIndicator(Modifier.testTag(PlaceTags.LOADER))
             is ArtifactUi.Message -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
