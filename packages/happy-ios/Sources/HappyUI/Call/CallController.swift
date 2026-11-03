@@ -84,6 +84,8 @@ final class CallController {
         session = call
         call.onState = { [weak self, weak call] state in
             guard let self, let call, self.session === call else { return }
+            // Ended, it hears from nothing more: only its bar stays, saying why.
+            if case .ended = state { self.letGo() }
             self.show(state)
         }
         call.onOverflow = { [weak self, weak call] in
@@ -167,15 +169,21 @@ final class CallController {
         let old = session
         session = nil
         old?.stop()
+        letGo()
+        connectionID = nil
+        show(.idle)
+    }
+
+    /// What the call followed, let go of: its context, the conversations it
+    /// held and the directory's watch.
+    private func letGo() {
         let context = self.context
         self.context = nil
         Task { await context?.close() }
         targets?.close()
         targets = nil
         directoryWatch = nil
-        connectionID = nil
         focus = nil
-        show(.idle)
     }
 
     /// The call stops for the system; one that was live leaves no bar.

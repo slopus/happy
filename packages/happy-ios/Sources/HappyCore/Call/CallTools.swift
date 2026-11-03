@@ -17,9 +17,9 @@ public enum CallTool: String, CaseIterable, Sendable {
     public var summary: String {
         switch self {
         case .listSessions:
-            "List the person's conversations (tasks, bots and chats) with their targetRef, title, kind and status. query keeps those whose title contains it as a case-insensitive substring. Page with nextCursor."
+            "List the person's bots and tasks with their targetRef, title, kind and status. query keeps those whose title contains it as a case-insensitive substring. Page with nextCursor. Subtasks and other conversations aren't listed; you can reach one only after the person opens it themselves."
         case .getSessionContext:
-            "Read one conversation: whether it is working or needs the person, its last two finished turns (the person's message and the agent's final answer), and the person's latest message if nothing has answered it yet. It doesn't open the conversation or change what you hear from."
+            "Read one conversation: whether it is working or needs the person, and its last five turns, each the person's message and the agent's last words, or as much of the pair as there is; the person's latest message, if nothing has answered it yet, is the fifth (pendingUserMessage). It doesn't open the conversation or change what you hear from."
         case .openSession:
             "Show a conversation on the person's screen. Like any conversation they open, it joins the four most recently visited, whose new replies you hear."
         case .sendMessage:

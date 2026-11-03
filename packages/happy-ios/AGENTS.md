@@ -162,8 +162,13 @@ nothing here is wired to the release skill or to EAS.
   openSession, sendMessage) and no permission or question tool; a
   conversation waiting on the person is a `needsInput` flag on a read only.
   The call hears from the last four conversations visited (`CallContext`):
-  only their agents' new words, as deltas, and errors that stopped a turn,
-  never status, tools or a prompt to speak.
+  only their agents' new words, each piece once and whole when complete
+  (the agent went on past it, or its run ended; never on a pause, never
+  as it streams), and errors that stopped a turn, never status, tools or a
+  prompt to speak. Its directory is the account's bots and tasks; a
+  subtask or other conversation is the tools' only once the person opened
+  it themselves. It projects the app's own state (`WarmChats` hold, watch
+  and release, the chat's own send), never a read of its own.
   It ends on background, interruption, lost route, account change and when
   the relay's voice starts. For launch it connects to a public agent by its
   ID (`PublicAgentCallGrants`): a connection mechanism, not authentication.

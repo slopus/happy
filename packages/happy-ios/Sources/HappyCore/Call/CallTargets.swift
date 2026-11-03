@@ -1,7 +1,9 @@
 import Foundation
 
 /// One conversation a call can talk about: a bot, a task or another
-/// conversation of the account the call is bound to.
+/// conversation of the account the call is bound to. Only bots and tasks
+/// are listed (`isTopLevel`); any other conversation, a subtask included,
+/// is the call's only once the person opens it themselves.
 public struct CallTarget: Equatable, Sendable {
     public enum Kind: String, Equatable, Sendable, Encodable {
         case bot, task, conversation
@@ -21,16 +23,35 @@ public struct CallTarget: Equatable, Sendable {
     public var kind: Kind
     public var project: String?
     public var status: Status
+    /// It has a name of its own: not none, and not the one the computer
+    /// gives new work until its first message names it ("New Task", "New
+    /// Bot"). A bot or task without one isn't listed until it has one. A
+    /// name the person chose that is exactly one of those reads the same.
+    public var named: Bool
 
-    public init(agentId: String, title: String, kind: Kind, project: String? = nil, status: Status) {
+    public init(agentId: String, title: String, kind: Kind, project: String? = nil, status: Status, named: Bool = true) {
         self.agentId = agentId
         self.title = title
         self.kind = kind
         self.project = project
         self.status = status
+        self.named = named
     }
 
-    /// A sidebar row's conversation; nil for rows that open none.
+    /// A bot or a task, as the account owns them; never a subtask or a
+    /// project's conversation.
+    public var isTopLevel: Bool { kind == .bot || kind == .task }
+
+    /// What the call lists: a bot or a task with a name.
+    public var isListed: Bool { isTopLevel && named }
+
+    /// The names the computer gives a task or a bot made without one
+    /// (`AgentClient.createTask`, `createBot`), until its first message names it.
+    public static let unnamed: Set<String> = ["New Task", "New Bot"]
+
+    /// A sidebar row's conversation; nil for rows that open none. A row is
+    /// a bot or a task by what it is the conversation of (`targetKind`, the
+    /// bot or task that owns it), never by where it sits.
     public static func from(_ row: Row) -> CallTarget? {
         guard row.kind == .space || row.kind == .session, let agentId = row.agentId, row.targetKind != "surface" else { return nil }
         let kind: Kind = switch row.targetKind {
@@ -44,7 +65,10 @@ public struct CallTarget: Equatable, Sendable {
         case .awaitingInput: .needsInput
         case .none: .idle
         }
-        return CallTarget(agentId: agentId, title: row.label, kind: kind, status: status)
+        // A bot's or task's own name, never the row's stand-in for none.
+        let name = row.name?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let named = !name.isEmpty && !unnamed.contains(name)
+        return CallTarget(agentId: agentId, title: kind == .conversation || !named ? row.label : name, kind: kind, status: status, named: named)
     }
 }
 
@@ -62,7 +86,9 @@ public struct CallMessage: Equatable, Sendable {
     public var role: Role
     public var text: String
     public var time: Double?
-    /// False while the agent is still writing it.
+    /// The agent has gone on past it (a tool call, more words after one, a
+    /// turn's end) or its run is over: what it says is complete. False for
+    /// the agent's last words while it still works.
     public var final: Bool
     public var delivery: Delivery?
 
@@ -105,7 +131,8 @@ public struct CallTurn: Equatable, Sendable {
 public struct CallTargetState: Equatable, Sendable {
     public var target: CallTarget
     /// Every public message, the agent's still being written included
-    /// (`final` false): what the live words are read from.
+    /// (`final` false). The agent's are its words between steps, one
+    /// message each.
     public var messages: [CallMessage]
     public var turns: [CallTurn]
     /// The person's latest message, when no finished turn answers it.
@@ -174,8 +201,12 @@ public struct CallTargetState: Equatable, Sendable {
                 continue
             }
         }
-        if snapshot.working, let last = messages.indices.last, messages[last].role == .assistant {
-            messages[last].final = false
+        // The agent's words are complete once it went on past them; while it
+        // works, its last words may still grow. The person's messages, or
+        // another agent's, coming in after them say nothing of that.
+        if snapshot.working, let step = snapshot.items.last(where: Self.isStep), step.role == .agent,
+           let index = messages.lastIndex(where: { $0.role == .assistant && $0.id == step.id }) {
+            messages[index].final = false
         }
         let finished = Set(turns.map(\.id))
         let unanswered = lastUser.flatMap { message in lastUserTurn.map(finished.contains) == true ? nil : message }
@@ -188,6 +219,17 @@ public struct CallTargetState: Equatable, Sendable {
             needsInput: needsInput, writable: snapshot.loaded && snapshot.error == nil, hasDraft: !snapshot.draft.isEmpty,
             hasMore: snapshot.hasMore
         )
+    }
+}
+
+extension CallTargetState {
+    /// What the agent itself does in a turn: its words, a tool call, the
+    /// turn's end or failure.
+    static func isStep(_ item: ChatItem) -> Bool {
+        switch item.role {
+        case .agent, .tool, .turnEnd, .failure: true
+        default: false
+        }
     }
 }
 

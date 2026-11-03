@@ -71,6 +71,8 @@ public final class CallSession {
     private var lease: VoiceConnectionLifetime.Lease?
     private var startTask: Task<Void, Never>?
     private var generation = 0
+    /// The context updates on their way, the last one sent waiting for those before it.
+    private var updating: Task<Void, Never>?
     private var activity: CallActivity = .listening
     private var muted = false
     private var changingMute = false
@@ -248,7 +250,11 @@ public final class CallSession {
         let text = pendingContext.joined(separator: "\n")
         pendingContext.removeAll()
         let current = generation
-        Task {
+        // One after another, in the order given, however long each takes.
+        let previous = updating
+        updating = Task {
+            await previous?.value
+            guard current == generation else { return }
             do { try await connection.update(text) }
             catch { if current == generation { end(.connection) } }
         }

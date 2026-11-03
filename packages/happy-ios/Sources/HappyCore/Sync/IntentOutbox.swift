@@ -436,6 +436,7 @@ public struct IntentOverlay: Equatable, Sendable {
             if let targetId = row.targetId, let title = titles[targetId] {
                 row.label = title
                 row.titled = true
+                row.name = title
             }
             result.append(row)
         }

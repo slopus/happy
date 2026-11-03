@@ -46,7 +46,7 @@ final class CallContextTests: XCTestCase {
 
     // MARK: History
 
-    func testTheFirstSnapshotHoldsTheFocusWithItsLastTwoTurnsAndThePendingMessage() async throws {
+    func testTheFirstSnapshotHoldsTheFocusWithItsLastFiveTurnsThePendingMessageOneOfThem() async throws {
         let context = CallContext(targets: backend(), now: { 1_700_000_000 })
         let snapshot = try object(await context.initial())
         XCTAssertEqual(snapshot["schema"] as? Int, 1)
@@ -57,11 +57,12 @@ final class CallContextTests: XCTestCase {
         XCTAssertEqual(focus["title"] as? String, "Backend")
         XCTAssertNil(focus["hasDraft"])
         XCTAssertNil(focus["messages"])
-        // The last two turns that answered: the steering one in between is skipped.
+        // Four finished turns and the message waiting: five. The steered one has the person's half only.
         let turns = try XCTUnwrap(focus["turns"] as? [[String: Any]])
-        XCTAssertEqual(turns.map { $0["user"] as? String }, ["second ask", "third ask"])
-        XCTAssertEqual(turns.map { $0["assistant"] as? String }, ["second answer", "third answer"])
-        XCTAssertEqual(focus["olderTurns"] as? Bool, true)
+        XCTAssertEqual(turns.map { $0["user"] as? String }, ["first ask", "second ask", "steer", "third ask"])
+        XCTAssertEqual(turns.map { $0["assistant"] as? String }, ["first answer", "second answer", nil, "third answer"])
+        XCTAssertEqual(turns.map { $0["ended"] as? String }, ["completed", "completed", "steering", "completed"])
+        XCTAssertEqual(focus["olderTurns"] as? Bool, false)
         let pending = try XCTUnwrap(focus["pendingUserMessage"] as? [String: Any])
         XCTAssertEqual(pending["text"] as? String, "still waiting")
         XCTAssertEqual(pending["delivery"] as? String, "accepted")
@@ -75,7 +76,7 @@ final class CallContextTests: XCTestCase {
     func testTheSnapshotKeepsItsBudgets() async throws {
         let long = String(repeating: "é", count: 5000)
         let turns = (0..<10).map { CallTurn(id: "r\($0)", user: long, reply: long) }
-        let many = (0..<300).map { CallTarget(agentId: "x\($0)", title: String(repeating: "n", count: 200), kind: .conversation, status: .idle) }
+        let many = (0..<300).map { CallTarget(agentId: "x\($0)", title: String(repeating: "n", count: 200), kind: .task, status: .idle) }
         let targets = FakeCallTargets(directory: [backendTarget] + many,
                                       states: ["a": CallTargetState(target: backendTarget, turns: turns, unanswered: CallMessage(id: "p", role: .user, text: long))], focus: "a")
         let text = await CallContext(targets: targets).initial()
@@ -97,11 +98,11 @@ final class CallContextTests: XCTestCase {
         XCTAssertEqual(CallContext.truncated("aé😀", bytes: 7), "aé😀")
     }
 
-    func testReadingAConversationGivesItsLastTwoTurnsAndChangesNothingHeard() async throws {
+    func testReadingAConversationGivesItsLastFiveTurnsAndChangesNothingHeard() async throws {
         let context = CallContext(targets: backend(focus: nil))
         _ = await context.initial()
         let read = try object(await tool(context, "getSessionContext", #"{"targetRef":"s1"}"#).text)
-        XCTAssertEqual((read["turns"] as? [[String: Any]])?.map { $0["assistant"] as? String }, ["second answer", "third answer"])
+        XCTAssertEqual((read["turns"] as? [[String: Any]])?.map { $0["assistant"] as? String }, ["first answer", "second answer", nil, "third answer"])
         XCTAssertEqual((read["pendingUserMessage"] as? [String: Any])?["text"] as? String, "still waiting")
         XCTAssertEqual(read["working"] as? Bool, false)
         XCTAssertEqual(read["needsInput"] as? Bool, false)
@@ -111,6 +112,33 @@ final class CallContextTests: XCTestCase {
         // Not visited, so its new words say nothing.
         let quiet = await context.targetChanged(CallTargetState(target: backendTarget, messages: [CallMessage(id: "n", role: .assistant, text: "new")]))
         XCTAssertTrue(quiet.isEmpty)
+    }
+
+    /// Five in all: five finished turns with nothing waiting, four with a
+    /// message waiting; an answer with no message of the person's is half
+    /// a pair; a read within 32 KB, oldest first to go.
+    func testFiveTurnsInAllAndTheBudgetHolds() async throws {
+        var turns = (1...7).map { CallTurn(id: "r\($0)", user: "ask \($0)", reply: "answer \($0)") }
+        turns.append(CallTurn(id: "r8", reply: "done on its own"))
+        let targets = FakeCallTargets(directory: [backendTarget], states: ["a": CallTargetState(target: backendTarget, turns: turns)], focus: nil)
+        let context = CallContext(targets: targets)
+        _ = await context.initial()
+        var read = try object(await tool(context, "getSessionContext", #"{"targetRef":"s1"}"#).text)
+        XCTAssertEqual((read["turns"] as? [[String: Any]])?.map { $0["assistant"] as? String }, ["answer 4", "answer 5", "answer 6", "answer 7", "done on its own"])
+        XCTAssertNil((read["turns"] as? [[String: Any]])?.last?["user"])
+        XCTAssertEqual(read["olderTurns"] as? Bool, true)
+        let waiting = CallMessage(id: "p", role: .user, text: "and now?")
+        await targets.set("a", CallTargetState(target: backendTarget, turns: turns, unanswered: waiting))
+        read = try object(await tool(context, "getSessionContext", #"{"targetRef":"s1"}"#).text)
+        XCTAssertEqual((read["turns"] as? [[String: Any]])?.count, 4)
+        XCTAssertEqual((read["pendingUserMessage"] as? [String: Any])?["text"] as? String, "and now?")
+        let long = String(repeating: "é", count: 5000)
+        await targets.set("a", CallTargetState(target: backendTarget, turns: (0..<6).map { CallTurn(id: "l\($0)", user: long, reply: long) }))
+        let big = await tool(context, "getSessionContext", #"{"targetRef":"s1"}"#)
+        XCTAssertLessThanOrEqual(big.text.utf8.count, CallContext.Limits.totalBytes)
+        let shown = try XCTUnwrap(try object(big.text)["turns"] as? [[String: Any]])
+        XCTAssertLessThan(shown.count, 5)
+        XCTAssertFalse(shown.isEmpty)
     }
 
     func testAFailedTurnIsReadWithItsReason() async throws {
@@ -150,7 +178,7 @@ final class CallContextTests: XCTestCase {
         let seen = await context.targetChanged(CallTargetState(target: first, messages: [CallMessage(id: "m", role: .assistant, text: "hi")]))
         XCTAssertTrue(seen.isEmpty)
         let next = await context.targetChanged(CallTargetState(target: first, messages: [CallMessage(id: "m", role: .assistant, text: "hi"), CallMessage(id: "m2", role: .assistant, text: "new")]))
-        XCTAssertEqual(try events(next).map { $0["delta"] as? String }, ["new"])
+        XCTAssertEqual(try events(next).map { $0["text"] as? String }, ["new"])
     }
 
     func testSettingsOrHomeInFrontKeepTheVisited() async throws {
@@ -168,7 +196,7 @@ final class CallContextTests: XCTestCase {
         let b = CallTargetState(target: docsTarget, working: true)
         _ = await context.targetChanged(b)
         var more = b
-        more.messages = [CallMessage(id: "w", role: .assistant, text: "Working on it", final: false)]
+        more.messages = [CallMessage(id: "w", role: .assistant, text: "Working on it")]
         let words = try events(await context.targetChanged(more))
         XCTAssertEqual(words.map { $0["event"] as? String }, ["assistant_text"])
     }
@@ -242,12 +270,12 @@ final class CallContextTests: XCTestCase {
         XCTAssertEqual(send["delivery"] as? String, "on the person's device, not confirmed delivered or read")
     }
 
-    // MARK: New words only
+    // MARK: Complete words only
 
-    func testOnlyNewWordsGoAsDeltasAtMostEveryHalfSecond() async throws {
-        let time = LockedClock()
-        time.value = 100
-        let context = CallContext(targets: backend(focus: nil), now: { time.value })
+    /// While the agent writes, nothing goes, however long it pauses; once
+    /// it is complete the whole of it goes, once.
+    func testAMessageGoesWholeOnceWhenCompleteAndNeverWhileItGrows() async throws {
+        let context = CallContext(targets: backend(focus: nil))
         _ = await context.initial()
         _ = await context.focusChanged(to: "a")
         let old = [CallMessage(id: "x4", role: .assistant, text: "third answer")]
@@ -257,87 +285,66 @@ final class CallContextTests: XCTestCase {
         // The first sight is what was there: nothing goes.
         let first = await context.targetChanged(CallTargetState(target: backendTarget, messages: old))
         XCTAssertTrue(first.isEmpty)
-        let look = try events(await context.targetChanged(state("Look")))
-        XCTAssertEqual(look.map { $0["delta"] as? String }, ["Look"])
-        XCTAssertEqual(look.first?["final"] as? Bool, false)
-        time.value += 0.1
-        let soon = await context.targetChanged(state("Looking"))
-        XCTAssertTrue(soon.isEmpty)
-        time.value += 0.5
-        let later = try events(await context.targetChanged(state("Looking at it")))
-        XCTAssertEqual(later.map { $0["delta"] as? String }, ["ing at it"])
-        time.value += 0.1
-        // The run over, the rest goes at once, whatever the clock.
+        for text in ["Look", "Looking", "Looking at it"] {
+            let growing = await context.targetChanged(state(text))
+            XCTAssertTrue(growing.isEmpty, text)
+        }
+        // A pause is no end: the same words, still being written, a while later.
+        try? await Task.sleep(for: .milliseconds(600))
+        let paused = await context.targetChanged(state("Looking at it"))
+        XCTAssertTrue(paused.isEmpty)
         let done = try events(await context.targetChanged(state("Looking at it. Done.", working: false)))
-        XCTAssertEqual(done.map { $0["delta"] as? String }, [". Done."])
-        XCTAssertEqual(done.first?["final"] as? Bool, true)
+        XCTAssertEqual(done.map { $0["event"] as? String }, ["assistant_text"])
+        XCTAssertEqual(done.first?["text"] as? String, "Looking at it. Done.")
+        XCTAssertEqual(done.first?["messageId"] as? String, "r")
+        XCTAssertEqual(done.first?["target"] as? String, "s1")
+        XCTAssertNil(done.first?["delta"])
+        XCTAssertNil(done.first?["final"])
         XCTAssertFalse(done.description.contains("third answer"))
-        let again = await context.targetChanged(state("Looking at it. Done.", working: false))
+        // A status, a refresh, the same state again: nothing more.
+        var refreshed = state("Looking at it. Done.", working: false)
+        refreshed.target.status = .waiting
+        refreshed.hasMore = true
+        let again = await context.targetChanged(refreshed)
         XCTAssertTrue(again.isEmpty)
     }
 
-    func testARewrittenMessageIsSentWholeOnce() async throws {
+    /// Words before a tool call are complete once the call comes, mid-run:
+    /// they go then, without waiting for the turn to end.
+    func testWordsTheAgentWentOnFromGoMidRunEachOnce() async throws {
         let context = CallContext(targets: backend())
         _ = await context.initial()
-        func state(_ text: String) -> CallTargetState {
-            CallTargetState(target: backendTarget, messages: [CallMessage(id: "r", role: .assistant, text: text)])
+        func state(_ messages: [CallMessage], working: Bool = true) -> CallTargetState {
+            CallTargetState(target: backendTarget, messages: messages, working: working)
         }
-        _ = await context.targetChanged(state("Hello there"))
-        let reset = try events(await context.targetChanged(state("Goodbye")))
-        XCTAssertEqual(reset.map { $0["event"] as? String }, ["assistant_text_reset"])
-        XCTAssertEqual(reset.first?["text"] as? String, "Goodbye")
-        let grown = try events(await context.targetChanged(state("Goodbye now")))
-        XCTAssertEqual(grown.map { $0["delta"] as? String }, [" now"])
-    }
-
-    func testAReplyStopsAtFourKilobytes() async throws {
-        let context = CallContext(targets: backend())
-        _ = await context.initial()
-        func state(_ count: Int) -> CallTargetState {
-            CallTargetState(target: backendTarget, messages: [CallMessage(id: "r", role: .assistant, text: String(repeating: "é", count: count))])
-        }
-        let first = try events(await context.targetChanged(state(1000)))
-        XCTAssertEqual((first.first?["delta"] as? String)?.utf8.count, 2000)
-        let over = try events(await context.targetChanged(state(3000)))
-        XCTAssertEqual((over.first?["delta"] as? String)?.utf8.count, 2096)
-        XCTAssertEqual(over.first?["truncated"] as? Bool, true)
-        let after = await context.targetChanged(state(4000))
-        XCTAssertTrue(after.isEmpty)
-    }
-
-    func testDeltasKeepEachMessagesIdentityAndOrder() async throws {
-        let context = CallContext(targets: backend())
-        _ = await context.initial()
-        func state(_ first: String, _ second: String, working: Bool = true) -> CallTargetState {
-            CallTargetState(target: backendTarget, messages: [
-                CallMessage(id: "p1", role: .assistant, text: first),
-                CallMessage(id: "u", role: .user, text: "and?"),
-                CallMessage(id: "p2", role: .assistant, text: second, final: !working),
-            ], working: working)
-        }
-        let both = try events(await context.targetChanged(state("One.", "Two")))
-        XCTAssertEqual(both.map { $0["messageId"] as? String }, ["p1", "p2"])
-        XCTAssertEqual(both.map { $0["delta"] as? String }, ["One.", "Two"])
-        XCTAssertEqual(both.map { $0["final"] as? Bool }, [true, false])
-        let rest = try events(await context.targetChanged(state("One.", "Two, three.", working: false)))
+        _ = await context.targetChanged(state([]))
+        let writing = await context.targetChanged(state([CallMessage(id: "p1", role: .assistant, text: "Let me check the logs", final: false)]))
+        XCTAssertTrue(writing.isEmpty)
+        let checked = try events(await context.targetChanged(state([
+            CallMessage(id: "p1", role: .assistant, text: "Let me check the logs."),
+            CallMessage(id: "p2", role: .assistant, text: "They show", final: false),
+        ])))
+        XCTAssertEqual(checked.map { $0["messageId"] as? String }, ["p1"])
+        XCTAssertEqual(checked.map { $0["text"] as? String }, ["Let me check the logs."])
+        let rest = try events(await context.targetChanged(state([
+            CallMessage(id: "p1", role: .assistant, text: "Let me check the logs."),
+            CallMessage(id: "u", role: .user, text: "and?"),
+            CallMessage(id: "p2", role: .assistant, text: "They show a timeout."),
+        ], working: false)))
         XCTAssertEqual(rest.map { $0["messageId"] as? String }, ["p2"])
-        XCTAssertEqual(rest.map { $0["delta"] as? String }, [", three."])
+        XCTAssertEqual(rest.map { $0["text"] as? String }, ["They show a timeout."])
     }
 
-    func testTheSameWordsFinishedSayTheirEndOnce() async throws {
+    func testALongMessageGoesCutAtFourKilobytesOnce() async throws {
         let context = CallContext(targets: backend())
         _ = await context.initial()
-        func state(working: Bool) -> CallTargetState {
-            CallTargetState(target: backendTarget, messages: [CallMessage(id: "r", role: .assistant, text: "All done.", final: !working)], working: working)
-        }
-        let words = try events(await context.targetChanged(state(working: true)))
-        XCTAssertEqual(words.map { $0["final"] as? Bool }, [false])
-        let end = try events(await context.targetChanged(state(working: false)))
-        XCTAssertEqual(end.count, 1)
-        XCTAssertEqual(end.first?["delta"] as? String, "")
-        XCTAssertEqual(end.first?["final"] as? Bool, true)
-        let again = await context.targetChanged(state(working: false))
-        XCTAssertTrue(again.isEmpty)
+        _ = await context.targetChanged(CallTargetState(target: backendTarget))
+        let long = CallTargetState(target: backendTarget, messages: [CallMessage(id: "r", role: .assistant, text: String(repeating: "é", count: 3000))])
+        let cut = try events(await context.targetChanged(long))
+        XCTAssertEqual((cut.first?["text"] as? String)?.utf8.count, 4096)
+        XCTAssertEqual(cut.first?["truncated"] as? Bool, true)
+        let after = await context.targetChanged(long)
+        XCTAssertTrue(after.isEmpty)
     }
 
     func testWhatTheWaitLostIsPutRightInOneGo() async throws {
@@ -345,37 +352,53 @@ final class CallContextTests: XCTestCase {
         _ = await context.initial()
         _ = await context.focusChanged(to: "b")
         _ = await context.focusChanged(to: "a")
-        func state(_ text: String) -> CallTargetState {
-            CallTargetState(target: backendTarget, messages: [CallMessage(id: "r", role: .assistant, text: text, final: false)], working: true)
-        }
-        _ = await context.targetChanged(state("Half"))
-        try? await Task.sleep(for: .milliseconds(600))
-        _ = await context.targetChanged(state("Half way"))
+        _ = await context.targetChanged(CallTargetState(target: backendTarget, messages: [CallMessage(id: "r", role: .assistant, text: "Half", final: false)], working: true))
         _ = await context.targetChanged(CallTargetState(target: backendTarget, messages: [CallMessage(id: "r", role: .assistant, text: "Half way")],
-                                                        turns: [CallTurn(id: "x", ended: "error", error: "Boom")], working: true))
-        // Say every one of those was lost: the agent gets the focus as it is, and each message whole.
+                                                        turns: [CallTurn(id: "x", ended: "error", error: "Boom")]))
+        // Say every one of those was lost: the agent gets the focus as it is, and each message as told.
         let fixed = try events(await context.resync())
         XCTAssertEqual(fixed.first?["event"] as? String, "focus")
         XCTAssertEqual(fixed.first?["resync"] as? Bool, true)
         XCTAssertEqual(fixed.first?["focusRevision"] as? Int, 2)
         XCTAssertEqual(fixed.first?["targetRef"] as? String, "s1")
-        XCTAssertEqual(fixed.dropFirst().map { $0["event"] as? String }, ["session_error", "assistant_text_reset"])
+        XCTAssertEqual(fixed.dropFirst().map { $0["event"] as? String }, ["session_error", "assistant_text"])
         XCTAssertEqual(fixed.last?["text"] as? String, "Half way")
         XCTAssertEqual(fixed.last?["messageId"] as? String, "r")
-        // Baseline history isn't streamed, so none of it comes back.
+        // What was there at first sight was never told, so none of it comes back.
         XCTAssertFalse(fixed.description.contains("third answer"))
-        // And words after it go on from there.
-        let next = try events(await context.targetChanged(CallTargetState(target: backendTarget, messages: [CallMessage(id: "r", role: .assistant, text: "Half way there")])))
-        XCTAssertEqual(next.map { $0["delta"] as? String }, [" there"])
     }
 
-    func testAReplyBeingWrittenWhenFirstSeenGoesFromItsStart() async throws {
+    func testAReplyBeingWrittenWhenFirstSeenGoesWholeOnceComplete() async throws {
         let context = CallContext(targets: backend(focus: nil))
         _ = await context.initial()
         _ = await context.focusChanged(to: "b")
         _ = await context.targetChanged(CallTargetState(target: docsTarget, messages: [CallMessage(id: "w", role: .assistant, text: "Halfway", final: false)], working: true))
         let next = try events(await context.targetChanged(CallTargetState(target: docsTarget, messages: [CallMessage(id: "w", role: .assistant, text: "Halfway there")])))
-        XCTAssertEqual(next.map { $0["delta"] as? String }, ["Halfway there"])
+        XCTAssertEqual(next.map { $0["text"] as? String }, ["Halfway there"])
+    }
+
+    /// When the agent's words are complete, as a conversation's snapshot
+    /// says: once it went on past them, or its run is over. The person's
+    /// own message coming in after says nothing of that.
+    func testASnapshotsWordsAreCompleteOnceTheAgentWentOnPastThem() {
+        let target = CallTarget(agentId: "a", title: "A", kind: .task, status: .idle)
+        func agent(_ id: String, _ text: String) -> ChatItem { ChatItem(id: id, role: .agent, pieces: [.text(text)], delivery: .sent) }
+        var snapshot = ChatSnapshot()
+        snapshot.loaded = true
+        snapshot.working = true
+        snapshot.items = [agent("m1", "Checking")]
+        XCTAssertEqual(CallTargetState.from(snapshot, target: target).messages.map(\.final), [false])
+        // The person's message after them: still being written.
+        snapshot.items.append(ChatItem(id: "u", role: .user, pieces: [.text("hurry")], delivery: .sending))
+        XCTAssertEqual(CallTargetState.from(snapshot, target: target).messages.filter { $0.role == .assistant }.map(\.final), [false])
+        // A tool call after them: complete.
+        snapshot.items.insert(ChatItem(id: "t", role: .tool(ChatItem.Tool(name: "exec_command", status: "running")), pieces: [], delivery: .sent), at: 1)
+        XCTAssertEqual(CallTargetState.from(snapshot, target: target).messages.filter { $0.role == .assistant }.map(\.final), [true])
+        // More words after the call: those are the ones still growing.
+        snapshot.items.insert(agent("m1/2", "Found it"), at: 2)
+        XCTAssertEqual(CallTargetState.from(snapshot, target: target).messages.filter { $0.role == .assistant }.map(\.final), [true, false])
+        snapshot.working = false
+        XCTAssertEqual(CallTargetState.from(snapshot, target: target).messages.filter { $0.role == .assistant }.map(\.final), [true, true])
     }
 
     func testAnErrorThatStoppedATurnIsSaidOnceAndNothingElseIs() async throws {
@@ -556,7 +579,7 @@ final class CallContextTests: XCTestCase {
     }
 
     func testListSessionsPagesAndFiltersBySubstring() async throws {
-        let many = (0..<120).map { CallTarget(agentId: "x\($0)", title: $0 % 2 == 0 ? "Even \($0)" : "Odd \($0)", kind: .conversation, status: .idle) }
+        let many = (0..<120).map { CallTarget(agentId: "x\($0)", title: $0 % 2 == 0 ? "Even \($0)" : "Odd \($0)", kind: .task, status: .idle) }
         let context = CallContext(targets: FakeCallTargets(directory: many, states: [:], focus: nil))
         _ = await context.initial()
         let first = try object(await tool(context, "listSessions", "{}").text)
@@ -589,6 +612,147 @@ final class CallContextTests: XCTestCase {
         XCTAssertTrue(read.isError)
         let followed = await context.followed
         XCTAssertTrue(followed.isEmpty)
+    }
+
+    // MARK: Bots and tasks only
+
+    private let childTarget = CallTarget(agentId: "c", title: "Backend's subtask", kind: .conversation, status: .running)
+    private let projectTarget = CallTarget(agentId: "p", title: "A project's conversation", kind: .conversation, status: .idle)
+
+    private func withChildren(focus: String? = nil) -> FakeCallTargets {
+        FakeCallTargets(directory: [backendTarget, childTarget, docsTarget, projectTarget], states: [
+            "a": CallTargetState(target: backendTarget),
+            "b": CallTargetState(target: docsTarget),
+            "c": CallTargetState(target: childTarget, turns: [CallTurn(id: "r", user: "sub ask", reply: "sub answer")]),
+            "p": CallTargetState(target: projectTarget),
+        ], focus: focus)
+    }
+
+    func testOnlyBotsAndTasksAreListed() async throws {
+        let context = CallContext(targets: withChildren())
+        let initial = try object(await context.initial())
+        let titles = (initial["directory"] as? [[String: Any]])?.compactMap { $0["title"] as? String }
+        XCTAssertEqual(titles, ["Backend", "Docs"])
+        let listed = try object(await tool(context, "listSessions", "{}").text)
+        XCTAssertEqual((listed["sessions"] as? [[String: Any]])?.compactMap { $0["title"] as? String }, ["Backend", "Docs"])
+        let searched = try object(await tool(context, "listSessions", #"{"query":"subtask"}"#).text)
+        XCTAssertEqual((searched["sessions"] as? [Any])?.count, 0)
+    }
+
+    /// A subtask the person never opened can't be reached, by any reference.
+    func testTheToolsNeverReachASubtaskThePersonDidntOpen() async throws {
+        let targets = withChildren()
+        let context = CallContext(targets: targets)
+        _ = await context.initial()
+        for ref in ["s3", "s4", "s99", "c"] {
+            let read = await tool(context, "getSessionContext", #"{"targetRef":"\#(ref)"}"#)
+            XCTAssertTrue(read.isError, ref)
+            let open = await tool(context, "openSession", #"{"targetRef":"\#(ref)","focusRevision":0}"#)
+            XCTAssertTrue(open.isError, ref)
+            let send = await tool(context, "sendMessage", #"{"targetRef":"\#(ref)","text":"hi","focusRevision":0}"#)
+            XCTAssertTrue(send.isError, ref)
+        }
+        let opens = await targets.opens
+        let sends = await targets.sends
+        XCTAssertTrue(opens.isEmpty)
+        XCTAssertTrue(sends.isEmpty)
+    }
+
+    /// One the person opened is the call's: its focus names it, a read
+    /// gives its context, and it is heard from among the last four.
+    func testASubtaskThePersonOpenedIsTheCallsFromThen() async throws {
+        let targets = withChildren()
+        let context = CallContext(targets: targets)
+        _ = await context.initial()
+        let focus = try events(await context.focusChanged(to: "c"))
+        let ref = try XCTUnwrap(focus.first?["targetRef"] as? String)
+        XCTAssertEqual(focus.first?["title"] as? String, "Backend's subtask")
+        let read = try object(await tool(context, "getSessionContext", #"{"targetRef":"\#(ref)"}"#).text)
+        XCTAssertEqual((read["turns"] as? [[String: Any]])?.first?["assistant"] as? String, "sub answer")
+        let followed = await context.followed
+        XCTAssertEqual(followed, ["c"])
+        // Back home, it stays reachable: the agent may open it again.
+        _ = await context.focusChanged(to: nil)
+        let reopened = try object(await tool(context, "openSession", #"{"targetRef":"\#(ref)","focusRevision":2}"#).text)
+        XCTAssertEqual(reopened["opened"] as? Bool, true)
+        // Still never listed.
+        let listed = try object(await tool(context, "listSessions", "{}").text)
+        XCTAssertFalse(listed.description.contains("subtask"))
+    }
+
+    /// On screen when the call began: the person's own choice.
+    func testASubtaskOnScreenAtTheStartIsTheCalls() async throws {
+        let context = CallContext(targets: withChildren(focus: "c"))
+        let initial = try object(await context.initial())
+        let focus = try XCTUnwrap(initial["focus"] as? [String: Any])
+        XCTAssertEqual(focus["title"] as? String, "Backend's subtask")
+        let ref = try XCTUnwrap(focus["targetRef"] as? String)
+        let read = await tool(context, "getSessionContext", #"{"targetRef":"\#(ref)"}"#)
+        XCTAssertFalse(read.isError)
+    }
+
+    /// A new bot or task is added to the context once, on its own, saying
+    /// nothing to the person; a new subtask isn't; a status isn't.
+    func testANewBotOrTaskIsAddedOnceAndASubtaskIsNot() async throws {
+        let targets = withChildren()
+        let context = CallContext(targets: targets)
+        _ = await context.initial()
+        // The same as the first snapshot held: nothing.
+        let same = await context.directoryChanged([backendTarget, childTarget, docsTarget, projectTarget])
+        XCTAssertTrue(same.isEmpty)
+        let newTask = CallTarget(agentId: "n", title: "Ship the release", kind: .task, status: .running)
+        let newChild = CallTarget(agentId: "nc", title: "Release's subtask", kind: .conversation, status: .running)
+        let added = try events(await context.directoryChanged([backendTarget, childTarget, docsTarget, projectTarget, newTask, newChild]))
+        XCTAssertEqual(added.count, 1)
+        XCTAssertEqual(added[0]["event"] as? String, "directory")
+        let rows = try XCTUnwrap(added[0]["added"] as? [[String: Any]])
+        XCTAssertEqual(rows.map { $0["title"] as? String }, ["Ship the release"])
+        XCTAssertEqual(rows.first?["kind"] as? String, "task")
+        XCTAssertNotNil(rows.first?["targetRef"] as? String)
+        XCTAssertNil(added[0]["changed"])
+        XCTAssertFalse(added.description.contains("Release's subtask"))
+        // Again, or with only its status changed: nothing more.
+        var running = newTask
+        running.status = .idle
+        let again = await context.directoryChanged([backendTarget, childTarget, docsTarget, projectTarget, running, newChild])
+        XCTAssertTrue(again.isEmpty)
+        // It is listed, and reachable, from then on.
+        let ref = try XCTUnwrap(rows.first?["targetRef"] as? String)
+        await targets.setDirectory([backendTarget, childTarget, docsTarget, projectTarget, running, newChild])
+        let listed = try object(await tool(context, "listSessions", #"{"query":"release"}"#).text)
+        XCTAssertEqual((listed["sessions"] as? [[String: Any]])?.first?["targetRef"] as? String, ref)
+        let newBot = CallTarget(agentId: "nb", title: "Triage", kind: .bot, status: .idle)
+        let bot = try events(await context.directoryChanged([backendTarget, childTarget, docsTarget, projectTarget, running, newChild, newBot]))
+        XCTAssertEqual((bot.first?["added"] as? [[String: Any]])?.map { $0["kind"] as? String }, ["bot"])
+    }
+
+    /// New work the computer hasn't named yet ("New Task", "New Bot", or
+    /// none) isn't listed; it is added once its first message names it.
+    func testWorkWithoutANameIsListedOnceNamed() async throws {
+        func row(_ agentId: String, kind: String, name: String?) -> Row {
+            var row = Row(id: "\(kind):\(agentId)", nodeId: "\(kind):\(agentId)", kind: .space, label: name ?? "Untitled", agentId: agentId, targetKind: kind)
+            row.name = name
+            return row
+        }
+        let fresh = try XCTUnwrap(CallTarget.from(row("n", kind: "task", name: "New Task")))
+        XCTAssertFalse(fresh.isListed)
+        XCTAssertFalse(try XCTUnwrap(CallTarget.from(row("nb", kind: "bot", name: "New Bot"))).isListed)
+        XCTAssertFalse(try XCTUnwrap(CallTarget.from(row("x", kind: "task", name: "  "))).isListed)
+        // No name of its own: the row's "Untitled" is no name.
+        let none = try XCTUnwrap(CallTarget.from(row("y", kind: "task", name: nil)))
+        XCTAssertFalse(none.isListed)
+        let named = try XCTUnwrap(CallTarget.from(row("n", kind: "task", name: "Fix the login redirect")))
+        XCTAssertTrue(named.isListed)
+        XCTAssertEqual(named.title, "Fix the login redirect")
+
+        let context = CallContext(targets: FakeCallTargets(directory: [backendTarget, fresh], states: [:], focus: nil))
+        let initial = try object(await context.initial())
+        XCTAssertEqual((initial["directory"] as? [[String: Any]])?.compactMap { $0["title"] as? String }, ["Backend"])
+        let still = await context.directoryChanged([backendTarget, fresh])
+        XCTAssertTrue(still.isEmpty)
+        let added = try events(await context.directoryChanged([backendTarget, named]))
+        XCTAssertEqual((added.first?["added"] as? [[String: Any]])?.map { $0["title"] as? String }, ["Fix the login redirect"])
+        XCTAssertNil(added.first?["changed"])
     }
 
     func testAChatSnapshotReadsAsTurnsOfPublicWordsOnly() {
@@ -686,6 +850,22 @@ final class CallSessionTests: XCTestCase {
         events?.disconnected()
         XCTAssertEqual(session.state, .ended(.connection))
         await waitUntil { connection.ended }
+    }
+
+    /// An update that takes long doesn't let the next one overtake it.
+    func testContextUpdatesLandInTheOrderGiven() async {
+        let connection = FakeCallConnection()
+        let session = CallSession(grants: FakeGrants(.granted(CallGrant(agentId: "g", conversationToken: "t", userId: "u"))),
+                                  permission: { true }, now: { 42 }) { _, _, _ in connection }
+        session.start(language: nil, context: { "{}" }, tool: { _ in CallToolResult(text: "") })
+        await waitUntil { if case .active = session.state { true } else { false } }
+        connection.slowFirst = .milliseconds(200)
+        session.deliver(CallUpdate(context: ["first"]))
+        session.deliver(CallUpdate(context: ["second"]))
+        session.deliver(CallUpdate(context: ["third"]))
+        await waitUntil { connection.updates.count == 3 }
+        XCTAssertEqual(connection.updates, ["first", "second", "third"])
+        session.stop()
     }
 
     func testContextTooMuchForTheWaitIsLetGoWholeAndAskedFor() async {
@@ -951,6 +1131,7 @@ actor FakeCallTargets: CallTargets {
     }
 
     func set(_ id: String, _ state: CallTargetState) { states[id] = state }
+    func setDirectory(_ directory: [CallTarget]) { entries = directory }
     func setSendDelay(_ delay: Duration?) { self.delay = delay }
 
     func directory() async -> [CallTarget] { entries }
@@ -979,5 +1160,13 @@ final class FakeCallConnection: CallConnection {
     var ended = false
     func end() async { ended = true }
     func setMuted(_ muted: Bool) async throws { self.muted = muted }
-    func update(_ context: String) async throws { updates.append(context) }
+    /// Each update waits this long before it lands, the first one longest when set.
+    var slowFirst: Duration?
+    func update(_ context: String) async throws {
+        if let slow = slowFirst {
+            slowFirst = nil
+            try? await Task.sleep(for: slow)
+        }
+        updates.append(context)
+    }
 }

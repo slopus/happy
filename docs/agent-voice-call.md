@@ -166,18 +166,32 @@ others.
 **What a visited conversation says**, as contextual updates (JSON, one per
 line, keys sorted):
 
-- `{"event":"assistant_text","target":"s3","messageId":…,"delta":"…","final":false}`:
-  the agent's words since the last update of that message, at most every
-  0.5 s per conversation while it writes, and the rest at once when its run
-  is over. There is no timer: a change after the half second carries what
-  piled up. `final` is true once the message is complete; a message whose
-  last words already went says so once, with an empty `delta`.
-- `{"event":"assistant_text_reset","target":…,"messageId":…,"text":"…"}`:
-  a message that was rewritten rather than added to (its words no longer
-  start with what was sent). The whole message goes once, and deltas
-  continue from it.
+- `{"event":"assistant_text","target":"s3","messageId":…,"text":"…"}`: a
+  piece of the agent's words, whole, once it is complete. Never while it
+  streams: no partial words, no deltas, no timer.
 - `{"event":"session_error","target":…,"reason":"…"}`: a turn that an error
   ended (`reason` up to 1 KB). A turn the person stopped is no error.
+
+A piece is the agent's words between two of its steps: the words before a
+tool call, or after the last one (on iOS a `ChatItem` of role `.agent`;
+thinking and pictures between text blocks don't split it). The wire marks no
+block as finished, so the app goes by what follows it, never by a pause:
+
+- it is complete once the agent did something after it in that
+  conversation (a tool call, more words after one, the turn's end or
+  failure), so words before a tool call go mid-run, without waiting for the
+  turn;
+- or once its run is over (`working` false: `run.finished`, or a
+  `run.boundary` the conversation applied);
+- the person's own message, or another agent's, coming in after it says
+  nothing of that.
+
+The agent's last words while it still works never go, however long it
+pauses. Each piece goes once: a status change, a refresh or the same state
+again sends nothing. A piece longer than 4 KB goes cut there, with
+`"truncated":true`. (Android still sends the earlier streaming events:
+`assistant_text` deltas at most every 0.5 s with `final`, and
+`assistant_text_reset`. Its rework is on hold.)
 
 Nothing else: no tool calls or results, no working, run, status or
 needs-input changes, no messages of the person's, and no prompt asking the
@@ -186,25 +200,53 @@ agent to speak. A conversation's state is read on demand
 
 The first time the call sees a visited conversation, what is there already
 counts as known and nothing is sent: history is never replayed. A reply
-still being written at that moment is new, and goes from its start. One
-that dropped out of the four and is visited again starts over the same way.
-Each message streams at most 4 KB in total; past that it stops, with
-`"truncated":true` once.
+still being written at that moment is new, and goes whole once it is
+complete. One that dropped out of the four and is visited again starts
+over the same way.
 
 **Other updates:**
 
 - `{"event":"focus","focusRevision":3,"targetRef":"s2"|null,"title":…}`: the
   screen in front changed. No history comes with it.
-- `{"event":"directory","changed":[rows],"removed":[refs]}`: a conversation
-  came, went or was renamed. A status change alone says nothing. A removed
-  ref can't be used again this call.
+- `{"event":"directory","added":[rows],"changed":[rows],"removed":[refs]}`:
+  a new bot or task (`added`, once, with its ref, title and kind), one
+  renamed (`changed`), or a conversation gone. A status change alone says
+  nothing; a new subtask or other conversation says nothing; what the first
+  snapshot held is never news. A removed ref can't be used again this call.
+
+**Bots and tasks only.** The directory (the first snapshot, `listSessions`,
+`directory` events) is the account's bots and tasks: rows that are the
+conversation of a bot or a task the account owns (iOS `Row.targetKind`
+`bot`/`task`, from the desktop snapshot's `bots` and `taskMemberships`;
+Android `ConversationKind.Bot`/`Task`, from the catalog's `bots` and
+`tasks`). A bot or task is listed by its own name (iOS `Row.name`: the
+owner's `name`, or the person's rename here), never the row's stand-in
+("Untitled"). New work the computer hasn't named yet (no name, or "New
+Task" / "New Bot", the names it gives until the first message names it)
+isn't listed; once it has a name it is `added`. Nothing waits for that: the
+name comes with the directory's ordinary updates. A name the person chose
+that is exactly "New Task" or "New Bot" can't be told apart and stays
+unlisted. Subtasks, a project's conversations and anything else are never
+listed, and the tools refuse every reference to one (`No such
+conversation.`), forged or stale, until the person opens it themselves. A
+conversation the person opened by hand during the call (or that was on
+screen when it began) is the call's from then on: its `focus` event names
+it, `getSessionContext`, `openSession` and `sendMessage` reach it, and it
+is heard from while among the last four. `openSession` itself never makes
+one reachable. (iOS; Android's is on hold.)
 
 **History** (the first snapshot's focus and `getSessionContext`): the last
-two finished turns that answered or failed, each the person's message that
-started it and the agent's final answer (the turn's copy text, never its
-commentary or tool output), plus the person's latest message when no
-finished turn answers it yet, labelled `pendingUserMessage`. Each text is
-cut at 4 KB.
+five turns, five in all. Each is the person's message that started it and
+the agent's last words (the turn's copy text, never its commentary between
+steps or tool output), or as much of that pair as there is: a turn steered
+or stopped before an answer has only the person's message, one with no
+message of the person's only the agent's words, one an error ended its
+`error`. The person's latest message, when no finished turn answers it yet,
+is the fifth, labelled `pendingUserMessage`, so then four finished turns
+come with it. Each text is cut at 4 KB, and the whole within 32 KB (iOS; the
+oldest turns give way, `olderTurns` says more exist). Android still gives
+the last two finished turns that answered or failed, plus
+`pendingUserMessage`.
 
 `queued` is not a receipt. A message the call sent that later fails to
 reach the computer shows as `pendingUserMessage.delivery: "failed"` on the
@@ -217,10 +259,10 @@ waits, up to 32 KB. Past that it is let go whole rather than cut, since a
 lost delta would leave a message with a hole in it, and replaced by one
 resync (`CallContext.resync`, at most 16 KB): a `focus` event with the
 current `focusRevision` and `"resync":true`, the errors the call told of,
-and each message it streamed as an `assistant_text_reset` with its words so
-far, the most recent first (`omitted` counts any that didn't fit). Per call, streamed words are bounded by
-4 KB per message of the four visited conversations, but not in total: a
-long call over busy conversations still grows the agent's context.
+and each piece it told, as told, the most recent first (`omitted` counts
+any that didn't fit). Per call, words are bounded by 4 KB per piece of the
+four visited conversations, but not in total: a long call over busy
+conversations still grows the agent's context.
 Debug builds count every update and tool result by size
 (`CallProbe.sent`, `live.json`), so real calls can be measured.
 
@@ -235,7 +277,7 @@ Use a new, versioned agent. Leave the relay's agent (`sendMessageToSession`,
 - Overrides: none needed. The app sends no prompt, first message or
   language, only the one dynamic variable.
 - Dynamic variable: `initialConversationContext` (a string). It holds a JSON
-  snapshot of the directory, the conversation on screen with its last two
+  snapshot of the directory, the conversation on screen with its last five
   turns, and `focusRevision`. It is limited to 32 KB.
 - Client tools: exactly the four below, each with "Wait for response" on and
   a response timeout of 10 s or more. The phone answers within 8 s and says
@@ -252,17 +294,18 @@ for more.
 
 What you know comes from {{initialConversationContext}} (JSON) and from
 contextual updates during the call, each a JSON object with an "event":
-focus, directory, assistant_text (new words of a conversation's agent, as a
-delta), assistant_text_reset (a rewritten message, whole) and session_error.
+focus, directory (a new bot or task, a rename, one gone), assistant_text (a
+complete piece of a conversation's agent's words, whole) and session_error.
 You hear new replies only from the four conversations the person most
-recently visited. Conversations are named by "targetRef" (s1, s2, ...). Use
+recently visited. You can reach the person's bots and tasks, and any other
+conversation only once they have opened it themselves. Conversations are named by "targetRef" (s1, s2, ...). Use
 those refs in tools, never titles.
 
 Tools:
 - listSessions: find conversations; query is a case-insensitive substring of
   the title.
-- getSessionContext: read a conversation (its last two finished turns and
-  any message still waiting for an answer) before you summarise it.
+- getSessionContext: read a conversation (its last five turns, a message
+  still waiting for an answer among them) before you summarise it.
 - openSession: show a conversation on the person's screen.
 - sendMessage: send the person's words to a conversation's agent.
 
@@ -301,7 +344,7 @@ code differ.
 {
   "type": "client",
   "name": "listSessions",
-  "description": "List the person's conversations (tasks, bots and chats) with their targetRef, title, kind and status. query keeps those whose title contains it as a case-insensitive substring. Page with nextCursor.",
+  "description": "List the person's bots and tasks with their targetRef, title, kind and status. query keeps those whose title contains it as a case-insensitive substring. Page with nextCursor. Subtasks and other conversations aren't listed; you can reach one only after the person opens it themselves.",
   "expects_response": true,
   "response_timeout_secs": 10,
   "parameters": {
@@ -325,7 +368,7 @@ code differ.
 {
   "type": "client",
   "name": "getSessionContext",
-  "description": "Read one conversation: whether it is working or needs the person, its last two finished turns (the person's message and the agent's final answer), and the person's latest message if nothing has answered it yet. It doesn't open the conversation or change what you hear from.",
+  "description": "Read one conversation: whether it is working or needs the person, and its last five turns, each the person's message and the agent's last words, or as much of the pair as there is; the person's latest message, if nothing has answered it yet, is the fifth (pendingUserMessage). It doesn't open the conversation or change what you hear from.",
   "expects_response": true,
   "response_timeout_secs": 10,
   "parameters": {

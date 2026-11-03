@@ -32,9 +32,13 @@ final class SessionCallTargets: CallTargets {
     /// Home's rows, then the spaces sidebar's, once each.
     private var allRows: [Row] { session.home.allRows + session.snapshot.allRows }
 
+    /// Every conversation the account's rows open, once each: as its bot
+    /// or task when any row says it is one, which is what the call lists.
     var rows: [CallTarget] {
+        let all = allRows.compactMap(CallTarget.from)
+        let top = Set(all.filter(\.isTopLevel).map(\.agentId))
         var seen = Set<String>()
-        return allRows.compactMap(CallTarget.from).filter { seen.insert($0.agentId).inserted }
+        return all.filter { ($0.isTopLevel || !top.contains($0.agentId)) && seen.insert($0.agentId).inserted }
     }
 
     private func target(_ agentId: String) -> CallTarget? {
@@ -45,17 +49,27 @@ final class SessionCallTargets: CallTargets {
 
     func state(of agentId: String) async -> CallTargetState? {
         guard let target = target(agentId) else { return nil }
-        if let hold = held[agentId], hold.chat.snapshot.loaded {
-            return .from(hold.chat.snapshot, target: target)
+        return await borrowing(agentId) { chat in
+            // One bounded read: about three seconds for its first page, less
+            // if the tool's time runs out first.
+            for _ in 0..<60 where !chat.snapshot.loaded && !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            guard chat.snapshot.loaded else { return nil }
+            return .from(chat.snapshot, target: target)
         }
+    }
+
+    /// The app's kept chat for `agentId` while `use` runs: the call's own
+    /// hold when it follows the conversation, else a hold of its own, let
+    /// go of after, whatever else held it meanwhile. The chat is the one its
+    /// screen shows, so what a send does shows there.
+    private func borrowing<T>(_ agentId: String, _ use: @MainActor (WarmChats.Chat) async -> T) async -> T {
+        if let hold = held[agentId] { return await use(hold.chat) }
         let hold = session.warm.hold(agentId)
-        defer { if held[agentId] == nil { session.warm.release(hold.chat, token: hold.token, opened: false) } }
-        // One bounded read: about three seconds for its first page.
-        for _ in 0..<60 where !hold.chat.snapshot.loaded {
-            try? await Task.sleep(for: .milliseconds(50))
-        }
-        guard hold.chat.snapshot.loaded else { return nil }
-        return .from(hold.chat.snapshot, target: target)
+        let result = await use(hold.chat)
+        session.warm.release(hold.chat, token: hold.token, opened: false)
+        return result
     }
 
     func focused() async -> String? { focusedNow }
@@ -67,6 +81,8 @@ final class SessionCallTargets: CallTargets {
     func open(_ agentId: String) async -> Bool {
         guard !closed, let shell, let row = allRows.first(where: { $0.agentId == agentId && CallTarget.from($0) != nil }) else { return false }
         if focusedNow == agentId { return true }
+        // Past the tool's deadline: nothing moves on screen.
+        guard !Task.isCancelled else { return false }
         let chat = ChatViewController(session: session, agentId: agentId, title: row.label, spaceId: row.spaceId, intro: nil)
         let navigation: UINavigationController = shell.isExpanded ? shell.main : shell.phone
         if shell.isExpanded, navigation.viewControllers.allSatisfy({ $0 === shell.placeholder }) {
@@ -89,18 +105,20 @@ final class SessionCallTargets: CallTargets {
 
     func send(_ agentId: String, text: String, id: String) async -> CallSendOutcome {
         guard !closed, let target = target(agentId) else { return .refused("The call has ended.") }
-        let hold = held[agentId] ?? session.warm.hold(agentId)
-        defer { if held[agentId] == nil { session.warm.release(hold.chat, token: hold.token, opened: false) } }
-        let snapshot = hold.chat.snapshot
-        // Under an ID it already has, it went the first time.
-        if snapshot.items.contains(where: { $0.id == id }) { return .queued }
-        // Checked again here, where the send happens: a question that came
-        // while the call's context read the conversation still stops it.
-        let now = CallTargetState.from(snapshot, target: target)
-        guard now.writable else { return .refused("That conversation can't take a message now.") }
-        guard !now.needsInput else { return .refused("It's waiting for the person in the app; answer there first.") }
-        if await hold.chat.conversation.send(id: id, text: text) { return .queued }
-        return .refused(await hold.chat.conversation.sendRefusal ?? "It couldn't be kept on this phone.")
+        return await borrowing(agentId) { chat in
+            let snapshot = chat.snapshot
+            // Under an ID it already has, it went the first time.
+            if snapshot.items.contains(where: { $0.id == id }) { return .queued }
+            // Checked again here, where the send happens: a question that came
+            // while the call's context read the conversation still stops it.
+            let now = CallTargetState.from(snapshot, target: target)
+            guard now.writable else { return .refused("That conversation can't take a message now.") }
+            guard !now.needsInput else { return .refused("It's waiting for the person in the app; answer there first.") }
+            // Past the tool's deadline, or the call over: it doesn't go.
+            guard !Task.isCancelled, !closed else { return .refused("No answer in time.") }
+            if await chat.conversation.send(id: id, text: text) { return .queued }
+            return .refused(await chat.conversation.sendRefusal ?? "It couldn't be kept on this phone.")
+        }
     }
 
     /// The conversations held for the call.
