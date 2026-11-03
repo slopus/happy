@@ -554,7 +554,7 @@ fun AgentHome(
     }
     CompositionLocalProvider(LocalAgentPictures provides session.pictures) {
         AgentHomeScreen(
-            name = agents.firstOrNull { it.id == id }?.name.orEmpty(),
+            name = agents.firstOrNull { it.id == id }?.name?.takeIf { it.isNotBlank() } ?: stringResource(R.string.account_kind_agent),
             feed = feed,
             status = status,
             accounts = rememberAccountMenu(graph),

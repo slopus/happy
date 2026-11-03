@@ -42,7 +42,7 @@ class PairingScreenTest {
             PairingScreen(state, onConfirm = { confirmed++ }, onReject = { rejected++ }, onBack = { back++ }, onDone = { done++ })
         }
         rule.onNode(isHeading(), useUnmergedTree = true).assertExists()
-        rule.onNodeWithText("Connect Agent").assertExists()
+        rule.onNodeWithText("Connect Happy Agent").assertExists()
         rule.node(PairingTags.SPINNER).assertExists()
         rule.onNodeWithText("Steve's Mac", substring = true).assertExists()
 

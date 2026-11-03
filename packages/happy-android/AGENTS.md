@@ -160,7 +160,10 @@ win:
   Computer page swallows back; here back leaves the app as on any root.
 - **Home's top bar:** the current account's avatar on the left opens a
   drop-down of the relay accounts and agent connections (avatar and
-  name each, a check on the open one), then one "Add"
+  name each, a check on the open one), then one "Add". The two kinds are
+  "Happy CLI" (a relay account) and "Happy Agent" (an agent connection),
+  never "legacy" (iOS 64edb6a34): one with no name of its own goes by
+  its kind, and TalkBack hears the kind after each row's name
   (`ui/home/AccountMenu.kt`); picking one switches
   (`AppGraph.open`). Settings on the right. The legacy home and agent
   home share one bar (`AgentTopBar`, `BarTitle`): the account's name as

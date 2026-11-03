@@ -200,6 +200,13 @@ class HomeLayoutTest {
     }
 
     @Test
+    fun anAccountWithNoNameOfItsOwnIsNamedAsItsKind() {
+        val home = state(listOf(cli("a")))
+        rule.setHappyContent { HomeScreen(home, ConnectionStatus.CONNECTED, home.grouping, callbacks, actions) }
+        rule.onNodeWithText("Happy CLI", useUnmergedTree = true).assertExists()
+    }
+
+    @Test
     fun aSocketOnItsWayBackStandsInTheNamesPlace() {
         val home = state(listOf(cli("a")))
         var connection by mutableStateOf(ConnectionStatus.CONNECTED)

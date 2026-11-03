@@ -32,6 +32,6 @@
     <string name="task_cannot_leave">Happy Agent na tym komputerze nie umie jeszcze opuszczać zadań. Zaktualizuj go i spróbuj ponownie.</string>
     <string name="agent_search_new_task">Nowe zadanie</string>
     <string name="agent_search_new_task_picture">Nowe zadanie z obrazem</string>
-    <string name="agent_search_connect_agent">Połącz Happy Agent</string>
+    <string name="agent_search_connect_agent">Połącz z Happy Agent</string>
     <string name="agent_home_unanswered">Komputer nie odpowiedział.</string>
 </resources>

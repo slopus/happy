@@ -4,7 +4,7 @@
   catalogs. AndroidStringsTranslatedTest fails while one is missing here.
 -->
 <resources>
-    <string name="pairing_title">Połącz agenta</string>
+    <string name="pairing_title">Połącz z Happy Agent</string>
     <string name="pairing_connecting">Łączenie z %1$s…</string>
     <string name="pairing_unverified">Nazwa pochodzi z kodu i nie jest zweryfikowana, dopóki połączenie się nie zakończy.</string>
     <string name="pairing_compare">Sprawdź, czy %1$s pokazuje te same cztery emoji w tej samej kolejności.</string>

@@ -4,7 +4,7 @@
   catalogs. AndroidStringsTranslatedTest fails while one is missing here.
 -->
 <resources>
-    <string name="pairing_title">エージェントを接続</string>
+    <string name="pairing_title">Happy Agent を接続</string>
     <string name="pairing_connecting">%1$s に接続中…</string>
     <string name="pairing_unverified">名前はコードから取得したもので、接続が完了するまで検証されていません。</string>
     <string name="pairing_compare">%1$s に同じ 4 つの絵文字が同じ順番で表示されているか確認してください。</string>

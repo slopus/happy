@@ -216,7 +216,8 @@ fun HomeScreen(
 @Composable
 private fun HomeHeader(link: LinkState, accounts: AccountMenu, actions: HomeScreenActions) {
     val colors = HappyTheme.colors
-    val name = accounts.active?.name ?: stringResource(R.string.account_menu_unnamed_account)
+    // Named as its kind until it has a name of its own (iOS 64edb6a34).
+    val name = accounts.active?.name ?: stringResource(R.string.account_kind_cli)
     AgentTopBar(
         tag = HomeTags.BAR,
         container = colors.surface,
