@@ -95,7 +95,11 @@ class HttpsTransport internal constructor(
                 val stream = socket(category)
                 try {
                     stream.write(head)
-                    if (body != null) stream.write(body)
+                    val progress = currentCoroutineContext()[BodyProgress]
+                    if (body != null) {
+                        if (progress == null) stream.write(body)
+                        else progress.write(body) { stream.write(it) }
+                    }
                     val parser = HttpResponseParser()
                     var response: TransportResponse? = null
                     while (response == null) {

@@ -15,6 +15,8 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -45,6 +47,8 @@ private class FakeAgent {
     var answerStatus: Int? = null
     /** A slash command's invocation answers this status; accepted, with [commandsAfter] as the catalog. */
     var commandStatus = 202
+    /** A send writes half its body, then waits for this before writing the rest and answering. */
+    var halfway: CompletableDeferred<Unit>? = null
     var commandsAfter = """[{"name":"compact","hasArguments":false,"description":"Summarize.","kind":"compaction"}]"""
 
     val request: AgentRequest = { method, path, body, _ ->
@@ -71,6 +75,14 @@ private class FakeAgent {
             route.endsWith("/messages") && failOlder && "before=" in path -> TransportResponse(503, body = "{}".toByteArray())
             route.endsWith("/messages") && "after=" in path && afterPage != null -> ok(afterPage!!)
             route.endsWith("/messages") -> ok(page)
+            route.endsWith("/send") && halfway != null -> {
+                val bytes = body.toString().toByteArray()
+                val progress = kotlinx.coroutines.currentCoroutineContext()[com.slopus.happy.connection.BodyProgress]
+                progress?.report(bytes, bytes.size / 2)
+                halfway!!.await()
+                progress?.report(bytes, bytes.size)
+                TransportResponse(202, body = "{}".toByteArray())
+            }
             route.endsWith("/send") && failSends > 0 -> { failSends--; TransportResponse(503, body = """{"error":"busy"}""".toByteArray()) }
             route.endsWith("/send") -> TransportResponse(sendStatus, body = """{"error":"Unknown model.","code":"invalid_request"}""".toByteArray())
             route.endsWith("/answer") && answerStatus != null -> TransportResponse(answerStatus!!, body = """{"error":"busy"}""".toByteArray())
@@ -1213,6 +1225,56 @@ class ConversationTest {
         assertEquals(ConversationRow.TurnEnd("r2:status", "r2", "error", 5_000, 0, "Again"), failed)
     }
 
+
+    private fun picture(fill: Char) = Block.Image("image/png", fill.toString().repeat(4000))
+
+    private fun sentImages(agent: FakeAgent) = agent.requests.filter { it.second.endsWith("/send") }.map { request ->
+        request.third!!["content"]?.jsonArray.orEmpty().map { it.jsonObject }.filter { it["type"]?.jsonPrimitive?.content == "image" }.map { it["data"]!!.jsonPrimitive.content.first() }
+    }
+
+    @Test fun `a sending picture says how much of it is written and is forgotten once taken`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        val gate = CompletableDeferred<Unit>().also { agent.halfway = it }
+        assertTrue(chat.send("Look", listOf(picture('A'), picture('B'))))
+        advanceUntilIdle()
+        val id = chat.state.value.rows.filterIsInstance<ConversationRow.User>().single().messageId
+        // Half the body: the first picture mostly written, the second not begun.
+        val first = chat.uploads.phase(UploadBoard.pictureKey(id, 0))
+        val second = chat.uploads.phase(UploadBoard.pictureKey(id, 1))
+        assertTrue("first: $first", first is UploadPhase.Uploading && first.share > 0.5f || first == UploadPhase.Done)
+        assertTrue("second: $second", second == UploadPhase.Uploading(0f) || second is UploadPhase.Uploading && second.share < 0.5f)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        // Taken: all there until the agent's own copy comes back.
+        assertEquals(UploadPhase.Done, chat.uploads.phase(UploadBoard.pictureKey(id, 1)))
+        assertEquals(Delivery.Pending, chat.state.value.rows.filterIsInstance<ConversationRow.User>().single().delivery)
+        signals.emit(event("message.created", """{"agentId":"a1","runId":null,"message":{"id":"$id","role":"user","status":"pending","createdAt":5,"content":[{"type":"text","text":"Look"}],"metadata":{}}}"""))
+        advanceUntilIdle()
+        assertEquals(null, chat.uploads.phase(UploadBoard.pictureKey(id, 0)))
+    }
+
+    @Test fun `taking a picture out on its way sends the rest under the same id, and the last one takes the message back`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        agent.halfway = CompletableDeferred()
+        assertTrue(chat.send("", listOf(picture('A'), picture('B'))))
+        advanceUntilIdle()
+        val id = chat.state.value.rows.filterIsInstance<ConversationRow.User>().single().messageId
+        chat.removePicture(id, 1)
+        advanceUntilIdle()
+        assertEquals("written again without it", listOf(listOf('A', 'B'), listOf('A')), sentImages(agent))
+        assertEquals(1, chat.state.value.rows.filterIsInstance<ConversationRow.User>().single().pictures.size)
+        val ids = agent.requests.filter { it.second.endsWith("/send") }.map { it.third!!["id"]!!.jsonPrimitive.content }.distinct()
+        assertEquals("one message", 1, ids.size)
+
+        chat.removePicture(id, 0)
+        advanceUntilIdle()
+        assertTrue("nothing left: taken back", chat.state.value.rows.filterIsInstance<ConversationRow.User>().isEmpty())
+        assertEquals(2, sentImages(agent).size)
+    }
 }
 
 private fun preview(uri: String, mimeType: String, size: Long, name: String = uri.substringAfterLast('/')) =

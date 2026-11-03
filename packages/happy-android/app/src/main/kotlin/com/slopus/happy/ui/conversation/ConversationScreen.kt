@@ -172,6 +172,10 @@ class ConversationScreenActions(
     val onStop: () -> Unit = {},
     val onRetrySend: (String) -> Unit = {},
     val onDiscardSend: (String) -> Unit = {},
+    /** Each outgoing picture's way to the computer, for the rings in the bubble. */
+    val uploads: com.slopus.happy.conversation.UploadBoard? = null,
+    /** Takes a picture out of a message still on its way. */
+    val onRemovePicture: (messageId: String, index: Int) -> Unit = { _, _ -> },
     val onRetryFailure: (String) -> Unit = {},
     val onAnswer: suspend (questionId: String, answers: Map<String, List<String>>) -> Unit = { _, _ -> },
     /** Older history; `retry` after a failed page (Retry), which nothing else asks again. */
@@ -286,6 +290,8 @@ fun ConversationScreen(
                 folds.toggleMessage(key, rows)
                 actions.onToggleMessage(key)
             },
+            uploads = actions.uploads,
+            onRemovePicture = actions.onRemovePicture,
         )
     }
     val atNewest by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }

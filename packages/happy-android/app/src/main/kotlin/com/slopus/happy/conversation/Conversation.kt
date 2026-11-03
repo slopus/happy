@@ -167,7 +167,8 @@ class Conversation(
     private class Outgoing(
         val id: String,
         val text: String,
-        val images: List<Block.Image>,
+        /** Fewer once a picture is taken out on its way ([removePicture]). */
+        var images: List<Block.Image>,
         val files: List<OutgoingFile> = emptyList(),
         /** A tool the agent runs before it reads this (a skill's `read_skill`). */
         val toolRequest: ToolRequest? = null,
@@ -222,6 +223,12 @@ class Conversation(
     /** Questions answered while this was open, as the computer took them: they settle in their turn before history says so. */
     private val answered = HashMap<String, Question>()
     private var pumping: Job? = null
+
+    /** The send [pump] is writing now. */
+    private var writing: String? = null
+
+    /** Each outgoing picture's way to the computer, for the ring on its tile. */
+    val uploads = UploadBoard()
     private var creating: Deferred<Unit>? = null
     private var choice = initialChoice
     /** The first send is making the new work: the choice is fixed and another send waits. */
@@ -447,6 +454,7 @@ class Conversation(
             messages[message.id] = message
             pending += message.id
         }
+        outgoing.filter { it.id in messages }.forEach { uploads.clear(it.id) }
         outgoing.removeAll { it.id in messages }
         running = start.agent.isWorking
         activeRunStartedAt = runs.lastOrNull()?.first?.let(runInfo::get)?.takeIf { start.agent.isWorking && it.status == "running" }?.startedAt
@@ -544,6 +552,7 @@ class Conversation(
                 val message = Message.parse(payload["message"]) ?: return
                 messages[message.id] = message
                 outgoing.removeAll { it.id == message.id }
+                uploads.clear(message.id)
                 val runId = payload["runId"].str
                 if (runId != null) place(message.id, runId)
                 else if (message.id !in pending && runs.none { message.id in it.second }) pending += message.id
@@ -909,11 +918,26 @@ class Conversation(
         pumping = scope.launch(lane) {
             while (true) {
                 val next = outgoing.firstOrNull { !it.accepted && it.failure == null } ?: break
+                writing = next.id
                 try {
+                    next.images.indices.forEach { uploads.set(UploadBoard.pictureKey(next.id, it), UploadPhase.Preparing) }
                     ensureCreated()
                     val mode = sendingMode() ?: throw IllegalStateException("No model is set up on this computer.")
                     upload(next.files)
-                    val message = withRetries { api.send(agentId, next.id, next.wire, next.images, mode, next.toolRequest) }
+                    val images = next.images
+                    val message = withRetries {
+                        // The bytes of each picture's base64 written say how far it is.
+                        var ranges: UploadRanges? = null
+                        val progress = com.slopus.happy.connection.BodyProgress { body, sent ->
+                            val found = ranges ?: UploadRanges(body, images.map { it.data }).also { ranges = it }
+                            found.shares(sent).forEachIndexed { index, share ->
+                                uploads.set(UploadBoard.pictureKey(next.id, index), if (share >= 1f) UploadPhase.Done else UploadPhase.Uploading(share))
+                            }
+                        }
+                        withContext(progress) { api.send(agentId, next.id, next.wire, images, mode, next.toolRequest) }
+                    }
+                    // All there, whatever the transport told on the way; the echo clears them.
+                    images.indices.forEach { uploads.set(UploadBoard.pictureKey(next.id, it), UploadPhase.Done) }
                     next.accepted = true
                     if (message != null && message.id !in messages) {
                         messages[message.id] = message
@@ -925,10 +949,38 @@ class Conversation(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
+                    uploads.clear(next.id)
                     next.failure = describe(e)
+                } finally {
+                    writing = null
                 }
                 publish()
             }
+        }
+    }
+
+    /**
+     * Takes picture [index] out of message [id] while it is still on its
+     * way (iOS `removeAttachment`): what is being written stops and the rest
+     * goes again under the same id; a message left with nothing is taken
+     * back whole. A picture already all written stays.
+     */
+    fun removePicture(id: String, index: Int) {
+        scope.launch(lane) {
+            val send = outgoing.firstOrNull { it.id == id && !it.accepted } ?: return@launch
+            if (index !in send.images.indices || uploads.phase(UploadBoard.pictureKey(id, index)) == UploadPhase.Done) return@launch
+            // Nothing still writing sends the message as it was.
+            pumping?.takeIf { it.isActive && writing == id }?.let {
+                it.cancel()
+                it.join()
+            }
+            if (send.accepted) return@launch pump()
+            send.images = send.images.filterIndexed { i, _ -> i != index }
+            // What is left starts again under its new keys.
+            uploads.clear(id)
+            if (send.text.isEmpty() && send.images.isEmpty() && send.files.isEmpty() && send.toolRequest == null) outgoing.remove(send)
+            publish()
+            pump()
         }
     }
 

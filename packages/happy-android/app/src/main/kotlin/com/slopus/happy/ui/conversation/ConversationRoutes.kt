@@ -337,6 +337,8 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                     onStop = conversation::stop,
                     onRetrySend = conversation::retrySend,
                     onDiscardSend = conversation::discardSend,
+                    uploads = conversation.uploads,
+                    onRemovePicture = conversation::removePicture,
                     onRetryFailure = conversation::retryFailure,
                     onAnswer = conversation::answer,
                     onLoadOlder = { retry -> conversation.loadOlder(retry) },

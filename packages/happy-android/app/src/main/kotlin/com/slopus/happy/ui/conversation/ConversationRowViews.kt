@@ -17,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -38,6 +39,9 @@ import com.slopus.happy.chat.MessageDelivery
 import com.slopus.happy.chat.UserDisplay
 import com.slopus.happy.artifacts.formatDuration
 import com.slopus.happy.conversation.Block
+import androidx.compose.foundation.layout.fillMaxSize
+import com.slopus.happy.conversation.UploadPhase
+import com.slopus.happy.conversation.UploadBoard
 import com.slopus.happy.conversation.ConversationRow
 import com.slopus.happy.conversation.ConversationViewing
 import com.slopus.happy.conversation.Delivery
@@ -116,6 +120,10 @@ class ConversationRowActions(
     val onToggleTurn: (String) -> Unit = {},
     /** Opens a person's long message whole, or cuts it back, by its row's key. */
     val onToggleMessage: (String) -> Unit = {},
+    /** Each outgoing picture's way to the computer, for its ring; null where nothing sends. */
+    val uploads: UploadBoard? = null,
+    /** Takes picture `index` out of a message still on its way. */
+    val onRemovePicture: (messageId: String, index: Int) -> Unit = { _, _ -> },
 )
 
 /**
@@ -250,9 +258,18 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
     val message = remember(row) {
         ChatMessage.UserText(id = row.key, localId = row.messageId, createdAt = row.createdAt, text = row.text)
     }
-    // The photos go under the words, against the right edge as the bubble is.
-    val photos = @Composable {
-        InlinePictures(row.key, row.pictures, actions, MediaFlow.message, alignEnd = true, measure = MediaFlow::messageMeasure, limit = true)
+    // The photos go under the words, against the right edge as the bubble is; each still
+    // going to the computer under its ring (iOS 5ac4296c2). Movable: a message of pictures
+    // alone comes back captioned ("Attached images."), and its rings fill on in the bubble.
+    val photos = remember {
+        movableContentOf { row: ConversationRow.User, actions: ConversationRowActions ->
+            val sending = row.delivery == Delivery.Sending
+            InlinePictures(
+                row.key, row.pictures, actions, MediaFlow.message, alignEnd = true, measure = MediaFlow::messageMeasure, limit = true,
+                upload = { index -> if (sending) actions.uploads?.phase(UploadBoard.pictureKey(row.messageId, index)) ?: UploadPhase.Preparing else null },
+                onCancel = { index -> actions.onRemovePicture(row.messageId, index) },
+            )
+        }
     }
     // Past its first lines it is cut, and a tap on the bubble opens it or cuts it back ([UserFold]).
     val prose = if (row.text.isNotEmpty()) rememberProse(ProseSource(row.key, ProseKind.User, row.text, row.blocks)) else null
@@ -268,7 +285,7 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
             onRetry = if (failed) ({ actions.legacy.onRetry(row.messageId) }) else null,
             onDiscard = if (failed) ({ actions.legacy.onDiscard(row.messageId) }) else null,
             attachments = if (row.pictures.isEmpty()) null else {
-                { Box(Modifier.padding(top = ConversationRowSpec.photosGap)) { photos() } }
+                { Box(Modifier.padding(top = ConversationRowSpec.photosGap)) { photos(row, actions) } }
             },
             onTap = if (cut != null) ({ actions.onToggleMessage(row.key) }) else null,
             tapLabel = toggle,
@@ -279,7 +296,7 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
             modifier
                 .fillMaxWidth()
                 .padding(horizontal = ConversationRowSpec.marginHorizontal, vertical = ConversationRowSpec.marginVertical),
-        ) { photos() }
+        ) { photos(row, actions) }
     }
 }
 
@@ -298,6 +315,9 @@ private fun InlinePictures(
     alignEnd: Boolean,
     measure: (Float) -> Float = { it },
     limit: Boolean = false,
+    /** Where each picture is on its way to the computer; null once it is there (or never went from here). */
+    upload: (index: Int) -> UploadPhase? = { null },
+    onCancel: (index: Int) -> Unit = {},
 ) {
     val shown = if (limit) MediaFlow.messageShown(pictures.size) else pictures.size
     val more = if (limit) MediaFlow.messageMore(pictures.size) else 0
@@ -313,14 +333,22 @@ private fun InlinePictures(
     ) { index ->
         val bytes = decoded[index].bytes
         val cacheKey = ConversationViewing.pictureKey(key, index)
-        MediaTile(
-            bytes = bytes,
-            cacheKey = cacheKey,
-            contentDescription = label,
-            failed = bytes == null,
-            onClick = bytes?.let { { actions.onOpenPicture(cacheKey) } },
-            more = if (index == decoded.lastIndex) more else 0,
-        )
+        Box {
+            MediaTile(
+                bytes = bytes,
+                cacheKey = cacheKey,
+                contentDescription = label,
+                failed = bytes == null,
+                onClick = bytes?.let { { actions.onOpenPicture(cacheKey) } },
+                more = if (index == decoded.lastIndex) more else 0,
+                modifier = Modifier.fillMaxSize(),
+            )
+            // Seen going, it stays to fill and shrink away once the picture is there.
+            val phase = upload(index)
+            var going by remember { mutableStateOf(false) }
+            if (phase != null) going = true
+            if (going) UploadRing(phase ?: UploadPhase.Done, onCancel = { onCancel(index) }, modifier = Modifier.matchParentSize())
+        }
     }
 }
 

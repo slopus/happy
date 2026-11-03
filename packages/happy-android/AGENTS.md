@@ -1146,6 +1146,20 @@ alone lands on the button. iOS gives its springs as damping plus duration;
 these use the same damping ratio, at the stiffness that settles in that
 duration. Tablets, landscape and Reduce Motion slide the sheet up as before.
 
+A Happy Agent picture on its way to the computer wears Telegram's ring in the
+bubble (`UploadRing`, iOS 5ac4296c2). The tile is dimmed, with a dark disc
+and a white arc for the share written; the arc turns while it fills. Its cross
+takes that picture out (`Conversation.removePicture`, iOS `removeAttachment`):
+the write in flight stops and the rest goes again under the same id, and a
+message left empty is taken back. The share comes from the request body as the
+transport writes it. `BodyProgress` in the coroutine context gets each chunk,
+and `UploadRanges` finds where each picture's base64 sits in the body, so
+`UploadBoard` can hold a share per picture. Before any bytes go, the arc is
+short and turning. Once the computer takes the message, every ring fills and
+then shrinks away. The photos are movable content: a message of pictures alone
+comes back captioned "Attached images.", and moves into a bubble without its
+rings starting over.
+
 ### Image loading
 
 One Coil 3 `ImageLoader` (`ui/components/RemoteImage.kt`) for every
