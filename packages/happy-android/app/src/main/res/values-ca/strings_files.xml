@@ -4,7 +4,14 @@
   catalogs. AndroidStringsTranslatedTest fails while one is missing here.
 -->
 <resources>
+    <string name="workspace_initializing">Aquest espai de treball encara s\'està preparant. Torna-ho a provar d\'aquí a un moment.</string>
+    <string name="workspace_unreachable">Ara mateix no es pot contactar amb l\'ordinador.</string>
+    <string name="workspace_not_found">Aquesta carpeta o fitxer ja no existeix.</string>
+    <string name="workspace_file_too_large">Aquest fitxer és massa gran per obrir-lo al telèfon.</string>
+    <string name="workspace_folder">Carpeta</string>
+    <string name="workspace_folder_empty">Aquesta carpeta és buida</string>
     <string name="workspace_rendered">Renderitzat</string>
+    <string name="workspace_source">Font</string>
     <plurals name="markdown_diff_unchanged">
         <item quantity="one">Mostra %1$d bloc sense canvis</item>
         <item quantity="many">Mostra %1$d blocs sense canvis</item>

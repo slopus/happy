@@ -2,6 +2,7 @@ package com.slopus.happy.ui.conversation
 
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -287,5 +288,28 @@ class AgentPageTest {
         rule.node(AgentPageTags.SCROLL).performTouchInput { swipeUp(startY = bottom - 100f, endY = top + 100f) }
         rule.waitForIdle()
         shot("scrolled-dark")
+    }
+
+    /** desktop's task panel's Files, under Changes: the workspace's folder, opened on tap. */
+    @Test fun `a workspace's files follow its changes and open its folder`() {
+        val opened = ArrayList<String>()
+        show(
+            AgentPageFixtures.page.copy(workspaceId = "w1"),
+            AgentPageActions(onOpenChanges = { opened += "changes:$it" }, onOpenFiles = { opened += "files:$it" }),
+        )
+        rule.node(AgentPageTags.FILES).performScrollTo()
+        val changes = rule.node(AgentPageTags.CHANGES).bounds
+        val files = rule.node(AgentPageTags.FILES).bounds
+        assertDp("a detail is 52", 52, files.height)
+        assertDp("Files is under Changes", changes.bottom, files.top)
+        rule.onNodeWithText("Files", useUnmergedTree = true).assertIsDisplayed()
+        rule.node(AgentPageTags.FILES).performClick()
+        assertEquals(listOf("files:w1"), opened)
+    }
+
+    @Test fun `without a workspace there are no changes or files`() {
+        show(AgentPageFixtures.page.copy(workspaceId = null))
+        rule.onAllNodesWithTag(AgentPageTags.CHANGES, useUnmergedTree = true).assertCountEquals(0)
+        rule.onAllNodesWithTag(AgentPageTags.FILES, useUnmergedTree = true).assertCountEquals(0)
     }
 }

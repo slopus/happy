@@ -7,7 +7,14 @@
   keep every language in step.
 -->
 <resources>
+    <string name="workspace_initializing">This workspace is still being set up. Try again in a moment.</string>
+    <string name="workspace_unreachable">Can\'t reach the computer right now.</string>
+    <string name="workspace_not_found">This folder or file is no longer there.</string>
+    <string name="workspace_file_too_large">This file is too large to open on the phone.</string>
+    <string name="workspace_folder">Folder</string>
+    <string name="workspace_folder_empty">This folder is empty</string>
     <string name="workspace_rendered">Rendered</string>
+    <string name="workspace_source">Source</string>
     <plurals name="markdown_diff_unchanged">
         <item quantity="one">Show %1$d unchanged block</item>
         <item quantity="other">Show %1$d unchanged blocks</item>

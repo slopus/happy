@@ -4,7 +4,14 @@
   catalogs. AndroidStringsTranslatedTest fails while one is missing here.
 -->
 <resources>
+    <string name="workspace_initializing">このワークスペースはまだ準備中です。少し待ってからもう一度お試しください。</string>
+    <string name="workspace_unreachable">現在コンピュータに接続できません。</string>
+    <string name="workspace_not_found">このフォルダまたはファイルはもう存在しません。</string>
+    <string name="workspace_file_too_large">このファイルは大きすぎて電話で開けません。</string>
+    <string name="workspace_folder">フォルダ</string>
+    <string name="workspace_folder_empty">このフォルダは空です</string>
     <string name="workspace_rendered">表示</string>
+    <string name="workspace_source">ソース</string>
     <plurals name="markdown_diff_unchanged">
         <item quantity="other">変更のない %1$d 個のブロックを表示</item>
     </plurals>

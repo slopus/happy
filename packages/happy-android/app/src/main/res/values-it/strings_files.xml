@@ -4,7 +4,14 @@
   catalogs. AndroidStringsTranslatedTest fails while one is missing here.
 -->
 <resources>
+    <string name="workspace_initializing">Questo spazio di lavoro è ancora in preparazione. Riprova tra poco.</string>
+    <string name="workspace_unreachable">Impossibile raggiungere il computer in questo momento.</string>
+    <string name="workspace_not_found">Questa cartella o questo file non esiste più.</string>
+    <string name="workspace_file_too_large">Questo file è troppo grande per essere aperto sul telefono.</string>
+    <string name="workspace_folder">Cartella</string>
+    <string name="workspace_folder_empty">Questa cartella è vuota</string>
     <string name="workspace_rendered">Renderizzato</string>
+    <string name="workspace_source">Sorgente</string>
     <plurals name="markdown_diff_unchanged">
         <item quantity="one">Mostra %1$d blocco invariato</item>
         <item quantity="many">Mostra %1$d blocchi invariati</item>

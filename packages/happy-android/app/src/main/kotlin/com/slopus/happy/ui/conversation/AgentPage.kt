@@ -150,6 +150,7 @@ object AgentPageTags {
     const val DETAILS = "agentPage.details"
     const val DETAILS_ROW = "agentPage.details.row"
     const val CHANGES = "agentPage.details.changes"
+    const val FILES = "agentPage.details.files"
 }
 
 /**
@@ -270,6 +271,8 @@ class AgentPageActions(
     val kept: KeptMedia? = null,
     /** The workspace's changes against its base ([WorkspaceChangesRoute]). */
     val onOpenChanges: (String) -> Unit = {},
+    /** The workspace's folder ([com.slopus.happy.ui.files.WorkspaceFilesRoute]). */
+    val onOpenFiles: (String) -> Unit = {},
 )
 
 /**
@@ -1025,6 +1028,9 @@ private fun Details(state: AgentPageState, actions: AgentPageActions) {
                     onClick = { actions.onOpenChanges(id) },
                     tag = AgentPageTags.CHANGES,
                 )
+            }
+            add { last ->
+                DetailRow(stringResource(R.string.common_files), "", last, chevron = true, onClick = { actions.onOpenFiles(id) }, tag = AgentPageTags.FILES)
             }
         }
         state.parent?.let { parent ->

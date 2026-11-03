@@ -56,6 +56,33 @@ import kotlinx.serialization.Serializable
 /** `/session/{id}/message/{messageId}?file=`: one message in full; [file] narrows a patch to the file tapped. */
 @Serializable data class MessageDetailRoute(val id: String, val messageId: String, val file: String? = null)
 
+/** One folder of an agent connection's workspace, [path] relative to its root ("" is the root). */
+@Serializable data class WorkspaceFilesRoute(val connectionId: String, val workspaceId: String, val path: String = "")
+
+/**
+ * One file of an agent connection's workspace, at [line] when given: in
+ * [workspaceId], or in the workspace [agentId] works in (a
+ * `happy-file://agents/<id>/<path>` link). [path] is relative to its root.
+ */
+@Serializable data class WorkspaceFileRoute(
+    val connectionId: String,
+    val path: String,
+    val workspaceId: String? = null,
+    val agentId: String? = null,
+    val line: Int? = null,
+)
+
+/**
+ * Opens a workspace file in the viewer, over whatever is up: the entry for
+ * `happy-file://workspaces/<workspaceId>/<path>#L<line>` and
+ * `happy-file://agents/<agentId>/<path>#L<line>` links. Give one of
+ * [workspaceId] and [agentId]; [path] is relative to the workspace root.
+ */
+fun NavHostController.openWorkspaceFile(connectionId: String, path: String, workspaceId: String? = null, agentId: String? = null, line: Int? = null) {
+    require(workspaceId != null || agentId != null) { "A workspace file needs its workspace or agent" }
+    navigate(WorkspaceFileRoute(connectionId, path.trimStart('/'), workspaceId, agentId, line?.takeIf { it > 0 }))
+}
+
 /** `/text-selection?textId=`: text stored with [TempText.store]. */
 @Serializable data class TextSelectionRoute(val textId: String)
 
@@ -81,6 +108,14 @@ fun NavGraphBuilder.filesRoutes(graph: AppGraph, nav: NavHostController) {
     page<MessageDetailRoute> { entry ->
         val route = entry.toRoute<MessageDetailRoute>()
         MessageDetailRouteScreen(graph, route, onBack = { nav.popBackStack() })
+    }
+    page<WorkspaceFilesRoute> { entry ->
+        val route = entry.toRoute<WorkspaceFilesRoute>()
+        WorkspaceFilesEntry(graph, route, nav)
+    }
+    page<WorkspaceFileRoute> { entry ->
+        val route = entry.toRoute<WorkspaceFileRoute>()
+        WorkspaceFileEntry(graph, route, onBack = { nav.popBackStack() })
     }
     page<TextSelectionRoute> { entry ->
         val route = entry.toRoute<TextSelectionRoute>()

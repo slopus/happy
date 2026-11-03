@@ -1,5 +1,16 @@
 package com.slopus.happy.ui.files
 
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.runtime.produceState
+import androidx.compose.ui.layout.ContentScale
+import com.slopus.happy.chat.markdown.MarkdownBlock
+import com.slopus.happy.chat.markdown.parseMarkdown
+import com.slopus.happy.ui.chat.MarkdownView
+import com.slopus.happy.ui.components.RemoteImage
+import com.slopus.happy.ui.conversation.PictureViewer
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.slopus.happy.text.wordsResource
 import com.slopus.happy.text.Words
 import androidx.compose.foundation.background
@@ -74,14 +85,43 @@ object FileTags {
     const val CODE = "file.code"
     const val SPINNER = "file.spinner"
     const val SCROLL = "file.scroll"
+    const val RENDERED_TAB = "file.renderedTab"
+    const val RENDERED = "file.rendered"
+    const val PICTURE = "file.picture"
 }
 
-/** What file.tsx loaded: still loading, failed, binary, or the text and its uncommitted diff. */
+/** What file.tsx loaded: still loading, failed, binary, a picture, or the text and its uncommitted diff. */
 sealed interface FileLoad {
     data object Loading : FileLoad
     data class Failed(val message: Words) : FileLoad
     data object Binary : FileLoad
     data class Loaded(val content: String, val diff: String?) : FileLoad
+
+    /** A picture's bytes and its size in pixels (desktop's FilePreview shows it rather than calling it binary). */
+    class Picture(val bytes: ByteArray, val width: Int, val height: Int) : FileLoad
+}
+
+/** desktop FilePreview's `markdown` kind: these render as a document, with the source a tab away. */
+fun isMarkdownPath(path: String): Boolean = path.substringAfterLast('.', "").lowercase() in setOf("md", "markdown", "mdx")
+
+/** desktop FilePreview's raster `image` kinds Android decodes itself; SVG stays text. */
+fun isPicturePath(path: String): Boolean = path.substringAfterLast('.', "").lowercase() in setOf("png", "jpg", "jpeg", "gif", "webp", "bmp", "heic", "avif")
+
+/**
+ * [bytes] as the viewer shows them: a picture when its name says so and
+ * they decode, binary when they hold a NUL or more than a tenth control
+ * characters (file.tsx), text otherwise. Off the main thread.
+ */
+fun fileLoadOf(path: String, bytes: ByteArray): FileLoad {
+    if (isPicturePath(path)) {
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        return if (bounds.outWidth > 0 && bounds.outHeight > 0) FileLoad.Picture(bytes, bounds.outWidth, bounds.outHeight) else FileLoad.Binary
+    }
+    val text = String(bytes, Charsets.UTF_8)
+    val controls = text.count { it.code < 32 && it != '\t' && it != '\n' && it != '\r' }
+    val binary = bytes.any { it == 0.toByte() } || (text.isNotEmpty() && controls.toDouble() / text.length > 0.1)
+    return if (binary) FileLoad.Binary else FileLoad.Loaded(text, null)
 }
 
 /** file.tsx `getFileLanguage`: the SimpleSyntaxHighlighter language for an extension. */
@@ -245,6 +285,7 @@ fun FileScreen(
             }
             FileLoad.Binary -> Centered(stringResource(R.string.files_binary_file), colors.textSecondary, stringResource(R.string.files_cannot_display_binary), fileName)
             is FileLoad.Loaded -> LoadedFile(load, filePath, line, column)
+            is FileLoad.Picture -> PictureFile(load, filePath)
         }
     }
 }
@@ -260,14 +301,24 @@ private fun Centered(title: String, titleColor: Color, message: String, footnote
     }
 }
 
-private enum class Mode { Diff, File }
+private enum class Mode { Diff, Rendered, File }
 
 @Composable
 private fun LoadedFile(load: FileLoad.Loaded, filePath: String, line: Int?, column: Int?) {
     val colors = HappyTheme.colors
     val border = glassBorder(colors.dark)
     val requested = line?.takeIf { it > 0 }
-    var mode by rememberSaveable(load.diff != null, requested) { mutableStateOf(if (requested == null && load.diff != null) Mode.Diff else Mode.File) }
+    val markdown = isMarkdownPath(filePath) && load.content.isNotEmpty()
+    var mode by rememberSaveable(load.diff != null, requested, markdown) {
+        mutableStateOf(
+            when {
+                requested != null -> Mode.File
+                load.diff != null -> Mode.Diff
+                markdown -> Mode.Rendered
+                else -> Mode.File
+            },
+        )
+    }
     val scroll = rememberScrollState()
     val density = LocalDensity.current
     LaunchedEffect(mode, load.content, requested) {
@@ -288,7 +339,7 @@ private fun LoadedFile(load: FileLoad.Loaded, filePath: String, line: Int?, colu
             val label = if (requested != null) "$filePath:$requested${column?.takeIf { it > 0 }?.let { ":$it" }.orEmpty()}" else filePath
             Text(label, style = happyTextStyle(fontSize = 14, family = AppMono), color = colors.textSecondary, modifier = Modifier.padding(start = 8.dp).weight(1f))
         }
-        if (load.diff != null) {
+        if (load.diff != null || markdown) {
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -298,8 +349,9 @@ private fun LoadedFile(load: FileLoad.Loaded, filePath: String, line: Int?, colu
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Tab(stringResource(R.string.files_diff), mode == Mode.Diff, FileTags.DIFF_TAB) { mode = Mode.Diff }
-                Tab(stringResource(R.string.files_file), mode == Mode.File, FileTags.FILE_TAB) { mode = Mode.File }
+                if (load.diff != null) Tab(stringResource(R.string.files_diff), mode == Mode.Diff, FileTags.DIFF_TAB) { mode = Mode.Diff }
+                if (markdown) Tab(stringResource(R.string.workspace_rendered), mode == Mode.Rendered, FileTags.RENDERED_TAB) { mode = Mode.Rendered }
+                Tab(stringResource(if (markdown) R.string.workspace_source else R.string.files_file), mode == Mode.File, FileTags.FILE_TAB) { mode = Mode.File }
             }
         }
         // The bars span the screen; the body is held to layout.maxWidth.
@@ -307,6 +359,12 @@ private fun LoadedFile(load: FileLoad.Loaded, filePath: String, line: Int?, colu
             val empty = happyTextStyle(fontSize = 16).copy(fontStyle = FontStyle.Italic)
             when {
                 mode == Mode.Diff && load.diff != null -> DiffDisplay(load.diff)
+                mode == Mode.Rendered && markdown -> {
+                    val blocks by produceState(emptyList<MarkdownBlock>(), load.content) {
+                        value = withContext(Dispatchers.Default) { parseMarkdown(load.content) }
+                    }
+                    MarkdownView(blocks, Modifier.testTag(FileTags.RENDERED))
+                }
                 mode == Mode.File && load.content.isNotEmpty() -> {
                     val chat = ChatTheme.colors
                     val text = remember(load.content, chat) { highlight(load.content, fileLanguage(filePath), chat) }
@@ -317,6 +375,47 @@ private fun LoadedFile(load: FileLoad.Loaded, filePath: String, line: Int?, colu
             }
         }
     }
+}
+
+/**
+ * A picture file: the path bar, then the picture at its own size, fitted
+ * to the width and never enlarged, centred; a tap opens it in the viewer
+ * (pinch, pan, drag away), as a picture in the conversation opens.
+ */
+@Composable
+private fun PictureFile(load: FileLoad.Picture, filePath: String) {
+    val colors = HappyTheme.colors
+    val fileName = filePath.substringAfterLast('/').ifEmpty { filePath }
+    var viewing by remember { mutableStateOf(false) }
+    val density = LocalDensity.current
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier.fillMaxWidth().background(colors.glass.backgroundStrong).hairlineBelow(glassBorder(colors.dark)).testTag(FileTags.PATH_BAR).padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            FileIcon(fileName, 20.dp)
+            Text(filePath, style = happyTextStyle(fontSize = 14, family = AppMono), color = colors.textSecondary, modifier = Modifier.padding(start = 8.dp).weight(1f))
+        }
+        Box(
+            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).contentMaxWidth(LocalWindowLayout.current).padding(16.dp),
+            contentAlignment = Alignment.TopCenter,
+        ) {
+            val natural = with(density) { load.width.toDp() }
+            RemoteImage(
+                model = load.bytes,
+                contentDescription = fileName,
+                contentScale = ContentScale.Fit,
+                cacheKey = "file:$filePath:${load.bytes.size}",
+                modifier = Modifier
+                    .widthIn(max = natural)
+                    .fillMaxWidth()
+                    .aspectRatio(load.width.toFloat() / load.height)
+                    .testTag(FileTags.PICTURE)
+                    .clickable(role = Role.Image) { viewing = true },
+            )
+        }
+    }
+    if (viewing) PictureViewer(load.bytes, "file:$filePath:${load.bytes.size}", fileName) { viewing = false }
 }
 
 private fun Modifier.hairlineBelow(color: Color) = drawBehind {
