@@ -158,7 +158,7 @@ object FileMessageTags {
  * rather than in a tool card (ToolView's inline attachment). Spec: 8 side
  * margins and 1 above and below; inside, padding 12/8 and 4 between the
  * picture and the name. The picture is [fileImageDisplaySize], radius 8,
- * left-aligned, cropped to fill, fading in over 150 ms once decrypted
+ * left-aligned, cropped to fill, fading in over 0.2 s once decrypted
  * (by the shared image loader);
  * before that the space is empty. If it can't be loaded, a 24 circle in
  * surfaceHigh sits 4 in from its top right with alert-circle-outline 20 in

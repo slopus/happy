@@ -1331,6 +1331,14 @@ loader uses its own OkHttp client without Happy headers (these URLs are
 third-party). Tests swap it through `LocalImageLoader` with coil-test's
 `FakeImageLoaderEngine`.
 
+A picture with a thumbhash shows it from its first frame (iOS 5ebfc1c0b).
+`rememberThumbHash` decodes in place as the view is composed, from one
+process-wide `ThumbHashCache` (256 kept, least recently used out, a hash
+that isn't one kept as nothing). The decoder works its cosines out per
+row and column. The picture dissolves in over it in 0.2 s
+(`HappyImageLoader.FADE_MS`, iOS `ImageFade`). One from the memory cache,
+or any under Reduce Motion, replaces it at once.
+
 ### Avatars
 
 Anything without a picture wears happy-ios's shader placeholder

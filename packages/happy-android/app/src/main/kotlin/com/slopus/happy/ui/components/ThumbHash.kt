@@ -4,15 +4,9 @@ import android.graphics.Bitmap
 import android.util.Base64
 import android.util.LruCache
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
@@ -71,17 +65,21 @@ object ThumbHash {
         val w = (if (ratio > 1.0f) 32.0f else 32.0f * ratio).roundToInt()
         val h = (if (ratio > 1.0f) 32.0f / ratio else 32.0f).roundToInt()
         val rgba = ByteArray(w * h * 4)
-        val fx = FloatArray(max(lx, if (hasAlpha) 5 else 3))
-        val fy = FloatArray(max(ly, if (hasAlpha) 5 else 3))
+        // The reference works the cosines out for every pixel; they depend only on the column or the
+        // row, so each is worked out once (iOS 5ebfc1c0b). The same values, so the same bytes.
+        val columns = max(lx, if (hasAlpha) 5 else 3)
+        val rows = max(ly, if (hasAlpha) 5 else 3)
+        val fxs = Array(w) { x -> FloatArray(columns) { cx -> cos(Math.PI / w * (x + 0.5f) * cx).toFloat() } }
+        val fys = Array(h) { y -> FloatArray(rows) { cy -> cos(Math.PI / h * (y + 0.5f) * cy).toFloat() } }
         var i = 0
         for (y in 0 until h) {
+            val fy = fys[y]
             for (x in 0 until w) {
+                val fx = fxs[x]
                 var l = lDc
                 var p = pDc
                 var q = qDc
                 var a = aDc
-                for (cx in fx.indices) fx[cx] = cos(Math.PI / w * (x + 0.5f) * cx).toFloat()
-                for (cy in fy.indices) fy[cy] = cos(Math.PI / h * (y + 0.5f) * cy).toFloat()
 
                 var j = 0
                 for (cy in 0 until ly) {
@@ -160,23 +158,49 @@ object ThumbHash {
     }
 }
 
-private val thumbHashCache = LruCache<String, ImageBitmap>(128)
+/**
+ * Thumbhash placeholders as pictures, made the first time each is asked for,
+ * on the thread that asks, and kept (iOS `ThumbHashCache`). A view asks as it
+ * is composed, so the placeholder is in the first frame it draws; scrolling
+ * back to it costs a lookup, not a decode (32 px on the long side, well under
+ * a millisecond). One cache for every account: a placeholder is a function
+ * of its hash alone. A hash that isn't one is kept as nothing, so it isn't
+ * decoded again either. The least recently used go first.
+ */
+class ThumbHashCache(limit: Int = LIMIT, private val make: (String) -> ImageBitmap? = ::decodePicture) {
+    private class Entry(val picture: ImageBitmap?)
+
+    private val entries = LruCache<String, Entry>(limit)
+    @Volatile var makes = 0
+        private set
+
+    /** The placeholder for [hash], made now when it isn't kept; null for no hash or one that isn't a hash. */
+    fun picture(hash: String?): ImageBitmap? {
+        if (hash.isNullOrEmpty()) return null
+        entries.get(hash)?.let { return it.picture }
+        // Made outside any lock: two threads asking for the same new hash at once both make it.
+        val picture = make(hash)
+        makes++
+        entries.put(hash, Entry(picture))
+        return picture
+    }
+
+    val size: Int get() = entries.size()
+
+    fun clear() = entries.evictAll()
+
+    companion object {
+        const val LIMIT = 256
+        val shared = ThumbHashCache()
+
+        private fun decodePicture(hash: String): ImageBitmap? = ThumbHash.decode(hash)?.let { ThumbHash.toBitmap(it).asImageBitmap() }
+    }
+}
 
 /**
- * The placeholder a picture's [hash] describes, decoded off the main thread
- * and kept by hash; null for no hash, one that doesn't decode, and until
- * it lands.
+ * The placeholder a picture's [hash] describes, from [ThumbHashCache.shared]:
+ * there in the first frame, decoded in place the first time; null for no
+ * hash or one that doesn't decode.
  */
 @Composable
-fun rememberThumbHash(hash: String?): ImageBitmap? {
-    if (hash.isNullOrEmpty()) return null
-    var image by remember(hash) { mutableStateOf(thumbHashCache.get(hash)) }
-    if (image == null) {
-        LaunchedEffect(hash) {
-            image = withContext(Dispatchers.Default) {
-                ThumbHash.decode(hash)?.let { ThumbHash.toBitmap(it).asImageBitmap() }?.also { thumbHashCache.put(hash, it) }
-            }
-        }
-    }
-    return image
-}
+fun rememberThumbHash(hash: String?): ImageBitmap? = remember(hash) { ThumbHashCache.shared.picture(hash) }

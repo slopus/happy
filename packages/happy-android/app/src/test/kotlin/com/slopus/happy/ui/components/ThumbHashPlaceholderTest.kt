@@ -67,6 +67,20 @@ class ThumbHashPlaceholderTest {
         assertNotEquals(Color(0xFFF8F8F8), middle)
     }
 
+    // iOS 5ebfc1c0b: decoded in place as the view is composed, so the first frame has it.
+    @Test
+    fun theHashIsInTheFirstFrame() {
+        ThumbHashCache.shared.clear()
+        rule.mainClock.autoAdvance = false
+        rule.setHappyContent {
+            CompositionLocalProvider(LocalImageLoader provides loader) {
+                Avatar(id = "s", size = 48.dp, imageUri = hanging, thumbhash = hash)
+            }
+        }
+        rule.node(RemoteImageTags.PLACEHOLDER).assertExists()
+        rule.mainClock.autoAdvance = true
+    }
+
     @Test
     fun theHashGoesOnceThePictureLands() {
         rule.setHappyContent {

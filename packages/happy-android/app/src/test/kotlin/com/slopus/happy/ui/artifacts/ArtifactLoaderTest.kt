@@ -135,7 +135,14 @@ class ArtifactLoaderTest {
         val key = ui.items.single().key
         assertTrue(runBlocking { media.data(key) }!!.contentEquals(png))
         assertTrue(library.store.isComplete("artifact/a1/1/1.png"))
-        assertEquals(DownloadPhase.Complete(png.size.toLong()), media.phase(key))
+        // The board hears the finish on the downloads' own lane, after the bytes are read: its terminal phase, not one on the way.
+        val phase = runBlocking {
+            withTimeout(5_000) {
+                while (media.phase(key) !is DownloadPhase.Complete) kotlinx.coroutines.delay(10)
+                media.phase(key)
+            }
+        }
+        assertEquals(DownloadPhase.Complete(png.size.toLong()), phase)
 
         // The computer no longer has the file: the phone does.
         val again = ArtifactLoader(files(versions), null, scope, ArtifactRef("a1", 1, "", "Card", followsLatest = true), sizeWait = 2_000, library = library)

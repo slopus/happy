@@ -83,8 +83,8 @@ object HappyImageLoader {
 
     private fun imageCacheDir(context: Context) = context.cacheDir.resolve("images")
 
-    /** expo-image's `transition` in happy-app's image views. */
-    const val FADE_MS = 150
+    /** The picture dissolving in over its placeholder (iOS `ImageFade`, 5ebfc1c0b). */
+    const val FADE_MS = 200
 }
 
 /** Tests swap the loader (coil-test's fake engine); the app uses [HappyImageLoader]. */
@@ -127,9 +127,9 @@ fun rememberMemoryImage(cacheKey: String): ImageBitmap? {
  * bytes with a [cacheKey] (an attachment ref) so they are decoded once.
  * [background] shows until the picture lands and stays if it never does.
  * [placeholder] (a thumbhash) is drawn over it the same way, at
- * [contentScale] as expo-image draws a thumbhash, and fades out with the
- * picture's 150 ms fade in; a picture from the memory cache replaces it at
- * once, as Coil skips the fade then.
+ * [contentScale] as expo-image draws a thumbhash, and the picture dissolves
+ * in over it in 0.2 s (iOS `ImageFade`); a picture from the memory cache, or
+ * any under Reduce Motion, replaces it at once.
  */
 @Composable
 fun RemoteImage(
@@ -145,10 +145,12 @@ fun RemoteImage(
 ) {
     val context = LocalContext.current
     val loader = rememberImageLoader()
-    val request = remember(model, cacheKey, context) {
+    val still = rememberReduceMotion()
+    val request = remember(model, cacheKey, context, still) {
         ImageRequest.Builder(context)
             .data(model)
             .apply { if (cacheKey != null) memoryCacheKey(cacheKey) }
+            .apply { if (still) crossfade(false) }
             .build()
     }
     var state by remember(request) { mutableStateOf(RemoteImageState.Loading) }
@@ -192,7 +194,7 @@ fun RemoteImage(
     }
     LaunchedEffect(state) {
         if (state == RemoteImageState.Success) {
-            if (fromMemory) placeholderAlpha.snapTo(0f) else placeholderAlpha.animateTo(0f, tween(HappyImageLoader.FADE_MS))
+            if (fromMemory || still) placeholderAlpha.snapTo(0f) else placeholderAlpha.animateTo(0f, tween(HappyImageLoader.FADE_MS))
         } else {
             placeholderAlpha.snapTo(1f)
         }
