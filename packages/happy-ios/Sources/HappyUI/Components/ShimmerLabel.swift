@@ -5,11 +5,22 @@ import UIKit
 /// The one clock every shimmer in the app keeps (`Shimmer`): each sweep
 /// begins at `epoch`, so neighbouring labels move together and a band that
 /// stops and starts again picks up where the clock is, never from the
-/// start. It also says when nothing may sweep: in the background, or
-/// asked for less motion. Every band hears from it when that changes.
+/// start. It also says when nothing may sweep: in the background, asked
+/// for less motion, in Low Power Mode, or with the phone hot. Every band
+/// hears from it when that changes, and the working line's dots
+/// (`BrailleView`) from `changedNotification`.
 @MainActor
 final class ShimmerClock {
     static let shared = ShimmerClock()
+
+    /// Posted on the main thread when `holdsStill` or the background may have changed.
+    static let changedNotification = Notification.Name("ShimmerClock.changed")
+
+    /// What a working signal (a sweep, the dots) asks of the display. They
+    /// move slowly, so 30 Hz draws them as smoothly as 120 does while the
+    /// screen rests: asking for 120 kept a ProMotion panel there, and the
+    /// render server compositing every frame, for as long as an agent worked.
+    static let ambientRate = CAFrameRateRange(minimum: 10, maximum: 30, preferred: 30)
 
     let epoch = CACurrentMediaTime()
     private(set) var backgrounded = UIApplication.shared.applicationState == .background
@@ -29,9 +40,29 @@ final class ShimmerClock {
     /// Asked for less motion, the text simply stays at its own colour.
     var reducesMotion: Bool { reduceMotionOverride ?? UIAccessibility.isReduceMotionEnabled }
 
+    /// Tests stand in for Low Power Mode or a hot phone with this.
+    var savingOverride: Bool? {
+        didSet { if savingOverride != oldValue { changed() } }
+    }
+
+    /// Low Power Mode, or the phone serious or critical: nothing ambient
+    /// moves, as with Reduce Motion.
+    var saving: Bool {
+        savingOverride ?? (ProcessInfo.processInfo.isLowPowerModeEnabled || ProcessInfo.processInfo.thermalState.rawValue >= ProcessInfo.ThermalState.serious.rawValue)
+    }
+
+    /// Whether working signals stand still, the text at its own colour.
+    var holdsStill: Bool { reducesMotion || saving }
+
     private init() {
         let center = NotificationCenter.default
         center.addObserver(self, selector: #selector(changed), name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
+        // Both are posted on whichever thread noticed.
+        for name in [Notification.Name.NSProcessInfoPowerStateDidChange, ProcessInfo.thermalStateDidChangeNotification] {
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.changed() }
+            }
+        }
         center.addObserver(self, selector: #selector(wentAway), name: UIApplication.didEnterBackgroundNotification, object: nil)
         center.addObserver(self, selector: #selector(cameBack), name: UIApplication.willEnterForegroundNotification, object: nil)
     }
@@ -43,6 +74,7 @@ final class ShimmerClock {
 
     @objc private func changed() {
         for band in bands.allObjects { band.clockChanged() }
+        NotificationCenter.default.post(name: Self.changedNotification, object: self)
     }
 }
 
@@ -89,7 +121,7 @@ final class ShimmerBand: UIView {
     }
 
     var sweeps: Bool {
-        shimmering && onScreen && window != nil && !clock.backgrounded && !clock.reducesMotion
+        shimmering && onScreen && window != nil && !clock.backgrounded && !clock.holdsStill
     }
 
     private static let key = "sweep"
@@ -190,7 +222,7 @@ final class ShimmerBand: UIView {
         } else {
             sweep.beginTime = ramp.convertTime(clock.epoch, from: nil)
         }
-        sweep.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+        sweep.preferredFrameRateRange = ShimmerClock.ambientRate
         ramp.add(sweep, forKey: Self.key)
     }
 }
@@ -336,8 +368,8 @@ final class ShimmerLabel: UIView {
     // MARK: Colour
 
     /// The letters' colour now: `lift` rests dimmed only while its band
-    /// can run, so asked for less motion the text is simply its colour.
-    private var restsDimmed: Bool { shimmering && sweep == .lift && !ShimmerClock.shared.reducesMotion }
+    /// can run, so held still the text is simply its colour.
+    private var restsDimmed: Bool { shimmering && sweep == .lift && !ShimmerClock.shared.holdsStill }
 
     private func applyColors() {
         let ink = tone == .inherit ? textColor : UIColor(Shimmer.ink(tone, own: .clear))

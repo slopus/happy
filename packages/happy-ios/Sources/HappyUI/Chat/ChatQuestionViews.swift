@@ -472,7 +472,7 @@ final class AgentQuestionSheetController: UIViewController, UITextViewDelegate {
 
     /// "Submit" at rest: dimmed while its band can run, else its own ink.
     private func applySubmitInk() {
-        let dimmed = submitting && !ShimmerClock.shared.reducesMotion
+        let dimmed = submitting && !ShimmerClock.shared.holdsStill
         let ink = dimmed ? Shimmer.rest(.lift, ink: Palette.onAccent, ground: Palette.textLink) : Palette.onAccent
         submitLabel.update(MeasuredText(ChatTextStyles.sheetSubmit.string(Strings.AgentQuestion.submit, color: ink), maxLines: 1))
         view.setNeedsLayout()

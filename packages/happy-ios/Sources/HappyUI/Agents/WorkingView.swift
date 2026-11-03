@@ -10,9 +10,9 @@ import UIKit
 /// a question waiting on the person shows the red question mark, still.
 ///
 /// Nothing here draws per frame on the main thread: the loader's dots and
-/// the shimmer's band are layer animations the render server runs at the
-/// display's rate, and the clock is a once-a-second timer, ticking on the
-/// turn's own seconds.
+/// the shimmer's band are layer animations the render server runs at 30 Hz
+/// (`ShimmerClock.ambientRate`), and the clock is a once-a-second timer,
+/// ticking on the turn's own seconds.
 final class WorkingView: UIView {
     private let loader = BrailleView()
     private let ring = WaitRingView()
@@ -174,8 +174,8 @@ final class WorkingView: UIView {
 /// own pixels: one hard round stamp sized for this scale, copied to eight
 /// whole-pixel origins, so no dot ever looks larger than another. Every dot
 /// runs the same opacity wave, a tenth of a second apart in `dots2`'s
-/// order; each is one keyframe animation the render server plays at up to
-/// 120Hz, offset by its phase.
+/// order; each is one keyframe animation the render server plays at the
+/// working signals' rate (`ShimmerClock.ambientRate`), offset by its phase.
 final class BrailleView: UIView {
     private var dots: [CALayer] = []
     private var backgrounded = false
@@ -199,7 +199,7 @@ final class BrailleView: UIView {
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.setNeedsLayout() }
         NotificationCenter.default.addObserver(self, selector: #selector(foregrounded), name: UIApplication.willEnterForegroundNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(wentAway), name: UIApplication.didEnterBackgroundNotification, object: nil)
-        NotificationCenter.default.addObserver(self, selector: #selector(animate), name: UIAccessibility.reduceMotionStatusDidChangeNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(animate), name: ShimmerClock.changedNotification, object: nil)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -252,7 +252,7 @@ final class BrailleView: UIView {
 
     @objc private func animate() {
         for dot in dots { dot.removeAnimation(forKey: "wave") }
-        guard running, window != nil, !backgrounded, !UIAccessibility.isReduceMotionEnabled else { return }
+        guard running, window != nil, !backgrounded, !ShimmerClock.shared.holdsStill else { return }
         let start = CACurrentMediaTime()
         let cycle = Braille.cycle / 1000
         for (dot, phase) in zip(dots, Braille.phases) {
@@ -267,7 +267,7 @@ final class BrailleView: UIView {
             let lag = Double(phase) * Braille.frame / 1000
             wave.timeOffset = (cycle - lag).truncatingRemainder(dividingBy: cycle)
             wave.isRemovedOnCompletion = false
-            wave.preferredFrameRateRange = CAFrameRateRange(minimum: 60, maximum: 120, preferred: 120)
+            wave.preferredFrameRateRange = ShimmerClock.ambientRate
             dot.add(wave, forKey: "wave")
         }
     }

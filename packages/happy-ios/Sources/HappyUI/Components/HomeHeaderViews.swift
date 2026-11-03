@@ -285,11 +285,19 @@ private final class HeaderScrimFeatherView: UIView {
 }
 
 /// StatusDot.tsx: a dot that breathes between full and 0.3 opacity while
-/// pulsing.
+/// pulsing, at the working signals' rate, and holds still when they do
+/// (`ShimmerClock.holdsStill`).
 final class StatusDotView: UIView {
     var isPulsing = false {
         didSet { if isPulsing != oldValue { updateAnimation() } }
     }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        NotificationCenter.default.addObserver(self, selector: #selector(updateAnimation), name: ShimmerClock.changedNotification, object: nil)
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -301,15 +309,16 @@ final class StatusDotView: UIView {
         updateAnimation()
     }
 
-    private func updateAnimation() {
+    @objc private func updateAnimation() {
         layer.removeAnimation(forKey: "pulse")
-        guard isPulsing, window != nil else { return }
+        guard isPulsing, window != nil, !ShimmerClock.shared.holdsStill else { return }
         let pulse = CABasicAnimation(keyPath: "opacity")
         pulse.fromValue = 1
         pulse.toValue = 0.3
         pulse.duration = 1
         pulse.autoreverses = true
         pulse.repeatCount = .infinity
+        pulse.preferredFrameRateRange = ShimmerClock.ambientRate
         layer.add(pulse, forKey: "pulse")
     }
 }

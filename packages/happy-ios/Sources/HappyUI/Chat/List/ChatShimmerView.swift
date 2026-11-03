@@ -44,7 +44,7 @@ final class ChatShimmerView: UIView {
 
     private func applyBase() {
         guard let text else { return }
-        base.layout = ShimmerClock.shared.reducesMotion ? text.ink : text.rest
+        base.layout = ShimmerClock.shared.holdsStill ? text.ink : text.rest
     }
 
     override func layoutSubviews() {
