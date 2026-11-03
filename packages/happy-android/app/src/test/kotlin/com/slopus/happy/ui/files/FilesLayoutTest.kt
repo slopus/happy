@@ -189,8 +189,9 @@ class FilesLayoutTest {
         assertDp("tabs under the path", bar.bottom, tabs.top)
         val diffTab = rule.node(FileTags.DIFF_TAB).bounds
         val fileTab = rule.node(FileTags.FILE_TAB).bounds
-        assertDp("tab 16 in", 16, diffTab.left)
-        assertDp("tabs 8 apart", 8, fileTab.left - diffTab.right)
+        assertDp("the segmented track 16 in, its first segment 2 inside it", 18, diffTab.left)
+        assertDp("segments side by side", diffTab.right, fileTab.left)
+        assertDp("a segment 28 high in a 32 track", 28, diffTab.height)
         rule.onAllNodesWithTag(FileTags.DIFF_LINE, useUnmergedTree = true).assertCountEquals(4)
         rule.node(FileTags.FILE_TAB).performClick()
         rule.waitForIdle()

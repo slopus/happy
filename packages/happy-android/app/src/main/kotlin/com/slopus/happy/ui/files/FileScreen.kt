@@ -8,6 +8,8 @@ import com.slopus.happy.chat.markdown.MarkdownBlock
 import com.slopus.happy.chat.markdown.parseMarkdown
 import com.slopus.happy.ui.chat.MarkdownView
 import com.slopus.happy.ui.components.RemoteImage
+import com.slopus.happy.ui.components.Segment
+import com.slopus.happy.ui.components.SegmentedTabs
 import com.slopus.happy.ui.conversation.PictureViewer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -29,7 +31,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import com.slopus.happy.ui.components.PageProgressIndicator as CircularProgressIndicator
@@ -43,7 +44,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -51,8 +51,6 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -347,11 +345,13 @@ private fun LoadedFile(load: FileLoad.Loaded, filePath: String, line: Int?, colu
                     .hairlineBelow(border)
                     .testTag(FileTags.TOGGLE_BAR)
                     .padding(horizontal = 16.dp, vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                if (load.diff != null) Tab(stringResource(R.string.files_diff), mode == Mode.Diff, FileTags.DIFF_TAB) { mode = Mode.Diff }
-                if (markdown) Tab(stringResource(R.string.workspace_rendered), mode == Mode.Rendered, FileTags.RENDERED_TAB) { mode = Mode.Rendered }
-                Tab(stringResource(if (markdown) R.string.workspace_source else R.string.files_file), mode == Mode.File, FileTags.FILE_TAB) { mode = Mode.File }
+                val tabs = buildList {
+                    if (load.diff != null) add(Mode.Diff to Segment(stringResource(R.string.files_diff), FileTags.DIFF_TAB))
+                    if (markdown) add(Mode.Rendered to Segment(stringResource(R.string.workspace_rendered), FileTags.RENDERED_TAB))
+                    add(Mode.File to Segment(stringResource(if (markdown) R.string.workspace_source else R.string.files_file), FileTags.FILE_TAB))
+                }
+                SegmentedTabs(tabs.map { it.second }, tabs.indexOfFirst { it.first == mode }, onPick = { mode = tabs[it].first })
             }
         }
         // The bars span the screen; the body is held to layout.maxWidth.
@@ -363,7 +363,10 @@ private fun LoadedFile(load: FileLoad.Loaded, filePath: String, line: Int?, colu
                     val blocks by produceState(emptyList<MarkdownBlock>(), load.content) {
                         value = withContext(Dispatchers.Default) { parseMarkdown(load.content) }
                     }
-                    MarkdownView(blocks, Modifier.testTag(FileTags.RENDERED))
+                    // A file is a document: iOS's document heading ramp, h1 the largest.
+                    androidx.compose.runtime.CompositionLocalProvider(com.slopus.happy.ui.chat.LocalMarkdownHeadings provides com.slopus.happy.ui.chat.MarkdownSpec.documentHeaders) {
+                        MarkdownView(blocks, Modifier.testTag(FileTags.RENDERED))
+                    }
                 }
                 mode == Mode.File && load.content.isNotEmpty() -> {
                     val chat = ChatTheme.colors
@@ -421,22 +424,6 @@ private fun PictureFile(load: FileLoad.Picture, filePath: String) {
 private fun Modifier.hairlineBelow(color: Color) = drawBehind {
     val width = 0.5.dp.toPx()
     drawLine(color, Offset(0f, size.height - width / 2), Offset(size.width, size.height - width / 2), width)
-}
-
-@Composable
-private fun Tab(label: String, selected: Boolean, tag: String, onClick: () -> Unit) {
-    val colors = HappyTheme.colors
-    Box(
-        Modifier
-            .testTag(tag)
-            .clip(RoundedCornerShape(8.dp))
-            .background(if (selected) colors.textLink.copy(alpha = 0x66 / 255f) else colors.glass.backgroundSubtle)
-            .clickable(role = Role.Tab, onClick = onClick)
-            .semantics { this.selected = selected }
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-    ) {
-        Text(label, style = happyTextStyle(fontSize = 14, weight = FontWeight.SemiBold), color = if (selected) Color.White else colors.textSecondary)
-    }
 }
 
 /** file.tsx `DiffDisplay`: the raw patch, one coloured row per line. */

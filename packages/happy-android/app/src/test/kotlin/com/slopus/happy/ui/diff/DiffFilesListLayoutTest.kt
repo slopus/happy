@@ -13,6 +13,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.height
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.diff.DiffSource
 import com.slopus.happy.diff.FileChangeKind
@@ -145,4 +146,16 @@ class DiffFilesListLayoutTest {
 
     @Test
     fun shotRenderedMarkdownDiffDark() = shotRenderedMarkdownDiff(dark = true)
+
+    /** The rendered diff reads as a document: its headings step down, h1 the largest; the chat keeps its own ramp. */
+    @Test
+    fun aRenderedDiffsHeadingsStepDown() {
+        val doc = "# One\n\n## Two\n\n### Three\n\nBody."
+        show { MarkdownDiffView(doc, "$doc More.") }
+        awaitView()
+        val heads = rule.onAllNodesWithTag(MarkdownDiffTags.SAME, useUnmergedTree = true)
+        val heights = (0 until 3).map { heads[it].bounds.height }
+        assertTrue("h1 > h2 > h3: $heights", heights[0] > heights[1] && heights[1] > heights[2])
+        assertEquals("the chat's h2 stays iOS's chat 20", 20f, com.slopus.happy.ui.chat.MarkdownSpec.headers[1].first.fontSize.value)
+    }
 }

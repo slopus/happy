@@ -3,9 +3,6 @@ package com.slopus.happy.ui.diff
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
 import com.slopus.happy.diff.MarkdownDiff
 import com.slopus.happy.text.wordsResource
 import com.slopus.happy.text.Words
@@ -45,6 +42,8 @@ import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.diff.DiffDocument
 import com.slopus.happy.diff.DiffRow
+import com.slopus.happy.ui.components.Segment
+import com.slopus.happy.ui.components.SegmentedTabs
 import com.slopus.happy.ui.components.barInsetTop
 import com.slopus.happy.diff.DiffSource
 import com.slopus.happy.diff.FileChangeKind
@@ -360,27 +359,19 @@ private fun OpenFileButton(onClick: () -> Unit) {
 /** Which face a changed Markdown file shows: its rendered diff, or the line diff. */
 enum class MarkdownFace { Rendered, Diff }
 
-/** The Rendered / Diff switch over a Markdown file's body: two tabs, 16 in, 8 above and below. */
+/** The Rendered / Diff switch over a Markdown file's body: the app's segmented control, 16 in, 8 above and below. */
 @Composable
 private fun MarkdownFaceSwitch(face: MarkdownFace, modifier: Modifier, onChange: (MarkdownFace) -> Unit) {
-    val colors = com.slopus.happy.ui.theme.HappyTheme.colors
-    androidx.compose.foundation.layout.Row(
-        modifier.padding(horizontal = 16.dp, vertical = 8.dp).testTag(DiffTags.MARKDOWN_FACE),
-        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
-    ) {
-        for ((value, label) in listOf(MarkdownFace.Rendered to R.string.workspace_rendered, MarkdownFace.Diff to R.string.files_diff)) {
-            val selected = value == face
-            Box(
-                Modifier
-                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
-                    .background(if (selected) colors.textLink.copy(alpha = 0x66 / 255f) else colors.glass.backgroundSubtle)
-                    .clickable(role = Role.Tab) { onChange(value) }
-                    .semantics { this.selected = selected }
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-            ) {
-                Text(stringResource(label), style = happyTextStyle(fontSize = 13, weight = androidx.compose.ui.text.font.FontWeight.SemiBold), color = if (selected) Color.White else colors.textSecondary)
-            }
-        }
+    val faces = MarkdownFace.entries
+    Box(modifier.padding(horizontal = 16.dp, vertical = 8.dp).testTag(DiffTags.MARKDOWN_FACE)) {
+        SegmentedTabs(
+            listOf(
+                Segment(stringResource(R.string.workspace_rendered), DiffTags.MARKDOWN_FACE + ".rendered"),
+                Segment(stringResource(R.string.files_diff), DiffTags.MARKDOWN_FACE + ".diff"),
+            ),
+            selected = faces.indexOf(face),
+            onPick = { onChange(faces[it]) },
+        )
     }
 }
 

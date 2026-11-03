@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -39,6 +40,7 @@ import com.slopus.happy.chat.markdown.MarkdownSpan
 import com.slopus.happy.diff.MarkdownDiff
 import com.slopus.happy.text.pluralResource
 import com.slopus.happy.ui.chat.MarkdownBlockView
+import com.slopus.happy.ui.chat.LocalMarkdownHeadings
 import com.slopus.happy.ui.chat.MarkdownSpec
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
@@ -67,7 +69,8 @@ object MarkdownDiffTags {
  * words struck on the inline red. Unchanged runs longer than two blocks on
  * either side of a change fold behind "Show N unchanged blocks".
  *
- * Takes the two versions as text: the diff is worked out off the main
+ * Headings are a document's ([MarkdownSpec.documentHeaders]), h1 the
+ * largest. Takes the two versions as text: the diff is worked out off the main
  * thread, and nothing shows until it is.
  */
 @Composable
@@ -76,8 +79,10 @@ fun MarkdownDiffView(old: String, new: String, modifier: Modifier = Modifier) {
     var expanded by rememberSaveable(old, new) { mutableStateOf(emptySet<Int>()) }
     val shown = diff ?: return
     val rows = remember(shown, expanded) { MarkdownDiff.rows(shown, expanded) }
-    Column(modifier.testTag(MarkdownDiffTags.VIEW).padding(horizontal = MarkdownDiffSpec.bleed)) {
-        for (row in rows) MarkdownDiffRow(row) { expanded = expanded + it }
+    CompositionLocalProvider(LocalMarkdownHeadings provides MarkdownSpec.documentHeaders) {
+        Column(modifier.testTag(MarkdownDiffTags.VIEW).padding(horizontal = MarkdownDiffSpec.bleed)) {
+            for (row in rows) MarkdownDiffRow(row) { expanded = expanded + it }
+        }
     }
 }
 
@@ -85,7 +90,9 @@ fun MarkdownDiffView(old: String, new: String, modifier: Modifier = Modifier) {
 fun LazyListScope.markdownDiffItems(diff: MarkdownDiff, expanded: Set<Int>, keyPrefix: String, rowModifier: Modifier, onExpand: (Int) -> Unit) {
     val rows = MarkdownDiff.rows(diff, expanded)
     items(rows.size, key = { index -> "$keyPrefix:md:" + rows[index].let { if (it is MarkdownDiff.Row.Block) "b${it.index}" else "f${(it as MarkdownDiff.Row.Fold).first}" } }, contentType = { "markdownDiff.row" }) { index ->
-        Box(rowModifier.padding(horizontal = 16.dp + MarkdownDiffSpec.bleed)) { MarkdownDiffRow(rows[index], onExpand) }
+        Box(rowModifier.padding(horizontal = 16.dp + MarkdownDiffSpec.bleed)) {
+            CompositionLocalProvider(LocalMarkdownHeadings provides MarkdownSpec.documentHeaders) { MarkdownDiffRow(rows[index], onExpand) }
+        }
     }
 }
 
@@ -165,7 +172,7 @@ private fun DiffBlockText(block: MarkdownBlock, words: List<MarkdownDiff.DiffWor
     val ink = palette.text
     when (block) {
         is MarkdownBlock.Header -> {
-            val (style, margins) = MarkdownSpec.headers[(block.level - 1).coerceIn(0, 5)]
+            val (style, margins) = LocalMarkdownHeadings.current[(block.level - 1).coerceIn(0, 5)]
             Text(text, style = style, color = ink, modifier = Modifier.padding(top = margins.first, bottom = margins.second))
         }
         is MarkdownBlock.BulletList, is MarkdownBlock.NumberedList -> {

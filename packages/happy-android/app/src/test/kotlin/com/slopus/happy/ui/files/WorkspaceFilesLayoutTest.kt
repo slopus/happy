@@ -150,4 +150,16 @@ class WorkspaceFilesLayoutTest {
         assertEquals(FileLoad.Binary, fileLoadOf("a.dat", byteArrayOf(1, 0, 2)))
         assertEquals(FileLoad.Binary, fileLoadOf("broken.png", byteArrayOf(1, 2, 3)))
     }
+
+    /** A file is a document: iOS's document heading ramp (DocumentTokens.headingSize 30 / 24 / 20), h1 the largest. */
+    @Test
+    fun aMarkdownFilesHeadingsStepDown() {
+        show { FileScreen(FileLoad.Loaded("# One\n\n## Two\n\n### Three\n\nBody.\n", null), "README.md", onBack = {}) }
+        rule.waitUntil(5_000) { rule.onAllNodesWithTag(com.slopus.happy.ui.chat.MarkdownTags.HEADER, useUnmergedTree = true).fetchSemanticsNodes().size == 3 }
+        val heads = rule.onAllNodesWithTag(com.slopus.happy.ui.chat.MarkdownTags.HEADER, useUnmergedTree = true)
+        val heights = (0 until 3).map { heads[it].bounds.height }
+        assertTrue("h1 > h2 > h3: $heights", heights[0] > heights[1] && heights[1] > heights[2])
+        val sizes = com.slopus.happy.ui.chat.MarkdownSpec.documentHeaders.map { it.first.fontSize.value }
+        assertEquals(listOf(30f, 24f, 20f, 18f, 18f, 18f), sizes)
+    }
 }

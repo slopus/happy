@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.chat
 
+import kotlin.math.roundToInt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -96,6 +97,16 @@ object MarkdownSpec {
         happyTextStyle(fontSize = 16, lineHeight = 24, weight = FontWeight.SemiBold) to (0.dp to 0.dp),
         happyTextStyle(fontSize = 16, lineHeight = 24, weight = FontWeight.SemiBold) to (0.dp to 0.dp),
     )
+    /**
+     * A document's headings (iOS `DocumentTokens.headingSize`, desktop's
+     * ramp brought down to a phone): h1 30 bold, h2 24, h3 20, h4-6 18
+     * semibold, each on 1.25 its size, 14 above and 6 below. For a file
+     * read as a document (the file viewer, a rendered diff); the chat keeps
+     * [headers], RN's and iOS's chat ramp.
+     */
+    val documentHeaders = listOf(30, 24, 20, 18, 18, 18).mapIndexed { index, size ->
+        happyTextStyle(fontSize = size, lineHeight = (size * 1.25f).roundToInt(), weight = if (index == 0) FontWeight.Bold else FontWeight.SemiBold) to (14.dp to 6.dp)
+    }
     val listGap = 6.dp
     val listMarginBottom = 8.dp
     val listIndent = 16.dp
@@ -132,7 +143,9 @@ object MarkdownSpec {
  *   semibold face, italic the italic face, inline code mono 16, links
  *   underlined in the text colour (only http(s) links open).
  * - Headers semibold: h1 16/24, h2 20/24, h3 16/28 (16 above, 8 below);
- *   h4 16/24 (8, 8); h5-6 16/24 with no margins.
+ *   h4 16/24 (8, 8); h5-6 16/24 with no margins. Under
+ *   [LocalMarkdownHeadings] a document's ramp instead
+ *   ([MarkdownSpec.documentHeaders]).
  * - Lists: rows 6 apart, 8 below the list, 16 indent per depth, the bullet
  *   (• ◦ ▪ by depth) or "n." 8 before the text, in the text style.
  * - Code blocks: surfaceHighest, radius 8, 8 above and below; the language
@@ -199,7 +212,7 @@ internal fun MarkdownBlockView(
             onLayout = trailing?.let { slot -> { slot.report(it, with(density) { MarkdownSpec.textMarginBottom.toPx() }) } },
         )
         is MarkdownBlock.Header -> {
-            val (style, margins) = MarkdownSpec.headers[(block.level - 1).coerceIn(0, 5)]
+            val (style, margins) = LocalMarkdownHeadings.current[(block.level - 1).coerceIn(0, 5)]
             SpansText(
                 spans = block.content,
                 style = style,
@@ -254,6 +267,14 @@ private fun SpansText(spans: List<MarkdownSpan>, style: TextStyle, color: Color,
         modifier = modifier.webLinkGestures(text, layout).revealText(layout),
     )
 }
+
+/**
+ * The heading ramp MarkdownView draws with, h1 to h6, each a style and its
+ * margins above and below: the chat's [MarkdownSpec.headers] unless a
+ * document's ([MarkdownSpec.documentHeaders]) is provided, as iOS passes
+ * `header:` to its MarkdownPiece.
+ */
+val LocalMarkdownHeadings = staticCompositionLocalOf { MarkdownSpec.headers }
 
 /** Where MarkdownView's links go when its caller handles them; null for the system's (http(s) only). */
 private val LocalMarkdownLinks = staticCompositionLocalOf<((String) -> Unit)?> { null }
