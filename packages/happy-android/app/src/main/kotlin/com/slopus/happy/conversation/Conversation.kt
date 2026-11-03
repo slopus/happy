@@ -84,6 +84,8 @@ data class ConversationState(
     val catalog: ModeCatalog? = null,
     /** The slash commands the agent offers, in its order; empty until read, and where it offers none. */
     val commands: List<SlashCommand> = emptyList(),
+    /** The provider's latest measurement of the conversation's context; null until one. */
+    val context: ContextMeasurement? = null,
     val working: Boolean = false,
     val activity: Activity? = null,
     /** The composer's text as this conversation keeps it, and a count that moves only when it came from elsewhere. */
@@ -458,6 +460,8 @@ class Conversation(
         outgoing.removeAll { it.id in messages }
         running = start.agent.isWorking
         activeRunStartedAt = runs.lastOrNull()?.first?.let(runInfo::get)?.takeIf { start.agent.isWorking && it.status == "running" }?.startedAt
+        // Before what came while reading, which is newer.
+        snapshot = snapshot.copy(context = start.context)
         val events = held.orEmpty()
         held = null
         events.forEach(::receive)
@@ -635,6 +639,15 @@ class Conversation(
                 }
             }
             "agent.draft.updated" -> Draft.parse(payload["draft"])?.let(::adoptDraft)
+            "agent.context.updated" -> {
+                // A whole replacement; null clears it (a fresh conversation). Only the meter moves: no rows to derive.
+                val value = payload["context"] ?: return
+                val context = if (value is kotlinx.serialization.json.JsonNull) null else ContextMeasurement.parse(value) ?: return
+                if (context == snapshot.context) return
+                snapshot = snapshot.copy(context = context)
+                _state.value = snapshot
+                return
+            }
             // The whole catalog, which replaces what was known.
             "agent.slash_commands.updated" -> {
                 val commands = SlashCommand.parseAll(payload["slashCommands"]) ?: return

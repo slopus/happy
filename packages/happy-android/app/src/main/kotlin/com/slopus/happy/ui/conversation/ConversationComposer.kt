@@ -70,6 +70,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.attachments.AttachmentPreview
+import com.slopus.happy.conversation.AccountUsage
+import com.slopus.happy.conversation.ContextGauge
 import com.slopus.happy.conversation.ConversationState
 import com.slopus.happy.conversation.InlinePictures
 import com.slopus.happy.conversation.Mode
@@ -140,6 +142,7 @@ private object Slot {
     const val FIELD = "field"
     const val LABEL = "label"
     const val PRIMARY = "primary"
+    const val METER = "meter"
 }
 
 /**
@@ -179,6 +182,8 @@ internal fun ConversationComposer(
     flight: SendFlight? = null,
     /** Shares the caret with the command list over the composer; it sees hardware keys first. */
     cursor: com.slopus.happy.ui.autocomplete.ComposerCursor? = null,
+    /** The computer's accounts' plan usage by provider id: the model label warns as its account runs low. */
+    usage: Map<String, AccountUsage> = emptyMap(),
 ) {
     RecomposeProbe.mark(ConversationScreenTags.PROBE_COMPOSER)
     val colors = HappyTheme.colors
@@ -270,7 +275,15 @@ internal fun ConversationComposer(
     val minimumField = lineHeight + 24.dp
     val minimumActions = maxOf(ConversationComposerSpec.rest, labelHeight + 24.dp)
     val minimumCompact = maxOf(minimumField, minimumActions)
-    ComposerViewport(minimumField + minimumActions + if (attached.isEmpty()) 0.dp else 76.dp, minimumCompact, modifier) { compact ->
+    // There is no meter while history is read, nor for new work before its first message: nothing to measure yet.
+    val gauge = if (state.loaded && state.created) ContextGauge.derive(state.catalog, state.context, state.mode ?: state.catalog?.defaults) else null
+    val warning = state.catalog?.let { catalog -> (state.mode ?: catalog.defaults)?.let { usage[it.providerId]?.warning } }
+    ComposerViewport(
+        minimumField + minimumActions + if (attached.isEmpty()) 0.dp else 76.dp,
+        minimumCompact,
+        modifier,
+        meter = gauge?.let { { ContextMeter(it) } },
+    ) { compact ->
         val showCount = compact && attached.isNotEmpty()
         val moreLabel = stringResource(R.string.conversation_composer_more) + if (showCount) ", " + pluralResource(R.plurals.conversation_attached_picture_count, attached.size, attached.size) else ""
         Column(
@@ -331,6 +344,7 @@ internal fun ConversationComposer(
                     ConversationModeLabel(
                         catalog = state.catalog,
                         mode = state.mode,
+                        warning = warning,
                         onOpen = { openPicker(ModePicker.Model) },
                         modifier = Modifier.layoutId(Slot.LABEL).onPlaced { anchors[1] = it },
                     )
@@ -462,22 +476,35 @@ private fun ComposerLayout(open: Boolean, compact: Boolean, minimumRowHeight: Dp
     }
 }
 
-/** Keep the full card when it fits; otherwise use one row and spend spare height on margins. */
+/**
+ * Keep the full card when it fits; otherwise use one row and spend spare
+ * height on margins. With a [meter], its 20 row stands under the full card,
+ * the bar's end under send (iOS `ChatScreenLayout.meter`); the one-row
+ * composer has none, as the transcript needs every point.
+ */
 @Composable
-private fun ComposerViewport(minimumOpen: Dp, minimumCompact: Dp, modifier: Modifier, content: @Composable (Boolean) -> Unit) {
+private fun ComposerViewport(minimumOpen: Dp, minimumCompact: Dp, modifier: Modifier, meter: (@Composable () -> Unit)? = null, content: @Composable (Boolean) -> Unit) {
     // The margins are worked out where it measures, so the room round it changing (the keyboard
     // settling) measures the pill again and composes it only when it changes shape.
     SubcomposeLayout(modifier.fillMaxWidth().testTag(ConversationComposerTags.COMPOSER)) { constraints ->
-        val compact = constraints.hasBoundedHeight && constraints.maxHeight.toDp() < minimumOpen + 16.dp
+        val below = if (meter != null) ContextMeterSpec.height else 8.dp
+        val compact = constraints.hasBoundedHeight && constraints.maxHeight.toDp() < minimumOpen + 8.dp + below
         // Split whole spare pixels so rounding each margin cannot steal
         // one pixel from the minimum touch surface at fractional densities.
         val vertical = if (compact) ((constraints.maxHeight - minimumCompact.roundToPx()).coerceAtLeast(0) / 2).coerceAtMost(8.dp.roundToPx()) else 8.dp.roundToPx()
+        val bottom = if (compact || meter == null) vertical else ContextMeterSpec.height.roundToPx()
         val horizontal = 12.dp.roundToPx()
-        val inner = constraints.copy(minWidth = 0, minHeight = 0).offset(-2 * horizontal, -2 * vertical)
+        val inner = constraints.copy(minWidth = 0, minHeight = 0).offset(-2 * horizontal, -vertical - bottom)
         val placeables = subcompose(Unit) { content(compact) }.map { it.measure(inner) }
+        val shown = if (compact) null else meter?.let { row -> subcompose(Slot.METER, row).map { it.measure(Constraints()) } }
         val width = if (constraints.hasBoundedWidth) constraints.maxWidth else (placeables.maxOfOrNull { it.width } ?: 0) + 2 * horizontal
-        val height = constraints.constrainHeight((placeables.maxOfOrNull { it.height } ?: 0) + 2 * vertical)
-        layout(width, height) { placeables.forEach { it.place(horizontal, vertical) } }
+        val pill = placeables.maxOfOrNull { it.height } ?: 0
+        val height = constraints.constrainHeight(pill + vertical + bottom)
+        layout(width, height) {
+            placeables.forEach { it.place(horizontal, vertical) }
+            val end = width - horizontal - ContextMeterSpec.trailingInset.roundToPx()
+            shown?.forEach { it.place(end - it.width, vertical + pill) }
+        }
     }
 }
 

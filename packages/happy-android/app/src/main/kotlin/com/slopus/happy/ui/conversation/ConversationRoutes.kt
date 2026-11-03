@@ -323,6 +323,12 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
         try { kotlinx.coroutines.awaitCancellation() } finally { conversation.setObserving(false) }
     }
     val state by conversation.state.collectAsStateWithLifecycle()
+    // The model label warns as its account runs low, so the readings are followed while the chat shows.
+    com.slopus.happy.ui.components.StartedEffect(session) {
+        val following = session.usage.follow()
+        try { kotlinx.coroutines.awaitCancellation() } finally { following.close() }
+    }
+    val usage by session.usage.usage.collectAsStateWithLifecycle()
     val status by session.status.collectAsStateWithLifecycle()
     val syncing by session.isSyncing.collectAsStateWithLifecycle()
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
@@ -343,6 +349,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
             // Offline says why in words of its own; the link on its way spins (iOS 7aee3a9b8).
             connection = if (link == LinkState.Offline) linkStatusText(status) ?: stringResource(R.string.status_offline) else null,
             link = link,
+            usage = usage,
             bubbleColor = settings.userMessageBubbleColor,
             actions = remember(conversation, nav, kept) {
                 ConversationScreenActions(

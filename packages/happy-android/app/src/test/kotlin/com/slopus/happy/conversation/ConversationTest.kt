@@ -1058,6 +1058,24 @@ class ConversationTest {
         assertEquals(listOf("deploy"), chat.state.value.commands.map { it.name })
     }
 
+    @Test fun `the context measurement comes with the bootstrap and each update replaces it, null clearing it`() = runTest {
+        val agent = FakeAgent().apply {
+            bootstrap = bootstrap.replace("\"pending\":[]", """"pending":[],"context":{"approximate":false,"contextTokens":84000,"contextWindow":200000,"modelId":"m","providerId":"codex"}""")
+        }
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        assertEquals(ContextMeasurement(false, 84000.0, 200000.0, "m", "codex"), chat.state.value.context)
+        val rows = chat.state.value.rows
+        signals.emit(event("agent.context.updated", """{"agentId":"a1","context":{"approximate":true,"contextTokens":120000,"contextWindow":200000,"modelId":"m","providerId":"codex"}}"""))
+        advanceUntilIdle()
+        assertEquals(ContextMeasurement(true, 120000.0, 200000.0, "m", "codex"), chat.state.value.context)
+        // Only the meter moves: the rows are the same list.
+        assertTrue(rows === chat.state.value.rows)
+        signals.emit(event("agent.context.updated", """{"agentId":"a1","context":null}"""))
+        advanceUntilIdle()
+        assertNull(chat.state.value.context)
+    }
+
     @Test fun `a command runs on its module under the composer's mode and is never a message`() = runTest {
         val agent = FakeAgent().withCommands()
         val chat = conversation(agent)

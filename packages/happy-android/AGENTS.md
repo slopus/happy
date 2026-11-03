@@ -1225,6 +1225,28 @@ secretbox has checked the MAC, and a sent picture is kept at upload, so the
 sender never downloads it. A legacy download is one request with progress
 from the body; it can't pause.
 
+### Context meter and usage ring
+
+Under an agent connection's composer, `ui/conversation/ContextMeter` draws
+desktop's ContextMeter as iOS does (083c30df4). It is a 64 × 4 bar in a
+20 dp row under the pill, its end under send (`ComposerViewport`'s
+`meter` slot; the one-row composer has none). A tap shows "42% 84k/200k"
+for 4 s, and a hold shows it while held. The bar is coloured only near
+compaction. `conversation/ContextGauge.derive` reads it from
+`ConversationState.context` (the bootstrap's `context`, then each
+`agent.context.updated`, applied without deriving rows) against the
+window in `ModeCatalog.windows`. Before the first measurement it shows
+the selected model's window. There is none while history is read or
+before new work is made.
+
+The model label wears desktop's usage ring while the selected account
+runs low (`AccountUsage.warning`: the week before the session, under 25 %
+low, under 10 % or blocked critical) and reads the warning out.
+`AgentSession.usage` (`AgentUsageSource`) reads `GET /v0/usage` while a
+chat shows, and again on `provider.usage.*`, `config.updated` and each
+reconnect. It keeps following for 30 s after the last chat goes. Words
+are in `strings_context_meter.xml`.
+
 ### Image loading
 
 One Coil 3 `ImageLoader` (`ui/components/RemoteImage.kt`) for every

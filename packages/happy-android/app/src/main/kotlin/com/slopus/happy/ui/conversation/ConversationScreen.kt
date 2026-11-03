@@ -232,6 +232,8 @@ fun ConversationScreen(
     bubbleColor: String? = null,
     /** The link as the header shows it, debounced: on its way somewhere, said with a spinner (iOS 7aee3a9b8). */
     link: LinkState = LinkState.Online,
+    /** The computer's accounts' plan usage by provider id, for the model label's warning. */
+    usage: Map<String, com.slopus.happy.conversation.AccountUsage> = emptyMap(),
 ) {
     RecomposeProbe.mark(ConversationScreenTags.PROBE_SCREEN)
     val colors = HappyTheme.colors
@@ -584,6 +586,7 @@ fun ConversationScreen(
                                 focusAsks = nameReturns,
                                 flight = flight,
                                 cursor = autocomplete.cursor,
+                                usage = usage,
                             )
                         }
                     }

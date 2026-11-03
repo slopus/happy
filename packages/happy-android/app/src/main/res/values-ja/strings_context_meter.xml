@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The composer's context meter and the model label's usage warning (iOS 083c30df4; desktop ContextMeter.tsx, ComposerModelControl.tsx usageWarning). -->
+<resources>
+    <string name="conversation_context_used">コンテキスト %2$s トークン中 %1$s 使用</string>
+    <string name="conversation_context_used_approximate">コンテキスト %2$s トークン中 %1$s 使用（概算）</string>
+    <string name="conversation_context_pending">最初のコンテキスト計測を待っています（%1$s トークンのウィンドウ）</string>
+    <string name="conversation_context_compacts_at">%1$s で圧縮</string>
+    <string name="conversation_context_compact_soon">まもなく圧縮されます。今圧縮すればタイミングを選べます</string>
+    <string name="conversation_context_compact_next">次のターンで会話が圧縮されます</string>
+    <string name="conversation_usage_week_limit">週間上限</string>
+    <string name="conversation_usage_session_limit">セッション上限</string>
+    <string name="conversation_usage_left">%1$s · 残り %2$d%%</string>
+    <string name="conversation_usage_reached">%1$sに達しました</string>
+</resources>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The composer's context meter and the model label's usage warning (iOS 083c30df4; desktop ContextMeter.tsx, ComposerModelControl.tsx usageWarning). -->
+<resources>
+    <string name="conversation_context_used">已使用 %1$s / %2$s 上下文權杖</string>
+    <string name="conversation_context_used_approximate">已使用 %1$s / %2$s 上下文權杖（估算）</string>
+    <string name="conversation_context_pending">正在等待首次上下文測量（%1$s 權杖視窗）</string>
+    <string name="conversation_context_compacts_at">在 %1$s 時壓縮</string>
+    <string name="conversation_context_compact_soon">即將壓縮；現在壓縮可自行選擇時機</string>
+    <string name="conversation_context_compact_next">下一輪將壓縮對話</string>
+    <string name="conversation_usage_week_limit">每週限額</string>
+    <string name="conversation_usage_session_limit">工作階段限額</string>
+    <string name="conversation_usage_left">%1$s · 剩餘 %2$d%%</string>
+    <string name="conversation_usage_reached">已達到%1$s</string>
+</resources>

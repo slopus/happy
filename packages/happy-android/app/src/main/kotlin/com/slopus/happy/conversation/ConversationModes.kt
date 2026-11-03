@@ -3,6 +3,7 @@ package com.slopus.happy.conversation
 import androidx.compose.runtime.Immutable
 import com.slopus.happy.chat.arr
 import com.slopus.happy.chat.bool
+import com.slopus.happy.chat.num
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
 import com.slopus.happy.chat.strings
@@ -27,7 +28,12 @@ data class ModelChoice(
  * them, and the mode to use when nothing was picked.
  */
 @Immutable
-data class ModeCatalog(val models: List<ModelChoice>, val defaults: Mode?) {
+data class ModeCatalog(
+    val models: List<ModelChoice>,
+    val defaults: Mode?,
+    /** Each defined model's context window by its id: the model's own, whichever account serves it. */
+    val windows: Map<String, ContextWindow> = emptyMap(),
+) {
 
     fun model(providerId: String, modelId: String): ModelChoice? =
         models.firstOrNull { it.providerId == providerId && it.modelId == modelId }
@@ -76,7 +82,12 @@ data class ModeCatalog(val models: List<ModelChoice>, val defaults: Mode?) {
                     )
                 }
             }
-            return ModeCatalog(models, ConversationApi.defaultModeOf(config))
+            val windows = definitions?.mapNotNull { (id, value) ->
+                val definition = value.obj ?: return@mapNotNull null
+                val window = ContextWindow(definition["contextWindow"].num?.toLong(), definition["autoCompactWindow"].num?.toLong())
+                (id to window).takeIf { window.tokens != null }
+            }?.toMap().orEmpty()
+            return ModeCatalog(models, ConversationApi.defaultModeOf(config), windows)
         }
 
         private fun providerName(type: String): String = when (type) {

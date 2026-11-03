@@ -507,6 +507,8 @@ data class Bootstrap(
     val pending: List<Message>,
     val cursor: String?,
     val slashCommands: List<SlashCommand>? = null,
+    /** The conversation's latest context measurement; null until the provider reported one. */
+    val context: ContextMeasurement? = null,
 ) {
     companion object {
         fun parse(value: JsonElement?): Bootstrap? {
@@ -518,6 +520,7 @@ data class Bootstrap(
                 pending = o["pending"].arr.orEmpty().mapNotNull(Message::parse),
                 cursor = o["cursor"].str,
                 slashCommands = SlashCommand.parseAll(o["slashCommands"]),
+                context = ContextMeasurement.parse(o["context"]),
             )
         }
     }

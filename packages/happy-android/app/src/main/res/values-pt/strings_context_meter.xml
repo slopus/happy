@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The composer's context meter and the model label's usage warning (iOS 083c30df4; desktop ContextMeter.tsx, ComposerModelControl.tsx usageWarning). -->
+<resources>
+    <string name="conversation_context_used">%1$s de %2$s tokens de contexto usados</string>
+    <string name="conversation_context_used_approximate">%1$s de %2$s tokens de contexto usados (aproximado)</string>
+    <string name="conversation_context_pending">Aguardando a primeira medição do contexto (janela de %1$s tokens)</string>
+    <string name="conversation_context_compacts_at">compacta em %1$s</string>
+    <string name="conversation_context_compact_soon">a compactação está próxima; compacte agora para escolher o momento</string>
+    <string name="conversation_context_compact_next">o próximo turno compactará a conversa</string>
+    <string name="conversation_usage_week_limit">Limite semanal</string>
+    <string name="conversation_usage_session_limit">Limite da sessão</string>
+    <string name="conversation_usage_left">%1$s · %2$d%% restante</string>
+    <string name="conversation_usage_reached">%1$s atingido</string>
+</resources>
