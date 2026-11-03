@@ -360,6 +360,13 @@ final class AgentInputCardLayoutTests: XCTestCase {
         assertFrame(AgentInputCardLayout.attachmentRemoveButton.offsetBy(dx: placed.frames[2].minX, dy: placed.frames[2].minY), rect(214, 0, 18, 18))
     }
 
+    /// A thumbnail still being read: Telegram's 32pt disc in its middle,
+    /// clear of the remove button.
+    func testAThumbnailBeingReadHasItsRingInTheMiddle() {
+        assertFrame(AgentInputCardLayout.attachmentProgress, rect(16, 16, 32, 32))
+        XCTAssertFalse(AgentInputCardLayout.attachmentProgress.intersects(AgentInputCardLayout.attachmentRemoveButton))
+    }
+
     func testBorderInsetsEverything() {
         let layout = card(border: 0.5)
         assertFrame(layout.inputContainer, rect(10.5, 8.5, 356, 44))

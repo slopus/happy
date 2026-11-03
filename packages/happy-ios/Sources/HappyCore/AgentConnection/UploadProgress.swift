@@ -36,6 +36,9 @@ public final class UploadProgressBoard: @unchecked Sendable {
     public static func pictureKey(_ id: String, _ index: Int) -> String { "\(id):\(index + 1)" }
     /// The `index`th file of message `id`, as its `.sentFile` piece.
     public static func fileKey(_ id: String, _ index: Int) -> String { "\(id):f\(index + 1)" }
+    /// The `index`th picture message `id` still waits for, drawn from its
+    /// thumbnail (`PreviewAttachment`); its ring spins until it is read.
+    public static func previewKey(_ id: String, _ index: Int) -> String { "\(id):p\(index + 1)" }
     /// A legacy chat's file in the account's outbox, by its `localId`.
     public static func outboxKey(_ localId: String) -> String { "outbox:\(localId)" }
 

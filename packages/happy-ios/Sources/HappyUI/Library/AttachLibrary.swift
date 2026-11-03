@@ -76,6 +76,9 @@ protocol AttachLibrary: AnyObject {
     func cancelThumbnail(_ token: Int)
     /// Thumbnails worth making before they show.
     func prepare(_ range: Range<Int>, pixels size: CGSize)
+    /// A pick's quickest picture and its size in pixels, for the composer
+    /// to show while `read` brings the picture itself.
+    func preview(_ id: String) async -> (image: UIImage, pixels: CGSize)?
     /// The picks in full, in the order given; off the main thread.
     func read(_ ids: [String]) async -> [LibraryPick]
     /// The system's sheet for choosing what a limited library shows.
@@ -286,6 +289,11 @@ final class PhotoKitAttachLibrary: NSObject, AttachLibrary, PHPhotoLibraryChange
             images.stopCachingImages(for: fetch.objects(at: stop), targetSize: size, contentMode: .aspectFill, options: Self.thumbnailOptions)
         }
         cached = range
+    }
+
+    func preview(_ id: String) async -> (image: UIImage, pixels: CGSize)? {
+        guard let asset = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil).firstObject else { return nil }
+        return await LibraryPicker.preview(asset)
     }
 
     func read(_ ids: [String]) async -> [LibraryPick] {

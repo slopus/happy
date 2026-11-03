@@ -513,6 +513,10 @@ public struct AgentInputCardLayout: Equatable, Sendable {
         return (frames, contentWidth)
     }
 
+    /// The ring over a thumbnail still being read, in the thumbnail:
+    /// Telegram's small disc, centred (`UploadRingLayout`).
+    public static let attachmentProgress = UploadRingLayout.disc(in: CGSize(width: Metrics.attachmentSize, height: Metrics.attachmentSize))
+
     /// A thumbnail's remove button, in the thumbnail: 18pt, 6 over its
     /// top-right corner.
     public static let attachmentRemoveButton = CGRect(

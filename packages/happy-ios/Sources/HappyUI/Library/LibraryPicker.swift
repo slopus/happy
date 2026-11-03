@@ -80,6 +80,30 @@ enum LibraryPicker {
         }
     }
 
+    /// The asset's quickest picture, what the grid already shows of it,
+    /// and its size in pixels: never waiting on iCloud, so a pick shows in
+    /// the composer at once while the picture itself comes down.
+    static func preview(_ asset: PHAsset) async -> (image: UIImage, pixels: CGSize)? {
+        nonisolated(unsafe) let asset = asset
+        let pixels = CGSize(width: asset.pixelWidth, height: asset.pixelHeight)
+        let options = PHImageRequestOptions()
+        options.deliveryMode = .opportunistic
+        options.resizeMode = .fast
+        options.isNetworkAccessAllowed = false
+        let image: UIImage? = await withCheckedContinuation { continuation in
+            let once = Once()
+            PHImageManager.default().requestImage(for: asset, targetSize: CGSize(width: 256, height: 256), contentMode: .aspectFill, options: options) { @Sendable image, info in
+                // The first that comes, a degraded one too; none when the
+                // library has nothing on the phone yet.
+                let last = (info?[PHImageResultIsDegradedKey] as? Bool) != true
+                guard image != nil || last, once.claim() else { return }
+                nonisolated(unsafe) let image = image
+                continuation.resume(returning: image)
+            }
+        }
+        return image.map { ($0, pixels) }
+    }
+
     /// The asset drawn to fit `side` points square at `scale`.
     static func image(_ asset: PHAsset, side: CGFloat, scale: CGFloat = 3) async -> UIImage? {
         nonisolated(unsafe) let asset = asset
