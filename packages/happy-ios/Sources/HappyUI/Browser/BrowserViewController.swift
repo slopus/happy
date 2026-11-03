@@ -2,6 +2,7 @@
 import HappyCore
 import HappyIcons
 import HappyLayout
+import HappyWire
 import UIKit
 import WebKit
 
@@ -426,6 +427,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         if BrowserPolicy.isInPage(url) { return .allow }
         if BrowserPolicy.route(url) == .system {
             guard mainFrame, action.navigationType == .linkActivated || webView.backForwardList.currentItem == nil else { return .cancel }
+            if openTabLink(url, session: session) { return .cancel }
             let nothingShown = webView.backForwardList.currentItem == nil
             UIApplication.shared.open(url, options: [:]) { [weak self] opened in
                 if !opened { self?.cantOpen(url, nothingShown: nothingShown) }
@@ -461,6 +463,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
 
 extension UIViewController {
     func openBrowser(_ url: URL, session: Session? = nil, agentID: String? = nil) {
+        if openTabLink(url, session: session) { return }
         guard BrowserPolicy.route(url) != .system else { UIApplication.shared.open(url); return }
         let browser = BrowserViewController(url: url, session: session ?? browserConnection(), agentID: agentID)
         if let navigationController { navigationController.pushViewController(browser, animated: true) }
@@ -470,6 +473,18 @@ extension UIViewController {
             browser.navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .close, primaryAction: UIAction { [weak navigation] _ in navigation?.dismiss(animated: true) })
             present(navigation, animated: true)
         }
+    }
+
+    /// Internal tab links belong to the connection displaying them. An
+    /// external link to a different installation goes through the app's
+    /// account-switching route, never through this connection's client.
+    func openTabLink(_ url: URL, session: Session?) -> Bool {
+        guard let link = HappyLink(url.absoluteString), case .reference(let reference) = link.target,
+              reference.kind == .surface else { return false }
+        guard let session = session ?? browserConnection() else { return link.instanceId == nil }
+        guard link.instanceId == nil || link.instanceId == session.instanceId else { return false }
+        navigationController?.pushViewController(SurfaceScreens.make(session: session, surface: AgentWire.Surface(id: reference.id, type: "", name: "")), animated: true)
+        return true
     }
 
     private func browserConnection() -> Session? {

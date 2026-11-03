@@ -96,6 +96,26 @@ class AgentSessionTest {
     }
 
     @Test
+    fun tabOpeningUsesOnlyTheSelectedConnectionsCredential() = runBlocking {
+        foreground.value = false
+        open.value = null
+        val other = connections.add(AgentConnectionCredentials("other-addr", 24781, "dv2", "other-token"), "Other").id
+        val writes = mutableListOf<Triple<String, String, String>>()
+        val sessions = sessions { credentials ->
+            object : Transport by agent {
+                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
+                    if (method == "POST") writes += Triple(credentials.address, credential, path)
+                    val answer = if (path == "/v0/bootstrap/desktop") """{"profile":{"userId":"$credential"}}""" else """{"surfaces":[]}"""
+                    return TransportResponse(200, body = answer.toByteArray())
+                }
+            }
+        }
+        sessions.session(other)!!.client.openTab("artifact", "shared", AgentClient.newId())
+        sessions.session(id)!!.client.openTab("artifact", "shared", AgentClient.newId())
+        assertEquals(listOf(Triple("other-addr", "other-token", "/v0/surfaces"), Triple("addr", "token", "/v0/surfaces")), writes)
+    }
+
+    @Test
     fun theSnapshotThenTheJournalKeepHomeCurrent() = runBlocking {
         val session = sessions().session(id)!!
         agent.frames.send(Wire.hello("c0"))

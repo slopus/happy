@@ -131,6 +131,7 @@ private class ArtifactHolder(session: AgentSession?, route: ArtifactRoute, resou
 @Composable
 private fun ArtifactEntry(graph: AppGraph, nav: NavHostController, route: ArtifactRoute) {
     val session = remember(route.connectionId) { graph.agentSessions.session(route.connectionId) }
+    LaunchedEffect(session, route.artifactId) { session?.openTab("artifact", route.artifactId) }
     val resources = LocalResources.current
     val holder = viewModel { ArtifactHolder(session, route, resources) }
     val context = LocalContext.current

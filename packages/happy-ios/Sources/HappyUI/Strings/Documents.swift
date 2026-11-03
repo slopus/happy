@@ -23,7 +23,7 @@ extension Strings {
         public static let done = "Done"
         public static let leave = "Remove from Sidebar"
         public static func leaveTitle(_ name: String) -> String { "Remove “\(name)”?" }
-        public static let leaveMessage = "It leaves your sidebar. Everyone else keeps it, and you can join it again from Surfaces."
+        public static let leaveMessage = "It leaves your sidebar. Everyone else keeps it, and you can join it again from Tabs."
         public static let leaveConfirm = "Remove"
 
         // The formatting bar and its menus.

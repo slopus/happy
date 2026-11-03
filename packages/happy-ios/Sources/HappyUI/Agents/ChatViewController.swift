@@ -230,6 +230,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
                 guard let id = try? await newTask.made() else { return }
                 self?.media.agentId = id
                 self?.creating = false
+                await engine.openTab(kind: "agent", id: id)
                 for await home in await engine.snapshots() {
                     guard let self, !Task.isCancelled else { return }
                     guard let row = home.allRows.first(where: { $0.agentId == id && $0.depth == 0 }) else { continue }
@@ -365,6 +366,9 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        if !previewing, !creating, !shownAgentId.isEmpty {
+            Task { [engine = session.engine, id = shownAgentId] in await engine.openTab(kind: "agent", id: id) }
+        }
         // A preview is only looked at: what it shows stays unread.
         if previewing { return }
         #if DEBUG

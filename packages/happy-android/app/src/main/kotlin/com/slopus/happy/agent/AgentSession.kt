@@ -248,6 +248,12 @@ class AgentSession internal constructor(
         intents.enqueue(Intent.READ, agentId)
     }
 
+    /** Kept on this connection through offline opens and process death. */
+    suspend fun openTab(kind: String, id: String) {
+        if (id.isEmpty()) return
+        intents.enqueue(Intent.TAB_OPEN, "$kind:$id", buildJsonObject { put("kind", kind); put("id", id) })
+    }
+
     /** Archives a task, bot (`kind`) or subtask (`agent`): its row goes at once, with what nests under it, and comes back only if the computer refuses. */
     suspend fun archive(kind: String, id: String): Intent = intents.enqueue(Intent.ARCHIVE, id, of(kind))
 
@@ -287,6 +293,7 @@ class AgentSession internal constructor(
         val mutation = buildJsonObject { put("mutationId", intent.id) }
         try {
             when (intent.kind) {
+                Intent.TAB_OPEN -> client.openTab(intent.of ?: return, intent.value.string("id") ?: return, intent.id)
                 Intent.READ -> client.send("POST", "/v0/agents/$id/read", JsonObject(emptyMap()))
                 Intent.LEAVE -> client.send("POST", if (intent.of == "surface") "/v0/surfaces/$id/leave" else "/v0/tasks/$id/leave", mutation)
                 Intent.ARCHIVE -> when (intent.of) {
@@ -352,7 +359,7 @@ class AgentSession internal constructor(
     @Volatile var unsentWork: UnsentWork? = null
 
     init {
-        intents.handle(setOf(Intent.READ, Intent.ARCHIVE, Intent.LEAVE, Intent.RENAME), ::deliver)
+        intents.handle(setOf(Intent.READ, Intent.ARCHIVE, Intent.LEAVE, Intent.RENAME, Intent.TAB_OPEN), ::deliver)
         // Sent while the link is up; every connect sends what waits at once.
         scope.launch { statusState.collect { intents.setOnline(it == AgentLinkStatus.Connected) } }
         scope.launch {

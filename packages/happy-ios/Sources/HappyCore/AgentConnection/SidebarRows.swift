@@ -72,7 +72,7 @@ public enum SidebarRows {
         }.sorted { ($0.1, $0.0.id) < ($1.1, $1.0.id) }
         for (surface, _) in joined {
             var row = Row(id: "surface:\(surface.id)", nodeId: "surface:\(surface.id)", kind: .space,
-                label: surface.name, mark: .glyph(Rows.surfaceGlyph(surface.type)), agentId: surface.chatAgentId, targetKind: "surface")
+                label: surface.target?["name"]?.stringValue ?? surface.name, mark: .glyph(Rows.surfaceGlyph(surface.type)), agentId: surface.chatAgentId, targetKind: "surface")
             row.targetId = surface.id
             row.surfaceType = surface.type
             rows.append(row)

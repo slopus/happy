@@ -85,6 +85,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
+import androidx.navigation.toRoute
+import com.slopus.happy.agent.TabDestination
+import com.slopus.happy.agent.resolveTab
+import com.slopus.happy.ui.artifacts.ArtifactRoute
+import com.slopus.happy.ui.conversation.ConversationRoute
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
@@ -219,6 +224,29 @@ internal class SurfaceReader(
 @Composable
 internal fun AgentSurface(graph: AppGraph, nav: NavHostController, route: AgentSurfaceRoute) {
     val session = remember(route.connectionId) { graph.agentSessions.session(route.connectionId) }
+    val resolvesTarget = route.type in listOf("", "bot", "task", "artifact")
+    var resolutionAttempt by remember(route.surfaceId) { mutableStateOf(0) }
+    var resolutionFailed by remember(route.surfaceId) { mutableStateOf(false) }
+    LaunchedEffect(session, route.surfaceId) { session?.openTab("surface", route.surfaceId) }
+    LaunchedEffect(session, route.surfaceId, route.type, resolutionAttempt) {
+        if (session == null || !resolvesTarget) return@LaunchedEffect
+        resolutionFailed = false
+        try {
+            val destination: Any = when (val target = session.client.resolveTab(route.surfaceId)) {
+                is TabDestination.Artifact -> ArtifactRoute(route.connectionId, target.id, title = target.name)
+                is TabDestination.Conversation -> ConversationRoute(route.connectionId, target.agentId)
+                is TabDestination.Content -> route.copy(type = target.type, name = target.name)
+                null -> { resolutionFailed = true; return@LaunchedEffect }
+            }
+            val current = nav.currentBackStackEntry ?: return@LaunchedEffect
+            if (runCatching { current.toRoute<AgentSurfaceRoute>() }.getOrNull() != route) return@LaunchedEffect
+            nav.navigate(destination) { popUpTo(current.destination.id) { inclusive = true } }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            resolutionFailed = true
+        }
+    }
     val scope = rememberCoroutineScope()
     val reader = remember(session) { session?.let { SurfaceReader(
             ConversationApi(it.conversationRequest()), scope, route.surfaceId, route.type,
@@ -239,11 +267,13 @@ internal fun AgentSurface(graph: AppGraph, nav: NavHostController, route: AgentS
     val read = reader?.state?.collectAsStateWithLifecycle()?.value ?: PlaceRead.Failed(Problem.Unavailable)
     SurfaceScreen(
         name = name,
-        read = read,
+        read = if (resolvesTarget) {
+            if (resolutionFailed || session == null) PlaceRead.Failed(Problem.Unavailable) else PlaceRead.Reading
+        } else read,
         onBack = { nav.popBackStack() },
         onAdd = { reader?.add(it) },
-        onRetry = { reader?.retry() },
-        onRefresh = { reader?.refresh() },
+        onRetry = { if (resolvesTarget) resolutionAttempt++ else reader?.retry() },
+        onRefresh = { if (resolvesTarget) resolutionAttempt++ else reader?.refresh() },
     )
 }
 

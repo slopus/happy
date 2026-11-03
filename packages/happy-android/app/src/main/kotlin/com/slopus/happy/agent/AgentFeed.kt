@@ -241,7 +241,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                     .sortedWith(compareBy({ it.second }, { it.first.string("id") }))
                     .forEach { (surface, _) ->
                         val id = surface.string("id")?.takeIf { it !in leaving && it !in removed } ?: return@forEach
-                        rows += AgentFeedRow.Surface(id, surface.string("name").orEmpty(), surface.string("type").orEmpty())
+                        rows += AgentFeedRow.Surface(id, (surface["target"] as? JsonObject)?.string("name") ?: surface.string("name").orEmpty(), surface.string("type").orEmpty())
                     }
             }
             section(AgentFeedSection.Bots) {

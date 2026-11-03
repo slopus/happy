@@ -302,6 +302,7 @@ extension AgentWire {
         public var type: String
         public var name: String
         public var version: String?
+        public var target: JSONValue?
 
         public init(id: String, type: String, name: String, version: String? = nil) {
             self.id = id

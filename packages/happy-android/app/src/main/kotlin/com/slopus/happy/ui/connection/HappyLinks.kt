@@ -126,7 +126,7 @@ fun NavHostController.openHappyLink(connectionId: String, link: HappyLink, surfa
             HappyReferenceKind.Agent -> openConversation(connectionId, link.id)
             HappyReferenceKind.Surface -> surface(link.id)
                 ?.let { navigate(AgentSurfaceRoute(connectionId, it.id, it.type, it.name)) }
-                ?: popBackStack(HomeRoute, inclusive = false)
+                ?: navigate(AgentSurfaceRoute(connectionId, link.id, "", ""))
             else -> popBackStack(HomeRoute, inclusive = false)
         }
         is HappyLink.File -> when (val target = link.target) {

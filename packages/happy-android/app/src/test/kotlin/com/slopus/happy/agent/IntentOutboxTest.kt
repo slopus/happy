@@ -35,6 +35,21 @@ class IntentOutboxTest {
     }
 
     @Test
+    fun tabOpenRetryIdentitySurvivesOfflineReopenAndIsAccountLocal(): Unit = runBlocking {
+        val storage = MemoryIntentStorage()
+        val first = outbox(storage)
+        val value = buildJsonObject { put("kind", "artifact"); put("id", "same") }
+        val intent = first.enqueue(Intent.TAB_OPEN, "artifact:same", value)
+        assertEquals(intent.id, first.enqueue(Intent.TAB_OPEN, "artifact:same", value).id)
+        val restored = outbox(storage)
+        assertEquals(intent.id, restored.enqueue(Intent.TAB_OPEN, "artifact:same", value).id)
+        val otherAccount = outbox()
+        assertTrue(intent.id != otherAccount.enqueue(Intent.TAB_OPEN, "artifact:same", value).id)
+        assertEquals(listOf(intent), restored.pending.value)
+        assertTrue(sent.isEmpty())
+    }
+
+    @Test
     fun aLaterIntentReplacesOneWaitingInItsSlotAndUnarchiveSharesArchives(): Unit = runBlocking {
         val box = outbox()
         val first = box.enqueue(Intent.RENAME, "t1", buildJsonObject { put("title", "One") })

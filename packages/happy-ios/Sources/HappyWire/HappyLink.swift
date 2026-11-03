@@ -16,7 +16,7 @@ public struct HappyLink: Equatable, Sendable {
     public enum Kind: String, CaseIterable, Sendable {
         case artifact, agent, workspace, project, service, surface, user
 
-        var host: String { rawValue + "s" }
+        var host: String { self == .surface ? "tabs" : rawValue + "s" }
     }
 
     public struct Reference: Equatable, Sendable {
@@ -110,7 +110,7 @@ public struct HappyLink: Equatable, Sendable {
     private static let number = "[1-9][0-9]{0,8}"
     private static let encodedPath = "[A-Za-z0-9\\-._~!$&'*+,;=:@%/]+"
     private static let lines = "#L(\(number))(?:-L(\(number)))?"
-    private static let entity = try! NSRegularExpression(pattern: "^happy://(artifacts|agents|workspaces|projects|surfaces|users)/(\(id))(?:\\?version=(\(number)))?$")
+    private static let entity = try! NSRegularExpression(pattern: "^happy://(artifacts|agents|workspaces|projects|tabs|surfaces|users)/(\(id))(?:\\?version=(\(number)))?$")
     private static let service = try! NSRegularExpression(pattern: "^happy://workspaces/(\(id))/services/(\(id))$")
     private static let file = try! NSRegularExpression(pattern: "^happy://(agents|workspaces)/(\(id))/files/(\(encodedPath))(?:\(lines))?$")
     private static let happyFile = try! NSRegularExpression(pattern: "^happy-file://(agents|workspaces)/(\(id))/(\(encodedPath))(?:\(lines))?$")
@@ -126,7 +126,7 @@ public struct HappyLink: Equatable, Sendable {
 
     private static func parse(_ text: String) -> Target? {
         if let parts = groups(entity, text), let host = parts[1], let id = parts[2] {
-            guard let kind = Kind.allCases.first(where: { $0.host == host }) else { return nil }
+            guard let kind = Kind.allCases.first(where: { $0.host == host || ($0 == .surface && host == "surfaces") }) else { return nil }
             let version = parts[3].flatMap { Int($0) }
             if version != nil, kind != .artifact { return nil }
             return .reference(Reference(kind: kind, id: id, version: version))

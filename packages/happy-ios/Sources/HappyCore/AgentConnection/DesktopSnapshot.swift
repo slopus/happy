@@ -108,6 +108,7 @@ public struct DesktopSnapshot: Codable, Equatable, Sendable {
         public var type: String
         public var members: [Member]
         public var chatAgentId: String?
+        public var target: JSONValue?
     }
 
     public var projects: [Project]

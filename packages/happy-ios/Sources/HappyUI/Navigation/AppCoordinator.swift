@@ -227,6 +227,8 @@ public final class AppCoordinator {
         shell.presentedViewController?.dismiss(animated: false)
         guard case .reference(let reference) = target.link.target, let navigation = shell.topViewController?.navigationController else { return }
         switch reference.kind {
+        case .surface:
+            navigation.pushViewController(SurfaceScreens.make(session: session, surface: AgentWire.Surface(id: reference.id, type: "", name: "")), animated: true)
         case .artifact:
             var artifact = Artifact(id: reference.id, version: reference.version ?? 1, type: "", title: "", followsLatest: reference.version == nil)
             artifact.pinned = reference.version != nil

@@ -10,7 +10,7 @@ final class HappyLinkTests: XCTestCase {
 
     func testEntitiesParseAndFormat() {
         for kind in HappyLink.Kind.allCases where kind != .service {
-            let url = "happy://\(kind.rawValue)s/\(id)"
+            let url = "happy://\(kind.host)/\(id)"
             XCTAssertEqual(HappyLink(url), HappyLink(.reference(.init(kind: kind, id: id))), url)
             XCTAssertEqual(HappyLink(.reference(.init(kind: kind, id: id))).url, url)
         }
@@ -20,6 +20,16 @@ final class HappyLinkTests: XCTestCase {
         let service = HappyLink(.reference(.init(kind: .service, id: "web", workspaceId: workspace)))
         XCTAssertEqual(HappyLink("happy://workspaces/\(workspace)/services/web"), service)
         XCTAssertEqual(service.url, "happy://workspaces/\(workspace)/services/web")
+    }
+
+    func testTabLinksKeepLegacyIdentity() {
+        let tab = HappyLink(.reference(.init(kind: .surface, id: id)))
+        XCTAssertEqual(HappyLink("happy://tabs/\(id)"), tab)
+        XCTAssertEqual(HappyLink("happy://surfaces/\(id)"), tab)
+        XCTAssertEqual(tab.url, "happy://tabs/\(id)")
+        XCTAssertEqual(HappyLink("happy://\(instance)/surfaces/\(id)")?.url, "happy://\(instance)/tabs/\(id)")
+        XCTAssertNil(HappyLink("happy://tabs/\(id)?version=2"))
+        XCTAssertNil(HappyLink("happy://tabs/\(id)/extra"))
     }
 
     func testMalformedEntitiesAreRefused() {

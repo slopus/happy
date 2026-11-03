@@ -14,6 +14,7 @@ public struct Intent: Codable, Equatable, Sendable {
         case delete
         case rename
         case answer
+        case tabOpen = "tab.open"
         /// A todo list's changes (`TodoOp`): one slot per todo for each.
         case todoCreate = "todo.create"
         case todoText = "todo.text"
@@ -188,6 +189,9 @@ public actor IntentOutbox {
     @discardableResult
     public func enqueue(_ kind: Intent.Kind, target: String, value: JSONValue = .null) async throws -> Intent {
         let before = await pending()
+        // Repeated opens share the same persisted creation ID, including
+        // while its first request is in flight or awaiting a retry.
+        if kind == .tabOpen, let existing = before.first(where: { $0.kind == kind && $0.target == target }) { return existing }
         let intent = Intent(kind: kind, target: target, value: value, createdAt: max(now(), (before.last?.createdAt ?? 0) + 1))
         try await storage.saveIntent(intent)
         // Read again: another enqueue may have landed while this one was
@@ -405,7 +409,7 @@ public struct IntentOverlay: Equatable, Sendable {
             case .unarchive: restored.insert(intent.target)
             case .rename: if let title = intent.value["title"]?.stringValue ?? intent.value.stringValue { titles[intent.target] = title }
             case .answer: answers[intent.target] = intent.value
-            case .todoCreate, .todoText, .todoStatus, .todoMove, .feedSeen, .feedReadAll: break
+            case .tabOpen, .todoCreate, .todoText, .todoStatus, .todoMove, .feedSeen, .feedReadAll: break
             }
         }
     }

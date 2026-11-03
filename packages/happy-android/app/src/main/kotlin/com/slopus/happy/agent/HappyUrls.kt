@@ -27,7 +27,7 @@ enum class HappyReferenceKind(val host: String) {
     Workspace("workspaces"),
     Project("projects"),
     Service("services"),
-    Surface("surfaces"),
+    Surface("tabs"),
     User("users"),
 }
 
@@ -61,14 +61,14 @@ object HappyUrls {
     private val INSTANCE_ID = Regex("[a-z][a-z0-9]{23}")
 
     // matchEntire throughout: Java's `$` would also match before a final line break, JavaScript's doesn't.
-    private val ENTITY = Regex("happy://(artifacts|agents|workspaces|projects|surfaces|users)/($ID)(?:\\?version=($VERSION))?")
+    private val ENTITY = Regex("happy://(artifacts|agents|workspaces|projects|tabs|surfaces|users)/($ID)(?:\\?version=($VERSION))?")
     private val SERVICE = Regex("happy://workspaces/($ID)/services/($ID)")
     private val FILE = Regex("happy://(agents|workspaces)/($ID)/files/($ENCODED_PATH)(?:$LINES)?")
     private val HAPPY_FILE = Regex("happy-file://(agents|workspaces)/($ID)/($ENCODED_PATH)(?:$LINES)?")
     private val EXTERNAL = Regex("happy://([a-z][a-z0-9]{23})/(.+)")
 
     /** A host that is this grammar's, well-formed or not: the entity hosts, or anything shaped like an instance id. */
-    private val OWNED = Regex("happy://(artifacts|agents|workspaces|projects|services|surfaces|users|[a-z][a-z0-9]{23})(?:[/?#].*)?", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
+    private val OWNED = Regex("happy://(artifacts|agents|workspaces|projects|services|tabs|surfaces|users|[a-z][a-z0-9]{23})(?:[/?#].*)?", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
 
     /** Whether [instanceId] is an installation's id as health reports it. */
     fun isInstanceId(instanceId: String): Boolean = INSTANCE_ID.matches(instanceId)
@@ -93,7 +93,7 @@ object HappyUrls {
     private fun parseInternal(url: String): HappyLink? {
         ENTITY.matchEntire(url)?.let { entity ->
             val (host, id, version) = entity.destructured
-            val kind = HappyReferenceKind.entries.first { it.host == host }
+            val kind = if (host == "surfaces") HappyReferenceKind.Surface else HappyReferenceKind.entries.first { it.host == host }
             if (version.isNotEmpty() && kind != HappyReferenceKind.Artifact) return null
             return HappyLink.Reference(kind, id, version.takeIf { it.isNotEmpty() }?.toInt())
         }

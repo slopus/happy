@@ -57,6 +57,23 @@ final class IntentOutboxTests: XCTestCase {
         return IntentOutbox(storage: storage, now: { clock.now() }, sleep: { clock.advance($0); await Task.yield() })
     }
 
+    func testTabOpenRetryIdentitySurvivesOfflineReopenAndIsAccountLocal() async throws {
+        let storage = MemoryIntentStorage()
+        let first = makeOutbox(storage)
+        let value: JSONValue = .object(["kind": "artifact", "id": "same"])
+        let intent = try await first.enqueue(.tabOpen, target: "artifact:same", value: value)
+        let repeatOpen = try await first.enqueue(.tabOpen, target: "artifact:same", value: value)
+        XCTAssertEqual(repeatOpen.id, intent.id)
+        let restored = makeOutbox(storage)
+        let reopened = try await restored.enqueue(.tabOpen, target: "artifact:same", value: value)
+        XCTAssertEqual(reopened.id, intent.id)
+        let otherAccount = makeOutbox()
+        let independent = try await otherAccount.enqueue(.tabOpen, target: "artifact:same", value: value)
+        XCTAssertNotEqual(independent.id, intent.id)
+        let pending = await restored.pending()
+        XCTAssertEqual(pending, [intent])
+    }
+
     func testANewerActionReplacesTheOneWaitingInItsSlot() async throws {
         let outbox = makeOutbox()
         try await outbox.enqueue(.rename, target: "t1", value: .object(["title": "First"]))

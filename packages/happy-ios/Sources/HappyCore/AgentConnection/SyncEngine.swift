@@ -622,6 +622,12 @@ public actor SyncEngine {
 
     // MARK: Intents
 
+    /// Stored per account, so an offline open becomes a tab on reconnect.
+    public func openTab(kind: String, id: String) async {
+        guard !stopped, !id.isEmpty else { return }
+        _ = try? await intents.enqueue(.tabOpen, target: "\(kind):\(id)", value: .object(["kind": .string(kind), "id": .string(id)]))
+    }
+
     /// Opening a chat reads it: its dot goes at once, here and through any
     /// read of the computer that still calls it unread, until the computer
     /// has heard.
@@ -743,6 +749,9 @@ public actor SyncEngine {
         let kind = intent.value["kind"]?.stringValue
         do {
             switch intent.kind {
+            case .tabOpen:
+                guard let kind, let id = intent.value["id"]?.stringValue else { return }
+                try await client.openTab(kind: kind, id: id, mutationId: intent.id)
             case .read:
                 try await client.markRead(intent.target)
             case .rename:

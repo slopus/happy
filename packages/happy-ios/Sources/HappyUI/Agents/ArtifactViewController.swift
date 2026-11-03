@@ -68,6 +68,7 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
         // Opened: the Feed counts the artifact seen.
         let subject = FeedSubject(type: "artifact", id: artifact.id)
         Task { [feed = session.engine.feed] in await feed.seen(subject) }
+        Task { [engine = session.engine, id = artifact.id] in await engine.openTab(kind: "artifact", id: id) }
         scrollView.alwaysBounceVertical = true
         view.addSubview(scrollView)
         message.font = Fonts.ui(.regular, size: 15)
@@ -305,7 +306,7 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
         case .web(let url):
             openBrowser(url, session: session)
         case .external(let url):
-            UIApplication.shared.open(url)
+            openBrowser(url, session: session)
         case .fragment, .data, .refused:
             break
         }

@@ -36,6 +36,19 @@ class HappyUrlsTest {
     }
 
     @Test
+    fun tabLinksKeepLegacyIdentity() {
+        val tab = HappyLink.Reference(HappyReferenceKind.Surface, id)
+        assertEquals(tab, parse("happy://tabs/$id"))
+        assertEquals(tab, parse("happy://surfaces/$id"))
+        assertEquals("happy://tabs/$id", HappyUrls.format(tab))
+        assertEquals(HappyUrl(tab, instance), HappyUrls.parse("happy://$instance/surfaces/$id"))
+        assertEquals("happy://$instance/tabs/$id", HappyUrls.format(tab, instance))
+        assertTrue(HappyUrls.owns("happy://tabs/bad/extra"))
+        assertNull(HappyUrls.parse("happy://tabs/$id?version=2"))
+        assertNull(HappyUrls.parse("happy://tabs/$id/extra"))
+    }
+
+    @Test
     fun malformedEntityUrlsAreRejected() {
         for (url in listOf(
             "happy://session/abc",

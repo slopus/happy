@@ -61,6 +61,7 @@ data class Intent(
         const val LEAVE = "leave"
         const val DELETE = "delete"
         const val RENAME = "rename"
+        const val TAB_OPEN = "tab.open"
 
         /** Kinds that set one thing share a slot: an unarchive replaces an archive still waiting. */
         fun slotOf(kind: String): String = if (kind == UNARCHIVE) ARCHIVE else kind
@@ -174,6 +175,8 @@ class IntentOutbox(
     suspend fun enqueue(kind: String, target: String, value: JsonObject = JsonObject(emptyMap())): Intent {
         val (intent, replaced) = lock.withLock {
             val before = loaded()
+            // Keep the creation retry key when a tab is reopened before delivery.
+            if (kind == Intent.TAB_OPEN) before.firstOrNull { it.kind == kind && it.target == target }?.let { return it }
             val intent = Intent(AgentClient.newId(), kind, target, value, maxOf(now(), (before.lastOrNull()?.createdAt ?: 0) + 1))
             val replaced = before.firstOrNull { it.slot == intent.slot }
             write(before.filter { it.slot != intent.slot } + intent)
