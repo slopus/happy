@@ -20,21 +20,21 @@ import androidx.navigation.NavHostController
 import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
-import com.slopus.happy.agent.AgentEvent
 import com.slopus.happy.agent.AgentSession
 import com.slopus.happy.agent.HappyLink
 import com.slopus.happy.agent.HappyReferenceKind
 import com.slopus.happy.agent.HappyUrls
+import com.slopus.happy.artifacts.ArtifactCatalogFeed
 import com.slopus.happy.artifacts.ArtifactClient
 import com.slopus.happy.artifacts.ArtifactRef
 import com.slopus.happy.browser.BrowserPolicy
+import com.slopus.happy.conversation.Problem
 import com.slopus.happy.browser.BrowserProxy
 import com.slopus.happy.browser.browserWorkspace
 import com.slopus.happy.ui.browser.BrowserPage
 import com.slopus.happy.ui.browser.BrowserScreen
 import com.slopus.happy.ui.browser.openOutside
 import com.slopus.happy.ui.connection.LocalHappyLinks
-import kotlinx.coroutines.flow.filter
 import kotlinx.serialization.Serializable
 
 /** The agent's artifacts, home's Artifacts row. */
@@ -82,29 +82,31 @@ internal fun computerName(graph: AppGraph, connectionId: String): String {
 }
 
 private class ArtifactsHolder(session: AgentSession?) : ViewModel() {
-    val reader: ArtifactCatalogReader? = session?.let {
-        ArtifactCatalogReader(ArtifactClient(it.client), viewModelScope, cached = { it.cachedResource("artifacts") }, keep = { value -> it.keepResource("artifacts", value) })
+    val feed: ArtifactCatalogFeed? = session?.let {
+        val files = ArtifactClient(it.client)
+        ArtifactCatalogFeed(
+            scope = viewModelScope,
+            fetch = { cursor -> files.catalog(cursor) },
+            fetchOne = { id -> files.artifact(id) },
+            kept = { it.cachedResource(ArtifactCatalogFeed.RESOURCE) },
+            keep = { value -> it.keepResource(ArtifactCatalogFeed.RESOURCE, value) },
+        ).also { feed -> feed.start(it.events) }
     }
+    val thumbnails: ArtifactThumbnails? = session?.let { ArtifactThumbnails(ArtifactClient(it.client), viewModelScope) }
 }
 
 @Composable
 private fun AgentArtifacts(graph: AppGraph, nav: NavHostController, route: AgentArtifactsRoute) {
     val session = remember(route.connectionId) { graph.agentSessions.session(route.connectionId) }
-    val reader = viewModel { ArtifactsHolder(session) }.reader
-    com.slopus.happy.ui.components.StartedEffect(reader) {
-        if (session == null || reader == null) return@StartedEffect
-        reader.resume()
-        try {
-            session.events.filter { it.type.startsWith("artifact.") || it.type == AgentEvent.HELLO }.collect { reader.read() }
-        } finally { reader.pause() }
-    }
-    val read = reader?.state?.collectAsStateWithLifecycle()?.value ?: ArtifactListState(emptyList(), null, failed = true, loaded = true)
+    val holder = viewModel { ArtifactsHolder(session) }
+    val feed = holder.feed
+    val state = feed?.state?.collectAsStateWithLifecycle()?.value ?: ArtifactCatalogFeed.State(loaded = true, error = Problem.Unknown)
     ArtifactsScreen(
-        read = read,
+        state = state,
         onBack = { nav.popBackStack() },
-        onOpen = { nav.openArtifact(route.connectionId, it) },
-        onMore = { reader?.read(append = true) },
-        onRetry = { reader?.retry() },
+        onOpen = { nav.openArtifact(route.connectionId, it.ref) },
+        onRefresh = { feed?.refresh() },
+        thumbnails = holder.thumbnails,
     )
 }
 

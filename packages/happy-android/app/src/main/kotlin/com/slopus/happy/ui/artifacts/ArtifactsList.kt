@@ -1,196 +1,388 @@
 package com.slopus.happy.ui.artifacts
 
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import android.text.format.DateFormat
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Text
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.slopus.happy.R
-import com.slopus.happy.ui.components.LoadingIndicator
-import com.slopus.happy.artifacts.ArtifactClient
-import com.slopus.happy.artifacts.ArtifactListing
-import com.slopus.happy.artifacts.ArtifactRef
-import com.slopus.happy.conversation.Conversation
-import com.slopus.happy.conversation.Problem
-import com.slopus.happy.ui.conversation.problemText
+import com.slopus.happy.artifacts.ArtifactCatalog
+import com.slopus.happy.artifacts.ArtifactCatalogFeed
+import com.slopus.happy.artifacts.ArtifactSummary
+import com.slopus.happy.artifacts.DateBucket
+import com.slopus.happy.ui.cards.CardHeading
+import com.slopus.happy.ui.cards.CardListSpec
+import com.slopus.happy.ui.cards.CardNote
+import com.slopus.happy.ui.cards.CardRow
+import com.slopus.happy.ui.cards.CardTile
+import com.slopus.happy.ui.cards.cardPlaces
+import com.slopus.happy.ui.components.HappyDropdownMenu
+import com.slopus.happy.ui.components.HappyMenuItem
+import com.slopus.happy.ui.components.HomeCardPlace
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
-import com.slopus.happy.ui.components.StatePage
-import com.slopus.happy.ui.connection.AgentHomeSpec
-import com.slopus.happy.ui.layout.LocalWindowLayout
-import com.slopus.happy.ui.layout.contentMaxWidth
+import com.slopus.happy.ui.components.MenuSpec
+import com.slopus.happy.ui.connection.AgentSearchField
+import com.slopus.happy.ui.connection.AgentSearchTags
+import com.slopus.happy.ui.connection.AgentTopBar
+import com.slopus.happy.ui.connection.BarIconButton
+import com.slopus.happy.ui.connection.RowTile
+import com.slopus.happy.ui.home.copyToClipboard
 import com.slopus.happy.ui.theme.HappyTheme
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.JsonObject
+import java.time.Instant
+import java.time.YearMonth
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 object ArtifactsTags {
     const val LIST = "artifacts.list"
     const val ROW = "artifacts.row"
-    const val EMPTY = "artifacts.empty"
-    const val FAILED = "artifacts.failed"
+    const val SEARCH = "artifacts.search"
+    const val SEARCH_BAR = "artifacts.searchBar"
+    const val THUMBNAIL = "artifacts.thumbnail"
+    const val MENU_OPEN = "artifacts.menu.open"
+    const val MENU_COPY = "artifacts.menu.copy"
+}
+
+object ArtifactListSpec {
+    /** A row's picture fades in over its tile (iOS's `ArtifactThumbnailView.show`). */
+    const val THUMBNAIL_FADE_MS = 200
 }
 
 /**
- * The catalog as read so far: its rows, newest first, the cursor of the
- * next page (null at the end), whether a first read has finished, and
- * whether it failed with nothing to show.
+ * The words and date formats the list says things in, resolved once in
+ * the person's language, so the derivation can run off the main thread
+ * (iOS's `Strings.Artifacts.DateWords`).
  */
 @Immutable
-data class ArtifactListState(val items: List<ArtifactRef>, val next: String?, val failed: Boolean = false, val loaded: Boolean = false, val reason: Problem? = null)
-
-/**
- * The artifact catalog, as iOS's `ArtifactsViewController` reads it: the
- * last first page kept offline shows at once, then the first page is read,
- * again on every `artifact.*` event; further pages are appended as the list
- * nears its end. One read at a time. A read that fails while rows show
- * keeps them; with none, it says so with Retry.
- */
-class ArtifactCatalogReader(
-    private val files: ArtifactClient,
-    private val scope: CoroutineScope,
-    private val cached: () -> JsonObject? = { null },
-    private val keep: (JsonObject) -> Unit = {},
+class ArtifactListWords(
+    val today: String,
+    val yesterday: String,
+    val previous7Days: String,
+    val previous30Days: String,
+    val untitled: String,
+    /** Each type's name, as a row's subtitle says it; `""` names a type without one. */
+    private val kinds: Map<String, String>,
+    private val livePage: String,
+    private val unknownKind: String,
+    val notes: Notes,
+    val locale: Locale,
+    val zone: ZoneId,
+    is24Hour: Boolean,
+    /** The locale's own pattern for a skeleton (`DateFormat.getBestDateTimePattern`). */
+    pattern: (Locale, String) -> String = DateFormat::getBestDateTimePattern,
 ) {
-    private val stateFlow = MutableStateFlow(ArtifactListState(emptyList(), null))
-    val state: StateFlow<ArtifactListState> = stateFlow.asStateFlow()
-    private var reading: Job? = null
-    private var starting: Job? = null
-    private var started = false
-    private var observing = true
+    @Immutable
+    data class Notes(val loading: String, val empty: String, val noMatches: String, val unsupported: String, val unavailable: String)
 
-    fun resume() {
-        observing = true
-        if (started) read() else start()
+    private val time = DateTimeFormatter.ofPattern(pattern(locale, if (is24Hour) "Hm" else "hm"), locale)
+    private val weekday = DateTimeFormatter.ofPattern(pattern(locale, "EEEE"), locale)
+    private val dayMonth = DateTimeFormatter.ofPattern(pattern(locale, "MMMd"), locale)
+    private val fullDate = DateTimeFormatter.ofPattern(pattern(locale, "yMMMd"), locale)
+    private val month = DateTimeFormatter.ofPattern(pattern(locale, "MMMM"), locale)
+    private val monthYear = DateTimeFormatter.ofPattern(pattern(locale, "MMMMy"), locale)
+
+    /** A kind's name; an unknown type as it came, its words capitalized. */
+    fun kind(type: String, live: Boolean = false): String = when {
+        live -> livePage
+        type in kinds -> kinds.getValue(type)
+        type.isEmpty() -> unknownKind
+        else -> type.split('_').joinToString(" ") { word -> word.replaceFirstChar { it.titlecase(locale) } }
     }
 
-    fun pause() {
-        observing = false
-        if (starting?.isActive == true) started = false
-        starting?.cancel()
-        reading?.cancel()
-        reading = null
+    /** A row's subtitle: its kind, and how many files an image series holds. */
+    fun subtitle(artifact: ArtifactSummary): String {
+        val kind = kind(artifact.type, artifact.live)
+        return if (artifact.type == "image_series" && artifact.fileCount > 1) "$kind · ${artifact.fileCount}" else kind
     }
 
-    /** The kept page, then a fresh read; once, however often the screen comes back. */
-    fun start() {
-        if (started) return
-        started = true
-        starting = scope.launch {
-            val page = withContext(Dispatchers.IO) { cached() }?.let(ArtifactListing::parse)
-            if (page != null && !stateFlow.value.loaded) stateFlow.value = ArtifactListState(page.items, page.next, loaded = page.items.isNotEmpty())
-            read()
+    /** A date bucket's heading: an older month by its name, with its year once it isn't this one. */
+    fun bucket(bucket: DateBucket, now: Long): String = when (bucket) {
+        DateBucket.Today -> today
+        DateBucket.Yesterday -> yesterday
+        DateBucket.Previous7Days -> previous7Days
+        DateBucket.Previous30Days -> previous30Days
+        is DateBucket.Month -> {
+            val thisYear = Instant.ofEpochMilli(now).atZone(zone).year
+            (if (bucket.year == thisYear) month else monthYear).format(YearMonth.of(bucket.year, bucket.month))
         }
     }
 
-    fun read(append: Boolean = false) {
-        if (!observing || reading?.isActive == true) return
-        val cursor = if (append) stateFlow.value.next ?: return else null
-        reading = scope.launch {
-            try {
-                val answer = files.catalog(cursor)
-                if (!append) withContext(Dispatchers.IO) { keep(answer) }
-                val page = ArtifactListing.parse(answer)
-                stateFlow.update { current ->
-                    val known = current.items.mapTo(HashSet()) { it.id }
-                    val items = if (append) current.items + page.items.filter { it.id !in known } else page.items
-                    ArtifactListState(items, page.next, loaded = true)
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                stateFlow.update { if (it.items.isEmpty()) it.copy(failed = true, loaded = true, reason = Conversation.describe(e)) else it }
-            }
+    /**
+     * When a row last changed, as short as its bucket allows: the time
+     * today and yesterday, the weekday within the week, the day and month
+     * this year, the whole date before.
+     */
+    fun time(millis: Long, now: Long): String {
+        val date = Instant.ofEpochMilli(millis).atZone(zone)
+        return when (DateBucket.of(millis, now, zone)) {
+            DateBucket.Today, DateBucket.Yesterday -> time.format(date)
+            DateBucket.Previous7Days -> weekday.format(date)
+            else -> (if (date.year == Instant.ofEpochMilli(now).atZone(zone).year) dayMonth else fullDate).format(date)
         }
     }
+}
 
-    fun retry() {
-        stateFlow.update { it.copy(failed = false, loaded = false) }
-        read()
+/** The list's words in the person's language, their clock and time zone. */
+@Composable
+fun rememberArtifactListWords(): ArtifactListWords {
+    val context = LocalContext.current
+    val locale = LocalConfiguration.current.locales[0]
+    val today = stringResource(R.string.session_history_today)
+    val yesterday = stringResource(R.string.session_history_yesterday)
+    val previous7 = stringResource(R.string.artifact_list_previous_7_days)
+    val previous30 = stringResource(R.string.artifact_list_previous_30_days)
+    val untitled = stringResource(R.string.artifact_untitled)
+    val kinds = mapOf(
+        "markdown" to stringResource(R.string.artifact_kind_markdown),
+        "html" to stringResource(R.string.artifact_kind_html),
+        "image" to stringResource(R.string.artifact_kind_image),
+        "image_series" to stringResource(R.string.artifact_kind_image_series),
+        "video" to stringResource(R.string.artifact_kind_video),
+        "document" to stringResource(R.string.artifact_kind_document),
+    )
+    val live = stringResource(R.string.artifact_kind_live)
+    val unknown = stringResource(R.string.artifact_kind_unknown)
+    val notes = ArtifactListWords.Notes(
+        loading = stringResource(R.string.artifacts_loading),
+        empty = stringResource(R.string.artifact_list_empty),
+        noMatches = stringResource(R.string.artifact_list_no_matches),
+        unsupported = stringResource(R.string.artifact_list_unsupported),
+        unavailable = stringResource(R.string.artifact_list_unavailable),
+    )
+    val is24Hour = DateFormat.is24HourFormat(context)
+    return remember(locale, is24Hour, today, kinds, notes) {
+        ArtifactListWords(today, yesterday, previous7, previous30, untitled, kinds, live, unknown, notes, locale, ZoneId.systemDefault(), is24Hour)
+    }
+}
+
+/** One slot of the list: a date's heading over its card, an artifact's row, or a note in place of them. */
+@Immutable
+sealed interface ArtifactListItem {
+    val key: String
+
+    data class Heading(val bucket: DateBucket, val text: String, val afterCard: Boolean) : ArtifactListItem {
+        override val key: String get() = "heading:$bucket"
+    }
+
+    data class Row(val artifact: ArtifactSummary, val place: HomeCardPlace, val title: String, val subtitle: String, val time: String) : ArtifactListItem {
+        override val key: String get() = artifact.id
+    }
+
+    data class Note(val text: String) : ArtifactListItem {
+        override val key: String get() = "note"
     }
 }
 
 /**
- * The artifact catalog, one titled row each with a disclosure chevron,
- * newest first; a tap opens the artifact. A loader while the first read
- * runs with nothing kept, "No artifacts yet." for an empty catalog.
+ * The list's slots (iOS's `ArtifactListItems.items`): the artifacts that
+ * match [query], grouped by when each last changed under a heading per
+ * bucket, newest first; or one note in their place: this Happy Agent keeps
+ * none, nothing matches, it couldn't be read, it is being read, or it is
+ * empty.
  */
+fun artifactListItems(state: ArtifactCatalogFeed.State, query: String, words: ArtifactListWords, now: Long): List<ArtifactListItem> {
+    val shown = ArtifactCatalog.matching(query, state.items) { words.kind(it.type, it.live) }
+    if (shown.isEmpty()) {
+        val notes = words.notes
+        return listOf(
+            ArtifactListItem.Note(
+                when {
+                    state.unsupported -> notes.unsupported
+                    state.items.isNotEmpty() -> notes.noMatches
+                    state.error != null -> notes.unavailable
+                    !state.loaded -> notes.loading
+                    else -> notes.empty
+                },
+            ),
+        )
+    }
+    val items = ArrayList<ArtifactListItem>(shown.size + 8)
+    DateBucket.group(shown, now, words.zone) { it.updatedAt }.forEachIndexed { index, (bucket, group) ->
+        items += ArtifactListItem.Heading(bucket, words.bucket(bucket, now), afterCard = index > 0)
+        group.zip(cardPlaces(group.size)).forEach { (artifact, place) ->
+            items += ArtifactListItem.Row(artifact, place, artifact.title.ifEmpty { words.untitled }, words.subtitle(artifact), words.time(artifact.updatedAt, now))
+        }
+    }
+    return items
+}
+
+/** The glyph and tint a kind's tile shows when the row has no picture (iOS's `ArtifactListItems.tile`). */
+internal fun artifactTile(artifact: ArtifactSummary): Pair<Ionicon, RowTile> = when {
+    artifact.live -> Ionicon.GlobeOutline to RowTile.Teal
+    artifact.type == "markdown" -> Ionicon.DocumentTextOutline to RowTile.Purple
+    artifact.type == "html" -> Ionicon.CodeSlashOutline to RowTile.Blue
+    artifact.type == "image" -> Ionicon.ImageOutline to RowTile.Orange
+    artifact.type == "image_series" -> Ionicon.AlbumsOutline to RowTile.Orange
+    artifact.type == "video" -> Ionicon.FilmOutline to RowTile.Red
+    else -> Ionicon.DocumentOutline to RowTile.Indigo
+}
+
+/**
+ * Desktop's fixed Artifacts row, as iOS's `ArtifactsViewController` shows
+ * it: every artifact of the agent connection in home's inset grouped cards
+ * ([CardRow]), under a heading per date bucket (Today, Yesterday, the
+ * previous seven and thirty days, then by month), newest change first. A
+ * row is the kind's tile (or the picture itself, [ArtifactThumbnail]), the
+ * title on up to two lines, the kind under it and when it changed beside
+ * it. A tap opens the artifact on its latest version; a hold offers Open
+ * and Copy Title. The bar's search filters by every word of the title or
+ * kind; a pull past the top reads the catalog again.
+ *
+ * The slots are derived off the main thread whenever the catalog, the
+ * search or the day changes; the first frame derives them in place.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ArtifactsScreen(
-    read: ArtifactListState,
+    state: ArtifactCatalogFeed.State,
     onBack: () -> Unit,
-    onOpen: (ArtifactRef) -> Unit,
-    onMore: () -> Unit,
-    onRetry: () -> Unit,
+    onOpen: (ArtifactSummary) -> Unit,
+    onRefresh: () -> Unit,
+    thumbnails: ArtifactThumbnails? = null,
+    clock: () -> Long = System::currentTimeMillis,
 ) {
-    val colors = HappyTheme.colors
-    PlaceScaffold(stringResource(R.string.artifacts_title), onBack, ArtifactsTags.LIST) {
-        when {
-            read.items.isEmpty() && read.failed -> StatePage(
-                title = stringResource(R.string.agent_artifacts_failed),
-                body = read.reason?.let { problemText(it) },
-                icon = Ionicon.CloudOfflineOutline,
-                action = stringResource(R.string.common_retry) to onRetry,
-                tag = ArtifactsTags.FAILED,
-            )
-            read.items.isEmpty() && !read.loaded -> LoadingIndicator(Modifier.testTag(PlaceTags.LOADER))
-            read.items.isEmpty() -> StatePage(title = null, body = stringResource(R.string.artifacts_empty), icon = Ionicon.LayersOutline, tag = ArtifactsTags.EMPTY)
-            else -> {
-                val untitled = stringResource(R.string.agent_artifacts_untitled)
-                LazyColumn(Modifier.fillMaxSize().contentMaxWidth(LocalWindowLayout.current)) {
-                    itemsIndexed(read.items, key = { _, it -> it.id }) { index, artifact ->
-                        if (index == read.items.lastIndex && read.next != null) LaunchedEffect(read.next) { onMore() }
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .heightIn(min = 52.dp)
-                                .clickable(role = Role.Button) { onOpen(artifact) }
-                                .padding(horizontal = 16.dp)
-                                .testTag(ArtifactsTags.ROW),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                artifact.title.ifBlank { untitled },
-                                style = AgentHomeSpec.title,
-                                color = colors.text,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f),
-                            )
-                            Icon(Ionicon.ChevronForward, 16.dp, colors.grouped.chevron)
+    val words = rememberArtifactListWords()
+    var searching by rememberSaveable { mutableStateOf(false) }
+    var query by rememberSaveable { mutableStateOf("") }
+    val focus = LocalFocusManager.current
+    val closeSearch = {
+        focus.clearFocus()
+        searching = false
+        query = ""
+    }
+    BackHandler(enabled = searching, onBack = closeSearch)
+    // Today may be yesterday by the time the screen comes back.
+    var day by remember { mutableIntStateOf(0) }
+    LifecycleResumeEffect(Unit) {
+        day++
+        onPauseOrDispose { }
+    }
+    val seed = remember { artifactListItems(state, query, words, clock()) }
+    val items by produceState(seed, state, query, words, day) {
+        value = withContext(Dispatchers.Default) { artifactListItems(state, query, words, clock()) }
+    }
+    var pulled by remember { mutableStateOf(false) }
+    LaunchedEffect(state.refreshing) { if (!state.refreshing) pulled = false }
+    val searchLabel = stringResource(R.string.artifact_list_search)
+    PlaceScaffold(
+        title = stringResource(R.string.artifacts_title),
+        onBack = onBack,
+        tag = ArtifactsTags.LIST,
+        actions = { BarIconButton(Ionicon.SearchOutline, searchLabel, { searching = true }, Modifier.testTag(ArtifactsTags.SEARCH)) },
+        bar = if (!searching) null else {
+            {
+                AgentTopBar(
+                    tag = ArtifactsTags.SEARCH_BAR,
+                    container = HappyTheme.colors.surface,
+                    navigationIcon = { BarIconButton(Ionicon.ArrowBack, stringResource(R.string.common_back), closeSearch) },
+                    title = { AgentSearchField(query, { query = it }, placeholder = searchLabel) },
+                    actions = {
+                        if (query.isNotEmpty()) {
+                            BarIconButton(Ionicon.Close, stringResource(R.string.agent_search_clear), { query = "" }, Modifier.testTag(AgentSearchTags.CLEAR))
                         }
-                        if (index < read.items.lastIndex) HorizontalDivider(Modifier.padding(start = 16.dp), thickness = 0.5.dp, color = colors.divider)
+                    },
+                )
+            }
+        },
+    ) {
+        PullToRefreshBox(
+            isRefreshing = pulled && state.refreshing,
+            onRefresh = {
+                pulled = true
+                onRefresh()
+            },
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(top = CardListSpec.contentTop, bottom = CardListSpec.contentBottom + bottom),
+            ) {
+                items(items, key = { it.key }, contentType = { it::class }) { item ->
+                    when (item) {
+                        is ArtifactListItem.Heading -> CardHeading(item.text, item.afterCard)
+                        is ArtifactListItem.Note -> CardNote(item.text)
+                        is ArtifactListItem.Row -> ArtifactRow(item, thumbnails, onOpen)
                     }
-                    item { Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars)) }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun ArtifactRow(item: ArtifactListItem.Row, thumbnails: ArtifactThumbnails?, onOpen: (ArtifactSummary) -> Unit) {
+    val context = LocalContext.current
+    val haptics = LocalHapticFeedback.current
+    val colors = HappyTheme.colors
+    var menu by remember { mutableStateOf(false) }
+    val (glyph, tint) = artifactTile(item.artifact)
+    CardRow(
+        place = item.place,
+        title = item.title,
+        subtitle = item.subtitle,
+        trailing = item.time,
+        leading = {
+            CardTile(glyph, tint)
+            // The picture lands over its kind's tile, which stays while it loads.
+            if (thumbnails != null && item.artifact.showsPicture) ArtifactThumbnail(item.artifact, thumbnails)
+        },
+        onClick = { onOpen(item.artifact) },
+        onLongClick = {
+            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+            menu = true
+        },
+        tag = ArtifactsTags.ROW,
+        overlay = {
+            HappyDropdownMenu(expanded = menu, onDismissRequest = { menu = false }, offset = MenuSpec.offset) {
+                HappyMenuItem(
+                    stringResource(R.string.artifact_list_open),
+                    onClick = {
+                        menu = false
+                        onOpen(item.artifact)
+                    },
+                    leading = { Icon(Ionicon.ChevronForward, MenuSpec.icon, colors.text) },
+                    modifier = Modifier.testTag(ArtifactsTags.MENU_OPEN),
+                )
+                HappyMenuItem(
+                    stringResource(R.string.artifact_list_copy_title),
+                    onClick = {
+                        menu = false
+                        copyToClipboard(context, item.title)
+                    },
+                    leading = { Icon(Ionicon.CopyOutline, MenuSpec.icon, colors.text) },
+                    modifier = Modifier.testTag(ArtifactsTags.MENU_COPY),
+                )
+            }
+        },
+    )
 }

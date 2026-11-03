@@ -36,4 +36,22 @@
     <string name="link_menu_open_external_proxied">エージェントのネットワーク外</string>
     <string name="link_menu_copy">リンクをコピー</string>
     <string name="link_menu_share">共有</string>
+
+    <string name="artifact_list_search">アーティファクトを検索</string>
+    <string name="artifact_list_empty">アーティファクトはまだありません。エージェントに作成を頼んでください。</string>
+    <string name="artifact_list_no_matches">一致するアーティファクトはありません。</string>
+    <string name="artifact_list_unsupported">この Happy Agent はアーティファクトを保存しません。</string>
+    <string name="artifact_list_unavailable">アーティファクトを読み込めませんでした。コンピュータの電源が入っているか確認してください。</string>
+    <string name="artifact_list_open">開く</string>
+    <string name="artifact_list_copy_title">タイトルをコピー</string>
+    <string name="artifact_list_previous_7_days">過去7日間</string>
+    <string name="artifact_list_previous_30_days">過去30日間</string>
+    <string name="artifact_kind_live">ライブページ</string>
+    <string name="artifact_kind_markdown">ドキュメント</string>
+    <string name="artifact_kind_html">ウェブページ</string>
+    <string name="artifact_kind_image">画像</string>
+    <string name="artifact_kind_image_series">画像セット</string>
+    <string name="artifact_kind_video">動画</string>
+    <string name="artifact_kind_document">ファイル</string>
+    <string name="artifact_kind_unknown">アーティファクト</string>
 </resources>

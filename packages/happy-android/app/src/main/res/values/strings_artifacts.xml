@@ -45,4 +45,23 @@
     <string name="link_menu_open_external_proxied">Outside the agent’s network</string>
     <string name="link_menu_copy">Copy link</string>
     <string name="link_menu_share">Share</string>
+
+    <!-- The artifacts list (ui/artifacts/ArtifactsList.kt), in iOS's words (Strings.Artifacts). Today and Yesterday are session_history_*, Loading is artifacts_loading. -->
+    <string name="artifact_list_search">Search artifacts</string>
+    <string name="artifact_list_empty">No artifacts yet. Ask an agent to make one.</string>
+    <string name="artifact_list_no_matches">No artifacts match.</string>
+    <string name="artifact_list_unsupported">This Happy Agent doesn’t keep artifacts.</string>
+    <string name="artifact_list_unavailable">Artifacts couldn’t be loaded. Check that your computer is on.</string>
+    <string name="artifact_list_open">Open</string>
+    <string name="artifact_list_copy_title">Copy Title</string>
+    <string name="artifact_list_previous_7_days">Previous 7 Days</string>
+    <string name="artifact_list_previous_30_days">Previous 30 Days</string>
+    <string name="artifact_kind_live">Live page</string>
+    <string name="artifact_kind_markdown">Document</string>
+    <string name="artifact_kind_html">Web page</string>
+    <string name="artifact_kind_image">Image</string>
+    <string name="artifact_kind_image_series">Images</string>
+    <string name="artifact_kind_video">Video</string>
+    <string name="artifact_kind_document">File</string>
+    <string name="artifact_kind_unknown">Artifact</string>
 </resources>

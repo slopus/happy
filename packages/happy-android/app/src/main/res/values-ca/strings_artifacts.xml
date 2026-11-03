@@ -40,4 +40,22 @@
     <string name="link_menu_open_external_proxied">Fora de la xarxa de l\'agent</string>
     <string name="link_menu_copy">Copia l\'enllaç</string>
     <string name="link_menu_share">Comparteix</string>
+
+    <string name="artifact_list_search">Cerca artefactes</string>
+    <string name="artifact_list_empty">Encara no hi ha artefactes. Demana a un agent que en creï un.</string>
+    <string name="artifact_list_no_matches">Cap artefacte no coincideix.</string>
+    <string name="artifact_list_unsupported">Aquest Happy Agent no desa artefactes.</string>
+    <string name="artifact_list_unavailable">No s\'han pogut carregar els artefactes. Comprova que l\'ordinador estigui engegat.</string>
+    <string name="artifact_list_open">Obre</string>
+    <string name="artifact_list_copy_title">Copia el títol</string>
+    <string name="artifact_list_previous_7_days">7 dies anteriors</string>
+    <string name="artifact_list_previous_30_days">30 dies anteriors</string>
+    <string name="artifact_kind_live">Pàgina en directe</string>
+    <string name="artifact_kind_markdown">Document</string>
+    <string name="artifact_kind_html">Pàgina web</string>
+    <string name="artifact_kind_image">Imatge</string>
+    <string name="artifact_kind_image_series">Imatges</string>
+    <string name="artifact_kind_video">Vídeo</string>
+    <string name="artifact_kind_document">Fitxer</string>
+    <string name="artifact_kind_unknown">Artefacte</string>
 </resources>

@@ -12,7 +12,6 @@
     <string name="agent_home_revoked">此手机已在 Happy Agent 中移除。请重新连接智能体后再使用。</string>
     <string name="agent_home_update_required">此智能体需要更新版本的 Happy。请更新应用后再使用。</string>
     <string name="agent_artifacts_untitled">无标题</string>
-    <string name="agent_artifacts_failed">无法读取工件</string>
     <string name="agent_surface_add_todo">添加待办</string>
     <string name="agent_surface_no_todos">这里还没有内容。</string>
     <string name="agent_surface_todo_done">已完成</string>

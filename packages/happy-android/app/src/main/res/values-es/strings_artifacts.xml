@@ -40,4 +40,22 @@
     <string name="link_menu_open_external_proxied">Fuera de la red del agente</string>
     <string name="link_menu_copy">Copiar enlace</string>
     <string name="link_menu_share">Compartir</string>
+
+    <string name="artifact_list_search">Buscar artefactos</string>
+    <string name="artifact_list_empty">Aún no hay artefactos. Pide a un agente que cree uno.</string>
+    <string name="artifact_list_no_matches">Ningún artefacto coincide.</string>
+    <string name="artifact_list_unsupported">Este Happy Agent no guarda artefactos.</string>
+    <string name="artifact_list_unavailable">No se pudieron cargar los artefactos. Comprueba que tu ordenador esté encendido.</string>
+    <string name="artifact_list_open">Abrir</string>
+    <string name="artifact_list_copy_title">Copiar título</string>
+    <string name="artifact_list_previous_7_days">7 días anteriores</string>
+    <string name="artifact_list_previous_30_days">30 días anteriores</string>
+    <string name="artifact_kind_live">Página en vivo</string>
+    <string name="artifact_kind_markdown">Documento</string>
+    <string name="artifact_kind_html">Página web</string>
+    <string name="artifact_kind_image">Imagen</string>
+    <string name="artifact_kind_image_series">Imágenes</string>
+    <string name="artifact_kind_video">Vídeo</string>
+    <string name="artifact_kind_document">Archivo</string>
+    <string name="artifact_kind_unknown">Artefacto</string>
 </resources>

@@ -35,9 +35,9 @@ open class ArtifactClient(private val client: AgentClient) {
         return ArtifactVersion.parse(answer["version"].obj) ?: throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
     }
 
-    /** One page of the catalog, newest first, from [pageCursor]; also the raw answer, which the list keeps offline. */
-    open suspend fun catalog(pageCursor: String? = null): JsonObject =
-        client.decode("GET", "/v0/artifacts" + (pageCursor?.let { "?pageCursor=${AgentClient.escape(it)}" } ?: ""))
+    /** One page of the catalog, at most [limit] artifacts, from [pageCursor]. */
+    open suspend fun catalog(pageCursor: String? = null, limit: Int = ArtifactCatalogFeed.PAGE_SIZE): JsonObject =
+        client.decode("GET", "/v0/artifacts?limit=$limit" + (pageCursor?.let { "&pageCursor=${AgentClient.escape(it)}" } ?: ""))
 
     /** One artifact's catalog entry (`GET /v0/artifacts/:id`). */
     open suspend fun artifact(artifactId: String): JsonObject =

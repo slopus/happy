@@ -54,7 +54,8 @@ import com.slopus.happy.agent.AgentFeedRow
 import com.slopus.happy.agent.ConversationKind
 import com.slopus.happy.agent.isNullish
 import com.slopus.happy.agent.string
-import com.slopus.happy.artifacts.ArtifactListing
+import com.slopus.happy.artifacts.ArtifactCatalog
+import com.slopus.happy.artifacts.ArtifactCatalogFeed
 import com.slopus.happy.artifacts.ArtifactRef
 import com.slopus.happy.ui.components.HomeCardPlace
 import com.slopus.happy.ui.components.Ionicon
@@ -263,8 +264,8 @@ sealed interface AgentSearchResult {
  * What search finds beyond home's rows (desktop's ⌘K sources, 28342477),
  * only from what the phone already holds: every Surface in the catalog
  * with a page of its own, joined or not, newest first; the open todos of
- * the joined lists whose last read is kept; the artifact catalog's kept
- * first page, newest first.
+ * the joined lists whose last read is kept; the artifact catalog as
+ * [ArtifactCatalogFeed] keeps it, newest change first.
  */
 @Immutable
 data class AgentSearchSources(
@@ -305,7 +306,7 @@ data class AgentSearchSources(
                 val read = kept("surface" + list.row.id)?.let(SurfaceBody::parse) as? SurfaceBody.Todos
                 read?.todos.orEmpty().filter { !it.done }.map { Todo(it.id, it.text, list.row) }
             }
-            val artifacts = kept("artifacts")?.let(ArtifactListing::parse)?.items.orEmpty()
+            val artifacts = kept(ArtifactCatalogFeed.RESOURCE)?.let(ArtifactCatalog::fromKept).orEmpty().map { it.ref }
             return AgentSearchSources(surfaces, todos, artifacts)
         }
     }

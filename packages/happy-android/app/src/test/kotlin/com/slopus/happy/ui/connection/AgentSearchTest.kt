@@ -173,7 +173,7 @@ class AgentSearchTest {
         val current = catalog(bootstrap)
         val kept = mapOf(
             "surfaces1" to SurfaceBody.Todos(listOf(com.slopus.happy.conversation.Todo("t1", "Milk", false), com.slopus.happy.conversation.Todo("t2", "Eggs", true))).json(),
-            "artifacts" to kotlinx.serialization.json.buildJsonObject {
+            com.slopus.happy.artifacts.ArtifactCatalogFeed.RESOURCE to kotlinx.serialization.json.buildJsonObject {
                 put("artifacts", kotlinx.serialization.json.buildJsonArray {
                     add(kotlinx.serialization.json.buildJsonObject { put("id", kotlinx.serialization.json.JsonPrimitive("a1")); put("title", kotlinx.serialization.json.JsonPrimitive("Chart")); put("type", kotlinx.serialization.json.JsonPrimitive("image")) })
                 })

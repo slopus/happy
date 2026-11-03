@@ -42,4 +42,22 @@
     <string name="link_menu_open_external_proxied">Poza siecią agenta</string>
     <string name="link_menu_copy">Kopiuj link</string>
     <string name="link_menu_share">Udostępnij</string>
+
+    <string name="artifact_list_search">Szukaj artefaktów</string>
+    <string name="artifact_list_empty">Nie ma jeszcze artefaktów. Poproś agenta, żeby jakiś utworzył.</string>
+    <string name="artifact_list_no_matches">Brak pasujących artefaktów.</string>
+    <string name="artifact_list_unsupported">Ten Happy Agent nie przechowuje artefaktów.</string>
+    <string name="artifact_list_unavailable">Nie udało się wczytać artefaktów. Sprawdź, czy komputer jest włączony.</string>
+    <string name="artifact_list_open">Otwórz</string>
+    <string name="artifact_list_copy_title">Kopiuj tytuł</string>
+    <string name="artifact_list_previous_7_days">Poprzednie 7 dni</string>
+    <string name="artifact_list_previous_30_days">Poprzednie 30 dni</string>
+    <string name="artifact_kind_live">Strona na żywo</string>
+    <string name="artifact_kind_markdown">Dokument</string>
+    <string name="artifact_kind_html">Strona internetowa</string>
+    <string name="artifact_kind_image">Obraz</string>
+    <string name="artifact_kind_image_series">Obrazy</string>
+    <string name="artifact_kind_video">Wideo</string>
+    <string name="artifact_kind_document">Plik</string>
+    <string name="artifact_kind_unknown">Artefakt</string>
 </resources>

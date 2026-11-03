@@ -12,7 +12,6 @@
     <string name="agent_home_revoked">Aquest telèfon s\'ha eliminat a Happy Agent. Torna a connectar l\'agent per fer-lo servir.</string>
     <string name="agent_home_update_required">Aquest agent necessita una versió més nova de Happy. Actualitza l\'app per fer-lo servir.</string>
     <string name="agent_artifacts_untitled">Sense títol</string>
-    <string name="agent_artifacts_failed">No s\'han pogut llegir els artefactes</string>
     <string name="agent_surface_add_todo">Afegeix una tasca</string>
     <string name="agent_surface_no_todos">Encara no hi ha res aquí.</string>
     <string name="agent_surface_todo_done">fet</string>

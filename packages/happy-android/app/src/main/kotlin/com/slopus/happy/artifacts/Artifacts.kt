@@ -141,23 +141,3 @@ sealed interface ArtifactShow {
         }
     }
 }
-
-/** A catalog page's row (`GET /v0/artifacts`), as iOS's list reads it. */
-@Immutable
-data class ArtifactListing(val items: List<ArtifactRef>, val next: String?) {
-    companion object {
-        fun parse(answer: JsonObject): ArtifactListing = ArtifactListing(
-            items = answer["artifacts"].arr.orEmpty().mapNotNull { item ->
-                val o = item.obj ?: return@mapNotNull null
-                ArtifactRef(
-                    id = o["id"].str ?: return@mapNotNull null,
-                    version = o["latestVersion"].num?.toInt() ?: 1,
-                    type = o["type"].str.orEmpty(),
-                    title = o["title"].str.orEmpty(),
-                    followsLatest = true,
-                )
-            },
-            next = answer["nextPageCursor"].str,
-        )
-    }
-}

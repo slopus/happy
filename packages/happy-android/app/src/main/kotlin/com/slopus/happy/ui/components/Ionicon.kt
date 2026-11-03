@@ -24,6 +24,7 @@ import com.slopus.happy.ui.theme.RnLineHeightStyle
 enum class Ionicon(val codepoint: Int) {
     Add(0xf103), // add
     AddOutline(0xf107), // add-outline
+    AlbumsOutline(0xf110), // albums-outline
     AlertCircleOutline(0xf114), // alert-circle-outline
     AnalyticsOutline(0xf11c), // analytics-outline
     AppsOutline(0xf122), // apps-outline
@@ -52,6 +53,7 @@ enum class Ionicon(val codepoint: Int) {
     CloudOfflineOutline(0xf25b), // cloud-offline-outline
     CodeOutline(0xf26c), // code-outline
     CodeSlash(0xf26e), // code-slash
+    CodeSlashOutline(0xf26f), // code-slash-outline
     CodeWorkingOutline(0xf272), // code-working-outline
     ColorPaletteOutline(0xf27e), // color-palette-outline
     ConstructOutline(0xf287), // construct-outline
@@ -91,6 +93,7 @@ enum class Ionicon(val codepoint: Int) {
     HomeOutline(0xf383), // home-outline
     HourglassOutline(0xf386), // hourglass-outline
     ImageOutline(0xf38f), // image-outline
+    Images(0xf391), // images
     InformationCircle(0xf398), // information-circle
     InformationCircleOutline(0xf399), // information-circle-outline
     KeyOutline(0xf3a4), // key-outline
@@ -144,6 +147,7 @@ enum class Ionicon(val codepoint: Int) {
     TimeOutline(0xf5de), // time-outline
     TimerOutline(0xf5e1), // timer-outline
     TrashOutline(0xf5f6), // trash-outline
+    Videocam(0xf60d), // videocam
     Warning(0xf628), // warning
     WarningOutline(0xf629), // warning-outline
 }

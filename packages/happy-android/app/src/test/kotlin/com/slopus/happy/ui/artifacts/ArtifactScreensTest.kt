@@ -1,7 +1,6 @@
 package com.slopus.happy.ui.artifacts
 
 import com.slopus.happy.connection.RequestCategory
-import com.slopus.happy.conversation.Problem
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -118,54 +117,6 @@ class ArtifactScreensTest {
         rule.setHappyContent(dark) {
             CompositionLocalProvider(LocalImageLoader provides pictures) { ArtifactScreen(loader.title.value, loader.state.value, loader.media, "Studio", actions) }
         }
-    }
-
-    private val sample = listOf(
-        ArtifactRef("a1", 3, "markdown", "Release notes", true),
-        ArtifactRef("a2", 1, "html", "Dashboard", true),
-        ArtifactRef("a3", 2, "image", "Screenshots of the new onboarding flow on every size of phone", true),
-        ArtifactRef("a4", 1, "video", "", true),
-    )
-
-    @Test fun theListOpensAnArtifactAndNamesTheUntitled() {
-        val opened = mutableListOf<ArtifactRef>()
-        rule.setHappyContent { ArtifactsScreen(ArtifactListState(sample, null, loaded = true), {}, { opened += it }, {}, {}) }
-        rule.onNodeWithText("Artifacts").assertExists()
-        rule.onNodeWithText("Untitled").assertExists()
-        rule.onAllNodesWithTag(ArtifactsTags.ROW, useUnmergedTree = true).assertCountEquals(4)
-        shot("artifacts-list")
-        rule.onNodeWithText("Dashboard").performClick()
-        assertEquals(listOf("a2"), opened.map { it.id })
-    }
-
-    @Test fun theListDark() {
-        rule.setHappyContent(dark = true) { ArtifactsScreen(ArtifactListState(sample, null, loaded = true), {}, {}, {}, {}) }
-        shot("artifacts-list-dark")
-    }
-
-    @Test fun theListAsksForMoreAtItsEnd() {
-        var more = 0
-        rule.setHappyContent { ArtifactsScreen(ArtifactListState(sample, "p2", loaded = true), {}, {}, { more++ }, {}) }
-        rule.waitForIdle()
-        assertEquals(1, more)
-    }
-
-    @Test fun anEmptyListAWaitingOneAndAFailedOne() {
-        var state by androidx.compose.runtime.mutableStateOf(ArtifactListState(emptyList(), null))
-        var retries = 0
-        rule.setHappyContent { ArtifactsScreen(state, {}, {}, {}, { retries++ }) }
-        // A plain spinner, not the snail; it fades in after a moment.
-        rule.node(PlaceTags.LOADER).assertExists()
-        rule.mainClock.advanceTimeBy(1_000)
-        shot("artifacts-loading")
-        state = ArtifactListState(emptyList(), null, loaded = true)
-        rule.onNodeWithText("No artifacts yet").assertExists()
-        shot("artifacts-empty")
-        state = ArtifactListState(emptyList(), null, failed = true, loaded = true, reason = Problem.Said("Could not reach the agent."))
-        rule.onNodeWithText("Could not reach the agent.").assertExists()
-        shot("artifacts-failed")
-        rule.onNodeWithText("Retry").performClick()
-        assertEquals(1, retries)
     }
 
     @Test fun aDocumentWithItsPicture() {

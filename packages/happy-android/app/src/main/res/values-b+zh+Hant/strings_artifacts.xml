@@ -36,4 +36,22 @@
     <string name="link_menu_open_external_proxied">不經過代理程式的網路</string>
     <string name="link_menu_copy">複製連結</string>
     <string name="link_menu_share">分享</string>
+
+    <string name="artifact_list_search">搜尋工件</string>
+    <string name="artifact_list_empty">還沒有工件。請代理建立一個吧。</string>
+    <string name="artifact_list_no_matches">沒有符合的工件。</string>
+    <string name="artifact_list_unsupported">此 Happy Agent 不保存工件。</string>
+    <string name="artifact_list_unavailable">無法載入工件。請確認你的電腦已開機。</string>
+    <string name="artifact_list_open">開啟</string>
+    <string name="artifact_list_copy_title">拷貝標題</string>
+    <string name="artifact_list_previous_7_days">前 7 天</string>
+    <string name="artifact_list_previous_30_days">前 30 天</string>
+    <string name="artifact_kind_live">即時頁面</string>
+    <string name="artifact_kind_markdown">文件</string>
+    <string name="artifact_kind_html">網頁</string>
+    <string name="artifact_kind_image">圖片</string>
+    <string name="artifact_kind_image_series">圖片組</string>
+    <string name="artifact_kind_video">影片</string>
+    <string name="artifact_kind_document">檔案</string>
+    <string name="artifact_kind_unknown">工件</string>
 </resources>

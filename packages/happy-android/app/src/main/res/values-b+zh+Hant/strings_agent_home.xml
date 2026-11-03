@@ -12,7 +12,6 @@
     <string name="agent_home_revoked">此手機已在 Happy Agent 中移除。請重新連線代理程式後再使用。</string>
     <string name="agent_home_update_required">此代理程式需要較新版本的 Happy。請更新 App 後再使用。</string>
     <string name="agent_artifacts_untitled">無標題</string>
-    <string name="agent_artifacts_failed">無法讀取工件</string>
     <string name="agent_surface_add_todo">新增待辦</string>
     <string name="agent_surface_no_todos">這裡還沒有內容。</string>
     <string name="agent_surface_todo_done">已完成</string>

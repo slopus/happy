@@ -42,4 +42,22 @@
     <string name="link_menu_open_external_proxied">Вне сети агента</string>
     <string name="link_menu_copy">Скопировать ссылку</string>
     <string name="link_menu_share">Поделиться</string>
+
+    <string name="artifact_list_search">Поиск артефактов</string>
+    <string name="artifact_list_empty">Артефактов пока нет. Попросите агента создать артефакт.</string>
+    <string name="artifact_list_no_matches">Подходящих артефактов нет.</string>
+    <string name="artifact_list_unsupported">Этот Happy Agent не хранит артефакты.</string>
+    <string name="artifact_list_unavailable">Не удалось загрузить артефакты. Проверьте, что компьютер включён.</string>
+    <string name="artifact_list_open">Открыть</string>
+    <string name="artifact_list_copy_title">Скопировать название</string>
+    <string name="artifact_list_previous_7_days">Предыдущие 7 дней</string>
+    <string name="artifact_list_previous_30_days">Предыдущие 30 дней</string>
+    <string name="artifact_kind_live">Живая страница</string>
+    <string name="artifact_kind_markdown">Документ</string>
+    <string name="artifact_kind_html">Веб-страница</string>
+    <string name="artifact_kind_image">Изображение</string>
+    <string name="artifact_kind_image_series">Изображения</string>
+    <string name="artifact_kind_video">Видео</string>
+    <string name="artifact_kind_document">Файл</string>
+    <string name="artifact_kind_unknown">Артефакт</string>
 </resources>

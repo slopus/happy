@@ -1,0 +1,221 @@
+package com.slopus.happy.ui.artifacts
+
+import android.content.ClipboardManager
+import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.height
+import androidx.compose.ui.unit.width
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.slopus.happy.agent.AgentClient
+import com.slopus.happy.artifacts.ArtifactCatalogFeed
+import com.slopus.happy.artifacts.ArtifactClient
+import com.slopus.happy.artifacts.ArtifactFile
+import com.slopus.happy.artifacts.ArtifactSummary
+import com.slopus.happy.connection.RequestCategory
+import com.slopus.happy.connection.Transport
+import com.slopus.happy.connection.TransportResponse
+import com.slopus.happy.conversation.Problem
+import com.slopus.happy.ui.PHONE
+import com.slopus.happy.ui.PHONE_WIDTH
+import com.slopus.happy.ui.assertDp
+import com.slopus.happy.ui.bounds
+import com.slopus.happy.ui.cards.CardListTags
+import com.slopus.happy.ui.connection.AgentSearchTags
+import com.slopus.happy.ui.node
+import com.slopus.happy.ui.setHappyContent
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.time.LocalDateTime
+import java.time.ZoneId
+
+/**
+ * The artifacts list against iOS's 497725441 (CardListLayoutTests,
+ * HostedArtifactsListTests): home's inset cards under date headings, the
+ * row's tile, title, kind and time where CardRowLayout puts them, search,
+ * the notes in place of rows, the hold menu and the pictures. Shots go to
+ * build/artifact-screens.
+ */
+@RunWith(AndroidJUnit4::class)
+@Config(qualifiers = PHONE)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class ArtifactsListTest {
+    @get:Rule val rule = createComposeRule()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    @After fun tearDown() = scope.cancel()
+
+    private val zone = ZoneId.systemDefault()
+    private fun at(text: String) = LocalDateTime.parse(text).atZone(zone).toInstant().toEpochMilli()
+    private val now = at("2026-11-02T15:00")
+
+    private fun summary(id: String, title: String, type: String, updated: String, entry: ArtifactFile? = ArtifactFile("index.md", "text/markdown", 1), fileCount: Int = 1, live: Boolean = false) =
+        ArtifactSummary(id, type, title, 2, entry, fileCount, live, at(updated), at(updated))
+
+    private val sample = listOf(
+        summary("a1", "Release notes", "markdown", "2026-11-02T09:41"),
+        summary("a2", "Dashboard", "html", "2026-11-02T08:05"),
+        summary("a3", "Onboarding screenshots on every size of phone, light and dark", "image_series", "2026-11-01T18:20", ArtifactFile("1.png", "image/png", 1), fileCount = 6),
+        summary("a4", "", "video", "2026-10-29T10:00", ArtifactFile("demo.mp4", "video/mp4", 1)),
+        summary("a5", "Waitlist", "html", "2026-10-12T10:00", live = true),
+        summary("a6", "Q3 report", "document", "2026-08-14T10:00", ArtifactFile("q3.pdf", "application/pdf", 1)),
+        summary("a7", "Old notes", "markdown", "2025-12-03T10:00"),
+    )
+
+    private fun shot(name: String) {
+        rule.waitForIdle()
+        val dir = File("build/artifact-screens").apply { mkdirs() }
+        File(dir, "$name.png").outputStream().use { rule.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    private fun show(state: ArtifactCatalogFeed.State, dark: Boolean = false, onOpen: (ArtifactSummary) -> Unit = {}, thumbnails: ArtifactThumbnails? = null) {
+        rule.setHappyContent(dark) { ArtifactsScreen(state, {}, onOpen, {}, thumbnails, clock = { now }) }
+        rule.waitForIdle()
+    }
+
+    private val loaded = ArtifactCatalogFeed.State(sample, loaded = true)
+
+    @Test fun headingsGroupTheRowsByWhenTheyChanged() {
+        show(loaded)
+        for (heading in listOf("TODAY", "YESTERDAY", "PREVIOUS 7 DAYS", "PREVIOUS 30 DAYS", "AUGUST", "DECEMBER 2025")) {
+            rule.onNodeWithText(heading).assertExists()
+        }
+        // Kind under the title; a series counts its files; the untitled are named so.
+        rule.onAllNodesWithText("Document").assertCountEquals(2)
+        rule.onNodeWithText("Images · 6").assertExists()
+        rule.onNodeWithText("Live page").assertExists()
+        rule.onNodeWithText("Untitled artifact").assertExists()
+        // The time today and yesterday, the weekday this week, the day and month this year, the whole date before.
+        rule.onNodeWithText("9:41 AM").assertExists()
+        rule.onNodeWithText("6:20 PM").assertExists()
+        rule.onNodeWithText("Thursday").assertExists()
+        rule.onNodeWithText("Aug 14").assertExists()
+        shot("artifacts-list")
+    }
+
+    @Test fun aRowStandsWhereCardRowLayoutPutsIt() {
+        show(loaded)
+        val heading = rule.onAllNodesWithTag(CardListTags.HEADING, useUnmergedTree = true)[0].bounds
+        val row = rule.onAllNodesWithTag(ArtifactsTags.ROW, useUnmergedTree = true)[0].bounds
+        val tile = rule.onAllNodesWithTag(CardListTags.LEADING, useUnmergedTree = true)[0].bounds
+        val title = rule.onAllNodesWithTag(CardListTags.TITLE, useUnmergedTree = true)[0].bounds
+        val trailing = rule.onAllNodesWithTag(CardListTags.TRAILING, useUnmergedTree = true)[0].bounds
+        val divider = rule.onAllNodesWithTag(CardListTags.DIVIDER, useUnmergedTree = true)[0].bounds
+        assertDp("the first heading is 36 tall", 36, heading.height)
+        assertDp("its card starts under it", heading.bottom, row.top)
+        assertDp("a row with a tile is at least 60", 60, row.height)
+        assertDp("the tile is 16 into a card 16 in", 32, tile.left)
+        assertDp("the tile is 40", 40, tile.width)
+        assertDp("centred in the row", (row.top + row.bottom) / 2, (tile.top + tile.bottom) / 2)
+        assertDp("the title 12 after it", 84, title.left)
+        assertDp("the time ends 16 inside the card", PHONE_WIDTH - 32, trailing.right)
+        assertDp("the hairline from the title's start", 84, divider.left)
+        assertDp("to the card's edge", PHONE_WIDTH - 16, divider.right)
+        assertDp("a hairline", (1f / 3f).dp, divider.height)
+    }
+
+    @Test fun aTapOpensAndAHoldOffersOpenAndCopyTitle() {
+        val opened = mutableListOf<String>()
+        show(loaded, onOpen = { opened += it.id })
+        rule.onNodeWithText("Dashboard").performClick()
+        assertEquals(listOf("a2"), opened)
+        rule.onNodeWithText("Release notes").performTouchInput { longClick() }
+        rule.waitForIdle()
+        shot("artifacts-menu")
+        rule.node(ArtifactsTags.MENU_COPY).performClick()
+        val clipboard = ApplicationProvider.getApplicationContext<Context>().getSystemService(ClipboardManager::class.java)
+        assertEquals("Release notes", clipboard.primaryClip!!.getItemAt(0).text.toString())
+        rule.onNodeWithText("Release notes").performTouchInput { longClick() }
+        rule.node(ArtifactsTags.MENU_OPEN).performClick()
+        assertEquals(listOf("a2", "a1"), opened)
+    }
+
+    @Test fun searchFindsEveryWordOfTheTitleOrKind() {
+        show(loaded)
+        rule.node(ArtifactsTags.SEARCH).performClick()
+        rule.node(AgentSearchTags.FIELD).performTextInput("web")
+        rule.waitUntil(5_000) { rule.onAllNodesWithTag(ArtifactsTags.ROW, useUnmergedTree = true).fetchSemanticsNodes().size == 1 }
+        rule.onNodeWithText("Dashboard").assertExists()
+        shot("artifacts-search")
+        rule.node(AgentSearchTags.CLEAR).performClick()
+        rule.node(AgentSearchTags.FIELD).performTextInput("zebra")
+        rule.waitUntil(5_000) { rule.onAllNodesWithText("No artifacts match.").fetchSemanticsNodes().isNotEmpty() }
+        rule.onAllNodesWithTag(ArtifactsTags.ROW, useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    @Test fun aNoteStandsInPlaceOfTheRows() {
+        var state by mutableStateOf(ArtifactCatalogFeed.State())
+        rule.setHappyContent { ArtifactsScreen(state, {}, {}, {}, clock = { now }) }
+        rule.onNodeWithText("Loading artifacts...").assertExists()
+        for ((next, words) in listOf(
+            ArtifactCatalogFeed.State(loaded = true) to "No artifacts yet. Ask an agent to make one.",
+            ArtifactCatalogFeed.State(loaded = true, unsupported = true) to "This Happy Agent doesn’t keep artifacts.",
+            ArtifactCatalogFeed.State(loaded = true, error = Problem.Said("offline")) to "Artifacts couldn’t be loaded. Check that your computer is on.",
+        )) {
+            state = next
+            rule.waitUntil(5_000) { rule.onAllNodesWithText(words).fetchSemanticsNodes().isNotEmpty() }
+        }
+        val note = rule.node(CardListTags.NOTE).bounds
+        assertDp("the note is centred in the column", (PHONE_WIDTH / 2f).dp, (note.left + note.right) / 2)
+        shot("artifacts-failed")
+    }
+
+    @Test fun picturesLandOverTheirTiles() {
+        val png = ByteArrayOutputStream().also { out ->
+            Bitmap.createBitmap(120, 80, Bitmap.Config.ARGB_8888).also { Canvas(it).drawColor(0xFF3A7BD5.toInt()) }.compress(Bitmap.CompressFormat.PNG, 100, out)
+        }.toByteArray()
+        val files = ArtifactClient(
+            AgentClient(
+                object : Transport {
+                    override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
+                        assertEquals(RequestCategory.File, category)
+                        return TransportResponse(200, body = png)
+                    }
+
+                    override suspend fun close() {}
+                },
+                "t",
+            ),
+        )
+        val pictures = listOf(summary("p1", "Chart", "image", "2026-11-02T10:00", ArtifactFile("chart.png", "image/png", png.size.toLong())))
+        show(ArtifactCatalogFeed.State(pictures, loaded = true), thumbnails = ArtifactThumbnails(files, scope))
+        rule.waitUntil(5_000) { rule.onAllNodesWithTag(ArtifactsTags.THUMBNAIL, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        val thumbnail = rule.node(ArtifactsTags.THUMBNAIL).bounds
+        assertDp("the picture covers the tile", 40, thumbnail.width)
+        assertTrue(thumbnail.left.value > 0)
+    }
+
+    @Test fun theListDark() {
+        show(loaded, dark = true)
+        shot("artifacts-list-dark")
+    }
+}

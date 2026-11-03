@@ -23,7 +23,8 @@ import androidx.compose.ui.unit.width
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.agent.AgentFeed
 import com.slopus.happy.agent.AgentLinkStatus
-import com.slopus.happy.artifacts.ArtifactRef
+import com.slopus.happy.artifacts.ArtifactCatalogFeed
+import com.slopus.happy.artifacts.ArtifactSummary
 import com.slopus.happy.chat.ChatMessage
 import com.slopus.happy.chat.ChatReduction
 import com.slopus.happy.chat.ChatSessionInfo
@@ -44,7 +45,6 @@ import com.slopus.happy.model.HomeModelFixtures.metadata
 import com.slopus.happy.model.HomeModelFixtures.session
 import com.slopus.happy.model.SessionListGrouping
 import com.slopus.happy.net.ConnectionStatus
-import com.slopus.happy.ui.artifacts.ArtifactListState
 import com.slopus.happy.ui.artifacts.ArtifactsScreen
 import com.slopus.happy.ui.artifacts.ArtifactsTags
 import com.slopus.happy.ui.assertDp
@@ -368,16 +368,18 @@ abstract class FoldableLayoutTest(
 
     @Test
     fun artifacts() {
-        val refs = listOf(
-            ArtifactRef("a1", 3, "markdown", "Release notes", true),
-            ArtifactRef("a2", 1, "html", "Dashboard", true),
-            ArtifactRef("a3", 2, "image", "Screenshots of the new onboarding flow on every size of phone", true),
+        val day = 86_400_000L
+        val now = System.currentTimeMillis()
+        val items = listOf(
+            ArtifactSummary("a1", "markdown", "Release notes", 3, null, createdAt = now, updatedAt = now),
+            ArtifactSummary("a2", "html", "Dashboard", 1, null, createdAt = now - day, updatedAt = now - day),
+            ArtifactSummary("a3", "image", "Screenshots of the new onboarding flow on every size of phone", 2, null, createdAt = now - 3 * day, updatedAt = now - 3 * day),
         )
-        show { ArtifactsScreen(ArtifactListState(refs, null, loaded = true), {}, {}, {}, {}) }
-        // The row's tag shares its node with its click, so its bounds are the column's; the title is 16 in.
+        show { ArtifactsScreen(ArtifactCatalogFeed.State(items, loaded = true), {}, {}, {}) }
+        // The cards stand on the column's keyline; the title is a card's 16, a tile and its 12 further in.
         val row = first(ArtifactsTags.ROW)
-        val title = DpRect(row.left + ContentTokens.inset, row.top, row.right - ContentTokens.inset, row.bottom)
-        assertOnKeylines("artifacts", glyph(ConversationScreenTags.BACK, 24.dp), null, title)
+        val card = DpRect(row.left + ContentTokens.inset, row.top, row.right - ContentTokens.inset, row.bottom)
+        assertOnKeylines("artifacts", glyph(ConversationScreenTags.BACK, 24.dp), null, card)
         assertRestsBelowFeather("artifacts", held = true)
         shot("artifacts")
     }

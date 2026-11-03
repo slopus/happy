@@ -88,13 +88,6 @@ class ArtifactsTest {
         assertTrue(ArtifactFile("clip.webm", "video/webm", 1).isVisual)
     }
 
-    @Test fun theCatalogReadsRowsAndItsCursor() {
-        val page = ArtifactListing.parse(obj("""{"artifacts":[{"id":"a1","title":"One","type":"html","latestVersion":4},{"id":"a2"},{"title":"no id"}],"nextPageCursor":"p2"}"""))
-        assertEquals(listOf(ArtifactRef("a1", 4, "html", "One", true), ArtifactRef("a2", 1, "", "", true)), page.items)
-        assertEquals("p2", page.next)
-        assertNull(ArtifactListing.parse(obj("""{"artifacts":[]}""")).next)
-    }
-
     @Test fun aWholeFileIsReadInRanges() = runBlocking {
         val bytes = ByteArray(ArtifactClient.RANGE_CHUNK * 2 + 10) { it.toByte() }
         val routes = Routes { _, range ->

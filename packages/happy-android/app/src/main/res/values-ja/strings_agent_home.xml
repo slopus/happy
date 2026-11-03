@@ -12,7 +12,6 @@
     <string name="agent_home_revoked">このスマートフォンは Happy Agent で削除されました。使うにはエージェントをもう一度接続してください。</string>
     <string name="agent_home_update_required">このエージェントには新しいバージョンの Happy が必要です。使うにはアプリを更新してください。</string>
     <string name="agent_artifacts_untitled">無題</string>
-    <string name="agent_artifacts_failed">アーティファクトを読み込めませんでした</string>
     <string name="agent_surface_add_todo">ToDo を追加</string>
     <string name="agent_surface_no_todos">まだ何もありません。</string>
     <string name="agent_surface_todo_done">完了</string>

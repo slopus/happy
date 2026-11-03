@@ -36,4 +36,22 @@
     <string name="link_menu_open_external_proxied">不经过智能体的网络</string>
     <string name="link_menu_copy">复制链接</string>
     <string name="link_menu_share">分享</string>
+
+    <string name="artifact_list_search">搜索工件</string>
+    <string name="artifact_list_empty">还没有工件。让智能体创建一个吧。</string>
+    <string name="artifact_list_no_matches">没有匹配的工件。</string>
+    <string name="artifact_list_unsupported">此 Happy Agent 不保存工件。</string>
+    <string name="artifact_list_unavailable">无法加载工件。请确认你的电脑已开机。</string>
+    <string name="artifact_list_open">打开</string>
+    <string name="artifact_list_copy_title">复制标题</string>
+    <string name="artifact_list_previous_7_days">前 7 天</string>
+    <string name="artifact_list_previous_30_days">前 30 天</string>
+    <string name="artifact_kind_live">实时页面</string>
+    <string name="artifact_kind_markdown">文档</string>
+    <string name="artifact_kind_html">网页</string>
+    <string name="artifact_kind_image">图片</string>
+    <string name="artifact_kind_image_series">图片组</string>
+    <string name="artifact_kind_video">视频</string>
+    <string name="artifact_kind_document">文件</string>
+    <string name="artifact_kind_unknown">工件</string>
 </resources>

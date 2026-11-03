@@ -12,7 +12,6 @@
     <string name="agent_home_revoked">Ten telefon został usunięty w Happy Agent. Połącz agenta ponownie, aby z niego korzystać.</string>
     <string name="agent_home_update_required">Ten agent wymaga nowszej wersji Happy. Zaktualizuj aplikację, aby z niego korzystać.</string>
     <string name="agent_artifacts_untitled">Bez tytułu</string>
-    <string name="agent_artifacts_failed">Nie udało się odczytać artefaktów</string>
     <string name="agent_surface_add_todo">Dodaj zadanie</string>
     <string name="agent_surface_no_todos">Na razie nic tu nie ma.</string>
     <string name="agent_surface_todo_done">zrobione</string>
