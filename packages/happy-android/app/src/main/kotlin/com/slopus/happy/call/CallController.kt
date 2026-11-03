@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.SystemClock
 import com.slopus.happy.BuildConfig
 import com.slopus.happy.agent.AgentSessions
+import com.slopus.happy.ui.conversation.failureText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -73,7 +74,7 @@ class CallController(
         close()
         val account = sessions.session(connection) ?: return
         connectionId = connection
-        val targets = ConnectionCallTargets(account) { screen }
+        val targets = ConnectionCallTargets(account, appContext.resources::failureText) { screen }
         val context = CallContext(targets)
         val call = CallSession(scope, grants, permission = { stopRelayVoice(); microphone() }, now = SystemClock::elapsedRealtime, allowance = allowance) { grant, request, events ->
             ElevenLabsCallConnection.connect(appContext, scope, grant, request, events)
@@ -84,6 +85,12 @@ class CallController(
         this.context = context
         session = call
         call.onLevel = { level -> if (session === call) mutableLevel.value = level }
+        call.onOverflow = {
+            calling.launch {
+                val update = context.resync()
+                if (session === call) call.deliver(update)
+            }
+        }
         // Each callback belongs to this call: once it ends, or another one starts, what it still says goes nowhere.
         targets.onChange = { state ->
             if (session === call) calling.launch {
@@ -94,16 +101,26 @@ class CallController(
         account.feed.onEach { feed ->
             if (session === call) {
                 val update = context.directoryChanged(CallTarget.from(feed))
-                if (session === call) call.deliver(update)
+                if (session === call) {
+                    call.deliver(update)
+                    hold(context.followed(), targets)
+                }
             }
         }.launchIn(calling)
         call.state.onEach { if (session === call) mutableState.value = it }.launchIn(calling)
         focus = targets.focusedNow
-        focus?.let { calling.launch { targets.follow(it, true) } }
-        call.start(language = null, context = { context.initial() }, tool = { context.handle(it) })
+        call.start(language = null, context = {
+            context.initial().also { hold(context.followed(), targets) }
+        }, tool = { context.handle(it) })
     }
 
-    /** The screen on top changed: the conversation in front is the call's focus. */
+    /** Exactly the conversations the call hears from stay read: one that dropped out of the last visited is let go. */
+    private suspend fun hold(followed: List<String>, targets: ConnectionCallTargets) {
+        for (id in targets.following) if (id !in followed) targets.follow(id, false)
+        for (id in followed) if (id !in targets.following) targets.follow(id, true)
+    }
+
+    /** The screen on top changed: the conversation in front is the call's focus, and the latest it has visited. */
     fun topDidChange() {
         val targets = targets ?: return
         val context = context ?: return
@@ -111,15 +128,13 @@ class CallController(
         if (!state.value.isLive) return
         val now = targets.focusedNow
         if (now == focus) return
-        val old = focus
         focus = now
         val calling = calling ?: return
         calling.launch {
-            now?.let { targets.follow(it, true) }
             val update = context.focusChanged(now)
-            if (session === call) call.deliver(update)
-            // The old focus stays read if the call still follows it.
-            if (old != null && old !in context.followed()) targets.follow(old, false)
+            if (session !== call) return@launch
+            call.deliver(update)
+            hold(context.followed(), targets)
         }
     }
 

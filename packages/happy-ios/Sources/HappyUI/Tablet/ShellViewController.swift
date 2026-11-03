@@ -70,6 +70,12 @@ public final class ShellViewController: UIViewController {
     /// whether it shows. While it does, the content starts at its foot.
     let callBar = CallBarView()
     private(set) var callBarShown = false
+    /// The bar's own window, over whatever the app presents (`CallBarWindow`).
+    private var callWindow: CallBarWindow?
+    private lazy var callPresentations = CallPresentations(bar: callBar, root: { [weak self] in self }, foot: { [weak self] in
+        guard let self, self.callBarShown else { return 0 }
+        return self.callBar.barHeight
+    })
     /// What fills the window under the bar: `phone` or the split.
     private var content: UIViewController?
 
@@ -142,7 +148,16 @@ public final class ShellViewController: UIViewController {
         child.didMove(toParent: self)
         content = child
         callBar.isHidden = true
-        view.addSubview(callBar)
+    }
+
+    /// The window the bar is drawn in, made with the first call.
+    private func barWindow() -> CallBarWindow? {
+        if let callWindow { return callWindow }
+        guard let scene = view.window?.windowScene else { return nil }
+        let window = CallBarWindow(scene: scene, bar: callBar)
+        window.host.onLayout = { [weak self] in self?.placeCallBar() }
+        callWindow = window
+        return window
     }
 
     // MARK: The call's bar
@@ -156,7 +171,9 @@ public final class ShellViewController: UIViewController {
     func setCallBarShown(_ shown: Bool, animated: Bool) {
         guard shown != callBarShown else { return }
         callBarShown = shown
-        view.bringSubviewToFront(callBar)
+        let window = barWindow()
+        window?.host.shown = shown
+        if shown { window?.isHidden = false }
         placeCallBar()
         let hidden = CGAffineTransform(translationX: 0, y: CallBarMotion.hiddenOffset(barHeight: callBar.barHeight))
         let slides = animated && !UIAccessibility.isReduceMotionEnabled
@@ -171,12 +188,15 @@ public final class ShellViewController: UIViewController {
             self.layoutCallBar()
             self.content?.view.layoutIfNeeded()
             self.setNeedsStatusBarAppearanceUpdate()
+            // What is presented over the app moves with the rest.
+            self.callPresentations.setActive(shown)
         }
         let done: (Bool) -> Void = { _ in
             guard !self.callBarShown else { return }
             self.callBar.isHidden = true
             self.callBar.transform = .identity
             self.callBar.alpha = 1
+            self.callWindow?.isHidden = true
         }
         guard animated, view.window != nil else {
             changes()
@@ -193,6 +213,7 @@ public final class ShellViewController: UIViewController {
         placeCallBar()
         let frame = CallBarLayout.content(in: view.bounds, barHeight: callBarShown ? callBar.barHeight : 0)
         if content.view.frame != frame { content.view.frame = frame }
+        if callBarShown { callPresentations.update() }
     }
 
     /// The bar alone, where it is when shown; a transform slides it.

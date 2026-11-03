@@ -45,6 +45,14 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import com.slopus.happy.camera.CameraBinding
 import com.slopus.happy.camera.CameraFailure
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import com.slopus.happy.HappyApplication
+import com.slopus.happy.ui.call.CallFrame
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.launch
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.ProvideWindowLayout
 import com.slopus.happy.ui.theme.HappyTheme
@@ -57,16 +65,33 @@ import java.util.concurrent.Executors
  * reads; close or system back is a cancel.
  */
 class QrScannerActivity : ComponentActivity() {
+    @OptIn(ExperimentalCoroutinesApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
         )
         super.onCreate(savedInstanceState)
+        // Opened from the app, whose graph is built by now: the app stays in
+        // the foreground while it shows, and a voice call keeps its bar on top.
+        val graph = (application as HappyApplication).graphReady.takeIf { it.isCompleted }?.getCompleted()
+        if (graph != null) {
+            lifecycleScope.launch {
+                repeatOnLifecycle(Lifecycle.State.STARTED) {
+                    graph.setForeground(true)
+                    try { awaitCancellation() } finally { graph.setForeground(false) }
+                }
+            }
+        }
         setContent {
             HappyTheme(preference = ThemePreference.Dark) {
                 ProvideWindowLayout {
-                    QrScannerRoute(scan = Contract.request(intent), onResult = ::finishWith)
+                    val scan = Contract.request(intent)
+                    if (graph != null) {
+                        CallFrame(graph.calls) { QrScannerRoute(scan = scan, onResult = ::finishWith) }
+                    } else {
+                        QrScannerRoute(scan = scan, onResult = ::finishWith)
+                    }
                 }
             }
         }

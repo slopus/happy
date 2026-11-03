@@ -1,50 +1,55 @@
 import Foundation
 import HappyWire
 
-/// The hosted agent's five client tools. Their schemas live here, the one
-/// place both the hosted agent's configuration and this phone read them
-/// from; the relay's tools (`sendMessageToSession`, `processPermissionRequest`)
-/// are not among them and never run for this agent. There is no tool for
-/// permissions or questions: those stay in the app.
+/// The hosted agent's four client tools. Their schemas and descriptions
+/// live here, the one place both the hosted agent's configuration and this
+/// phone read them from; the relay's tools (`sendMessageToSession`,
+/// `processPermissionRequest`) are not among them and never run for this
+/// agent. There is no tool for permissions or questions, and none to choose
+/// what the call hears: it hears the last conversations the person visited.
 public enum CallTool: String, CaseIterable, Sendable {
     case listSessions
     case getSessionContext
     case openSession
-    case setSessionWatch
     case sendMessage
+
+    /// The client tool's description, as the hosted agent shows it to the model.
+    public var summary: String {
+        switch self {
+        case .listSessions:
+            "List the person's conversations (tasks, bots and chats) with their targetRef, title, kind and status. query keeps those whose title contains it as a case-insensitive substring. Page with nextCursor."
+        case .getSessionContext:
+            "Read one conversation: whether it is working or needs the person, its last two finished turns (the person's message and the agent's final answer), and the person's latest message if nothing has answered it yet. It doesn't open the conversation or change what you hear from."
+        case .openSession:
+            "Show a conversation on the person's screen. Like any conversation they open, it joins the four most recently visited, whose new replies you hear."
+        case .sendMessage:
+            "Send the person's message to a conversation's agent, exactly as given (at most 8 KiB of UTF-8). It doesn't open the conversation. \"queued\" means queued on the person's device, not confirmed delivered or read; after \"uncertain\", never send it again."
+        }
+    }
 
     /// The parameters, as JSON Schema for the hosted agent's client tool.
     public var parameters: JSONValue {
         func string(_ description: String) -> JSONValue {
             .object(["type": .string("string"), "description": .string(description)])
         }
-        let revision: JSONValue = .object(["type": .string("integer"), "description": .string("The context's focusRevision this request was made under.")])
+        let revision: JSONValue = .object(["type": .string("integer"), "description": .string("The latest focusRevision you have seen.")])
+        let target = string("A targetRef from the context or listSessions.")
         func object(_ properties: [String: JSONValue], required: [String]) -> JSONValue {
             .object(["type": .string("object"), "properties": .object(properties), "required": .array(required.map(JSONValue.string))])
         }
         switch self {
         case .listSessions:
             return object([
-                "query": string("Words in the conversation's name, or empty for all."),
-                "cursor": string("The nextCursor of the previous page."),
+                "query": string("A case-insensitive substring of the title; omit for all."),
+                "cursor": string("The nextCursor of the previous page; omit for the first."),
             ], required: [])
         case .getSessionContext:
-            return object([
-                "targetRef": string("A targetRef from the context or listSessions."),
-            ], required: ["targetRef"])
+            return object(["targetRef": target], required: ["targetRef"])
         case .openSession:
-            return object([
-                "targetRef": string("The conversation to show on screen."),
-                "focusRevision": revision,
-            ], required: ["targetRef", "focusRevision"])
-        case .setSessionWatch:
-            return object([
-                "targetRef": string("The conversation to follow, or stop following."),
-                "enabled": .object(["type": .string("boolean"), "description": .string("true to follow, false to stop.")]),
-            ], required: ["targetRef", "enabled"])
+            return object(["targetRef": target, "focusRevision": revision], required: ["targetRef", "focusRevision"])
         case .sendMessage:
             return object([
-                "targetRef": string("The conversation to send to."),
+                "targetRef": target,
                 "text": string("The person's message, exactly as they asked to send it."),
                 "focusRevision": revision,
             ], required: ["targetRef", "text", "focusRevision"])

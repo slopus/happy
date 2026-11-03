@@ -21,7 +21,7 @@ object CallProbe {
     val tools: StateFlow<List<ToolRun>> = mutableTools.asStateFlow()
 
     private val mutableSent = MutableStateFlow<List<Sent>>(emptyList())
-    /** Every contextual update and prompt sent, by UTF-8 size. */
+    /** Every contextual update (and the device check's typed turns) sent, by UTF-8 size. */
     val sent: StateFlow<List<Sent>> = mutableSent.asStateFlow()
 
     fun sent(kind: String, text: String) {

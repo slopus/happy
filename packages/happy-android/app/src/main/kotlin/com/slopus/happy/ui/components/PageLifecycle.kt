@@ -18,6 +18,7 @@ import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.slopus.happy.ui.call.WindowCallFrame
 import androidx.lifecycle.compose.currentStateAsState
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.CoroutineScope
@@ -30,11 +31,18 @@ fun PageBackHandler(enabled: Boolean = true, onBack: () -> Unit) {
     androidx.activity.compose.BackHandler(enabled && LocalPageActive.current, onBack)
 }
 
-/** A covered page retains its dialog state, not a separate window over the foreground page. */
+/**
+ * A covered page retains its dialog state, not a separate window over the
+ * foreground page. One edge to edge covers the app's window, call bar
+ * included, so it carries the bar itself ([WindowCallFrame]); a centred card
+ * leaves the bar where it is, under its dim.
+ */
 @Composable
 fun PageDialog(onDismissRequest: () -> Unit, properties: DialogProperties = DialogProperties(), content: @Composable () -> Unit) {
     TrackOverlay(true, onDismissRequest)
-    if (LocalPageActive.current) Dialog(onDismissRequest, properties, content)
+    if (LocalPageActive.current) Dialog(onDismissRequest, properties) {
+        if (properties.decorFitsSystemWindows) content() else WindowCallFrame(content)
+    }
 }
 
 @Composable

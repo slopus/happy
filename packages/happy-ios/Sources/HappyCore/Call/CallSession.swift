@@ -39,16 +39,14 @@ public protocol CallConnection: AnyObject {
     func setMuted(_ muted: Bool) async throws
     /// Context the agent reads without answering.
     func update(_ context: String) async throws
-    /// Something the agent should say something about.
-    func say(_ prompt: String) async throws
 }
 
 /// One call's life, from the tap to its end: the grant and the device's
 /// free time before anything else (a call that can't have either ends at
 /// once, without asking for the microphone), then the microphone, then the
-/// connection. Context and prompts that come before it is live wait for
-/// it; prompts wait for both sides to be quiet. A live call is counted
-/// against the allowance as it goes, and ends when that runs out.
+/// connection. Context that comes before it is live waits for it, up to
+/// 32 KB; past that it is let go, never cut, and put right in one go. A live call is counted against the allowance as it
+/// goes, and ends when that runs out.
 @MainActor
 public final class CallSession {
     public typealias Connect = @MainActor (CallGrant, CallStart, CallEvents) async throws -> any CallConnection
@@ -59,6 +57,9 @@ public final class CallSession {
     public var onState: (@MainActor (CallState) -> Void)?
     /// The waves' level, from what the call reported (`CallLevel`).
     public var onLevel: (@MainActor (Double) -> Void)?
+    /// Context waiting for the call went past `pendingBytes` and was let go
+    /// whole: the call's context sends what puts it right (`CallContext.resync`).
+    public var onOverflow: (@MainActor () -> Void)?
 
     private let grants: any CallGrantSource
     private let allowance: CallAllowance?
@@ -75,7 +76,6 @@ public final class CallSession {
     private var changingMute = false
     private var since: Double = 0
     private var pendingContext: [String] = []
-    private var pendingPrompts: [String] = []
     private var counted: (id: String, start: Double)?
     private var counting: Task<Void, Never>?
 
@@ -131,7 +131,6 @@ public final class CallSession {
                     self.activity = activity
                     self.onLevel?(CallLevel.level(activity: activity, vad: vad, muted: self.muted))
                     if self.connection != nil { self.state = .active(activity, muted: self.muted, since: self.since) }
-                    if activity == .listening { self.flushPrompts() }
                 }, disconnected: { [weak self] in
                     guard let self, current == self.generation else { return }
                     self.end(.connection)
@@ -151,7 +150,6 @@ public final class CallSession {
                 state = .active(activity, muted: false, since: since)
                 count(current)
                 flushContext()
-                flushPrompts()
             } catch is CancellationError {
                 if current == generation { state = .idle }
             } catch APIError.unauthorized {
@@ -204,7 +202,6 @@ public final class CallSession {
         connection = nil
         lease = nil
         pendingContext.removeAll()
-        pendingPrompts.removeAll()
         activity = .listening
         muted = false
         changingMute = false
@@ -229,13 +226,21 @@ public final class CallSession {
         }
     }
 
-    /// Context and prompts from the call's context; kept until it is live.
+    /// The most context kept while the call isn't live yet.
+    public static let pendingBytes = 32 * 1024
+
+    /// Context from the call's context; kept until it is live. Past
+    /// `pendingBytes` none of it is kept, rather than words with a hole in
+    /// them: `onOverflow` asks for what puts the agent right instead.
     public func deliver(_ update: CallUpdate) {
         guard state.isLive, !update.isEmpty else { return }
         pendingContext += update.context
-        pendingPrompts += update.prompts
+        if pendingContext.reduce(0, { $0 + $1.utf8.count + 1 }) > Self.pendingBytes {
+            pendingContext.removeAll()
+            onOverflow?()
+            return
+        }
         flushContext()
-        flushPrompts()
     }
 
     private func flushContext() {
@@ -245,18 +250,6 @@ public final class CallSession {
         let current = generation
         Task {
             do { try await connection.update(text) }
-            catch { if current == generation { end(.connection) } }
-        }
-    }
-
-    private func flushPrompts() {
-        guard activity == .listening, let connection, pendingContext.isEmpty, !pendingPrompts.isEmpty else { return }
-        let text = pendingPrompts.joined(separator: "\n")
-        pendingPrompts.removeAll()
-        let current = generation
-        Task {
-            guard current == generation else { return }
-            do { try await connection.say(text) }
             catch { if current == generation { end(.connection) } }
         }
     }

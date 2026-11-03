@@ -44,9 +44,10 @@ class ElevenLabsCallConnection private constructor(
         session.sendContextualUpdate(context)
     }
 
-    override fun say(prompt: String) {
-        if (com.slopus.happy.BuildConfig.DEBUG) CallProbe.sent("prompt", prompt)
-        session.sendUserMessage(prompt)
+    /** The person's turn typed rather than spoken: the device check's synthetic input, never the app's. */
+    fun type(text: String) {
+        if (com.slopus.happy.BuildConfig.DEBUG) CallProbe.sent("typed", text)
+        session.sendUserMessage(text)
     }
 
     private fun answer(call: CallToolCall, events: CallEvents) {

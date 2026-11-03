@@ -492,12 +492,18 @@ class AppGraph(
         accountState.value?.requestSync()
     }
 
-    /** Whether the app is in the foreground (MainActivity started). */
+    /** Whether the app is in the foreground (one of its activities started). */
     val isForeground: StateFlow<Boolean> = foreground.asStateFlow()
+    private var started = 0
 
-    /** The app came to the foreground or left it (MainActivity onStart/onStop). */
+    /**
+     * One of the app's activities started or stopped (MainActivity, the QR
+     * scanner). Going from one to the other, the next starts before the last
+     * stops, so the app stays in the foreground throughout. Main thread.
+     */
     fun setForeground(value: Boolean) {
-        foreground.value = value
+        started = (started + if (value) 1 else -1).coerceAtLeast(0)
+        foreground.value = started > 0
     }
 
     /** Each agent connection's live link and cached home (AgentSessions). */

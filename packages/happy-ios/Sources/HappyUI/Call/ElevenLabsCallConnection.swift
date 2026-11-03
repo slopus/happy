@@ -91,13 +91,6 @@ final class ElevenLabsCallConnection: CallConnection {
         try await conversation.updateContext(context)
     }
 
-    func say(_ prompt: String) async throws {
-        #if DEBUG
-        CallProbe.sent("prompt", prompt)
-        #endif
-        try await conversation.sendMessage(prompt)
-    }
-
     @MainActor
     private final class Teardown {
         private var finished = false

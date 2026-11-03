@@ -39,6 +39,8 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.systemBars
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -57,6 +59,8 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -161,9 +165,28 @@ object CallBarTags {
 fun CallFrame(calls: CallController, content: @Composable () -> Unit) =
     CallFrame(calls.state, calls.level, calls::toggleMute, calls::close, content)
 
+/** What a [CallFrame] shows, for the windows over it to show the same ([WindowCallFrame]). */
+class CallFrameSource(val state: StateFlow<CallState>, val level: StateFlow<Float>, val onMute: () -> Unit, val onEnd: () -> Unit)
+
+/** The call the window under this one shows its bar for, if any. */
+val LocalCallFrame = staticCompositionLocalOf<CallFrameSource?> { null }
+
+/**
+ * A full-window dialog's content under the same call bar as the app's
+ * window, which the dialog's window covers ([com.slopus.happy.ui.components.PageDialog]
+ * puts every edge-to-edge dialog in one). Outside a [CallFrame] it is the
+ * content alone.
+ */
+@Composable
+fun WindowCallFrame(content: @Composable () -> Unit) {
+    val source = LocalCallFrame.current ?: return content()
+    CallFrame(source.state, source.level, source.onMute, source.onEnd, content)
+}
+
 /** [CallFrame] over a call's [calls] state and waves' [level]. */
 @Composable
 fun CallFrame(calls: StateFlow<CallState>, level: StateFlow<Float>, onMute: () -> Unit, onEnd: () -> Unit, content: @Composable () -> Unit) {
+    val source = remember(calls, level, onMute, onEnd) { CallFrameSource(calls, level, onMute, onEnd) }
     val state by calls.collectAsStateWithLifecycle()
     val density = LocalDensity.current
     val statusTop = with(density) { WindowInsets.statusBars.getTop(this).toDp() }
@@ -198,17 +221,28 @@ fun CallFrame(calls: StateFlow<CallState>, level: StateFlow<Float>, onMute: () -
                 .fillMaxWidth()
                 .consumeWindowInsets(PaddingValues(top = min(shown, statusTop)))
                 .testTag(CallBarTags.CONTENT),
-        ) { content() }
+        ) { CompositionLocalProvider(LocalCallFrame provides source, content = content) }
     }
 }
 
-/** The status bar's icons: light while the bar is under them, the theme's otherwise. */
+/**
+ * The status bar's icons: light while the bar is under them, the theme's
+ * otherwise. A dialog's window keeps the icons it chose: light ones are lent
+ * while the bar shows and what it had is given back.
+ */
 @Composable
 private fun StatusIcons(lightOverBar: Boolean) {
     val dark = HappyTheme.colors.dark
-    val window = LocalContext.current.activity()?.window ?: return
+    val dialog = (LocalView.current.parent as? DialogWindowProvider)?.window
+    val window = dialog ?: LocalContext.current.activity()?.window ?: return
     DisposableEffect(window, lightOverBar, dark) {
         val controller = WindowCompat.getInsetsController(window, window.decorView)
+        if (dialog != null) {
+            if (!lightOverBar) return@DisposableEffect onDispose {}
+            val before = controller.isAppearanceLightStatusBars
+            controller.isAppearanceLightStatusBars = false
+            return@DisposableEffect onDispose { controller.isAppearanceLightStatusBars = before }
+        }
         controller.isAppearanceLightStatusBars = !lightOverBar && !dark
         onDispose { controller.isAppearanceLightStatusBars = !dark }
     }

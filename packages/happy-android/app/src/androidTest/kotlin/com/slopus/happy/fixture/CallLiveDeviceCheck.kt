@@ -17,7 +17,6 @@ import com.slopus.happy.agent.AgentFeedSection
 import com.slopus.happy.agent.AgentLinkStatus
 import com.slopus.happy.agent.ConversationKind
 import com.slopus.happy.call.CallAgent
-import com.slopus.happy.call.CallConnection
 import com.slopus.happy.call.CallContext
 import com.slopus.happy.call.CallMessage
 import com.slopus.happy.call.CallProbe
@@ -116,7 +115,7 @@ class CallLiveDeviceCheck {
         val context = CallContext(targets)
         val level = MutableStateFlow(0f)
         lateinit var session: CallSession
-        var connection: CallConnection? = null
+        var connection: ElevenLabsCallConnection? = null
         rule.runOnUiThread { rule.activity.enableEdgeToEdge() }
         rule.setContent {
             val scope = rememberCoroutineScope()
@@ -145,7 +144,7 @@ class CallLiveDeviceCheck {
             until(15_000) { CallProbe.lines.value.any { it.role == "agent" } }
             prompts.forEachIndexed { index, prompt ->
                 val before = CallProbe.lines.value.count { it.role == "agent" }
-                rule.runOnUiThread { connection?.say(prompt) }
+                rule.runOnUiThread { connection?.type(prompt) }
                 CallProbe.line("user", prompt)
                 until(30_000) { CallProbe.lines.value.count { it.role == "agent" } > before }
                 until(3_000) { false }

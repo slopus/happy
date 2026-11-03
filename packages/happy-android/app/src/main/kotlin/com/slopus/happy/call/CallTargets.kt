@@ -7,6 +7,7 @@ import com.slopus.happy.conversation.AskPhase
 import com.slopus.happy.conversation.ConversationRow
 import com.slopus.happy.conversation.ConversationState
 import com.slopus.happy.conversation.Delivery
+import com.slopus.happy.conversation.FailureReason
 
 /** One conversation a call can talk about: a bot, a task or another conversation of the connection the call is bound to. */
 data class CallTarget(
@@ -74,13 +75,33 @@ data class CallMessage(
 }
 
 /**
- * What the call knows of one conversation: its public words and whether it
- * is working, waits for the person, and can take a message. Never its tools,
- * reasoning, files, questions' contents or drafts.
+ * One finished turn of a conversation: the person's message that started it
+ * and the agent's final answer, as the turn's copy button copies it
+ * ([ConversationRow.TurnEnd.copyText]), never its commentary or tool output.
+ */
+data class CallTurn(
+    val id: String,
+    val user: String? = null,
+    val reply: String? = null,
+    /** `completed`, `error`, `abort`, `steering` or `compaction`. */
+    val ended: String = "completed",
+    /** Why it stopped, for one that ended in an error. */
+    val error: String? = null,
+)
+
+/**
+ * What the call knows of one conversation: its finished turns, the person's
+ * message still waiting for an answer, the agent's words as they come, and
+ * whether it is working, waits for the person and can take a message. Never
+ * its tools, reasoning, files, questions' contents or drafts.
  */
 data class CallTargetState(
     val target: CallTarget,
+    /** Every public message, the agent's still being written included (`final` false): what the live words are read from. */
     val messages: List<CallMessage> = emptyList(),
+    val turns: List<CallTurn> = emptyList(),
+    /** The person's latest message, when no finished turn answers it. */
+    val unanswered: CallMessage? = null,
     val working: Boolean = false,
     val needsInput: Boolean = false,
     /** It has been read and takes messages. */
@@ -93,10 +114,18 @@ data class CallTargetState(
         /**
          * A conversation's state as the call reads it: the person's and the
          * agent's words only; the agent's last words while it works are not
-         * final. A question that waits is a flag, never its words.
+         * final. A question that waits is a flag, never its words. A run's
+         * rows come together, its turn end after them, so a turn is what
+         * came since the previous turn end: its first message of the
+         * person's, its answer, and the failure that ended it, worded by
+         * [failureText].
          */
-        fun from(state: ConversationState, target: CallTarget): CallTargetState {
+        fun from(state: ConversationState, target: CallTarget, failureText: (FailureReason) -> String = { "" }): CallTargetState {
             val messages = ArrayList<CallMessage>()
+            val turns = ArrayList<CallTurn>()
+            var asked: String? = null
+            var failure: String? = null
+            var pending: CallMessage? = null
             var needsInput = state.question != null
             for (row in state.rows) {
                 when (row) {
@@ -106,7 +135,10 @@ data class CallTargetState(
                             Delivery.Pending, Delivery.Sent -> CallMessage.Delivery.Accepted
                             is Delivery.Failed -> CallMessage.Delivery.Failed
                         }
-                        messages += CallMessage(row.messageId, CallMessage.Role.User, row.text, row.createdAt.takeIf { it > 0 }, delivery = delivery)
+                        val message = CallMessage(row.messageId, CallMessage.Role.User, row.text, row.createdAt.takeIf { it > 0 }, delivery = delivery)
+                        messages += message
+                        if (asked == null) asked = row.text
+                        pending = message
                     }
                     is ConversationRow.Text -> {
                         val text = row.current
@@ -119,6 +151,13 @@ data class CallTargetState(
                         } else {
                             messages += CallMessage(id, CallMessage.Role.Assistant, text)
                         }
+                    }
+                    is ConversationRow.Failure -> failure = failureText(row.reason)
+                    is ConversationRow.TurnEnd -> {
+                        turns += CallTurn(row.turn, asked, row.copyText, row.reason, failure.takeIf { row.reason == "error" })
+                        asked = null
+                        failure = null
+                        pending = null
                     }
                     is ConversationRow.Ask -> if (row.phase != AskPhase.Answered) needsInput = true
                     else -> Unit
@@ -136,6 +175,8 @@ data class CallTargetState(
             return CallTargetState(
                 target = target.copy(status = status),
                 messages = messages,
+                turns = turns,
+                unanswered = pending,
                 working = state.working,
                 needsInput = needsInput,
                 writable = state.created && state.loaded && state.error == null && state.canSend,

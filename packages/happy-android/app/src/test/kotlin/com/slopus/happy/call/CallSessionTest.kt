@@ -126,7 +126,7 @@ class CallSessionTest {
     }
 
     @Test
-    fun aLiveCallGetsItsContextOnceItConnectsAndPromptsWhenQuiet() {
+    fun aLiveCallGetsItsContextOnceItConnectsAndNeverAPrompt() {
         val connection = FakeCallConnection()
         var started: CallStart? = null
         var events: CallEvents? = null
@@ -139,11 +139,9 @@ class CallSessionTest {
         assertEquals(CallStart("""{"schema":1}""", "pl"), started)
         assertEquals(listOf("early"), connection.updates)
         events!!.activity(CallActivity.AgentSpeaking, 0f, null)
-        call.deliver(CallUpdate(listOf("c1"), listOf("p1")))
-        assertEquals(listOf("early", "c1"), connection.updates)
-        assertTrue(connection.prompts.isEmpty())
+        call.deliver(CallUpdate(listOf("c1")))
         events!!.activity(CallActivity.Listening, 0f, null)
-        assertEquals(listOf("p1"), connection.prompts)
+        assertEquals(listOf("early", "c1"), connection.updates)
         call.toggleMute()
         test.runCurrent()
         assertEquals(CallState.Active(CallActivity.Listening, true, 42), call.state.value)
@@ -169,11 +167,32 @@ class CallSessionTest {
         val heard = levels.size
         events!!.activity(CallActivity.AgentSpeaking, 1f, 1f)
         events!!.disconnected()
-        call.deliver(CallUpdate(listOf("late"), listOf("late")))
+        call.deliver(CallUpdate(listOf("late")))
         assertEquals(CallState.Idle, call.state.value)
         assertEquals(heard, levels.size)
         assertTrue(connection.updates.isEmpty())
-        assertTrue(connection.prompts.isEmpty())
+    }
+
+    @Test
+    fun contextTooMuchForTheWaitIsLetGoWholeAndAskedFor() {
+        val connection = FakeCallConnection()
+        val gate = CompletableDeferred<Unit>()
+        val call = session { _, _, _ -> gate.await(); connection }
+        var overflows = 0
+        call.onOverflow = { overflows += 1 }
+        call.start(null, { "" }, { CallToolResult("") })
+        test.runCurrent()
+        val line = "x".repeat(1023)
+        repeat(40) { call.deliver(CallUpdate(listOf(line))) }
+        assertEquals(1, overflows)
+        call.deliver(CallUpdate(listOf("resync")))
+        gate.complete(Unit)
+        test.runCurrent()
+        // What was over the limit went whole; what came after it waits on.
+        val lines = connection.updates.single().split("\n")
+        assertEquals(8, lines.size)
+        assertEquals("resync", lines.last())
+        call.stop()
     }
 
     @Test
@@ -233,13 +252,11 @@ class FakeGrants(private val result: CallGrantResult) : CallGrants {
 
 class FakeCallConnection : CallConnection {
     val updates = ArrayList<String>()
-    val prompts = ArrayList<String>()
     var muted = false
     var ended = false
     override suspend fun end() { ended = true }
     override suspend fun setMuted(muted: Boolean) { this.muted = muted }
     override fun update(context: String) { updates += context }
-    override fun say(prompt: String) { prompts += prompt }
 }
 
 class MemoryUsageStore : CallUsageStore {

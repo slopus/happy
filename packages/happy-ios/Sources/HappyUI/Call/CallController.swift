@@ -86,6 +86,13 @@ final class CallController {
             guard let self, let call, self.session === call else { return }
             self.show(state)
         }
+        call.onOverflow = { [weak self, weak call] in
+            Task {
+                let update = await context.resync()
+                guard let self, let call, self.session === call else { return }
+                self.deliver(update)
+            }
+        }
         call.onLevel = { [weak self, weak call] level in
             guard let self, let call, self.session === call else { return }
             self.shell?.callBar.update(level: level)
@@ -103,31 +110,42 @@ final class CallController {
             guard let self, let call, self.session === call else { return }
             Task {
                 let update = await context.directoryChanged(rows)
-                if self.session === call { self.deliver(update) }
+                guard self.session === call else { return }
+                self.deliver(update)
+                await Self.hold(await context.followed, in: targets)
             }
         }
         focus = targets.focusedNow
-        if let focus { Task { await targets.follow(focus, true) } }
-        call.start(language: nil, context: { await context.initial() }, tool: { call in await context.handle(call) })
+        call.start(language: nil, context: {
+            let initial = await context.initial()
+            await Self.hold(await context.followed, in: targets)
+            return initial
+        }, tool: { call in await context.handle(call) })
         // A call that can't start says so in the bar; one that can starts connecting there.
         show(call.state)
     }
 
-    /// The screen on top changed: the conversation in front is the call's focus.
+    /// The screen on top changed: the conversation in front is the call's
+    /// focus, and the latest it has visited.
     func topDidChange() {
         guard state.isLive, let targets, let context else { return }
         let now = targets.focusedNow
         guard now != focus else { return }
-        let old = focus
         focus = now
         let call = session
         Task {
-            if let now { await targets.follow(now, true) }
             let update = await context.focusChanged(to: now)
-            if session === call { deliver(update) }
-            // The old focus stays read if the call still follows it.
-            if let old, await !context.followed.contains(old) { await targets.follow(old, false) }
+            guard session === call else { return }
+            deliver(update)
+            await Self.hold(await context.followed, in: targets)
         }
+    }
+
+    /// Exactly the conversations the call hears from stay read: one that
+    /// dropped out of the last visited is let go.
+    private static func hold(_ followed: [String], in targets: SessionCallTargets) async {
+        for id in targets.following where !followed.contains(id) { await targets.follow(id, false) }
+        for id in followed where !targets.following.contains(id) { await targets.follow(id, true) }
     }
 
     /// The window's connection changed: a call bound to another one ends.

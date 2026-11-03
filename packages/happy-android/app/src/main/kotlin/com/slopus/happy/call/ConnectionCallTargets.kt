@@ -3,6 +3,7 @@ package com.slopus.happy.call
 import com.slopus.happy.agent.AgentSession
 import com.slopus.happy.conversation.Conversation
 import com.slopus.happy.conversation.ConversationApi
+import com.slopus.happy.conversation.FailureReason
 import com.slopus.happy.ui.conversation.conversationRequest
 import com.slopus.happy.ui.conversation.signalsFor
 import kotlinx.coroutines.CoroutineScope
@@ -33,6 +34,8 @@ interface CallScreen {
  */
 class ConnectionCallTargets(
     private val session: AgentSession,
+    /** A failed turn's reason, as its card words it. */
+    private val failureText: (FailureReason) -> String,
     private val screen: () -> CallScreen?,
 ) : CallTargets {
     private class Held(val conversation: Conversation, var watch: Job? = null)
@@ -60,13 +63,13 @@ class ConnectionCallTargets(
 
     override suspend fun state(agentId: String): CallTargetState? = onMain {
         val target = target(agentId) ?: return@onMain null
-        held[agentId]?.conversation?.state?.value?.takeIf { it.loaded }?.let { return@onMain CallTargetState.from(it, target) }
-        screen()?.takeIf { it.focused == agentId }?.shown(agentId)?.state?.value?.takeIf { it.loaded }?.let { return@onMain CallTargetState.from(it, target) }
+        held[agentId]?.conversation?.state?.value?.takeIf { it.loaded }?.let { return@onMain CallTargetState.from(it, target, failureText) }
+        screen()?.takeIf { it.focused == agentId }?.shown(agentId)?.state?.value?.takeIf { it.loaded }?.let { return@onMain CallTargetState.from(it, target, failureText) }
         // One bounded read: about three seconds for its first page.
         val hold = make(agentId)
         try {
             val state = withTimeoutOrNull(READ_MILLIS) { hold.conversation.state.first { it.loaded } } ?: return@onMain null
-            CallTargetState.from(state, target)
+            CallTargetState.from(state, target, failureText)
         } finally {
             release(hold)
         }
@@ -84,10 +87,9 @@ class ConnectionCallTargets(
     override suspend fun send(agentId: String, text: String, id: String): CallSendOutcome = onMain {
         val target = target(agentId)
         if (closed || target == null) return@onMain CallSendOutcome.Refused("The call has ended.")
-        val wasHeld = held.containsKey(agentId)
-        follow(agentId, true)
-        val own = held[agentId]?.conversation ?: return@onMain CallSendOutcome.Refused("The call has ended.")
-        val conversation = screen()?.takeIf { it.focused == agentId }?.shown(agentId) ?: own
+        // A conversation the call doesn't hear from is read for the send alone, and let go after it.
+        val own = held[agentId] ?: make(agentId)
+        val conversation = screen()?.takeIf { it.focused == agentId }?.shown(agentId) ?: own.conversation
         val outcome = run {
             // Under an ID it already has, it went the first time.
             if (conversation.has(id)) return@run CallSendOutcome.Queued
@@ -95,7 +97,7 @@ class ConnectionCallTargets(
                 ?: return@run CallSendOutcome.Refused("That conversation can't be read now.")
             // Checked again here, where the send happens: a question that came
             // while the call's context read the conversation still stops it.
-            val now = CallTargetState.from(state, target)
+            val now = CallTargetState.from(state, target, failureText)
             when {
                 !now.writable -> CallSendOutcome.Refused("That conversation can't take a message now.")
                 now.needsInput -> CallSendOutcome.Refused("It's waiting for the person in the app; answer there first.")
@@ -103,9 +105,12 @@ class ConnectionCallTargets(
                 else -> CallSendOutcome.Refused("It couldn't be kept on this phone.")
             }
         }
-        if (outcome is CallSendOutcome.Refused && !wasHeld) follow(agentId, false)
+        if (held[agentId] !== own) release(own)
         outcome
     }
+
+    /** The conversations held for the call. */
+    val following: List<String> get() = held.keys.toList()
 
     override suspend fun follow(agentId: String, following: Boolean) = onMain {
         if (following) {
@@ -115,7 +120,7 @@ class ConnectionCallTargets(
             hold.watch = watching.launch {
                 hold.conversation.state.collect { state ->
                     val target = target(agentId) ?: return@collect
-                    if (state.loaded) onChange?.invoke(CallTargetState.from(state, target))
+                    if (state.loaded) onChange?.invoke(CallTargetState.from(state, target, failureText))
                 }
             }
         } else {

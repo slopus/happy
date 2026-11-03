@@ -31,8 +31,6 @@ interface CallConnection {
     suspend fun setMuted(muted: Boolean)
     /** Context the agent reads without answering. */
     fun update(context: String)
-    /** Something the agent should say something about. */
-    fun say(prompt: String)
 }
 
 /**
@@ -41,8 +39,8 @@ interface CallConnection {
  * either ends at once, without asking for the microphone), then the
  * microphone, then the connection. A live call is counted against
  * [allowance] as it goes, every 10 s on the wall clock, and ends when that
- * runs out. Context and prompts that come before it is live wait for it;
- * prompts wait for both sides to be quiet. Every callback carries the
+ * runs out. Context that comes before it is live waits for it, up to 32 KB;
+ * past that it is let go, never cut, and put right in one go. Every callback carries the
  * generation it was made in, and one from an ended call goes nowhere.
  *
  * Runs on [scope]'s one thread (the main thread in the app).
@@ -60,6 +58,8 @@ class CallSession(
     val state: StateFlow<CallState> = mutableState.asStateFlow()
     /** The waves' level, from what the call reported ([CallLevel]). */
     var onLevel: ((Float) -> Unit)? = null
+    /** Context waiting for the call went past [PENDING_BYTES] and was let go whole: the call's context sends what puts it right ([CallContext.resync]). */
+    var onOverflow: (() -> Unit)? = null
 
     private var connection: CallConnection? = null
     private var starting: Job? = null
@@ -71,7 +71,6 @@ class CallSession(
     private var changingMute = false
     private var since = 0L
     private val pendingContext = ArrayList<String>()
-    private val pendingPrompts = ArrayList<String>()
     private var counted: Pair<String, Long>? = null
     private var counting: Job? = null
 
@@ -110,7 +109,6 @@ class CallSession(
                             this@CallSession.activity = activity
                             onLevel?.invoke(CallLevel.level(activity, vad, audio, muted))
                             if (connection != null) mutableState.value = CallState.Active(activity, muted, since)
-                            if (activity == CallActivity.Listening) flushPrompts()
                         }
                     },
                     disconnected = { if (current == generation) end(CallProblem.Connection) },
@@ -127,7 +125,6 @@ class CallSession(
                 mutableState.value = CallState.Active(activity, false, since)
                 count(current)
                 flushContext()
-                flushPrompts()
             } catch (e: CancellationException) {
                 if (current == generation) mutableState.value = CallState.Idle
                 throw e
@@ -177,7 +174,6 @@ class CallSession(
         val old = connection
         connection = null
         pendingContext.clear()
-        pendingPrompts.clear()
         activity = CallActivity.Listening
         muted = false
         changingMute = false
@@ -213,13 +209,20 @@ class CallSession(
         }
     }
 
-    /** Context and prompts from the call's context; kept until it is live. */
+    /**
+     * Context from the call's context; kept until it is live. Past
+     * [PENDING_BYTES] none of it is kept, rather than words with a hole in
+     * them: [onOverflow] asks for what puts the agent right instead.
+     */
     fun deliver(update: CallUpdate) {
         if (!state.value.isLive || update.isEmpty) return
         pendingContext += update.context
-        pendingPrompts += update.prompts
+        if (pendingContext.sumOf { it.utf8Size() + 1 } > PENDING_BYTES) {
+            pendingContext.clear()
+            onOverflow?.invoke()
+            return
+        }
         flushContext()
-        flushPrompts()
     }
 
     private fun flushContext() {
@@ -234,15 +237,8 @@ class CallSession(
         }
     }
 
-    private fun flushPrompts() {
-        val connection = connection ?: return
-        if (activity != CallActivity.Listening || pendingContext.isNotEmpty() || pendingPrompts.isEmpty()) return
-        val text = pendingPrompts.joinToString("\n")
-        pendingPrompts.clear()
-        try {
-            connection.say(text)
-        } catch (e: Exception) {
-            end(CallProblem.Connection)
-        }
+    companion object {
+        /** The most context kept while the call isn't live yet. */
+        const val PENDING_BYTES = 32 * 1024
     }
 }

@@ -263,6 +263,16 @@ final class SplitAppHarness {
                 shell.setSidebarHidden(true)
             }
             if arguments.contains("-resizeLoop") { await Self.resizeLoop(window) }
+            #if DEBUG
+            if arguments.contains("-callTour") { await Self.callTour(shell: shell, home: home, context: context, agent: agent) }
+            // A sheet of the app's over home, left up, for the UI test that reads the bar through it.
+            if arguments.contains("-callSheet") {
+                try? await Task.sleep(for: .seconds(1.5))
+                let navigation = UINavigationController(rootViewController: SettingsViewController(context: context, computer: context.account.agentConnections.activeID))
+                AppCoordinator.applyAppearance(to: navigation.navigationBar)
+                shell.present(navigation, animated: true)
+            }
+            #endif
             if arguments.contains("-linkLoop"), let bar = home.navigationController?.navigationBar {
                 func find(_ view: UIView) -> AccountSwitcherButton? {
                     if let button = view as? AccountSwitcherButton { return button }
@@ -287,6 +297,68 @@ final class SplitAppHarness {
             window.frame = CGRect(x: 0, y: 0, width: width, height: whole.height)
         }
     }
+
+    #if DEBUG
+    /// With `HAPPY_CALL_FIXTURE` drawing a call: the bar over a chat,
+    /// Settings, a sheet, the scanner and a full-screen sheet of the app's,
+    /// then hung up under a sheet, logging what each presentation was given
+    /// (`CallPresentations`) for the screenshots taken meanwhile.
+    private static func callTour(shell: ShellViewController, home: UIViewController, context: AppContext, agent: Bool) async {
+        func log(_ step: String) {
+            var line = "[call-tour] \(step) bar=\(shell.callBarShown ? shell.callBar.barHeight : 0)"
+            var next = shell.presentedViewController
+            while let presented = next {
+                let top = presented.view.window.map { presented.view.convert(presented.view.bounds, to: $0).minY } ?? -1
+                let detents = presented.sheetPresentationController?.detents.map(\.identifier.rawValue).joined(separator: ",") ?? "-"
+                let echoes = presented.presentationController?.containerView?.subviews.filter { $0.accessibilityIdentifier == "call-bar-echo" }.count ?? 0
+                line += " | \(type(of: presented)) top=\(top) extraTop=\(presented.additionalSafeAreaInsets.top) safeTop=\(presented.view.safeAreaInsets.top) detents=\(detents) echo=\(echoes)"
+                next = presented.presentedViewController
+            }
+            print(line)
+        }
+        func top() -> UIViewController {
+            var top: UIViewController = shell
+            while let next = top.presentedViewController { top = next }
+            return top
+        }
+        func wait(_ seconds: Double) async { try? await Task.sleep(for: .seconds(seconds)) }
+        func sheet() -> UINavigationController {
+            let navigation = UINavigationController(rootViewController: SettingsViewController(context: context, computer: context.account.agentConnections.activeID))
+            AppCoordinator.applyAppearance(to: navigation.navigationBar)
+            return navigation
+        }
+        await wait(2)
+        log("home")
+        open("ipad-agent", from: home, context: context, agent: agent, animated: true)
+        await wait(3); log("chat")
+        if let chat = shell.topViewController { SettingsViewController.open(context: context, computer: context.account.agentConnections.activeID, from: chat) }
+        await wait(3); log("settings")
+        top().present(sheet(), animated: true)
+        await wait(3); log("sheet")
+        top().dismiss(animated: true)
+        await wait(1.5)
+        top().present(QRScannerViewController(), animated: true)
+        await wait(3); log("scanner")
+        top().dismiss(animated: true)
+        await wait(1.5)
+        top().present(QRSheetViewController(name: "Studio Mac", image: nil, isAgentConnection: true), animated: true)
+        await wait(3); log("full-screen sheet")
+        // Turned and back, its inset follows the bar and comes back to the same.
+        let scene = shell.view.window?.windowScene
+        scene?.requestGeometryUpdate(.iOS(interfaceOrientations: .landscapeRight))
+        await wait(2.5); log("full-screen sheet, landscape")
+        scene?.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
+        await wait(2.5); log("full-screen sheet, portrait again")
+        top().dismiss(animated: true)
+        await wait(1.5)
+        top().present(sheet(), animated: true)
+        await wait(3); log("sheet again")
+        CallController.shared.close()
+        await wait(2); log("hung up under the sheet")
+        top().dismiss(animated: true)
+        await wait(2); log("done")
+    }
+    #endif
 
     /// What tapping the row does: a chat from the sidebar.
     private static func open(_ id: String, from home: UIViewController, context: AppContext, agent: Bool, animated: Bool = false) {

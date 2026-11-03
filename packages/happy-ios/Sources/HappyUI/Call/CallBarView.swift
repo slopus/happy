@@ -153,6 +153,12 @@ final class CallBarView: UIView {
         summary.accessibilityFrameInContainerSpace = layout.bar
     }
 
+    /// What VoiceOver hears of the bar, for its echo in a presented screen (`CallBarEcho`).
+    var spoken: (summary: String?, traits: UIAccessibilityTraits, mute: String?, end: String?, frame: CGRect) {
+        (summary.accessibilityLabel, summary.accessibilityTraits, muteButton.isHidden ? nil : muteButton.accessibilityLabel,
+         endButton.accessibilityLabel, summary.accessibilityFrameInContainerSpace)
+    }
+
     override var accessibilityElements: [Any]? {
         get { [summary] + [muteButton, endButton].filter { !$0.isHidden } }
         set {}

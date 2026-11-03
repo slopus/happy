@@ -76,12 +76,40 @@ public struct CallMessage: Equatable, Sendable {
     }
 }
 
-/// What the call knows of one conversation: its public words and whether
-/// it is working, waits for the person, and can take a message. Never its
-/// tools, reasoning, files, questions' contents or drafts.
+/// One finished turn of a conversation: the person's message that started
+/// it and the agent's final answer, as desktop's turn summary copies it
+/// (`ChatItem.TurnEnd.copyText`), never its commentary or tool output.
+public struct CallTurn: Equatable, Sendable {
+    public var id: String
+    public var user: String?
+    public var reply: String?
+    /// `completed`, `error`, `abort`, `steering` or `compaction`.
+    public var ended: String
+    /// Why it stopped, for one that ended in an error.
+    public var error: String?
+
+    public init(id: String, user: String? = nil, reply: String? = nil, ended: String = "completed", error: String? = nil) {
+        self.id = id
+        self.user = user
+        self.reply = reply
+        self.ended = ended
+        self.error = error
+    }
+}
+
+/// What the call knows of one conversation: its finished turns, the
+/// person's message still waiting for an answer, the agent's words as they
+/// come, and whether it is working, waits for the person and can take a
+/// message. Never its tools, reasoning, files, questions' contents or
+/// drafts.
 public struct CallTargetState: Equatable, Sendable {
     public var target: CallTarget
+    /// Every public message, the agent's still being written included
+    /// (`final` false): what the live words are read from.
     public var messages: [CallMessage]
+    public var turns: [CallTurn]
+    /// The person's latest message, when no finished turn answers it.
+    public var unanswered: CallMessage?
     public var working: Bool
     public var needsInput: Bool
     /// It has been read and takes messages.
@@ -90,10 +118,12 @@ public struct CallTargetState: Equatable, Sendable {
     public var hasDraft: Bool
     public var hasMore: Bool
 
-    public init(target: CallTarget, messages: [CallMessage] = [], working: Bool = false, needsInput: Bool = false,
-                writable: Bool = true, hasDraft: Bool = false, hasMore: Bool = false) {
+    public init(target: CallTarget, messages: [CallMessage] = [], turns: [CallTurn] = [], unanswered: CallMessage? = nil,
+                working: Bool = false, needsInput: Bool = false, writable: Bool = true, hasDraft: Bool = false, hasMore: Bool = false) {
         self.target = target
         self.messages = messages
+        self.turns = turns
+        self.unanswered = unanswered
         self.working = working
         self.needsInput = needsInput
         self.writable = writable
@@ -101,11 +131,17 @@ public struct CallTargetState: Equatable, Sendable {
         self.hasMore = hasMore
     }
 
-    /// A conversation's snapshot, as the call reads it: the person's and
-    /// the agent's words only; the agent's last words while it works are
-    /// not final.
+    /// A conversation's snapshot, as the call reads it. Turns are the
+    /// conversation's own runs (`ChatItem.turn`): one is finished once it
+    /// has its turn end, whose answer is its reply; the person's message in
+    /// it is the one that started it.
     public static func from(_ snapshot: ChatSnapshot, target: CallTarget) -> CallTargetState {
         var messages: [CallMessage] = []
+        var turns: [CallTurn] = []
+        var users: [String: String] = [:]
+        var failures: [String: String] = [:]
+        var lastUser: CallMessage?
+        var lastUserTurn: String?
         var needsInput = false
         for item in snapshot.items {
             switch item.role {
@@ -117,11 +153,21 @@ public struct CallTargetState: Equatable, Sendable {
                 case .pending, .sent: .accepted
                 case .failed: .failed
                 }
-                messages.append(CallMessage(id: item.id, role: .user, text: text, time: item.time, delivery: delivery))
+                let message = CallMessage(id: item.id, role: .user, text: text, time: item.time, delivery: delivery)
+                messages.append(message)
+                if let turn = item.turn, users[turn] == nil { users[turn] = text }
+                lastUser = message
+                lastUserTurn = item.turn
             case .agent:
                 let text = item.text
                 guard !text.isEmpty else { continue }
                 messages.append(CallMessage(id: item.id, role: .assistant, text: text, time: item.time))
+            case .failure(let failure):
+                if let turn = item.turn { failures[turn] = failure.reason }
+            case .turnEnd(let end):
+                guard let turn = item.turn else { continue }
+                turns.append(CallTurn(id: turn, user: users[turn], reply: end.copyText, ended: end.reason,
+                                      error: end.reason == "error" ? failures[turn] : nil))
             case .question(let ask):
                 if ask.phase != .answered { needsInput = true }
             default:
@@ -131,13 +177,16 @@ public struct CallTargetState: Equatable, Sendable {
         if snapshot.working, let last = messages.indices.last, messages[last].role == .assistant {
             messages[last].final = false
         }
+        let finished = Set(turns.map(\.id))
+        let unanswered = lastUser.flatMap { message in lastUserTurn.map(finished.contains) == true ? nil : message }
         if case .awaitingAnswer? = snapshot.activity?.phase { needsInput = true }
         var target = target
         if needsInput { target.status = .needsInput }
         else if snapshot.working { target.status = .running }
         return CallTargetState(
-            target: target, messages: messages, working: snapshot.working, needsInput: needsInput,
-            writable: snapshot.loaded && snapshot.error == nil, hasDraft: !snapshot.draft.isEmpty, hasMore: snapshot.hasMore
+            target: target, messages: messages, turns: turns, unanswered: unanswered, working: snapshot.working,
+            needsInput: needsInput, writable: snapshot.loaded && snapshot.error == nil, hasDraft: !snapshot.draft.isEmpty,
+            hasMore: snapshot.hasMore
         )
     }
 }

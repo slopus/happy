@@ -89,6 +89,9 @@ final class SessionCallTargets: CallTargets {
         return .refused(await hold.chat.conversation.sendRefusal ?? "It couldn't be kept on this phone.")
     }
 
+    /// The conversations held for the call.
+    var following: [String] { Array(held.keys) }
+
     func follow(_ agentId: String, _ following: Bool) async {
         if following {
             guard !closed, held[agentId] == nil, let target = target(agentId) else { return }
@@ -98,6 +101,8 @@ final class SessionCallTargets: CallTargets {
                 guard snapshot.loaded else { return }
                 self?.onChange?(.from(snapshot, target: self?.target(agentId) ?? target))
             }
+            // What it says now is the call's first sight of it: what was there already.
+            if hold.chat.snapshot.loaded { onChange?(.from(hold.chat.snapshot, target: target)) }
         } else if let hold = held.removeValue(forKey: agentId) {
             session.warm.release(hold.chat, token: hold.token, opened: false)
         }

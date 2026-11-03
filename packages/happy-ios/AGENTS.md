@@ -158,9 +158,12 @@ nothing here is wired to the release skill or to EAS.
   it, and Telegram's in-call bar (`CallBarLayout`, `CallWaves`, adapted with
   Steve's permission) sits above the navigation bar and pushes the window
   down by its height. It talks to a new hosted ElevenLabs agent of its own
-  with five client tools (`CallTool`: listSessions, getSessionContext,
-  openSession, setSessionWatch, sendMessage) and no permission or question
-  tool; a conversation waiting on the person is a `needsInput` flag only.
+  with four client tools (`CallTool`: listSessions, getSessionContext,
+  openSession, sendMessage) and no permission or question tool; a
+  conversation waiting on the person is a `needsInput` flag on a read only.
+  The call hears from the last four conversations visited (`CallContext`):
+  only their agents' new words, as deltas, and errors that stopped a turn,
+  never status, tools or a prompt to speak.
   It ends on background, interruption, lost route, account change and when
   the relay's voice starts. For launch it connects to a public agent by its
   ID (`PublicAgentCallGrants`): a connection mechanism, not authentication.

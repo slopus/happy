@@ -3,6 +3,26 @@ package com.slopus.happy.fixture
 import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.material3.Text
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
+import com.slopus.happy.ui.call.CallBarTags
+import com.slopus.happy.ui.components.PageDialog
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -156,6 +176,70 @@ class CallBarDeviceShots {
             level.value = if (name == "speaking") 1.2f else 0f
             capture("fixture-$name")
         }
+    }
+
+    /**
+     * A full-window dialog of the app's covers the window the bar is in: it
+     * carries the bar itself, its content below it, and End there ends the
+     * call, after which the content takes the top back. A centred card leaves
+     * the bar where it is.
+     */
+    @Test
+    fun overDialogs() {
+        val full = MutableStateFlow(false)
+        val card = MutableStateFlow(false)
+        rule.runOnUiThread { rule.activity.enableEdgeToEdge() }
+        rule.setContent {
+            HappyTheme(if (dark) ThemePreference.Dark else ThemePreference.Light) {
+                CallFrame(state, level, onMute = {}, onEnd = { state.value = CallState.Idle }) {
+                    val accounts = AccountMenu(listOf(AccountMenuEntry("fx-connection", "Studio Mac", agent = true, active = true)))
+                    AgentHomeScreen("Studio Mac", feed(), AgentLinkStatus.Connected, accounts, AgentHomeActions({}, {}, {}, {}, {}, {}, onVoice = {}))
+                    val showFull by full.collectAsState()
+                    val showCard by card.collectAsState()
+                    if (showFull) {
+                        PageDialog({ full.value = false }, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+                            Box(Modifier.fillMaxSize().background(Color(0xFF101010)).windowInsetsPadding(WindowInsets.statusBars)) {
+                                Text("Viewer top", color = Color.White, modifier = Modifier.testTag("dialog-top"))
+                            }
+                        }
+                    }
+                    if (showCard) {
+                        PageDialog({ card.value = false }, DialogProperties()) {
+                            Box(Modifier.background(Color.White).padding(24.dp)) { Text("A card", modifier = Modifier.testTag("card")) }
+                        }
+                    }
+                }
+            }
+        }
+        rule.waitForIdle()
+        state.value = CallState.Active(CallActivity.Listening, false, SystemClock.elapsedRealtime() - 42_000)
+        rule.mainClock.autoAdvance = false
+        run(800)
+        full.value = true
+        run(1_200)
+        val bars = rule.onAllNodesWithTag(CallBarTags.BAR, useUnmergedTree = true).fetchSemanticsNodes()
+        val barBottom = bars.maxOf { it.boundsInRoot.bottom }
+        val top = rule.onNodeWithTag("dialog-top", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.top
+        android.util.Log.i("CallBarShots", "dialog: bars=${bars.size} barBottom=$barBottom contentTop=$top")
+        assertEquals("the dialog carries its own bar", 2, bars.size)
+        assertTrue("the dialog's content starts below its bar ($top < $barBottom)", top >= barBottom - 1)
+        device.takeScreenshot(File(dir, "${if (dark) "dark" else "light"}-over-full-dialog.png"))
+        // End in the dialog's bar ends the call; the content takes the top back.
+        rule.onAllNodesWithTag(CallBarTags.END, useUnmergedTree = true).fetchSemanticsNodes().size.let { assertEquals(2, it) }
+        rule.onAllNodesWithTag(CallBarTags.END, useUnmergedTree = true)[1].performClick()
+        run(1_000)
+        val after = rule.onNodeWithTag("dialog-top", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.top
+        android.util.Log.i("CallBarShots", "dialog after hang-up: contentTop=$after state=${state.value}")
+        assertEquals(CallState.Idle, state.value)
+        assertTrue("the content takes the top back ($after vs $top)", after < top)
+        device.takeScreenshot(File(dir, "${if (dark) "dark" else "light"}-full-dialog-after.png"))
+        full.value = false
+        state.value = CallState.Active(CallActivity.Listening, false, SystemClock.elapsedRealtime() - 42_000)
+        run(800)
+        card.value = true
+        run(1_200)
+        assertEquals("a card leaves the one bar", 1, rule.onAllNodesWithTag(CallBarTags.BAR, useUnmergedTree = true).fetchSemanticsNodes().size)
+        device.takeScreenshot(File(dir, "${if (dark) "dark" else "light"}-under-card-dialog.png"))
     }
 
     /** The fixture states one after another, for `screenrecord`: about 20 s. */
