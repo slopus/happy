@@ -38,7 +38,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -71,8 +74,10 @@ import com.slopus.happy.ui.theme.AppMono
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
-import kotlin.math.max
+import androidx.compose.ui.text.TextLayoutResult
+import kotlin.math.roundToInt
 
 object FileTags {
     const val PATH_BAR = "file.pathBar"
@@ -320,6 +325,17 @@ private fun Centered(title: String, titleColor: Color, message: String, footnote
 
 private enum class Mode { Diff, Rendered, File }
 
+/** Where 1-based [line] of [text] starts; past its last line, its end. */
+internal fun offsetOfLine(text: String, line: Int): Int {
+    var at = 0
+    repeat(line - 1) {
+        val next = text.indexOf('\n', at)
+        if (next < 0) return text.length
+        at = next + 1
+    }
+    return at
+}
+
 @Composable
 private fun LoadedFile(load: FileLoad.Loaded, filePath: String, line: Int?, column: Int?) {
     val colors = HappyTheme.colors
@@ -345,9 +361,40 @@ private fun LoadedFile(load: FileLoad.Loaded, filePath: String, line: Int?, colu
     }
     val scroll = rememberScrollState()
     val density = LocalDensity.current
-    LaunchedEffect(mode, load.content, requested) {
-        if (mode != Mode.File || requested == null || load.content.isEmpty()) return@LaunchedEffect
-        scroll.scrollTo(with(density) { max(0, (requested - 1) * 20 - 40).dp.roundToPx() })
+    val inset = with(density) { 16.dp.toPx() }
+    // The source's lines as laid out, so a place in it outlives a new text size.
+    var code by remember { mutableStateOf<TextLayoutResult?>(null) }
+    // A text-size change makes the activity again, where the scroll's pixels land elsewhere:
+    // the place is kept as the source's character at the top (iOS bbaf6a8e1's
+    // FileLinesLayout.place), else as a fraction of the way down. The line asked for is
+    // gone to once, not again over that place.
+    var topChar by rememberSaveable { mutableIntStateOf(-1) }
+    var topFraction by rememberSaveable { mutableFloatStateOf(0f) }
+    var jumped by rememberSaveable { mutableStateOf(false) }
+    var restored by remember { mutableStateOf(false) }
+    LaunchedEffect(mode, load.content) {
+        val source = mode == Mode.File && load.content.isNotEmpty()
+        val asked = source && requested != null && !jumped
+        val kept = !restored && (if (source) topChar > 0 else topFraction > 0f)
+        restored = true
+        if (asked || kept) {
+            // Once laid out: the scroll knows its length, the source its lines.
+            val (max, layout) = snapshotFlow { scroll.maxValue to code }
+                .first { (max, layout) -> max in 1 until Int.MAX_VALUE && (!source || layout != null) }
+            val y = when {
+                asked && layout != null && requested != null ->
+                    layout.getLineTop(layout.getLineForOffset(offsetOfLine(load.content, requested))) - with(density) { 40.dp.toPx() }
+                source && layout != null -> inset + layout.getLineTop(layout.getLineForOffset(topChar.coerceAtMost(load.content.length)))
+                else -> topFraction * max
+            }
+            scroll.scrollTo(y.roundToInt().coerceIn(0, max))
+            if (asked) jumped = true
+        }
+        snapshotFlow { scroll.value }.collect { y ->
+            val max = scroll.maxValue
+            topFraction = if (max in 1 until Int.MAX_VALUE) y.toFloat() / max else 0f
+            topChar = code?.takeIf { source }?.let { it.getLineStart(it.getLineForVerticalPosition((y - inset).coerceAtLeast(0f))) } ?: -1
+        }
     }
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -397,7 +444,7 @@ private fun LoadedFile(load: FileLoad.Loaded, filePath: String, line: Int?, colu
                 mode == Mode.File && load.content.isNotEmpty() -> {
                     val chat = ChatTheme.colors
                     val text = remember(load.content, chat) { highlight(load.content, fileLanguage(filePath), chat) }
-                    SelectionContainer { Text(text, style = codeStyle, modifier = Modifier.testTag(FileTags.CODE)) }
+                    SelectionContainer { Text(text, style = codeStyle, onTextLayout = { code = it }, modifier = Modifier.testTag(FileTags.CODE)) }
                 }
                 mode == Mode.File -> Text(stringResource(R.string.files_file_empty), style = empty, color = colors.textSecondary)
                 else -> Text(stringResource(R.string.files_no_changes), style = empty, color = colors.textSecondary)
