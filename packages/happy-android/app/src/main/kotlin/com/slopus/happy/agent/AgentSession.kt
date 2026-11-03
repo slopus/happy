@@ -12,6 +12,7 @@ import com.slopus.happy.diagnostics.traced
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -281,8 +282,9 @@ class AgentSession internal constructor(
             settingsQueued.receiveAsFlow().collect { deliverSettings() }
         }
         if (cacheFile != null) {
+            // Undispatched: watching from the first value, so a load that comes first is not dropped as it.
             @OptIn(FlowPreview::class)
-            scope.launch {
+            scope.launch(start = CoroutineStart.UNDISPATCHED) {
                 catalogState.drop(1).filter { it.loaded }.debounce(1_000).collect { writeCache(it) }
             }
         }
