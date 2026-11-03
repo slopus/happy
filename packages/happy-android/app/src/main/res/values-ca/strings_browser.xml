@@ -34,4 +34,10 @@
     <string name="browser_problem_unsupported_title">No es pot obrir aquest enllaç</string>
     <string name="browser_problem_unsupported_message">Cap app d’aquest telèfon obre enllaços «%1$s:».</string>
     <string name="browser_problem_unsupported_message_no_scheme">Cap app d’aquest telèfon obre aquest enllaç.</string>
+    <string name="browser_allow">Permet</string>
+    <string name="browser_dont_allow">No permetis</string>
+    <string name="browser_permission_camera">Vols permetre que «%1$s» faci servir la càmera?</string>
+    <string name="browser_permission_microphone">Vols permetre que «%1$s» faci servir el micròfon?</string>
+    <string name="browser_permission_camera_microphone">Vols permetre que «%1$s» faci servir la càmera i el micròfon?</string>
+    <string name="browser_permission_message">«%1$s» només ho podrà fer servir mentre aquesta pàgina estigui oberta.</string>
 </resources>

@@ -14,6 +14,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onChildAt
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -193,6 +194,58 @@ class BrowserChromeTest {
         assertNull(state.problem)
         assertEquals(1, state.attempt)
         assertEquals(BrowserProgress.Phase.Loading, state.progress.phase)
+    }
+
+    private class Asked(private val asks: Array<String>) : android.webkit.PermissionRequest() {
+        var granted: List<String>? = null
+        var denied = false
+        override fun getOrigin(): android.net.Uri = android.net.Uri.parse("http://localhost:5174/")
+        override fun getResources(): Array<String> = asks
+        override fun grant(resources: Array<String>) { granted = resources.toList() }
+        override fun deny() { denied = true }
+    }
+
+    @Test fun allowingTheCameraGrantsItForThePagesLife() {
+        org.robolectric.Shadows.shadowOf(androidx.test.core.app.ApplicationProvider.getApplicationContext<android.app.Application>())
+            .grantPermissions(android.Manifest.permission.CAMERA, android.Manifest.permission.RECORD_AUDIO)
+        val media = arrayOf(android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE, android.webkit.PermissionRequest.RESOURCE_AUDIO_CAPTURE)
+        val device = BrowserDevice()
+        rule.setHappyContent { BrowserDeviceHost(device) }
+        val first = Asked(media)
+        rule.runOnIdle { device.permission(first) }
+        rule.onNodeWithText("Allow “localhost” to use your camera and microphone?").assertExists()
+        rule.onNodeWithText("Allow").performClick()
+        rule.runOnIdle {
+            assertEquals(media.toList(), first.granted)
+            assertEquals(false, first.denied)
+        }
+        // The same page asking again isn't asked about again.
+        val again = Asked(media)
+        rule.runOnIdle { device.permission(again) }
+        rule.runOnIdle {
+            assertNull(device.asking)
+            assertEquals(media.toList(), again.granted)
+        }
+        // Anything but the camera and microphone is refused unasked.
+        val midi = Asked(arrayOf(android.webkit.PermissionRequest.RESOURCE_MIDI_SYSEX))
+        rule.runOnIdle { device.permission(midi) }
+        rule.runOnIdle { assertEquals(true, midi.denied) }
+    }
+
+    @Test fun refusingTheCameraDeniesItForThePagesLife() {
+        val camera = arrayOf(android.webkit.PermissionRequest.RESOURCE_VIDEO_CAPTURE)
+        val device = BrowserDevice()
+        rule.setHappyContent { BrowserDeviceHost(device) }
+        val first = Asked(camera)
+        rule.runOnIdle { device.permission(first) }
+        rule.onNodeWithText("Don’t Allow").performClick()
+        rule.runOnIdle { assertEquals(true, first.denied) }
+        val again = Asked(camera)
+        rule.runOnIdle { device.permission(again) }
+        rule.runOnIdle {
+            assertNull(device.asking)
+            assertEquals(true, again.denied)
+        }
     }
 
     @Test fun theHeaderIsThePagesTitleOverItsHost() {

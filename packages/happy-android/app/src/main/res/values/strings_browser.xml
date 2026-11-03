@@ -34,4 +34,10 @@
     <string name="browser_problem_unsupported_title">Can’t Open This Link</string>
     <string name="browser_problem_unsupported_message">No app on this phone opens “%1$s:” links.</string>
     <string name="browser_problem_unsupported_message_no_scheme">No app on this phone opens this link.</string>
+    <string name="browser_allow">Allow</string>
+    <string name="browser_dont_allow">Don’t Allow</string>
+    <string name="browser_permission_camera">Allow “%1$s” to use your camera?</string>
+    <string name="browser_permission_microphone">Allow “%1$s” to use your microphone?</string>
+    <string name="browser_permission_camera_microphone">Allow “%1$s” to use your camera and microphone?</string>
+    <string name="browser_permission_message">“%1$s” can use it only while this page is open.</string>
 </resources>

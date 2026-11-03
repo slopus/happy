@@ -12,7 +12,10 @@ import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.os.Message
+import android.view.View
 import android.webkit.HttpAuthHandler
+import android.webkit.PermissionRequest
+import android.webkit.ValueCallback
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
@@ -230,6 +233,8 @@ fun BrowserView(
     var unsupported by remember { mutableStateOf(false) }
     val unsupportedText = stringResource(R.string.browser_unsupported)
     val elsewhere by rememberUpdatedState(onOpenElsewhere)
+    val device = remember { BrowserDevice() }
+    BrowserDeviceHost(device)
     val link = BrowserLink.of(agentStatus, rememberNetworkAvailable())
     LaunchedEffect(link) { state.linkChanged(link) }
     // A load that waits on a network the phone hasn't got would only time out a minute later.
@@ -324,7 +329,7 @@ fun BrowserView(
                             settings.allowContentAccess = false
                             // New windows become screens of their own (onCreateWindow).
                             settings.setSupportMultipleWindows(true)
-                            webChromeClient = BrowserChromeClient(state) { elsewhere(it) }
+                            webChromeClient = BrowserChromeClient(state, device) { elsewhere(it) }
                             webViewClient = BrowserClient(
                                 page = shown,
                                 state = state,
@@ -540,10 +545,26 @@ private class BrowserClient(
  * window in; as Telegram's BotWebViewContainer (onCreateWindow) does, a
  * throwaway one takes its first navigation's address and loads nothing.
  */
-private class BrowserChromeClient(private val state: BrowserState, private val onWindow: (String) -> Unit) : WebChromeClient() {
+private class BrowserChromeClient(private val state: BrowserState, private val device: BrowserDevice, private val onWindow: (String) -> Unit) : WebChromeClient() {
     override fun onProgressChanged(view: WebView, newProgress: Int) = state.estimate(newProgress / 100f)
 
     override fun onReceivedTitle(view: WebView, title: String?) = state.title(title)
+
+    override fun onShowFileChooser(webView: WebView, filePathCallback: ValueCallback<Array<Uri>>, fileChooserParams: FileChooserParams): Boolean =
+        device.choose(filePathCallback, fileChooserParams)
+
+    override fun onPermissionRequest(request: PermissionRequest) = device.permission(request)
+
+    override fun onPermissionRequestCanceled(request: PermissionRequest) = device.canceled(request)
+
+    override fun onShowCustomView(view: View, callback: CustomViewCallback) {
+        device.fullscreen?.second?.onCustomViewHidden()
+        device.fullscreen = view to callback
+    }
+
+    override fun onHideCustomView() {
+        device.fullscreen = null
+    }
 
     override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean {
         if (!isUserGesture) return false

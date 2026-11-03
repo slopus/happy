@@ -34,4 +34,10 @@
     <string name="browser_problem_unsupported_title">Не удаётся открыть ссылку</string>
     <string name="browser_problem_unsupported_message">На этом телефоне нет приложения для ссылок «%1$s:».</string>
     <string name="browser_problem_unsupported_message_no_scheme">На этом телефоне нет приложения, которое откроет эту ссылку.</string>
+    <string name="browser_allow">Разрешить</string>
+    <string name="browser_dont_allow">Не разрешать</string>
+    <string name="browser_permission_camera">Разрешить «%1$s» использовать камеру?</string>
+    <string name="browser_permission_microphone">Разрешить «%1$s» использовать микрофон?</string>
+    <string name="browser_permission_camera_microphone">Разрешить «%1$s» использовать камеру и микрофон?</string>
+    <string name="browser_permission_message">«%1$s» сможет пользоваться этим, только пока открыта эта страница.</string>
 </resources>

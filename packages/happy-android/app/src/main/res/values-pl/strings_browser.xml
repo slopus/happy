@@ -34,4 +34,10 @@
     <string name="browser_problem_unsupported_title">Nie można otworzyć linku</string>
     <string name="browser_problem_unsupported_message">Żadna aplikacja na tym telefonie nie otwiera linków „%1$s:”.</string>
     <string name="browser_problem_unsupported_message_no_scheme">Żadna aplikacja na tym telefonie nie otwiera tego linku.</string>
+    <string name="browser_allow">Zezwól</string>
+    <string name="browser_dont_allow">Nie zezwalaj</string>
+    <string name="browser_permission_camera">Zezwolić „%1$s” na używanie aparatu?</string>
+    <string name="browser_permission_microphone">Zezwolić „%1$s” na używanie mikrofonu?</string>
+    <string name="browser_permission_camera_microphone">Zezwolić „%1$s” na używanie aparatu i mikrofonu?</string>
+    <string name="browser_permission_message">„%1$s” może z tego korzystać tylko wtedy, gdy ta strona jest otwarta.</string>
 </resources>

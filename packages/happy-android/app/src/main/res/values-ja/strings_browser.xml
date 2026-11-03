@@ -34,4 +34,10 @@
     <string name="browser_problem_unsupported_title">このリンクを開けません</string>
     <string name="browser_problem_unsupported_message">このスマートフォンには「%1$s:」のリンクを開くアプリがありません。</string>
     <string name="browser_problem_unsupported_message_no_scheme">このスマートフォンにはこのリンクを開くアプリがありません。</string>
+    <string name="browser_allow">許可</string>
+    <string name="browser_dont_allow">許可しない</string>
+    <string name="browser_permission_camera">「%1$s」にカメラの使用を許可しますか？</string>
+    <string name="browser_permission_microphone">「%1$s」にマイクの使用を許可しますか？</string>
+    <string name="browser_permission_camera_microphone">「%1$s」にカメラとマイクの使用を許可しますか？</string>
+    <string name="browser_permission_message">「%1$s」が使えるのは、このページを開いている間だけです。</string>
 </resources>

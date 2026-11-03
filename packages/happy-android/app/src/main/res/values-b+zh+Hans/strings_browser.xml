@@ -34,4 +34,10 @@
     <string name="browser_problem_unsupported_title">无法打开此链接</string>
     <string name="browser_problem_unsupported_message">此手机上没有应用可以打开“%1$s:”链接。</string>
     <string name="browser_problem_unsupported_message_no_scheme">此手机上没有应用可以打开此链接。</string>
+    <string name="browser_allow">允许</string>
+    <string name="browser_dont_allow">不允许</string>
+    <string name="browser_permission_camera">允许“%1$s”使用你的相机吗？</string>
+    <string name="browser_permission_microphone">允许“%1$s”使用你的麦克风吗？</string>
+    <string name="browser_permission_camera_microphone">允许“%1$s”使用你的相机和麦克风吗？</string>
+    <string name="browser_permission_message">“%1$s”仅在此页面打开时可以使用。</string>
 </resources>
