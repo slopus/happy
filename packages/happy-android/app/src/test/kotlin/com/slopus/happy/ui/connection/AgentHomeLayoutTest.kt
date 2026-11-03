@@ -498,7 +498,17 @@ class AgentHomeLayoutTest {
             status = next
             rule.waitForIdle()
             assertEquals("bar, on $next", bar, rule.node(AgentHomeTags.BAR).bounds)
-            assertEquals("first row, on $next", first, rule.node(AgentHomeTags.row("section-places")).bounds)
+            // A computer that doesn't answer is said by the list's first row, which pushes the rows down (iOS ba0d7da0e).
+            if (next == AgentLinkStatus.Offline) {
+                val notice = rule.node(AgentHomeTags.BANNER).bounds
+                rule.onNodeWithText("The computer did not answer.", useUnmergedTree = true).assertExists()
+                val pushed = rule.node(AgentHomeTags.row("section-places")).bounds
+                assertTrue("the notice above where the rows began", notice.top <= first.top)
+                assertTrue("the rows pushed under it", pushed.top >= notice.bottom && pushed.top > first.top)
+            } else {
+                rule.onAllNodesWithTag(AgentHomeTags.BANNER, useUnmergedTree = true).assertCountEquals(0)
+                assertEquals("first row, on $next", first, rule.node(AgentHomeTags.row("section-places")).bounds)
+            }
             // Connecting stands in the name's place; offline keeps the name, which TalkBack hears offline after.
             if (next == AgentLinkStatus.Connecting) {
                 rule.onAllNodesWithTag(AgentHomeTags.TITLE, useUnmergedTree = true).assertCountEquals(0)
@@ -529,6 +539,8 @@ class AgentHomeLayoutTest {
         rule.node(AgentHomeTags.row("agent-ab1")).assertExists()
         rule.node(AgentHomeTags.TITLE).assertExists()
         rule.onAllNodesWithTag(AgentHomeTags.STATUS, useUnmergedTree = true).assertCountEquals(0)
+        rule.node(AgentHomeTags.BANNER).assertExists()
+        rule.onNodeWithText("The computer did not answer.", useUnmergedTree = true).assertExists()
         status = AgentLinkStatus.Revoked
         rule.waitForIdle()
         rule.node(AgentHomeTags.BANNER).assertExists()

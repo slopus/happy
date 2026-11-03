@@ -33,4 +33,5 @@
     <string name="agent_search_new_task">Новая задача</string>
     <string name="agent_search_new_task_picture">Новая задача с картинкой</string>
     <string name="agent_search_connect_agent">Подключить Happy Agent</string>
+    <string name="agent_home_unanswered">Компьютер не ответил.</string>
 </resources>

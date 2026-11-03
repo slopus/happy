@@ -33,4 +33,5 @@
     <string name="agent_search_new_task">新しいタスク</string>
     <string name="agent_search_new_task_picture">画像付きの新しいタスク</string>
     <string name="agent_search_connect_agent">Happy Agent を接続</string>
+    <string name="agent_home_unanswered">コンピューターから応答がありませんでした。</string>
 </resources>

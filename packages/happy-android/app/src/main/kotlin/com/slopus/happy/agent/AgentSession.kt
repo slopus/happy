@@ -316,7 +316,11 @@ class AgentSession internal constructor(
         var snapshotRead = catalogState.value.let { it.loaded && it.cursor != null }
         while (true) {
             awaitSignedIn()
-            if (statusState.value != AgentLinkStatus.Connected) statusState.value = AgentLinkStatus.Connecting
+            // A computer that did not answer stays offline while it's asked again (iOS's `Session.headerState`):
+            // home's notice says so until the stream opens, rather than coming and going with every retry.
+            if (statusState.value != AgentLinkStatus.Connected && statusState.value != AgentLinkStatus.Offline) {
+                statusState.value = AgentLinkStatus.Connecting
+            }
             // The sign-in this attempt runs under: a refusal it meets signs out only that one.
             val grant = connections.grant(connectionId)
             try {
@@ -345,18 +349,23 @@ class AgentSession internal constructor(
                         backoff = INITIAL_BACKOFF
                         continue
                     }
-                    else -> statusState.value = AgentLinkStatus.Offline
+                    else -> unanswered()
                 }
             } catch (e: AgentApiException) {
                 // A 409 cursor_unavailable or any refused read: read the snapshot again.
                 snapshotRead = false
-                statusState.value = AgentLinkStatus.Offline
+                unanswered()
             } catch (_: Exception) {
-                statusState.value = AgentLinkStatus.Offline
+                unanswered()
             }
             delay(backoff + (backoff * JITTER * (random.nextDouble() * 2 - 1)).toLong())
             backoff = (backoff * 2).coerceAtMost(MAX_BACKOFF)
         }
+    }
+
+    /** An attempt failed: a stream that was open is on its way back; one that never opened did not answer. */
+    private fun unanswered() {
+        statusState.value = if (statusState.value == AgentLinkStatus.Connected) AgentLinkStatus.Connecting else AgentLinkStatus.Offline
     }
 
     /**

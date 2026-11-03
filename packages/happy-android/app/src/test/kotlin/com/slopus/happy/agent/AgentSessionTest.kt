@@ -18,6 +18,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -382,6 +383,43 @@ class AgentSessionTest {
                 eventually({ session.catalog.value.pendingSettings }) { it.isEmpty() }
                 assertEquals(AgentLinkStatus.Connected, session.status.value)
             } finally { session.close(); https.close() }
+        }
+    }
+
+    @Test
+    fun aComputerThatDoesNotAnswerStaysOfflineUntilItDoes() = runBlocking {
+        val down = java.util.concurrent.atomic.AtomicBoolean(true)
+        val asked = java.util.concurrent.atomic.AtomicInteger()
+        val session = AgentSession(id, connections, null, foreground, scope, { object : Transport by agent {
+            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
+                if (down.get()) {
+                    asked.incrementAndGet()
+                    throw java.io.IOException("no answer")
+                }
+                return agent.request(method, path, credential, body, headers)
+            }
+        } })
+        val seen = java.util.Collections.synchronizedList(mutableListOf<AgentLinkStatus>())
+        val watching = scope.launch { session.status.collect { seen += it } }
+        try {
+            // Asked again and again, it stays offline (iOS's Session.headerState): home's notice doesn't come and go.
+            eventually({ asked.get() }) { it >= 3 }
+            val since = seen.toList().dropWhile { it != AgentLinkStatus.Offline }
+            assertEquals(listOf(AgentLinkStatus.Offline), since)
+            down.set(false)
+            agent.frames.send(Wire.hello("c0"))
+            eventually({ session.status.value }) { it == AgentLinkStatus.Connected }
+            // An open stream that drops is on its way back first; offline only once asking again fails.
+            seen.clear()
+            down.set(true)
+            val dropped = agent.frames
+            agent.frames = Channel(Channel.UNLIMITED)
+            dropped.close()
+            eventually({ seen.toList() }) { it.lastOrNull() == AgentLinkStatus.Offline }
+            assertEquals(listOf(AgentLinkStatus.Connecting, AgentLinkStatus.Offline), seen.toList())
+        } finally {
+            watching.cancel()
+            session.close()
         }
     }
 

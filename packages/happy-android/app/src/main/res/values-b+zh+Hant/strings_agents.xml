@@ -33,4 +33,5 @@
     <string name="agent_search_new_task">新任務</string>
     <string name="agent_search_new_task_picture">帶圖片的新任務</string>
     <string name="agent_search_connect_agent">連接 Happy Agent</string>
+    <string name="agent_home_unanswered">電腦沒有回應。</string>
 </resources>

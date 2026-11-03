@@ -33,4 +33,5 @@
     <string name="agent_search_new_task">Tasca nova</string>
     <string name="agent_search_new_task_picture">Tasca nova amb una imatge</string>
     <string name="agent_search_connect_agent">Connecta Happy Agent</string>
+    <string name="agent_home_unanswered">L\'ordinador no ha respost.</string>
 </resources>

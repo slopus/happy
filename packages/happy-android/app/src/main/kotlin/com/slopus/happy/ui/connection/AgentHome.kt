@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -50,6 +51,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slopus.happy.AppGraph
@@ -73,6 +75,7 @@ import com.slopus.happy.ui.components.PopupMotion
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.StateArt
 import com.slopus.happy.ui.components.StatePage
+import com.slopus.happy.ui.components.rememberReduceMotion
 import com.slopus.happy.ui.connect.LocalAddFlow
 import com.slopus.happy.ui.home.AccountMenu
 import com.slopus.happy.ui.home.AccountMenuButton
@@ -190,6 +193,7 @@ fun AgentHomeScreen(
     link: LinkState = status.linkState(syncing = false, network = true),
 ) {
     val colors = HappyTheme.colors
+    val reduceMotion = rememberReduceMotion()
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -298,8 +302,16 @@ fun AgentHomeScreen(
                         onLeaveSurface = actions.onLeaveSurface?.let { { surface: AgentFeedRow.Surface -> confirmingLeave = surface } },
                         // The list starts under the glass bar and scrolls on beneath it.
                         contentPadding = PaddingValues(top = top),
-                        header = statusMessage(status, profileRequired)?.let { text ->
-                            { item(key = "banner", contentType = "banner") { Banner(text, signInAction(status, actions, profileRequired)) } }
+                        // The notice is the list's first row (iOS ba0d7da0e): it comes and goes as a row does, the rows it
+                        // pushes sliding with it, and a reader further down keeps their place.
+                        header = noticeMessage(status, profileRequired)?.let { text ->
+                            val action = signInAction(status, actions, profileRequired)
+                            val header: LazyListScope.() -> Unit = {
+                                item(key = "banner", contentType = "banner") {
+                                    Banner(text, action, if (reduceMotion) Modifier else Modifier.animateItem(BANNER_FADE_IN, BANNER_PLACEMENT, BANNER_FADE_OUT))
+                                }
+                            }
+                            header
                         },
                         // Room for the last card to scroll clear of the compose button.
                         bottom = { Spacer(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = AgentHomeSpec.fabClearance)) },
@@ -453,17 +465,31 @@ private fun statusMessage(status: AgentLinkStatus, profileRequired: Boolean = fa
     else -> null
 }
 
+/**
+ * The notice heading home's list: why the agent can't be reached for good,
+ * or "The computer did not answer." while it doesn't (iOS's
+ * `Strings.unanswered`); the title keeps the name meanwhile ([BarTitle]).
+ */
+@Composable
+private fun noticeMessage(status: AgentLinkStatus, profileRequired: Boolean): String? =
+    statusMessage(status, profileRequired) ?: if (status == AgentLinkStatus.Offline) stringResource(R.string.agent_home_unanswered) else null
+
+/** The notice row's motion, the rows' own ([agentHomeRows]). */
+private val BANNER_FADE_IN = tween<Float>(180)
+private val BANNER_PLACEMENT = tween<IntOffset>(220)
+private val BANNER_FADE_OUT = tween<Float>(140)
+
 /** A team server's "Sign in again", while its sign-in has expired. */
 @Composable
 private fun signInAction(status: AgentLinkStatus, actions: AgentHomeActions, profileRequired: Boolean): Pair<String, () -> Unit>? =
     if (status == AgentLinkStatus.SignInRequired) stringResource(if (profileRequired) R.string.team_server_add_name else R.string.team_server_sign_in_again) to actions.onSignIn else null
 
-/** Above the rows: why the agent can't be reached for good (removed, or too new). */
+/** The list's first row: why the agent can't be reached (removed, too new, not answering). */
 @Composable
-private fun Banner(text: String, action: Pair<String, () -> Unit>? = null) {
+private fun Banner(text: String, action: Pair<String, () -> Unit>? = null, modifier: Modifier = Modifier) {
     val scheme = MaterialTheme.colorScheme
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 8.dp)
             .background(scheme.errorContainer, MaterialTheme.shapes.medium)
