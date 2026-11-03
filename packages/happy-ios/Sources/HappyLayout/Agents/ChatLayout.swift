@@ -247,8 +247,10 @@ public struct SendFollow: Equatable, Sendable {
 /// (desktop's 20 and 16, scaled), the agent's markdown with its blocks 8
 /// apart, the person's text in a bubble at the right, 10 above and below
 /// its text and 12 beside it. The bubble reaches to 36 from the column's
-/// left, as far as Telegram lets one on a phone; past desktop's ten lines
-/// its text is cut there, "Show full" under it.
+/// left, as far as Telegram lets one on a phone. A person's message shows
+/// whole: only a ludicrously long one, past `foldLines`, is cut there with
+/// "Show full" under it (desktop cuts at ten lines; on a phone that hid
+/// most of an ordinary paste behind a tap).
 public struct MessageLayout: Equatable, Sendable {
     public enum Metrics {
         public static let marginH: CGFloat = 16
@@ -259,9 +261,11 @@ public struct MessageLayout: Equatable, Sendable {
         public static let bubblePaddingH: CGFloat = 12
         public static let bubblePaddingV: CGFloat = 10
         public static let bubbleRadius: CGFloat = 10
-        /// Desktop's `MESSAGE_PREVIEW_HEIGHT`: a person's message past this
-        /// many lines shows only them until opened.
-        public static let previewLines = 10
+        /// A person's message past this many lines shows only them until
+        /// opened: a pasted log or file, never an ordinary message. Fixed,
+        /// from the text alone, so a row's height never follows the screen;
+        /// it also keeps a folded row short enough to draw in tiles.
+        public static let foldLines = 70
         /// Between the text and its Show full / Show less line.
         public static let foldGap: CGFloat = 8
         /// The status line under a person's message while it is on its way.
@@ -301,7 +305,7 @@ public struct MessageLayout: Equatable, Sendable {
     public var bubble: CGRect?
     /// The person's text, drawn as written.
     public var text: CGRect?
-    /// The text is its first `previewLines`, cut (`Fold.preview`).
+    /// The text is its first `foldLines`, cut (`Fold.preview`).
     public var cut = false
     /// Show full, or Show less, under a long message's text.
     public var foldControl: CGRect?
@@ -368,14 +372,14 @@ public struct MessageLayout: Equatable, Sendable {
         return MessageLayout(size: CGSize(width: max(0, width), height: y + bottom), parts: placed, bubble: nil, text: nil, pictures: [], status: nil)
     }
 
-    /// A person's message that may be longer than `previewLines`.
+    /// A person's message that may be longer than `foldLines`.
     public struct Fold {
-        /// The text cut to `previewLines`; shorter than the whole, it folds.
+        /// The text cut to `foldLines`; shorter than the whole, it folds.
         public var preview: Measurable
         /// Show full, or, opened, Show less.
         public var control: Measurable
         public var opened: Bool
-        /// The text's line height: no taller than `previewLines` of it, the
+        /// The text's line height: no taller than `foldLines` of it, the
         /// preview is never measured.
         public var lineHeight: CGFloat
 
@@ -411,7 +415,7 @@ public struct MessageLayout: Equatable, Sendable {
             var textSize = text.size(fitting: measure)
             var contentWidth = textSize.width
             var controlSize: CGSize?
-            if let fold, textSize.height > CGFloat(M.previewLines) * fold.lineHeight + 0.5 {
+            if let fold, textSize.height > CGFloat(M.foldLines) * fold.lineHeight + 0.5 {
                 let preview = fold.preview.size(fitting: measure)
                 if preview.height < textSize.height {
                     // As wide cut as whole, as desktop clips it: opening

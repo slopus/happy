@@ -15,7 +15,10 @@ struct ChatRowFlight {
 
 /// Telegram's send transition (ChatMessageTransitionNode's `.textInput`):
 /// the words leave the composer as the bubble grows around them from the
-/// input field into its place, while the list makes room for it.
+/// input field into its place, while the list makes room for it. A draft
+/// that scrolled in the field isn't carried: what the field showed fades
+/// there and the row rises from the composer (`SendFlightLayout`). The
+/// overlay clips to `host`, so nothing of a flight is drawn off screen.
 ///
 /// The row stays in the list, veiled, where it is laid out; a copy of it
 /// flies over the screen, above the composer, and lands on it, and the row
@@ -46,9 +49,13 @@ final class ChatSendFlight {
 
     /// The composer's words, and where its input field is, in `host`.
     struct Source {
+        /// The words, laid out whole: only for a draft the field shows whole.
         var text: ChatTextLayout?
         var textOrigin: CGPoint
         var field: CGRect
+        /// What the field showed of a draft that scrolled in it.
+        var snapshot: UIView?
+        var layout: SendFlightLayout.Source
     }
 
     /// The message the next row must be: nil takes the next new row of
@@ -59,6 +66,8 @@ final class ChatSendFlight {
     let source: Source
     private let overlay = PassthroughView()
     private let words = ChatTextView()
+    /// What the field showed, for a draft that scrolled in it.
+    private var snapshot: UIView?
     /// The copy, at the row's place in `host`, and its bubble and words.
     private(set) var container: UIView?
     private(set) var bubble: UIView?
@@ -67,8 +76,12 @@ final class ChatSendFlight {
     private var target: CGRect?
     private(set) weak var row: UIView?
     private(set) var finished = false
+    /// Its row came, whether it morphs onto it or slides in.
+    private var landed = false
     /// Told when the flight is over, landed or let go of.
     var onFinish: (() -> Void)?
+    /// For tests: what the flight draws over the screen.
+    var overlayView: UIView { overlay }
 
     /// Shows the composer's words over it at once, where they are, so the
     /// composer emptying shows nothing go.
@@ -77,29 +90,52 @@ final class ChatSendFlight {
         self.host = host
         self.message = message
         overlay.frame = host.bounds
+        overlay.clipsToBounds = true
         overlay.isUserInteractionEnabled = false
         overlay.accessibilityElementsHidden = true
         host.addSubview(overlay)
-        if let text = source.text {
+        if let text = source.text, let frame = source.layout.words {
             words.isAccessibilityElement = false
             words.layout = text
-            words.frame = CGRect(origin: source.textOrigin, size: text.size)
+            words.frame = frame
             overlay.addSubview(words)
+        } else if let view = source.snapshot, let frame = source.layout.snapshot {
+            // Only the part of the field on screen, as it showed it.
+            let clip = UIView(frame: frame)
+            clip.clipsToBounds = true
+            clip.isUserInteractionEnabled = false
+            view.frame = CGRect(origin: CGPoint(x: source.field.minX - frame.minX, y: source.field.minY - frame.minY), size: source.field.size)
+            clip.addSubview(view)
+            overlay.addSubview(clip)
+            snapshot = clip
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + Motion.patience) { [weak self] in
-            guard let self, container == nil else { return }
+            guard let self, !landed else { return }
             letGo()
         }
     }
 
-    /// The composer's words and its input field, in `host`.
+    /// The composer's words and its input field, in `host`. A draft taller
+    /// than the field is never laid out here: the field's own picture of it
+    /// stands in, at no cost to the main thread.
     static func source(from card: AgentInputCardView, in host: UIView) -> Source {
         let view = card.textView
+        let field = view.convert(view.bounds, to: host)
+        let hasText = (view.attributedText?.length ?? 0) > 0
+        let scrolls = hasText && view.contentSize.height > view.bounds.height + 0.5
+        if scrolls || !hasText {
+            let layout = SendFlightLayout.Source(screen: host.bounds, field: field, text: nil, scrolls: scrolls)
+            let snapshot = layout.snapshot == nil ? nil : view.snapshotView(afterScreenUpdates: false)
+            return Source(text: nil, textOrigin: field.origin, field: field, snapshot: snapshot, layout: layout)
+        }
         let inset = view.textContainerInset
         let width = view.textContainer.size.width
-        let text = view.attributedText.flatMap { $0.length > 0 ? ChatTextLayout($0, width: width) : nil }
+        let text = view.attributedText.map { ChatTextLayout($0, width: width) }
         let origin = view.convert(CGPoint(x: inset.left + view.textContainer.lineFragmentPadding, y: inset.top), to: host)
-        return Source(text: text, textOrigin: origin, field: view.convert(view.bounds, to: host))
+        let frame = text.map { CGRect(origin: origin, size: $0.size) }
+        let layout = SendFlightLayout.Source(screen: host.bounds, field: field, text: frame, scrolls: false)
+        let snapshot = layout.snapshot == nil ? nil : view.snapshotView(afterScreenUpdates: false)
+        return Source(text: layout.words == nil ? nil : text, textOrigin: origin, field: field, snapshot: snapshot, layout: layout)
     }
 
     /// Whether the transition may fly at all: not for a reader up in history
@@ -115,23 +151,25 @@ final class ChatSendFlight {
 
     /// Whether `plan`, new in the list, is the row this send is waiting for.
     func awaits(_ plan: ChatRowPlan) -> Bool {
-        guard container == nil, !finished, plan.flight != nil else { return false }
+        guard !landed, !finished, plan.flight != nil else { return false }
         return message == nil || message == plan.id
     }
 
     /// Lands the copy of `plan` on `row`, which is laid out where it ends,
     /// veiled. `drawn` says when the row has drawn itself; `reveal` shows it.
     func land(on row: UIView, plan: ChatRowPlan, drawn: @escaping () -> Bool, reveal: @escaping () -> Void) {
-        guard container == nil, !finished, let flight = plan.flight else { return }
+        guard !landed, !finished, let flight = plan.flight else { return }
+        landed = true
         message = plan.id
         self.row = row
         let frame = row.convert(row.bounds, to: host)
         target = frame
-        if flight.media {
+        if SendFlightLayout(screen: host.bounds, row: frame, source: source.layout, media: flight.media).style == .slide {
             words.removeFromSuperview()
+            fadeSnapshot()
             reveal()
             fadeAndSlide(row, flight: flight)
-            finish()
+            if snapshot == nil { finish() }
             return
         }
         let container = UIView(frame: frame)
@@ -245,7 +283,19 @@ final class ChatSendFlight {
         guard !finished else { return }
         words.layer.opacity = 0
         words.layer.add(Self.fade(from: 1, to: 0, duration: Motion.sourceFade), forKey: "flight.fade")
+        fadeSnapshot()
         DispatchQueue.main.asyncAfter(deadline: .now() + Motion.sourceFade) { [weak self] in self?.finish() }
+    }
+
+    /// What the field showed of a scrolled draft fades where it was, and
+    /// the flight is over once it has.
+    private func fadeSnapshot() {
+        guard let snapshot, snapshot.layer.animation(forKey: "flight.fade") == nil else { return }
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { [weak self] in self?.finish() }
+        snapshot.layer.opacity = 0
+        snapshot.layer.add(Self.fade(from: 1, to: 0, duration: Motion.sourceFade), forKey: "flight.fade")
+        CATransaction.commit()
     }
 
     private func finish() {

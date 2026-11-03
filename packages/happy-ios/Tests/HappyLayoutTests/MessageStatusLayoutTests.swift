@@ -90,13 +90,13 @@ final class MessageStatusLayoutTests: XCTestCase {
     }
 
     func testAFoldedMessageSetsTheTimeBesideShowFull() {
-        let fold = MessageLayout.Fold(preview: text(CGSize(width: 300, height: 240)), control: text(CGSize(width: 70, height: 20)), opened: false, lineHeight: 24)
-        let layout = MessageLayout.user(width: 390, text: text(CGSize(width: 300, height: 480)), fold: fold, showsStatus: false,
+        let fold = MessageLayout.Fold(preview: text(CGSize(width: 300, height: 1680)), control: text(CGSize(width: 70, height: 20)), opened: false, lineHeight: 24)
+        let layout = MessageLayout.user(width: 390, text: text(CGSize(width: 300, height: 2400)), fold: fold, showsStatus: false,
                                         delivery: status, trailing: text(CGSize(width: 290, height: 24)))
         // Show full's line has the room the text's last one hasn't.
-        XCTAssertEqual(layout.foldControl, CGRect(x: 62, y: 266, width: 70, height: 20))
-        XCTAssertEqual(layout.delivery, CGRect(x: 316, y: 274, width: 46, height: 13))
-        XCTAssertEqual(layout.bubble?.height, 240 + 8 + 20 + 20)
+        XCTAssertEqual(layout.foldControl, CGRect(x: 62, y: 1706, width: 70, height: 20))
+        XCTAssertEqual(layout.delivery, CGRect(x: 316, y: 1714, width: 46, height: 13))
+        XCTAssertEqual(layout.bubble?.height, 1680 + 8 + 20 + 20)
     }
 
     // MARK: In the Happy CLI bubble

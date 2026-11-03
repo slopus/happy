@@ -1105,10 +1105,9 @@ final class UITests: XCTestCase {
         app.tapBack()
     }
 
-    /// A 30-line message, sent: its bubble shows desktop's first ten lines
-    /// and Show full under them (10 + 10 × 24 + 8 + 16 + 10, 8 above and
-    /// below), a tap opens all 30 (some wrapped), and another cuts it back.
-    func testLongMessageFolds() {
+    /// A 30-line message, sent: its bubble shows all 30 (some wrapped), as
+    /// only a message past 70 lines folds, and a tap on it folds nothing.
+    func testLongMessageShowsWhole() {
         home()
         pause(1)
         let bot = row("space", "Research Assistant")
@@ -1136,16 +1135,12 @@ final class UITests: XCTestCase {
         XCTAssertFalse(app.keyboards.firstMatch.exists, "the keyboard is still up")
         bringIntoView(message)
         pause(1)
-        capture("fold-closed")
-        XCTAssertEqual(message.frame.height, 300, accuracy: 18, "the message isn't cut to ten lines")
+        capture("whole")
+        XCTAssertGreaterThan(message.frame.height, 780, "the message doesn't show all thirty lines")
+        let height = message.frame.height
         message.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)).tap()
         pause(1.5)
-        bringIntoView(message)
-        capture("fold-open")
-        XCTAssertGreaterThan(message.frame.height, 780, "the tap didn't open all thirty lines")
-        message.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.5)).tap()
-        pause(1.5)
-        XCTAssertEqual(message.frame.height, 300, accuracy: 18, "a second tap didn't cut it back")
+        XCTAssertEqual(message.frame.height, height, accuracy: 1, "a tap folded it")
         app.tapBack()
     }
 

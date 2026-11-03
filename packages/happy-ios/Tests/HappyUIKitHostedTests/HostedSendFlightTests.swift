@@ -206,6 +206,19 @@ final class HostedSendFlightTests: XCTestCase {
         @objc private func tick() { samples.append(sample()) }
     }
 
+    private final class Ticker: NSObject {
+        let tick: () -> Void
+        private var link: CADisplayLink?
+        init(_ tick: @escaping () -> Void) { self.tick = tick }
+        func start() {
+            let link = CADisplayLink(target: self, selector: #selector(fire))
+            link.add(to: .main, forMode: .common)
+            self.link = link
+        }
+        func stop() { link?.invalidate(); link = nil }
+        @objc private func fire() { tick() }
+    }
+
     /// Where `layer` is drawn now, in `window`.
     private func presented(_ rect: CGRect, in layer: CALayer, window: UIWindow) -> CGRect {
         guard let presentation = layer.presentation(), let root = window.layer.presentation() else { return layer.convert(rect, to: window.layer) }
@@ -343,6 +356,51 @@ final class HostedSendFlightTests: XCTestCase {
     }
 
     // MARK: The flight
+
+    /// The long-paste report: a draft far taller than the input field,
+    /// scrolled to its end, sent. Its whole layout was drawn at y -5250 over
+    /// the status bar and the header. Now nothing of the flight is drawn
+    /// off screen on any frame, no part of it is laid out whole, and the
+    /// row rises from the composer instead of morphing the field's words.
+    func testALongScrolledDraftIsNeverDrawnOffScreen() async throws {
+        let screen = try await agentChat()
+        let window = screen.window
+        let draft = (1...24).map { "## Section \($0)\n" + String(repeating: "Words that wrap across the bubble and on. ", count: 6) }.joined(separator: "\n\n") + " END"
+        screen.card.setText(draft, selection: NSRange(location: (draft as NSString).length, length: 0))
+        try await Task.sleep(for: .milliseconds(400))
+        screen.view.layoutIfNeeded()
+        let field = screen.card.textView
+        XCTAssertGreaterThan(field.contentSize.height, field.bounds.height * 2, "the draft doesn't scroll in the field")
+        let source = ChatSendFlight.source(from: screen.card, in: screen.view)
+        XCTAssertNil(source.text, "a scrolled draft was laid out whole")
+        XCTAssertNotNil(source.layout.snapshot)
+
+        var outside: [String] = []
+        var frames = 0
+        let ticker = Ticker { [self] in
+            guard let flight = screen.flight(), !flight.finished else { return }
+            frames += 1
+            let overlay = flight.overlayView
+            if !overlay.clipsToBounds { outside.append("the overlay doesn't clip") }
+            var views = overlay.subviews
+            while let view = views.popLast() {
+                views += view.subviews
+                guard !view.isHidden, view.alpha > 0 else { continue }
+                let drawn = presented(view.bounds, in: view.layer, window: window)
+                if !window.bounds.insetBy(dx: -0.5, dy: -0.5).contains(drawn) { outside.append("\(type(of: view)) at \(drawn)") }
+            }
+        }
+        ticker.start()
+        screen.card.delegate?.agentInputCardDidPressSend(screen.card)
+        let flight = try XCTUnwrap(screen.flight(), "the send didn't arm a flight")
+        let done = try await until(seconds: 3) { flight.finished }
+        ticker.stop()
+        XCTAssertTrue(done, "the flight never ended")
+        XCTAssertNil(flight.container, "a scrolled draft morphed")
+        XCTAssertNotNil(flight.row, "the row never came")
+        XCTAssertGreaterThan(frames, 0)
+        XCTAssertEqual(outside, [], "drawn off screen")
+    }
 
     func testTheAgentChatFliesASendInFromTheComposer() async throws {
         let screen = try await agentChat()
