@@ -88,4 +88,7 @@
     <string name="artifact_history_showing">Showing version %1$s</string>
     <string name="artifact_history_show_latest">Show latest</string>
     <string name="artifact_history_failed">Versions couldn’t be loaded.</string>
+
+    <!-- A fresh Markdown artifact version opened on its diff (ui/artifacts/ArtifactScreen.kt) -->
+    <string name="artifact_diff_since">Changes since version %1$s</string>
 </resources>

@@ -1,5 +1,16 @@
 package com.slopus.happy.ui.artifacts
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.text.font.FontWeight
+import com.slopus.happy.ui.diff.MarkdownDiffView
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -68,6 +79,9 @@ object ArtifactTags {
     const val OPEN = "artifact.open"
     const val OPEN_RING = "artifact.open.ring"
     const val OPEN_STATUS = "artifact.open.status"
+    const val DIFF_BAR = "artifact.diff.bar"
+    const val DIFF_TAB = "artifact.diff.tab"
+    const val LATEST_TAB = "artifact.diff.latest"
 }
 
 /** What the artifact screen does with a tap, outside itself. */
@@ -167,7 +181,9 @@ fun ArtifactScreen(
 /**
  * A Markdown file in the conversation's renderer, in the reading column:
  * every picture it shows in its own shape ([documentPictureSize]) read
- * through the artifact, every link resolved against the file.
+ * through the artifact, every link resolved against the file. A fresh
+ * version opens on its rendered diff against the one before (desktop
+ * e10d6444), with Diff and Latest to switch.
  */
 @Composable
 private fun ArtifactDocument(
@@ -177,20 +193,61 @@ private fun ArtifactDocument(
     onLink: (String) -> Unit,
 ) {
     val links = remember(ui) { { raw: String -> onLink(raw) } }
-    Column(
+    val previous = ui.previous
+    var diff by rememberSaveable(ui.path, previous != null) { mutableStateOf(previous != null) }
+    Column(Modifier.fillMaxSize()) {
+        if (previous != null) {
+            Row(
+                Modifier.fillMaxWidth().contentMaxWidth(LocalWindowLayout.current).padding(horizontal = 16.dp, vertical = 8.dp).testTag(ArtifactTags.DIFF_BAR),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                DocumentTab(stringResource(R.string.files_diff), diff, ArtifactTags.DIFF_TAB) { diff = true }
+                DocumentTab(stringResource(R.string.artifact_history_latest), !diff, ArtifactTags.LATEST_TAB) { diff = false }
+            }
+        }
+        Column(
+            Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .contentMaxWidth(LocalWindowLayout.current)
+                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .testTag(ArtifactTags.DOCUMENT),
+        ) {
+            if (diff && previous != null) {
+                Text(
+                    stringResource(R.string.artifact_diff_since, ui.previousLabel.orEmpty()),
+                    style = happyTextStyle(fontSize = 13, lineHeight = 18),
+                    color = HappyTheme.colors.textSecondary,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                MarkdownDiffView(previous, ui.text)
+            } else {
+                MarkdownView(
+                    ui.blocks,
+                    onLink = links,
+                    image = { block -> DocumentPicture(block, ui.pictures[block.url], media, onPicture) },
+                )
+            }
+            Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
+        }
+    }
+}
+
+/** One of Diff and Latest over a fresh version, as a workspace file's Diff and Rendered (FileScreen's tabs). */
+@Composable
+private fun DocumentTab(label: String, selected: Boolean, tag: String, onClick: () -> Unit) {
+    val colors = HappyTheme.colors
+    Box(
         Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .contentMaxWidth(LocalWindowLayout.current)
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .testTag(ArtifactTags.DOCUMENT),
+            .testTag(tag)
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (selected) colors.textLink.copy(alpha = 0x66 / 255f) else colors.glass.backgroundSubtle)
+            .clickable(role = Role.Tab, onClick = onClick)
+            .semantics { this.selected = selected }
+            .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
-        MarkdownView(
-            ui.blocks,
-            onLink = links,
-            image = { block -> DocumentPicture(block, ui.pictures[block.url], media, onPicture) },
-        )
-        Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
+        Text(label, style = happyTextStyle(fontSize = 14, weight = FontWeight.SemiBold), color = if (selected) Color.White else colors.textSecondary)
     }
 }
 

@@ -78,4 +78,6 @@
     <string name="artifact_history_showing">Mostrando a versão %1$s</string>
     <string name="artifact_history_show_latest">Mostrar a mais recente</string>
     <string name="artifact_history_failed">Não foi possível carregar as versões.</string>
+
+    <string name="artifact_diff_since">Alterações desde a versão %1$s</string>
 </resources>

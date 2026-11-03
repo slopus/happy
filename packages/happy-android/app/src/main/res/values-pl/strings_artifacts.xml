@@ -80,4 +80,6 @@
     <string name="artifact_history_showing">Wyświetlana wersja %1$s</string>
     <string name="artifact_history_show_latest">Pokaż najnowszą</string>
     <string name="artifact_history_failed">Nie udało się wczytać wersji.</string>
+
+    <string name="artifact_diff_since">Zmiany od wersji %1$s</string>
 </resources>

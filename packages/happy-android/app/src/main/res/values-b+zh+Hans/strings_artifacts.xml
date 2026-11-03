@@ -74,4 +74,6 @@
     <string name="artifact_history_showing">正在显示版本 %1$s</string>
     <string name="artifact_history_show_latest">显示最新版本</string>
     <string name="artifact_history_failed">无法加载版本。</string>
+
+    <string name="artifact_diff_since">自版本 %1$s 以来的更改</string>
 </resources>

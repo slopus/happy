@@ -80,4 +80,6 @@
     <string name="artifact_history_showing">Показана версия %1$s</string>
     <string name="artifact_history_show_latest">Показать последнюю</string>
     <string name="artifact_history_failed">Не удалось загрузить версии.</string>
+
+    <string name="artifact_diff_since">Изменения с версии %1$s</string>
 </resources>

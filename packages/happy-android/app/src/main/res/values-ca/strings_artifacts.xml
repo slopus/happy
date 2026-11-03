@@ -78,4 +78,6 @@
     <string name="artifact_history_showing">Es mostra la versió %1$s</string>
     <string name="artifact_history_show_latest">Mostra la més recent</string>
     <string name="artifact_history_failed">No s’han pogut carregar les versions.</string>
+
+    <string name="artifact_diff_since">Canvis des de la versió %1$s</string>
 </resources>

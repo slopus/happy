@@ -74,4 +74,6 @@
     <string name="artifact_history_showing">バージョン %1$s を表示中</string>
     <string name="artifact_history_show_latest">最新を表示</string>
     <string name="artifact_history_failed">バージョンを読み込めませんでした。</string>
+
+    <string name="artifact_diff_since">バージョン %1$s からの変更</string>
 </resources>

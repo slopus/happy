@@ -272,6 +272,26 @@ class ArtifactScreensTest {
         rule.node(ArtifactHistoryTags.ACTION).assertDoesNotExist()
     }
 
+    @Test fun aFreshVersionOpensOnItsDiffAndLatestShowsTheDocument() {
+        val old = "# Launch plan\n\nShip on Friday.\n\n- Write the notes\n- Tell the team"
+        val new = "# Launch plan\n\nShip on Monday after the review.\n\n- Write the notes\n- Tell the team\n- Post the update"
+        val doc = ArtifactUi.Document("index.md", com.slopus.happy.chat.markdown.parseMarkdown(new), emptyMap(), emptyList(), new, old, "1.0")
+        rule.setHappyContent { ArtifactScreen("Launch plan", doc, null, "Studio", ArtifactActions(onBack = {})) }
+        rule.waitUntil(3_000) { rule.onAllNodesWithTag(com.slopus.happy.ui.diff.MarkdownDiffTags.VIEW, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Changes since version 1.0").assertExists()
+        shot("artifact-diff")
+        rule.node(ArtifactTags.LATEST_TAB).performClick()
+        rule.waitForIdle()
+        rule.node(com.slopus.happy.ui.diff.MarkdownDiffTags.VIEW).assertDoesNotExist()
+        rule.onNodeWithText("Post the update").assertExists()
+    }
+
+    @Test fun aVersionWithNothingBeforeHasNoDiff() {
+        val doc = ArtifactUi.Document("index.md", com.slopus.happy.chat.markdown.parseMarkdown("# Plan"), emptyMap(), emptyList())
+        rule.setHappyContent(dark = true) { ArtifactScreen("Plan", doc, null, "Studio", ArtifactActions(onBack = {})) }
+        rule.node(ArtifactTags.DIFF_BAR).assertDoesNotExist()
+    }
+
     @Test fun deletedAndUnavailableSaySoInPlace() {
         var ui by androidx.compose.runtime.mutableStateOf<ArtifactUi>(ArtifactUi.Message(deleted = true))
         rule.setHappyContent { ArtifactScreen("Report", ui, null, "Studio", ArtifactActions(onBack = {})) }

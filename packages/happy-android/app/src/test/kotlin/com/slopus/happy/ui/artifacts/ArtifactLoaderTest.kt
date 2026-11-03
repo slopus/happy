@@ -170,6 +170,24 @@ class ArtifactLoaderTest {
         assertEquals("following the latest, the version read is it", 3, created.latest.value)
     }
 
+    @Test fun aFreshMarkdownVersionCarriesTheOneBeforeToDiff() {
+        val now = 1_793_700_000_000L
+        fun md(number: Int, entry: String, createdAt: Long) =
+            """{"artifactId":"a1","number":$number,"major":1,"minor":${number - 1},"title":"Plan","createdAt":$createdAt,"entry":{"path":"$entry"},"files":[{"path":"$entry","mimeType":"text/markdown","size":10}]}"""
+        val bodies = mapOf("draft.md" to "# Plan\n\nOld words.".toByteArray(), "index.md" to "# Plan\n\nNew words.".toByteArray())
+        fun loader(createdAt: Long) = ArtifactLoader(
+            files(mapOf(1 to md(1, "draft.md", now - 3_600_000), 2 to md(2, "index.md", createdAt)), bodies), null, scope,
+            ArtifactRef("a1", 2, "", "Plan", followsLatest = true), sizeWait = 2_000, now = { now },
+        ).also(ArtifactLoader::load)
+        val fresh = settled(loader(now - 60_000)) as ArtifactUi.Document
+        assertEquals("# Plan\n\nOld words.", fresh.previous)
+        assertEquals("1.0", fresh.previousLabel)
+        assertEquals("# Plan\n\nNew words.", fresh.text)
+        // Older than 20 minutes: just the document.
+        val stale = settled(loader(now - ArtifactLoader.FRESH_DIFF_MILLIS - 1)) as ArtifactUi.Document
+        assertEquals(null, stale.previous)
+    }
+
     @Test fun aLinkedFileOpensInItsVersionUnderItsName() {
         val loader = load(
             files(mapOf(2 to version(2, "index.md", "index.md" to "text/markdown", "docs/guide.md" to "text/markdown")), mapOf("docs/guide.md" to "Guide".toByteArray())),
