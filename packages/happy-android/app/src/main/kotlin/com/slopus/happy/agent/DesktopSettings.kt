@@ -43,6 +43,14 @@ object DesktopSettings {
         CompletionSound.Never -> JsonPrimitive("never")
     }
 
+    /** Whether the person hid bot [botId] on the desktop: home leaves it out (iOS SidebarRows, desktop 1dc8b566). */
+    fun botHidden(values: Map<String, JsonElement>, botId: String): Boolean =
+        (values[BOT_PREFIX + botId] as? JsonObject)?.get("hidden") == JsonPrimitive(true)
+
+    /** Whether the person muted bot [botId]: home lists it, its subtasks too, with no activity or unread (desktop 731c8bbc). */
+    fun botMuted(values: Map<String, JsonElement>, botId: String): Boolean =
+        (values[BOT_PREFIX + botId] as? JsonObject)?.get("muted") == JsonPrimitive(true)
+
     /** Whether the person muted or hid bot [botId]: it never chimes, whatever its connection says. */
     fun botQuiet(values: Map<String, JsonElement>, botId: String): Boolean {
         val attention = values[BOT_PREFIX + botId] as? JsonObject ?: return false

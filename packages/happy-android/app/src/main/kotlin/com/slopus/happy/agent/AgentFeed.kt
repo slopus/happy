@@ -154,6 +154,8 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                 agentId: String, title: String?, kind: ConversationKind, depth: Int,
                 picture: String? = null, thumbhash: String? = null, parentId: String? = null, nesting: Int = 0,
                 seed: String? = null, happy: Boolean = false,
+                /** A bot muted on the desktop: listed, its subtasks too, without activity or unread (iOS SidebarRows' `muted`). */
+                muted: Boolean = false,
             ): Boolean {
                 val agent = catalog.agents[agentId] ?: return false
                 val wire = AgentCatalog.decodeAgent(agent) ?: return false
@@ -168,12 +170,12 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                     thumbhash = thumbhash,
                     seed = seed,
                     happy = happy,
-                    working = wire.working,
-                    unread = wire.unread != null,
-                    blocked = wire.pendingQuestionId != null,
+                    working = !muted && wire.working,
+                    unread = !muted && wire.unread != null,
+                    blocked = !muted && wire.pendingQuestionId != null,
                     activityAt = wire.unread?.since ?: wire.updatedAt,
                     parentId = parentId,
-                    waiting = wire.wait != null,
+                    waiting = !muted && wire.wait != null,
                     workspaceId = wire.workspaceId,
                     lineChanges = git[wire.workspaceId]?.takeIf { it.visible },
                 )
@@ -181,7 +183,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                 if (nesting < 2) {
                     for (child in (agent["subtasks"] as? JsonArray).orEmpty()) {
                         val childId = (child as? JsonObject)?.string("id") ?: continue
-                        if (agentRows(childId, null, ConversationKind.Subtask, depth + 1, parentId = agentId, nesting = nesting + 1)) delegating = true
+                        if (agentRows(childId, null, ConversationKind.Subtask, depth + 1, parentId = agentId, nesting = nesting + 1, muted = muted)) delegating = true
                     }
                 }
                 val row = rows[at] as AgentFeedRow.Conversation
@@ -235,10 +237,15 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                 bots.forEach { bot ->
                     val agentId = (bot["agent"] as? JsonObject)?.string("id") ?: return@forEach
                     val id = bot.string("id") ?: return@forEach
+                    // Hidden or muted on the desktop, as its sidebar has it (desktop 731c8bbc, 1dc8b566).
+                    if (DesktopSettings.botHidden(catalog.settingValues, id)) return@forEach
                     val avatar = bot["avatar"] as? JsonObject
                     val picture = avatar?.let { "/v0/bots/${AgentClient.escape(id)}/avatar" }
                     val happy = bot.string("systemKey") == "chief_of_staff"
-                    agentRows(agentId, bot.string("name"), ConversationKind.Bot, 0, picture, avatar?.string("thumbhash"), seed = id, happy = happy)
+                    agentRows(
+                        agentId, bot.string("name"), ConversationKind.Bot, 0, picture, avatar?.string("thumbhash"), seed = id, happy = happy,
+                        muted = DesktopSettings.botMuted(catalog.settingValues, id),
+                    )
                 }
             }
             section(AgentFeedSection.Tasks) {
