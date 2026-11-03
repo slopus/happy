@@ -66,6 +66,38 @@ class ContentWidthCallersTest {
         assertDp("centred", (731.dp - ContentTokens.Medium.columnMaxWidth) / 2, box.left)
     }
 
+    /**
+     * iOS's b73b1accd: on its side a phone's cutout and a side navigation bar are unsafe, and
+     * the column keeps out of them (48 on the left, 48 on the right here, the medium column's 8 gutter less);
+     * where the gutter is more, the gutter holds.
+     */
+    @Test
+    @Config(qualifiers = "w731dp-h411dp-xxhdpi")
+    fun theColumnKeepsOutOfTheUnsafeSides() {
+        rule.setHappyContent {
+            val sides = WindowLayout.of(731.dp, 411.dp, safeLeft = 48.dp, safeRight = 24.dp)
+            androidx.compose.runtime.CompositionLocalProvider(LocalWindowLayout provides sides) { Capped() }
+        }
+        val box = rule.node(TAG).bounds
+        // 731 - 48 - 24 leaves 659 < 672: the cutout and the bar bind on both sides.
+        assertDp("what is left between them", 659, box.width)
+        assertDp("clear of the cutout", 48, box.left)
+        assertDp("clear of the side bar", 731 - 24, box.right)
+    }
+
+    @Test
+    @Config(qualifiers = "w891dp-h411dp-xxhdpi")
+    fun theColumnCentresInTheSafeBand() {
+        rule.setHappyContent {
+            val sides = WindowLayout.of(891.dp, 411.dp, safeLeft = 30.dp, safeRight = 0.dp)
+            androidx.compose.runtime.CompositionLocalProvider(LocalWindowLayout provides sides) { Capped() }
+        }
+        val box = rule.node(TAG).bounds
+        assertDp("the 800 column", 800, box.width)
+        // The band is 30 (the cutout) to 891 - 8 (the gutter): 853, the 800 centred in it.
+        assertDp("centred in the safe band", 56.5.dp, box.left)
+    }
+
     @Test
     @Config(qualifiers = "w640dp-h800dp-xxhdpi")
     fun aNarrowMediumWindowKeepsTheMargin() {

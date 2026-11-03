@@ -25,7 +25,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -53,6 +55,7 @@ import com.slopus.happy.ui.home.HomeNavigation
 import com.slopus.happy.ui.home.LocalHomeInSidebar
 import com.slopus.happy.ui.layout.LocalTabletShell
 import com.slopus.happy.ui.layout.LocalWindowLayout
+import com.slopus.happy.ui.layout.WindowLayout
 import com.slopus.happy.ui.layout.ProvideWindowLayout
 import com.slopus.happy.ui.onboarding.OnboardingSettingsRoute
 import com.slopus.happy.ui.session.SessionInfoRoute
@@ -169,7 +172,14 @@ fun TabletShell(
                     )
                 }
                 Box(Modifier.weight(1f).fillMaxHeight().testTag(TabletShellTags.DETAIL)) {
-                    CompositionLocalProvider(LocalTabletShell provides shows, LocalHomeInSidebar provides shows, content = content)
+                    // Beside the sidebar, the detail's inner side is no edge of the window.
+                    val detail = if (shows && !zen) window.besideSidebar(LocalLayoutDirection.current) else window
+                    CompositionLocalProvider(
+                        LocalWindowLayout provides detail,
+                        LocalTabletShell provides shows,
+                        LocalHomeInSidebar provides shows,
+                        content = content,
+                    )
                 }
             }
             if (shows) {
@@ -184,6 +194,10 @@ fun TabletShell(
         }
     }
 }
+
+/** The window as the pane beside the sidebar sees it: its sidebar side is safe. */
+private fun WindowLayout.besideSidebar(direction: LayoutDirection): WindowLayout =
+    if (direction == LayoutDirection.Ltr) copy(safeLeft = 0.dp) else copy(safeRight = 0.dp)
 
 /** SidebarNavigator.tsx PersistentHeader on native Android: zen and back, no forward. */
 @Composable

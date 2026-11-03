@@ -1,6 +1,11 @@
 package com.slopus.happy.ui.layout
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.absolutePadding
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -13,6 +18,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.sqrt
@@ -171,6 +178,14 @@ data class WindowLayout(
     val content: ContentTokens,
     /** `useHeaderHeight`; on Android it takes the device type from [isTablet]. */
     val headerHeight: Dp,
+    /**
+     * The window's unsafe sides, absolute (not start and end): the display
+     * cutout and a navigation bar on the side, which a phone on its side
+     * has (iOS's b73b1accd). [Modifier.contentMaxWidth] keeps the column
+     * inside them; backgrounds still run under them.
+     */
+    val safeLeft: Dp = 0.dp,
+    val safeRight: Dp = 0.dp,
 ) {
     /** `layout.maxWidth`, the content column at its widest: the chat, the composer, item groups, the bars. */
     val contentMaxWidth: Dp get() = content.columnMaxWidth
@@ -179,7 +194,7 @@ data class WindowLayout(
     val headerMaxWidth: Dp get() = contentMaxWidth
 
     companion object {
-        fun of(width: Dp, height: Dp): WindowLayout {
+        fun of(width: Dp, height: Dp, safeLeft: Dp = 0.dp, safeRight: Dp = 0.dp): WindowLayout {
             val isTablet = TabletBreakpoint.isTablet(width)
             val isLandscape = TabletBreakpoint.isLandscape(width, height)
             val deviceType = DeviceCalculations.deviceType(width, height)
@@ -193,6 +208,8 @@ data class WindowLayout(
                 widthClass = widthClass,
                 content = ContentTokens.of(widthClass),
                 headerHeight = DeviceCalculations.headerHeight(if (isTablet) DeviceType.Tablet else DeviceType.Phone, isLandscape),
+                safeLeft = safeLeft,
+                safeRight = safeRight,
             )
         }
 
@@ -203,11 +220,19 @@ data class WindowLayout(
 
 val LocalWindowLayout = staticCompositionLocalOf { WindowLayout.Unmeasured }
 
-/** Measures the window (the app draws edge to edge, so the root is the window) and provides it. */
+/**
+ * Measures the window (the app draws edge to edge, so the root is the window) and provides it.
+ * The sides come from the system bars and the cutout, never the keyboard, whose every frame
+ * would otherwise recompose this.
+ */
 @Composable
 fun ProvideWindowLayout(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     BoxWithConstraints(modifier) {
-        val layout = remember(maxWidth, maxHeight) { WindowLayout.of(maxWidth, maxHeight) }
+        val density = LocalDensity.current
+        val sides = WindowInsets.systemBars.union(WindowInsets.displayCutout)
+        val left = with(density) { sides.getLeft(this, LayoutDirection.Ltr).toDp() }
+        val right = with(density) { sides.getRight(this, LayoutDirection.Ltr).toDp() }
+        val layout = remember(maxWidth, maxHeight, left, right) { WindowLayout.of(maxWidth, maxHeight, left, right) }
         CompositionLocalProvider(LocalWindowLayout provides layout, content = content)
     }
 }
@@ -220,14 +245,19 @@ val LocalTabletShell = staticCompositionLocalOf { false }
 
 /**
  * The content column ([ContentTokens]): [ContentTokens.gutter] in from the
- * pane on each side, held to [ContentTokens.columnMaxWidth] and centred
- * (layout.ts `maxWidth` under `alignItems: 'center'`). A no-op on a compact
- * window. Put the content's own inset after it, never before, so its
- * keyline is the one the bars' glyphs sit on at every width.
+ * pane on each side, or the window's unsafe side ([WindowLayout.safeLeft],
+ * [WindowLayout.safeRight]) where that is more, held to
+ * [ContentTokens.columnMaxWidth] and centred (layout.ts `maxWidth` under
+ * `alignItems: 'center'`). On a compact window upright, a no-op. Put the
+ * content's own inset after it, never before, so its keyline is the one
+ * the bars' glyphs sit on at every width.
  */
 fun Modifier.contentMaxWidth(layout: WindowLayout): Modifier =
     fillMaxWidth()
-        .padding(horizontal = layout.content.gutter.coerceAtLeast(0.dp))
+        .absolutePadding(
+            left = maxOf(layout.content.gutter, layout.safeLeft, 0.dp),
+            right = maxOf(layout.content.gutter, layout.safeRight, 0.dp),
+        )
         .wrapContentWidth(Alignment.CenterHorizontally)
         .widthIn(max = layout.contentMaxWidth)
         .fillMaxWidth()

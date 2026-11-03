@@ -96,6 +96,13 @@ architectures comparable (local store, delta sync, crypto layer).
    column, as iOS's does. The compose FAB stays 16 from the column's edge,
    as iOS's dock does. Dialogs take
    `ContentTokens.dialogMaxWidth`, sheets `sheetMaxWidth`.
+   **The window's unsafe sides**
+   (iOS's b73b1accd): a phone on its side has the cutout on one side and
+   may have the navigation bar on the other; `WindowLayout.safeLeft` and
+   `safeRight` (system bars and cutout, never the keyboard) are the least
+   room `contentMaxWidth` keeps there, so lists, cards and bars stay in
+   the safe band while their grounds run edge to edge. Beside the tablet
+   sidebar the detail's sidebar side is safe.
    `ui/layout/FoldableLayoutTest` checks screens at 411, 750, 832 and 1280;
    `TabletShellTest` pins one pane at 750, 768 and 832 and the shell at 840. `ui/tablet/TabletShell`
    wraps HappyApp's NavHost; under it `LocalTabletShell` is true and
