@@ -19,6 +19,7 @@ import com.slopus.happy.browser.BrowserProxy
 import com.slopus.happy.browser.browserWorkspace
 import com.slopus.happy.chat.markdown.MarkdownBlock
 import com.slopus.happy.chat.markdown.parseMarkdownBlocks
+import com.slopus.happy.media.MediaLibrary
 import com.slopus.happy.ui.browser.BrowserPage
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -86,6 +87,8 @@ class ArtifactLoader(
     private val opened: Pair<Int, String>? = null,
     private val labels: (isVideo: Boolean, name: String) -> String = { _, name -> name },
     private val sizeWait: Long = SIZE_WAIT,
+    /** The connection's kept media, where the version's files are read once. */
+    private val library: MediaLibrary? = null,
 ) {
     private val stateFlow = MutableStateFlow<ArtifactUi>(ArtifactUi.Loading)
     val state: StateFlow<ArtifactUi> = stateFlow.asStateFlow()
@@ -150,7 +153,7 @@ class ArtifactLoader(
         return BrowserPage(url, BrowserProxy.Scope.Live(agent, ref.id, workspace, authority), ref.id)
     }
 
-    private fun media(version: ArtifactVersion): ArtifactMedia = media ?: ArtifactMedia(files, ref.id, version.number) {
+    private fun media(version: ArtifactVersion): ArtifactMedia = media ?: ArtifactMedia(files, ref.id, version.number, library) {
         agent?.let { client -> BrowserFetcher(client, { client.browserWorkspace(artifactId = ref.id) }) }
     }.also { media = it }
 

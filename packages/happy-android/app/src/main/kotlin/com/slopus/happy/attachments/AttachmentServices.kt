@@ -2,6 +2,7 @@ package com.slopus.happy.attachments
 
 import com.slopus.happy.AppGraph
 import com.slopus.happy.auth.AuthState
+import com.slopus.happy.media.MediaLibrary
 import okhttp3.OkHttpClient
 import java.util.WeakHashMap
 import java.util.concurrent.TimeUnit
@@ -27,7 +28,14 @@ class AttachmentServices private constructor(private val graph: AppGraph) {
             val signedIn = graph.auth.state.value as? AuthState.SignedIn ?: return null.also { account = null }
             account?.let { (state, transfers) -> if (state == signedIn) return transfers }
             val blobKeys = SessionBlobKeys(graph.store, signedIn.encryption)
-            val transfers = AttachmentTransfers(api, blobKeys::blobKey, token = { signedIn.credentials.token })
+            val library = graph.legacyMediaDirectory(signedIn.publicId)?.let(::MediaLibrary)
+            val transfers = AttachmentTransfers(
+                api,
+                blobKeys::blobKey,
+                token = { signedIn.credentials.token },
+                library = library,
+                rules = { graph.mediaAutoDownload.rules.value },
+            )
             account = signedIn to transfers
             return transfers
         }

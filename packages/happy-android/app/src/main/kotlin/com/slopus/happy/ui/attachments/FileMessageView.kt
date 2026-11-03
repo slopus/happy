@@ -29,10 +29,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.AppGraph
 import com.slopus.happy.attachments.AttachmentServices
+import com.slopus.happy.media.DownloadPhase
+import com.slopus.happy.media.NotKept
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.RemoteImage
 import com.slopus.happy.ui.components.RemoteImageState
+import com.slopus.happy.ui.conversation.MediaStatus
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.CancellationException
@@ -47,8 +50,14 @@ interface SessionAttachments {
     /** The decrypted blob if it is already in memory. */
     fun cached(ref: String): ByteArray?
 
-    /** The decrypted blob, downloaded if needed; null when it can't be had. */
-    suspend fun load(ref: String): ByteArray?
+    /** The decrypted blob, downloaded if needed; null when it can't be had, [NotKept] where it waits for a tap. */
+    suspend fun load(ref: String, size: Long? = null): ByteArray?
+
+    /** Where its download is, for its ring; null where nothing is kept. */
+    fun phase(ref: String): DownloadPhase? = null
+
+    /** A tap on its ring: the next load reads it whatever the rules say. */
+    fun request(ref: String) {}
 }
 
 /** The open chat's attachments; null outside a chat (rows then show no picture). */
@@ -61,7 +70,11 @@ fun rememberSessionAttachments(graph: AppGraph, sessionId: String): SessionAttac
     return remember(services, sessionId) {
         object : SessionAttachments {
             override fun cached(ref: String) = services.transfers?.cached(ref)
-            override suspend fun load(ref: String) = services.transfers?.load(sessionId, ref)
+            override suspend fun load(ref: String, size: Long?) = services.transfers?.load(sessionId, ref, size)
+            override fun phase(ref: String) = services.transfers?.phase(ref)
+            override fun request(ref: String) {
+                services.transfers?.request(ref)
+            }
         }
     }
 }
@@ -160,12 +173,17 @@ fun FileMessageView(input: JsonElement?, modifier: Modifier = Modifier) {
     val (width, height) = fileImageDisplaySize(file.image)
     var bytes by remember(file.ref, attachments) { mutableStateOf<ByteArray?>(null) }
     var failed by remember(file.ref, attachments) { mutableStateOf(false) }
-    LaunchedEffect(file.ref, attachments) {
+    // Bumped by a tap on the ring: the picture is read whatever the rules say.
+    var asked by remember(file.ref, attachments) { mutableStateOf(0) }
+    LaunchedEffect(file.ref, attachments, asked) {
         if (attachments == null) return@LaunchedEffect
         val loaded = try {
-            attachments.cached(file.ref) ?: attachments.load(file.ref)
+            attachments.cached(file.ref) ?: attachments.load(file.ref, file.size?.toLong())
         } catch (e: CancellationException) {
             throw e
+        } catch (_: NotKept) {
+            // Waiting for a tap: the ring says so, it isn't a failure.
+            return@LaunchedEffect
         } catch (_: Exception) {
             null
         }
@@ -198,7 +216,18 @@ fun FileMessageView(input: JsonElement?, modifier: Modifier = Modifier) {
                     onState = { state -> if (state == RemoteImageState.Error) failed = true },
                 )
             }
-            if (failed) {
+            if (attachments != null) {
+                val phase = attachments.phase(file.ref)
+                // Kept attachments: Telegram's ring and size badge while it isn't here (iOS ba7b68346).
+                if (phase != null) MediaStatus(file.ref, phase, video = false) {
+                    if (phase !is DownloadPhase.Downloading) {
+                        attachments.request(file.ref)
+                        failed = false
+                        asked++
+                    }
+                }
+            }
+            if (failed && attachments?.phase(file.ref) !is DownloadPhase.Failed) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)

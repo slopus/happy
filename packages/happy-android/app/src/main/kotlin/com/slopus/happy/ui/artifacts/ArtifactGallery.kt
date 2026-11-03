@@ -19,9 +19,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,6 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 import com.slopus.happy.R
 import com.slopus.happy.artifacts.ArtifactMedia
 import com.slopus.happy.artifacts.ArtifactMediaItem
@@ -50,6 +53,7 @@ import com.slopus.happy.text.pluralResource
 import com.slopus.happy.ui.components.MaterialSymbols
 import com.slopus.happy.ui.components.RemoteImage
 import com.slopus.happy.ui.theme.HappyTheme
+import com.slopus.happy.ui.conversation.MediaStatus
 import com.slopus.happy.ui.conversation.PlayFill
 import com.slopus.happy.ui.conversation.PlayGlyph
 import com.slopus.happy.ui.theme.happyTextStyle
@@ -132,11 +136,15 @@ private fun Modifier.place(frame: Frame): Modifier = offset(frame.x.dp, frame.y.
 /**
  * One picture or recording, drawn as soon as its bytes (or first frame) are
  * in: a picture fitted to its tile, a recording's first frame under a play
- * button, on the tile's grey until then.
+ * button, on the tile's grey until then. Where the version's files are
+ * kept, Telegram's ring and size badge follow the download, as on the
+ * chat's tiles, and a recording's ring is its play button.
  */
 @Composable
 internal fun MediaTile(item: ArtifactMediaItem, media: ArtifactMedia, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val colors = HappyTheme.colors
+    LaunchedEffect(item.key) { media.publish(item.key) }
+    val phase = media.phase(item.key)
     Box(
         modifier
             .clip(RoundedCornerShape(8.dp))
@@ -151,10 +159,15 @@ internal fun MediaTile(item: ArtifactMediaItem, media: ArtifactMedia, modifier: 
                 val bitmap = remember(frame) { frame.asImageBitmap() }
                 Image(bitmap, null, contentScale = ContentScale.Fit, modifier = Modifier.fillMaxSize())
             }
-            Box(Modifier.size(MediaFlow.PLAY_SIZE.dp).clip(CircleShape).background(PlayFill), contentAlignment = Alignment.Center) {
-                Icon(MaterialSymbols.PlayArrow, null, tint = PlayGlyph, modifier = Modifier.wrapContentSize())
+            if (phase != null) {
+                MediaStatus(item.key, phase, video = true, onTap = onClick)
+            } else {
+                Box(Modifier.size(MediaFlow.PLAY_SIZE.dp).clip(CircleShape).background(PlayFill), contentAlignment = Alignment.Center) {
+                    Icon(MaterialSymbols.PlayArrow, null, tint = PlayGlyph, modifier = Modifier.wrapContentSize())
+                }
             }
         } else {
+            val scope = rememberCoroutineScope()
             val bytes by produceState<ByteArray?>(null, item.key) { value = media.data(item.key) }
             bytes?.let {
                 RemoteImage(
@@ -165,6 +178,7 @@ internal fun MediaTile(item: ArtifactMediaItem, media: ArtifactMedia, modifier: 
                     modifier = Modifier.fillMaxSize(),
                 )
             }
+            if (phase != null) MediaStatus(item.key, phase, video = false, onTap = { scope.launch { media.toggle(item.key) } })
         }
     }
 }

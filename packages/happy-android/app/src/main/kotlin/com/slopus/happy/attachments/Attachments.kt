@@ -5,6 +5,10 @@ import com.slopus.happy.crypto.AccountEncryption
 import com.slopus.happy.crypto.decryptBlob
 import com.slopus.happy.crypto.encryptBlob
 import com.slopus.happy.data.HappyStore
+import com.slopus.happy.media.DownloadPhase
+import com.slopus.happy.media.MediaAutoDownload
+import com.slopus.happy.media.MediaLibrary
+import com.slopus.happy.media.NotKept
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -116,7 +120,13 @@ class AttachmentTransfers(
     private val api: AttachmentApi,
     private val blobKeys: (sessionId: String) -> ByteArray?,
     private val token: () -> String?,
+    /** The account's attachments kept on this phone for good (iOS ba7b68346): plaintext by ref, once its MAC checked. */
+    val library: MediaLibrary? = null,
+    /** Data and Storage's Automatic Media Download: whether a picture reads itself as it shows. */
+    private val rules: () -> MediaAutoDownload = { MediaAutoDownload() },
 ) {
+    /** Pictures a person tapped the ring of: read whatever the rules say. */
+    private val requested = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private val cache = object : LinkedHashMap<String, ByteArray>(MAX_CACHE_ENTRIES, 0.75f, true) {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ByteArray>) = size > MAX_CACHE_ENTRIES
     }
@@ -141,9 +151,12 @@ class AttachmentTransfers(
         var failed = 0
         for (attachment in attachments) {
             try {
-                val encrypted = withContext(Dispatchers.Default) { encryptBlob(read(attachment), blobKey) }
+                val plain = read(attachment)
+                val encrypted = withContext(Dispatchers.Default) { encryptBlob(plain, blobKey) }
                 val upload = api.requestUpload(auth, sessionId, attachment.name, encrypted.size.toLong())
                 api.uploadBlob(upload, encrypted, auth)
+                // The sender never downloads their own picture.
+                library?.let { kept -> withContext(Dispatchers.IO) { runCatching { kept.store.keep(upload.ref, plain) } } }
                 uploaded += UploadedAttachment(upload.ref, attachment.name, attachment.size, attachment.width, attachment.height)
             } catch (e: CancellationException) {
                 throw e
@@ -160,12 +173,34 @@ class AttachmentTransfers(
     /** The decrypted blob if it is in the LRU (and marks it recently used). */
     fun cached(ref: String): ByteArray? = synchronized(cache) { cache[ref] }
 
+    /** Where [ref]'s download is, for its ring; snapshot state. */
+    fun phase(ref: String): DownloadPhase? = library?.board?.phase(ref)
+
+    /** A tap on [ref]'s ring: the next [load] reads it whatever the rules say. */
+    fun request(ref: String) {
+        requested += ref
+    }
+
     /**
-     * useAttachmentImage: the decrypted blob of [ref], from the LRU or
-     * downloaded and decrypted. Null when it can't be had (logged, safely).
+     * useAttachmentImage: the decrypted blob of [ref], from the LRU, from
+     * the phone, or downloaded and decrypted (and then kept). Null when it
+     * can't be had (logged, safely); [NotKept] where it waits for a tap,
+     * [size] (the picture's, as its event says) over the rules' limit.
      */
-    suspend fun load(sessionId: String, ref: String): ByteArray? {
+    suspend fun load(sessionId: String, ref: String, size: Long? = null): ByteArray? {
         cached(ref)?.let { return it }
+        library?.let { kept ->
+            val here = withContext(Dispatchers.IO) { if (kept.store.isComplete(ref)) kept.store.completeFile(ref).readBytes() else null }
+            if (here != null) {
+                synchronized(cache) { cache[ref] = here }
+                kept.board.set(ref, DownloadPhase.Complete(here.size.toLong()))
+                return here
+            }
+            if (ref !in requested && !rules().allows(MediaAutoDownload.Kind.Photos, size)) {
+                kept.board.set(ref, DownloadPhase.Remote(size))
+                throw NotKept()
+            }
+        }
         var owner = false
         val deferred = synchronized(inFlight) {
             inFlight[ref] ?: CompletableDeferred<ByteArray?>().also {
@@ -177,6 +212,14 @@ class AttachmentTransfers(
         try {
             val bytes = download(sessionId, ref)
             if (bytes != null) synchronized(cache) { cache[ref] = bytes }
+            library?.let { kept ->
+                if (bytes != null) {
+                    withContext(Dispatchers.IO) { runCatching { kept.store.keep(ref, bytes) } }
+                    kept.board.set(ref, DownloadPhase.Complete(bytes.size.toLong()))
+                } else {
+                    kept.board.set(ref, DownloadPhase.Failed(0, null))
+                }
+            }
             deferred.complete(bytes)
             return bytes
         } catch (e: Throwable) {
@@ -192,7 +235,10 @@ class AttachmentTransfers(
         val blobKey = withContext(Dispatchers.IO) { blobKeys(sessionId) } ?: return warn("missing-blob-key")
         if (blobKey.size != 32) return warn("invalid-blob-key-length", blobKey.size.toString())
         val encrypted = try {
-            api.download(auth, sessionId, ref)
+            api.download(auth, sessionId, ref, library?.let { kept ->
+                // The sealed blob is the picture and 40 bytes (nonce, MAC).
+                { done: Long, total: Long? -> kept.board.set(ref, DownloadPhase.Downloading(maxOf(0, done - SEAL), total?.let { maxOf(0, it - SEAL) })) }
+            })
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -212,6 +258,8 @@ class AttachmentTransfers(
 
     companion object {
         const val MAX_CACHE_ENTRIES = 50
+        /** encryptBlob's nonce and MAC ahead of the ciphertext. */
+        private const val SEAL = 40L
         private const val TAG = "Attachments"
         private const val PLATFORM = "android"
     }

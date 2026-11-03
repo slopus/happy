@@ -56,6 +56,9 @@ data class ContentRange(val start: Long, val end: Long, val total: Long?) {
     }
 }
 
+/** Not on this phone, and neither the automatic rules nor a tap asked for it: its ring shows the arrow. */
+class NotKept : Exception("Not downloaded")
+
 /** Why a media file couldn't be read: none of these is worth trying again on its own. */
 sealed class MediaError(message: String) : Exception(message) {
     class Status(val status: Int) : MediaError("HTTP $status")

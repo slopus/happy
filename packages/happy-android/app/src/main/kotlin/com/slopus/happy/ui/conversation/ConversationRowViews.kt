@@ -43,6 +43,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import com.slopus.happy.conversation.UploadPhase
 import com.slopus.happy.conversation.UploadBoard
 import com.slopus.happy.conversation.KeptMedia
+import com.slopus.happy.media.MediaSizeText
+import com.slopus.happy.media.NotKept
 import com.slopus.happy.conversation.ConversationRow
 import com.slopus.happy.conversation.ConversationViewing
 import com.slopus.happy.conversation.Delivery
@@ -422,7 +424,7 @@ private fun MediaRow(row: ConversationRow.Media, actions: ConversationRowActions
                     val load = loads[index]
                     val bytes = load?.getOrNull()?.bytes
                     // Waiting for a tap, the ring says so; the tile isn't a failure.
-                    val waiting = load?.exceptionOrNull() is KeptMedia.NotKept || (kept != null && kept.phase(ref)?.let { !it.isComplete } == true)
+                    val waiting = load?.exceptionOrNull() is NotKept || (kept != null && kept.phase(ref)?.let { !it.isComplete } == true)
                     Box {
                         MediaTile(
                             bytes = bytes,
@@ -441,18 +443,25 @@ private fun MediaRow(row: ConversationRow.Media, actions: ConversationRowActions
         other.forEach { ref ->
             val opening = actions.mediaOpening(ref)
             val open = actions.onOpenMedia
+            // Kept, its chip follows the download and the detail says how far it is (Telegram's file bubble).
+            val kept = actions.kept
+            if (kept != null) LaunchedEffect(ref.key) { kept.shown(ref) }
+            val phase = kept?.phase(ref)
             InfoCard(
                 icon = Ionicon.DocumentTextOutline,
                 title = ref.item.name,
                 detail = when {
                     opening is MediaOpening.Failed -> opening.reason
+                    phase != null && !phase.isComplete -> MediaSizeText.text(phase)
                     opening is MediaOpening.Reading -> stringResource(R.string.conversation_media_reading)
                     open == null -> stringResource(R.string.conversation_file_unavailable)
-                    else -> null
+                    // Here, its size, as Telegram's file bubble says.
+                    else -> phase?.let(MediaSizeText::text)
                 },
                 onClick = open?.let { { it(ref) } },
                 modifier = Modifier.testTag(ConversationRowTags.MEDIA_FILE),
                 vertical = 0.dp,
+                chip = kept?.let { { FileStatusChip(ref.key, phase, Ionicon.DocumentTextOutline, onTap = { it.toggle(ref) }) } },
             )
         }
     }
@@ -502,6 +511,8 @@ private fun InfoCard(
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     vertical: androidx.compose.ui.unit.Dp = ConversationRowSpec.marginVertical,
+    /** In the icon's place: a file's chip that follows its download. */
+    chip: (@Composable () -> Unit)? = null,
 ) {
     val colors = HappyTheme.colors
     Row(
@@ -515,7 +526,7 @@ private fun InfoCard(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, 22.dp, colors.textSecondary)
+        if (chip != null) chip() else Icon(icon, 22.dp, colors.textSecondary)
         Column(Modifier.weight(1f)) {
             Text(title, style = ConversationRowSpec.label, color = colors.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (detail != null) Text(detail, style = ConversationRowSpec.notice, color = colors.textSecondary)

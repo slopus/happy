@@ -12,6 +12,7 @@ import com.slopus.happy.artifacts.VideoProbe
 import com.slopus.happy.connection.TransportResponse
 import com.slopus.happy.conversation.ConversationViewing
 import com.slopus.happy.conversation.KeptMedia
+import com.slopus.happy.media.NotKept
 import com.slopus.happy.conversation.MediaRef
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -42,7 +43,7 @@ class ConversationMediaStore(
 
     /**
      * A presented picture's bytes; throws when they can't be had, and
-     * [KeptMedia.NotKept] where it waits for a tap on its ring.
+     * [NotKept] where it waits for a tap on its ring.
      */
     suspend fun bytes(ref: MediaRef): ByteArray {
         bytes.get(ref.key)?.let { return it }

@@ -9,6 +9,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
@@ -49,7 +50,8 @@ import java.io.File
  * ba7b68346): a picture the automatic rules don't take shows the arrow
  * and its size; a tap reads it into the phone, and once it is here the
  * picture shows and the ring goes. A recording's ring is its play button,
- * its size beside its length.
+ * its size beside its length. A file card's chip is the ring, blue, until
+ * the file is here.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = PHONE)
@@ -62,33 +64,42 @@ class MediaDownloadStatusTest {
     private val png = ByteArrayOutputStream().also {
         Bitmap.createBitmap(400, 300, Bitmap.Config.ARGB_8888).apply { eraseColor(green) }.compress(Bitmap.CompressFormat.PNG, 100, it)
     }.toByteArray()
+    /** A file over the 1 MB the rules read by themselves. */
+    private val report = ByteArray(1_572_864) { (it % 251).toByte() }
     private val library by lazy { MediaLibrary(File(folder.root, "media")) }
     private val rules = MutableStateFlow(MediaAutoDownload(photos = MediaAutoDownload.Rule(false, MediaAutoDownload.MEGABYTE)))
     private val kept by lazy {
         KeptMedia(
             library = library,
             agentId = "a1",
-            range = { _, span ->
-                val end = minOf(span.end, png.size.toLong()).toInt()
-                TransportResponse(206, mapOf("Content-Range" to "bytes ${span.start}-${end - 1}/${png.size}"), png.copyOfRange(span.start.toInt(), end))
+            range = { ref, span ->
+                val body = if (ref.item.isVisual) png else report
+                val end = minOf(span.end, body.size.toLong()).toInt()
+                TransportResponse(206, mapOf("Content-Range" to "bytes ${span.start}-${end - 1}/${body.size}"), body.copyOfRange(span.start.toInt(), end))
             },
             rules = rules,
             scope = CoroutineScope(Dispatchers.Unconfined),
         )
     }
 
-    private fun show(ref: MediaRef) {
+    private fun show(ref: MediaRef, dark: Boolean = false) {
         val loader = ImageLoader.Builder(ApplicationProvider.getApplicationContext())
             .components { add(FakeImageLoaderEngine.Builder().default(FakeImage(width = 400, height = 300, color = green)).build()) }
             .build()
-        rule.setHappyContent {
+        rule.setHappyContent(dark) {
             CompositionLocalProvider(LocalImageLoader provides loader) {
                 ProvideWindowLayout {
                     Column {
                         ConversationRowView(
                             ConversationRow.Media("m:0", listOf(ref)),
                             userMessageBubblePalette(null, false),
-                            ConversationRowActions(legacy = MessageCallbacks(), onRetryFailure = {}, loadMedia = { kept.picture(it) }, kept = kept),
+                            ConversationRowActions(
+                                legacy = MessageCallbacks(),
+                                onRetryFailure = {},
+                                loadMedia = { kept.picture(it) },
+                                onOpenMedia = {},
+                                kept = kept,
+                            ),
                         )
                     }
                 }
@@ -132,5 +143,30 @@ class MediaDownloadStatusTest {
         assertEquals(1, rings())
         rule.onAllNodesWithContentDescription("Video", useUnmergedTree = true).fetchSemanticsNodes().let { assertTrue(it.isNotEmpty()) }
         shot("download-ring-video")
+    }
+
+    @Test
+    fun aFileCardsChipIsTheRingUntilTheFileIsHere() = fileCard(dark = false)
+
+    @Test
+    fun aFileCardsRingIsBlueInTheDarkToo() = fileCard(dark = true)
+
+    private fun fileCard(dark: Boolean) {
+        val ref = MediaRef("tc3", 0, MediaItem("file", "report.pdf", "application/pdf", size = report.size.toDouble()))
+        show(ref, dark)
+        rule.waitUntil(5_000) { kept.phase(ref) is DownloadPhase.Remote }
+        rule.waitForIdle()
+        assertEquals("over the rules' 1 MB, it waits", 1, rings())
+        rule.onNodeWithText("1.5 MB").assertExists()
+        shot(if (dark) "file-card-arrow-dark" else "file-card-arrow")
+
+        rule.onAllNodesWithContentDescription("Download", useUnmergedTree = true)[0].performClick()
+        rule.waitUntil(5_000) { kept.phase(ref) is DownloadPhase.Complete }
+        rule.mainClock.advanceTimeBy(2_000)
+        rule.waitForIdle()
+        assertEquals("filled and gone over the glyph", 0, rings())
+        rule.onNodeWithText("1.5 MB").assertExists()
+        assertTrue(library.store.isComplete(kept.id(ref)))
+        shot(if (dark) "file-card-kept-dark" else "file-card-kept")
     }
 }

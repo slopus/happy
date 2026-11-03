@@ -8,7 +8,15 @@ import android.util.LruCache
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.exifinterface.media.ExifInterface
+import com.slopus.happy.agent.AgentApiException
 import com.slopus.happy.browser.BrowserFetcher
+import com.slopus.happy.media.DownloadPhase
+import com.slopus.happy.media.MediaDownloads
+import com.slopus.happy.media.MediaError
+import com.slopus.happy.media.MediaLibrary
+import com.slopus.happy.media.MediaPiece
+import com.slopus.happy.media.MediaSource
+import com.slopus.happy.media.MediaStream
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -32,11 +40,16 @@ data class ArtifactMediaItem(val key: String, val isVideo: Boolean, val label: S
  *
  * Sizes and lengths land in [sizes] and [durations], snapshot state, so the
  * screens lay out again as they arrive.
+ *
+ * Given the connection's [library], the version's own files are read into
+ * it once and kept (iOS ba7b68346): a numbered version never changes, so
+ * what was read, or played, is there next time, and a tile's ring follows it.
  */
 class ArtifactMedia(
     private val files: ArtifactClient,
     val artifactId: String,
     val version: Int,
+    private val library: MediaLibrary? = null,
     private val fetcher: () -> BrowserFetcher?,
 ) {
     sealed interface Source {
@@ -101,7 +114,8 @@ class ArtifactMedia(
 
     private suspend fun read(source: Source?): ByteArray? = when (source) {
         null -> null
-        is Source.FileItem -> files.bytes(artifactId, version, source.file.path)
+        is Source.FileItem -> library?.downloads?.data(resourceId(source.file), fileSource(source.file), MediaDownloads.Priority.User)
+            ?: files.bytes(artifactId, version, source.file.path)
         is Source.Web -> (openedFetcher ?: fetcher()?.also { openedFetcher = it })?.data(source.url)
         is Source.Data -> decodeDataUrl(source.url)
     }
@@ -139,10 +153,59 @@ class ArtifactMedia(
         return withContext(Dispatchers.IO) { VideoProbe.read(source, maxPixels)?.poster }
     }
 
-    /** A recording's bytes as the platform's player and retriever read them: a range at a time. */
-    fun videoSource(key: String): RangedSource? {
+    /** A recording's bytes as the platform's player and retriever read them: a range at a time, kept where there is a library. */
+    fun videoSource(key: String): MediaDataSource? {
         val file = (sources[key] as? Source.FileItem)?.file?.takeIf { it.isVideo } ?: return null
+        library?.let { return MediaStream(it.downloads, resourceId(file), fileSource(file)) }
         return RangedSource(file.size) { start, end -> runBlocking { files.file(artifactId, version, file.path, "bytes=$start-$end") } }
+    }
+
+    /** Where a version's file is kept: a numbered version never changes. */
+    fun resourceId(file: ArtifactFile): String = "artifact/$artifactId/$version/${file.path}"
+
+    /** Its bytes from the file route, a range at a time. */
+    private fun fileSource(file: ArtifactFile): MediaSource = MediaSource(file.size.takeIf { it > 0 }) { span ->
+        val response = try {
+            files.file(artifactId, version, file.path, MediaPiece.header(span))
+        } catch (e: AgentApiException) {
+            // A refusal won't change by asking again; anything else might.
+            if (e.status in 400..499 && e.status != 408 && e.status != 429) throw MediaError.Status(e.status)
+            throw e
+        }
+        MediaPiece.http(response)
+    }
+
+    private fun kept(key: String): Pair<String, MediaSource>? {
+        val file = (sources[key] as? Source.FileItem)?.file ?: return null
+        return resourceId(file) to fileSource(file)
+    }
+
+    /** Where an own file's download is, as the board last said; null for any other item, or without a library. */
+    fun phase(key: String): DownloadPhase? {
+        val library = library ?: return null
+        val (id, _) = kept(key) ?: return null
+        return library.board.phase(id)
+    }
+
+    /** A tile shows [key]: where its download is is read from the disk, for its ring. */
+    suspend fun publish(key: String) {
+        val library = library ?: return
+        val (id, source) = kept(key) ?: return
+        library.downloads.phase(id, source)
+    }
+
+    /** A tap on its ring: pause what is going, else read it. */
+    suspend fun toggle(key: String) {
+        val library = library ?: return
+        val (id, source) = kept(key) ?: return
+        library.downloads.toggle(id, source)
+    }
+
+    /** A recording plays: the rest of it reads on behind the player, so it is kept once played. */
+    suspend fun play(key: String) {
+        val library = library ?: return
+        val (id, source) = kept(key) ?: return
+        library.downloads.download(id, source, MediaDownloads.Priority.User)
     }
 
     /**
@@ -163,7 +226,13 @@ class ArtifactMedia(
             if (!target.canonicalPath.startsWith(directory.canonicalPath)) return@withContext null
             if (target.exists() && target.length() > 0) return@withContext target
             try {
-                if (source is Source.FileItem) {
+                val library = library
+                if (source is Source.FileItem && library != null) {
+                    // Kept whole first, then copied out as the artifact names it.
+                    val id = resourceId(source.file)
+                    library.downloads.complete(id, fileSource(source.file), MediaDownloads.Priority.User)
+                    library.store.completeFile(id).copyTo(target, overwrite = true)
+                } else if (source is Source.FileItem) {
                     target.outputStream().use { out ->
                         ArtifactClient.read({ range -> files.file(artifactId, version, source.file.path, range?.let { "bytes=${it.first}-${it.last}" }) }) { piece, _ -> out.write(piece) }
                     }

@@ -187,7 +187,8 @@ internal fun AgentPageEntry(graph: AppGraph, nav: NavHostController, route: Conv
         workspaceId = agent?.workspaceId ?: row?.workspaceId,
         lineChanges = row?.lineChanges,
     )
-    val actions = remember(nav, model, session, route) {
+    val kept = rememberKeptMedia(graph, session, route.agentId)
+    val actions = remember(nav, model, session, route, kept) {
         AgentPageActions(
             onBack = { nav.popBackStack() },
             onOpenConversation = { id -> if (id == route.agentId) nav.popBackStack() else nav.openConversation(route.connectionId, id) },
@@ -202,6 +203,7 @@ internal fun AgentPageEntry(graph: AppGraph, nav: NavHostController, route: Conv
                     category = RequestCategory.File,
                 )
             },
+            kept = kept,
         )
     }
     // A link opens as one in the chat does: through this agent's workspace.

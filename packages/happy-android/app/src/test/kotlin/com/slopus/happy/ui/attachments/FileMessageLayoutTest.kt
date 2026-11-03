@@ -55,7 +55,7 @@ class FileMessageLayoutTest {
     private class FakeAttachments(val bytes: ByteArray?) : SessionAttachments {
         val loads = AtomicInteger()
         override fun cached(ref: String): ByteArray? = null
-        override suspend fun load(ref: String): ByteArray? {
+        override suspend fun load(ref: String, size: Long?): ByteArray? {
             loads.incrementAndGet()
             return bytes
         }

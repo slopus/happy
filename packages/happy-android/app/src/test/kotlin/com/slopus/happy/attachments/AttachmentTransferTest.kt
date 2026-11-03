@@ -268,6 +268,37 @@ class AttachmentTransferTest {
         assertEquals(2, fileEventRecords(listOf(UploadedAttachment("r", "a", 1, 1, 1), UploadedAttachment("s", "b", 1, 1, 1))).size)
     }
 
+    @Test
+    fun picturesAreKeptForGoodSentOnesFromTheStartAndTheRulesCanLeaveOneForATap() = runBlocking {
+        val dir = java.io.File(ApplicationProvider.getApplicationContext<android.content.Context>().cacheDir, "kept-${System.nanoTime()}")
+        val keys = SessionBlobKeys(store, server.encryption)
+        var rules = com.slopus.happy.media.MediaAutoDownload()
+        fun kept() = AttachmentTransfers(api, keys::blobKey, token = { server.token }, library = com.slopus.happy.media.MediaLibrary(dir), rules = { rules })
+        val sender = kept()
+        val ref = sender.upload("s1", listOf(preview("a.jpg"))) { png }.uploaded.single().ref
+        val asked = server.requestsTo("/v1/sessions/s1/attachments/request-download").size
+        assertArrayEquals("the sender never downloads their own", png, kept().load("s1", ref))
+        assertEquals(asked, server.requestsTo("/v1/sessions/s1/attachments/request-download").size)
+
+        // Someone else's picture, over the photo limit: it waits for a tap, then is read and kept.
+        val other = api.requestUpload(server.token, "s1", "b.jpg", 47).ref
+        api.uploadBlob(api.requestUpload(server.token, "s1", "b.jpg", 47).let { it }, com.slopus.happy.crypto.encryptBlob(png, keys.blobKey("s1")!!), server.token)
+        rules = rules.copy(photos = com.slopus.happy.media.MediaAutoDownload.Rule(false, 1))
+        val reader = kept()
+        val last = server.attachments.keys.last()
+        try {
+            reader.load("s1", last, size = 2_000_000)
+            org.junit.Assert.fail("read without a tap")
+        } catch (_: com.slopus.happy.media.NotKept) {
+        }
+        assertEquals(com.slopus.happy.media.DownloadPhase.Remote(2_000_000), reader.phase(last))
+        reader.request(last)
+        assertArrayEquals(png, reader.load("s1", last, size = 2_000_000))
+        assertTrue(reader.phase(last) is com.slopus.happy.media.DownloadPhase.Complete)
+        assertTrue(com.slopus.happy.media.MediaLibrary(dir).store.isComplete(last))
+        assertTrue(other.isNotEmpty())
+    }
+
     private companion object {
         const val STORAGE_HOST = "files.test"
     }

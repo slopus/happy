@@ -17,6 +17,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import androidx.compose.ui.unit.width
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.slopus.happy.connection.TransportResponse
+import com.slopus.happy.conversation.KeptMedia
+import com.slopus.happy.conversation.MediaItem
+import com.slopus.happy.conversation.MediaRef
+import com.slopus.happy.conversation.Shared
+import com.slopus.happy.conversation.SharedMedia
+import com.slopus.happy.media.DownloadPhase
+import com.slopus.happy.media.MediaAutoDownload
+import com.slopus.happy.media.MediaLibrary
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.PHONE_WIDTH
 import com.slopus.happy.ui.assertDp
@@ -29,10 +38,14 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
  * The agent page against iOS's `SessionDetailLayout` on the 411 phone: the
@@ -47,6 +60,7 @@ import java.io.File
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class AgentPageTest {
     @get:Rule val rule = createComposeRule()
+    @get:Rule val folder = TemporaryFolder()
     private val dir = System.getenv("HAPPY_SHOTS_DIR")?.let(::File)
     private val now = AgentPageFixtures.NOW
 
@@ -127,6 +141,45 @@ class AgentPageTest {
         assertDp("2 between rows", cells[0].bottom + 2.dp, cells[3].top)
         assertTrue("nothing more to read: no Show more", rule.onAllNodesWithTag(AgentPageTags.MEDIA_MORE, useUnmergedTree = true).fetchSemanticsNodes().isEmpty())
         rule.onNodeWithText("launch-plan.pdf", useUnmergedTree = true).assertIsDisplayed()
+    }
+
+    // iOS SharedMediaCell: kept, a cell reads, rings and plays as the chat's tile does.
+    @Test fun `kept, a presented picture rings until a tap reads it and a recording's ring plays`() {
+        val png = java.io.ByteArrayOutputStream().also {
+            Bitmap.createBitmap(300, 300, Bitmap.Config.ARGB_8888).apply { eraseColor(0xFF2979FF.toInt()) }.compress(Bitmap.CompressFormat.PNG, 100, it)
+        }.toByteArray()
+        val kept = KeptMedia(
+            library = MediaLibrary(folder.newFolder("media")),
+            agentId = "a1",
+            range = { _, span ->
+                val end = minOf(span.end, png.size.toLong()).toInt()
+                TransportResponse(206, mapOf("Content-Range" to "bytes ${span.start}-${end - 1}/${png.size}"), png.copyOfRange(span.start.toInt(), end))
+            },
+            rules = MutableStateFlow(MediaAutoDownload(photos = MediaAutoDownload.Rule(false, MediaAutoDownload.MEGABYTE))),
+            scope = CoroutineScope(Dispatchers.Unconfined),
+        )
+        val picture = MediaRef("call3", 0, MediaItem("image", "chart.png", "image/png", 300.0, 300.0, size = png.size.toDouble()))
+        val video = MediaRef("call1", 0, MediaItem("video", "demo.mp4", "video/mp4", 1280.0, 720.0, size = 8.4 * 1024 * 1024))
+        val state = AgentPageFixtures.page.copy(shared = Shared(listOf(SharedMedia.Presented(picture), SharedMedia.Presented(video))))
+        show(state, AgentPageActions(loadMedia = { error("read through what is kept") }, kept = kept))
+        rule.node(AgentPageTags.MEDIA).performScrollTo()
+        rule.waitUntil(5_000) { kept.phase(picture) is DownloadPhase.Remote && kept.phase(video) != null }
+        rule.waitForIdle()
+        fun rings() = rule.onAllNodesWithTag(UploadRingSpec.TAG, useUnmergedTree = true).fetchSemanticsNodes().size
+        assertEquals("the picture's arrow and the recording's play", 2, rings())
+        captured("agent-page-kept-arrow")
+
+        rule.onAllNodesWithTag(AgentPageTags.MEDIA_CELL, useUnmergedTree = true)[0].performClick()
+        rule.waitUntil(5_000) { kept.phase(picture) is DownloadPhase.Complete }
+        rule.mainClock.advanceTimeBy(2_000)
+        rule.waitForIdle()
+        assertEquals("the picture's ring filled and went", 1, rings())
+        captured("agent-page-kept")
+    }
+
+    private fun captured(name: String) {
+        val dir = File("build/chat-screens").apply { mkdirs() }
+        File(dir, "$name.png").outputStream().use { rule.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
     @Test fun `show more reads history back for one more than each section shows`() {

@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -26,6 +28,9 @@ import com.slopus.happy.conversation.KeptMedia
 import com.slopus.happy.conversation.MediaRef
 import com.slopus.happy.media.DownloadPhase
 import com.slopus.happy.media.MediaSizeText
+import com.slopus.happy.ui.components.Icon
+import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 
 /**
@@ -43,16 +48,27 @@ object MediaStatusSpec {
     val badgeFill = Color.Black.copy(alpha = 0.5f)
     val badge = happyTextStyle(fontSize = 12, lineHeight = 16, weight = FontWeight.Medium).copy(fontFeatureSettings = "tnum")
     const val BADGE = "conversation.media.badge"
+    /** A file card's chip, where its glyph or ring sits, and the glyph. */
+    val fileChip = 32.dp
+    val fileGlyph = 22.dp
 }
 
 /** The ring and badge over [ref]'s tile, from where its download is in [kept]; [onPlay] plays a recording. */
 @Composable
 internal fun BoxScope.DownloadStatus(ref: MediaRef, kept: KeptMedia, video: Boolean, duration: String? = null, onPlay: () -> Unit = {}) {
     LaunchedEffect(ref.key) { kept.shown(ref) }
-    val phase = kept.phase(ref)
+    MediaStatus(ref.key, kept.phase(ref), video, duration, onTap = if (video) onPlay else ({ kept.toggle(ref) }))
+}
+
+/**
+ * The ring and badge for a download at [phase] over the tile this fills,
+ * [key] naming the file. Already here when first seen, a picture shows no
+ * ring; one seen arriving fills and shrinks away. [onTap] is the ring's.
+ */
+@Composable
+fun BoxScope.MediaStatus(key: String, phase: DownloadPhase?, video: Boolean, duration: String? = null, onTap: () -> Unit) {
     val state = MediaRingState.of(phase, video)
-    // Already here when first seen, a picture shows no ring; one seen arriving fills and shrinks away.
-    var arriving by remember(ref.key) { mutableStateOf(false) }
+    var arriving by remember(key) { mutableStateOf(false) }
     if (phase != null && state != MediaRingState.Done) arriving = true
     if (video || arriving) {
         val label = when {
@@ -60,12 +76,7 @@ internal fun BoxScope.DownloadStatus(ref: MediaRef, kept: KeptMedia, video: Bool
             phase is DownloadPhase.Downloading -> stringResource(R.string.media_pause_download)
             else -> stringResource(R.string.media_download)
         }
-        MediaRing(
-            state = state,
-            onClick = if (video) onPlay else ({ kept.toggle(ref) }),
-            label = label,
-            modifier = Modifier.matchParentSize(),
-        )
+        MediaRing(state = state, onClick = onTap, label = label, modifier = Modifier.matchParentSize())
     }
     val lines = buildList {
         if (video && duration != null) add(duration)
@@ -81,6 +92,34 @@ internal fun BoxScope.DownloadStatus(ref: MediaRef, kept: KeptMedia, video: Bool
                 .testTag(MediaStatusSpec.BADGE),
         ) {
             lines.forEach { Text(it, style = MediaStatusSpec.badge, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        }
+    }
+}
+
+/**
+ * A file card's chip (iOS `ChatFileStatusView`, Telegram's file bubble):
+ * the file's [icon] once it is here, else the ring, blue on the card, with
+ * the download arrow or how far it is; a tap on it reads, pauses or tries
+ * again ([onTap]). One seen arriving fills and shrinks away over the icon.
+ */
+@Composable
+fun FileStatusChip(key: String, phase: DownloadPhase?, icon: Ionicon, onTap: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = HappyTheme.colors
+    val state = MediaRingState.of(phase, video = false)
+    var arriving by remember(key) { mutableStateOf(false) }
+    if (phase != null && state != MediaRingState.Done) arriving = true
+    Box(modifier.size(MediaStatusSpec.fileChip), contentAlignment = Alignment.Center) {
+        if (state == MediaRingState.Done) Icon(icon, MediaStatusSpec.fileGlyph, colors.textSecondary)
+        if (arriving) {
+            val label = stringResource(if (phase is DownloadPhase.Downloading) R.string.media_pause_download else R.string.media_download)
+            MediaRing(
+                state = state,
+                onClick = onTap,
+                label = label,
+                // The ring's touch slop reaches past the chip.
+                modifier = Modifier.requiredSize(MediaStatusSpec.fileChip + UploadRingSpec.touchSlop * 2),
+                disc = if (colors.dark) UploadRingSpec.fileDiscDark else UploadRingSpec.fileDisc,
+            )
         }
     }
 }

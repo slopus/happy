@@ -1196,9 +1196,20 @@ tap on its ring. Tiles draw `DownloadStatus`: the ring (`MediaRing`, the
 same component as the upload ring) shows an arrow, progress or retry, and a
 recording's ring is its play button. A size badge in the top-left corner
 shows a recording's length over "1.2 / 8.4 MB". A recording streams through
-the library (`KeptVideo`), so what was played is kept. Clear Media
-empties the library. Legacy attachments, artifact galleries and file cards
-don't use the store yet.
+the library (`MediaStream`), so what was played is kept. Clear Media
+empties the library. `rememberKeptMedia` builds a `KeptMedia` for a chat and
+for its agent page, whose shared grid reads and rings the same way. A file
+card's chip is `FileStatusChip`: a blue ring with the arrow or progress
+until the file is here, then its glyph, with the size or "1.2 / 8.4 MB" in
+the detail line; the chip's tap reads or pauses, and the card's tap opens.
+An artifact's own files go through the same library under
+`artifact/<artifactId>/<version>/<path>` (a numbered version never changes),
+with no automatic rules: opening it reads it. Gallery and document tiles
+draw `MediaStatus`. Happy accounts keep attachments in a library of their
+own (`legacy-media/<publicId>/`, removed on sign-out): plaintext once
+secretbox has checked the MAC, and a sent picture is kept at upload, so the
+sender never downloads it. A legacy download is one request with progress
+from the body; it can't pause.
 
 ### Image loading
 

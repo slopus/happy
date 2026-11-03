@@ -93,6 +93,9 @@ object UploadRingSpec {
     val dim = Color.Black.copy(alpha = 0.2f)
     val disc = Color.Black.copy(alpha = 0.45f)
     val ink = Color.White
+    /** On a file card, Telegram's file bubble: a blue disc, white ink (iOS `fileRingDisc`). */
+    val fileDisc = Color(0xFF007AFF)
+    val fileDiscDark = Color(0xFF3E88F7)
     /** Taps a little past the disc still hit it. */
     val touchSlop = 8.dp
     const val TAG = "conversation.uploadRing"
@@ -163,11 +166,20 @@ fun UploadRing(phase: UploadPhase, onCancel: (() -> Unit)?, modifier: Modifier =
 /**
  * The ring at [state] in the middle of the box it fills; [dim] darkens the
  * tile under it, as a sending picture's is. [onClick] is the disc's tap,
- * spoken as [label]; a finished ring takes none. Reduce Motion keeps it
- * still: no turning, no tweens.
+ * spoken as [label]; a finished ring takes none. [disc] and [ink] are
+ * the over-media ones unless said (a file card's are blue and white).
+ * Reduce Motion keeps it still: no turning, no tweens.
  */
 @Composable
-fun MediaRing(state: MediaRingState, onClick: (() -> Unit)?, label: String?, modifier: Modifier = Modifier, dim: Boolean = false) {
+fun MediaRing(
+    state: MediaRingState,
+    onClick: (() -> Unit)?,
+    label: String?,
+    modifier: Modifier = Modifier,
+    dim: Boolean = false,
+    disc: Color = UploadRingSpec.disc,
+    ink: Color = UploadRingSpec.ink,
+) {
     val reduceMotion = rememberReduceMotion()
     val arcShown = state is MediaRingState.Waiting || state is MediaRingState.Progress || state is MediaRingState.Playing || state is MediaRingState.Done
     val target = when (state) {
@@ -227,7 +239,7 @@ fun MediaRing(state: MediaRingState, onClick: (() -> Unit)?, label: String?, mod
                         scaleX = scale
                         scaleY = scale
                     }
-                    .background(UploadRingSpec.disc, CircleShape),
+                    .background(disc, CircleShape),
             ) {
                 val factor = size.minDimension / UploadRingSpec.diameter.toPx()
                 val center = Offset(size.width / 2, size.height / 2)
@@ -236,7 +248,7 @@ fun MediaRing(state: MediaRingState, onClick: (() -> Unit)?, label: String?, mod
                     val radius = (size.minDimension - line - UploadRingSpec.ARC_INSET.dp.toPx() * 2) / 2
                     rotate(angle) {
                         drawArc(
-                            UploadRingSpec.ink,
+                            ink,
                             startAngle = -90f,
                             sweepAngle = 360f * drawn.value.coerceIn(0f, 1f),
                             useCenter = false,
@@ -250,32 +262,32 @@ fun MediaRing(state: MediaRingState, onClick: (() -> Unit)?, label: String?, mod
                 when (state) {
                     MediaRingState.Waiting, is MediaRingState.Progress, MediaRingState.Done -> {
                         val arm = UploadRingSpec.CROSS.dp.toPx() * factor / 2
-                        drawLine(UploadRingSpec.ink, Offset(center.x - arm, center.y - arm), Offset(center.x + arm, center.y + arm), stroke, StrokeCap.Round)
-                        drawLine(UploadRingSpec.ink, Offset(center.x + arm, center.y - arm), Offset(center.x - arm, center.y + arm), stroke, StrokeCap.Round)
+                        drawLine(ink, Offset(center.x - arm, center.y - arm), Offset(center.x + arm, center.y + arm), stroke, StrokeCap.Round)
+                        drawLine(ink, Offset(center.x + arm, center.y - arm), Offset(center.x - arm, center.y + arm), stroke, StrokeCap.Round)
                     }
                     MediaRingState.Download -> {
                         val half = UploadRingSpec.ARROW_HALF.dp.toPx() * factor
                         val wing = UploadRingSpec.ARROW_WING.dp.toPx() * factor
                         val point = Offset(center.x, center.y + half)
-                        drawLine(UploadRingSpec.ink, Offset(center.x, center.y - half), point, stroke, StrokeCap.Round)
+                        drawLine(ink, Offset(center.x, center.y - half), point, stroke, StrokeCap.Round)
                         drawPath(
                             Path().apply {
                                 moveTo(center.x - wing, point.y - wing)
                                 lineTo(point.x, point.y)
                                 lineTo(center.x + wing, point.y - wing)
                             },
-                            UploadRingSpec.ink,
+                            ink,
                             style = Stroke(stroke, cap = StrokeCap.Round, join = StrokeJoin.Round),
                         )
                     }
                     MediaRingState.Play, is MediaRingState.Playing -> {
                         val glyph = (size.minDimension * UploadRingSpec.PLAY_SHARE)
                         translate(center.x - glyph / 2 + size.minDimension * UploadRingSpec.PLAY_NUDGE, center.y - glyph / 2) {
-                            with(play) { draw(Size(glyph, glyph), colorFilter = ColorFilter.tint(UploadRingSpec.ink)) }
+                            with(play) { draw(Size(glyph, glyph), colorFilter = ColorFilter.tint(ink)) }
                         }
                     }
                     MediaRingState.Failed -> {
-                        val glyph = glyphs.measure(retry, TextStyle(fontFamily = IoniconsFamily, fontSize = (size.minDimension * UploadRingSpec.RETRY_SHARE).toSp(), color = UploadRingSpec.ink))
+                        val glyph = glyphs.measure(retry, TextStyle(fontFamily = IoniconsFamily, fontSize = (size.minDimension * UploadRingSpec.RETRY_SHARE).toSp(), color = ink))
                         drawText(glyph, topLeft = Offset(center.x - glyph.size.width / 2f, center.y - glyph.size.height / 2f))
                     }
                 }

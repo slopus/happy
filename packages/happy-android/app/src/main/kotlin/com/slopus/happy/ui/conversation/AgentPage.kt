@@ -14,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -76,8 +77,10 @@ import com.slopus.happy.agent.AgentFamily
 import com.slopus.happy.agent.AgentFeedRow
 import com.slopus.happy.agent.ConversationKind
 import com.slopus.happy.connection.TransportResponse
+import com.slopus.happy.artifacts.formatDuration
 import com.slopus.happy.conversation.AgentChild
 import com.slopus.happy.conversation.InlinePicture
+import com.slopus.happy.conversation.KeptMedia
 import com.slopus.happy.conversation.AgentDetail
 import com.slopus.happy.conversation.ConversationViewing
 import com.slopus.happy.conversation.ContextUsage
@@ -263,6 +266,8 @@ class AgentPageActions(
     val loadMedia: suspend (MediaRef) -> ByteArray = { throw IllegalStateException() },
     /** One byte range of a presented recording, so it streams; null where ranges can't be asked for. */
     val loadMediaRange: (suspend (MediaRef, LongRange) -> TransportResponse)? = null,
+    /** The connection's media kept on this phone, which the grid reads through and rings over, as the chat does. */
+    val kept: KeptMedia? = null,
     /** The workspace's changes against its base ([WorkspaceChangesRoute]). */
     val onOpenChanges: (String) -> Unit = {},
 )
@@ -492,7 +497,7 @@ private fun FamilyRow(member: AgentFamily.Member, last: Boolean, actions: AgentP
 }
 
 @Composable
-private fun androidx.compose.foundation.layout.BoxScope.Divider(start: Dp) {
+private fun BoxScope.Divider(start: Dp) {
     Box(
         Modifier
             .align(Alignment.BottomStart)
@@ -605,7 +610,7 @@ private fun SharedSections(state: AgentPageState, actions: AgentPageActions) {
     var linksLimit by rememberSaveable { mutableIntStateOf(AgentPageSpec.LINKS_PAGE) }
     LaunchedEffect(mediaLimit, linksLimit) { actions.onWant(mediaLimit + 1, linksLimit + 1) }
     val shared = state.shared
-    val store = rememberConversationMediaStore(actions.loadMedia, actions.loadMediaRange)
+    val store = rememberConversationMediaStore(actions.loadMedia, actions.loadMediaRange, actions.kept)
     val opener = rememberMediaOpener()
     var viewing by remember { mutableStateOf<Int?>(null) }
     val media = shared.media.take(mediaLimit)
@@ -620,9 +625,17 @@ private fun SharedSections(state: AgentPageState, actions: AgentPageActions) {
                         val one = media[index]
                         MediaCell(one, store, opener) {
                             when (one) {
-                                is SharedMedia.Presented -> if (!one.ref.item.isVisual) {
-                                    opener.open(one.ref.key, one.ref.item) { actions.loadMedia(one.ref) }
-                                    return@MediaCell
+                                is SharedMedia.Presented -> {
+                                    if (!one.ref.item.isVisual) {
+                                        opener.open(one.ref.key, one.ref.item) { store.file(one.ref) }
+                                        return@MediaCell
+                                    }
+                                    // A picture not here yet is read first, as a tap on its ring does.
+                                    val kept = store.kept
+                                    if (kept != null && !one.isVideo && kept.phase(one.ref)?.isComplete != true) {
+                                        kept.toggle(one.ref)
+                                        return@MediaCell
+                                    }
                                 }
                                 is SharedMedia.Picture -> Unit
                             }
@@ -692,13 +705,14 @@ private fun MediaCell(media: SharedMedia, store: ConversationMediaStore, opener:
                 val bytes = remember(media.key) { InlinePicture.of(media.image).bytes }
                 RemoteImage(model = bytes, contentDescription = null, cacheKey = media.key, modifier = Modifier.fillMaxSize())
             }
-            is SharedMedia.Presented -> PresentedCell(media.ref, media.key, store, opener)
+            is SharedMedia.Presented -> PresentedCell(media.ref, media.key, store, opener, onClick)
         }
     }
 }
 
+/** A presented item's square; kept, it reads, rings and plays as the chat's tile does (iOS `SharedMediaCell`). */
 @Composable
-private fun PresentedCell(ref: MediaRef, key: String, store: ConversationMediaStore, opener: MediaOpener) {
+private fun BoxScope.PresentedCell(ref: MediaRef, key: String, store: ConversationMediaStore, opener: MediaOpener, onPlay: () -> Unit) {
     val colors = HappyTheme.colors
     val item = ref.item
     when {
@@ -709,12 +723,21 @@ private fun PresentedCell(ref: MediaRef, key: String, store: ConversationMediaSt
             val still = remember(poster) { poster?.frame?.asImageBitmap() }
             val placeholder = rememberThumbHash(item.thumbhash)
             (still ?: placeholder)?.let { Image(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
-            Box(Modifier.size(AgentPageSpec.playSize).clip(CircleShape).background(PlayFill), contentAlignment = Alignment.Center) {
-                androidx.compose.material3.Icon(MaterialSymbols.PlayArrow, null, tint = PlayGlyph, modifier = Modifier.size(18.dp))
+            val kept = store.kept
+            if (kept != null) {
+                DownloadStatus(ref, kept, video = true, duration = poster?.seconds?.let(::formatDuration), onPlay = onPlay)
+            } else {
+                Box(Modifier.size(AgentPageSpec.playSize).clip(CircleShape).background(PlayFill), contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.Icon(MaterialSymbols.PlayArrow, null, tint = PlayGlyph, modifier = Modifier.size(18.dp))
+                }
             }
         }
         item.isVisual -> {
-            val bytes by produceState<ByteArray?>(null, ref.key) {
+            // Read again once it is here, where it waited for a tap.
+            val kept = store.kept
+            val here = kept?.phase(ref)?.isComplete == true
+            val bytes by produceState<ByteArray?>(null, ref.key, here) {
+                if (value != null) return@produceState
                 value = try {
                     store.bytes(ref)
                 } catch (e: kotlinx.coroutines.CancellationException) {
@@ -730,6 +753,7 @@ private fun PresentedCell(ref: MediaRef, key: String, store: ConversationMediaSt
                 placeholder = rememberThumbHash(item.thumbhash),
                 modifier = Modifier.fillMaxSize(),
             )
+            if (kept != null) DownloadStatus(ref, kept, video = false)
         }
         else -> {
             val opening = opener.state(ref.key)

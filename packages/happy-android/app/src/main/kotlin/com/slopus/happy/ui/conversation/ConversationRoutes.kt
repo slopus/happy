@@ -40,11 +40,13 @@ import com.slopus.happy.conversation.ConversationApi
 import com.slopus.happy.conversation.ConversationApiException
 import com.slopus.happy.conversation.ConversationKeeper
 import com.slopus.happy.conversation.ConversationSignal
+import com.slopus.happy.conversation.KeptMedia
 import com.slopus.happy.conversation.MediaItem
 import com.slopus.happy.conversation.NewTask
 import com.slopus.happy.conversation.UnsentWork
 import com.slopus.happy.conversation.WorkChoice
 import com.slopus.happy.conversation.WorkKind
+import com.slopus.happy.media.MediaPiece
 import kotlinx.serialization.json.JsonObject
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
@@ -333,26 +335,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
     val links = remember(nav, computer, conversation.agentId) {
         LinkOpener.agent(context, computer) { url -> nav.navigate(BrowserRoute(route.connectionId, url, conversation.agentId)) }
     }
-    // Presented media is read into the connection's library once and kept (iOS ba7b68346).
-    val keptScope = rememberCoroutineScope()
-    val kept = remember(conversation, session) {
-        session.media?.let { library ->
-            com.slopus.happy.conversation.KeptMedia(
-                library = library,
-                agentId = conversation.agentId,
-                range = { ref, span ->
-                    session.client.send(
-                        "GET",
-                        ConversationApi.mediaPath(conversation.agentId, ref.toolCallId, ref.index),
-                        headers = mapOf("Range" to com.slopus.happy.media.MediaPiece.header(span)),
-                        category = RequestCategory.File,
-                    )
-                },
-                rules = graph.mediaAutoDownload.rules,
-                scope = keptScope,
-            )
-        }
-    }
+    val kept = rememberKeptMedia(graph, session, conversation.agentId)
     // A command's artwork is read and kept as the agent's other pictures are.
     ProvideLinks(links) { androidx.compose.runtime.CompositionLocalProvider(com.slopus.happy.ui.connection.LocalAgentPictures provides session.pictures) {
         ConversationScreen(
@@ -453,4 +436,28 @@ private fun ChiefOfStaffEntry(graph: AppGraph, nav: NavHostController, route: Ch
         }
     }
     ChiefOfStaffScreen(problem, onRetry = { attempt++ }, onBack = { nav.popBackStack() })
+}
+
+/** [agentId]'s presented media, read into the connection's library once and kept (iOS ba7b68346); null where the session keeps nothing. */
+@Composable
+internal fun rememberKeptMedia(graph: AppGraph, session: AgentSession, agentId: String): KeptMedia? {
+    val scope = rememberCoroutineScope()
+    return remember(session, agentId) {
+        session.media?.let { library ->
+            KeptMedia(
+                library = library,
+                agentId = agentId,
+                range = { ref, span ->
+                    session.client.send(
+                        "GET",
+                        ConversationApi.mediaPath(agentId, ref.toolCallId, ref.index),
+                        headers = mapOf("Range" to MediaPiece.header(span)),
+                        category = RequestCategory.File,
+                    )
+                },
+                rules = graph.mediaAutoDownload.rules,
+                scope = scope,
+            )
+        }
+    }
 }

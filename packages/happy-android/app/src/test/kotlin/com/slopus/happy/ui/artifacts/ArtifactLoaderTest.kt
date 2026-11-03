@@ -10,6 +10,8 @@ import com.slopus.happy.artifacts.Extent
 import com.slopus.happy.connection.RequestCategory
 import com.slopus.happy.connection.Transport
 import com.slopus.happy.connection.TransportResponse
+import com.slopus.happy.media.DownloadPhase
+import com.slopus.happy.media.MediaLibrary
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -24,7 +26,9 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import org.robolectric.annotation.GraphicsMode
 import java.io.ByteArrayOutputStream
@@ -38,6 +42,7 @@ import java.util.Collections
 @RunWith(AndroidJUnit4::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class ArtifactLoaderTest {
+    @get:Rule val folder = TemporaryFolder()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val asked: MutableList<String> = Collections.synchronizedList(ArrayList())
 
@@ -117,6 +122,28 @@ class ArtifactLoaderTest {
         val ui = settled(loader) as ArtifactUi.Gallery
         assertEquals(listOf("artifact/1.png", "artifact/2.png"), ui.items.map { it.key })
         assertFalse(ui.items.any { it.isVideo })
+    }
+
+    // iOS ba7b68346: a numbered version's files are read into the connection's library once and kept.
+    @Test fun aGallerysPicturesAreKeptAndReadFromThePhoneNextTime() {
+        val library = MediaLibrary(folder.newFolder("media"))
+        val versions = mapOf(1 to version(1, "1.png", "1.png" to "image/png"))
+        val first = ArtifactLoader(files(versions, mapOf("1.png" to png)), null, scope, ArtifactRef("a1", 1, "", "Card", followsLatest = true), sizeWait = 2_000, library = library)
+            .also(ArtifactLoader::load)
+        val ui = settled(first) as ArtifactUi.Gallery
+        val media = first.media!!
+        val key = ui.items.single().key
+        assertTrue(runBlocking { media.data(key) }!!.contentEquals(png))
+        assertTrue(library.store.isComplete("artifact/a1/1/1.png"))
+        assertEquals(DownloadPhase.Complete(png.size.toLong()), media.phase(key))
+
+        // The computer no longer has the file: the phone does.
+        val again = ArtifactLoader(files(versions), null, scope, ArtifactRef("a1", 1, "", "Card", followsLatest = true), sizeWait = 2_000, library = library)
+            .also(ArtifactLoader::load)
+        settled(again)
+        asked.clear()
+        assertTrue(runBlocking { again.media!!.data(key) }!!.contentEquals(png))
+        assertTrue(asked.none { "/files/" in it })
     }
 
     @Test fun aPinnedVersionOpensThatVersion() {
