@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_files.xml in ru: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="workspace_rendered">Документ</string>
+    <plurals name="markdown_diff_unchanged">
+        <item quantity="one">Показать %1$d неизменённый блок</item>
+        <item quantity="few">Показать %1$d неизменённых блока</item>
+        <item quantity="many">Показать %1$d неизменённых блоков</item>
+        <item quantity="other">Показать %1$d неизменённого блока</item>
+    </plurals>
+</resources>

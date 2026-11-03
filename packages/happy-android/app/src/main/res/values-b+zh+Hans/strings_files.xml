@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_files.xml in zh-Hans: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="workspace_rendered">渲染</string>
+    <plurals name="markdown_diff_unchanged">
+        <item quantity="other">显示 %1$d 个未更改的块</item>
+    </plurals>
+</resources>

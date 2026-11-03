@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_files.xml in ca: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="workspace_rendered">Renderitzat</string>
+    <plurals name="markdown_diff_unchanged">
+        <item quantity="one">Mostra %1$d bloc sense canvis</item>
+        <item quantity="many">Mostra %1$d blocs sense canvis</item>
+        <item quantity="other">Mostra %1$d blocs sense canvis</item>
+    </plurals>
+</resources>

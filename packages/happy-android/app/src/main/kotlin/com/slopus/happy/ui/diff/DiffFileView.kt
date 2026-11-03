@@ -1,5 +1,19 @@
 package com.slopus.happy.ui.diff
 
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import com.slopus.happy.ui.chat.rememberCopyText
+import com.slopus.happy.ui.components.HappyDropdownMenu
+import com.slopus.happy.ui.components.HappyMenuItem
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -142,6 +156,7 @@ fun LazyListScope.diffFileItems(
     layout: DiffLayoutMode = DiffLayoutMode.Scroll,
     onExpandContext: (() -> Unit)? = null,
     rowModifier: Modifier = Modifier,
+    selectable: Boolean = false,
 ) {
     val file = body.file
     val gutterWidth = metrics.gutterWidth(file.maxLineNo, showLineNumbers)
@@ -151,7 +166,7 @@ fun LazyListScope.diffFileItems(
             val codeWidth = codeWidth(file, metrics)
             items(body.rows.size, key = { "$keyPrefix:${body.rows[it].key}" }, contentType = { "diff.row" }) { index ->
                 val row = body.rows[index]
-                Row(modifier = rowModifier.fillMaxWidth().background(palette.surface).syntaxGate(pending)) {
+                CopyableRow(row.takeIf { selectable }, rowModifier.fillMaxWidth().background(palette.surface).syntaxGate(pending)) {
                     DiffRowGutter(row, palette, metrics, gutterWidth, showLineNumbers)
                     // The viewport reaches the row as its minimum (the weight, kept by horizontalScroll),
                     // so a file of short lines still paints its bands to the edge, as ScrollBody does.
@@ -167,7 +182,7 @@ fun LazyListScope.diffFileItems(
             }
         }
         DiffLayoutMode.Wrap -> items(body.rows.size, key = { "$keyPrefix:${body.rows[it].key}" }, contentType = { "diff.row" }) { index ->
-            Box(rowModifier.background(palette.surface).syntaxGate(pending)) {
+            CopyableRow(body.rows[index].takeIf { selectable }, rowModifier.background(palette.surface).syntaxGate(pending)) {
                 DiffRowInline(body.rows[index], palette, metrics, gutterWidth, showLineNumbers, onExpandContext)
             }
         }
@@ -181,6 +196,45 @@ fun LazyListScope.diffFileItems(
         }
     }
     if (body.hiddenCount > 0) item(key = "$keyPrefix:showMore") { Box(rowModifier) { ShowMoreBar(body, palette) } }
+}
+
+/**
+ * iOS 3888ac688 (DiffFilesList's `selectable` rows): a long press on a
+ * code line, with a long-press haptic, offers Copy, which takes the whole
+ * line, as RN's selectable Text does on iOS; TalkBack has the same Copy as
+ * an action. Hunk and message rows, and every row when [row] is null (the
+ * chat's DiffChunk), are plain.
+ */
+@Composable
+private fun CopyableRow(row: DiffRow?, modifier: Modifier, content: @Composable RowScope.() -> Unit) {
+    val line = row as? DiffRow.Line
+    if (line == null) {
+        Row(modifier, content = content)
+        return
+    }
+    var menu by remember { mutableStateOf(false) }
+    val copy = rememberCopyText()
+    val haptics = LocalHapticFeedback.current
+    val label = stringResource(R.string.common_copy)
+    Box(Modifier.testTag(DiffTags.COPYABLE)) {
+        Row(
+            modifier
+                .pointerInput(line.text) {
+                    detectTapGestures(onLongPress = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        menu = true
+                    })
+                }
+                .semantics { customActions = listOf(CustomAccessibilityAction(label) { copy(line.text); true }) },
+            content = content,
+        )
+        HappyDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            HappyMenuItem(label, onClick = {
+                copy(line.text)
+                menu = false
+            }, modifier = Modifier.testTag(DiffTags.COPY))
+        }
+    }
 }
 
 /** Laid out but invisible, and unread by TalkBack, while the syntax gate holds. */

@@ -1,5 +1,12 @@
 package com.slopus.happy.ui.diff
 
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import com.slopus.happy.diff.MarkdownDiff
 import com.slopus.happy.text.wordsResource
 import com.slopus.happy.text.Words
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -73,6 +80,15 @@ data class DiffFileItem(
 ) {
     val id: String get() = key ?: path
     val summary: DiffFileSummary get() = DiffFileSummary(path, kind, additions, deletions)
+
+    /**
+     * desktop 0a740497 (`changedFileRenderedDiff`): a Markdown file Git lists
+     * as modified or renamed, with both versions in hand, can also be read as
+     * its rendered diff.
+     */
+    val rendersMarkdown: Boolean get() = source is DiffSource.Contents && source.oldText.isNotEmpty() && source.newText.isNotEmpty() &&
+        (kind == FileChangeKind.Modified || kind == FileChangeKind.Renamed) &&
+        path.substringAfterLast('.', "").lowercase() in setOf("md", "markdown", "mdx")
     internal val unavailable get() = source == null && image == null && error == null && message == null
 }
 
@@ -83,7 +99,7 @@ data class DiffFileItem(
  */
 @Stable
 private class DiffSections(private val scope: CoroutineScope, private val syntax: SyntaxService?) {
-    class Section(val source: DiffSource, val document: DiffDocument?, val bodies: List<DiffFileBody>, val job: Job?)
+    class Section(val source: DiffSource, val document: DiffDocument?, val bodies: List<DiffFileBody>, val job: Job?, val markdown: MarkdownDiff? = null)
 
     private val sections = mutableStateMapOf<String, Section>()
 
@@ -102,20 +118,23 @@ private class DiffSections(private val scope: CoroutineScope, private val syntax
         val source = item.source ?: return
         if (get(item) != null) return
         drop(item.id)
-        if (source.size <= DIFF_SYNC_BUILD_LIMIT) {
-            finish(item.id, source, source.build())
+        val rendered = item.rendersMarkdown
+        if (source.size <= DIFF_SYNC_BUILD_LIMIT && !rendered) {
+            finish(item.id, source, source.build(), null)
             return
         }
         val job = scope.launch {
-            val document = withContext(Dispatchers.Default) { source.build() }
-            if (sections[item.id]?.source == source) finish(item.id, source, document)
+            val (document, markdown) = withContext(Dispatchers.Default) {
+                source.build() to (source as? DiffSource.Contents)?.takeIf { rendered }?.let { MarkdownDiff.compute(it.oldText, it.newText) }
+            }
+            if (sections[item.id]?.source == source) finish(item.id, source, document, markdown)
         }
         sections[item.id] = Section(source, null, emptyList(), job)
     }
 
-    private fun finish(id: String, source: DiffSource, document: DiffDocument) {
+    private fun finish(id: String, source: DiffSource, document: DiffDocument, markdown: MarkdownDiff?) {
         val bodies = document.files.map { file -> DiffFileBody(file, showHunkHeaders = true, collapseAfter = 600, syntax = syntax).also { it.start(scope) } }
-        sections[id] = Section(source, document, bodies, null)
+        sections[id] = Section(source, document, bodies, null, markdown)
     }
 
     fun drop(id: String) {
@@ -179,6 +198,9 @@ fun DiffFilesList(
     val sections = remember(syntax) { DiffSections(scope, syntax) }
     DisposableEffect(sections) { onDispose { sections.clear() } }
     val overrides = remember { mutableStateMapOf<String, Boolean>() }
+    // desktop 0a740497: one remembered view for every Markdown file, Rendered until changed.
+    var markdownView by rememberSaveable { mutableStateOf(MarkdownFace.Rendered) }
+    val markdownExpanded = remember { mutableStateMapOf<String, Set<Int>>() }
     val requested = remember { HashSet<String>() }
     val requestContent by rememberUpdatedState(onRequestContent)
     val built = sections.built()
@@ -248,6 +270,33 @@ fun DiffFilesList(
                         document.error != null -> item(key = "body:${item.id}") { SectionMessage(document.error, palette, tint, width) }
                         document.files.isEmpty() || (item.source is DiffSource.Contents && !hasTextRows) ->
                             item(key = "body:${item.id}") { SectionMessage(stringResource(R.string.diff_no_changes), palette, tint, width) }
+                        item.rendersMarkdown && section?.markdown != null -> {
+                            item(key = "face:${item.id}", contentType = "diff.markdownFace") {
+                                MarkdownFaceSwitch(markdownView, width.background(tint)) { markdownView = it }
+                            }
+                            if (markdownView == MarkdownFace.Rendered) {
+                                markdownDiffItems(
+                                    section.markdown,
+                                    markdownExpanded[item.id].orEmpty(),
+                                    keyPrefix = item.id,
+                                    rowModifier = width.background(tint),
+                                ) { first -> markdownExpanded[item.id] = markdownExpanded[item.id].orEmpty() + first }
+                            } else {
+                                bodies.forEachIndexed { index, body ->
+                                    diffFileItems(
+                                        body,
+                                        palette,
+                                        metrics,
+                                        keyPrefix = "${item.id}:$index",
+                                        showLineNumbers = showLineNumbers,
+                                        layout = layout,
+                                        onExpandContext = onExpandContext?.let { expand -> { expand(item.path) } },
+                                        rowModifier = width.background(tint),
+                                        selectable = true,
+                                    )
+                                }
+                            }
+                        }
                         else -> bodies.forEachIndexed { index, body ->
                             diffFileItems(
                                 body,
@@ -258,6 +307,7 @@ fun DiffFilesList(
                                 layout = layout,
                                 onExpandContext = onExpandContext?.let { expand -> { expand(item.path) } },
                                 rowModifier = width.background(tint),
+                                selectable = true,
                             )
                         }
                     }
@@ -304,6 +354,33 @@ private fun OpenFileButton(onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         com.slopus.happy.ui.components.Icon(com.slopus.happy.ui.components.Ionicon.ExitOutline, 16.dp, palette.textSecondary)
+    }
+}
+
+/** Which face a changed Markdown file shows: its rendered diff, or the line diff. */
+enum class MarkdownFace { Rendered, Diff }
+
+/** The Rendered / Diff switch over a Markdown file's body: two tabs, 16 in, 8 above and below. */
+@Composable
+private fun MarkdownFaceSwitch(face: MarkdownFace, modifier: Modifier, onChange: (MarkdownFace) -> Unit) {
+    val colors = com.slopus.happy.ui.theme.HappyTheme.colors
+    androidx.compose.foundation.layout.Row(
+        modifier.padding(horizontal = 16.dp, vertical = 8.dp).testTag(DiffTags.MARKDOWN_FACE),
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+    ) {
+        for ((value, label) in listOf(MarkdownFace.Rendered to R.string.workspace_rendered, MarkdownFace.Diff to R.string.files_diff)) {
+            val selected = value == face
+            Box(
+                Modifier
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                    .background(if (selected) colors.textLink.copy(alpha = 0x66 / 255f) else colors.glass.backgroundSubtle)
+                    .clickable(role = Role.Tab) { onChange(value) }
+                    .semantics { this.selected = selected }
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+            ) {
+                Text(stringResource(label), style = happyTextStyle(fontSize = 13, weight = androidx.compose.ui.text.font.FontWeight.SemiBold), color = if (selected) Color.White else colors.textSecondary)
+            }
+        }
     }
 }
 
