@@ -316,7 +316,7 @@ abstract class FoldableLayoutTest(
         )
         show { ConversationScreen(state, null, ConversationScreenActions()) }
         val text = first(MessageTags.AGENT)
-        assertOnKeylines("agent chat", glyph(ConversationScreenTags.BACK, 24.dp), glyph(ConversationScreenTags.MORE, 24.dp), text)
+        assertOnKeylines("agent chat", glyph(ConversationScreenTags.BACK, 24.dp), glyph(ConversationScreenTags.COMPOSE, 24.dp), text)
         // The composer is the column's, 12 in, as on a phone.
         val composer = rule.node(ConversationComposerTags.COMPOSER).bounds
         assertDp("the composer is the column", window - (keyline - ContentTokens.inset) * 2, composer.width)
@@ -356,7 +356,7 @@ abstract class FoldableLayoutTest(
             )
         }
         val text = first(MessageTags.AGENT)
-        assertOnKeylines("legacy chat", glyph(HeaderTags.LEFT, 24.dp), glyph(ChatScreenTags.MORE, 24.dp), text)
+        assertOnKeylines("legacy chat", glyph(HeaderTags.LEFT, 24.dp), glyph(ChatScreenTags.COMPOSE, 24.dp), text)
         // The composer's panel is the column's, 8 in, as on a phone.
         val panel = rule.node(ComposerTags.PANEL).bounds
         assertDp("the composer starts 8 inside the column", keyline - ContentTokens.inset + 8.dp, panel.left)

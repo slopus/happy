@@ -89,7 +89,6 @@
     <string name="conversation_attach_picture">Добавить изображение</string>
     <string name="conversation_remove_picture">Удалить изображение</string>
     <string name="conversation_composer_more">Ещё</string>
-    <string name="conversation_mode_permission_item">Разрешения: %1$s</string>
     <string name="conversation_pictures_too_large_title">Изображения слишком большие</string>
     <string name="conversation_pictures_too_large_message">Вместе эти изображения больше, чем вмещает одно сообщение. Удалите некоторые и отправьте снова.</string>
     <string name="conversation_problem_refused">Агент отказал (%1$d).</string>

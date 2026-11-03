@@ -28,6 +28,7 @@ import com.slopus.happy.diagnostics.ClientLogs
 import com.slopus.happy.model.Machine
 import com.slopus.happy.model.Session
 import com.slopus.happy.model.SessionMetadata
+import com.slopus.happy.chat.ComposerModes
 import com.slopus.happy.model.settings.ModeOption
 import com.slopus.happy.model.settings.ModeOptions
 import com.slopus.happy.sync.AgentModeField
@@ -508,14 +509,20 @@ private fun PermissionGroup(permission: SessionInfoPermission, metadata: Session
                 modifier = Modifier.testTag(SessionInfoTags.PERMISSION_MODE),
             )
             ConversationPopup(expanded = open, title = title, onDismiss = { open = false }, alignEnd = true, width = 280.dp, belowAnchor = true) {
-                Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
-                    PickerSheetSection("permissions", title, separated = false)
-                    ComposerPermissionOptions(modes, metadata) { field, option ->
-                        open = false
-                        onSelect(field, option)
-                    }
+                PermissionModeMenu(modes, metadata) { field, option ->
+                    open = false
+                    onSelect(field, option)
                 }
             }
         }
+    }
+}
+
+/** The permission modes as the chat's header menu listed them: under their heading, the current one ticked, a locked or retired one disabled. */
+@Composable
+internal fun PermissionModeMenu(modes: ComposerModes, metadata: SessionMetadata?, onSelect: (AgentModeField, ModeOption) -> Unit) {
+    Column(Modifier.testTag(SessionInfoTags.PERMISSION_MENU).verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
+        PickerSheetSection("permissions", composerPermissionTitle(metadata), separated = false)
+        ComposerPermissionOptions(modes, metadata, onSelect)
     }
 }

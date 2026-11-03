@@ -36,7 +36,6 @@ import com.slopus.happy.ui.attachments.LocalComposerImages
 import com.slopus.happy.ui.attachments.rememberComposerImages
 import com.slopus.happy.ui.chat.ChatScreen
 import com.slopus.happy.ui.chat.ChatScreenActions
-import com.slopus.happy.ui.chat.ChatScreenTags
 import com.slopus.happy.ui.chat.ComposerPickerTags
 import com.slopus.happy.ui.chat.ComposerTags
 import com.slopus.happy.ui.components.PickerSheetTags
@@ -117,13 +116,6 @@ class RelayComposerKeyboardDeviceTest {
         node(ComposerTags.INPUT).performClick().performTextInputSelection(TextRange(8))
         rule.waitUntil(10_000) { ViewCompat.getRootWindowInsets(rule.activity.window.decorView)?.isVisible(WindowInsetsCompat.Type.ime()) == true }
         kept("before")
-        node(ChatScreenTags.MORE).performClick()
-        kept("permission open")
-        node(PickerSheetTags.option(full.key)).performScrollTo().performClick()
-        kept("permission selected")
-        node(ChatScreenTags.MORE).performClick()
-        dismissWithBack(ChatScreenTags.MENU)
-        kept("permission Back")
         node(ComposerPickerTags.MODEL).performClick()
         kept("model open")
         node(PickerSheetTags.option(second.key)).performClick()
@@ -135,7 +127,7 @@ class RelayComposerKeyboardDeviceTest {
         node(ComposerPickerTags.MODEL).performClick()
         dismissWithBack(PickerSheetTags.PANEL)
         kept("model Back")
-        assertEquals(listOf(AgentModeField.PERMISSION_MODE to full.key, AgentModeField.MODEL_MODE to second.key, AgentModeField.EFFORT_LEVEL to high.key), picks)
+        assertEquals(listOf(AgentModeField.MODEL_MODE to second.key, AgentModeField.EFFORT_LEVEL to high.key), picks)
         // The add button is the attachment sheet, a window of its own: Back closes it, the draft kept.
         val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
         val target = InstrumentationRegistry.getInstrumentation().targetContext.packageName

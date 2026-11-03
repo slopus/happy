@@ -89,7 +89,6 @@
     <string name="conversation_attach_picture">添加图片</string>
     <string name="conversation_remove_picture">移除图片</string>
     <string name="conversation_composer_more">更多</string>
-    <string name="conversation_mode_permission_item">权限：%1$s</string>
     <string name="conversation_pictures_too_large_title">图片太大</string>
     <string name="conversation_pictures_too_large_message">这些图片加起来超出了一条消息的容量。请移除一些后再发送。</string>
     <string name="conversation_problem_refused">代理拒绝了此操作（%1$d）。</string>

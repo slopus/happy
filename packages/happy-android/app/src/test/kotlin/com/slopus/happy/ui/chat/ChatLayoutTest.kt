@@ -8,6 +8,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -282,11 +284,10 @@ class ChatLayoutTest {
         rule.onNodeWithText("online").assertExists()
         val bar = rule.node(HeaderTags.BAR).bounds
         val compose = rule.node(ChatScreenTags.COMPOSE).bounds
-        val more = rule.node(ChatScreenTags.MORE).bounds
         assertDp("compose touch target", 48, compose.right - compose.left)
-        assertDp("overflow touch target", 48, more.right - more.left)
         assertDp("compose centred in the bar", (bar.top + bar.bottom) / 2, (compose.top + compose.bottom) / 2)
-        assertDp("overflow after compose", compose.right, more.left)
+        // Compose alone, as iOS da5fda505 left it: the details open from the name.
+        rule.onNode(hasContentDescription("More") and hasAnyAncestor(hasTestTag(HeaderTags.BAR))).assertDoesNotExist()
         // Inverted: the newest row sits lowest, 8 above the composer.
         val agent = rule.node(MessageTags.AGENT).bounds
         val user = rule.node(MessageTags.USER).bounds
@@ -366,7 +367,6 @@ class ChatLayoutTest {
         }
         rule.onNode(hasContentDescription("Back") and hasRole(Role.Button)).assertExists()
         rule.node(ChatScreenTags.COMPOSE).assert(hasContentDescription("New chat") and hasRole(Role.Button))
-        rule.node(ChatScreenTags.MORE).assert(hasContentDescription("More") and hasRole(Role.Button))
         rule.onNode(hasContentDescription("Send") and hasRole(Role.Button)).assertExists()
         rule.onNode(hasSetTextAction()).assert(hasText("Draft"))
         rule.assertActionsLabelled()

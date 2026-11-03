@@ -9,8 +9,6 @@ import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.chat.ComposerModeResolver
 import com.slopus.happy.chat.ComposerModes
-import com.slopus.happy.chat.ChatSessionInfo
-import com.slopus.happy.data.SessionRecord
 import com.slopus.happy.model.SessionMetadata
 import com.slopus.happy.model.settings.ModeOption
 import com.slopus.happy.sync.AgentModeField
@@ -24,6 +22,8 @@ import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
+import com.slopus.happy.ui.session.PermissionModeMenu
+import com.slopus.happy.ui.session.SessionInfoTags
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
@@ -61,10 +61,9 @@ class ComposerPickerLayoutTest {
         }
     }
 
+    /** The permission modes as session info's row opens them (iOS da5fda505 moved them off the header). */
     private fun showHeader(modes: ComposerModes, metadata: SessionMetadata? = this.metadata) {
-        val session = ChatSessionInfo.from(SessionRecord("s", 0, 0, 1, true, 0, """{"path":"/repo","host":"h"}""", 1, null, 1, "", null))
-        rule.setHappyContent { Box(Modifier.fillMaxSize()) { ChatHeaderActions(session, modes, metadata, ChatScreenActions()) } }
-        rule.node(ChatScreenTags.MORE).performClick()
+        rule.setHappyContent { Box(Modifier.fillMaxSize()) { PermissionModeMenu(modes, metadata) { _, _ -> } } }
         rule.waitForIdle()
     }
 
@@ -126,12 +125,12 @@ class ComposerPickerLayoutTest {
     fun thePermissionSheetListsAnUnknownPickDisabled() {
         val modes = modes(ComposerMirror(permissionMode = "plan_only"))
         showHeader(modes)
-        // The unknown pick remains in the header list, disabled.
+        // The unknown pick remains in the list, disabled.
         rule.onNodeWithText("PERMISSION MODE", useUnmergedTree = true).assertExists()
         rule.node(PickerSheetTags.option("plan_only")).assertIsNotEnabled()
         rule.onNodeWithText("Uses the workspace sandbox.", useUnmergedTree = true).assertExists()
         // The kind's 14 glyph 6 before the label, after the 20 radio and its 16 gap.
-        assertDp("label after the kind glyph", rule.node(ChatScreenTags.MENU).bounds.left + (24 + 20 + 16 + 14 + 6).dp, rule.onNodeWithText("Read only", useUnmergedTree = true).bounds.left)
+        assertDp("label after the kind glyph", rule.node(SessionInfoTags.PERMISSION_MENU).bounds.left + (24 + 20 + 16 + 14 + 6).dp, rule.onNodeWithText("Read only", useUnmergedTree = true).bounds.left)
     }
 
     @Test

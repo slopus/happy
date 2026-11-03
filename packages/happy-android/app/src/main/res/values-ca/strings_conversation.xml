@@ -89,7 +89,6 @@
     <string name="conversation_attach_picture">Afegeix una imatge</string>
     <string name="conversation_remove_picture">Treu la imatge</string>
     <string name="conversation_composer_more">Més</string>
-    <string name="conversation_mode_permission_item">Permisos: %1$s</string>
     <string name="conversation_pictures_too_large_title">Imatges massa grans</string>
     <string name="conversation_pictures_too_large_message">Juntes, aquestes imatges superen el que hi cap en un missatge. Treu-ne algunes i torna a enviar.</string>
     <string name="conversation_problem_refused">L\'agent ho ha rebutjat (%1$d).</string>

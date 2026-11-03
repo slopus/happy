@@ -89,7 +89,6 @@
     <string name="conversation_attach_picture">Dodaj obraz</string>
     <string name="conversation_remove_picture">Usuń obraz</string>
     <string name="conversation_composer_more">Więcej</string>
-    <string name="conversation_mode_permission_item">Uprawnienia: %1$s</string>
     <string name="conversation_pictures_too_large_title">Obrazy są za duże</string>
     <string name="conversation_pictures_too_large_message">Razem te obrazy przekraczają to, co zmieści jedna wiadomość. Usuń część i wyślij ponownie.</string>
     <string name="conversation_problem_refused">Agent odmówił (%1$d).</string>

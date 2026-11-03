@@ -5,8 +5,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -27,25 +28,28 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
-/** Header actions in both reading directions; new and existing chats share every permission mode. */
+/**
+ * The header's actions in both reading directions: compose alone once the
+ * chat exists, nothing before; no More menu (iOS da5fda505), the details
+ * opening from the name.
+ */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [26, 33], qualifiers = PHONE)
 class ConversationHeaderActionsTest {
     @get:Rule val rule = createComposeRule()
 
-    @Test fun `compose glyph and overflow mirror around a constrained title and preserve all modes and details`() {
-        var current by mutableStateOf(Mode("claude", "opus", "high", null, "auto"))
+    @Test fun `compose alone mirrors beside a constrained title, and the name opens the details`() {
+        val current = Mode("claude", "opus", "high", null, "auto")
         var created by mutableStateOf(false)
         var direction by mutableStateOf(LayoutDirection.Ltr)
         var composed = 0
         var details = 0
-        val modes = listOf("read_only" to "Read only", "workspace_write" to "Workspace write", "auto" to "Auto", "full_access" to "Full access")
         rule.setHappyContent {
             CompositionLocalProvider(LocalLayoutDirection provides direction) {
                 ConversationScreen(
                     ConversationState(created = created, loaded = true, knownTitle = "A long chat title that must leave room for both actions", mode = current, catalog = ModeCatalog(emptyList(), current)),
                     null,
-                    ConversationScreenActions(onCompose = { composed++ }, onDetails = { details++ }, onModeChange = { current = it }),
+                    ConversationScreenActions(onCompose = { composed++ }, onDetails = { details++ }),
                 )
             }
         }
@@ -53,35 +57,18 @@ class ConversationHeaderActionsTest {
             rule.runOnIdle { direction = if (rtl) LayoutDirection.Rtl else LayoutDirection.Ltr }
             for (exists in listOf(false, true)) {
                 rule.runOnIdle { created = exists }
+                rule.onNode(hasContentDescription("More") and hasAnyAncestor(hasTestTag(ConversationScreenTags.BAR))).assertDoesNotExist()
                 if (exists) {
                     rule.onNodeWithText(String(Character.toChars(Ionicon.CreateOutline.codepoint))).assertExists()
+                    rule.onNode(hasTestTag(ConversationScreenTags.COMPOSE) and hasAnyAncestor(hasTestTag(ConversationScreenTags.BAR))).assertExists()
                     val compose = rule.node(ConversationScreenTags.COMPOSE).bounds
-                    val more = rule.node(ConversationScreenTags.MORE).bounds
                     val title = rule.node(ConversationScreenTags.TITLE).bounds
-                    assertTrue("compose/overflow order", if (rtl) more.right <= compose.left else compose.right <= more.left)
-                    assertTrue("title leaves both actions clear", if (rtl) title.left >= compose.right else title.right <= compose.left)
+                    assertTrue("title leaves compose clear", if (rtl) title.left >= compose.right else title.right <= compose.left)
                     rule.node(ConversationScreenTags.COMPOSE).performClick()
+                    rule.node(ConversationScreenTags.TITLE_BUTTON).performClick()
                 } else {
                     // Until the chat exists: no compose, and no name to tap.
                     rule.node(ConversationScreenTags.COMPOSE).assertDoesNotExist()
-                }
-                rule.node(ConversationScreenTags.MORE).performClick()
-                if (exists) rule.node(ConversationScreenTags.DETAILS).assertIsDisplayed()
-                else rule.node(ConversationScreenTags.DETAILS).assertDoesNotExist()
-                rule.node(ConversationModeTags.PERMISSION).performClick()
-                for ((index, entry) in modes.withIndex()) {
-                    if (index > 0) {
-                        rule.node(ConversationScreenTags.MORE).performClick()
-                        rule.node(ConversationModeTags.PERMISSION).performClick()
-                    }
-                    rule.onNodeWithText(modes.first { it.first == current.permissionMode }.second).assertIsSelected()
-                    rule.onNodeWithText(entry.second).performClick()
-                    assertEquals(entry.first, current.permissionMode)
-                }
-                if (exists) {
-                    rule.node(ConversationScreenTags.MORE).performClick()
-                    rule.node(ConversationScreenTags.DETAILS).performClick()
-                    rule.node(ConversationScreenTags.MENU).assertDoesNotExist()
                 }
             }
         }

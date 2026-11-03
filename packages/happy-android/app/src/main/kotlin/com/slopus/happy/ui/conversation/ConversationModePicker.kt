@@ -42,15 +42,13 @@ import com.slopus.happy.ui.theme.HappyTheme
 object ConversationModeTags {
     /** The composer's model chip. */
     const val MODEL = "conversation.modes.model"
-    /** The header menu's permissions row. */
-    const val PERMISSION = "conversation.modes.permission"
     /** The composer's effort chip. */
     const val EFFORT = "conversation.modes.effort"
     const val PICKER = "conversation.modes.picker"
     const val OPTIONS = "conversation.modes.options"
 }
 
-/** Which picker is open: permissions, from the header. The model and effort chips open [ModelPicker]. */
+/** Which picker is open: permissions, from the agent page's row. The model and effort chips open [ModelPicker]. */
 internal enum class ModePicker { Permission }
 
 /** Each permission mode, least to most trusted, with its name and what it allows. */
@@ -61,7 +59,7 @@ private val permissionText = mapOf(
     "full_access" to (R.string.conversation_permission_full_access to R.string.conversation_permission_full_access_description),
 )
 
-/** A permission mode's name, as the header menu shows it. */
+/** A permission mode's name, as the agent page shows it. */
 @Composable
 internal fun permissionName(key: String): String = permissionText[key]?.first?.let { stringResource(it) } ?: key
 

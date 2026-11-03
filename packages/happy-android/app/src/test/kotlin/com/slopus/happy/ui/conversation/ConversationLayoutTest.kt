@@ -2,6 +2,7 @@ package com.slopus.happy.ui.conversation
 
 import android.graphics.Bitmap
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.swipeLeft
@@ -139,17 +140,16 @@ class ConversationLayoutTest {
         rule.onNodeWithText("New chat").assertDoesNotExist()
     }
 
-    @Test fun `a new chat asks Task or Bot, with Back and overflow alone in the header`() {
+    @Test fun `a new chat asks Task or Bot, with Back alone in the header`() {
         show(ConversationState(created = false, loaded = true, newWork = com.slopus.happy.conversation.NewWork(com.slopus.happy.conversation.WorkChoice())))
-        // No name and no compose until the first send (iOS 323fb2e9f); the overflow keeps the permission mode.
+        // No name and no compose until the first send (iOS 323fb2e9f), and no More menu (iOS da5fda505).
         rule.onNodeWithText("New chat").assertDoesNotExist()
         rule.node(ConversationScreenTags.TITLE_BUTTON).assertDoesNotExist()
         rule.node(ConversationScreenTags.BACK).assertIsDisplayed()
         rule.node(com.slopus.happy.ui.chat.NewWorkTags.PANEL).assertIsDisplayed()
         rule.node(ConversationScreenTags.EMPTY).assertDoesNotExist()
         rule.node(ConversationScreenTags.COMPOSE).assertDoesNotExist()
-        rule.node(ConversationScreenTags.MORE).assertIsDisplayed()
-        rule.node(ConversationScreenTags.DETAILS).assertDoesNotExist()
+        rule.onNode(hasContentDescription("More") and hasAnyAncestor(hasTestTag(ConversationScreenTags.BAR))).assertDoesNotExist()
         // The composer runs edge to edge, 8 in, above the navigation bar.
         val composer = rule.node(ConversationComposerTags.COMPOSER).bounds
         assertDp("composer left", 0, composer.left)
@@ -196,8 +196,9 @@ class ConversationLayoutTest {
         rule.onNodeWithText("Fix the login redirect").assertIsDisplayed()
         rule.node(ConversationScreenTags.SUBTITLE).assertIsDisplayed()
         rule.onNodeWithText("Offline").assertIsDisplayed()
-        rule.node(ConversationScreenTags.DETAILS).assertDoesNotExist()
-        rule.node(ConversationScreenTags.MORE).assertIsDisplayed()
+        // Compose alone: the details open from the name, the permission mode is on them (iOS da5fda505).
+        rule.node(ConversationScreenTags.COMPOSE).assertIsDisplayed()
+        rule.onNode(hasContentDescription("More") and hasAnyAncestor(hasTestTag(ConversationScreenTags.BAR))).assertDoesNotExist()
         rule.node(ConversationRowTags.FAILURE).assertIsDisplayed()
         // The header is the standard 64 bar.
         assertDp("header", 64, rule.node(ConversationScreenTags.BAR).bounds.height)
@@ -447,28 +448,10 @@ class ConversationLayoutTest {
         rule.waitForIdle()
         // Another model runs at its own default effort, never one carried over (desktop's happyAgentSelectionModelUpdate).
         assertEquals(listOf(Mode("codex", "openai/gpt-5.6-sol", "medium", null, "auto")), picks)
-        // [+] is exclusively attachments; permissions live in the header overflow.
+        // [+] is exclusively attachments; the permission mode is a row on the agent page.
         rule.node(ConversationComposerTags.MORE).performClick()
         rule.waitForIdle()
-        rule.node(ConversationModeTags.PERMISSION).assertDoesNotExist()
         rule.node(com.slopus.happy.ui.attach.AttachTags.SHEET).assertExists()
-    }
-
-    @Test fun `the header permission picker lists the four modes`() {
-        val picks = ArrayList<Mode>()
-        show(
-            ConversationState(created = true, loaded = true, rows = history, agent = agent, mode = mode, catalog = ModeCatalog(emptyList(), mode)),
-            actions = ConversationScreenActions(onModeChange = { picks += it }),
-        )
-        rule.node(ConversationScreenTags.MORE).performClick()
-        rule.waitForIdle()
-        rule.node(ConversationModeTags.PERMISSION).performClick()
-        rule.waitForIdle()
-        rule.onNodeWithText("Workspace write").assertIsDisplayed()
-        rule.onNodeWithText("Full access").assertIsDisplayed()
-        rule.onNodeWithText("Read only").performClick()
-        rule.waitForIdle()
-        assertEquals(listOf(mode.copy(permissionMode = "read_only")), picks)
     }
 
     @Test fun `a chief of staff that can't be found says so with Retry`() {

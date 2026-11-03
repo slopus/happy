@@ -50,6 +50,7 @@ object SessionInfoTags {
     const val LOADING = "sessionInfo.loading"
     const val DELETED = "sessionInfo.deleted"
     const val PERMISSION_MODE = "sessionInfo.permissionMode"
+    const val PERMISSION_MENU = "sessionInfo.permissionMode.menu"
     const val BRANCH = "sessionInfo.branch"
     const val CHANGES = "sessionInfo.changes"
     const val MACHINE = "sessionInfo.machine"

@@ -1,5 +1,8 @@
 package com.slopus.happy.journeys
 
+import androidx.compose.ui.test.onFirst
+import com.slopus.happy.ui.isOnActivePage
+import com.slopus.happy.ui.components.HeaderTags
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.hasAnyAncestor
@@ -135,11 +138,15 @@ class LifecycleJourneyTest {
         // Plan mode picked in the chat; then its agent stops.
         rule.onNode(hasText("Stopped chat"), useUnmergedTree = true).performClick()
         rule.waitFor(ChatScreenTags.SCREEN)
-        rule.waitFor(ChatScreenTags.MORE)
-        rule.node(ChatScreenTags.MORE).performClick()
-        rule.waitFor(ChatScreenTags.MENU)
+        // Picked on its info, the row iOS da5fda505 moved it to.
+        openInfo()
+        rule.waitFor(SessionInfoTags.PERMISSION_MODE)
+        rule.node(SessionInfoTags.PERMISSION_MODE).performClick()
+        rule.waitFor(SessionInfoTags.PERMISSION_MENU)
         rule.node(PickerSheetTags.option("plan")).performClick()
         rule.waitUntil(5_000) { graph.account.value?.composer?.mirrors?.value?.get("r1")?.permissionMode == "plan" }
+        rule.onAllNodes(hasTestTag(HeaderTags.LEFT) and isOnActivePage, useUnmergedTree = true).onFirst().performClick()
+        rule.waitFor(ChatScreenTags.SCREEN)
         server.addSession("r1", updatedAt = 60_000, metadata = Journey.sessionMetadata("/h/old", "Stopped chat", "claude-r1"), active = false)
         server.emitEphemeral(buildJsonObject {
             put("type", "activity"); put("id", "r1"); put("active", false); put("activeAt", System.currentTimeMillis()); put("thinking", false)

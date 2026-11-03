@@ -91,7 +91,6 @@
     <string name="conversation_attach_picture">Add picture</string>
     <string name="conversation_remove_picture">Remove picture</string>
     <string name="conversation_composer_more">More</string>
-    <string name="conversation_mode_permission_item">Permissions: %1$s</string>
     <string name="conversation_pictures_too_large_title">Pictures too large</string>
     <string name="conversation_pictures_too_large_message">Together these pictures are more than one message can carry. Remove some and send again.</string>
     <!-- Conversation.describe's own words, where the agent gave none. -->

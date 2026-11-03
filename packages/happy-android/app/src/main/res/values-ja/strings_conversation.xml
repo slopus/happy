@@ -89,7 +89,6 @@
     <string name="conversation_attach_picture">画像を追加</string>
     <string name="conversation_remove_picture">画像を削除</string>
     <string name="conversation_composer_more">その他</string>
-    <string name="conversation_mode_permission_item">権限: %1$s</string>
     <string name="conversation_pictures_too_large_title">画像が大きすぎます</string>
     <string name="conversation_pictures_too_large_message">これらの画像は合わせると 1 通のメッセージに収まりません。いくつか削除してもう一度送信してください。</string>
     <string name="conversation_problem_refused">エージェントが拒否しました（%1$d）。</string>

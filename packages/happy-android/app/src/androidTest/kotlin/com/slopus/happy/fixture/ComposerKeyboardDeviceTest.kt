@@ -79,17 +79,15 @@ class ComposerKeyboardDeviceTest {
         val minimumTouch = 48 * rule.activity.resources.displayMetrics.density
         if (imeTop - bar.bottom >= minimumTouch) assertTrue("$step 48dp touch surface", card.height >= minimumTouch)
         assertTrue("$step field within composer: $field / $card", field.top >= card.top && field.bottom <= card.bottom)
-        val menu = listOf(ConversationModeTags.PICKER, ConversationScreenTags.MENU).flatMap {
+        val menu = listOf(ConversationModeTags.PICKER).flatMap {
             rule.onAllNodesWithTag(it, useUnmergedTree = true).fetchSemanticsNodes()
         }.firstOrNull()?.let { Rect(it.positionOnScreen, it.size.toSize()) }
         if (menu != null) assertTrue("$step panel within window", menu.left >= 0 && menu.top >= 0 && menu.right <= device.displayWidth && menu.bottom <= device.displayHeight)
         val title = screenBounds(ConversationScreenTags.TITLE)
         val compose = screenBounds(ConversationScreenTags.COMPOSE)
-        val more = screenBounds(ConversationScreenTags.MORE)
         val rtl = InstrumentationRegistry.getArguments().getString("rtl") == "true"
-        assertTrue("$step header action order", if (rtl) more.right <= compose.left else compose.right <= more.left)
         assertTrue("$step title clear of actions", if (rtl) title.left >= compose.right else title.right <= compose.left)
-        val metadata = "$step: IME visible, editor served, draft/caret kept; field=$field card=$card header=$bar imeTop=$imeTop panel=$menu title=$title compose=$compose more=$more"
+        val metadata = "$step: IME visible, editor served, draft/caret kept; field=$field card=$card header=$bar imeTop=$imeTop panel=$menu title=$title compose=$compose"
         android.util.Log.i("ComposerKeyboard", metadata)
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val evidence = File(context.filesDir, "device-evidence/composer-keyboard").apply { mkdirs() }
@@ -158,43 +156,17 @@ class ComposerKeyboardDeviceTest {
         back("model Back", ConversationModeTags.PICKER)
         node(ConversationModeTags.MODEL).performClick()
         outside("model outside", ConversationModeTags.PICKER)
-        val permissions = listOf("read_only" to "Read only", "workspace_write" to "Workspace write", "auto" to "Auto", "full_access" to "Full access")
-        for ((key, name) in permissions) {
-            node(ConversationScreenTags.MORE).performClick()
-            kept("header $key open")
-            if (created) node(ConversationScreenTags.DETAILS).assertExists() else node(ConversationScreenTags.DETAILS).assertDoesNotExist()
-            node(ConversationModeTags.PERMISSION).performClick()
-            kept("permission $key open")
-            val selected = permissions.first { it.first == current.permissionMode }.second
-            node(ConversationModeTags.OPTIONS).performScrollToNode(hasText(selected))
-            rule.onNodeWithText(selected).assertIsSelected()
-            node(ConversationModeTags.OPTIONS).performScrollToNode(hasText(name))
-            rule.onNodeWithText(name).performClick()
-            kept("permission $key selected")
-            assertEquals(key, current.permissionMode)
-        }
-        node(ConversationScreenTags.MORE).performClick()
-        back("header Back", ConversationScreenTags.MENU)
-        node(ConversationScreenTags.MORE).performClick()
-        outside("header outside", ConversationScreenTags.MENU)
-        node(ConversationScreenTags.MORE).performClick()
-        node(ConversationModeTags.PERMISSION).performClick()
-        back("permission Back", ConversationModeTags.PICKER)
-        node(ConversationScreenTags.MORE).performClick()
-        node(ConversationModeTags.PERMISSION).performClick()
-        outside("permission outside", ConversationModeTags.PICKER)
+        // The permission mode is the agent page's row since iOS da5fda505; the header has compose alone.
         node(ConversationScreenTags.COMPOSE).performClick()
         assertEquals(1, composed)
         if (created) {
-            node(ConversationScreenTags.MORE).performClick()
-            node(ConversationScreenTags.DETAILS).performClick()
+            node(ConversationScreenTags.TITLE_BUTTON).performClick()
             assertEquals(1, details)
         }
         // [+] is the attachment sheet, a window of its own: Back closes it first, the draft kept.
         grantGallery()
         node(ConversationComposerTags.MORE).performClick()
         rule.waitUntil(5_000) { rule.onAllNodesWithTag(AttachTags.SHEET, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
-        node(ConversationModeTags.PERMISSION).assertDoesNotExist()
         device.waitForIdle()
         device.pressBack()
         closed(AttachTags.SHEET)

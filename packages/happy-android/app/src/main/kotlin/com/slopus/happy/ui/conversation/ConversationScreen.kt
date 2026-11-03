@@ -144,9 +144,6 @@ object ConversationScreenTags {
     const val OLDER_RETRY = "conversation.older.retry"
     const val COMPOSE = "conversation.header.compose"
     const val COMPOSE_ICON = "conversation.header.compose.icon"
-    const val MORE = "conversation.header.more"
-    const val MENU = "conversation.header.menu"
-    const val DETAILS = "conversation.header.details"
     /** The fade behind the dock. */
     const val FADE = "conversation.fade"
 

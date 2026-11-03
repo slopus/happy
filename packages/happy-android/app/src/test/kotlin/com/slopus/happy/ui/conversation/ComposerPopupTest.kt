@@ -42,7 +42,7 @@ class ComposerPopupTest {
     private val catalog = ModeCatalog(listOf(ModelChoice("claude", "Claude", "claude", "opus", "Opus", listOf("low", "high"), "high", emptyList())), mode)
     private fun screenBounds(tag: String) = rule.node(tag).fetchSemanticsNode().let { Rect(it.positionOnScreen, it.size.toSize()) }
 
-    @Test fun `floating model and permission selections keep draft focus and caret in an unmoved composer`() {
+    @Test fun `a floating effort selection keeps draft focus and caret in an unmoved composer`() {
         val draft = "keep this draft"
         val picks = mutableListOf<Mode>()
         rule.setHappyContent {
@@ -66,18 +66,11 @@ class ComposerPopupTest {
         assertEquals(screenBounds(ConversationModeTags.EFFORT).top - 10 * rule.density.density, screenBounds(ModelPickerTags.PANEL).bottom, 1f)
         rule.onNodeWithText("Low").performClick()
         kept()
-        rule.node(ConversationScreenTags.MORE).performClick()
-        kept()
-        rule.node(ConversationModeTags.PERMISSION).performClick()
-        kept()
-        rule.onNodeWithText("Read only").performClick()
-        kept()
-        assertEquals(listOf(mode.copy(effort = "low"), mode.copy(permissionMode = "read_only")), picks)
+        assertEquals(listOf(mode.copy(effort = "low")), picks)
         // [+] is the attachment sheet; the draft stays with the composer.
         rule.node(ConversationComposerTags.MORE).performClick()
         rule.waitForIdle()
         rule.node(com.slopus.happy.ui.attach.AttachTags.SHEET).assertExists()
-        rule.node(ConversationModeTags.PERMISSION).assertDoesNotExist()
         assertEquals(draft, rule.node(ConversationComposerTags.INPUT).fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
     }
 

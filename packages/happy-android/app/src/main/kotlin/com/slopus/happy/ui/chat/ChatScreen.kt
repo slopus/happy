@@ -19,12 +19,12 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -73,9 +73,6 @@ object ChatScreenTags {
     const val GIT_CHANGES = "chat.header.git"
     const val AVATAR = "chat.header.avatar"
     const val COMPOSE = "chat.header.compose"
-    const val MORE = "chat.header.more"
-    const val MENU = "chat.header.menu"
-    const val INFO = "chat.header.info"
     const val LOADING = "chat.loading"
     const val DELETED = "chat.deleted"
     const val DELETED_ICON = "chat.deleted.icon"
@@ -316,7 +313,7 @@ fun ChatScreen(
                                     ChatHeaderTitle(slots.headerTitle ?: title, session, gitStatus, onClick = if (session != null) actions.onInfo else null, subtitleOverride = slots.headerSubtitle, working = state.sessionState == SessionState.Thinking, link = link)
                                 }
                             },
-                            right = { HeaderFadeIn(headerShown) { ChatHeaderActions(session, modes, session?.metadata ?: pending?.anchor?.metadata, actions) } },
+                            right = { HeaderFadeIn(headerShown) { ChatHeaderActions(actions) } },
                         )
                         slots.headerAccessory?.invoke()
                         if (!tablet) com.slopus.happy.ui.voice.VoiceStatusBar()

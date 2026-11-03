@@ -4,13 +4,11 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.test.assertIsFocused
-import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performTextInputSelection
-import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.height
 import androidx.compose.ui.unit.width
 import androidx.compose.ui.unit.dp
@@ -21,8 +19,8 @@ import com.slopus.happy.chat.ChatState
 import com.slopus.happy.chat.ComposerModes
 import com.slopus.happy.data.SessionRecord
 import com.slopus.happy.model.settings.ModeOption
-import com.slopus.happy.sync.AgentModeField
 import com.slopus.happy.ui.PHONE
+import com.slopus.happy.ui.components.HeaderTags
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.node
@@ -32,7 +30,6 @@ import com.slopus.happy.ui.attach.AttachTags
 import com.slopus.happy.attachments.AttachTabKind
 import com.slopus.happy.ui.attachments.LocalComposerImages
 import com.slopus.happy.ui.attachments.rememberComposerImages
-import com.slopus.happy.ui.components.PickerSheetTags
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -60,34 +57,18 @@ class ChatHeaderMenuTest {
         }
     }
 
-    @Test fun headerKeepsRawRigChoicesAndEditorSelection() {
-        val picks = mutableListOf<Pair<AgentModeField, ModeOption>>()
-        show(actions = ChatScreenActions(onModeChange = { field, option -> picks += field to option }))
-        rule.node(ComposerTags.INPUT).performClick().performTextInputSelection(TextRange(5))
-        rule.node(ChatScreenTags.MORE).performClick()
-        rule.node(ComposerTags.INPUT).assertIsFocused()
-        rule.node(PickerSheetTags.option(retired.key)).assertIsNotEnabled()
-        rule.node(PickerSheetTags.option(enabled.key)).performClick()
-        rule.node(ChatScreenTags.MENU).assertDoesNotExist()
-        rule.node(ComposerTags.INPUT).assertIsFocused()
-        val semantics = rule.node(ComposerTags.INPUT).fetchSemanticsNode().config
-        assertEquals(text, semantics[SemanticsProperties.EditableText].text)
-        assertEquals(TextRange(5), semantics[SemanticsProperties.TextSelectionRange])
-        assertEquals(listOf(AgentModeField.PERMISSION_MODE to enabled), picks)
-        rule.node(ComposerPickerTags.PERMISSION).assertDoesNotExist()
-    }
-
-    @Test fun headerActionsPreserveDetailsAndRespectLockedPermissionCapability() {
+    @Test fun theHeaderIsComposeAloneAndTheNameOpensTheDetails() {
+        // iOS da5fda505: the More menu is gone; the permission mode is session info's first row.
         var compose = 0
         var info = 0
-        show(modes.copy(canChangePermission = false), ChatScreenActions(onCompose = { compose++ }, onInfo = { info++ }))
+        show(actions = ChatScreenActions(onCompose = { compose++ }, onInfo = { info++ }))
+        rule.onNode(hasTestTag(ChatScreenTags.COMPOSE) and hasAnyAncestor(hasTestTag(HeaderTags.BAR))).assertExists()
+        rule.onNode(hasContentDescription("More") and hasAnyAncestor(hasTestTag(HeaderTags.BAR))).assertDoesNotExist()
         rule.node(ChatScreenTags.COMPOSE).performClick()
         assertEquals(1, compose)
-        rule.node(ChatScreenTags.MORE).performClick()
-        rule.node(PickerSheetTags.option(enabled.key)).assertDoesNotExist()
-        rule.node(ChatScreenTags.INFO).performClick()
+        rule.node(ChatScreenTags.TITLE_BUTTON).performClick()
         assertEquals(1, info)
-        rule.node(ChatScreenTags.MENU).assertDoesNotExist()
+        rule.node(ComposerPickerTags.PERMISSION).assertDoesNotExist()
     }
 
     @Test fun theAddButtonOpensTheAttachmentSheetWithPicturesOnly() {
