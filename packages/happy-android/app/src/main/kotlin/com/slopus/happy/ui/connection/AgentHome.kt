@@ -56,6 +56,21 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
+import com.slopus.happy.ui.conversation.signalsFor
+import com.slopus.happy.ui.conversation.conversationRequest
+import com.slopus.happy.ui.conversation.conversationKeeper
+import com.slopus.happy.ui.conversation.Typesetter
+import com.slopus.happy.ui.conversation.ProsePalette
+import com.slopus.happy.ui.conversation.ConversationRowActions
+import com.slopus.happy.ui.chat.userMessageBubblePalette
+import com.slopus.happy.ui.chat.MessageCallbacks
+import com.slopus.happy.conversation.ConversationApi
+import com.slopus.happy.conversation.Conversation
+import com.slopus.happy.agent.AgentSession
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.DisposableEffect
+import com.slopus.happy.ui.chat.MessageLiftSpec
+import androidx.compose.ui.platform.LocalDensity
 import com.slopus.happy.agent.AgentFeed
 import com.slopus.happy.agent.AgentFeedRow
 import com.slopus.happy.agent.AgentLinkStatus
@@ -193,6 +208,8 @@ fun AgentHomeScreen(
     link: LinkState = status.linkState(syncing = false, network = true),
     /** The computer's refusal of something done here, for a few seconds ([com.slopus.happy.agent.AgentSession.notice]). */
     notice: String? = null,
+    /** A held conversation row's preview card inside ([ChatPreviewTranscript]); null holds nothing (iOS bf177c134). */
+    preview: (@Composable (AgentFeedRow.Conversation) -> Unit)? = null,
 ) {
     val colors = HappyTheme.colors
     val reduceMotion = rememberReduceMotion()
@@ -233,126 +250,133 @@ fun AgentHomeScreen(
         feed.rows.all { it is AgentFeedRow.Section || it == AgentFeedRow.Artifacts } -> HomePhase.Empty
         else -> HomePhase.List
     }
-    GlassBarLayout(
-        modifier = Modifier.fillMaxSize().background(ground),
-        ground = ground,
-        // Only the list runs under the bar. The other states, and search's results hanging from the bar, are held
-        // below its foot, with no feather over them.
-        feathered = phase == HomePhase.List && !searching,
-        bar = {
-            if (searching) {
-                AgentTopBar(
-                    tag = AgentHomeTags.BAR,
-                    container = ground,
-                    navigationIcon = { BarIconButton(Ionicon.ArrowBack, stringResource(R.string.common_back), closeSearch) },
-                    title = { AgentSearchField(query, { query = it }) },
-                    actions = {
-                        if (query.isNotEmpty()) {
-                            BarIconButton(Ionicon.Close, stringResource(R.string.agent_search_clear), { query = "" }, Modifier.testTag(AgentSearchTags.CLEAR))
-                        }
-                    },
-                )
-            } else {
-                AgentTopBar(
-                    tag = AgentHomeTags.BAR,
-                    container = ground,
-                    navigationIcon = { AccountMenuButton(accounts, actions.onSwitchAccount, actions.onAdd) },
-                    title = { BarTitle(name, link, AgentHomeTags.TITLE, AgentHomeTags.STATUS) },
-                    actions = {
-                        BarIconButton(Ionicon.SearchOutline, stringResource(R.string.tools_names_search), { searching = true }, Modifier.testTag(AgentHomeTags.SEARCH))
-                        BarIconButton(Ionicon.SettingsOutline, stringResource(R.string.settings_title), actions.onSettings, Modifier.testTag(AgentHomeTags.SETTINGS))
-                    },
-                    inset = HomeCardSpec.inset,
-                )
-            }
-        },
-    ) { top ->
-        Box(modifier = Modifier.fillMaxSize()) {
-            val barFoot = top - GlassSpec.feather
-            // The loader fades into what comes, and every state into the next.
-            Crossfade(phase, label = "agentHome") { shown ->
-                when (shown) {
-                    HomePhase.Loading -> LoadingIndicator(Modifier.padding(top = barFoot).testTag(AgentHomeTags.SPINNER))
-                    // Offline and removed keep a plain glyph, as desktop's errors do.
-                    HomePhase.Offline -> StatePage(
-                        tag = AgentHomeTags.OFFLINE,
-                        icon = if (status == AgentLinkStatus.Offline) Ionicon.CloudOfflineOutline else Ionicon.AlertCircleOutline,
-                        title = when (status) {
-                            AgentLinkStatus.Revoked -> null
-                            AgentLinkStatus.UpdateRequired -> null
-                            else -> stringResource(R.string.agent_home_offline_title, name)
-                        },
-                        body = statusMessage(status, profileRequired) ?: stringResource(R.string.agent_home_offline_body),
-                        action = signInAction(status, actions, profileRequired),
-                        modifier = Modifier.padding(top = barFoot),
-                    )
-                    // Desktop's wand beside the button that makes the first chat.
-                    HomePhase.Empty -> StatePage(
-                        tag = AgentHomeTags.EMPTY,
-                        art = if (statusMessage(status, profileRequired) == null) StateArt.Make else null,
-                        title = stringResource(R.string.agent_home_empty_title),
-                        body = statusMessage(status, profileRequired) ?: stringResource(R.string.agent_home_empty_body),
-                        action = signInAction(status, actions, profileRequired) ?: (stringResource(R.string.session_new_chat) to actions.onCompose),
-                        modifier = Modifier.padding(top = barFoot),
-                    )
-                    HomePhase.List -> AgentHomeList(
-                        items = items,
-                        state = listState,
-                        onOpen = actions.onOpenConversation,
-                        onOpenArtifacts = actions.onOpenArtifacts,
-                        onOpenSurface = actions.onOpenSurface,
-                        onLeaveSurface = actions.onLeaveSurface?.let { { surface: AgentFeedRow.Surface -> confirmingLeave = surface } },
-                        // The list starts under the glass bar and scrolls on beneath it.
-                        contentPadding = PaddingValues(top = top),
-                        // The notice is the list's first row (iOS ba0d7da0e): it comes and goes as a row does, the rows it
-                        // pushes sliding with it, and a reader further down keeps their place.
-                        header = noticeMessage(status, profileRequired, notice)?.let { text ->
-                            val action = signInAction(status, actions, profileRequired)
-                            val header: LazyListScope.() -> Unit = {
-                                item(key = "banner", contentType = "banner") {
-                                    Banner(text, action, if (reduceMotion) Modifier else Modifier.animateItem(BANNER_FADE_IN, BANNER_PLACEMENT, BANNER_FADE_OUT))
-                                }
+    val chatPreview = remember { ChatPreview() }
+    val previewBlur = with(LocalDensity.current) { MessageLiftSpec.blur.toPx() }
+    Box(Modifier.fillMaxSize()) {
+        GlassBarLayout(
+            modifier = Modifier.fillMaxSize().chatPreviewBackdrop(chatPreview, previewBlur).background(ground),
+            ground = ground,
+            // Only the list runs under the bar. The other states, and search's results hanging from the bar, are held
+            // below its foot, with no feather over them.
+            feathered = phase == HomePhase.List && !searching,
+            bar = {
+                if (searching) {
+                    AgentTopBar(
+                        tag = AgentHomeTags.BAR,
+                        container = ground,
+                        navigationIcon = { BarIconButton(Ionicon.ArrowBack, stringResource(R.string.common_back), closeSearch) },
+                        title = { AgentSearchField(query, { query = it }) },
+                        actions = {
+                            if (query.isNotEmpty()) {
+                                BarIconButton(Ionicon.Close, stringResource(R.string.agent_search_clear), { query = "" }, Modifier.testTag(AgentSearchTags.CLEAR))
                             }
-                            header
                         },
-                        // Room for the last card to scroll clear of the compose button.
-                        bottom = { Spacer(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = AgentHomeSpec.fabClearance)) },
+                    )
+                } else {
+                    AgentTopBar(
+                        tag = AgentHomeTags.BAR,
+                        container = ground,
+                        navigationIcon = { AccountMenuButton(accounts, actions.onSwitchAccount, actions.onAdd) },
+                        title = { BarTitle(name, link, AgentHomeTags.TITLE, AgentHomeTags.STATUS) },
+                        actions = {
+                            BarIconButton(Ionicon.SearchOutline, stringResource(R.string.tools_names_search), { searching = true }, Modifier.testTag(AgentHomeTags.SEARCH))
+                            BarIconButton(Ionicon.SettingsOutline, stringResource(R.string.settings_title), actions.onSettings, Modifier.testTag(AgentHomeTags.SETTINGS))
+                        },
+                        inset = HomeCardSpec.inset,
+                    )
+                }
+            },
+        ) { top ->
+            Box(modifier = Modifier.fillMaxSize()) {
+                val barFoot = top - GlassSpec.feather
+                // The loader fades into what comes, and every state into the next.
+                Crossfade(phase, label = "agentHome") { shown ->
+                    when (shown) {
+                        HomePhase.Loading -> LoadingIndicator(Modifier.padding(top = barFoot).testTag(AgentHomeTags.SPINNER))
+                        // Offline and removed keep a plain glyph, as desktop's errors do.
+                        HomePhase.Offline -> StatePage(
+                            tag = AgentHomeTags.OFFLINE,
+                            icon = if (status == AgentLinkStatus.Offline) Ionicon.CloudOfflineOutline else Ionicon.AlertCircleOutline,
+                            title = when (status) {
+                                AgentLinkStatus.Revoked -> null
+                                AgentLinkStatus.UpdateRequired -> null
+                                else -> stringResource(R.string.agent_home_offline_title, name)
+                            },
+                            body = statusMessage(status, profileRequired) ?: stringResource(R.string.agent_home_offline_body),
+                            action = signInAction(status, actions, profileRequired),
+                            modifier = Modifier.padding(top = barFoot),
+                        )
+                        // Desktop's wand beside the button that makes the first chat.
+                        HomePhase.Empty -> StatePage(
+                            tag = AgentHomeTags.EMPTY,
+                            art = if (statusMessage(status, profileRequired) == null) StateArt.Make else null,
+                            title = stringResource(R.string.agent_home_empty_title),
+                            body = statusMessage(status, profileRequired) ?: stringResource(R.string.agent_home_empty_body),
+                            action = signInAction(status, actions, profileRequired) ?: (stringResource(R.string.session_new_chat) to actions.onCompose),
+                            modifier = Modifier.padding(top = barFoot),
+                        )
+                        HomePhase.List -> AgentHomeList(
+                            items = items,
+                            state = listState,
+                            onOpen = actions.onOpenConversation,
+                            onOpenArtifacts = actions.onOpenArtifacts,
+                            onOpenSurface = actions.onOpenSurface,
+                            onLeaveSurface = actions.onLeaveSurface?.let { { surface: AgentFeedRow.Surface -> confirmingLeave = surface } },
+                            onHold = preview?.let { { row, source -> chatPreview.open(row, source) } },
+                            // The list starts under the glass bar and scrolls on beneath it.
+                            contentPadding = PaddingValues(top = top),
+                            // The notice is the list's first row (iOS ba0d7da0e): it comes and goes as a row does, the rows it
+                            // pushes sliding with it, and a reader further down keeps their place.
+                            header = noticeMessage(status, profileRequired, notice)?.let { text ->
+                                val action = signInAction(status, actions, profileRequired)
+                                val header: LazyListScope.() -> Unit = {
+                                    item(key = "banner", contentType = "banner") {
+                                        Banner(text, action, if (reduceMotion) Modifier else Modifier.animateItem(BANNER_FADE_IN, BANNER_PLACEMENT, BANNER_FADE_OUT))
+                                    }
+                                }
+                                header
+                            },
+                            // Room for the last card to scroll clear of the compose button.
+                            bottom = { Spacer(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = AgentHomeSpec.fabClearance)) },
+                        )
+                    }
+                }
+                if (feed.loaded && !searching) ComposeFab(actions.onCompose, AgentHomeTags.COMPOSE, stringResource(R.string.agent_search_new_task))
+                // Home dims under the results, and a tap on it ends the search; it stays as it was underneath.
+                // Both start at the bar's own foot.
+                AnimatedVisibility(
+                    visible = searching && query.isNotBlank(),
+                    enter = fadeIn(tween(PopupMotion.ENTER_MS)),
+                    exit = fadeOut(tween(PopupMotion.EXIT_MS)),
+                    modifier = Modifier.padding(top = barFoot),
+                ) {
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f))
+                            .clickable(interactionSource = null, indication = null, onClick = closeSearch)
+                            .testTag(AgentSearchTags.SCRIM),
+                    )
+                }
+                AnimatedVisibility(
+                    visible = searching,
+                    enter = fadeIn(tween(PopupMotion.ENTER_MS)),
+                    exit = fadeOut(tween(PopupMotion.EXIT_MS)),
+                    modifier = Modifier.padding(top = barFoot),
+                ) {
+                    AgentSearchResults(
+                        query = query,
+                        results = results,
+                        onOpenConversation = { id ->
+                            closeSearch()
+                            actions.onOpenConversation(id)
+                        },
                     )
                 }
             }
-            if (feed.loaded && !searching) ComposeFab(actions.onCompose, AgentHomeTags.COMPOSE, stringResource(R.string.agent_search_new_task))
-            // Home dims under the results, and a tap on it ends the search; it stays as it was underneath.
-            // Both start at the bar's own foot.
-            AnimatedVisibility(
-                visible = searching && query.isNotBlank(),
-                enter = fadeIn(tween(PopupMotion.ENTER_MS)),
-                exit = fadeOut(tween(PopupMotion.EXIT_MS)),
-                modifier = Modifier.padding(top = barFoot),
-            ) {
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f))
-                        .clickable(interactionSource = null, indication = null, onClick = closeSearch)
-                        .testTag(AgentSearchTags.SCRIM),
-                )
-            }
-            AnimatedVisibility(
-                visible = searching,
-                enter = fadeIn(tween(PopupMotion.ENTER_MS)),
-                exit = fadeOut(tween(PopupMotion.EXIT_MS)),
-                modifier = Modifier.padding(top = barFoot),
-            ) {
-                AgentSearchResults(
-                    query = query,
-                    results = results,
-                    onOpenConversation = { id ->
-                        closeSearch()
-                        actions.onOpenConversation(id)
-                    },
-                )
-            }
         }
+        // Over the bar too: the whole screen blurs under a held row's preview.
+        if (preview != null) ChatPreviewOverlay(chatPreview, actions.onOpenConversation, preview)
     }
     LeaveSurfaceDialogs(
         confirming = confirmingLeave,
@@ -537,6 +561,7 @@ fun AgentHome(
     val status by session.status.collectAsStateWithLifecycle()
     val syncing by session.isSyncing.collectAsStateWithLifecycle()
     val notice by session.notice.collectAsStateWithLifecycle()
+    val settings by graph.settings.settings.collectAsStateWithLifecycle()
     val link = rememberShownLinkState(status.linkState(syncing, rememberNetworkPath()))
     // Fully drawn (cold start's timeToFullDisplay, research/cold-start.md): home past its loader.
     ReportDrawnWhen { feed.loaded || status != AgentLinkStatus.Connecting }
@@ -567,6 +592,38 @@ fun AgentHome(
             profileRequired = agents.firstOrNull { it.id == id }?.profileRequired == true,
             link = link,
             notice = notice,
+            preview = { row -> ConversationPreview(session, row, settings.userMessageBubbleColor) },
         )
     }
+}
+
+/**
+ * A held row's conversation for its preview card: the kept history at
+ * once, then the computer's, read only. Never shown as visible, so it
+ * marks nothing read (iOS: "A preview is only looked at").
+ */
+@Composable
+private fun ConversationPreview(session: AgentSession, row: AgentFeedRow.Conversation, bubbleColor: String?) {
+    val colors = HappyTheme.colors
+    val typesetter = Typesetter.of(LocalContext.current)
+    typesetter.reportPalette(ProsePalette.of(colors))
+    val scope = rememberCoroutineScope()
+    val conversation = remember(session, row.agentId) {
+        Conversation(
+            api = ConversationApi(session.conversationRequest()),
+            signals = session.events.signalsFor(row.agentId),
+            scope = scope,
+            agentId = row.agentId,
+            knownTitle = row.title,
+            keeper = session.conversationKeeper(row.agentId),
+            typesetter = typesetter,
+        )
+    }
+    DisposableEffect(conversation) {
+        conversation.start()
+        onDispose { conversation.close() }
+    }
+    val state by conversation.state.collectAsStateWithLifecycle()
+    val actions = remember(conversation) { ConversationRowActions(legacy = MessageCallbacks(), onRetryFailure = {}, loadMedia = conversation::media) }
+    ChatPreviewTranscript(row.title ?: stringResource(R.string.session_new_chat), state, userMessageBubblePalette(bubbleColor, colors.dark), actions)
 }

@@ -5,6 +5,12 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -310,6 +316,8 @@ fun LazyListScope.agentHomeRows(
     onOpenSurface: (AgentFeedRow.Surface) -> Unit,
     /** A Surface row's hold offers Leave, which comes here; null offers nothing. */
     onLeaveSurface: ((AgentFeedRow.Surface) -> Unit)? = null,
+    /** A conversation row's hold, with where the row is in the window: its preview ([ChatPreviewOverlay]); null offers nothing. */
+    onHold: ((AgentFeedRow.Conversation, Rect) -> Unit)? = null,
 ) {
     items(items, key = { it.key }, contentType = { (it as? AgentHomeItem.Row)?.row?.let { row -> row::class } ?: it::class }) { item ->
         val motion = if (reduceMotion) Modifier else Modifier.animateItem(
@@ -326,7 +334,7 @@ fun LazyListScope.agentHomeRows(
             )
             is AgentHomeItem.Row -> CardRow(item, motion) {
                 when (val row = item.row) {
-                    is AgentFeedRow.Conversation -> ConversationRow(row, onOpen)
+                    is AgentFeedRow.Conversation -> ConversationRow(row, onOpen, onHold)
                     is AgentFeedRow.Folder -> FolderRow(row)
                     AgentFeedRow.Artifacts -> PlaceRow(stringResource(R.string.artifacts_title), Ionicon.DocumentTextOutline, RowTile.Purple, onOpenArtifacts)
                     is AgentFeedRow.Surface -> SurfaceRow(row, { onOpenSurface(row) }, onLeaveSurface)
@@ -367,15 +375,29 @@ private fun titleStart(row: AgentFeedRow): Dp {
  * row opens it.
  */
 @Composable
-private fun ConversationRow(row: AgentFeedRow.Conversation, onOpen: (String) -> Unit) {
+private fun ConversationRow(row: AgentFeedRow.Conversation, onOpen: (String) -> Unit, onHold: ((AgentFeedRow.Conversation, Rect) -> Unit)? = null) {
     val colors = HappyTheme.colors
+    val haptics = LocalHapticFeedback.current
+    // Where the row is, for the preview to grow out of; read only when held.
+    val placed = remember { arrayOfNulls<LayoutCoordinates>(1) }
     val marked = AgentHomeSpec.hasMark(row.kind)
     val title = row.title ?: stringResource(R.string.session_new_chat)
     val working = stringResource(R.string.agent_home_working)
     Row(
         modifier = Modifier
             .fillMaxSize()
-            .clickable(role = Role.Button) { onOpen(row.agentId) }
+            .onPlaced { placed[0] = it }
+            .combinedClickable(
+                role = Role.Button,
+                onLongClick = onHold?.let { hold ->
+                    {
+                        placed[0]?.takeIf { it.isAttached }?.let { at ->
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            hold(row, at.boundsInWindow())
+                        }
+                    }
+                },
+            ) { onOpen(row.agentId) }
             .then(if (row.working) Modifier.semantics { stateDescription = working } else Modifier)
             .padding(start = AgentHomeSpec.markInset + AgentHomeSpec.indent * row.depth, end = AgentHomeSpec.paddingEnd),
         verticalAlignment = Alignment.CenterVertically,
@@ -544,6 +566,7 @@ fun AgentHomeList(
     onOpenArtifacts: () -> Unit = {},
     onOpenSurface: (AgentFeedRow.Surface) -> Unit = {},
     onLeaveSurface: ((AgentFeedRow.Surface) -> Unit)? = null,
+    onHold: ((AgentFeedRow.Conversation, Rect) -> Unit)? = null,
     header: (LazyListScope.() -> Unit)? = null,
     bottom: @Composable () -> Unit = {},
 ) {
@@ -554,7 +577,7 @@ fun AgentHomeList(
         contentPadding = contentPadding,
     ) {
         header?.invoke(this)
-        agentHomeRows(items, reduceMotion, onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface)
+        agentHomeRows(items, reduceMotion, onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface, onHold)
         item(key = "bottom", contentType = "bottom") { bottom() }
     }
 }
