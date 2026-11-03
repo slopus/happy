@@ -287,3 +287,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
         }
     }
 }
+
+/** The Chief of Staff's name as the computer calls it: the `chief_of_staff` bot's ([AgentFeedRow.Conversation.happy]); null until listed or unnamed. */
+fun AgentFeed.chiefOfStaffName(): String? =
+    rows.firstNotNullOfOrNull { row -> (row as? AgentFeedRow.Conversation)?.takeIf { it.happy }?.title?.takeIf { it.isNotBlank() } }

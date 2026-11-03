@@ -32,6 +32,7 @@ import com.slopus.happy.agent.AgentApiException
 import com.slopus.happy.agent.AgentEvent
 import com.slopus.happy.agent.AgentLinkStatus
 import com.slopus.happy.agent.AgentSession
+import com.slopus.happy.agent.chiefOfStaffName
 import com.slopus.happy.chat.obj
 import com.slopus.happy.connection.RequestCategory
 import com.slopus.happy.conversation.AgentRequest
@@ -63,6 +64,8 @@ import com.slopus.happy.ui.theme.HappyTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.serialization.Serializable
 
@@ -452,7 +455,10 @@ private fun ChiefOfStaffEntry(graph: AppGraph, nav: NavHostController, route: Ch
             popUpTo<ChiefOfStaffRoute> { inclusive = true }
         }
     }
-    ChiefOfStaffScreen(problem, onRetry = { attempt++ }, onBack = { nav.popBackStack() })
+    // Its name as the computer calls it, read live from the bot whose systemKey is chief_of_staff (desktop ca4c303f).
+    val chief by remember(session) { session?.feed?.map { feed -> feed.chiefOfStaffName() } ?: flowOf(null) }
+        .collectAsStateWithLifecycle(initialValue = session?.feed?.value?.chiefOfStaffName())
+    ChiefOfStaffScreen(problem, onRetry = { attempt++ }, onBack = { nav.popBackStack() }, name = chief)
 }
 
 /** [agentId]'s presented media, read into the connection's library once and kept (iOS ba7b68346); null where the session keeps nothing. */

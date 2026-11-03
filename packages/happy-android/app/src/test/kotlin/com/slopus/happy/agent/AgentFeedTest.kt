@@ -189,6 +189,9 @@ class AgentFeedTest {
         assertFalse(rows.getValue("ab1").happy)
         assertTrue(rows.getValue("ab2").happy)
         assertEquals("t1", rows.getValue("at1").seed)
+        // The Chief of Staff goes by the name the computer gives its bot (desktop ca4c303f), not one guessed.
+        assertEquals("Happy", feed.chiefOfStaffName())
+        assertEquals(null, AgentFeed.derive(catalog(Wire.bootstrap(bots = listOf(Wire.bot("b1", "Scout", Wire.agent("ab1")))))).chiefOfStaffName())
     }
 
     @Test

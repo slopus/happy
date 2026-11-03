@@ -16,6 +16,8 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasStateDescription
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -476,6 +478,12 @@ class ConversationLayoutTest {
         rule.onNodeWithText("Retry").performClick()
         assertEquals(1, retries)
         shot("chief-missing")
+    }
+
+    @Test fun `a chief of staff being looked up is titled with the name its computer gives it`() {
+        rule.setHappyContent { ChiefOfStaffScreen(null, onRetry = {}, onBack = {}, name = "Happy") }
+        rule.onNodeWithText("Happy").assertIsDisplayed()
+        rule.onAllNodesWithText("Chief of Staff").assertCountEquals(0)
     }
 
     @Test fun `a prefilled composer shows the kept draft below the prefix`() {
