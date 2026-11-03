@@ -206,6 +206,23 @@ final class CallContextTests: XCTestCase {
         XCTAssertEqual(pending["delivery"] as? String, "failed")
     }
 
+    /// A conversation the call opens takes the place of one on top and goes over anything else.
+    func testOpeningReplacesAConversationAndGoesOverAnythingElse() {
+        func open(_ id: String, over stack: [String]) -> [String] {
+            CallNavigation.opening(id, over: stack) { $0.hasPrefix("chat") }
+        }
+        XCTAssertEqual(open("chat:a", over: ["home"]), ["home", "chat:a"])
+        XCTAssertEqual(open("chat:b", over: ["home", "chat:a"]), ["home", "chat:b"])
+        // Again and again: never more than the one conversation over home.
+        var stack = ["home"]
+        for id in ["chat:a", "chat:b", "chat:c", "chat:a"] { stack = open(id, over: stack) }
+        XCTAssertEqual(stack, ["home", "chat:a"])
+        // From Settings, or a conversation's profile: those stay under it, and the next replaces only it.
+        XCTAssertEqual(open("chat:a", over: ["home", "settings"]), ["home", "settings", "chat:a"])
+        XCTAssertEqual(open("chat:b", over: ["home", "settings", "chat:a"]), ["home", "settings", "chat:b"])
+        XCTAssertEqual(open("chat:b", over: ["home", "chat:a", "profile"]), ["home", "chat:a", "profile", "chat:b"])
+    }
+
     func testOpeningGivesTheRevisionTheNextStepTakes() async throws {
         let context = CallContext(targets: backend(focus: nil))
         _ = await context.initial()
@@ -830,6 +847,21 @@ final class CallUsageTests: XCTestCase {
         // Thirty days after the first call, only its last part is inside.
         XCTAssertEqual(usage.used(at: 30 * day + 400, window: 30 * day), 200 + 300)
         XCTAssertEqual(usage.used(at: 41 * day, window: 30 * day), 0)
+    }
+
+    func testFreeTimeComesBackAsTheOldestCallPassesOut() {
+        let day = 86_400.0
+        var usage = CallUsage()
+        usage.record(call: "a", from: 0, to: 600)
+        usage.record(call: "b", from: 10 * day, to: 10 * day + 600)
+        // 20 minutes used: free again once a second of the first call is past 30 days.
+        XCTAssertEqual(usage.freeAgain(after: 11 * day, free: 1200, window: 30 * day), 30 * day + 1)
+        // Not used up: free now.
+        XCTAssertEqual(usage.freeAgain(after: 11 * day, free: 1800, window: 30 * day), 11 * day)
+        // A call after now (the clock put back) never passes out.
+        var later = CallUsage()
+        later.record(call: "c", from: 100 * day, to: 100 * day + 1200)
+        XCTAssertNil(later.freeAgain(after: 1, free: 1200, window: 30 * day))
     }
 
     func testPuttingTheClockBackGivesNoTimeBack() {

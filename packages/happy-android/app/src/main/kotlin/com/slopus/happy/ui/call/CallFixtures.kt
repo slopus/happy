@@ -32,6 +32,7 @@ object CallFixtures {
             "user" to CallState.Active(CallActivity.UserSpeaking, false, since),
             "muted" to CallState.Active(CallActivity.Listening, true, since),
             "ended" to CallState.Ended(CallProblem.Connection),
+            "limit" to CallState.Ended(CallProblem.LimitReached),
         )
         val script: List<Pair<CallState, Long>> = if (name == "cycle") {
             listOf(

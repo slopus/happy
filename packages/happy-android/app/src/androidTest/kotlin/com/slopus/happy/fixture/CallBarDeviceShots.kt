@@ -44,6 +44,10 @@ import com.slopus.happy.call.CallState
 import com.slopus.happy.call.CallToolResult
 import com.slopus.happy.call.UnconfiguredCallGrants
 import com.slopus.happy.ui.call.CallFrame
+import com.slopus.happy.ui.call.CallPaywall
+import com.slopus.happy.ui.call.SheetStatusIcons
+import com.slopus.happy.call.CallOffer
+import com.slopus.happy.call.CallProblem
 import com.slopus.happy.ui.connection.AgentHomeActions
 import com.slopus.happy.ui.connection.AgentHomeScreen
 import com.slopus.happy.ui.connection.AgentHomeTags
@@ -63,9 +67,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.ui.window.Dialog
 import androidx.test.uiautomator.By
-import com.slopus.happy.ui.call.DialogBelowCallBar
 import kotlin.math.sin
 
 /**
@@ -282,17 +284,10 @@ class CallBarDeviceShots {
         device.takeScreenshot(File(dir, "${if (dark) "dark" else "light"}-under-card-dialog.png"))
     }
 
-    /**
-     * A dialog someone else lays out (RevenueCat's paywall is one), full
-     * screen and edge to edge, is moved below the bar ([DialogBelowCallBar]):
-     * the bar stays bright and takes a real tap, and once the call ends the
-     * dialog has the whole screen again. A Material bottom sheet as the app
-     * uses one (the link menu) stays below the bar and only dims it.
-     */
+    /** A Material bottom sheet as the app uses one (the link menu) stays below the bar and only dims it. */
     @OptIn(ExperimentalMaterial3Api::class)
     @Test
-    fun belowVendorDialogAndSheet() {
-        val vendor = MutableStateFlow(false)
+    fun underSheet() {
         val sheet = MutableStateFlow(false)
         rule.runOnUiThread { rule.activity.enableEdgeToEdge() }
         rule.setContent {
@@ -300,19 +295,10 @@ class CallBarDeviceShots {
                 CallFrame(state, level, onMute = {}, onEnd = { state.value = CallState.Idle }) {
                     val accounts = AccountMenu(listOf(AccountMenuEntry("fx-connection", "Studio Mac", agent = true, active = true)))
                     AgentHomeScreen("Studio Mac", feed(), AgentLinkStatus.Connected, accounts, AgentHomeActions({}, {}, {}, {}, {}, {}, onVoice = {}))
-                    val showVendor by vendor.collectAsState()
                     val showSheet by sheet.collectAsState()
-                    if (showVendor) {
-                        DialogBelowCallBar {
-                            Dialog({ vendor.value = false }, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-                                Box(Modifier.fillMaxSize().background(Color(0xFF203040)).windowInsetsPadding(WindowInsets.statusBars)) {
-                                    Text("Vendor top", color = Color.White)
-                                }
-                            }
-                        }
-                    }
                     if (showSheet) {
                         ModalBottomSheet(onDismissRequest = { sheet.value = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+                            SheetStatusIcons()
                             Column(Modifier.fillMaxWidth().padding(24.dp)) {
                                 repeat(4) { Text("Sheet row ${it + 1}", modifier = Modifier.padding(vertical = 12.dp)) }
                             }
@@ -325,28 +311,6 @@ class CallBarDeviceShots {
         state.value = CallState.Active(CallActivity.Listening, false, SystemClock.elapsedRealtime() - 42_000)
         rule.mainClock.autoAdvance = false
         run(800)
-        vendor.value = true
-        run(1_500)
-        val end = device.findObject(By.desc(app.getString(R.string.call_end)))
-        val top = device.findObject(By.text("Vendor top"))
-        assertTrue("the bar's End is there", end != null)
-        assertTrue("the vendor's dialog is there", top != null)
-        val below = top.visibleBounds.top
-        android.util.Log.i("CallBarShots", "vendor: end=${end.visibleBounds} vendorTop=$below")
-        assertTrue("the vendor's dialog starts below the bar ($below vs ${end.visibleBounds})", below >= end.visibleBounds.bottom)
-        device.takeScreenshot(File(dir, "${if (dark) "dark" else "light"}-below-vendor-dialog.png"))
-        // A real tap: outside the dialog's window, it reaches the bar.
-        device.click(end.visibleBounds.centerX(), end.visibleBounds.centerY())
-        run(1_200)
-        assertEquals(CallState.Idle, state.value)
-        val whole = device.findObject(By.text("Vendor top")).visibleBounds.top
-        android.util.Log.i("CallBarShots", "vendor after hang-up: vendorTop=$whole")
-        assertTrue("the dialog has the whole screen again ($whole vs $below)", whole < below)
-        device.takeScreenshot(File(dir, "${if (dark) "dark" else "light"}-vendor-dialog-after.png"))
-        vendor.value = false
-        run(800)
-        state.value = CallState.Active(CallActivity.Listening, false, SystemClock.elapsedRealtime() - 42_000)
-        run(800)
         sheet.value = true
         run(1_500)
         val barEnd = device.findObject(By.desc(app.getString(R.string.call_end)))
@@ -357,6 +321,34 @@ class CallBarDeviceShots {
         device.takeScreenshot(File(dir, "${if (dark) "dark" else "light"}-under-sheet.png"))
         sheet.value = false
         run(800)
+    }
+
+    /** Free time used: the bar says so, a tap on it is the paywall, which sells nothing yet. */
+    @Test
+    fun paywall() {
+        val paywall = MutableStateFlow(false)
+        rule.runOnUiThread { rule.activity.enableEdgeToEdge() }
+        rule.setContent {
+            HappyTheme(if (dark) ThemePreference.Dark else ThemePreference.Light) {
+                CallFrame(state, level, onMute = {}, onEnd = { state.value = CallState.Idle }, onPaywall = { paywall.value = true }) {
+                    val accounts = AccountMenu(listOf(AccountMenuEntry("fx-connection", "Studio Mac", agent = true, active = true)))
+                    AgentHomeScreen("Studio Mac", feed(), AgentLinkStatus.Connected, accounts, AgentHomeActions({}, {}, {}, {}, {}, {}, onVoice = {}))
+                    val shown by paywall.collectAsState()
+                    if (shown) CallPaywall(freeAgain = System.currentTimeMillis() + 26 * 3_600_000L, offer = CallOffer.Unavailable, onDismiss = { paywall.value = false })
+                }
+            }
+        }
+        rule.waitForIdle()
+        state.value = CallState.Ended(CallProblem.LimitReached)
+        rule.waitForIdle()
+        rule.onNode(hasContentDescription(app.getString(R.string.call_limit), substring = true)).performClick()
+        rule.waitForIdle()
+        Thread.sleep(800)
+        val offer = device.findObject(By.text(app.getString(R.string.call_paywall_unavailable)))
+        val bar = device.findObject(By.text(app.getString(R.string.call_limit)))
+        android.util.Log.i("CallBarShots", "paywall: offer=${offer?.visibleBounds} bar=${bar?.visibleBounds}")
+        assertTrue("the paywall is there", offer != null)
+        device.takeScreenshot(File(dir, "${if (dark) "dark" else "light"}-paywall.png"))
     }
 
     /** The fixture states one after another, for `screenrecord`: about 20 s. */

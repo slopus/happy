@@ -17,4 +17,11 @@
     <string name="call_authentication">請重新登入以使用語音</string>
     <string name="call_connection">通話已結束：連線中斷</string>
     <string name="call_open_settings">打開設定</string>
+    <string name="call_paywall_title">語音時長</string>
+    <string name="call_paywall_used">免費語音時長已用完</string>
+    <string name="call_paywall_free">%1$s 恢復免費時長</string>
+    <string name="call_paywall_footer">每台裝置在任意 30 天內有 20 分鐘免費語音。較早的通話滿 30 天後，時長會恢復。</string>
+    <string name="call_paywall_more">更多語音時長</string>
+    <string name="call_paywall_unavailable">尚未提供</string>
+    <string name="call_paywall_unavailable_footer">語音訂閱尚未開賣。目前這裡無法購買任何內容。</string>
 </resources>

@@ -7,14 +7,7 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import android.os.PowerManager
-import android.os.Build
 import android.os.SystemClock
-import android.view.Gravity
-import android.view.View
-import android.view.ViewGroup
-import android.view.Window
-import android.view.inspector.WindowInspector
-import android.view.WindowManager
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateDpAsState
@@ -180,14 +173,17 @@ object CallBarTags {
  */
 @Composable
 fun CallFrame(calls: CallController, content: @Composable () -> Unit) =
-    CallFrame(calls.state, calls.level, calls::toggleMute, calls::close, content)
+    CallFrame(calls.state, calls.level, calls::toggleMute, calls::close, calls::showPaywall) {
+        content()
+        CallPaywall(calls)
+    }
 
 /**
  * What a [CallFrame] shows, for the windows over it to show the same
  * ([WindowCallFrame]). While one of them carries its own bar, this one's is
  * covered and is left out for TalkBack, so the call is read once.
  */
-class CallFrameSource(val state: StateFlow<CallState>, val level: StateFlow<Float>, val onMute: () -> Unit, val onEnd: () -> Unit) {
+class CallFrameSource(val state: StateFlow<CallState>, val level: StateFlow<Float>, val onMute: () -> Unit, val onEnd: () -> Unit, val onPaywall: () -> Unit) {
     var covers by mutableIntStateOf(0)
 }
 
@@ -207,67 +203,20 @@ fun WindowCallFrame(content: @Composable () -> Unit) {
         source.covers++
         onDispose { source.covers-- }
     }
-    CallFrame(source.state, source.level, source.onMute, source.onEnd, content)
+    CallFrame(source.state, source.level, source.onMute, source.onEnd, source.onPaywall, content)
 }
 
-/**
- * A dialog someone else lays out ([dialog], RevenueCat's paywall), kept
- * below the call's bar: its window, full-screen on a phone, is moved down
- * by the bar's height while a call shows and given back the whole screen
- * after. It dims nothing behind it, and touches outside it go to the app's
- * window, so the bar works as it does everywhere else. The window is the dialog window
- * that appears after this is composed; Android 9 and older can't list
- * windows, so there the dialog covers the bar.
- */
+/** [CallFrame] over a call's [calls] state and waves' [level]; a tap on a bar saying the free time is used is [onPaywall]. */
 @Composable
-fun DialogBelowCallBar(dialog: @Composable () -> Unit) {
-    val source = LocalCallFrame.current
-    val before = remember { dialogWindows() }
-    dialog()
-    if (source == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
-    val state by source.state.collectAsStateWithLifecycle()
-    val density = LocalDensity.current
-    val view = LocalView.current
-    val statusTop = WindowInsets.statusBars.getTop(density)
-    val bar = if (state.isShown) with(density) { CallBarSpec.height(statusTop.toDp()).roundToPx() } else 0
-    var window by remember { mutableStateOf<Window?>(null) }
-    LaunchedEffect(Unit) {
-        // A few seconds of frames: it opens on the next, unless it decides not to open at all.
-        repeat(300) {
-            withFrameNanos {}
-            window = dialogWindows().firstOrNull { it !in before } ?: return@repeat
-            return@LaunchedEffect
-        }
-    }
-    val moved = window ?: return
-    DisposableEffect(moved, bar) {
-        val whole = WindowManager.LayoutParams().apply { copyFrom(moved.attributes) }
-        if (bar > 0) {
-            moved.attributes = WindowManager.LayoutParams().apply {
-                copyFrom(whole)
-                gravity = Gravity.TOP
-                y = bar
-                height = view.rootView.height - bar
-                // Its dim would lie over the bar alone, all the rest being the dialog.
-                flags = (flags or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL) and WindowManager.LayoutParams.FLAG_DIM_BEHIND.inv()
-            }
-        }
-        onDispose { if (bar > 0) moved.attributes = whole }
-    }
-}
-
-/** The windows of the dialogs Compose shows in this process. */
-private fun dialogWindows(): List<Window> {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return emptyList()
-    fun find(view: View): Window? = (view as? DialogWindowProvider)?.window
-        ?: (view as? ViewGroup)?.let { group -> (0 until group.childCount).firstNotNullOfOrNull { find(group.getChildAt(it)) } }
-    return WindowInspector.getGlobalWindowViews().mapNotNull(::find)
-}
-
-/** [CallFrame] over a call's [calls] state and waves' [level]. */
-@Composable
-fun CallFrame(calls: StateFlow<CallState>, level: StateFlow<Float>, onMute: () -> Unit, onEnd: () -> Unit, content: @Composable () -> Unit) {
-    val source = remember(calls, level, onMute, onEnd) { CallFrameSource(calls, level, onMute, onEnd) }
+fun CallFrame(
+    calls: StateFlow<CallState>,
+    level: StateFlow<Float>,
+    onMute: () -> Unit,
+    onEnd: () -> Unit,
+    onPaywall: () -> Unit = {},
+    content: @Composable () -> Unit,
+) {
+    val source = remember(calls, level, onMute, onEnd, onPaywall) { CallFrameSource(calls, level, onMute, onEnd, onPaywall) }
     val state by calls.collectAsStateWithLifecycle()
     val density = LocalDensity.current
     val statusTop = with(density) { WindowInsets.statusBars.getTop(this).toDp() }
@@ -286,6 +235,7 @@ fun CallFrame(calls: StateFlow<CallState>, level: StateFlow<Float>, onMute: () -
                     level = level,
                     onMute = onMute,
                     onEnd = onEnd,
+                    onPaywall = onPaywall,
                     // Its full height, its foot on the box's: it slides out from above the screen.
                     modifier = Modifier.layout { measurable, constraints ->
                         val height = full.roundToPx()
@@ -304,6 +254,17 @@ fun CallFrame(calls: StateFlow<CallState>, level: StateFlow<Float>, onMute: () -
                 .testTag(CallBarTags.CONTENT),
         ) { CompositionLocalProvider(LocalCallFrame provides source, content = content) }
     }
+}
+
+/**
+ * In a sheet's window, which leaves the bar showing under its scrim: the
+ * bar's light status bar icons while it is up, not the sheet's own.
+ */
+@Composable
+fun SheetStatusIcons() {
+    val source = LocalCallFrame.current ?: return
+    val state by source.state.collectAsStateWithLifecycle()
+    StatusIcons(lightOverBar = state.isShown)
 }
 
 /**
@@ -338,6 +299,7 @@ fun CallBar(
     onEnd: () -> Unit,
     modifier: Modifier = Modifier,
     statusTop: Dp = 0.dp,
+    onPaywall: () -> Unit = {},
 ) {
     val colors = CallBarSpec.colors(state)
     val start by animateColorAsState(colors[0], tween(CallBarSpec.MOTION_MS), label = "call-start")
@@ -390,7 +352,15 @@ fun CallBar(
             Row(
                 Modifier
                     .weight(1f)
-                    .then(if (state == CallState.Ended(CallProblem.MicrophonePermission)) Modifier.clickable(onClickLabel = stringResource(R.string.call_open_settings)) { context.openAppSettings() } else Modifier)
+                    .then(
+                        when (state) {
+                            CallState.Ended(CallProblem.MicrophonePermission) ->
+                                Modifier.clickable(onClickLabel = stringResource(R.string.call_open_settings)) { context.openAppSettings() }
+                            CallState.Ended(CallProblem.LimitReached) ->
+                                Modifier.clickable(onClickLabel = stringResource(R.string.call_paywall_title), onClick = onPaywall)
+                            else -> Modifier
+                        },
+                    )
                     .semantics(mergeDescendants = true) {
                         contentDescription = summary
                         liveRegion = LiveRegionMode.Polite

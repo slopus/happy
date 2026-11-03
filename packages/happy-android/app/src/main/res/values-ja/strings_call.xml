@@ -17,4 +17,11 @@
     <string name="call_authentication">音声を使うにはもう一度サインインしてください</string>
     <string name="call_connection">通話終了：接続が切れました</string>
     <string name="call_open_settings">設定を開く</string>
+    <string name="call_paywall_title">音声の時間</string>
+    <string name="call_paywall_used">無料の音声時間を使い切りました</string>
+    <string name="call_paywall_free">%1$sに無料時間が戻ります</string>
+    <string name="call_paywall_footer">各デバイスで30日間ごとに20分の音声が無料です。古い通話が30日を過ぎると時間が戻ります。</string>
+    <string name="call_paywall_more">音声の時間を増やす</string>
+    <string name="call_paywall_unavailable">まだ利用できません</string>
+    <string name="call_paywall_unavailable_footer">音声のサブスクリプションはまだ販売されていません。現在ここで購入できるものはありません。</string>
 </resources>

@@ -363,6 +363,17 @@ final class SplitAppHarness {
             if arguments.contains("-resizeLoop") { await Self.resizeLoop(window) }
             #if DEBUG
             if arguments.contains("-callTour") { await Self.callTour(shell: shell, home: home, context: context, agent: agent) }
+            // The call's opens one after another, then from Settings: each logs the stack it left (`[call] stack`).
+            if arguments.contains("-callOpens"), let id = context.account.agentConnections.activeID, let session = Session.session(for: id, context: context) {
+                try? await Task.sleep(for: .seconds(2))
+                let targets = SessionCallTargets(session: session, shell: shell)
+                for agentId in ["ipad-agent", "cache-agent", "notes-agent", "ipad-agent"] { _ = await targets.open(agentId) }
+                if let chat = shell.topViewController { SettingsViewController.open(context: context, computer: id, from: chat) }
+                try? await Task.sleep(for: .seconds(1.5))
+                _ = await targets.open("inbox-agent")
+                _ = await targets.open("cache-agent")
+                targets.close()
+            }
             // A sheet of the app's over home, left up, for the UI test that reads the bar through it.
             if arguments.contains("-callSheet") {
                 try? await Task.sleep(for: .seconds(1.5))

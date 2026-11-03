@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 object CallProbe {
     data class Line(val role: String, val text: String)
-    data class Sent(val kind: String, val bytes: Int)
+    data class Sent(val kind: String, val bytes: Int, val text: String)
     data class ToolRun(val name: String, val parameters: String, val result: String, val isError: Boolean)
 
     private val mutableLines = MutableStateFlow<List<Line>>(emptyList())
@@ -21,11 +21,11 @@ object CallProbe {
     val tools: StateFlow<List<ToolRun>> = mutableTools.asStateFlow()
 
     private val mutableSent = MutableStateFlow<List<Sent>>(emptyList())
-    /** Every contextual update (and the device check's typed turns) sent, by UTF-8 size. */
+    /** Every contextual update (and the device check's typed turns) sent, with its UTF-8 size. */
     val sent: StateFlow<List<Sent>> = mutableSent.asStateFlow()
 
     fun sent(kind: String, text: String) {
-        mutableSent.value = mutableSent.value + Sent(kind, text.toByteArray(Charsets.UTF_8).size)
+        mutableSent.value = mutableSent.value + Sent(kind, text.toByteArray(Charsets.UTF_8).size, text)
     }
 
     fun reset() {

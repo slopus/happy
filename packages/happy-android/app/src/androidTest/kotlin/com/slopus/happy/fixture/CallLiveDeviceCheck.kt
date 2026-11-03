@@ -43,6 +43,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import kotlinx.coroutines.runBlocking
 
 /**
  * One real call with the build's hosted agent (iOS `CallLiveCheck`): the
@@ -95,6 +96,8 @@ class CallLiveDeviceCheck {
         conversations.drop(1).forEach { add(AgentFeedRow.Conversation(agentId = it.agentId, title = it.title, kind = ConversationKind.Task, depth = 0, activityAt = 1_755_400_000_000L)) }
     })
 
+    private var connection: ElevenLabsCallConnection? = null
+
     private fun until(millis: Long, condition: () -> Boolean): Boolean {
         val end = SystemClock.elapsedRealtime() + millis
         while (SystemClock.elapsedRealtime() < end) {
@@ -115,7 +118,6 @@ class CallLiveDeviceCheck {
         val context = CallContext(targets)
         val level = MutableStateFlow(0f)
         lateinit var session: CallSession
-        var connection: ElevenLabsCallConnection? = null
         rule.runOnUiThread { rule.activity.enableEdgeToEdge() }
         rule.setContent {
             val scope = rememberCoroutineScope()
@@ -161,5 +163,125 @@ class CallLiveDeviceCheck {
             android.util.Log.i("HappyCall", "live check done\n$log")
         }
         assertTrue("the agent never answered", CallProbe.lines.value.count { it.role == "agent" } > 1)
+    }
+
+    /**
+     * A conversation's new words reaching a real call (iOS `CallLiveCheck`'s
+     * incoming part), with no LLM step needed to drive them: the call visits
+     * five disposable conversations in turn, the first one's agent writes a
+     * reply in pieces while it is followed, then it drops out as the fifth is
+     * visited, writes while it isn't heard, and is visited again. What went
+     * into the call's context is checked against what should have: the
+     * pieces as `assistant_text` deltas with one `final`, nothing while it
+     * was out, no replay of what it wrote then, and the next new words
+     * again. None of it makes the agent speak; one typed question at the end
+     * asks what was said. Each run is a billed conversation; keep it short.
+     */
+    @Test
+    fun aConversationsNewWordsReachTheCall() {
+        val agentId = CallAgent.hostedAgentId
+        assumeTrue("no agent ID in this build", agentId != null)
+        instrumentation.uiAutomation.grantRuntimePermission(app.packageName, android.Manifest.permission.RECORD_AUDIO)
+        CallProbe.reset()
+        val five = conversations + CallTarget("task-3", "Fix login redirect", CallTarget.Kind.Task, status = CallTarget.Status.Idle)
+        val states = five.associate { it.agentId to CallTargetState(it, listOf(CallMessage("m0-${it.agentId}", CallMessage.Role.Assistant, "Earlier: ${it.title} was set up.", 1_755_400_000_000L))) }.toMutableMap()
+        val targets = object : CallTargets {
+            override suspend fun directory() = five
+            override suspend fun state(agentId: String): CallTargetState? = states[agentId]
+            override suspend fun focused(): String? = null
+            override suspend fun open(agentId: String) = agentId in states
+            override suspend fun send(agentId: String, text: String, id: String) = CallSendOutcome.Queued
+            override suspend fun follow(agentId: String, following: Boolean) {}
+        }
+        val context = CallContext(targets)
+        val level = MutableStateFlow(0f)
+        lateinit var session: CallSession
+        rule.runOnUiThread { rule.activity.enableEdgeToEdge() }
+        rule.setContent {
+            val scope = rememberCoroutineScope()
+            session = remember {
+                CallSession(scope, PublicAgentCallGrants(agentId!!), permission = { true }, now = SystemClock::elapsedRealtime) { grant, request, events ->
+                    ElevenLabsCallConnection.connect(app, scope, grant, request, events).also { connection = it }
+                }
+            }
+            HappyTheme(ThemePreference.Light) {
+                CallFrame(session.state, level, onMute = session::toggleMute, onEnd = session::stop) {
+                    val accounts = AccountMenu(listOf(AccountMenuEntry("fx-connection", "Studio Mac", agent = true, active = true)))
+                    AgentHomeScreen("Studio Mac", feed(), AgentLinkStatus.Connected, accounts, AgentHomeActions({}, {}, {}, {}, {}, {}, onVoice = {
+                        session.start(null, { context.initial() }, { call -> context.handle(call) })
+                    }))
+                }
+            }
+        }
+        // What the screen does: a visit, then the conversation's state as following it gives it.
+        fun deliver(update: com.slopus.happy.call.CallUpdate) = rule.runOnUiThread { session.deliver(update) }
+        fun visit(id: String) {
+            deliver(runBlocking { context.focusChanged(id) })
+            deliver(runBlocking { context.targetChanged(states.getValue(id)) })
+        }
+        fun write(id: String, message: String, text: String, final: Boolean) {
+            val old = states.getValue(id)
+            states[id] = old.copy(messages = old.messages.filter { it.id != message } + CallMessage(message, CallMessage.Role.Assistant, text, 1_755_500_000_000L, final = final), working = !final)
+            deliver(runBlocking { context.targetChanged(states.getValue(id)) })
+        }
+        fun updates() = CallProbe.sent.value.filter { it.kind == "update" }.map { it.text }
+        rule.waitForIdle()
+        rule.mainClock.autoAdvance = false
+        rule.onNodeWithTag(AgentHomeTags.VOICE, useUnmergedTree = true).performClick()
+        val live = until(30_000) { session.state.value is CallState.Active }
+        val log = StringBuilder()
+        try {
+            assertTrue("never connected: ${session.state.value}", live)
+            until(15_000) { CallProbe.lines.value.any { it.role == "agent" } }
+            // Let the greeting finish before anything goes in.
+            until(6_000) { false }
+            val spokenBefore = CallProbe.lines.value.count { it.role == "agent" }
+            visit("bot-0")
+            val pieces = listOf("The cache work", "The cache work is merged", "The cache work is merged and ships Tuesday with three fixes.")
+            pieces.forEachIndexed { index, text ->
+                until(700) { false }
+                write("bot-0", "m1-bot-0", text, final = index == pieces.lastIndex)
+            }
+            until(1_000) { false }
+            val streamed = updates().filter { "m1-bot-0" in it }
+            log.append("STREAMED ${streamed.size}\n")
+            for (id in listOf("task-0", "task-1", "task-2", "task-3")) { visit(id); until(300) { false } }
+            val followed = runBlocking { context.followed() }
+            log.append("FOLLOWED $followed\n")
+            val beforeOut = updates().size
+            write("bot-0", "m2-bot-0", "Written while not followed: the rollout plan is attached.", final = true)
+            val whileOut = updates().size - beforeOut
+            val beforeBack = updates().size
+            visit("bot-0")
+            val replayed = updates().drop(beforeBack).filter { "m2-bot-0" in it || "m1-bot-0" in it }
+            until(700) { false }
+            write("bot-0", "m3-bot-0", "Back again: release notes are drafted.", final = true)
+            until(1_000) { false }
+            val again = updates().filter { "m3-bot-0" in it }
+            // Contextual updates never start a turn: the agent stayed quiet through all of it.
+            until(4_000) { false }
+            val spokeUnasked = CallProbe.lines.value.count { it.role == "agent" } - spokenBefore
+            log.append("WHILE_OUT $whileOut REPLAYED ${replayed.size} AGAIN ${again.size} SPOKE_UNASKED $spokeUnasked\n")
+            val question = "In one sentence: what did Research Assistant say most recently, and when does the cache ship?"
+            val before = CallProbe.lines.value.count { it.role == "agent" }
+            rule.runOnUiThread { connection?.type(question) }
+            CallProbe.line("user", question)
+            until(30_000) { CallProbe.lines.value.count { it.role == "agent" } > before }
+            until(4_000) { false }
+            device.takeScreenshot(File(dir, "incoming.png"))
+            assertTrue("deltas then one final: $streamed", streamed.size == pieces.size && streamed.count { "\"final\":true" in it } == 1)
+            assertTrue("bot-0 dropped out after four more visits: $followed", followed == listOf("task-3", "task-2", "task-1", "task-0"))
+            assertTrue("nothing sent while it was out", whileOut == 0)
+            assertTrue("no replay on the way back: $replayed", replayed.none { "assistant_text" in it })
+            assertTrue("new words after the way back: $again", again.size == 1 && "\"final\":true" in again.single())
+        } finally {
+            rule.runOnUiThread { session.stop() }
+            until(2_000) { false }
+            CallProbe.lines.value.forEach { log.append("${it.role}: ${it.text}\n") }
+            CallProbe.tools.value.forEach { log.append("TOOL ${it.name} ${it.parameters} -> ${it.result}\n") }
+            CallProbe.sent.value.forEach { log.append("CONTEXT ${it.kind} ${it.bytes} bytes${if (it.kind == "update") ": ${it.text}" else ""}\n") }
+            File(dir, "incoming.txt").writeText(log.toString())
+            android.util.Log.i("HappyCall", "incoming check done\n$log")
+        }
     }
 }

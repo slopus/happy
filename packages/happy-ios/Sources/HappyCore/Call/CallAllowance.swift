@@ -33,6 +33,22 @@ public struct CallUsage: Codable, Equatable, Sendable {
         }
     }
 
+    /// When, after `now`, less than `free` seconds are spent again, as the
+    /// older calls pass out of the window; to the second. Nil when the
+    /// window is never under it (a span after `now`, from a clock put back,
+    /// never passes out).
+    public func freeAgain(after now: Double, free: Double, window: Double) -> Double? {
+        if used(at: now, window: window) < free { return now }
+        var low = now
+        var high = now + window
+        guard used(at: high, window: window) < free else { return nil }
+        while high - low > 1 {
+            let middle = (low + high) / 2
+            if used(at: middle, window: window) < free { high = middle } else { low = middle }
+        }
+        return high.rounded(.up)
+    }
+
     public mutating func forget(before time: Double) {
         spans.removeAll { $0.end < time }
     }
@@ -82,9 +98,23 @@ public final class CallAllowance {
         max(0, free - usage.used(at: now, window: window))
     }
 
+    /// When some free time is back, once it has all been used.
+    public func freeAgain(after now: Double) -> Double? {
+        usage.freeAgain(after: now, free: free, window: window)
+    }
+
     public func record(call id: String, from start: Double, to end: Double) {
         usage.record(call: id, from: start, to: end)
         usage.forget(before: end - window)
         store.save(usage)
     }
+}
+
+
+/// What the voice paywall can offer once the free time is used. Nothing
+/// yet: the store's products, their prices and the subscription's
+/// entitlement aren't chosen, so the paywall says so and sells nothing.
+/// A purchase and a restore come with the products, never before.
+public enum CallOffer: Equatable, Sendable {
+    case unavailable
 }

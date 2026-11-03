@@ -17,4 +17,11 @@
     <string name="call_authentication">Torna a iniciar la sessió per fer servir la veu</string>
     <string name="call_connection">Trucada finalitzada: s’ha perdut la connexió</string>
     <string name="call_open_settings">Obre la configuració</string>
+    <string name="call_paywall_title">Temps de veu</string>
+    <string name="call_paywall_used">Temps de veu gratuït esgotat</string>
+    <string name="call_paywall_free">Més temps gratuït a les %1$s</string>
+    <string name="call_paywall_footer">Cada dispositiu té 20 minuts de veu gratuïts en qualsevol període de 30 dies. El temps torna quan les trucades antigues fan 30 dies.</string>
+    <string name="call_paywall_more">Més temps de veu</string>
+    <string name="call_paywall_unavailable">Encara no disponible</string>
+    <string name="call_paywall_unavailable_footer">Les subscripcions de veu encara no estan a la venda. De moment aquí no es pot comprar res.</string>
 </resources>

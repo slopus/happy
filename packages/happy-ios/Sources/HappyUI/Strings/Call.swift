@@ -22,6 +22,15 @@ extension Strings {
         static var limit: String { "Free voice time used: 20 min per 30 days" }
         static var authentication: String { "Sign in again to use voice" }
         static var connection: String { "Call ended: connection lost" }
+        // The voice paywall (`CallPaywallViewController`).
+        static var paywallTitle: String { "Voice time" }
+        static var paywallUsed: String { "Free voice time used" }
+        static func paywallFree(_ when: String) -> String { "More free time at \(when)" }
+        static var paywallFooter: String { "Each device gets 20 free minutes of voice in any 30 days. Time comes back as older calls pass 30 days." }
+        static var paywallMore: String { "More voice time" }
+        static var paywallUnavailable: String { "Not available yet" }
+        static var paywallUnavailableFooter: String { "Voice subscriptions aren’t on sale yet. Nothing can be bought here for now." }
+        static var done: String { "Done" }
         static func accessibility(state: String, clock: String?) -> String {
             ["Voice call", state, clock].compactMap { $0 }.joined(separator: ", ")
         }

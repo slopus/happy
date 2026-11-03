@@ -17,4 +17,11 @@
     <string name="call_authentication">请重新登录以使用语音</string>
     <string name="call_connection">通话已结束：连接中断</string>
     <string name="call_open_settings">打开设置</string>
+    <string name="call_paywall_title">语音时长</string>
+    <string name="call_paywall_used">免费语音时长已用完</string>
+    <string name="call_paywall_free">%1$s 恢复免费时长</string>
+    <string name="call_paywall_footer">每台设备在任意 30 天内有 20 分钟免费语音。较早的通话满 30 天后，时长会恢复。</string>
+    <string name="call_paywall_more">更多语音时长</string>
+    <string name="call_paywall_unavailable">暂不可用</string>
+    <string name="call_paywall_unavailable_footer">语音订阅尚未开售。目前这里无法购买任何内容。</string>
 </resources>

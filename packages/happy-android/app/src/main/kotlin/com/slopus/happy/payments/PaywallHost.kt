@@ -12,7 +12,6 @@ import com.revenuecat.purchases.ui.revenuecatui.CustomVariableValue
 import com.revenuecat.purchases.ui.revenuecatui.PaywallDialog
 import com.revenuecat.purchases.ui.revenuecatui.PaywallDialogOptions
 import com.revenuecat.purchases.ui.revenuecatui.PaywallListener
-import com.slopus.happy.ui.call.DialogBelowCallBar
 
 /**
  * RevenueCat's native full-screen paywall on phones, dialog on tablets.
@@ -44,8 +43,7 @@ fun PaywallHost(repository: PurchasesRepository) {
                     })
                     .build()
             }
-            // Full-screen on a phone, so moved below a call's bar rather than over it.
-            DialogBelowCallBar { PaywallDialog(options) }
+            PaywallDialog(options)
         }
     }
 }

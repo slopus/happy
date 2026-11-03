@@ -50,6 +50,9 @@ class CallController(
     private val mutableLevel = MutableStateFlow(0f)
     /** The waves' level. */
     val level: StateFlow<Float> = mutableLevel.asStateFlow()
+    private val mutablePaywall = MutableStateFlow(false)
+    /** The voice paywall is up (`ui/call/CallPaywall`): once the free time runs out, and on a tap on the bar saying so. */
+    val paywall: StateFlow<Boolean> = mutablePaywall.asStateFlow()
 
     private var session: CallSession? = null
     private var context: CallContext? = null
@@ -107,7 +110,7 @@ class CallController(
                 }
             }
         }.launchIn(calling)
-        call.state.onEach { if (session === call) mutableState.value = it }.launchIn(calling)
+        call.state.onEach { if (session === call) show(it) }.launchIn(calling)
         focus = targets.focusedNow
         call.start(language = null, context = {
             context.initial().also { hold(context.followed(), targets) }
@@ -140,6 +143,26 @@ class CallController(
 
     fun toggleMute() { session?.toggleMute() }
 
+    /** The bar says the free time is used: the paywall, which then stays until it is put away. */
+    fun showPaywall() {
+        if (state.value == CallState.Ended(CallProblem.LimitReached)) mutablePaywall.value = true
+    }
+
+    fun dismissPaywall() { mutablePaywall.value = false }
+
+    /** When some free voice time is back on the wall clock; null if never, or if some is free now. */
+    fun freeAgain(): Long? {
+        val now = System.currentTimeMillis()
+        return allowance.freeAgain(now)?.takeIf { it > now }
+    }
+
+    private fun show(state: CallState) {
+        val before = mutableState.value
+        mutableState.value = state
+        // The free time is used, on a tap or mid-call: the paywall, once.
+        if (state == CallState.Ended(CallProblem.LimitReached) && before != state) mutablePaywall.value = true
+    }
+
     /** End: the call, or the bar of one that ended. */
     fun close() {
         val old = session
@@ -167,7 +190,7 @@ class CallController(
     fun showFixture(state: CallState, level: Float) {
         if (!BuildConfig.DEBUG) return
         if (session != null) close()
-        mutableState.value = state
+        show(state)
         mutableLevel.value = level
     }
 

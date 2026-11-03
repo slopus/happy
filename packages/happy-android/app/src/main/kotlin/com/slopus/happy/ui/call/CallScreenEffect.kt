@@ -11,12 +11,13 @@ import com.slopus.happy.call.CallScreen
 import com.slopus.happy.conversation.Conversation
 import com.slopus.happy.ui.conversation.ConversationRoute
 import com.slopus.happy.ui.conversation.heldConversation
-import com.slopus.happy.ui.conversation.openConversation
+import com.slopus.happy.ui.conversation.openConversationInPlace
 
 /**
  * The back stack as the call sees it ([CallScreen]): the conversation on
  * top is its focus, told to it whenever the top changes, and its tools open
- * a conversation of [connectionId] the way a home row does.
+ * a conversation of [connectionId] in place of one on top, or over anything
+ * else ([openConversationInPlace]).
  */
 @Composable
 fun CallScreenEffect(calls: CallController, nav: NavHostController, connectionId: String?) {
@@ -33,7 +34,7 @@ fun CallScreenEffect(calls: CallController, nav: NavHostController, connectionId
             override fun shown(agentId: String): Conversation? = if (focused == agentId) nav.heldConversation(agentId) else null
 
             override fun open(agentId: String) {
-                connectionId?.let { nav.openConversation(it, agentId) }
+                connectionId?.let { nav.openConversationInPlace(it, agentId) }
             }
         }
         calls.screen = screen

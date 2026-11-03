@@ -217,3 +217,16 @@ public protocol CallTargets: Sendable {
     /// Keeps a conversation read (or lets it go) while the call follows it.
     func follow(_ agentId: String, _ following: Bool) async
 }
+
+
+/// Where a conversation the call opens goes on the stack it is opened
+/// over: in place of a conversation on top, so a call that goes from one to
+/// the next never piles them up behind each other; pushed over anything
+/// else (home, Settings, a profile), which stays under it. Nothing at all
+/// when it is already on top.
+public enum CallNavigation {
+    public static func opening<Screen>(_ conversation: Screen, over stack: [Screen], isConversation: (Screen) -> Bool) -> [Screen] {
+        guard let top = stack.last, isConversation(top) else { return stack + [conversation] }
+        return stack.dropLast() + [conversation]
+    }
+}

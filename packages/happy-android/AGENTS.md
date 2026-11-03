@@ -24,8 +24,7 @@ architectures comparable (local store, delta sync, crypto layer).
   in-call status bar) slides down over the status bar and pushes the whole
   window, the top app bar first, down by its height, taking the top inset.
   A full-screen dialog goes through `PageDialog` or `WindowDialog` so that it
-  carries the bar. A full-screen dialog from a library goes inside
-  `DialogBelowCallBar` (as the RevenueCat paywall does).
+  carries the bar.
   It ends when the app leaves the foreground, another account opens or the
   relay's voice starts. For launch it connects to a public agent by its ID
   (`PublicAgentCallGrants`), a connection mechanism and not authentication;
@@ -33,7 +32,13 @@ architectures comparable (local store, delta sync, crypto layer).
   ignored `local.properties` into `BuildConfig.CALL_AGENT_ID`, and is never
   committed. Without it the tap says "Voice isn't set up for this
   connection yet". Each device gets 20 free connected minutes in any
-  rolling 30 days (`CallAllowance`, local, provisional). See
+  rolling 30 days (`CallAllowance`, local, provisional); once they are used
+  the app's own sheet (`CallPaywall`, no vendor UI) says when time is back
+  and that nothing is on sale (`CallOffer.Unavailable`): never a price or a
+  buy button before real products exist. A `ModalBottomSheet` calls
+  `SheetStatusIcons()` so the bar under its scrim keeps light icons.
+  `openSession` replaces a conversation on top and goes over anything else
+  (`openConversationInPlace`). See
   `docs/agent-voice-call.md` at the repository root. The `happy.call.*`
   intent extras (`CallFixtures`), `CallProbe` and `CallLiveDeviceCheck`
   are for debug builds only.

@@ -129,6 +129,23 @@ fun NavHostController.openConversation(connectionId: String, agentId: String, pr
 }
 
 /**
+ * A conversation a voice call opens (iOS's `CallNavigation`): in place of a
+ * conversation on top, so going from one to the next never piles them up
+ * behind each other; pushed over anything else (home, Settings, a profile),
+ * which stays under it.
+ */
+fun NavHostController.openConversationInPlace(connectionId: String, agentId: String) {
+    val current = currentBackStackEntry
+    if (current?.destination?.hasRoute<ConversationRoute>() == true) {
+        navigate(ConversationRoute(connectionId, agentId)) {
+            popUpTo(current.destination.id) { inclusive = true }
+        }
+    } else {
+        navigate(ConversationRoute(connectionId, agentId))
+    }
+}
+
+/**
  * Opens the connection's Chief of Staff chat with [prefix] in its
  * composer. The chief is looked up when the screen opens; once found the
  * chat takes this screen's place, so Back returns to where this was opened.

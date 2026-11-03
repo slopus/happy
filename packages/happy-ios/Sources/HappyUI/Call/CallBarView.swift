@@ -130,7 +130,9 @@ final class CallBarView: UIView {
         endButton.accessibilityLabel = live ? Strings.Call.end : Strings.Call.close
         if state == .ended(.microphonePermission) { spoken += ". " + Strings.Call.openSettings }
         summary.accessibilityLabel = Strings.Call.accessibility(state: spoken, clock: live ? clock : nil)
-        summary.accessibilityTraits = state == .ended(.microphonePermission) ? .button : [.staticText, .updatesFrequently]
+        // These two open something on a tap: Settings, the voice paywall.
+        let opens = state == .ended(.microphonePermission) || state == .ended(.limitReached)
+        summary.accessibilityTraits = opens ? .button : [.staticText, .updatesFrequently]
         setNeedsLayout()
     }
 

@@ -22,4 +22,11 @@
     <string name="call_authentication">Sign in again to use voice</string>
     <string name="call_connection">Call ended: connection lost</string>
     <string name="call_open_settings">Open Settings</string>
+    <string name="call_paywall_title">Voice time</string>
+    <string name="call_paywall_used">Free voice time used</string>
+    <string name="call_paywall_free">More free time at %1$s</string>
+    <string name="call_paywall_footer">Each device gets 20 free minutes of voice in any 30 days. Time comes back as older calls pass 30 days.</string>
+    <string name="call_paywall_more">More voice time</string>
+    <string name="call_paywall_unavailable">Not available yet</string>
+    <string name="call_paywall_unavailable_footer">Voice subscriptions aren’t on sale yet. Nothing can be bought here for now.</string>
 </resources>

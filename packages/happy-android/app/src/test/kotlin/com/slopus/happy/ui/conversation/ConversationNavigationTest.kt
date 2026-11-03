@@ -28,6 +28,7 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
 @Serializable internal data object TestHome
+@Serializable internal data object TestSettings
 
 /** Compose from home pushes an empty chat; compose from a chat replaces it; Back goes home. */
 @RunWith(AndroidJUnit4::class)
@@ -43,6 +44,7 @@ class ConversationNavigationTest {
             nav = rememberNavController()
             NavHost(nav, startDestination = TestHome) {
                 composable<TestHome> { Text("home") }
+                composable<TestSettings> { Text("settings") }
                 composable<ConversationRoute> { Text("chat ${it.toRoute<ConversationRoute>().agentId}") }
                 composable<ChiefOfStaffRoute> { Text("chief") }
             }
@@ -52,6 +54,7 @@ class ConversationNavigationTest {
     private fun stack() = nav.currentBackStack.value.mapNotNull { entry ->
         when {
             entry.destination.hasRoute<TestHome>() -> "home"
+            entry.destination.hasRoute<TestSettings>() -> "settings"
             entry.destination.hasRoute<ConversationRoute>() -> "chat:${entry.toRoute<ConversationRoute>().agentId}"
             else -> null
         }
@@ -70,6 +73,27 @@ class ConversationNavigationTest {
         }
         rule.runOnIdle { nav.popBackStack() }
         rule.runOnIdle { assertEquals(listOf("home"), stack()) }
+    }
+
+    @Test fun `a call's opens replace a chat on top and never pile chats up`() {
+        host()
+        rule.runOnIdle { nav.openConversationInPlace("c1", "a") }
+        rule.runOnIdle { assertEquals(listOf("home", "chat:a"), stack()) }
+        for (id in listOf("b", "c", "a")) rule.runOnIdle { nav.openConversationInPlace("c1", id) }
+        rule.runOnIdle { assertEquals(listOf("home", "chat:a"), stack()) }
+        rule.runOnIdle { nav.popBackStack() }
+        rule.runOnIdle { assertEquals(listOf("home"), stack()) }
+    }
+
+    @Test fun `a call's open from Settings goes over it, and the next replaces only the chat`() {
+        host()
+        rule.runOnIdle { nav.navigate(TestSettings) }
+        rule.runOnIdle { nav.openConversationInPlace("c1", "a") }
+        rule.runOnIdle { assertEquals(listOf("home", "settings", "chat:a"), stack()) }
+        rule.runOnIdle { nav.openConversationInPlace("c1", "b") }
+        rule.runOnIdle { assertEquals(listOf("home", "settings", "chat:b"), stack()) }
+        rule.runOnIdle { nav.popBackStack() }
+        rule.runOnIdle { assertEquals(listOf("home", "settings"), stack()) }
     }
 
     @Test fun `compose from an open chat replaces it too`() {

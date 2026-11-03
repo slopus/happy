@@ -17,4 +17,11 @@
     <string name="call_authentication">Войдите снова, чтобы пользоваться голосом</string>
     <string name="call_connection">Звонок завершён: связь потеряна</string>
     <string name="call_open_settings">Открыть настройки</string>
+    <string name="call_paywall_title">Время голоса</string>
+    <string name="call_paywall_used">Бесплатное время голоса исчерпано</string>
+    <string name="call_paywall_free">Ещё бесплатное время в %1$s</string>
+    <string name="call_paywall_footer">На каждом устройстве 20 бесплатных минут голоса за любые 30 дней. Время возвращается, когда старым звонкам исполняется 30 дней.</string>
+    <string name="call_paywall_more">Больше времени голоса</string>
+    <string name="call_paywall_unavailable">Пока недоступно</string>
+    <string name="call_paywall_unavailable_footer">Подписки на голос пока не продаются. Здесь сейчас ничего нельзя купить.</string>
 </resources>

@@ -185,6 +185,7 @@ final class CallController {
     }
 
     private func show(_ state: CallState) {
+        let before = self.state
         self.state = state
         updateClock()
         guard let shell else { return }
@@ -192,13 +193,31 @@ final class CallController {
         bar.onMute = { [weak self] in Task { await self?.session?.toggleMute() } }
         bar.onEnd = { [weak self] in self?.close() }
         bar.onTap = { [weak self] in
-            guard self?.state == .ended(.microphonePermission), let url = URL(string: UIApplication.openSettingsURLString) else { return }
-            UIApplication.shared.open(url)
+            switch self?.state {
+            case .ended(.microphonePermission):
+                if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+            case .ended(.limitReached):
+                self?.showPaywall()
+            default: break
+            }
         }
+        // The free time is used, on a tap or mid-call: the paywall, once.
+        if state == .ended(.limitReached), before != state { showPaywall() }
         // A bar going away keeps what it last said while it slides out.
         if state.isShown { bar.apply(state, clock: clockText, animated: shell.callBarShown) }
         shell.setCallBarShown(state.isShown, animated: true)
         if !state.isShown { self.shell = nil }
+    }
+
+    /// The voice paywall over whatever is on top, unless it already is.
+    private func showPaywall() {
+        guard let shell else { return }
+        var top: UIViewController = shell
+        while let next = top.presentedViewController { top = next }
+        if ((top as? UINavigationController)?.viewControllers.first is CallPaywallViewController) { return }
+        let now = Date().timeIntervalSince1970
+        let freeAgain = allowance.freeAgain(after: now).flatMap { $0 > now ? Date(timeIntervalSince1970: $0) : nil }
+        CallPaywallViewController.present(freeAgain: freeAgain, offer: .unavailable, over: top)
     }
 
     private var clockText: String? {
@@ -243,6 +262,7 @@ final class CallController {
             "user": .active(.userSpeaking, muted: false, since: since),
             "muted": .active(.listening, muted: true, since: since),
             "ended": .ended(.connection),
+            "limit": .ended(.limitReached),
         ]
         let script: [(CallState, Double)]
         if name == "cycle" {

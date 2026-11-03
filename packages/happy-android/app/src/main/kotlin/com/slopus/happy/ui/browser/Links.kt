@@ -57,6 +57,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
+import com.slopus.happy.ui.call.SheetStatusIcons
 import com.slopus.happy.browser.BrowserPolicy
 import com.slopus.happy.references.HappyReferences
 import com.slopus.happy.ui.components.MaterialSymbols
@@ -308,6 +309,7 @@ fun LinkMenu(opener: LinkOpener) {
         containerColor = colors.surface,
         modifier = Modifier.testTag(LinkTags.MENU),
     ) {
+        SheetStatusIcons()
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 8.dp)) {
             Text(
                 url,

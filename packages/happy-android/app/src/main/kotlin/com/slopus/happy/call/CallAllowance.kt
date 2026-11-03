@@ -35,6 +35,23 @@ data class CallUsage(val spans: List<Span> = emptyList()) {
         }
     }
 
+    /**
+     * When, after [now], less than [free] is spent again, as the older calls
+     * pass out of the [window]; rounded up to the second. Null when it never
+     * is (a span after [now], from a clock put back, never passes out).
+     */
+    fun freeAgain(now: Long, free: Long, window: Long): Long? {
+        if (used(now, window) < free) return now
+        var low = now
+        var high = now + window
+        if (used(high, window) >= free) return null
+        while (high - low > 1) {
+            val middle = low + (high - low) / 2
+            if (used(middle, window) < free) high = middle else low = middle
+        }
+        return (high + 999) / 1000 * 1000
+    }
+
     fun forget(before: Long): CallUsage = CallUsage(spans.filter { it.end >= before })
 }
 
@@ -73,6 +90,9 @@ class CallAllowance(
 
     fun remaining(now: Long): Long = maxOf(0L, free - usage.used(now, window))
 
+    /** When some free time is back, once it has all been used. */
+    fun freeAgain(now: Long): Long? = usage.freeAgain(now, free, window)
+
     fun record(id: String, start: Long, end: Long) {
         usage = usage.record(id, start, end).forget(end - window)
         store.save(usage)
@@ -83,3 +103,11 @@ class CallAllowance(
         const val WINDOW_MILLIS = 30 * 24 * 60 * 60 * 1000L
     }
 }
+
+/**
+ * What the voice paywall can offer once the free time is used (iOS
+ * `CallOffer`). Nothing yet: the store's products, their prices and the
+ * subscription's entitlement aren't chosen, so the paywall says so and sells
+ * nothing. A purchase and a restore come with the products, never before.
+ */
+enum class CallOffer { Unavailable }

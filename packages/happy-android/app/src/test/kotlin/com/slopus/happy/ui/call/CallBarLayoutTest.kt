@@ -48,9 +48,10 @@ class CallBarLayoutTest {
     private val state = MutableStateFlow<CallState>(CallState.Idle)
     private var ended = 0
     private var mutes = 0
+    private var paywalls = 0
 
     private fun show() = rule.setHappyContent {
-        CallFrame(state, MutableStateFlow(0f), onMute = { mutes++ }, onEnd = { ended++ }) {
+        CallFrame(state, MutableStateFlow(0f), onMute = { mutes++ }, onEnd = { ended++ }, onPaywall = { paywalls++ }) {
             Box(Modifier.fillMaxSize().testTag("page"))
         }
     }
@@ -118,6 +119,21 @@ class CallBarLayoutTest {
         rule.node(CallBarTags.MUTE).assertDoesNotExist()
         rule.node(CallBarTags.SUBTITLE).assertDoesNotExist()
         assertTrue(rule.node("page").bounds.top >= CallBarSpec.minHeight)
+    }
+
+    /** Free time used: the bar says so, and a tap on it is the paywall; no other ended bar opens it. */
+    @Test
+    fun aTapOnTheUsedUpBarIsThePaywall() {
+        show()
+        state.value = CallState.Ended(CallProblem.Connection)
+        rule.waitForIdle()
+        assertTrue(!rule.onNode(hasContentDescription("Voice call, Call ended", substring = true)).fetchSemanticsNode().config.contains(SemanticsActions.OnClick))
+        state.value = CallState.Ended(CallProblem.LimitReached)
+        rule.waitForIdle()
+        val summary = rule.onNode(hasContentDescription("Voice call, Free voice time used", substring = true))
+        assertEquals("Voice time", summary.fetchSemanticsNode().config[SemanticsActions.OnClick].label)
+        summary.performClick()
+        assertEquals(1, paywalls)
     }
 
     /** What TalkBack is given: one polite summary, and two buttons that say what they do. */

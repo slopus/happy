@@ -68,13 +68,22 @@ final class SessionCallTargets: CallTargets {
         guard !closed, let shell, let row = allRows.first(where: { $0.agentId == agentId && CallTarget.from($0) != nil }) else { return false }
         if focusedNow == agentId { return true }
         let chat = ChatViewController(session: session, agentId: agentId, title: row.label, spaceId: row.spaceId, intro: nil)
-        if shell.isExpanded { shell.showInMain(chat, animated: true) }
-        else { shell.phone.pushViewController(chat, animated: true) }
+        let navigation: UINavigationController = shell.isExpanded ? shell.main : shell.phone
+        if shell.isExpanded, navigation.viewControllers.allSatisfy({ $0 === shell.placeholder }) {
+            shell.showInMain(chat, animated: true)
+        } else {
+            // In place of a conversation on top; over anything else, which stays.
+            let stack = CallNavigation.opening(chat, over: navigation.viewControllers) { $0 is ChatViewController }
+            navigation.setViewControllers(stack, animated: true)
+        }
         // In front once it has slid in, so the screen saying so comes
         // before the next open does, never after it.
         if let coordinator = chat.navigationController?.transitionCoordinator {
             await withCheckedContinuation { done in coordinator.animate(alongsideTransition: nil) { _ in done.resume() } }
         }
+        #if DEBUG
+        print("[call] stack \(navigation.viewControllers.map { ($0 as? ChatViewController)?.shownAgentId ?? String(describing: type(of: $0)) })")
+        #endif
         return true
     }
 

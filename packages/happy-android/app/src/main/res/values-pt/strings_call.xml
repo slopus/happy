@@ -17,4 +17,11 @@
     <string name="call_authentication">Entre novamente para usar a voz</string>
     <string name="call_connection">Chamada encerrada: conexão perdida</string>
     <string name="call_open_settings">Abrir Configurações</string>
+    <string name="call_paywall_title">Tempo de voz</string>
+    <string name="call_paywall_used">Tempo de voz grátis esgotado</string>
+    <string name="call_paywall_free">Mais tempo grátis às %1$s</string>
+    <string name="call_paywall_footer">Cada dispositivo tem 20 minutos de voz grátis em quaisquer 30 dias. O tempo volta quando as chamadas mais antigas passam dos 30 dias.</string>
+    <string name="call_paywall_more">Mais tempo de voz</string>
+    <string name="call_paywall_unavailable">Ainda não disponível</string>
+    <string name="call_paywall_unavailable_footer">As assinaturas de voz ainda não estão à venda. Por enquanto, nada pode ser comprado aqui.</string>
 </resources>

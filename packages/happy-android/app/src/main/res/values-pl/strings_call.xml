@@ -17,4 +17,11 @@
     <string name="call_authentication">Zaloguj się ponownie, aby używać głosu</string>
     <string name="call_connection">Rozmowa zakończona: utracono połączenie</string>
     <string name="call_open_settings">Otwórz ustawienia</string>
+    <string name="call_paywall_title">Czas głosowy</string>
+    <string name="call_paywall_used">Wykorzystano darmowy czas głosowy</string>
+    <string name="call_paywall_free">Więcej darmowego czasu o %1$s</string>
+    <string name="call_paywall_footer">Każde urządzenie ma 20 darmowych minut głosu w dowolnych 30 dniach. Czas wraca, gdy starsze rozmowy przekroczą 30 dni.</string>
+    <string name="call_paywall_more">Więcej czasu głosowego</string>
+    <string name="call_paywall_unavailable">Jeszcze niedostępne</string>
+    <string name="call_paywall_unavailable_footer">Subskrypcje głosowe nie są jeszcze w sprzedaży. Na razie nic tu nie można kupić.</string>
 </resources>

@@ -75,14 +75,12 @@ ID, biometrics, store confirmations) stay above it.
     same bar in its own `CallFrame` (`WindowCallFrame`). The covered bar
     under it is cleared from the semantics tree, so TalkBack reads the call
     once.
-  - RevenueCat's paywall, full-screen on a phone and laid out by RevenueCat,
-    keeps its own window: `DialogBelowCallBar` moves that window below the
-    bar while a call shows and drops its dim. Touches outside it reach the
-    bar, and the paywall gets the whole screen back when the call ends. This
-    needs Android 10; on 8 and 9 the paywall covers the bar.
   - Dims without covering: a centred card (`AlertDialog`, prompts) leaves
-    the bar under its dim, where a tap dismisses the card. So does the link
-    menu's `ModalBottomSheet`, whose few rows keep it well below the bar.
+    the bar under its dim, where a tap dismisses the card. So do the
+    `ModalBottomSheet`s (the link menu, the voice paywall), whose few rows
+    keep them well below the bar. A sheet's window would set its own status
+    bar icons, dark over the bar in the light theme; `SheetStatusIcons()` in
+    the sheet keeps them light while the bar shows.
   - The QR scanner is an activity of its own. It counts as the app being in
     the foreground, so the call isn't hung up, and it shows the bar too.
   - Mute and End take touches in 48 dp squares (Android's least) around
@@ -113,6 +111,35 @@ Paid voice for agent connections is not decided yet. Until it is, nothing
 lifts the limit: no relay `pro` entitlement and no anonymous purchase
 identity.
 
+### The voice paywall
+
+When the free time runs out (a tap with none left, or a live call reaching
+the end of it) the app shows its own sheet, once per time the bar starts
+saying so, and again on a tap on that bar: `CallPaywallViewController` on
+iOS (grouped rows, medium and large detents, Done), `CallPaywall` on
+Android (a `ModalBottomSheet` of `ItemGroup`s). No RevenueCat or other
+vendor UI.
+
+- "Free voice time used", with "More free time at …" when the oldest call
+  in the window passes out of it (`CallAllowance.freeAgain`, to the second;
+  left out when no time ever comes back, as with a clock put back).
+- What can be bought: `CallOffer`, which today has one case, `unavailable`.
+  The sheet says "More voice time: Not available yet" and "Voice
+  subscriptions aren't on sale yet." There is no price, no buy button and
+  no restore, and none is shown until real products exist.
+
+What a working offer needs and doesn't have yet:
+
+- Store products (App Store and Play subscription IDs) and their prices.
+- The RevenueCat project's public SDK keys, offering and entitlement for
+  voice. RevenueCat stays the subscription and entitlement backend; whether
+  the apps talk to it through its SDK or StoreKit 2 / Play Billing plus its
+  REST API is not decided, and no SDK is added here.
+- A purchase identity: whose subscription it is (the Happy account, the
+  device, or the agent connection), and how the phone proves it.
+- The paid allowance: what a subscription lifts the 20 minutes to, and who
+  counts it (today only the device does, which a paying user could reset).
+
 The old relay endpoint's quota had two bugs: no rolling window and a
 100-conversation page cap. These were fixed in source on 2026-10-21 (commits
 `541a22d03` for the rolling window and `1a643badd` for pagination). Whether
@@ -129,7 +156,9 @@ new.
 conversations the person visited during the call, the one on screen
 included (`CallContext.followed`). Opening a conversation, by hand or with
 `openSession`, makes it the latest; the fifth one back drops out and is let
-go. Settings, home, a sheet or the scanner in front change nothing: the four
+go. `openSession` replaces a conversation that is on top of the stack and
+pushes over anything else (home, Settings), so a call that opens A, B and C
+leaves one conversation over what was under the first, never a pile. Settings, home, a sheet or the scanner in front change nothing: the four
 stay. `listSessions`, `getSessionContext` and `sendMessage` never add one.
 The phone keeps exactly those four conversations read for the call, and no
 others.
@@ -421,3 +450,15 @@ text, size and time.
 Android: `CallLiveDeviceCheck` on an emulator, with the ID passed to the
 build as `HAPPY_CALL_AGENT_ID`. The person's turns are typed
 (`-e prompts "first|second"`), so no microphone is used.
+`aConversationsNewWordsReachTheCall` drives a conversation's new words
+into a live call with no LLM step: three pieces of a reply as deltas with
+one `final`, four more visits that drop it from the last four, nothing sent
+while it is out, no replay when it is visited again and its next words
+after that. It checks the agent said nothing unasked, then types one
+question about what was said. It writes `incoming.txt` (each update's text
+and size, tool calls, the transcript).
+
+iOS opens: `-screen split -agent -callOpens` runs the call's
+`SessionCallTargets.open` over home, three conversations and back, then
+from Settings, and logs each stack it leaves (`[call] stack`), with no
+provider.

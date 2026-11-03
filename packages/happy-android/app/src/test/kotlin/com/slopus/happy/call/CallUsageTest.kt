@@ -1,6 +1,7 @@
 package com.slopus.happy.call
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 /** The device's free time (iOS `CallUsageTests`). */
@@ -14,6 +15,17 @@ class CallUsageTest {
         // Thirty days after the first call, only its last part is inside.
         assertEquals(500_000L, usage.used(30 * day + 400_000, 30 * day))
         assertEquals(0L, usage.used(41 * day, 30 * day))
+    }
+
+    @Test
+    fun freeTimeComesBackAsTheOldestCallPassesOut() {
+        val usage = CallUsage().record("a", 0, 600_000).record("b", 10 * day, 10 * day + 600_000)
+        // 20 minutes used: free again once a second of the first call is past 30 days.
+        assertEquals(30 * day + 1_000, usage.freeAgain(11 * day, 1_200_000, 30 * day))
+        // Not used up: free now.
+        assertEquals(11 * day, usage.freeAgain(11 * day, 1_800_000, 30 * day))
+        // A call after now (the clock put back) never passes out.
+        assertNull(CallUsage().record("c", 100 * day, 100 * day + 1_200_000).freeAgain(1, 1_200_000, 30 * day))
     }
 
     @Test
