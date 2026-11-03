@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -63,6 +64,10 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slopus.happy.AppGraph
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import java.util.WeakHashMap
+import java.util.concurrent.ConcurrentHashMap
 import com.slopus.happy.R
 import com.slopus.happy.ui.conversation.signalsFor
 import com.slopus.happy.ui.conversation.conversationRequest
@@ -217,6 +222,8 @@ fun AgentHomeScreen(
     notice: String? = null,
     /** A held conversation row's preview card inside ([ChatPreviewTranscript]); null holds nothing (iOS bf177c134). */
     preview: (@Composable (AgentFeedRow.Conversation) -> Unit)? = null,
+    /** Home's list; [AgentHome] keeps its place across the tablet's breakpoint and the sidebar's hiding ([rememberAgentHomeListState]). */
+    listState: LazyListState = rememberLazyListState(),
 ) {
     val colors = HappyTheme.colors
     val reduceMotion = rememberReduceMotion()
@@ -225,7 +232,6 @@ fun AgentHomeScreen(
     val sidebar = LocalSidebarHome.current
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
-    val listState = rememberLazyListState()
     val focus = LocalFocusManager.current
     val scope = rememberCoroutineScope()
     // The Surface whose Leave waits on the confirm, and a refused one's name and the agent's reason.
@@ -656,6 +662,7 @@ fun AgentHome(
             link = link,
             notice = notice,
             preview = { row -> ConversationPreview(session, row, settings.userMessageBubbleColor) },
+            listState = rememberAgentHomeListState(graph, id),
         )
     }
 }
@@ -689,4 +696,33 @@ private fun ConversationPreview(session: AgentSession, row: AgentFeedRow.Convers
     val state by conversation.state.collectAsStateWithLifecycle()
     val actions = remember(conversation) { ConversationRowActions(legacy = MessageCallbacks(), onRetryFailure = {}, loadMedia = conversation::media) }
     ChatPreviewTranscript(row.title ?: stringResource(R.string.session_new_chat), state, userMessageBubblePalette(bubbleColor, colors.dark), actions)
+}
+
+/**
+ * Where each agent connection's home list sits (first item, offset), out
+ * here because the tablet shell swaps the phone's home for the sidebar's at
+ * the breakpoint, and the sidebar leaves while hidden, which throws the list
+ * away (iOS 50f34ed9f keeps its rows in place). Keyed by connection, so one
+ * never opens on another's place; as legacy home's
+ * [com.slopus.happy.ui.home.HomeServices.homeListOffsets].
+ */
+private val agentHomePlaces = WeakHashMap<AppGraph, ConcurrentHashMap<String, Pair<Int, Int>>>()
+
+internal fun agentHomePlaces(graph: AppGraph): ConcurrentHashMap<String, Pair<Int, Int>> =
+    synchronized(agentHomePlaces) { agentHomePlaces.getOrPut(graph) { ConcurrentHashMap() } }
+
+/** Home's list for connection [id], rebuilt where it last was and recording where it goes. */
+@Composable
+internal fun rememberAgentHomeListState(graph: AppGraph, id: String): LazyListState {
+    val places = remember(graph) { agentHomePlaces(graph) }
+    val state = remember(id) {
+        val saved = places[id]
+        LazyListState(saved?.first ?: 0, saved?.second ?: 0)
+    }
+    LaunchedEffect(state, id) {
+        snapshotFlow { state.firstVisibleItemIndex to state.firstVisibleItemScrollOffset }
+            .distinctUntilChanged()
+            .collect { places[id] = it }
+    }
+    return state
 }

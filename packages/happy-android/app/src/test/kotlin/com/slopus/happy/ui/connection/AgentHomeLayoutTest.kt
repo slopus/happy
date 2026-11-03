@@ -429,6 +429,34 @@ class AgentHomeLayoutTest {
         assertEquals(row, rule.node(AgentHomeTags.row("agent-at20")).bounds)
     }
 
+    /**
+     * iOS 50f34ed9f: rows keep their place through a width change. The
+     * tablet shell swaps the phone's home for the sidebar's at 840, and the
+     * sidebar leaves while hidden; either way home comes back where it was,
+     * and another connection never opens on that place.
+     */
+    @Test
+    fun homeComesBackWhereItWasAfterLeavingTheComposition() {
+        val graph = com.slopus.happy.AppGraph(androidx.test.core.app.ApplicationProvider.getApplicationContext(), "android/test", "http://127.0.0.1:9", com.slopus.happy.testing.SoftwareKeys(), databaseName = null)
+        var shown by mutableStateOf(true)
+        var id by mutableStateOf("agent-connection-1")
+        val many = feed(big(40))
+        rule.setHappyContent {
+            if (shown) AgentHomeScreen("Studio", many, AgentLinkStatus.Connected, accounts, actions, listState = rememberAgentHomeListState(graph, id))
+        }
+        rule.node(AgentHomeTags.LIST).performScrollToIndex(20)
+        rule.waitForIdle()
+        val row = rule.node(AgentHomeTags.row("agent-at20")).bounds
+        shown = false
+        rule.waitForIdle()
+        shown = true
+        rule.waitForIdle()
+        assertEquals(row, rule.node(AgentHomeTags.row("agent-at20")).bounds)
+        id = "agent-connection-2"
+        rule.waitForIdle()
+        rule.node(AgentHomeTags.row("artifacts")).assertExists()
+    }
+
     /** iOS 8f745821b, 1a3b026a9: focused with nothing typed, the bots and tasks last active, with no title. */
     @Test
     fun anEmptySearchShowsTheBotsAndTasksLastActive() {
