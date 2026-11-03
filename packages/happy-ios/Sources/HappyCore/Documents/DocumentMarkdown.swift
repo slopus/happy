@@ -324,7 +324,7 @@ public enum DocumentMarkdown {
             rest = "\\" + rest
         } else if let match = rest.range(of: #"^\d{1,9}[.)](\s|$)"#, options: .regularExpression) {
             let digits = rest[match].prefix { $0.isNumber }
-            rest = digits + "\\" + rest.dropFirst(digits.count)
+            rest = String(digits) + "\\" + rest.dropFirst(digits.count)
         }
         var out = indent.isEmpty ? rest : entity(indent.first!) + indent.dropFirst() + rest
         if let last = out.last, last == " " || last == "\t", out.contains(where: { $0 != " " && $0 != "\t" }) {

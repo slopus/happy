@@ -564,17 +564,15 @@ Only production has entitlements (associated domains).
 
 ### Versioning
 
-This app uses a new versioning scheme, separate from happy-app's semver
-(`1.x.y`): **`vYYYY.MM.N`**, where `N` counts releases within that month,
-starting at 1 (e.g. `v2026.10.1`). The "v2" in the display names likewise
-tells it apart from the legacy RN app.
+Production continues the existing `com.ex3ndr.happy` listing with semver
+`2.0.0` (following the RN app's `1.x` releases). Development and preview
+retain the calendar version `2026.10.1` on their separate listings.
 
-- `CFBundleShortVersionString` must be integers only, so it holds the
-  version without the `v` (`2026.10.1`).
-- Bump it in all three `App/Info-*.plist` files, `MARKETING_VERSION` in
-  `project.yml` and the assertion in `AppConfigurationTests`.
+- Bump production in `App/Info-Production.plist`, the Happy target's Release
+  settings in `project.yml`, and `AppConfigurationTests`. The project-wide
+  defaults remain the development/preview version.
 - `CFBundleVersion` (`CURRENT_PROJECT_VERSION`) stays the build number.
-- The version also goes out as `X-Happy-Client: ios/2026.10.1`. The
+- The version also goes out as `X-Happy-Client: ios/<version>`. The
   server uses it only for metrics labels.
 
 ## Conventions

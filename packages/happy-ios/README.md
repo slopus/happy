@@ -15,6 +15,25 @@ xtool dev build                    # Linux: the dev app bundle, needs `xtool sdk
 xcodegen && open Happy.xcodeproj   # macOS
 ```
 
+## Production continuation
+
+The native iOS app continues the existing `com.ex3ndr.happy` App Store Connect
+listing with **2.0.0 (155)**, following the React Native app's 1.8.0 (154).
+Development and preview retain their separate bundle identities and calendar
+versions. Production's version/build are set in `App/Info-Production.plist`
+and the Happy target's Release settings in `project.yml`; the client header
+reads that bundled version. Keep the existing signing team and default
+Keychain access group so the RN credentials and Expo installation ID survive
+an in-place upgrade.
+
+Follow [the release skill](../../.agents/skills/release/SKILL.md) from a clean
+local `main` matching freshly fetched `origin/main`. This release is for
+**TestFlight only**: upload to App Store Connect without submitting for App
+Store review or public release. After successful submission, tag the exact
+source commit `native-ios-2.0.0-build155`; future iOS tags follow
+`native-ios-<version>-build<build>`. Never move an existing tag. No GitHub
+Release is needed for this TestFlight build.
+
 ## Native Mac app
 
 `HappyMac` is a genuine **AppKit / macOS SDK** target, not Catalyst,
