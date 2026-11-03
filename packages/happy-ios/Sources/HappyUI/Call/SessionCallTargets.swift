@@ -124,8 +124,9 @@ final class SessionCallTargets: CallTargets {
             let hold = session.warm.hold(agentId)
             held[agentId] = hold
             session.warm.watch(hold.chat, token: hold.token) { [weak self] snapshot in
-                guard snapshot.loaded else { return }
-                self?.onChange?(.from(snapshot, target: self?.target(agentId) ?? target))
+                // Gone from the sidebar: nothing about it goes, under its old name or any.
+                guard snapshot.loaded, let self, let now = self.target(agentId) else { return }
+                self.onChange?(.from(snapshot, target: now))
             }
             // What it says now is the call's first sight of it: what was there already.
             if hold.chat.snapshot.loaded { onChange?(.from(hold.chat.snapshot, target: target)) }

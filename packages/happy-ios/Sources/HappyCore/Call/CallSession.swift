@@ -245,6 +245,12 @@ public final class CallSession {
         flushContext()
     }
 
+    /// Returns once every update delivered so far has reached the
+    /// connection, or failed to.
+    public func delivered() async {
+        await updating?.value
+    }
+
     private func flushContext() {
         guard let connection, !pendingContext.isEmpty else { return }
         let text = pendingContext.joined(separator: "\n")

@@ -208,11 +208,19 @@ goes whole:
   title.").
 - `{"event":"directory_entries","text":"More of the conversation directory:\n…"}`:
   any that the snapshot couldn't show and that are new or changed since the
-  last one, each with the lines it sits under, in as many events of up to
-  4 KB as they take. None is lost to the snapshot's size. What was cut and
-  hasn't changed isn't sent again.
+  last one, each with the lines it sits under (one too deep for a page goes
+  with what it sits under on a single line, cut to fit: `(under A > B > …)`),
+  in as many events of up to 4 KB as they take. Two go with the snapshot;
+  the rest follow two per update (`CallContext.moreDirectory`, `drain`),
+  each once the one before has reached the provider and only while the call
+  is connected, so no update nears the 32 KB wait. If waiting context
+  overflows anyway, the resync owes again every change since the first
+  snapshot that its directory can't show, and those follow the same way.
+  None is lost to a size. What was cut and hasn't changed isn't sent again.
 
-So work that came and went within the second says nothing; new work that
+So work that came and went within the second says nothing, and work
+deleted, archived or left says nothing more from the moment the sidebar
+drops it, before the second is out (a late reply from it included); new work that
 got its name in it goes by that name; new work that never got one goes as
 "New Task" and, named later, goes again under the same reference. Before
 any update about a conversation the agent doesn't have as it is now (new

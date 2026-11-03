@@ -88,12 +88,15 @@ final class CallController {
             // Ended, it hears from nothing more: only its bar stays, saying why.
             if case .ended = state { self.letGo() }
             self.show(state)
+            // Connected: whatever the directory still owes goes now.
+            if case .active = state { Task { await CallContext.drain(context, into: call) } }
         }
         call.onOverflow = { [weak self, weak call] in
             Task {
                 let update = await context.resync()
                 guard let self, let call, self.session === call else { return }
                 self.deliver(update)
+                await CallContext.drain(context, into: call)
             }
         }
         call.onLevel = { [weak self, weak call] level in
@@ -117,6 +120,7 @@ final class CallController {
             guard self.session === call else { return }
             self.deliver(update)
             await Self.hold(await context.followed, in: targets)
+            await CallContext.drain(context, into: call)
         }
         directorySettle = settle
         directoryWatch = targets.watchDirectory { [weak self, weak call, weak settle] rows in

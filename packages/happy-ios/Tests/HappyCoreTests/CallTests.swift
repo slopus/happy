@@ -882,6 +882,49 @@ final class CallContextTests: XCTestCase {
         XCTAssertEqual(next.map { $0["event"] as? String }, ["assistant_text"])
     }
 
+    /// Work deleted while the directory settles: a reply that comes late
+    /// from it says nothing, under its old name or any, and no line of it goes.
+    func testALateReplyFromWorkThatWentAwaySaysNothing() async throws {
+        let targets = backend(focus: "b")
+        let context = CallContext(targets: targets)
+        _ = await context.initial()
+        _ = await context.targetChanged(CallTargetState(target: docsTarget, working: true))
+        await targets.setDirectory([backendTarget])
+        let due = await context.directoryChanged([backendTarget])
+        XCTAssertTrue(due)
+        let late = await context.targetChanged(CallTargetState(target: docsTarget, messages: [CallMessage(id: "w", role: .assistant, text: "Done.")],
+                                                               turns: [CallTurn(id: "x", ended: "error", error: "Boom")]))
+        XCTAssertTrue(late.isEmpty)
+        let flushed = try events(await context.flushDirectory())
+        XCTAssertEqual(flushed.map { $0["event"] as? String }, ["directory"])
+        XCTAssertFalse(flushed.description.contains("Docs"))
+        let followed = await context.followed
+        XCTAssertTrue(followed.isEmpty)
+    }
+
+    /// A conversation under more than a page can show: still told, with
+    /// what it sits under on one line cut to fit, and the ones after it too.
+    func testAnEntryTooDeepForAPageStillGoes() async throws {
+        let chain = (0..<80).map { CallTarget.Parent(id: "session:p\($0)", title: "Parent \($0) " + String(repeating: "y", count: 180), kind: "subtask", agentId: "p\($0)") }
+        let deep = CallTarget(agentId: "deep", title: "Deep one", kind: .subtask, status: .idle, parents: chain)
+        let after = CallTarget(agentId: "after", title: "After it", kind: .task, status: .idle)
+        let targets = FakeCallTargets(directory: [releaseTarget], states: [:], focus: nil)
+        let context = CallContext(targets: targets)
+        _ = await context.initial()
+        await targets.setDirectory([releaseTarget, deep, after])
+        _ = await context.directoryChanged([releaseTarget, deep, after])
+        let flushed = try events(await context.flushDirectory())
+        let told = flushed.compactMap { $0["text"] as? String }.joined(separator: "\n")
+        XCTAssertTrue(told.contains("Deep one [subtask; ref="), told)
+        XCTAssertTrue(told.contains("(under Parent 0 "), told)
+        XCTAssertTrue(told.contains("After it [task; ref="), told)
+        for event in flushed where event["event"] as? String == "directory_entries" {
+            XCTAssertLessThanOrEqual((event["text"] as? String ?? "").utf8.count, CallContext.Limits.entriesBytes)
+        }
+        let owes = await context.owesDirectory
+        XCTAssertFalse(owes)
+    }
+
     /// Title and what it sits under name it; a reference only when that
     /// leaves it unclear, or it has no name of its own yet.
     func testAnUpdateHasAReferenceOnlyWhenItsNameIsUnclear() async throws {
@@ -1111,6 +1154,54 @@ final class CallSessionTests: XCTestCase {
         let lines = connection.updates.first?.split(separator: "\n") ?? []
         XCTAssertEqual(lines.count, 8)
         XCTAssertEqual(lines.last, "resync")
+        session.stop()
+    }
+
+    /// Directory news too big for one update goes in bounded updates once
+    /// connected, each after the one before; news an overflow lost before
+    /// the call connected is owed again by the resync, so none of it is lost.
+    func testDirectoryNewsLostToTheWaitIsOwedAgainAndAllOfItGoes() async throws {
+        let many = (0..<150).map { CallTarget(agentId: "x\($0)", title: "Task \($0)", kind: .task, status: .idle) }
+        let targets = FakeCallTargets(directory: many, states: [:], focus: nil)
+        let context = CallContext(targets: targets)
+        let connection = FakeCallConnection()
+        let gate = AsyncStream<Void>.makeStream()
+        let session = CallSession(grants: FakeGrants(.granted(CallGrant(agentId: "g"))), permission: { true }) { _, _, _ in
+            for await _ in gate.stream { break }
+            return connection
+        }
+        var overflows = 0
+        session.onOverflow = { overflows += 1 }
+        _ = await context.initial()
+        session.start(language: nil, context: { "" }, tool: { _ in CallToolResult(text: "") })
+        // Waiting to connect, other context already waits.
+        let filler = String(repeating: "f", count: 1023)
+        for _ in 0..<24 { session.deliver(CallUpdate(context: [filler])) }
+        // 300 new conversations, far more than one update holds.
+        let parent = CallTarget.Parent(id: "task:x149", title: "Task 149", kind: "task", agentId: "x149")
+        let late = (0..<300).map { CallTarget(agentId: "n\($0)", title: "Late \($0) " + String(repeating: "z", count: 150), kind: .subtask, status: .idle, parents: [parent]) }
+        await targets.setDirectory(many + late)
+        _ = await context.directoryChanged(many + late)
+        let flush = await context.flushDirectory()
+        XCTAssertLessThan(flush.context.reduce(0) { $0 + $1.utf8.count + 1 }, CallSession.pendingBytes / 2 + CallContext.Limits.directoryBytes)
+        session.deliver(flush)
+        // Too much with what waited: let go whole, and put right.
+        XCTAssertEqual(overflows, 1)
+        session.deliver(await context.resync())
+        await CallContext.drain(context, into: session)
+        var owes = await context.owesDirectory
+        XCTAssertTrue(owes, "nothing more goes before the call is connected")
+        gate.continuation.yield()
+        await waitUntil { if case .active = session.state { true } else { false } }
+        await CallContext.drain(context, into: session)
+        await session.delivered()
+        owes = await context.owesDirectory
+        XCTAssertFalse(owes)
+        XCTAssertEqual(overflows, 1)
+        let all = connection.updates.joined(separator: "\n")
+        for index in 0..<300 { XCTAssertTrue(all.contains("Late \(index) "), "Late \(index)") }
+        for update in connection.updates { XCTAssertLessThanOrEqual(update.utf8.count, CallSession.pendingBytes) }
+        XCTAssertGreaterThan(connection.updates.count, 2)
         session.stop()
     }
 

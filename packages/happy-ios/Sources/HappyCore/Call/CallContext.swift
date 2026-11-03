@@ -39,8 +39,9 @@ public actor CallContext {
         public static let directory = 100
         public static let directoryBytes = 12 * 1024
         /// One `directory_entries` event's size: the entries a snapshot
-        /// couldn't show go in as many as they take.
+        /// couldn't show go in as many as they take, `pages` per update.
         public static let entriesBytes = 4 * 1024
+        public static let pages = 2
         public static let page = 50
         /// Conversations the call hears from: the last ones visited, the one on screen included.
         public static let visited = 4
@@ -75,6 +76,12 @@ public actor CallContext {
     /// What the agent has been told each conversation is: by a directory
     /// snapshot, an entry or `listSessions`.
     private var told: [String: Listing] = [:]
+    /// Each conversation as the first snapshot had it: one that differs
+    /// since is news the agent must have.
+    private var first: [String: Listing] = [:]
+    /// News the snapshots couldn't show and no update has carried yet, in
+    /// order (`moreDirectory`).
+    private var owed: [String] = []
     private var heard: [String: Heard] = [:]
     private var spoken = 0
     /// Sends whose answer the agent may not have had, by target and text:
@@ -137,6 +144,7 @@ public actor CallContext {
         begun = true
         see(await targets.directory())
         listed = entries.map(Listing.init)
+        first = Dictionary(listed.map { ($0.agentId, $0) }, uniquingKeysWith: { first, _ in first })
         focus = await targets.focused()
         var focused: CallTargetState?
         if let focus {
@@ -190,9 +198,10 @@ public actor CallContext {
     /// what the agent last had, told whole (`directory`). What came and
     /// went before this says nothing; work nobody has named yet goes by
     /// the sidebar's own label. Entries a snapshot can't show that are new
-    /// or changed since the last one follow in `directory_entries`, as many
-    /// as they take. A conversation that went away is no longer heard from,
-    /// and its reference reaches it again only if it comes back.
+    /// or changed since the last one follow in `directory_entries`, up to
+    /// `Limits.pages` here and the rest in `moreDirectory`. A conversation
+    /// that went away is no longer heard from, and its reference reaches it
+    /// again only if it comes back.
     public func flushDirectory() async -> CallUpdate {
         guard !closed, begun else { return CallUpdate() }
         let now = await targets.directory()
@@ -209,7 +218,35 @@ public actor CallContext {
         listed = listing
         let text = directoryText(bytes: Limits.directoryBytes, telling: true)
         let missed = entries.filter { told[$0.agentId] != Listing($0) && before[$0.agentId] != Listing($0) }
-        return CallUpdate(context: [Self.string(["event": "directory", "text": text])] + entryEvents(missed))
+        owe(missed.map(\.agentId))
+        return CallUpdate(context: [Self.string(["event": "directory", "text": text])] + pages())
+    }
+
+    /// News of the directory no update has carried yet (`owed`).
+    public var owesDirectory: Bool { !owed.isEmpty }
+
+    /// The next `Limits.pages` of what the directory owes; empty once all
+    /// of it has gone. Each update stays well within what a call keeps
+    /// waiting (`CallSession.pendingBytes`): one that is lost anyway is put
+    /// right by `resync`, which owes it all again.
+    public func moreDirectory() -> CallUpdate {
+        guard !closed else { return CallUpdate() }
+        return CallUpdate(context: pages())
+    }
+
+    /// What the directory owes, sent into `session` one bounded update at
+    /// a time, each once the one before has reached the provider, and only
+    /// while the call is connected; what is left waits for the next call
+    /// of this. Never past the call's end.
+    @MainActor
+    public static func drain(_ context: CallContext, into session: CallSession) async {
+        while case .active = session.state, await context.owesDirectory {
+            await session.delivered()
+            guard case .active = session.state else { return }
+            let update = await context.moreDirectory()
+            guard !update.isEmpty else { return }
+            session.deliver(update)
+        }
     }
 
     /// Something on screen changed which conversation is in front. A
@@ -251,7 +288,9 @@ public actor CallContext {
     /// doesn't know as it is now (new, renamed) is told first.
     public func targetChanged(_ state: CallTargetState) -> CallUpdate {
         let id = state.target.agentId
-        guard !closed, visited.contains(id) else { return CallUpdate() }
+        // Gone from the sidebar, even before the directory settles: never
+        // told of again, and nothing about it goes.
+        guard !closed, visited.contains(id), directory[id] != nil else { return CallUpdate() }
         guard var known = heard[id] else {
             listen(state)
             return CallUpdate()
@@ -293,7 +332,8 @@ public actor CallContext {
 
     /// The context waiting for the call was too much and went unsent
     /// (`CallSession.pendingBytes`): what the agent now has wrong is put
-    /// right in one go. The directory as it is, then the focus, marked
+    /// right in one go. The directory as it is (its news beyond the
+    /// snapshot owed, for `moreDirectory`), then the focus, marked
     /// `resync`, then the errors this call told of and each message it
     /// told, as it told it, the most recent kept first, within half of
     /// `Limits.totalBytes`. What doesn't fit is counted in `omitted`; a
@@ -303,6 +343,9 @@ public actor CallContext {
         told = [:]
         listed = entries.map(Listing.init)
         let directoryEvent = Self.string(["event": "directory", "text": directoryText(bytes: Limits.directoryBytes, telling: true)])
+        // Every piece of news since the first snapshot that this one can't
+        // show is owed again, whatever was lost: `moreDirectory` sends it.
+        owe(entries.filter { told[$0.agentId] == nil && first[$0.agentId] != Listing($0) }.map(\.agentId))
         var errors: [String] = []
         var streamed: [(at: Int, event: String)] = []
         for id in visited {
@@ -357,24 +400,39 @@ public actor CallContext {
         return text
     }
 
+    /// `ids` owed from now, after what is owed already.
+    private func owe(_ ids: [String]) {
+        for id in ids where !owed.contains(id) { owed.append(id) }
+    }
+
+    /// The next `Limits.pages` of what is owed, as it is now: what went
+    /// away, or was told since, is owed no longer.
+    private func pages() -> [String] {
+        let list = owed.compactMap { id in directory[id].flatMap { told[id] == Listing($0) ? nil : $0 } }
+        let (events, rest) = entryEvents(list, pages: Limits.pages)
+        owed = rest.map(\.agentId)
+        return events
+    }
+
     /// Entries the agent doesn't have as they are now, in `directory_entries`
-    /// events of up to `Limits.entriesBytes`, each with what it sits under.
-    private func entryEvents(_ list: [CallTarget]) -> [String] {
+    /// events of up to `Limits.entriesBytes`, each with what it sits under;
+    /// `pages` of them at most, and the entries they didn't hold.
+    private func entryEvents(_ list: [CallTarget], pages: Int = .max) -> (events: [String], rest: [CallTarget]) {
         var rest = list[...]
         var events: [String] = []
-        while !rest.isEmpty {
+        while !rest.isEmpty, events.count < pages {
             let (text, shown, taken) = lines(Array(rest), header: "More of the conversation directory:", bytes: Limits.entriesBytes, count: rest.count)
             guard taken > 0 else { break }
             rest = rest.dropFirst(taken)
             for id in shown { if let entry = list.first(where: { $0.agentId == id }) ?? directory[id] { told[id] = Listing(entry) } }
             events.append(Self.string(["event": "directory_entries", "text": text]))
         }
-        return events
+        return (events, Array(rest))
     }
 
     /// `entry` told as it is now, if the agent doesn't have it so.
     private func tell(_ entry: CallTarget) -> [String] {
-        told[entry.agentId] == Listing(entry) ? [] : entryEvents([entry])
+        told[entry.agentId] == Listing(entry) ? [] : entryEvents([entry]).events
     }
 
     /// `list` as indented lines under `header`, as many as fit, each with
@@ -391,6 +449,7 @@ public actor CallContext {
             let common = zip(path, keys).prefix { $0 == $1 }.count
             var chunk = ""
             var under: [String] = []
+            var flat = false
             for (depth, parent) in entry.parents.enumerated().dropFirst(common) {
                 let indent = String(repeating: "  ", count: depth)
                 if let agentId = parent.agentId {
@@ -400,10 +459,21 @@ public actor CallContext {
                     chunk += "\n\(indent)\(parent.title) [\(parent.kind)]"
                 }
             }
-            chunk += "\n\(String(repeating: "  ", count: entry.parents.count))\(entry.title) [\(entry.kind.rawValue); ref=\(ref(entry.agentId))]"
+            let line = "\(entry.title) [\(entry.kind.rawValue); ref=\(ref(entry.agentId))]"
+            chunk += "\n\(String(repeating: "  ", count: entry.parents.count))\(line)"
+            if taken == 0, text.utf8.count + chunk.utf8.count > bytes {
+                flat = true
+                // What it sits under too deep for the lines: on one of its
+                // own, cut to fit, the entry under it unindented.
+                let room = max(0, bytes - text.utf8.count - line.utf8.count - 16)
+                let trail = Self.truncated(entry.parents.map(\.title).joined(separator: " > "), bytes: room)
+                chunk = "\n(under \(trail))\n\(line)"
+                under = []
+            }
             guard text.utf8.count + chunk.utf8.count <= bytes else { break }
             text += chunk
-            path = keys + [entry.agentId]
+            // Lines after a flat one show what they sit under again.
+            path = flat ? [] : keys + [entry.agentId]
             shown += under + [entry.agentId]
             taken += 1
         }
