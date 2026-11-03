@@ -70,6 +70,11 @@ final class SessionCallTargets: CallTargets {
         let chat = ChatViewController(session: session, agentId: agentId, title: row.label, spaceId: row.spaceId, intro: nil)
         if shell.isExpanded { shell.showInMain(chat, animated: true) }
         else { shell.phone.pushViewController(chat, animated: true) }
+        // In front once it has slid in, so the screen saying so comes
+        // before the next open does, never after it.
+        if let coordinator = chat.navigationController?.transitionCoordinator {
+            await withCheckedContinuation { done in coordinator.animate(alongsideTransition: nil) { _ in done.resume() } }
+        }
         return true
     }
 

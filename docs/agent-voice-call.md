@@ -362,8 +362,8 @@ What the phone answers (JSON in the tool result):
 | --- | --- | --- |
 | listSessions | `{"sessions":[{targetRef,title,kind,status,project?}],"nextCursor"?}` | query or cursor not a string, a cursor it didn't give |
 | getSessionContext | `{targetRef,title,kind,status,working,needsInput,turns:[{user?,assistant?,ended,error?,truncated?}],olderTurns,pendingUserMessage?:{text,delivery?,truncated?}}` | no such conversation, can't be read now |
-| openSession | `{"opened":true,"targetRef":…}` | stale focus, no such conversation, didn't open |
-| sendMessage | `{"status":"queued","targetRef":…}` | `{"status":"uncertain",…}` after 8 s; stale focus; can't take a message; waits for the person; empty; over 8 KiB; call ended |
+| openSession | `{"opened":true,"targetRef":…,"focusRevision":…}`, the revision the next step takes | stale focus, no such conversation, didn't open |
+| sendMessage | `{"status":"queued","targetRef":…,"delivery":"on the person's device, not confirmed delivered or read"}` | `{"status":"uncertain",…}` after 8 s; stale focus; can't take a message; waits for the person; empty; over 8 KiB; call ended |
 
 Refusals are `{"ok":false,"reason":…}`. An unknown tool name (the old
 `setSessionWatch` included) is refused with `Unknown tool.` and nothing runs.
@@ -393,3 +393,14 @@ ever opened. It plays each prompt once the agent has answered the previous
 one, and writes `live.json` (transcript, tool calls, the context sent),
 `input.wav` and `output.wav` to the app's Documents. Keep these runs short:
 each one is a billed conversation.
+
+With `-callLive`, the fixture computer has 60 extra "Fixture task N" rows
+(enough for `listSessions` to page), three turns in every conversation (the
+last with commentary before its answer), and a reply streamed in pieces to
+each message sent. For Release notes it sends a failure that ends the turn
+instead. Every contextual update and tool call goes into `live.json` with its
+text, size and time.
+
+Android: `CallLiveDeviceCheck` on an emulator, with the ID passed to the
+build as `HAPPY_CALL_AGENT_ID`. The person's turns are typed
+(`-e prompts "first|second"`), so no microphone is used.

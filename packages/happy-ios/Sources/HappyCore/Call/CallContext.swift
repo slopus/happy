@@ -46,6 +46,9 @@ public actor CallContext {
     private var nextRef = 1
     private var focus: String?
     private var focusRevision = 0
+    /// The first snapshot has been made: until then the directory it will
+    /// hold is news to no one.
+    private var begun = false
     /// Newest first.
     private var visited: [String] = []
     private var directory: [String: CallTarget] = [:]
@@ -104,6 +107,7 @@ public actor CallContext {
     /// account's directory, and the conversation on screen with its last
     /// two finished turns.
     public func initial() async -> String {
+        begun = true
         let entries = await targets.directory()
         for entry in entries { directory[entry.agentId] = entry }
         focus = await targets.focused()
@@ -150,7 +154,7 @@ public actor CallContext {
     /// and not for a status, which a read gives. A conversation that went
     /// away can't be named again this call, and is no longer heard from.
     public func directoryChanged(_ entries: [CallTarget]) -> CallUpdate {
-        guard !closed else { return CallUpdate() }
+        guard !closed, begun else { return CallUpdate() }
         var changed: [[String: Any]] = []
         let ids = Set(entries.map(\.agentId))
         for entry in entries.prefix(Limits.directory) {
@@ -360,7 +364,11 @@ public actor CallContext {
             let asOf = Self.revision(arguments["focusRevision"])
             guard asOf == focusRevision else { return Self.stale }
             guard await targets.open(id) else { return .refused("It didn't open.") }
-            return .json(["opened": true, "targetRef": ref(id)])
+            // In front now as far as the call goes, with the revision the
+            // next step takes. The screen says so too; whichever of the two
+            // comes second says nothing.
+            _ = focusChanged(to: id)
+            return .json(["opened": true, "targetRef": ref(id), "focusRevision": focusRevision])
 
         case .sendMessage:
             guard let id = resolve(arguments["targetRef"]) else { return .refused("No such conversation.") }
@@ -382,7 +390,7 @@ public actor CallContext {
             settling[call] = key
             switch await targets.send(id, text: text, id: messageId) {
             case .queued:
-                return .json(["status": "queued", "targetRef": ref(id)])
+                return .json(["status": "queued", "targetRef": ref(id), "delivery": Self.queued])
             case .refused(let reason):
                 return .refused(reason)
             }
@@ -488,6 +496,9 @@ public actor CallContext {
     }
 
     private static let stale = CallToolResult.refused("The screen changed since; check the focus again.")
+    /// What "queued" is, in the result as well as the tool's description:
+    /// told only the status, the agent says "sent".
+    static let queued = "on the person's device, not confirmed delivered or read"
 
     /// A JSON integer, as the schema says: never a string, a fraction or a boolean.
     private static func revision(_ value: Any?) -> Int? {

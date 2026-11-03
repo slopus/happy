@@ -105,11 +105,11 @@ final class CallLiveCheck {
         heard.close()
         let report: [String: Any] = [
             "transcript": CallProbe.transcript.map { ["role": $0.role, "text": $0.text] },
-            "tools": CallProbe.tools.map { ["name": $0.name, "parameters": $0.parameters, "result": $0.result, "isError": $0.isError] },
+            "tools": CallProbe.tools.map { ["name": $0.name, "parameters": $0.parameters, "result": $0.result, "isError": $0.isError, "at": (($0.at.timeIntervalSince(began)) * 10).rounded() / 10] },
             "events": events,
             "context": CallProbe.context,
             "contextBytes": CallProbe.context.utf8.count,
-            "sent": CallProbe.sent.map { ["kind": $0.kind, "bytes": $0.bytes] },
+            "sent": CallProbe.sent.map { ["kind": $0.kind, "bytes": $0.text.utf8.count, "text": $0.text, "at": (($0.at.timeIntervalSince(began)) * 10).rounded() / 10] },
             "toolResultBytes": CallProbe.tools.map { $0.result.utf8.count },
             "conversationId": CallProbe.conversationId ?? NSNull(),
             "seconds": (Date().timeIntervalSince(began) * 10).rounded() / 10,

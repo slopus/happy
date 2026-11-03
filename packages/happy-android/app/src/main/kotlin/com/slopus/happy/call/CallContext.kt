@@ -72,6 +72,8 @@ class CallContext(
     private var nextRef = 1
     private var focus: String? = null
     private var focusRevision = 0
+    /** The first snapshot has been made: until then the directory it will hold is news to no one. */
+    private var begun = false
     /** Newest first. */
     private val visited = ArrayList<String>()
     private val directory = HashMap<String, CallTarget>()
@@ -122,6 +124,7 @@ class CallContext(
 
     /** `initialConversationContext`, the hosted prompt's one variable: the directory, and the conversation on screen with its last two finished turns. */
     suspend fun initial(): String = withContext(lane) {
+        begun = true
         val entries = targets.directory()
         for (entry in entries) directory[entry.agentId] = entry
         val focused = targets.focused()
@@ -169,7 +172,7 @@ class CallContext(
      * named again this call, and is no longer heard from.
      */
     suspend fun directoryChanged(entries: List<CallTarget>): CallUpdate = withContext(lane) {
-        if (closed) return@withContext CallUpdate()
+        if (closed || !begun) return@withContext CallUpdate()
         val changed = ArrayList<JsonElement>()
         val ids = entries.mapTo(HashSet()) { it.agentId }
         for (entry in entries.take(Limits.DIRECTORY)) {
@@ -418,7 +421,15 @@ class CallContext(
                     id == null -> CallToolResult.refused("No such conversation.")
                     revisionOf(arguments["focusRevision"]) != focusRevision -> STALE
                     !targets.open(id) -> CallToolResult.refused("It didn't open.")
-                    else -> CallToolResult.json(JsonObject(mapOf("opened" to JsonPrimitive(true), "targetRef" to JsonPrimitive(ref(id)))))
+                    else -> {
+                        // In front now as far as the call goes, with the revision the
+                        // next step takes. The screen says so too; whichever of the two
+                        // comes second says nothing.
+                        focusChanged(id)
+                        CallToolResult.json(JsonObject(mapOf(
+                            "opened" to JsonPrimitive(true), "targetRef" to JsonPrimitive(ref(id)), "focusRevision" to JsonPrimitive(focusRevision),
+                        )))
+                    }
                 }
             }
 
@@ -444,7 +455,9 @@ class CallContext(
         unsettled[key] = messageId
         settling[call] = key
         return when (val outcome = targets.send(id, text, messageId)) {
-            CallSendOutcome.Queued -> CallToolResult.json(JsonObject(mapOf("status" to JsonPrimitive("queued"), "targetRef" to JsonPrimitive(ref(id)))))
+            CallSendOutcome.Queued -> CallToolResult.json(JsonObject(mapOf(
+                "status" to JsonPrimitive("queued"), "targetRef" to JsonPrimitive(ref(id)), "delivery" to JsonPrimitive(QUEUED),
+            )))
             is CallSendOutcome.Refused -> CallToolResult.refused(outcome.reason)
         }
     }
@@ -510,6 +523,9 @@ class CallContext(
 
     companion object {
         private val STALE = CallToolResult.refused("The screen changed since; check the focus again.")
+
+        /** What "queued" is, in the result as well as the tool's description: told only the status, the agent says "sent". */
+        const val QUEUED = "on the person's device, not confirmed delivered or read"
 
         /** The last finished turns that answered or failed: what a read shows. */
         fun recent(state: CallTargetState): List<CallTurn> = answering(state).takeLast(Limits.TURNS)

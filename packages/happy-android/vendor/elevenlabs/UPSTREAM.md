@@ -28,6 +28,11 @@ Local changes:
   notify the controller as well as explicit stops.
 - `setMicMuted` toggles the room's microphone track rather than the system-wide
   microphone setting.
+- `ConversationEventParser` no longer reads `agent_tool_request` as a client
+  tool call. That event only announces a call and has no parameters (the Swift
+  SDK keeps it separate as `.agentToolRequest`). Answering it first beat the
+  real `client_tool_call` for the same ID with empty arguments
+  (`ElevenLabsEventsTest` in the app).
 - `ConversationAudioHandler` observes LiveKit's own focus/device listeners when
   `onAudioInterruption` is supplied: any focus loss or disappearance of the
   selected wired/Bluetooth headset reports one interruption. It preserves the

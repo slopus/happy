@@ -35,9 +35,44 @@ private actor DemoComputer: AgentTransport {
     }
 
     /// With `rounds`, that many more questions and answers after the
-    /// four, enough to scroll.
+    /// four, enough to scroll. `live`, for a live call (`CallLiveCheck`):
+    /// 60 more tasks, three turns in every conversation, the last with
+    /// commentary ahead of its answer, and a reply streamed to each message
+    /// sent, or for Release notes a failure.
     private let rounds: Int
-    init(rounds: Int = 0) { self.rounds = rounds }
+    private let live: Bool
+    init(rounds: Int = 0, live: Bool = false) {
+        self.rounds = rounds
+        self.live = live
+    }
+
+    private var streams: [AsyncThrowingStream<Data, Error>.Continuation] = []
+    private var eventId = 0
+    /// The turns each message sent has made, by agent.
+    private var sent: [String: [JSONValue]] = [:]
+
+    private static func run(_ id: String, _ startedAt: Double, _ endedAt: Double?, reason: String = "completed", _ messages: [JSONValue]) -> JSONValue {
+        var run: [String: JSONValue] = ["id": .string(id), "status": .string(endedAt == nil ? "running" : "completed"), "startedAt": .number(startedAt),
+                                        "messages": .array(messages)]
+        if let endedAt {
+            run["endedAt"] = .number(endedAt)
+            run["reason"] = .string(reason)
+        }
+        return .object(run)
+    }
+
+    private static let liveRuns: [JSONValue] = [
+        run("r0", 500, 900, [message("u0", "user", 0.5, "Is the build green?"), message("m0", "agent", 0.6, "Yes, main is green.")]),
+        run("r1", 1_000, 1_500, [message("u1", "user", 1, "How should the iPad lay out the app?"),
+                                 message("m1", "agent", 2, "A sidebar and a main panel, with UIKit's own split view controller.")]),
+        run("r2", 1_600, 2_000, [message("u2", "user", 3, "And when the sidebar is hidden?"),
+                                 message("c2", "agent", 3.5, "Let me check how the sidebar hides."),
+                                 message("m2", "agent", 4, "The main panel takes the whole window, and the transcript stays centred at its readable width.")]),
+    ]
+
+    private func history(_ agentId: String) -> [JSONValue] {
+        (live ? Self.liveRuns : [run]) + (sent[agentId] ?? [])
+    }
 
     private var run: JSONValue {
         guard case .object(var run) = Self.base, case .array(var messages)? = run["messages"] else { return Self.base }
@@ -69,14 +104,26 @@ private actor DemoComputer: AgentTransport {
     ])
 
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) throws -> HTTP1Response {
-        let value: JSONValue
+        var value: JSONValue
         if path == "/v0/bootstrap/desktop" {
             value = try JSONDecoder().decode(JSONValue.self, from: Data(Self.home.utf8))
+            if live, case .object(var home) = value, case .array(var tasks)? = home["tasks"], case .array(var memberships)? = home["taskMemberships"] {
+                for n in 1...60 {
+                    tasks.append(.object(["id": .string("fixture\(n)"), "name": .string("Fixture task \(n)"),
+                                          "agent": .object(["id": .string("fixture\(n)-agent"), "workspaceId": .string("w"), "status": .string("idle")])]))
+                    memberships.append(.object(["taskId": .string("fixture\(n)")]))
+                }
+                home["tasks"] = .array(tasks)
+                home["taskMemberships"] = .array(memberships)
+                value = .object(home)
+            }
         } else if path.contains("/messages?") {
-            value = .object(["hasMore": .bool(false), "runs": .array([run])])
+            value = .object(["hasMore": .bool(false), "runs": .array(history(String(path.split(separator: "/")[2])))])
         } else if path.hasSuffix("/bootstrap"), path.hasPrefix("/v0/agents/") {
             let id = String(path.split(separator: "/")[2])
-            value = .object(["agent": .object(["id": .string(id), "workspaceId": .string("w"), "status": .string("idle")]), "pending": .array([])])
+            value = .object(["agent": .object(["id": .string(id), "workspaceId": .string("w"), "status": .string("idle")]), "pending": .array([]),
+                             "mode": .object(["providerId": .string("claude"), "modelId": .string("anthropic/sonnet-5"), "effort": .string("medium"),
+                                              "permissionMode": .string("auto")])])
         } else if method == "PUT", path.hasSuffix("/file"), let body,
                   let content = try JSONDecoder().decode(JSONValue.self, from: body)["content"]?.stringValue,
                   let bytes = Data(base64Encoded: content) {
@@ -85,6 +132,11 @@ private actor DemoComputer: AgentTransport {
         } else if method == "POST" {
             // What a call's tools would have changed on a real computer (`CallLiveCheck`).
             print("[computer] POST \(path) \(body.map { String(decoding: $0.prefix(400), as: UTF8.self) } ?? "")")
+            if live, path.hasSuffix("/send"), let body, let sent = try? JSONDecoder().decode(JSONValue.self, from: body),
+               let id = sent["id"]?.stringValue, let text = sent["text"]?.stringValue {
+                let agentId = String(path.split(separator: "/")[2])
+                Task { await answer(agentId, id: id, text: text) }
+            }
             value = .object([:])
         } else {
             return .init(status: 404, body: Data("{}".utf8))
@@ -95,7 +147,53 @@ private actor DemoComputer: AgentTransport {
     func stream(path: String, credential: String, headers: [String: String]) throws -> HTTP1Stream {
         let (body, continuation) = AsyncThrowingStream<Data, Error>.makeStream()
         continuation.yield(Data("event: hello\ndata: {\"cursor\":\"c1\",\"resumed\":true}\n\n".utf8))
+        streams.append(continuation)
         return .init(status: 200, body: body)
+    }
+
+    private func emit(_ type: String, _ payload: [String: JSONValue]) {
+        eventId += 1
+        let envelope: JSONValue = .object(["type": .string(type), "payload": .object(payload)])
+        guard let data = try? JSONEncoder().encode(envelope) else { return }
+        let frame = Data("id: e\(eventId)\ndata: ".utf8) + data + Data("\n\n".utf8)
+        for stream in streams { stream.yield(frame) }
+    }
+
+    /// The turn a message sent starts, as the daemon's events tell it: the
+    /// reply in pieces, or for Release notes a failure that stops it.
+    private func answer(_ agentId: String, id: String, text: String) async {
+        let runId = "s\(eventId)"
+        let started = Date().timeIntervalSince1970 * 1000
+        let agent = JSONValue.string(agentId)
+        let user = Self.message(id, "user", started, text)
+        func pause() async { try? await Task.sleep(for: .milliseconds(700)) }
+        emit("message.created", ["agentId": agent, "runId": .string(runId), "message": user])
+        emit("run.started", ["agentId": agent, "run": Self.run(runId, started, nil, []), "acceptedMessageIds": .array([.string(id)])])
+        await pause()
+        let ended: JSONValue
+        if agentId == "notes-agent" {
+            let reason = "The model provider is unavailable."
+            guard case .object(var failure) = Self.message("\(runId)f", "service", started + 1, reason) else { return }
+            failure["failure"] = .object(["kind": .string("provider_unavailable"), "message": .string(reason)])
+            ended = .object(failure)
+            emit("message.created", ["agentId": agent, "runId": .string(runId), "message": ended])
+        } else {
+            let pieces = ["I ran the tests. ", "All 214 passed, ", "and the cache ", "is ready to ship."]
+            emit("message.created", ["agentId": agent, "runId": .string(runId), "message": Self.message("\(runId)a", "agent", started + 1, "")])
+            var offset = 0
+            for piece in pieces {
+                await pause()
+                emit("message.delta", ["agentId": agent, "runId": .string(runId), "messageId": .string("\(runId)a"), "blockIndex": .number(0),
+                                       "offset": .number(Double(offset)), "append": .string(piece)])
+                offset += piece.utf16.count
+            }
+            ended = Self.message("\(runId)a", "agent", started + 1, pieces.joined())
+            emit("message.updated", ["agentId": agent, "runId": .string(runId), "message": ended])
+        }
+        await pause()
+        let finished = Self.run(runId, started, Date().timeIntervalSince1970 * 1000, reason: agentId == "notes-agent" ? "error" : "completed", [user, ended])
+        sent[agentId, default: []].append(finished)
+        emit("run.finished", ["agentId": agent, "run": finished])
     }
 
     func reset() {}
@@ -193,7 +291,7 @@ final class SplitAppHarness {
         }
         #endif
         if arguments.contains("-composeMachine") { SplitComposeMachine.install() }
-        let computer = DemoComputer(rounds: arguments.contains("-long") ? 60 : 0)
+        let computer = DemoComputer(rounds: arguments.contains("-long") ? 60 : 0, live: option("-callLive") != nil)
         let controller = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/split-harness",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,

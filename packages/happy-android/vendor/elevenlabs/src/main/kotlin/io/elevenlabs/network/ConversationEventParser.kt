@@ -42,7 +42,11 @@ object ConversationEventParser {
                 "agent_chat_response_part" -> parseAgentChatResponsePart(jsonObject)
                 "internal_tentative_agent_response" -> parseTentativeAgentResponse(jsonObject)
                 "agent_response_metadata" -> parseAgentResponseMetadata(jsonObject)
-                "client_tool_call", "agent_tool_request" -> parseClientToolCall(jsonObject)
+                "client_tool_call" -> parseClientToolCall(jsonObject)
+                // Only tells of a call, with no parameters (Swift's
+                // `.agentToolRequest`): a client tool's own call is its
+                // client_tool_call, which answered this would beat.
+                "agent_tool_request" -> null
                 "agent_tool_response" -> parseAgentToolResponse(jsonObject)
                 "vad_score" -> parseVadScore(jsonObject)
                 "interruption" -> parseInterruption(jsonObject)

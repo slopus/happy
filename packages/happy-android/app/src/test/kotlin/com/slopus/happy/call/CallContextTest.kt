@@ -195,6 +195,24 @@ class CallContextTest {
         assertFalse(focus.toString().contains("answer"))
     }
 
+    @Test
+    fun openingGivesTheRevisionTheNextStepTakes() = runBlocking {
+        val context = CallContext(backend(focus = null))
+        context.initial()
+        val opened = obj(context.tool("openSession", """{"targetRef":"s2","focusRevision":0}""").text)
+        assertEquals(1, opened["focusRevision"]!!.jsonPrimitive.int)
+        // The screen saying the same afterwards tells the agent nothing new.
+        assertTrue(context.focusChanged("b").isEmpty)
+        // Chained on what the open gave, the next open goes.
+        val next = context.tool("openSession", """{"targetRef":"s1","focusRevision":1}""")
+        assertFalse(next.isError)
+        assertEquals(2, obj(next.text)["focusRevision"]!!.jsonPrimitive.int)
+        assertEquals(listOf("a", "b"), context.followed())
+        val send = obj(context.tool("sendMessage", """{"targetRef":"s2","text":"go","focusRevision":2}""").text)
+        assertEquals("queued", send.str("status"))
+        assertEquals("on the person's device, not confirmed delivered or read", send.str("delivery"))
+    }
+
     // New words only
 
     @Test
@@ -508,6 +526,8 @@ class CallContextTest {
     @Test
     fun theDirectorySaysWhatCameWentOrWasRenamedButNoStatus() = runBlocking {
         val context = CallContext(backend())
+        // Its watch answering at once, ahead of the snapshot that holds it all: nothing to say.
+        assertTrue(context.directoryChanged(listOf(a, b)).isEmpty)
         context.initial()
         assertTrue(context.directoryChanged(listOf(a, b.copy(status = CallTarget.Status.Idle))).isEmpty)
         val renamed = events(context.directoryChanged(listOf(a, b.copy(title = "Docs site"))))

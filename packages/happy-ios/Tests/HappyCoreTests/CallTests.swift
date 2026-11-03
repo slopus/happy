@@ -184,6 +184,25 @@ final class CallContextTests: XCTestCase {
         XCTAssertFalse(focus.description.contains("answer"))
     }
 
+    func testOpeningGivesTheRevisionTheNextStepTakes() async throws {
+        let context = CallContext(targets: backend(focus: nil))
+        _ = await context.initial()
+        let opened = try object(await tool(context, "openSession", #"{"targetRef":"s2","focusRevision":0}"#).text)
+        XCTAssertEqual(opened["focusRevision"] as? Int, 1)
+        // The screen saying the same afterwards tells the agent nothing new.
+        let screen = await context.focusChanged(to: "b")
+        XCTAssertTrue(screen.isEmpty)
+        // Chained on what the open gave, the next open goes.
+        let next = await tool(context, "openSession", #"{"targetRef":"s1","focusRevision":1}"#)
+        XCTAssertFalse(next.isError)
+        XCTAssertEqual(try object(next.text)["focusRevision"] as? Int, 2)
+        let followed = await context.followed
+        XCTAssertEqual(followed, ["a", "b"])
+        let send = try object(await tool(context, "sendMessage", #"{"targetRef":"s2","text":"go","focusRevision":2}"#).text)
+        XCTAssertEqual(send["status"] as? String, "queued")
+        XCTAssertEqual(send["delivery"] as? String, "on the person's device, not confirmed delivered or read")
+    }
+
     // MARK: New words only
 
     func testOnlyNewWordsGoAsDeltasAtMostEveryHalfSecond() async throws {
@@ -513,6 +532,9 @@ final class CallContextTests: XCTestCase {
 
     func testTheDirectorySaysWhatCameWentOrWasRenamedButNoStatus() async throws {
         let context = CallContext(targets: backend())
+        // Its watch answering at once, ahead of the snapshot that holds it all: nothing to say.
+        let early = await context.directoryChanged([backendTarget, docsTarget])
+        XCTAssertTrue(early.isEmpty)
         _ = await context.initial()
         var docs = docsTarget
         docs.status = .idle

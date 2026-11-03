@@ -1,6 +1,7 @@
 #if DEBUG && canImport(UIKit)
 import Combine
 import ElevenLabs
+import Foundation
 import HappyCore
 
 /// Debug builds only: what a live call heard, said and ran, for the
@@ -19,6 +20,7 @@ enum CallProbe {
         var parameters: String
         var result: String
         var isError: Bool
+        var at = Date()
     }
 
     /// The conversation's messages in order, each as it last read.
@@ -29,8 +31,8 @@ enum CallProbe {
     private(set) static var context = ""
     private(set) static var conversationId: String?
     static var onChange: (() -> Void)?
-    /// Every contextual update and prompt sent, by UTF-8 size.
-    private(set) static var sent: [(kind: String, bytes: Int)] = []
+    /// Every contextual update and prompt sent, as sent, and when.
+    private(set) static var sent: [(kind: String, text: String, at: Date)] = []
 
     static func watch(_ conversation: ElevenLabsConversation, context: String, store: inout Set<AnyCancellable>) {
         transcript = []
@@ -56,7 +58,8 @@ enum CallProbe {
     }
 
     static func sent(_ kind: String, _ text: String) {
-        sent.append((kind, text.utf8.count))
+        sent.append((kind, text, Date()))
+        print("[call] \(kind) \(text.utf8.count)B \(text.prefix(300))")
     }
 
     static func tool(_ call: CallToolCall, _ result: CallToolResult) {
