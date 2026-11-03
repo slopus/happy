@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="media_download">Scarica</string>
+    <string name="media_pause_download">Metti in pausa il download</string>
+    <string name="data_storage_title">Dati e archiviazione</string>
+    <string name="data_storage_usage">Spazio utilizzato</string>
+    <string name="data_storage_calculating">Calcolo in corso…</string>
+    <string name="data_storage_clear_media">Cancella media</string>
+    <string name="data_storage_clear_footer">Foto, video e file restano su questo telefono per sempre, così si aprono senza rete. Cancellarli libera spazio; quello che cancelli viene scaricato di nuovo quando lo apri.</string>
+    <string name="data_storage_clear_confirm">Cancellare %1$s di media da questo telefono? Verranno scaricati di nuovo quando li apri.</string>
+    <string name="data_storage_clear">Cancella</string>
+    <string name="data_storage_auto">Download automatico dei media</string>
+    <string name="data_storage_auto_footer">I media entro il limite di dimensione si scaricano da soli quando compaiono in una chat, così sono qui anche offline. Lo stesso con Wi-Fi e dati mobili.</string>
+    <string name="data_storage_photos">Foto</string>
+    <string name="data_storage_videos">Video</string>
+    <string name="data_storage_limit">Fino a</string>
+</resources>

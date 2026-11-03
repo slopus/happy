@@ -196,6 +196,9 @@ class AgentSession internal constructor(
     val profile: AgentProfileSource by lazy { AgentProfileSource(client, events, scope) }
 
     /** Bots' pictures, as home's rows draw them. */
+    /** Chat media kept on this phone for good, beside the catalog (iOS `MediaLibrary.agent`); null where nothing is kept. */
+    val media: com.slopus.happy.media.MediaLibrary? = cacheFile?.let { com.slopus.happy.media.MediaLibrary(File(it.parentFile, it.nameWithoutExtension + ".media")) }
+
     val pictures = AgentPictures(connectionId, cacheFile?.let { File(it.parentFile, it.nameWithoutExtension + ".pictures") }) { path -> client.send("GET", path, category = RequestCategory.File).body }
 
     /** One conversation as the catalog knows it, live; null while unknown. */
@@ -294,6 +297,7 @@ class AgentSession internal constructor(
     suspend fun close() {
         scope.cancel()
         withContext(kotlinx.coroutines.NonCancellable) {
+            media?.stop()
             linkLock.withLock { route?.second?.close(); route = null }
         }
     }

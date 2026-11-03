@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Media kept on this phone: the download ring and Data and Storage (iOS Strings/Media.swift, Telegram's wording). -->
+<resources>
+    <string name="media_download">Download</string>
+    <string name="media_pause_download">Pause download</string>
+    <string name="data_storage_title">Data and Storage</string>
+    <string name="data_storage_usage">Storage Usage</string>
+    <string name="data_storage_calculating">Calculating…</string>
+    <string name="data_storage_clear_media">Clear Media</string>
+    <string name="data_storage_clear_footer">Photos, videos and files are kept on this phone for good, so they open without the network. Clearing them frees the space; anything cleared is downloaded again when it is opened.</string>
+    <string name="data_storage_clear_confirm">Clear %1$s of media from this phone? It is downloaded again when opened.</string>
+    <string name="data_storage_clear">Clear</string>
+    <string name="data_storage_auto">Automatic Media Download</string>
+    <string name="data_storage_auto_footer">Media up to the size limit downloads by itself as it appears in a chat, so it is here offline. The same on Wi-Fi and mobile data.</string>
+    <string name="data_storage_photos">Photos</string>
+    <string name="data_storage_videos">Videos</string>
+    <string name="data_storage_limit">Up To</string>
+</resources>

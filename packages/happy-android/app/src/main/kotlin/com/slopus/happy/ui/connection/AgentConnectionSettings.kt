@@ -158,6 +158,8 @@ class AgentSettingsActions(
     /** The person's own name and picture on this agent. */
     val onProfile: () -> Unit = {},
     val onAppearance: () -> Unit = {},
+    /** Data and Storage: the media kept on this phone; null where nothing is kept. */
+    val onDataStorage: (() -> Unit)? = null,
     /** Disconnects this connection; asked for only after the person confirmed. */
     val onRemove: () -> Unit = {},
     /** Opens this connection's Chief of Staff with [prefix] typed, unsent. */
@@ -226,6 +228,15 @@ fun AgentConnectionSettingsScreen(
                     icon = { SettingsTile(Ionicon.ColorPaletteOutline, SettingsTiles.purple) },
                     onClick = actions.onAppearance,
                 ),
+            ) + listOfNotNull(
+                actions.onDataStorage?.let { open ->
+                    SettingsEntry(
+                        id = DataStorageTags.ROW,
+                        title = stringResource(R.string.data_storage_title),
+                        icon = { SettingsTile(Ionicon.FolderOutline, SettingsTiles.blue) },
+                        onClick = open,
+                    )
+                },
             ),
         ),
         SettingsSection(listOf(supportEntry(about, aboutActions))),
@@ -371,6 +382,7 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
             onBack = { nav.popBackStack() },
             onProfile = { nav.navigate(AgentProfileRoute(connectionId)) },
             onAppearance = { nav.navigate(AgentAppearanceRoute(connectionId)) },
+            onDataStorage = { nav.navigate(AgentDataStorageRoute(connectionId)) },
             onAskChief = { prefix -> nav.openChiefOfStaff(connectionId, prefix) },
             onRemove = {
                 if (switcher != null) switcher.removingFromSettings { removeAgentConnection(graph, connectionId) }

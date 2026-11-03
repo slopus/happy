@@ -1179,6 +1179,27 @@ then shrinks away. The photos are movable content: a message of pictures alone
 comes back captioned "Attached images.", and moves into a bubble without its
 rings starting over.
 
+Presented chat media is kept on the phone for good (`media/`, iOS
+ba7b68346, after Telegram's MediaBox). Each agent connection has a
+`MediaLibrary` beside its kept catalog (`<connection>.media/` in no-backup
+storage), and it goes when the connection does. A file is kept under the
+SHA-256 of its ID (`tool/<agentId>/<toolCallId>/<index>`). While it arrives
+it is a `.part` file with holes plus a `.part.meta` record of the ranges held,
+so a download resumes after a relaunch. `MediaDownloads` reads one file a
+range at a time over the media route with `Range`: 1 MiB chunks for a whole
+file, and a player's range first (256 KiB). At most two automatic downloads
+run at once; a tap or a player goes past them. Three failures in a row, or
+one 4xx, mark the file failed until the next tap. `KeptMedia` connects a
+conversation to its library: photos and small files read themselves as they
+show (`MediaAutoDownload`, Data and Storage), and anything else waits for a
+tap on its ring. Tiles draw `DownloadStatus`: the ring (`MediaRing`, the
+same component as the upload ring) shows an arrow, progress or retry, and a
+recording's ring is its play button. A size badge in the top-left corner
+shows a recording's length over "1.2 / 8.4 MB". A recording streams through
+the library (`KeptVideo`), so what was played is kept. Clear Media
+empties the library. Legacy attachments, artifact galleries and file cards
+don't use the store yet.
+
 ### Image loading
 
 One Coil 3 `ImageLoader` (`ui/components/RemoteImage.kt`) for every

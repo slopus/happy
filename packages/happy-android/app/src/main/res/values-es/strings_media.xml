@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="media_download">Descargar</string>
+    <string name="media_pause_download">Pausar descarga</string>
+    <string name="data_storage_title">Datos y almacenamiento</string>
+    <string name="data_storage_usage">Uso del almacenamiento</string>
+    <string name="data_storage_calculating">Calculando…</string>
+    <string name="data_storage_clear_media">Borrar multimedia</string>
+    <string name="data_storage_clear_footer">Las fotos, los vídeos y los archivos se guardan en este teléfono para siempre, así se abren sin conexión. Borrarlos libera el espacio; lo que se borre se volverá a descargar al abrirlo.</string>
+    <string name="data_storage_clear_confirm">¿Borrar %1$s de multimedia de este teléfono? Se volverá a descargar al abrirlo.</string>
+    <string name="data_storage_clear">Borrar</string>
+    <string name="data_storage_auto">Descarga automática de multimedia</string>
+    <string name="data_storage_auto_footer">Los archivos multimedia hasta el límite de tamaño se descargan solos al aparecer en un chat, así están aquí sin conexión. Igual con Wi-Fi y datos móviles.</string>
+    <string name="data_storage_photos">Fotos</string>
+    <string name="data_storage_videos">Vídeos</string>
+    <string name="data_storage_limit">Hasta</string>
+</resources>

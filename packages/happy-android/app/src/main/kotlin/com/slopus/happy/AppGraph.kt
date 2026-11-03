@@ -108,6 +108,9 @@ class AppGraph(
     /** Animated Avatars, kept on this phone for every account (not cleared with local settings). */
     val liveAvatars = LiveAvatarsSetting(context.getSharedPreferences(LiveAvatarsSetting.PREFS_NAME, Context.MODE_PRIVATE))
 
+    /** Data and Storage's Automatic Media Download, kept on this phone for every account. */
+    val mediaAutoDownload = com.slopus.happy.media.MediaAutoDownloadSetting(context.getSharedPreferences(com.slopus.happy.media.MediaAutoDownloadSetting.PREFS_NAME, Context.MODE_PRIVATE))
+
     private val okHttp = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)

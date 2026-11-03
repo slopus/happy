@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.SavedStateHandle
@@ -332,6 +333,26 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
     val links = remember(nav, computer, conversation.agentId) {
         LinkOpener.agent(context, computer) { url -> nav.navigate(BrowserRoute(route.connectionId, url, conversation.agentId)) }
     }
+    // Presented media is read into the connection's library once and kept (iOS ba7b68346).
+    val keptScope = rememberCoroutineScope()
+    val kept = remember(conversation, session) {
+        session.media?.let { library ->
+            com.slopus.happy.conversation.KeptMedia(
+                library = library,
+                agentId = conversation.agentId,
+                range = { ref, span ->
+                    session.client.send(
+                        "GET",
+                        ConversationApi.mediaPath(conversation.agentId, ref.toolCallId, ref.index),
+                        headers = mapOf("Range" to com.slopus.happy.media.MediaPiece.header(span)),
+                        category = RequestCategory.File,
+                    )
+                },
+                rules = graph.mediaAutoDownload.rules,
+                scope = keptScope,
+            )
+        }
+    }
     // A command's artwork is read and kept as the agent's other pictures are.
     ProvideLinks(links) { androidx.compose.runtime.CompositionLocalProvider(com.slopus.happy.ui.connection.LocalAgentPictures provides session.pictures) {
         ConversationScreen(
@@ -340,7 +361,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
             connection = if (link == LinkState.Offline) linkStatusText(status) ?: stringResource(R.string.status_offline) else null,
             link = link,
             bubbleColor = settings.userMessageBubbleColor,
-            actions = remember(conversation, nav) {
+            actions = remember(conversation, nav, kept) {
                 ConversationScreenActions(
                     onBack = { nav.popBackStack() },
                     onCompose = { nav.composeConversation(route.connectionId) },
@@ -368,6 +389,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                             category = RequestCategory.File,
                         )
                     },
+                    kept = kept,
                     onVisible = conversation::setVisible,
                     onChoiceChange = holder::setChoice,
                     onCommand = conversation::runCommand,

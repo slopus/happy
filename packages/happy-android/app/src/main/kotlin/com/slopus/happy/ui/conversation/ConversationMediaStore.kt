@@ -11,6 +11,7 @@ import com.slopus.happy.artifacts.RangedSource
 import com.slopus.happy.artifacts.VideoProbe
 import com.slopus.happy.connection.TransportResponse
 import com.slopus.happy.conversation.ConversationViewing
+import com.slopus.happy.conversation.KeptMedia
 import com.slopus.happy.conversation.MediaRef
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -31,29 +32,51 @@ class VideoPoster(val frame: Bitmap?, val width: Float?, val height: Float?, val
 class ConversationMediaStore(
     private val load: suspend (MediaRef) -> ByteArray,
     private val rangeOf: (suspend (MediaRef, LongRange) -> TransportResponse)?,
+    /** The connection's media kept on this phone; where there is one, every read goes through it. */
+    val kept: KeptMedia? = null,
 ) {
     private val bytes = object : LruCache<String, ByteArray>(32 * 1024 * 1024) {
         override fun sizeOf(key: String, value: ByteArray) = value.size
     }
     private val posters = LruCache<String, VideoPoster>(48)
 
-    /** A presented picture's bytes; throws when they can't be had. */
+    /**
+     * A presented picture's bytes; throws when they can't be had, and
+     * [KeptMedia.NotKept] where it waits for a tap on its ring.
+     */
     suspend fun bytes(ref: MediaRef): ByteArray {
         bytes.get(ref.key)?.let { return it }
-        return load(ref).also { bytes.put(ref.key, it) }
+        return (kept?.picture(ref) ?: load(ref)).also { bytes.put(ref.key, it) }
     }
 
-    /** A presented recording read a range at a time; null where ranges can't be asked for. */
-    fun video(ref: MediaRef): RangedSource? {
-        val range = rangeOf ?: return null
+    /** A file a person opens or pages to: read whatever the automatic rules say. */
+    suspend fun file(ref: MediaRef): ByteArray {
+        bytes.get(ref.key)?.let { return it }
+        return kept?.file(ref) ?: load(ref)
+    }
+
+    /** A presented recording to play, read a range at a time (the rest reads on behind it where it is kept); null where ranges can't be asked for. */
+    fun video(ref: MediaRef): MediaDataSource? {
         if (ref.item.kind != "video") return null
+        kept?.let {
+            it.play(ref)
+            return it.video(ref)
+        }
+        return stream(ref)
+    }
+
+    /** A recording read as far as a reader asks, nothing more. */
+    private fun stream(ref: MediaRef): MediaDataSource? {
+        kept?.let { return it.video(ref) }
+        val range = rangeOf ?: return null
         return RangedSource(ref.item.size?.toLong() ?: -1) { start, end -> runBlocking { range(ref, start..end) } }
     }
 
     /** A presented recording's first frame (up to 1080 on its long side), size and length; null when none could be read. */
     suspend fun poster(ref: MediaRef): VideoPoster? {
         posters.get(ref.key)?.let { return it }
-        val source = video(ref) ?: return null
+        if (ref.item.kind != "video") return null
+        val source = stream(ref) ?: return null
         val info = withContext(Dispatchers.IO) { VideoProbe.read(source, POSTER_PIXELS) } ?: return null
         return VideoPoster(info.poster, info.size?.width?.toFloat(), info.size?.height?.toFloat(), info.seconds).also { posters.put(ref.key, it) }
     }
@@ -67,7 +90,8 @@ class ConversationMediaStore(
 internal fun rememberConversationMediaStore(
     load: suspend (MediaRef) -> ByteArray,
     range: (suspend (MediaRef, LongRange) -> TransportResponse)?,
-): ConversationMediaStore = remember(load, range) { ConversationMediaStore(load, range) }
+    kept: KeptMedia? = null,
+): ConversationMediaStore = remember(load, range, kept) { ConversationMediaStore(load, range, kept) }
 
 /** A conversation's pages for the viewer: a message's own pictures from the bytes it carries, the rest through [store]. */
 internal class ConversationViewerSource(entries: List<ConversationViewing.Entry>, private val store: ConversationMediaStore) : ViewerSource {
@@ -78,7 +102,7 @@ internal class ConversationViewerSource(entries: List<ConversationViewing.Entry>
     override suspend fun bytes(key: String): ByteArray? {
         val entry = byKey[key] ?: return null
         entry.inline?.let { return decode(it.data) }
-        return entry.presented?.let { store.bytes(it) }
+        return entry.presented?.let { store.file(it) }
     }
 
     override fun video(key: String): MediaDataSource? = byKey[key]?.presented?.let(store::video)

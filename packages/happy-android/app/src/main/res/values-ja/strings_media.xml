@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="media_download">ダウンロード</string>
+    <string name="media_pause_download">ダウンロードを一時停止</string>
+    <string name="data_storage_title">データとストレージ</string>
+    <string name="data_storage_usage">ストレージ使用量</string>
+    <string name="data_storage_calculating">計算中…</string>
+    <string name="data_storage_clear_media">メディアを消去</string>
+    <string name="data_storage_clear_footer">写真、動画、ファイルはこの電話にずっと保存され、ネットワークなしで開けます。消去すると空き容量が増えます。消去したものは開いたときに再びダウンロードされます。</string>
+    <string name="data_storage_clear_confirm">この電話から %1$s のメディアを消去しますか？開いたときに再びダウンロードされます。</string>
+    <string name="data_storage_clear">消去</string>
+    <string name="data_storage_auto">メディアの自動ダウンロード</string>
+    <string name="data_storage_auto_footer">サイズ上限までのメディアはチャットに表示されると自動でダウンロードされ、オフラインでも見られます。Wi-Fi とモバイルデータで共通です。</string>
+    <string name="data_storage_photos">写真</string>
+    <string name="data_storage_videos">動画</string>
+    <string name="data_storage_limit">上限</string>
+</resources>

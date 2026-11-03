@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="media_download">下载</string>
+    <string name="media_pause_download">暂停下载</string>
+    <string name="data_storage_title">数据和存储</string>
+    <string name="data_storage_usage">存储用量</string>
+    <string name="data_storage_calculating">正在计算…</string>
+    <string name="data_storage_clear_media">清除媒体</string>
+    <string name="data_storage_clear_footer">照片、视频和文件会一直保存在这部手机上，没有网络也能打开。清除后可释放空间；清除的内容在打开时会重新下载。</string>
+    <string name="data_storage_clear_confirm">要从这部手机清除 %1$s 的媒体吗？打开时会重新下载。</string>
+    <string name="data_storage_clear">清除</string>
+    <string name="data_storage_auto">自动下载媒体</string>
+    <string name="data_storage_auto_footer">不超过大小上限的媒体在聊天中出现时会自动下载，离线也能查看。Wi-Fi 和移动数据相同。</string>
+    <string name="data_storage_photos">照片</string>
+    <string name="data_storage_videos">视频</string>
+    <string name="data_storage_limit">上限</string>
+</resources>

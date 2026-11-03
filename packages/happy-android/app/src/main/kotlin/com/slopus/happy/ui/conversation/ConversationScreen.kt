@@ -185,6 +185,8 @@ class ConversationScreenActions(
     val loadMedia: suspend (MediaRef) -> ByteArray = { throw IllegalStateException() },
     /** One byte range of a presented item, so a recording streams; null where ranges can't be asked for. */
     val loadMediaRange: (suspend (MediaRef, LongRange) -> TransportResponse)? = null,
+    /** The connection's media kept on this phone, with Telegram's download ring on each tile; null where nothing is kept. */
+    val kept: com.slopus.happy.conversation.KeptMedia? = null,
     val onOpenArtifact: ((com.slopus.happy.conversation.ConversationRow.Artifact) -> Unit)? = null,
     /** The newest message is on screen while the app is up: unread clears. */
     val onVisible: (Boolean) -> Unit = {},
@@ -267,7 +269,7 @@ fun ConversationScreen(
     LaunchedEffect(state.question?.id) { asks.keepOnly(state.question?.id) }
     val pictures = rememberPictureViewer()
     val media = rememberMediaOpener()
-    val store = rememberConversationMediaStore(actions.loadMedia, actions.loadMediaRange)
+    val store = rememberConversationMediaStore(actions.loadMedia, actions.loadMediaRange, actions.kept)
     // The viewer pages through what the transcript holds when it opens.
     val rows by rememberUpdatedState(state.rows)
     val pictureLabel = stringResource(R.string.conversation_picture)
@@ -281,7 +283,7 @@ fun ConversationScreen(
             onOpenArtifact = actions.onOpenArtifact,
             onOpenPicture = { key -> pictures.show(ConversationViewing.entries(rows, pictureLabel, videoLabel), key) },
             loadVideo = store::poster,
-            onOpenMedia = { ref -> media.open(ref.key, ref.item) { actions.loadMedia(ref) } },
+            onOpenMedia = { ref -> media.open(ref.key, ref.item) { store.file(ref) } },
             mediaOpening = { ref -> media.state(ref.key) },
             asks = asks,
             onToggleTurn = { turn ->
@@ -295,6 +297,7 @@ fun ConversationScreen(
             uploads = actions.uploads,
             onRemovePicture = actions.onRemovePicture,
             onOpenTool = actions.onOpenTool,
+            kept = store.kept,
         )
     }
     val atNewest by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }
