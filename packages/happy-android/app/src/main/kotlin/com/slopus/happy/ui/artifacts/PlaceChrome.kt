@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.artifacts
 
+import com.slopus.happy.ui.tablet.BackOrSidebarToggle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -61,9 +62,11 @@ internal fun PlaceScaffold(
                 tag = PlaceTags.BAR,
                 container = colors.surface,
                 navigationIcon = {
-                    IconButton(onClick = onBack, modifier = Modifier.testTag(ConversationScreenTags.BACK)) {
-                        if (closes) Icon(MaterialSymbols.Close, stringResource(R.string.browser_close))
-                        else Icon(MaterialSymbols.ArrowBack, stringResource(R.string.common_back))
+                    BackOrSidebarToggle {
+                        IconButton(onClick = onBack, modifier = Modifier.testTag(ConversationScreenTags.BACK)) {
+                            if (closes) Icon(MaterialSymbols.Close, stringResource(R.string.browser_close))
+                            else Icon(MaterialSymbols.ArrowBack, stringResource(R.string.common_back))
+                        }
                     }
                 },
                 title = {

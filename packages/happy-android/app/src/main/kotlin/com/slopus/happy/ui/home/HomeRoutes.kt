@@ -2,9 +2,6 @@ package com.slopus.happy.ui.home
 
 import com.slopus.happy.ui.page
 import androidx.activity.compose.ReportDrawnWhen
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -13,9 +10,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraphBuilder
@@ -52,7 +47,8 @@ import com.slopus.happy.ui.session.SessionInfoRoute
 import com.slopus.happy.ui.session.SessionInfoScreen
 import com.slopus.happy.ui.settings.ChangelogRoute
 import com.slopus.happy.ui.start.InstallDesktopRoute
-import com.slopus.happy.ui.theme.HappyTheme
+import com.slopus.happy.ui.tablet.MainPanelKey
+import com.slopus.happy.ui.tablet.MainPanelOpener
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
@@ -90,41 +86,61 @@ class HomeNavigation(
 }
 
 /**
- * Set by the tablet shell while its sidebar holds the session list: the home
- * route then leaves the detail blank (MainView.tsx's `isTablet` branch).
+ * Set by the tablet shell while its sidebar holds the account's home: the
+ * home route's page is then the empty main panel (happy-ios docs/IPAD.md).
  */
 val LocalHomeInSidebar = staticCompositionLocalOf { false }
 
 /**
- * A Happy account's home, [HomeRoute]'s while one is open (HappyApp). [onOpenSession]
- * belongs to the chat, [onTroubleshoot] to onboarding.
+ * Where home's taps lead through [go] ([MainPanelOpener]): pushes on the
+ * phone, the main panel's new root from the tablet's sidebar, each named
+ * by what it opens so opening it again goes back to it.
+ */
+fun HomeNavigation.through(go: MainPanelOpener): HomeNavigation = HomeNavigation(
+    onSettings = { go.open(MainPanelKey.SETTINGS, onSettings) },
+    onWhatsNew = { go.open(MainPanelKey.CHANGELOG, onWhatsNew) },
+    onOpenSession = { id -> go.open(MainPanelKey.session(id)) { onOpenSession(id) } },
+    onOpenMachine = { id -> go.open(MainPanelKey.machine(id)) { onOpenMachine(id) } },
+    onTroubleshoot = { go.open(MainPanelKey.TROUBLESHOOT, onTroubleshoot) },
+    onNewSession = { go.open(MainPanelKey.NEW_SESSION, onNewSession) },
+    onDetails = { id -> go.open(MainPanelKey.info(id)) { onDetails(id) } },
+    onCompose = { go.open(null, onCompose) },
+    onMigrate = { go.open(null, onMigrate) },
+)
+
+/**
+ * A Happy account's home, [HomeRoute]'s while one is open (HappyApp), or the
+ * tablet's sidebar. [onOpenSession] belongs to the chat, [onTroubleshoot] to
+ * onboarding; [go] is where what it opens goes.
  */
 @Composable
-fun LegacyHome(graph: AppGraph, nav: NavHostController, onOpenSession: (sessionId: String) -> Unit, onTroubleshoot: () -> Unit) {
-    if (LocalHomeInSidebar.current) {
-        Box(Modifier.fillMaxSize().background(HappyTheme.colors.grouped.background).testTag(HomeTags.TABLET_BLANK))
-    } else {
-        HomeListHost(graph, remember(nav) { HomeNavigation.of(graph, nav, onOpenSession, onTroubleshoot) }, phone = true) { host ->
-            // Fully drawn (cold start's timeToFullDisplay, research/cold-start.md): the rows are read from disk.
-            ReportDrawnWhen { host.state != null }
-            HomeScreen(
-                state = host.state,
-                connectionStatus = host.connectionStatus,
-                grouping = host.grouping,
-                callbacks = host.callbacks,
-                actions = host.actions,
-                update = host.update,
-                offlineContent = { computers, onShowArchived ->
-                    LinkComputerChecklist(graph, computers = computers, onTroubleshoot = host.navigation.onTroubleshoot, onShowArchived = onShowArchived)
-                },
-                accounts = rememberAccountMenu(graph),
-                listState = host.listState,
-                syncing = host.syncing,
-                link = rememberShownLinkState(
-                    accountLinkState(host.connectionStatus == ConnectionStatus.CONNECTED, catchingUp = host.syncing || host.state == null, network = rememberNetworkPath()),
-                ),
-            )
-        }
+fun LegacyHome(
+    graph: AppGraph,
+    nav: NavHostController,
+    onOpenSession: (sessionId: String) -> Unit,
+    onTroubleshoot: () -> Unit,
+    go: MainPanelOpener = MainPanelOpener.Push,
+) {
+    HomeListHost(graph, remember(nav, go) { HomeNavigation.of(graph, nav, onOpenSession, onTroubleshoot).through(go) }, phone = true) { host ->
+        // Fully drawn (cold start's timeToFullDisplay, research/cold-start.md): the rows are read from disk.
+        ReportDrawnWhen { host.state != null }
+        HomeScreen(
+            state = host.state,
+            connectionStatus = host.connectionStatus,
+            grouping = host.grouping,
+            callbacks = host.callbacks,
+            actions = host.actions,
+            update = host.update,
+            offlineContent = { computers, onShowArchived ->
+                LinkComputerChecklist(graph, computers = computers, onTroubleshoot = host.navigation.onTroubleshoot, onShowArchived = onShowArchived)
+            },
+            accounts = rememberAccountMenu(graph),
+            listState = host.listState,
+            syncing = host.syncing,
+            link = rememberShownLinkState(
+                accountLinkState(host.connectionStatus == ConnectionStatus.CONNECTED, catchingUp = host.syncing || host.state == null, network = rememberNetworkPath()),
+            ),
+        )
     }
 }
 

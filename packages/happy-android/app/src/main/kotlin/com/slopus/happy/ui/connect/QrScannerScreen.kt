@@ -10,20 +10,30 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -41,6 +51,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
+import com.slopus.happy.ui.components.HappyDropdownMenu
+import com.slopus.happy.ui.components.HappyMenuItem
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.RoundButton
@@ -56,6 +68,9 @@ object QrScannerTags {
     const val HINT = "qrScanner.hint"
     const val TORCH = "qrScanner.torch"
     const val DENIED = "qrScanner.denied"
+    const val MORE = "qrScanner.more"
+    const val MENU = "qrScanner.menu"
+    fun way(way: ScannerWay) = "qrScanner.way.${way.name}"
 }
 
 /** Our scanner's own design; happy-app shows Google Code Scanner's. */
@@ -78,6 +93,8 @@ object QrScannerSpec {
     val torchIcon = 26.dp
     val torchBottom = 32.dp
     val scrim = Color(0x80000000)
+    val menuMinWidth = 220.dp
+    val menuIcon = 22.dp
     val button = Color.White.copy(alpha = 0.2f)
     val deniedPadding = 32.dp
     val deniedGap = 24.dp
@@ -94,10 +111,19 @@ object QrScannerSpec {
  * 144), at least 120, its 2 white border rounded 24. The hint (15/20, white
  * 80%) is centred 24 below the square, 32 in from the sides. With a flash,
  * a 56 round torch button (white 20%, white 26 bolt, filled while on) sits
- * centred 32 above the navigation bar. Without the camera permission: no
+ * centred 32 above the navigation bar; in a window wider than tall, where
+ * the hint takes the room below, it sits centred 32 in from the end (past
+ * a side navigation bar or cutout) instead. Without the camera permission: no
  * scrim, the message (17/24, white, centred, 32 in) and Open Settings 24
  * under it, centred vertically. [torchOn] is null when the camera has no
  * flash.
+ *
+ * Opened by Add with other [ways] in (iOS's QRScannerViewController
+ * `moreButton`): a ⋮ in the close button's style, mirrored at the top left,
+ * opens them in a drop-down (enter a link, restore a Happy CLI account, the
+ * Happy CLI server with a custom [serverLabel] under it); picking one is
+ * [onWay]. They show with the camera refused too, so there is a way in
+ * without one.
  */
 @Composable
 fun QrScannerScreen(
@@ -106,6 +132,9 @@ fun QrScannerScreen(
     onTorch: () -> Unit,
     onBack: () -> Unit,
     onOpenSettings: () -> Unit,
+    ways: List<ScannerWay> = emptyList(),
+    serverLabel: String? = null,
+    onWay: (ScannerWay) -> Unit = {},
     preview: @Composable () -> Unit,
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color.Black).testTag(QrScannerTags.CAMERA)) {
@@ -154,10 +183,17 @@ fun QrScannerScreen(
                         contentDescription = stringResource(if (torchOn) R.string.scan_torch_off else R.string.scan_torch_on),
                         role = Role.Switch,
                         onClick = onTorch,
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .windowInsetsPadding(WindowInsets.navigationBars)
-                            .padding(bottom = QrScannerSpec.torchBottom)
+                        modifier = if (maxWidth > maxHeight) {
+                            Modifier
+                                .align(Alignment.CenterEnd)
+                                .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.End))
+                                .padding(end = QrScannerSpec.torchBottom)
+                        } else {
+                            Modifier
+                                .align(Alignment.BottomCenter)
+                                .windowInsetsPadding(WindowInsets.navigationBars)
+                                .padding(bottom = QrScannerSpec.torchBottom)
+                        }
                             .size(QrScannerSpec.torchSize)
                             .testTag(QrScannerTags.TORCH),
                     )
@@ -177,6 +213,48 @@ fun QrScannerScreen(
                 .size(QrScannerSpec.closeSize)
                 .testTag(QrScannerTags.CLOSE),
         )
+        if (ways.isNotEmpty()) {
+            Box(
+                Modifier
+                    .align(Alignment.TopStart)
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(top = QrScannerSpec.closeTop, start = QrScannerSpec.closeEnd),
+            ) {
+                var open by remember { mutableStateOf(false) }
+                RoundIconButton(
+                    icon = Ionicon.EllipsisVertical,
+                    iconSize = QrScannerSpec.closeIcon,
+                    contentDescription = stringResource(R.string.start_more),
+                    role = Role.Button,
+                    onClick = { open = true },
+                    modifier = Modifier.size(QrScannerSpec.closeSize).testTag(QrScannerTags.MORE),
+                )
+                ScannerWaysMenu(open, ways, serverLabel, onDismiss = { open = false }, onWay = onWay)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScannerWaysMenu(open: Boolean, ways: List<ScannerWay>, serverLabel: String?, onDismiss: () -> Unit, onWay: (ScannerWay) -> Unit) {
+    HappyDropdownMenu(expanded = open, onDismissRequest = onDismiss, modifier = Modifier.widthIn(min = QrScannerSpec.menuMinWidth).testTag(QrScannerTags.MENU)) {
+        ways.forEach { way ->
+            val (label, icon) = when (way) {
+                ScannerWay.EnterLink -> stringResource(R.string.start_enter_link) to Ionicon.LinkOutline
+                ScannerWay.Restore -> stringResource(R.string.account_kind_restore_cli_account) to Ionicon.KeyOutline
+                ScannerWay.Server -> stringResource(R.string.account_kind_cli_server) to Ionicon.ServerOutline
+            }
+            HappyMenuItem(
+                label = label,
+                supporting = serverLabel.takeIf { way == ScannerWay.Server },
+                leading = { Icon(icon, QrScannerSpec.menuIcon, LocalContentColor.current) },
+                onClick = {
+                    onDismiss()
+                    onWay(way)
+                },
+                modifier = Modifier.testTag(QrScannerTags.way(way)),
+            )
+        }
     }
 }
 

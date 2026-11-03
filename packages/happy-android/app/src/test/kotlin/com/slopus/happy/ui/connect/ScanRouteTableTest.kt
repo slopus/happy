@@ -63,7 +63,7 @@ class ScanRouteTableTest {
     private val notHappyHere = "This QR code isn't a Happy code."
     private val terminalElsewhere = "This code connects a terminal. Scan it from Settings › Scan QR code to authenticate."
     private val accountElsewhere = "This code links a new device. Scan it from Settings › Backup & Restore › Link New Device."
-    private val accountNeedsPhone = "This code adds a phone to an account. Scan it with a phone that's signed in."
+    private val accountNeedsPhone = "This code asks for a Happy CLI account. Add one on this phone first."
     private val invalidUrl = "Invalid authentication URL"
     private val serverInvalid = "This server code can't be used. Scan the code from Happy on your computer again."
     private val serverPathUnsupported = "This server is set up under a web address path, which Happy on Android can't connect to yet."

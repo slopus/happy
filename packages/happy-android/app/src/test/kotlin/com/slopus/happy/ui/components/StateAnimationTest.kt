@@ -41,6 +41,7 @@ class StateAnimationTest {
             StateArt.Make to "8de70508fe1ebdeb",
             StateArt.Ready to "eeabc392ba20328c",
             StateArt.Done to "b14e504ce3467a6b",
+            StateArt.Owl to "95402270d116a310",
         )
         val resources = RuntimeEnvironment.getApplication().resources
         for ((art, hash) in expected) {

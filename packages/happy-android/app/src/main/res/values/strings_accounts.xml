@@ -9,5 +9,4 @@
     <string name="account_menu_unnamed_account">Happy account</string>
     <string name="account_menu_unnamed_agent">Agent</string>
     <string name="account_menu_agent">Agent connection</string>
-    <string name="agent_home_connected">Connected to %1$s</string>
 </resources>

@@ -8,11 +8,7 @@
     <string name="start_connect">Połącz</string>
     <string name="start_more">Więcej</string>
     <string name="start_enter_link">Wpisz link ręcznie</string>
-    <string name="start_restore_cli_account">Przywróć konto Happy CLI</string>
-    <string name="start_cli_server">Serwer Happy CLI</string>
     <string name="start_enter_link_title">Wpisz link</string>
-    <string name="start_enter_link_message">Wklej link z Happy na komputerze lub z Happy Agent.</string>
-    <string name="start_account_code">Ten kod dodaje telefon do konta. Zeskanuj go telefonem, na którym jesteś zalogowany.</string>
     <string name="start_slide_happy_title">Dowolny model. Twój zespół. Jedna aplikacja.</string>
     <string name="start_slide_happy_body">Happy łączy modele, zespoły i moc obliczeniową w jednej aplikacji open source.</string>
     <string name="start_slide_team_title">Natywnie wieloosobowy</string>

@@ -18,8 +18,6 @@ import com.slopus.happy.chat.ToolPermission
 import com.slopus.happy.chat.tools.PermissionChoice
 import com.slopus.happy.data.SessionRecord
 import com.slopus.happy.model.HomeModelFixtures.machine
-import com.slopus.happy.model.HomeModelFixtures.machineMetadata
-import com.slopus.happy.model.collectMachineChoices
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.PHONE_WIDTH
 import com.slopus.happy.ui.assertBox
@@ -137,20 +135,6 @@ class TabletLayoutTest {
         rule.onAllNodesWithTag(ChatScreenTags.AVATAR, useUnmergedTree = true).assertCountEquals(0)
         val bar = rule.node(HeaderTags.BAR).bounds
         assertBox("bar", bar, centredLeft, bar.top, 800.dp, 64.dp)
-    }
-
-    @Test
-    fun emptySessionsStates() {
-        val studio = machine("m1", machineMetadata { put("displayName", "Studio") })
-        show { EmptySessionsTablet(collectMachineChoices(listOf(studio)), onNewSession = {}, onTroubleshoot = {}) }
-        rule.node(EmptySessionsTabletTags.BUTTON).assertExists()
-        val icon = rule.node(EmptySessionsTabletTags.ICON).bounds
-        val title = rule.node(EmptySessionsTabletTags.TITLE).bounds
-        assertDp("64 glyph", 64, icon.bottom - icon.top)
-        assertDp("title 24 under the glyph", icon.bottom + 24.dp, title.top)
-        val description = rule.node(EmptySessionsTabletTags.DESCRIPTION).bounds
-        assertDp("description 8 under the title", title.bottom + 8.dp, description.top)
-        assertDp("button 24 under the description", description.bottom + 24.dp, rule.node(EmptySessionsTabletTags.BUTTON).bounds.top)
     }
 
     // On a phone the same measured window changes nothing.

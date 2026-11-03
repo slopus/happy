@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.home
 
+import com.slopus.happy.ui.tablet.BackOrSidebarToggle
 import com.slopus.happy.text.words
 import android.content.res.Resources
 import androidx.compose.foundation.background
@@ -316,7 +317,7 @@ private fun NewSessionHeader(onBack: () -> Unit) {
     val colors = HappyTheme.colors
     Header(
         alignment = TitleAlignment.Start,
-        left = {
+        left = { BackOrSidebarToggle(colors.text) {
             val back = stringResource(R.string.common_back)
             Box(
                 modifier = Modifier
@@ -328,7 +329,7 @@ private fun NewSessionHeader(onBack: () -> Unit) {
             ) {
                 Icon(Ionicon.ChevronBack, 24.dp, colors.text)
             }
-        },
+        } },
         titleContent = {
             Text(
                 stringResource(R.string.new_session_title),

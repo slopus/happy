@@ -25,7 +25,7 @@
     <string name="scan_not_happy_code">Questo codice QR non è di Happy.</string>
     <string name="scan_terminal_code_elsewhere">Questo codice collega un terminale. Scansionalo da Impostazioni › Scansiona codice QR per autenticarti.</string>
     <string name="scan_account_code_elsewhere">Questo codice collega un nuovo dispositivo. Scansionalo da Impostazioni › Backup e ripristino › Collega nuovo dispositivo.</string>
-    <string name="scan_pairing_unavailable">Questo codice collega un agente. Usa Aggiungi nel menu account della home.</string>
+    <string name="scan_pairing_unavailable">Questo codice collega Happy Agent. Usa Aggiungi nel menu account della home.</string>
     <string name="scan_close">Chiudi</string>
     <string name="scan_hint">Inquadra il codice QR con la fotocamera</string>
     <string name="scan_open_settings">Apri impostazioni</string>

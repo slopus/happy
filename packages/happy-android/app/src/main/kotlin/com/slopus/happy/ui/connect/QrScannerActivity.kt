@@ -19,6 +19,13 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.compose.CameraXViewfinder
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.display.DisplayManager
+import android.os.Handler
+import android.os.Looper
+import androidx.annotation.OptIn
+import androidx.camera.camera2.interop.Camera2CameraInfo
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
@@ -43,6 +50,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.ProvideWindowLayout
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.ThemePreference
@@ -65,7 +73,7 @@ class QrScannerActivity : ComponentActivity() {
         setContent {
             HappyTheme(preference = ThemePreference.Dark) {
                 ProvideWindowLayout {
-                    QrScannerRoute(onResult = ::finishWith)
+                    QrScannerRoute(scan = Contract.request(intent), onResult = ::finishWith)
                 }
             }
         }
@@ -77,18 +85,28 @@ class QrScannerActivity : ComponentActivity() {
             is ScanResult.Scanned -> setResult(RESULT_OK, Intent().putExtra(EXTRA_VALUE, result.value))
             is ScanResult.Failed -> setResult(RESULT_FAILED, Intent().putExtra(EXTRA_FAILURE, result.reason.name))
             ScanResult.Cancelled -> setResult(RESULT_CANCELED)
+            is ScanResult.Chose -> setResult(RESULT_CHOSE, Intent().putExtra(EXTRA_WAY, result.way.name))
         }
         finish()
     }
 
     /** Starts the scanner; the result is what it read, a cancel, or why it couldn't. */
-    object Contract : ActivityResultContract<Unit, ScanResult>() {
-        override fun createIntent(context: Context, input: Unit): Intent = Intent(context, QrScannerActivity::class.java)
+    object Contract : ActivityResultContract<ScanRequest, ScanResult>() {
+        override fun createIntent(context: Context, input: ScanRequest): Intent = Intent(context, QrScannerActivity::class.java)
+            .putExtra(EXTRA_WAYS, input.ways.map { it.name }.toTypedArray())
+            .putExtra(EXTRA_SERVER_LABEL, input.serverLabel)
+
+        internal fun request(intent: Intent?) = ScanRequest(
+            ways = intent?.getStringArrayExtra(EXTRA_WAYS).orEmpty().mapNotNull { name -> ScannerWay.entries.firstOrNull { it.name == name } },
+            serverLabel = intent?.getStringExtra(EXTRA_SERVER_LABEL),
+        )
 
         override fun parseResult(resultCode: Int, intent: Intent?): ScanResult {
             val value = intent?.getStringExtra(EXTRA_VALUE)
             return when {
                 resultCode == RESULT_OK && value != null -> ScanResult.Scanned(value)
+                resultCode == RESULT_CHOSE -> ScannerWay.entries.firstOrNull { it.name == intent?.getStringExtra(EXTRA_WAY) }
+                    ?.let(ScanResult::Chose) ?: ScanResult.Cancelled
                 resultCode == RESULT_FAILED -> ScanResult.Failed(
                     ScanFailure.entries.firstOrNull { it.name == intent?.getStringExtra(EXTRA_FAILURE) } ?: ScanFailure.CameraFailed,
                 )
@@ -100,7 +118,11 @@ class QrScannerActivity : ComponentActivity() {
     internal companion object {
         const val EXTRA_VALUE = "value"
         const val EXTRA_FAILURE = "failure"
+        const val EXTRA_WAYS = "ways"
+        const val EXTRA_SERVER_LABEL = "serverLabel"
+        const val EXTRA_WAY = "way"
         const val RESULT_FAILED = Activity.RESULT_FIRST_USER
+        const val RESULT_CHOSE = Activity.RESULT_FIRST_USER + 1
     }
 }
 
@@ -110,7 +132,7 @@ class QrScannerActivity : ComponentActivity() {
  * the camera.
  */
 @Composable
-internal fun QrScannerRoute(onResult: (ScanResult) -> Unit) {
+internal fun QrScannerRoute(scan: ScanRequest = ScanRequest(), onResult: (ScanResult) -> Unit) {
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
     val granted = { ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED }
@@ -130,7 +152,9 @@ internal fun QrScannerRoute(onResult: (ScanResult) -> Unit) {
     var camera by remember { mutableStateOf<Camera?>(null) }
     var torchOn by remember { mutableStateOf(false) }
     if (access == CameraAccess.Granted) {
+        val window = LocalWindowLayout.current
         CameraBinding(
+            fill = ScanFocus.fill(viewfinderSide(window.width, window.height).value, window.width.value, window.height.value),
             onSurfaceRequest = { surfaceRequest = it },
             onCamera = { camera = it },
             onDecoded = { text ->
@@ -148,6 +172,9 @@ internal fun QrScannerRoute(onResult: (ScanResult) -> Unit) {
             camera?.cameraControl?.enableTorch(torchOn)
         },
         onBack = { onResult(ScanResult.Cancelled) },
+        ways = scan.ways,
+        serverLabel = scan.serverLabel,
+        onWay = { onResult(ScanResult.Chose(it)) },
         onOpenSettings = {
             context.startActivity(
                 Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)),
@@ -161,9 +188,16 @@ internal fun QrScannerRoute(onResult: (ScanResult) -> Unit) {
 /**
  * Binds a preview and a [QrAnalyzer] to the back camera (else the front)
  * for as long as it is composed, following the activity's lifecycle.
+ *
+ * As iOS's scanner since ff88dfcd6: the picture turns with the device (the
+ * activity handles rotation itself, so the preview's target rotation
+ * follows the display, a turn of 180° included, which no configuration
+ * change reports), and a camera that can't focus as near as a code
+ * filling the viewfinder ([fill]) is zoomed until it can ([ScanFocus]).
  */
 @Composable
 private fun CameraBinding(
+    fill: Float,
     onSurfaceRequest: (SurfaceRequest) -> Unit,
     onCamera: (Camera?) -> Unit,
     onDecoded: (String) -> Unit,
@@ -189,7 +223,8 @@ private fun CameraBinding(
             currentOnFailed(ScanFailure.NoCamera)
             return@LaunchedEffect
         }
-        val preview = Preview.Builder().build().apply { setSurfaceProvider(onSurfaceRequest) }
+        val display = { ContextCompat.getDisplayOrDefault(context) }
+        val preview = Preview.Builder().setTargetRotation(display().rotation).build().apply { setSurfaceProvider(onSurfaceRequest) }
         val analysis = ImageAnalysis.Builder()
             .setResolutionSelector(
                 ResolutionSelector.Builder()
@@ -203,9 +238,22 @@ private fun CameraBinding(
         val executor = Executors.newSingleThreadExecutor()
         val main = ContextCompat.getMainExecutor(context)
         analysis.setAnalyzer(executor, QrAnalyzer { text -> main.execute { currentOnDecoded(text) } })
+        val displays = context.getSystemService(DisplayManager::class.java)
+        val turned = object : DisplayManager.DisplayListener {
+            override fun onDisplayAdded(displayId: Int) = Unit
+            override fun onDisplayRemoved(displayId: Int) = Unit
+            override fun onDisplayChanged(displayId: Int) {
+                val rotation = display().rotation
+                preview.targetRotation = rotation
+                analysis.targetRotation = rotation
+            }
+        }
+        displays?.registerDisplayListener(turned, Handler(Looper.getMainLooper()))
         try {
             try {
-                onCamera(provider.bindToLifecycle(lifecycleOwner, selector, preview, analysis))
+                val camera = provider.bindToLifecycle(lifecycleOwner, selector, preview, analysis)
+                onCamera(camera)
+                focusZoom(camera, fill)?.let { camera.cameraControl.setZoomRatio(it) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -215,12 +263,30 @@ private fun CameraBinding(
             }
             awaitCancellation()
         } finally {
+            displays?.unregisterDisplayListener(turned)
             onCamera(null)
             analysis.clearAnalyzer()
             provider.unbind(preview, analysis)
             executor.shutdown()
         }
     }
+}
+
+/** The zoom [ScanFocus] asks of [camera] for a code filling [fill] of the picture, held to what it can do; null at 1. */
+@OptIn(ExperimentalCamera2Interop::class)
+private fun focusZoom(camera: Camera, fill: Float): Float? {
+    val info = Camera2CameraInfo.from(camera.cameraInfo)
+    val sensor = info.getCameraCharacteristic(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE)
+    val focal = info.getCameraCharacteristic(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)?.firstOrNull()
+    val zoom = ScanFocus.zoom(
+        minimumFocusMm = ScanFocus.minimumFocusMm(info.getCameraCharacteristic(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE)),
+        fieldOfView = if (sensor == null || focal == null) 0f else ScanFocus.fieldOfView(maxOf(sensor.width, sensor.height), focal),
+        fill = fill,
+    )
+    val range = camera.cameraInfo.zoomState.value
+    Log.d(TAG, "focus zoom $zoom (fill $fill)")
+    if (zoom <= 1f) return null
+    return range?.let { zoom.coerceIn(it.minZoomRatio, it.maxZoomRatio) } ?: zoom
 }
 
 private const val TAG = "QrScanner"

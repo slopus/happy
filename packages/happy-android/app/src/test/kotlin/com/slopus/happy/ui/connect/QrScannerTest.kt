@@ -46,7 +46,7 @@ class QrScannerTest {
     fun aPhoneWithoutACameraFailsAtOnce() {
         val context = ApplicationProvider.getApplicationContext<android.app.Application>()
         shadowOf(context.packageManager).setSystemFeature(PackageManager.FEATURE_CAMERA_ANY, false)
-        val result = runBlocking { CameraQrScanner(context).scan() }
+        val result = runBlocking { CameraQrScanner(context).scan(ScanRequest()) }
         assertEquals(ScanResult.Failed(ScanFailure.NoCamera), result)
     }
 
@@ -66,6 +66,42 @@ class QrScannerTest {
         }
         // A failure the activity didn't name is the camera's.
         assertEquals(ScanResult.Failed(ScanFailure.CameraFailed), contract.parseResult(QrScannerActivity.RESULT_FAILED, null))
+        for (way in ScannerWay.entries) {
+            assertEquals(ScanResult.Chose(way), contract.parseResult(QrScannerActivity.RESULT_CHOSE, Intent().putExtra(QrScannerActivity.EXTRA_WAY, way.name)))
+        }
+        // The request goes over in the intent and comes back whole.
+        val context = ApplicationProvider.getApplicationContext<android.app.Application>()
+        val request = ScanRequest(listOf(ScannerWay.EnterLink, ScannerWay.Server), "happy.example.com")
+        assertEquals(request, QrScannerActivity.Contract.request(contract.createIntent(context, request)))
+        assertEquals(ScanRequest(), QrScannerActivity.Contract.request(contract.createIntent(context, ScanRequest())))
+    }
+
+    /** iOS's scanner `moreButton`: Add's other ways in under a ⋮ mirrored from the close button, each one picked once. */
+    @Test
+    fun theOtherWaysInAreUnderTheMoreButton() {
+        val picked = mutableListOf<ScannerWay>()
+        rule.setHappyContent(dark = true) {
+            QrScannerScreen(
+                CameraAccess.Granted, torchOn = null, onTorch = {}, onBack = {}, onOpenSettings = {},
+                ways = ScannerWay.entries, serverLabel = "happy.example.com", onWay = { picked += it },
+            ) {}
+        }
+        assertBox("more", rule.node(QrScannerTags.MORE).bounds, 16.dp, 10.dp, 44.dp, 44.dp)
+        rule.node(QrScannerTags.MORE).performClick()
+        rule.onNodeWithText("Enter link manually").assertExists()
+        rule.onNodeWithText("Restore Happy CLI account").assertExists()
+        rule.onNodeWithText("happy.example.com").assertExists()
+        rule.onNodeWithText("Happy CLI server").performClick()
+        assertEquals(listOf(ScannerWay.Server), picked)
+        rule.onNodeWithText("Restore Happy CLI account").assertDoesNotExist()
+    }
+
+    @Test
+    fun withoutWaysThereIsNoMoreButton() {
+        rule.setHappyContent(dark = true) {
+            QrScannerScreen(CameraAccess.Granted, torchOn = null, onTorch = {}, onBack = {}, onOpenSettings = {}) {}
+        }
+        rule.node(QrScannerTags.MORE).assertDoesNotExist()
     }
 
     /** Refusing the camera leaves the scanner open, saying why, with the way to settings; back cancels. */
@@ -125,6 +161,18 @@ class QrScannerTest {
         assertBox("torch", rule.node(QrScannerTags.TORCH).bounds, 177.5.dp, 803.dp, 56.dp, 56.dp)
         rule.onNodeWithContentDescription("Turn on flashlight").performClick()
         assertEquals(1, torches)
+    }
+
+    @Test
+    @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
+    fun onItsSideTheTorchMovesBesideTheSquareOutOfTheHintsWay() {
+        rule.setHappyContent(dark = true) {
+            QrScannerScreen(CameraAccess.Granted, torchOn = false, onTorch = {}, onBack = {}, onOpenSettings = {}) {}
+        }
+        assertBox("viewfinder", rule.node(QrScannerTags.VIEWFINDER).bounds, 360.dp, 120.dp, 171.dp, 171.dp)
+        assertBox("torch", rule.node(QrScannerTags.TORCH).bounds, 803.dp, 177.5.dp, 56.dp, 56.dp)
+        val hint = rule.node(QrScannerTags.HINT).bounds
+        assertTrue("the hint ends at ${hint.bottom}, off the window", hint.bottom <= 411.dp)
     }
 
     @Test

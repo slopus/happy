@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The app shell: account kinds, Add, the scanner, the tablet shell and search.
+  Account kinds are iOS's (Strings/AccountKinds.swift, NativeTranslations.swift): Happy Agent and
+  Happy CLI, never "legacy". Shared with other areas; reuse these keys.
+-->
+<resources>
+    <string name="account_kind_add_cli_account">Добавить аккаунт Happy CLI</string>
+    <string name="account_kind_connect_agent">Подключить Happy Agent</string>
+    <string name="account_kind_restore_cli_account">Восстановить аккаунт Happy CLI</string>
+    <string name="account_kind_cli_server">Сервер Happy CLI</string>
+    <string name="account_kind_disconnect_agent_title">Отключить Happy Agent?</string>
+    <string name="account_kind_sign_out_cli_title">Выйти из Happy CLI?</string>
+    <string name="account_kind_device_needs_account_title">Нет аккаунта, которым можно поделиться</string>
+    <string name="account_kind_device_needs_cli_account">Этому коду нужен аккаунт Happy CLI. Сначала добавьте его на этом телефоне.</string>
+    <string name="account_kind_account_not_shareable">Этот аккаунт создан для вашего компьютера, и его ключ никогда не покидает этот телефон. С другим устройством можно связать только аккаунт Happy CLI, у которого есть секретный ключ для резервной копии.</string>
+    <string name="account_kind_enter_link_message">Вставьте ссылку из Happy CLI на компьютере или из Happy Agent.</string>
+    <string name="account_kind_agent_unreachable">Не удаётся связаться с %1$s.\nПроверьте подключение к Happy Agent и обновите страницу.</string>
+    <string name="account_kind_restore_another_cli_account">Восстановить аккаунт Happy CLI</string>
+    <string name="account_kind_restore_another_footer">Войдите в другой аккаунт Happy CLI с помощью его секретного ключа или телефона, на котором он есть. Этот аккаунт останется здесь.</string>
+    <string name="tablet_hide_sidebar">Скрыть боковую панель</string>
+    <string name="tablet_show_sidebar">Показать боковую панель</string>
+</resources>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The app shell: account kinds, Add, the scanner, the tablet shell and search.
+  Account kinds are iOS's (Strings/AccountKinds.swift, NativeTranslations.swift): Happy Agent and
+  Happy CLI, never "legacy". Shared with other areas; reuse these keys.
+-->
+<resources>
+    <string name="account_kind_add_cli_account">添加 Happy CLI 账户</string>
+    <string name="account_kind_connect_agent">连接 Happy Agent</string>
+    <string name="account_kind_restore_cli_account">恢复 Happy CLI 账户</string>
+    <string name="account_kind_cli_server">Happy CLI 服务器</string>
+    <string name="account_kind_disconnect_agent_title">断开 Happy Agent？</string>
+    <string name="account_kind_sign_out_cli_title">登出 Happy CLI？</string>
+    <string name="account_kind_device_needs_account_title">没有可共享的账户</string>
+    <string name="account_kind_device_needs_cli_account">此代码需要 Happy CLI 账户。请先在这部手机上添加一个。</string>
+    <string name="account_kind_account_not_shareable">此账户是为你的电脑创建的，它的密钥从不离开这部手机。只有带可备份密钥的 Happy CLI 账户才能关联到其他设备。</string>
+    <string name="account_kind_enter_link_message">粘贴电脑上 Happy CLI 或 Happy Agent 给出的链接。</string>
+    <string name="account_kind_agent_unreachable">无法连接 %1$s。\n请检查与 Happy Agent 的连接，然后重新加载。</string>
+    <string name="account_kind_restore_another_cli_account">恢复 Happy CLI 账户</string>
+    <string name="account_kind_restore_another_footer">用另一个 Happy CLI 账户的密钥，或用已登录该账户的手机登录它。此账户会保留在这里。</string>
+    <string name="tablet_hide_sidebar">隐藏边栏</string>
+    <string name="tablet_show_sidebar">显示边栏</string>
+</resources>

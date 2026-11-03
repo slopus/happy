@@ -23,7 +23,7 @@
     <string name="scan_not_happy_code">この QR コードは Happy のものではありません。</string>
     <string name="scan_terminal_code_elsewhere">このコードはターミナルを接続します。「設定 › QRコードをスキャンして認証」からスキャンしてください。</string>
     <string name="scan_account_code_elsewhere">このコードは新しいデバイスをリンクします。「設定 › バックアップと復元 › 新しいデバイスをリンク」からスキャンしてください。</string>
-    <string name="scan_pairing_unavailable">このコードはエージェントを接続します。ホームのアカウントメニューにある「追加」を使ってください。</string>
+    <string name="scan_pairing_unavailable">このコードは Happy Agent を接続します。ホームのアカウントメニューにある「追加」を使ってください。</string>
     <string name="scan_close">閉じる</string>
     <string name="scan_hint">カメラを QR コードに向けてください</string>
     <string name="scan_open_settings">設定を開く</string>

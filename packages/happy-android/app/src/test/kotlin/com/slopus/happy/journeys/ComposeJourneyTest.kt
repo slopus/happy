@@ -28,9 +28,9 @@ import com.slopus.happy.ui.chat.MessageTags
 import com.slopus.happy.ui.chat.NewWorkTags
 import com.slopus.happy.ui.home.HomeDockTags
 import com.slopus.happy.ui.tablet.TabletShellTags
-import com.slopus.happy.ui.tablet.TabletSidebarTags
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
+import com.slopus.happy.ui.tablet.SidebarTags
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -218,18 +218,18 @@ class ComposeJourneyTest {
         val graph = journey.graph()
         journey.signIn(graph)
         rule.setContent { HappyApp(graph) }
-        rule.waitFor(TabletSidebarTags.NEW_SESSION)
+        rule.waitFor(SidebarTags.COMPOSE)
 
-        // The sidebar's New session: the empty chat, beside the sidebar, not the new-session screen.
-        rule.node(TabletSidebarTags.NEW_SESSION).performClick()
+        // The sidebar's New session: the empty chat as the main panel's root, not the new-session screen.
+        rule.node(SidebarTags.COMPOSE).performClick()
         rule.waitFor(ComposeChatTags.TARGET)
         rule.node(HomeDockTags.INPUT).assertDoesNotExist()
         val detail = rule.node(TabletShellTags.DETAIL).bounds
         val chat = rule.node(ChatScreenTags.SCREEN).bounds
         assertEquals(360f, detail.left.value, 0.5f)
         assertEquals(detail.left.value, chat.left.value, 0.5f)
-        // Pressed again, the empty chat already there stays.
-        rule.node(TabletSidebarTags.NEW_SESSION).performClick()
+        // Pressed again, an empty chat takes its place: still one.
+        rule.node(SidebarTags.COMPOSE).performClick()
         rule.waitForIdle()
         rule.onAllNodes(hasTestTag(ChatScreenTags.SCREEN), useUnmergedTree = true).assertCountEquals(1)
 

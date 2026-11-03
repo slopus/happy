@@ -50,6 +50,12 @@ class ConnectFlow internal constructor(
     internal var okTitle = ""
     internal var messages = ScanMessages()
     internal var scanner: QrScanner = QrScanner { ScanResult.Cancelled }
+
+    /** What the scanner's ⋮ offers (Add's other ways in); empty, no ⋮. */
+    internal var request = ScanRequest()
+
+    /** Restore or the server, picked from the scanner's ⋮; a pasted link is the flow's own prompt. */
+    internal var onWay: (ScannerWay) -> Unit = {}
     internal var connectAgent: ((String) -> Unit)? = null
 
     /**
@@ -77,8 +83,9 @@ class ConnectFlow internal constructor(
         scanning = true
         scope.launch {
             try {
-                when (val result = scanner.scan()) {
+                when (val result = scanner.scan(request)) {
                     ScanResult.Cancelled -> Unit
+                    is ScanResult.Chose -> if (result.way == ScannerWay.EnterLink) enteringLink = true else onWay(result.way)
                     is ScanResult.Failed -> onUnavailable?.invoke() ?: run { alert = errorAlert(messages.failure(result.reason)) }
                     is ScanResult.Scanned -> route(result.value)
                 }
@@ -101,7 +108,7 @@ class ConnectFlow internal constructor(
                 if (kind == ConnectKind.Terminal || kind == ConnectKind.Add) process(code.url) else alert = errorAlert(messages.terminalElsewhere)
             is HappyCode.Account -> when (kind) {
                 ConnectKind.Account -> process(code.url)
-                ConnectKind.Add -> alert = errorAlert(messages.accountSignedOut)
+                ConnectKind.Add -> alert = Alert(messages.accountSignedOutTitle, messages.accountSignedOut, listOf(AlertButton(okTitle)))
                 else -> alert = errorAlert(messages.accountElsewhere)
             }
             is HappyCode.Server -> {
@@ -166,6 +173,7 @@ internal data class ScanMessages(
     val terminalElsewhere: String = "",
     val accountElsewhere: String = "",
     val pairingUnavailable: String = "",
+    val accountSignedOutTitle: String = "",
     val accountSignedOut: String = "",
     val invalidUrl: String = "",
     val serverInvalid: String = "",
@@ -287,7 +295,8 @@ private fun rememberConnectFlow(
         terminalElsewhere = stringResource(R.string.scan_terminal_code_elsewhere),
         accountElsewhere = stringResource(R.string.scan_account_code_elsewhere),
         pairingUnavailable = stringResource(R.string.scan_pairing_unavailable),
-        accountSignedOut = stringResource(R.string.start_account_code),
+        accountSignedOutTitle = stringResource(R.string.account_kind_device_needs_account_title),
+        accountSignedOut = stringResource(R.string.account_kind_device_needs_cli_account),
         invalidUrl = invalid,
         serverInvalid = stringResource(R.string.team_server_code_invalid),
         serverAtPath = stringResource(R.string.team_server_code_path),
@@ -327,29 +336,43 @@ private fun rememberConnectFlow(
  * approves the terminal with it in one step; the account is kept only if
  * the approval went through, and it opens. A pairing code pairs an agent.
  * Without a scanner, or from the first screen's menu, it asks for the link
- * instead ([ConnectFlow.enteringLink]). A failure is an alert.
+ * instead ([ConnectFlow.enteringLink]). A failure is an alert. The
+ * scanner's ⋮ has the other ways in (iOS's `AccountAdding.otherWays`): the
+ * link, [onRestore] and [onServer], whose custom host [serverLabel] names.
  */
 @Composable
-fun rememberAddFlow(graph: AppGraph): ConnectFlow = rememberAddConnect(
+fun rememberAddFlow(graph: AppGraph, onRestore: () -> Unit, onServer: () -> Unit, serverLabel: String?): ConnectFlow = rememberAddConnect(
     approve = { url ->
         graph.auth.createAccount { account -> approveTerminal(graph.authApi, account.credentials, account.encryption, url) }
     },
+    onRestore = onRestore,
+    onServer = onServer,
+    serverLabel = serverLabel,
 )
 
 /** [rememberAddFlow] with the approval passed in, for tests. */
 @Composable
-fun rememberAddConnect(approve: suspend (url: String) -> Unit): ConnectFlow {
+fun rememberAddConnect(
+    approve: suspend (url: String) -> Unit,
+    onRestore: () -> Unit = {},
+    onServer: () -> Unit = {},
+    serverLabel: String? = null,
+): ConnectFlow {
     val haptics = LocalHapticFeedback.current
     val failed = stringResource(R.string.modals_failed_to_connect_terminal)
     val flow = rememberConnectFlow(ConnectKind.Add, approve) { flow, error ->
         if (error == null) haptics.performHapticFeedback(HapticFeedbackType.Confirm) else flow.alert = flow.errorAlert(failed)
     }
     flow.onUnavailable = { flow.enteringLink = true }
+    val currentOnRestore by rememberUpdatedState(onRestore)
+    val currentOnServer by rememberUpdatedState(onServer)
+    flow.request = ScanRequest(listOf(ScannerWay.EnterLink, ScannerWay.Restore, ScannerWay.Server), serverLabel)
+    flow.onWay = { way -> if (way == ScannerWay.Server) currentOnServer() else currentOnRestore() }
     if (flow.enteringLink) {
         PromptModal(
             prompt = Prompt(
                 title = stringResource(R.string.start_enter_link_title),
-                message = stringResource(R.string.start_enter_link_message),
+                message = stringResource(R.string.account_kind_enter_link_message),
                 placeholder = "happy://…",
                 confirmText = stringResource(R.string.start_connect),
                 onResult = { url -> url?.trim()?.takeIf { it.isNotEmpty() }?.let(flow::connectWithUrl) },

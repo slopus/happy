@@ -100,7 +100,7 @@ class HomeListAcrossTheBreakpointTest {
     @Config(qualifiers = "w1280dp-h800dp-xhdpi")
     fun theSidebarsListRemembersTheSamePlaceTheSameWay() {
         signIn(sessions = 40)
-        rule.waitUntilAtLeastOneExists(hasTestTag(TabletSidebarTags.SIDEBAR), 5_000)
+        rule.waitUntilAtLeastOneExists(hasTestTag(SidebarTags.SIDEBAR), 5_000)
         val place = scrollAndReadPlace()
         assertTrue("the sidebar remembered where it was scrolled to: $place", (place?.first ?: 0) > 0)
     }

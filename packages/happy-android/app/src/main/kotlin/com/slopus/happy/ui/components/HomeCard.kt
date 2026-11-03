@@ -12,6 +12,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
@@ -63,6 +65,8 @@ fun HomeCardRow(
     dividerStart: Dp,
     modifier: Modifier = Modifier,
     tag: String? = null,
+    /** The row of what the tablet's main panel shows: its ground is the selected one. */
+    selected: Boolean = false,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val colors = HappyTheme.colors
@@ -78,9 +82,10 @@ fun HomeCardRow(
             .contentMaxWidth(LocalWindowLayout.current)
             .height(height)
             .then(if (tag != null) Modifier.testTag(tag) else Modifier)
+            .then(if (selected) Modifier.semantics { this.selected = true } else Modifier)
             .padding(horizontal = HomeCardSpec.inset),
     ) {
-        Box(Modifier.fillMaxSize().clip(shape).background(colors.surfaceHigh)) {
+        Box(Modifier.fillMaxSize().clip(shape).background(if (selected) colors.surfaceSelected else colors.surfaceHigh)) {
             content()
             if (place.separated) {
                 Box(

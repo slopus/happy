@@ -9,5 +9,4 @@
     <string name="account_menu_unnamed_account">Happy 帳戶</string>
     <string name="account_menu_unnamed_agent">代理程式</string>
     <string name="account_menu_agent">代理程式連線</string>
-    <string name="agent_home_connected">已連線到 %1$s</string>
 </resources>

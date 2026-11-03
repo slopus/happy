@@ -257,9 +257,9 @@ internal fun StartMenu(
         }
         item(stringResource(R.string.start_enter_link), Ionicon.LinkOutline, StartTags.ENTER_LINK, onClick = onEnterLink)
         // Restoring and the server are Happy CLI's alone; beside Happy Agent's codes they say so.
-        item(stringResource(R.string.start_restore_cli_account), Ionicon.KeyOutline, StartTags.RESTORE, onClick = onRestore)
+        item(stringResource(R.string.account_kind_restore_cli_account), Ionicon.KeyOutline, StartTags.RESTORE, onClick = onRestore)
         item(
-            stringResource(R.string.start_cli_server),
+            stringResource(R.string.account_kind_cli_server),
             Ionicon.ServerOutline,
             StartTags.SERVER,
             detail = customServerLabel ?: stringResource(R.string.onboarding_settings_server_default),

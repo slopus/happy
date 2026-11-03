@@ -62,6 +62,9 @@ enum class StateArt(@RawRes val raw: Int) {
 
     /** The absence is the good outcome; nothing left to do (sparkles, `b14e504c…`). */
     Done(R.raw.state_sparkles),
+
+    /** Nothing open yet: the tablet's main panel beside the sidebar (owl, `95402270…`; happy-ios 75715e1c0). */
+    Owl(R.raw.state_owl),
 }
 
 object StateAnimationTags {

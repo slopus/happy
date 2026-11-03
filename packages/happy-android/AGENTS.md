@@ -36,6 +36,10 @@ architectures comparable (local store, delta sync, crypto layer).
   concept and stays). Call the protocol Happy Protocol V2 in strings, docs
   and prose; never "direct" or "direct mode", except where the wire itself
   says it (`happy://direct?`, endpoints, JSON keys).
+- **Naming on screen** (iOS's 64edb6a34): the two kinds of account are
+  Happy Agent (an agent connection) and Happy CLI (a relay Happy account)
+  wherever the person reads them; "legacy" is never shown. The words are
+  `account_kind_*` in `strings_shell.xml`, iOS's own translations.
 - **Naming in code:** current code has no prefix; old relay code that
   clashes is `Legacy*`; never `V2`, `New`, `Direct` or feature prefixes.
   `Legacy*` = used only by the legacy relay protocol or its UI. Shared
@@ -99,10 +103,33 @@ architectures comparable (local store, delta sync, crypto layer).
    column, as iOS's does. The compose FAB stays 16 from the column's edge,
    as iOS's dock does. Dialogs take
    `ContentTokens.dialogMaxWidth`, sheets `sheetMaxWidth`.
+   **The window's unsafe sides**
+   (iOS's b73b1accd): a phone on its side has the cutout on one side and
+   may have the navigation bar on the other; `WindowLayout.safeLeft` and
+   `safeRight` (system bars and cutout, never the keyboard) are the least
+   room `contentMaxWidth` keeps there, so lists, cards and bars stay in
+   the safe band while their grounds run edge to edge. Beside the tablet
+   sidebar the main panel's sidebar side is safe.
    `ui/layout/FoldableLayoutTest` checks screens at 411, 750, 832 and 1280;
-   `TabletShellTest` pins one pane at 750, 768 and 832 and the shell at 840. `ui/tablet/TabletShell`
-   wraps HappyApp's NavHost; under it `LocalTabletShell` is true and
-   `HeaderBackButton` renders nothing. Tablet tests use
+   `TabletShellTest` pins one pane at 750, 768 and 832 and the shell at 840.
+   **The tablet split is happy-ios docs/IPAD.md's**, for Happy Agent and
+   Happy CLI alike (`ui/tablet/TabletShell` around HappyApp's NavHost). The
+   sidebar (30% of the window, held to 340–360) is the account's home
+   itself under `LocalSidebarHome`, which gives it the sidebar's chrome: the
+   bar holds the account and its name alone, agent home's search is a 36
+   field at the top of the list with Cancel while open, and the foot has a
+   48 settings circle and a 48 "New task" / "New session" pill
+   (`SidebarFootBar`; settings alone with nothing to start). The sidebar
+   never pushes: home opens through a `MainPanelOpener`, and the sidebar's
+   (`MainPanel.opener`) makes what it opens the main panel's new root at
+   once (`NavMotion.cutting`, no slide), or goes back to the root when it
+   is already that (`MainPanelKey`: the route, the agent, the Surface),
+   which is also the row it selects. A new home action goes through `go`
+   with its key, never `nav` directly. The main panel's screens keep their
+   own back; wrap a screen's back in `BackOrSidebarToggle`, which is the
+   sidebar's toggle on the panel's root (Hide Sidebar / Show Sidebar, kept
+   in local settings' `zenMode`). Home's page with home in the sidebar is
+   the empty panel, desktop's owl (`MainPanelPlaceholder`). Tablet tests use
    `w1280dp-h800dp-xhdpi`; without `ProvideWindowLayout` a composable lays
    out as an unlimited phone.
    **Moving between screens:** one motion, measured from One UI Settings on
@@ -233,7 +260,7 @@ win:
   before the computers are in, is refused in full before anything starts;
   a refused or failed start says why and keeps the text; leaving before
   the computer answers stops the start and the draft stays. On a tablet
-  the sidebar's New session opens the same chat in the detail pane. An
+  the sidebar's New session opens the same chat as the main panel's root. An
   agent connection's empty chat asks Task or Bot and an
   optional name in the same place; its first send makes that kind under
   that name (`POST /v0/tasks` or `/v0/bots`, once, the same ids on a
@@ -798,7 +825,16 @@ the flows are tested with a fake.
   the camera fills the window under transparent system bars, a floating ✕
   top right (= back), a scrim with a centred square viewfinder, a hint
   under it, and a torch toggle when the camera has a flash. Close and
-  system back return `Cancelled`.
+  system back return `Cancelled`. Add's scan (`ScanRequest`) also has a ⋮
+  top left with the other ways in (iOS's `AccountAdding.otherWays`): enter
+  a link, Restore Happy CLI account, Happy CLI server; a pick returns
+  `ScanResult.Chose`.
+- As iOS's ff88dfcd6: the preview and analysis follow the display's
+  rotation (a display listener, since the activity handles rotation and a
+  180° turn reports no configuration change), and a camera whose nearest
+  focus is farther than a 30 mm code filling the viewfinder is zoomed
+  until it is in focus, at most 3x (`ScanFocus`, Camera2's minimum focus
+  distance and field of view).
 - `QrDecoderTest` decodes ZXing-encoded luminance frames; `QrScannerTest`
   covers the result contract, the refused permission and the layout.
 

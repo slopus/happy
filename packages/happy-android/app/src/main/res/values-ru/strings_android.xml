@@ -26,7 +26,7 @@
     <string name="scan_not_happy_code">Это не QR-код Happy.</string>
     <string name="scan_terminal_code_elsewhere">Этот код подключает терминал. Отсканируйте его в «Настройки › Отсканируйте QR-код для авторизации».</string>
     <string name="scan_account_code_elsewhere">Этот код привязывает новое устройство. Отсканируйте его в «Настройки › Резервная копия и восстановление › Привязать новое устройство».</string>
-    <string name="scan_pairing_unavailable">Этот код подключает агента. Используйте «Добавить» в меню аккаунтов на главном экране.</string>
+    <string name="scan_pairing_unavailable">Этот код подключает Happy Agent. Используйте «Добавить» в меню аккаунтов на главном экране.</string>
     <string name="scan_close">Закрыть</string>
     <string name="scan_hint">Наведите камеру на QR-код</string>
     <string name="scan_open_settings">Открыть настройки</string>

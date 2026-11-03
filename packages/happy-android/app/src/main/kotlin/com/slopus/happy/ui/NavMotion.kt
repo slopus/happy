@@ -45,6 +45,7 @@ import androidx.navigationevent.compose.LocalNavigationEventDispatcherOwner
 import com.slopus.happy.BuildConfig
 import com.slopus.happy.diagnostics.traced
 import com.slopus.happy.ui.components.rememberReduceMotion
+import com.slopus.happy.ui.tablet.LocalMainPanel
 import kotlin.math.roundToInt
 
 private typealias NavScope = AnimatedContentTransitionScope<NavBackStackEntry>
@@ -82,6 +83,24 @@ class NavMotion(
     /** The pages beneath a moving one, which [page] dims. */
     val dims: PageDims = PageDims(),
 ) {
+    /**
+     * This motion, except that a page change [cuts] says is shown at once
+     * (the tablet sidebar's opens, [com.slopus.happy.ui.tablet.MainPanel]):
+     * no slide, no dim, as iOS's `setViewControllers(animated: false)`.
+     */
+    fun cutting(cuts: (from: NavBackStackEntry, to: NavBackStackEntry) -> Boolean): NavMotion {
+        val base = this
+        return NavMotion(
+            enter = { if (cuts(initialState, targetState)) EnterTransition.None.also { dims.top(targetState) } else base.enter(this) },
+            exit = { if (cuts(initialState, targetState)) ExitTransition.None else base.exit(this) },
+            popEnter = { if (cuts(initialState, targetState)) EnterTransition.None.also { dims.top(targetState) } else base.popEnter(this) },
+            popExit = { if (cuts(initialState, targetState)) ExitTransition.None else base.popExit(this) },
+            predictivePopEnter = base.predictivePopEnter,
+            predictivePopExit = base.predictivePopExit,
+            dims = dims,
+        )
+    }
+
     companion object {
         const val DURATION_MILLIS = 450
 
@@ -314,8 +333,10 @@ private fun NavigationEventDispatcher?.dragging(): Boolean =
 fun rememberNavMotion(): NavMotion {
     val reduceMotion = rememberReduceMotion()
     val dispatcher = LocalNavigationEventDispatcherOwner.current?.navigationEventDispatcher
-    return remember(reduceMotion, dispatcher) {
-        if (reduceMotion) NavMotion.None else NavMotion.pageSlide { dispatcher.dragging() }
+    val panel = LocalMainPanel.current
+    return remember(reduceMotion, dispatcher, panel) {
+        val motion = if (reduceMotion) NavMotion.None else NavMotion.pageSlide { dispatcher.dragging() }
+        if (panel == null) motion else motion.cutting(panel::cuts)
     }
 }
 

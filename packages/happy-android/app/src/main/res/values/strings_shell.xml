@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The app shell: account kinds, Add, the scanner, the tablet shell and search.
+  Account kinds are iOS's (Strings/AccountKinds.swift, NativeTranslations.swift): Happy Agent and
+  Happy CLI, never "legacy". Shared with other areas; reuse these keys.
+-->
+<resources>
+    <string name="account_kind_agent" translatable="false">Happy Agent</string>
+    <string name="account_kind_cli" translatable="false">Happy CLI</string>
+    <string name="account_kind_add_cli_account">Add Happy CLI account</string>
+    <string name="account_kind_connect_agent">Connect Happy Agent</string>
+    <string name="account_kind_restore_cli_account">Restore Happy CLI account</string>
+    <string name="account_kind_cli_server">Happy CLI server</string>
+    <string name="account_kind_disconnect_agent_title">Disconnect Happy Agent?</string>
+    <string name="account_kind_sign_out_cli_title">Sign out of Happy CLI?</string>
+    <string name="account_kind_device_needs_account_title">No account to share</string>
+    <string name="account_kind_device_needs_cli_account">This code asks for a Happy CLI account. Add one on this phone first.</string>
+    <string name="account_kind_account_not_shareable">This account was made for your computer, and its key never leaves this phone. Only a Happy CLI account with a secret key to back up can be linked to another device.</string>
+    <string name="account_kind_enter_link_message">Paste the link from Happy CLI on your computer or from Happy Agent.</string>
+    <string name="account_kind_agent_unreachable">Can’t reach %1$s.\nCheck the Happy Agent connection, then reload.</string>
+    <string name="account_kind_restore_another_cli_account">Restore a Happy CLI Account</string>
+    <string name="account_kind_restore_another_footer">Sign in to another Happy CLI account with its secret key, or with a phone that has it. This account stays here.</string>
+    <!-- The tablet's sidebar button, as iPadOS names it (happy-ios Strings.Tablet). -->
+    <string name="tablet_hide_sidebar">Hide Sidebar</string>
+    <string name="tablet_show_sidebar">Show Sidebar</string>
+</resources>

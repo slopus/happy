@@ -9,5 +9,4 @@
     <string name="account_menu_unnamed_account">Happy 账户</string>
     <string name="account_menu_unnamed_agent">智能体</string>
     <string name="account_menu_agent">智能体连接</string>
-    <string name="agent_home_connected">已连接到 %1$s</string>
 </resources>

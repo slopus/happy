@@ -1,5 +1,12 @@
 package com.slopus.happy.ui.connection
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.graphics.graphicsLayer
+import com.slopus.happy.ui.tablet.LocalSidebarHome
+import com.slopus.happy.ui.tablet.SidebarFootBar
+import com.slopus.happy.ui.tablet.SidebarSearchField
+import com.slopus.happy.ui.tablet.SidebarSpec
 import com.slopus.happy.ui.rememberHomeAccountSwitch
 import com.slopus.happy.ui.components.PageBackHandler as BackHandler
 import androidx.activity.compose.ReportDrawnWhen
@@ -213,6 +220,9 @@ fun AgentHomeScreen(
 ) {
     val colors = HappyTheme.colors
     val reduceMotion = rememberReduceMotion()
+    // As the tablet's sidebar, home wears its chrome (iOS f3ac778cb): search is a field at the top of the list,
+    // settings and compose a bar at its foot, and the bar holds the account and its name alone.
+    val sidebar = LocalSidebarHome.current
     var searching by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -260,7 +270,7 @@ fun AgentHomeScreen(
             // below its foot, with no feather over them.
             feathered = phase == HomePhase.List && !searching,
             bar = {
-                if (searching) {
+                if (searching && sidebar == null) {
                     AgentTopBar(
                         tag = AgentHomeTags.BAR,
                         container = ground,
@@ -279,8 +289,10 @@ fun AgentHomeScreen(
                         navigationIcon = { AccountMenuButton(accounts, actions.onSwitchAccount, actions.onAdd) },
                         title = { BarTitle(name, link, AgentHomeTags.TITLE, AgentHomeTags.STATUS) },
                         actions = {
-                            BarIconButton(Ionicon.SearchOutline, stringResource(R.string.tools_names_search), { searching = true }, Modifier.testTag(AgentHomeTags.SEARCH))
-                            BarIconButton(Ionicon.SettingsOutline, stringResource(R.string.settings_title), actions.onSettings, Modifier.testTag(AgentHomeTags.SETTINGS))
+                            if (sidebar == null) {
+                                BarIconButton(Ionicon.SearchOutline, stringResource(R.string.tools_names_search), { searching = true }, Modifier.testTag(AgentHomeTags.SEARCH))
+                                BarIconButton(Ionicon.SettingsOutline, stringResource(R.string.settings_title), actions.onSettings, Modifier.testTag(AgentHomeTags.SETTINGS))
+                            }
                         },
                         inset = HomeCardSpec.inset,
                     )
@@ -289,6 +301,10 @@ fun AgentHomeScreen(
         ) { top ->
             Box(modifier = Modifier.fillMaxSize()) {
                 val barFoot = top - GlassSpec.feather
+                // The sidebar's results hang from its search field's rest, under the field; the list fades from under them.
+                val resultsTop = if (sidebar != null) top + SidebarSpec.searchTop + SidebarSpec.searchHeight + SidebarSpec.searchGap else barFoot
+                val listFaded = sidebar != null && searching && query.isNotBlank()
+                val listAlpha by animateFloatAsState(if (listFaded) 0f else 1f, tween(if (listFaded) PopupMotion.ENTER_MS else PopupMotion.EXIT_MS), label = "sidebarSearch")
                 // The loader fades into what comes, and every state into the next.
                 Crossfade(phase, label = "agentHome") { shown ->
                     when (shown) {
@@ -318,6 +334,8 @@ fun AgentHomeScreen(
                         HomePhase.List -> AgentHomeList(
                             items = items,
                             state = listState,
+                            modifier = if (sidebar != null) Modifier.graphicsLayer { alpha = listAlpha } else Modifier,
+                            selected = sidebar?.selected,
                             onOpen = actions.onOpenConversation,
                             onOpenArtifacts = actions.onOpenArtifacts,
                             onOpenSurface = actions.onOpenSurface,
@@ -327,25 +345,57 @@ fun AgentHomeScreen(
                             contentPadding = PaddingValues(top = top),
                             // The notice is the list's first row (iOS ba0d7da0e): it comes and goes as a row does, the rows it
                             // pushes sliding with it, and a reader further down keeps their place.
-                            header = noticeMessage(status, profileRequired, notice)?.let { text ->
+                            header = run {
+                                val banner = noticeMessage(status, profileRequired, notice)
                                 val action = signInAction(status, actions, profileRequired)
                                 val header: LazyListScope.() -> Unit = {
-                                    item(key = "banner", contentType = "banner") {
-                                        Banner(text, action, if (reduceMotion) Modifier else Modifier.animateItem(BANNER_FADE_IN, BANNER_PLACEMENT, BANNER_FADE_OUT))
+                                    // The sidebar's search at rest: the list's first row, scrolling with it under the bar.
+                                    if (sidebar != null) item(key = "search", contentType = "search") {
+                                        SidebarSearchField(
+                                            open = false,
+                                            query = "",
+                                            onQueryChange = {},
+                                            onOpen = { searching = true },
+                                            onCancel = {},
+                                            modifier = Modifier
+                                                .padding(top = SidebarSpec.searchTop, bottom = SidebarSpec.searchGap)
+                                                .graphicsLayer { alpha = if (searching) 0f else 1f },
+                                        )
+                                    }
+                                    if (banner != null) item(key = "banner", contentType = "banner") {
+                                        Banner(banner, action, if (reduceMotion) Modifier else Modifier.animateItem(BANNER_FADE_IN, BANNER_PLACEMENT, BANNER_FADE_OUT))
                                     }
                                 }
                                 header
                             },
-                            // Room for the last card to scroll clear of the compose button.
-                            bottom = { Spacer(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = AgentHomeSpec.fabClearance)) },
+                            // Room for the last card to scroll clear of the compose button, or the sidebar's foot.
+                            bottom = {
+                                if (sidebar != null) Spacer(Modifier.height(SidebarSpec.listClearance()))
+                                else Spacer(Modifier.windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = AgentHomeSpec.fabClearance))
+                            },
                         )
                     }
                 }
-                if (feed.loaded && !searching) ComposeFab(actions.onCompose, AgentHomeTags.COMPOSE, stringResource(R.string.agent_search_new_task))
+                if (sidebar != null) {
+                    SidebarFootBar(if (feed.loaded) stringResource(R.string.agent_search_new_task) else null, actions.onSettings, actions.onCompose)
+                } else if (feed.loaded && !searching) {
+                    ComposeFab(actions.onCompose, AgentHomeTags.COMPOSE, stringResource(R.string.agent_search_new_task))
+                }
+                // While search is open the sidebar's field holds still at its rest, Cancel beside it, whatever the list did.
+                if (sidebar != null && searching) {
+                    SidebarSearchField(
+                        open = true,
+                        query = query,
+                        onQueryChange = { query = it },
+                        onOpen = {},
+                        onCancel = closeSearch,
+                        modifier = Modifier.padding(top = top + SidebarSpec.searchTop),
+                    )
+                }
                 // Home dims under the results, and a tap on it ends the search; it stays as it was underneath.
-                // Both start at the bar's own foot.
+                // Both start at the bar's own foot. The sidebar's list fades instead, on the sidebar's ground.
                 AnimatedVisibility(
-                    visible = searching && query.isNotBlank(),
+                    visible = sidebar == null && searching && query.isNotBlank(),
                     enter = fadeIn(tween(PopupMotion.ENTER_MS)),
                     exit = fadeOut(tween(PopupMotion.EXIT_MS)),
                     modifier = Modifier.padding(top = barFoot),
@@ -362,7 +412,7 @@ fun AgentHomeScreen(
                     visible = searching,
                     enter = fadeIn(tween(PopupMotion.ENTER_MS)),
                     exit = fadeOut(tween(PopupMotion.EXIT_MS)),
-                    modifier = Modifier.padding(top = barFoot),
+                    modifier = Modifier.padding(top = resultsTop),
                 ) {
                     AgentSearchResults(
                         query = query,

@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.conversation
 
+import com.slopus.happy.ui.tablet.BackOrSidebarToggle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -455,8 +456,10 @@ fun ConversationScreen(
                             }
                         },
                         navigationIcon = {
-                            IconButton(onClick = actions.onBack, modifier = Modifier.testTag(ConversationScreenTags.BACK)) {
-                                Icon(MaterialSymbols.ArrowBack, stringResource(R.string.common_back))
+                            BackOrSidebarToggle {
+                                IconButton(onClick = actions.onBack, modifier = Modifier.testTag(ConversationScreenTags.BACK)) {
+                                    Icon(MaterialSymbols.ArrowBack, stringResource(R.string.common_back))
+                                }
                             }
                         },
                         actions = {

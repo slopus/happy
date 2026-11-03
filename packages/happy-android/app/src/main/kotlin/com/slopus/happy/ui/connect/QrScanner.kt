@@ -20,7 +20,20 @@ sealed interface ScanResult {
 
     /** No camera on this device, or it failed: [reason] says which, the flows say it in words. */
     data class Failed(val reason: ScanFailure) : ScanResult
+
+    /** The person took another way in from the scanner's ⋮ instead of scanning. */
+    data class Chose(val way: ScannerWay) : ScanResult
 }
+
+/**
+ * The other ways in that Add's scanner offers under its ⋮ (iOS's
+ * `AccountAdding.otherWays`): a pasted link, restoring a Happy CLI account
+ * from its key, and the server Happy CLI accounts sign in on.
+ */
+enum class ScannerWay { EnterLink, Restore, Server }
+
+/** What the scanner is opened with: the [ways] its ⋮ offers (none, no ⋮) and the custom server's host, under Server. */
+data class ScanRequest(val ways: List<ScannerWay> = emptyList(), val serverLabel: String? = null)
 
 /** Why a scan couldn't run. */
 enum class ScanFailure {
@@ -40,7 +53,7 @@ enum class ScanFailure {
  * fake.
  */
 fun interface QrScanner {
-    suspend fun scan(): ScanResult
+    suspend fun scan(request: ScanRequest): ScanResult
 }
 
 /**
@@ -51,10 +64,10 @@ fun interface QrScanner {
  */
 class CameraQrScanner(private val context: Context) : QrScanner {
     /** The activity launcher, registered by [rememberQrScanner] in the composition that scans. */
-    internal var launcher: ActivityResultLauncher<Unit>? = null
+    internal var launcher: ActivityResultLauncher<ScanRequest>? = null
     private var pending: CompletableDeferred<ScanResult>? = null
 
-    override suspend fun scan(): ScanResult {
+    override suspend fun scan(request: ScanRequest): ScanResult {
         if (!context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)) {
             return ScanResult.Failed(ScanFailure.NoCamera)
         }
@@ -63,7 +76,7 @@ class CameraQrScanner(private val context: Context) : QrScanner {
         pending?.complete(ScanResult.Cancelled)
         pending = result
         try {
-            launcher.launch(Unit)
+            launcher.launch(request)
         } catch (e: ActivityNotFoundException) {
             Log.w(TAG, "QR scanner unavailable", e)
             pending = null

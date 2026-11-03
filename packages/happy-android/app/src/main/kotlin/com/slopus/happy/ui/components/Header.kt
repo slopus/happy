@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.components
 
+import com.slopus.happy.ui.tablet.BackOrSidebarToggle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -15,7 +16,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.unit.Constraints
-import com.slopus.happy.ui.layout.LocalTabletShell
 import com.slopus.happy.ui.layout.ContentTokens
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
@@ -209,21 +209,21 @@ private fun ControlSlot(modifier: Modifier, content: @Composable () -> Unit) {
 }
 
 /**
- * The Android back control: a 48x48 target around a 24 arrow. Under the
- * tablet shell it renders nothing and its slot closes: the persistent
- * header's back serves every screen (navigation/Header.tsx
- * `shouldHideBackButton`, ChatHeaderView.tsx `showBackButton`).
+ * The Android back control: a 48x48 target around a 24 arrow. On the
+ * tablet main panel's root it is the sidebar's toggle instead
+ * ([BackOrSidebarToggle]).
  */
 @Composable
 fun HeaderBackButton(onClick: () -> Unit) {
-    if (LocalTabletShell.current) return
-    HeaderIconButton(
-        icon = Ionicon.ArrowBack,
-        iconSize = 24.dp,
-        buttonSize = 48.dp,
-        contentDescription = stringResource(R.string.common_back),
-        onClick = onClick,
-    )
+    BackOrSidebarToggle(HappyTheme.colors.header.tint) {
+        HeaderIconButton(
+            icon = Ionicon.ArrowBack,
+            iconSize = 24.dp,
+            buttonSize = 48.dp,
+            contentDescription = stringResource(R.string.common_back),
+            onClick = onClick,
+        )
+    }
 }
 
 /** HomeHeader's 32x32 header buttons (settings gear: 22). */

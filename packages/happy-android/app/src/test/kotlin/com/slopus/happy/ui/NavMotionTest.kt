@@ -46,7 +46,9 @@ import com.slopus.happy.ui.chat.ChatScreenTags
 import com.slopus.happy.ui.home.FlatRowTags
 import com.slopus.happy.ui.server.ServerTags
 import com.slopus.happy.ui.start.StartTags
-import com.slopus.happy.ui.tablet.TabletSidebarTags
+import com.slopus.happy.ui.tablet.SidebarTags
+import com.slopus.happy.ui.session.SessionInfoTags
+import androidx.compose.ui.test.hasClickAction
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -418,9 +420,14 @@ class NavMotionTest {
         assertEquals(left(ServerTags.FORM), incoming)
     }
 
+    /**
+     * On a tablet the sidebar's opens show in the main panel at once (iOS
+     * `setViewControllers(animated: false)`), while what the panel pushes
+     * slides within it; the sidebar never moves.
+     */
     @Test
     @Config(qualifiers = "w1280dp-h800dp-xhdpi")
-    fun onATabletOnlyTheDetailMovesAndTheSidebarStaysPut() {
+    fun onATabletTheSidebarOpensAtOnceAndOnlyTheMainPanelSlides() {
         server.addMachine("m1")
         server.addSession(
             "a",
@@ -436,20 +443,30 @@ class NavMotionTest {
         runBlocking { graph.auth.restore(SecretKeyBackup.format(encodeBase64(server.secret, Base64Variant.Url))) }
         rule.setContent { HappyApp(graph) }
         rule.waitUntilAtLeastOneExists(hasTestTag(FlatRowTags.ROW), 5_000)
-        val sidebar = rule.node(TabletSidebarTags.SIDEBAR).bounds
+        val sidebar = rule.node(SidebarTags.SIDEBAR).bounds
 
         rule.mainClock.autoAdvance = false
         rule.node(FlatRowTags.ROW).performClick()
         rule.mainClock.advanceTimeByFrame()
+        rule.mainClock.advanceTimeByFrame()
+        assertEquals("the chat is in place at once", sidebar.right.value, left(ChatScreenTags.SCREEN).value, 0.5f)
+        assertEquals("the sidebar doesn't move", sidebar, rule.node(SidebarTags.SIDEBAR).bounds)
+        rule.mainClock.autoAdvance = true
+
+        // The chat's own push slides in the main panel, on the curve.
+        rule.waitUntilAtLeastOneExists(hasTestTag(ChatScreenTags.TITLE_BUTTON) and hasClickAction(), 5_000)
+        rule.mainClock.autoAdvance = false
+        rule.node(ChatScreenTags.TITLE_BUTTON).performClick()
+        rule.mainClock.advanceTimeByFrame()
         rule.mainClock.advanceTimeBy(NavMotion.DURATION_MILLIS / 2L)
-        assertEquals("the sidebar doesn't move with the detail", sidebar, rule.node(TabletSidebarTags.SIDEBAR).bounds)
-        val chat = left(ChatScreenTags.SCREEN)
+        assertEquals("the sidebar doesn't move with the panel", sidebar, rule.node(SidebarTags.SIDEBAR).bounds)
+        val info = left(SessionInfoTags.CHANGES)
         settle()
         val pane = width - sidebar.right
-        val travelled = chat - left(ChatScreenTags.SCREEN)
-        assertTrue("the chat comes in from the detail pane's end: $travelled", travelled > 1.dp)
-        assertOnCurve("the chat", 1f - travelled / pane, NavMotion.DURATION_MILLIS / 2L)
-        assertEquals(sidebar, rule.node(TabletSidebarTags.SIDEBAR).bounds)
+        val travelled = info - left(SessionInfoTags.CHANGES)
+        assertTrue("info comes in from the main panel's end: $travelled", travelled > 1.dp)
+        assertOnCurve("info", 1f - travelled / pane, NavMotion.DURATION_MILLIS / 2L)
+        assertEquals(sidebar, rule.node(SidebarTags.SIDEBAR).bounds)
         graph.account.value?.let { runBlocking { it.stop() } }
     }
 }
