@@ -74,6 +74,15 @@ class ChatNormalizerTest {
         assertEquals(AgentContent.Text("**Service:** Connection restored", "s", null), n.content.single())
     }
 
+    @Test fun `Happy Agent's provider errors are error notices, not agent text`() {
+        val retry = "Retrying after an error (attempt 1): WebSocket retries exhausted; falling back to SSE: Unexpected server response: 426"
+        val n = envelope("""{"id":"r","time":1,"role":"agent","turn":"t","ev":{"t":"service","text":"$retry"}}""")!!
+        assertEquals(Body.Event(AgentEvent.Notice(retry)), n.body)
+        assertEquals("t", n.turn)
+        val failed = envelope("""{"id":"f","time":1,"role":"agent","turn":"t","ev":{"t":"service","text":"The run failed: overloaded"}}""")!!
+        assertEquals(Body.Event(AgentEvent.Notice("The run failed: overloaded")), failed.body)
+    }
+
     @Test fun `tool-call lifecycle events`() {
         val start = envelope("""{"id":"env-3","time":1,"role":"agent","turn":"turn-1","ev":{"t":"tool-call-start","call":"call-1","name":"CodexBash","title":"Run `ls`","description":"Run command","args":{"command":"ls"}}}""")!!
         assertEquals(

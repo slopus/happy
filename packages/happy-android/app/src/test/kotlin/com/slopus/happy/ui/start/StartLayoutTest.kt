@@ -145,18 +145,30 @@ class StartLayoutTest {
 
         rule.onNodeWithContentDescription("More").performClick()
         rule.onNodeWithText("happy.example.com").assertExists()
+        // No account is made here: a Happy account only ever comes from a terminal's code.
         rule.onNodeWithText("Create account").assertDoesNotExist()
-        // Nothing else: no account is made here, and help lives in Settings.
-        rule.onNodeWithText("Get help").assertDoesNotExist()
+        // Help last, under a divider, as iOS's StartMenu.
+        rule.node(StartTags.HELP).assertExists()
+        assertTrue("help under the server", rule.node(StartTags.HELP).bounds.top >= rule.node(StartTags.SERVER).bounds.bottom)
+        rule.onNodeWithText("Get help").performClick()
+        rule.node(StartTags.MENU).assertDoesNotExist()
+        rule.onNodeWithText("Stuck? Come ask us.").assertExists()
+        // One under another, Cancel last: side by side "Browse known issues" broke a letter at a time.
+        val discord = rule.onNodeWithText("Ask on Discord").bounds
+        val issues = rule.onNodeWithText("Browse known issues").bounds
+        val cancel = rule.onNodeWithText("Cancel").bounds
+        assertTrue("stacked", discord.bottom <= issues.top && issues.bottom <= cancel.top)
+        assertTrue("on one line", issues.height < discord.height * 1.5f)
+        assertEquals(listOf("start", "link", "restore", "server"), taps)
     }
 
-    /** Happy CLI server names a custom server under it, and says nothing for the default one. */
+    /** Happy CLI server names a custom server under it, and "Default" for the default one, as iOS. */
     @Test
-    fun theDefaultServerHasNoSubtitle() {
+    fun theDefaultServerSaysDefault() {
         show(server = null)
         rule.onNodeWithContentDescription("More").performClick()
         rule.onNodeWithText("Happy CLI server").assertExists()
-        rule.onNodeWithText("Default").assertDoesNotExist()
+        rule.onNodeWithText("Default").assertExists()
     }
 
     /** The content keeps out of the status and navigation bars; the gradient still fills the window behind them. */

@@ -559,16 +559,20 @@ final class NewSessionViewController: UIViewController {
 
     private func optionRow(_ item: NewSessionScreenModel.Item, selected: String?, select: @escaping (String) -> Void) -> NewSessionOptionRow {
         let isSelected = item.key == selected
-        let detail = item.status.map(Self.statusText) ?? item.subtitle
+        // A computer says what runs there beside its state.
+        let parts = [item.subtitle, item.status.map(Self.statusText)].compactMap { $0 }
+        let detail = parts.isEmpty ? nil : parts.joined(separator: " • ")
         let row = NewSessionOptionRow(
             icon: .octicons(isSelected ? "check-circle-fill" : "circle"),
             iconSize: 16,
             iconTint: isSelected ? Palette.text : Palette.textSecondary,
-            label: .option(item.label),
+            label: .option(item.status == .needsRelogin ? Strings.Home.machineNeedsRelogin : item.label),
             detail: detail.map(NewSessionOptionRow.Text.detail)
         )
         row.isDimmed = item.isDimmed
         if isSelected { row.accessibilityTraits.insert(.selected) }
+        // Nothing starts there: it only says what it needs.
+        guard item.status != .needsRelogin else { return row }
         let key = item.key
         row.addAction(UIAction { _ in select(key) }, for: .touchUpInside)
         return row
@@ -713,6 +717,8 @@ final class NewSessionViewController: UIViewController {
         switch status {
         case .online:
             return Strings.Composer.online
+        case .needsRelogin:
+            return Strings.Home.machineReloginHint
         case .lastSeen(let lastSeen):
             let time: String
             switch lastSeen {

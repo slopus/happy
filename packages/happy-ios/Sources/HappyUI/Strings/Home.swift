@@ -6,6 +6,18 @@ import HappyCore
 // component and line that spell it out beside it.
 extension Strings {
     public enum Home {
+        /// The move from Happy CLI to Happy Agent on a Happy CLI home (the
+        /// app's own words, in `TranslationCatalog.nativeSources`).
+        public static var migrationTitle: String { localized("native.home.migrationTitle", "Switch to Happy Agent") }
+        public static var migrationSubtitle: String {
+            localized("native.home.migrationSubtitle", "Connect your phone straight to your computer. Happy CLI keeps working.")
+        }
+
+        /// A computer an old Happy CLI linked (`MachineChoice.needsRelogin`),
+        /// and what to run on it (the app's own words).
+        public static var machineNeedsRelogin: String { localized("native.machine.needsRelogin", "Computer with an old Happy CLI sign-in") }
+        public static var machineReloginHint: String { localized("native.machine.reloginHint", "Run happy auth login --force on it") }
+
         /// `tabs.sessions`: the phone header's title.
         public static var sessionsTitle: String { localized("tabs.sessions", "Sessions") }
 

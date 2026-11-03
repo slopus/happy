@@ -18,6 +18,18 @@ class PresenceTest {
         assertSame(before, presence.sessions.value)
     }
 
+    /** A new session's first heartbeat can come before its row: it is still remembered as heard. */
+    @Test
+    fun aSessionIsHeardFromItsFirstHeartbeatEvenBeforeItsRow() {
+        assertNull(presence.heardAt("new"))
+        presence.activity("new", active = false, activeAt = 100, thinking = false)
+        assertNull(presence.heardAt("new"))
+        presence.activity("new", active = true, activeAt = 200, thinking = false)
+        assertEquals(50_000L, presence.heardAt("new"))
+        presence.removeSession("new")
+        assertNull(presence.heardAt("new"))
+    }
+
     @Test
     fun flipsArePublishedAtOnce() {
         presence.reconcileSessions(listOf(ActivityRow("s", active = true, activeAt = 100)))

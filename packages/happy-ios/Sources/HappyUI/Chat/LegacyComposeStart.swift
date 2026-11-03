@@ -345,11 +345,16 @@ final class LegacyComposeStart: NSObject {
         let composer = composer
         let kind = kind
         let selected = composer.choices.currentTarget?.id
-        let actions = composer.choices.machines(for: kind).map { target in
+        let actions = MachineTarget.listed(composer.choices.machines, for: kind).map { target in
+            // Linked by an old Happy CLI: it says what it needs, and can't be picked.
+            if target.needsRelogin {
+                return UIAction(title: Strings.Home.machineNeedsRelogin, subtitle: Strings.Home.machineReloginHint, attributes: .disabled) { _ in }
+            }
             let status = Self.status(target, for: kind)
             return UIAction(
                 title: target.name,
-                subtitle: status.text,
+                // Which daemons, so computers of one name are told apart.
+                subtitle: ([target.daemons, status.text].filter { !$0.isEmpty }).joined(separator: " • "),
                 image: Self.dot(status.color),
                 state: target.id == selected ? .on : .off
             ) { _ in composer.selectMachine(target.id) }

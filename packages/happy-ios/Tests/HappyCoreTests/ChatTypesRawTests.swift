@@ -129,6 +129,16 @@ final class ChatTypesRawTests: XCTestCase {
             ChatRecords.normalized("id", raw: raw).body, .agent([.text("Service", thinking: false)]))
     }
 
+    /// Happy Agent's provider errors (a retry after a 426, a failed run)
+    /// are an error line, not the agent's reply.
+    func testHappyAgentsProviderErrorsAreNotices() {
+        let retry = "Retrying after an error (attempt 1): WebSocket retries exhausted; falling back to SSE: Unexpected server response: 426"
+        let raw = ChatRecords.session("id", event: .object(["t": .string("service"), "text": .string(retry)]))
+        XCTAssertEqual(ChatRecords.normalized("id", raw: raw).body, .event(.notice(retry)))
+        let failed = ChatRecords.session("f", event: .object(["t": .string("service"), "text": .string("The run failed: overloaded")]))
+        XCTAssertEqual(ChatRecords.normalized("f", raw: failed).body, .event(.notice("The run failed: overloaded")))
+    }
+
     func testNormalizesToolCallLifecycleEvents() {
         guard case .agent(let blocks) = ChatRecords.call("id").body, blocks.count == 1,
             case .call(let id, let name, let title, _, let description) = blocks[0]

@@ -4,11 +4,13 @@ import HappyLayout
 import UIKit
 
 /// HomeListHeader.tsx on a phone: the offline plaque while every computer
-/// is offline, then the update banner. Each is an ItemGroup with 4 above
+/// is offline, the move to Happy Agent on a Happy CLI home until the phone
+/// has an agent connection (never dismissed), then the update banner. Each is an ItemGroup with 4 above
 /// and 16 below. UpdateBanner shows one notice: the store update first,
 /// else "What's new". Its OTA reload belongs to the RN app.
 final class HomeListHeaderView: UIView {
     var onTroubleshoot: (() -> Void)?
+    var onMigrate: (() -> Void)?
     var onNativeUpdate: (() -> Void)?
     var onWhatsNew: (() -> Void)?
 
@@ -24,18 +26,18 @@ final class HomeListHeaderView: UIView {
     /// OfflineMachinesBanner.tsx's title; nil hides the plaque.
     var offlineTitle: String? {
         get { content.offlineTitle }
-        set { content = HomeBanners(offlineTitle: newValue, nativeUpdate: content.nativeUpdate, whatsNew: content.whatsNew) }
+        set { content = HomeBanners(offlineTitle: newValue, migration: content.migration, nativeUpdate: content.nativeUpdate, whatsNew: content.whatsNew) }
     }
 
     /// `useNativeUpdate`: the store link while this build is too old.
     var showsNativeUpdate: Bool {
         get { content.nativeUpdate }
-        set { content = HomeBanners(offlineTitle: content.offlineTitle, nativeUpdate: newValue, whatsNew: content.whatsNew) }
+        set { content = HomeBanners(offlineTitle: content.offlineTitle, migration: content.migration, nativeUpdate: newValue, whatsNew: content.whatsNew) }
     }
 
     var showsWhatsNew: Bool {
         get { content.whatsNew }
-        set { content = HomeBanners(offlineTitle: content.offlineTitle, nativeUpdate: content.nativeUpdate, whatsNew: newValue) }
+        set { content = HomeBanners(offlineTitle: content.offlineTitle, migration: content.migration, nativeUpdate: content.nativeUpdate, whatsNew: newValue) }
     }
 
     var isEmpty: Bool { content.isEmpty }
@@ -56,6 +58,7 @@ final class HomeListHeaderView: UIView {
         groups = content.notices.map { notice in
             let icon = switch notice.kind {
             case .offline: ItemIcon(.ionicons("warning-outline"), tint: Palette.warningText, size: 28)
+            case .migration: ItemIcon(.ionicons("flash-outline"), tint: Palette.warningText, size: 28)
             case .nativeUpdate: ItemIcon(.ionicons("download-outline"), tint: Palette.success, size: 28)
             case .whatsNew: ItemIcon(.ionicons("sparkles-outline"), tint: Palette.text, size: 28)
             }
@@ -63,6 +66,7 @@ final class HomeListHeaderView: UIView {
             return group(ItemRowView(title: notice.title, subtitle: notice.subtitle, icon: icon) { [weak self] in
                 switch kind {
                 case .offline: self?.onTroubleshoot?()
+                case .migration: self?.onMigrate?()
                 case .nativeUpdate: self?.onNativeUpdate?()
                 case .whatsNew: self?.onWhatsNew?()
                 }

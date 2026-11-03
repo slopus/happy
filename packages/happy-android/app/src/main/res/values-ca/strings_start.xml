@@ -20,4 +20,5 @@
     <string name="start_install_choose">Tria Link\u00A0Mobile\u00A0App durant la configuració.</string>
     <string name="start_install_settings">O ves a Settings\u00A0›\u00A0Mobile\u00A0Access.</string>
     <string name="start_install_download">Descarrega\'l de %1$s</string>
+    <string name="restore_secret_key_body">Enganxa la teva clau secreta. És a %1$s a l’altre dispositiu.</string>
 </resources>

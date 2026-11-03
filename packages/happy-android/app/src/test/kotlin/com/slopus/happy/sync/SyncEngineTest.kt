@@ -17,6 +17,7 @@ import kotlinx.serialization.json.put
 import okhttp3.OkHttpClient
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -71,6 +72,23 @@ class SyncEngineTest {
         assertEquals("account-1", store.profile()!!["id"]!!.jsonPrimitive.content)
         // The watermark is the newest updatedAt listed, legacy sessions included.
         assertEquals(300L, store.cursor(SyncEngine.CURSOR_SESSIONS_CHANGED))
+    }
+
+    /** A computer an old Happy CLI linked is kept, unread, so the person is told what it needs. */
+    @Test
+    fun aMachineWithoutADataKeyIsKeptUnread() = runTest {
+        server.addMachine("m1")
+        server.addMachine("old", legacy = true)
+
+        assertEquals(emptyList<Exception>(), engine().syncAll())
+
+        val old = store.machine("old")!!
+        assertTrue(old.isLegacy)
+        assertNull(old.metadataJson)
+        assertNull(old.daemonStateJson)
+        assertTrue(old.active)
+        assertFalse(store.machine("m1")!!.isLegacy)
+        assertTrue(com.slopus.happy.model.Machine.from(old).needsRelogin)
     }
 
     @Test

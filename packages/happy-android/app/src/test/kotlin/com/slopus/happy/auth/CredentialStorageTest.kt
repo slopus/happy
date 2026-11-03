@@ -9,6 +9,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.R
 import com.slopus.happy.accounts.AccountStore
 import com.slopus.happy.connection.AgentConnections
+import com.slopus.happy.connection.DeviceRevokes
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -28,7 +29,7 @@ class CredentialStorageTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
 
     /** The preference files that hold credentials, by the names the stores use. */
-    private val secretFiles = listOf(ExpoSecureStore.PREFS_NAME, AccountStore.CREDENTIALS_PREFS_NAME, AgentConnections.SECRETS_PREFS).map { "$it.xml" }
+    private val secretFiles = listOf(ExpoSecureStore.PREFS_NAME, AccountStore.CREDENTIALS_PREFS_NAME, AgentConnections.SECRETS_PREFS, DeviceRevokes.PREFS).map { "$it.xml" }
 
     @Test
     fun theKeyIsAES256GCMWithoutUserAuthentication() {

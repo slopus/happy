@@ -31,6 +31,7 @@
     <string name="files_update_agent">Обновите Happy Agent на компьютере, чтобы видеть изменения в этой сессии.</string>
     <string name="files_no_comparison">Для этого рабочего пространства сравнение с origin/main недоступно.</string>
     <string name="files_no_details">Для этого сравнения нет сведений о файлах.</string>
+    <string name="chat_unsupported_message">Это сообщение нельзя показать здесь (%1$s)</string>
     <string name="link_status_updating">синхронизация…</string>
     <string name="link_status_connecting">подключение…</string>
     <string name="link_status_waiting_for_network">ожидание сети…</string>

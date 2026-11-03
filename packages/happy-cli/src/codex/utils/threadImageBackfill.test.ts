@@ -13,6 +13,8 @@ vi.mock('@/configuration', () => ({
     configuration: { happyHomeDir: '/home/test/.happy' },
 }));
 
+import { formatAttachmentNote } from '@/utils/attachmentFiles';
+import { buildCodexTurnPrompt } from '../codexPrompt';
 import { buildCodexThreadBackfillEnvelopes } from './threadImageBackfill';
 
 const tempDirs: string[] = [];
@@ -132,6 +134,41 @@ describe('buildCodexThreadBackfillEnvelopes', () => {
             'file',
             'turn-end',
         ]);
+    });
+
+    it('shows pictures an attachment note names, and hides the note', async () => {
+        const imagePath = await makePngFile('attached.png');
+        const uploadLocalImage = vi.fn(async (_attachment, opts) => createEnvelope('user', {
+            t: 'file',
+            ref: 'uploaded-ref',
+            name: 'codex-image-1.png',
+            size: 9,
+            mimeType: 'image/png',
+        }, opts));
+        const prompt = buildCodexTurnPrompt({
+            message: 'what is on this screen?',
+            mode: {},
+            includeAppendSystemPrompt: false,
+            includeTitleInstruction: false,
+            attachmentNote: formatAttachmentNote([{ path: imagePath, mimeType: 'image/png', size: 9, isImage: true }]),
+        });
+
+        const envelopes = await buildCodexThreadBackfillEnvelopes({
+            thread: {
+                turns: [{
+                    id: 'turn-1',
+                    startedAt: 100,
+                    completedAt: 101,
+                    status: 'completed',
+                    items: [{ id: 'user-1', type: 'userMessage', content: [{ type: 'text', text: prompt }] }],
+                }],
+            },
+            uploadLocalImage,
+        });
+
+        expect(envelopes.map((envelope) => envelope.ev.t)).toEqual(['turn-start', 'file', 'text', 'turn-end']);
+        expect(envelopes[2]).toMatchObject({ role: 'user', ev: { t: 'text', text: 'what is on this screen?' } });
+        expect(uploadLocalImage).toHaveBeenCalledTimes(1);
     });
 
     it('skips missing local paths and URL images while preserving text', async () => {

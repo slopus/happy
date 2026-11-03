@@ -53,7 +53,13 @@ suspend fun prepareAttachmentSend(
     }
     if (effective.isEmpty()) return AttachmentSendPlan(send = true, records = emptyList(), notices = notices)
     val result = upload(effective)
-    if (result.failed > 0) notices += AttachmentNotice.UploadFailed(result.failed)
+    // One that didn't upload holds the whole message: the text and pictures
+    // stay in the composer for another Send. A caption sent without its
+    // pictures reads to the agent as if they were there.
+    if (result.failed > 0) {
+        notices += AttachmentNotice.UploadFailed(result.failed)
+        return AttachmentSendPlan(send = false, records = emptyList(), notices = notices)
+    }
     return AttachmentSendPlan(send = true, records = fileEventRecords(result.uploaded), notices = notices)
 }
 

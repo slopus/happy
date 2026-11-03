@@ -52,6 +52,11 @@ final class HomeNoticeViewController: UIViewController {
         update()
     }
 
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        HomeMigration.apply(to: content, from: self, context: context)
+    }
+
     private func update() {
         content.scrollView.alpha = kind == .connecting ? 0 : 1
         content.isAccessibilityElement = kind == .connecting

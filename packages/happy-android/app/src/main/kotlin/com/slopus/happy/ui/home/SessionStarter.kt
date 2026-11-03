@@ -19,6 +19,7 @@ import com.slopus.happy.model.StartPhase
 import com.slopus.happy.model.UnavailableWorkspaceException
 import com.slopus.happy.model.WorktreeSelection
 import com.slopus.happy.model.collectMachineChoices
+import com.slopus.happy.model.needsRelogin
 import com.slopus.happy.model.collectSessionPlaces
 import com.slopus.happy.model.collectSessionWorkspaces
 import com.slopus.happy.model.describeBotNameProblem
@@ -73,6 +74,10 @@ enum class StartRefusal(val message: String, @StringRes val text: Int) {
     ),
     WorkspaceUnavailable("The selected Happy Agent workspace is no longer available.", R.string.home_start_workspace_unavailable),
     BotsUnsupported("Happy Agent on this computer cannot create bots yet. Update it and try again.", R.string.home_start_bots_unsupported),
+    NeedsRelogin(
+        "This computer was linked by an old Happy CLI, so nothing can start there. Run happy auth login --force on it, then try again.",
+        R.string.home_start_needs_relogin,
+    ),
     TasksUnsupported("Happy Agent on this computer cannot create tasks yet. Update it and try again.", R.string.compose_tasks_unsupported),
 }
 
@@ -224,6 +229,7 @@ class SessionStarter(
         val machines = machines()
         val choice = findMachineChoice(collectMachineChoices(machines), draft.selectedMachineId)
             ?: return Prepared.Refused(if (draft.selectedMachineId != null) StartRefusal.UnknownMachine else StartRefusal.NoMachine)
+        if (choice.needsRelogin) return Prepared.Refused(StartRefusal.NeedsRelogin)
         // A bot or a task is Happy Agent's to make, whatever harness the draft last chose.
         val agent = if (bot != null || task) AgentType.Rig else resolveNewSessionAgent(choice, draft.agentType, draft.pickedAgentType)
         val agentChanged = agent != draft.agentType

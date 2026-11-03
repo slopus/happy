@@ -7,6 +7,7 @@ import com.slopus.happy.chat.num
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
 import com.slopus.happy.chat.strings
+import com.slopus.happy.model.CURRENT_CLI_PROVIDER_NAME
 import kotlinx.serialization.json.JsonObject
 
 /** One model a provider offers, as `GET /v0/config` defines it. */
@@ -108,7 +109,8 @@ data class ModeCatalog(
             val providers = root["providers"].obj?.mapNotNull { (providerId, value) ->
                 val provider = value.obj ?: return@mapNotNull null
                 val type = provider["type"].str
-                val name = provider["name"].str?.takeIf { it.isNotBlank() }
+                // Happy Agent's built-in accounts are all "Current CLI": they go by their provider.
+                val name = provider["name"].str?.takeIf { it.isNotBlank() && it.trim() != CURRENT_CLI_PROVIDER_NAME }
                 val shownName = name ?: providerName(type ?: providerId)
                 val refs = provider["models"].arr.orEmpty().mapNotNull { it.obj }.filter { it["enabled"].bool != false }
                 ModeProvider(

@@ -2,6 +2,14 @@ import Foundation
 import HappyStore
 import HappyWire
 
+extension MachineRecord {
+    /// Linked by a Happy CLI before 0.9's data keys, still signed in with
+    /// the account secret: nothing on it opens or can be reached until
+    /// `happy auth login --force` there. (A key that fails to open is
+    /// another matter, and keeps its name.)
+    public var needsRelogin: Bool { !decryptable && dataKeyCipher == nil }
+}
+
 /// One computer, as a person sees it. Mirrors happy-app's
 /// sync/machineChoices.ts.
 ///
@@ -52,6 +60,39 @@ public struct MachineChoice: Equatable, Sendable {
         return choices
     }
 
+    /// What runs on this computer, by product and version ("Happy CLI
+    /// 1.2.6", "Happy CLI 0.10.0 + Happy Agent 0.4.111"). Both daemons on a
+    /// host share its name, and two Happy CLI homes on it are two machines,
+    /// so the pickers tell them apart by this. Product names are never
+    /// translated (rule 10).
+    public var daemons: String {
+        guard !needsRelogin else { return "" }
+        return [
+            happyMachine.map { Self.daemonName("Happy CLI", $0.metadata?["happyCliVersion"]?.stringValue) },
+            rigMachine.map { Self.daemonName("Happy Agent", $0.metadata?["client"]?["version"]?.stringValue ?? $0.metadata?["happyCliVersion"]?.stringValue) },
+        ].compactMap { $0 }.joined(separator: " + ")
+    }
+
+    private static func daemonName(_ product: String, _ version: String?) -> String {
+        nonEmpty(version?.trimmingCharacters(in: .whitespaces)).map { "\(product) \($0)" } ?? product
+    }
+
+    /// When the newest of its daemons registered.
+    var createdAt: Int64 {
+        max(happyMachine?.createdAt ?? 0, rigMachine?.createdAt ?? 0)
+    }
+
+    /// Settings › Agents' order, the pickers' own: reachable first, then
+    /// the newest computer, then by id. Never by last activity, which every
+    /// heartbeat moves, so rows of one name swapped places under a finger.
+    public static func sortedForPicking(_ choices: [MachineChoice]) -> [MachineChoice] {
+        choices.sorted { left, right in
+            if left.online != right.online { return left.online }
+            if left.createdAt != right.createdAt { return left.createdAt > right.createdAt }
+            return left.id < right.id
+        }
+    }
+
     /// happy-app's `isRigMachine`: any of the marks Happy Agent leaves.
     public static func isRigMachine(_ metadata: JSONValue?) -> Bool {
         metadata?["machineKind"]?.stringValue == "rig"
@@ -60,6 +101,17 @@ public struct MachineChoice: Equatable, Sendable {
             || metadata?["cliAvailability"]?["rig"]?.boolValue == true
     }
 
+    /// A computer an old Happy CLI linked (`MachineRecord.needsRelogin`),
+    /// where no words of the person's language reach; Settings and the
+    /// pickers say it in theirs (`native.machine.needsRelogin`).
+    public static let needsReloginName = "Computer with an old Happy CLI sign-in"
+    /// What to run on it (`native.machine.reloginHint`).
+    public static let reloginHint = "Run happy auth login --force on it"
+
+    /// Linked by a Happy CLI before 0.9's data keys: shown, but nothing can
+    /// start there until `happy auth login --force` on it.
+    public var needsRelogin: Bool { (happyMachine ?? rigMachine)?.needsRelogin == true }
+
     /// `displayName || host || 'Unknown machine'`; empty strings fall through.
     public static func machineName(_ machine: MachineRecord) -> String {
         nonEmpty(machine.metadata?["displayName"]?.stringValue)
@@ -67,14 +119,28 @@ public struct MachineChoice: Equatable, Sendable {
             ?? "Unknown machine"
     }
 
+    /// What Happy Agent appends to its display name to tell it apart from
+    /// its Happy CLI sibling.
+    static let happyAgentSuffix = " — Happy Agent"
+
     /// Happy Agent's display name carries a suffix that only tells it apart
-    /// from its sibling, so a computer with only Happy Agent goes by host.
+    /// from its sibling, so a computer with only Happy Agent goes by what is
+    /// before it: the node's name (`<node> — Happy Agent`), or the host from
+    /// an agent that publishes none. Without the suffix, the host.
     static func computerName(happy: MachineRecord?, rig: MachineRecord?) -> String {
         guard let named = happy ?? rig else { return "Unknown machine" }
-        if happy == nil, let host = nonEmpty(named.metadata?["host"]?.stringValue) {
-            return host
+        // Nothing of it can be read: named for what it is.
+        if named.needsRelogin { return needsReloginName }
+        if happy == nil, let name = happyAgentName(named) ?? nonEmpty(named.metadata?["host"]?.stringValue) {
+            return name
         }
         return machineName(named)
+    }
+
+    /// A lone Happy Agent's display name without the suffix, when it has one.
+    static func happyAgentName(_ machine: MachineRecord) -> String? {
+        guard let display = machine.metadata?["displayName"]?.stringValue, display.hasSuffix(happyAgentSuffix) else { return nil }
+        return nonEmpty(String(display.dropLast(happyAgentSuffix.count)).trimmingCharacters(in: .whitespaces))
     }
 
     /// Reachable first, then most recently active; ties keep list order.

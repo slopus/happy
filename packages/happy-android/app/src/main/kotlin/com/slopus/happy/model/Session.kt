@@ -121,6 +121,8 @@ data class Machine(
     val metadataVersion: Long,
     val daemonState: DaemonState?,
     val daemonStateVersion: Long,
+    /** Linked by a Happy CLI before 0.9's data keys: nothing on it can be read or reached until `happy auth login --force`. */
+    val needsRelogin: Boolean = false,
 ) {
     /** machineUtils.ts `isMachineOnline`: the active flag, no timeouts. */
     val isOnline: Boolean get() = active
@@ -137,6 +139,7 @@ data class Machine(
             metadataVersion = record.metadataVersion,
             daemonState = DaemonState.parse(record.daemonStateJson),
             daemonStateVersion = record.daemonStateVersion,
+            needsRelogin = record.isLegacy,
         )
     }
 }

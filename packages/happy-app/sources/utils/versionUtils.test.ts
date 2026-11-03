@@ -37,8 +37,12 @@ describe('versionUtils', () => {
         });
 
         it('should use default minimum version', () => {
-            expect(isVersionSupported('0.10.0')).toBe(true);
-            expect(isVersionSupported('0.9.0')).toBe(false);
+            expect(MINIMUM_CLI_VERSION).toBe('0.15.0');
+            expect(isVersionSupported('0.15.0')).toBe(true);
+            expect(isVersionSupported('0.15.0-beta.0')).toBe(true);
+            expect(isVersionSupported('1.2.6')).toBe(true);
+            expect(isVersionSupported('0.14.2')).toBe(false);
+            expect(isVersionSupported('0.10.0')).toBe(false);
         });
     });
 

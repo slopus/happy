@@ -6,7 +6,7 @@ import { createEnvelope } from '@slopus/happy-wire';
 import { logger } from '@/ui/logger';
 
 import type { Thread, ThreadItem } from '../codexAppServerTypes';
-import { detectSupportedImageType } from './imageInput';
+import { detectSupportedImageType, parseAttachmentNotePaths } from '@/utils/attachmentFiles';
 import {
     completedTimestampMs,
     isCodexTurnInProgress,
@@ -20,20 +20,26 @@ type LocalImageUpload = (
     opts: Pick<CreateEnvelopeOptions, 'id' | 'time' | 'codexItemId'> & { codexItemId: string },
 ) => Promise<SessionEnvelope>;
 
+/**
+ * The pictures a user message carried: localImage inputs (older Happy
+ * versions sent them so) and the paths an attachment note names.
+ */
 function localImagePaths(item: ThreadItem): string[] {
     if (item.type !== 'userMessage' || !Array.isArray(item.content)) {
         return [];
     }
 
-    return item.content
-        .filter((part): part is { type: 'localImage'; path: string } => (
-            Boolean(part)
-            && typeof part === 'object'
-            && (part as { type?: unknown }).type === 'localImage'
-            && typeof (part as { path?: unknown }).path === 'string'
-            && (part as { path: string }).path.length > 0
-        ))
-        .map((part) => part.path);
+    const paths: string[] = [];
+    for (const part of item.content as unknown[]) {
+        if (!part || typeof part !== 'object') continue;
+        const { type, path, text } = part as { type?: unknown; path?: unknown; text?: unknown };
+        if (type === 'localImage' && typeof path === 'string' && path.length > 0) {
+            paths.push(path);
+        } else if (type === 'text' && typeof text === 'string') {
+            paths.push(...parseAttachmentNotePaths(text));
+        }
+    }
+    return paths;
 }
 
 async function localImagePathToAttachment(

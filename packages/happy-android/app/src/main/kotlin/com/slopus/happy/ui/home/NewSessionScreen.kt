@@ -86,6 +86,8 @@ fun newSessionLabels(resources: Resources, now: () -> Long = System::currentTime
     createWorktree = resources.getString(R.string.home_dock_create_worktree),
     enterCustomPath = resources.getString(R.string.machine_launcher_enter_custom_path),
     online = resources.getString(R.string.status_online),
+    needsRelogin = resources.getString(R.string.machine_needs_relogin),
+    reloginHint = resources.getString(R.string.machine_relogin_hint),
     notSupportedBy = { resources.getString(R.string.home_dock_not_supported_by, it) },
     lastSeen = { resources.getString(R.string.status_last_seen, formatLastSeen(resources, it, now())) },
 )

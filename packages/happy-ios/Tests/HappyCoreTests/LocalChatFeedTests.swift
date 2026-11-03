@@ -27,7 +27,7 @@ final class LocalChatFeedTests: XCTestCase {
         let store = try LocalStore.inMemory()
         try store.upsertSessions([ChatRecords.storeSession()])
         var state = FeedState(sessionId: "s")
-        for delivery in [OutboxRecord.State.queued, .sending, .failed] {
+        for delivery in [OutboxRecord.State.queued, .sending, .failed, .interrupted] {
             try store.removeFromOutbox(localId: "local")
             try store.enqueue(
                 OutboxRecord(
@@ -38,7 +38,7 @@ final class LocalChatFeedTests: XCTestCase {
             switch delivery {
             case .queued: XCTAssertEqual(snapshot.delivery["local"], .queued)
             case .sending: XCTAssertEqual(snapshot.delivery["local"], .sending)
-            case .failed: XCTAssertEqual(snapshot.delivery["local"], .failed("failed"))
+            case .failed, .interrupted: XCTAssertEqual(snapshot.delivery["local"], .failed("failed"))
             }
         }
         try store.removeFromOutbox(localId: "local")

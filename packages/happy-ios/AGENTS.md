@@ -172,8 +172,31 @@ nothing here is wired to the release skill or to EAS.
     Unlike happy-app's 30-second watchdog, suspension never fails or deletes
     accepted writes. A cancelled operation returns to queued with its localId.
   - A failed text/POST blocks later sends in that session; those remain queued.
-    A failed attachment upload stays visible but is skipped so its text sends.
+    A failed attachment upload fails its whole message (its text and its
+    other files), which then blocks the session like a failed text; a
+    retry of any of them sends the whole message again. A caption that went
+    without its pictures read to the agent as if they were there. happy-app
+    and Android send nothing when an upload fails, the composer keeping it.
     Retry is idempotent by localId, including after a lost acknowledgement.
+  - A relay message that ran out of tries on the connection (no network,
+    the server unreachable or down: anything but a refusal) reads "Not
+    sent" as any failure does, but is `interrupted`, not `failed`: it goes
+    again by itself, whole (caption and pictures), when the connection comes
+    back (the socket connecting, the network returning, the app coming to
+    the foreground; `LegacySyncEngine.resumeSending`), with the usual
+    backoff (1 s doubling, five tries, then waiting for the connection
+    again). A direct chat's message does the same. A refusal (a 4xx but
+    408, 409, 429; a session it can't be encrypted to) is `failed` and
+    waits for the person's Retry or discard; a message with any refused
+    part never goes by itself. Retry by hand works in both states. The
+    composer's "Upload Failed" alert says an `interrupted` picture will be
+    sent when the connection is back (`native.imageUpload.willRetry*`), not
+    that it wasn't sent, raises no second alert when a retry fails again,
+    and closes once the session has no attachment left in the outbox. A
+    message's pictures fail one delivery at a time: the alert up counts
+    them (`UploadAlertModel`) instead of another being raised over it.
+    When a picture's upload fails, happy-app and Android keep the message
+    in the composer instead, so there is nothing for them to resume.
   - Unsupported permission modes are refused before acceptance: `send` throws
     `UnsupportedPermissionModeError`, and nothing is enqueued or copied.
 - **Tool outputs are hidden by default** in the chat. This deliberately
@@ -340,7 +363,13 @@ nothing here is wired to the release skill or to EAS.
     deleted) runs after, written first to `Happy/removals.json`
     (`AccountRemovalJournal`), so a kill midway is finished by the next
     launch and the account is never listed again, even while its Keychain
-    item is still there. See docs/accounts.md. Signed-out logout never deletes unknown RN bytes. If RN
+    item is still there. See docs/accounts.md. Disconnecting a pairing also
+    removes its device from the agent (`DeviceRevokeQueue`: `DELETE
+    /v0/mobile-connector/device` with that pairing's own token, kept in
+    the Keychain item `happy-ios:device-revoke` until the agent answers
+    200, 401 or 403, retried at 1 … 30 s, at launch, on foreground and on
+    the next pairing, for up to 30 days), so pairing again leaves one
+    device there. A token a connection here holds is never sent. Signed-out logout never deletes unknown RN bytes. If RN
     authenticates an account also held in an own item, recovery removes that
     redundant own item only after reading the shared credentials successfully.
   - **Origin.** Each registry entry records how the account came here

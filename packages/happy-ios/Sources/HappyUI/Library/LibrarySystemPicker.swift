@@ -65,11 +65,14 @@ final class LibrarySystemPicker: NSObject, PHPickerViewControllerDelegate {
     nonisolated private static func read(_ item: Provided) async -> LibraryPick? {
         let provider = item.provider
         let type: UTType = provider.hasItemConformingToTypeIdentifier(UTType.movie.identifier) ? .movie : .image
+        let suggested = provider.suggestedName
         let copy: URL? = await withCheckedContinuation { continuation in
             _ = provider.loadFileRepresentation(forTypeIdentifier: type.identifier) { @Sendable url, _ in
                 guard let url else { return continuation.resume(returning: nil) }
                 let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
-                let target = folder.appendingPathComponent(url.lastPathComponent)
+                // The photo's own name (`suggestedName`, "IMG_0042"), with the
+                // file's extension; the file's own name is a temporary one.
+                let target = folder.appendingPathComponent(Self.copyName(suggested: suggested, file: url))
                 do {
                     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
                     try FileManager.default.copyItem(at: url, to: target)
@@ -83,6 +86,14 @@ final class LibrarySystemPicker: NSObject, PHPickerViewControllerDelegate {
         guard let copy else { return nil }
         defer { try? FileManager.default.removeItem(at: copy.deletingLastPathComponent()) }
         return LibraryPicker.document(copy, videos: true)
+    }
+
+    nonisolated static func copyName(suggested: String?, file: URL) -> String {
+        let stem = (suggested ?? "").replacingOccurrences(of: "/", with: "_").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !stem.isEmpty, !stem.hasPrefix(".") else { return file.lastPathComponent }
+        let ext = file.pathExtension
+        if ext.isEmpty || (stem as NSString).pathExtension.lowercased() == ext.lowercased() { return stem }
+        return "\(stem).\(ext)"
     }
 }
 

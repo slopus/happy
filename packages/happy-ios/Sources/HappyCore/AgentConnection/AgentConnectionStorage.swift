@@ -131,6 +131,9 @@ actor AgentConnectionStorage {
         try credentials.save(value, id: id)
     }
     func select(_ id: String?) throws { registry.activeID = id; try persist() }
+    /// `id`'s saved credentials, nil without them.
+    func saved(_ id: String) -> AgentConnectionCredentials? { try? credentials.all()[id] }
+
     func remove(_ id: String) throws {
         try credentials.remove(id: id)
         // A removal finished at launch can come before `load`: the saved

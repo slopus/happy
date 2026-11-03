@@ -53,7 +53,9 @@ public struct RigSessionCreation: Equatable, Sendable {
             guard let providerId = Self.nonEmpty(model["providerId"]) ?? Self.nonEmpty(provider?["id"]),
                   let id = Self.nonEmpty(model["id"]) ?? Self.nonEmpty(model["code"]) else { return nil }
             let name = Self.nonEmpty(model["name"]) ?? Self.nonEmpty(model["value"]) ?? id
-            let providerName = Self.nonEmpty(model["providerName"]) ?? Self.nonEmpty(provider?["name"]) ?? providerId
+            let providerName = RigCatalog.providerName(
+                Self.nonEmpty(model["providerName"]) ?? Self.nonEmpty(provider?["name"]),
+                kind: Self.nonEmpty(provider?["kind"]) ?? Self.nonEmpty(model["providerKind"]), providerId: providerId)
             let levels = (model["thinkingLevels"]?.arrayValue ?? []).compactMap { level -> String? in
                 guard let value = level.stringValue, !value.isEmpty else { return nil }
                 return value

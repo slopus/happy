@@ -72,6 +72,21 @@ describe('offering one computer rather than one daemon', () => {
         expect(choices[0].id).toBe(RIG);
     });
 
+    it('names a lone Happy Agent by the node name it publishes, not by its host', () => {
+        const named = machine(RIG, {
+            host: 'MacBook-Pro.local',
+            displayName: 'Studio Agent — Happy Agent',
+            machineKind: 'rig',
+            rigOnly: true,
+        });
+        expect(collectMachineChoices([named])[0].name).toBe('Studio Agent');
+    });
+
+    it('falls back to the host for a lone Happy Agent without the suffix', () => {
+        const named = machine(RIG, { host: 'MacBook-Pro.local', displayName: 'Something else', machineKind: 'rig', rigOnly: true });
+        expect(collectMachineChoices([named])[0].name).toBe('MacBook-Pro.local');
+    });
+
     it('finds the computer from either of its machine ids', () => {
         const choices = collectMachineChoices([cli(), rig()]);
         expect(findMachineChoice(choices, RIG)?.id).toBe(CLI);

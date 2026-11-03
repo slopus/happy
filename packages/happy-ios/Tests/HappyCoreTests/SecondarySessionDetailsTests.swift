@@ -55,8 +55,10 @@ final class SessionDetailsFormattingTests: XCTestCase {
     }
 
     func testVersions() {
-        XCTAssertTrue(SessionDetails.isVersionSupported("0.10.0"))
-        XCTAssertTrue(SessionDetails.isVersionSupported("0.10.0-1"), "prerelease suffix is dropped")
+        XCTAssertTrue(SessionDetails.isVersionSupported("0.15.0"))
+        XCTAssertTrue(SessionDetails.isVersionSupported("0.15.0-beta.0"), "prerelease suffix is dropped")
+        XCTAssertFalse(SessionDetails.isVersionSupported("0.14.2"), "still sends retired output records")
+        XCTAssertFalse(SessionDetails.isVersionSupported("0.10.0"))
         XCTAssertTrue(SessionDetails.isVersionSupported("1.2"))
         XCTAssertFalse(SessionDetails.isVersionSupported("0.9.12"))
         XCTAssertFalse(SessionDetails.isVersionSupported(nil))

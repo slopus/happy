@@ -1,7 +1,7 @@
 import type { Machine, MachineMetadata } from './storageTypes';
 import { sortPermissionModes } from '@/utils/permissionModeLabels';
 import { sortRigModelsForPicker } from '@/utils/rigModelPickerOrder';
-import { qualifyRigModelKey } from './rig';
+import { getRigProviderName, qualifyRigModelKey } from './rig';
 
 /** A model option as published by a Rig machine, qualified by provider. */
 export type RigMachineModelOption = {
@@ -157,9 +157,11 @@ export function getRigMachineSessionCreation(
 
         const provider = model.provider as Record<string, unknown> | undefined;
         const name = nonEmptyString(model.name) ?? nonEmptyString(model.value) ?? id;
-        const providerName = nonEmptyString(model.providerName)
-            ?? nonEmptyString(provider?.name)
-            ?? providerId;
+        const providerName = getRigProviderName(
+            nonEmptyString(model.providerName) ?? nonEmptyString(provider?.name),
+            nonEmptyString(provider?.kind) ?? nonEmptyString(model.providerKind),
+            providerId,
+        );
         const thinkingLevels = strings(model.thinkingLevels);
         const declaredDefault = nonEmptyString(model.defaultThinkingLevel);
         return [{

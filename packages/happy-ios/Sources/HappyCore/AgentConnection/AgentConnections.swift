@@ -120,6 +120,11 @@ public final class AgentConnections {
         return engine
     }
     func credential(for id: String) -> AgentConnectionCredentials? { credentials[id] }
+    /// What `id` saved, read from storage: a removal a kill interrupted,
+    /// whose credentials are no longer in memory.
+    func savedCredential(for id: String) async -> AgentConnectionCredentials? { await storage.saved(id) }
+    /// Whether a connection on this phone holds `deviceToken` now.
+    func holds(deviceToken: String) -> Bool { credentials.values.contains { $0.deviceToken == deviceToken } }
     /// What the connection's placeholder picture is picked by: its
     /// computer's address, the same on every phone paired with it.
     public func placeholderSeed(for id: String) -> String? { credentials[id].map { "agent:\($0.signIn == nil ? $0.address : $0.publicUrl ?? "")" } }

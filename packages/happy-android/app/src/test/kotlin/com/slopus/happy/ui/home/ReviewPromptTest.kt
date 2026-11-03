@@ -22,13 +22,20 @@ import org.junit.runner.RunWith
  * - Liked: the store review again once 7 days have passed since the last.
  * - Answered without liking it, here or on another device: never again.
  * - A local decline holds the ask back 30 days.
+ * - The first ask waits 3 days from the first time the list had sessions
+ *   here, not right after the first computer is linked.
  * - SessionsList.tsx asks once its list has sessions; a phone grouped by
  *   project (ProjectHomeList) never does, the tablet sidebar always can.
  * - The stamps go with the account on logout (the default MMKV upstream).
  */
 @RunWith(AndroidJUnit4::class)
 class ReviewPromptTest {
-    private class Stamps(override var storeReviewShownAt: Long? = null, override var declinedAt: Long? = null) : ReviewStamps
+    // The list has had sessions for long enough unless a test says otherwise.
+    private class Stamps(
+        override var storeReviewShownAt: Long? = null,
+        override var declinedAt: Long? = null,
+        override var firstListedAt: Long? = 0,
+    ) : ReviewStamps
 
     private val day = 24L * 60 * 60 * 1000
     private var now = 100 * day
@@ -104,6 +111,21 @@ class ReviewPromptTest {
     }
 
     @Test
+    fun theFirstAskWaitsThreeDaysFromTheFirstSessions() = runTest {
+        stamps.firstListedAt = null
+        run()
+        assertEquals("the first computer just linked", 0, asks)
+        assertEquals(now, stamps.firstListedAt)
+        now += 3 * day - 1
+        run()
+        assertEquals(0, asks)
+        assertEquals("the wait counts from the first time", now - 3 * day + 1, stamps.firstListedAt)
+        now += 1
+        run()
+        assertEquals(1, asks)
+    }
+
+    @Test
     fun aFailedStoreReviewIsSwallowed() = runTest {
         prompter.run(isAvailable = { true }, ask = { true }, review = { error("no Play services") })
         assertTrue(answered)
@@ -138,6 +160,8 @@ class ReviewPromptTest {
         stored.storeReviewShownAt = 7
         assertEquals(42L, PrefsReviewStamps(prefs).declinedAt)
         assertEquals(7L, PrefsReviewStamps(prefs).storeReviewShownAt)
+        stored.firstListedAt = 9
+        assertEquals(9L, PrefsReviewStamps(prefs).firstListedAt)
         stored.declinedAt = null
         assertNull(PrefsReviewStamps(prefs).declinedAt)
     }

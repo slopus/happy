@@ -28,6 +28,9 @@ struct LibraryPick {
     var duration: TimeInterval?
     /// The library's `PHAsset.localIdentifier`.
     var assetIdentifier: String
+    /// The name it was saved under (`IMG_0042.HEIC`, a file's own name),
+    /// when the library or Files says; a picture keeps its stem when sent.
+    var name: String? = nil
 }
 
 /// The photo library as a sheet, after Telegram's attachment gallery: the
@@ -71,7 +74,7 @@ enum LibraryPicker {
         switch asset.mediaType {
         case .image:
             guard let (data, type) = await imageData(asset) else { return nil }
-            return LibraryPick(media: .image(data, type), thumbnail: thumbnail, pixelSize: pixels, duration: nil, assetIdentifier: asset.localIdentifier)
+            return LibraryPick(media: .image(data, type), thumbnail: thumbnail, pixelSize: pixels, duration: nil, assetIdentifier: asset.localIdentifier, name: originalName(asset))
         case .video:
             guard let file = await videoFile(asset) else { return nil }
             return LibraryPick(media: .video(file), thumbnail: thumbnail, pixelSize: pixels, duration: asset.duration, assetIdentifier: asset.localIdentifier)
@@ -97,6 +100,13 @@ enum LibraryPicker {
                 continuation.resume(returning: image)
             }
         }
+    }
+
+    /// The photo's original file name, as Photos keeps it.
+    private static func originalName(_ asset: PHAsset) -> String? {
+        let resources = PHAssetResource.assetResources(for: asset)
+        let photo = resources.first { $0.type == .photo } ?? resources.first
+        return photo?.originalFilename
     }
 
     private static func imageData(_ asset: PHAsset) async -> (Data, UTType)? {
@@ -135,7 +145,7 @@ enum LibraryPicker {
     }
 
     /// A picture's bytes as a pick, measured and drawn small for its thumbnail.
-    nonisolated static func picture(_ data: Data, type: UTType) -> LibraryPick? {
+    nonisolated static func picture(_ data: Data, type: UTType, name: String? = nil) -> LibraryPick? {
         guard let image = UIImage(data: data) else { return nil }
         let pixels = CGSize(width: image.size.width * image.scale, height: image.size.height * image.scale)
         let side: CGFloat = 512 * 3
@@ -144,7 +154,7 @@ enum LibraryPicker {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         let thumbnail = UIGraphicsImageRenderer(size: small, format: format).image { _ in image.draw(in: CGRect(origin: .zero, size: small)) }
-        return LibraryPick(media: .image(data, type), thumbnail: thumbnail, pixelSize: pixels, duration: nil, assetIdentifier: "")
+        return LibraryPick(media: .image(data, type), thumbnail: thumbnail, pixelSize: pixels, duration: nil, assetIdentifier: "", name: name)
     }
 
     /// A file from Files (already this app's copy) as a pick: a picture by
@@ -153,7 +163,7 @@ enum LibraryPicker {
     /// (an SVG) is a file. Nothing is left behind when it can't be kept.
     nonisolated static func document(_ url: URL, videos: Bool) -> LibraryPick? {
         let type = UTType(filenameExtension: url.pathExtension) ?? .data
-        if type.conforms(to: .image), let data = try? Data(contentsOf: url), let pick = picture(data, type: type) {
+        if type.conforms(to: .image), let data = try? Data(contentsOf: url), let pick = picture(data, type: type, name: url.lastPathComponent) {
             try? FileManager.default.removeItem(at: url)
             return pick
         }

@@ -54,9 +54,12 @@ no longer publish or save anything of it, so nothing waits for them.
 engine up to 10 s to close its database (one stuck on the network doesn't
 hold the rest back), and deletes the folder off the main thread.
 
-Device tokens cannot access connector management routes. Disconnect therefore
-forgets this phone's credentials locally; desktop device management handles
-server-side revocation. There is no invented phone revocation endpoint.
+Device tokens cannot access connector management routes, except one: a
+phone removes its own device with `DELETE /v0/mobile-connector/device`.
+Disconnect forgets this phone's credentials locally at once and hands that
+request, with the pairing's own token, to `DeviceRevokeQueue`, which sends it
+until the agent answers (see docs/accounts.md). A daemon from before the
+route answers 403; the desktop's device list removes it there.
 
 The combined home switcher lists both account kinds. A single account keeps
 the app logo; multiple accounts show the current avatar. Selecting a direct
@@ -67,15 +70,22 @@ socket.io connection or relay SyncEngine.
 
 The direct composer accepts images, videos and documents up to 50 MiB per
 file. Picker copies become queue-owned files under the account's Application
-Support directory before the draft clears. Supported images up to 5 MiB
-(29 MiB total) accompany `/send` as image blocks; larger images and other
-files use the existing authenticated workspace file PUT over Tailcat. The
-agent response supplies the execution workspace ID, which is persisted
-before the first upload. Stable message paths, create-only writes and
-SHA-256 matching make a lost acknowledgement safe to retry. Per-file upload
-progress is saved before the message is sent with relative file paths.
-The API prepends the required top-level caption to the optional rich blocks;
-image blocks use `mimeType`, and image-only sends supply a short caption.
+Support directory before the draft clears. Every attachment, images
+included, uses the authenticated workspace file PUT over Tailcat, so it
+lands on the agent's own disk wherever that computer is. The message then
+names the files in the note every Happy client uses (happy-cli's
+`formatAttachmentNote`: "The user attached 1 image. It was saved on this
+machine and not loaded into your context; …" and one `- ./.happy-uploads/…`
+line per file), and the agent opens only what it needs; nothing goes to
+`/send` as an image block. Outbox rows from older versions that still hold
+inline pictures are moved to files before delivery
+(`AttachmentRules.migratePictures`). Until the computer has the message the
+bubble draws the pictures from the phone's copies; after that it shows the
+message's text. The agent response supplies the execution workspace ID,
+which is persisted before the first upload. Stable message paths,
+create-only writes and SHA-256 matching make a lost acknowledgement safe to
+retry. Per-file upload progress is saved before the message is sent with
+relative file paths.
 
 An upload can take up to 15 minutes and writes its request body in cancellable
 chunks. Acknowledging the outbox row retains local copies: an older cached

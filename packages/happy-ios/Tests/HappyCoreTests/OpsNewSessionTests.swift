@@ -154,6 +154,26 @@ final class OpsNewSessionTests: XCTestCase {
         XCTAssertNil(choice.worktreeCreationMachine(agent: "codex", agentSupportsWorktrees: false))
     }
 
+    /// A lone Happy Agent goes by the node name it publishes before its
+    /// suffix; an older one's display name is its host, so nothing changes
+    /// there; without the suffix, the host.
+    func testALoneHappyAgentGoesByItsNodeName() {
+        func lone(_ displayName: String) -> String {
+            let machine = MachineRecord(
+                id: "rig", seq: 0, createdAt: 1, updatedAt: 1, active: true, activeAt: 1, metadataVersion: 1,
+                metadataCipher: "", metadata: .object([
+                    "host": .string("MacBook-Pro.local"), "displayName": .string(displayName),
+                    "machineKind": .string("rig"), "rigOnly": .bool(true),
+                ]),
+                daemonStateVersion: 0, daemonStateCipher: nil, daemonState: nil, dataKeyCipher: nil, decryptable: true
+            )
+            return MachineChoice.collect([machine])[0].name
+        }
+        XCTAssertEqual(lone("Studio Agent — Happy Agent"), "Studio Agent")
+        XCTAssertEqual(lone("MacBook-Pro.local — Happy Agent"), "MacBook-Pro.local")
+        XCTAssertEqual(lone("Something else"), "MacBook-Pro.local")
+    }
+
     func testPathPickerPrefersNamedProjectAndOffersWorkspaceOnlyProjectByIdentity() throws {
         let fixture = ServerFixture()
         func session(_ id: String, _ metadata: JSONValue) -> SessionRecord {

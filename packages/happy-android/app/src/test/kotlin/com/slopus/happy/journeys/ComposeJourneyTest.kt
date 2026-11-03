@@ -28,17 +28,19 @@ import com.slopus.happy.ui.chat.MessageTags
 import com.slopus.happy.ui.chat.NewWorkTags
 import com.slopus.happy.ui.home.HomeDockTags
 import com.slopus.happy.ui.tablet.TabletShellTags
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.addJsonObject
 import com.slopus.happy.ui.tablet.SidebarTags
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
-import kotlinx.serialization.json.add
-import kotlinx.serialization.json.addJsonObject
+import com.slopus.happy.ui.chat.ComposerPickerTags
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import com.slopus.happy.ui.chat.ComposerTags
 import com.slopus.happy.ui.attachments.AttachmentStripTags
 import com.slopus.happy.ui.components.HeaderTags
+import com.slopus.happy.ui.components.PickerSheetTags
 import com.slopus.happy.ui.home.FlatRowTags
 import com.slopus.happy.ui.home.HomeServices
 import com.slopus.happy.ui.home.HomeTags
@@ -139,6 +141,69 @@ class ComposeJourneyTest {
             rule.node(ComposeChatTags.option(NewSessionPage.Machine, machine)).performClick()
             rule.waitUntil(5_000) { newSession.draft.value.selectedMachineId == machine && newSession.draft.value.selectedPath == path }
         }
+    }
+
+    /**
+     * The matrix's bug D: the empty chat's model chip listed Claude Code's
+     * defaults and wrote a pick nowhere the start reads, so a Happy Agent
+     * session started on the computer's default model. The chip is the
+     * draft's, from the computer's own catalog, and a pick is what spawns.
+     */
+    @Test
+    fun theModelPickedInTheEmptyChatIsTheOneTheSessionStartsOn() {
+        server.addMachine(
+            AGENT,
+            buildJsonObject {
+                put("host", "agentbox")
+                put("platform", "darwin")
+                put("happyCliVersion", "0.4.111")
+                put("happyHomeDir", "/h/.happy")
+                put("homeDir", "/h")
+                put("machineKind", "rig")
+                putJsonObject("capabilities") { put("newSession", true) }
+                putJsonObject("defaults") { put("providerId", "codex"); put("modelId", "gpt"); put("permissionMode", "auto") }
+                putJsonArray("models") {
+                    addJsonObject {
+                        put("code", "gpt"); put("value", "GPT-6.1 Sol"); put("providerId", "codex"); put("providerName", "Codex"); put("id", "gpt")
+                        putJsonArray("thinkingLevels") { add("low"); add("high") }
+                        put("defaultThinkingLevel", "high")
+                    }
+                    addJsonObject {
+                        put("code", "opus"); put("value", "Opus 5 1M"); put("providerId", "claude"); put("providerName", "Claude Code"); put("id", "opus")
+                        putJsonArray("thinkingLevels") { add("medium"); add("max") }
+                        put("defaultThinkingLevel", "medium")
+                    }
+                }
+                putJsonArray("operatingModes") { addJsonObject { put("code", "auto"); put("value", "Auto") } }
+            },
+        )
+        server.addSession("s0", updatedAt = 100, metadata = Journey.sessionMetadata("/h", "Existing chat", machineId = AGENT))
+        val spawns = journey.rpc(AGENT, "spawn-happy-session") {
+            server.addSession(NEW, updatedAt = 90_000, metadata = Journey.sessionMetadata("/h", "Fresh chat", machineId = AGENT))
+            buildJsonObject { put("type", "success"); put("sessionId", NEW) }
+        }
+        val graph = journey.graph()
+        journey.signIn(graph)
+        val newSession = HomeServices.of(graph).newSession(ApplicationProvider.getApplicationContext())
+        rule.setContent { HappyApp(graph) }
+        rule.waitFor(FlatRowTags.ROW)
+
+        rule.node(HomeTags.COMPOSE).performClick()
+        rule.waitFor(ComposeChatTags.TARGET)
+        // The computer's default, from its catalog.
+        rule.waitUntil(5_000) { rule.onAllNodes(hasTestTag(ComposerPickerTags.MODEL) and hasAnyDescendant(hasText("GPT-6.1 Sol")), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        rule.node(ComposerPickerTags.MODEL).performClick()
+        rule.waitFor(PickerSheetTags.option("claude:opus"))
+        rule.onNodeWithText("Fable 5.1").assertDoesNotExist()
+        rule.node(PickerSheetTags.option("claude:opus")).performClick()
+        rule.waitUntil(5_000) { newSession.draft.value.modelMode == "claude:opus" }
+        rule.waitUntil(5_000) { rule.onAllNodes(hasTestTag(ComposerPickerTags.EFFORT) and hasAnyDescendant(hasText("Medium")), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+
+        rule.node(ComposerTags.INPUT).performTextInput("Which model are you?")
+        rule.node(ComposerTags.PRIMARY).performClick()
+        rule.waitUntil(15_000) { spawns.isNotEmpty() }
+        val spawn = spawns.single().toString()
+        assertTrue(spawn, "\"providerId\":\"claude\"" in spawn && "\"modelId\":\"opus\"" in spawn && "\"effort\":\"medium\"" in spawn)
     }
 
     @Test

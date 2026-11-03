@@ -9,8 +9,9 @@ import HappyWire
 // en.ts) is kept here verbatim; translated copy stays in HappyUI.
 
 public enum SessionDetails {
-    /// versionUtils.ts `MINIMUM_CLI_VERSION`.
-    public static let minimumCLIVersion = "0.10.0"
+    /// versionUtils.ts `MINIMUM_CLI_VERSION`. Before 0.15.0 the CLI sent
+    /// agent output as retired `output` records (AGENTS.md, record kinds).
+    public static let minimumCLIVersion = "0.15.0"
 
     /// sessionUtils.ts `formatPathRelativeToHome`: the home directory as `~`.
     public static func pathRelativeToHome(_ path: String, homeDir: String?) -> String {
@@ -50,6 +51,21 @@ public enum SessionDetails {
             if x < y { return -1 }
         }
         return 0
+    }
+
+    /// The first Happy CLI that never loses a new session's first message.
+    public static let firstMessageSafeCLIVersion = "1.2.1"
+
+    /// A Happy CLI before 1.2.1 can lose a brand new session's first
+    /// message: before 0.15 it reads messages only from its socket and never
+    /// catches up on one sent before it connected; until 1.2.1 its receive
+    /// cursor could step over one sent while its startup event was in
+    /// flight. Such a session is sent its first message only once the CLI is
+    /// heard from. Happy Agent, and a session naming no version, at once.
+    public static func waitsForCLIBeforeFirstMessage(_ metadata: JSONValue?) -> Bool {
+        guard let version = metadata?["version"]?.stringValue, !version.isEmpty,
+              metadata?["client"]?["id"]?.stringValue != "rig" else { return false }
+        return compareVersions(version, firstMessageSafeCLIVersion) < 0
     }
 
     /// versionUtils.ts `isVersionSupported`.
@@ -346,7 +362,9 @@ public struct RigIdentity: Equatable, Sendable {
         let current = Self.currentModel(metadata)
         clientName = nonEmpty(metadata["client"]?["name"]) ?? "Rig"
         clientVersion = nonEmpty(metadata["client"]?["version"])
-        providerName = nonEmpty(metadata["provider"]?["name"])
+        providerName = metadata["provider"]?["id"]?.stringValue.map {
+            RigCatalog.providerName(nonEmpty(metadata["provider"]?["name"]), kind: metadata["provider"]?["kind"]?.stringValue, providerId: $0)
+        } ?? nonEmpty(metadata["provider"]?["name"])
             ?? current?.providerName
             ?? nonEmpty(metadata["flavor"])
             ?? "Provider"
@@ -372,18 +390,19 @@ public struct RigIdentity: Equatable, Sendable {
             else { continue }
             return (
                 nonEmpty(model["name"]) ?? nonEmpty(model["value"]) ?? modelId,
-                nonEmpty(model["provider"]?["name"]) ?? nonEmpty(model["providerName"]) ?? modelProvider,
+                RigCatalog.providerName(nonEmpty(model["provider"]?["name"]) ?? nonEmpty(model["providerName"]),
+                                        kind: nonEmpty(model["provider"]?["kind"]) ?? nonEmpty(model["providerKind"]), providerId: modelProvider),
                 nonEmpty(model["provider"]?["kind"]) ?? nonEmpty(model["providerKind"]) ?? "custom"
             )
         }
         let providerName: String?
         let providerKind: String?
         if metadata["provider"]?["id"]?.stringValue == providerId {
-            providerName = nonEmpty(metadata["provider"]?["name"])
+            providerName = RigCatalog.providerName(nonEmpty(metadata["provider"]?["name"]), kind: metadata["provider"]?["kind"]?.stringValue, providerId: providerId)
             providerKind = metadata["provider"]?["kind"]?.stringValue
         } else {
             let provider = metadata["providers"]?.arrayValue?.first { $0["id"]?.stringValue == providerId }
-            providerName = provider?["name"]?.stringValue ?? providerId
+            providerName = RigCatalog.providerName(provider?["name"]?.stringValue, kind: provider?["kind"]?.stringValue, providerId: providerId)
             providerKind = provider?["kind"]?.stringValue ?? "custom"
         }
         return (id, providerName, providerKind)

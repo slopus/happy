@@ -8,6 +8,7 @@ import {
     getRigGitSummary,
     getRigIdentity,
     getRigModels,
+    getRigProviderName,
     getRigReasoningLevels,
     getRigReasoningSelection,
     getRigSelectedModelKey,
@@ -57,6 +58,23 @@ describe('Rig metadata', () => {
         expect(['codex', 'claude', 'grok', 'kimi', 'custom'].map(getProviderIconKind)).toEqual([
             'codex', 'claude', 'grok', 'kimi', 'generic',
         ]);
+    });
+
+    it('names Happy Agent built-in "Current CLI" accounts by their provider', () => {
+        expect(getRigProviderName('Current CLI', 'codex', 'codex')).toBe('Codex');
+        expect(getRigProviderName(' Current CLI ', null, 'claude')).toBe('Claude');
+        expect(getRigProviderName('Current CLI', 'grok', 'grok-2')).toBe('Grok');
+        expect(getRigProviderName('alex@acme.com', 'claude', 'claude-work')).toBe('alex@acme.com');
+        expect(getRigProviderName('Current CLI', 'custom', 'mine')).toBe('Current CLI');
+        expect(getRigProviderName(null, null, 'work')).toBe('work');
+
+        const metadata = MetadataSchema.parse({
+            ...rigMetadataFixture,
+            provider: { id: 'codex', kind: 'codex', name: 'Current CLI' },
+            models: (rigMetadataFixture.models ?? []).map((model) => ({ ...model, providerName: 'Current CLI', provider: undefined })),
+        });
+        expect(getRigModels(metadata).map((model) => model.providerName)).toEqual(['Codex', 'Claude']);
+        expect(getRigIdentity(metadata)?.providerName).toBe('Codex');
     });
 
     it('keeps duplicate model ids distinct by provider', () => {

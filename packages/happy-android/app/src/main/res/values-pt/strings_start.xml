@@ -20,4 +20,5 @@
     <string name="start_install_choose">Escolha Link\u00A0Mobile\u00A0App durante a configuração.</string>
     <string name="start_install_settings">Ou vá em Settings\u00A0›\u00A0Mobile\u00A0Access.</string>
     <string name="start_install_download">Baixe em %1$s</string>
+    <string name="restore_secret_key_body">Cole sua chave secreta. Ela está em %1$s no seu outro dispositivo.</string>
 </resources>

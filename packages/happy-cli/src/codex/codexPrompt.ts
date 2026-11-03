@@ -55,6 +55,8 @@ export function buildCodexTurnPrompt(opts: {
     mode: Pick<CodexEnhancedMode, 'appendSystemPrompt'>;
     includeAppendSystemPrompt: boolean;
     includeTitleInstruction: boolean;
+    /** Where this message's attachments were saved (`formatAttachmentNote`). */
+    attachmentNote?: string | null;
 }): string {
     const parts: string[] = [];
 
@@ -62,7 +64,13 @@ export function buildCodexTurnPrompt(opts: {
         parts.push(wrapHappySystem(opts.mode.appendSystemPrompt));
     }
 
-    parts.push(opts.message);
+    if (opts.message.length > 0 || !opts.attachmentNote) {
+        parts.push(opts.message);
+    }
+
+    if (opts.attachmentNote) {
+        parts.push(wrapHappySystem(opts.attachmentNote));
+    }
 
     if (opts.includeTitleInstruction) {
         parts.push(wrapHappySystem(CHANGE_TITLE_INSTRUCTION));

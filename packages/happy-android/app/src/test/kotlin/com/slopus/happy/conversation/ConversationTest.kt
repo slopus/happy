@@ -43,11 +43,13 @@ private class FakeAgent {
     val written = LinkedHashMap<String, ByteArray>()
     /** The next file writes refused with this status. */
     var refuseFiles = 0
+    /** The next draft saves don't get through. */
+    var failDrafts = 0
     /** A question's answer is refused with this status. */
     var answerStatus: Int? = null
     /** A slash command's invocation answers this status; accepted, with [commandsAfter] as the catalog. */
     var commandStatus = 202
-    /** A send writes half its body, then waits for this before writing the rest and answering. */
+    /** A picture file's write gets half its body out, then waits for this before writing the rest and answering. */
     var halfway: CompletableDeferred<Unit>? = null
     /** What `GET /v0/config` answers. */
     var config = CONFIG
@@ -64,6 +66,14 @@ private class FakeAgent {
             route.endsWith("/bootstrap") -> { beforeBootstrap(); ok(bootstrap) }
             method == "PUT" && route.startsWith("/v0/workspaces/") && route.endsWith("/file") -> {
                 val o = body as JsonObject
+                val held = halfway
+                if (held != null && !o["path"]!!.toString().trim('"').endsWith(".gitignore")) {
+                    val bytes = body.toString().toByteArray()
+                    val progress = kotlinx.coroutines.currentCoroutineContext()[com.slopus.happy.connection.BodyProgress]
+                    progress?.report(bytes, bytes.size / 2)
+                    held.await()
+                    progress?.report(bytes, bytes.size)
+                }
                 val key = route.removePrefix("/v0/workspaces/").removeSuffix("/file") + ":" + o["path"]!!.toString().trim('"')
                 val bytes = java.util.Base64.getDecoder().decode(o["content"]!!.toString().trim('"'))
                 fun hash(b: ByteArray) = java.security.MessageDigest.getInstance("SHA-256").digest(b).joinToString("") { "%02x".format(it) }
@@ -77,14 +87,6 @@ private class FakeAgent {
             route.endsWith("/messages") && failOlder && "before=" in path -> TransportResponse(503, body = "{}".toByteArray())
             route.endsWith("/messages") && "after=" in path && afterPage != null -> ok(afterPage!!)
             route.endsWith("/messages") -> ok(page)
-            route.endsWith("/send") && halfway != null -> {
-                val bytes = body.toString().toByteArray()
-                val progress = kotlinx.coroutines.currentCoroutineContext()[com.slopus.happy.connection.BodyProgress]
-                progress?.report(bytes, bytes.size / 2)
-                halfway!!.await()
-                progress?.report(bytes, bytes.size)
-                TransportResponse(202, body = "{}".toByteArray())
-            }
             route.endsWith("/send") && failSends > 0 -> { failSends--; TransportResponse(503, body = """{"error":"busy"}""".toByteArray()) }
             route.endsWith("/send") -> TransportResponse(sendStatus, body = """{"error":"Unknown model.","code":"invalid_request"}""".toByteArray())
             route.endsWith("/answer") && answerStatus != null -> TransportResponse(answerStatus!!, body = """{"error":"busy"}""".toByteArray())
@@ -94,6 +96,7 @@ private class FakeAgent {
                 TransportResponse(commandStatus, body = """{"error":"The daemon's own words.","code":"conflict"}""".toByteArray())
             }
             route == "/v0/config" -> ok(config)
+            route.endsWith("/draft") && failDrafts > 0 -> { failDrafts--; TransportResponse(503, body = """{"error":"busy"}""".toByteArray()) }
             route.endsWith("/draft") -> ok("""{"draft":${(body as JsonObject).let { """{"value":${it["draft"]},"updatedAt":${it["updatedAt"]}}""" }}}""")
             else -> ok("{}")
         }
@@ -442,9 +445,9 @@ class ConversationTest {
         advanceUntilIdle()
         assertFalse(chat.state.value.created)
         assertTrue(chat.state.value.loaded)
-        // A task unless a bot is picked, unnamed, and the keyboard up in the composer.
+        // A task unless a bot is picked, unnamed, and the keyboard down until the composer is tapped.
         assertEquals(NewWork(WorkChoice(WorkKind.Task, "")), chat.state.value.newWork)
-        assertEquals(ComposerFocus(1, 0), chat.state.value.composerFocus)
+        assertNull(chat.state.value.composerFocus)
         // Only the picker's models are read.
         assertEquals(listOf("/v0/config"), agent.paths("GET"))
         assertTrue(agent.paths("POST").isEmpty())
@@ -635,6 +638,46 @@ class ConversationTest {
         assertEquals("\"he\"", saves.single().third!!["draft"]!!.jsonObject["text"].toString())
     }
 
+    private fun FakeAgent.draftTexts() = requests.filter { it.first == "PUT" && it.second.endsWith("/draft") }
+        .map { it.third!!["draft"]!!.jsonObject["text"].toString().trim('"') }
+
+    /**
+     * Sent offline from a chat then closed: the clear of the draft didn't
+     * get through, so the agent kept the sent words and gave them back to
+     * the composer next time. The delivered send saves the clear again.
+     */
+    @Test fun `a draft clear that could not be saved goes again once the send is delivered`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        chat.setDraft("PDF1: open the attached PDF")
+        advanceUntilIdle()
+        assertEquals(listOf("PDF1: open the attached PDF"), agent.draftTexts())
+        agent.failDrafts = 1
+        chat.send("PDF1: open the attached PDF")
+        chat.close()
+        advanceUntilIdle()
+        assertEquals(listOf("PDF1: open the attached PDF", "", ""), agent.draftTexts())
+        assertEquals(0, agent.failDrafts)
+        assertEquals(1, agent.paths("POST").count { it.endsWith("/send") })
+    }
+
+    @Test fun `a draft that could not be saved goes when the connection comes back`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        agent.failDrafts = 1
+        chat.setDraft("typed offline")
+        advanceUntilIdle()
+        assertEquals(listOf("typed offline"), agent.draftTexts())
+        signals.emit(ConversationSignal.Resync)
+        advanceUntilIdle()
+        assertEquals(listOf("typed offline", "typed offline"), agent.draftTexts())
+        signals.emit(ConversationSignal.Resync)
+        advanceUntilIdle()
+        assertEquals("saved once it went", 2, agent.draftTexts().size)
+    }
+
     @Test fun `questions show, answer and clear`() = runTest {
         val agent = FakeAgent()
         val chat = conversation(agent)
@@ -793,7 +836,8 @@ class ConversationTest {
             listOf("claude/anthropic/opus-5", "codex/openai/gpt-5.6-sol", "codex/openai/gpt-5.6-luna"),
             catalog.models.map { "${it.providerId}/${it.modelId}" },
         )
-        assertEquals(listOf("Current CLI", "Codex", "Codex"), catalog.models.map { it.providerName })
+        // The built-in account Happy Agent names "Current CLI" goes by its provider.
+        assertEquals(listOf("Claude", "Codex", "Codex"), catalog.models.map { it.providerName })
         assertEquals("Opus 5 1M", catalog.models[0].name)
         assertEquals(Mode("claude", "anthropic/opus-5", "high", null, "auto"), catalog.defaults)
     }
@@ -835,17 +879,32 @@ class ConversationTest {
         assertEquals(picked.json(), agent.requests.last { it.second.endsWith("/send") }.third!!["mode"])
     }
 
-    @Test fun `pictures go inline with the words, in order`() = runTest {
+    @Test fun `pictures go by path, drawn from the phone until the computer has them, in order`() = runTest {
         val agent = FakeAgent()
         val chat = conversation(agent)
         advanceUntilIdle()
-        val files = listOf(preview("a.jpg", "image/jpeg", 10))
+        val dir = kotlin.io.path.createTempDirectory("uploads").toFile()
+        val photo = java.io.File(dir, "a.jpg").apply { writeBytes(byteArrayOf(9, 8, 7)) }
+        val files = listOf(preview(photo.toURI().toString(), "image/jpeg", 3, name = "a.jpg"))
         assertTrue(chat.send("Look", files) { list -> list.map { Block.Image("image/jpeg", it.name) } })
         chat.send("After")
         advanceUntilIdle()
         val sends = agent.requests.filter { it.second.endsWith("/send") }.map { it.third!! }
-        assertEquals(listOf("Look", "After"), sends.map { it["text"]!!.toString().trim('"') })
-        assertEquals("""[{"type":"image","mimeType":"image/jpeg","data":"a.jpg"}]""", sends[0]["content"].toString())
+        val id = sends[0]["id"]!!.toString().trim('"')
+        // Accepted, before the computer's copy arrives: drawn from the phone.
+        val waiting = chat.state.value.rows.filterIsInstance<ConversationRow.User>().single { it.messageId == id }
+        assertEquals(listOf(Block.Image("image/jpeg", "a.jpg")), waiting.pictures)
+        assertEquals(listOf("w1:.happy-uploads/.gitignore", "w1:.happy-uploads/$id/0-a.jpg"), agent.written.keys.toList())
+        assertEquals(listOf<Byte>(9, 8, 7), agent.written.getValue("w1:.happy-uploads/$id/0-a.jpg").toList())
+        assertEquals(
+            listOf(
+                "Look\n\nThe user attached 1 image. It was saved on this machine and not loaded into your context; " +
+                    "open it with your file-reading or image-viewing tool only if you need to see it:\n- ./.happy-uploads/$id/0-a.jpg",
+                "After",
+            ),
+            sends.map { (it["text"] as kotlinx.serialization.json.JsonPrimitive).content },
+        )
+        assertTrue(sends.all { it["content"] == null })
     }
 
     @Test fun `unreadable pictures send nothing and give the words back`() = runTest {
@@ -866,8 +925,9 @@ class ConversationTest {
         val dir = kotlin.io.path.createTempDirectory("uploads").toFile()
         val video = java.io.File(dir, "clip.mp4").apply { writeBytes(byteArrayOf(1, 2, 3)) }
         val doc = java.io.File(dir, "notes.pdf").apply { writeBytes(byteArrayOf(4, 5)) }
+        val photo = java.io.File(dir, "a.jpg").apply { writeBytes(byteArrayOf(6)) }
         val attachments = listOf(
-            preview("a.jpg", "image/jpeg", 10),
+            preview(photo.toURI().toString(), "image/jpeg", 1, name = "a.jpg"),
             preview(video.toURI().toString(), "video/mp4", 3, name = "clip.mp4"),
             preview(doc.toURI().toString(), "application/pdf", 2, name = "notes.pdf"),
         )
@@ -875,22 +935,31 @@ class ConversationTest {
         advanceUntilIdle()
         val send = agent.requests.last { it.second.endsWith("/send") }
         val id = send.third!!["id"]!!.toString().trim('"')
-        assertEquals(listOf("w1:.happy-uploads/$id/1-clip.mp4", "w1:.happy-uploads/$id/2-notes.pdf"), agent.written.keys.toList())
-        assertEquals(listOf<Byte>(1, 2, 3), agent.written.values.first().toList())
+        assertEquals(
+            listOf(
+                "w1:.happy-uploads/.gitignore",
+                "w1:.happy-uploads/$id/0-a.jpg", "w1:.happy-uploads/$id/1-clip.mp4", "w1:.happy-uploads/$id/2-notes.pdf",
+            ),
+            agent.written.keys.toList(),
+        )
+        assertEquals(listOf<Byte>(1, 2, 3), agent.written.getValue("w1:.happy-uploads/$id/1-clip.mp4").toList())
         val puts = agent.requests.indexOfFirst { it.first == "PUT" }
         assertTrue("uploads before the send", puts < agent.requests.indexOf(send))
         assertEquals(
-            "Look\n\nAttached files:\n- ./.happy-uploads/$id/1-clip.mp4\n- ./.happy-uploads/$id/2-notes.pdf",
+            "Look\n\nThe user attached 3 files. They were saved on this machine and not loaded into your context; " +
+                "open them with your file-reading or image-viewing tool only if you need to see them:\n" +
+                "- ./.happy-uploads/$id/0-a.jpg\n- ./.happy-uploads/$id/1-clip.mp4\n- ./.happy-uploads/$id/2-notes.pdf",
             (send.third!!["text"] as kotlinx.serialization.json.JsonPrimitive).content,
         )
-        assertEquals(1, (send.third!!["content"] as kotlinx.serialization.json.JsonArray).size)
+        assertNull(send.third!!["content"])
         val row = chat.state.value.rows.filterIsInstance<ConversationRow.User>().first()
         assertTrue(row.text.contains("./.happy-uploads/$id/1-clip.mp4"))
     }
 
     @Test fun `a refused upload fails the send and a retry writes only what is missing`() = runTest {
         val agent = FakeAgent()
-        agent.refuseFiles = 1
+        // The .gitignore, then the file.
+        agent.refuseFiles = 2
         val chat = conversation(agent)
         advanceUntilIdle()
         val dir = kotlin.io.path.createTempDirectory("uploads").toFile()
@@ -902,8 +971,64 @@ class ConversationTest {
         assertTrue(failed.delivery is Delivery.Failed)
         chat.retrySend(failed.messageId)
         advanceUntilIdle()
-        assertEquals(1, agent.written.size)
+        assertEquals(setOf("w1:.happy-uploads/.gitignore", "w1:.happy-uploads/${failed.messageId}/0-notes.txt"), agent.written.keys)
         assertEquals(1, agent.requests.count { it.second.endsWith("/send") })
+    }
+
+    private fun FakeAgent.ignoreWrites() =
+        requests.filter { it.first == "PUT" && it.third?.get("path")?.toString()?.trim('"') == WorkspaceUploads.IGNORE_PATH }
+
+    @Test fun `the first upload into a workspace keeps the folder out of git, once`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        val dir = kotlin.io.path.createTempDirectory("uploads").toFile()
+        val doc = java.io.File(dir, "notes.txt").apply { writeText("hi") }
+        val note = listOf(preview(doc.toURI().toString(), "text/plain", 2, name = "notes.txt"))
+        assertTrue(chat.send("One", note))
+        advanceUntilIdle()
+        assertTrue(chat.send("Two", note))
+        advanceUntilIdle()
+        assertEquals("*", agent.written.getValue("w1:.happy-uploads/.gitignore").decodeToString())
+        val writes = agent.ignoreWrites()
+        assertEquals(1, writes.size)
+        assertEquals(kotlinx.serialization.json.JsonNull, writes.single().third!!["expectedHash"])
+        assertTrue("before the files", agent.requests.indexOf(writes.single()) < agent.requests.indexOfFirst { it.third?.get("path")?.toString()?.contains("notes.txt") == true })
+        assertEquals(2, agent.requests.count { it.second.endsWith("/send") })
+    }
+
+    @Test fun `a gitignore already there is left as it is`() = runTest {
+        val agent = FakeAgent()
+        agent.written["w1:.happy-uploads/.gitignore"] = "mine\n".toByteArray()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        val dir = kotlin.io.path.createTempDirectory("uploads").toFile()
+        val doc = java.io.File(dir, "notes.txt").apply { writeText("hi") }
+        assertTrue(chat.send("One", listOf(preview(doc.toURI().toString(), "text/plain", 2, name = "notes.txt"))))
+        advanceUntilIdle()
+        assertEquals("mine\n", agent.written.getValue("w1:.happy-uploads/.gitignore").decodeToString())
+        assertEquals(1, agent.requests.count { it.second.endsWith("/send") })
+        assertTrue(chat.send("Two", listOf(preview(doc.toURI().toString(), "text/plain", 2, name = "notes.txt"))))
+        advanceUntilIdle()
+        assertEquals("409 counts as written", 1, agent.ignoreWrites().size)
+    }
+
+    @Test fun `a refused gitignore never holds the upload up and is tried again`() = runTest {
+        val agent = FakeAgent()
+        agent.refuseFiles = 1
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        val dir = kotlin.io.path.createTempDirectory("uploads").toFile()
+        val doc = java.io.File(dir, "notes.txt").apply { writeText("hi") }
+        assertTrue(chat.send("One", listOf(preview(doc.toURI().toString(), "text/plain", 2, name = "notes.txt"))))
+        advanceUntilIdle()
+        assertEquals(1, agent.requests.count { it.second.endsWith("/send") })
+        assertTrue(agent.written.keys.none { it.endsWith(".gitignore") })
+        assertTrue(agent.written.keys.any { it.endsWith("0-notes.txt") })
+        assertTrue(chat.send("Two", listOf(preview(doc.toURI().toString(), "text/plain", 2, name = "notes.txt"))))
+        advanceUntilIdle()
+        assertEquals(2, agent.ignoreWrites().size)
+        assertEquals("*", agent.written.getValue("w1:.happy-uploads/.gitignore").decodeToString())
     }
 
     @Test fun `a lost upload answer counts as written when the same bytes are there`() = runTest {
@@ -1258,25 +1383,37 @@ class ConversationTest {
     }
 
 
-    private fun picture(fill: Char) = Block.Image("image/png", fill.toString().repeat(4000))
-
-    private fun sentImages(agent: FakeAgent) = agent.requests.filter { it.second.endsWith("/send") }.map { request ->
-        request.third!!["content"]?.jsonArray.orEmpty().map { it.jsonObject }.filter { it["type"]?.jsonPrimitive?.content == "image" }.map { it["data"]!!.jsonPrimitive.content.first() }
+    /** Pictures [fills] staged on the phone, each a file the bubble draws as `Block.Image(png, fill)`. */
+    private fun pictures(vararg fills: Char): List<com.slopus.happy.attachments.AttachmentPreview> {
+        val dir = kotlin.io.path.createTempDirectory("pictures").toFile()
+        return fills.map { fill ->
+            val file = java.io.File(dir, "$fill.png").apply { writeBytes(fill.toString().repeat(4000).toByteArray()) }
+            preview(file.toURI().toString(), "image/png", file.length(), name = "$fill.png")
+        }
     }
 
-    @Test fun `a sending picture says how much of it is written and is forgotten once taken`() = runTest {
+    private val drawPictures: (List<java.io.File>) -> List<Block.Image> = { list -> list.map { Block.Image("image/png", it.nameWithoutExtension) } }
+
+    /** Each picture file write, in order, by its letter. */
+    private fun writtenPictures(agent: FakeAgent) = agent.requests
+        .filter { it.first == "PUT" && it.second.endsWith("/file") }
+        .map { it.third!!["path"]!!.jsonPrimitive.content }
+        .filter { it.endsWith(".png") }
+        .map { it.substringAfterLast('-').first() }
+
+    @Test fun `a sending picture says how much of its file is written and is forgotten once taken`() = runTest {
         val agent = FakeAgent()
         val chat = conversation(agent)
         advanceUntilIdle()
         val gate = CompletableDeferred<Unit>().also { agent.halfway = it }
-        assertTrue(chat.send("Look", listOf(picture('A'), picture('B'))))
+        assertTrue(chat.send("Look", pictures('A', 'B'), drawPictures))
         advanceUntilIdle()
         val id = chat.state.value.rows.filterIsInstance<ConversationRow.User>().single().messageId
-        // Half the body: the first picture mostly written, the second not begun.
+        // Half the first file: that picture half written, the second waiting its turn.
         val first = chat.uploads.phase(UploadBoard.pictureKey(id, 0))
         val second = chat.uploads.phase(UploadBoard.pictureKey(id, 1))
-        assertTrue("first: $first", first is UploadPhase.Uploading && first.share > 0.5f || first == UploadPhase.Done)
-        assertTrue("second: $second", second == UploadPhase.Uploading(0f) || second is UploadPhase.Uploading && second.share < 0.5f)
+        assertTrue("first: $first", first is UploadPhase.Uploading && first.share in 0.45f..0.55f)
+        assertEquals(UploadPhase.Preparing, second)
         gate.complete(Unit)
         advanceUntilIdle()
         // Taken: all there until the agent's own copy comes back.
@@ -1291,21 +1428,46 @@ class ConversationTest {
         val agent = FakeAgent()
         val chat = conversation(agent)
         advanceUntilIdle()
-        agent.halfway = CompletableDeferred()
-        assertTrue(chat.send("", listOf(picture('A'), picture('B'))))
+        val gate = CompletableDeferred<Unit>().also { agent.halfway = it }
+        assertTrue(chat.send("", pictures('A', 'B', 'C'), drawPictures))
         advanceUntilIdle()
         val id = chat.state.value.rows.filterIsInstance<ConversationRow.User>().single().messageId
+        // B waits behind A's write: taken out, A is written again and B never.
         chat.removePicture(id, 1)
         advanceUntilIdle()
-        assertEquals("written again without it", listOf(listOf('A', 'B'), listOf('A')), sentImages(agent))
-        assertEquals(1, chat.state.value.rows.filterIsInstance<ConversationRow.User>().single().pictures.size)
-        val ids = agent.requests.filter { it.second.endsWith("/send") }.map { it.third!!["id"]!!.jsonPrimitive.content }.distinct()
-        assertEquals("one message", 1, ids.size)
+        assertEquals("written again without it", listOf('A', 'A'), writtenPictures(agent))
+        val left = chat.state.value.rows.filterIsInstance<ConversationRow.User>().single()
+        assertEquals(listOf("A", "C"), left.pictures.map { it.data })
+        assertFalse("its path is no longer named", left.text.contains("1-B.png"))
 
+        chat.removePicture(id, 1)
+        advanceUntilIdle()
         chat.removePicture(id, 0)
         advanceUntilIdle()
         assertTrue("nothing left: taken back", chat.state.value.rows.filterIsInstance<ConversationRow.User>().isEmpty())
-        assertEquals(2, sentImages(agent).size)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(listOf('A', 'A', 'A'), writtenPictures(agent))
+        assertTrue("nothing sent", agent.requests.none { it.second.endsWith("/send") })
+    }
+
+    @Test fun `a picture already in the workspace stays when its cross is pressed`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        val gate = CompletableDeferred<Unit>()
+        agent.halfway = gate
+        assertTrue(chat.send("Two", pictures('A', 'B'), drawPictures))
+        advanceUntilIdle()
+        val id = chat.state.value.rows.filterIsInstance<ConversationRow.User>().single().messageId
+        // A goes all the way; B's write is what is held now.
+        gate.complete(Unit)
+        agent.halfway = CompletableDeferred()
+        advanceUntilIdle()
+        assertEquals(UploadPhase.Done, chat.uploads.phase(UploadBoard.pictureKey(id, 0)))
+        chat.removePicture(id, 0)
+        advanceUntilIdle()
+        assertEquals(2, chat.state.value.rows.filterIsInstance<ConversationRow.User>().single().pictures.size)
     }
 }
 

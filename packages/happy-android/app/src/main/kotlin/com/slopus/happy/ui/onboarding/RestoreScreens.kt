@@ -135,7 +135,7 @@ fun RestoreScreen(code: RestoreCode, onBack: () -> Unit, onRetry: () -> Unit, on
                     modifier = Modifier.padding(bottom = RestoreSpec.instructionGap).testTag(RestoreTags.INSTRUCTION),
                 )
                 Text(
-                    text = stringResource(R.string.onboarding_restore_scan_path),
+                    text = backupRestorePath() + " › " + stringResource(R.string.settings_account_link_new_device),
                     style = RestoreSpec.path,
                     color = colors.textSecondary,
                     textAlign = TextAlign.Center,
@@ -236,7 +236,7 @@ fun RestoreManualScreen(
                 .padding(horizontal = RestoreSpec.manualPaddingHorizontal, vertical = RestoreSpec.manualPaddingVertical),
         ) {
             Text(
-                text = stringResource(R.string.onboarding_secret_key_body),
+                text = stringResource(R.string.restore_secret_key_body, backupRestorePath()),
                 style = RestoreSpec.instruction,
                 color = colors.textSecondary,
                 modifier = Modifier.padding(bottom = RestoreSpec.bodyGap).testTag(RestoreTags.KEY_BODY),
@@ -260,3 +260,11 @@ fun RestoreManualScreen(
         }
     }
 }
+
+/**
+ * Where a Happy CLI account's key and Link New Device are on the other
+ * phone, in its own words: Settings › Backup & Restore on Android and iOS.
+ */
+@Composable
+private fun backupRestorePath(): String =
+    listOf("Happy", stringResource(R.string.settings_title), stringResource(R.string.settings_backup_restore)).joinToString(" › ")

@@ -187,7 +187,16 @@ public struct OutboxRecord: Codable, Hashable, Sendable, FetchableRecord, Persis
     public enum State: String, Codable, Sendable {
         case queued
         case sending
+        /// Refused for good (a 4xx, a session it can't be encrypted to):
+        /// it waits for the person's retry or discard.
         case failed
+        /// Gave up for now on a failure that says nothing of the message
+        /// (no network, the server down). Shown as not sent, as `failed`
+        /// is, and sent again by itself when the connection comes back.
+        case interrupted
+
+        /// Not sent, and not trying: what the chat shows as "Not sent".
+        public var isFailure: Bool { self == .failed || self == .interrupted }
     }
 
     public var localId: String

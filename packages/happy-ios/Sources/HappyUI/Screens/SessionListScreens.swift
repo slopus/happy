@@ -59,6 +59,9 @@ final class SessionListViewController: UIViewController {
     #endif
     /// The latest header measure (tests wait on it).
     private(set) var headerTask: Task<Void, Never>?
+    /// Whether the move to Happy Agent heads the list; nil asks the
+    /// account. Tests of the rows alone turn it off.
+    var offersMigration: Bool?
     private let banners = HomeListHeaderView()
     private lazy var actions = HomeSessionActions(context: context, session: session, host: self)
     private let changelogMarker = ChangelogReadMarker(storage: UserDefaultsStore(suiteName: ChangelogReadMarker.suiteName))
@@ -124,6 +127,7 @@ final class SessionListViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         banners.onTroubleshoot = { [weak self] in self?.openTroubleshoot() }
+        banners.onMigrate = { [weak self] in self?.openMigration() }
         banners.onNativeUpdate = { [weak self] in self?.openStore() }
         banners.onWhatsNew = { [weak self] in self?.openWhatsNew() }
         nativeUpdateObservation = NativeUpdateCheck.shared.observe { [weak self] in
@@ -234,6 +238,7 @@ final class SessionListViewController: UIViewController {
         }
         let state = HomeBanners(
             offlineTitle: offlineTitle,
+            migration: offersMigration ?? HomeMigration.offered(context),
             nativeUpdate: NativeUpdateCheck.shared.updateURL != nil,
             whatsNew: changelogMarker.hasUnread(latestTitle: ChangelogViewController.bundled.latestTitle)
         )
@@ -279,6 +284,10 @@ final class SessionListViewController: UIViewController {
 
     private func openTroubleshoot() {
         push(.troubleshoot, context: context)
+    }
+
+    private func openMigration() {
+        HomeMigration.open(from: self, context: context)
     }
 
     /// UpdateBanner.tsx `handleOpenStore`.
@@ -418,6 +427,11 @@ final class NoSessionsViewController: UIViewController {
             guard let self else { return }
             self.push(.newSession(machineId: nil, path: nil, prompt: nil), context: self.context)
         }
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        HomeMigration.apply(to: content, from: self, context: context)
     }
 }
 #endif

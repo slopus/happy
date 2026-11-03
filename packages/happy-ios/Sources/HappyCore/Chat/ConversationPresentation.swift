@@ -34,7 +34,7 @@ public struct ConversationRow: Equatable, Sendable, Identifiable {
                 if value.tool.permission?.status == .pending { row.permissionID = value.tool.permission?.id }
             case .agentEvent(let value):
                 switch value.event {
-                case .message(let text): row.text = text
+                case .message(let text), .notice(let text): row.text = text
                 case .modeSwitch(let mode): row.text = "Mode: \(mode)"
                 case .limitReached: row.text = "Usage limit reached"
                 default: break

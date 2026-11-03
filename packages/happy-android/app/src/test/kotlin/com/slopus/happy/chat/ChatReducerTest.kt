@@ -498,6 +498,12 @@ class ChatReducerTest {
         assertEquals(ContextUsage(0, 0, 0, 0, 0), result.usage)
     }
 
+    @Test fun `a provider error is an event row, not an agent reply`() {
+        val notice = AgentEvent.Notice("Retrying after an error (attempt 1): Unexpected server response: 426")
+        val result = state.reduce(eventMsg("retry", notice, 1000))
+        assertEquals(notice, (result.messages.single() as ChatMessage.Event).event)
+    }
+
     @Test fun `title changes and plan mode render as events`() {
         val result = state.reduce(
             agentMsg("t", 1000, toolUse("c1", "mcp__happy__change_title", """{"title":"New title"}""")),

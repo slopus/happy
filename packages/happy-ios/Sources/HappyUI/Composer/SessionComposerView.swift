@@ -65,6 +65,10 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     private var state: ChatComposerState?
     private var picks = ComposerPicks()
+    /// "Upload Failed" while it is up (only one that was presented), and
+    /// what it says (`UploadAlertModel`).
+    private weak var uploadAlert: UIAlertController?
+    private var uploadAlertModel = UploadAlertModel()
     private var modes: ComposerModes
     /// The session's status: the header's capsule says it
     /// (`headerStatus`), not the row over the card, which says only a
@@ -993,8 +997,26 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         // The opening draft is in (or there is none): its height is
         // waited for before the composer shows.
         awaitRestore()
-        if change.newlyFailedAttachments > 0 {
-            alert(Strings.ImageUpload.uploadFailedTitle, Strings.ImageUpload.uploadFailedMessage(change.newlyFailedAttachments))
+        showUploadAlert(for: change)
+    }
+
+    /// One alert for a message's failed pictures, however many deliveries
+    /// they fail in: raised, counted up while it is up, closed once sent.
+    private func showUploadAlert(for change: ComposerDraftModel.Change) {
+        let showing = uploadAlert.map { $0.presentingViewController != nil && !$0.isBeingDismissed } ?? false
+        guard let action = uploadAlertModel.receive(change, showing: showing) else { return }
+        let model = uploadAlertModel
+        let message = model.willRetry ? Strings.ImageUpload.uploadWillRetryMessage(model.count) : Strings.ImageUpload.uploadFailedMessage(model.count)
+        switch action {
+        case .show:
+            // Kept only if it is on screen: one UIKit refused to present
+            // (something else is up) is nothing to update or close.
+            uploadAlert = alert(Strings.ImageUpload.uploadFailedTitle, message).flatMap { $0.presentingViewController != nil ? $0 : nil }
+        case .update:
+            uploadAlert?.message = message
+        case .dismiss:
+            uploadAlert?.dismiss(animated: true)
+            uploadAlert = nil
         }
     }
 
@@ -1109,11 +1131,13 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     // MARK: Attachments
 
-    private func alert(_ title: String, _ message: String) {
-        guard let host = hostViewController else { return }
+    @discardableResult
+    private func alert(_ title: String, _ message: String) -> UIAlertController? {
+        guard let host = hostViewController else { return nil }
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: Strings.Common.ok, style: .cancel))
         host.present(alert, animated: true)
+        return alert
     }
 
     private var hostViewController: UIViewController? {

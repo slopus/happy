@@ -38,6 +38,5 @@
     <string name="agent_settings_update">Требуется обновление</string>
     <string name="agent_settings_remove">Удалить подключение</string>
     <string name="agent_settings_remove_title">Удалить %1$s?</string>
-    <string name="agent_settings_remove_message">Happy забудет этого агента на этом телефоне. Happy Agent будет показывать телефон, пока вы не удалите его и там.</string>
-    <string name="agent_settings_remove_footer">Happy Agent будет показывать этот телефон, пока вы не удалите его там.</string>
+    <string name="agent_settings_remove_message">Happy забудет этого агента на этом телефоне и удалит телефон из Happy Agent. Если Happy Agent старой версии, удалите телефон и там.</string>
 </resources>

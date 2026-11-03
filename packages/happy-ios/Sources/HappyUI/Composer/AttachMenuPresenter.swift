@@ -169,7 +169,7 @@ final class AttachMenuPresenter: NSObject {
         let before = pictures.images.count
         for pick in picks {
             switch pick.media {
-            case .image(let data, _): await pictures.add(picture: data)
+            case .image(let data, _): await pictures.add(picture: data, name: pick.name)
             case .video(let url):
                 let mime = UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "video/mp4"
                 await pictures.add(file: url, name: url.lastPathComponent, mimeType: mime)

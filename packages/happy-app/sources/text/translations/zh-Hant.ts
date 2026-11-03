@@ -876,6 +876,14 @@ export const zhHant: TranslationStructure = {
 
     onboarding: {
         ...en.onboarding,
+        // Get help, and the server row's default (also the first screen's ⋯ on the native apps).
+        getHelp: '取得協助',
+        helpMessage: '遇到問題？來問我們。',
+        helpDiscord: '在 Discord 上提問',
+        helpBra1nDump: '在 X 上私訊 @bra1n_dump',
+        helpEx3ndr: '在 X 上私訊 @Ex3NDR',
+        helpIssues: '查看已知問題',
+        settingsServerDefault: '預設',
     },
 
     troubleshoot: {

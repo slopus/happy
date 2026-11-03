@@ -128,7 +128,7 @@ struct FeedState: Sendable {
             switch item.state {
             case .queued: delivery[item.localId] = .queued
             case .sending: delivery[item.localId] = .sending
-            case .failed: delivery[item.localId] = .failed(item.lastError ?? "")
+            case .failed, .interrupted: delivery[item.localId] = .failed(item.lastError ?? "")
             }
         }
         // History is already sorted. Sort only the (usually tiny) overlay,

@@ -8,4 +8,5 @@
     <exclude domain="sharedpref" path="SecureStore.xml" />
     <exclude domain="sharedpref" path="account-credentials.xml" />
     <exclude domain="sharedpref" path="agent-connection-credentials.xml" />
+    <exclude domain="sharedpref" path="agent-device-revokes.xml" />
 </full-backup-content>

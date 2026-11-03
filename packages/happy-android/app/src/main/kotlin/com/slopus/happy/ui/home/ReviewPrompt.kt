@@ -22,6 +22,8 @@ import kotlin.coroutines.resumeWithException
 interface ReviewStamps {
     var storeReviewShownAt: Long?
     var declinedAt: Long?
+    /** When the list first had sessions here: the ask waits [FIRST_ASK_DAYS] from it. */
+    var firstListedAt: Long?
 }
 
 /**
@@ -36,6 +38,9 @@ class PrefsReviewStamps(private val prefs: SharedPreferences) : ReviewStamps {
     override var declinedAt: Long?
         get() = read(KEY_DECLINED_AT)
         set(value) = write(KEY_DECLINED_AT, value)
+    override var firstListedAt: Long?
+        get() = read(KEY_FIRST_LISTED_AT)
+        set(value) = write(KEY_FIRST_LISTED_AT, value)
 
     private fun read(key: String): Long? = if (prefs.contains(key)) prefs.getLong(key, 0) else null
 
@@ -45,6 +50,7 @@ class PrefsReviewStamps(private val prefs: SharedPreferences) : ReviewStamps {
         const val PREFS_NAME = "review"
         private const val KEY_STORE_REVIEW_LAST_SHOWN = "review_store_last_shown"
         private const val KEY_DECLINED_AT = "review_declined_at"
+        private const val KEY_FIRST_LISTED_AT = "review_first_listed_at"
     }
 }
 
@@ -65,7 +71,9 @@ enum class ReviewStep { Nothing, StoreReview, Ask }
  * requestReview.ts's checks, in its order: someone who liked the app gets
  * the store review again once 7 days have passed; anyone who answered
  * (here or on another device) is not asked again; a decline holds the ask
- * back 30 days.
+ * back 30 days. Unlike upstream, the first ask waits until the list has
+ * had sessions here for [FIRST_ASK_DAYS]: not right after the first
+ * computer is linked, before anything has been done with the app.
  */
 fun resolveReviewStep(answered: Boolean, liked: Boolean?, stamps: ReviewStamps, now: Long): ReviewStep {
     if (answered && liked == true) {
@@ -73,6 +81,8 @@ fun resolveReviewStep(answered: Boolean, liked: Boolean?, stamps: ReviewStamps, 
         return if (shown != null && now - shown < STORE_REVIEW_RETRY_DAYS * DAY_MS) ReviewStep.Nothing else ReviewStep.StoreReview
     }
     if (answered) return ReviewStep.Nothing
+    val listed = stamps.firstListedAt
+    if (listed == null || now - listed < FIRST_ASK_DAYS * DAY_MS) return ReviewStep.Nothing
     val declined = stamps.declinedAt
     if (declined != null && now - declined < RETRY_DAYS * DAY_MS) return ReviewStep.Nothing
     return ReviewStep.Ask
@@ -105,6 +115,8 @@ class ReviewPrompter(
 
     suspend fun run(isAvailable: suspend () -> Boolean, ask: suspend () -> Boolean, review: suspend () -> Unit) = lock.withLock {
         try {
+            // Run once the list has sessions: the first run starts the wait.
+            if (stamps.firstListedAt == null) stamps.firstListedAt = now()
             if (!isAvailable()) return@withLock
             val (isAnswered, liked) = answered()
             when (resolveReviewStep(isAnswered, liked, stamps, now())) {
@@ -166,6 +178,7 @@ private suspend fun <T> Task<T>.await(): T = suspendCancellableCoroutine { conti
     }
 }
 
+private const val FIRST_ASK_DAYS = 3L
 private const val RETRY_DAYS = 30L
 private const val STORE_REVIEW_RETRY_DAYS = 7L
 private const val DAY_MS = 24L * 60 * 60 * 1000

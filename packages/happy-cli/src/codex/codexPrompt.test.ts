@@ -59,6 +59,31 @@ describe('buildCodexTurnPrompt', () => {
 
         expect(prompt).toBe(`${wrapped(APPEND)}\n\nstart fresh`);
     });
+
+    it('names attachments after the message, wrapped so a rebuilt chat hides the note', () => {
+        const prompt = buildCodexTurnPrompt({
+            message: 'what is this?',
+            mode: {},
+            includeAppendSystemPrompt: false,
+            includeTitleInstruction: true,
+            attachmentNote: 'NOTE',
+        });
+
+        expect(prompt).toBe(`what is this?\n\n${wrapped('NOTE')}\n\n${wrapped(CHANGE_TITLE_INSTRUCTION)}`);
+        expect(stripHappySystemBlocks(prompt)).toBe('what is this?');
+    });
+
+    it('sends an image-only message as just the attachment note', () => {
+        const prompt = buildCodexTurnPrompt({
+            message: '',
+            mode: {},
+            includeAppendSystemPrompt: false,
+            includeTitleInstruction: false,
+            attachmentNote: 'NOTE',
+        });
+
+        expect(prompt).toBe(wrapped('NOTE'));
+    });
 });
 
 describe('stripHappySystemBlocks', () => {

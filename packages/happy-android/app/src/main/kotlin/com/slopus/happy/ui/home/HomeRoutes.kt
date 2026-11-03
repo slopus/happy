@@ -46,6 +46,7 @@ import com.slopus.happy.ui.session.SessionInfoLive
 import com.slopus.happy.ui.session.SessionInfoRoute
 import com.slopus.happy.ui.session.SessionInfoScreen
 import com.slopus.happy.ui.settings.ChangelogRoute
+import com.slopus.happy.ui.start.InstallDesktopRoute
 import com.slopus.happy.ui.tablet.MainPanelKey
 import com.slopus.happy.ui.tablet.MainPanelOpener
 import kotlinx.coroutines.Dispatchers
@@ -65,6 +66,8 @@ class HomeNavigation(
     val onDetails: (String) -> Unit,
     /** Compose: an empty chat whose first send starts the session, on the phone and in the tablet's detail pane. */
     val onCompose: () -> Unit = onNewSession,
+    /** The migration card's way to Happy Agent: Open Happy on your computer, then its code. */
+    val onMigrate: () -> Unit = {},
 ) {
     companion object {
         fun of(graph: AppGraph, nav: NavHostController, onOpenSession: (String) -> Unit, onTroubleshoot: () -> Unit) = HomeNavigation(
@@ -77,6 +80,7 @@ class HomeNavigation(
             onNewSession = { nav.navigate(NewSessionRoute) { launchSingleTop = true } },
             onDetails = { id -> nav.navigate(SessionInfoRoute(id)) },
             onCompose = { nav.composeChat() },
+            onMigrate = { nav.navigate(InstallDesktopRoute) },
         )
     }
 }
@@ -101,6 +105,7 @@ fun HomeNavigation.through(go: MainPanelOpener): HomeNavigation = HomeNavigation
     onNewSession = { go.open(MainPanelKey.NEW_SESSION, onNewSession) },
     onDetails = { id -> go.open(MainPanelKey.info(id)) { onDetails(id) } },
     onCompose = { go.open(null, onCompose) },
+    onMigrate = { go.open(null, onMigrate) },
 )
 
 /**

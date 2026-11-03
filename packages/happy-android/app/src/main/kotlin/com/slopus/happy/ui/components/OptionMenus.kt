@@ -95,7 +95,8 @@ fun HappyDropdownMenu(
 /**
  * One row of a [HappyDropdownMenu]: [label] with an optional [supporting]
  * line under it, a [leading] mark, and at the end [trailing] or, when
- * [selected], a check on a highlighted row.
+ * [selected], a check on a highlighted row. [labelLines] lets a label that
+ * explains rather than names (a computer that can't be picked) wrap.
  */
 @Composable
 fun HappyMenuItem(
@@ -108,6 +109,7 @@ fun HappyMenuItem(
     selected: Boolean = false,
     enabled: Boolean = true,
     destructive: Boolean = false,
+    labelLines: Int = 1,
 ) {
     val colors = HappyTheme.colors
     val ink = when {
@@ -118,7 +120,7 @@ fun HappyMenuItem(
     DropdownMenuItem(
         text = {
             Column {
-                Text(label, style = MenuSpec.label, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(label, style = MenuSpec.label, color = ink, maxLines = labelLines, overflow = TextOverflow.Ellipsis)
                 if (supporting != null) {
                     Text(supporting, style = MenuSpec.supporting, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
                 }

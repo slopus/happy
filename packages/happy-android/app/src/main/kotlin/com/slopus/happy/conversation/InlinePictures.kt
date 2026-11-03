@@ -8,9 +8,11 @@ import java.io.IOException
 import java.util.Base64
 
 /**
- * Pictures travel inside the message (API.md `POST /v0/agents/:agentId/send`
- * `content`), base64 in an image block, so they must fit what the model
- * takes: at most 5 MiB each and 29 MiB together (happy-ios AttachmentRules).
+ * Pictures as image blocks (API.md `POST /v0/agents/:agentId/send`
+ * `content`), base64, within what the model takes: at most 5 MiB each and
+ * 29 MiB together (happy-ios AttachmentRules). A send's pictures go through
+ * the workspace ([WorkspaceUploads]); these blocks only draw them in the
+ * bubble until the computer has the message.
  */
 object InlinePictures {
     const val MAX_BYTES = 5 * 1024 * 1024

@@ -46,11 +46,58 @@ class MachineChoicesTest {
     }
 
     @Test
+    fun saysWhatRunsOnEachComputer() {
+        val old = machine("old", machineMetadata { put("happyCliVersion", "0.10.0") })
+        val agent = machine(
+            "agent",
+            machineMetadata {
+                put("machineKind", "rig")
+                put("happyCliVersion", "0.4.111")
+                putJsonObject("client") { put("id", "rig"); put("name", "Happy Agent"); put("version", "0.4.111-preview.5") }
+            },
+        )
+        val choices = collectMachineChoices(listOf(old, agent, cli("new"), rig(RIG, "new")))
+        assertEquals(
+            listOf("Happy CLI 0.10.0", "Happy Agent 0.4.111-preview.5", "Happy CLI 1.0.0 + Happy Agent 1.0.0"),
+            choices.map { it.daemons },
+        )
+        assertEquals("Happy CLI", collectMachineChoices(listOf(cli("bare").let { it.copy(metadata = machineMetadata { put("happyCliVersion", " ") }) }))[0].daemons)
+    }
+
+    @Test
+    fun ordersComputersStablyNeverByLastActivity() {
+        val a = machine("a", activeAt = 1).copy(createdAt = 10)
+        val b = machine("b", activeAt = 9).copy(createdAt = 30)
+        val c = machine("c", activeAt = 5).copy(createdAt = 20)
+        val twin = machine("twin", activeAt = 7).copy(createdAt = 20)
+        val off = machine("off", active = false, activeAt = 99).copy(createdAt = 99)
+        val order = { machines: List<Machine> -> sortMachineChoices(collectMachineChoices(machines)).map { it.id } }
+        assertEquals(listOf("b", "c", "twin", "a", "off"), order(listOf(a, b, c, twin, off)))
+        // A heartbeat moves activeAt and the store's order; the rows stay put.
+        assertEquals(listOf("b", "c", "twin", "a", "off"), order(listOf(off, twin.copy(activeAt = 300), c.copy(activeAt = 100), a.copy(activeAt = 200), b)))
+    }
+
+    @Test
     fun offersALoneHappyAgentUnderItsHostName() {
         val choices = collectMachineChoices(listOf(rig(RIG, "missing-sibling")))
         assertEquals(1, choices.size)
         assertEquals("laptop.local", choices[0].name)
         assertEquals(RIG, choices[0].id)
+    }
+
+    @Test
+    fun namesALoneHappyAgentByTheNodeNameItPublishes() {
+        fun lone(displayName: String) = machine(
+            RIG,
+            machineMetadata(host = "MacBook-Pro.local") {
+                put("displayName", displayName)
+                put("machineKind", "rig")
+                put("rigOnly", true)
+            },
+        )
+        assertEquals("Studio Agent", collectMachineChoices(listOf(lone("Studio Agent — Happy Agent")))[0].name)
+        // Without the suffix it is not Happy Agent's name for itself: the host.
+        assertEquals("MacBook-Pro.local", collectMachineChoices(listOf(lone("Something else")))[0].name)
     }
 
     @Test

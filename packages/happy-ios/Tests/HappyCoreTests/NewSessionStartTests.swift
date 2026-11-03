@@ -44,6 +44,30 @@ final class RigSessionCreationTests: XCTestCase {
         return .object(object)
     }
 
+    /// Happy Agent names its built-in accounts all "Current CLI": as
+    /// headings they go by their provider; a named account keeps its name.
+    func testTheBuiltInAccountsGoByTheirProvider() throws {
+        func model(_ provider: String, _ name: String, kind: String? = nil) -> JSONValue {
+            var object: [String: JSONValue] = ["providerId": .string(provider), "id": .string("m"), "providerName": .string(name), "thinkingLevels": .array([.string("high")])]
+            if let kind { object["provider"] = .object(["id": .string(provider), "kind": .string(kind), "name": .string(name)]) }
+            return .object(object)
+        }
+        let creation = try XCTUnwrap(RigSessionCreation(metadata: with(Self.rigMachine, [
+            "models": .array([model("codex", "Current CLI"), model("claude", "Current CLI"), model("grok-2", "Current CLI", kind: "grok"), model("claude-work", "alex@acme.com", kind: "claude")]),
+        ])))
+        XCTAssertEqual(Set(creation.models.map(\.providerName)), ["Codex", "Claude", "Grok", "alex@acme.com"])
+        XCTAssertEqual(RigCatalog.providerName("Current CLI", kind: "custom", providerId: "mine"), "Current CLI")
+        XCTAssertEqual(RigCatalog.providerName(nil, kind: nil, providerId: "work"), "work")
+
+        let session: JSONValue = .object([
+            "client": .object(["id": .string("rig"), "name": .string("Happy Agent")]),
+            "provider": .object(["id": .string("codex"), "kind": .string("codex"), "name": .string("Current CLI")]),
+            "models": .array([model("codex", "Current CLI", kind: "codex")]),
+        ])
+        XCTAssertEqual(RigIdentity(session)?.providerName, "Codex")
+        XCTAssertEqual(RigCatalog.models(session).map(\.providerName), ["Codex"])
+    }
+
     func testProviderQualifiedOptionsAndModelDefaults() throws {
         let creation = try XCTUnwrap(RigSessionCreation(metadata: Self.rigMachine))
         XCTAssertEqual(creation.defaultModelKey, "codex:shared-model")
@@ -1464,6 +1488,7 @@ final class NewSessionChoicesTests: XCTestCase {
         }
         XCTAssertEqual(refusal(NewSessionDraft(), machines: [machine("m1")]), .selectMachine)
         XCTAssertEqual(refusal(NewSessionDraft(selectedMachineId: "elsewhere"), machines: [machine("m1")]), .machineNotRegistered)
+        XCTAssertEqual(refusal(NewSessionDraft(selectedMachineId: "old"), machines: [Self.legacyMachine]), .needsRelogin)
         XCTAssertEqual(refusal(NewSessionDraft(selectedMachineId: "m1"), machines: [machine("m1", active: false)]), .happyCLIOffline)
         XCTAssertEqual(refusal(NewSessionDraft(selectedMachineId: "m1"), machines: [machine("m1")], bot: (name: " ", faceSeed: "a")), .botName("Give the bot a name"))
         XCTAssertEqual(refusal(NewSessionDraft(selectedMachineId: "m1"), machines: [machine("m1"), rigMachine("rig1", sibling: "m1")], bot: (name: "Cap", faceSeed: "a")), .cannotCreateBots)
@@ -1732,6 +1757,31 @@ extension NewSessionChoicesTests {
         let snapshot = LegacyHomeSnapshot(machines: MachinesSnapshot(synced: true, machines: machines), sessions: sessions)
         let choices = NewSessionChoices(.init(draft: draft, createsBot: false, snapshot: snapshot))
         return NewSessionScreenModel(choices: choices, draft: draft, snapshot: snapshot, gitWorktrees: [], isStarting: isStarting, now: now)
+    }
+
+    /// Linked by Happy CLI 0.9.1 with the account secret: no data key.
+    static let legacyMachine = MachineRecord(
+        id: "old", seq: 0, createdAt: 9, updatedAt: 1, active: true, activeAt: 1,
+        metadataVersion: 1, metadataCipher: "c", metadata: nil,
+        daemonStateVersion: 0, daemonStateCipher: nil, daemonState: nil, dataKeyCipher: nil, decryptable: false
+    )
+
+    func testAComputerAnOldHappyCLILinkedIsShownButNeverPicked() {
+        let draft = NewSessionDraft(selectedMachineId: "old")
+        let machines = [Self.legacyMachine, machine("m1")]
+        let snapshot = LegacyHomeSnapshot(machines: MachinesSnapshot(synced: true, machines: machines), sessions: [])
+        let choices = NewSessionChoices(.init(draft: draft, createsBot: false, snapshot: snapshot))
+        let option = choices.machineOptions.first { $0.key == "old" }
+        XCTAssertEqual(option?.name, "Computer with an old Happy CLI sign-in")
+        XCTAssertEqual(option?.description, "Run happy auth login --force on it")
+        XCTAssertEqual(option?.isDisabled, true)
+        XCTAssertNotEqual(choices.currentMachine?.key, "old")
+        XCTAssertNotEqual(choices.resolvedMachineId, "old")
+
+        let model = screen(draft, machines: machines)
+        let item = model.machineItems.first { $0.key == "old" }
+        XCTAssertEqual(item?.status, .needsRelogin)
+        XCTAssertEqual(item?.isDimmed, true)
     }
 
     func testTheScreenForAPlainClaudeDraft() {

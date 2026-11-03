@@ -68,6 +68,7 @@ public final class AccountController {
     private var removalsLoading: Task<Void, Never>?
     private let removalJournal = AccountRemovalJournal()
     private let pushQueue: PushUnregisterQueue
+    private let deviceQueue: DeviceRevokeQueue
     private var busy = false
     private var observers: [UUID: AccountsObserver] = [:]
     private var cancelProfileObservation: (() -> Void)?
@@ -106,7 +107,8 @@ public final class AccountController {
         connector: WebSocketConnector = URLSessionWebSocketConnector(),
         appState: @escaping @Sendable () async -> String = AccountSession.Dependencies.alwaysActive,
         deliveryActivity: @escaping @Sendable (Bool) async -> Void = AccountSession.Dependencies.noDeliveryActivity,
-        pushUnregisterStore: any PushUnregisterStore = InMemoryPushUnregisterStore()
+        pushUnregisterStore: any PushUnregisterStore = InMemoryPushUnregisterStore(),
+        deviceRevokeStore: any DeviceRevokeStore = InMemoryDeviceRevokeStore()
     ) {
         self.serverConfig = serverConfig
         self.clientID = clientID
@@ -120,7 +122,11 @@ public final class AccountController {
         self.appState = appState
         self.deliveryActivity = deliveryActivity
         pushQueue = PushUnregisterQueue(store: pushUnregisterStore, transport: transport, clientID: clientID)
-        self.agentConnections = AgentConnections(credentials: agentConnectionCredentialStore, directory: storeDirectory, makeTransport: agentTransport)
+        let agentConnections = AgentConnections(credentials: agentConnectionCredentialStore, directory: storeDirectory, makeTransport: agentTransport)
+        self.agentConnections = agentConnections
+        deviceQueue = DeviceRevokeQueue(store: deviceRevokeStore, makeTransport: agentTransport) { [weak agentConnections] token in
+            await agentConnections?.holds(deviceToken: token) ?? false
+        }
         self.agentConnections.onChange = { [weak self] in
             guard let self else { return }
             self.notifyAccounts()
@@ -497,6 +503,15 @@ public final class AccountController {
     /// Signed-out accounts' push tokens on their way to their servers.
     var pushUnregisters: PushUnregisterQueue { pushQueue }
 
+    /// Disconnected pairings' devices on their way off their agents.
+    var deviceRevokes: DeviceRevokeQueue { deviceQueue }
+
+    /// The phone is back (in the foreground): what waits to be revoked
+    /// goes now rather than when its backoff says.
+    public func resumeDeviceRevokes() {
+        Task { await deviceQueue.resume() }
+    }
+
     /// How long a removal waits for the old session to stop before its
     /// store is closed and its folder deleted anyway: a closed store refuses
     /// whatever a stuck request would still write.
@@ -544,14 +559,17 @@ public final class AccountController {
         if let failure { throw failure }
     }
 
-    /// The agent's half of `beginSignOut`. Device tokens can't reach the
-    /// connector's management routes, so nothing is sent: the phone forgets
-    /// the agent, and the desktop's device list revokes it.
+    /// The agent's half of `beginSignOut`. The phone forgets the agent at
+    /// once; its device is removed from the agent behind that
+    /// (`DeviceRevokeQueue`, `DELETE /v0/mobile-connector/device`), now or
+    /// when the agent can be reached, so pairing again leaves one device
+    /// there, not two.
     private func disconnect(_ id: String) -> Task<Void, Error> {
         var journalFailure: Error?
         do { try removalJournal.add(AccountRemoval(id: id, kind: .agent)) } catch { journalFailure = error }
         let wasActive = agentConnections.activeID == id
         removing.insert(id)
+        let credential = agentConnections.credential(for: id)
         let teardown = agentConnections.forget(id)
         var handOff: Task<AccountSession?, Never>?
         if wasActive, case .agentConnection = state {
@@ -574,6 +592,8 @@ public final class AccountController {
             var failure = journalFailure
             await holdRemoval()
             _ = await handOff?.value
+            // Kept with its token before the credentials go.
+            if let credential { try? await deviceQueue.enqueue(credential, id: id) }
             if let teardown {
                 do { try await agentConnections.finishRemoval(teardown) } catch { failure = failure ?? error }
             }
@@ -673,6 +693,7 @@ public final class AccountController {
                 removals[removal.id] = resumeRemoval(removal)
             }
             await pushQueue.resume()
+            await deviceQueue.resume()
         }
         removalsLoading = loading
         await loading.value
@@ -685,6 +706,11 @@ public final class AccountController {
                 // Nothing has its store open at launch, so it goes as it is.
                 try await forgetHappyAccount(removal, session: nil, pictures: nil, store: nil, openingStore: false)
             case .agent:
+                // Killed before its revocation was kept: kept now, while
+                // its credentials are still there.
+                if await deviceQueue.waiting[removal.id] == nil, let credential = await agentConnections.savedCredential(for: removal.id) {
+                    try? await deviceQueue.enqueue(credential, id: removal.id)
+                }
                 try await agentConnections.finishRemoval(AgentConnections.Teardown(id: removal.id, job: nil, engine: nil))
                 settings(for: removal.id).clear()
             }
@@ -1031,6 +1057,9 @@ public final class AccountController {
         _ = await prepareStorageDirectory()
         let account = try await agentConnections.add(credentials, name: name)
         isAddingAccount = false
+        // An agent was just reached: a pairing disconnected from it while
+        // it couldn't be reached is revoked now (with its own old token).
+        Task { await deviceQueue.resume() }
         try await activateAgentConnection(account.id)
     }
 

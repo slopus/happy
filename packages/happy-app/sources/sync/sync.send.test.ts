@@ -200,6 +200,28 @@ describe('first message session hydration', () => {
         expect(mocks.request).not.toHaveBeenCalled();
     });
 
+    it('sends neither text nor the uploaded pictures when one picture fails to upload', async () => {
+        const target = await sessionRecord('new-session');
+        fetchMock.mockResolvedValue({ ok: true, json: async () => ({ sessions: [target] }) });
+        await engine.fetchSessions();
+        vi.spyOn(engine, 'uploadAttachmentsForSession').mockResolvedValue({
+            uploaded: [{ ref: 'test-image', name: 'a.jpg', size: 1, width: 1, height: 1 }],
+            failed: 1,
+        });
+        const accepted = vi.fn();
+        await expect(engine.sendMessage('new-session', 'open both attached images', {
+            attachments: [
+                { id: 'a', uri: 'file:///a.jpg', name: 'a.jpg', size: 1, width: 1, height: 1 },
+                { id: 'b', uri: 'file:///b.jpg', name: 'b.jpg', size: 1, width: 1, height: 1 },
+            ],
+            onAccepted: accepted,
+        })).resolves.toBe(false);
+        expect(mocks.alert).toHaveBeenCalledWith('imageUpload.uploadFailedTitle', 'imageUpload.uploadFailedMessage', expect.anything());
+        expect(accepted).not.toHaveBeenCalled();
+        expect(engine.pendingOutbox.size).toBe(0);
+        expect(mocks.request).not.toHaveBeenCalled();
+    });
+
     it('keeps the requested destination when the visible session changes, and commits before cancellation', async () => {
         const target = await sessionRecord('new-session');
         fetchMock.mockResolvedValue({ ok: true, json: async () => ({ sessions: [target] }) });

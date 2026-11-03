@@ -27,6 +27,8 @@ data class Alert(
     val buttons: List<AlertButton>,
     /** False for `Modal.confirm` (`cancelable: false`): only a button closes it. */
     val cancelable: Boolean = true,
+    /** One button under another, in order, as more than three always are: for labels too long to sit side by side. */
+    val stacked: Boolean = false,
 )
 
 /**
@@ -90,7 +92,7 @@ fun HappyAlert(alert: Alert, onDismiss: () -> Unit) {
                     }
                 }
             }
-            if (alert.buttons.size > 3) {
+            if (alert.stacked || alert.buttons.size > 3) {
                 Column(horizontalAlignment = Alignment.End) { buttons() }
             } else {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { buttons() }

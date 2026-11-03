@@ -314,6 +314,9 @@ enum ChatRowRenderer {
         switch message.event {
         case .modeSwitch(let mode): label = words.switchedToMode(mode)
         case .message(let text): label = text
+        case .notice(let text):
+            // An error, in its colour.
+            return centredLine(message.id, text, style: ChatTextStyles.agentEvent, color: Palette.textDestructive, width: width, rowStyle: style)
         case .limitReached(let endsAt):
             let formatter = DateFormatter()
             formatter.timeStyle = .short

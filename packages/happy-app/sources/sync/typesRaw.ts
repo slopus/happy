@@ -40,8 +40,23 @@ const agentEventSchema = z.discriminatedUnion('type', [z.object({
     type: z.literal('user-message-rejected'),
     ref: z.string(),
     reason: z.string(),
+}), z.object({
+    // A provider error Happy Agent reports on the run (a `service` envelope):
+    // a retry after one, or a failed run. Shown as an error line, never as
+    // the agent's reply.
+    type: z.literal('notice'),
+    text: z.string(),
 })]);
 export type AgentEvent = z.infer<typeof agentEventSchema>;
+
+/**
+ * Happy Agent's `service` texts that report a provider error
+ * (happy-agent mapHappyMessages.ts). Its other `service` texts (another
+ * agent's words, a subagent starting) stay agent text.
+ */
+export function isProviderErrorNotice(text: string): boolean {
+    return text.startsWith('Retrying after an error') || text.startsWith('The run failed:');
+}
 
 const sessionTextEventSchema = z.object({
     t: z.literal('text'),
@@ -674,6 +689,21 @@ function normalizeSessionEnvelope(
     if (envelope.ev.t === 'service') {
         if (envelope.role !== 'agent') {
             return null;
+        }
+
+        // Happy Agent's provider errors, outside a subagent's task: an error line, not the agent's words.
+        if (!isUsageOnlyServiceEvent && !isSidechain && isProviderErrorNotice(envelope.ev.text)) {
+            return {
+                id: messageId,
+                localId,
+                createdAt: messageCreatedAt,
+                role: 'event',
+                isSidechain: false,
+                content: { type: 'notice', text: envelope.ev.text },
+                meta,
+                usage: envelope.usage,
+                turn: envelope.turn,
+            } satisfies NormalizedMessage;
         }
 
         return {

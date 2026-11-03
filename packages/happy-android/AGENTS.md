@@ -11,7 +11,10 @@ architectures comparable (local store, delta sync, crypto layer).
   sync and encryption code (`sources/sync`, `sources/encryption`,
   `sources/auth`) are the source of truth. Do not port legacy protocol paths:
   sessions and machines without a `dataEncryptionKey` are skipped, not
-  decrypted with the account secret.
+  decrypted with the account secret. The one exception: such a machine is
+  kept unread (`MachineRecord.isLegacy`), so the person sees a computer an
+  old Happy CLI linked and is told to run `happy auth login --force` there,
+  as iOS does.
 - **Voice** uses Happy's server-controlled allowance and RevenueCat paywalls,
   with ElevenLabs over WebRTC. The pinned SDK source patch in
   `vendor/elevenlabs` fixes audio focus, teardown and call-local mute.
@@ -219,10 +222,11 @@ win:
   approves that terminal in one step (`AuthRepository.createAccount`'s
   `prepare`; a failed approval keeps no account), `happy:///account?`
   says it needs a signed-in phone, `happy://direct?` pairs an agent. The
-  ⋮ drop-down holds Enter link manually (same routing), Restore Happy CLI
-  account and Happy CLI server, and nothing else: no "Get help", and no
-  "Create account" because a Happy account is only ever made by a
-  terminal code. A pasted link routes exactly as the scanned code does
+  ⋮ drop-down is iOS's StartMenu: Enter link manually (same routing),
+  Restore Happy CLI account and Happy CLI server, then Get help. There is
+  no "Create account" because a Happy account is only ever made by a
+  terminal code. "Legacy" is never shown, in any language: relay accounts
+  are Happy CLI, as on iOS (its rule 10). A pasted link routes exactly as the scanned code does
   (`ConnectFlow.connectWithUrl` through `route`); only a link of no known
   kind reads differently, as "Invalid authentication URL". Dialogs are Material 3
   (`HappyAlert`, `PromptModal`), not happy-app's iOS-style card, and only
@@ -262,6 +266,10 @@ win:
   that name (`POST /v0/tasks` or `/v0/bots`, once, the same ids on a
   retry) and only then sends, so a refusal keeps the text and says why.
   Left unsent, the next compose opens it as it was (`AgentSession.unsentWork`).
+  The keyboard waits for a tap in the composer: the empty chat opens with
+  it down (on both kinds), and a menu, a dialog or a scroll never raises
+  it. Only an explicit ask moves focus there (Return in new work's name,
+  text put in the composer from elsewhere).
 - **Home cards:** the legacy home's rows sit in the agent home's inset
   cards (`HomeCardRow`: 16 in, radius 26, 24 between cards, hairlines
   inside). Day and section headings become gaps; a computer heads its
@@ -855,7 +863,9 @@ one fingerprint, presumably Play's app-signing key that the React Native app
 verifies with, so a Play-distributed build should verify as it does; a build
 signed with only the upload key won't. Signed out, only the screens that need
 no account (server, restore, troubleshoot, changelog, onboarding settings)
-open; other links are dropped rather than pushed onto empty signed-in screens.
+open, and a terminal's link goes to the first screen's Add as if pasted into
+Enter link manually (an account is made that approves it); other links are
+dropped rather than pushed onto empty signed-in screens.
 
 ### Team servers behind SSO (edge SSO)
 
@@ -1076,9 +1086,13 @@ Verify focus, recording and communication mode on a device after changes.
 - **Sending**: the composer's images are normalized at pick time (upright,
   long edge ≤ 3072, JPEG 0.92, `<stem>.jpg`, ≤ 10 MB − 40 so the encrypted
   blob fits), uploaded on send (`prepareAttachmentSend`: flavor and rig
-  policy, then upload; a failed image is counted, not fatal), and handed to
+  policy, then upload), and handed to
   `ChatActions.send(..., attachments = fileEventRecords(uploaded))`, which
-  queues sync.ts's `file` session events ahead of the text.
+  queues sync.ts's `file` session events ahead of the text. A failed image
+  is counted for the alert and nothing is sent: the text and images stay
+  in the composer for another Send, as happy-app does and as iOS holds the
+  text behind its failed upload. A caption sent alone read to the agent as
+  if its pictures were there.
 - **Picking**: the add button and the conversation's [+] open the
   attachment sheet (`ui/attach/`), Telegram's ChatAttachAlert ported with
   its numbers (`research/attachment-menu.md`, pinned by `AttachSpecTest`):
@@ -1090,9 +1104,11 @@ Verify focus, recording and communication mode on a device after changes.
   files, Paste, and the files sent from here before, `RecentFiles`). Picks
   are copied into the cache on Send (`AttachmentStaging`: photos normalized
   as below, the rest as they are). What a chat offers is `AttachAccepts`:
-  a Happy Agent conversation takes photos, videos and files (pictures
-  inline, the rest written into the agent's workspace first,
-  `conversation/WorkspaceUploads`, as iOS does); a relay session takes
+  a Happy Agent conversation takes photos, videos and files (all written
+  into the agent's workspace first and named by path in the message, so the
+  agent opens only what it needs; pictures are drawn from the phone's copies
+  until the computer has the message, `conversation/WorkspaceUploads`, as
+  iOS does); a relay session takes
   pictures only, since happy-cli reads only images from `file` events,
   unless a rig v1 policy lists more. No thumbhash on Android, as on
   happy-app native.
@@ -1252,16 +1268,16 @@ duration. Tablets, landscape and Reduce Motion slide the sheet up as before.
 A Happy Agent picture on its way to the computer wears Telegram's ring in the
 bubble (`UploadRing`, iOS 5ac4296c2). The tile is dimmed, with a dark disc
 and a white arc for the share written; the arc turns while it fills. Its cross
-takes that picture out (`Conversation.removePicture`, iOS `removeAttachment`):
-the write in flight stops and the rest goes again under the same id, and a
-message left empty is taken back. The share comes from the request body as the
-transport writes it. `BodyProgress` in the coroutine context gets each chunk,
-and `UploadRanges` finds where each picture's base64 sits in the body, so
-`UploadBoard` can hold a share per picture. Before any bytes go, the arc is
-short and turning. Once the computer takes the message, every ring fills and
-then shrinks away. The photos are movable content: a message of pictures alone
-comes back captioned "Attached images.", and moves into a bubble without its
-rings starting over.
+takes that picture out with its workspace file (`Conversation.removePicture`,
+iOS `removeAttachment`): the write in flight stops and the rest goes again
+under the same id, its text no longer naming that file, and a message left
+empty is taken back. A picture whose file is already written stays. Pictures
+go as workspace files, so the share is that file's request body as the
+transport writes it: `BodyProgress` in the coroutine context gets each chunk
+and `UploadBoard` holds a share per picture. Before its file's bytes go, the
+arc is short and turning; once the file is written the ring fills and shrinks
+away. The photos are movable content, so a bubble that changes keeps its
+rings.
 
 Presented chat media is kept on the phone for good (`media/`, iOS
 ba7b68346, after Telegram's MediaBox). Each agent connection has a
@@ -1467,6 +1483,19 @@ is `packages/happy-ios`. The wire keeps its own names
   checks its MAC before anything is kept; `AgentIdentity` reads health
   (protocol 27 or later) and `config.node`; `AgentConnections` keeps each
   connection's credentials Keystore-encrypted, apart from relay credentials.
+- **Disconnect revokes the device** (`connection/DeviceRevokes.kt`, iOS's
+  `DeviceRevokeQueue`): `AgentConnections.remove` hands the pairing's
+  credentials over before they go (`keep`) and starts sending only once
+  they have (`resume`; a check while they were still here read the token
+  as one in use and dropped it unsent), and `DELETE /v0/mobile-connector/device`
+  with that pairing's own token is sent until the agent answers 2xx, 401
+  (already gone) or 403 (a daemon from before the route), or any other 4xx
+  but 408 and 429. Otherwise it is retried at 1 … 30 s, on every return to
+  the foreground (the first one at start) and on every new pairing, for up
+  to 30 days, kept in its own Keystore-encrypted prefs
+  (`agent-device-revokes`, out of backups). A token a connection here holds
+  now is never sent, so pairing again is never revoked; the agent's list
+  keeps one device per pairing on the phone.
 - **Transport** (`TailcatTransport`): tailcat-kotlin, and a fresh TCP
   stream to `server.tailcat:<port>` per HTTP/1.1 request, framed by
   `HttpResponseParser`. Each request says its `RequestCategory`, which

@@ -31,6 +31,7 @@
     <string name="files_update_agent">Actualitza Happy Agent a l\'ordinador per veure els canvis d\'aquesta sessió.</string>
     <string name="files_no_comparison">La comparació amb origin/main no està disponible per a aquest espai de treball.</string>
     <string name="files_no_details">No hi ha detalls de fitxers per a aquesta comparació.</string>
+    <string name="chat_unsupported_message">Aquest missatge no es pot mostrar aquí (%1$s)</string>
     <string name="link_status_updating">sincronitzant…</string>
     <string name="link_status_connecting">connectant…</string>
     <string name="link_status_waiting_for_network">esperant la xarxa…</string>

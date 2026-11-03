@@ -1758,6 +1758,22 @@ describe('Zod Transform - WOLOG Content Normalization', () => {
             }
         });
 
+        it('normalizes Happy Agent provider errors to error notices, not agent text', () => {
+            const retry = 'Retrying after an error (attempt 1): WebSocket retries exhausted; falling back to SSE: Unexpected server response: 426';
+            for (const text of [retry, 'The run failed: overloaded']) {
+                const normalized = normalizeRawMessage('db-notice', null, 1, {
+                    ...base,
+                    content: {
+                        type: 'session',
+                        data: { id: 'env-notice', time: 1, role: 'agent', turn: 'turn-notice', ev: { t: 'service', text } }
+                    }
+                });
+                expect(normalized?.role).toBe('event');
+                expect(normalized?.content).toEqual({ type: 'notice', text });
+                expect(normalized?.turn).toBe('turn-notice');
+            }
+        });
+
         it('normalizes tool-call lifecycle events', () => {
             const start = normalizeRawMessage('db-3', null, 1, {
                 ...base,

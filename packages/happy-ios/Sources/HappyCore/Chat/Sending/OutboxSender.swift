@@ -166,7 +166,7 @@ public struct OutboxSender: ChatSending {
     /// The UI can observe the outbox and display happy-app's upload-failed alert count.
     public func failedAttachmentCount(sessionId: String) throws -> Int {
         try store.pendingOutbox(limit: Int.max).filter {
-            $0.sessionId == sessionId && $0.kind == .file && $0.state == .failed
+            $0.sessionId == sessionId && $0.kind == .file && $0.state.isFailure
         }.count
     }
 }

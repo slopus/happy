@@ -30,4 +30,26 @@ enum SessionReadiness {
         try Task.checkCancellation()
         guard try await isReady() else { throw SessionReadinessError.notReady }
     }
+
+    /// Before an old CLI's first message
+    /// (`SessionDetails.waitsForCLIBeforeFirstMessage`): waits until the new
+    /// session is heard from (its first heartbeat says its socket is up),
+    /// then `settle` more for the startup event it sends then. After
+    /// `timeout` the message goes anyway, as it always did. True when heard.
+    static func awaitCLIHeard(
+        heardAt: @escaping @Sendable () async -> Int64?,
+        sleep: @escaping InvalidateSync.Sleep,
+        timeout: Duration = .seconds(15),
+        settle: Duration = .milliseconds(1500),
+        poll: Duration = .milliseconds(200)
+    ) async throws -> Bool {
+        var waited = Duration.zero
+        while await heardAt() == nil {
+            guard waited < timeout else { return false }
+            try await sleep(poll)
+            waited += poll
+        }
+        try await sleep(settle)
+        return true
+    }
 }

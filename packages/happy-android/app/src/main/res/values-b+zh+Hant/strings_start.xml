@@ -20,4 +20,5 @@
     <string name="start_install_choose">在初始設定中選擇 Link\u00A0Mobile\u00A0App。</string>
     <string name="start_install_settings">或前往 Settings\u00A0›\u00A0Mobile\u00A0Access。</string>
     <string name="start_install_download">從 %1$s 下載</string>
+    <string name="restore_secret_key_body">貼上你的金鑰。它位於另一台裝置的 %1$s 中。</string>
 </resources>

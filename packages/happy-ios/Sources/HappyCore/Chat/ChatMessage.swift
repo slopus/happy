@@ -32,6 +32,16 @@ public enum AgentEvent: Equatable, Sendable {
     case ready
     case userMessageAccepted(ref: String)
     case userMessageRejected(ref: String, reason: String)
+    /// A provider error Happy Agent reports on the run (a `service`
+    /// envelope, mapHappyMessages.ts): a retry after one, or a failed run.
+    /// Shown as an error line, never as the agent's reply, which is how
+    /// happy-app shows every `service` text. The others (another agent's
+    /// words, a subagent starting) stay agent text.
+    case notice(String)
+
+    static func isProviderError(_ text: String) -> Bool {
+        text.hasPrefix("Retrying after an error") || text.hasPrefix("The run failed:")
+    }
 }
 
 public struct ToolPermission: Equatable, Sendable {

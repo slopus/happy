@@ -17,6 +17,10 @@ struct NoSessionsMeasureInput: Hashable, Sendable {
     var width: CGFloat
     var text: TextEnvironment
     var showsArchived: Bool
+    /// The notices over it (the move to Happy Agent); nil for none.
+    var banners: HomeBanners? = nil
+    /// The widest the notices' content runs (ContentWidth.maxWidth).
+    var bannersMaxWidth: CGFloat = 0
 }
 
 /// NoSessionsView's content as its glyph, labels and buttons measure it,
@@ -32,6 +36,8 @@ struct NoSessionsSizes: Equatable, Sendable {
     /// "Show archived"'s label, and the action around it; nil without it.
     var actionLabel: CGSize?
     var action: CGSize?
+    /// The notices' height across the width; 0 for none.
+    var header: CGFloat = 0
 }
 
 /// Measures NoSessionsView's content off the main thread (AGENTS.md rule
@@ -99,7 +105,10 @@ enum NoSessionsMeasure {
             buttonLabel: buttonLabel,
             buttonHeight: button.size.height,
             actionLabel: actionLabel,
-            action: measured.action?.size
+            action: measured.action?.size,
+            header: input.banners.map {
+                HomeRowMeasurer.headerHeight($0, width: input.width, maxWidth: input.bannersMaxWidth, environment: HomeTextEnvironment(environment))
+            } ?? 0
         )
     }
 

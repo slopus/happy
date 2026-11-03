@@ -12,6 +12,7 @@ final class AccountKindNamingTests: XCTestCase {
         "native.accountKind.restoreCLIAccount",
         "native.accountKind.cliServer",
         "native.accountKind.disconnectAgentTitle",
+        "native.accountKind.disconnectAgentDetail",
         "native.accountKind.signOutCLITitle",
         "native.accountKind.deviceNeedsCLIAccount",
         "native.accountKind.accountNotShareable",
@@ -19,6 +20,19 @@ final class AccountKindNamingTests: XCTestCase {
         "native.accountKind.agentUnreachable",
         "native.accountKind.restoreAnotherCLIAccount",
         "native.accountKind.restoreAnotherFooter",
+    ]
+
+    /// The app's other own words: the home card that leads a Happy CLI
+    /// account to Happy Agent, a computer an old Happy CLI linked, and
+    /// where a phone keeps its secret key.
+    private static let otherKeys = [
+        "native.home.migrationTitle",
+        "native.home.migrationSubtitle",
+        "native.machine.needsRelogin",
+        "native.machine.reloginHint",
+        "native.onboarding.secretKeyBody",
+        "native.imageUpload.willRetryOne",
+        "native.imageUpload.willRetryMany",
     ]
 
     /// "Legacy" as each language would put it before "account": the word
@@ -51,7 +65,7 @@ final class AccountKindNamingTests: XCTestCase {
             let words = TranslationCatalog.nativeSources[language] ?? [:]
             let catalog = TranslationCatalog.catalog(for: language)
             XCTAssertEqual(Set(words.keys), Set(english.keys), language)
-            for key in Self.kindKeys {
+            for key in Self.kindKeys + Self.otherKeys {
                 let text = catalog(key, ["name": "Studio Mac"])
                 XCTAssertNotEqual(text, key, "\(language) lacks \(key)")
                 XCTAssertFalse(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, "\(language) \(key)")

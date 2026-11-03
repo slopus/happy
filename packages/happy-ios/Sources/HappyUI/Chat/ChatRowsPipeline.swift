@@ -195,7 +195,7 @@ enum ChatRows {
             planner: planner,
             applied: applied.rows,
             makeRows: { items, groups in
-                rows(items, groups: groups, delivery: snapshot.delivery, agentState: session.agentState, receipts: SessionMetadata.sendsMessageReceipts(session.metadata), times: times, view: view, style: style, now: now, graceEnd: &graceEnd, forms: &forms)
+                rows(items, groups: groups, delivery: snapshot.delivery, agentState: session.agentState, receipts: SessionMetadata.sendsMessageReceipts(session.metadata), strictAnswers: SessionDetails.waitsForCLIBeforeFirstMessage(session.metadata), times: times, view: view, style: style, now: now, graceEnd: &graceEnd, forms: &forms)
             },
             id: \.id,
             recolour: input.recolour
@@ -264,6 +264,7 @@ enum ChatRows {
         delivery deliveries: [String: OutboxDelivery],
         agentState: JSONValue?,
         receipts: Bool = false,
+        strictAnswers: Bool = false,
         times: [String: Int64] = [:],
         view: ChatRowsView,
         style: ChatRowStyle,
@@ -272,8 +273,9 @@ enum ChatRows {
         forms: inout [String: ChatQuestionForm]
     ) -> [ChatRowInput] {
         let shown = items.filter { ChatRowRenderer.isShown($0, style: style) }
-        // Without receipts, the agent answering is the sign it took a message.
-        let newestAnswer = shown.firstIndex { if case .message(.userText) = $0 { false } else { true } }
+        // Without receipts, the agent answering is the sign it took a message
+        // (`MessageTaken`: for an old CLI, only before the next message).
+        let answered = MessageTaken.answered(shown.map { if case .message(.userText) = $0 { true } else { false } }, strict: strictAnswers)
         return shown.enumerated().map { index, item in
             var delivery: OutboxDelivery?
             var userStatus: UserMessageStatus?
@@ -281,7 +283,7 @@ enum ChatRows {
             if case .message(.userText(let message)) = item {
                 if let localId = message.localId { delivery = deliveries[localId] }
                 userStatus = ChatRowRenderer.userStatus(message, delivery: delivery, now: now)
-                outgoing = ChatRowRenderer.outgoing(message, delivery: delivery, receipts: receipts, answered: newestAnswer.map { $0 < index } ?? false)
+                outgoing = ChatRowRenderer.outgoing(message, delivery: delivery, receipts: receipts, answered: answered[index])
                 if let end = UserMessageStatus.graceEnds(
                     pending: message.pending, undelivered: delivery != nil, queuedWhileBusy: message.meta?.queuedWhileBusy == true,
                     createdAt: message.createdAt, now: now

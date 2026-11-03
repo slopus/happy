@@ -137,9 +137,21 @@ public actor LegacySyncEngine {
         guard !stopped else { return }
         await presence.start()
         followIntents()
-        for job in [Job.sessions, .machines, .settings, .profile, .outbox] {
+        await resumeSending()
+        for job in [Job.sessions, .machines, .settings, .profile] {
             await invalidate(job)
         }
+    }
+
+    /// The connection is back (a socket connect, the network returning, the
+    /// app opening): what the connection failed goes again by itself, and
+    /// what waits on a backoff goes now. What was refused for good waits
+    /// for the person.
+    public func resumeSending() async {
+        ThreadRules.assertOffMain()
+        guard !stopped else { return }
+        _ = try? store.resumeInterruptedOutbox()
+        await invalidate(.outbox)
     }
 
     /// Returns once what `syncAll` pulls for home has landed (sessions,
@@ -504,6 +516,11 @@ public actor LegacySyncEngine {
             refresh: { await sessions.invalidateAndAwait() },
             sleep: sleep
         )
+        // 0.10.0 lost a new session's first message every time.
+        if SessionDetails.waitsForCLIBeforeFirstMessage(try store.session(id: sessionId)?.metadata) {
+            let presence = presence
+            _ = try await SessionReadiness.awaitCLIHeard(heardAt: { await presence.heardAt(sessionId) }, sleep: sleep)
+        }
     }
 
     private func sessionReady(_ id: String) throws -> Bool {
@@ -555,7 +572,7 @@ public actor LegacySyncEngine {
             retryTask?.cancel()
             retryTask = nil
         } else {
-            await invalidate(.outbox)
+            await resumeSending()
         }
     }
 
@@ -638,7 +655,7 @@ public actor LegacySyncEngine {
     /// `pending`), worked out from the chat's records in the store.
     private func hasPendingUserMessage(sessionId: String) throws -> Bool {
         let queued = try store.pendingOutbox(limit: Int.max).contains {
-            $0.sessionId == sessionId && $0.kind == .message && $0.state != .failed
+            $0.sessionId == sessionId && $0.kind == .message && !$0.state.isFailure
         }
         return try queued || UnacceptedUserMessages.contains(store.acceptanceRecords(sessionId: sessionId))
     }
@@ -748,12 +765,11 @@ public actor LegacySyncEngine {
             guard !stopped, !backgrounded, !Task.isCancelled else {
                 break
             }
-            // A failed upload is skipped like happy-app; a failed POST retains order.
-            if item.state == .failed {
-                let uploaded = try store.attachment(outboxLocalId: item.localId)?.ref != nil
-                if item.kind == .message || uploaded {
-                    blocked.insert(item.sessionId)
-                }
+            // A failed item holds its session's order until it is retried or
+            // taken out. A failed upload holds its text too: a caption sent
+            // without its pictures reads to the agent as if they were there.
+            if item.state.isFailure {
+                blocked.insert(item.sessionId)
                 continue
             }
             guard !blocked.contains(item.sessionId) else {
@@ -763,12 +779,9 @@ public actor LegacySyncEngine {
                 blocked.insert(item.sessionId)
                 continue
             }
-            if let dependency = item.dependsOn, let earlier = try store.outbox(localId: dependency) {
-                let skipped = try store.attachment(outboxLocalId: earlier.localId)?.ref == nil
-                if !(earlier.kind == .file && earlier.state == .failed && skipped) {
-                    blocked.insert(item.sessionId)
-                    continue
-                }
+            if let dependency = item.dependsOn, try store.outbox(localId: dependency) != nil {
+                blocked.insert(item.sessionId)
+                continue
             }
             guard let session = try store.session(id: item.sessionId),
                   session.decryptable,
@@ -857,19 +870,24 @@ public actor LegacySyncEngine {
                     item.state = .queued
                     item.nextAttemptAt = 0
                 } else {
-                    item.state = item.attempts >= options.sendAttempts || Self.permanentSendError(error) ? .failed : .queued
+                    // Refused for good, it waits for the person. Out of
+                    // tries on the connection, it says "not sent" and goes
+                    // again when the connection comes back (`resumeSending`).
+                    item.state = Self.permanentSendError(error) ? .failed : item.attempts >= options.sendAttempts ? .interrupted : .queued
                     let delay = min(options.sendRetryMaximumMs, options.sendRetryInitialMs * Int64(pow(2, Double(min(item.attempts - 1, 16)))))
                     item.nextAttemptAt = now() + delay
                 }
                 do {
                     try store.updateOutbox(item)
-                    let noRef = try store.attachment(outboxLocalId: item.localId)?.ref == nil
+                    if item.kind == .file, item.state.isFailure {
+                        try store.failOutboxSend(localId: item.localId, error: item.lastError ?? "", state: item.state)
+                    }
                     // Its bytes didn't all go: the ring starts over next time.
-                    if item.kind == .file, noRef { options.uploads.clear(key: UploadProgressBoard.outboxKey(item.localId)) }
-                    let skippedUpload = item.kind == .file && item.state == .failed && noRef
+                    if item.kind == .file, try store.attachment(outboxLocalId: item.localId)?.ref == nil {
+                        options.uploads.clear(key: UploadProgressBoard.outboxKey(item.localId))
+                    }
                     // Taken out meanwhile: what waited on it goes on.
-                    let discarded = try store.outbox(localId: item.localId) == nil
-                    if !skippedUpload, !discarded {
+                    if try store.outbox(localId: item.localId) != nil {
                         blocked.insert(item.sessionId)
                     }
                 } catch {
@@ -884,10 +902,6 @@ public actor LegacySyncEngine {
             // Only the head eligible item in each session drives the retry timer.
             var seen = Set<String>()
             let times = pending.compactMap { item -> Int64? in
-                if item.state == .failed && item.kind == .file
-                    && (try? store.attachment(outboxLocalId: item.localId)?.ref) == nil {
-                    return nil
-                }
                 guard seen.insert(item.sessionId).inserted, item.state == .queued else {
                     return nil
                 }

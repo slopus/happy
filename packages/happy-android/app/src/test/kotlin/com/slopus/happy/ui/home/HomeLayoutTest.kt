@@ -388,6 +388,42 @@ class HomeLayoutTest {
         assertEquals(1, whatsNew)
     }
 
+    /**
+     * The move to Happy Agent: on a Happy CLI home in every state while the
+     * phone has no agent connection (null onMigrate hides it), above the
+     * list's other banners' slot, opening Open Happy on your computer.
+     */
+    @Test
+    fun theMigrationCardHeadsEveryStateAndOpensTheWayToHappyAgent() {
+        var migrated = 0
+        val migrating = HomeScreenActions(onSettings = {}, onNewSession = {}, onTroubleshoot = {}, onOpenUrl = {}, onWhatsNew = {}, onMigrate = { migrated++ })
+        var current by mutableStateOf(state(listOf(cli("a"))))
+        var withCard by mutableStateOf(true)
+        rule.setHappyContent {
+            HomeScreen(current, ConnectionStatus.CONNECTED, SessionListGrouping.Flat, callbacks, if (withCard) migrating else actions)
+        }
+        rule.onNodeWithText("Switch to Happy Agent", useUnmergedTree = true).assertExists()
+        rule.onNodeWithText("Connect your phone straight to your computer. Happy CLI keeps working.", useUnmergedTree = true).assertExists()
+        val card = rule.node(HomeStateTags.MIGRATION_BANNER).bounds
+        val row = rule.node(FlatRowTags.ROW).bounds
+        assertTrue("above the list", card.bottom <= row.top)
+        rule.node(HomeStateTags.MIGRATION_BANNER).performClick()
+        assertEquals(1, migrated)
+
+        current = state(emptyList())
+        rule.waitForIdle()
+        rule.node(HomeStateTags.NO_SESSIONS).assertExists()
+        rule.node(HomeStateTags.MIGRATION_BANNER).assertExists()
+        current = state(emptyList(), machines = emptyList())
+        rule.waitForIdle()
+        rule.node(HomeTags.LINK).assertExists()
+        rule.node(HomeStateTags.MIGRATION_BANNER).assertExists()
+
+        withCard = false
+        rule.waitForIdle()
+        rule.onAllNodesWithTag(HomeStateTags.MIGRATION_BANNER).assertCountEquals(0)
+    }
+
     @Test
     fun loadingAndEmptyStates() {
         var current by mutableStateOf<HomeListState?>(null)

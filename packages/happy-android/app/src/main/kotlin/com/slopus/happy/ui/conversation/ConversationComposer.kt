@@ -168,8 +168,8 @@ private object Slot {
  * ([ConversationModelChips], each opening its own list) and send, which becomes Stop while the agent
  * works and nothing is typed. [+] opens the attachment sheet ([AttachSheet]):
  * the gallery's recent photos and videos and the File tab; its Send sends the
- * picks with the draft as their caption, pictures inline and the rest through
- * the agent's workspace ([com.slopus.happy.conversation.WorkspaceUploads]).
+ * picks with the draft as their caption, all of them through the agent's
+ * workspace ([com.slopus.happy.conversation.WorkspaceUploads]).
  * The model menu floats above the composer and keyboard, keeping the draft
  * and caret in place. The pill is glass over [backdrop] (the transcript under
  * it), its tint alone where nothing blurs. With Reduce Motion it changes shape

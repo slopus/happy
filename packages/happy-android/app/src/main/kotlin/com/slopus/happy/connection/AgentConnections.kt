@@ -62,6 +62,8 @@ class AgentConnections(
     private val pictures: File? = null,
     /** Refreshes team servers' access tokens; without it they sign in again when one expires. */
     private val serverAuth: ServerAuthClient? = null,
+    /** Where a disconnected pairing's device goes to be removed from its agent; without it, nothing is sent. */
+    private val revokes: DeviceRevokes? = null,
 ) {
     private val lock = Mutex()
     /** Team servers' access tokens: in memory only, by connection id. */
@@ -72,6 +74,19 @@ class AgentConnections(
     private val state = MutableStateFlow(readRegistry())
     private val endpointLock = Any()
     private val endpoints = mutableMapOf<String, AgentEndpoint>()
+
+    init {
+        revokes?.inUse = { token -> holds(token) }
+    }
+
+    /**
+     * Whether a connection on this phone holds [deviceToken] now. Under
+     * [lock], so a connection [remove] is taking away reads as gone, never
+     * as one still held.
+     */
+    private suspend fun holds(deviceToken: String): Boolean = lock.withLock {
+        withContext(Dispatchers.IO) { state.value.any { read(it.id)?.deviceToken == deviceToken } }
+    }
 
     internal fun transport(id: String, credentials: AgentConnectionCredentials, make: (AgentConnectionCredentials) -> Transport): Transport {
         val endpoint = synchronized(endpointLock) {
@@ -166,6 +181,9 @@ class AgentConnections(
                 agent?.avatar ?: NodeAvatar.Unchanged,
             )
             write(state.value.filterNot { it.id == id } + account)
+            // An agent was just reached: a pairing disconnected while it
+            // couldn't be is revoked now, with its own old token.
+            revokes?.resume()
             account
         }
     }
@@ -368,15 +386,21 @@ class AgentConnections(
     }
 
     /**
-     * Forgets the agent on this phone. A device token can't reach the
-     * agent's device management, so the agent keeps listing this
-     * phone until it is removed there (API.md, "Credentials on the
-     * connector's socket").
+     * Forgets the agent on this phone, and hands its device's removal from
+     * the agent to [revokes] (`DELETE /v0/mobile-connector/device` with this
+     * pairing's own token), kept before the credentials go and sent once
+     * they have (a token still held here is never sent), now or once the
+     * agent can be reached, so pairing again leaves one device there, not
+     * two.
      */
     suspend fun remove(id: String) = lock.withLock {
         withContext(Dispatchers.IO) {
             val account = state.value.firstOrNull { it.id == id }
-            if (account != null) forget(account)
+            if (account != null) {
+                read(id)?.let { revokes?.keep(id, it) }
+                forget(account)
+                revokes?.resume()
+            }
         }
     }
 

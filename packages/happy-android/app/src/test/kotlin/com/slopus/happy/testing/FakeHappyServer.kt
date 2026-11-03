@@ -155,12 +155,13 @@ class FakeHappyServer(secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByte() 
 
     fun machine(id: String): ApiMachine? = synchronized(this) { machines.firstOrNull { it.id == id } }
 
-    fun addMachine(id: String, metadata: JsonObject = buildJsonObject { put("host", id) }, updatedAt: Long = 1) = synchronized(this) {
+    /** [legacy]: linked by a Happy CLI before data keys, sealed with the account secret. */
+    fun addMachine(id: String, metadata: JsonObject = buildJsonObject { put("host", id) }, updatedAt: Long = 1, legacy: Boolean = false) = synchronized(this) {
         machines.removeAll { it.id == id }
         machines += ApiMachine(
             id = id, seq = 1, createdAt = 1, updatedAt = updatedAt, active = true, activeAt = updatedAt,
-            metadata = seal(id, metadata), metadataVersion = 1,
-            daemonState = null, daemonStateVersion = 0, dataEncryptionKey = wrap(id),
+            metadata = if (legacy) encodeBase64(ByteArray(40)) else seal(id, metadata), metadataVersion = 1,
+            daemonState = null, daemonStateVersion = 0, dataEncryptionKey = if (legacy) null else wrap(id),
         )
     }
 

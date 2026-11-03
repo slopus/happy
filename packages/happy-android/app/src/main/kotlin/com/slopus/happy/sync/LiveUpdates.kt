@@ -197,6 +197,15 @@ class LiveUpdates(
 
     private fun updateMachine(update: ApiMachineUpdate, container: ApiUpdateContainer) {
         val machine = store.machine(update.machineId)
+        if (machine != null && machine.isLegacy) {
+            // Nothing on it opens; only whether it is there moves.
+            store.upsertMachines(listOf(machine.copy(
+                updatedAt = maxOf(machine.updatedAt, container.createdAt),
+                active = update.active ?: true,
+                activeAt = update.activeAt ?: container.createdAt,
+            )))
+            return
+        }
         val cipher = machine?.let { decoder.cipher(it.wrappedDataKey) }
         if (machine == null || cipher == null) {
             requestSync()

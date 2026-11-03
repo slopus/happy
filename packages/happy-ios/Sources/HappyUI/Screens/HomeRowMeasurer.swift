@@ -66,6 +66,8 @@ struct HomeBanners: Hashable, Sendable {
         enum Kind: Hashable, Sendable {
             /// OfflineMachinesBanner: opens Troubleshoot.
             case offline
+            /// The move to Happy Agent: opens Open Happy on your computer.
+            case migration
             /// UpdateBanner's store link.
             case nativeUpdate
             /// UpdateBanner's What's new.
@@ -79,19 +81,24 @@ struct HomeBanners: Hashable, Sendable {
 
     /// OfflineMachinesBanner's title; nil hides the plaque.
     let offlineTitle: String?
+    /// The move to Happy Agent, until the phone has an agent connection.
+    let migration: Bool
     let nativeUpdate: Bool
     let whatsNew: Bool
     /// Each notice's title and subtitle, in HomeListHeaderView's order: the
-    /// plaque, then the store update or else What's new.
+    /// plaque, the move to Happy Agent, then the store update or else
+    /// What's new.
     let notices: [Notice]
 
     @MainActor
-    init(offlineTitle: String? = nil, nativeUpdate: Bool = false, whatsNew: Bool = false) {
+    init(offlineTitle: String? = nil, migration: Bool = false, nativeUpdate: Bool = false, whatsNew: Bool = false) {
         self.offlineTitle = offlineTitle
+        self.migration = migration
         self.nativeUpdate = nativeUpdate
         self.whatsNew = whatsNew
         var notices: [Notice] = []
         if let offlineTitle { notices.append(Notice(kind: .offline, title: offlineTitle, subtitle: Strings.Troubleshoot.bannerSubtitle)) }
+        if migration { notices.append(Notice(kind: .migration, title: Strings.Home.migrationTitle, subtitle: Strings.Home.migrationSubtitle)) }
         if nativeUpdate {
             notices.append(Notice(kind: .nativeUpdate, title: Strings.Home.nativeUpdateAvailable, subtitle: Strings.Home.tapToUpdateAppStore))
         } else if whatsNew {

@@ -136,10 +136,13 @@ class AttachmentComposeTest {
         assertTrue(none.isEmpty())
     }
 
+    /** A failed upload holds the whole message: neither its text nor the pictures that did upload go. */
     @Test
-    fun failedUploadsAreCounted() = runBlocking {
-        val (plan, _) = plan(null, "x", listOf(preview("a"), preview("b"), preview("c")), failed = 2)
+    fun failedUploadsAreCountedAndNothingIsSent() = runBlocking {
+        val (plan, uploaded) = plan(null, "x", listOf(preview("a"), preview("b"), preview("c")), failed = 2)
         assertEquals(listOf(AttachmentNotice.UploadFailed(2)), plan.notices)
-        assertEquals(1, plan.records.size)
+        assertEquals(listOf("a", "b", "c"), uploaded)
+        assertFalse(plan.send)
+        assertTrue(plan.records.isEmpty())
     }
 }

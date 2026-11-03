@@ -43,8 +43,28 @@ class SessionInfoTest {
 
     @Test fun flagsAnOutdatedCli() {
         assertTrue(isCliOutdated("0.9.9"))
-        assertFalse(isCliOutdated("0.10.0"))
+        // Before 0.15 the CLI sent agent output in a format the chat no longer reads.
+        assertTrue(isCliOutdated("0.10.0"))
+        assertTrue(isCliOutdated("0.14.2"))
+        assertFalse(isCliOutdated("0.15.0"))
+        assertFalse(isCliOutdated("0.15.0-beta.0"))
+        assertFalse(isCliOutdated("1.2.6"))
         assertFalse(isCliOutdated(null))
+    }
+
+    @Test fun anOldCliIsHeardFromBeforeItsFirstMessage() {
+        assertTrue(metadata { put("version", "0.10.0") }.waitsForCliBeforeFirstMessage())
+        assertTrue(metadata { put("version", "1.2.0") }.waitsForCliBeforeFirstMessage())
+        assertFalse(metadata { put("version", "1.2.1") }.waitsForCliBeforeFirstMessage())
+        assertFalse(metadata { put("version", "1.2.6") }.waitsForCliBeforeFirstMessage())
+        assertFalse(metadata().waitsForCliBeforeFirstMessage())
+        assertFalse((null as SessionMetadata?).waitsForCliBeforeFirstMessage())
+        assertFalse(
+            metadata {
+                put("version", "0.4.111")
+                putJsonObject("client") { put("id", "rig"); put("name", "Happy Agent"); put("version", "0.4.111") }
+            }.waitsForCliBeforeFirstMessage(),
+        )
     }
 
     @Test fun sandboxAndPermissionSummaries() {

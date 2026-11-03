@@ -43,7 +43,10 @@ fun NavGraphBuilder.connectRoutes(graph: AppGraph, nav: NavHostController) {
  * Takes links from [DeepLinks] once the screens are up and opens their
  * screen over the current one; Home goes back to Home. Signed out, only
  * the screens that work without an account open (happy-app pushes the
- * others too, onto screens with nothing loaded); the rest are dropped.
+ * others too, onto screens with nothing loaded); the rest are dropped,
+ * except a terminal's link, which goes to the first screen's Add as if it
+ * were pasted into Enter link manually: an account is made that approves
+ * it.
  * Session links go to [onOpenSession], which the chat screen provides;
  * without it they are dropped too. Protocol V2 pairing codes open signed
  * in or out, through [LocalAgentPairing]. Happy URLs (edge SSO §7) go to
@@ -61,6 +64,7 @@ fun DeepLinkEffect(
 ) {
     val pending by DeepLinks.pending.collectAsStateWithLifecycle()
     val connectAgent = LocalAgentPairing.current
+    val add = LocalAddFlow.current
     LaunchedEffect(pending, signedIn) {
         val link = pending ?: return@LaunchedEffect
         if (link is DeepLink.OnConnection && link.connectionId != openConnection) return@LaunchedEffect
@@ -75,6 +79,7 @@ fun DeepLinkEffect(
         }
         if (!signedIn) {
             if (link is DeepLink.Screen && link.signedOut) nav.navigate(link.route)
+            if (link is DeepLink.Terminal && link.publicKey != null) add?.connectWithUrl(TERMINAL_URL_PREFIX + link.publicKey)
             return@LaunchedEffect
         }
         when (link) {

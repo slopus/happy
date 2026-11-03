@@ -106,4 +106,9 @@
     <string name="home_worktree_unreachable">マシンに接続できませんでした</string>
     <string name="home_worktree_not_git">Git リポジトリではありません</string>
     <string name="home_worktree_failed">Worktree を作成できませんでした</string>
+    <string name="home_migration_title">Happy Agent に切り替え</string>
+    <string name="home_migration_subtitle">スマートフォンをコンピューターに直接接続します。Happy CLI はそのまま使えます。</string>
+    <string name="machine_needs_relogin">古い Happy CLI でサインインしたコンピューター</string>
+    <string name="machine_relogin_hint">そのコンピューターで happy auth login --force を実行してください</string>
+    <string name="home_start_needs_relogin">このコンピューターは古い Happy CLI でリンクされているため、何も開始できません。そのコンピューターで happy auth login --force を実行してから、もう一度お試しください。</string>
 </resources>

@@ -232,7 +232,7 @@ extension Strings {
     public static let legacyAccount = AccountKind.cli
     public static var disconnectTitle: String { AccountKind.disconnectAgentTitle }
     public static var signOutTitle: String { AccountKind.signOutCLITitle }
-    public static let removeDetail = "This removes the connection and its credentials from this phone."
+    public static var removeDetail: String { AccountKind.disconnectAgentDetail }
     public static let couldNotRename = "Could not rename"
     public static let couldNotSwitch = "Could not switch"
     public static let couldNotRemove = "Could not remove"

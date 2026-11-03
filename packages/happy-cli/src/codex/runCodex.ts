@@ -38,7 +38,7 @@ import { resumeExistingThread } from './resumeExistingThread';
 import { emitReadyIfIdle } from './emitReadyIfIdle';
 import { enqueueCodexUserText, isCodexClearText } from './codexClearCommand';
 import { downloadCodexFileEventAttachment } from './utils/attachmentEvents';
-import { prepareCodexImageInputItems } from './utils/imageInput';
+import { formatAttachmentNote, pruneAttachmentDirs, saveAttachmentFiles } from '@/utils/attachmentFiles';
 import { createSerialAsyncHandler } from './utils/serialAsyncHandler';
 import { buildCodexThreadBackfillEnvelopes } from './utils/threadImageBackfill';
 import {
@@ -261,6 +261,7 @@ export async function runCodex(opts: {
 
     const messageQueue = new MessageQueue2<EnhancedMode>(hashCodexEnhancedMode);
 
+    void pruneAttachmentDirs({ keepSessionId: session.sessionId });
     session.onFileEvent((fileEvent) => {
         const ev = fileEvent.content.data.ev;
         logger.debug('[Codex] File event received', {
@@ -974,20 +975,22 @@ export async function runCodex(opts: {
                 const includeAppendSystemPrompt = Boolean(
                     message.mode.appendSystemPrompt && !appendSystemPromptInjected,
                 );
-                const imageInputs = await prepareCodexImageInputItems(message.attachments, {
+                // Attachments go to Codex as paths, not localImage inputs: it
+                // opens the ones it needs with view_image.
+                const savedAttachments = await saveAttachmentFiles(message.attachments, {
                     sessionId: session.sessionId,
                 });
                 if ((message.attachments?.length ?? 0) > 0) {
-                    logger.debug('[Codex] Prepared image inputs for turn', {
-                        inputCount: imageInputs.inputItems.length,
-                        skippedCount: imageInputs.skipped,
+                    logger.debug('[Codex] Saved attachments for turn', {
+                        savedCount: savedAttachments.length,
+                        failedCount: (message.attachments?.length ?? 0) - savedAttachments.length,
                     });
                 }
                 const hasUserText = message.message.trim().length > 0;
-                if ((message.attachments?.length ?? 0) > 0 && imageInputs.inputItems.length === 0 && !hasUserText) {
+                if ((message.attachments?.length ?? 0) > 0 && savedAttachments.length === 0 && !hasUserText) {
                     session.sendSessionEvent({
                         type: 'message',
-                        message: 'No supported images were available to send to Codex.',
+                        message: 'The attached images could not be saved for Codex.',
                     });
                     continue;
                 }
@@ -996,6 +999,7 @@ export async function runCodex(opts: {
                     mode: message.mode,
                     includeAppendSystemPrompt,
                     includeTitleInstruction: first,
+                    attachmentNote: formatAttachmentNote(savedAttachments),
                 });
 
                 const result = await client.sendTurnAndWait(turnPrompt, {
@@ -1003,7 +1007,6 @@ export async function runCodex(opts: {
                     approvalPolicy: executionPolicy.approvalPolicy,
                     sandbox: executionPolicy.sandbox,
                     effort: message.mode.effort,
-                    extraInputItems: imageInputs.inputItems,
                 });
                 first = false;
                 if (includeAppendSystemPrompt) {

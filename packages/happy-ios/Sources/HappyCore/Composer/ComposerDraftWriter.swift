@@ -11,25 +11,36 @@ public struct ComposerStoreValue: Equatable, Sendable {
     public var picks: ComposerPicks
     /// Attachments whose upload the outbox gave up on.
     public var failedAttachments: Int
+    /// Of those, the ones it sends again by itself once the connection is
+    /// back (`interrupted`).
+    public var retryingAttachments: Int
+    /// Attachments in the outbox at all, failed or on their way.
+    public var unsentAttachments: Int
 
-    public init(draft: String = "", picks: ComposerPicks = ComposerPicks(), failedAttachments: Int = 0) {
+    public init(draft: String = "", picks: ComposerPicks = ComposerPicks(), failedAttachments: Int = 0, retryingAttachments: Int = 0, unsentAttachments: Int = 0) {
         self.draft = draft
         self.picks = picks
         self.failedAttachments = failedAttachments
+        self.retryingAttachments = retryingAttachments
+        self.unsentAttachments = unsentAttachments
     }
 
     /// Three lookups by session id. No session column is read, so presence
     /// and every other session write leave it alone.
     public static func fetch(_ db: Database, sessionId: String) throws -> ComposerStoreValue {
-        let failed = OutboxRecord.filter(
-            Column("sessionId") == sessionId
-                && Column("kind") == OutboxRecord.Kind.file.rawValue
-                && Column("state") == OutboxRecord.State.failed.rawValue
-        )
+        // The session's attachments in the outbox, those given up on, and
+        // of those the ones that go again by themselves, in one lookup.
+        let files = try GRDB.Row.fetchOne(db, sql: """
+            SELECT COUNT(*), COALESCE(SUM(state IN (?, ?)), 0), COALESCE(SUM(state = ?), 0)
+            FROM "\(OutboxRecord.databaseTableName)" WHERE sessionId = ? AND kind = ?
+            """, arguments: [OutboxRecord.State.failed.rawValue, OutboxRecord.State.interrupted.rawValue,
+                             OutboxRecord.State.interrupted.rawValue, sessionId, OutboxRecord.Kind.file.rawValue])
         return ComposerStoreValue(
             draft: try DraftRecord.fetchOne(db, key: sessionId)?.text ?? "",
             picks: ComposerPicks(values: try ComposerStateRecord.fetchOne(db, key: sessionId)?.values),
-            failedAttachments: try failed.fetchCount(db)
+            failedAttachments: files?[1] ?? 0,
+            retryingAttachments: files?[2] ?? 0,
+            unsentAttachments: files?[0] ?? 0
         )
     }
 }
@@ -520,6 +531,41 @@ extension OutboxSender: ComposerStorage {
 /// isn't written again (`Persist.never`). So whenever a read is as new as
 /// the composer's writes, the writer has the text it last saved to compare
 /// the stored draft with.
+/// The composer's one "Upload Failed" alert: what it says while it is up.
+/// A message's pictures fail one delivery at a time, so a failure while it
+/// shows adds to it instead of raising another (which UIKit would refuse
+/// to present over it), and it is closed once the outbox has let them go.
+public struct UploadAlertModel: Equatable, Sendable {
+    public enum Action: Equatable, Sendable {
+        /// Raise it, saying `count` and `willRetry`.
+        case show
+        /// The one up says `count` and `willRetry` now.
+        case update
+        /// The one up is out of date.
+        case dismiss
+    }
+
+    /// Pictures the alert speaks of.
+    public private(set) var count = 0
+    /// They all go again by themselves.
+    public private(set) var willRetry = true
+
+    public init() {}
+
+    /// What `change` does to the alert, `showing` whether it is up.
+    public mutating func receive(_ change: ComposerDraftModel.Change, showing: Bool) -> Action? {
+        if !showing { self = UploadAlertModel() }
+        if change.newlyFailedAttachments > 0 {
+            count += change.newlyFailedAttachments
+            willRetry = willRetry && change.failuresWillRetry
+            return showing ? .update : .show
+        }
+        guard showing, change.attachmentsSettled else { return nil }
+        self = UploadAlertModel()
+        return .dismiss
+    }
+}
+
 public struct ComposerDraftModel: Equatable, Sendable {
     /// A write to hand to the writer.
     public struct Write: Equatable, Sendable {
@@ -553,15 +599,24 @@ public struct ComposerDraftModel: Equatable, Sendable {
         public var text: String?
         /// The session's picks, moved in the store.
         public var picks: ComposerPicks?
-        /// Uploads that failed since the last look, for the alert.
+        /// Uploads that failed since the last look, for the alert. One that
+        /// fails again on a retry by itself is not news.
         public var newlyFailedAttachments = 0
+        /// Those all go again by themselves once the connection is back:
+        /// the alert says so, not that they weren't sent.
+        public var failuresWillRetry = false
+        /// The outbox has no attachment left for the session (sent, or
+        /// discarded): an upload alert still up is out of date.
+        public var attachmentsSettled = false
         /// A write to hand to the writer.
         public var write: Write?
 
-        public init(text: String? = nil, picks: ComposerPicks? = nil, newlyFailedAttachments: Int = 0, write: Write? = nil) {
+        public init(text: String? = nil, picks: ComposerPicks? = nil, newlyFailedAttachments: Int = 0, failuresWillRetry: Bool = false, attachmentsSettled: Bool = false, write: Write? = nil) {
             self.text = text
             self.picks = picks
             self.newlyFailedAttachments = newlyFailedAttachments
+            self.failuresWillRetry = failuresWillRetry
+            self.attachmentsSettled = attachmentsSettled
             self.write = write
         }
     }
@@ -575,6 +630,9 @@ public struct ComposerDraftModel: Equatable, Sendable {
     /// out falls back to.
     public private(set) var storePicks: ComposerPicks?
     private var knownFailedAttachments = 0
+    /// Of those, the ones refused for good (`failed`).
+    private var knownRefusedAttachments = 0
+    private var knownUnsentAttachments = 0
     /// `generation` when the store last changed under the composer (its
     /// opening, or `retarget()`): writing since then means typing.
     private var loadGeneration = 0
@@ -672,6 +730,8 @@ public struct ComposerDraftModel: Equatable, Sendable {
         guard isLoaded else {
             isLoaded = true
             knownFailedAttachments = value.failedAttachments
+            knownRefusedAttachments = value.failedAttachments - value.retryingAttachments
+            knownUnsentAttachments = value.unsentAttachments
             let typed = generation != loadGeneration
             // The old store missed the composer's newest write (it failed):
             // what it handed over is older than the field.
@@ -692,8 +752,15 @@ public struct ComposerDraftModel: Equatable, Sendable {
             }
             return change
         }
+        let refused = value.failedAttachments - value.retryingAttachments
         change.newlyFailedAttachments = max(0, value.failedAttachments - knownFailedAttachments)
-        knownFailedAttachments = value.failedAttachments
+        change.failuresWillRetry = change.newlyFailedAttachments > 0 && refused <= knownRefusedAttachments
+        change.attachmentsSettled = knownUnsentAttachments > 0 && value.unsentAttachments == 0
+        // While they are still in the outbox, a retry by itself puts the
+        // failed ones back in the queue: their failing again is not news.
+        knownFailedAttachments = value.unsentAttachments > 0 ? max(knownFailedAttachments, value.failedAttachments) : value.failedAttachments
+        knownRefusedAttachments = refused
+        knownUnsentAttachments = value.unsentAttachments
         if synced, delivery.generation == generation,
            autosave.storeChanged(isSaved: delivery.draftIsSaved, composing: composing) {
             take(value.draft, into: &change)

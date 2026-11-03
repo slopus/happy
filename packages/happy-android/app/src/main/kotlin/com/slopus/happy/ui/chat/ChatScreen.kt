@@ -167,14 +167,12 @@ class ChatScreenSlots(
  * A chat being started: "New chat" in the header (none before the first
  * send without [headerShown]), [placeholder] in place of
  * the transcript, and the composer under it, its chips read from [anchor]
- * (the chat it was opened beside, which decides how it runs). With
- * [focusComposer] the composer takes the keyboard as it first shows (an
- * empty chat compose opened).
+ * (the chat it was opened beside, which decides how it runs). The
+ * keyboard waits for a tap in the composer.
  */
 @Immutable
 class ChatPendingSlot(
     val anchor: ChatSessionInfo?,
-    val focusComposer: Boolean = false,
     /** What the composer asks for while empty (a task's first message); null for the chat's own. */
     val composerPlaceholder: String? = null,
     /** False until the first send: the header is Back alone (compose's empty chat). */
@@ -342,7 +340,6 @@ fun ChatScreen(
                         if (composerSession != null) {
                             ChatDock(
                                 state, composerSession, draft, actions, now, modes, inactiveHint.takeIf { session != null }, goalBar, activityBar, inputPadding, showDetails,
-                                autoFocus = session == null && pending?.focusComposer == true,
                                 placeholder = pending?.composerPlaceholder.takeIf { session == null },
                                 onPanelPositioned = if (docked) { coordinates ->
                                     cardInset = list[0]?.takeIf { it.isAttached }?.let { it.size.height - it.localPositionOf(coordinates, Offset.Zero).y }

@@ -804,18 +804,23 @@ final class HomeDockFocusViewController: UIViewController {
         let composer = controller.composer
         let choices = composer.choices
         let draft = composer.drafts.draft
-        func section(_ title: String?, _ options: [NewSessionChoices.Option], selected: String?, select: @escaping (String) -> Void) -> UIMenu {
+        func section(_ title: String?, _ options: [NewSessionChoices.Option], selected: String?, subtitles: Bool = false, select: @escaping (String) -> Void) -> UIMenu {
             UIMenu(title: title ?? "", options: .displayInline, children: options.map { option in
-                UIAction(
-                    title: option.name,
+                // A computer an old Happy CLI linked, in the person's words.
+                let relogin = subtitles && option.isDisabled && option.name == MachineChoice.needsReloginName
+                let action = UIAction(
+                    title: relogin ? Strings.Home.machineNeedsRelogin : option.name,
                     attributes: option.isDisabled ? .disabled : [],
                     state: !option.isAction && option.key == selected ? .on : .off
                 ) { _ in select(option.key) }
+                // A computer's daemons: one host's all share its name.
+                if subtitles { action.subtitle = relogin ? Strings.Home.machineReloginHint : option.description }
+                return action
             })
         }
         switch row {
         case .machine:
-            return [section(Strings.Home.machineTitle, choices.machineOptions, selected: draft.selectedMachineId) { composer.selectMachine($0) }]
+            return [section(Strings.Home.machineTitle, choices.machineOptions, selected: draft.selectedMachineId, subtitles: true) { composer.selectMachine($0) }]
         case .project:
             let custom = NewSessionChoices.Option(key: NewSessionChoices.customPathKey, name: Strings.Home.enterCustomPath, isAction: true)
             return [

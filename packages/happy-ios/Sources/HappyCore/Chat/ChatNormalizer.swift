@@ -121,7 +121,12 @@ public enum ChatNormalizer {
                 guard envelope.role == .agent else {
                     return record
                 }
-                record.body = .agent(usageOnly ? [] : [.text(text, thinking: false)])
+                // Happy Agent's provider errors, outside a subagent's task: an error line, not the agent's words.
+                if !usageOnly, envelope.subagent == nil, AgentEvent.isProviderError(text) {
+                    record.body = .event(.notice(text))
+                } else {
+                    record.body = .agent(usageOnly ? [] : [.text(text, thinking: false)])
+                }
             case .text(let text, let thinking):
                 let visible = stripTaskNotifications(text)
                 if visible != text && visible.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {

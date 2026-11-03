@@ -106,4 +106,9 @@
     <string name="home_worktree_unreachable">Falha ao conectar à máquina</string>
     <string name="home_worktree_not_git">Não é um repositório Git</string>
     <string name="home_worktree_failed">Falha ao criar o worktree</string>
+    <string name="home_migration_title">Mude para o Happy Agent</string>
+    <string name="home_migration_subtitle">Conecte o telefone diretamente ao computador. O Happy CLI continua funcionando.</string>
+    <string name="machine_needs_relogin">Computador com um login antigo do Happy CLI</string>
+    <string name="machine_relogin_hint">Execute happy auth login --force nele</string>
+    <string name="home_start_needs_relogin">Este computador foi vinculado por um Happy CLI antigo, então nada pode ser iniciado nele. Execute happy auth login --force nele e tente novamente.</string>
 </resources>

@@ -121,6 +121,11 @@ class HomeScreenActions(
     val onLinkComputer: () -> Unit = {},
     /** The phone's compose: an empty chat whose first send starts the session. */
     val onCompose: () -> Unit = onNewSession,
+    /**
+     * The Happy CLI account's way to Happy Agent ([MigrationBanner]); null
+     * hides the card, once this phone has an agent connection.
+     */
+    val onMigrate: (() -> Unit)? = null,
 )
 
 /**
@@ -181,19 +186,23 @@ fun HomeScreen(
                 // No computer linked and nothing to show: say so where home is, with the way to
                 // link one beside it. Home keeps its bar and its account menu, and a cached list is
                 // never replaced by this (resolveHomeEmptyState: sessions win).
-                state.emptyState == HomeEmptyState.Link -> StatePage(
-                    tag = HomeTags.LINK,
-                    art = StateArt.Make,
-                    title = stringResource(R.string.onboarding_link_title),
-                    body = stringResource(R.string.tablet_install_description),
-                    action = stringResource(R.string.onboarding_scan_button) to actions.onLinkComputer,
-                    modifier = below,
-                )
-                state.emptyState == HomeEmptyState.Offline -> Box(below) {
-                    offlineContent(state.computers, if (state.hasArchivedSessions) showArchived else null)
+                state.emptyState == HomeEmptyState.Link -> MigrationAbove(actions.onMigrate, below) { rest ->
+                    StatePage(
+                        tag = HomeTags.LINK,
+                        art = StateArt.Make,
+                        title = stringResource(R.string.onboarding_link_title),
+                        body = stringResource(R.string.tablet_install_description),
+                        action = stringResource(R.string.onboarding_scan_button) to actions.onLinkComputer,
+                        modifier = rest,
+                    )
                 }
-                state.emptyState == HomeEmptyState.NoSessions -> Box(below) {
-                    NoSessionsState(onNewSession = actions.onCompose, onShowArchived = if (state.hasArchivedSessions) showArchived else null)
+                state.emptyState == HomeEmptyState.Offline -> MigrationAbove(actions.onMigrate, below) { rest ->
+                    Box(rest) { offlineContent(state.computers, if (state.hasArchivedSessions) showArchived else null) }
+                }
+                state.emptyState == HomeEmptyState.NoSessions -> MigrationAbove(actions.onMigrate, below) { rest ->
+                    Box(rest) {
+                        NoSessionsState(onNewSession = actions.onCompose, onShowArchived = if (state.hasArchivedSessions) showArchived else null)
+                    }
                 }
                 else -> HomeList(
                     state,
@@ -219,6 +228,22 @@ fun HomeScreen(
                 ComposeFab(actions.onCompose, HomeTags.COMPOSE)
             }
         }
+    }
+}
+
+/**
+ * The move to Happy Agent ([MigrationBanner]) above a home state that isn't
+ * the list, which takes the rest; [content] alone when there is none.
+ */
+@Composable
+private fun MigrationAbove(onMigrate: (() -> Unit)?, modifier: Modifier, content: @Composable (Modifier) -> Unit) {
+    if (onMigrate == null) {
+        content(modifier)
+        return
+    }
+    Column(modifier) {
+        MigrationBanner(onMigrate)
+        content(Modifier.weight(1f))
     }
 }
 
@@ -287,7 +312,7 @@ fun HomeList(
             .testTag(HomeTags.LIST),
         contentPadding = PaddingValues(top = contentTop),
     ) {
-        if (state.offlineBanner != null || update != null) {
+        if (state.offlineBanner != null || update != null || actions.onMigrate != null) {
             item(key = "banners", contentType = "banners") {
                 HomeBanners(state.offlineBanner, update, actions)
             }

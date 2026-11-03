@@ -94,26 +94,71 @@ final class SendingOutboxTests: XCTestCase, @unchecked Sendable {
         await engine.stop()
     }
 
-    func testFailedUploadReleasesTextAndDiscardRemovesDependencyChain() async throws {
+    /// An upload that fails takes its text and the rest of its pictures
+    /// down with it, and holds later text in the chat: a caption that went
+    /// alone read to the agent as if the pictures were there. A retry of
+    /// any of them sends the whole message, files first.
+    func testFailedUploadHoldsItsTextUntilTheMessageIsRetried() async throws {
         let (store, engine, http, _) = try setup()
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         await engine.configureSending(filesDirectory: directory)
-        try Data([1]).write(to: directory.appendingPathComponent("f"))
+        for id in ["f", "g"] { try Data([1]).write(to: directory.appendingPathComponent(id)) }
         try store.enqueueBatch([
             OutboxRecord(localId: "f", kind: .file, sessionId: "s", payload: .null, createdAt: 1),
-            OutboxRecord(localId: "t", kind: .message, sessionId: "s", payload: .object(["role": .string("user")]), createdAt: 1, dependsOn: "f")
-        ], attachments: [AttachmentRecord(localId: "f", sessionId: "s", outboxLocalId: "f", path: "f", name: "file", mimeType: "application/octet-stream", size: 1, createdAt: 1)])
+            OutboxRecord(localId: "g", kind: .file, sessionId: "s", payload: .null, createdAt: 1, dependsOn: "f"),
+            OutboxRecord(localId: "t", kind: .message, sessionId: "s", payload: .object(["role": .string("user")]), createdAt: 1, dependsOn: "g"),
+            OutboxRecord(localId: "later", kind: .message, sessionId: "s", payload: .object(["role": .string("user")]), createdAt: 2),
+        ], attachments: ["f", "g"].map { AttachmentRecord(localId: $0, sessionId: "s", outboxLocalId: $0, path: $0, name: $0, mimeType: "image/jpeg", size: 1, createdAt: 1) })
         http.onRaw("POST /v1/sessions/s/attachments/request-upload", "too big", status: 413)
-        http.onRaw("POST /v3/sessions/s/messages", #"{"messages":[{"id":"m","seq":1,"localId":"t","createdAt":1,"updatedAt":1}]}"#)
         try await engine.flushOutbox()
         XCTAssertEqual(try store.outbox(localId: "f")?.state, .failed)
-        XCTAssertNil(try store.outbox(localId: "t"))
-        XCTAssertEqual(try OutboxSender(store: store, sync: engine, filesDirectory: directory).failedAttachmentCount(sessionId: "s"), 1)
-        _ = try store.discardOutbox(localId: "f")
-        XCTAssertNil(try store.attachment(outboxLocalId: "f"))
+        XCTAssertEqual(try store.outbox(localId: "g")?.state, .failed, "the second picture fails with the first")
+        XCTAssertEqual(try store.outbox(localId: "t")?.state, .failed, "the caption waits for its pictures")
+        XCTAssertEqual(try store.outbox(localId: "t")?.lastError, try store.outbox(localId: "f")?.lastError)
+        XCTAssertEqual(try store.outbox(localId: "later")?.state, .queued, "later text keeps its place")
+        XCTAssertEqual(http.requests.map { $0.url.path }, ["/v1/sessions/s/attachments/request-upload"])
+        XCTAssertEqual(try OutboxSender(store: store, sync: engine, filesDirectory: directory).failedAttachmentCount(sessionId: "s"), 2)
+        try await engine.flushOutbox()
+        XCTAssertEqual(http.requests.count, 1, "nothing goes until a retry")
+
+        let refs = Counter()
+        http.on("POST /v1/sessions/s/attachments/request-upload") { _ in
+            (200, Data(#"{"ref":"ref-\#(refs.next())","uploadUrl":"https://api.example.test/blob","method":"PUT"}"#.utf8))
+        }
+        http.onRaw("PUT /blob", "")
+        let seqs = Counter()
+        http.on("POST /v3/sessions/s/messages") { request in
+            let localId = try request.jsonBody(SendMessagesRequest.self).messages[0].localId
+            return (200, Data(#"{"messages":[{"id":"m-\#(localId)","seq":\#(seqs.next()),"localId":"\#(localId)","createdAt":1,"updatedAt":1}]}"#.utf8))
+        }
+        try store.retryOutbox(localId: "t")
+        XCTAssertEqual(try store.pendingOutbox().map(\.state), [.queued, .queued, .queued, .queued])
+        try await engine.flushOutbox()
+        let posted = try http.requests("POST /v3/sessions/s/messages").map { try $0.jsonBody(SendMessagesRequest.self).messages[0].localId }
+        XCTAssertEqual(posted, ["f", "g", "t", "later"])
+        XCTAssertTrue(try store.pendingOutbox().isEmpty)
         await engine.stop()
+    }
+
+    /// A picture's retry puts its text and the other pictures back too; a
+    /// text without pictures fails and retries alone.
+    func testFailureAndRetryCoverTheWholeMessage() throws {
+        let store = try LocalStore.inMemory()
+        try store.enqueueBatch([
+            OutboxRecord(localId: "f", kind: .file, sessionId: "s", payload: .null, createdAt: 1),
+            OutboxRecord(localId: "g", kind: .file, sessionId: "s", payload: .null, createdAt: 1, dependsOn: "f"),
+            OutboxRecord(localId: "t", kind: .message, sessionId: "s", payload: .null, createdAt: 1, dependsOn: "g"),
+            OutboxRecord(localId: "u", kind: .message, sessionId: "s", payload: .null, createdAt: 2),
+        ], attachments: [])
+        try store.markOutboxFailed(localId: "g", error: "offline")
+        XCTAssertEqual(try store.pendingOutbox().map(\.state), [.failed, .failed, .failed, .queued])
+        try store.retryOutbox(localId: "g")
+        XCTAssertEqual(try store.pendingOutbox().map(\.state), [.queued, .queued, .queued, .queued])
+        XCTAssertEqual(try store.pendingOutbox().map(\.attempts), [0, 0, 0, 0])
+        try store.markOutboxFailed(localId: "u", error: "no")
+        XCTAssertEqual(try store.pendingOutbox().map(\.state), [.queued, .queued, .queued, .failed], "a text fails alone")
     }
 
     func testBackgroundAcceptanceDraftModesAndRefusal() async throws {

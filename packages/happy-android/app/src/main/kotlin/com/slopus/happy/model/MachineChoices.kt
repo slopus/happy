@@ -65,6 +65,13 @@ val MachineMetadata.siblingMachineId: String?
 fun Machine.displayName(): String =
     metadata?.displayName?.takeIf { it.isNotEmpty() } ?: metadata?.host?.takeIf { it.isNotEmpty() } ?: "Unknown machine"
 
+/** What Happy Agent appends to its display name to tell it apart from its Happy CLI sibling. */
+private const val HAPPY_AGENT_SUFFIX = " — Happy Agent"
+
+/** A Happy Agent's display name without [HAPPY_AGENT_SUFFIX] (its node's name, or an older agent's host); null without it. */
+fun Machine.happyAgentName(): String? =
+    metadata?.displayName?.takeIf { it.endsWith(HAPPY_AGENT_SUFFIX) }?.dropLast(HAPPY_AGENT_SUFFIX.length)?.trim()?.takeIf { it.isNotEmpty() }
+
 /**
  * One computer as a person picks it (machineChoices.ts `MachineChoice`). A
  * computer running both Happy CLI and Happy Agent registers two machines;
@@ -97,11 +104,25 @@ private fun preferLiveliest(machines: List<Machine>): Machine? =
 
 private fun computerName(happy: Machine?, rig: Machine?): String {
     val named = happy ?: rig ?: return "Unknown machine"
-    // A lone Happy Agent is named by its host, not the suffixed display name it publishes.
-    val host = named.metadata?.host
-    if (happy == null && !host.isNullOrEmpty()) return host
+    // Nothing of it can be read: named for what it is. Settings and the pickers say it in the person's language.
+    if (named.needsRelogin) return NEEDS_RELOGIN_NAME
+    // A lone Happy Agent goes by its node's name, the display name it publishes without the
+    // suffix that only tells it from its sibling; an agent that publishes none, by its host.
+    if (happy == null) {
+        val name = named.happyAgentName() ?: named.metadata?.host?.takeIf { it.isNotEmpty() }
+        if (name != null) return name
+    }
     return named.displayName()
 }
+
+/**
+ * Linked by a Happy CLI before 0.9's data keys ([Machine.needsRelogin]):
+ * shown, but nothing can start there until `happy auth login --force` on it.
+ */
+val MachineChoice.needsRelogin: Boolean get() = (happyMachine ?: rigMachine)?.needsRelogin == true
+
+/** A [needsRelogin] computer's name where no words of the person's language reach (`machine_needs_relogin`). */
+const val NEEDS_RELOGIN_NAME = "Computer with an old Happy CLI sign-in"
 
 /** Every machine reachable through pairing pointers, followed all the way out. */
 private fun connectedMachineIds(start: Machine, machines: List<Machine>, byId: Map<String, Machine>): List<String> {
@@ -148,6 +169,39 @@ fun collectMachineChoices(machines: List<Machine>): List<MachineChoice> {
     }
     return choices
 }
+
+/**
+ * What runs on this computer, by product and version ("Happy CLI 1.2.6",
+ * "Happy CLI 0.10.0 + Happy Agent 0.4.111"). Two daemons on one host share
+ * its name, and two Happy CLI homes on it are two machines, so the pickers
+ * tell them apart by this. Product names are never translated.
+ */
+val MachineChoice.daemons: String
+    get() = if (needsRelogin) "" else listOfNotNull(
+        happyMachine?.let { daemonName("Happy CLI", it.metadata?.happyCliVersion) },
+        rigMachine?.let { daemonName("Happy Agent", it.metadata?.client?.version ?: it.metadata?.happyCliVersion) },
+    ).joinToString(" + ")
+
+private fun daemonName(product: String, version: String?) =
+    version?.trim()?.takeIf { it.isNotEmpty() }?.let { "$product $it" } ?: product
+
+/** When the newest of this computer's daemons registered. */
+val MachineChoice.createdAt: Long
+    get() = maxOf(happyMachine?.createdAt ?: 0, rigMachine?.createdAt ?: 0)
+
+/**
+ * The order the pickers and Settings › Agents list computers in (iOS's
+ * `MachineChoice.sortedForPicking`): reachable ones first, then the newest,
+ * then by id. Never by last activity, which every heartbeat moves: rows of
+ * one name swapped places under a finger and a session started on the
+ * wrong computer.
+ */
+fun sortMachineChoices(choices: List<MachineChoice>): List<MachineChoice> =
+    choices.sortedWith(
+        compareByDescending<MachineChoice> { it.online }
+            .thenByDescending { it.createdAt }
+            .thenBy { it.id },
+    )
 
 /** The computer a stored machine id belongs to, whichever of its daemons was stored. */
 fun findMachineChoice(choices: List<MachineChoice>, machineId: String?): MachineChoice? {

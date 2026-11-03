@@ -240,7 +240,11 @@ fun GetHelpButton() {
     if (showHelp) GetHelpAlert(onDismiss = { showHelp = false })
 }
 
-/** "Get help": the two public places to ask, Android button order. */
+/**
+ * "Get help": the two public places to ask (happy-app's Android list), one
+ * under the other with Cancel last, as iOS's alert stacks them: side by side
+ * the longer labels broke a letter at a time.
+ */
 @Composable
 fun GetHelpAlert(onDismiss: () -> Unit) {
     val uriHandler = LocalUriHandler.current
@@ -250,9 +254,10 @@ fun GetHelpAlert(onDismiss: () -> Unit) {
             message = stringResource(R.string.onboarding_help_message),
             buttons = listOf(
                 AlertButton(stringResource(R.string.onboarding_help_discord)) { uriHandler.openUri(OnboardingSpec.HELP_DISCORD_URL) },
-                AlertButton(stringResource(R.string.common_cancel)),
                 AlertButton(stringResource(R.string.onboarding_help_issues)) { uriHandler.openUri(OnboardingSpec.HELP_ISSUES_URL) },
+                AlertButton(stringResource(R.string.common_cancel)),
             ),
+            stacked = true,
         ),
         onDismiss = onDismiss,
     )

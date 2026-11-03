@@ -48,6 +48,7 @@ import com.slopus.happy.ui.components.HappyMenuItem
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.RoundButton
+import com.slopus.happy.ui.onboarding.GetHelpAlert
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 
@@ -61,6 +62,7 @@ object StartTags {
     const val ENTER_LINK = "start.enterLink"
     const val RESTORE = "start.restore"
     const val SERVER = "start.server"
+    const val HELP = "start.help"
 }
 
 /**
@@ -105,8 +107,8 @@ object StartSpec {
  * Gradient fills the window behind the system bars; everything else keeps
  * out of the bars and the cutout. It ignores the keyboard.
  *
- *   ⋮ (top right)  a drop-down: enter a link, restore a legacy account,
- *                  and the legacy server. A new Happy account is
+ *   ⋮ (top right)  a drop-down: enter a link, restore a Happy CLI account,
+ *                  the Happy CLI server, and help. A new Happy account is
  *                  only ever made by a terminal code
  *   logo           88 wide, centred on ⋮'s row
  *   slides         [StartGallery], centred between ⋮'s row and Start
@@ -222,7 +224,7 @@ private fun StartControl(icon: Ionicon, description: String, tint: Color, onClic
     }
 }
 
-/** The ⋮ drop-down: the ways in besides scanning. The next screen has it too. */
+/** The ⋮ drop-down: the ways in besides scanning, then help, as iOS's StartMenu. The next screen has it too. */
 @Composable
 internal fun StartMenu(
     open: Boolean,
@@ -233,6 +235,7 @@ internal fun StartMenu(
     onRestore: () -> Unit,
     onServer: () -> Unit,
 ) {
+    var help by remember { mutableStateOf(false) }
     HappyDropdownMenu(
         expanded = open,
         onDismissRequest = onDismiss,
@@ -253,14 +256,17 @@ internal fun StartMenu(
             )
         }
         item(stringResource(R.string.start_enter_link), Ionicon.LinkOutline, StartTags.ENTER_LINK, onClick = onEnterLink)
-        HappyMenuDivider()
+        // Restoring and the server are Happy CLI's alone; beside Happy Agent's codes they say so.
         item(stringResource(R.string.account_kind_restore_cli_account), Ionicon.KeyOutline, StartTags.RESTORE, onClick = onRestore)
         item(
             stringResource(R.string.account_kind_cli_server),
             Ionicon.ServerOutline,
             StartTags.SERVER,
-            detail = customServerLabel,
+            detail = customServerLabel ?: stringResource(R.string.onboarding_settings_server_default),
             onClick = onServer,
         )
+        HappyMenuDivider()
+        item(stringResource(R.string.onboarding_get_help), Ionicon.HelpCircleOutline, StartTags.HELP, itemEnabled = true) { help = true }
     }
+    if (help) GetHelpAlert(onDismiss = { help = false })
 }

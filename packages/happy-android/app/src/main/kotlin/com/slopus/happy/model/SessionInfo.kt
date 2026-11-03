@@ -10,11 +10,31 @@ import kotlinx.serialization.json.booleanOrNull
 // What session/[id]/info.tsx reads out of a session: utils/resumeCommand.ts,
 // utils/versionUtils.ts and the screen's own formatting helpers.
 
-/** versionUtils.ts `MINIMUM_CLI_VERSION` */
-const val MINIMUM_CLI_VERSION = "0.10.0"
+/**
+ * versionUtils.ts `MINIMUM_CLI_VERSION`. Before 0.15.0 the CLI sent agent
+ * output as raw Claude transcript records (`role: agent`, `output`), which
+ * the chat no longer reads.
+ */
+const val MINIMUM_CLI_VERSION = "0.15.0"
 
 /** info.tsx `isCliOutdated`: a CLI version below [MINIMUM_CLI_VERSION]. */
 fun isCliOutdated(version: String?): Boolean = !version.isNullOrEmpty() && Versions.compare(version, MINIMUM_CLI_VERSION) < 0
+
+/** The first Happy CLI that never loses a new session's first message. */
+const val FIRST_MESSAGE_SAFE_CLI_VERSION = "1.2.1"
+
+/**
+ * A Happy CLI before 1.2.1 can lose a brand new session's first message:
+ * before 0.15 it reads messages only from its socket and never catches up on
+ * one sent before it connected; until 1.2.1 its receive cursor could step
+ * over one sent while its own startup event was in flight. The phone sends
+ * such a session its first message only once the CLI is heard from. Happy
+ * Agent, and a session that names no version, are sent at once.
+ */
+fun SessionMetadata?.waitsForCliBeforeFirstMessage(): Boolean {
+    val version = this?.version?.takeIf { it.isNotEmpty() } ?: return false
+    return client?.id != "rig" && Versions.compare(version, FIRST_MESSAGE_SAFE_CLI_VERSION) < 0
+}
 
 /** resumeCommand.ts `ResumeCommandBlock` */
 data class ResumeCommandBlock(val lines: List<String>, val copyText: String)

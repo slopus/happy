@@ -877,6 +877,14 @@ export const zhHans: TranslationStructure = {
 
     onboarding: {
         ...en.onboarding,
+        // Get help, and the server row's default (also the first screen's ⋯ on the native apps).
+        getHelp: '获取帮助',
+        helpMessage: '遇到问题？来问我们。',
+        helpDiscord: '在 Discord 上提问',
+        helpBra1nDump: '在 X 上私信 @bra1n_dump',
+        helpEx3ndr: '在 X 上私信 @Ex3NDR',
+        helpIssues: '查看已知问题',
+        settingsServerDefault: '默认',
     },
 
     troubleshoot: {

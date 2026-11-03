@@ -57,12 +57,12 @@ final class TranslationCatalogTests: XCTestCase {
                 checked += 1
             }
         }
-        XCTAssertEqual(checked, 8210)
+        XCTAssertEqual(checked, 8600)
     }
 
     func testEveryCatalogHasEnglishsKeys() {
         let english = Set(TranslationCatalog.english.keys)
-        XCTAssertEqual(english.filter { !$0.hasPrefix("native.") }.count, 900)
+        XCTAssertEqual(english.filter { !$0.hasPrefix("native.") }.count, 909)
         for language in AppLanguage.supported.map(\.code) {
             XCTAssertEqual(Set(TranslationCatalog.catalog(for: language).keys), english, language)
         }
@@ -206,9 +206,9 @@ final class TranslationCatalogTests: XCTestCase {
             counts[name] = (strings, calls - strings)
         }
         // Home's: Strings.swift, Strings/Home.swift, Strings/SettingsPages.swift.
-        XCTAssertEqual(counts["Strings.swift"]?.strings, 206)
-        XCTAssertEqual(counts["Strings.swift"]?.functions, 6)
-        XCTAssertEqual(counts["Home.swift"]?.strings, 36)
+        XCTAssertEqual(counts["Strings.swift"]?.strings, 204)
+        XCTAssertEqual(counts["Strings.swift"]?.functions, 7)
+        XCTAssertEqual(counts["Home.swift"]?.strings, 40)
         XCTAssertEqual(counts["Home.swift"]?.functions, 1)
         XCTAssertEqual(counts["SettingsPages.swift"]?.strings, 1)
         XCTAssertEqual(counts["SettingsPages.swift"]?.functions, 0)
