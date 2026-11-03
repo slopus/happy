@@ -1,4 +1,6 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 import Foundation
 
 /// A layout an agent wrote for media it showed (happy-agent `API.md`, a

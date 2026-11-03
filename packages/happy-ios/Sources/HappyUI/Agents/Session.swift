@@ -29,6 +29,9 @@ final class Session {
     let drafts: Drafts
     /// Colours the code blocks its conversations show.
     let syntax = CodeSyntaxService()
+    /// Builds and colours the diffs its tool calls and workspaces show.
+    let diffDocuments = DiffDocumentCache()
+    let diffSyntax = DiffSyntaxService()
     /// The conversations read ahead and kept, so they open drawn.
     let warm: WarmChats
     /// The person's settings for this phone.

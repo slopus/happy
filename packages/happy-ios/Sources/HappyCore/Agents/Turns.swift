@@ -12,11 +12,22 @@ extension ChatItem {
         /// `running`, `completed` or `failed`.
         public var status: String
         public var presentation: AgentWire.Presentation?
+        /// The call's own ID, which its screen fetches the whole call by.
+        public var callId: String
+        /// The raw data a call without a complete presentation keeps
+        /// (`ToolRaw`), and what the automatic reviewer decided.
+        public var arguments: JSONValue?
+        public var result: JSONValue?
+        public var review: AgentWire.ToolReview?
 
-        public init(name: String, status: String, presentation: AgentWire.Presentation? = nil) {
+        public init(name: String, status: String, presentation: AgentWire.Presentation? = nil, callId: String = "", arguments: JSONValue? = nil, result: JSONValue? = nil, review: AgentWire.ToolReview? = nil) {
             self.name = name
             self.status = status
             self.presentation = presentation
+            self.callId = callId
+            self.arguments = arguments
+            self.result = result
+            self.review = review
         }
 
         public var running: Bool { status == "running" }

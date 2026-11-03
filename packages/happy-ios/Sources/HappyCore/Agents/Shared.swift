@@ -123,7 +123,7 @@ public struct Shared: Equatable, Sendable {
                 case .image(let mimeType, let data):
                     if let bytes = Data(base64Encoded: data) { media.append(.picture(id: pictureId(message.id, pictures), mimeType: mimeType, data: bytes)) }
                     pictures += 1
-                case .toolCall(let id, _, _, let presentation, _, _):
+                case .toolCall(let id, _, _, let presentation, _, _, _, _):
                     guard let presentation, presentation.type == "media" else { continue }
                     media += (presentation.items ?? []).enumerated().map { .tool(HappyCore.Media(toolCallId: id, index: $0.offset, item: $0.element)) }
                 case .reasoning, .compaction, .unknown:

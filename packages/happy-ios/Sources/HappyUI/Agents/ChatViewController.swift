@@ -105,6 +105,8 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     private(set) var ultraKeyboard: ChatUltraKeyboard?
 
     private var chat = ChatSnapshot()
+    /// The tool calls opened from here (`AgentToolViewController`).
+    private let toolScreens = NSHashTable<AgentToolViewController>.weakObjects()
     private var following: Task<Void, Never>?
     private var planning: Task<Void, Never>?
     private var planned: (items: [ChatItem], key: ChatPlanner.Key, copied: String?, opened: Set<String>, proposals: [String: ProposalShown], queued: Set<String>)?
@@ -851,6 +853,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         }
         let wasSettled = settled(chat)
         chat = snapshot
+        updateToolScreens()
         applyTitle()
         if picked == snapshot.mode { picked = nil }
         media.register(snapshot.items)
@@ -1737,6 +1740,15 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         else if let url = URL(string: link) { openBrowser(url, session: session, agentID: media.agentId) }
     }
 
+    private func updateToolScreens() {
+        guard toolScreens.count > 0 else { return }
+        for screen in toolScreens.allObjects {
+            for item in chat.items {
+                if case .tool(let tool) = item.role, tool.callId == screen.callId { screen.update(tool) }
+            }
+        }
+    }
+
     /// What a tap on a row's action does, from either transcript.
     func act(_ action: ChatRowAction) {
         switch action {
@@ -1765,6 +1777,10 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             navigationController?.pushViewController(ArtifactViewController(session: session, artifact: artifact), animated: true)
         case .toggleTool(let messageId):
             toggle(messageId)
+        case .openMessage(let itemId):
+            openTool(itemId)
+        case .openURL(let link):
+            open(link: link)
         case .toggleTurn(let turn):
             toggleTurn(turn)
         case .questionOption(let questionId, let promptId, let option):
@@ -1774,6 +1790,16 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         default:
             break
         }
+    }
+
+    /// A tool call's own screen, over this one, kept current while the
+    /// call runs (`apply`).
+    private func openTool(_ itemId: String) {
+        guard !previewing, let item = chat.items.first(where: { $0.id == itemId }), case .tool(let tool) = item.role else { return }
+        card.blur()
+        let screen = AgentToolViewController(session: session, conversation: conversation, agentId: media.agentId, tool: tool)
+        toolScreens.add(screen)
+        navigationController?.pushViewController(screen, animated: true)
     }
 
     /// What a long press on a row does, from either transcript.

@@ -286,6 +286,8 @@ enum ChatRowAction: Equatable, Sendable {
     /// One file of a patch, on the message's screen.
     case openMessageFile(id: String, file: String)
     case openFile(String)
+    /// A web address a tool call's screen shows.
+    case openURL(String)
     case option(String)
     case retry(localId: String)
     /// A sending picture's cross: takes it out of message `messageId`. A
