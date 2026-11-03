@@ -45,13 +45,29 @@ function preferLiveliest(machines: readonly Machine[]): Machine | null {
     ))[0] ?? null;
 }
 
-/** The host name without the daemon suffix Happy Agent adds to tell the pair apart. */
+/** What Happy Agent appends to its display name to tell it apart from its Happy CLI sibling. */
+const HAPPY_AGENT_SUFFIX = ' — Happy Agent';
+
+/**
+ * A lone Happy Agent's own name: its display name without the suffix, which is the node's name
+ * (`${node} — Happy Agent`) from agents that publish it and the host from older ones.
+ */
+function getHappyAgentName(machine: Machine): string | null {
+    const displayName = machine.metadata?.displayName;
+    if (!displayName?.endsWith(HAPPY_AGENT_SUFFIX)) return null;
+    return displayName.slice(0, -HAPPY_AGENT_SUFFIX.length).trim() || null;
+}
+
+/** The computer's name, without the daemon suffix Happy Agent adds to tell the pair apart. */
 function getComputerName(choice: { happyMachine: Machine | null; rigMachine: Machine | null }): string {
     const named = choice.happyMachine ?? choice.rigMachine;
     if (!named) return 'Unknown machine';
     // Happy Agent has no sibling to be distinguished from once the pair is offered as one row,
-    // so it is named by its host rather than by the display name it publishes.
-    if (choice.happyMachine === null && named.metadata?.host) return named.metadata.host;
+    // so it goes by its node's name, or by its host when it publishes none.
+    if (choice.happyMachine === null) {
+        const name = getHappyAgentName(named) ?? named.metadata?.host;
+        if (name) return name;
+    }
     return getMachineName(named);
 }
 

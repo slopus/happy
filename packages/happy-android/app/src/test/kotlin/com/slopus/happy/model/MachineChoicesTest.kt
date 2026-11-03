@@ -86,6 +86,21 @@ class MachineChoicesTest {
     }
 
     @Test
+    fun namesALoneHappyAgentByTheNodeNameItPublishes() {
+        fun lone(displayName: String) = machine(
+            RIG,
+            machineMetadata(host = "MacBook-Pro.local") {
+                put("displayName", displayName)
+                put("machineKind", "rig")
+                put("rigOnly", true)
+            },
+        )
+        assertEquals("Studio Agent", collectMachineChoices(listOf(lone("Studio Agent — Happy Agent")))[0].name)
+        // Without the suffix it is not Happy Agent's name for itself: the host.
+        assertEquals("MacBook-Pro.local", collectMachineChoices(listOf(lone("Something else")))[0].name)
+    }
+
+    @Test
     fun findsTheComputerFromEitherMachineId() {
         val choices = collectMachineChoices(listOf(cli(), rig()))
         assertEquals(CLI, findMachineChoice(choices, RIG)?.id)

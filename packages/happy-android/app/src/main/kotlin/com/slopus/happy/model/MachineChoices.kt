@@ -65,6 +65,13 @@ val MachineMetadata.siblingMachineId: String?
 fun Machine.displayName(): String =
     metadata?.displayName?.takeIf { it.isNotEmpty() } ?: metadata?.host?.takeIf { it.isNotEmpty() } ?: "Unknown machine"
 
+/** What Happy Agent appends to its display name to tell it apart from its Happy CLI sibling. */
+private const val HAPPY_AGENT_SUFFIX = " — Happy Agent"
+
+/** A Happy Agent's display name without [HAPPY_AGENT_SUFFIX] (its node's name, or an older agent's host); null without it. */
+fun Machine.happyAgentName(): String? =
+    metadata?.displayName?.takeIf { it.endsWith(HAPPY_AGENT_SUFFIX) }?.dropLast(HAPPY_AGENT_SUFFIX.length)?.trim()?.takeIf { it.isNotEmpty() }
+
 /**
  * One computer as a person picks it (machineChoices.ts `MachineChoice`). A
  * computer running both Happy CLI and Happy Agent registers two machines;
@@ -99,9 +106,12 @@ private fun computerName(happy: Machine?, rig: Machine?): String {
     val named = happy ?: rig ?: return "Unknown machine"
     // Nothing of it can be read: named for what it is. Settings and the pickers say it in the person's language.
     if (named.needsRelogin) return NEEDS_RELOGIN_NAME
-    // A lone Happy Agent is named by its host, not the suffixed display name it publishes.
-    val host = named.metadata?.host
-    if (happy == null && !host.isNullOrEmpty()) return host
+    // A lone Happy Agent goes by its node's name, the display name it publishes without the
+    // suffix that only tells it from its sibling; an agent that publishes none, by its host.
+    if (happy == null) {
+        val name = named.happyAgentName() ?: named.metadata?.host?.takeIf { it.isNotEmpty() }
+        if (name != null) return name
+    }
     return named.displayName()
 }
 

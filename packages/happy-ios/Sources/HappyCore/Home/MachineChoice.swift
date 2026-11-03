@@ -119,16 +119,28 @@ public struct MachineChoice: Equatable, Sendable {
             ?? "Unknown machine"
     }
 
+    /// What Happy Agent appends to its display name to tell it apart from
+    /// its Happy CLI sibling.
+    static let happyAgentSuffix = " — Happy Agent"
+
     /// Happy Agent's display name carries a suffix that only tells it apart
-    /// from its sibling, so a computer with only Happy Agent goes by host.
+    /// from its sibling, so a computer with only Happy Agent goes by what is
+    /// before it: the node's name (`<node> — Happy Agent`), or the host from
+    /// an agent that publishes none. Without the suffix, the host.
     static func computerName(happy: MachineRecord?, rig: MachineRecord?) -> String {
         guard let named = happy ?? rig else { return "Unknown machine" }
         // Nothing of it can be read: named for what it is.
         if named.needsRelogin { return needsReloginName }
-        if happy == nil, let host = nonEmpty(named.metadata?["host"]?.stringValue) {
-            return host
+        if happy == nil, let name = happyAgentName(named) ?? nonEmpty(named.metadata?["host"]?.stringValue) {
+            return name
         }
         return machineName(named)
+    }
+
+    /// A lone Happy Agent's display name without the suffix, when it has one.
+    static func happyAgentName(_ machine: MachineRecord) -> String? {
+        guard let display = machine.metadata?["displayName"]?.stringValue, display.hasSuffix(happyAgentSuffix) else { return nil }
+        return nonEmpty(String(display.dropLast(happyAgentSuffix.count)).trimmingCharacters(in: .whitespaces))
     }
 
     /// Reachable first, then most recently active; ties keep list order.
