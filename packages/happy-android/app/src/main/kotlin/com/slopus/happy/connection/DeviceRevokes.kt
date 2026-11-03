@@ -1,5 +1,6 @@
 package com.slopus.happy.connection
 
+import android.util.Log
 import com.slopus.happy.auth.ExpoSecureStore
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -52,14 +53,14 @@ class DeviceRevokes(
     private var running: Job? = null
 
     /**
-     * Keeps [credentials]' revocation under the connection's [id], then
-     * sends it. Returns once it is kept, not sent. A team server's sign-in
-     * has no device to revoke.
+     * Keeps [credentials]' revocation under the connection's [id], unsent:
+     * [resume] sends it, once the connection is gone from this phone, since
+     * a token still [inUse] is dropped unsent. A team server's sign-in has
+     * no device to revoke.
      */
-    suspend fun enqueue(id: String, credentials: AgentConnectionCredentials) {
+    suspend fun keep(id: String, credentials: AgentConnectionCredentials) {
         if (credentials.oauth != null || credentials.deviceToken.isEmpty()) return
         lock.withLock { save(load() + (id to PendingDeviceRevoke(credentials, now()))) }
-        resume()
     }
 
     /** Sends what is waiting now, without waiting for the backoff. */
@@ -88,7 +89,11 @@ class DeviceRevokes(
             val items = lock.withLock { load() }
             if (items.isEmpty()) return
             for ((id, value) in items.entries.sortedBy { it.value.queuedAt }) {
-                val done = now() - value.queuedAt > EXPIRY_MILLIS || inUse(value.credentials.deviceToken) || send(value)
+                val done = when {
+                    now() - value.queuedAt > EXPIRY_MILLIS -> true.also { Log.i(TAG, "$id: dropped after 30 days unsent") }
+                    inUse(value.credentials.deviceToken) -> true.also { Log.i(TAG, "$id: dropped, its token is in use here again") }
+                    else -> send(id, value)
+                }
                 // Only the exact one sent: a newer one under the same id meanwhile stays.
                 if (done) withContext(NonCancellable) { lock.withLock { load().let { if (it[id] == value) save(it - id) } } }
             }
@@ -98,16 +103,23 @@ class DeviceRevokes(
         }
     }
 
-    /** True once the agent has answered for good. */
-    private suspend fun send(value: PendingDeviceRevoke): Boolean = withContext(Dispatchers.IO) {
+    /** True once the agent has answered for good. Logged by [id], never with the token. */
+    private suspend fun send(id: String, value: PendingDeviceRevoke): Boolean = withContext(Dispatchers.IO) {
         val transport = makeTransport(value.credentials)
         try {
-            withTimeoutOrNull(attemptTimeoutMillis) {
+            Log.i(TAG, "$id: DELETE $PATH")
+            val status = withTimeoutOrNull(attemptTimeoutMillis) {
                 transport.request("DELETE", PATH, value.credentials.deviceToken).status
-            }?.let(::final) ?: false
+            }
+            when {
+                status == null -> false.also { Log.w(TAG, "$id: no answer in ${attemptTimeoutMillis / 1000} s, tried again later") }
+                final(status) -> true.also { Log.i(TAG, "$id: $status, done") }
+                else -> false.also { Log.w(TAG, "$id: $status, tried again later") }
+            }
         } catch (e: CancellationException) {
             throw e
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "$id: ${e.javaClass.simpleName}, tried again later")
             false
         } finally {
             withContext(NonCancellable) { transport.close() }
@@ -138,6 +150,7 @@ class DeviceRevokes(
 
     companion object {
         const val PATH = "/v0/mobile-connector/device"
+        private const val TAG = "DeviceRevokes"
         /** Its own encrypted store, apart from the connections' credentials. */
         const val PREFS = "agent-device-revokes"
         const val KEYCHAIN_SERVICE = "agent-device-revoke"

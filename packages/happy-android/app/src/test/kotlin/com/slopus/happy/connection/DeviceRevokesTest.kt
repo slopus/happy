@@ -83,12 +83,14 @@ class DeviceRevokesTest {
     fun itIsSentUntilTheAgentAnswersForGood() = runBlocking {
         val revokes = revokes()
         agent.answer(503, 429, 200)
-        revokes.enqueue("a", credentials("old"))
+        revokes.keep("a", credentials("old"))
+        revokes.resume()
         withTimeout(5_000) { revokes.awaitIdle() }
         assertEquals(listOf("old", "old", "old"), agent.revoked)
         for (status in listOf(401, 403, 404)) {
             agent.answer(status)
-            revokes.enqueue("s$status", credentials("t$status"))
+            revokes.keep("s$status", credentials("t$status"))
+            revokes.resume()
             withTimeout(5_000) { revokes.awaitIdle() }
             assertTrue("$status left it waiting", revokes.waiting().isEmpty())
         }
@@ -101,7 +103,8 @@ class DeviceRevokesTest {
     fun anUnreachableAgentIsTriedAgainAfterARestart() = runBlocking {
         agent.reachable = false
         val first = revokes()
-        first.enqueue("a", credentials("secret-token"))
+        first.keep("a", credentials("secret-token"))
+        first.resume()
         assertFalse(revokePrefs.all.values.joinToString().contains("secret-token"))
 
         agent.reachable = true
@@ -117,22 +120,60 @@ class DeviceRevokesTest {
     fun aTokenInUseOrASignInIsNeverSent() = runBlocking {
         val revokes = revokes()
         revokes.inUse = { it == "mine" }
-        revokes.enqueue("a", credentials("mine"))
+        revokes.keep("a", credentials("mine"))
+        revokes.resume()
         withTimeout(5_000) { revokes.awaitIdle() }
-        revokes.enqueue("server", AgentConnectionCredentials("team.example.com", 443, "", ""))
+        revokes.keep("server", AgentConnectionCredentials("team.example.com", 443, "", ""))
         assertEquals(emptyList<String>(), agent.revoked)
         assertTrue(revokes.waiting().isEmpty())
     }
 
-    /** Disconnect removes this phone's device from the agent with the pairing's own token. */
+    /** Kept, nothing is sent until [DeviceRevokes.resume]. */
+    @Test
+    fun aKeptOneWaitsForResume() = runBlocking {
+        val revokes = revokes()
+        revokes.keep("a", credentials("old"))
+        withTimeout(5_000) { revokes.awaitIdle() }
+        assertEquals(emptyList<String>(), agent.revoked)
+        assertEquals("old", revokes.waiting()["a"]?.credentials?.deviceToken)
+    }
+
+    /**
+     * Disconnect removes this phone's device from the agent with the
+     * pairing's own token, checked only once the connection has gone: a
+     * check while it was still here took the token for one in use and
+     * dropped it unsent.
+     */
     @Test
     fun disconnectRevokesTheDevice() = runBlocking {
         val revokes = revokes()
         val connections = connections(revokes)
+        val held = revokes.inUse
+        val checks = mutableListOf<Boolean>()
+        revokes.inUse = { token -> held(token).also { synchronized(checks) { checks += it } } }
         val account = connections.add(credentials("first"), "Mac")
         connections.remove(account.id)
         withTimeout(5_000) { revokes.awaitIdle() }
         assertEquals(listOf("first"), agent.revoked)
+        assertEquals(listOf(false), checks)
+    }
+
+    /** Disconnected while the agent can't be reached, it waits to be sent. */
+    @Test
+    fun disconnectWhileUnreachableWaits() = runBlocking {
+        val revokes = revokes()
+        val connections = connections(revokes)
+        val account = connections.add(credentials("first"), "Mac")
+        agent.reachable = false
+        connections.remove(account.id)
+        // A few failed passes.
+        kotlinx.coroutines.delay(100)
+        assertEquals("first", revokes.waiting()[account.id]?.credentials?.deviceToken)
+        agent.reachable = true
+        revokes.resume()
+        withTimeout(5_000) { revokes.awaitIdle() }
+        assertEquals("first", agent.revoked.last())
+        assertTrue(revokes.waiting().isEmpty())
     }
 
     /**

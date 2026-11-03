@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// A disconnected pairing whose device is still to be removed from its
 /// agent (`DELETE /v0/mobile-connector/device`), with the credentials the
@@ -146,10 +147,14 @@ actor DeviceRevokeQueue {
             for (id, value) in pending.sorted(by: { $0.value.queuedAt < $1.value.queuedAt }) {
                 guard !Task.isCancelled else { break }
                 var done = Date().timeIntervalSince(value.queuedAt) > Self.expiry
+                if done { Self.logger.info("\(id, privacy: .public): dropped after 30 days unsent") }
                 // Paired again with this very token (never from a new
                 // handshake): it is the phone's again, not to be revoked.
-                if !done { done = await inUse(value.credentials.deviceToken) }
-                if !done { done = await send(value) }
+                if !done, await inUse(value.credentials.deviceToken) {
+                    done = true
+                    Self.logger.info("\(id, privacy: .public): dropped, its token is in use here again")
+                }
+                if !done { done = await send(value, id: id) }
                 if done, pending[id] == value {
                     pending.removeValue(forKey: id)
                     try? store.remove(id: id)
@@ -167,22 +172,30 @@ actor DeviceRevokeQueue {
 
     /// True once the agent has answered for good. A request that doesn't
     /// answer within `attemptTimeout` is cancelled and left for later.
-    private func send(_ value: PendingDeviceRevoke) async -> Bool {
+    /// Logged by `id`, never with the token.
+    private func send(_ value: PendingDeviceRevoke, id: String) async -> Bool {
         let transport = makeTransport(value.credentials)
         let answer = RevokeAnswer()
+        Self.logger.info("\(id, privacy: .public): DELETE \(Self.path, privacy: .public)")
         let request = Task {
             do {
                 let response = try await transport.request(method: "DELETE", path: Self.path, credential: value.credentials.deviceToken, body: nil, headers: [:])
-                answer.set(Self.final(response.status))
+                let final = Self.final(response.status)
+                Self.logger.info("\(id, privacy: .public): \(response.status), \(final ? "done" : "tried again later", privacy: .public)")
+                answer.set(final)
             } catch {
+                Self.logger.info("\(id, privacy: .public): \(String(describing: type(of: error)), privacy: .public), tried again later")
                 answer.set(false)
             }
         }
         await waitAtMost(attemptTimeout) { await request.value }
         request.cancel()
         await transport.close()
+        if answer.value == nil { Self.logger.info("\(id, privacy: .public): no answer in time, tried again later") }
         return answer.value ?? false
     }
+
+    private static let logger = Logger(subsystem: "app.happy", category: "DeviceRevokeQueue")
 
     /// Whether `status` ends the revocation: gone (2xx, 401), refused for
     /// good (403 from an older daemon, any other 4xx but 408 and 429).

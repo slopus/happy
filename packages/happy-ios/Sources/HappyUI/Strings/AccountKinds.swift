@@ -31,6 +31,11 @@ extension Strings {
         /// The scanner's ⋯: the relay server Happy CLI accounts sign in on.
         public static var cliServer: String { localized("native.accountKind.cliServer", "Happy CLI server") }
         public static var disconnectAgentTitle: String { localized("native.accountKind.disconnectAgentTitle", "Disconnect Happy Agent?") }
+        /// What Disconnect does: the phone is removed from the agent too
+        /// (`DeviceRevokeQueue`), except by a daemon from before that route.
+        public static var disconnectAgentDetail: String {
+            localized("native.accountKind.disconnectAgentDetail", "Happy forgets this agent on this phone and removes the phone from Happy Agent. With an older Happy Agent, remove the phone there too.")
+        }
         public static var signOutCLITitle: String { localized("native.accountKind.signOutCLITitle", "Sign out of Happy CLI?") }
         public static var deviceNeedsCLIAccount: String {
             localized("native.accountKind.deviceNeedsCLIAccount", "This code asks for a Happy CLI account. Add one on this phone first.")

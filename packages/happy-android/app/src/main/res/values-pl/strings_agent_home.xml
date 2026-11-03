@@ -46,6 +46,5 @@
     <string name="agent_settings_update">Wymagana aktualizacja</string>
     <string name="agent_settings_remove">Usuń połączenie</string>
     <string name="agent_settings_remove_title">Usunąć %1$s?</string>
-    <string name="agent_settings_remove_message">Happy zapomni tego agenta na tym telefonie. Happy Agent będzie wyświetlać telefon, dopóki nie usuniesz go także tam.</string>
-    <string name="agent_settings_remove_footer">Happy Agent będzie wyświetlać ten telefon, dopóki go tam nie usuniesz.</string>
+    <string name="agent_settings_remove_message">Happy zapomni tego agenta na tym telefonie i usunie telefon z Happy Agent. W starszej wersji Happy Agent usuń telefon także tam.</string>
 </resources>

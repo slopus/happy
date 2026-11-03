@@ -12,6 +12,7 @@ final class AccountKindNamingTests: XCTestCase {
         "native.accountKind.restoreCLIAccount",
         "native.accountKind.cliServer",
         "native.accountKind.disconnectAgentTitle",
+        "native.accountKind.disconnectAgentDetail",
         "native.accountKind.signOutCLITitle",
         "native.accountKind.deviceNeedsCLIAccount",
         "native.accountKind.accountNotShareable",

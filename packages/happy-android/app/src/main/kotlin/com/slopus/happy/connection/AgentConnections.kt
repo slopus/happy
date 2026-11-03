@@ -79,9 +79,13 @@ class AgentConnections(
         revokes?.inUse = { token -> holds(token) }
     }
 
-    /** Whether a connection on this phone holds [deviceToken] now. */
-    private suspend fun holds(deviceToken: String): Boolean = withContext(Dispatchers.IO) {
-        state.value.any { read(it.id)?.deviceToken == deviceToken }
+    /**
+     * Whether a connection on this phone holds [deviceToken] now. Under
+     * [lock], so a connection [remove] is taking away reads as gone, never
+     * as one still held.
+     */
+    private suspend fun holds(deviceToken: String): Boolean = lock.withLock {
+        withContext(Dispatchers.IO) { state.value.any { read(it.id)?.deviceToken == deviceToken } }
     }
 
     internal fun transport(id: String, credentials: AgentConnectionCredentials, make: (AgentConnectionCredentials) -> Transport): Transport {
@@ -384,16 +388,18 @@ class AgentConnections(
     /**
      * Forgets the agent on this phone, and hands its device's removal from
      * the agent to [revokes] (`DELETE /v0/mobile-connector/device` with this
-     * pairing's own token), kept before the credentials go and sent now or
-     * once the agent can be reached, so pairing again leaves one device
-     * there, not two.
+     * pairing's own token), kept before the credentials go and sent once
+     * they have (a token still held here is never sent), now or once the
+     * agent can be reached, so pairing again leaves one device there, not
+     * two.
      */
     suspend fun remove(id: String) = lock.withLock {
         withContext(Dispatchers.IO) {
             val account = state.value.firstOrNull { it.id == id }
             if (account != null) {
-                read(id)?.let { revokes?.enqueue(id, it) }
+                read(id)?.let { revokes?.keep(id, it) }
                 forget(account)
+                revokes?.resume()
             }
         }
     }

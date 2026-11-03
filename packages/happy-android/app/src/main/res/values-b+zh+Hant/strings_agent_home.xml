@@ -46,6 +46,5 @@
     <string name="agent_settings_update">需要更新</string>
     <string name="agent_settings_remove">移除連線</string>
     <string name="agent_settings_remove_title">移除 %1$s？</string>
-    <string name="agent_settings_remove_message">Happy 會在此手機上忘記此代理程式。在你也從 Happy Agent 中移除之前，它會繼續列出此手機。</string>
-    <string name="agent_settings_remove_footer">在你從 Happy Agent 中移除之前，它會繼續列出此手機。</string>
+    <string name="agent_settings_remove_message">Happy 會在此手機上忘記此代理程式，並將此手機從 Happy Agent 中移除。如果 Happy Agent 版本較舊，請也在那裡移除此手機。</string>
 </resources>

@@ -1149,7 +1149,9 @@ is `packages/happy-ios`. The wire keeps its own names
   connection's credentials Keystore-encrypted, apart from relay credentials.
 - **Disconnect revokes the device** (`connection/DeviceRevokes.kt`, iOS's
   `DeviceRevokeQueue`): `AgentConnections.remove` hands the pairing's
-  credentials over before they go, and `DELETE /v0/mobile-connector/device`
+  credentials over before they go (`keep`) and starts sending only once
+  they have (`resume`; a check while they were still here read the token
+  as one in use and dropped it unsent), and `DELETE /v0/mobile-connector/device`
   with that pairing's own token is sent until the agent answers 2xx, 401
   (already gone) or 403 (a daemon from before the route), or any other 4xx
   but 408 and 429. Otherwise it is retried at 1 … 30 s, on every return to

@@ -46,6 +46,5 @@
     <string name="agent_settings_update">アップデートが必要です</string>
     <string name="agent_settings_remove">接続を削除</string>
     <string name="agent_settings_remove_title">%1$s を削除しますか？</string>
-    <string name="agent_settings_remove_message">Happy はこのスマートフォン上でこのエージェントを忘れます。Happy Agent 側でも削除するまで、スマートフォンは一覧に残ります。</string>
-    <string name="agent_settings_remove_footer">Happy Agent で削除するまで、このスマートフォンは一覧に残ります。</string>
+    <string name="agent_settings_remove_message">Happy はこのスマートフォン上でこのエージェントを忘れ、Happy Agent からもこのスマートフォンを削除します。古いバージョンの Happy Agent では、そちらでも削除してください。</string>
 </resources>

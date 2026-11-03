@@ -50,6 +50,5 @@
     <string name="agent_settings_update">Update required</string>
     <string name="agent_settings_remove">Remove connection</string>
     <string name="agent_settings_remove_title">Remove %1$s?</string>
-    <string name="agent_settings_remove_message">Happy forgets this agent on this phone. Happy Agent keeps listing the phone until you remove it there too.</string>
-    <string name="agent_settings_remove_footer">Happy Agent keeps listing this phone until you remove it there.</string>
+    <string name="agent_settings_remove_message">Happy forgets this agent on this phone and removes the phone from Happy Agent. With an older Happy Agent, remove the phone there too.</string>
 </resources>
