@@ -7,6 +7,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -243,6 +244,32 @@ class AgentPageTest {
             rule.onNodeWithText(text, useUnmergedTree = true).performScrollTo().assertIsDisplayed()
         }
         all(AgentPageTags.DETAILS_ROW).forEach { assertDp("a detail is 52", 52, it.height) }
+    }
+
+    @Test fun `over its chat the permission mode is a card under the tiles that picks through the chat`() {
+        val picked = ArrayList<com.slopus.happy.conversation.Mode>()
+        show(AgentPageFixtures.page.copy(chatMode = AgentPageFixtures.mode), AgentPageActions(onModeChange = { picked += it }))
+        val tiles = rule.node(AgentPageTags.TILES).bounds
+        val row = rule.node(AgentPageTags.PERMISSION).bounds
+        assertDp("the card is a card gap under the tiles", 24, row.top - tiles.bottom)
+        assertDp("the row is a Settings row", 52, row.height)
+        assertDp("on the card's width", card, row.width)
+        rule.onNodeWithText("Auto", useUnmergedTree = true).assertIsDisplayed()
+        // The details leave it to the card.
+        rule.onAllNodesWithText("Permission mode", useUnmergedTree = true).assertCountEquals(1)
+
+        rule.node(AgentPageTags.PERMISSION).performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Full access").performClick()
+        rule.waitForIdle()
+        assertEquals(listOf(AgentPageFixtures.mode.copy(permissionMode = "full_access")), picked)
+    }
+
+    @Test fun `opened from anywhere else there is no card and the details name the mode`() {
+        show()
+        rule.onAllNodesWithTag(AgentPageTags.PERMISSION, useUnmergedTree = true).assertCountEquals(0)
+        rule.node(AgentPageTags.DETAILS).performScrollTo()
+        rule.onNodeWithText("Permission mode", useUnmergedTree = true).assertIsDisplayed()
     }
 
     @Test fun `a workspace's changes are a detail of their own, counted as home counts them, opening the changes`() {

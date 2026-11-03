@@ -1,13 +1,19 @@
 package com.slopus.happy.ui.session
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -21,6 +27,14 @@ import com.slopus.happy.chat.resolveChatHeaderGit
 import com.slopus.happy.diagnostics.ClientLogs
 import com.slopus.happy.model.Machine
 import com.slopus.happy.model.Session
+import com.slopus.happy.model.SessionMetadata
+import com.slopus.happy.model.settings.ModeOption
+import com.slopus.happy.model.settings.ModeOptions
+import com.slopus.happy.sync.AgentModeField
+import com.slopus.happy.ui.chat.ComposerPermissionOptions
+import com.slopus.happy.ui.chat.composerPermissionTitle
+import com.slopus.happy.ui.components.PickerSheetSection
+import com.slopus.happy.ui.conversation.ConversationPopup
 import com.slopus.happy.model.aiProviderName
 import com.slopus.happy.model.dangerouslySkipPermissions
 import com.slopus.happy.model.forkSource
@@ -59,6 +73,7 @@ import com.slopus.happy.ui.home.formatLocaleDateTime
 import com.slopus.happy.ui.home.resumeAvailability
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import java.time.ZoneId
@@ -75,6 +90,7 @@ internal fun SessionInfoContent(
     actions: SessionInfoActions,
     zone: ZoneId,
     live: SessionInfoLive,
+    permission: SessionInfoPermission?,
 ) {
     val colors = HappyTheme.colors
     val resources = LocalResources.current
@@ -130,6 +146,19 @@ internal fun SessionInfoContent(
     }
 
     ItemList {
+        permission?.takeIf { metadata != null && it.modes.canChangePermission && it.modes.availableModes.isNotEmpty() }?.let {
+            PermissionGroup(it, metadata) { field, option ->
+                scope.launch {
+                    try {
+                        it.select(field, option)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        show(errorTitle, e.message)
+                    }
+                }
+            }
+        }
         ItemGroup(title = stringResource(R.string.session_info_quick_actions)) {
             val git = metadata.gitPresentation(live.gitStatus, live.gitStatusFiles)
             Item(
@@ -451,4 +480,38 @@ internal fun SessionInfoContent(
         )
     }
     alert?.let { HappyAlert(it, onDismiss = { alert = null }) }
+}
+
+/**
+ * The chat's permission mode as the first card (iOS's `permissionRow`):
+ * the current mode as its value; a tap opens the modes from the row, the
+ * current one ticked, as the chat's header menu lists them.
+ */
+@Composable
+private fun PermissionGroup(permission: SessionInfoPermission, metadata: SessionMetadata?, onSelect: (AgentModeField, ModeOption) -> Unit) {
+    var open by rememberSaveable { mutableStateOf(false) }
+    val modes = permission.modes
+    val current = (modes.permissionMode ?: modes.availableModes.firstOrNull { it.key == "default" })?.let(ModeOptions::hackMode)
+    val title = composerPermissionTitle(metadata)
+    ItemGroup {
+        Box {
+            Item(
+                title = stringResource(R.string.conversation_details_permission_mode),
+                icon = { Icon(Ionicon.ShieldCheckmarkOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.blue) },
+                detail = current?.name,
+                onClick = { open = true },
+                showChevron = false,
+                modifier = Modifier.testTag(SessionInfoTags.PERMISSION_MODE),
+            )
+            ConversationPopup(expanded = open, title = title, onDismiss = { open = false }, alignEnd = true, width = 280.dp, belowAnchor = true) {
+                Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical = 8.dp)) {
+                    PickerSheetSection("permissions", title, separated = false)
+                    ComposerPermissionOptions(modes, metadata) { field, option ->
+                        open = false
+                        onSelect(field, option)
+                    }
+                }
+            }
+        }
+    }
 }

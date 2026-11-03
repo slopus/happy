@@ -145,9 +145,10 @@ class SessionInfoScreenTest {
         fakes: Fakes = Fakes(),
         debugBuild: Boolean = false,
         live: SessionInfoLive = SessionInfoLive(),
+        permission: SessionInfoPermission? = null,
     ) {
         rule.setHappyContent {
-            SessionInfoScreen(session, ready, null, online, experiments, debugBuild, fakes, fakes, actions, zone = ZoneOffset.UTC, live = live)
+            SessionInfoScreen(session, ready, null, online, experiments, debugBuild, fakes, fakes, actions, zone = ZoneOffset.UTC, live = live, permission = permission)
         }
     }
 
@@ -198,6 +199,39 @@ class SessionInfoScreenTest {
     fun withoutABranchThereIsNoRow() {
         show(claudeSession())
         tagged(SessionInfoTags.BRANCH).assertCountEquals(0)
+    }
+
+    private val askMode = com.slopus.happy.model.settings.ModeOption("default", "Default")
+    private val planMode = com.slopus.happy.model.settings.ModeOption("plan", "Plan")
+    private val modes = com.slopus.happy.chat.ComposerModes(availableModes = listOf(askMode, planMode), canChangePermission = true)
+
+    @Test
+    fun overItsChatThePermissionModeIsTheFirstCardAndPicksThroughTheChat() {
+        // iOS da5fda505: the chat's More menu left for its profile; the current mode is the row's value.
+        val picked = mutableListOf<String>()
+        show(claudeSession(), permission = SessionInfoPermission(modes) { field, option -> picked += "${field.name}:${option.key}" })
+        val row = rule.node(SessionInfoTags.PERMISSION_MODE).bounds
+        assertTrue("before quick actions", row.bottom <= rule.node(SessionInfoTags.CHANGES).bounds.top)
+        rule.onNodeWithText("Permission mode").assertExists()
+        rule.onNodeWithText("Default").assertExists()
+
+        rule.node(SessionInfoTags.PERMISSION_MODE).performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Plan").performClick()
+        rule.waitForIdle()
+        assertEquals(listOf("PERMISSION_MODE:plan"), picked)
+    }
+
+    @Test
+    fun openedFromAnywhereElseThereIsNoPermissionRow() {
+        show(claudeSession())
+        tagged(SessionInfoTags.PERMISSION_MODE).assertCountEquals(0)
+    }
+
+    @Test
+    fun aLockedPermissionModeHasNoRow() {
+        show(claudeSession(), permission = SessionInfoPermission(modes.copy(canChangePermission = false)) { _, _ -> })
+        tagged(SessionInfoTags.PERMISSION_MODE).assertCountEquals(0)
     }
 
     @Test

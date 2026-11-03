@@ -23,6 +23,9 @@ import com.slopus.happy.model.Machine
 import com.slopus.happy.model.Session
 import com.slopus.happy.model.displayName
 import com.slopus.happy.model.resumeCommand
+import com.slopus.happy.chat.ComposerModes
+import com.slopus.happy.model.settings.ModeOption
+import com.slopus.happy.sync.AgentModeField
 import com.slopus.happy.sync.ComposerMirror
 import com.slopus.happy.sync.OpResult
 import com.slopus.happy.ui.components.StackHeader
@@ -46,6 +49,7 @@ import java.time.ZoneId
 object SessionInfoTags {
     const val LOADING = "sessionInfo.loading"
     const val DELETED = "sessionInfo.deleted"
+    const val PERMISSION_MODE = "sessionInfo.permissionMode"
     const val BRANCH = "sessionInfo.branch"
     const val CHANGES = "sessionInfo.changes"
     const val MACHINE = "sessionInfo.machine"
@@ -95,6 +99,17 @@ data class SessionInfoLive(
     val composer: ComposerMirror = ComposerMirror(),
 )
 
+/**
+ * The permission mode of the chat session info was opened over (iOS
+ * da5fda505): what its composer offers, and a pick, sent as the chat's
+ * header menu sends it.
+ */
+@Immutable
+class SessionInfoPermission(
+    val modes: ComposerModes,
+    val select: suspend (AgentModeField, ModeOption) -> Unit,
+)
+
 /** What info.tsx runs against the session; tests use a fake. */
 interface SessionInfoControls {
     /** useSessionQuickActions' archive: kill, or retire on the server when the agent is gone. */
@@ -137,7 +152,8 @@ class SessionInfoActions(
 /**
  * session/[id]/info.tsx. The Material bar names the session, on glass. While the
  * first sync is out, an hourglass and "Loading"; a session that's gone says
- * so. Otherwise: quick actions (changes with Happy Agent's counts, the
+ * so. Otherwise: opened over its chat, the chat's permission mode
+ * ([permission], iOS da5fda505); quick actions (changes with Happy Agent's counts, the
  * machine, resume, fork, duplicate, the parent, archive and delete), the
  * outdated-CLI warning, the session's ids and times (each id copies), its
  * metadata, agent state, activity and, in dev mode, the raw JSON.
@@ -168,6 +184,7 @@ fun SessionInfoScreen(
     modifier: Modifier = Modifier,
     zone: ZoneId = ZoneId.systemDefault(),
     live: SessionInfoLive = SessionInfoLive(),
+    permission: SessionInfoPermission? = null,
 ) {
     val colors = HappyTheme.colors
     val newChat = stringResource(R.string.session_new_chat)
@@ -204,7 +221,7 @@ fun SessionInfoScreen(
                     modifier = Modifier.padding(top = 8.dp).padding(horizontal = 32.dp),
                 )
             }
-            else -> SessionInfoContent(session, agentState, machine, continuationExperiments, debugBuild, controls, continuations, actions, zone, live)
+            else -> SessionInfoContent(session, agentState, machine, continuationExperiments, debugBuild, controls, continuations, actions, zone, live, permission)
         }
     }
 }

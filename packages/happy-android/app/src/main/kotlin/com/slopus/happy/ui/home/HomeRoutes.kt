@@ -8,9 +8,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraphBuilder
@@ -18,6 +20,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.BuildConfig
+import com.slopus.happy.chat.ComposerModeResolver
 import com.slopus.happy.connection.accountLinkState
 import com.slopus.happy.net.ConnectionStatus
 import com.slopus.happy.ui.chat.rememberShownLinkState
@@ -43,6 +46,7 @@ import com.slopus.happy.ui.onboarding.LinkComputerChecklist
 import com.slopus.happy.ui.session.DuplicateSheet
 import com.slopus.happy.ui.session.SessionInfoActions
 import com.slopus.happy.ui.session.SessionInfoLive
+import com.slopus.happy.ui.session.SessionInfoPermission
 import com.slopus.happy.ui.session.SessionInfoRoute
 import com.slopus.happy.ui.session.SessionInfoScreen
 import com.slopus.happy.ui.settings.ChangelogRoute
@@ -195,6 +199,22 @@ private fun SessionInfoRouteScreen(graph: AppGraph, id: String, nav: NavHostCont
         gitStatusFiles = pathKey?.let { account?.fileCache?.statusFiles(it)?.files },
         composer = mirror,
     )
+    // Opened over its chat, the chat's permission mode is picked here, as its header's menu picks it (iOS da5fda505).
+    val overChat = remember(nav, id) {
+        nav.previousBackStackEntry?.let { it.destination.hasRoute<SessionRoute>() && it.toRoute<SessionRoute>().id == id } == true
+    }
+    val resources = LocalResources.current
+    val metadata = session?.metadata
+    val modes = remember(metadata, mirror, settings.agentDefaultOverrides) {
+        ComposerModeResolver.resolve(metadata, mirror, settings.agentDefaultOverrides, resources::getString)
+    }
+    val latestMirror by rememberUpdatedState(mirror)
+    val latestMetadata by rememberUpdatedState(metadata)
+    val permission = if (!overChat) null else remember(modes, account, id) {
+        SessionInfoPermission(modes) { field, option ->
+            account?.composer?.setAgentModes(id, ComposerModeResolver.patch(field, option, latestMetadata, latestMirror))
+        }
+    }
     val context = LocalContext.current
     val actions = remember(nav, onOpenSession, context, services, id) {
         SessionInfoActions(
@@ -221,6 +241,7 @@ private fun SessionInfoRouteScreen(graph: AppGraph, id: String, nav: NavHostCont
         continuations = services.continuations,
         actions = actions,
         live = live,
+        permission = permission,
     )
 }
 

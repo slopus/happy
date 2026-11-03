@@ -186,9 +186,11 @@ internal fun AgentPageEntry(graph: AppGraph, nav: NavHostController, route: Conv
         parent = agent?.parentAgentId?.let { id -> AgentPageParent(id, feed.title(id) ?: catalog.agent(id)?.title?.takeIf { it.isNotBlank() }) },
         workspaceId = agent?.workspaceId ?: row?.workspaceId,
         lineChanges = row?.lineChanges,
+        // The chat beneath picks it, once it knows its mode or the catalog's default, as its header did.
+        chatMode = held?.let { warm?.mode ?: warm?.catalog?.defaults },
     )
     val kept = rememberKeptMedia(graph, session, route.agentId)
-    val actions = remember(nav, model, session, route, kept) {
+    val actions = remember(nav, model, session, route, kept, held) {
         AgentPageActions(
             onBack = { nav.popBackStack() },
             onOpenConversation = { id -> if (id == route.agentId) nav.popBackStack() else nav.openConversation(route.connectionId, id) },
@@ -205,6 +207,7 @@ internal fun AgentPageEntry(graph: AppGraph, nav: NavHostController, route: Conv
                 )
             },
             kept = kept,
+            onModeChange = { mode -> held?.setMode(mode) },
         )
     }
     // A link opens as one in the chat does: through this agent's workspace.

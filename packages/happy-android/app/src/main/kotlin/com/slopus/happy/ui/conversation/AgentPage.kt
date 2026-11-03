@@ -147,6 +147,9 @@ object AgentPageTags {
     const val COMPLETED = "agentPage.completed"
     const val COMPLETED_TOGGLE = "agentPage.completed.toggle"
     const val ACTIVITY_ROW = "agentPage.activity.row"
+    /** The chat's controls under the tiles: its permission mode. */
+    const val CONTROLS = "agentPage.controls"
+    const val PERMISSION = "agentPage.controls.permission"
     const val DETAILS = "agentPage.details"
     const val DETAILS_ROW = "agentPage.details.row"
     const val CHANGES = "agentPage.details.changes"
@@ -256,6 +259,8 @@ data class AgentPageState(
     val workspaceId: String? = null,
     /** That workspace's changed lines, as home's row counts them. */
     val lineChanges: com.slopus.happy.agent.WorkspaceLineChanges? = null,
+    /** The mode of the chat this page was opened over, whose permission mode it shows and picks; null opened from anywhere else. */
+    val chatMode: Mode? = null,
 )
 
 class AgentPageActions(
@@ -273,6 +278,8 @@ class AgentPageActions(
     val onOpenChanges: (String) -> Unit = {},
     /** The workspace's folder ([com.slopus.happy.ui.files.WorkspaceFilesRoute]). */
     val onOpenFiles: (String) -> Unit = {},
+    /** A permission mode picked here, sent through the chat beneath as its header's menu sends it. */
+    val onModeChange: (Mode) -> Unit = {},
 )
 
 /**
@@ -289,8 +296,9 @@ class AgentPageActions(
  * recordings and files three to a row, square, 2 apart, opening the
  * viewer or the phone's app; then the links written in it), each "Show
  * more" reading further back; desktop's Activity (children at work and
- * terminals running, then the settled children under a fold); and its
- * details (provider, permission mode, context, project, workspace, the
+ * terminals running, then the settled children under a fold); opened
+ * over its chat, that chat's permission mode under the tiles (iOS
+ * da5fda505); and its details (provider, permission mode, context, project, workspace, the
  * agent that started it, its ID). A section with nothing in it isn't drawn.
  * While a value is read it shimmers in its place. Every row of a family or
  * activity opens its conversation.
@@ -344,6 +352,10 @@ private fun Page(state: AgentPageState, name: String?, actions: AgentPageActions
     }
     Tiles(state, now)
     Spacer(Modifier.height(AgentPageSpec.cardGap))
+    state.chatMode?.let {
+        Controls(it, actions)
+        Spacer(Modifier.height(AgentPageSpec.cardGap))
+    }
     SharedSections(state, actions)
     state.detail?.let { Activity(it, now, actions) }
     Details(state, actions)
@@ -1015,7 +1027,8 @@ private fun Details(state: AgentPageState, actions: AgentPageActions) {
     val mode = state.detail?.mode ?: state.mode
     val rows = buildList<@Composable (Boolean) -> Unit> {
         (state.providerName ?: mode?.providerId)?.let { add { last -> DetailRow(stringResource(R.string.agent_page_provider), it, last) } }
-        mode?.let { add { last -> DetailRow(stringResource(R.string.conversation_details_permission_mode), permissionName(it.permissionMode), last) } }
+        // Over its chat the controls card shows it, and picks it.
+        mode?.takeIf { state.chatMode == null }?.let { add { last -> DetailRow(stringResource(R.string.conversation_details_permission_mode), permissionName(it.permissionMode), last) } }
         state.detail?.context?.let { add { last -> DetailRow(stringResource(R.string.agent_page_context), contextText(it), last) } }
         state.project?.let { add { last -> DetailRow(stringResource(R.string.home_dock_picker_project), it, last) } }
         state.workspace?.let { add { last -> DetailRow(stringResource(R.string.home_dock_picker_workspace), it, last) } }
@@ -1049,6 +1062,53 @@ private fun Details(state: AgentPageState, actions: AgentPageActions) {
     }
     Section(stringResource(R.string.agent_page_details)) {
         Card(AgentPageTags.DETAILS) { rows.forEachIndexed { index, row -> row(index == rows.lastIndex) } }
+    }
+}
+
+/**
+ * The chat's controls as Settings' rows (iOS's `SessionDetailLayout`
+ * controls card): its permission mode, the current one as the value. A tap
+ * opens the modes from the row, the current one ticked, as the chat's
+ * header menu lists them; a pick goes through the chat.
+ */
+@Composable
+private fun Controls(mode: Mode, actions: AgentPageActions) {
+    val colors = HappyTheme.colors
+    var open by rememberSaveable { mutableStateOf(false) }
+    val title = stringResource(R.string.conversation_details_permission_mode)
+    Card(AgentPageTags.CONTROLS) {
+        Box {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = AgentPageSpec.row)
+                    .clickable(role = Role.Button) { open = true }
+                    .testTag(AgentPageTags.PERMISSION)
+                    .padding(end = AgentPageSpec.trailing),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(Modifier.width(AgentPageSpec.textX), contentAlignment = Alignment.Center) { GlyphTile(Ionicon.ShieldCheckmarkOutline, RowTile.Blue) }
+                Text(title, style = AgentPageSpec.title, color = colors.text, maxLines = 1, modifier = Modifier.padding(end = 12.dp))
+                Text(
+                    permissionName(mode.permissionMode),
+                    style = AgentPageSpec.title,
+                    color = colors.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.End,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            ConversationModePicker(
+                open = if (open) ModePicker.Permission else null,
+                onClose = { open = false },
+                catalog = null,
+                mode = mode,
+                onModeChange = actions.onModeChange,
+                anchorCenterY = 0,
+                belowAnchor = true,
+            )
+        }
     }
 }
 
