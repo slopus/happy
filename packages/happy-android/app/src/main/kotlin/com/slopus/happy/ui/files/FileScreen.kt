@@ -86,6 +86,8 @@ object FileTags {
     const val RENDERED_TAB = "file.renderedTab"
     const val RENDERED = "file.rendered"
     const val PICTURE = "file.picture"
+    const val SAVE = "file.save"
+    const val RETRY = "file.retry"
 }
 
 /** What file.tsx loaded: still loading, failed, binary, a picture, or the text and its uncommitted diff. */
@@ -262,18 +264,22 @@ fun FileScreen(
     onBack: () -> Unit,
     line: Int? = null,
     column: Int? = null,
+    /** desktop d122790d: the file saved to the phone, from the bar; null where there is nothing to save yet. */
+    save: FileSave? = null,
+    /** A failed read offers Retry, and says why without an alert. */
+    onRetry: (() -> Unit)? = null,
 ) {
     val colors = HappyTheme.colors
     val fileName = filePath.substringAfterLast('/').ifEmpty { filePath }
-    var alertShown by remember(load) { mutableStateOf(load is FileLoad.Failed) }
-    Screen(header = { StackHeader(stringResource(R.string.common_file_viewer), onBack) }) {
+    var alertShown by remember(load) { mutableStateOf(load is FileLoad.Failed && onRetry == null) }
+    Screen(header = { StackHeader(stringResource(R.string.common_file_viewer), onBack) { save?.let { FileSaveButton(it) } } }) {
         when (load) {
             FileLoad.Loading -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator(Modifier.size(20.dp).testTag(FileTags.SPINNER), color = colors.textSecondary, strokeWidth = 2.dp)
                 Text(stringResource(R.string.files_loading_file, fileName), style = happyTextStyle(fontSize = 16), color = colors.textSecondary, modifier = Modifier.padding(top = 16.dp))
             }
             is FileLoad.Failed -> {
-                Centered(stringResource(R.string.common_error), colors.textDestructive, wordsResource(load.message))
+                Centered(stringResource(R.string.common_error), colors.textDestructive, wordsResource(load.message), retry = onRetry)
                 if (alertShown) {
                     HappyAlert(
                         Alert(stringResource(R.string.common_error), wordsResource(load.message), listOf(AlertButton(stringResource(R.string.common_ok)))),
@@ -289,12 +295,20 @@ fun FileScreen(
 }
 
 @Composable
-private fun Centered(title: String, titleColor: Color, message: String, footnote: String? = null) {
+private fun Centered(title: String, titleColor: Color, message: String, footnote: String? = null, retry: (() -> Unit)? = null) {
     Column(Modifier.fillMaxSize().padding(20.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
         Text(title, style = happyTextStyle(fontSize = 18, weight = FontWeight.SemiBold), color = titleColor, modifier = Modifier.padding(bottom = 8.dp))
         Text(message, style = happyTextStyle(fontSize = 16), color = HappyTheme.colors.textSecondary, textAlign = TextAlign.Center)
         if (footnote != null) {
             Text(footnote, style = happyTextStyle(fontSize = 14), color = Color(0xFF999999), textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp))
+        }
+        if (retry != null) {
+            Text(
+                stringResource(R.string.common_retry),
+                style = happyTextStyle(fontSize = 16, weight = FontWeight.SemiBold),
+                color = HappyTheme.colors.text,
+                modifier = Modifier.padding(top = 16.dp).clickable(role = Role.Button, onClick = retry).testTag(FileTags.RETRY).padding(horizontal = 16.dp, vertical = 8.dp),
+            )
         }
     }
 }

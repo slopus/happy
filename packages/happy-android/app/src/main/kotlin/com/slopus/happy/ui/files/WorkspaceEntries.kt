@@ -3,6 +3,9 @@ package com.slopus.happy.ui.files
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -69,11 +72,16 @@ internal fun WorkspaceFilesEntry(graph: AppGraph, route: WorkspaceFilesRoute, na
  * One workspace file in the viewer (desktop's FilePreview): read through
  * the agent, then shown as text with its syntax, a picture, or a Markdown
  * document with its source a tab away; past the agent's size limit, said.
+ * Once read, any file (one with no viewer too) can be saved to the phone
+ * from the bar (desktop d122790d); a failed read offers Retry.
  */
 @Composable
 internal fun WorkspaceFileEntry(graph: AppGraph, route: WorkspaceFileRoute, onBack: () -> Unit) {
     val session = rememberAgentSession(graph, route.connectionId)
-    val load by produceState<FileLoad>(FileLoad.Loading, session, route) {
+    var attempt by remember { mutableIntStateOf(0) }
+    var bytes by remember(route) { mutableStateOf<ByteArray?>(null) }
+    val load by produceState<FileLoad>(FileLoad.Loading, session, route, attempt) {
+        value = FileLoad.Loading
         val live = session ?: run {
             value = FileLoad.Failed(Words.ours(R.string.conversation_unavailable))
             return@produceState
@@ -81,6 +89,7 @@ internal fun WorkspaceFileEntry(graph: AppGraph, route: WorkspaceFileRoute, onBa
         value = try {
             val workspaceId = route.workspaceId ?: live.workspaceOf(route.agentId!!)
             val file = WorkspaceFiles(live.client).read(workspaceId, route.path)
+            bytes = file.bytes
             withContext(Dispatchers.Default) { fileLoadOf(route.path, file.bytes) }
         } catch (e: CancellationException) {
             throw e
@@ -88,5 +97,14 @@ internal fun WorkspaceFileEntry(graph: AppGraph, route: WorkspaceFileRoute, onBa
             FileLoad.Failed(WorkspaceFolder.describe(e))
         }
     }
-    FileScreen(load, route.path, onBack, route.line)
+    val name = route.path.substringAfterLast('/').ifEmpty { route.path }
+    val save = rememberFileSave(name) { bytes ?: throw IllegalStateException() }
+    FileScreen(
+        load,
+        route.path,
+        onBack,
+        route.line,
+        save = save.takeIf { bytes != null },
+        onRetry = { attempt += 1 }.takeIf { session != null },
+    )
 }

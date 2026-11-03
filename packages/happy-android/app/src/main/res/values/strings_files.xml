@@ -15,6 +15,10 @@
     <string name="workspace_folder_empty">This folder is empty</string>
     <string name="workspace_rendered">Rendered</string>
     <string name="workspace_source">Source</string>
+    <string name="file_save">Download</string>
+    <string name="file_saving">Downloading…</string>
+    <string name="file_saved">Saved</string>
+    <string name="file_save_failed">Download failed. Tap to try again.</string>
     <plurals name="markdown_diff_unchanged">
         <item quantity="one">Show %1$d unchanged block</item>
         <item quantity="other">Show %1$d unchanged blocks</item>

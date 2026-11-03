@@ -2,7 +2,9 @@ package com.slopus.happy.ui.files
 
 import android.graphics.Bitmap
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -97,7 +99,7 @@ class WorkspaceFilesLayoutTest {
     @Test
     fun aFailureSaysWhyWithRetry() {
         var retried = 0
-        show { WorkspaceFilesScreen("happy", WorkspaceFolder.State(loading = false, error = Words.ours(R.string.workspace_unreachable)), onBack = {}, onOpen = {}, onRetry = { retried++ }) }
+        show { WorkspaceFilesScreen("happy", WorkspaceFolder.State(loading = false, error = Words.ours(R.string.workspace_unreachable)), onBack = {}, onOpen = {}, onRetry = { retried += 1 }) }
         rule.onNodeWithText("Can't reach the computer right now.", useUnmergedTree = true).assertExists()
         rule.node(WorkspaceFilesTags.RETRY).performClick()
         assertEquals(1, retried)
@@ -161,5 +163,55 @@ class WorkspaceFilesLayoutTest {
         assertTrue("h1 > h2 > h3: $heights", heights[0] > heights[1] && heights[1] > heights[2])
         val sizes = com.slopus.happy.ui.chat.MarkdownSpec.documentHeaders.map { it.first.fontSize.value }
         assertEquals(listOf(30f, 24f, 20f, 18f, 18f, 18f), sizes)
+    }
+
+    /** desktop d122790d: the bar's download control says what pressing it did; a failed one tries again. */
+    @Test
+    fun theDownloadControlSaysHowItWent() {
+        val written = ArrayList<android.net.Uri>()
+        var fail = true
+        lateinit var save: FileSave
+        show {
+            val scope = androidx.compose.runtime.rememberCoroutineScope()
+            save = androidx.compose.runtime.remember {
+                FileSave(scope) { uri -> if (fail) throw java.io.IOException("disk") else written += uri }
+            }
+            FileScreen(FileLoad.Binary, "out/report.zip", onBack = {}, save = save)
+        }
+        val picked = android.net.Uri.parse("content://saves/report.zip")
+        rule.node(FileTags.SAVE).assertContentDescriptionEquals("Download")
+        rule.node(FileTags.SAVE).performClick()
+        assertEquals(FileSaveState.Pending, save.state)
+        rule.node(FileTags.SAVE).assertContentDescriptionEquals("Downloading…")
+        save.picked(null)
+        rule.waitForIdle()
+        assertEquals("backing out of the picker is no failure", FileSaveState.Idle, save.state)
+        rule.node(FileTags.SAVE).performClick()
+        save.picked(picked)
+        rule.waitForIdle()
+        rule.node(FileTags.SAVE).assertContentDescriptionEquals("Download failed. Tap to try again.")
+        fail = false
+        rule.node(FileTags.SAVE).performClick()
+        save.picked(picked)
+        rule.waitForIdle()
+        assertEquals(FileSaveState.Saved, save.state)
+        rule.node(FileTags.SAVE).assertContentDescriptionEquals("Saved")
+        assertEquals(listOf(picked), written)
+    }
+
+    @Test
+    fun aFailedReadOffersRetryWithoutAnAlert() {
+        var retried = 0
+        show { FileScreen(FileLoad.Failed(Words.ours(R.string.workspace_unreachable)), "a.txt", onBack = {}, onRetry = { retried += 1 }) }
+        rule.onAllNodesWithText("OK", useUnmergedTree = true).assertCountEquals(0)
+        rule.node(FileTags.RETRY).performClick()
+        assertEquals(1, retried)
+        rule.onAllNodesWithTag(FileTags.SAVE, useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    @Test
+    fun aSaveSuggestsTheFilesType() {
+        assertEquals("application/zip", saveMimeType("report.zip"))
+        assertEquals("application/octet-stream", saveMimeType("Makefile"))
     }
 }

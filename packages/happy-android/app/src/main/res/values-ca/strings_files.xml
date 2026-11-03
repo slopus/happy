@@ -12,6 +12,10 @@
     <string name="workspace_folder_empty">Aquesta carpeta és buida</string>
     <string name="workspace_rendered">Renderitzat</string>
     <string name="workspace_source">Font</string>
+    <string name="file_save">Baixa</string>
+    <string name="file_saving">S\'està baixant…</string>
+    <string name="file_saved">Desat</string>
+    <string name="file_save_failed">No s\'ha pogut baixar. Toca per tornar-ho a provar.</string>
     <plurals name="markdown_diff_unchanged">
         <item quantity="one">Mostra %1$d bloc sense canvis</item>
         <item quantity="many">Mostra %1$d blocs sense canvis</item>

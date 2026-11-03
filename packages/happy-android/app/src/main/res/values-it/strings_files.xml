@@ -12,6 +12,10 @@
     <string name="workspace_folder_empty">Questa cartella è vuota</string>
     <string name="workspace_rendered">Renderizzato</string>
     <string name="workspace_source">Sorgente</string>
+    <string name="file_save">Scarica</string>
+    <string name="file_saving">Download in corso…</string>
+    <string name="file_saved">Salvato</string>
+    <string name="file_save_failed">Download non riuscito. Tocca per riprovare.</string>
     <plurals name="markdown_diff_unchanged">
         <item quantity="one">Mostra %1$d blocco invariato</item>
         <item quantity="many">Mostra %1$d blocchi invariati</item>

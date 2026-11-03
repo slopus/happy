@@ -12,6 +12,10 @@
     <string name="workspace_folder_empty">此文件夹为空</string>
     <string name="workspace_rendered">渲染</string>
     <string name="workspace_source">源码</string>
+    <string name="file_save">下载</string>
+    <string name="file_saving">正在下载…</string>
+    <string name="file_saved">已保存</string>
+    <string name="file_save_failed">下载失败。轻点以重试。</string>
     <plurals name="markdown_diff_unchanged">
         <item quantity="other">显示 %1$d 个未更改的块</item>
     </plurals>

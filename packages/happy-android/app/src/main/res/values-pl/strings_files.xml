@@ -12,6 +12,10 @@
     <string name="workspace_folder_empty">Ten folder jest pusty</string>
     <string name="workspace_rendered">Podgląd</string>
     <string name="workspace_source">Źródło</string>
+    <string name="file_save">Pobierz</string>
+    <string name="file_saving">Pobieranie…</string>
+    <string name="file_saved">Zapisano</string>
+    <string name="file_save_failed">Pobieranie nie powiodło się. Dotknij, aby spróbować ponownie.</string>
     <plurals name="markdown_diff_unchanged">
         <item quantity="one">Pokaż %1$d niezmieniony blok</item>
         <item quantity="few">Pokaż %1$d niezmienione bloki</item>
