@@ -267,3 +267,38 @@ object AttachMotion {
     const val SWITCH_DAMPING = 0.75f
     const val SWITCH_STIFFNESS = 500f
 }
+
+/**
+ * The sheet growing out of the + and back into it (iOS `AttachMenuMotion.Morph`,
+ * after Telegram's glass `AttachmentController.animateIn`/`animateOut`). iOS
+ * runs Display's spring of mass 5 and stiffness 900 at a damping, sped up to
+ * a duration; here that is the same damping ratio (110 → 0.82, 124 → 0.92)
+ * at the stiffness that settles it in that duration (4 / (ζω) seconds).
+ *
+ * In: the centre over 0.4 s, the size over 0.45, the corners to the sheet's
+ * in 0.2; the page and the sheet's ground fade in over 0.2 while the + on
+ * the growing glass fades in 0.15. Out: the centre 0.4, the size 0.3, the
+ * corners 0.2; the page fades in 0.12, the + comes back in 0.22, and the
+ * ground goes after 0.2 over 0.15, so the + alone lands on the button.
+ */
+object AttachMorph {
+    const val POSITION_RATIO = 0.82f
+    const val POSITION_STIFFNESS = 149f
+    const val SIZE_STIFFNESS = 117f
+    const val OUT_SIZE_RATIO = 0.92f
+    const val OUT_SIZE_STIFFNESS = 210f
+    const val CORNERS_MS = 200
+    const val CONTENT_IN_MS = 200
+    const val GLYPH_IN_MS = 150
+    const val CONTENT_OUT_MS = 120
+    const val GLYPH_OUT_MS = 220
+    const val GROUND_OUT_DELAY_MS = 200
+    const val GROUND_OUT_MS = 150
+
+    /** Only a phone held upright grows its sheet out of the + (iOS: the `.sheet` style). */
+    const val MAX_WIDTH_DP = 600
+
+    fun <T> position(): SpringSpec<T> = spring(dampingRatio = POSITION_RATIO, stiffness = POSITION_STIFFNESS)
+    fun <T> size(): SpringSpec<T> = spring(dampingRatio = POSITION_RATIO, stiffness = SIZE_STIFFNESS)
+    fun <T> outSize(): SpringSpec<T> = spring(dampingRatio = OUT_SIZE_RATIO, stiffness = OUT_SIZE_STIFFNESS)
+}

@@ -1,6 +1,7 @@
 package com.slopus.happy.ui.attach
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.EaseInOut
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
@@ -79,11 +80,26 @@ import com.slopus.happy.ui.components.rememberReduceMotion
 import com.slopus.happy.ui.layout.ContentTokens
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
+import androidx.compose.runtime.withFrameNanos
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.min
 import kotlin.math.roundToInt
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.center
+import androidx.compose.ui.geometry.lerp
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.foundation.shape.GenericShape
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.layout.positionOnScreen
+import androidx.compose.ui.util.lerp
+import androidx.compose.ui.unit.round
+import androidx.compose.ui.semantics.clearAndSetSemantics
 
 object AttachTags {
     const val SHEET = "attach.sheet"
@@ -135,10 +151,40 @@ class AttachSheetMotion(settled: Boolean = false) {
     internal var height = 0f
     internal var top: () -> Float = { 0f }
 
+    /**
+     * Growing out of the + ([AttachMorph]): how far the clip's centre, its
+     * size and its corners have gone from the button's to the sheet's, how
+     * much the page and the sheet's ground show, and the + drawn on it.
+     */
+    internal val position = Animatable(1f)
+    internal val size = Animatable(1f)
+    internal val corners = Animatable(1f)
+    internal val content = Animatable(1f)
+    internal val ground = Animatable(1f)
+    internal val glyph = Animatable(0f)
+
+    /** The + it grows out of, when the sheet does. */
+    internal var button by mutableStateOf<AttachButton?>(null)
+        private set
+
+    /** Clipped to the morph's rounded rectangle until it has landed. */
+    internal fun morphed(): Boolean = position.value < 1f || size.value < 1f || corners.value < 1f
+
+    private var morphs = false
+
+    private fun canMorph(reduceMotion: Boolean) = !reduceMotion && button?.screenBounds() != null
+
     /** The sheet's offset down from where it rests. */
     internal fun translation(): Float = (1 - enter.value) * height + drag + away.value
 
-    suspend fun open(reduceMotion: Boolean) = coroutineScope {
+    /** Up on Telegram's spring; out of [from] instead where there is one to grow from. */
+    suspend fun open(reduceMotion: Boolean, from: AttachButton? = null) = coroutineScope {
+        button = from
+        morphs = canMorph(reduceMotion)
+        if (morphs) {
+            morphIn()
+            return@coroutineScope
+        }
         if (reduceMotion) {
             enter.snapTo(1f)
             scrim.snapTo(1f)
@@ -156,9 +202,56 @@ class AttachSheetMotion(settled: Boolean = false) {
         }
     }
 
-    /** Down past the window's foot, the scrim out with it. */
+    /**
+     * iOS `morphIn`: the + is taken (drawn on the sheet, the button hidden)
+     * in one frame, and the motion starts once that frame is on screen.
+     */
+    private suspend fun morphIn() = coroutineScope {
+        enter.snapTo(1f)
+        for (it in listOf(position, size, corners, content, ground)) it.snapTo(0f)
+        glyph.snapTo(1f)
+        button?.hidden = true
+        withFrameNanos {}
+        launch { position.animateTo(1f, AttachMorph.position()) }
+        launch { size.animateTo(1f, AttachMorph.size()) }
+        launch { corners.animateTo(1f, tween(AttachMorph.CORNERS_MS, easing = EaseInOut)) }
+        launch { content.animateTo(1f, tween(AttachMorph.CONTENT_IN_MS, easing = EaseInOut)) }
+        launch { ground.animateTo(1f, tween(AttachMorph.CONTENT_IN_MS, easing = EaseInOut)) }
+        launch { glyph.animateTo(0f, tween(AttachMorph.GLYPH_IN_MS, easing = EaseInOut)) }
+        launch {
+            delay(AttachMotion.SCRIM_DELAY_MS.toLong())
+            scrim.animateTo(1f, tween(AttachMotion.SCRIM_MS, easing = AttachMotion.scrim))
+        }
+        launch {
+            delay(AttachMotion.SCRIM_DELAY_MS.toLong())
+            clock.animateTo(AttachMotion.TABS_MS.toFloat(), tween(AttachMotion.TABS_MS, easing = LinearEasing))
+        }
+    }
+
+    /** iOS `morphOut`: back into the + from wherever it is, a pull's drop too, and the button given back once there. */
+    private suspend fun morphOut() = coroutineScope {
+        val ease = tween<Float>(AttachMotion.CLOSE_MS, easing = EaseInOut)
+        launch { scrim.animateTo(0f, ease) }
+        launch { position.animateTo(0f, AttachMorph.position()) }
+        launch { size.animateTo(0f, AttachMorph.outSize()) }
+        launch { corners.animateTo(0f, tween(AttachMorph.CORNERS_MS, easing = EaseInOut)) }
+        launch { content.animateTo(0f, tween(AttachMorph.CONTENT_OUT_MS, easing = EaseInOut)) }
+        launch { glyph.animateTo(1f, tween(AttachMorph.GLYPH_OUT_MS, easing = EaseInOut)) }
+        launch { ground.animateTo(0f, tween(AttachMorph.GROUND_OUT_MS, AttachMorph.GROUND_OUT_DELAY_MS, EaseInOut)) }
+    }
+
+    /** The + back, once the sheet has gone (or never came). */
+    internal fun giveBack() {
+        button?.hidden = false
+    }
+
+    /** Down past the window's foot, the scrim out with it; into the + where it came from one. */
     suspend fun close(extra: Float, reduceMotion: Boolean) = coroutineScope {
         closing = true
+        if (morphs && canMorph(reduceMotion)) {
+            morphOut()
+            return@coroutineScope
+        }
         val distance = (height - (top() + drag)) + extra
         val spec = if (reduceMotion) snap() else tween<Float>(AttachMotion.CLOSE_MS, easing = AttachMotion.easeOut)
         launch { away.animateTo(distance.coerceAtLeast(0f), spec) }
@@ -220,7 +313,8 @@ internal fun AttachSheetLayout(
     val bottom = bottomInsets.asPaddingValues().calculateBottomPadding()
     val dismissAt = LocalContext.current.resources.displayMetrics.xdpi / 2.54f * AttachSpec.DISMISS_CM
 
-    BoxWithConstraints(modifier.fillMaxSize()) {
+    var root by remember { mutableStateOf<LayoutCoordinates?>(null) }
+    BoxWithConstraints(modifier.fillMaxSize().onPlaced { root = it }) {
         val height = constraints.maxHeight.toFloat()
         val sheetWidth = min(maxWidth, ContentTokens.sheetMaxWidth)
         val landscape = maxWidth > maxHeight
@@ -340,13 +434,43 @@ internal fun AttachSheetLayout(
         )
 
         val corner = with(density) { AttachSpec.corner.toPx() }
+        val sheetLeft = with(density) { (maxWidth - sheetWidth).toPx() / 2 }
+
+        /** The + in this window, if the sheet grows out of one. */
+        fun buttonRect(): Rect? {
+            val on = motion.button?.screenBounds() ?: return null
+            val here = root?.takeIf { it.isAttached }?.positionOnScreen() ?: return null
+            return on.translate(-here)
+        }
+
+        /** The morph's clip in the window: from the +'s circle to the sheet as it rests. */
+        fun morphRect(button: Rect): RoundRect {
+            val top = sheetTop() + motion.translation()
+            val sheet = Rect(sheetLeft, top, sheetLeft + with(density) { sheetWidth.toPx() }, height + motion.translation())
+            val center = lerp(button.center, sheet.center, motion.position.value)
+            val w = lerp(button.width, sheet.width, motion.size.value)
+            val h = lerp(button.height, sheet.height, motion.size.value)
+            val round = button.height / 2
+            val topRadius = CornerRadius(lerp(round, corner * (1 - topBar), motion.corners.value))
+            val footRadius = CornerRadius(lerp(round, 0f, motion.corners.value))
+            return RoundRect(center.x - w / 2, center.y - h / 2, center.x + w / 2, center.y + h / 2, topRadius, topRadius, footRadius, footRadius)
+        }
         val source = rememberGlassSource(sheetColor)
         Box(
             Modifier
                 .align(Alignment.TopCenter)
                 .width(sheetWidth)
                 .fillMaxHeight()
-                .graphicsLayer { translationY = motion.translation() }
+                .graphicsLayer {
+                    translationY = motion.translation()
+                    val button = if (motion.morphed()) buttonRect() else null
+                    clip = button != null
+                    shape = if (button == null) RectangleShape else {
+                        // In the sheet's own space: the window's less where the sheet stands and has moved to.
+                        val rect = morphRect(button).let { it.copy(left = it.left - sheetLeft, right = it.right - sheetLeft, top = it.top - translationY, bottom = it.bottom - translationY) }
+                        GenericShape { _, _ -> addRoundRect(rect) }
+                    }
+                }
                 .pointerInput(Unit) {
                     // Over the sheet's top, where the list is empty, a tap closes too.
                     detectTapGestures { if (it.y < sheetTop() && topBar == 0f) onClose() }
@@ -367,7 +491,18 @@ internal fun AttachSheetLayout(
                             ),
                         )
                     }
-                    drawPath(path, sheetColor)
+                    drawPath(path, sheetColor, alpha = motion.ground.value)
+                }
+                .drawWithContent {
+                    // The page fades in over the growing glass, and off it on the way back.
+                    val shown = motion.content.value
+                    if (shown >= 1f) return@drawWithContent drawContent()
+                    if (shown <= 0f) return@drawWithContent
+                    drawIntoCanvas { canvas ->
+                        canvas.saveLayer(Rect(Offset.Zero, size), Paint().apply { alpha = shown })
+                        drawContent()
+                        canvas.restore()
+                    }
                 }
                 .nestedScroll(connection)
                 .testTag(AttachTags.SHEET),
@@ -482,6 +617,22 @@ internal fun AttachSheetLayout(
                         modifier = Modifier.align(Alignment.BottomCenter),
                     )
                 }
+            }
+        }
+
+        // The + on the morph's glass, at its centre, the button's own size.
+        val button = motion.button
+        if (button != null && motion.glyph.value > 0f) {
+            val at = buttonRect()
+            if (at != null) {
+                Box(
+                    Modifier
+                        .offset { (morphRect(at).center - at.size.center).round() }
+                        .size(with(density) { at.width.toDp() }, with(density) { at.height.toDp() })
+                        .graphicsLayer { alpha = motion.glyph.value }
+                        .clearAndSetSemantics {},
+                    contentAlignment = Alignment.Center,
+                ) { button.glyph() }
             }
         }
     }

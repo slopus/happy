@@ -168,10 +168,17 @@ fun AddImageButton(attached: Boolean, onClick: () -> Unit, modifier: Modifier = 
             .semantics { contentDescription = addLabel },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            Ionicon.ImageOutline,
-            AttachmentStripSpec.addIcon,
-            if (attached) AttachmentStripSpec.radioActive(colors.dark) else colors.button.secondaryTint,
-        )
+        AddImageGlyph(attached)
     }
+}
+
+/** The add button's icon, tinted while images are attached; the attach sheet grows out of it. */
+@Composable
+fun AddImageGlyph(attached: Boolean) {
+    val colors = HappyTheme.colors
+    Icon(
+        Ionicon.ImageOutline,
+        AttachmentStripSpec.addIcon,
+        if (attached) AttachmentStripSpec.radioActive(colors.dark) else colors.button.secondaryTint,
+    )
 }

@@ -26,6 +26,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.AppGraph
+import com.slopus.happy.ui.attach.attachButton
+import com.slopus.happy.ui.attach.rememberAttachButton
 import com.slopus.happy.R
 import com.slopus.happy.attachments.AttachAccepts
 import com.slopus.happy.attachments.AttachmentNotice
@@ -86,7 +88,9 @@ fun ComposerAddImageButton(accepts: AttachAccepts, caption: String, onCaptionCha
     val picker = LocalComposerImages.current ?: return
     var open by rememberSaveable { mutableStateOf(false) }
     val send by rememberUpdatedState(onSend)
-    AddImageButton(attached = picker.images.isNotEmpty(), onClick = { open = true })
+    val attached = picker.images.isNotEmpty()
+    val plus = rememberAttachButton { AddImageGlyph(attached) }
+    AddImageButton(attached = attached, onClick = { open = true }, modifier = Modifier.attachButton(plus))
     AttachSheet(
         open = open,
         accepts = accepts,
@@ -98,6 +102,7 @@ fun ComposerAddImageButton(accepts: AttachAccepts, caption: String, onCaptionCha
         },
         onClosed = { open = false },
         room = picker.state.remaining,
+        button = plus,
     )
 }
 

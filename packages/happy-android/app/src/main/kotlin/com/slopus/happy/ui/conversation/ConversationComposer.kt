@@ -78,6 +78,8 @@ import com.slopus.happy.ui.attach.AttachSheet
 import com.slopus.happy.ui.attach.AttachedFileTile
 import com.slopus.happy.ui.attachments.rememberComposerImages
 import com.slopus.happy.ui.attachments.PictureStripFrame
+import com.slopus.happy.ui.attach.attachButton
+import com.slopus.happy.ui.attach.rememberAttachButton
 import com.slopus.happy.ui.attachments.PictureStripState
 import com.slopus.happy.ui.attachments.PictureStripVisibility
 import com.slopus.happy.ui.attachments.pictureMotion
@@ -199,6 +201,7 @@ internal fun ConversationComposer(
     val keyboard = LocalSoftwareKeyboardController.current
     var focused by remember { mutableStateOf(false) }
     var attaching by rememberSaveable { mutableStateOf(false) }
+    val plus = rememberAttachButton { Icon(MaterialSymbols.Add, contentDescription = null, tint = colors.text) }
     var menu by remember { mutableStateOf(false) }
     var picker by rememberSaveable { mutableStateOf<ModePicker?>(null) }
     var moreCenterY by remember { mutableIntStateOf(0) }
@@ -284,6 +287,7 @@ internal fun ConversationComposer(
             ComposerLayout(open, compact, if (compact || !open) minimumCompact else minimumActions) {
                 Box(Modifier.layoutId(Slot.MORE)) {
                     IconButton(onClick = { picker = null; moreCenterY = anchor(0); if (showCount) menu = true else attaching = true }, modifier = Modifier.testTag(ConversationComposerTags.MORE)
+                        .attachButton(plus)
                         .semantics { contentDescription = moreLabel }
                         .onPlaced { anchors[0] = it }) {
                         BadgedBox(badge = {
@@ -396,6 +400,7 @@ internal fun ConversationComposer(
             onSend = { staged -> submit(staged) },
             onClosed = { attaching = false },
             room = AttachAccepts.Agent.maxItems - attached.size,
+            button = plus,
         )
         ConversationModePicker(picker, onClose = { picker = null }, catalog = state.catalog, mode = state.mode, onModeChange = onModeChange, anchorCenterY = modelCenterY)
         // The viewport subcomposes its content during measurement. Request

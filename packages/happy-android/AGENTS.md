@@ -1132,6 +1132,20 @@ in place, so the strip keeps a copy to compare against. The last picture
 keeps the strip open until it has gone. Pictures already there when the
 composer is made arrive without animating.
 
+On a phone held upright, the attach sheet grows out of the + and goes back
+into it (`AttachMorph`, iOS `morphIn`/`morphOut` from 8eed293c9 and da11ed4af).
+The composer marks its + with `Modifier.attachButton(rememberAttachButton {
+glyph })` and passes it to `AttachSheet`. When the morph takes the +, it hides
+the button and draws the glyph on the morph, and gives the button back only
+once the sheet has gone. The sheet is clipped to a rounded rect that runs from
+the button to the sheet: the centre on one spring, the size on another, and
+the corners over 0.2 s. The page and the sheet's ground fade in over 0.2 s,
+and the glyph fades out over 0.15 s. On the way back the page fades out over
+0.12 s, the glyph returns over 0.22 s, and the ground goes last, so the +
+alone lands on the button. iOS gives its springs as damping plus duration;
+these use the same damping ratio, at the stiffness that settles in that
+duration. Tablets, landscape and Reduce Motion slide the sheet up as before.
+
 ### Image loading
 
 One Coil 3 `ImageLoader` (`ui/components/RemoteImage.kt`) for every
