@@ -178,6 +178,19 @@ nothing here is wired to the release skill or to EAS.
     without its pictures read to the agent as if they were there. happy-app
     and Android send nothing when an upload fails, the composer keeping it.
     Retry is idempotent by localId, including after a lost acknowledgement.
+  - A relay message that ran out of tries on the connection (no network,
+    the server unreachable or down: anything but a refusal) reads "Not
+    sent" as any failure does, but is `interrupted`, not `failed`: it goes
+    again by itself, whole (caption and pictures), when the connection comes
+    back (the socket connecting, the network returning, the app coming to
+    the foreground; `LegacySyncEngine.resumeSending`), with the usual
+    backoff (1 s doubling, five tries, then waiting for the connection
+    again). A direct chat's message does the same. A refusal (a 4xx but
+    408, 409, 429; a session it can't be encrypted to) is `failed` and
+    waits for the person's Retry or discard; a message with any refused
+    part never goes by itself. Retry by hand works in both states.
+    When a picture's upload fails, happy-app and Android keep the message
+    in the composer instead, so there is nothing for them to resume.
   - Unsupported permission modes are refused before acceptance: `send` throws
     `UnsupportedPermissionModeError`, and nothing is enqueued or copied.
 - **Tool outputs are hidden by default** in the chat. This deliberately

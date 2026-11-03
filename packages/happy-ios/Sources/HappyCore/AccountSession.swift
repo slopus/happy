@@ -278,8 +278,13 @@ public final class AccountSession: Sendable {
 
     /// The phone has a way out again (`NetworkPath`): connect now rather
     /// than when the socket's backoff says, so what waited goes at once.
+    /// A socket that stayed up through it doesn't reconnect, so its sends
+    /// are resumed here.
     public func networkReturned() async {
-        guard await realtime.status != .connected else { return }
+        guard await realtime.status != .connected else {
+            await sync.resumeSending()
+            return
+        }
         await realtime.reconnect()
     }
 

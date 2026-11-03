@@ -24,7 +24,7 @@ public struct ComposerStoreValue: Equatable, Sendable {
         let failed = OutboxRecord.filter(
             Column("sessionId") == sessionId
                 && Column("kind") == OutboxRecord.Kind.file.rawValue
-                && Column("state") == OutboxRecord.State.failed.rawValue
+                && [OutboxRecord.State.failed.rawValue, OutboxRecord.State.interrupted.rawValue].contains(Column("state"))
         )
         return ComposerStoreValue(
             draft: try DraftRecord.fetchOne(db, key: sessionId)?.text ?? "",

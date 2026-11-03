@@ -37,9 +37,76 @@ final class SendingRecoveryTests: XCTestCase, @unchecked Sendable {
         try store.enqueue(OutboxRecord(localId: "b", kind: .message, sessionId: "other", payload: .null, createdAt: 1))
         try await engine.flushOutbox()
         XCTAssertEqual(try store.outbox(localId: "a")?.attempts, 2)
-        XCTAssertEqual(try store.outbox(localId: "a")?.state, .failed)
+        XCTAssertEqual(try store.outbox(localId: "a")?.state, .interrupted)
         XCTAssertNil(try store.outbox(localId: "b"))
         await engine.stop()
+    }
+
+    /// A caption and its picture that ran out of tries with no way to the
+    /// server read "not sent", and go again whole, by themselves, when the
+    /// connection comes back. A message the server refused stays failed
+    /// for the person.
+    func testConnectionFailureGoesAgainWhenTheConnectionReturns() async throws {
+        let fixture = ServerFixture()
+        let http = FakeHTTP()
+        let store = try LocalStore.inMemory()
+        let decoder = RecordDecoder(keyRing: KeyRing(keys: fixture.keys))
+        try store.upsertSessions([decoder.session(fixture.session("s", updatedAt: 1)), decoder.session(fixture.session("other", updatedAt: 1))])
+        var options = LegacySyncEngine.Options()
+        options.sendAttempts = 1
+        options.sendRetryInitialMs = 60_000
+        let engine = LegacySyncEngine(api: testAPI(http), store: store, keys: fixture.keys, options: options, now: { 1_000 })
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        await engine.configureSending(filesDirectory: directory)
+        try Data([1]).write(to: directory.appendingPathComponent("f"))
+        try store.enqueueBatch([
+            OutboxRecord(localId: "f", kind: .file, sessionId: "s", payload: .null, createdAt: 1),
+            OutboxRecord(localId: "t", kind: .message, sessionId: "s", payload: .object(["role": .string("user")]), createdAt: 1, dependsOn: "f"),
+            OutboxRecord(localId: "refused", kind: .message, sessionId: "other", payload: .null, createdAt: 1),
+        ], attachments: [AttachmentRecord(localId: "f", sessionId: "s", outboxLocalId: "f", path: "f", name: "f.jpg", mimeType: "image/jpeg", size: 1, createdAt: 1)])
+        http.on("POST /v1/sessions/s/attachments/request-upload") { _ in throw URLError(.cannotConnectToHost) }
+        http.onRaw("POST /v3/sessions/other/messages", "no", status: 400)
+        try await engine.flushOutbox()
+        XCTAssertEqual(try store.outbox(localId: "f")?.state, .interrupted)
+        XCTAssertEqual(try store.outbox(localId: "t")?.state, .interrupted, "the caption waits with its picture")
+        XCTAssertEqual(try store.outbox(localId: "refused")?.state, .failed)
+        XCTAssertEqual(try OutboxSender(store: store, sync: engine, filesDirectory: directory).failedAttachmentCount(sessionId: "s"), 1)
+        let tried = http.requests.count
+        try await engine.flushOutbox()
+        XCTAssertEqual(http.requests.count, tried, "nothing goes until the connection is back")
+
+        http.onRaw("POST /v1/sessions/s/attachments/request-upload", #"{"ref":"ref-1","uploadUrl":"https://api.example.test/blob","method":"PUT"}"#)
+        http.onRaw("PUT /blob", "")
+        let seqs = Counter()
+        http.on("POST /v3/sessions/s/messages") { request in
+            let localId = try request.jsonBody(SendMessagesRequest.self).messages[0].localId
+            return (200, Data(#"{"messages":[{"id":"m-\#(localId)","seq":\#(seqs.next()),"localId":"\#(localId)","createdAt":1,"updatedAt":1}]}"#.utf8))
+        }
+        await engine.resumeSending()
+        await engine.waitForIdle()
+        let posted = try http.requests("POST /v3/sessions/s/messages").map { try $0.jsonBody(SendMessagesRequest.self).messages[0].localId }
+        XCTAssertEqual(posted, ["f", "t"])
+        XCTAssertEqual(try store.pendingOutbox().map(\.localId), ["refused"])
+        XCTAssertEqual(try store.outbox(localId: "refused")?.state, .failed, "a refusal waits for the person")
+        await engine.stop()
+    }
+
+    /// A message with one part refused for good isn't sent again by itself,
+    /// even if another part only lost the connection.
+    func testResumeLeavesAMessageWithARefusedPart() throws {
+        let store = try LocalStore.inMemory()
+        try store.enqueueBatch([
+            OutboxRecord(localId: "f", kind: .file, sessionId: "s", payload: .null, createdAt: 1, state: .failed),
+            OutboxRecord(localId: "t", kind: .message, sessionId: "s", payload: .null, createdAt: 1, state: .interrupted, dependsOn: "f"),
+            OutboxRecord(localId: "u", kind: .message, sessionId: "s", payload: .null, createdAt: 2, attempts: 3, state: .interrupted),
+            OutboxRecord(localId: "v", kind: .message, sessionId: "s", payload: .null, createdAt: 3, state: .queued, nextAttemptAt: 9_000),
+        ], attachments: [])
+        XCTAssertEqual(try store.resumeInterruptedOutbox(), 1)
+        XCTAssertEqual(try store.pendingOutbox().map(\.state), [.failed, .interrupted, .queued, .queued])
+        XCTAssertEqual(try store.outbox(localId: "u")?.attempts, 0)
+        XCTAssertEqual(try store.outbox(localId: "v")?.nextAttemptAt, 0, "a backoff goes now")
     }
 
     func testBackgroundLetsInFlightDeliveryFinishWithLeaseAndPausesNext() async throws {
@@ -81,6 +148,17 @@ final class SendingRecoveryTests: XCTestCase, @unchecked Sendable {
         _ = try store.applyLiveMessage(MessageRecord(id: "m", sessionId: "s", seq: 1, localId: "a", createdAt: 1, updatedAt: 1, contentCipher: "", content: .null))
         XCTAssertNil(try store.outbox(localId: "a"))
         await engine.stop()
+    }
+}
+
+private final class Counter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = 0
+    func next() -> Int {
+        lock.withLock {
+            value += 1
+            return value
+        }
     }
 }
 

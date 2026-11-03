@@ -737,17 +737,47 @@ public final class LocalStore: Sendable {
         }
     }
 
-    /// Fails the rest of the message `localId` belongs to (see `markOutboxFailed`).
-    public func failOutboxSend(localId: String, error: String) throws {
-        try performWrite { db in try Self.failSend(db, localId: localId, error: error) }
+    /// Fails the rest of the message `localId` belongs to (see
+    /// `markOutboxFailed`), as `state`: `interrupted` when the connection
+    /// failed it, so it all goes again when that comes back.
+    public func failOutboxSend(localId: String, error: String, state: OutboxRecord.State = .failed) throws {
+        try performWrite { db in try Self.failSend(db, localId: localId, error: error, state: state) }
     }
 
-    private static func failSend(_ db: Database, localId: String, error: String) throws {
+    private static func failSend(_ db: Database, localId: String, error: String, state: OutboxRecord.State = .failed) throws {
         let items = try OutboxRecord.fetchAll(db)
         for var item in sendGroup(items, localId: localId) where item.localId != localId && item.state == .queued {
-            item.state = .failed
+            item.state = state
             item.lastError = error
             try item.update(db)
+        }
+    }
+
+    /// The connection is back: every message the connection failed goes
+    /// again, whole, and what waits on a backoff goes now. A message with
+    /// a part refused for good stays failed for the person to decide.
+    /// The number of messages put back.
+    @discardableResult
+    public func resumeInterruptedOutbox() throws -> Int {
+        try performWrite { db in
+            let items = try OutboxRecord.fetchAll(db)
+            var resumed = 0
+            var seen = Set<String>()
+            for item in items where item.state == .interrupted && !seen.contains(item.localId) {
+                let group = Self.sendGroup(items, localId: item.localId)
+                seen.formUnion(group.map(\.localId))
+                guard !group.contains(where: { $0.state == .failed }) else { continue }
+                for var part in group where part.state == .interrupted {
+                    part.state = .queued
+                    part.attempts = 0
+                    part.nextAttemptAt = 0
+                    part.lastError = nil
+                    try part.update(db)
+                }
+                resumed += 1
+            }
+            try db.execute(sql: "UPDATE outbox SET nextAttemptAt = 0 WHERE state = 'queued' AND nextAttemptAt > 0")
+            return resumed
         }
     }
 
