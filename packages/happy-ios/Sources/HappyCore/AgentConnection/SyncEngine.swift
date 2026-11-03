@@ -51,6 +51,14 @@ public actor SyncEngine {
     private let url: URL?
     private var storage: SyncStorage?
     private var desktop: DesktopSnapshot?
+    /// The bootstrap as the computer sent it, kept for the next launch, and
+    /// the agents' changes applied in place since (`AgentPatch`), merged per
+    /// agent, still to be written over it.
+    private var desktopValue: JSONValue?
+    private var unsaved: [String: AgentPatch.Update] = [:]
+    private var saving: Task<Void, Never>?
+    /// Home snapshots published: what the changeset tests count.
+    private(set) var published = 0
     private var snapshot = HomeSnapshot()
     private var listeners: [UUID: AsyncStream<HomeSnapshot>.Continuation] = [:]
     private var runner: Task<Void, Never>?
@@ -151,11 +159,12 @@ public actor SyncEngine {
         generation += 1
         verified = false
         let pausedGeneration = generation
-        let tasks = [runner, refresh, delivery, messageDelivery, usersRead, gitWatcher].compactMap { $0 }
+        let tasks = [runner, refresh, delivery, messageDelivery, usersRead, gitWatcher, saving].compactMap { $0 }
         gitWatcher = nil; gitInterest = []
-        runner = nil; refresh = nil; delivery = nil; messageDelivery = nil; usersRead = nil
+        runner = nil; refresh = nil; delivery = nil; messageDelivery = nil; usersRead = nil; saving = nil
         tasks.forEach { $0.cancel() }
         for task in tasks { await task.value }
+        await keepDesktop()
         await intents.setOnline(false)
         guard generation == pausedGeneration else { return }
         await documents.closed()
@@ -206,6 +215,7 @@ public actor SyncEngine {
             let database = try database()
             if desktop == nil, let cached = try await database.checkpoint("desktop") {
                 desktop = try JSONDecoder().decode(DesktopSnapshot.self, from: JSONEncoder().encode(cached.value))
+                desktopValue = cached.value
                 cursor = cached.cursor
             }
             if users.isEmpty, let kept = try await database.checkpoint("users"),
@@ -281,11 +291,15 @@ public actor SyncEngine {
                         derive()
                     }
                     // Events are delivery hints, never a durable checkpoint.
-                    // Coalesce catalog invalidations; message token events go
-                    // straight to the open conversation without rereading Home.
+                    // An agent's own change is applied in place, as desktop
+                    // does; other catalog invalidations are coalesced into a
+                    // read. Message token events and an agent's conversation
+                    // state go straight to the open conversation without
+                    // rereading Home.
+                    if let update = AgentPatch.update(event), applyInPlace(update) { continue }
                     if let type = event["type"]?.stringValue,
                        ["project.", "workspace.", "bot.", "task.", "agent.", "surface.", "user_settings."].contains(where: type.hasPrefix),
-                       type != "agent.draft.updated" { scheduleReconcile(generation) }
+                       !Self.conversationEvents.contains(type) { scheduleReconcile(generation) }
                 }
             } catch AgentClientError.revoked {
                 snapshot.live = false
@@ -350,6 +364,48 @@ public actor SyncEngine {
         }
     }
 
+    /// An agent's state with no version chain, read by its conversation, never by Home.
+    private static let conversationEvents: Set<String> = [
+        "agent.draft.updated", "agent.context.updated", "agent.profiles.updated", "agent.slash_commands.updated",
+    ]
+
+    /// `update` over the held catalog; false when it can't be placed there
+    /// and the catalog must be read again. A change nothing on Home shows
+    /// (a token's `updatedAt`) publishes and writes nothing.
+    private func applyInPlace(_ update: AgentPatch.Update) -> Bool {
+        guard let held = desktop, let next = AgentPatch.apply(update, to: held) else { return false }
+        desktop = next
+        if var merged = unsaved[update.agentId] {
+            merged.changes.merge(update.changes) { _, new in new }
+            merged.version = update.version
+            unsaved[update.agentId] = merged
+        } else {
+            unsaved[update.agentId] = update
+        }
+        let before = snapshot
+        derive(publishing: false)
+        guard snapshot != before else { return true }
+        publish()
+        // What Home shows changed: kept for the next launch, a few at once.
+        if saving == nil {
+            saving = Task {
+                try? await Task.sleep(for: .seconds(2))
+                saving = nil
+                await keepDesktop()
+            }
+        }
+        return true
+    }
+
+    /// The bootstrap with the changes applied since, written for the next launch.
+    private func keepDesktop() async {
+        guard var value = desktopValue, !unsaved.isEmpty, let database = try? database() else { return }
+        for update in unsaved.values { value = AgentPatch.apply(update, to: value) }
+        unsaved = [:]
+        desktopValue = value
+        try? await database.commit(.init(value: value, cursor: cursor), named: "desktop")
+    }
+
     private func reconcile(_ generation: Int) async throws {
         let revision = revision
         reads += 1
@@ -381,6 +437,8 @@ public actor SyncEngine {
         try await database.commit(.init(value: value, cursor: desktop.cursor), named: "desktop", settings: desktop.userSettings ?? [], expectedSettingsRevision: settingRevision)
         guard current(generation) else { return }
         self.desktop = desktop
+        desktopValue = value
+        unsaved = [:]
         verified = true
         cursor = desktop.cursor
         snapshot.settings = try await database.settings()
@@ -521,7 +579,7 @@ public actor SyncEngine {
         }
     }
 
-    private func derive() {
+    private func derive(publishing: Bool = true) {
         snapshot.loaded = desktop != nil
         if let desktop {
             snapshot.allRows = overlay.apply(SidebarRows.make(desktop, settings: snapshot.settings, users: users))
@@ -531,10 +589,11 @@ public actor SyncEngine {
             snapshot.rows = Rows.visible(snapshot.allRows)
             snapshot.userId = desktop.profile?.userId
         }
-        publish()
+        if publishing { publish() }
     }
 
     private func publish() {
+        published += 1
         if !snapshot.live { gitWatcher?.cancel(); gitWatcher = nil; gitInterest = [] }
         for listener in listeners.values { listener.yield(snapshot) }
         watchGit()

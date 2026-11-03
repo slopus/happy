@@ -83,11 +83,22 @@ nothing moves: the phone doesn't reorder this list.
 
 ## Live updates
 
-The engine's one event stream (`/v0/events`): every `project.`,
-`workspace.`, `bot.`, `task.`, `agent.`, `surface.` and `user_settings.`
-event schedules a coalesced re-read of `/v0/bootstrap/desktop`. Status
-lines, activity, renames, new or archived work, and other devices'
-reorders all arrive this way.
+The engine's one event stream (`/v0/events`). An `agent.updated` that
+carries only the agent's own state (status, status line, activity,
+title, wait, retry; `AgentPatch.inPlace`) and follows the version the
+phone holds is merged into the held catalog, as desktop's
+`connectHappyAgent` does. The daemon sends one with every streamed token,
+so this is what keeps a working agent from re-reading the catalog several
+times a second. Home publishes only when a row it shows changed, and the
+kept catalog is written at most every 2 s, only then.
+
+Anything else (a version gap, an agent not held, `unread`, archival,
+order, subtasks) and every other `project.`, `workspace.`, `bot.`,
+`task.`, `agent.`, `surface.` and `user_settings.` event schedules a
+coalesced re-read of `/v0/bootstrap/desktop`. Renames of projects, new
+or archived work, and other devices' reorders arrive this way. An agent's
+draft, context, profiles and slash commands are its conversation's and
+never re-read Home.
 
 ## Tests
 
@@ -95,6 +106,9 @@ reorders all arrive this way.
   titles and no folds.
   `SyncEngineTests` checks that the old Stem Cells setting leaves home
   classic and never reads the sidebar document.
+  `AgentPatchTests` checks that 200 streamed `agent.updated` read the
+  catalog 0 times and publish Home exactly twice (working, then idle),
+  and that a version gap reads it once.
 - `ClassicSidebarUITests` (HappyDirectUITests), against a throwaway daemon
   with a driver: the list without titles, and a relaunch.
 - `HostedHomeNoticeRowTests` (HappyUIKitHostedTests): the notice comes and
