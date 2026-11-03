@@ -16,6 +16,8 @@
     <string name="file_saving">Descargando…</string>
     <string name="file_saved">Guardado</string>
     <string name="file_save_failed">No se pudo descargar. Toca para intentarlo de nuevo.</string>
+    <string name="attach_files_workspace">Espacio de trabajo</string>
+    <string name="attach_files_workspace_detail">Indica un archivo que ya está en el ordenador</string>
     <plurals name="markdown_diff_unchanged">
         <item quantity="one">Mostrar %1$d bloque sin cambios</item>
         <item quantity="many">Mostrar %1$d bloques sin cambios</item>

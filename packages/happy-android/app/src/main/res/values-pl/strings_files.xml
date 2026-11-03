@@ -16,6 +16,8 @@
     <string name="file_saving">Pobieranie…</string>
     <string name="file_saved">Zapisano</string>
     <string name="file_save_failed">Pobieranie nie powiodło się. Dotknij, aby spróbować ponownie.</string>
+    <string name="attach_files_workspace">Przestrzeń robocza</string>
+    <string name="attach_files_workspace_detail">Wskaż plik, który jest już na komputerze</string>
     <plurals name="markdown_diff_unchanged">
         <item quantity="one">Pokaż %1$d niezmieniony blok</item>
         <item quantity="few">Pokaż %1$d niezmienione bloki</item>

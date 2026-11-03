@@ -120,6 +120,7 @@ object AttachTags {
     const val BROWSE = "attach.files.browse"
     const val FILES_GALLERY = "attach.files.gallery"
     const val PASTE = "attach.files.paste"
+    const val WORKSPACE = "attach.files.workspace"
     const val RECENT = "attach.files.recent"
     const val FILE_ROW = "attach.files.row"
     const val TAB_BAR = "attach.tabs"
@@ -299,6 +300,7 @@ internal fun AttachSheetLayout(
     onFilesGallery: () -> Unit,
     onPaste: () -> Unit,
     modifier: Modifier = Modifier,
+    onWorkspace: () -> Unit = {},
     sending: Boolean = false,
     galleryState: LazyGridState = rememberLazyGridState(),
     filesState: LazyListState = rememberLazyListState(),
@@ -520,6 +522,7 @@ internal fun AttachSheetLayout(
                             PaddingValues(top = restDp, bottom = AttachSpec.tabBar + bottom),
                             filesState, sheetColor, colors,
                             onBrowse = onBrowse, onGallery = onFilesGallery, onPaste = onPaste, onToggle = onToggleFile, modifier = pageModifier,
+                            onWorkspace = onWorkspace,
                         )
                     }
                 }

@@ -2,6 +2,7 @@ package com.slopus.happy.ui.conversation
 
 import com.slopus.happy.connection.LinkState
 import com.slopus.happy.connection.networkPath
+import com.slopus.happy.ui.files.workspaceSource
 import com.slopus.happy.ui.chat.rememberShownLinkState
 import com.slopus.happy.ui.page
 import androidx.compose.runtime.Composable
@@ -407,6 +408,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                     onToggleTurn = conversation::toggleTurn,
                     onToggleMessage = conversation::toggleMessage,
                     onOpenTool = { callId -> nav.navigate(ToolCallRoute(route.connectionId, conversation.agentId, callId)) },
+                    workspace = session::workspaceSource,
                     // The values typed into a secret go in this one request to the computer and nowhere else.
                     secrets = SecretRequestActions(
                         secrets = { ConversationApi(session.conversationRequest()).secrets() },

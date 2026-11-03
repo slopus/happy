@@ -36,6 +36,12 @@ private fun AgentSession.workspaceName(workspaceId: String): String? {
     return (catalog.workspaces[workspaceId] ?: catalog.projects[workspaceId])?.string("name")?.takeIf { it.isNotBlank() }
 }
 
+/** [workspaceId]'s folders as the attach sheet's picker reads them, through this session. */
+fun AgentSession.workspaceSource(workspaceId: String): WorkspaceSource {
+    val files = WorkspaceFiles(client)
+    return WorkspaceSource(workspaceName(workspaceId)) { path, cursor -> files.tree(workspaceId, path, cursor) }
+}
+
 /** The workspace [agentId] works in: home's catalog, else the agent itself (a hidden subagent isn't listed). */
 private suspend fun AgentSession.workspaceOf(agentId: String): String {
     catalog.value.agent(agentId)?.workspaceId?.let { return it }

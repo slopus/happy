@@ -16,6 +16,8 @@
     <string name="file_saving">正在下載…</string>
     <string name="file_saved">已儲存</string>
     <string name="file_save_failed">下載失敗。點一下以重試。</string>
+    <string name="attach_files_workspace">工作區</string>
+    <string name="attach_files_workspace_detail">指定電腦上已有的檔案</string>
     <plurals name="markdown_diff_unchanged">
         <item quantity="other">顯示 %1$d 個未變更的區塊</item>
     </plurals>

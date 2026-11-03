@@ -59,6 +59,9 @@ import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.components.rememberReduceMotion
 import com.slopus.happy.ui.conversation.PictureViewer
 import com.slopus.happy.ui.conversation.ViewerSource
+import com.slopus.happy.ui.files.WorkspaceFilePicker
+import com.slopus.happy.ui.files.WorkspaceSource
+import com.slopus.happy.ui.files.withWorkspacePath
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
@@ -76,7 +79,9 @@ import java.nio.ByteBuffer
  * each pick is copied into the app's cache first ([AttachmentStaging]),
  * then [onSend] has them. Room is [room] picks. [onClosed] runs once the
  * sheet has gone, after its own close. On a phone held upright it grows
- * out of [button] and goes back into it ([AttachMorph]).
+ * out of [button] and goes back into it ([AttachMorph]). With a [workspace]
+ * the File tab can name one of its files instead: the picked path goes
+ * into the caption as `./path` and nothing is uploaded.
  */
 @Composable
 fun AttachSheet(
@@ -88,6 +93,7 @@ fun AttachSheet(
     onClosed: () -> Unit,
     room: Int = accepts.maxItems,
     button: AttachButton? = null,
+    workspace: WorkspaceSource? = null,
 ) {
     if (!open) return
     val tabs = accepts.tabs
@@ -108,6 +114,7 @@ fun AttachSheet(
     var alert by remember { mutableStateOf<Alert?>(null) }
     var sending by remember { mutableStateOf(false) }
     var viewing by remember { mutableStateOf<Int?>(null) }
+    var naming by remember { mutableStateOf(false) }
     val closeExtra = with(LocalDensity.current) { AttachSpec.closeExtra.toPx() }
     val configuration = LocalConfiguration.current
     val grows = configuration.screenWidthDp < AttachMorph.MAX_WIDTH_DP && configuration.orientation == Configuration.ORIENTATION_PORTRAIT
@@ -274,7 +281,7 @@ fun AttachSheet(
             tab = tab,
             onTab = { tab = it },
             gallery = GalleryContent(access, items, loaded, blocked),
-            sources = FileSources(browse = accepts.files, gallery = accepts.files || accepts.photos, paste = accepts.photos || accepts.files),
+            sources = FileSources(browse = accepts.files, gallery = accepts.files || accepts.photos, paste = accepts.photos || accepts.files, workspace = workspace != null),
             recent = (picked + sent.filter { old -> picked.none { it.uri == old.uri } }),
             selection = selection,
             caption = caption,
@@ -293,11 +300,24 @@ fun AttachSheet(
                 galleryFiles.launch(PickVisualMediaRequest.Builder().setMediaType(type).build())
             },
             onPaste = ::paste,
+            onWorkspace = { naming = true },
             sending = sending,
         )
         viewing?.let { index ->
             val shown = remember(items) { items.map { ViewerItem(it.uri, it.name, it.isVideo, it.width.toFloat().takeIf { w -> w > 0 }, it.height.toFloat().takeIf { h -> h > 0 }) } }
             PictureViewer(shown, index, remember(context) { GallerySource(context) }, onClose = { viewing = null })
+        }
+        if (naming && workspace != null) {
+            WorkspaceFilePicker(
+                workspace,
+                onPick = { path ->
+                    naming = false
+                    onCaptionChange(withWorkspacePath(caption, path))
+                    // Picks waiting keep the sheet, the path in their caption; alone, it goes with the words.
+                    if (selection.count == 0) close()
+                },
+                onClose = { naming = false },
+            )
         }
         alert?.let { HappyAlert(it, onDismiss = { alert = null }) }
     }

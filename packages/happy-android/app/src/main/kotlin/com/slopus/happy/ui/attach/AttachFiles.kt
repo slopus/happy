@@ -59,11 +59,14 @@ data class FileSources(
     val gallery: Boolean = true,
     /** Paste: the image on the clipboard. */
     val paste: Boolean = true,
+    /** Workspace: a file already on the agent's computer, named by its path (nothing uploaded). */
+    val workspace: Boolean = false,
 )
 
 /**
  * Telegram's File tab (`ChatAttachAlertDocumentLayout`): its sources first,
- * each a coloured circle (Browse #60C255, Gallery #F2C04B, Paste #5DAFEB),
+ * each a coloured circle (Workspace #EB6060 where the agent's files can be
+ * named, Browse #60C255, Gallery #F2C04B, Paste #5DAFEB),
  * then Recent files, the ones sent from here before, each a square with its
  * extension coloured by type. Rows are 64 tall, a divider under each, the
  * icon 42 at 15 in, the name 16 bold at 72. A file row picks and unpicks.
@@ -82,8 +85,12 @@ internal fun AttachFilesPage(
     onPaste: () -> Unit,
     onToggle: (RecentFile) -> Unit,
     modifier: Modifier = Modifier,
+    onWorkspace: () -> Unit = {},
 ) {
     LazyColumn(state = state, contentPadding = padding, modifier = modifier.fillMaxSize().testTag(AttachTags.FILES)) {
+        if (sources.workspace) item(key = "workspace") {
+            SourceRow(MaterialSymbols.Computer, SourceWorkspace, stringResource(R.string.attach_files_workspace), stringResource(R.string.attach_files_workspace_detail), onWorkspace, Modifier.testTag(AttachTags.WORKSPACE))
+        }
         if (sources.browse) item(key = "browse") {
             SourceRow(MaterialSymbols.Folder, SourceStorage, stringResource(R.string.attach_files_browse), stringResource(R.string.attach_files_browse_detail), onBrowse, Modifier.testTag(AttachTags.BROWSE))
         }
@@ -253,3 +260,5 @@ fun AttachedFileTile(name: String, modifier: Modifier = Modifier) {
 private val SourceStorage = Color(0xFF60C255)
 private val SourceGallery = Color(0xFFF2C04B)
 private val SourcePaste = Color(0xFF5DAFEB)
+// Telegram's one source colour left (`key_chat_attachAudioBackground`, its Music row's).
+private val SourceWorkspace = Color(0xFFEB6060)

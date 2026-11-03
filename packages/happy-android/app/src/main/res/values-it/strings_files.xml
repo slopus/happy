@@ -16,6 +16,8 @@
     <string name="file_saving">Download in corso…</string>
     <string name="file_saved">Salvato</string>
     <string name="file_save_failed">Download non riuscito. Tocca per riprovare.</string>
+    <string name="attach_files_workspace">Spazio di lavoro</string>
+    <string name="attach_files_workspace_detail">Indica un file già presente sul computer</string>
     <plurals name="markdown_diff_unchanged">
         <item quantity="one">Mostra %1$d blocco invariato</item>
         <item quantity="many">Mostra %1$d blocchi invariati</item>

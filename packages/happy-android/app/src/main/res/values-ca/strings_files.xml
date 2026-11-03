@@ -16,6 +16,8 @@
     <string name="file_saving">S\'està baixant…</string>
     <string name="file_saved">Desat</string>
     <string name="file_save_failed">No s\'ha pogut baixar. Toca per tornar-ho a provar.</string>
+    <string name="attach_files_workspace">Espai de treball</string>
+    <string name="attach_files_workspace_detail">Indica un fitxer que ja és a l\'ordinador</string>
     <plurals name="markdown_diff_unchanged">
         <item quantity="one">Mostra %1$d bloc sense canvis</item>
         <item quantity="many">Mostra %1$d blocs sense canvis</item>

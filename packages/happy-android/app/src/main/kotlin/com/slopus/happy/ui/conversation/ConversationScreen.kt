@@ -205,6 +205,8 @@ class ConversationScreenActions(
     val onToggleMessage: (String) -> Unit = {},
     /** Opens a tool call on its own screen, by its id. */
     val onOpenTool: ((String) -> Unit)? = null,
+    /** How a workspace's folders read, for naming one of its files from the attach sheet; null where they can't. */
+    val workspace: ((workspaceId: String) -> com.slopus.happy.ui.files.WorkspaceSource)? = null,
 )
 
 /**
@@ -253,6 +255,8 @@ fun ConversationScreen(
         text = state.draft
     }
     val bubble = userMessageBubblePalette(bubbleColor, colors.dark)
+    val workspaceId = state.agent?.workspaceId
+    val workspace = remember(actions, workspaceId) { workspaceId?.let { id -> actions.workspace?.invoke(id) } }
     // "/" opens the agent's commands over the composer, as desktop's palette does.
     val commands by rememberUpdatedState(state.commands)
     val onCommand by rememberUpdatedState(actions.onCommand)
@@ -612,6 +616,7 @@ fun ConversationScreen(
                                 returned = returned,
                                 // Sideways with the keyboard up, one row once the full card would leave the transcript too little.
                                 barFoot = barFoot,
+                                workspace = workspace,
                             )
                         }
                     }

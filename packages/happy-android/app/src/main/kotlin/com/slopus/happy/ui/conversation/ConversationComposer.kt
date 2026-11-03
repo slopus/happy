@@ -215,6 +215,8 @@ internal fun ConversationComposer(
      * [ConversationComposerSpec.transcriptMin] (iOS `ChatScreenLayout.compactBelow`).
      */
     barFoot: Dp? = null,
+    /** The agent's workspace: the attach sheet's File tab can name one of its files. */
+    workspace: com.slopus.happy.ui.files.WorkspaceSource? = null,
 ) {
     RecomposeProbe.mark(ConversationScreenTags.PROBE_COMPOSER)
     val colors = HappyTheme.colors
@@ -476,6 +478,7 @@ internal fun ConversationComposer(
             onClosed = { attaching = false },
             room = AttachAccepts.Agent.maxItems - attached.size,
             button = plus,
+            workspace = workspace,
         )
         ModelPicker(
             open = picker,

@@ -16,6 +16,8 @@
     <string name="file_saving">正在下载…</string>
     <string name="file_saved">已保存</string>
     <string name="file_save_failed">下载失败。轻点以重试。</string>
+    <string name="attach_files_workspace">工作区</string>
+    <string name="attach_files_workspace_detail">指定电脑上已有的文件</string>
     <plurals name="markdown_diff_unchanged">
         <item quantity="other">显示 %1$d 个未更改的块</item>
     </plurals>

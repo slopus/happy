@@ -19,6 +19,8 @@
     <string name="file_saving">Downloading…</string>
     <string name="file_saved">Saved</string>
     <string name="file_save_failed">Download failed. Tap to try again.</string>
+    <string name="attach_files_workspace">Workspace</string>
+    <string name="attach_files_workspace_detail">Name a file already on the computer</string>
     <plurals name="markdown_diff_unchanged">
         <item quantity="one">Show %1$d unchanged block</item>
         <item quantity="other">Show %1$d unchanged blocks</item>

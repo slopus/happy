@@ -16,6 +16,8 @@
     <string name="file_saving">Скачивание…</string>
     <string name="file_saved">Сохранено</string>
     <string name="file_save_failed">Не удалось скачать. Нажмите, чтобы повторить.</string>
+    <string name="attach_files_workspace">Рабочая область</string>
+    <string name="attach_files_workspace_detail">Указать файл, который уже на компьютере</string>
     <plurals name="markdown_diff_unchanged">
         <item quantity="one">Показать %1$d неизменённый блок</item>
         <item quantity="few">Показать %1$d неизменённых блока</item>
