@@ -234,6 +234,8 @@ export const en: TranslationStructure = {
         groupByProject: 'Group by Project',
         appearanceSettings: 'Appearance Settings',
         worktreeTabs: ({ count }: { count: number }) => count === 1 ? '1 tab' : `${count} tabs`,
+        searchPlaceholder: 'Search sessions…',
+        noResultsPlaceholder: 'No sessions found',
     },
 
     settingsFeatures: {

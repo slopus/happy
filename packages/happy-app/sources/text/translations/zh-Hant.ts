@@ -220,6 +220,8 @@ export const zhHant: TranslationStructure = {
         groupByProject: '按專案分組',
         appearanceSettings: '外觀設定',
         worktreeTabs: ({ count }: { count: number }) => `${count} 個分頁`,
+        searchPlaceholder: '搜尋工作階段…',
+        noResultsPlaceholder: '未找到工作階段',
     },
 
     settingsFeatures: {

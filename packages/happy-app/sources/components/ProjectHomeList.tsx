@@ -54,6 +54,8 @@ import { Avatar } from './Avatar';
 import { StatusDot } from './StatusDot';
 import { ShimmerText } from './ShimmerText';
 import { HomeListHeader } from './HomeListHeader';
+import { useSessionSearchStore } from './sessionSearchStore';
+import { SessionSearchNoResults } from './SessionSearchInput';
 import { layout } from './layout';
 
 // Every row starts with the same avatar and name columns. Disclosure controls
@@ -114,7 +116,8 @@ export interface ProjectHomeListLayout {
  * the same archive that the flat home list shows.
  */
 export const ProjectHomeList = React.memo((props: ProjectHomeListLayout) => {
-    const data = useVisibleSessionListViewData();
+    const searchQuery = useSessionSearchStore((state) => state.query).trim();
+    const data = useVisibleSessionListViewData(searchQuery);
     const machines = useAllMachines();
     const expanded = useLocalSetting('expandedProjects');
     const hasArchivedSessions = useHasArchivedSessions();
@@ -128,9 +131,11 @@ export const ProjectHomeList = React.memo((props: ProjectHomeListLayout) => {
         unknownMachineText: t('status.unknown'),
         expanded,
         labels: { bots: t('sidebar.bots'), projects: t('sidebar.projects') },
-        hasArchivedSessions,
+        // The archive divider cannot bring anything back while a search is
+        // filtering, so it hides with the rest of the chrome.
+        hasArchivedSessions: hasArchivedSessions && !searchQuery,
         archiveHidden,
-    }), [archiveHidden, expanded, data, hasArchivedSessions, machines]);
+    }), [archiveHidden, expanded, data, hasArchivedSessions, machines, searchQuery]);
 
     const toggleArchive = React.useCallback(() => {
         setArchiveHidden(!archiveHidden);
@@ -158,7 +163,15 @@ export const ProjectHomeList = React.memo((props: ProjectHomeListLayout) => {
         });
     }, []);
 
-    return <ProjectHomeListView rows={rows} onToggle={toggle} onToggleArchive={toggleArchive} {...props} />;
+    return (
+        <ProjectHomeListView
+            rows={rows}
+            onToggle={toggle}
+            onToggleArchive={toggleArchive}
+            searching={searchQuery !== ''}
+            {...props}
+        />
+    );
 });
 
 /**
@@ -173,10 +186,12 @@ export const ProjectHomeListView = React.memo(({
     scrollIndicatorTopInset = 0,
     bottomContentInset = 128,
     onScroll,
+    searching = false,
 }: ProjectHomeListLayout & {
     rows: ProjectHomeRow[];
     onToggle: (projectId: string) => void;
     onToggleArchive?: () => void;
+    searching?: boolean;
 }) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
@@ -263,6 +278,7 @@ export const ProjectHomeListView = React.memo(({
                     renderItem={renderItem}
                     keyExtractor={keyExtractor}
                     ListHeaderComponent={ListHeader}
+                    ListEmptyComponent={searching ? SessionSearchNoResults : null}
                     contentContainerStyle={{
                         paddingTop: topContentInset,
                         paddingBottom: safeArea.bottom + bottomContentInset,

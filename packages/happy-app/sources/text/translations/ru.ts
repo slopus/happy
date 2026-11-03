@@ -204,6 +204,8 @@ export const ru: TranslationStructure = {
         groupByProject: 'Группировать по проектам',
         appearanceSettings: 'Настройки внешнего вида',
         worktreeTabs: ({ count }: { count: number }) => `${count} ${plural({ count, one: 'вкладка', few: 'вкладки', many: 'вкладок' })}`,
+        searchPlaceholder: 'Поиск сессий…',
+        noResultsPlaceholder: 'Сессии не найдены',
     },
 
     settingsFeatures: {

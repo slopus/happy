@@ -220,6 +220,8 @@ export const ca: TranslationStructure = {
         groupByProject: 'Agrupa per projecte',
         appearanceSettings: 'Configuració d\'aparença',
         worktreeTabs: ({ count }: { count: number }) => count === 1 ? '1 pestanya' : `${count} pestanyes`,
+        searchPlaceholder: 'Cerca sessions…',
+        noResultsPlaceholder: 'No s\'han trobat sessions',
     },
 
     settingsFeatures: {

@@ -237,6 +237,8 @@ export const pl: TranslationStructure = {
         groupByProject: 'Grupuj według projektu',
         appearanceSettings: 'Ustawienia wyglądu',
         worktreeTabs: ({ count }: { count: number }) => `${count} ${plural({ count, one: 'karta', few: 'karty', many: 'kart' })}`,
+        searchPlaceholder: 'Szukaj sesji…',
+        noResultsPlaceholder: 'Nie znaleziono sesji',
     },
 
     settingsFeatures: {

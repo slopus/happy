@@ -220,6 +220,8 @@ export const es: TranslationStructure = {
         groupByProject: 'Agrupar por proyecto',
         appearanceSettings: 'Configuración de apariencia',
         worktreeTabs: ({ count }: { count: number }) => count === 1 ? '1 pestaña' : `${count} pestañas`,
+        searchPlaceholder: 'Buscar sesiones…',
+        noResultsPlaceholder: 'No se encontraron sesiones',
     },
 
     settingsFeatures: {
