@@ -82,4 +82,8 @@
     <string name="artifact_history_failed">Не удалось загрузить версии.</string>
 
     <string name="artifact_diff_since">Изменения с версии %1$s</string>
+
+    <string name="artifact_delete_title">Удалить «%1$s»?</string>
+    <string name="artifact_delete_message">Он будет удалён для всех на этом компьютере. В чатах, где он был показан, будет сказано, что он удалён.</string>
+    <string name="artifact_delete_failed">Не удалось удалить этот артефакт.</string>
 </resources>

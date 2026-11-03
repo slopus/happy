@@ -137,6 +137,33 @@ class ArtifactsTest {
         assertTrue(runCatching { gone.versions("a1") }.exceptionOrNull() is ArtifactGoneException)
     }
 
+    /** API.md `POST /v0/artifacts/:id/delete`: If-Match names the artifact's version; one that lost a race deletes the newer one. */
+    @Test fun aDeletionNamesTheVersionItDeletesAndRetriesARace() = runBlocking {
+        val matches = ArrayList<String?>()
+        var current = "v1"
+        val transport = object : Transport {
+            val asked = ArrayList<String>()
+            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
+                asked += "$method $path"
+                if (method == "GET") return json(200, """{"artifact":{"id":"a1","version":"$current","status":"active"}}""")
+                matches += headers["If-Match"]
+                // Someone else changed it first, once.
+                if (matches.size == 1) {
+                    current = "v2"
+                    return json(409, """{"error":"conflict","code":"conflict"}""")
+                }
+                return json(200, """{"artifact":{"id":"a1","version":"$current","status":"deleted"}}""")
+            }
+
+            override suspend fun close() {}
+        }
+        ArtifactClient(AgentClient(transport, "t")).delete("a1")
+        assertEquals(listOf("v1", "v2"), matches)
+        assertEquals(listOf("GET /v0/artifacts/a1", "POST /v0/artifacts/a1/delete", "GET /v0/artifacts/a1", "POST /v0/artifacts/a1/delete"), transport.asked)
+        val refused = ArtifactClient(AgentClient(Routes { path, _ -> if (path.endsWith("/delete")) json(403, """{"error":"forbidden"}""") else json(200, """{"artifact":{"version":"v1"}}""") }, "t"))
+        assertTrue(runCatching { refused.delete("a1") }.isFailure)
+    }
+
     @Test fun aServerThatIgnoresRangesAndAnEmptyFile() = runBlocking {
         val whole = ArtifactClient(AgentClient(Routes { _, _ -> TransportResponse(200, body = byteArrayOf(1, 2, 3)) }, "t"))
         assertArrayEquals(byteArrayOf(1, 2, 3), whole.bytes("a1", 1, "a.bin"))

@@ -80,4 +80,8 @@
     <string name="artifact_history_failed">No se pudieron cargar las versiones.</string>
 
     <string name="artifact_diff_since">Cambios desde la versión %1$s</string>
+
+    <string name="artifact_delete_title">¿Eliminar «%1$s»?</string>
+    <string name="artifact_delete_message">Se elimina para todos en este ordenador. Los chats que lo mostraban dirán que se eliminó.</string>
+    <string name="artifact_delete_failed">No se pudo eliminar este artefacto.</string>
 </resources>

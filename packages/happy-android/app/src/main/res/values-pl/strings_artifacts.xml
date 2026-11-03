@@ -82,4 +82,8 @@
     <string name="artifact_history_failed">Nie udało się wczytać wersji.</string>
 
     <string name="artifact_diff_since">Zmiany od wersji %1$s</string>
+
+    <string name="artifact_delete_title">Usunąć „%1$s”?</string>
+    <string name="artifact_delete_message">Zostanie usunięty dla wszystkich na tym komputerze. Czaty, w których był pokazany, poinformują, że został usunięty.</string>
+    <string name="artifact_delete_failed">Nie udało się usunąć tego artefaktu.</string>
 </resources>

@@ -51,6 +51,24 @@ open class ArtifactClient(private val client: AgentClient) {
         return answer["versions"].arr.orEmpty().mapNotNull { ArtifactVersion.parse(it.obj) } to answer["nextPageCursor"].str
     }
 
+    /**
+     * Deletes the artifact, leaving its tombstone (`POST /v0/artifacts/:id/delete`):
+     * it names the version it deletes (`If-Match`), and one that lost a race
+     * reads the newer version and deletes that. Already deleted is done.
+     */
+    open suspend fun delete(artifactId: String) {
+        val path = "/v0/artifacts/${AgentClient.escape(artifactId)}"
+        repeat(2) { attempt ->
+            val version = artifact(artifactId)["version"].str ?: throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
+            try {
+                client.send("POST", "$path/delete", JsonObject(emptyMap()), headers = mapOf("If-Match" to version))
+                return
+            } catch (e: AgentApiException) {
+                if (e.status != 409 || attempt == 1) throw e
+            }
+        }
+    }
+
     /** One artifact's catalog entry (`GET /v0/artifacts/:id`). */
     open suspend fun artifact(artifactId: String): JsonObject =
         client.decode<JsonObject>("GET", "/v0/artifacts/${AgentClient.escape(artifactId)}")["artifact"].obj

@@ -80,4 +80,8 @@
     <string name="artifact_history_failed">Não foi possível carregar as versões.</string>
 
     <string name="artifact_diff_since">Alterações desde a versão %1$s</string>
+
+    <string name="artifact_delete_title">Excluir “%1$s”?</string>
+    <string name="artifact_delete_message">Ele é excluído para todos neste computador. As conversas que o mostravam dirão que foi excluído.</string>
+    <string name="artifact_delete_failed">Não foi possível excluir este artefato.</string>
 </resources>

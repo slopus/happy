@@ -76,4 +76,8 @@
     <string name="artifact_history_failed">バージョンを読み込めませんでした。</string>
 
     <string name="artifact_diff_since">バージョン %1$s からの変更</string>
+
+    <string name="artifact_delete_title">「%1$s」を削除しますか？</string>
+    <string name="artifact_delete_message">このコンピュータのすべての人から削除されます。表示していたチャットには削除済みと表示されます。</string>
+    <string name="artifact_delete_failed">このアーティファクトを削除できませんでした。</string>
 </resources>

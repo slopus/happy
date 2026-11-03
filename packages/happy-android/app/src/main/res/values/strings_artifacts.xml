@@ -91,4 +91,9 @@
 
     <!-- A fresh Markdown artifact version opened on its diff (ui/artifacts/ArtifactScreen.kt) -->
     <string name="artifact_diff_since">Changes since version %1$s</string>
+
+    <!-- Deleting an artifact from its screen (ui/artifacts/ArtifactScreen.kt) -->
+    <string name="artifact_delete_title">Delete “%1$s”?</string>
+    <string name="artifact_delete_message">It’s deleted for everyone on this computer. Chats that showed it will say it was deleted.</string>
+    <string name="artifact_delete_failed">This artifact couldn’t be deleted.</string>
 </resources>

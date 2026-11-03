@@ -80,4 +80,8 @@
     <string name="artifact_history_failed">No s’han pogut carregar les versions.</string>
 
     <string name="artifact_diff_since">Canvis des de la versió %1$s</string>
+
+    <string name="artifact_delete_title">Vols suprimir «%1$s»?</string>
+    <string name="artifact_delete_message">Se suprimeix per a tothom en aquest ordinador. Els xats que el mostraven diran que s’ha suprimit.</string>
+    <string name="artifact_delete_failed">No s’ha pogut suprimir aquest artefacte.</string>
 </resources>

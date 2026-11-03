@@ -76,4 +76,8 @@
     <string name="artifact_history_failed">无法加载版本。</string>
 
     <string name="artifact_diff_since">自版本 %1$s 以来的更改</string>
+
+    <string name="artifact_delete_title">删除“%1$s”？</string>
+    <string name="artifact_delete_message">它将对这台电脑上的所有人删除。显示过它的聊天会注明它已被删除。</string>
+    <string name="artifact_delete_failed">无法删除此工件。</string>
 </resources>

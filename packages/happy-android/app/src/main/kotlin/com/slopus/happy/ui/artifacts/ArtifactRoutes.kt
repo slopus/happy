@@ -166,6 +166,8 @@ private fun ArtifactEntry(graph: AppGraph, nav: NavHostController, route: Artifa
                     ArtifactClient(session!!.client).bytes(route.artifactId, version.number, file.path, chunk = ArtifactClient.PROGRESS_CHUNK, progress = progress)
                 },
                 artifactKey = "artifact-${route.artifactId}",
+                // The artifact itself, not one file of it a link opened.
+                onDelete = if (route.path == null) ({ ArtifactClient(session!!.client).delete(route.artifactId) }) else null,
             )
         },
         history = rememberArtifactHistory(loader, session, nav, route, title),

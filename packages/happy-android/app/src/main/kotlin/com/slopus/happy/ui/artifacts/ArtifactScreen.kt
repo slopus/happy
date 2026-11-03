@@ -10,6 +10,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.font.FontWeight
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import com.slopus.happy.ui.diff.MarkdownDiffView
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,6 +34,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -82,6 +85,7 @@ object ArtifactTags {
     const val DIFF_BAR = "artifact.diff.bar"
     const val DIFF_TAB = "artifact.diff.tab"
     const val LATEST_TAB = "artifact.diff.latest"
+    const val DELETE = "artifact.delete"
 }
 
 /** What the artifact screen does with a tap, outside itself. */
@@ -102,6 +106,8 @@ class ArtifactActions(
     val fileReader: suspend (ArtifactFile, progress: (done: Long, total: Long) -> Unit) -> ByteArray = { _, _ -> throw IllegalStateException("no reader") },
     /** Names this artifact's staged files apart from others'. */
     val artifactKey: String = "artifact",
+    /** Deletes the artifact for everyone (desktop's Delete); null where it can't be, such as one file of it a link opened. */
+    val onDelete: (suspend () -> Unit)? = null,
 )
 
 /**
@@ -126,6 +132,9 @@ fun ArtifactScreen(
     var viewing by remember { mutableStateOf<Pair<List<ArtifactMediaItem>, Int>?>(null) }
     var missing by remember { mutableStateOf(false) }
     var versions by remember { mutableStateOf(false) }
+    var deleting by remember { mutableStateOf(DeleteStep.None) }
+    val scope = rememberCoroutineScope()
+    val named = title.ifBlank { stringResource(R.string.artifact_untitled) }
     // A page's browser buttons go in this bar, and the artifact's title stays (iOS 34aa464e1).
     val browser = rememberBrowserState()
     PlaceScaffold(
@@ -136,6 +145,15 @@ fun ArtifactScreen(
             if (ui is ArtifactUi.Page) BrowserControls(browser)
             if (history?.hasVersions == true) {
                 BarIconButton(Ionicon.TimeOutline, stringResource(R.string.artifact_history), { versions = true }, Modifier.testTag(ArtifactHistoryTags.ACTION))
+            }
+            // A deleted or unreadable one has nothing left to delete.
+            if (actions.onDelete != null && ui !is ArtifactUi.Message && ui != ArtifactUi.Loading) {
+                BarIconButton(
+                    Ionicon.TrashOutline,
+                    stringResource(R.string.common_delete),
+                    { if (deleting != DeleteStep.Running) deleting = DeleteStep.Asking },
+                    Modifier.testTag(ArtifactTags.DELETE),
+                )
             }
         },
     ) {
@@ -172,6 +190,41 @@ fun ArtifactScreen(
     if (versions && history != null) ArtifactHistorySheet(history) { versions = false }
     val shown = viewing
     if (shown != null && media != null) ArtifactViewer(shown.first, shown.second, media) { viewing = null }
+    val delete = actions.onDelete
+    when (deleting) {
+        DeleteStep.Asking -> if (delete != null) {
+            HappyAlert(
+                Alert(
+                    stringResource(R.string.artifact_delete_title, named),
+                    stringResource(R.string.artifact_delete_message),
+                    listOf(
+                        AlertButton(stringResource(R.string.common_cancel)) { deleting = DeleteStep.None },
+                        AlertButton(stringResource(R.string.common_delete), destructive = true) {
+                            deleting = DeleteStep.Running
+                            scope.launch {
+                                deleting = try {
+                                    delete()
+                                    // Gone: the screen goes with it.
+                                    actions.onBack()
+                                    DeleteStep.None
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (_: Exception) {
+                                    DeleteStep.Failed
+                                }
+                            }
+                        },
+                    ),
+                ),
+                onDismiss = { deleting = DeleteStep.None },
+            )
+        }
+        DeleteStep.Failed -> HappyAlert(
+            Alert(stringResource(R.string.artifact_delete_failed), null, listOf(AlertButton(stringResource(R.string.common_ok)))),
+            onDismiss = { deleting = DeleteStep.None },
+        )
+        DeleteStep.None, DeleteStep.Running -> Unit
+    }
     if (missing) {
         val ok = stringResource(R.string.common_ok)
         HappyAlert(Alert(stringResource(R.string.artifact_file_unavailable), null, listOf(AlertButton(ok))), onDismiss = { missing = false })
@@ -343,3 +396,6 @@ private fun ArtifactOpenable(file: ArtifactFile, actions: ArtifactActions) {
         }
     }
 }
+
+/** Where deleting the artifact is: asked, under way, or failed and saying so. */
+private enum class DeleteStep { None, Asking, Running, Failed }

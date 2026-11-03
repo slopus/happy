@@ -16,6 +16,10 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.performFirstLinkClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
@@ -256,6 +260,41 @@ class ArtifactScreensTest {
         rule.onNodeWithText("Version 1").performClick()
         rule.waitUntil(3_000) { picked.isNotEmpty() }
         assertEquals(listOf(1), picked)
+    }
+
+    /** Desktop's Delete: asked by name first; done, the screen goes; refused, it says so and stays. */
+    @Test fun deletingAsksByNameThenLeavesOrSaysWhyNot() {
+        var deletes = 0
+        var fail = false
+        var backs = 0
+        val doc = ArtifactUi.Document("index.md", com.slopus.happy.chat.markdown.parseMarkdown("# Plan"), emptyMap(), emptyList())
+        val actions = ArtifactActions(onBack = { backs++ }, onDelete = {
+            deletes++
+            if (fail) throw IllegalStateException("refused")
+        })
+        rule.setHappyContent { ArtifactScreen("Launch plan", doc, null, "Studio", actions) }
+        rule.node(ArtifactTags.DELETE).performClick()
+        rule.onNodeWithText("Delete “Launch plan”?").assertExists()
+        rule.onNodeWithText("Cancel").performClick()
+        rule.waitForIdle()
+        assertEquals(0, deletes)
+        fail = true
+        rule.node(ArtifactTags.DELETE).performClick()
+        rule.onNode(hasText("Delete") and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
+        rule.waitUntil(3_000) { rule.onAllNodesWithText("This artifact couldn’t be deleted.").fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(1, deletes)
+        assertEquals(0, backs)
+        rule.onNodeWithText("OK").performClick()
+        fail = false
+        rule.node(ArtifactTags.DELETE).performClick()
+        rule.onNode(hasText("Delete") and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
+        rule.waitUntil(3_000) { backs == 1 }
+        assertEquals(2, deletes)
+    }
+
+    @Test fun aDeletedArtifactOrOneFileOfItHasNoDelete() {
+        rule.setHappyContent { ArtifactScreen("Plan", ArtifactUi.Message(deleted = true), null, "Studio", ArtifactActions(onBack = {}, onDelete = {})) }
+        rule.node(ArtifactTags.DELETE).assertDoesNotExist()
     }
 
     @Test fun theLatestVersionHasNoBannerAndOneVersionNoHistory() {
