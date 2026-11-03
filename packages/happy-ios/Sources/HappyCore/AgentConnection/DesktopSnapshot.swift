@@ -108,6 +108,22 @@ public struct DesktopSnapshot: Codable, Equatable, Sendable {
         public var type: String
         public var members: [Member]
         public var chatAgentId: String?
+        /// Its picture's ThumbHash, read at `/v0/surfaces/<id>/image`; nil
+        /// while it has none.
+        public var image: AgentWire.Avatar?
+
+        enum CodingKeys: String, CodingKey { case id, name, type, members, chatAgentId, image }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            id = try container.decode(String.self, forKey: .id)
+            name = try container.decode(String.self, forKey: .name)
+            type = try container.decode(String.self, forKey: .type)
+            members = try container.decode([Member].self, forKey: .members)
+            chatAgentId = try container.decodeIfPresent(String.self, forKey: .chatAgentId)
+            // A picture it can't read is none, never a lost bootstrap.
+            image = try? container.decodeIfPresent(AgentWire.Avatar.self, forKey: .image)
+        }
     }
 
     public var projects: [Project]
@@ -121,7 +137,29 @@ public struct DesktopSnapshot: Codable, Equatable, Sendable {
     /// How many Feed entries the person has not looked at; nil from a
     /// daemon without the Feed, and for a guest.
     public var feedUnread: Int?
+    /// The most recently archived agents of the projects and workspaces
+    /// listed, which the Feed names as actors; one it can't read is left out.
+    public var archivedAgents: [AgentWire.Agent]?
     public var cursor: String
+
+    enum CodingKeys: String, CodingKey {
+        case projects, workspaces, bots, tasks, taskMemberships, surfaces, profile, userSettings, feedUnread, archivedAgents, cursor
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        projects = try container.decode([Project].self, forKey: .projects)
+        workspaces = try container.decode([Workspace].self, forKey: .workspaces)
+        bots = try container.decodeIfPresent([Owner].self, forKey: .bots)
+        tasks = try container.decodeIfPresent([Owner].self, forKey: .tasks)
+        taskMemberships = try container.decodeIfPresent([Membership].self, forKey: .taskMemberships)
+        surfaces = try container.decodeIfPresent([Surface].self, forKey: .surfaces)
+        profile = try container.decodeIfPresent(Profile.self, forKey: .profile)
+        userSettings = try container.decodeIfPresent([UserSetting].self, forKey: .userSettings)
+        feedUnread = try container.decodeIfPresent(Int.self, forKey: .feedUnread)
+        archivedAgents = (try? container.decodeIfPresent([Lossy<AgentWire.Agent>].self, forKey: .archivedAgents))?.compactMap(\.value)
+        cursor = try container.decode(String.self, forKey: .cursor)
+    }
 }
 
 public enum DesktopSettingKeys {

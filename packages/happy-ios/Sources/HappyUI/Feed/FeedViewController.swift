@@ -14,7 +14,11 @@ import UIKit
 ///
 /// The entries are the engine's (`FeedLibrary`), kept on the phone and
 /// followed through its events, so the screen opens on what it last
-/// showed. Following and peeking ask the computer, as on desktop.
+/// showed. They are references only: every row is joined, off the main
+/// thread, with the account's directory (`SyncEngine.feedDirectories`),
+/// so a task renamed or a picture changed redraws exactly the rows that
+/// show it, and an entry whose subject isn't synced isn't shown.
+/// Following and peeking ask the computer, as on desktop.
 final class FeedViewController: UIViewController {
     private let session: Session
     private let feed: FeedLibrary
@@ -29,13 +33,13 @@ final class FeedViewController: UIViewController {
     }()
     private var pipeline: ApplyPipeline<FeedListInput, Applied, Output>?
     private var clustersPipeline: ApplyPipeline<FeedClustersInput, Applied, ClustersOutput>?
-    private var homeWatch: Watch?
-    /// Home's faces as the list last took them.
-    private var shownHome = FeedHome()
     private var watching: Task<Void, Never>?
     private var reading: Task<Void, Never>?
-    /// What the rows on screen show, by ID.
+    /// The entries the rows on screen show, and the rows, by ID.
     private(set) var entries: [String: FeedItem] = [:]
+    private(set) var rows: [String: FeedRow] = [:]
+    /// The places Following names, by cluster.
+    private var places: [String: FeedPlace] = [:]
     private var faces: [String: FeedFace] = [:]
     private var lastEntryId: String?
     private var hasMore = false
@@ -60,6 +64,7 @@ final class FeedViewController: UIViewController {
         var items: [CardItem]
         var faces: [String: FeedFace]
         var entries: [String: FeedItem]
+        var rows: [String: FeedRow]
         var lastEntryId: String?
         var unread: Int
         var hasMore: Bool
@@ -72,6 +77,7 @@ final class FeedViewController: UIViewController {
     struct ClustersOutput: Sendable {
         var items: [CardItem]
         var faces: [String: FeedFace]
+        var places: [String: FeedPlace]
         var width: CGFloat
         var replan: @Sendable (CGFloat) -> [CardItem]
     }
@@ -118,8 +124,10 @@ final class FeedViewController: UIViewController {
         setUpBar()
 
         let words = Strings.Feed.words
+        var input = FeedListInput(words: words, dates: .current)
+        input.personSeed = session.personSeed
         let pipeline = ApplyPipeline<FeedListInput, Applied, Output>(
-            input: FeedListInput(words: words, dates: .current),
+            input: input,
             state: Applied(),
             derive: { input, applied in Self.derive(input, applied: applied) },
             apply: { [weak self] output in self?.show(output) ?? false }
@@ -132,22 +140,25 @@ final class FeedViewController: UIViewController {
             apply: { [weak self] output in self?.show(output) ?? false }
         )
         updateInput()
-        watching = Task { [feed, weak pipeline] in
+        watching = Task { [feed, engine = session.engine, weak pipeline, weak clustersPipeline] in
             let states = await feed.states()
             pipeline?.follow(ifChanged: states) { input, state in
                 guard input.state != state else { return false }
                 input.state = state
                 return true
             }
+            // One directory per account; each list joins its own rows with it.
+            pipeline?.follow(ifChanged: await engine.feedDirectories()) { input, directory in
+                guard input.directory != directory else { return false }
+                input.directory = directory
+                return true
+            }
+            clustersPipeline?.follow(ifChanged: await engine.feedDirectories()) { input, directory in
+                guard input.directory != directory else { return false }
+                input.directory = directory
+                return true
+            }
             await feed.refresh()
-        }
-        homeWatch = session.watchHome { [weak self] home in
-            guard let self else { return }
-            let next = FeedHome(home, personSeed: session.personSeed)
-            guard next != shownHome else { return }
-            shownHome = next
-            self.pipeline?.update { $0.home = next }
-            self.clustersPipeline?.update { $0.home = next }
         }
         registerForTraitChanges(UIView.textSizeTraits + [UITraitUserInterfaceStyle.self, UITraitDisplayScale.self]) { (self: Self, _) in
             self.updateInput()
@@ -189,6 +200,7 @@ final class FeedViewController: UIViewController {
     private func updateInput() {
         let width = activity.contentWidth
         let maxWidth = ContentWidth.maxWidth
+        let personSeed = session.personSeed
         let scale = traitCollection.textEnvironment?.scale.multiplier ?? 1
         let displayScale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 2
         let dark = traitCollection.userInterfaceStyle == .dark
@@ -204,6 +216,7 @@ final class FeedViewController: UIViewController {
             input.words = words
             input.dates = dates
             input.now = Date()
+            input.personSeed = personSeed
         }
         clustersPipeline?.update { input in
             input.width = width
@@ -228,6 +241,7 @@ final class FeedViewController: UIViewController {
         guard !unchanged else { return nil }
         var entries: [String: FeedItem] = [:]
         for entry in input.state.items { entries[entry.id] = entry }
+        let rows = Dictionary(next.rows.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let state = Applied(items: Dictionary(items.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first }), order: order, counter: counter, refreshing: refreshing)
         let replan: @Sendable (CGFloat) -> [CardItem] = { width in
             var input = input
@@ -235,7 +249,7 @@ final class FeedViewController: UIViewController {
             return FeedListItems.items(input).items
         }
         let output = Output(
-            items: items, faces: next.faces, entries: entries, lastEntryId: input.state.items.last?.id,
+            items: items, faces: next.faces, entries: entries, rows: rows, lastEntryId: input.state.items.last?.id,
             unread: input.state.unread, hasMore: input.state.hasMore, loadingMore: input.state.loadingMore,
             width: input.width, refreshing: refreshing, replan: replan
         )
@@ -254,12 +268,15 @@ final class FeedViewController: UIViewController {
             input.width = width
             return FeedClusterItems.items(input).items
         }
-        return (ClustersOutput(items: items, faces: next.faces, width: input.width, replan: replan), state)
+        var places: [String: FeedPlace] = [:]
+        for cluster in input.clusters { places[cluster.cluster] = FeedPlace(cluster, directory: input.directory) }
+        return (ClustersOutput(items: items, faces: next.faces, places: places, width: input.width, replan: replan), state)
     }
 
     private func show(_ output: Output) -> Bool {
         guard output.width == activity.contentWidth else { return false }
         entries = output.entries
+        rows = output.rows
         faces.merge(output.faces) { _, new in new }
         lastEntryId = output.lastEntryId
         hasMore = output.hasMore
@@ -276,6 +293,7 @@ final class FeedViewController: UIViewController {
 
     private func show(_ output: ClustersOutput) -> Bool {
         guard output.width == following.contentWidth else { return false }
+        places = output.places
         clusterFaces.merge(output.faces) { _, new in new }
         following.apply(output.items, animated: true, replan: output.replan)
         return true
@@ -301,9 +319,9 @@ final class FeedViewController: UIViewController {
     }
 
     private func open(_ id: String) {
-        guard let entry = entries[id] else { return }
+        guard let entry = entries[id], let row = rows[id] else { return }
         Task { [feed] in await feed.open(entry) }
-        FeedOpening.open(entry, session: session, from: self)
+        FeedOpening.open(row, session: session, from: self)
     }
 
     private func makeFace(_ overlay: CardOverlay, faces: [String: FeedFace]) -> UIView? {
@@ -342,6 +360,7 @@ final class FeedViewController: UIViewController {
             case .success(let clusters):
                 clustersRead = true
                 showClusters(clusters, error: nil)
+                Task { [engine = session.engine] in await engine.feedPlacesShown(clusters) }
             case .failure(let error):
                 showClusters(clusterList, error: clustersRead && !clusterList.isEmpty ? nil : String(describing: error))
             }
@@ -366,7 +385,7 @@ final class FeedViewController: UIViewController {
             let everything = clusters["*"]?.state
             toggle.isOn = FeedClusterItems.following(cluster, everything: everything)
             toggle.isEnabled = !pending.contains(id)
-            toggle.accessibilityLabel = Strings.Feed.words.follow(cluster.name)
+            toggle.accessibilityLabel = Strings.Feed.words.follow(name(id))
             toggle.accessibilityIdentifier = "feed-follow:\(id)"
             toggle.addAction(UIAction { [weak self, weak toggle] _ in
                 guard let toggle else { return }
@@ -382,7 +401,7 @@ final class FeedViewController: UIViewController {
         guard let cluster = clusters[id], !pending.contains(id) else { return [] }
         let follows = FeedClusterItems.following(cluster, everything: clusters["*"]?.state)
         let words = Strings.Feed.words
-        return [UIAccessibilityCustomAction(name: follows ? words.mute(cluster.name) : words.follow(cluster.name)) { [weak self] _ in
+        return [UIAccessibilityCustomAction(name: follows ? words.mute(name(id)) : words.follow(name(id))) { [weak self] _ in
             self?.follow(id, !follows)
             return true
         }]
@@ -416,32 +435,37 @@ final class FeedViewController: UIViewController {
         return error.localizedDescription
     }
 
+    /// What a listed place is called, as its row says it.
+    private func name(_ id: String) -> String {
+        places[id].map { Strings.Feed.words.name($0.name) } ?? ""
+    }
+
     private func peek(_ id: String) {
-        guard let cluster = clusters[id] else { return }
-        navigationController?.pushViewController(FeedPeekViewController(session: session, cluster: cluster), animated: true)
+        guard let cluster = clusters[id], let place = places[id] else { return }
+        navigationController?.pushViewController(FeedPeekViewController(session: session, cluster: cluster, place: place), animated: true)
     }
 }
 
 /// A place's newest entries, as Following peeks at them: the same rows as
-/// the feed's, without the dot, read from the computer each time.
+/// the feed's, without the dot, read from the computer each time and
+/// joined with the same directory, which the place's name follows too.
 final class FeedPeekViewController: UIViewController {
     private let session: Session
     private let feed: FeedLibrary
     private let cluster: FeedCluster
     let list = CardListView()
     private var pipeline: ApplyPipeline<FeedListInput, FeedViewController.Applied, FeedViewController.Output>?
-    private var homeWatch: Watch?
-    private var shownHome = FeedHome()
     private var reading: Task<Void, Never>?
-    private var entries: [String: FeedItem] = [:]
+    private var naming: Task<Void, Never>?
+    private var rows: [String: FeedRow] = [:]
     private var faces: [String: FeedFace] = [:]
 
-    init(session: Session, cluster: FeedCluster) {
+    init(session: Session, cluster: FeedCluster, place: FeedPlace) {
         self.session = session
         feed = session.engine.feed
         self.cluster = cluster
         super.init(nibName: nil, bundle: nil)
-        title = cluster.name.isEmpty ? Strings.Feed.words.untitled : cluster.name
+        title = Strings.Feed.words.name(place.name)
         navigationItem.largeTitleDisplayMode = .never
     }
 
@@ -449,7 +473,10 @@ final class FeedPeekViewController: UIViewController {
 
     deinit {
         reading?.cancel()
+        naming?.cancel()
         pipeline?.cancel()
+        // Its entries no longer name anything worth looking up.
+        Task { [engine = session.engine] in await engine.feedPeeking([]) }
     }
 
     override func viewDidLoad() {
@@ -468,18 +495,28 @@ final class FeedPeekViewController: UIViewController {
         }
         var input = FeedListInput(words: Strings.Feed.words, dates: .current)
         input.peek = true
-        pipeline = ApplyPipeline<FeedListInput, FeedViewController.Applied, FeedViewController.Output>(
+        input.personSeed = session.personSeed
+        let pipeline = ApplyPipeline<FeedListInput, FeedViewController.Applied, FeedViewController.Output>(
             input: input,
             state: FeedViewController.Applied(),
             derive: { input, applied in FeedViewController.derive(input, applied: applied) },
             apply: { [weak self] output in self?.show(output) ?? false }
         )
-        homeWatch = session.watchHome { [weak self] home in
-            guard let self else { return }
-            let next = FeedHome(home, personSeed: session.personSeed)
-            guard next != shownHome else { return }
-            shownHome = next
-            pipeline?.update { $0.home = next }
+        self.pipeline = pipeline
+        let cluster = cluster
+        naming = Task { [weak self, weak pipeline, engine = session.engine] in
+            let directories = await engine.feedDirectories()
+            pipeline?.follow(ifChanged: directories) { input, directory in
+                guard input.directory != directory else { return false }
+                input.directory = directory
+                return true
+            }
+            // The place's own name, as it is now.
+            for await directory in await engine.feedDirectories() {
+                guard let self, let place = FeedPlace(cluster, directory: directory) else { continue }
+                let name = Strings.Feed.words.name(place.name)
+                if title != name { title = name }
+            }
         }
         registerForTraitChanges(UIView.textSizeTraits + [UITraitUserInterfaceStyle.self, UITraitDisplayScale.self]) { (self: Self, _) in
             self.updateInput()
@@ -523,6 +560,9 @@ final class FeedPeekViewController: UIViewController {
             do { result = .success(try await feed.peek(cluster.cluster)) } catch { result = .failure(error) }
             guard !Task.isCancelled, let self else { return }
             list.refreshing = false
+            if case .success(let peek) = result {
+                Task { [engine = session.engine] in await engine.feedPeeking(peek.entries) }
+            }
             pipeline?.update { input in
                 input.state.loaded = true
                 input.state.available = true
@@ -539,45 +579,41 @@ final class FeedPeekViewController: UIViewController {
 
     private func show(_ output: FeedViewController.Output) -> Bool {
         guard output.width == list.contentWidth else { return false }
-        entries = output.entries
+        rows = output.rows
         faces.merge(output.faces) { _, new in new }
         list.apply(output.items, animated: true, replan: output.replan)
         return true
     }
 
     private func open(_ id: String) {
-        guard let entry = entries[id] else { return }
-        FeedOpening.open(entry, session: session, from: self)
+        guard let row = rows[id] else { return }
+        FeedOpening.open(row, session: session, from: self)
     }
 }
 
 /// Where a Feed entry goes when it is opened: a task's or a bot's chat, a
-/// Surface's screen, an artifact's viewer. Chats count themselves read,
-/// which counts them seen; Surfaces and artifacts tell the Feed they were
-/// opened (`SurfaceScreens`, `ArtifactViewController`).
+/// Surface's screen, an artifact's viewer, as its row resolved them from
+/// the directory. Chats count themselves read, which counts them seen;
+/// Surfaces and artifacts tell the Feed they were opened (`SurfaceScreens`,
+/// `ArtifactViewController`).
 @MainActor
 enum FeedOpening {
-    static func open(_ entry: FeedItem, session: Session, from controller: UIViewController) {
-        guard let next = screen(entry, session: session) else { return }
+    static func open(_ row: FeedRow, session: Session, from controller: UIViewController) {
+        guard let next = screen(row, session: session) else { return }
         controller.navigationController?.pushViewController(next, animated: true)
     }
 
-    static func screen(_ entry: FeedItem, session: Session) -> UIViewController? {
-        let subject = entry.subject
-        let title = entry.snapshot.title
-        switch subject.type {
-        case "task", "bot":
-            let row = session.home.allRows.first { $0.targetKind == subject.type && $0.targetId == subject.id }
-            guard let agentId = row?.agentId ?? entry.snapshot.agentId else { return nil }
+    static func screen(_ row: FeedRow, session: Session) -> UIViewController? {
+        switch row.target {
+        case .chat(let agentId, let title):
+            let home = session.home.allRows.first { $0.agentId == agentId && $0.kind == .space }
             session.warm.tap(agentId)
-            return ChatViewController(session: session, agentId: agentId, title: row?.label ?? title, spaceId: row?.spaceId, intro: nil)
-        case "surface":
-            let surface = AgentWire.Surface(id: subject.id, type: entry.snapshot.surfaceType ?? "", name: title)
+            return ChatViewController(session: session, agentId: agentId, title: title, spaceId: home?.spaceId, intro: nil)
+        case .surface(let surface):
             return SurfaceScreens.make(session: session, surface: surface)
-        case "artifact":
-            let artifact = Artifact(id: subject.id, version: entry.snapshot.artifactVersion ?? 0, type: entry.snapshot.artifactType ?? "", title: title, followsLatest: true)
+        case .artifact(let artifact):
             return ArtifactViewController(session: session, artifact: artifact)
-        default:
+        case nil:
             return nil
         }
     }

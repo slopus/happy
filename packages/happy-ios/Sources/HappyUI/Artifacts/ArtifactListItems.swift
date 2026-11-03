@@ -47,13 +47,15 @@ enum ArtifactListItems {
     nonisolated static func items(_ input: ArtifactListInput) -> [CardItem] {
         guard input.width > 0 else { return [] }
         let state = input.state
-        let shown = ArtifactCatalog.matching(input.query, in: state.items) { Strings.Artifacts.kind($0) }
+        // Tombstones are the Feed's, which still names them.
+        let live = state.items.filter { !$0.deleted }
+        let shown = ArtifactCatalog.matching(input.query, in: live) { Strings.Artifacts.kind($0) }
         func note(_ text: String) -> [CardItem] {
             [CardItems.note("artifacts:note", text, width: input.width, maxWidth: input.maxWidth, scale: input.scale, dark: input.dark, displayScale: input.displayScale)]
         }
         if shown.isEmpty {
             if state.unsupported { return note(Strings.Artifacts.unsupported) }
-            if !state.items.isEmpty { return note(Strings.Artifacts.noMatches) }
+            if !live.isEmpty { return note(Strings.Artifacts.noMatches) }
             if state.error != nil { return note(Strings.Artifacts.unavailable) }
             if !state.loaded { return note(Strings.Artifacts.loading) }
             return note(Strings.Artifacts.empty)

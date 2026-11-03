@@ -78,11 +78,10 @@ actor FakeFeedServer: FeedRoutes {
 
     func peekFeedCluster(_ cluster: String, limit: Int) async throws -> FeedPeek {
         try reachable()
-        let found = clusters.first { $0.cluster == cluster } ?? FeedCluster(cluster: cluster, kind: "team", name: "")
+        let found = clusters.first { $0.cluster == cluster } ?? FeedCluster(cluster: cluster, kind: "team")
         return FeedPeek(cluster: found, entries: items.filter { $0.cluster == cluster })
     }
 
-    func teamUsers(_ ids: [String]) async throws -> [TeamUser] { ids.map { TeamUser(id: $0, name: "Person \($0)") } }
 }
 
 /// What the Feed keeps between launches, as the account's checkpoints do;
@@ -98,12 +97,12 @@ final class FeedLibraryTests: XCTestCase {
     /// UUIDv7-like cursors that sort as text, newest greatest.
     private static func cursor(_ n: Int) -> String { String(format: "0199%08x-0000-7000-8000-000000000000", n) }
 
-    private static func item(_ n: Int, subject: String = "task", id: String? = nil, version: Int = 1, open: Bool = true, actors: [FeedActor] = [], detail: String? = nil) -> FeedItem {
+    private static func item(_ n: Int, subject: String = "task", id: String? = nil, version: Int = 1, open: Bool = true, actors: [FeedActor] = [], updates: Int = 0) -> FeedItem {
         FeedItem(
             id: "item\(n)", version: String(format: "v%04d", version), cursor: cursor(n),
             subject: FeedSubject(type: subject, id: id ?? "\(subject)\(n)"), cluster: "team",
-            created: true, updates: 0, actors: actors,
-            snapshot: FeedSnapshot(title: "Entry \(n)", detail: detail),
+            created: true, updates: updates, actors: actors,
+            latest: FeedLatest(type: "\(subject).created"),
             firstAt: Double(n) * 1000, lastAt: Double(n) * 1000, seenAt: open ? nil : 5
         )
     }
@@ -208,17 +207,17 @@ final class FeedLibraryTests: XCTestCase {
         await connect(account, unread: 2, cursor: Self.cursor(2))
         try await eventually { await account.library.current.items.count == 2 }
 
-        var newer = Self.item(1, version: 2, detail: "Edited")
+        var newer = Self.item(1, version: 2, updates: 4)
         newer.cursor = Self.cursor(5)
         await account.library.receive(Self.event("feed.item.updated", cursor: 5, ["item": Self.json(newer)]))
         var state = await account.library.current
         XCTAssertEqual(state.items.map(\.id), ["item1", "item2"], "a newer change moves its entry to the top")
-        XCTAssertEqual(state.items.first?.snapshot.detail, "Edited")
+        XCTAssertEqual(state.items.first?.updates, 4)
 
-        let stale = Self.item(1, version: 1, detail: "Old")
+        let stale = Self.item(1, version: 1, updates: 1)
         await account.library.receive(Self.event("feed.item.updated", cursor: 6, ["item": Self.json(stale)]))
         state = await account.library.current
-        XCTAssertEqual(state.items.first?.snapshot.detail, "Edited", "the greater version wins")
+        XCTAssertEqual(state.items.first?.updates, 4, "the greater version wins")
 
         await account.library.receive(Self.event("feed.item.created", cursor: 7, ["item": Self.json(Self.item(7))]))
         await account.library.receive(Self.event("feed.item.removed", cursor: 8, ["itemId": .string("item2")]))
@@ -349,15 +348,6 @@ final class FeedLibraryTests: XCTestCase {
         await account.library.receive(Self.event("feed.item.updated", cursor: 2, ["item": Self.json(Self.item(1))]))
         let after = await keep.writes
         XCTAssertEqual(after, writes)
-    }
-
-    /// The people entries credit are read once, and kept with them.
-    func testThePeopleCreditedAreRead() async throws {
-        let server = FakeFeedServer()
-        await server.seed([Self.item(1, actors: [FeedActor(userId: "u1"), FeedActor(agentId: "ag1")])])
-        let account = await launch(server, keep: MemoryFeedKeep())
-        await connect(account, unread: 1)
-        try await eventually { await account.library.current.people["u1"]?.name == "Person u1" }
     }
 
     /// Paging reads older than the last entry held and appends it.

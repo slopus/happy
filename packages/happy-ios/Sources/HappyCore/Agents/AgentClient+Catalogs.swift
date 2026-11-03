@@ -7,7 +7,7 @@ import HappyWire
 extension AgentClient {
     /// One page of the catalog, newest created first, at most `limit` long.
     public func artifacts(pageCursor: String?, limit: Int) async throws -> JSONValue {
-        var query = ["limit=\(limit)"]
+        var query = ["limit=\(limit)", "includeDeleted=true"]
         if let pageCursor { query.append("pageCursor=\(Self.escape(pageCursor))") }
         return try await decode(JSONValue.self, "GET", "/v0/artifacts?" + query.joined(separator: "&"))
     }

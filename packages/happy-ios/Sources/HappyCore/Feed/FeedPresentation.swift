@@ -2,17 +2,18 @@ import Foundation
 import HappyWire
 
 /// What a Feed entry is about, as far as its glyph and its changes' noun
-/// go (desktop's `feedSubjectKind`).
+/// go (desktop's `feedSubjectKind`): its subject's type and, for a
+/// Surface, the type the directory says it is.
 public enum FeedSubjectKind: String, Equatable, Hashable, Sendable {
     case task, bot, artifact, document, todoList, calendar, surface, unknown
 
-    public init(_ item: FeedItem) {
-        switch item.subject.type {
+    public init(subject: String, surfaceType: String? = nil) {
+        switch subject {
         case "task": self = .task
         case "bot": self = .bot
         case "artifact": self = .artifact
         case "surface":
-            switch item.snapshot.surfaceType {
+            switch surfaceType {
             case "todo": self = .todoList
             case "document": self = .document
             case "calendar": self = .calendar
@@ -31,105 +32,6 @@ public enum FeedFace: Equatable, Sendable {
     case tile(FeedSubjectKind, artifactType: String?)
     /// A cluster with no face of its own: its kind's glyph.
     case clusterTile(String)
-}
-
-/// Where the Feed finds faces and names: home's rows (bots, tasks and
-/// their agents, projects), the person themselves, and the people the
-/// entries credit. Pure and `Sendable`, so a derivation off the main
-/// thread reads it.
-public struct FeedFaces: Equatable, Sendable {
-    /// Marks by `bot:<id>`, `task:<id>`, `agent:<agentId>`, `project:<id>`.
-    var marks: [String: Row.Mark] = [:]
-    /// Agents' names by agent ID: their bot's, task's or chat's.
-    var agentNames: [String: String] = [:]
-    var userId: String?
-    var photo: String?
-    var personSeed: String
-    var people: [String: TeamUser]
-
-    /// `rows` as home lists them, the person's team user and picture's
-    /// ThumbHash, their placeholder's seed (`Session.personSeed`), and the
-    /// people the Feed has read.
-    public init(rows: [Row], userId: String?, photo: String?, personSeed: String, people: [String: TeamUser]) {
-        for row in rows {
-            switch row.targetKind {
-            case "bot", "task":
-                guard let id = row.targetId, let kind = row.targetKind else { continue }
-                marks["\(kind):\(id)"] = row.mark
-                if let agentId = row.agentId {
-                    marks["agent:\(agentId)"] = row.mark
-                    agentNames[agentId] = row.label
-                }
-            case "project":
-                if row.id.hasPrefix("project:") { marks[row.id] = row.mark }
-            default:
-                if let agentId = row.agentId, row.kind == .session, agentNames[agentId] == nil { agentNames[agentId] = row.label }
-            }
-        }
-        self.userId = userId
-        self.photo = photo
-        self.personSeed = personSeed
-        self.people = people
-    }
-
-    /// A subject's own avatar: a bot's face, a task's (its owner's in a
-    /// team), else its kind's glyph.
-    public func subject(_ item: FeedItem) -> FeedFace {
-        let id = item.subject.id
-        switch item.subject.type {
-        case "bot", "task":
-            let mark = marks["\(item.subject.type):\(id)"] ?? .placeholder(seed: id)
-            return .mark(mark == .none ? .placeholder(seed: id) : mark, round: false)
-        default:
-            return .tile(FeedSubjectKind(item), artifactType: item.snapshot.artifactType)
-        }
-    }
-
-    /// Who made a change: an agent wears its bot's or task's face, a
-    /// person their picture or their placeholder, round.
-    public func actor(_ actor: FeedActor) -> FeedFace {
-        if let agentId = actor.agentId {
-            let mark = marks["agent:\(agentId)"] ?? .placeholder(seed: agentId)
-            return .mark(mark == .none ? .placeholder(seed: agentId) : mark, round: false)
-        }
-        if let id = actor.userId {
-            if id == userId {
-                return .mark(photo.map { .image(path: TeamUser.photoPath(id), thumbhash: $0) } ?? .placeholder(seed: id), round: true)
-            }
-            let photo = people[id]?.photo
-            return .mark(photo.map { .image(path: TeamUser.photoPath(id), thumbhash: $0.thumbhash) } ?? .placeholder(seed: id), round: true)
-        }
-        // Standalone: the installation's one person, who is reading.
-        return .mark(photo.map { .image(path: "/v0/profile/photo", thumbhash: $0) } ?? .placeholder(seed: personSeed), round: true)
-    }
-
-    /// What `actor` is called, for VoiceOver: a stand-in where nobody
-    /// knows yet.
-    public func name(_ actor: FeedActor, words: FeedWords) -> String {
-        if let agentId = actor.agentId { return agentNames[agentId] ?? words.anAgent }
-        if let id = actor.userId {
-            if id == userId { return words.you }
-            return people[id].map(\.name).flatMap { $0.isEmpty ? nil : $0 } ?? words.aPerson
-        }
-        return words.you
-    }
-
-    /// A place's avatar in Following: its bot's, task's or project's face,
-    /// else its kind's glyph.
-    public func cluster(_ cluster: FeedCluster) -> FeedFace {
-        if let id = cluster.placeId {
-            switch cluster.kind {
-            case "bot", "task":
-                if let mark = marks["\(cluster.kind):\(id)"], mark != .none { return .mark(mark, round: false) }
-                return .mark(.placeholder(seed: id), round: false)
-            case "project":
-                if let mark = marks["project:\(id)"], mark != .none { return .mark(mark, round: false) }
-            default:
-                break
-            }
-        }
-        return .clusterTile(cluster.kind)
-    }
 }
 
 /// The Feed's words in one language, read from its catalog's own keys
@@ -201,10 +103,26 @@ public struct FeedWords: Equatable, Sendable {
     public var peekEmpty: String { word("peekEmpty", "Nothing has happened here in the last 30 days.") }
     public var unreadMark: String { word("unreadMark", "Unread") }
     public var you: String { word("you", "You") }
-    public var anAgent: String { word("anAgent", "An agent") }
-    public var aPerson: String { word("aPerson", "A person") }
-    public var untitled: String { word("untitled", "Untitled") }
+    /// The places that are no one thing: everything, and the team.
+    public var everything: String { word("everything", "Everything") }
+    public var team: String { word("team", "Team") }
     public var muted: String { word("muted", "Muted") }
+
+    /// What a place in Following is called.
+    public func name(_ name: FeedPlace.Name) -> String {
+        switch name {
+        case .everything: everything
+        case .team: team
+        case .named(let name): name
+        }
+    }
+
+    public func name(_ name: FeedActorName) -> String {
+        switch name {
+        case .you: you
+        case .named(let name): name
+        }
+    }
 
     public func follow(_ name: String) -> String { word("follow", ["name": .text(name)], "Follow \(name)") }
     public func mute(_ name: String) -> String { word("mute", ["name": .text(name)], "Mute \(name)") }
@@ -229,16 +147,18 @@ public struct FeedWords: Equatable, Sendable {
         return changes.isEmpty ? word("changed", "Changed") : changes
     }
 
-    /// An entry's second line: the newest change's own words where it has
-    /// them (a new todo's text), else what happened.
-    public func summary(_ item: FeedItem) -> String {
-        if let detail = item.snapshot.detail?.trimmingCharacters(in: .whitespacesAndNewlines), !detail.isEmpty {
-            return detail.replacingOccurrences(of: "\n", with: " ")
-        }
-        return activity(created: item.created, updates: item.updates, kind: FeedSubjectKind(item))
+    /// A row's second line: the newest change's own words where it has
+    /// them (a new todo's text, as the todo reads now), else what happened.
+    public func summary(_ row: FeedRow) -> String {
+        row.detail ?? activity(created: row.created, updates: row.updates, kind: row.kind)
     }
 
-    /// Who acted, for VoiceOver: one or two names in full, then how many more.
+    /// Who acted, for VoiceOver: one or two names in full, then how many
+    /// more, counting those not known by name yet.
+    public func actors(named names: [FeedActorName], count: Int) -> String {
+        actors(names.map(name), count: count)
+    }
+
     public func actors(_ names: [String], count: Int) -> String {
         let total = max(count, names.count)
         guard let first = names.first else { return "" }

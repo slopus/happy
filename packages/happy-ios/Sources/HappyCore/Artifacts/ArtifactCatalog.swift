@@ -3,7 +3,9 @@ import HappyWire
 
 /// One artifact as the catalog lists it (`GET /v0/artifacts`, the artifact
 /// object): what its row shows and what opens it. Kept on the phone whole,
-/// so the list draws from disk before the computer answers.
+/// so the list draws from disk before the computer answers. A deleted one
+/// is kept as its tombstone: the Artifacts list leaves it out, the Feed
+/// still names it.
 public struct ArtifactSummary: Codable, Equatable, Sendable, Identifiable {
     public struct Entry: Codable, Equatable, Sendable {
         public var path: String
@@ -33,8 +35,10 @@ public struct ArtifactSummary: Codable, Equatable, Sendable, Identifiable {
     /// Milliseconds since 1970.
     public var createdAt: Double
     public var updatedAt: Double
+    /// A tombstone (`status: "deleted"`): its versions are gone.
+    public var deleted: Bool
 
-    public init(id: String, type: String, title: String, latestVersion: Int, entry: Entry?, fileCount: Int = 1, live: Bool = false, createdAt: Double, updatedAt: Double) {
+    public init(id: String, type: String, title: String, latestVersion: Int, entry: Entry?, fileCount: Int = 1, live: Bool = false, createdAt: Double, updatedAt: Double, deleted: Bool = false) {
         self.id = id
         self.type = type
         self.title = title
@@ -44,12 +48,13 @@ public struct ArtifactSummary: Codable, Equatable, Sendable, Identifiable {
         self.live = live
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.deleted = deleted
     }
 
-    /// An artifact object, or one this type kept; nil for a tombstone or
-    /// one that can't be read.
+    /// An artifact object, a tombstone included, or one this type kept;
+    /// nil for one that can't be read.
     public init?(json: JSONValue) {
-        guard let id = json["id"]?.stringValue, json["status"]?.stringValue != "deleted" else { return nil }
+        guard let id = json["id"]?.stringValue else { return nil }
         self.id = id
         type = json["type"]?.stringValue ?? ""
         title = json["title"]?.stringValue ?? ""
@@ -59,6 +64,7 @@ public struct ArtifactSummary: Codable, Equatable, Sendable, Identifiable {
         live = json["live"]?.objectValue != nil || json["live"]?.boolValue == true
         createdAt = json["createdAt"]?.numberValue ?? 0
         updatedAt = json["updatedAt"]?.numberValue ?? createdAt
+        deleted = json["deleted"]?.boolValue ?? (json["status"]?.stringValue == "deleted")
     }
 
     static func entry(_ json: JSONValue?) -> Entry? {
@@ -81,7 +87,8 @@ public struct ArtifactSummary: Codable, Equatable, Sendable, Identifiable {
 /// The catalog's rules, pure: reading pages, following events, ordering
 /// and searching. `ArtifactCatalogFeed` keeps the list and runs them.
 public enum ArtifactCatalog {
-    /// A page of `GET /v0/artifacts`: its live artifacts and the next page's cursor.
+    /// A page of `GET /v0/artifacts?includeDeleted=true`: its artifacts,
+    /// tombstones included, and the next page's cursor.
     public static func page(_ json: JSONValue) -> (items: [ArtifactSummary], next: String?) {
         let items = (json["artifacts"]?.arrayValue ?? []).compactMap(ArtifactSummary.init(json:))
         return (items, json["nextPageCursor"]?.stringValue)
@@ -97,7 +104,7 @@ public enum ArtifactCatalog {
     }
 
     /// `artifact.created` adds its artifact, `artifact.updated` changes the
-    /// fields it carries, `artifact.deleted` takes it off the list.
+    /// fields it carries, `artifact.deleted` leaves its tombstone.
     public static func apply(_ event: JSONValue, to list: [ArtifactSummary]) -> Change {
         guard let type = event["type"]?.stringValue, type.hasPrefix("artifact.") else { return .none }
         let payload = event["payload"] ?? .null
@@ -109,9 +116,9 @@ public enum ArtifactCatalog {
             guard let id = payload["artifactId"]?.stringValue else { return .none }
             guard let index = list.firstIndex(where: { $0.id == id }) else { return .read(id) }
             let changes = payload["changes"] ?? .null
-            if changes["status"]?.stringValue == "deleted" { return .changed(list.filter { $0.id != id }) }
             var next = list
             var artifact = next[index]
+            if let status = changes["status"]?.stringValue { artifact.deleted = status == "deleted" }
             if let title = changes["title"]?.stringValue { artifact.title = title }
             if let version = changes["latestVersion"]?.numberValue { artifact.latestVersion = Int(version) }
             if changes["entry"] != nil { artifact.entry = ArtifactSummary.entry(changes["entry"]) }
@@ -122,8 +129,15 @@ public enum ArtifactCatalog {
             next[index] = artifact
             return .changed(sorted(next))
         case "artifact.deleted":
-            guard let id = payload["artifactId"]?.stringValue, list.contains(where: { $0.id == id }) else { return .none }
-            return .changed(list.filter { $0.id != id })
+            guard let id = payload["artifactId"]?.stringValue else { return .none }
+            if let artifact = payload["artifact"].flatMap(ArtifactSummary.init(json:)), artifact.id == id {
+                return .changed(sorted(list.filter { $0.id != id } + [artifact]))
+            }
+            guard let index = list.firstIndex(where: { $0.id == id }) else { return .read(id) }
+            guard !list[index].deleted else { return .none }
+            var next = list
+            next[index].deleted = true
+            return .changed(next)
         default:
             return .none
         }

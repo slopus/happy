@@ -23,6 +23,10 @@ public protocol FeedKeep: Sendable {
 /// Only a computer whose health says `capabilities.feed` and whose
 /// bootstrap carries `feedUnread` has one; older daemons, and guests, show
 /// none.
+///
+/// It holds references only: what an entry is about, who did it and what
+/// the change was. What they are called and how they look is the account's
+/// own (`FeedDirectory`, the engine's), joined in when the rows are made.
 public actor FeedLibrary {
     public struct State: Equatable, Sendable {
         /// Whether this computer keeps a feed for this person; nil until it
@@ -42,8 +46,6 @@ public actor FeedLibrary {
         public var loadingMore = false
         /// The last read failed, and why.
         public var error: String?
-        /// The people entries credit, by user ID, as they are read.
-        public var people: [String: TeamUser] = [:]
 
         public init() {}
 
@@ -81,8 +83,6 @@ public actor FeedLibrary {
     private var connecting: Task<Void, Never>?
     private var reading: Task<Void, Never>?
     private var again = false
-    private var peopleRead: Task<Void, Never>?
-    private var peopleMissing: Set<String> = []
     private var lastKept: JSONValue?
 
     public init(routes: FeedRoutes, outbox: IntentOutbox, keep: FeedKeep,
@@ -123,8 +123,6 @@ public actor FeedLibrary {
             serverUnread = max(0, Int(kept["unread"]?.numberValue ?? 0))
             unreadCursor = kept["unreadCursor"]?.stringValue
             state.hasMore = kept["hasMore"]?.boolValue ?? false
-            let people = (try? JSONDecoder().decode([Lossy<TeamUser>].self, from: JSONEncoder().encode(kept["people"] ?? .array([])))) ?? []
-            state.people = Dictionary(people.compactMap(\.value).map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
             state.loaded = true
         }
         pending = await outbox.pending().filter(\.kind.isFeed)
@@ -141,7 +139,6 @@ public actor FeedLibrary {
         following = []
         connecting?.cancel(); connecting = nil
         reading?.cancel(); reading = nil
-        peopleRead?.cancel(); peopleRead = nil
         live = false
         for listener in listeners.values { listener.finish() }
         listeners = [:]
@@ -396,12 +393,9 @@ public actor FeedLibrary {
         try await routes.followFeedCluster(cluster, follow: following, mutationId: ClientID.make())
     }
 
-    /// What happened in `cluster` lately, without following it. Its people
-    /// are read like the feed's.
+    /// What happened in `cluster` lately, without following it.
     public func peek(_ cluster: String) async throws -> FeedPeek {
-        let peek = try await routes.peekFeedCluster(cluster, limit: Self.peekLimit)
-        readPeople(peek.entries)
-        return peek
+        try await routes.peekFeedCluster(cluster, limit: Self.peekLimit)
     }
 
     // MARK: State
@@ -437,7 +431,6 @@ public actor FeedLibrary {
         let seen = Set(state.items.filter(covered).map(\.id))
         state.seenHere = seen
         state.unread = available ? max(0, serverUnread - seen.count) : 0
-        readPeople(state.items)
         publish()
         await save()
     }
@@ -450,9 +443,6 @@ public actor FeedLibrary {
         ]
         if let available = state.available { object["available"] = .bool(available) }
         if let unreadCursor { object["unreadCursor"] = .string(unreadCursor) }
-        let credited = Set(held.prefix(Self.keptLimit).flatMap { $0.actors.compactMap(\.userId) })
-        let people = state.people.values.filter { credited.contains($0.id) }.sorted { $0.id < $1.id }
-        object["people"] = (try? JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(people))) ?? .array([])
         let value = JSONValue.object(object)
         // A change that changed nothing kept writes nothing.
         guard value != lastKept else { return }
@@ -462,35 +452,6 @@ public actor FeedLibrary {
 
     private func publish() {
         for listener in listeners.values { listener.yield(state) }
-    }
-
-    /// Reads the people `items` credit that this phone doesn't know yet,
-    /// one read at a time; those the computer doesn't name aren't asked
-    /// for again while it runs.
-    private func readPeople(_ items: [FeedItem]) {
-        let wanted = Set(items.flatMap { $0.actors.compactMap(\.userId) }).filter { state.people[$0] == nil && !peopleMissing.contains($0) }
-        guard !wanted.isEmpty, peopleRead == nil, live else { return }
-        peopleMissing.formUnion(wanted)
-        let ids = wanted.sorted()
-        peopleRead = Task { [weak self, routes] in
-            var read: [TeamUser] = []
-            for start in stride(from: 0, to: ids.count, by: 100) {
-                guard let page = try? await routes.teamUsers(Array(ids[start..<min(start + 100, ids.count)])) else { break }
-                read += page
-            }
-            await self?.peopleAnswered(read, asked: Set(ids))
-        }
-    }
-
-    private func peopleAnswered(_ read: [TeamUser], asked: Set<String>) async {
-        peopleRead = nil
-        var people = state.people
-        for user in read { people[user.id] = user }
-        // Not answered at all (the computer away): asked again next time.
-        if read.isEmpty { peopleMissing.subtract(asked) }
-        guard people != state.people else { return }
-        state.people = people
-        await commit()
     }
 
     // MARK: Merging

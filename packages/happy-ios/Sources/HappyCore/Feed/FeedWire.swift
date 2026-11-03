@@ -3,7 +3,7 @@ import HappyWire
 
 /// What one Feed entry is about (API.md "Feed"): a task, bot, Surface or
 /// artifact by its ID. The set of types grows with the product; one this
-/// phone doesn't know shows by its snapshot's title and opens nothing.
+/// phone doesn't know can't be shown, so its entry is left out.
 public struct FeedSubject: Codable, Equatable, Hashable, Sendable {
     public var type: String
     public var id: String
@@ -30,45 +30,48 @@ public struct FeedActor: Codable, Equatable, Hashable, Sendable {
     }
 }
 
-/// How to show and open the subject, as of the newest change folded in.
-/// Fields the daemon adds later are ignored.
-public struct FeedSnapshot: Codable, Equatable, Hashable, Sendable {
-    public var title: String
-    /// A task's or bot's agent, which opens its chat; for an artifact the
-    /// conversation the newest change came from.
-    public var agentId: String?
-    /// A Surface's type: `todo`, `document`, `calendar`, …
-    public var surfaceType: String?
-    public var artifactType: String?
+/// The newest change folded into an entry, by reference (API.md "Feed",
+/// `latest`): what it was, and the todo, document change or artifact
+/// version it made. An entry never carries its subject's data; the phone
+/// reads that from what it syncs. The first Feed daemons send none.
+public struct FeedLatest: Codable, Equatable, Hashable, Sendable {
+    /// `task.created`, `bot.created`, `surface.created`, `todo.created`,
+    /// `document.edited`, `artifact.created`, `artifact.updated`; one this
+    /// phone doesn't know is a change with nothing more to say.
+    public var type: String
+    /// `todo.created`'s new todo, in the entry's Surface.
+    public var todoId: String?
+    /// `document.edited`'s document change that began the edit session.
+    public var seq: Int?
+    /// The version an artifact's change made.
     public var artifactVersion: Int?
-    /// A few words about the newest change, such as a new todo's text.
-    public var detail: String?
 
-    public init(title: String, agentId: String? = nil, surfaceType: String? = nil, artifactType: String? = nil, artifactVersion: Int? = nil, detail: String? = nil) {
-        self.title = title
-        self.agentId = agentId
-        self.surfaceType = surfaceType
-        self.artifactType = artifactType
+    public init(type: String, todoId: String? = nil, seq: Int? = nil, artifactVersion: Int? = nil) {
+        self.type = type
+        self.todoId = todoId
+        self.seq = seq
         self.artifactVersion = artifactVersion
-        self.detail = detail
     }
 
-    enum CodingKeys: String, CodingKey { case title, agentId, surfaceType, artifactType, artifactVersion, detail }
+    enum CodingKeys: String, CodingKey { case type, todoId, seq, artifactVersion }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        title = (try? container.decode(String.self, forKey: .title)) ?? ""
-        agentId = try? container.decodeIfPresent(String.self, forKey: .agentId)
-        surfaceType = try? container.decodeIfPresent(String.self, forKey: .surfaceType)
-        artifactType = try? container.decodeIfPresent(String.self, forKey: .artifactType)
+        type = try container.decode(String.self, forKey: .type)
+        todoId = try? container.decodeIfPresent(String.self, forKey: .todoId)
+        seq = try? container.decodeIfPresent(Int.self, forKey: .seq)
         artifactVersion = try? container.decodeIfPresent(Int.self, forKey: .artifactVersion)
-        detail = try? container.decodeIfPresent(String.self, forKey: .detail)
     }
 }
 
 /// One entry of the person's feed (`The feed item object`), or of a peek
 /// (`Peek entries`), which has no `id`, `version` or `seenAt` of its own:
 /// it is then named by its subject, with an empty version, never seen.
+///
+/// References and counts only. The first Feed daemons also sent a
+/// `snapshot` of the subject as it was then (its title, its type); it is
+/// never read, so a rename shows at once, and a daemon that sends none
+/// reads the same.
 public struct FeedItem: Codable, Equatable, Hashable, Sendable {
     /// Minted when the entry opened; stays as it takes in changes.
     public var id: String
@@ -83,13 +86,15 @@ public struct FeedItem: Codable, Equatable, Hashable, Sendable {
     /// The first five distinct actors, in the order they first acted.
     public var actors: [FeedActor]
     public var actorCount: Int
-    public var snapshot: FeedSnapshot
+    /// Nil from the first Feed daemons, and from one whose `latest` this
+    /// phone can't read.
+    public var latest: FeedLatest?
     public var firstAt: Double
     public var lastAt: Double
     /// Nil while the entry is open.
     public var seenAt: Double?
 
-    public init(id: String, version: String, cursor: String, subject: FeedSubject, cluster: String = "team", created: Bool = false, updates: Int = 0, actors: [FeedActor] = [], actorCount: Int? = nil, snapshot: FeedSnapshot, firstAt: Double, lastAt: Double, seenAt: Double? = nil) {
+    public init(id: String, version: String, cursor: String, subject: FeedSubject, cluster: String = "team", created: Bool = false, updates: Int = 0, actors: [FeedActor] = [], actorCount: Int? = nil, latest: FeedLatest? = nil, firstAt: Double, lastAt: Double, seenAt: Double? = nil) {
         self.id = id
         self.version = version
         self.cursor = cursor
@@ -99,13 +104,13 @@ public struct FeedItem: Codable, Equatable, Hashable, Sendable {
         self.updates = updates
         self.actors = actors
         self.actorCount = actorCount ?? actors.count
-        self.snapshot = snapshot
+        self.latest = latest
         self.firstAt = firstAt
         self.lastAt = lastAt
         self.seenAt = seenAt
     }
 
-    enum CodingKeys: String, CodingKey { case id, version, cursor, subject, cluster, created, updates, actors, actorCount, snapshot, firstAt, lastAt, seenAt }
+    enum CodingKeys: String, CodingKey { case id, version, cursor, subject, cluster, created, updates, actors, actorCount, latest, firstAt, lastAt, seenAt }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -118,7 +123,7 @@ public struct FeedItem: Codable, Equatable, Hashable, Sendable {
         updates = max(0, (try? container.decode(Int.self, forKey: .updates)) ?? 0)
         actors = ((try? container.decode([Lossy<FeedActor>].self, forKey: .actors)) ?? []).compactMap(\.value)
         actorCount = max(actors.count, (try? container.decode(Int.self, forKey: .actorCount)) ?? 0)
-        snapshot = (try? container.decode(FeedSnapshot.self, forKey: .snapshot)) ?? FeedSnapshot(title: "")
+        latest = try? container.decodeIfPresent(FeedLatest.self, forKey: .latest)
         firstAt = (try? container.decode(Double.self, forKey: .firstAt)) ?? 0
         lastAt = (try? container.decode(Double.self, forKey: .lastAt)) ?? firstAt
         seenAt = try? container.decodeIfPresent(Double.self, forKey: .seenAt)
@@ -129,21 +134,40 @@ public struct FeedItem: Codable, Equatable, Hashable, Sendable {
 }
 
 /// One place the feed gathers from (`The cluster object`): everything
-/// (`*`), the team, or one task, bot, Surface, project or workspace.
+/// (`*`), the team, or one task, bot, Surface, project or workspace, by
+/// reference only. What it is called comes from what the phone syncs
+/// (`FeedDirectory`); the `name` the first Feed daemons sent is never read.
 public struct FeedCluster: Codable, Equatable, Hashable, Sendable {
     public var cluster: String
+    /// `everything`, `team`, `task`, `bot`, `surface`, `project`,
+    /// `workspace`; the set grows, and an unknown one names nothing here.
     public var kind: String
-    public var name: String
     /// The person's own choice: `subscribed`, `muted`, or nil to follow `*`.
     public var state: String?
     public var lastAt: Double?
 
-    public init(cluster: String, kind: String, name: String, state: String? = nil, lastAt: Double? = nil) {
+    public init(cluster: String, kind: String, state: String? = nil, lastAt: Double? = nil) {
         self.cluster = cluster
         self.kind = kind
-        self.name = name
         self.state = state
         self.lastAt = lastAt
+    }
+
+    enum CodingKeys: String, CodingKey { case cluster, kind, state, lastAt }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        cluster = try container.decode(String.self, forKey: .cluster)
+        kind = (try? container.decode(String.self, forKey: .kind)) ?? Self.kind(of: cluster)
+        state = try? container.decodeIfPresent(String.self, forKey: .state)
+        lastAt = try? container.decodeIfPresent(Double.self, forKey: .lastAt)
+    }
+
+    /// The kind a cluster's name says: `*`, `team`, or what comes before `:`.
+    static func kind(of cluster: String) -> String {
+        if cluster == "*" { return "everything" }
+        guard let colon = cluster.firstIndex(of: ":") else { return cluster }
+        return String(cluster[..<colon])
     }
 
     /// The ID of the thing a place's cluster (`<kind>:<id>`) names.
@@ -202,10 +226,12 @@ public struct FeedSeenAnswer: Decodable, Equatable, Sendable {
 /// `GET /v0/feed/clusters/:cluster`: what happened in one place, its
 /// last 30 days, without following it.
 public struct FeedPeek: Decodable, Equatable, Sendable {
-    public var cluster: FeedCluster
+    /// Nil when the computer's can't be read: the screen already knows
+    /// which place it peeked at.
+    public var cluster: FeedCluster?
     public var entries: [FeedItem]
 
-    public init(cluster: FeedCluster, entries: [FeedItem]) {
+    public init(cluster: FeedCluster?, entries: [FeedItem]) {
         self.cluster = cluster
         self.entries = entries
     }
@@ -214,7 +240,7 @@ public struct FeedPeek: Decodable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        cluster = try container.decode(FeedCluster.self, forKey: .cluster)
+        cluster = try? container.decode(FeedCluster.self, forKey: .cluster)
         entries = ((try? container.decode([Lossy<FeedItem>].self, forKey: .entries)) ?? []).compactMap(\.value)
     }
 }
@@ -232,7 +258,6 @@ public protocol FeedRoutes: Sendable {
     /// Follows `cluster`, or mutes it.
     func followFeedCluster(_ cluster: String, follow: Bool, mutationId: String) async throws -> FeedCluster
     func peekFeedCluster(_ cluster: String, limit: Int) async throws -> FeedPeek
-    func teamUsers(_ ids: [String]) async throws -> [TeamUser]
 }
 
 extension AgentClient: FeedRoutes {

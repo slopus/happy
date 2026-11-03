@@ -1,10 +1,11 @@
 import Foundation
 import HappyWire
 
-/// The artifact catalog of one paired computer, kept on the phone: read
-/// from disk first, then whole from the computer, then kept current by its
-/// `artifact.*` events (docs/offline-first.md). Every change is written
-/// back, so the list opens on what it last showed with no network.
+/// The artifact catalog of one paired computer, tombstones included, kept
+/// on the phone: read from disk first, then whole from the computer, then
+/// kept current by its `artifact.*` events (docs/offline-first.md). Every
+/// change is written back, so the list opens on what it last showed with
+/// no network. One per account, the engine's (`SyncEngine.artifacts`).
 public actor ArtifactCatalogFeed {
     public struct State: Equatable, Sendable {
         /// Newest change first.
@@ -50,19 +51,6 @@ public actor ArtifactCatalogFeed {
         self.keep = keep
         self.kept = kept
         self.events = events
-    }
-
-    /// The account's own feed: its client, its database and its stream.
-    public init(engine: SyncEngine) {
-        let client = engine.client
-        let store = engine.spaces
-        self.init(
-            fetch: { cursor in try await client.artifacts(pageCursor: cursor, limit: 100) },
-            fetchOne: { id in try await client.artifact(id) },
-            keep: { value in try await engine.keepResource(Self.resource, value: value) },
-            kept: { try await engine.cachedResource(Self.resource) },
-            events: { await store.events(matching: ["artifact."]) }
-        )
     }
 
     /// The state now and after every change.

@@ -14,10 +14,14 @@ private struct FeedNoSocket: WebSocketConnector {
 }
 
 /// A team computer that keeps a Feed, as API.md's Feed chapter has it:
-/// Steve signed in, Ada and Bo beside him, a bot, two tasks, and a week
-/// and more of entries on them, on a todo list, a document and artifacts.
-/// Seeing, read-all, following and peeking answer as the daemon does;
-/// with `live`, a new entry arrives over the stream a few seconds in.
+/// Steve signed in, Ada and Bo beside him, a bot, two tasks (Ada's
+/// archived), three Surfaces, artifacts (one deleted) and a week and more
+/// of entries on them. The entries are references only: no title, no
+/// picture, no text; the app finds each in what it syncs. Steve's task
+/// is still "New Task", as it was when the entry was made, until
+/// `rename()` names it on desktop. Seeing, read-all, following and
+/// peeking answer as the daemon does; with `live`, a new entry arrives
+/// over the stream a few seconds in.
 private actor FeedComputer: AgentTransport {
     static let steveHash = "1QcSHQRnh493V4dIh4eXh1h4kJUI"
     static let adaHash = "HBkSHYSIeHiPiHh8eJd4eTN0EEQG"
@@ -28,18 +32,32 @@ private actor FeedComputer: AgentTransport {
      "workspaces":[],
      "bots":[{"id":"research","name":"Research","status":"active","avatar":{"thumbhash":"HwgKPJxwd3dweHiHiHdwgAf3iA"},"agent":{"id":"research-agent","workspaceId":"r","status":"idle"}}],
      "tasks":[
-       {"id":"mine","name":"Ship the iOS feed","ownerUserId":"steve","agent":{"id":"mine-agent","workspaceId":"w1","status":"idle"}},
-       {"id":"adas","name":"Fix the login redirect","ownerUserId":"ada","agent":{"id":"adas-agent","workspaceId":"w2","status":"idle"}}],
+       {"id":"mine","name":"New Task","ownerUserId":"steve","status":"active","agent":{"id":"mine-agent","workspaceId":"w1","status":"idle"}},
+       {"id":"adas","name":"Fix the login redirect","ownerUserId":"ada","status":"archived","agent":{"id":"adas-agent","workspaceId":"w2","status":"idle"}}],
      "taskMemberships":[{"taskId":"mine"},{"taskId":"adas"}],
-     "surfaces":[]}
+     "surfaces":[{"id":"groceries","name":"Groceries","type":"todo","members":[]},
+                 {"id":"launch","name":"Launch notes","type":"document","members":[]},
+                 {"id":"errands","name":"Errands","type":"todo","members":[]}]}
     """#
+    static let renamed = "Ship the iOS feed"
     static let users = #"""
     {"users":[
       {"id":"ada","name":"Ada","photo":{"thumbhash":"HBkSHYSIeHiPiHh8eJd4eTN0EEQG"},"version":"1","updatedAt":1},
       {"id":"bo","name":"Bo","photo":null,"version":"1","updatedAt":1},
       {"id":"steve","name":"Steve","photo":{"thumbhash":"1QcSHQRnh493V4dIh4eXh1h4kJUI"},"version":"1","updatedAt":1}]}
     """#
+    static let artifacts = #"""
+    {"artifacts":[
+      {"id":"roadmap","type":"html","title":"Q4 roadmap","latestVersion":3,"createdAt":1,"updatedAt":2},
+      {"id":"mockups","type":"image_series","title":"Onboarding mockups","latestVersion":1,"createdAt":1,"updatedAt":1,"deleted":true}],
+     "nextPageCursor":null}
+    """#
+    static let todos: [String: String] = [
+        "groceries/oat": #"{"todo":{"id":"oat","surfaceId":"groceries","text":"Oat milk","status":"active","version":"1"}}"#,
+        "errands/keys": #"{"todo":{"id":"keys","surfaceId":"errands","text":"Pick up the keys","status":"active","version":"1"}}"#,
+    ]
 
+    private var desktop = FeedComputer.bootstrap
     private var items: [JSONValue]
     private var clusters: [JSONValue]
     private var counter = 0
@@ -51,51 +69,45 @@ private actor FeedComputer: AgentTransport {
         self.live = live
         let now = Date().timeIntervalSince1970 * 1000
         func ago(_ minutes: Double) -> Double { (now - minutes * 60_000).rounded() }
-        func item(_ n: Int, _ type: String, _ id: String, cluster: String, title: String, minutes: Double, created: Bool = false, updates: Int = 0,
-                  actors: [JSONValue], count: Int? = nil, seen: Bool = false, agentId: String? = nil, surfaceType: String? = nil,
-                  artifactType: String? = nil, version: Int? = nil, detail: String? = nil) -> JSONValue {
-            var snapshot: [String: JSONValue] = ["title": .string(title)]
-            if let agentId { snapshot["agentId"] = .string(agentId) }
-            if let surfaceType { snapshot["surfaceType"] = .string(surfaceType) }
-            if let artifactType { snapshot["artifactType"] = .string(artifactType) }
-            if let version { snapshot["artifactVersion"] = .number(Double(version)) }
-            if let detail { snapshot["detail"] = .string(detail) }
+        func item(_ n: Int, _ type: String, _ id: String, cluster: String, latest: String, todo: String? = nil, minutes: Double, created: Bool = false,
+                  updates: Int = 0, actors: [JSONValue], count: Int? = nil, seen: Bool = false) -> JSONValue {
+            var newest: [String: JSONValue] = ["type": .string(latest)]
+            if let todo { newest["todoId"] = .string(todo) }
             let last = ago(minutes)
             return .object([
                 "id": .string("item-\(n)"), "version": .string(Self.uuid(last, n)), "cursor": .string(Self.uuid(last, n)),
                 "subject": .object(["type": .string(type), "id": .string(id)]), "cluster": .string(cluster),
                 "created": .bool(created), "updates": .number(Double(updates)), "actors": .array(actors), "actorCount": .number(Double(count ?? actors.count)),
-                "snapshot": .object(snapshot), "firstAt": .number(last - 600_000), "lastAt": .number(last),
+                "latest": .object(newest), "firstAt": .number(last - 600_000), "lastAt": .number(last),
                 "seenAt": seen ? .number(last + 1000) : .null,
             ])
         }
         func person(_ id: String) -> JSONValue { .object(["userId": .string(id), "agentId": .null]) }
         func agent(_ id: String) -> JSONValue { .object(["userId": .null, "agentId": .string(id)]) }
         items = [
-            item(1, "task", "mine", cluster: "task:mine", title: "Ship the iOS feed", minutes: 4, updates: 3, actors: [agent("mine-agent"), person("steve")], agentId: "mine-agent"),
-            item(2, "surface", "groceries", cluster: "team", title: "Groceries", minutes: 38, updates: 4,
-                 actors: [person("ada"), person("bo"), person("steve"), agent("research-agent")], count: 5, surfaceType: "todo", detail: "Oat milk"),
-            item(3, "artifact", "roadmap", cluster: "bot:research", title: "Q4 roadmap", minutes: 190, created: true, updates: 2,
-                 actors: [agent("research-agent")], seen: true, artifactType: "html", version: 3),
-            item(4, "bot", "research", cluster: "bot:research", title: "Research", minutes: 60 * 26, updates: 1,
-                 actors: [agent("research-agent")], agentId: "research-agent", detail: "Summarized twelve papers on retrieval"),
-            item(5, "surface", "launch", cluster: "team", title: "Launch notes", minutes: 60 * 24 * 3, updates: 4,
-                 actors: [person("ada"), person("bo")], seen: true, surfaceType: "document"),
-            item(6, "task", "adas", cluster: "task:adas", title: "Fix the login redirect", minutes: 60 * 24 * 10, created: true,
-                 actors: [person("ada"), agent("adas-agent")], seen: true, agentId: "adas-agent"),
-            item(7, "artifact", "mockups", cluster: "team", title: "Onboarding mockups", minutes: 60 * 24 * 45, created: true,
-                 actors: [person("bo")], seen: true, artifactType: "image_series", version: 1),
+            item(1, "task", "mine", cluster: "task:mine", latest: "task.created", minutes: 4, updates: 3, actors: [agent("mine-agent"), person("steve")]),
+            item(2, "surface", "groceries", cluster: "team", latest: "todo.created", todo: "oat", minutes: 38, updates: 4,
+                 actors: [person("ada"), person("bo"), person("steve"), agent("research-agent")], count: 5),
+            item(3, "artifact", "roadmap", cluster: "bot:research", latest: "artifact.updated", minutes: 190, created: true, updates: 2,
+                 actors: [agent("research-agent")], seen: true),
+            item(4, "bot", "research", cluster: "bot:research", latest: "bot.created", minutes: 60 * 26, updates: 1, actors: [agent("research-agent")]),
+            item(5, "surface", "launch", cluster: "team", latest: "document.edited", minutes: 60 * 24 * 3, updates: 4,
+                 actors: [person("ada"), person("bo")], seen: true),
+            item(6, "task", "adas", cluster: "task:adas", latest: "task.created", minutes: 60 * 24 * 10, created: true,
+                 actors: [person("ada"), agent("adas-agent")], seen: true),
+            item(7, "artifact", "mockups", cluster: "team", latest: "artifact.created", minutes: 60 * 24 * 45, created: true,
+                 actors: [person("bo")], seen: true),
         ]
-        func cluster(_ id: String, _ kind: String, _ name: String, state: String?) -> JSONValue {
-            .object(["cluster": .string(id), "kind": .string(kind), "name": .string(name), "state": state.map(JSONValue.string) ?? .null, "lastAt": .number(now)])
+        func cluster(_ id: String, _ kind: String, state: String?) -> JSONValue {
+            .object(["cluster": .string(id), "kind": .string(kind), "state": state.map(JSONValue.string) ?? .null, "lastAt": .number(now)])
         }
         clusters = [
-            cluster("*", "everything", "Everything", state: nil),
-            cluster("team", "team", "Team", state: "subscribed"),
-            cluster("bot:research", "bot", "Research", state: nil),
-            cluster("task:mine", "task", "Ship the iOS feed", state: nil),
-            cluster("task:adas", "task", "Fix the login redirect", state: "muted"),
-            cluster("project:p", "project", "happy", state: nil),
+            cluster("*", "everything", state: nil),
+            cluster("team", "team", state: "subscribed"),
+            cluster("bot:research", "bot", state: nil),
+            cluster("task:mine", "task", state: nil),
+            cluster("task:adas", "task", state: "muted"),
+            cluster("project:p", "project", state: nil),
         ]
     }
 
@@ -129,9 +141,13 @@ private actor FeedComputer: AgentTransport {
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         requested.append("\(method) \(path)")
         let sent = body.flatMap { try? JSONDecoder().decode(JSONValue.self, from: $0) } ?? .null
-        if path == "/v0/bootstrap/desktop" { return HTTP1Response(status: 200, body: Data(Self.bootstrap.utf8)) }
+        if path == "/v0/bootstrap/desktop" { return HTTP1Response(status: 200, body: Data(desktop.utf8)) }
         if path == "/v0/health" { return try json(.object(["ok": .bool(true), "capabilities": .object(["feed": .bool(true)])])) }
         if path.hasPrefix("/v0/users?ids=") { return HTTP1Response(status: 200, body: Data(Self.users.utf8)) }
+        if path.hasPrefix("/v0/artifacts?") { return HTTP1Response(status: 200, body: Data(Self.artifacts.utf8)) }
+        if path.hasPrefix("/v0/surfaces/todo/"), let todo = Self.todos[String(path.dropFirst("/v0/surfaces/todo/".count))] {
+            return HTTP1Response(status: 200, body: Data(todo.utf8))
+        }
         if path.hasPrefix("/v0/feed?") {
             let before = URLComponents(string: path)?.queryItems?.first { $0.name == "before" }?.value
             let page = items.filter { before == nil || ($0["cursor"]?.stringValue ?? "") < before! }
@@ -203,6 +219,12 @@ private actor FeedComputer: AgentTransport {
         return HTTP1Stream(status: 200, body: body)
     }
 
+    private func frame(_ type: String, _ payload: JSONValue, cursor: String, at now: Double) -> Data {
+        let envelope: JSONValue = .object(["cursor": .string(cursor), "type": .string(type), "occurredAt": .number(now), "payload": payload])
+        let data = String(data: (try? JSONEncoder().encode(envelope)) ?? Data(), encoding: .utf8) ?? "{}"
+        return Data("event: \(type)\ndata: \(data)\n\n".utf8)
+    }
+
     /// Bo adds a todo: a new entry at the top, unread, and its count.
     private func arrive() {
         let now = (Date().timeIntervalSince1970 * 1000).rounded()
@@ -211,19 +233,25 @@ private actor FeedComputer: AgentTransport {
             "id": .string("item-50"), "version": .string(cursor), "cursor": .string(cursor),
             "subject": .object(["type": .string("surface"), "id": .string("errands")]), "cluster": .string("team"),
             "created": .bool(false), "updates": .number(1), "actors": .array([.object(["userId": .string("bo"), "agentId": .null])]), "actorCount": .number(1),
-            "snapshot": .object(["title": .string("Errands"), "surfaceType": .string("todo"), "detail": .string("Pick up the keys")]),
+            "latest": .object(["type": .string("todo.created"), "todoId": .string("keys")]),
             "firstAt": .number(now), "lastAt": .number(now), "seenAt": .null,
         ])
         items.insert(item, at: 0)
-        func frame(_ type: String, _ payload: JSONValue) -> Data {
-            let envelope: JSONValue = .object(["cursor": .string(cursor), "type": .string(type), "occurredAt": .number(now), "payload": payload])
-            let data = String(data: (try? JSONEncoder().encode(envelope)) ?? Data(), encoding: .utf8) ?? "{}"
-            return Data("event: \(type)\ndata: \(data)\n\n".utf8)
-        }
         for continuation in continuations {
-            continuation.yield(frame("feed.item.created", .object(["item": item])))
-            continuation.yield(frame("feed.unread.updated", .object(["unread": .number(Double(unread))])))
+            continuation.yield(frame("feed.item.created", .object(["item": item]), cursor: cursor, at: now))
+            continuation.yield(frame("feed.unread.updated", .object(["unread": .number(Double(unread))]), cursor: cursor, at: now))
         }
+    }
+
+    /// Steve names his task on desktop. Nothing in the Feed changes on
+    /// the computer: the entry still points at the task, and the app,
+    /// told the task changed, reads it again.
+    func rename() {
+        let now = (Date().timeIntervalSince1970 * 1000).rounded()
+        counter += 1
+        desktop = desktop.replacingOccurrences(of: #""name":"New Task""#, with: #""name":"\#(Self.renamed)""#)
+        let payload: JSONValue = .object(["taskId": .string("mine"), "changes": .object(["name": .string(Self.renamed)])])
+        continuations.forEach { $0.yield(frame("task.updated", payload, cursor: Self.uuid(now, 200 + counter), at: now)) }
     }
 
     func reset() async {}
@@ -262,7 +290,7 @@ final class AgentFeedHarness {
             window.layoutIfNeeded()
             if arguments.contains("-dark") { window.overrideUserInterfaceStyle = .dark }
             if arguments.contains("-script") {
-                await FeedScript(window: window, navigation: navigation, session: session, style: arguments.contains("-dark") ? "dark" : "light").run()
+                await FeedScript(window: window, navigation: navigation, session: session, computer: computer, style: arguments.contains("-dark") ? "dark" : "light").run()
                 return
             }
             guard let index = arguments.firstIndex(of: "-open"), arguments.indices.contains(index + 1), arguments[index + 1] == "feed" else { return }
@@ -288,14 +316,16 @@ private final class FeedScript {
     let window: UIWindow
     let navigation: UINavigationController
     let session: Session
+    private let computer: FeedComputer
     let style: String
     private var checks: [[String: Any]] = []
     private let folder: URL
 
-    init(window: UIWindow, navigation: UINavigationController, session: Session, style: String) {
+    init(window: UIWindow, navigation: UINavigationController, session: Session, computer: FeedComputer, style: String) {
         self.window = window
         self.navigation = navigation
         self.session = session
+        self.computer = computer
         self.style = style
         folder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("feed-shots")
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -324,6 +354,8 @@ private final class FeedScript {
 
     private func entry(_ id: String, in list: CardListView) -> CardItem? { list.items.first { $0.id == id } }
 
+    private func title(_ id: String, in list: CardListView) -> String { entry(id, in: list)?.accessibilityLabel ?? "" }
+
     private func unread(_ id: String, in list: CardListView) -> Bool { entry(id, in: list)?.accessibilityValue?.hasPrefix("Unread") == true }
 
     func run() async {
@@ -339,9 +371,24 @@ private final class FeedScript {
         check("an open entry is unread", unread("item-2", in: list), entry("item-2", in: list)?.accessibilityValue ?? "")
         check("a seen entry isn't", entry("item-3", in: list).map { $0.accessibilityValue?.hasPrefix("Unread") != true } ?? false)
         check("the entries are under their dates", list.items.filter { $0.kind == .heading }.count >= 4, list.items.filter { $0.kind == .heading }.map(\.accessibilityLabel).joined(separator: ", "))
+        check("each row is named from what the app syncs", ["item-1": "New Task", "item-2": "Groceries", "item-3": "Q4 roadmap", "item-4": "Research", "item-5": "Launch notes"]
+            .allSatisfy { title($0.key, in: list) == $0.value }, (1...7).map { title("item-\($0)", in: list) }.joined(separator: ", "))
+        check("an archived task is named as it was", title("item-6", in: list) == "Fix the login redirect")
+        check("a deleted artifact is named and opens nothing", title("item-7", in: list) == "Onboarding mockups" && entry("item-7", in: list)?.opens == false)
+        check("a todo list says its newest todo", entry("item-2", in: list)?.accessibilityValue?.contains("Oat milk") == true, entry("item-2", in: list)?.accessibilityValue ?? "")
         await shoot("feed-activity")
 
+        // Steve names his task on desktop: that row follows, no other is touched.
+        let others = Dictionary(uniqueKeysWithValues: list.items.filter { $0.kind == .row && $0.id != "item-1" }.map { ($0.id, $0.revision) })
+        await computer.rename()
+        check("a renamed task's row follows", await until { title("item-1", in: list) == FeedComputer.renamed }, title("item-1", in: list))
+        let touched = list.items.filter { item in others[item.id].map { $0 != item.revision } ?? false }.map(\.id)
+        check("and no other row is redrawn", touched.isEmpty, touched.joined(separator: ", "))
+        await shoot("feed-renamed")
+
         check("a new entry arrives over the stream", await until(15) { unread("item-50", in: list) })
+        check("it is named from its Surface", title("item-50", in: list) == "Errands", title("item-50", in: list))
+        check("and says the todo added", await until { entry("item-50", in: list)?.accessibilityValue?.contains("Pick up the keys") == true }, entry("item-50", in: list)?.accessibilityValue ?? "")
         check("its count follows on home", await until { feedRow()?.count == 4 }, "count \(String(describing: feedRow()?.count))")
         list.scrollToTop(animated: false)
         await shoot("feed-live")
@@ -364,6 +411,9 @@ private final class FeedScript {
         feed.showFollowing()
         let following = feed.following
         check("Following lists the places", await until { following.items.contains { $0.id == "task:adas" } })
+        check("each named from what the app syncs", following.items.first { $0.id == "task:mine" }?.accessibilityLabel == FeedComputer.renamed
+            && following.items.first { $0.id == "project:p" }?.accessibilityLabel == "happy",
+              following.items.filter { $0.kind == .row }.map(\.accessibilityLabel).joined(separator: ", "))
         await shoot("feed-following")
         feed.follow("task:adas", true)
         check("following a muted place takes", await until { following.items.first { $0.id == "task:adas" }?.overlays.contains { $0.key.hasSuffix("|true|false") } == true })
@@ -372,6 +422,7 @@ private final class FeedScript {
         check("a peek opens", await until { navigation.topViewController is FeedPeekViewController })
         if let peek = navigation.topViewController as? FeedPeekViewController {
             check("the peek shows the place's entries", await until { peek.list.items.contains { $0.id == "artifact:roadmap" } })
+            check("under the place's name", peek.title == "Research", peek.title ?? "")
         }
         await shoot("feed-peek")
 

@@ -43,18 +43,12 @@ public enum SidebarRows {
             let children = (agent.subtasks ?? []).filter { $0.archivedAt == nil }
             // A subtask or a project's session has no mark, as on desktop.
             var row = Row(id: id, nodeId: id, kind: owner == nil ? .session : .space, depth: depth,
-                label: label ?? agent.title ?? "Untitled", mark: owner == nil ? .none : owner?.systemKey == "chief_of_staff" ? .happy : .placeholder(seed: owner?.id ?? agent.id),
+                label: label ?? agent.title ?? "Untitled", mark: owner.map { ownerMark(kind: kind ?? "", $0, profile: desktop.profile, users: users) } ?? .none,
                 status: muted ? .none : status(agent), unread: !muted && agent.unread != nil,
                 isHappy: owner?.systemKey == "chief_of_staff", agentId: agent.id, workspaceId: agent.workspaceId, targetKind: kind)
             row.targetId = owner?.id
             row.canArchive = owner?.canArchive ?? false
             row.activityTime = agent.activityAt.map(Rows.minute)
-            if kind == "bot", let owner, let avatar = owner.avatar {
-                row.mark = .image(path: "/v0/bots/\(AgentClient.escape(owner.id))/avatar", thumbhash: avatar.thumbhash)
-            }
-            if kind == "task", let owner, let author = authorMark(owner, profile: desktop.profile, users: users) {
-                row.mark = author
-            }
             rows.append(row)
             for child in children { agentRow(child, depth: depth + 1, muted: muted) }
         }
@@ -113,11 +107,26 @@ public enum SidebarRows {
     /// person's or the one the daemon made for it), the house for the home
     /// project, and while it has neither yet, the placeholder its id seeds.
     static func projectMark(_ project: DesktopSnapshot.Project) -> Row.Mark {
-        guard let avatar = project.avatar else { return .placeholder(seed: project.id) }
+        projectMark(id: project.id, avatar: project.avatar)
+    }
+
+    static func projectMark(id: String, avatar: DesktopSnapshot.Project.Avatar?) -> Row.Mark {
+        guard let avatar else { return .placeholder(seed: id) }
         if avatar.kind == "home" { return .glyph("home") }
         if let url = avatar.url, url.hasPrefix("/v0/") { return .image(path: url, thumbhash: avatar.thumbhash) }
-        if avatar.kind == "image" { return .image(path: "/v0/projects/\(AgentClient.escape(project.id))/avatar", thumbhash: avatar.thumbhash) }
-        return .placeholder(seed: project.id)
+        if avatar.kind == "image" { return .image(path: "/v0/projects/\(AgentClient.escape(id))/avatar", thumbhash: avatar.thumbhash) }
+        return .placeholder(seed: id)
+    }
+
+    /// A bot's or task's face, as its home row wears it: Happy's own logo,
+    /// a bot's picture, a team task's author, else the placeholder its ID
+    /// picks.
+    static func ownerMark(kind: String, _ owner: DesktopSnapshot.Owner, profile: DesktopSnapshot.Profile?, users: [String: TeamUser]) -> Row.Mark {
+        if kind == "bot", let avatar = owner.avatar {
+            return .image(path: "/v0/bots/\(AgentClient.escape(owner.id))/avatar", thumbhash: avatar.thumbhash)
+        }
+        if kind == "task", let author = authorMark(owner, profile: profile, users: users) { return author }
+        return owner.systemKey == "chief_of_staff" ? .happy : .placeholder(seed: owner.id)
     }
 
     /// The row a chat's profile speaks for, as home lists it: its space's

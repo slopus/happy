@@ -130,8 +130,9 @@ Not covered yet, and why:
 | Chats | checkpoint `conversation:<agentId>`: every loaded message | `message` table, `chatHistory` paging state |
 | Profiles, team members | bootstrap `profile`, checkpoint `users` | `accountProfile` |
 | Avatars and pictures | `pictures/` (`OfflineFile.keepPicture`) | `session.avatar` descriptor + `AttachmentPictures` |
-| Artifact metadata | checkpoint `artifacts` | — |
-| Feed | checkpoint `feed`: the newest 200 entries, the unread count and its cursor, whether the computer keeps a feed, and the people credited | — |
+| Artifact metadata | checkpoint `artifacts`, one catalog per account held by its engine, deleted ones kept as tombstones (`?includeDeleted=true`) so the Feed can still name them | — |
+| Feed | checkpoint `feed`: the newest 200 entries (references only: no title, picture or text), the unread count and its cursor, and whether the computer keeps a feed | — |
+| What only the Feed names | checkpoint `feed-lookups`: agents, team users, projects, workspaces, artifacts and todos the bootstrap doesn't hold, read by ID (`FeedLookups`), read again on their events and after a gap | — |
 | Surfaces, todo lists | checkpoints `surface-catalog` and `todos:<surfaceId>`: each list opened, its deleted ones once shown, and the names of who added them | — |
 | Documents opened | `documents/<surfaceId>/`: the Yjs replica, local changes since, the batch on its way (`DocumentKeep`) | — |
 | Media | `media/` (`MediaStore`, docs/media.md) | `media/` beside `files/` |

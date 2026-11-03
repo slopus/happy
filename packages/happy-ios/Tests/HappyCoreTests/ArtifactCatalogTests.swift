@@ -15,9 +15,13 @@ private func artifact(_ id: String, type: String = "markdown", title: String = "
 /// The artifact catalog's rules: its pages, its events, its order and
 /// search, and the date buckets the list groups it by.
 final class ArtifactCatalogTests: XCTestCase {
-    func testAPageSkipsTombstonesAndKeepsItsCursor() {
-        let page = ArtifactCatalog.page(json(#"{"artifacts":[\#(artifact("a", title: "Plan", updatedAt: 5, entry: "a.png")),{"id":"b","status":"deleted"},{"title":"no id"}],"nextPageCursor":"c2"}"#))
-        XCTAssertEqual(page.items.map(\.id), ["a"])
+    /// Tombstones are kept, for the Feed, which still names a deleted
+    /// artifact; the Artifacts list leaves them out.
+    func testAPageKeepsTombstonesAndItsCursor() {
+        let page = ArtifactCatalog.page(json(#"{"artifacts":[\#(artifact("a", title: "Plan", updatedAt: 5, entry: "a.png")),{"id":"b","title":"Old","status":"deleted"},{"title":"no id"}],"nextPageCursor":"c2"}"#))
+        XCTAssertEqual(page.items.map(\.id), ["a", "b"])
+        XCTAssertEqual(page.items.map(\.deleted), [false, true])
+        XCTAssertEqual(page.items[1].title, "Old")
         XCTAssertEqual(page.items[0].title, "Plan")
         XCTAssertEqual(page.items[0].entry, ArtifactSummary.Entry(path: "a.png", mimeType: "image/png", size: 10))
         XCTAssertTrue(page.items[0].showsPicture)
@@ -48,11 +52,16 @@ final class ArtifactCatalogTests: XCTestCase {
         XCTAssertEqual(updated[0].latestVersion, 2)
 
         guard case .changed(let deleted) = ArtifactCatalog.apply(json(#"{"type":"artifact.deleted","payload":{"artifactId":"a","changes":{"status":"deleted"}}}"#), to: list) else { return XCTFail() }
-        XCTAssertEqual(deleted.map(\.id), ["b"])
+        XCTAssertEqual(deleted.map(\.id), ["a", "b"])
+        XCTAssertEqual(deleted.map(\.deleted), [true, false], "a deletion leaves its tombstone")
+        XCTAssertEqual(ArtifactCatalog.apply(json(#"{"type":"artifact.deleted","payload":{"artifactId":"a"}}"#), to: deleted), .none)
+        guard case .changed(let viaUpdate) = ArtifactCatalog.apply(json(#"{"type":"artifact.updated","payload":{"artifactId":"b","changes":{"status":"deleted","updatedAt":11}}}"#), to: list) else { return XCTFail() }
+        XCTAssertEqual(viaUpdate.first { $0.id == "b" }?.deleted, true)
 
         XCTAssertEqual(ArtifactCatalog.apply(json(#"{"type":"artifact.updated","payload":{"artifactId":"zzz","changes":{"title":"x"}}}"#), to: list), .read("zzz"))
         XCTAssertEqual(ArtifactCatalog.apply(json(#"{"type":"artifact.updated","payload":{"artifactId":"a","changes":{"title":"One"}}}"#), to: list), .none)
-        XCTAssertEqual(ArtifactCatalog.apply(json(#"{"type":"artifact.deleted","payload":{"artifactId":"zzz"}}"#), to: list), .none)
+        // One this list doesn't hold: its tombstone is read, for the Feed.
+        XCTAssertEqual(ArtifactCatalog.apply(json(#"{"type":"artifact.deleted","payload":{"artifactId":"zzz"}}"#), to: list), .read("zzz"))
         XCTAssertEqual(ArtifactCatalog.apply(json(#"{"type":"todo.created","payload":{}}"#), to: list), .none)
     }
 
@@ -199,9 +208,10 @@ final class ArtifactCatalogFeedTests: XCTestCase {
         input.yield(.event(json(#"{"type":"artifact.updated","payload":{"artifactId":"z","changes":{"title":"Zed"}}}"#)))
         try await eventually { last.state.items.map(\.id) == ["z", "a"] }
         input.yield(.event(json(#"{"type":"artifact.deleted","payload":{"artifactId":"a"}}"#)))
-        try await eventually { last.state.items.map(\.id) == ["z"] }
+        try await eventually { last.state.items.first { $0.id == "a" }?.deleted == true }
         let kept = await box.kept
-        XCTAssertEqual(kept?.arrayValue?.compactMap { $0["id"]?.stringValue }, ["z"])
+        XCTAssertEqual(kept?.arrayValue?.compactMap { $0["id"]?.stringValue }, ["z", "a"])
+        XCTAssertEqual(kept?.arrayValue?.last?["deleted"], .bool(true), "kept as a tombstone")
         // A resync reads the whole catalog again.
         let before = await box.reads
         input.yield(.resync)

@@ -7,9 +7,9 @@ import UltraView
 /// Desktop's fixed Artifacts row: every artifact of the computer in home's
 /// inset grouped cards, grouped by when it last changed (Today, Yesterday,
 /// the previous seven and thirty days, then by month), newest first. It
-/// opens on the list it last showed, kept on the phone
-/// (`ArtifactCatalogFeed`), reads the whole catalog again, then follows
-/// its events; a pull reads it again. The bar's search filters by title
+/// opens on the list it last showed, kept on the phone by the account's
+/// catalog (`SyncEngine.artifacts`, which follows its events and reads it
+/// whole after a gap); a pull reads it again. The bar's search filters by title
 /// and kind. A row opens the artifact viewer on the latest version.
 final class ArtifactsViewController: UIViewController, UISearchResultsUpdating {
     private let session: Session
@@ -43,7 +43,7 @@ final class ArtifactsViewController: UIViewController, UISearchResultsUpdating {
 
     init(session: Session) {
         self.session = session
-        feed = ArtifactCatalogFeed(engine: session.engine)
+        feed = session.engine.artifacts
         thumbnails = ArtifactThumbnails(session: session)
         super.init(nibName: nil, bundle: nil)
         title = Strings.Artifacts.title
@@ -57,7 +57,6 @@ final class ArtifactsViewController: UIViewController, UISearchResultsUpdating {
     deinit {
         following?.cancel()
         pipeline?.cancel()
-        Task { [feed] in await feed.stop() }
     }
 
     override func viewDidLoad() {

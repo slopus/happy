@@ -6,10 +6,13 @@ import HappyLayout
 import UIKit
 
 /// What the Feed's list derives from, written by the library (its state),
-/// home (the faces) and the screen (its width, text size, theme and words).
+/// the engine (the directory every row is joined with) and the screen (its
+/// width, text size, theme and words).
 struct FeedListInput: Sendable {
     var state = FeedLibrary.State()
-    var home = FeedHome()
+    var directory = FeedDirectory()
+    /// The person's own placeholder's seed (`Session.personSeed`).
+    var personSeed = ""
     /// A place's newest entries, peeked at: none carries the dot.
     var peek = false
     var width: CGFloat = 0
@@ -24,31 +27,12 @@ struct FeedListInput: Sendable {
     var calendar = Calendar.current
 }
 
-/// What the Feed reads from home for its faces: its rows, and the person.
-struct FeedHome: Equatable, Sendable {
-    var rows: [Row] = []
-    var userId: String?
-    var photo: String?
-    var personSeed = ""
-
-    init() {}
-
-    init(_ home: HomeSnapshot, personSeed: String) {
-        rows = home.allRows
-        userId = home.userId
-        photo = home.profilePhoto
-        self.personSeed = personSeed
-    }
-
-    func faces(people: [String: TeamUser]) -> FeedFaces {
-        FeedFaces(rows: rows, userId: userId, photo: photo, personSeed: personSeed, people: people)
-    }
-}
-
 /// The Feed's slots, worked out off the main thread: a heading for each
 /// date bucket over a card of its entries, newest change first, as
 /// desktop's Feed and the artifacts list group them; or one note in their
-/// place. A row's ID is its entry's.
+/// place. A row's ID is its entry's. Every row is joined from its entry
+/// and the account's directory (`FeedRows`); an entry the directory can't
+/// show yet isn't a row.
 enum FeedListItems {
     /// A face over a row's bitmap: the subject's, or an actor's, which is
     /// ringed in the card's colour where the faces overlap. Its radius
@@ -96,39 +80,40 @@ enum FeedListItems {
     nonisolated static func faceKey(_ slot: String, _ face: FeedFace) -> String { "\(slot)|\(face)" }
 
     /// The feed: its notes while it has nothing to show.
-    nonisolated static func items(_ input: FeedListInput) -> (items: [CardItem], faces: [String: FeedFace]) {
-        guard input.width > 0 else { return ([], [:]) }
+    nonisolated static func items(_ input: FeedListInput) -> (items: [CardItem], faces: [String: FeedFace], rows: [FeedRow]) {
+        guard input.width > 0 else { return ([], [:], []) }
         let state = input.state
         let words = input.words
-        if state.items.isEmpty {
+        let peek = input.peek
+        let rows = FeedRows.make(state.items, unread: { !peek && state.isUnread($0) }, directory: input.directory, personSeed: input.personSeed)
+        if rows.isEmpty {
             let text: String
             if input.peek { text = state.error != nil ? words.clustersUnavailable : state.loaded ? words.peekEmpty : words.loadingClusters }
             else if state.available == false { text = words.unsupported }
             else if state.error != nil { text = words.unavailable }
             else if !state.loaded || state.available == nil || state.refreshing { text = words.loading }
+            // Entries whose subjects aren't read yet show once they are.
+            else if !state.items.isEmpty && !input.directory.loaded { text = words.loading }
             else { text = words.empty }
-            return ([note("feed:note", text, input)], [:])
+            return ([note("feed:note", text, input)], [:], [])
         }
-        let faces = input.home.faces(people: state.people)
-        let peek = input.peek
-        var made = entries(state.items, unread: { !peek && state.isUnread($0) }, faces: faces, input: input)
+        var made = entries(rows, input: input)
         if state.loadingMore {
             made.items.append(note("feed:more", words.loadingClusters, input))
         }
-        return made
+        return (made.items, made.faces, rows)
     }
 
-    /// `entries` in their date's cards, each a row; `unread` says which
-    /// carry the dot.
-    nonisolated static func entries(_ entries: [FeedItem], unread: (FeedItem) -> Bool, faces looks: FeedFaces, input: FeedListInput) -> (items: [CardItem], faces: [String: FeedFace]) {
+    /// `rows` in their date's cards.
+    nonisolated static func entries(_ rows: [FeedRow], input: FeedListInput) -> (items: [CardItem], faces: [String: FeedFace]) {
         var items: [CardItem] = []
         var faces: [String: FeedFace] = [:]
-        let groups = DateBucket.group(entries, now: input.now, calendar: input.calendar) { Date(timeIntervalSince1970: $0.lastAt / 1000) }
+        let groups = DateBucket.group(rows, now: input.now, calendar: input.calendar) { Date(timeIntervalSince1970: $0.lastAt / 1000) }
         for (index, group) in groups.enumerated() {
             let label = input.dates.bucket(group.bucket, now: input.now, calendar: input.calendar)
             items.append(CardItems.heading("feed:heading:\(group.bucket)", label, width: input.width, maxWidth: input.maxWidth, afterCard: index > 0, dark: input.dark, displayScale: input.displayScale))
             for (entry, place) in zip(group.items, CardPlace.run(group.items.count)) {
-                let made = row(entry, unread: unread(entry), place: place, faces: looks, input: input)
+                let made = row(entry, place: place, input: input)
                 items.append(made.item)
                 faces.merge(made.faces) { first, _ in first }
             }
@@ -140,12 +125,13 @@ enum FeedListItems {
         CardItems.note(id, text, width: input.width, maxWidth: input.maxWidth, scale: input.scale, dark: input.dark, displayScale: input.displayScale)
     }
 
-    nonisolated static func row(_ entry: FeedItem, unread: Bool, place: CardPlace, faces looks: FeedFaces, input: FeedListInput) -> (item: CardItem, faces: [String: FeedFace]) {
+    nonisolated static func row(_ entry: FeedRow, place: CardPlace, input: FeedListInput) -> (item: CardItem, faces: [String: FeedFace]) {
         typealias M = FeedMetrics
         let words = input.words
+        let unread = entry.unread
         let titleFont = CardFont(unread ? .semiBold : .regular, M.titleSize, scale: input.scale)
         let small = CardFont(.regular, M.summarySize, scale: input.scale)
-        let title = entry.snapshot.title.isEmpty ? words.untitled : entry.snapshot.title
+        let title = entry.title
         let date = Date(timeIntervalSince1970: entry.lastAt / 1000)
         let time = input.dates.time(date, now: input.now, calendar: input.calendar)
         let summary = words.summary(entry)
@@ -169,7 +155,7 @@ enum FeedListItems {
             overlays.append(CardOverlay(kind: kind, key: key, frame: frame, radius: radius(face, side: frame.width)))
             faces[key] = face
         }
-        let subject = looks.subject(entry)
+        let subject = entry.face
         switch subject {
         case .tile(let kind, let type):
             let look = tile(kind, artifactType: type)
@@ -182,15 +168,14 @@ enum FeedListItems {
         if let frame = layout.time { drawing.text(time, small, Palette.settingsSecondary, frame) }
         if unread { drawing.marks.append(.tile(layout.dot, radius: M.dot / 2, Palette.tileBlue)) }
         for (index, (actor, frame)) in zip(actors, layout.faces).enumerated() {
-            overlay("actor\(index)", looks.actor(actor), frame, kind: actorKind)
+            overlay("actor\(index)", actor, frame, kind: actorKind)
         }
         if let more, let frame = layout.more { drawing.text(more, small, Palette.settingsSecondary, frame) }
         if let frame = layout.summary { drawing.text(summary, small, Palette.settingsSecondary, frame) }
         drawing.rule(layout.separator)
-        var item = CardItem(id: entry.id, kind: .row, size: layout.size, card: layout.card, place: place, drawing: drawing, opens: true, overlays: overlays)
+        var item = CardItem(id: entry.id, kind: .row, size: layout.size, card: layout.card, place: place, drawing: drawing, opens: entry.target != nil, overlays: overlays)
         item.accessibilityLabel = title
-        let names = entry.actors.map { looks.name($0, words: words) }
-        item.accessibilityValue = [unread ? words.unreadMark : nil, summary, words.actors(names, count: entry.actorCount), time]
+        item.accessibilityValue = [unread ? words.unreadMark : nil, summary, words.actors(named: entry.actorNames, count: entry.actorCount), time]
             .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
         return (item, faces)
     }
@@ -210,7 +195,7 @@ struct FeedClustersInput: Sendable {
     var pending: Set<String> = []
     var loaded = false
     var error: String?
-    var home = FeedHome()
+    var directory = FeedDirectory()
     var width: CGFloat = 0
     var maxWidth: CGFloat = .greatestFiniteMagnitude
     var scale: CGFloat = 1
@@ -222,7 +207,8 @@ struct FeedClustersInput: Sendable {
 }
 
 /// Following: everything and the team in one card, each place in another,
-/// a switch on each to follow or mute it; a tap peeks in.
+/// a switch on each to follow or mute it; a tap peeks in. A place is named
+/// from the directory; one it doesn't hold isn't listed.
 enum FeedClusterItems {
     static let toggle = "switch"
 
@@ -237,20 +223,20 @@ enum FeedClusterItems {
         func note(_ text: String) -> CardItem {
             CardItems.note("following:note", text, width: input.width, maxWidth: input.maxWidth, scale: input.scale, dark: input.dark, displayScale: input.displayScale)
         }
-        if input.clusters.isEmpty {
+        let shown = input.clusters.compactMap { cluster in FeedPlace(cluster, directory: input.directory).map { (cluster, $0) } }
+        if shown.isEmpty {
             if input.error != nil { return ([note(words.clustersUnavailable)], [:]) }
             return ([note(input.loaded ? words.noClusters : words.loadingClusters)], [:])
         }
-        let looks = input.home.faces(people: [:])
         let everything = input.clusters.first { $0.cluster == "*" }?.state
-        let broad = input.clusters.filter { $0.kind == "everything" || $0.kind == "team" }
-        let places = input.clusters.filter { $0.kind != "everything" && $0.kind != "team" }
+        let broad = shown.filter { $0.0.kind == "everything" || $0.0.kind == "team" }
+        let places = shown.filter { $0.0.kind != "everything" && $0.0.kind != "team" }
         var items: [CardItem] = []
         var faces: [String: FeedFace] = [:]
         for (id, label, rows) in [("everywhere", words.everywhere, broad), ("places", words.places, places)] where !rows.isEmpty {
             items.append(CardItems.heading("following:heading:\(id)", label, width: input.width, maxWidth: input.maxWidth, afterCard: !items.isEmpty, dark: input.dark, displayScale: input.displayScale))
-            for (cluster, place) in zip(rows, CardPlace.run(rows.count)) {
-                let made = row(cluster, following: following(cluster, everything: everything), place: place, faces: looks, input: input)
+            for ((cluster, named), place) in zip(rows, CardPlace.run(rows.count)) {
+                let made = row(cluster, named, following: following(cluster, everything: everything), place: place, input: input)
                 items.append(made.item)
                 faces.merge(made.faces) { first, _ in first }
             }
@@ -258,10 +244,10 @@ enum FeedClusterItems {
         return (items, faces)
     }
 
-    nonisolated static func row(_ cluster: FeedCluster, following: Bool, place: CardPlace, faces looks: FeedFaces, input: FeedClustersInput) -> (item: CardItem, faces: [String: FeedFace]) {
+    nonisolated static func row(_ cluster: FeedCluster, _ named: FeedPlace, following: Bool, place: CardPlace, input: FeedClustersInput) -> (item: CardItem, faces: [String: FeedFace]) {
         typealias M = FeedMetrics
         let font = CardFont(.regular, CardListMetrics.titleSize, scale: input.scale)
-        let name = cluster.name.isEmpty ? input.words.untitled : cluster.name
+        let name = input.words.name(named.name)
         let square = CGSize(width: M.clusterAvatar, height: M.clusterAvatar)
         let layout = CardRowLayout(
             width: input.width, maxWidth: input.maxWidth, place: place, leading: square,
@@ -272,7 +258,7 @@ enum FeedClusterItems {
         var drawing = CardDrawing(dark: input.dark, displayScale: input.displayScale)
         var overlays: [CardOverlay] = []
         var faces: [String: FeedFace] = [:]
-        let face = looks.cluster(cluster)
+        let face = named.face
         if let frame = layout.leading {
             switch face {
             case .clusterTile(let kind):
