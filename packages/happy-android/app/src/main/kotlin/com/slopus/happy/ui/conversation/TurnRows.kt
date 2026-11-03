@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -137,11 +138,12 @@ object TurnRowSpec {
 /**
  * A tool call's one line: its mark, or a spinner while it runs, its verb
  * and its subject. [bottom] is what it keeps under itself: its own 6, or
- * less where what it showed follows.
+ * less where what it showed follows. A tap opens the call ([onOpen], its
+ * own screen), running or done; a long press copies the subject.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ToolLine(tool: ToolUse, modifier: Modifier = Modifier, bottom: Dp = TurnRowSpec.paddingV) {
+fun ToolLine(tool: ToolUse, modifier: Modifier = Modifier, bottom: Dp = TurnRowSpec.paddingV, onOpen: (() -> Unit)? = null) {
     val colors = HappyTheme.colors
     val res = LocalContext.current.resources
     val words = remember(tool, res) { ToolWords.of(tool, res) }
@@ -155,19 +157,26 @@ fun ToolLine(tool: ToolUse, modifier: Modifier = Modifier, bottom: Dp = TurnRowS
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val copies = words.subject.isNotEmpty()
+    val openLabel = stringResource(R.string.tool_open)
     Row(
         modifier
             .fillMaxWidth()
             .then(
                 // A long press copies what scrolled out of the line.
-                if (copies) {
+                if (copies || onOpen != null) {
                     Modifier.combinedClickable(
                         interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = {},
-                        onLongClick = {
-                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(words.subject, words.subject))) }
+                        indication = if (onOpen != null) ripple() else null,
+                        role = if (onOpen != null) Role.Button else null,
+                        onClickLabel = openLabel.takeIf { onOpen != null },
+                        onClick = { onOpen?.invoke() },
+                        onLongClick = if (copies) {
+                            {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                scope.launch { clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(words.subject, words.subject))) }
+                            }
+                        } else {
+                            null
                         },
                     )
                 } else {

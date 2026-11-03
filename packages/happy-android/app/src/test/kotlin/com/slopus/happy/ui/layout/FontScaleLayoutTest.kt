@@ -303,4 +303,27 @@ class FontScaleLayoutTest {
         val lines = headline.height / 40.8.dp
         assertEquals("headline is whole 40.8 lines", Math.round(lines).toFloat(), lines, 0.02f)
     }
+
+    // A tool call's screen at 2.0: the header card grows with its kind and name lines around the 36 tile,
+    // which stays 36; fields grow and nothing is cut.
+    @Test
+    fun toolCallScreenGrows() {
+        val call = com.slopus.happy.conversation.Block.parse(
+            kotlinx.serialization.json.Json.parseToJsonElement(
+                """{"type":"tool_call","id":"c","name":"mcp__linear__create_issue","status":"completed","arguments":{"title":"Login loops","file_path":"sources/auth/login.ts"}}""",
+            ),
+        ) as com.slopus.happy.conversation.Block.ToolCall
+        showLarge { com.slopus.happy.ui.conversation.ToolCallScreen(com.slopus.happy.ui.conversation.ToolCallScreenState(call = call, reading = false), com.slopus.happy.ui.conversation.ToolCallActions()) }
+        assertNothingClipped()
+        val header = rule.node(com.slopus.happy.ui.conversation.ToolCallTags.HEADER).bounds
+        assertTrue("14, the kind and name lines (the name may wrap), 14", header.height >= 28.dp + line(17, 22) + line(13, 18) - 0.34.dp)
+        val title = rule.node(com.slopus.happy.ui.conversation.ToolCallTags.HEADER_TITLE).bounds
+        assertDp("the kind's line grows", line(17, 22), title.bottom - title.top)
+        assertDp("the kind stays 14 in from the top", header.top + 14.dp, title.top)
+        assertDp("the tile stays 36", 36, rule.node(com.slopus.happy.ui.conversation.ToolCallTags.TILE).bounds.let { it.right - it.left })
+        rule.onAllNodesWithTag(com.slopus.happy.ui.conversation.ToolCallTags.FIELD, useUnmergedTree = true).fetchSemanticsNodes().forEach {
+            val height = with(rule.density) { it.boundsInRoot.height.toDp() }
+            assertTrue("a field holds its grown label and value: $height", height >= 20.dp + large(13) + 2.dp + large(13))
+        }
+    }
 }

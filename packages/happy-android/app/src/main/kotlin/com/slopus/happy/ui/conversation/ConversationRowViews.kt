@@ -124,17 +124,26 @@ class ConversationRowActions(
     val uploads: UploadBoard? = null,
     /** Takes picture `index` out of a message still on its way. */
     val onRemovePicture: (messageId: String, index: Int) -> Unit = { _, _ -> },
+    /** Opens a tool call on its own screen, by its id; null where nothing opens it. */
+    val onOpenTool: ((String) -> Unit)? = null,
 )
+
+/** What opens [tool]'s screen: only a call with an id, where the screen opens calls at all. */
+internal fun ConversationRowActions.opener(tool: ToolUse?): (() -> Unit)? {
+    val id = tool?.id ?: return null
+    val open = onOpenTool ?: return null
+    return { open(id) }
+}
 
 /**
  * What a call showed under its line, [TurnRowSpec.resultGap] apart (iOS
  * `ToolResultLayout`); alone where no call presented it.
  */
 @Composable
-private fun ToolResult(tool: ToolUse?, modifier: Modifier, body: @Composable (Modifier) -> Unit) {
+private fun ToolResult(tool: ToolUse?, actions: ConversationRowActions, modifier: Modifier, body: @Composable (Modifier) -> Unit) {
     if (tool == null) return body(modifier)
     Column(modifier) {
-        ToolLine(tool, bottom = TurnRowSpec.resultGap - ConversationRowSpec.marginVertical)
+        ToolLine(tool, bottom = TurnRowSpec.resultGap - ConversationRowSpec.marginVertical, onOpen = actions.opener(tool))
         body(Modifier)
     }
 }
@@ -175,13 +184,13 @@ fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: Co
         when (row) {
             is ConversationRow.User -> UserRow(row, bubble, actions, content)
             is ConversationRow.Text -> TextRow(row, actions, content)
-            is ConversationRow.Tool -> ToolLine(row.tool, content)
+            is ConversationRow.Tool -> ToolLine(row.tool, content, onOpen = actions.opener(row.tool))
             is ConversationRow.Reasoning -> ReasoningProse(row, content)
             is ConversationRow.Picture -> Box(content.fillMaxWidth().padding(horizontal = ConversationRowSpec.marginHorizontal, vertical = ConversationRowSpec.marginVertical)) {
                 InlinePictures(row.key, listOf(row.image), actions, MediaFlow.tool, alignEnd = false)
             }
-            is ConversationRow.Media -> ToolResult(row.tool, content) { MediaRow(row, actions, it) }
-            is ConversationRow.Artifact -> ToolResult(row.tool, content) {
+            is ConversationRow.Media -> ToolResult(row.tool, actions, content) { MediaRow(row, actions, it) }
+            is ConversationRow.Artifact -> ToolResult(row.tool, actions, content) {
                 InfoCard(
                     icon = Ionicon.LayersOutline,
                     title = row.title.ifEmpty { stringResource(R.string.conversation_artifact) },

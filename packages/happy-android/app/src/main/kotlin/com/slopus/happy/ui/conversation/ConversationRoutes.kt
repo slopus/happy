@@ -76,6 +76,12 @@ import kotlinx.serialization.Serializable
 /** A conversation's agent page ([AgentPageEntry]). */
 @Serializable data class ConversationDetailsRoute(val connectionId: String, val agentId: String)
 
+/** One tool call of [agentId]'s conversation on its own screen ([ToolCallEntry]); with [file], that one file of its edit. */
+@Serializable data class ToolCallRoute(val connectionId: String, val agentId: String, val callId: String, val file: String? = null)
+
+/** A workspace's changes against its comparison base ([WorkspaceChangesEntry]). */
+@Serializable data class WorkspaceChangesRoute(val connectionId: String, val workspaceId: String)
+
 /** The conversation screens. HappyApp's NavHost calls this once. */
 fun NavGraphBuilder.conversationRoutes(graph: AppGraph, nav: NavHostController) {
     page<ConversationRoute> { entry ->
@@ -89,6 +95,14 @@ fun NavGraphBuilder.conversationRoutes(graph: AppGraph, nav: NavHostController) 
     page<ConversationDetailsRoute> { entry ->
         val route = entry.toRoute<ConversationDetailsRoute>()
         AgentPageEntry(graph, nav, route)
+    }
+    page<ToolCallRoute> { entry ->
+        val route = entry.toRoute<ToolCallRoute>()
+        ToolCallEntry(graph, nav, route)
+    }
+    page<WorkspaceChangesRoute> { entry ->
+        val route = entry.toRoute<WorkspaceChangesRoute>()
+        WorkspaceChangesEntry(graph, nav, route)
     }
 }
 
@@ -359,6 +373,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                     onCommand = conversation::runCommand,
                     onToggleTurn = conversation::toggleTurn,
                     onToggleMessage = conversation::toggleMessage,
+                    onOpenTool = { callId -> nav.navigate(ToolCallRoute(route.connectionId, conversation.agentId, callId)) },
                     // The values typed into a secret go in this one request to the computer and nowhere else.
                     secrets = SecretRequestActions(
                         secrets = { ConversationApi(session.conversationRequest()).secrets() },

@@ -97,7 +97,19 @@ data class KeptConversation(
                 put("status", block.status)
                 block.presentation?.let { put("presentation", presentationJson(it)) }
                 block.arguments?.let { put("arguments", it) }
-                block.output?.let { putJsonObject("result") { put("output", it) } }
+                // As history's omitToolData: a presented call's result is read again when opened.
+                val result = block.result?.takeIf { block.presentation == null }
+                if (result != null) put("result", result) else block.output?.let { putJsonObject("result") { put("output", it) } }
+                block.review?.let { review ->
+                    putJsonObject("review") {
+                        put("outcome", review.outcome)
+                        put("reason", review.reason)
+                        review.risk?.let { put("risk", it) }
+                        review.userAuthorization?.let { put("userAuthorization", it) }
+                        review.kind?.let { put("kind", it) }
+                    }
+                }
+                block.elevated?.let { put("elevated", it) }
             }
             is Block.Compaction -> buildJsonObject { put("type", "compaction"); put("status", block.status) }
             is Block.Unknown -> buildJsonObject { put("type", block.type) }
@@ -133,6 +145,10 @@ data class KeptConversation(
                 put("type", "search")
                 put("query", presentation.query)
                 put("target", presentation.target)
+                if (presentation.sources.isNotEmpty()) put(
+                    "sources",
+                    buildJsonArray { presentation.sources.forEach { add(buildJsonObject { put("title", it.title); put("url", it.url) }) } },
+                )
             }
             is Presentation.Media -> buildJsonObject {
                 put("type", "media")
@@ -188,11 +204,15 @@ data class KeptConversation(
                                     put("kind", file.kind)
                                     file.added?.let { put("added", it) }
                                     file.deleted?.let { put("deleted", it) }
+                                    put("hunks", buildJsonArray { file.hunks.forEach { add(hunkJson(it)) } })
+                                    file.language?.let { put("language", it) }
+                                    if (file.omittedLines > 0) put("omittedLines", file.omittedLines)
                                 },
                             )
                         }
                     },
                 )
+                if (presentation.omittedFiles > 0) put("omittedFiles", presentation.omittedFiles)
             }
             is Presentation.AgentSpawn -> buildJsonObject {
                 put("type", "agent_spawn")
@@ -203,6 +223,12 @@ data class KeptConversation(
                 put("input", presentation.input)
                 presentation.command?.let { put("command", it) }
             }
+        }
+
+        private fun hunkJson(hunk: Presentation.FileDiff.Hunk): JsonObject = buildJsonObject {
+            put("oldStart", hunk.oldStart)
+            put("newStart", hunk.newStart)
+            put("lines", buildJsonArray { hunk.lines.forEach { line -> add(buildJsonObject { put("kind", line.kind); put("text", line.text) }) } })
         }
 
         private fun mediaJson(item: MediaItem): JsonObject = buildJsonObject {

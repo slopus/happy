@@ -35,6 +35,10 @@ data class ToolUse(
     val presentation: Presentation? = null,
     /** The skill a `read_skill` call reads, from its arguments: its line names it. */
     val skill: String? = null,
+    /** The call's id, which opens it ([ToolCallRoute][com.slopus.happy.ui.conversation.ToolCallRoute]); null where the daemon sent none. */
+    val id: String? = null,
+    /** What its arguments say for its line where no presentation does (a plan's progress, a page's address). */
+    val hint: ToolHint? = null,
 ) {
     val running: Boolean get() = status == "running"
     val failed: Boolean get() = status == "failed"
@@ -317,7 +321,7 @@ class ConversationRowBuilder(
                 if (answered != null) return listOf(ConversationRow.Ask(askKey(call.id), answered, AskPhase.Answered))
             }
             val skill = if (call.name == Conversation.READ_SKILL) (call.arguments as? JsonObject)?.get("name").str else null
-            val tool = ToolUse(call.name, call.status, call.presentation, skill)
+            val tool = ToolUse(call.name, call.status, call.presentation, skill, call.id, ToolHint.of(call))
             return when (val p = call.presentation) {
                 is Presentation.Media -> if (call.id == null || p.items.isEmpty()) {
                     listOf(ConversationRow.Tool(key, call.id, tool))

@@ -89,6 +89,15 @@ private class DiffSections(private val scope: CoroutineScope, private val syntax
 
     operator fun get(item: DiffFileItem): Section? = sections[item.id]?.takeIf { it.source == item.source }
 
+    /**
+     * What is built now, read in composition. The list's content reads this
+     * copy rather than the live map: a body built while the list is being
+     * measured (an expanded file's header composes and asks for it) would
+     * otherwise change the content under that measure without asking for
+     * another, and the list would keep the count it started with.
+     */
+    fun built(): Map<String, Section> = sections.toMap()
+
     fun ensure(item: DiffFileItem) {
         val source = item.source ?: return
         if (get(item) != null) return
@@ -139,6 +148,8 @@ private class DiffSections(private val scope: CoroutineScope, private val syntax
  * [onRequestContent] is asked for it once per expansion. [scrollToPath]
  * scrolls to that file once, when the list first has it, and tints its
  * section hunkBg. No files: [emptyText] (or "No changes") padded 32.
+ * [footer] follows the last file. With [onOpenFile] each header ends in
+ * a 32 square holding a 16 open glyph that opens that file on its own.
  * On a glass screen it starts under the bar ([barInsetTop]).
  */
 @Composable
@@ -156,6 +167,8 @@ fun DiffFilesList(
     emptyText: String? = null,
     onExpandContext: ((path: String) -> Unit)? = null,
     onRequestContent: ((path: String) -> Unit)? = null,
+    footer: (@Composable LazyItemScope.() -> Unit)? = null,
+    onOpenFile: ((path: String) -> Unit)? = null,
 ) {
     val palette = diffPalette()
     val metrics = rememberDiffMetrics(fontSize)
@@ -168,6 +181,7 @@ fun DiffFilesList(
     val overrides = remember { mutableStateMapOf<String, Boolean>() }
     val requested = remember { HashSet<String>() }
     val requestContent by rememberUpdatedState(onRequestContent)
+    val built = sections.built()
 
     fun tooBig(item: DiffFileItem) = item.additions + item.deletions > autoCollapseAbove
     fun collapsed(item: DiffFileItem) = overrides[item.path] ?: (defaultCollapsed || tooBig(item))
@@ -195,7 +209,13 @@ fun DiffFilesList(
             val showSizeHint = isCollapsed && tooBig(item)
             item(key = "file:${item.id}", contentType = "diff.fileHeader") {
                 if (!isCollapsed) LaunchedEffect(item.source) { sections.ensure(item) }
-                DiffFileHeader(item.summary, width, collapsed = isCollapsed, onToggle = { overrides[item.path] = !isCollapsed })
+                DiffFileHeader(
+                    item.summary,
+                    width,
+                    collapsed = isCollapsed,
+                    onToggle = { overrides[item.path] = !isCollapsed },
+                    right = onOpenFile?.let { open -> { OpenFileButton { open(item.path) } } },
+                )
             }
             when {
                 isCollapsed -> if (showSizeHint) item(key = "hint:${item.id}") {
@@ -219,8 +239,9 @@ fun DiffFilesList(
                     Spinner(palette, tint, width)
                 }
                 else -> {
-                    val document = sections[item]?.document
-                    val bodies = sections[item]?.bodies.orEmpty()
+                    val section = built[item.id]?.takeIf { it.source == item.source }
+                    val document = section?.document
+                    val bodies = section?.bodies.orEmpty()
                     val hasTextRows = document?.files?.any { file -> file.rows.any { it is DiffRow.Line } } == true
                     when {
                         document == null -> item(key = "body:${item.id}") { Spinner(palette, tint, width) }
@@ -244,6 +265,7 @@ fun DiffFilesList(
             }
             item(key = "end:${item.id}", contentType = "diff.fileEnd") { HorizontalDivider(width, thickness = 1.dp, color = palette.divider) }
         }
+        if (footer != null) item(key = "diff.list.footer", content = footer)
     }
 
     // Scroll to the requested file once, when it first appears. Bodies
@@ -268,6 +290,21 @@ fun DiffFilesList(
         contentPadding = PaddingValues(top = barInsetTop(), bottom = 32.dp),
         content = content,
     )
+}
+
+/** A header's way to one file on its own: a 16 glyph in a 32 target, as wide as the header's own padding allows. */
+@Composable
+private fun OpenFileButton(onClick: () -> Unit) {
+    val palette = diffPalette()
+    Box(
+        Modifier
+            .size(32.dp)
+            .testTag(DiffTags.OPEN_FILE)
+            .clickable(role = Role.Button, onClickLabel = stringResource(R.string.tool_open_file), onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        com.slopus.happy.ui.components.Icon(com.slopus.happy.ui.components.Ionicon.ExitOutline, 16.dp, palette.textSecondary)
+    }
 }
 
 @Composable

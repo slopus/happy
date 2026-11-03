@@ -191,6 +191,19 @@ class AgentPageTest {
         all(AgentPageTags.DETAILS_ROW).forEach { assertDp("a detail is 52", 52, it.height) }
     }
 
+    @Test fun `a workspace's changes are a detail of their own, counted as home counts them, opening the changes`() {
+        val opened = ArrayList<String>()
+        val changes = com.slopus.happy.agent.WorkspaceLineChanges("ready", 12, 3, true, 1.0)
+        show(AgentPageFixtures.page.copy(workspaceId = "w1", lineChanges = changes), AgentPageActions(onOpenChanges = { opened += it }))
+        rule.node(AgentPageTags.CHANGES).performScrollTo()
+        assertDp("a detail is 52", 52, rule.node(AgentPageTags.CHANGES).bounds.height)
+        rule.onNodeWithText("+12 \u22123", useUnmergedTree = true).assertIsDisplayed()
+        rule.node(AgentPageTags.CHANGES).performClick()
+        assertEquals(listOf("w1"), opened)
+        assertEquals("≈ +1.2k", changesText(changes.copy(insertions = 1234, deletions = 0, countsExact = false)))
+        assertEquals("", changesText(null))
+    }
+
     @Test fun `before the bootstrap answers the unknown values shimmer and activity waits`() {
         show(AgentPageState("a1", name = "Ship the onboarding", reading = true, sharedReading = true))
         assertTrue("placeholders stand in", all(AgentPageTags.PLACEHOLDER).size >= 3 + 3)

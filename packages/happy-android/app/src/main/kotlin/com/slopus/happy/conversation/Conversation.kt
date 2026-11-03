@@ -1150,6 +1150,19 @@ class Conversation(
     /** A tool's presented item, read whole. */
     suspend fun media(ref: MediaRef): ByteArray = api.media(agentId, ref.toolCallId, ref.index)
 
+    /** The tool call [callId] as this conversation holds it now, and where it is in history; null where it holds none. */
+    suspend fun toolCall(callId: String): LocatedCall? = withContext(lane) {
+        fun inMessage(id: String) = (messages[id]?.content?.firstOrNull { it is Block.ToolCall && it.id == callId } as? Block.ToolCall)
+        runs.forEachIndexed { index, (runId, ids) ->
+            for (id in ids) inMessage(id)?.let { return@withContext LocatedCall(it, runId, runs.getOrNull(index + 1)?.first) }
+        }
+        pending.firstNotNullOfOrNull(::inMessage)?.let { LocatedCall(it, null, null) }
+    }
+
+    /** The tool call [callId] read whole from history, its raw data included; [located] finds its run at once. */
+    suspend fun fullToolCall(callId: String, located: LocatedCall? = null): Block.ToolCall? =
+        ToolCallReader(api, agentId).read(callId, located ?: toolCall(callId))
+
     private fun markRead() {
         if (!created) return
         scope.launch(lane) {

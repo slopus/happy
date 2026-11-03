@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tool_open">打开详情</string>
+    <string name="tool_open_file">打开文件</string>
+    <string name="tool_plan_progress">计划 · 已完成 %1$d/%2$d</string>
+    <string name="tool_unavailable">此工具调用已不在对话中。</string>
+    <string name="tool_reading_whole">正在读取完整调用…</string>
+    <string name="tool_whole_failed">无法读取完整调用。显示的是聊天中已有的内容。</string>
+    <string name="tool_kind_file_edit">文件编辑</string>
+    <string name="tool_kind_exploration">探索</string>
+    <string name="tool_kind_x_search">X 搜索</string>
+    <string name="tool_kind_web_page">网页</string>
+    <string name="tool_kind_plan">计划</string>
+    <string name="tool_kind_media">向你展示</string>
+    <string name="tool_kind_tool_call">工具调用</string>
+    <string name="tool_status_running">运行中</string>
+    <string name="tool_section_arguments">参数</string>
+    <string name="tool_section_result">结果</string>
+    <string name="tool_section_sources">来源</string>
+    <string name="tool_section_steps">步骤</string>
+    <string name="tool_section_instructions">指令</string>
+    <string name="tool_section_review">审查</string>
+    <string name="tool_section_raw">原始数据</string>
+    <string name="tool_field_query">查询</string>
+    <string name="tool_field_explanation">说明</string>
+    <string name="tool_field_title">标题</string>
+    <string name="tool_field_model">模型</string>
+    <string name="tool_field_to">发送给</string>
+    <string name="tool_field_address">地址</string>
+    <string name="tool_field_prompt">提示</string>
+    <string name="tool_field_running">正在运行</string>
+    <string name="tool_op_list">列出</string>
+    <string name="tool_op_in">在 %1$s 中</string>
+    <string name="tool_review_decision">决定</string>
+    <string name="tool_review_allowed">已允许</string>
+    <string name="tool_review_denied">已拒绝</string>
+    <string name="tool_review_unproven">未审查</string>
+    <string name="tool_review_why">原因</string>
+    <string name="tool_review_timed_out">审查超时</string>
+    <string name="tool_review_unavailable">审查者不可用</string>
+    <string name="tool_review_risk">风险</string>
+    <string name="tool_review_asked">请求程度</string>
+    <string name="tool_review_access">访问</string>
+    <string name="tool_review_full_access">以完全访问权限运行</string>
+    <string name="tool_review_sandbox">留在沙盒中</string>
+    <string name="tool_level_low">低</string>
+    <string name="tool_level_medium">中</string>
+    <string name="tool_level_high">高</string>
+    <string name="tool_level_critical">严重</string>
+    <string name="tool_level_unknown">未知</string>
+    <plurals name="tool_diff_more_lines">
+        <item quantity="other">%2$s 中还有 %1$d 行未显示</item>
+    </plurals>
+    <plurals name="tool_diff_more_files">
+        <item quantity="other">还有 %1$d 个文件未显示</item>
+    </plurals>
+</resources>

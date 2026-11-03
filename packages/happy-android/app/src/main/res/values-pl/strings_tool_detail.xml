@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tool_open">Otwórz szczegóły</string>
+    <string name="tool_open_file">Otwórz plik</string>
+    <string name="tool_plan_progress">plan · ukończono %1$d z %2$d</string>
+    <string name="tool_unavailable">Tego wywołania narzędzia nie ma już w rozmowie.</string>
+    <string name="tool_reading_whole">Wczytywanie całego wywołania…</string>
+    <string name="tool_whole_failed">Nie udało się wczytać całego wywołania. Pokazano to, co było w czacie.</string>
+    <string name="tool_kind_file_edit">Edycja pliku</string>
+    <string name="tool_kind_exploration">Eksploracja</string>
+    <string name="tool_kind_x_search">Wyszukiwanie w X</string>
+    <string name="tool_kind_web_page">Strona internetowa</string>
+    <string name="tool_kind_plan">Plan</string>
+    <string name="tool_kind_media">Pokazane tobie</string>
+    <string name="tool_kind_tool_call">Wywołanie narzędzia</string>
+    <string name="tool_status_running">W toku</string>
+    <string name="tool_section_arguments">Argumenty</string>
+    <string name="tool_section_result">Wynik</string>
+    <string name="tool_section_sources">Źródła</string>
+    <string name="tool_section_steps">Kroki</string>
+    <string name="tool_section_instructions">Instrukcje</string>
+    <string name="tool_section_review">Ocena</string>
+    <string name="tool_section_raw">Surowe dane</string>
+    <string name="tool_field_query">Zapytanie</string>
+    <string name="tool_field_explanation">Wyjaśnienie</string>
+    <string name="tool_field_title">Tytuł</string>
+    <string name="tool_field_model">Model</string>
+    <string name="tool_field_to">Do</string>
+    <string name="tool_field_address">Adres</string>
+    <string name="tool_field_prompt">Polecenie</string>
+    <string name="tool_field_running">Uruchomione</string>
+    <string name="tool_op_list">Lista</string>
+    <string name="tool_op_in">w %1$s</string>
+    <string name="tool_review_decision">Decyzja</string>
+    <string name="tool_review_allowed">Dozwolone</string>
+    <string name="tool_review_denied">Odrzucone</string>
+    <string name="tool_review_unproven">Nie ocenione</string>
+    <string name="tool_review_why">Powód</string>
+    <string name="tool_review_timed_out">Ocena przekroczyła limit czasu</string>
+    <string name="tool_review_unavailable">Oceniający był niedostępny</string>
+    <string name="tool_review_risk">Ryzyko</string>
+    <string name="tool_review_asked">Prośba</string>
+    <string name="tool_review_access">Dostęp</string>
+    <string name="tool_review_full_access">Uruchomione z pełnym dostępem</string>
+    <string name="tool_review_sandbox">Pozostało w piaskownicy</string>
+    <string name="tool_level_low">Niskie</string>
+    <string name="tool_level_medium">Średnie</string>
+    <string name="tool_level_high">Wysokie</string>
+    <string name="tool_level_critical">Krytyczne</string>
+    <string name="tool_level_unknown">Nieznane</string>
+    <plurals name="tool_diff_more_lines">
+        <item quantity="one">%1$d kolejna linia w %2$s nie jest pokazana</item>
+        <item quantity="few">%1$d kolejne linie w %2$s nie są pokazane</item>
+        <item quantity="many">%1$d kolejnych linii w %2$s nie pokazano</item>
+        <item quantity="other">%1$d kolejnej linii w %2$s nie pokazano</item>
+    </plurals>
+    <plurals name="tool_diff_more_files">
+        <item quantity="one">%1$d kolejny plik nie jest pokazany</item>
+        <item quantity="few">%1$d kolejne pliki nie są pokazane</item>
+        <item quantity="many">%1$d kolejnych plików nie pokazano</item>
+        <item quantity="other">%1$d kolejnego pliku nie pokazano</item>
+    </plurals>
+</resources>

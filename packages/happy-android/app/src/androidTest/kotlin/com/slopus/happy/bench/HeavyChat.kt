@@ -105,7 +105,7 @@ object HeavyChat {
         val name = tools[nextInt(tools.size)]
         val presentation = when (name) {
             "Bash" -> Presentation.Command("./gradlew ${words(2)} | grep -n ${words[nextInt(words.size)]}", output())
-            "Read", "Grep" -> Presentation.Exploration(listOf("sources/${words(1)}/${words(1)}.kt"))
+            "Read", "Grep" -> Presentation.Exploration(listOf(Presentation.Exploration.Operation("read", name = "${words(1)}.kt", path = "sources/${words(1)}/${words(1)}.kt")))
             else -> null
         }
         val arguments = if (presentation == null) buildJsonObject {

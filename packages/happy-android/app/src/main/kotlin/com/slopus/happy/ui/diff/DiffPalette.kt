@@ -33,6 +33,7 @@ object DiffTags {
     const val IMAGE = "diff.image"
     const val CHEVRON = "diff.chevron"
     const val SIZE_HINT = "diff.sizeHint"
+    const val OPEN_FILE = "diff.openFile"
     const val SPINNER = "diff.spinner"
     const val SYNTAX_PENDING = "diff.syntaxPending"
     const val SYNTAX_READY = "diff.syntaxReady"

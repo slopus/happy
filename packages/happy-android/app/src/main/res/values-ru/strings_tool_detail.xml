@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tool_open">Открыть подробности</string>
+    <string name="tool_open_file">Открыть файл</string>
+    <string name="tool_plan_progress">план · выполнено %1$d из %2$d</string>
+    <string name="tool_unavailable">Этого вызова инструмента больше нет в разговоре.</string>
+    <string name="tool_reading_whole">Загружаем вызов целиком…</string>
+    <string name="tool_whole_failed">Не удалось загрузить вызов целиком. Показано то, что было в чате.</string>
+    <string name="tool_kind_file_edit">Изменение файла</string>
+    <string name="tool_kind_exploration">Исследование</string>
+    <string name="tool_kind_x_search">Поиск в X</string>
+    <string name="tool_kind_web_page">Веб-страница</string>
+    <string name="tool_kind_plan">План</string>
+    <string name="tool_kind_media">Показано вам</string>
+    <string name="tool_kind_tool_call">Вызов инструмента</string>
+    <string name="tool_status_running">Выполняется</string>
+    <string name="tool_section_arguments">Аргументы</string>
+    <string name="tool_section_result">Результат</string>
+    <string name="tool_section_sources">Источники</string>
+    <string name="tool_section_steps">Шаги</string>
+    <string name="tool_section_instructions">Инструкции</string>
+    <string name="tool_section_review">Проверка</string>
+    <string name="tool_section_raw">Исходные данные</string>
+    <string name="tool_field_query">Запрос</string>
+    <string name="tool_field_explanation">Пояснение</string>
+    <string name="tool_field_title">Название</string>
+    <string name="tool_field_model">Модель</string>
+    <string name="tool_field_to">Кому</string>
+    <string name="tool_field_address">Адрес</string>
+    <string name="tool_field_prompt">Запрос к странице</string>
+    <string name="tool_field_running">Запущено</string>
+    <string name="tool_op_list">Список</string>
+    <string name="tool_op_in">в %1$s</string>
+    <string name="tool_review_decision">Решение</string>
+    <string name="tool_review_allowed">Разрешено</string>
+    <string name="tool_review_denied">Запрещено</string>
+    <string name="tool_review_unproven">Не проверено</string>
+    <string name="tool_review_why">Причина</string>
+    <string name="tool_review_timed_out">Проверка не уложилась во время</string>
+    <string name="tool_review_unavailable">Проверяющий был недоступен</string>
+    <string name="tool_review_risk">Риск</string>
+    <string name="tool_review_asked">Запрошено</string>
+    <string name="tool_review_access">Доступ</string>
+    <string name="tool_review_full_access">Выполнено с полным доступом</string>
+    <string name="tool_review_sandbox">Осталось в песочнице</string>
+    <string name="tool_level_low">Низкий</string>
+    <string name="tool_level_medium">Средний</string>
+    <string name="tool_level_high">Высокий</string>
+    <string name="tool_level_critical">Критический</string>
+    <string name="tool_level_unknown">Неизвестно</string>
+    <plurals name="tool_diff_more_lines">
+        <item quantity="one">Ещё %1$d строка в %2$s не показана</item>
+        <item quantity="few">Ещё %1$d строки в %2$s не показаны</item>
+        <item quantity="many">Ещё %1$d строк в %2$s не показано</item>
+        <item quantity="other">Ещё %1$d строки в %2$s не показаны</item>
+    </plurals>
+    <plurals name="tool_diff_more_files">
+        <item quantity="one">Ещё %1$d файл не показан</item>
+        <item quantity="few">Ещё %1$d файла не показаны</item>
+        <item quantity="many">Ещё %1$d файлов не показано</item>
+        <item quantity="other">Ещё %1$d файла не показаны</item>
+    </plurals>
+</resources>

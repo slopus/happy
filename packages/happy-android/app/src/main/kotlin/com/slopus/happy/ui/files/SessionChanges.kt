@@ -367,6 +367,8 @@ class AgentChanges(
                 Load.Ready(ops.gitState(sessionId), request)
             } catch (e: CancellationException) {
                 throw e
+            } catch (_: com.slopus.happy.agent.WorkspaceNotRepository) {
+                Load.Error(Words.ours(R.string.files_not_repo))
             } catch (e: Exception) {
                 Load.Error(Words.said(e.message, R.string.files_changes_failed))
             }

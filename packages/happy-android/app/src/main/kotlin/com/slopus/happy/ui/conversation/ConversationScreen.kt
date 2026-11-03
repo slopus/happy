@@ -198,6 +198,8 @@ class ConversationScreenActions(
     val onToggleTurn: (String) -> Unit = {},
     /** Opens a person's long message whole, or cuts it back, by its row's key. */
     val onToggleMessage: (String) -> Unit = {},
+    /** Opens a tool call on its own screen, by its id. */
+    val onOpenTool: ((String) -> Unit)? = null,
 )
 
 /**
@@ -292,6 +294,7 @@ fun ConversationScreen(
             },
             uploads = actions.uploads,
             onRemovePicture = actions.onRemovePicture,
+            onOpenTool = actions.onOpenTool,
         )
     }
     val atNewest by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }

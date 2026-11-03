@@ -102,10 +102,11 @@ open class ConversationApi(private val request: AgentRequest) {
     /**
      * The newest runs, the runs before the run [before], or the messages
      * after the message [after] (API.md: what extends the newest run and the
-     * runs started since). Tool data is left out where a presentation stands for it.
+     * runs started since). Tool data is left out where a presentation stands
+     * for it, unless [omitToolData] is false: a tool call opened whole.
      */
-    open suspend fun messages(agentId: String, before: String? = null, limit: Int = 100, after: String? = null): MessagesPage {
-        val query = StringBuilder("limit=$limit&omitToolData=true")
+    open suspend fun messages(agentId: String, before: String? = null, limit: Int = 100, after: String? = null, omitToolData: Boolean = true): MessagesPage {
+        val query = StringBuilder("limit=$limit&omitToolData=$omitToolData")
         before?.let { query.append("&before=").append(escape(it)) }
         after?.let { query.append("&after=").append(escape(it)) }
         return MessagesPage.parse(call("GET", "/v0/agents/${escape(agentId)}/messages?$query")) ?: throw invalid()

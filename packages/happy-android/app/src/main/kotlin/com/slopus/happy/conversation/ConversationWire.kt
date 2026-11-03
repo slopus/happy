@@ -101,15 +101,38 @@ sealed interface Presentation {
             fun reads(vararg names: String) = Exploration(names.map { Operation("read", name = it) })
         }
     }
-    data class Search(val query: String, val target: String) : Presentation
+    /** A web or X search (`target` `web` or `x`); the [sources] it drew from come with its end. */
+    data class Search(val query: String, val target: String, val sources: List<Source> = emptyList()) : Presentation {
+        data class Source(val title: String, val url: String)
+    }
     /** [columns] is the grid the producer asked for (`layout` `{type: "columns", columns}`, 1 or 2), else 0: justified rows. */
     data class Media(val items: List<MediaItem>, val columns: Int = 0) : Presentation
     data class Artifact(val artifactId: String, val artifactType: String?, val title: String?, val version: Int?, val shows: String? = null) : Presentation
     /** An answered question as the person was shown it, and the values they gave (`user_input`). */
     data class UserInput(val prompts: List<Question.Prompt>, val answers: Map<String, List<String>>) : Presentation
-    /** Files a call changed (`file_diff`), without their hunks: `kind` is `add`, `delete` or `update`. */
-    data class FileDiff(val files: List<File>) : Presentation {
-        data class File(val path: String, val kind: String, val added: Int? = null, val deleted: Int? = null)
+    /**
+     * Files a call changed (`file_diff`): `kind` is `add`, `delete` or
+     * `update`, [File.added] and [File.deleted] the whole file's totals, and
+     * [File.hunks] the lines as the daemon kept them (at most 500 a call,
+     * [File.omittedLines] past that; [omittedFiles] past 20 files).
+     */
+    data class FileDiff(val files: List<File>, val omittedFiles: Int = 0) : Presentation {
+        data class File(
+            val path: String,
+            val kind: String,
+            val added: Int? = null,
+            val deleted: Int? = null,
+            val hunks: List<Hunk> = emptyList(),
+            /** The daemon's name for its language, for colour. */
+            val language: String? = null,
+            val omittedLines: Int = 0,
+        )
+
+        /** A run of lines; a start is one-based, zero for the side a whole-file add or delete lacks. */
+        data class Hunk(val oldStart: Int, val newStart: Int, val lines: List<Line>)
+
+        /** `kind` is `context`, `add` or `delete`. */
+        data class Line(val kind: String, val text: String)
     }
     /** A subagent started (`agent_spawn`), with its model's name when said. */
     data class AgentSpawn(val model: String?) : Presentation
@@ -134,7 +157,14 @@ sealed interface Presentation {
                         )
                     },
                 )
-                "search" -> Search(o["query"].str ?: return null, o["target"].str ?: "web")
+                "search" -> Search(
+                    o["query"].str ?: return null,
+                    o["target"].str ?: "web",
+                    o["sources"].arr.orEmpty().mapNotNull { value ->
+                        val source = value.obj ?: return@mapNotNull null
+                        Search.Source(source["title"].str.orEmpty(), source["url"].str ?: return@mapNotNull null)
+                    },
+                )
                 "media" -> Media(o["items"].arr.orEmpty().mapNotNull(MediaItem::parse), columns(o["layout"]))
                 "artifact" -> Artifact(o["artifactId"].str ?: return null, o["artifactType"].str, o["title"].str, o["version"].num?.toInt(), o["shows"].str)
                 "user_input" -> UserInput(
@@ -156,8 +186,27 @@ sealed interface Presentation {
                 "file_diff" -> FileDiff(
                     o["files"].arr.orEmpty().mapNotNull { value ->
                         val file = value.obj ?: return@mapNotNull null
-                        FileDiff.File(file["path"].str ?: return@mapNotNull null, file["kind"].str ?: "update", file["added"].num?.toInt(), file["deleted"].num?.toInt())
+                        FileDiff.File(
+                            path = file["path"].str ?: return@mapNotNull null,
+                            kind = file["kind"].str ?: "update",
+                            added = file["added"].num?.toInt(),
+                            deleted = file["deleted"].num?.toInt(),
+                            hunks = file["hunks"].arr.orEmpty().mapNotNull { hunk ->
+                                val h = hunk.obj ?: return@mapNotNull null
+                                FileDiff.Hunk(
+                                    oldStart = h["oldStart"].num?.toInt() ?: 0,
+                                    newStart = h["newStart"].num?.toInt() ?: 0,
+                                    lines = h["lines"].arr.orEmpty().mapNotNull { line ->
+                                        val l = line.obj ?: return@mapNotNull null
+                                        FileDiff.Line(l["kind"].str ?: return@mapNotNull null, l["text"].str.orEmpty())
+                                    },
+                                )
+                            },
+                            language = file["language"].str,
+                            omittedLines = file["omittedLines"].num?.toInt() ?: 0,
+                        )
                     },
+                    o["omittedFiles"].num?.toInt() ?: 0,
                 )
                 "agent_spawn" -> AgentSpawn(o["model"].obj?.get("name").str)
                 "background_terminal_interaction" -> Terminal(o["input"].str.orEmpty(), o["command"].str)
@@ -173,6 +222,59 @@ sealed interface Presentation {
     }
 }
 
+/**
+ * How the automatic reviewer judged a call (`review`): `allowed` or
+ * `denied` with its [risk] (`low` to `critical`) and how strongly the
+ * conversation asked for it ([userAuthorization]); or `unproven`, with
+ * why no decision could be made ([kind]: `timed_out` or `unavailable`).
+ */
+data class ToolReview(
+    val outcome: String,
+    val reason: String,
+    val risk: String? = null,
+    val userAuthorization: String? = null,
+    val kind: String? = null,
+) {
+    companion object {
+        fun parse(value: JsonElement?): ToolReview? {
+            val o = value.obj ?: return null
+            return ToolReview(
+                outcome = o["outcome"].str ?: return null,
+                reason = o["reason"].str.orEmpty(),
+                risk = o["risk"].str,
+                userAuthorization = o["userAuthorization"].str,
+                kind = o["kind"].str,
+            )
+        }
+    }
+}
+
+/** A tool call's raw data as the phone keeps it: every string at most [LIMIT] long. */
+object ToolData {
+    /** UTF-16 units a raw string keeps; a longer one ends in [MARK]. */
+    const val LIMIT = 32_000
+    const val MARK = "\n…"
+
+    class Bounded(val value: JsonElement, val cut: Boolean)
+
+    fun bound(value: JsonElement): Bounded {
+        var cut = false
+        fun walk(element: JsonElement): JsonElement = when (element) {
+            is JsonObject -> JsonObject(element.mapValues { (_, child) -> walk(child) })
+            is kotlinx.serialization.json.JsonArray -> kotlinx.serialization.json.JsonArray(element.map(::walk))
+            is JsonPrimitive -> if (element.isString && element.content.length > LIMIT) {
+                cut = true
+                JsonPrimitive(element.content.take(LIMIT) + MARK)
+            } else {
+                element
+            }
+            else -> element
+        }
+        val bounded = walk(value)
+        return Bounded(if (cut) bounded else value, cut)
+    }
+}
+
 /** One content block. Unknown types are kept by name so a message still reads in order. */
 sealed interface Block {
     data class Text(val text: String) : Block
@@ -180,9 +282,13 @@ sealed interface Block {
     /** `data` is base64; history may leave a large picture's bytes out, and then it is [Unknown]. */
     data class Image(val mimeType: String, val data: String) : Block
     /**
-     * [arguments] are the raw input, sent only where no presentation stands
-     * for it. Only a question ([Question.TOOL_NAME]) keeps its result's
-     * [output], which says how it was answered.
+     * [arguments] and [result] are the raw data, which history leaves out
+     * where a presentation stands for it (`omitToolData`); a string in them
+     * past [ToolData.LIMIT] is cut, and then [cut] says so and the whole call
+     * is read again when opened. A question ([Question.TOOL_NAME]) also
+     * keeps its result's [output], which says how it was answered.
+     * [review] and [elevated] come together, for a call that crossed the
+     * automatic review.
      */
     data class ToolCall(
         val id: String?,
@@ -191,7 +297,14 @@ sealed interface Block {
         val presentation: Presentation?,
         val arguments: JsonElement? = null,
         val output: String? = null,
-    ) : Block
+        val result: JsonElement? = null,
+        val review: ToolReview? = null,
+        val elevated: Boolean? = null,
+        val cut: Boolean = false,
+    ) : Block {
+        val running: Boolean get() = status == "running"
+        val failed: Boolean get() = status == "failed"
+    }
     /** One context compaction, inside a service message: `running`, then `completed` or `failed`. */
     data class Compaction(val status: String) : Block
     data class Unknown(val type: String) : Block
@@ -209,13 +322,19 @@ sealed interface Block {
                 }
                 "tool_call" -> {
                     val name = o["name"].str.orEmpty()
+                    val arguments = o["arguments"]?.takeIf { it is JsonObject }?.let(ToolData::bound)
+                    val result = o["result"]?.takeIf { it !is JsonNull }?.let(ToolData::bound)
                     ToolCall(
                         id = o["id"].str,
                         name = name,
                         status = o["status"].str ?: "running",
                         presentation = Presentation.parse(o["presentation"]),
-                        arguments = o["arguments"]?.takeIf { it is JsonObject },
+                        arguments = arguments?.value,
                         output = if (name == Question.TOOL_NAME) o["result"].obj?.get("output").str else null,
+                        result = result?.value,
+                        review = ToolReview.parse(o["review"]),
+                        elevated = o["elevated"].bool,
+                        cut = arguments?.cut == true || result?.cut == true,
                     )
                 }
                 "compaction" -> Compaction(o["status"].str ?: "running")

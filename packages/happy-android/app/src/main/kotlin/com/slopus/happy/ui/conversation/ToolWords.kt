@@ -5,6 +5,7 @@ import androidx.compose.runtime.Immutable
 import com.slopus.happy.R
 import com.slopus.happy.conversation.ConversationRow
 import com.slopus.happy.conversation.Presentation
+import com.slopus.happy.conversation.ToolHint
 import com.slopus.happy.conversation.ToolUse
 import com.slopus.happy.model.compactCount
 import com.slopus.happy.ui.components.Ionicon
@@ -42,6 +43,22 @@ data class ToolWords(
             // A skill the agent reads is named: "Read skill: release-notes".
             if (p == null && tool.skill != null) {
                 return ToolWords(res.getString(if (tool.running) R.string.turn_reading_skill else R.string.turn_read_skill), tool.skill, false, glyph)
+            }
+            // A plan says how far it got, a page read its address (iOS ToolWords).
+            when (val hint = tool.hint) {
+                is ToolHint.Plan -> return ToolWords(
+                    verb = res.getString(if (tool.failed) R.string.turn_failed_call else if (tool.running) R.string.turn_updating else R.string.turn_updated),
+                    subject = res.getString(R.string.tool_plan_progress, hint.done, hint.total),
+                    mono = false,
+                    glyph = glyph,
+                )
+                is ToolHint.Fetch -> return ToolWords(
+                    verb = res.getString(if (tool.failed) R.string.turn_failed_call else if (tool.running) R.string.turn_reading else R.string.turn_read),
+                    subject = hint.url,
+                    mono = false,
+                    glyph = glyph,
+                )
+                null -> Unit
             }
             return when (p) {
                 is Presentation.AgentSpawn -> ToolWords(

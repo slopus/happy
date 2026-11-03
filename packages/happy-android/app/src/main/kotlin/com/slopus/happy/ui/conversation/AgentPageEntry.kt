@@ -184,12 +184,15 @@ internal fun AgentPageEntry(graph: AppGraph, nav: NavHostController, route: Conv
         // A worktree of a project; a bot's or task's own folder is the bot or task.
         workspace = workspace?.takeIf { projectId != null && it.string("id") != projectId }?.string("name")?.takeIf { it.isNotBlank() },
         parent = agent?.parentAgentId?.let { id -> AgentPageParent(id, feed.title(id) ?: catalog.agent(id)?.title?.takeIf { it.isNotBlank() }) },
+        workspaceId = agent?.workspaceId ?: row?.workspaceId,
+        lineChanges = row?.lineChanges,
     )
     val actions = remember(nav, model, session, route) {
         AgentPageActions(
             onBack = { nav.popBackStack() },
             onOpenConversation = { id -> if (id == route.agentId) nav.popBackStack() else nav.openConversation(route.connectionId, id) },
             onWant = model::want,
+            onOpenChanges = { workspaceId -> nav.navigate(WorkspaceChangesRoute(route.connectionId, workspaceId)) },
             loadMedia = { ref -> ConversationApi(session.conversationRequest()).media(route.agentId, ref.toolCallId, ref.index) },
             loadMediaRange = { ref, range ->
                 session.client.send(

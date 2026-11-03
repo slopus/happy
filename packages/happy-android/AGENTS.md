@@ -1075,6 +1075,25 @@ and failures. `Conversation.toggleTurn` opens or folds it, and
 `FoldHold` in ConversationScreen keeps the trace row where it was on screen.
 Words are in `strings_turns.xml`.
 
+A tap on a tool line opens the call (`ToolCallRoute`, `ToolCallScreen`;
+iOS ToolDetailViewController, 1575b41b8). It is titled with the line's
+subject, under a header card (kind, tool name, status pill), then what the
+call did from its `presentation`: a command in the terminal panel
+(`CommandView`), an edit as each file's diff drawn from the hunks as sent
+(`ToolPatch` builds a patch for DiffFilesList; each file opens alone with
+`file` set), a look around as its steps, a search with its sources. A call
+without one is read from its vendor's arguments (`conversation/ToolCalls`:
+`ToolKind`, `ToolPlan`, `ToolSubagent`, `ToolMessage`) and otherwise shown
+as fields (`ToolValue`: priority keys first, long strings as blocks,
+nested past depth 2 as JSON). Then the review, if the call crossed it, and
+the raw JSON, folded. The chat's copy may lack the raw data (history read
+with `omitToolData`) or have it cut at 32 KB (`ToolData`); `ToolCallModel`
+then reads that run once more whole (`ToolCallReader`). Words are in
+`strings_tool_detail.xml`. The agent page's "Changes" row opens the
+workspace's own Git changes (`WorkspaceChangesRoute`, `WorkspaceGit` over
+`/v0/workspaces/:id/git`, `file-revision` and `file`); five files or fewer
+open whole.
+
 A person's message past ten lines folds the same way (`UserFold` in
 ProseViews; iOS c52fd2842). `Prose.cut` counts the laid-out lines, so the
 cut is decided while composing and not after measuring. Code and tables
