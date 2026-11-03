@@ -62,7 +62,8 @@ class SessionMenus(
         if (services.session(sessionId)?.isTask == true) leave(sessionId) else archive(sessionId)
     }
 
-    private fun report(result: ArchiveResult) {
+    /** Says why an archive, leave or delete didn't go; nothing when it did. */
+    fun report(result: ArchiveResult) {
         when (result) {
             is ArchiveResult.Failed -> showError(result.message, result.bot)
             is ArchiveResult.TaskFailed -> showTaskError(result)

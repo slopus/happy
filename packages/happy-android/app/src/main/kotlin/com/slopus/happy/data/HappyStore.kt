@@ -654,6 +654,18 @@ class HappyStore(@Volatile private var helper: SQLiteOpenHelper) {
 
     fun saveProfile(profile: JsonObject) = putDocument(KEY_PROFILE, profile, null)
 
+    /** The account's archives, leaves and deletes not yet taken (ui/home SessionArchiver), as one JSON list; nothing observes it. */
+    fun intents(): String? = query("SELECT value FROM account WHERE key = ?", arrayOf(KEY_INTENTS)) { c -> if (c.moveToFirst()) c.getString(0) else null }
+
+    /** Keeps [value] as [intents], or removes it when null. */
+    fun saveIntents(value: String?) = transaction {
+        if (value == null) {
+            db.delete("account", "key = ?", arrayOf(KEY_INTENTS))
+        } else {
+            db.insertWithOnConflict("account", null, ContentValues().apply { put("key", KEY_INTENTS); put("value", value) }, SQLiteDatabase.CONFLICT_REPLACE)
+        }
+    }
+
     /** Logout: everything goes, schema stays. */
     /** Every session's stored composer document (sync/SessionComposer.kt), by session id. */
     fun composers(): Map<String, String> = query("SELECT session_id, value FROM composer", null) { c ->
@@ -715,6 +727,7 @@ class HappyStore(@Volatile private var helper: SQLiteOpenHelper) {
         private const val KEY_SETTINGS = "settings"
         private const val KEY_PENDING_SETTINGS = "pending-settings"
         private const val KEY_PROFILE = "profile"
+        private const val KEY_INTENTS = "intents"
         private val EMPTY = JsonObject(emptyMap())
         private const val SQL_PARAMETERS = 500
 
