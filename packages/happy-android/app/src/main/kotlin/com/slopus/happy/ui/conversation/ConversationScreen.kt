@@ -103,6 +103,8 @@ import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
@@ -334,13 +336,24 @@ fun ConversationScreen(
         state.rows.isEmpty() -> TranscriptPhase.Empty
         else -> TranscriptPhase.Rows
     }
+    // The composer's words full screen (iOS ComposerEditorViewController): the caret it opened on,
+    // packed start and end, or -1 while it is down; kept across a rotation.
+    var editing by rememberSaveable { mutableLongStateOf(-1L) }
+    val editorAt = if (editing < 0) null else TextRange((editing ushr 32).toInt(), (editing and 0xffffffffL).toInt())
+    var returned by remember { mutableStateOf<ComposerReturn?>(null) }
+    val onComposerText: (String) -> Unit = {
+        text = it
+        actions.onDraftChange(it)
+    }
     // A held message lifts over the chat, blurred and veiled behind it above the composer (iOS 8c2a92172).
     val lift = remember { MessageLift() }
     val blur = with(LocalDensity.current) { MessageLiftSpec.blur.toPx() }
     Box(modifier.fillMaxSize()) {
         CompositionLocalProvider(LocalMessageLift provides lift) {
             GlassBarLayout(
-                modifier = Modifier.testTag(ConversationScreenTags.SCREEN).fillMaxSize().background(colors.surface),
+                // Under the editor, TalkBack has the editor alone.
+                modifier = Modifier.testTag(ConversationScreenTags.SCREEN).fillMaxSize().background(colors.surface)
+                    .then(if (editorAt != null) Modifier.clearAndSetSemantics {} else Modifier),
                 ground = colors.surface,
                 source = glass,
                 // Only the transcript runs under the bar; the other states are held below the bar's foot.
@@ -559,10 +572,7 @@ fun ConversationScreen(
                             ConversationComposer(
                                 state = state,
                                 text = text,
-                                onTextChange = {
-                                    text = it
-                                    actions.onDraftChange(it)
-                                },
+                                onTextChange = onComposerText,
                                 onSend = { words, attachments ->
                                     // "/name" and what follows runs that command; its words are never a message.
                                     val invoked = if (attachments.isEmpty()) SlashCommands.invocation(words.trim(), state.commands) else null
@@ -590,6 +600,8 @@ fun ConversationScreen(
                                 cursor = autocomplete.cursor,
                                 usage = usage,
                                 onRefreshUsage = onRefreshUsage,
+                                onExpand = { at -> if (editing < 0) editing = (at.start.toLong() shl 32) or at.end.toLong() },
+                                returned = returned,
                             )
                         }
                     }
@@ -599,6 +611,15 @@ fun ConversationScreen(
             }
         }
         CompositionLocalProvider(LocalMessageLift provides null, LocalCodeCopy provides CodeCopy.Icon) { MessageLiftOverlay(lift) }
+        ComposerEditor(
+            opened = editorAt,
+            text = text,
+            onTextChange = onComposerText,
+            onClose = { selection, focused ->
+                returned = ComposerReturn(selection, focused, (returned?.serial ?: 0) + 1)
+                editing = -1L
+            },
+        )
     }
 }
 

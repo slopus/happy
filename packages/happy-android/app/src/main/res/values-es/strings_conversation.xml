@@ -105,4 +105,6 @@
     <string name="conversation_failure_context_too_long">Esta conversación es demasiado larga para %1$s, incluso después de restablecerla.</string>
     <string name="conversation_failure_provider_disabled">%1$s está desactivado. Actívalo en Ajustes y vuelve a intentarlo.</string>
     <string name="conversation_failure_internal">Algo salió mal: %1$s</string>
+    <string name="conversation_editor_expand">Expandir</string>
+    <string name="conversation_editor_collapse">Contraer</string>
 </resources>

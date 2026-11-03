@@ -105,4 +105,6 @@
     <string name="conversation_failure_context_too_long">Aquesta conversa és massa llarga per a %1$s, fins i tot després de restablir-la.</string>
     <string name="conversation_failure_provider_disabled">%1$s està desactivat. Activa\'l a Configuració i torna-ho a provar.</string>
     <string name="conversation_failure_internal">Alguna cosa ha anat malament: %1$s</string>
+    <string name="conversation_editor_expand">Amplia</string>
+    <string name="conversation_editor_collapse">Redueix</string>
 </resources>

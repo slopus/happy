@@ -1247,6 +1247,23 @@ chat shows, and again on `provider.usage.*`, `config.updated` and each
 reconnect. It keeps following for 30 s after the last chat goes. Words
 are in `strings_context_meter.xml`.
 
+### Full-screen editor
+
+Past the lines the card shows (eight, or the one row's one, measured at
+the field's width without the button), the composer offers Telegram's
+expand as iOS does (efea2b139): send's size, centred over send, as far
+from the card's top as send is from its foot, and the words wrap clear of
+it. In the one row it stands at the field's end. It fades in over 0.1 s.
+It opens `ui/conversation/ComposerEditor` over the chat: the same draft,
+caret where it was, from the top inset to the keyboard, with the collapse
+button 8 in from the top end. Collapse or Back hands the caret back, and
+the composer takes focus before the editor fades out so the keyboard
+stays up. If the keyboard was put away first, it stays away. It is drawn
+in the chat's own window, not a dialog, so the keyboard never drops as
+focus moves between the two fields. While it is up, the chat under it is
+out of TalkBack's tree. Compose text has no exclusion paths, so every
+line keeps clear of the collapse button, not only the first two.
+
 ### Model and effort chips
 
 The composer's label slot holds two chips, as iOS does (e2238fdc4,

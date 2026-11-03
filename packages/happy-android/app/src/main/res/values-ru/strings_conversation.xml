@@ -105,4 +105,6 @@
     <string name="conversation_failure_context_too_long">Этот разговор слишком длинный для %1$s, даже после сброса.</string>
     <string name="conversation_failure_provider_disabled">%1$s выключен. Включите его в настройках и повторите.</string>
     <string name="conversation_failure_internal">Что-то пошло не так: %1$s</string>
+    <string name="conversation_editor_expand">Развернуть</string>
+    <string name="conversation_editor_collapse">Свернуть</string>
 </resources>

@@ -68,6 +68,7 @@ enum class Ionicon(val codepoint: Int) {
     EllipseOutline(0xf2cc), // ellipse-outline
     EllipsisVertical(0xf2d4), // ellipsis-vertical
     ExitOutline(0xf2de), // exit-outline
+    ExpandOutline(0xf2e1), // expand-outline
     ExtensionPuzzleOutline(0xf2e4), // extension-puzzle-outline
     EyeOffOutline(0xf2e8), // eye-off-outline
     EyeOutline(0xf2ea), // eye-outline

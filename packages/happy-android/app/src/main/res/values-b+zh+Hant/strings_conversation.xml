@@ -105,4 +105,6 @@
     <string name="conversation_failure_context_too_long">即使重設後，這個對話對 %1$s 來說也太長了。</string>
     <string name="conversation_failure_provider_disabled">%1$s 已關閉。請在設定中開啟，然後重試。</string>
     <string name="conversation_failure_internal">發生了問題：%1$s</string>
+    <string name="conversation_editor_expand">展開</string>
+    <string name="conversation_editor_collapse">收合</string>
 </resources>

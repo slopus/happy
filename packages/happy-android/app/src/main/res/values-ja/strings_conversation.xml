@@ -105,4 +105,6 @@
     <string name="conversation_failure_context_too_long">この会話はリセット後も %1$s には長すぎます。</string>
     <string name="conversation_failure_provider_disabled">%1$s はオフになっています。設定でオンにしてから再試行してください。</string>
     <string name="conversation_failure_internal">問題が発生しました: %1$s</string>
+    <string name="conversation_editor_expand">展開</string>
+    <string name="conversation_editor_collapse">折りたたむ</string>
 </resources>

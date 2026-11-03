@@ -109,4 +109,6 @@
     <string name="conversation_failure_context_too_long">This conversation is too long for %1$s, even after a reset.</string>
     <string name="conversation_failure_provider_disabled">%1$s is turned off. Turn it on in Settings, then retry.</string>
     <string name="conversation_failure_internal">Something went wrong: %1$s</string>
+    <string name="conversation_editor_expand">Expand</string>
+    <string name="conversation_editor_collapse">Collapse</string>
 </resources>

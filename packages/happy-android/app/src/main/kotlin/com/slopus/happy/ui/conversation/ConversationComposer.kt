@@ -8,6 +8,8 @@ import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.graphics.graphicsLayer
 import com.slopus.happy.ui.components.rememberHoistedTextFieldState
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import android.net.Uri
@@ -117,6 +119,8 @@ object ConversationComposerTags {
     /** The [+] that opens the attachment sheet ([AttachSheet]). */
     const val MORE = "conversation.composer.more"
     const val COUNT = "conversation.composer.attachmentCount"
+    /** Past the lines the card shows: the full-screen editor ([ComposerEditor]). */
+    const val EXPAND = "conversation.composer.expand"
     /** Compact with pictures waiting, [+] opens this menu: them, and Add to open the sheet. */
     const val MENU = "conversation.composer.menu"
     const val ATTACH = "conversation.composer.attach"
@@ -134,6 +138,7 @@ object ConversationComposerSpec {
     /** Above and below the field's words. */
     val fieldVertical = 12.dp
     val primary = 36.dp
+    val expandGlyph = 18.dp
     const val MAX_LINES = 8
 }
 
@@ -142,6 +147,7 @@ private object Slot {
     const val FIELD = "field"
     const val LABEL = "label"
     const val PRIMARY = "primary"
+    const val EXPAND = "expand"
     const val METER = "meter"
 }
 
@@ -186,6 +192,10 @@ internal fun ConversationComposer(
     usage: Map<String, AccountUsage> = emptyMap(),
     /** A list opened: the computer asks again for the readings of the accounts it lists. */
     onRefreshUsage: (List<String>) -> Unit = {},
+    /** Past the lines it shows, the words full screen from this caret ([ComposerEditor]); null offers no expand. */
+    onExpand: ((TextRange) -> Unit)? = null,
+    /** The full-screen editor closed: the caret it left, taken back here. */
+    returned: ComposerReturn? = null,
 ) {
     RecomposeProbe.mark(ConversationScreenTags.PROBE_COMPOSER)
     val colors = HappyTheme.colors
@@ -228,6 +238,11 @@ internal fun ConversationComposer(
 
     val reduceMotion = rememberReduceMotion()
     val density = LocalDensity.current
+    // The field's width without the expand button, as last laid out: whether the words are past
+    // the lines it shows is measured there, so the button taking its room never decides it.
+    val fullWidth = remember { mutableIntStateOf(0) }
+    val measurer = rememberTextMeasurer(cacheSize = 0)
+    val bodyStyle = MaterialTheme.typography.bodyLarge
     // The field's words as last laid out, and where the field is: what a sent message flies from.
     val fieldLayout = remember { arrayOfNulls<() -> TextLayoutResult?>(1) }
     val fieldAt = remember { arrayOfNulls<LayoutCoordinates>(1) }
@@ -288,6 +303,12 @@ internal fun ConversationComposer(
         modifier,
         meter = gauge?.let { { ContextMeter(it) } },
     ) { compact ->
+        // Telegram's expand: once the words scroll (past the card's eight lines, or the one row's one).
+        val shownLines = if (compact) 1 else ConversationComposerSpec.MAX_LINES
+        val words = field.text
+        val width = fullWidth.intValue
+        val expands = onExpand != null && width > 0 && words.isNotEmpty() &&
+            remember(words, width, bodyStyle) { measurer.measure(words.toString(), bodyStyle, constraints = Constraints(maxWidth = width)).lineCount } > shownLines
         val showCount = compact && attached.isNotEmpty()
         val moreLabel = stringResource(R.string.conversation_composer_more) + if (showCount) ", " + pluralResource(R.plurals.conversation_attached_picture_count, attached.size, attached.size) else ""
         Column(
@@ -301,7 +322,7 @@ internal fun ConversationComposer(
             PictureStripVisibility(attached.isNotEmpty() && !compact, immediate = compact) {
                 ComposerPictures(attached, strip, onRemove = { pictures?.remove(it) })
             }
-            ComposerLayout(open, compact, if (compact || !open) minimumCompact else minimumActions) {
+            ComposerLayout(open, compact, if (compact || !open) minimumCompact else minimumActions, fullWidth) {
                 Box(Modifier.layoutId(Slot.MORE)) {
                     IconButton(onClick = { picker = null; moreCenterY = anchor(0); if (showCount) menu = true else attaching = true }, modifier = Modifier.testTag(ConversationComposerTags.MORE)
                         .attachButton(plus)
@@ -344,6 +365,7 @@ internal fun ConversationComposer(
                         .onPlaced { fieldAt[0] = it }
                         .testTag(ConversationComposerTags.INPUT),
                 )
+                if (expands) ExpandButton(reduceMotion, Modifier.layoutId(Slot.EXPAND)) { onExpand?.invoke(field.selection) }
                 if (open) {
                     ConversationModelChips(
                         catalog = state.catalog,
@@ -444,6 +466,41 @@ internal fun ConversationComposer(
             focus.requestFocus()
             keyboard?.show()
         }
+        // Back from the full-screen editor: its caret, and the keyboard taken before it goes, so it stays up.
+        LaunchedEffect(returned?.serial) {
+            val back = returned ?: return@LaunchedEffect
+            field.edit { selection = TextRange(back.selection.start.coerceIn(0, length), back.selection.end.coerceIn(0, length)) }
+            if (back.focused) focus.requestFocus()
+        }
+    }
+}
+
+/** The full-screen editor closed with the caret at [selection], the keyboard up if [focused]; [serial] tells one close from the next. */
+@androidx.compose.runtime.Immutable
+class ComposerReturn(val selection: TextRange, val focused: Boolean, val serial: Int)
+
+/**
+ * The full-screen editor's button (iOS `expandButton`): send's size, centred
+ * over send, as far in from the card's top as send is from its foot; its
+ * glyph 18 in the text colour. It shows where it stands, fading in over 0.1 s.
+ */
+@Composable
+private fun ExpandButton(reduceMotion: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val colors = HappyTheme.colors
+    val shown = remember { androidx.compose.animation.core.Animatable(if (reduceMotion) 1f else 0f) }
+    LaunchedEffect(Unit) { shown.animateTo(1f, androidx.compose.animation.core.tween(100)) }
+    Box(modifier.padding(end = 6.dp).graphicsLayer { alpha = shown.value }) {
+        IconButton(
+            onClick = onClick,
+            modifier = Modifier.size(ConversationComposerSpec.primary).testTag(ConversationComposerTags.EXPAND),
+        ) {
+            com.slopus.happy.ui.components.Icon(
+                com.slopus.happy.ui.components.Ionicon.ExpandOutline,
+                ConversationComposerSpec.expandGlyph,
+                colors.text,
+                contentDescription = stringResource(R.string.conversation_editor_expand),
+            )
+        }
     }
 }
 
@@ -454,7 +511,7 @@ internal fun ConversationComposer(
  * then the label and send at the end.
  */
 @Composable
-private fun ComposerLayout(open: Boolean, compact: Boolean, minimumRowHeight: Dp, content: @Composable () -> Unit) {
+private fun ComposerLayout(open: Boolean, compact: Boolean, minimumRowHeight: Dp, fullWidth: androidx.compose.runtime.MutableIntState, content: @Composable () -> Unit) {
     Layout(content) { measurables, constraints ->
         val width = constraints.maxWidth
         val loose = Constraints(maxWidth = width, maxHeight = constraints.maxHeight)
@@ -462,26 +519,37 @@ private fun ComposerLayout(open: Boolean, compact: Boolean, minimumRowHeight: Dp
         val more = slot(Slot.MORE)!!.measure(loose)
         val primary = slot(Slot.PRIMARY)!!.measure(loose)
         val rowHeight = maxOf(minimumRowHeight.roundToPx(), more.height, primary.height).coerceAtMost(constraints.maxHeight)
+        val expand = slot(Slot.EXPAND)?.measure(loose)
+        // Read by the composer to tell whether the words scroll; written only when it changes.
+        fun full(fieldWidth: Int) { if (fullWidth.intValue != fieldWidth) fullWidth.intValue = fieldWidth }
         if (!open || compact) {
             val label = if (open) slot(Slot.LABEL)?.measure(Constraints(maxWidth = ((width - more.width - primary.width) / 2).coerceAtLeast(0), maxHeight = rowHeight)) else null
-            val fieldWidth = (width - more.width - primary.width - (label?.width ?: 0)).coerceAtLeast(0)
+            val wide = (width - more.width - primary.width - (label?.width ?: 0)).coerceAtLeast(0)
+            full(wide)
+            // The expand button stands at the field's end, the words clear of it.
+            val fieldWidth = (wide - (expand?.width ?: 0)).coerceAtLeast(0)
             val field = slot(Slot.FIELD)!!.measure(Constraints(minWidth = fieldWidth, maxWidth = fieldWidth, maxHeight = rowHeight))
             val height = maxOf(rowHeight, field.height, label?.height ?: 0).coerceAtMost(constraints.maxHeight)
             layout(width, height) {
                 more.place(0, (height - more.height) / 2)
                 field.place(more.width, (height - field.height) / 2)
+                expand?.place(more.width + fieldWidth, (height - expand.height) / 2)
                 primary.place(width - primary.width, (height - primary.height) / 2)
                 label?.place(width - primary.width - label.width, (height - label.height) / 2)
             }
         } else {
             val inset = ConversationComposerSpec.fieldPadding.roundToPx()
-            val fieldWidth = (width - 2 * inset).coerceAtLeast(0)
+            full((width - 2 * inset).coerceAtLeast(0))
+            // Over send in its column, as far down from the card's top as send is up from its foot;
+            // the words wrap clear of it.
+            val fieldWidth = (if (expand != null) width - inset - expand.width else width - 2 * inset).coerceAtLeast(0)
             val field = slot(Slot.FIELD)!!.measure(Constraints(minWidth = fieldWidth, maxWidth = fieldWidth, maxHeight = (constraints.maxHeight - rowHeight).coerceAtLeast(0)))
             val label = slot(Slot.LABEL)?.measure(Constraints(maxWidth = (width - more.width - primary.width).coerceAtLeast(0), maxHeight = rowHeight))
             val row = field.height
             val height = row + rowHeight
             layout(width, height) {
                 field.place(inset, 0)
+                expand?.place(width - expand.width, (rowHeight - expand.height) / 2)
                 more.place(0, row + (rowHeight - more.height) / 2)
                 primary.place(width - primary.width, row + (rowHeight - primary.height) / 2)
                 label?.place(width - primary.width - label.width, row + (rowHeight - label.height) / 2)

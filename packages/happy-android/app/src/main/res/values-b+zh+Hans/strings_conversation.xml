@@ -105,4 +105,6 @@
     <string name="conversation_failure_context_too_long">即使重置后，这个对话对 %1$s 来说也太长了。</string>
     <string name="conversation_failure_provider_disabled">%1$s 已关闭。请在设置中开启，然后重试。</string>
     <string name="conversation_failure_internal">出了点问题：%1$s</string>
+    <string name="conversation_editor_expand">展开</string>
+    <string name="conversation_editor_collapse">收起</string>
 </resources>

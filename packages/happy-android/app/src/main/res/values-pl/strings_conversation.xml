@@ -105,4 +105,6 @@
     <string name="conversation_failure_context_too_long">Ta rozmowa jest za długa dla %1$s, nawet po zresetowaniu.</string>
     <string name="conversation_failure_provider_disabled">%1$s jest wyłączony. Włącz go w Ustawieniach i spróbuj ponownie.</string>
     <string name="conversation_failure_internal">Coś poszło nie tak: %1$s</string>
+    <string name="conversation_editor_expand">Rozwiń</string>
+    <string name="conversation_editor_collapse">Zwiń</string>
 </resources>
