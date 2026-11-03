@@ -58,4 +58,8 @@
     <string name="artifact_kind_video">Vídeo</string>
     <string name="artifact_kind_document">Arquivo</string>
     <string name="artifact_kind_unknown">Artefato</string>
+
+    <string name="artifact_card_kind_image_series">Série de imagens</string>
+    <string name="artifact_card_kind_document">Documento</string>
+    <string name="artifact_card_version">%1$s · Versão %2$d</string>
 </resources>

@@ -54,4 +54,8 @@
     <string name="artifact_kind_video">视频</string>
     <string name="artifact_kind_document">文件</string>
     <string name="artifact_kind_unknown">工件</string>
+
+    <string name="artifact_card_kind_image_series">图片系列</string>
+    <string name="artifact_card_kind_document">文档</string>
+    <string name="artifact_card_version">%1$s · 版本 %2$d</string>
 </resources>

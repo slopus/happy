@@ -1,5 +1,7 @@
 package com.slopus.happy.ui.conversation
 
+import com.slopus.happy.ui.artifacts.artifactCardDetail
+import com.slopus.happy.ui.artifacts.artifactCardGlyph
 import com.slopus.happy.conversation.InlinePicture
 import com.slopus.happy.conversation.pictureSize
 import androidx.compose.foundation.background
@@ -183,7 +185,9 @@ private fun ToolResult(tool: ToolUse?, actions: ConversationRowActions, modifier
  * the viewer, which pages through every picture and recording of the
  * conversation. Media is read on demand; files are a surfaceHigh card
  * (radius 12, padding 12) naming the file and saying where it opens.
- * Artifacts the same card, with the artifact's title. Another agent's
+ * Artifacts the same card: the type's glyph, the title ("Untitled
+ * artifact" without one), and the kind with the version a change made
+ * (iOS's `ChatMediaPlan.card(artifact:)`). Another agent's
  * message: "From another agent" (13/18 semibold, textSecondary) over its
  * Markdown. A failure: a surfaceHigh card with the reason in
  * textDestructive and Retry (13/18 semibold, link colour) while it can
@@ -205,9 +209,9 @@ fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: Co
             is ConversationRow.Media -> ToolResult(row.tool, actions, content) { MediaRow(row, actions, it) }
             is ConversationRow.Artifact -> ToolResult(row.tool, actions, content) {
                 InfoCard(
-                    icon = Ionicon.LayersOutline,
-                    title = row.title.ifEmpty { stringResource(R.string.conversation_artifact) },
-                    detail = stringResource(R.string.conversation_artifact_unavailable).takeIf { actions.onOpenArtifact == null },
+                    icon = artifactCardGlyph(row.type.orEmpty()),
+                    title = row.title.ifEmpty { stringResource(R.string.artifact_untitled) },
+                    detail = if (actions.onOpenArtifact == null) stringResource(R.string.conversation_artifact_unavailable) else artifactCardDetail(row.type.orEmpty(), row.version ?: 1),
                     onClick = actions.onOpenArtifact?.let { open -> { open(row) } },
                     modifier = it.testTag(ConversationRowTags.ARTIFACT),
                 )

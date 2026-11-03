@@ -58,4 +58,8 @@
     <string name="artifact_kind_video">Vídeo</string>
     <string name="artifact_kind_document">Fitxer</string>
     <string name="artifact_kind_unknown">Artefacte</string>
+
+    <string name="artifact_card_kind_image_series">Sèrie d\'imatges</string>
+    <string name="artifact_card_kind_document">Document</string>
+    <string name="artifact_card_version">%1$s · Versió %2$d</string>
 </resources>

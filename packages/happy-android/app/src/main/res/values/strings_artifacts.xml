@@ -64,4 +64,10 @@
     <string name="artifact_kind_video">Video</string>
     <string name="artifact_kind_document">File</string>
     <string name="artifact_kind_unknown">Artifact</string>
+
+    <!-- An artifact's card in a conversation (ui/artifacts/ArtifactCards.kt), in iOS's words (Strings.artifactKind, artifactDetail). -->
+    <string name="artifact_card_kind_markdown" translatable="false">Markdown</string>
+    <string name="artifact_card_kind_image_series">Image series</string>
+    <string name="artifact_card_kind_document">Document</string>
+    <string name="artifact_card_version">%1$s · Version %2$d</string>
 </resources>
