@@ -18,4 +18,6 @@
     <string name="account_kind_agent_unreachable">%1$s に接続できません。\nHappy Agent との接続を確認してから、再読み込みしてください。</string>
     <string name="account_kind_restore_another_cli_account">Happy CLI アカウントを復元</string>
     <string name="account_kind_restore_another_footer">別の Happy CLI アカウントに、そのシークレットキーか、そのアカウントがあるスマートフォンでサインインします。このアカウントはここに残ります。</string>
+    <string name="tablet_hide_sidebar">サイドバーを非表示</string>
+    <string name="tablet_show_sidebar">サイドバーを表示</string>
 </resources>

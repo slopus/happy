@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.connection
 
+import com.slopus.happy.ui.tablet.BackOrSidebarToggle
 import com.slopus.happy.ui.page
 import com.slopus.happy.ui.components.ProvideRowReveal
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -134,7 +135,7 @@ internal fun AgentPage(title: String, onBack: () -> Unit, content: @Composable (
             AgentTopBar(
                 tag = AgentPagesTags.BAR,
                 container = HappyTheme.colors.grouped.background,
-                navigationIcon = { BarIconButton(Ionicon.ArrowBack, stringResource(R.string.common_back), onBack) },
+                navigationIcon = { BackOrSidebarToggle { BarIconButton(Ionicon.ArrowBack, stringResource(R.string.common_back), onBack) } },
                 title = { Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1) },
             )
         },

@@ -18,4 +18,6 @@
     <string name="account_kind_agent_unreachable">Nie można połączyć się z %1$s.\nSprawdź połączenie z Happy Agent i odśwież stronę.</string>
     <string name="account_kind_restore_another_cli_account">Przywróć konto Happy CLI</string>
     <string name="account_kind_restore_another_footer">Zaloguj się na inne konto Happy CLI za pomocą jego klucza tajnego lub telefonu, na którym jest zalogowane. To konto tu zostanie.</string>
+    <string name="tablet_hide_sidebar">Ukryj pasek boczny</string>
+    <string name="tablet_show_sidebar">Pokaż pasek boczny</string>
 </resources>

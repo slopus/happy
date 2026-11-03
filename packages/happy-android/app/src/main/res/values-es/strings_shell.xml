@@ -18,4 +18,6 @@
     <string name="account_kind_agent_unreachable">No se puede acceder a %1$s.\nComprueba la conexión con Happy Agent y vuelve a cargar.</string>
     <string name="account_kind_restore_another_cli_account">Restaurar una cuenta de Happy CLI</string>
     <string name="account_kind_restore_another_footer">Inicia sesión en otra cuenta de Happy CLI con su clave secreta o con un teléfono que la tenga. Esta cuenta se queda aquí.</string>
+    <string name="tablet_hide_sidebar">Ocultar barra lateral</string>
+    <string name="tablet_show_sidebar">Mostrar barra lateral</string>
 </resources>

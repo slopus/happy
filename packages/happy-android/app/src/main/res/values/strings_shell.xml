@@ -20,4 +20,7 @@
     <string name="account_kind_agent_unreachable">Can’t reach %1$s.\nCheck the Happy Agent connection, then reload.</string>
     <string name="account_kind_restore_another_cli_account">Restore a Happy CLI Account</string>
     <string name="account_kind_restore_another_footer">Sign in to another Happy CLI account with its secret key, or with a phone that has it. This account stays here.</string>
+    <!-- The tablet's sidebar button, as iPadOS names it (happy-ios Strings.Tablet). -->
+    <string name="tablet_hide_sidebar">Hide Sidebar</string>
+    <string name="tablet_show_sidebar">Show Sidebar</string>
 </resources>

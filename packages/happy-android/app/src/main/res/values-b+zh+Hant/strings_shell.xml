@@ -18,4 +18,6 @@
     <string name="account_kind_agent_unreachable">無法連線到 %1$s。\n請檢查與 Happy Agent 的連線，然後重新載入。</string>
     <string name="account_kind_restore_another_cli_account">恢復 Happy CLI 帳戶</string>
     <string name="account_kind_restore_another_footer">用另一個 Happy CLI 帳戶的金鑰，或用已登入該帳戶的手機登入它。此帳戶會保留在這裡。</string>
+    <string name="tablet_hide_sidebar">隱藏側邊欄</string>
+    <string name="tablet_show_sidebar">顯示側邊欄</string>
 </resources>

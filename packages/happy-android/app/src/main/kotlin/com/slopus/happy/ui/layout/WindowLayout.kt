@@ -238,12 +238,6 @@ fun ProvideWindowLayout(modifier: Modifier = Modifier, content: @Composable () -
 }
 
 /**
- * True under the tablet shell (SidebarNavigator.tsx `isDesktopLayout`): its
- * persistent header carries back, so screen headers drop their own.
- */
-val LocalTabletShell = staticCompositionLocalOf { false }
-
-/**
  * The content column ([ContentTokens]): [ContentTokens.gutter] in from the
  * pane on each side, or the window's unsafe side ([WindowLayout.safeLeft],
  * [WindowLayout.safeRight]) where that is more, held to

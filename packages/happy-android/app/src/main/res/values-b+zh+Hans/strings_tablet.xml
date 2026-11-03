@@ -4,12 +4,5 @@
   catalogs. AndroidStringsTranslatedTest fails while one is missing here.
 -->
 <resources>
-    <string name="tablet_no_sessions_title">还没有会话</string>
-    <string name="tablet_machine_unreachable">无法连接 %1$s</string>
-    <string name="tablet_no_machines_reachable">没有可连接的设备</string>
-    <string name="tablet_start_description">在任意一台已连接的设备上开始新会话。</string>
-    <string name="tablet_start_new_session">开始新会话</string>
-    <string name="tablet_offline_description">让一台设备上线即可开始会话。</string>
-    <string name="tablet_troubleshoot">故障排除</string>
     <string name="tablet_install_description">在电脑上安装并运行 Happy 以连接它。</string>
 </resources>

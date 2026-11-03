@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.components
 
+import com.slopus.happy.ui.tablet.BackOrSidebarToggle
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -41,7 +42,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
-import com.slopus.happy.ui.layout.LocalTabletShell
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
 
@@ -96,8 +96,8 @@ fun StackHeader(title: String, onBack: () -> Unit, titleAlpha: (() -> Float)? = 
                 actionIconContentColor = colors.text,
             ),
             navigationIcon = {
-                // The tablet shell has its own back, as [HeaderBackButton] knows.
-                if (!LocalTabletShell.current) {
+                // The tablet main panel's root has the sidebar's toggle here instead.
+                BackOrSidebarToggle {
                     IconButton(onClick = onBack, modifier = Modifier.testTag(HeaderTags.LEFT)) {
                         Icon(Ionicon.ArrowBack, 24.dp, LocalContentColor.current, contentDescription = stringResource(R.string.common_back))
                     }

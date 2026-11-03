@@ -15,7 +15,6 @@ import com.slopus.happy.model.settings.LocalSettingsValues
 import com.slopus.happy.ui.home.HomeListInputs
 import com.slopus.happy.ui.home.HomeListModel
 import com.slopus.happy.ui.home.deriveHomeList
-import com.slopus.happy.ui.tablet.deriveTabletGroupedList
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -96,8 +95,6 @@ class LargeDataTest {
             }
             assertTrue("$grouping in $took ms", took < 500)
         }
-        val tablet = millis { deriveTabletGroupedList(snapshot, false, emptySet(), emptySet(), "unknown", zone, today) }
-        assertTrue("tablet grouping in $tablet ms", tablet < 500)
     }
 
     @Test

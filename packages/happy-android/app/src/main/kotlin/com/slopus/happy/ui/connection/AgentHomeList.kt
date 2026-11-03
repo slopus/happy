@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.connection
 
+import com.slopus.happy.ui.tablet.MainPanelKey
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -318,6 +319,8 @@ fun LazyListScope.agentHomeRows(
     onLeaveSurface: ((AgentFeedRow.Surface) -> Unit)? = null,
     /** A conversation row's hold, with where the row is in the window: its preview ([ChatPreviewOverlay]); null offers nothing. */
     onHold: ((AgentFeedRow.Conversation, Rect) -> Unit)? = null,
+    /** The tablet sidebar's selection, what its main panel shows ([MainPanelKey]). */
+    selected: String? = null,
 ) {
     items(items, key = { it.key }, contentType = { (it as? AgentHomeItem.Row)?.row?.let { row -> row::class } ?: it::class }) { item ->
         val motion = if (reduceMotion) Modifier else Modifier.animateItem(
@@ -332,7 +335,7 @@ fun LazyListScope.agentHomeRows(
                     .height(if (item.first) AgentHomeSpec.contentTop else AgentHomeSpec.cardGap)
                     .testTag(AgentHomeTags.row(item.key)),
             )
-            is AgentHomeItem.Row -> CardRow(item, motion) {
+            is AgentHomeItem.Row -> CardRow(item, motion, selected != null && selected == panelKey(item.row)) {
                 when (val row = item.row) {
                     is AgentFeedRow.Conversation -> ConversationRow(row, onOpen, onHold)
                     is AgentFeedRow.Folder -> FolderRow(row)
@@ -347,14 +350,23 @@ fun LazyListScope.agentHomeRows(
 
 /** One row's part of its card ([HomeCardRow]), 48 high at the default font scale, the hairline from its title. */
 @Composable
-private fun CardRow(item: AgentHomeItem.Row, modifier: Modifier, content: @Composable () -> Unit) {
+private fun CardRow(item: AgentHomeItem.Row, modifier: Modifier, selected: Boolean, content: @Composable () -> Unit) {
     HomeCardRow(
         place = HomeCardPlace(item.first, item.last),
         height = AgentHomeSpec.rowHeight(),
         dividerStart = titleStart(item.row),
         modifier = modifier,
         tag = AgentHomeTags.row(item.key),
+        selected = selected,
     ) { content() }
+}
+
+/** What a row opens, as the tablet's main panel names its root. */
+private fun panelKey(row: AgentFeedRow): String? = when (row) {
+    is AgentFeedRow.Conversation -> MainPanelKey.conversation(row.agentId)
+    is AgentFeedRow.Surface -> MainPanelKey.surface(row.id)
+    AgentFeedRow.Artifacts -> MainPanelKey.ARTIFACTS
+    else -> null
 }
 
 /** Where a card row's title starts, from its card's edge: its level's lane, then its mark's when it wears one. */
@@ -569,6 +581,7 @@ fun AgentHomeList(
     onHold: ((AgentFeedRow.Conversation, Rect) -> Unit)? = null,
     header: (LazyListScope.() -> Unit)? = null,
     bottom: @Composable () -> Unit = {},
+    selected: String? = null,
 ) {
     val reduceMotion = rememberReduceMotion()
     LazyColumn(
@@ -577,7 +590,7 @@ fun AgentHomeList(
         contentPadding = contentPadding,
     ) {
         header?.invoke(this)
-        agentHomeRows(items, reduceMotion, onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface, onHold)
+        agentHomeRows(items, reduceMotion, onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface, onHold, selected)
         item(key = "bottom", contentType = "bottom") { bottom() }
     }
 }

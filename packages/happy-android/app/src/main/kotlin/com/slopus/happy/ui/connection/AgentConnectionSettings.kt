@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.connection
 
+import com.slopus.happy.ui.tablet.BackOrSidebarToggle
 import com.slopus.happy.ui.settings.SettingsTags
 import com.slopus.happy.ui.components.ProvideRowReveal
 import android.graphics.BitmapFactory
@@ -251,7 +252,7 @@ fun AgentConnectionSettingsScreen(
                 AgentTopBar(
                     tag = AgentSettingsTags.BAR,
                     container = HappyTheme.colors.grouped.background,
-                    navigationIcon = { BarIconButton(Ionicon.ArrowBack, stringResource(R.string.common_back), actions.onBack) },
+                    navigationIcon = { BackOrSidebarToggle { BarIconButton(Ionicon.ArrowBack, stringResource(R.string.common_back), actions.onBack) } },
                     title = { Text(stringResource(R.string.settings_title), style = MaterialTheme.typography.titleLarge, maxLines = 1) },
                     actions = { SettingsSearchButton(search) },
                 )

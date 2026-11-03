@@ -4,12 +4,5 @@
   catalogs. AndroidStringsTranslatedTest fails while one is missing here.
 -->
 <resources>
-    <string name="tablet_no_sessions_title">Aún no hay sesiones</string>
-    <string name="tablet_machine_unreachable">%1$s no está disponible</string>
-    <string name="tablet_no_machines_reachable">No hay ninguna máquina disponible</string>
-    <string name="tablet_start_description">Inicia una nueva sesión en cualquiera de tus máquinas conectadas.</string>
-    <string name="tablet_start_new_session">Iniciar nueva sesión</string>
-    <string name="tablet_offline_description">Conecta una máquina para iniciar una sesión.</string>
-    <string name="tablet_troubleshoot">Solucionar problemas</string>
     <string name="tablet_install_description">Instala y ejecuta Happy en tu ordenador para conectarlo.</string>
 </resources>

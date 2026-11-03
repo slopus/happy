@@ -4,12 +4,5 @@
   catalogs. AndroidStringsTranslatedTest fails while one is missing here.
 -->
 <resources>
-    <string name="tablet_no_sessions_title">還沒有工作階段</string>
-    <string name="tablet_machine_unreachable">無法連線 %1$s</string>
-    <string name="tablet_no_machines_reachable">沒有可連線的裝置</string>
-    <string name="tablet_start_description">在任一台已連線的裝置上開始新工作階段。</string>
-    <string name="tablet_start_new_session">開始新工作階段</string>
-    <string name="tablet_offline_description">讓一台裝置上線即可開始工作階段。</string>
-    <string name="tablet_troubleshoot">疑難排解</string>
     <string name="tablet_install_description">在電腦上安裝並執行 Happy 以連線它。</string>
 </resources>
