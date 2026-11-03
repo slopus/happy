@@ -11,6 +11,7 @@
     <string name="account_kind_cli_server">Happy CLI 伺服器</string>
     <string name="account_kind_disconnect_agent_title">中斷 Happy Agent 的連線？</string>
     <string name="account_kind_sign_out_cli_title">登出 Happy CLI？</string>
+    <string name="account_kind_device_needs_account_title">沒有可分享的帳戶</string>
     <string name="account_kind_device_needs_cli_account">此代碼需要 Happy CLI 帳戶。請先在這支手機上新增一個。</string>
     <string name="account_kind_account_not_shareable">此帳戶是為你的電腦建立的，它的金鑰從不離開這支手機。只有具備可備份金鑰的 Happy CLI 帳戶才能連結到其他裝置。</string>
     <string name="account_kind_enter_link_message">貼上電腦上 Happy CLI 或 Happy Agent 提供的連結。</string>

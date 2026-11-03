@@ -23,7 +23,7 @@
     <string name="scan_not_happy_code">这不是 Happy 的二维码。</string>
     <string name="scan_terminal_code_elsewhere">此代码用于连接终端。请在“设置 › 扫描二维码进行认证”中扫描。</string>
     <string name="scan_account_code_elsewhere">此代码用于链接新设备。请在“设置 › 备份与恢复 › 链接新设备”中扫描。</string>
-    <string name="scan_pairing_unavailable">此代码用于连接智能体。请使用主页账户菜单中的“添加”。</string>
+    <string name="scan_pairing_unavailable">此代码用于连接 Happy Agent。请使用主页账户菜单中的“添加”。</string>
     <string name="scan_close">关闭</string>
     <string name="scan_hint">将相机对准二维码</string>
     <string name="scan_open_settings">打开设置</string>

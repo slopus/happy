@@ -25,7 +25,7 @@
     <string name="scan_not_happy_code">Aquest codi QR no és de Happy.</string>
     <string name="scan_terminal_code_elsewhere">Aquest codi connecta un terminal. Escaneja\'l des de Configuració › Escaneja el codi QR per autenticar-te.</string>
     <string name="scan_account_code_elsewhere">Aquest codi enllaça un dispositiu nou. Escaneja\'l des de Configuració › Còpia de seguretat i restauració › Enllaça un nou dispositiu.</string>
-    <string name="scan_pairing_unavailable">Aquest codi connecta un agent. Fes servir Afegeix al menú de comptes de l\'inici.</string>
+    <string name="scan_pairing_unavailable">Aquest codi connecta Happy Agent. Fes servir Afegeix al menú de comptes de l\'inici.</string>
     <string name="scan_close">Tanca</string>
     <string name="scan_hint">Apunta la càmera al codi QR</string>
     <string name="scan_open_settings">Obre els paràmetres</string>

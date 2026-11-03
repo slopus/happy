@@ -11,6 +11,7 @@
     <string name="account_kind_cli_server">Servidor de Happy CLI</string>
     <string name="account_kind_disconnect_agent_title">Vols desconnectar Happy Agent?</string>
     <string name="account_kind_sign_out_cli_title">Vols tancar la sessió de Happy CLI?</string>
+    <string name="account_kind_device_needs_account_title">No hi ha cap compte per compartir</string>
     <string name="account_kind_device_needs_cli_account">Aquest codi necessita un compte de Happy CLI. Primer afegeix-ne un en aquest telèfon.</string>
     <string name="account_kind_account_not_shareable">Aquest compte es va crear per al teu ordinador i la seva clau no surt mai d\'aquest telèfon. Només un compte de Happy CLI amb una clau secreta per desar es pot vincular a un altre dispositiu.</string>
     <string name="account_kind_enter_link_message">Enganxa l\'enllaç de Happy CLI del teu ordinador o de Happy Agent.</string>

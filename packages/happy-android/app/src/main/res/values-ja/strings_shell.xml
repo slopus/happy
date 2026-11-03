@@ -11,6 +11,7 @@
     <string name="account_kind_cli_server">Happy CLI サーバー</string>
     <string name="account_kind_disconnect_agent_title">Happy Agent の接続を解除しますか？</string>
     <string name="account_kind_sign_out_cli_title">Happy CLI からログアウトしますか？</string>
+    <string name="account_kind_device_needs_account_title">共有できるアカウントがありません</string>
     <string name="account_kind_device_needs_cli_account">このコードには Happy CLI アカウントが必要です。先にこのスマートフォンで追加してください。</string>
     <string name="account_kind_account_not_shareable">このアカウントはお使いのコンピューター用に作成されたもので、キーがこのスマートフォンから出ることはありません。他のデバイスにリンクできるのは、バックアップできるシークレットキーを持つ Happy CLI アカウントだけです。</string>
     <string name="account_kind_enter_link_message">コンピューターの Happy CLI、または Happy Agent のリンクを貼り付けてください。</string>

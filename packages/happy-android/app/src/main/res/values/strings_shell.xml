@@ -13,6 +13,7 @@
     <string name="account_kind_cli_server">Happy CLI server</string>
     <string name="account_kind_disconnect_agent_title">Disconnect Happy Agent?</string>
     <string name="account_kind_sign_out_cli_title">Sign out of Happy CLI?</string>
+    <string name="account_kind_device_needs_account_title">No account to share</string>
     <string name="account_kind_device_needs_cli_account">This code asks for a Happy CLI account. Add one on this phone first.</string>
     <string name="account_kind_account_not_shareable">This account was made for your computer, and its key never leaves this phone. Only a Happy CLI account with a secret key to back up can be linked to another device.</string>
     <string name="account_kind_enter_link_message">Paste the link from Happy CLI on your computer or from Happy Agent.</string>

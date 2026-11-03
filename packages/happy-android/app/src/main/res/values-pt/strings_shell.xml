@@ -11,6 +11,7 @@
     <string name="account_kind_cli_server">Servidor do Happy CLI</string>
     <string name="account_kind_disconnect_agent_title">Desconectar o Happy Agent?</string>
     <string name="account_kind_sign_out_cli_title">Sair do Happy CLI?</string>
+    <string name="account_kind_device_needs_account_title">Nenhuma conta para compartilhar</string>
     <string name="account_kind_device_needs_cli_account">Este código precisa de uma conta do Happy CLI. Primeiro, adicione uma neste telefone.</string>
     <string name="account_kind_account_not_shareable">Esta conta foi criada para o seu computador e a chave dela nunca sai deste telefone. Só uma conta do Happy CLI com uma chave secreta para fazer backup pode ser vinculada a outro dispositivo.</string>
     <string name="account_kind_enter_link_message">Cole o link do Happy CLI no seu computador ou do Happy Agent.</string>

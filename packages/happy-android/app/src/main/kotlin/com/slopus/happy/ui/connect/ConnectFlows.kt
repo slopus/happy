@@ -108,7 +108,7 @@ class ConnectFlow internal constructor(
                 if (kind == ConnectKind.Terminal || kind == ConnectKind.Add) process(code.url) else alert = errorAlert(messages.terminalElsewhere)
             is HappyCode.Account -> when (kind) {
                 ConnectKind.Account -> process(code.url)
-                ConnectKind.Add -> alert = errorAlert(messages.accountSignedOut)
+                ConnectKind.Add -> alert = Alert(messages.accountSignedOutTitle, messages.accountSignedOut, listOf(AlertButton(okTitle)))
                 else -> alert = errorAlert(messages.accountElsewhere)
             }
             is HappyCode.Server -> {
@@ -173,6 +173,7 @@ internal data class ScanMessages(
     val terminalElsewhere: String = "",
     val accountElsewhere: String = "",
     val pairingUnavailable: String = "",
+    val accountSignedOutTitle: String = "",
     val accountSignedOut: String = "",
     val invalidUrl: String = "",
     val serverInvalid: String = "",
@@ -294,6 +295,7 @@ private fun rememberConnectFlow(
         terminalElsewhere = stringResource(R.string.scan_terminal_code_elsewhere),
         accountElsewhere = stringResource(R.string.scan_account_code_elsewhere),
         pairingUnavailable = stringResource(R.string.scan_pairing_unavailable),
+        accountSignedOutTitle = stringResource(R.string.account_kind_device_needs_account_title),
         accountSignedOut = stringResource(R.string.account_kind_device_needs_cli_account),
         invalidUrl = invalid,
         serverInvalid = stringResource(R.string.team_server_code_invalid),
