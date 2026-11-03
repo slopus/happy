@@ -71,4 +71,11 @@
     <string name="reference_unavailable_service">um serviço indisponível</string>
     <string name="reference_unavailable_user">um usuário indisponível</string>
     <string name="reference_unavailable">uma referência indisponível</string>
+
+    <string name="artifact_history">Histórico</string>
+    <string name="artifact_history_version">Versão %1$s</string>
+    <string name="artifact_history_latest">Mais recente</string>
+    <string name="artifact_history_showing">Mostrando a versão %1$s</string>
+    <string name="artifact_history_show_latest">Mostrar a mais recente</string>
+    <string name="artifact_history_failed">Não foi possível carregar as versões.</string>
 </resources>

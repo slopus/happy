@@ -118,6 +118,25 @@ class ArtifactsTest {
         assertEquals("bytes=0-${ArtifactClient.PROGRESS_CHUNK - 1}", routes.asked[0].second)
     }
 
+    @Test fun anArtifactsVersionsArePagedNewestFirst() = runBlocking {
+        val routes = Routes { path, _ ->
+            if ("pageCursor=p2" in path) json(200, """{"versions":[{"artifactId":"a1","number":1,"title":"Plan","files":[],"createdAt":1000,"createdBy":{"kind":"user"}}],"nextPageCursor":null}""")
+            else json(200, """{"versions":[{"artifactId":"a1","number":3,"major":2,"minor":0,"title":"Plan","files":[],"createdAt":3000,"createdBy":{"kind":"agent","agentId":"x"}},{"artifactId":"a1","number":2,"title":"Plan","files":[]}],"nextPageCursor":"p2"}""")
+        }
+        val client = ArtifactClient(AgentClient(routes, "t"))
+        val (first, next) = client.versions("a1")
+        assertEquals(listOf("2.0", "2"), first.map { it.label })
+        assertEquals(listOf(3000L, 0L), first.map { it.createdAt })
+        assertTrue(first[0].byAgent)
+        assertEquals("p2", next)
+        val (second, end) = client.versions("a1", next)
+        assertEquals(listOf(1), second.map { it.number })
+        assertNull(end)
+        assertEquals("/v0/artifacts/a1/versions?limit=50", routes.asked[0].first)
+        val gone = ArtifactClient(AgentClient(Routes { _, _ -> json(404, """{"error":"gone"}""") }, "t"))
+        assertTrue(runCatching { gone.versions("a1") }.exceptionOrNull() is ArtifactGoneException)
+    }
+
     @Test fun aServerThatIgnoresRangesAndAnEmptyFile() = runBlocking {
         val whole = ArtifactClient(AgentClient(Routes { _, _ -> TransportResponse(200, body = byteArrayOf(1, 2, 3)) }, "t"))
         assertArrayEquals(byteArrayOf(1, 2, 3), whole.bytes("a1", 1, "a.bin"))

@@ -80,4 +80,12 @@
     <string name="reference_unavailable_service">an unavailable service</string>
     <string name="reference_unavailable_user">an unavailable user</string>
     <string name="reference_unavailable">an unavailable reference</string>
+
+    <!-- An artifact's version history (ui/artifacts/ArtifactHistory.kt) -->
+    <string name="artifact_history">History</string>
+    <string name="artifact_history_version">Version %1$s</string>
+    <string name="artifact_history_latest">Latest</string>
+    <string name="artifact_history_showing">Showing version %1$s</string>
+    <string name="artifact_history_show_latest">Show latest</string>
+    <string name="artifact_history_failed">Versions couldn’t be loaded.</string>
 </resources>

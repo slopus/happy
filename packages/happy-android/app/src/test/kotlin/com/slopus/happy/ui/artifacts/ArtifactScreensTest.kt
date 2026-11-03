@@ -224,6 +224,54 @@ class ArtifactScreensTest {
         rule.onNodeWithText("Open in another app").assertExists()
     }
 
+    private fun history(shown: Int, latest: Int?, picked: MutableList<Int> = ArrayList(), latestTaps: IntArray = IntArray(1)): com.slopus.happy.ui.artifacts.ArtifactHistory {
+        fun v(n: Int, label: String = n.toString()) = com.slopus.happy.artifacts.ArtifactVersion("a1", n, "Plan", null, emptyList(), label = label, createdAt = 1_793_700_000_000L + n * 3_600_000L)
+        return com.slopus.happy.ui.artifacts.ArtifactHistory(
+            shown = v(shown),
+            latest = latest,
+            read = { cursor -> if (cursor == null) listOf(v(3, "2.0"), v(2)) to "p2" else listOf(v(1)) to null },
+            onPick = { picked += it },
+            onLatest = { latestTaps[0]++ },
+        )
+    }
+
+    @Test fun anOlderVersionSaysSoAndHistoryPicksAnother() {
+        val picked = ArrayList<Int>()
+        val latest = IntArray(1)
+        val doc = ArtifactUi.Document("index.md", com.slopus.happy.chat.markdown.parseMarkdown("# Plan\n\nThe first draft."), emptyMap(), emptyList())
+        rule.setHappyContent { ArtifactScreen("Plan", doc, null, "Studio", ArtifactActions(onBack = {}), history = history(2, 3, picked, latest)) }
+        rule.node(ArtifactHistoryTags.BANNER).assertExists()
+        rule.onNodeWithText("Showing version 2").assertExists()
+        shot("artifact-history-banner")
+        rule.node(ArtifactHistoryTags.LATEST).performClick()
+        assertEquals(1, latest[0])
+        rule.node(ArtifactHistoryTags.ACTION).performClick()
+        rule.waitUntil(3_000) { rule.onAllNodesWithTag(ArtifactHistoryTags.ROW, useUnmergedTree = true).fetchSemanticsNodes().size == 2 }
+        rule.node(ArtifactHistoryTags.MORE).performClick()
+        rule.waitUntil(3_000) { rule.onAllNodesWithTag(ArtifactHistoryTags.ROW, useUnmergedTree = true).fetchSemanticsNodes().size == 3 }
+        rule.node(ArtifactHistoryTags.MORE).assertDoesNotExist()
+        rule.onNodeWithText("Version 2.0").assertExists()
+        rule.onNodeWithText("Latest").assertExists()
+        shot("artifact-history-sheet")
+        rule.onNodeWithText("Version 1").performClick()
+        rule.waitUntil(3_000) { picked.isNotEmpty() }
+        assertEquals(listOf(1), picked)
+    }
+
+    @Test fun theLatestVersionHasNoBannerAndOneVersionNoHistory() {
+        rule.setHappyContent(dark = true) { ArtifactScreen("Plan", ArtifactUi.Loading, null, "Studio", ArtifactActions(onBack = {}), history = history(3, 3)) }
+        rule.node(ArtifactHistoryTags.BANNER).assertDoesNotExist()
+        rule.node(ArtifactHistoryTags.ACTION).performClick()
+        rule.waitUntil(3_000) { rule.onAllNodesWithTag(ArtifactHistoryTags.ROW, useUnmergedTree = true).fetchSemanticsNodes().size == 2 }
+        rule.mainClock.advanceTimeBy(600)
+        shot("artifact-history-sheet-dark")
+    }
+
+    @Test fun oneVersionHasNoHistory() {
+        rule.setHappyContent { ArtifactScreen("Plan", ArtifactUi.Loading, null, "Studio", ArtifactActions(onBack = {}), history = history(1, 1)) }
+        rule.node(ArtifactHistoryTags.ACTION).assertDoesNotExist()
+    }
+
     @Test fun deletedAndUnavailableSaySoInPlace() {
         var ui by androidx.compose.runtime.mutableStateOf<ArtifactUi>(ArtifactUi.Message(deleted = true))
         rule.setHappyContent { ArtifactScreen("Report", ui, null, "Studio", ArtifactActions(onBack = {})) }

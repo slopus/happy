@@ -67,4 +67,11 @@
     <string name="reference_unavailable_service">利用できないサービス</string>
     <string name="reference_unavailable_user">利用できないユーザー</string>
     <string name="reference_unavailable">利用できない参照</string>
+
+    <string name="artifact_history">履歴</string>
+    <string name="artifact_history_version">バージョン %1$s</string>
+    <string name="artifact_history_latest">最新</string>
+    <string name="artifact_history_showing">バージョン %1$s を表示中</string>
+    <string name="artifact_history_show_latest">最新を表示</string>
+    <string name="artifact_history_failed">バージョンを読み込めませんでした。</string>
 </resources>

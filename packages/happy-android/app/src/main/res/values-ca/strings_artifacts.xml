@@ -71,4 +71,11 @@
     <string name="reference_unavailable_service">un servei no disponible</string>
     <string name="reference_unavailable_user">un usuari no disponible</string>
     <string name="reference_unavailable">una referència no disponible</string>
+
+    <string name="artifact_history">Historial</string>
+    <string name="artifact_history_version">Versió %1$s</string>
+    <string name="artifact_history_latest">Més recent</string>
+    <string name="artifact_history_showing">Es mostra la versió %1$s</string>
+    <string name="artifact_history_show_latest">Mostra la més recent</string>
+    <string name="artifact_history_failed">No s’han pogut carregar les versions.</string>
 </resources>

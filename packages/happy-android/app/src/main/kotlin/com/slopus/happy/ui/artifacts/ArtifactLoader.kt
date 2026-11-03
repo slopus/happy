@@ -18,6 +18,7 @@ import com.slopus.happy.browser.BrowserPolicy
 import com.slopus.happy.browser.BrowserProxy
 import com.slopus.happy.browser.browserWorkspace
 import com.slopus.happy.chat.markdown.MarkdownBlock
+import com.slopus.happy.chat.num
 import com.slopus.happy.chat.markdown.parseMarkdownBlocks
 import com.slopus.happy.media.MediaLibrary
 import com.slopus.happy.ui.browser.BrowserPage
@@ -99,6 +100,15 @@ class ArtifactLoader(
 
     var version: ArtifactVersion? = null
         private set
+
+    private val shownFlow = MutableStateFlow<ArtifactVersion?>(null)
+    private val latestFlow = MutableStateFlow<Int?>(null)
+
+    /** The version shown, once read: the History sheet marks it and the banner names it. Null for a linked file. */
+    val shown: StateFlow<ArtifactVersion?> = shownFlow.asStateFlow()
+
+    /** The artifact's latest version number, once known: the version read when it follows the latest, else asked of its catalog entry. */
+    val latest: StateFlow<Int?> = latestFlow.asStateFlow()
     var media: ArtifactMedia? = null
         private set
     private var loading: Job? = null
@@ -112,6 +122,17 @@ class ArtifactLoader(
         val version = files.version(ref.id, opened?.first ?: if (ref.opensLatest) null else ref.version)
         if (opened == null && version.title.isNotEmpty()) titleFlow.value = version.title
         this.version = version
+        if (opened == null) {
+            shownFlow.value = version
+            if (ref.opensLatest) {
+                latestFlow.value = version.number
+            } else {
+                // A pinned version: is there a newer one? A failure here only leaves the banner off.
+                scope.launch {
+                    latestFlow.value = runCatching { files.artifact(ref.id)["latestVersion"].num?.toInt() }.getOrNull()
+                }
+            }
+        }
         show(version, ArtifactShow.of(version, opened?.second))
     } catch (e: CancellationException) {
         throw e

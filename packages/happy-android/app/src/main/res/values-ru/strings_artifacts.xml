@@ -73,4 +73,11 @@
     <string name="reference_unavailable_service">недоступный сервис</string>
     <string name="reference_unavailable_user">недоступный пользователь</string>
     <string name="reference_unavailable">недоступная ссылка</string>
+
+    <string name="artifact_history">История</string>
+    <string name="artifact_history_version">Версия %1$s</string>
+    <string name="artifact_history_latest">Последняя</string>
+    <string name="artifact_history_showing">Показана версия %1$s</string>
+    <string name="artifact_history_show_latest">Показать последнюю</string>
+    <string name="artifact_history_failed">Не удалось загрузить версии.</string>
 </resources>

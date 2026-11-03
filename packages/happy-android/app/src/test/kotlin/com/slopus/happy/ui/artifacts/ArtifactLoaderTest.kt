@@ -63,6 +63,7 @@ class ArtifactLoaderTest {
                     asked += path
                     status?.let { return json("""{"error":"no"}""", it) }
                     val route = path.removePrefix("/v0/artifacts/a1")
+                    if (route.isEmpty()) return json("""{"artifact":{"id":"a1","title":"Card","latestVersion":${versions.keys.max()}}}""")
                     if (route.startsWith("/versions/") && "/files/" !in route) {
                         val number = route.removePrefix("/versions/").let { if (it == "latest") versions.keys.max() else it.toInt() }
                         return versions[number]?.let { json("""{"version":$it}""") } ?: json("""{"error":"gone"}""", 404)
@@ -157,12 +158,16 @@ class ArtifactLoaderTest {
         val versions = mapOf(1 to version(1, "a.pdf", "a.pdf" to "application/pdf"), 3 to version(3, "b.pdf", "b.pdf" to "application/pdf"))
         val pinned = load(files(versions), ArtifactRef("a1", 1, "", "Card", followsLatest = false, pinned = true))
         assertEquals(ArtifactUi.Openable(ArtifactFile("a.pdf", "application/pdf", 10)), settled(pinned))
-        assertTrue(asked.single().endsWith("/versions/1"))
+        assertTrue(asked.first().endsWith("/versions/1"))
+        // An older version on screen: the History banner learns the latest from its catalog entry.
+        assertEquals(1, pinned.shown.value?.number)
+        assertEquals(3, runBlocking { withTimeout(5_000) { pinned.latest.first { it != null } } })
         asked.clear()
         // A card from the call that made version 1 follows it to the latest.
         val created = load(files(versions), ArtifactRef("a1", 1, "", "Card", followsLatest = false))
         assertEquals(ArtifactUi.Openable(ArtifactFile("b.pdf", "application/pdf", 10)), settled(created))
         assertTrue(asked.single().endsWith("/versions/latest"))
+        assertEquals("following the latest, the version read is it", 3, created.latest.value)
     }
 
     @Test fun aLinkedFileOpensInItsVersionUnderItsName() {

@@ -82,10 +82,22 @@ data class ArtifactVersion(
     val entry: ArtifactFile?,
     val files: List<ArtifactFile>,
     val liveUrl: String? = null,
+    /** Its label, `major.minor` where the computer gives one (API.md "Versions"), else its number. */
+    val label: String = number.toString(),
+    /** When it was made; 0 where unknown. */
+    val createdAt: Long = 0,
+    /** Made by an agent rather than a person. */
+    val byAgent: Boolean = false,
 ) {
     fun file(path: String): ArtifactFile? = files.firstOrNull { it.path == path } ?: entry?.takeIf { it.path == path }
 
     companion object {
+        private fun label(version: JsonObject): String {
+            val major = version["major"].num?.toInt()
+            val minor = version["minor"].num?.toInt()
+            return if (major != null && minor != null) "$major.$minor" else version["number"].num?.toInt().toString()
+        }
+
         fun parse(version: JsonObject?): ArtifactVersion? {
             version ?: return null
             val files = version["files"].arr.orEmpty().mapNotNull(ArtifactFile::parse)
@@ -101,6 +113,9 @@ data class ArtifactVersion(
                 entry = entry,
                 files = files,
                 liveUrl = version["live"].obj?.get("url").str,
+                label = label(version),
+                createdAt = version["createdAt"].num?.toLong() ?: 0,
+                byAgent = version["createdBy"].obj?.get("kind").str == "agent",
             )
         }
     }

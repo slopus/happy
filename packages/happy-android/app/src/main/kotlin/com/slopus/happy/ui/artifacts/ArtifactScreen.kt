@@ -45,6 +45,7 @@ import com.slopus.happy.ui.browser.BrowserView
 import com.slopus.happy.ui.browser.rememberBrowserState
 import com.slopus.happy.ui.chat.MarkdownView
 import com.slopus.happy.ui.components.Alert
+import com.slopus.happy.ui.connection.BarIconButton
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.components.Icon
@@ -99,42 +100,62 @@ class ArtifactActions(
  * screen says so in place.
  */
 @Composable
-fun ArtifactScreen(title: String, ui: ArtifactUi, media: ArtifactMedia?, computer: String, actions: ArtifactActions) {
+fun ArtifactScreen(
+    title: String,
+    ui: ArtifactUi,
+    media: ArtifactMedia?,
+    computer: String,
+    actions: ArtifactActions,
+    /** Its versions: History in the bar, and a banner over an older one; null for a linked file or one not read yet. */
+    history: ArtifactHistory? = null,
+) {
     var viewing by remember { mutableStateOf<Pair<List<ArtifactMediaItem>, Int>?>(null) }
     var missing by remember { mutableStateOf(false) }
+    var versions by remember { mutableStateOf(false) }
     // A page's browser buttons go in this bar, and the artifact's title stays (iOS 34aa464e1).
     val browser = rememberBrowserState()
     PlaceScaffold(
         title.ifBlank { stringResource(R.string.artifact_untitled) },
         actions.onBack,
         ArtifactTags.SCREEN,
-        actions = { if (ui is ArtifactUi.Page) BrowserControls(browser) },
-    ) {
-        when (ui) {
-            ArtifactUi.Loading -> LoadingIndicator(Modifier.testTag(PlaceTags.LOADER))
-            is ArtifactUi.Message -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                PlaceMessage(stringResource(if (ui.deleted) R.string.artifact_deleted else R.string.artifact_unavailable))
+        actions = {
+            if (ui is ArtifactUi.Page) BrowserControls(browser)
+            if (history?.hasVersions == true) {
+                BarIconButton(Ionicon.TimeOutline, stringResource(R.string.artifact_history), { versions = true }, Modifier.testTag(ArtifactHistoryTags.ACTION))
             }
-            is ArtifactUi.Document -> ArtifactDocument(
-                ui,
-                media,
-                onPicture = { item -> viewing = ui.order to ui.order.indexOfFirst { it.key == item.key }.coerceAtLeast(0) },
-                onLink = { raw ->
-                    when (val link = actions.link(raw, ui.path)) {
-                        is ArtifactLink.View -> viewing = listOf(link.item) to 0
-                        is ArtifactLink.File -> actions.onOpenFile(link.version, link.path)
-                        is ArtifactLink.Web -> actions.onOpenWeb(link.url)
-                        is ArtifactLink.External -> actions.onOpenExternal(link.url)
-                        ArtifactLink.Missing -> missing = true
-                        ArtifactLink.Nothing -> Unit
+        },
+    ) {
+        Column(Modifier.fillMaxSize()) {
+            if (history?.older == true) ArtifactOlderBanner(history)
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+                when (ui) {
+                    ArtifactUi.Loading -> LoadingIndicator(Modifier.testTag(PlaceTags.LOADER))
+                    is ArtifactUi.Message -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                        PlaceMessage(stringResource(if (ui.deleted) R.string.artifact_deleted else R.string.artifact_unavailable))
                     }
-                },
-            )
-            is ArtifactUi.Gallery -> if (media != null) ArtifactGallery(ui.items, media) { index -> viewing = ui.items to index }
-            is ArtifactUi.Page -> BrowserView(browser, prepare = ui.prepare, computer = computer, onOpenElsewhere = actions.onOpenWeb, artifactLink = actions.artifactLink)
-            is ArtifactUi.Openable -> ArtifactOpenable(ui.file, actions)
+                    is ArtifactUi.Document -> ArtifactDocument(
+                        ui,
+                        media,
+                        onPicture = { item -> viewing = ui.order to ui.order.indexOfFirst { it.key == item.key }.coerceAtLeast(0) },
+                        onLink = { raw ->
+                            when (val link = actions.link(raw, ui.path)) {
+                                is ArtifactLink.View -> viewing = listOf(link.item) to 0
+                                is ArtifactLink.File -> actions.onOpenFile(link.version, link.path)
+                                is ArtifactLink.Web -> actions.onOpenWeb(link.url)
+                                is ArtifactLink.External -> actions.onOpenExternal(link.url)
+                                ArtifactLink.Missing -> missing = true
+                                ArtifactLink.Nothing -> Unit
+                            }
+                        },
+                    )
+                    is ArtifactUi.Gallery -> if (media != null) ArtifactGallery(ui.items, media) { index -> viewing = ui.items to index }
+                    is ArtifactUi.Page -> BrowserView(browser, prepare = ui.prepare, computer = computer, onOpenElsewhere = actions.onOpenWeb, artifactLink = actions.artifactLink)
+                    is ArtifactUi.Openable -> ArtifactOpenable(ui.file, actions)
+                }
+            }
         }
     }
+    if (versions && history != null) ArtifactHistorySheet(history) { versions = false }
     val shown = viewing
     if (shown != null && media != null) ArtifactViewer(shown.first, shown.second, media) { viewing = null }
     if (missing) {

@@ -67,4 +67,11 @@
     <string name="reference_unavailable_service">無法使用的服務</string>
     <string name="reference_unavailable_user">無法使用的使用者</string>
     <string name="reference_unavailable">無法使用的參照</string>
+
+    <string name="artifact_history">歷史記錄</string>
+    <string name="artifact_history_version">版本 %1$s</string>
+    <string name="artifact_history_latest">最新</string>
+    <string name="artifact_history_showing">正在顯示版本 %1$s</string>
+    <string name="artifact_history_show_latest">顯示最新版本</string>
+    <string name="artifact_history_failed">無法載入版本。</string>
 </resources>

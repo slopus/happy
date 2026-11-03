@@ -168,7 +168,27 @@ private fun ArtifactEntry(graph: AppGraph, nav: NavHostController, route: Artifa
                 artifactKey = "artifact-${route.artifactId}",
             )
         },
+        history = rememberArtifactHistory(loader, session, nav, route, title),
     )
+}
+
+/** The artifact's versions for its screen; another version takes this screen's place, so Back still leaves the artifact. */
+@Composable
+private fun rememberArtifactHistory(loader: ArtifactLoader, session: AgentSession?, nav: NavHostController, route: ArtifactRoute, title: String): ArtifactHistory? {
+    val shown by loader.shown.collectAsStateWithLifecycle()
+    val latest by loader.latest.collectAsStateWithLifecycle()
+    val version = shown ?: return null
+    val client = session?.client ?: return null
+    return remember(version, latest, title) {
+        fun show(next: ArtifactRoute) = nav.navigate(next) { popUpTo<ArtifactRoute> { inclusive = true } }
+        ArtifactHistory(
+            shown = version,
+            latest = latest,
+            read = { cursor -> ArtifactClient(client).versions(route.artifactId, cursor) },
+            onPick = { number -> show(route.copy(version = number, title = title, followsLatest = false, pinned = true)) },
+            onLatest = { show(route.copy(version = latest ?: route.version, title = title, followsLatest = true, pinned = false)) },
+        )
+    }
 }
 
 @Composable

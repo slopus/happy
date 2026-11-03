@@ -3,6 +3,7 @@ package com.slopus.happy.artifacts
 import com.slopus.happy.agent.AgentApiException
 import com.slopus.happy.agent.AgentClient
 import com.slopus.happy.agent.decode
+import com.slopus.happy.chat.arr
 import com.slopus.happy.chat.num
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
@@ -38,6 +39,17 @@ open class ArtifactClient(private val client: AgentClient) {
     /** One page of the catalog, at most [limit] artifacts, from [pageCursor]. */
     open suspend fun catalog(pageCursor: String? = null, limit: Int = ArtifactCatalogFeed.PAGE_SIZE): JsonObject =
         client.decode("GET", "/v0/artifacts?limit=$limit" + (pageCursor?.let { "&pageCursor=${AgentClient.escape(it)}" } ?: ""))
+
+    /** One page of an artifact's versions, newest first, and the next page's cursor (`GET /v0/artifacts/:id/versions`). */
+    open suspend fun versions(artifactId: String, pageCursor: String? = null, limit: Int = 50): Pair<List<ArtifactVersion>, String?> {
+        val answer = try {
+            client.decode<JsonObject>("GET", "/v0/artifacts/${AgentClient.escape(artifactId)}/versions?limit=$limit" + (pageCursor?.let { "&pageCursor=${AgentClient.escape(it)}" } ?: ""))
+        } catch (e: AgentApiException) {
+            if (e.status == 404) throw ArtifactGoneException()
+            throw e
+        }
+        return answer["versions"].arr.orEmpty().mapNotNull { ArtifactVersion.parse(it.obj) } to answer["nextPageCursor"].str
+    }
 
     /** One artifact's catalog entry (`GET /v0/artifacts/:id`). */
     open suspend fun artifact(artifactId: String): JsonObject =
