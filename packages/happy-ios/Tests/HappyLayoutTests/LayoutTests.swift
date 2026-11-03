@@ -388,26 +388,28 @@ final class LayoutTests: XCTestCase {
         }
     }
 
-    /// Desktop's fold: past ten lines the bubble shows ten, Show full 8
-    /// under them; opened, every line and Show less. Ten lines or fewer,
-    /// nothing folds.
-    func testALongMessageShowsTenLinesUntilOpened() {
-        let long = String(repeating: "a", count: 1200)
+    /// A person's message shows whole: one of desktop's ten-line folds
+    /// would hide most of an ordinary paste. Only a ludicrous one, past 70
+    /// lines, shows 70 and Show full 8 under them; opened, every line and
+    /// Show less. Seventy lines or fewer, nothing folds, at any width.
+    func testOnlyALudicrousMessageFolds() {
+        XCTAssertEqual(MessageLayout.Metrics.foldLines, 70)
+        let long = String(repeating: "a", count: 4500)
         func layout(_ width: CGFloat, opened: Bool, _ string: String = long) -> MessageLayout {
             MessageLayout.user(
                 width: width, text: text(string, lineHeight: 24),
-                fold: .init(preview: text(string, lineHeight: 24, maxLines: 10), control: fixed(60, 16), opened: opened, lineHeight: 24),
+                fold: .init(preview: text(string, lineHeight: 24, maxLines: 70), control: fixed(60, 16), opened: opened, lineHeight: 24),
                 showsStatus: false
             )
         }
-        // 375: 37 a line, 33 lines; 402: 40, 30; 440: 45, 27.
-        for (width, x, line, lines) in [(375, 39, 296, 33), (402, 42, 320, 30), (440, 40, 360, 27)] as [(CGFloat, CGFloat, CGFloat, CGFloat)] {
+        // 375: 37 a line, 122 lines; 402: 40, 113; 440: 45, 100.
+        for (width, x, line, lines) in [(375, 39, 296, 122), (402, 42, 320, 113), (440, 40, 360, 100)] as [(CGFloat, CGFloat, CGFloat, CGFloat)] {
             let closed = layout(width, opened: false)
             XCTAssertTrue(closed.cut)
-            XCTAssertEqual(closed.bubble, rect(x, 8, line + 24, 284), "at \(width)")
-            XCTAssertEqual(closed.text, rect(x + 12, 18, line, 240), "at \(width)")
-            XCTAssertEqual(closed.foldControl, rect(x + 12, 266, 60, 16), "at \(width)")
-            XCTAssertEqual(closed.size, CGSize(width: width, height: 300), "at \(width)")
+            XCTAssertEqual(closed.bubble, rect(x, 8, line + 24, 1724), "at \(width)")
+            XCTAssertEqual(closed.text, rect(x + 12, 18, line, 1680), "at \(width)")
+            XCTAssertEqual(closed.foldControl, rect(x + 12, 1706, 60, 16), "at \(width)")
+            XCTAssertEqual(closed.size, CGSize(width: width, height: 1740), "at \(width)")
             let open = layout(width, opened: true)
             XCTAssertFalse(open.cut)
             XCTAssertEqual(open.bubble, rect(x, 8, line + 24, lines * 24 + 44), "at \(width)")
@@ -415,32 +417,38 @@ final class LayoutTests: XCTestCase {
             XCTAssertEqual(open.foldControl, rect(x + 12, 18 + lines * 24 + 8, 60, 16), "at \(width)")
             XCTAssertEqual(open.size.height, lines * 24 + 60, "at \(width)")
         }
-        // Exactly ten lines at 402.
-        let ten = layout(402, opened: false, String(repeating: "a", count: 400))
-        XCTAssertFalse(ten.cut)
-        XCTAssertNil(ten.foldControl)
-        XCTAssertEqual(ten.bubble, rect(42, 8, 344, 260))
+        // What desktop folds, and a message right at the limit, show whole:
+        // 30 lines and exactly 70 at 402.
+        for (count, lines) in [(1200, 30), (2800, 70)] as [(Int, CGFloat)] {
+            let whole = layout(402, opened: false, String(repeating: "a", count: count))
+            XCTAssertFalse(whole.cut, "\(count)")
+            XCTAssertNil(whole.foldControl, "\(count)")
+            XCTAssertEqual(whole.bubble, rect(42, 8, 344, lines * 24 + 20), "\(count)")
+            XCTAssertEqual(whole.text, rect(54, 18, 320, lines * 24), "\(count)")
+        }
+        // One line more folds.
+        XCTAssertTrue(layout(402, opened: false, String(repeating: "a", count: 2801)).cut)
         // Cut, it keeps the whole text's width: a wider line further down
         // doesn't widen it on opening.
         let narrowTop = MessageLayout.user(
-            width: 402, text: fixed(300, 720),
-            fold: .init(preview: fixed(200, 240), control: fixed(60, 16), opened: false, lineHeight: 24), showsStatus: false
+            width: 402, text: fixed(300, 2400),
+            fold: .init(preview: fixed(200, 1680), control: fixed(60, 16), opened: false, lineHeight: 24), showsStatus: false
         )
-        XCTAssertEqual(narrowTop.bubble, rect(62, 8, 324, 284))
-        XCTAssertEqual(narrowTop.text, rect(74, 18, 300, 240))
+        XCTAssertEqual(narrowTop.bubble, rect(62, 8, 324, 1724))
+        XCTAssertEqual(narrowTop.text, rect(74, 18, 300, 1680))
         // A cut line's ellipsis wider than any whole line widens it, cut
         // and opened alike.
         for opened in [false, true] {
             let ellipsis = MessageLayout.user(
-                width: 402, text: fixed(300, 720),
-                fold: .init(preview: fixed(310, 240), control: fixed(60, 16), opened: opened, lineHeight: 24), showsStatus: false
+                width: 402, text: fixed(300, 2400),
+                fold: .init(preview: fixed(310, 1680), control: fixed(60, 16), opened: opened, lineHeight: 24), showsStatus: false
             )
             XCTAssertEqual(ellipsis.bubble?.width, 334)
             XCTAssertEqual(ellipsis.text?.width, 310)
         }
-        // Ten lines tall or less, the preview is never measured.
+        // Seventy lines tall or less, the preview is never measured.
         let unmeasured = MessageLayout.user(
-            width: 402, text: fixed(300, 240),
+            width: 402, text: fixed(300, 1680),
             fold: .init(preview: Measurable { _ in XCTFail("measured the preview"); return .zero }, control: fixed(60, 16), opened: false, lineHeight: 24),
             showsStatus: false
         )

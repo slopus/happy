@@ -185,8 +185,9 @@ actor ChatPlanner {
             }
         case .user:
             // Desktop's own message: the text as written (Figtree 16/24), lines and all, in
-            // the accent bubble at the right, its photos under it. Past ten
-            // lines it is cut there until tapped open, as on desktop.
+            // the accent bubble at the right, its photos under it, whole.
+            // Only a ludicrous one, past `foldLines`, is cut there until
+            // tapped open.
             // A file that is no picture or video is named under the words.
             let named = item.pieces.compactMap { piece -> String? in
                 guard case .sentFile(let file) = piece, !file.isVisual else { return nil }
@@ -195,7 +196,7 @@ actor ChatPlanner {
             let written = ([text] + named).filter { !$0.isEmpty }.joined(separator: "\n\n")
             let string = ChatTextStyles.text.string(written, color: Palette.userMessageText, in: environment)
             let body = written.isEmpty ? nil : MeasuredText(string)
-            let preview = MeasuredText(string, maxLines: M.previewLines)
+            let preview = MeasuredText(string, maxLines: M.foldLines)
             let toggles = opened ? Strings.showLess : Strings.showFull
             let control = MeasuredText(ChatTextStyles.fold.string(toggles, color: Palette.textSecondary, in: environment))
             let pictures: [(id: String, image: MediaFlow.Image, isVideo: Bool)] = item.pieces.compactMap {

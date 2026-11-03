@@ -448,6 +448,87 @@ class ChatTextView: UIView {
     }
 }
 
+/// A `ChatTextView` for text taller than `ChatTextTiling.threshold`: a
+/// pasted log opened in full. Core Animation draws it a tile at a time, on
+/// its own threads, and only the tiles on screen, each only the glyphs in
+/// it; the main thread draws nothing and no bitmap is the text's height.
+final class ChatTiledTextView: ChatTextView {
+    private final class TiledLayer: CATiledLayer {
+        // Tiles come in drawn, as the rest of a row does.
+        override class func fadeDuration() -> CFTimeInterval { 0 }
+    }
+
+    override class var layerClass: AnyClass { TiledLayer.self }
+
+    /// What the drawing threads read: the words and the appearance they
+    /// are drawn in, set on the main thread.
+    private let drawn = Drawn()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        if let tiled = layer as? CATiledLayer {
+            tiled.levelsOfDetail = 1
+            tiled.levelsOfDetailBias = 0
+        }
+        layer.drawsAsynchronously = false
+        drawn.traits = traitCollection
+        registerForTraitChanges([UITraitUserInterfaceStyle.self, UITraitDisplayScale.self]) { (self: Self, _) in
+            self.drawn.traits = self.traitCollection
+            self.retile()
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    override var layout: ChatTextLayout? {
+        didSet { drawn.layout = layout }
+    }
+
+    /// The tiles come in as they are drawn; nothing waits on them.
+    override var isDrawn: Bool { true }
+
+    override var frame: CGRect {
+        didSet { if frame.width != oldValue.width { retile() } }
+    }
+
+    private func retile() {
+        guard let tiled = layer as? CATiledLayer else { return }
+        let scale = max(1, traitCollection.displayScale)
+        tiled.tileSize = CGSize(width: max(1, bounds.width) * scale, height: ChatTextTiling.tile * scale)
+        setNeedsDisplay()
+    }
+
+    /// Called on Core Animation's tile threads, never the main one.
+    nonisolated override func draw(_ rect: CGRect) {
+        let (layout, traits) = drawn.read()
+        guard let layout else { return }
+        traits.performAsCurrent { layout.draw(at: .zero, visibleRect: rect) }
+    }
+
+    private final class Drawn: @unchecked Sendable {
+        private let lock = NSLock()
+        private var storedLayout: ChatTextLayout?
+        private var storedTraits = UITraitCollection()
+
+        var layout: ChatTextLayout? {
+            get { lock.withLock { storedLayout } }
+            set { lock.withLock { storedLayout = newValue } }
+        }
+
+        var traits: UITraitCollection {
+            get { lock.withLock { storedTraits } }
+            set { lock.withLock { storedTraits = newValue } }
+        }
+
+        func read() -> (ChatTextLayout?, UITraitCollection) {
+            lock.withLock { (storedLayout, storedTraits) }
+        }
+    }
+}
+
 /// A `ChatTextView` that draws text coming on screen, as UltraList draws
 /// its rows (`ChatNodeDrawing`), into a bitmap off the main thread: a row
 /// brought in ahead of the scroll costs the main thread nothing to draw.
