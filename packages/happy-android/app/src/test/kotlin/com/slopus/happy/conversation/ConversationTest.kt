@@ -49,6 +49,8 @@ private class FakeAgent {
     var commandStatus = 202
     /** A send writes half its body, then waits for this before writing the rest and answering. */
     var halfway: CompletableDeferred<Unit>? = null
+    /** What `GET /v0/config` answers. */
+    var config = CONFIG
     var commandsAfter = """[{"name":"compact","hasArguments":false,"description":"Summarize.","kind":"compaction"}]"""
 
     val request: AgentRequest = { method, path, body, _ ->
@@ -91,7 +93,7 @@ private class FakeAgent {
             } else {
                 TransportResponse(commandStatus, body = """{"error":"The daemon's own words.","code":"conflict"}""".toByteArray())
             }
-            route == "/v0/config" -> ok(CONFIG)
+            route == "/v0/config" -> ok(config)
             route.endsWith("/draft") -> ok("""{"draft":${(body as JsonObject).let { """{"value":${it["draft"]},"updatedAt":${it["updatedAt"]}}""" }}}""")
             else -> ok("{}")
         }
@@ -803,6 +805,18 @@ class ConversationTest {
         assertEquals(Mode("codex", "openai/gpt-5.6-luna", "low", null, "auto"), catalog.pick(sol, "codex", "openai/gpt-5.6-luna"))
         assertEquals(sol.copy(effort = "low"), catalog.pick(sol.copy(effort = "low"), "codex", "openai/gpt-5.6-sol"))
         assertEquals(sol, catalog.pick(sol, "grok", "xai/grok-4.5"))
+    }
+
+    @Test fun `the computer's config changed reads the models again`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        assertEquals(3, chat.state.value.catalog?.models?.size)
+        agent.config = FakeAgent.CONFIG.replace(""""grok":{"type":"grok","enabled":false""", """"grok":{"type":"grok","enabled":true""")
+        signals.emit(event("config.updated", "{}"))
+        advanceUntilIdle()
+        assertEquals("xai/grok-4.5", chat.state.value.catalog?.models?.last()?.modelId)
+        assertEquals(4, chat.state.value.catalog?.models?.size)
     }
 
     @Test fun `a picked mode is kept with the draft at once and sends with the next message`() = runTest {

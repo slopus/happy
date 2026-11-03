@@ -234,6 +234,8 @@ fun ConversationScreen(
     link: LinkState = LinkState.Online,
     /** The computer's accounts' plan usage by provider id, for the model label's warning. */
     usage: Map<String, com.slopus.happy.conversation.AccountUsage> = emptyMap(),
+    /** A model or effort list opened: ask the computer again for these accounts' readings. */
+    onRefreshUsage: (List<String>) -> Unit = {},
 ) {
     RecomposeProbe.mark(ConversationScreenTags.PROBE_SCREEN)
     val colors = HappyTheme.colors
@@ -587,6 +589,7 @@ fun ConversationScreen(
                                 flight = flight,
                                 cursor = autocomplete.cursor,
                                 usage = usage,
+                                onRefreshUsage = onRefreshUsage,
                             )
                         }
                     }

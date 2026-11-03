@@ -84,15 +84,11 @@
     <string name="conversation_chief_unavailable">Не удаётся открыть Chief of Staff</string>
     <string name="conversation_chief_missing">На этом компьютере нет Chief of Staff.</string>
     <string name="conversation_mode_permission">Разрешения</string>
-    <string name="conversation_mode_model">Модель</string>
-    <string name="conversation_mode_effort">Усилие</string>
     <string name="conversation_send">Отправить</string>
     <string name="conversation_stop">Остановить</string>
     <string name="conversation_attach_picture">Добавить изображение</string>
     <string name="conversation_remove_picture">Удалить изображение</string>
     <string name="conversation_composer_more">Ещё</string>
-    <string name="conversation_mode_label">Модель %1$s, усилие %2$s</string>
-    <string name="conversation_mode_label_model_only">Модель %1$s</string>
     <string name="conversation_mode_permission_item">Разрешения: %1$s</string>
     <string name="conversation_pictures_too_large_title">Изображения слишком большие</string>
     <string name="conversation_pictures_too_large_message">Вместе эти изображения больше, чем вмещает одно сообщение. Удалите некоторые и отправьте снова.</string>

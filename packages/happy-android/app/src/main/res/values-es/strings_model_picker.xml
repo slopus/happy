@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The composer's model and effort chips and their lists (iOS e2238fdc4, 083c30df4; desktop ComposerModelControl.tsx). -->
+<resources>
+    <string name="conversation_models_not_configured">Modelos no configurados</string>
+    <string name="conversation_model_hidden_account">Cuenta oculta. Sigue funcionando; solo se mantiene fuera de las listas.</string>
+    <string name="conversation_model_account_removed">La cuenta %1$s ya no está configurada en este Happy Agent.</string>
+    <string name="conversation_model_account_off">La cuenta %1$s está desactivada, así que no se le envía nada.</string>
+    <string name="conversation_model_chip">Modelo: %1$s</string>
+    <string name="conversation_effort_chip">Esfuerzo: %1$s</string>
+    <string name="conversation_select_model">Elegir modelo</string>
+    <string name="conversation_select_effort">Elegir esfuerzo</string>
+    <string name="conversation_accounts_of">Cuenta de %1$s</string>
+    <string name="conversation_heading_label">Cuenta de %1$s: %2$s</string>
+    <string name="conversation_usage_unknown">Uso desconocido</string>
+    <string name="conversation_limit_reached">Límite alcanzado</string>
+    <string name="conversation_limit_resets">El límite se restablece %1$s</string>
+    <string name="conversation_usage_updating">Actualizando…</string>
+    <string name="conversation_usage_couldnt_refresh">No se pudo actualizar</string>
+    <string name="conversation_usage_updated">Actualizado %1$s</string>
+    <string name="conversation_usage_updated_failed">Actualizado %1$s · no se pudo actualizar</string>
+    <string name="conversation_usage_as_of">%1$s a las %2$s</string>
+    <string name="conversation_usage_just_now">ahora mismo</string>
+    <string name="conversation_usage_minutes_ago">hace %1$d min</string>
+    <string name="conversation_usage_hours_ago">hace %1$d h</string>
+    <string name="conversation_usage_at">a las %1$s</string>
+    <string name="conversation_usage_signed_out">Sesión cerrada</string>
+</resources>

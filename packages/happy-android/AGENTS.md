@@ -1239,13 +1239,41 @@ window in `ModeCatalog.windows`. Before the first measurement it shows
 the selected model's window. There is none while history is read or
 before new work is made.
 
-The model label wears desktop's usage ring while the selected account
+The model chip wears desktop's usage ring while the selected account
 runs low (`AccountUsage.warning`: the week before the session, under 25 %
 low, under 10 % or blocked critical) and reads the warning out.
 `AgentSession.usage` (`AgentUsageSource`) reads `GET /v0/usage` while a
 chat shows, and again on `provider.usage.*`, `config.updated` and each
 reconnect. It keeps following for 30 s after the last chat goes. Words
 are in `strings_context_meter.xml`.
+
+### Model and effort chips
+
+The composer's label slot holds two chips, as iOS does (e2238fdc4,
+083c30df4): the model (bold) and its effort (`ConversationModelChips`).
+Each opens its own list (`ui/conversation/ModelPicker`), in Android's
+menu card instead of iOS glass. The list's trailing edge sits on the
+chip's, 10 dp above it, and it opens scrolled to the checked line.
+`conversation/ModelMenus` builds the model list from `ModeCatalog`'s
+providers: one service per provider type under a heading with the
+selected account, its readings and a chevron. A hidden account or
+model is left out unless it is the selection. A switched-off account is
+listed dimmed, and its service opens on an account that works. A
+selection that is gone, off or hidden gets a notice. The chevron
+stacks that service's accounts over the list in place (same trailing edge
+and bottom), each with its week reading and the selected one's windows.
+Switching account keeps the model list up; any other pick closes it. A
+touch outside, or Back, closes the accounts first.
+
+A pick of another model runs at that model's default effort. The same
+model keeps its effort, and an account switch keeps it when the model
+runs it (`ModeCatalog.pick`, desktop's
+`happyAgentSelectionModelUpdate`). Opening the model list asks
+`POST /v0/usage/refresh` for the accounts it lists, then reads three
+times 2 s apart (`AgentUsageSource.refresh`). `config.updated` and each
+reconnect read `/v0/config` again (`Conversation.rereadCatalog`), so a
+model hidden on the computer leaves the list while it is open. Words are
+in `strings_model_picker.xml`.
 
 ### Image loading
 

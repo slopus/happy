@@ -196,7 +196,11 @@ class AgentSession internal constructor(
     val profile: AgentProfileSource by lazy { AgentProfileSource(client, events, scope) }
 
     /** The computer's accounts' plan usage, followed while a composer shows ([AgentUsageSource.follow]). */
-    val usage: AgentUsageSource by lazy { AgentUsageSource({ client.decode<JsonObject>("GET", "/v0/usage") }, events, scope) }
+    val usage: AgentUsageSource by lazy {
+        AgentUsageSource({ client.decode<JsonObject>("GET", "/v0/usage") }, events, scope) { accounts ->
+            client.send("POST", "/v0/usage/refresh", buildJsonObject { put("providerIds", JsonArray(accounts.map(::JsonPrimitive))) })
+        }
+    }
 
     /** Bots' pictures, as home's rows draw them. */
     /** Chat media kept on this phone for good, beside the catalog (iOS `MediaLibrary.agent`); null where nothing is kept. */

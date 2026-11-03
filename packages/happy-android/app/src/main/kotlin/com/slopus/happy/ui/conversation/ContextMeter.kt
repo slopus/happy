@@ -50,6 +50,7 @@ import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.slopus.happy.R
@@ -298,7 +299,7 @@ internal fun contextMeterTitle(gauge: ContextGauge): String {
  * nothing is left.
  */
 @Composable
-internal fun UsageRing(left: Int, tone: AccountUsage.Tone, modifier: Modifier = Modifier) {
+internal fun UsageRing(left: Int, tone: AccountUsage.Tone, modifier: Modifier = Modifier, diameter: Dp = UsageRingSpec.size, tagged: Boolean = true) {
     val dark = HappyTheme.colors.dark
     val arc = when (tone) {
         AccountUsage.Tone.Ample -> MeterInk.ink(dark)
@@ -311,7 +312,7 @@ internal fun UsageRing(left: Int, tone: AccountUsage.Tone, modifier: Modifier = 
         left <= 0 -> critical
         else -> critical.copy(alpha = 0.4f)
     }
-    Canvas(modifier.size(UsageRingSpec.size).testTag(ContextMeterTags.RING)) {
+    Canvas(modifier.size(diameter).then(if (tagged) Modifier.testTag(ContextMeterTags.RING) else Modifier)) {
         val stroke = UsageRingSpec.stroke.toPx()
         val inset = stroke / 2
         val ring = Size(size.width - stroke, size.height - stroke)
@@ -339,7 +340,7 @@ internal fun usageWarningText(warning: AccountUsage.Warning, now: Long = System.
 
 /** `localDayTime`: today's time alone; any other day leads with its weekday. */
 @Composable
-private fun dayTime(ms: Long, now: Long): String {
+internal fun dayTime(ms: Long, now: Long): String {
     val context = LocalContext.current
     val locale = LocalConfiguration.current.locales[0]
     val time = DateFormat.getBestDateTimePattern(locale, if (DateFormat.is24HourFormat(context)) "Hm" else "hma")
@@ -349,6 +350,6 @@ private fun dayTime(ms: Long, now: Long): String {
         timeInMillis = now
         day == get(Calendar.YEAR) * 400 + get(Calendar.DAY_OF_YEAR)
     }
-    val pattern = if (sameDay) time else DateFormat.getBestDateTimePattern(locale, "EEE") + " " + time
+    val pattern = if (sameDay) time else "EEE " + time
     return SimpleDateFormat(pattern, locale).format(Date(ms))
 }

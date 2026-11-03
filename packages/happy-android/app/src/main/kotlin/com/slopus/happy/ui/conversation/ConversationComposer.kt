@@ -150,8 +150,8 @@ private object Slot {
  * rest one 48 pill: [+], the placeholder, the send circle at its end. In use
  * (focused, holding words or pictures) the same pill grows into a card: the
  * pictures waiting to go, the words on top (up to eight lines, then it
- * scrolls), and under them [+], the model and effort as one label
- * ([ConversationModeLabel]) and send, which becomes Stop while the agent
+ * scrolls), and under them [+], the model and effort chips
+ * ([ConversationModelChips], each opening its own list) and send, which becomes Stop while the agent
  * works and nothing is typed. [+] opens the attachment sheet ([AttachSheet]):
  * the gallery's recent photos and videos and the File tab; its Send sends the
  * picks with the draft as their caption, pictures inline and the rest through
@@ -184,6 +184,8 @@ internal fun ConversationComposer(
     cursor: com.slopus.happy.ui.autocomplete.ComposerCursor? = null,
     /** The computer's accounts' plan usage by provider id: the model label warns as its account runs low. */
     usage: Map<String, AccountUsage> = emptyMap(),
+    /** A list opened: the computer asks again for the readings of the accounts it lists. */
+    onRefreshUsage: (List<String>) -> Unit = {},
 ) {
     RecomposeProbe.mark(ConversationScreenTags.PROBE_COMPOSER)
     val colors = HappyTheme.colors
@@ -208,17 +210,19 @@ internal fun ConversationComposer(
     var attaching by rememberSaveable { mutableStateOf(false) }
     val plus = rememberAttachButton { Icon(MaterialSymbols.Add, contentDescription = null, tint = colors.text) }
     var menu by remember { mutableStateOf(false) }
-    var picker by rememberSaveable { mutableStateOf<ModePicker?>(null) }
+    var picker by rememberSaveable { mutableStateOf<PickerList?>(null) }
     var moreCenterY by remember { mutableIntStateOf(0) }
-    var modelCenterY by remember { mutableIntStateOf(0) }
-    // Where + and the model label are, read as a popup opens: nothing runs as they move (the dock
-    // rides the keyboard, settles, scrolls with a growing draft).
-    val anchors = remember { arrayOfNulls<LayoutCoordinates>(2) }
+    // Where + is, read as its popup opens: nothing runs as it moves (the dock rides the keyboard,
+    // settles, scrolls with a growing draft). The chips' places, read as their list opens.
+    val anchors = remember { arrayOfNulls<LayoutCoordinates>(1) }
+    val chips = remember { arrayOfNulls<LayoutCoordinates>(2) }
     fun anchor(i: Int) = anchors[i]?.takeIf { it.isAttached }?.boundsInWindow()?.center?.y?.toInt() ?: 0
-    fun openPicker(which: ModePicker) {
+    fun chipBounds(list: PickerList) = chips[list.ordinal]?.takeIf { it.isAttached }?.boundsInWindow()?.let {
+        androidx.compose.ui.unit.IntRect(it.left.toInt(), it.top.toInt(), it.right.toInt(), it.bottom.toInt())
+    }
+    fun openPicker(which: PickerList) {
         attaching = false
         menu = false
-        modelCenterY = anchor(1)
         picker = which
     }
 
@@ -341,12 +345,13 @@ internal fun ConversationComposer(
                         .testTag(ConversationComposerTags.INPUT),
                 )
                 if (open) {
-                    ConversationModeLabel(
+                    ConversationModelChips(
                         catalog = state.catalog,
                         mode = state.mode,
                         warning = warning,
-                        onOpen = { openPicker(ModePicker.Model) },
-                        modifier = Modifier.layoutId(Slot.LABEL).onPlaced { anchors[1] = it },
+                        onOpen = ::openPicker,
+                        anchors = chips,
+                        modifier = Modifier.layoutId(Slot.LABEL),
                     )
                 }
                 val live = primary == PrimaryAction.Send || primary == PrimaryAction.Stop
@@ -416,7 +421,16 @@ internal fun ConversationComposer(
             room = AttachAccepts.Agent.maxItems - attached.size,
             button = plus,
         )
-        ConversationModePicker(picker, onClose = { picker = null }, catalog = state.catalog, mode = state.mode, onModeChange = onModeChange, anchorCenterY = modelCenterY)
+        ModelPicker(
+            open = picker,
+            catalog = state.catalog,
+            mode = state.mode,
+            usage = usage,
+            anchor = ::chipBounds,
+            onModeChange = onModeChange,
+            onClose = { picker = null },
+            onOpened = onRefreshUsage,
+        )
         // The viewport subcomposes its content during measurement. Request
         // focus here, after its editor exists, rather than in the parent.
         LaunchedEffect(state.composerFocus?.serial) {

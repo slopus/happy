@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The composer's model and effort chips and their lists (iOS e2238fdc4, 083c30df4; desktop ComposerModelControl.tsx). -->
+<resources>
+    <string name="conversation_models_not_configured">Models no configurats</string>
+    <string name="conversation_model_hidden_account">Compte ocult. Continua funcionant; només es manté fora de les llistes.</string>
+    <string name="conversation_model_account_removed">El compte %1$s ja no està configurat en aquest Happy Agent.</string>
+    <string name="conversation_model_account_off">El compte %1$s està desactivat, així que no s’hi envia res.</string>
+    <string name="conversation_model_chip">Model: %1$s</string>
+    <string name="conversation_effort_chip">Esforç: %1$s</string>
+    <string name="conversation_select_model">Tria el model</string>
+    <string name="conversation_select_effort">Tria l’esforç</string>
+    <string name="conversation_accounts_of">Compte de %1$s</string>
+    <string name="conversation_heading_label">Compte de %1$s: %2$s</string>
+    <string name="conversation_usage_unknown">Ús desconegut</string>
+    <string name="conversation_limit_reached">Límit assolit</string>
+    <string name="conversation_limit_resets">El límit es restableix %1$s</string>
+    <string name="conversation_usage_updating">Actualitzant…</string>
+    <string name="conversation_usage_couldnt_refresh">No s’ha pogut actualitzar</string>
+    <string name="conversation_usage_updated">Actualitzat %1$s</string>
+    <string name="conversation_usage_updated_failed">Actualitzat %1$s · no s’ha pogut actualitzar</string>
+    <string name="conversation_usage_as_of">%1$s a les %2$s</string>
+    <string name="conversation_usage_just_now">ara mateix</string>
+    <string name="conversation_usage_minutes_ago">fa %1$d min</string>
+    <string name="conversation_usage_hours_ago">fa %1$d h</string>
+    <string name="conversation_usage_at">a les %1$s</string>
+    <string name="conversation_usage_signed_out">Sessió tancada</string>
+</resources>

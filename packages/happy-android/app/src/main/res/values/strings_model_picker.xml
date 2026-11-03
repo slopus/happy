@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The composer's model and effort chips and their lists (iOS e2238fdc4, 083c30df4; desktop ComposerModelControl.tsx). -->
+<resources>
+    <string name="conversation_models_not_configured">Models not configured</string>
+    <string name="conversation_model_hidden_account">Hidden account. It still works; it’s only kept out of the lists.</string>
+    <string name="conversation_model_account_removed">The %1$s account is no longer configured on this Happy Agent.</string>
+    <string name="conversation_model_account_off">The %1$s account is switched off, so nothing is sent to it.</string>
+    <string name="conversation_model_chip">Model: %1$s</string>
+    <string name="conversation_effort_chip">Effort: %1$s</string>
+    <string name="conversation_select_model">Select model</string>
+    <string name="conversation_select_effort">Select effort</string>
+    <string name="conversation_accounts_of">%1$s account</string>
+    <string name="conversation_heading_label">%1$s account: %2$s</string>
+    <string name="conversation_usage_unknown">Usage unknown</string>
+    <string name="conversation_limit_reached">Limit reached</string>
+    <string name="conversation_limit_resets">Limit resets %1$s</string>
+    <string name="conversation_usage_updating">Updating…</string>
+    <string name="conversation_usage_couldnt_refresh">Couldn’t refresh</string>
+    <string name="conversation_usage_updated">Updated %1$s</string>
+    <string name="conversation_usage_updated_failed">Updated %1$s · couldn’t refresh</string>
+    <string name="conversation_usage_as_of">%1$s as of %2$s</string>
+    <string name="conversation_usage_just_now">just now</string>
+    <string name="conversation_usage_minutes_ago">%1$d min ago</string>
+    <string name="conversation_usage_hours_ago">%1$d hr ago</string>
+    <string name="conversation_usage_at">at %1$s</string>
+    <string name="conversation_usage_signed_out">Signed out</string>
+</resources>

@@ -84,15 +84,11 @@
     <string name="conversation_chief_unavailable">Chief of Staff を開けません</string>
     <string name="conversation_chief_missing">このコンピュータには Chief of Staff がいません。</string>
     <string name="conversation_mode_permission">権限</string>
-    <string name="conversation_mode_model">モデル</string>
-    <string name="conversation_mode_effort">エフォート</string>
     <string name="conversation_send">送信</string>
     <string name="conversation_stop">停止</string>
     <string name="conversation_attach_picture">画像を追加</string>
     <string name="conversation_remove_picture">画像を削除</string>
     <string name="conversation_composer_more">その他</string>
-    <string name="conversation_mode_label">モデル %1$s、エフォート %2$s</string>
-    <string name="conversation_mode_label_model_only">モデル %1$s</string>
     <string name="conversation_mode_permission_item">権限: %1$s</string>
     <string name="conversation_pictures_too_large_title">画像が大きすぎます</string>
     <string name="conversation_pictures_too_large_message">これらの画像は合わせると 1 通のメッセージに収まりません。いくつか削除してもう一度送信してください。</string>

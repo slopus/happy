@@ -29,6 +29,8 @@ class AgentUsageSource internal constructor(
     private val read: suspend () -> JsonObject,
     private val events: SharedFlow<AgentEvent>,
     private val scope: CoroutineScope,
+    /** `POST /v0/usage/refresh`: the computer asks these accounts' services again. */
+    private val askAgain: suspend (List<String>) -> Unit = {},
 ) {
     private val usageFlow = MutableStateFlow<Map<String, AccountUsage>>(emptyMap())
     val usage: StateFlow<Map<String, AccountUsage>> = usageFlow.asStateFlow()
@@ -37,6 +39,7 @@ class AgentUsageSource internal constructor(
     private var followers = 0
     private var following: Job? = null
     private var lingering: Job? = null
+    private var refreshing: Job? = null
 
     /** Follows the readings until the returned handle is closed. */
     fun follow(): AutoCloseable {
@@ -67,6 +70,30 @@ class AgentUsageSource internal constructor(
         }
     }
 
+    /**
+     * The readings now, then fresher ones for [accounts] once the computer
+     * has asked their services, as desktop asks as its model menu opens:
+     * read, ask, and read again three times two seconds apart.
+     */
+    fun refresh(accounts: List<String>) {
+        synchronized(lock) {
+            refreshing?.cancel()
+            refreshing = scope.launch {
+                readUsage()
+                try {
+                    askAgain(accounts)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                }
+                repeat(REFRESH_READS) {
+                    delay(REFRESH_SPACING_MS)
+                    readUsage()
+                }
+            }
+        }
+    }
+
     /** Reads once and then on each change; asks while a read is out make one read after it. */
     private suspend fun followEvents() = coroutineScope {
         val asks = Channel<Unit>(Channel.CONFLATED)
@@ -91,5 +118,7 @@ class AgentUsageSource internal constructor(
     companion object {
         /** How long following outlives its last follower (desktop's `SOURCE_LINGER_MS`). */
         const val LINGER_MS = 30_000L
+        const val REFRESH_READS = 3
+        const val REFRESH_SPACING_MS = 2_000L
     }
 }

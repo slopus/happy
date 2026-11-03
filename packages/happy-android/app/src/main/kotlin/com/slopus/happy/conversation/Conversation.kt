@@ -253,6 +253,8 @@ class Conversation(
             launch { try { readCatalog() } catch (e: CancellationException) { throw e } catch (_: Exception) {} }
             if (created) reload()
             signals.collect { signal ->
+                // The computer's models changed, or may have while away: the pickers read them again.
+                if (signal == ConversationSignal.Resync || (signal as? ConversationSignal.Event)?.type == "config.updated") rereadCatalog()
                 if (!created) return@collect
                 when (signal) {
                     ConversationSignal.Resync -> reload()
@@ -1053,6 +1055,24 @@ class Conversation(
         val found = readCatalog().defaults
         // A pick made while the default was read wins.
         return mode ?: found?.also { mode = it; publish() }
+    }
+
+    /** Reads the computer's models again (`config.updated`, a reconnect): hidden accounts and models, names, windows. */
+    private fun rereadCatalog() {
+        scope.launch(lane) {
+            val found = try {
+                api.catalog()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                return@launch
+            }
+            catalogRead = null
+            if (found != catalog) {
+                catalog = found
+                publish()
+            }
+        }
     }
 
     /** The computer's models, read once; a failed read is asked again next time. */

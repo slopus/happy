@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The composer's model and effort chips and their lists (iOS e2238fdc4, 083c30df4; desktop ComposerModelControl.tsx). -->
+<resources>
+    <string name="conversation_models_not_configured">Modele nieskonfigurowane</string>
+    <string name="conversation_model_hidden_account">Ukryte konto. Nadal działa; jest tylko poza listami.</string>
+    <string name="conversation_model_account_removed">Konto %1$s nie jest już skonfigurowane w tym Happy Agent.</string>
+    <string name="conversation_model_account_off">Konto %1$s jest wyłączone, więc nic do niego nie trafia.</string>
+    <string name="conversation_model_chip">Model: %1$s</string>
+    <string name="conversation_effort_chip">Wysiłek: %1$s</string>
+    <string name="conversation_select_model">Wybierz model</string>
+    <string name="conversation_select_effort">Wybierz wysiłek</string>
+    <string name="conversation_accounts_of">Konto %1$s</string>
+    <string name="conversation_heading_label">Konto %1$s: %2$s</string>
+    <string name="conversation_usage_unknown">Użycie nieznane</string>
+    <string name="conversation_limit_reached">Osiągnięto limit</string>
+    <string name="conversation_limit_resets">Limit odnowi się %1$s</string>
+    <string name="conversation_usage_updating">Aktualizowanie…</string>
+    <string name="conversation_usage_couldnt_refresh">Nie udało się odświeżyć</string>
+    <string name="conversation_usage_updated">Zaktualizowano %1$s</string>
+    <string name="conversation_usage_updated_failed">Zaktualizowano %1$s · nie udało się odświeżyć</string>
+    <string name="conversation_usage_as_of">%1$s z %2$s</string>
+    <string name="conversation_usage_just_now">przed chwilą</string>
+    <string name="conversation_usage_minutes_ago">%1$d min temu</string>
+    <string name="conversation_usage_hours_ago">%1$d godz. temu</string>
+    <string name="conversation_usage_at">o %1$s</string>
+    <string name="conversation_usage_signed_out">Wylogowano</string>
+</resources>

@@ -418,7 +418,7 @@ class ConversationLayoutTest {
         shot("error")
     }
 
-    @Test fun `the composer picks the model, keeping the effort it runs`() {
+    @Test fun `the composer picks the model, at the model's own effort`() {
         val catalog = ModeCatalog(
             listOf(
                 ModelChoice("claude", "Current CLI", "claude", "anthropic/opus-5", "Opus 5 1M", listOf("low", "medium", "high", "max"), "high", emptyList()),
@@ -431,7 +431,7 @@ class ConversationLayoutTest {
             ConversationState(created = true, loaded = true, rows = history, agent = agent, mode = mode, catalog = catalog),
             actions = ConversationScreenActions(onModeChange = { picks += it }),
         )
-        // ChatGPT's Work composer: at rest no label; in use, model and effort as one label beside send.
+        // ChatGPT's Work composer: at rest no chips; in use, the model and effort chips beside send.
         rule.node(ConversationModeTags.MODEL).assertDoesNotExist()
         rule.node(ConversationComposerTags.INPUT).performSemanticsAction(SemanticsActions.RequestFocus)
         rule.waitForIdle()
@@ -443,7 +443,8 @@ class ConversationLayoutTest {
         rule.onNodeWithText("GPT-5.6 Sol").assertIsDisplayed()
         rule.onNodeWithText("GPT-5.6 Sol").performClick()
         rule.waitForIdle()
-        assertEquals(listOf(Mode("codex", "openai/gpt-5.6-sol", "high", null, "auto")), picks)
+        // Another model runs at its own default effort, never one carried over (desktop's happyAgentSelectionModelUpdate).
+        assertEquals(listOf(Mode("codex", "openai/gpt-5.6-sol", "medium", null, "auto")), picks)
         // [+] is exclusively attachments; permissions live in the header overflow.
         rule.node(ConversationComposerTags.MORE).performClick()
         rule.waitForIdle()

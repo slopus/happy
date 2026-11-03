@@ -173,11 +173,13 @@ internal fun AgentSession.conversationKeeper(agentId: String): ConversationKeepe
     override fun write(value: JsonObject) = keepResource(key, value)
 }
 
-/** The connection's journal as one conversation hears it: its own events, and a resync on every (re)connect. */
+/** The connection's journal as one conversation hears it: its own events, configuration changes, and a resync on every (re)connect. */
 internal fun Flow<AgentEvent>.signalsFor(agentId: String): Flow<ConversationSignal> = mapNotNull { event ->
     when {
         event.type == AgentEvent.HELLO -> ConversationSignal.Resync
         event.agentId == agentId -> ConversationSignal.Event(event.type, event.data)
+        // The computer's configuration (its models) changed: every conversation's pickers follow.
+        event.type == "config.updated" -> ConversationSignal.Event(event.type, event.data)
         else -> null
     }
 }
@@ -350,6 +352,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
             connection = if (link == LinkState.Offline) linkStatusText(status) ?: stringResource(R.string.status_offline) else null,
             link = link,
             usage = usage,
+            onRefreshUsage = session.usage::refresh,
             bubbleColor = settings.userMessageBubbleColor,
             actions = remember(conversation, nav, kept) {
                 ConversationScreenActions(

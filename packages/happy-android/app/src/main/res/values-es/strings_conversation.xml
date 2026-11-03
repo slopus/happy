@@ -84,15 +84,11 @@
     <string name="conversation_chief_unavailable">No se puede abrir el Chief of Staff</string>
     <string name="conversation_chief_missing">No hay ningún Chief of Staff en este ordenador.</string>
     <string name="conversation_mode_permission">Permisos</string>
-    <string name="conversation_mode_model">Modelo</string>
-    <string name="conversation_mode_effort">Esfuerzo</string>
     <string name="conversation_send">Enviar</string>
     <string name="conversation_stop">Detener</string>
     <string name="conversation_attach_picture">Añadir imagen</string>
     <string name="conversation_remove_picture">Quitar imagen</string>
     <string name="conversation_composer_more">Más</string>
-    <string name="conversation_mode_label">Modelo %1$s, esfuerzo %2$s</string>
-    <string name="conversation_mode_label_model_only">Modelo %1$s</string>
     <string name="conversation_mode_permission_item">Permisos: %1$s</string>
     <string name="conversation_pictures_too_large_title">Imágenes demasiado grandes</string>
     <string name="conversation_pictures_too_large_message">Juntas, estas imágenes superan lo que cabe en un mensaje. Quita algunas y vuelve a enviar.</string>

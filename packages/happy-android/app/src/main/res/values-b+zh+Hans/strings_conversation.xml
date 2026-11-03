@@ -84,15 +84,11 @@
     <string name="conversation_chief_unavailable">无法打开 Chief of Staff</string>
     <string name="conversation_chief_missing">此电脑上没有 Chief of Staff。</string>
     <string name="conversation_mode_permission">权限</string>
-    <string name="conversation_mode_model">模型</string>
-    <string name="conversation_mode_effort">思考强度</string>
     <string name="conversation_send">发送</string>
     <string name="conversation_stop">停止</string>
     <string name="conversation_attach_picture">添加图片</string>
     <string name="conversation_remove_picture">移除图片</string>
     <string name="conversation_composer_more">更多</string>
-    <string name="conversation_mode_label">模型 %1$s，思考强度 %2$s</string>
-    <string name="conversation_mode_label_model_only">模型 %1$s</string>
     <string name="conversation_mode_permission_item">权限：%1$s</string>
     <string name="conversation_pictures_too_large_title">图片太大</string>
     <string name="conversation_pictures_too_large_message">这些图片加起来超出了一条消息的容量。请移除一些后再发送。</string>
