@@ -61,6 +61,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
+import com.slopus.happy.model.parseGitStatus
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
@@ -181,6 +182,22 @@ class SessionInfoScreenTest {
         order.zipWithNext().forEach { (a, b) -> assertDp("rows stack", a.bottom, b.top) }
         // Online: nothing to resume.
         tagged(SessionInfoTags.RESUME).assertCountEquals(0)
+    }
+
+    @Test
+    fun theBranchFollowsPathTheLiveOneOverTheStartsAndIsLeftOutWithoutOne() {
+        // iOS 60158d2ac: the branch left the chat's header for its profile, after Path.
+        show(claudeSession { put("gitBranch", "main") }, live = SessionInfoLive(gitStatus = parseGitStatus("# branch.head feature/x", "", "", 1)))
+        rule.node(SessionInfoTags.BRANCH).assertExists()
+        rule.onNodeWithText("feature/x").assertExists()
+        rule.onNodeWithText("Branch").assertExists()
+        assertTrue("after Path", rule.node(SessionInfoTags.BRANCH).bounds.top >= rule.onNodeWithText("Path", useUnmergedTree = true).bounds.bottom)
+    }
+
+    @Test
+    fun withoutABranchThereIsNoRow() {
+        show(claudeSession())
+        tagged(SessionInfoTags.BRANCH).assertCountEquals(0)
     }
 
     @Test

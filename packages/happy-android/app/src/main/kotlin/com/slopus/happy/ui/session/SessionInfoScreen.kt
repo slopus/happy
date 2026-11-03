@@ -46,6 +46,7 @@ import java.time.ZoneId
 object SessionInfoTags {
     const val LOADING = "sessionInfo.loading"
     const val DELETED = "sessionInfo.deleted"
+    const val BRANCH = "sessionInfo.branch"
     const val CHANGES = "sessionInfo.changes"
     const val MACHINE = "sessionInfo.machine"
     const val RESUME = "sessionInfo.resume"

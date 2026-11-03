@@ -17,6 +17,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.chat.prettyJson
+import com.slopus.happy.chat.resolveChatHeaderGit
 import com.slopus.happy.diagnostics.ClientLogs
 import com.slopus.happy.model.Machine
 import com.slopus.happy.model.Session
@@ -374,6 +375,10 @@ internal fun SessionInfoContent(
             ItemGroup(title = stringResource(R.string.session_info_metadata)) {
                 InfoRow(stringResource(R.string.session_info_host), metadata.host, Ionicon.DesktopOutline)
                 InfoRow(stringResource(R.string.session_info_path), formatPathRelativeToHome(metadata.path, metadata.homeDir), Ionicon.FolderOutline)
+                // Once under the chat's name in its header (iOS 60158d2ac): the workspace, else the live branch, else the start's.
+                resolveChatHeaderGit(metadata, live.gitStatus).subtitle?.let {
+                    InfoRow(stringResource(R.string.session_info_branch), it, Ionicon.GitBranchOutline, Modifier.testTag(SessionInfoTags.BRANCH))
+                }
                 metadata.version?.ifEmpty { null }?.let { version ->
                     Item(
                         title = stringResource(R.string.session_info_cli_version),

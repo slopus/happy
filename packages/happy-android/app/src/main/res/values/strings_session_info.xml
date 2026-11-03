@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Session info's words that happy-app's catalogs don't have: the chat's
+  controls and facts that moved from its header to its profile, in iOS's
+  words (Strings.ChatActions, 60158d2ac, da5fda505).
+-->
+<resources>
+    <string name="session_info_branch">Branch</string>
+</resources>
