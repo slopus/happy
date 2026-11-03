@@ -131,7 +131,15 @@ class ConversationRowActions(
     val onOpenTool: ((String) -> Unit)? = null,
     /** Presented media kept on this phone: each tile's download ring and size badge; null where nothing is kept. */
     val kept: KeptMedia? = null,
+    /** A recording's tap: it plays once its first range is here, the tile spinning till then. */
+    val videos: VideoOpening? = null,
 )
+
+/** Plays the recording [ref] whose tile is [key]: in the viewer, once it can ([VideoOpening]). */
+internal fun ConversationRowActions.play(key: String, ref: MediaRef) {
+    val videos = videos ?: return onOpenPicture(key)
+    videos.open(key, ref) { onOpenPicture(key) }
+}
 
 /** What opens [tool]'s screen: only a call with an id, where the screen opens calls at all. */
 internal fun ConversationRowActions.opener(tool: ToolUse?): (() -> Unit)? {
@@ -410,7 +418,7 @@ private fun MediaRow(row: ConversationRow.Media, actions: ConversationRowActions
                             cacheKey = key,
                             contentDescription = ref.item.name.ifEmpty { stringResource(R.string.artifact_video) },
                             failed = false,
-                            onClick = { actions.onOpenPicture(key) },
+                            onClick = { if (kept != null) actions.play(key, ref) else actions.onOpenPicture(key) },
                             placeholder = still ?: thumbhash,
                             video = true,
                             // Kept, the ring is the play button and the badge says the length.
@@ -418,7 +426,7 @@ private fun MediaRow(row: ConversationRow.Media, actions: ConversationRowActions
                             playButton = kept == null,
                             modifier = Modifier.fillMaxSize(),
                         )
-                        if (kept != null) DownloadStatus(ref, kept, video = true, duration = duration, onPlay = { actions.onOpenPicture(key) })
+                        if (kept != null) DownloadStatus(ref, kept, video = true, duration = duration, starting = actions.videos?.isStarting(key) == true, onPlay = { actions.play(key, ref) })
                     }
                 } else {
                     val load = loads[index]

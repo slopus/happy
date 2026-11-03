@@ -53,11 +53,14 @@ object MediaStatusSpec {
     val fileGlyph = 22.dp
 }
 
-/** The ring and badge over [ref]'s tile, from where its download is in [kept]; [onPlay] plays a recording. */
+/**
+ * The ring and badge over [ref]'s tile, from where its download is in [kept]; [onPlay] plays a recording,
+ * whose play glyph is a small spinner while it is [starting] ([VideoOpening]).
+ */
 @Composable
-internal fun BoxScope.DownloadStatus(ref: MediaRef, kept: KeptMedia, video: Boolean, duration: String? = null, onPlay: () -> Unit = {}) {
+internal fun BoxScope.DownloadStatus(ref: MediaRef, kept: KeptMedia, video: Boolean, duration: String? = null, starting: Boolean = false, onPlay: () -> Unit = {}) {
     LaunchedEffect(ref.key) { kept.shown(ref) }
-    MediaStatus(ref.key, kept.phase(ref), video, duration, onTap = if (video) onPlay else ({ kept.toggle(ref) }))
+    MediaStatus(ref.key, kept.phase(ref), video, duration, starting = starting, onTap = if (video) onPlay else ({ kept.toggle(ref) }))
 }
 
 /**
@@ -66,8 +69,8 @@ internal fun BoxScope.DownloadStatus(ref: MediaRef, kept: KeptMedia, video: Bool
  * ring; one seen arriving fills and shrinks away. [onTap] is the ring's.
  */
 @Composable
-fun BoxScope.MediaStatus(key: String, phase: DownloadPhase?, video: Boolean, duration: String? = null, onTap: () -> Unit) {
-    val state = MediaRingState.of(phase, video)
+fun BoxScope.MediaStatus(key: String, phase: DownloadPhase?, video: Boolean, duration: String? = null, starting: Boolean = false, onTap: () -> Unit) {
+    val state = MediaRingState.of(phase, video, starting)
     var arriving by remember(key) { mutableStateOf(false) }
     if (phase != null && state != MediaRingState.Done) arriving = true
     if (video || arriving) {

@@ -87,6 +87,10 @@ object UploadRingSpec {
     /** While nothing has gone yet, the arc's length, turning. */
     const val WAITING_SHARE = 0.27f
     const val TURN_MS = 1500
+    /** The starting spinner turns quicker, as a system spinner does; 0.7 of its circle drawn, its radius a fifth of the disc. */
+    const val SPIN_MS = 800
+    const val SPIN_SHARE = 0.7f
+    const val SPIN_RADIUS = 0.2f
     /** Done: the disc shrinks to this and the ring fades. */
     const val OUT_MS = 250
     const val OUT_SCALE = 0.2f
@@ -133,9 +137,13 @@ sealed interface MediaRingState {
     /** A recording while it downloads: the play glyph inside the arc (null: its size isn't known, so the short arc turns). */
     data class Playing(val share: Float?) : MediaRingState
 
+    /** A recording asked to play while its first playable range comes: a small spinner where the play glyph was (iOS 42121e99e). */
+    data object Starting : MediaRingState
+
     companion object {
         /** The ring for a download at [phase]: a picture's, or a recording's play button. */
-        fun of(phase: DownloadPhase?, video: Boolean): MediaRingState {
+        fun of(phase: DownloadPhase?, video: Boolean, starting: Boolean = false): MediaRingState {
+            if (video && starting) return Starting
             if (video) return if (phase is DownloadPhase.Downloading) Playing(phase.share) else Play
             return when (phase) {
                 null, is DownloadPhase.Complete -> Done
@@ -217,6 +225,10 @@ fun MediaRing(
         rememberInfiniteTransition(label = "media ring")
             .animateFloat(0f, 360f, infiniteRepeatable(tween(UploadRingSpec.TURN_MS, easing = LinearEasing), RepeatMode.Restart), label = "turn").value
     } else 0f
+    val spin = if (state == MediaRingState.Starting && !reduceMotion) {
+        rememberInfiniteTransition(label = "media spinner")
+            .animateFloat(0f, 360f, infiniteRepeatable(tween(UploadRingSpec.SPIN_MS, easing = LinearEasing), RepeatMode.Restart), label = "spin").value
+    } else 0f
     val play = rememberVectorPainter(MaterialSymbols.PlayArrow)
     val retry = remember { String(Character.toChars(Ionicon.Refresh.codepoint)) }
     val glyphs = rememberTextMeasurer()
@@ -284,6 +296,21 @@ fun MediaRing(
                         val glyph = (size.minDimension * UploadRingSpec.PLAY_SHARE)
                         translate(center.x - glyph / 2 + size.minDimension * UploadRingSpec.PLAY_NUDGE, center.y - glyph / 2) {
                             with(play) { draw(Size(glyph, glyph), colorFilter = ColorFilter.tint(ink)) }
+                        }
+                    }
+                    MediaRingState.Starting -> {
+                        val line = max(1.6.dp.toPx(), UploadRingSpec.LINE.dp.toPx() * factor)
+                        val radius = Math.round(size.minDimension * UploadRingSpec.SPIN_RADIUS).toFloat()
+                        rotate(spin) {
+                            drawArc(
+                                ink,
+                                startAngle = -90f,
+                                sweepAngle = 360f * UploadRingSpec.SPIN_SHARE,
+                                useCenter = false,
+                                topLeft = Offset(center.x - radius, center.y - radius),
+                                size = Size(radius * 2, radius * 2),
+                                style = Stroke(line, cap = StrokeCap.Round),
+                            )
                         }
                     }
                     MediaRingState.Failed -> {

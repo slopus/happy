@@ -612,6 +612,8 @@ private fun SharedSections(state: AgentPageState, actions: AgentPageActions) {
     val shared = state.shared
     val store = rememberConversationMediaStore(actions.loadMedia, actions.loadMediaRange, actions.kept)
     val opener = rememberMediaOpener()
+    // A recording plays once its first range is here, its tile spinning till then.
+    val videos = rememberVideoOpening(store::video)
     var viewing by remember { mutableStateOf<Int?>(null) }
     val media = shared.media.take(mediaLimit)
     if (media.isNotEmpty() || (state.sharedReading && shared.isEmpty)) {
@@ -623,7 +625,7 @@ private fun SharedSections(state: AgentPageState, actions: AgentPageActions) {
                     val visual = remember(shared.media) { shared.media.filter { it.isVisual } }
                     MediaGrid(media.size) { index ->
                         val one = media[index]
-                        MediaCell(one, store, opener) {
+                        MediaCell(one, store, opener, starting = videos.isStarting(one.key)) {
                             when (one) {
                                 is SharedMedia.Presented -> {
                                     if (!one.ref.item.isVisual) {
@@ -639,7 +641,8 @@ private fun SharedSections(state: AgentPageState, actions: AgentPageActions) {
                                 }
                                 is SharedMedia.Picture -> Unit
                             }
-                            viewing = visual.indexOfFirst { it.key == one.key }.takeIf { it >= 0 }
+                            val at = visual.indexOfFirst { it.key == one.key }.takeIf { it >= 0 }
+                            if (one is SharedMedia.Presented && one.isVideo) videos.open(one.key, one.ref) { viewing = at } else viewing = at
                         }
                     }
                     if (shared.media.size > mediaLimit || state.sharedMore) {
@@ -683,7 +686,7 @@ private fun MediaGrid(count: Int, cell: @Composable (Int) -> Unit) {
  * it lands. A file being opened shows a spinner, and why it couldn't open.
  */
 @Composable
-private fun MediaCell(media: SharedMedia, store: ConversationMediaStore, opener: MediaOpener, onClick: () -> Unit) {
+private fun MediaCell(media: SharedMedia, store: ConversationMediaStore, opener: MediaOpener, starting: Boolean = false, onClick: () -> Unit) {
     val colors = HappyTheme.colors
     val pictureLabel = stringResource(R.string.conversation_picture)
     val videoLabel = stringResource(R.string.artifact_video)
@@ -706,14 +709,14 @@ private fun MediaCell(media: SharedMedia, store: ConversationMediaStore, opener:
                 val bytes = remember(media.key) { InlinePicture.of(media.image).bytes }
                 RemoteImage(model = bytes, contentDescription = null, cacheKey = media.key, modifier = Modifier.fillMaxSize())
             }
-            is SharedMedia.Presented -> PresentedCell(media.ref, media.key, store, opener, onClick)
+            is SharedMedia.Presented -> PresentedCell(media.ref, media.key, store, opener, starting, onClick)
         }
     }
 }
 
 /** A presented item's square; kept, it reads, rings and plays as the chat's tile does (iOS `SharedMediaCell`). */
 @Composable
-private fun BoxScope.PresentedCell(ref: MediaRef, key: String, store: ConversationMediaStore, opener: MediaOpener, onPlay: () -> Unit) {
+private fun BoxScope.PresentedCell(ref: MediaRef, key: String, store: ConversationMediaStore, opener: MediaOpener, starting: Boolean, onPlay: () -> Unit) {
     val colors = HappyTheme.colors
     val item = ref.item
     when {
@@ -726,7 +729,7 @@ private fun BoxScope.PresentedCell(ref: MediaRef, key: String, store: Conversati
             (still ?: placeholder)?.let { Image(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
             val kept = store.kept
             if (kept != null) {
-                DownloadStatus(ref, kept, video = true, duration = poster?.seconds?.let(::formatDuration), onPlay = onPlay)
+                DownloadStatus(ref, kept, video = true, duration = poster?.seconds?.let(::formatDuration), starting = starting, onPlay = onPlay)
             } else {
                 Box(Modifier.size(AgentPageSpec.playSize).clip(CircleShape).background(PlayFill), contentAlignment = Alignment.Center) {
                     androidx.compose.material3.Icon(MaterialSymbols.PlayArrow, null, tint = PlayGlyph, modifier = Modifier.size(18.dp))

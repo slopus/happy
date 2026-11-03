@@ -1073,6 +1073,14 @@ screen, by tap, back or a drag, and otherwise fades. Then it waits for the
 thumbnail to draw again (`ViewerOrigins.drawn`) before it goes, so there
 is no hole. A recording neither flies nor hides its tile.
 
+A tap on a kept recording's play button plays it as soon as its first
+playable range is on the phone (iOS 42121e99e, `VideoOpening`). The
+retriever reads the header through the same ranged source the player
+reads. Until then the play glyph is a small spinner (`MediaRingState.Starting`:
+0.7 of a circle, a fifth of the disc across, turning every 0.8 s), and the
+rest of the file reads on behind. A second tap while it spins gives up.
+This applies to the chat's tiles and the agent page's grid.
+
 ### Conversation turns
 
 Each run of a Happy Agent conversation is a turn, drawn as desktop draws it
