@@ -1205,6 +1205,104 @@ final class CallSessionTests: XCTestCase {
         session.stop()
     }
 
+    /// However often it is asked, a call's drain queues one update of the
+    /// directory's news while the connection is still writing the last.
+    func testOneDrainQueuesOneUpdateAtATime() async throws {
+        let many = (0..<150).map { CallTarget(agentId: "x\($0)", title: "Task \($0)", kind: .task, status: .idle) }
+        let targets = FakeCallTargets(directory: many, states: [:], focus: nil)
+        let context = CallContext(targets: targets)
+        let connection = FakeCallConnection()
+        let session = CallSession(grants: FakeGrants(.granted(CallGrant(agentId: "g"))), permission: { true }) { _, _, _ in connection }
+        _ = await context.initial()
+        session.start(language: nil, context: { "" }, tool: { _ in CallToolResult(text: "") })
+        await waitUntil { if case .active = session.state { true } else { false } }
+        let parent = CallTarget.Parent(id: "task:x149", title: "Task 149", kind: "task", agentId: "x149")
+        let late = (0..<300).map { CallTarget(agentId: "n\($0)", title: "Late \($0) " + String(repeating: "z", count: 150), kind: .subtask, status: .idle, parents: [parent]) }
+        await targets.setDirectory(many + late)
+        _ = await context.directoryChanged(many + late)
+        connection.paused = true
+        session.deliver(await context.flushDirectory())
+        await waitUntil { connection.begun.count == 1 }
+        let owed = await context.owed.count
+        let drain = DirectoryDrain(context: context, session: session)
+        // Asked by every state change, a flush and a resync at once, while
+        // the connection still writes: nothing more is taken.
+        for _ in 0..<6 { drain.start() }
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertEqual(connection.begun.count, 1)
+        var left = await context.owed.count
+        XCTAssertEqual(left, owed)
+        // Written: one update more, and while that one is written, asked
+        // again and again, still that one alone.
+        connection.resume()
+        connection.paused = true
+        await waitUntil { connection.begun.count == 2 }
+        for _ in 0..<6 { drain.start() }
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertEqual(connection.begun.count, 2)
+        left = await context.owed.count
+        let batch = connection.begun[1].components(separatedBy: "Late ").count - 1
+        XCTAssertGreaterThan(batch, 0)
+        XCTAssertEqual(owed - left, batch)
+        connection.resume()
+        // Then the rest, one after another, all of it.
+        for _ in 0..<200 where await context.owesDirectory { try await Task.sleep(for: .milliseconds(10)) }
+        await session.delivered()
+        let all = connection.updates.joined(separator: "\n")
+        for index in 0..<300 { XCTAssertTrue(all.contains("Late \(index) "), "Late \(index)") }
+        drain.cancel()
+        session.stop()
+    }
+
+    /// Sizes are counted as the JSON that carries them: names full of
+    /// quotes, backslashes, slashes and control characters keep every
+    /// update within its budget, and a resync never overflows the wait.
+    func testBudgetsHoldInEncodedJSON() async throws {
+        let nasty = "\"q\" \\b\\ /s/ \u{1}\u{2}\u{7}\u{1B}"
+        let many = (0..<400).map { CallTarget(agentId: "x\($0)", title: "\($0) " + String(repeating: nasty, count: 8), kind: .task, status: .idle) }
+        let visits = Array(many.prefix(4))
+        var states: [String: CallTargetState] = [:]
+        for target in visits { states[target.agentId] = CallTargetState(target: target) }
+        let targets = FakeCallTargets(directory: Array(many.prefix(200)), states: states, focus: nil)
+        let context = CallContext(targets: targets)
+        _ = await context.initial()
+        for target in visits {
+            _ = await context.focusChanged(to: target.agentId)
+            _ = await context.targetChanged(CallTargetState(target: target))
+            let words = (0..<6).map { CallMessage(id: "\(target.agentId)m\($0)", role: .assistant, text: String(repeating: nasty, count: 200)) }
+            _ = await context.targetChanged(CallTargetState(target: target, messages: words))
+        }
+        await targets.setDirectory(many)
+        _ = await context.directoryChanged(many)
+        func size(_ update: CallUpdate) -> Int { update.context.reduce(0) { $0 + $1.utf8.count + 1 } }
+        let flush = await context.flushDirectory()
+        XCTAssertLessThanOrEqual(size(flush), CallSession.pendingBytes)
+        for line in flush.context {
+            let event = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any])
+            let limit = event["event"] as? String == "directory" ? CallContext.Limits.directoryBytes : CallContext.Limits.entriesBytes
+            XCTAssertLessThanOrEqual(line.utf8.count, limit + 64)
+        }
+        let resync = await context.resync()
+        XCTAssertLessThanOrEqual(size(resync), CallSession.pendingBytes)
+        while await context.owesDirectory {
+            let more = await context.moreDirectory()
+            XCTAssertLessThanOrEqual(size(more), CallSession.pendingBytes / 2)
+        }
+        // Through a call that isn't connected yet: the resync waits, whole.
+        let session = CallSession(grants: FakeGrants(.granted(CallGrant(agentId: "g"))), permission: { true }) { _, _, _ in
+            try await Task.sleep(for: .seconds(30))
+            return FakeCallConnection()
+        }
+        var overflows = 0
+        session.onOverflow = { overflows += 1 }
+        session.start(language: nil, context: { "" }, tool: { _ in CallToolResult(text: "") })
+        session.deliver(resync)
+        XCTAssertEqual(overflows, 0)
+        // Titles from the sidebar carry no control characters at all.
+        XCTAssertEqual(CallTarget.clean("a\u{1}b\nc\u{200D}d"), "a b c\u{200D}d")
+        session.stop()
+    }
+
     func testWhatAnEndedCallStillSaysGoesNowhere() async {
         let connection = FakeCallConnection()
         var events: CallEvents?
@@ -1476,7 +1574,18 @@ final class FakeCallConnection: CallConnection {
     func setMuted(_ muted: Bool) async throws { self.muted = muted }
     /// Each update waits this long before it lands, the first one longest when set.
     var slowFirst: Duration?
+    /// Updates as they begin to be written; while `paused`, none finishes.
+    var begun: [String] = []
+    var paused = false
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+    func resume() {
+        paused = false
+        waiting.forEach { $0.resume() }
+        waiting.removeAll()
+    }
     func update(_ context: String) async throws {
+        begun.append(context)
+        if paused { await withCheckedContinuation { waiting.append($0) } }
         if let slow = slowFirst {
             slowFirst = nil
             try? await Task.sleep(for: slow)

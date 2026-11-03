@@ -211,9 +211,12 @@ goes whole:
   last one, each with the lines it sits under (one too deep for a page goes
   with what it sits under on a single line, cut to fit: `(under A > B > …)`),
   in as many events of up to 4 KB as they take. Two go with the snapshot;
-  the rest follow two per update (`CallContext.moreDirectory`, `drain`),
-  each once the one before has reached the provider and only while the call
-  is connected, so no update nears the 32 KB wait. If waiting context
+  the rest follow two per update (`CallContext.moreDirectory`), sent by the
+  call's one `DirectoryDrain`, each once the one before has reached the
+  provider and only while the call is connected, so no update nears the
+  32 KB wait. Every size here counts the JSON that carries it (a quote,
+  backslash or slash two bytes, a control character up to six), and
+  titles carry no control characters. If waiting context
   overflows anyway, the resync owes again every change since the first
   snapshot that its directory can't show, and those follow the same way.
   None is lost to a size. What was cut and hasn't changed isn't sent again.

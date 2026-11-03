@@ -81,7 +81,7 @@ public actor CallContext {
     private var first: [String: Listing] = [:]
     /// News the snapshots couldn't show and no update has carried yet, in
     /// order (`moreDirectory`).
-    private var owed: [String] = []
+    private(set) var owed: [String] = []
     private var heard: [String: Heard] = [:]
     private var spoken = 0
     /// Sends whose answer the agent may not have had, by target and text:
@@ -461,16 +461,18 @@ public actor CallContext {
             }
             let line = "\(entry.title) [\(entry.kind.rawValue); ref=\(ref(entry.agentId))]"
             chunk += "\n\(String(repeating: "  ", count: entry.parents.count))\(line)"
-            if taken == 0, text.utf8.count + chunk.utf8.count > bytes {
+            // Sizes as the JSON that carries them: quotes, backslashes,
+            // slashes and control characters take more there.
+            if taken == 0, Self.encoded(text) + Self.encoded(chunk) > bytes {
                 flat = true
                 // What it sits under too deep for the lines: on one of its
                 // own, cut to fit, the entry under it unindented.
-                let room = max(0, bytes - text.utf8.count - line.utf8.count - 16)
-                let trail = Self.truncated(entry.parents.map(\.title).joined(separator: " > "), bytes: room)
+                let room = max(0, bytes - Self.encoded(text) - Self.encoded(line) - 16)
+                let trail = Self.truncated(entry.parents.map(\.title).joined(separator: " > "), bytes: room, size: Self.encoded)
                 chunk = "\n(under \(trail))\n\(line)"
                 under = []
             }
-            guard text.utf8.count + chunk.utf8.count <= bytes else { break }
+            guard Self.encoded(text) + Self.encoded(chunk) <= bytes else { break }
             text += chunk
             // Lines after a flat one show what they sit under again.
             path = flat ? [] : keys + [entry.agentId]
@@ -698,18 +700,32 @@ public actor CallContext {
         return value
     }
 
-    /// The longest prefix of whole characters within `bytes` of UTF-8.
-    static func truncated(_ text: String, bytes: Int) -> String {
-        guard text.utf8.count > bytes else { return text }
+    /// The longest prefix of whole characters within `bytes` of UTF-8,
+    /// or of what `size` counts.
+    static func truncated(_ text: String, bytes: Int, size: (String) -> Int = { $0.utf8.count }) -> String {
+        guard size(text) > bytes else { return text }
         var count = 0
         var end = text.startIndex
         for index in text.indices {
-            let next = text[index].utf8.count
+            let next = size(String(text[index]))
             if count + next > bytes { break }
             count += next
             end = text.index(after: index)
         }
         return String(text[..<end])
+    }
+
+    /// `text`'s size inside a JSON string as `data` writes it: a quote, a
+    /// backslash, a slash and \n, \r, \t, \b, \f two bytes each, any
+    /// other control character six, the rest its UTF-8.
+    static func encoded(_ text: String) -> Int {
+        text.unicodeScalars.reduce(0) { sum, scalar in
+            switch scalar.value {
+            case 0x22, 0x5C, 0x2F, 0x0A, 0x0D, 0x09, 0x08, 0x0C: sum + 2
+            case 0..<0x20: sum + 6
+            default: sum + String(scalar).utf8.count
+            }
+        }
     }
 
     private static let stale = CallToolResult.refused("The screen changed since; check the focus again.")
@@ -820,5 +836,44 @@ public final class DirectorySettle {
     public func cancel() {
         waiting?.cancel()
         waiting = nil
+    }
+}
+
+/// A call's one sender of what its directory owes (`CallContext.drain`):
+/// asked again while it runs, it goes round once more instead of starting
+/// a second, so no more than one update of it waits on the connection at
+/// a time. Cancelled with its call.
+@MainActor
+public final class DirectoryDrain {
+    private let context: CallContext
+    private weak var session: CallSession?
+    private var running: Task<Void, Never>?
+    private var again = false
+
+    public init(context: CallContext, session: CallSession) {
+        self.context = context
+        self.session = session
+    }
+
+    public func start() {
+        guard running == nil else {
+            again = true
+            return
+        }
+        running = Task { [weak self] in
+            while let self, !Task.isCancelled, let session = self.session {
+                self.again = false
+                await CallContext.drain(self.context, into: session)
+                guard self.again else {
+                    self.running = nil
+                    return
+                }
+            }
+        }
+    }
+
+    public func cancel() {
+        running?.cancel()
+        running = nil
     }
 }

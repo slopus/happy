@@ -18,6 +18,7 @@ final class CallController {
     private var targets: SessionCallTargets?
     private var directoryWatch: Watch?
     private var directorySettle: DirectorySettle?
+    private var directoryDrain: DirectoryDrain?
     private var connectionID: String?
     private weak var shell: ShellViewController?
     private var clock: Timer?
@@ -83,20 +84,21 @@ final class CallController {
         self.targets = targets
         self.context = context
         session = call
+        directoryDrain = DirectoryDrain(context: context, session: call)
         call.onState = { [weak self, weak call] state in
             guard let self, let call, self.session === call else { return }
             // Ended, it hears from nothing more: only its bar stays, saying why.
             if case .ended = state { self.letGo() }
             self.show(state)
             // Connected: whatever the directory still owes goes now.
-            if case .active = state { Task { await CallContext.drain(context, into: call) } }
+            if case .active = state { self.directoryDrain?.start() }
         }
         call.onOverflow = { [weak self, weak call] in
             Task {
                 let update = await context.resync()
                 guard let self, let call, self.session === call else { return }
                 self.deliver(update)
-                await CallContext.drain(context, into: call)
+                self.directoryDrain?.start()
             }
         }
         call.onLevel = { [weak self, weak call] level in
@@ -120,7 +122,7 @@ final class CallController {
             guard self.session === call else { return }
             self.deliver(update)
             await Self.hold(await context.followed, in: targets)
-            await CallContext.drain(context, into: call)
+            self.directoryDrain?.start()
         }
         directorySettle = settle
         directoryWatch = targets.watchDirectory { [weak self, weak call, weak settle] rows in
@@ -198,6 +200,8 @@ final class CallController {
         directoryWatch = nil
         directorySettle?.cancel()
         directorySettle = nil
+        directoryDrain?.cancel()
+        directoryDrain = nil
         focus = nil
     }
 

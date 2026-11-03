@@ -103,9 +103,11 @@ public struct CallTarget: Equatable, Sendable {
         return CallTarget(agentId: agentId, title: clean(row.label), kind: kind, status: status)
     }
 
-    /// A label on one line, cut at `titleBytes`.
+    /// A label on one line, without control characters, cut at `titleBytes`.
     static func clean(_ label: String) -> String {
-        let line = label.split(whereSeparator: \.isNewline).joined(separator: " ").trimmingCharacters(in: .whitespaces)
+        // A line break, a tab or any other control character is a space.
+        let plain = String(String.UnicodeScalarView(label.unicodeScalars.map { $0.properties.generalCategory == .control ? " " : $0 }))
+        let line = plain.trimmingCharacters(in: .whitespaces)
         return CallContext.truncated(line, bytes: titleBytes)
     }
 }
