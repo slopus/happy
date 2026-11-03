@@ -32,6 +32,27 @@ enum SidebarLineChanges {
         inkBounds(text(changes)).width.rounded(.up)
     }
 
+    /// A row's count (the Feed's unread entries), in the lane the line
+    /// counts take, in their figures and grey, as iOS's lists end a row
+    /// with one.
+    nonisolated static func text(count: Int) -> NSAttributedString {
+        NSAttributedString(string: count > 999 ? "999+" : String(count), attributes: [.font: font, .foregroundColor: UIColor(Palette.settingsSecondary)])
+    }
+
+    nonisolated static func width(count: Int) -> CGFloat {
+        inkBounds(text(count: count)).width.rounded(.up)
+    }
+
+    nonisolated static func draw(count: Int, in box: CGRect, scale: CGFloat = 3) {
+        guard box.width > 0, let context = UIGraphicsGetCurrentContext() else { return }
+        let text = text(count: count)
+        let ink = inkBounds(text)
+        context.saveGState()
+        context.clip(to: box)
+        SidebarTypography.draw(text, in: box, scale: scale, originX: box.maxX - ink.maxX)
+        context.restoreGState()
+    }
+
     /// Glyph-path bounds omit the final digit's side bearing, so counts line
     /// up with the dots themselves rather than an invisible text-cell edge.
     nonisolated private static func inkBounds(_ text: NSAttributedString) -> CGRect {

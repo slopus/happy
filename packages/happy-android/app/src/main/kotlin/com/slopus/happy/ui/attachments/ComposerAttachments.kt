@@ -26,6 +26,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.AppGraph
+import com.slopus.happy.ui.attach.attachButton
+import com.slopus.happy.ui.attach.rememberAttachButton
 import com.slopus.happy.R
 import com.slopus.happy.attachments.AttachAccepts
 import com.slopus.happy.attachments.AttachmentNotice
@@ -35,6 +37,7 @@ import com.slopus.happy.attachments.AttachmentUploadResult
 import com.slopus.happy.attachments.prepareAttachmentSend
 import com.slopus.happy.attachments.readAttachmentBytes
 import com.slopus.happy.attachments.supportsImageAttachmentsForFlavor
+import com.slopus.happy.model.AgentType
 import com.slopus.happy.model.SessionMetadata
 import com.slopus.happy.model.isRigV1
 import com.slopus.happy.sync.rigCanUseAttachments
@@ -53,6 +56,16 @@ val LocalComposerImages = compositionLocalOf<ImagePicker?> { null }
 /** SessionView.tsx `canUseAttachments`: the rig's capability for rig v1 sessions, else the flavor. */
 fun canUseAttachments(metadata: SessionMetadata?): Boolean =
     if (metadata.isRigV1()) metadata.rigCanUseAttachments() else supportsImageAttachmentsForFlavor(metadata?.flavor)
+
+/**
+ * happy-ios `canUseAttachments(starting:)`: before the session exists, the
+ * harness its first send starts. Happy Agent's session sets its own policy
+ * once made, so pictures are offered and the start names any it refuses.
+ */
+fun canUseAttachments(starting: AgentType): Boolean = when (starting) {
+    AgentType.Claude, AgentType.Codex, AgentType.Rig -> true
+    AgentType.Gemini, AgentType.OpenClaw, AgentType.Agy -> false
+}
 
 /**
  * [ImagePicker] for a chat, or null when [enabled] is false. Like
@@ -86,7 +99,9 @@ fun ComposerAddImageButton(accepts: AttachAccepts, caption: String, onCaptionCha
     val picker = LocalComposerImages.current ?: return
     var open by rememberSaveable { mutableStateOf(false) }
     val send by rememberUpdatedState(onSend)
-    AddImageButton(attached = picker.images.isNotEmpty(), onClick = { open = true })
+    val attached = picker.images.isNotEmpty()
+    val plus = rememberAttachButton { AddImageGlyph(attached) }
+    AddImageButton(attached = attached, onClick = { open = true }, modifier = Modifier.attachButton(plus))
     AttachSheet(
         open = open,
         accepts = accepts,
@@ -98,6 +113,7 @@ fun ComposerAddImageButton(accepts: AttachAccepts, caption: String, onCaptionCha
         },
         onClosed = { open = false },
         room = picker.state.remaining,
+        button = plus,
     )
 }
 

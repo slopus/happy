@@ -53,6 +53,7 @@ object SessionInfoTags {
     const val DUPLICATE = "sessionInfo.duplicate"
     const val PARENT = "sessionInfo.parent"
     const val ARCHIVE = "sessionInfo.archive"
+    const val LEAVE_TASK = "sessionInfo.leaveTask"
     const val DELETE = "sessionInfo.delete"
     const val OUTDATED = "sessionInfo.outdated"
     const val SESSION_ID = "sessionInfo.sessionId"
@@ -97,6 +98,9 @@ data class SessionInfoLive(
 interface SessionInfoControls {
     /** useSessionQuickActions' archive: kill, or retire on the server when the agent is gone. */
     suspend fun archive(session: Session): ArchiveResult
+
+    /** A task's leave (`leaveTask`): out of this person's list. */
+    suspend fun leave(session: Session): ArchiveResult = ArchiveResult.Archived
 
     /** sessionDelete, after a best-effort kill of a session still running. */
     suspend fun delete(session: Session): OpResult

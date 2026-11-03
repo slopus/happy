@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    A Happy Agent tool call on its own screen (iOS Strings.ToolDetail): what
+    kind of thing it did, its sections and fields, its automatic review,
+    and what an edit left out.
+-->
+<resources>
+    <!-- Says what a tap on a tool call's line does, for a screen reader. -->
+    <string name="tool_open">Open details</string>
+    <!-- Opens one file of an edit on its own screen, for a screen reader. -->
+    <string name="tool_open_file">Open file</string>
+    <!-- A plan update's line: %1$d steps done of %2$d. -->
+    <string name="tool_plan_progress">plan · %1$d of %2$d done</string>
+    <string name="tool_unavailable">This tool call isn’t in the conversation anymore.</string>
+    <string name="tool_reading_whole">Reading the whole call…</string>
+    <string name="tool_whole_failed">Couldn’t read the whole call. What the chat had is shown.</string>
+    <!-- What kind of thing a call did, its screen's title. -->
+    <string name="tool_kind_file_edit">File edit</string>
+    <string name="tool_kind_exploration">Exploration</string>
+    <string name="tool_kind_x_search">X search</string>
+    <string name="tool_kind_web_page">Web page</string>
+    <string name="tool_kind_plan">Plan</string>
+    <string name="tool_kind_media">Shown to you</string>
+    <string name="tool_kind_tool_call">Tool call</string>
+    <string name="tool_status_running">Running</string>
+    <!-- Section headings. -->
+    <string name="tool_section_arguments">Arguments</string>
+    <string name="tool_section_result">Result</string>
+    <string name="tool_section_sources">Sources</string>
+    <string name="tool_section_steps">Steps</string>
+    <string name="tool_section_instructions">Instructions</string>
+    <string name="tool_section_review">Review</string>
+    <string name="tool_section_raw">Raw data</string>
+    <!-- Field names. -->
+    <string name="tool_field_query">Query</string>
+    <string name="tool_field_explanation">Explanation</string>
+    <string name="tool_field_title">Title</string>
+    <string name="tool_field_model">Model</string>
+    <string name="tool_field_to">To</string>
+    <string name="tool_field_address">Address</string>
+    <string name="tool_field_prompt">Prompt</string>
+    <string name="tool_field_running">Running</string>
+    <!-- A look around's steps: List a folder; %1$s is where a search looked. -->
+    <string name="tool_op_list">List</string>
+    <string name="tool_op_in">in %1$s</string>
+    <!-- The automatic review of a call. -->
+    <string name="tool_review_decision">Decision</string>
+    <string name="tool_review_allowed">Allowed</string>
+    <string name="tool_review_denied">Denied</string>
+    <string name="tool_review_unproven">Not reviewed</string>
+    <string name="tool_review_why">Why</string>
+    <string name="tool_review_timed_out">The review timed out</string>
+    <string name="tool_review_unavailable">The reviewer was unavailable</string>
+    <string name="tool_review_risk">Risk</string>
+    <string name="tool_review_asked">Asked for</string>
+    <string name="tool_review_access">Access</string>
+    <string name="tool_review_full_access">Ran with Full access</string>
+    <string name="tool_review_sandbox">Stayed in the sandbox</string>
+    <!-- A risk or how strongly the person asked. -->
+    <string name="tool_level_low">Low</string>
+    <string name="tool_level_medium">Medium</string>
+    <string name="tool_level_high">High</string>
+    <string name="tool_level_critical">Critical</string>
+    <string name="tool_level_unknown">Unknown</string>
+    <!-- What an edit left out: %1$d lines of the file %2$s; %1$d files. -->
+    <plurals name="tool_diff_more_lines">
+        <item quantity="one">%1$d more line in %2$s isn’t shown</item>
+        <item quantity="other">%1$d more lines in %2$s aren’t shown</item>
+    </plurals>
+    <plurals name="tool_diff_more_files">
+        <item quantity="one">%1$d more file isn’t shown</item>
+        <item quantity="other">%1$d more files aren’t shown</item>
+    </plurals>
+</resources>

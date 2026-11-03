@@ -19,6 +19,14 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 
 /**
+ * What a person's own message shows at its foot (iOS's `MessageDelivery`,
+ * 3c24acf5c): the clock while it is on this phone, one check when the
+ * computer has it, two when the agent took it into its turn, a red mark
+ * when it was refused.
+ */
+enum class MessageDelivery { Sending, Received, Accepted, Failed }
+
+/**
  * One visible chat row: the reducer's message and what its renderer needs,
  * derived off the main thread (markdown parsed, slash-command wrappers
  * collapsed). Rows the chat never shows (thinking, the SDK's command caveat,
@@ -37,6 +45,10 @@ sealed interface ChatRow {
         override val message: ChatMessage.UserText,
         val display: UserDisplay,
         val failedLocalId: String? = null,
+        /** An own message's mark; null for another participant's. */
+        val delivery: MessageDelivery? = null,
+        /** The time the bubble shows: the first it showed, so an echo's later stamp never narrows it. */
+        val time: Long? = null,
     ) : ChatRow
 
     data class AgentText(override val message: ChatMessage.AgentText, val blocks: List<MarkdownBlock>) : ChatRow
@@ -86,6 +98,8 @@ class ChatReduction(private val now: () -> Long = System::currentTimeMillis) {
     private var lastClaude = true
     private var snapshot = ChatSnapshot()
     private var lastDelivery: Map<String, Pair<OutboxState, String?>> = emptyMap()
+    /** Each own message's time as first shown, by message id. */
+    private val times = HashMap<String, Long>()
 
     fun apply(page: ChatPage, session: ChatSessionInfo?): ChatSnapshot {
         // This device's sends stand in for their echo until it is stored
@@ -134,11 +148,23 @@ class ChatReduction(private val now: () -> Long = System::currentTimeMillis) {
             return snapshot
         }
         val visible = if (changed || rows.isEmpty()) {
+            val before = snapshot.rows.associateBy { it.key }
+            val receipts = session?.sendsMessageReceipts == true
+            // Newest first: without receipts, the agent answering after a message says it took it.
+            var answered = false
             messages.values.sortedByDescending { it.sortKey }.mapNotNull { message ->
                 val shown = withDelivery(message, delivery)
                 val row = row(shown)
-                val failed = (shown as? ChatMessage.UserText)?.localId?.takeIf { delivery[it]?.first == OutboxState.FAILED }
-                if (failed != null && row is ChatRow.User) row.copy(failedLocalId = failed) else row
+                if (row is ChatRow.AgentText || row is ChatRow.Tool) answered = true
+                if (row !is ChatRow.User) return@mapNotNull row
+                val user = row.message
+                val failed = user.localId?.takeIf { delivery[it]?.first == OutboxState.FAILED }
+                val mark = outgoing(user, user.localId?.let(delivery::get)?.first, receipts, answered)
+                val time = times.getOrPut(user.id) { user.createdAt }
+                val shownRow = if (failed == row.failedLocalId && mark == row.delivery && time == row.time) row
+                    else row.copy(failedLocalId = failed, delivery = mark, time = time)
+                // The same row as last time stays the same instance, so its item doesn't recompose.
+                before[shownRow.key]?.takeIf { it == shownRow } ?: shownRow
             }
         } else {
             snapshot.rows
@@ -152,6 +178,18 @@ class ChatReduction(private val now: () -> Long = System::currentTimeMillis) {
             usage = reducer.usage,
         )
         return snapshot
+    }
+
+    /**
+     * An own message's mark (iOS `ChatRowRenderer.outgoing`): in the outbox
+     * the clock, refused the red mark, held for its receipt one check, taken
+     * two. Without receipts, one check until the agent answers after it.
+     */
+    private fun outgoing(message: ChatMessage.UserText, state: OutboxState?, receipts: Boolean, answered: Boolean): MessageDelivery? {
+        if (message.isOtherParticipant) return null
+        if (message.sendError != null || state == OutboxState.FAILED) return MessageDelivery.Failed
+        if (state == OutboxState.QUEUED || state == OutboxState.SENDING) return MessageDelivery.Sending
+        return if (message.pending || !receipts && !answered) MessageDelivery.Received else MessageDelivery.Accepted
     }
 
     /** A send still in the outbox reads as pending; a failed one carries its error. */

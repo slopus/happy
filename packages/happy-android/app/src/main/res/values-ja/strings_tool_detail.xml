@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tool_open">詳細を開く</string>
+    <string name="tool_open_file">ファイルを開く</string>
+    <string name="tool_plan_progress">プラン · %2$d 件中 %1$d 件完了</string>
+    <string name="tool_unavailable">このツール呼び出しはもう会話にありません。</string>
+    <string name="tool_reading_whole">呼び出し全体を読み込んでいます…</string>
+    <string name="tool_whole_failed">呼び出し全体を読み込めませんでした。チャットにあった内容を表示しています。</string>
+    <string name="tool_kind_file_edit">ファイル編集</string>
+    <string name="tool_kind_exploration">探索</string>
+    <string name="tool_kind_x_search">X 検索</string>
+    <string name="tool_kind_web_page">ウェブページ</string>
+    <string name="tool_kind_plan">プラン</string>
+    <string name="tool_kind_media">あなたに表示</string>
+    <string name="tool_kind_tool_call">ツール呼び出し</string>
+    <string name="tool_status_running">実行中</string>
+    <string name="tool_section_arguments">引数</string>
+    <string name="tool_section_result">結果</string>
+    <string name="tool_section_sources">出典</string>
+    <string name="tool_section_steps">手順</string>
+    <string name="tool_section_instructions">指示</string>
+    <string name="tool_section_review">レビュー</string>
+    <string name="tool_section_raw">生データ</string>
+    <string name="tool_field_query">クエリ</string>
+    <string name="tool_field_explanation">説明</string>
+    <string name="tool_field_title">タイトル</string>
+    <string name="tool_field_model">モデル</string>
+    <string name="tool_field_to">宛先</string>
+    <string name="tool_field_address">アドレス</string>
+    <string name="tool_field_prompt">プロンプト</string>
+    <string name="tool_field_running">実行中</string>
+    <string name="tool_op_list">一覧</string>
+    <string name="tool_op_in">%1$s 内</string>
+    <string name="tool_review_decision">判定</string>
+    <string name="tool_review_allowed">許可</string>
+    <string name="tool_review_denied">拒否</string>
+    <string name="tool_review_unproven">未レビュー</string>
+    <string name="tool_review_why">理由</string>
+    <string name="tool_review_timed_out">レビューがタイムアウトしました</string>
+    <string name="tool_review_unavailable">レビュー担当が利用できませんでした</string>
+    <string name="tool_review_risk">リスク</string>
+    <string name="tool_review_asked">依頼の強さ</string>
+    <string name="tool_review_access">アクセス</string>
+    <string name="tool_review_full_access">フルアクセスで実行</string>
+    <string name="tool_review_sandbox">サンドボックス内のまま</string>
+    <string name="tool_level_low">低</string>
+    <string name="tool_level_medium">中</string>
+    <string name="tool_level_high">高</string>
+    <string name="tool_level_critical">重大</string>
+    <string name="tool_level_unknown">不明</string>
+    <plurals name="tool_diff_more_lines">
+        <item quantity="other">%2$s のあと %1$d 行は表示されていません</item>
+    </plurals>
+    <plurals name="tool_diff_more_files">
+        <item quantity="other">あと %1$d 個のファイルは表示されていません</item>
+    </plurals>
+</resources>

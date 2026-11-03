@@ -21,6 +21,8 @@ import com.slopus.happy.model.SessionMetadata
 import com.slopus.happy.model.buildSessionListViewData
 import com.slopus.happy.model.waitsForCliBeforeFirstMessage
 import com.slopus.happy.model.worktreeTabSuccessor
+import com.slopus.happy.agent.IntentOutbox
+import com.slopus.happy.net.ConnectionStatus
 import com.slopus.happy.net.HappyHttp
 import com.slopus.happy.projects.GitStatusServices
 import com.slopus.happy.projects.ProjectServices
@@ -44,6 +46,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -51,6 +54,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flatMapLatest
@@ -95,11 +99,9 @@ class HomeServices private constructor(private val graph: AppGraph) {
     val infoControls: SessionInfoControls = object : SessionInfoControls {
         override suspend fun archive(session: Session): ArchiveResult = archiver.archive(session)
 
-        override suspend fun delete(session: Session): OpResult {
-            // Best effort: a running agent would otherwise keep writing into a deleted session.
-            if (session.isOnline) sessionActions.kill(session.id)
-            return sessionActions.delete(session.id)
-        }
+        override suspend fun leave(session: Session): ArchiveResult = archiver.leave(session)
+
+        override suspend fun delete(session: Session): OpResult = archiver.delete(session)
 
         override suspend fun cleanupWorktree(session: Session, confirm: suspend () -> Boolean) = this@HomeServices.cleanupWorktree(session, confirm)
     }
@@ -123,6 +125,10 @@ class HomeServices private constructor(private val graph: AppGraph) {
                     ?.map { mirrors -> mirrors.mapNotNull { (id, mirror) -> mirror.draft?.takeIf { it.isNotBlank() }?.let { id to it } }.toMap() }
                     ?: flowOf(emptyMap()),
             )
+        }
+        // Deleted here: gone at once, and a list read before the server has it doesn't bring it back.
+        .combine(archiver.deleting) { snapshot, deleting ->
+            if (snapshot == null || deleting.isEmpty()) snapshot else snapshot.copy(sessions = snapshot.sessions.filter { it.id !in deleting })
         }
         .stateIn(scope, SharingStarted.Eagerly, null)
 
@@ -150,6 +156,20 @@ class HomeServices private constructor(private val graph: AppGraph) {
             graph.account.collect { next -> if (next !== account) { account = next; reads.reset() } }
         }
         scope.launch { snapshots.collect { snapshot -> if (snapshot != null) reads.observe(snapshot.sessions) } }
+        // Each account's archives, leaves and deletes, kept in its own store and sent while its socket is up.
+        scope.launch {
+            var job: Job? = null
+            graph.account.collect { account ->
+                job?.cancel()
+                job = account?.let { next ->
+                    val accountScope = CoroutineScope(scope.coroutineContext + SupervisorJob(scope.coroutineContext[Job]))
+                    val outbox = IntentOutbox(accountScope, StoreIntentStorage(store) { graph.account.value === next })
+                    val online = next.connectionStatus.map { it == ConnectionStatus.CONNECTED }.stateIn(accountScope, SharingStarted.Eagerly, false)
+                    archiver.bind(accountScope, outbox, online)
+                    accountScope.coroutineContext[Job]
+                }
+            }
+        }
         scope.launch {
             nativeUpdateChecks(graph.isForeground) { checkNativeUpdate(graph.http, BuildConfig.APPLICATION_ID, BuildConfig.VERSION_NAME) }
                 .collect { update.value = it }

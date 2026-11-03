@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The composer's model and effort chips and their lists (iOS e2238fdc4, 083c30df4; desktop ComposerModelControl.tsx). -->
+<resources>
+    <string name="conversation_models_not_configured">Модели не настроены</string>
+    <string name="conversation_model_hidden_account">Скрытый аккаунт. Он работает, просто не показывается в списках.</string>
+    <string name="conversation_model_account_removed">Аккаунт %1$s больше не настроен в этом Happy Agent.</string>
+    <string name="conversation_model_account_off">Аккаунт %1$s выключен, поэтому ему ничего не отправляется.</string>
+    <string name="conversation_model_chip">Модель: %1$s</string>
+    <string name="conversation_effort_chip">Усилие: %1$s</string>
+    <string name="conversation_select_model">Выберите модель</string>
+    <string name="conversation_select_effort">Выберите усилие</string>
+    <string name="conversation_accounts_of">Аккаунт %1$s</string>
+    <string name="conversation_heading_label">Аккаунт %1$s: %2$s</string>
+    <string name="conversation_usage_unknown">Использование неизвестно</string>
+    <string name="conversation_limit_reached">Лимит исчерпан</string>
+    <string name="conversation_limit_resets">Лимит обновится %1$s</string>
+    <string name="conversation_usage_updating">Обновление…</string>
+    <string name="conversation_usage_couldnt_refresh">Не удалось обновить</string>
+    <string name="conversation_usage_updated">Обновлено %1$s</string>
+    <string name="conversation_usage_updated_failed">Обновлено %1$s · не удалось обновить</string>
+    <string name="conversation_usage_as_of">%1$s на %2$s</string>
+    <string name="conversation_usage_just_now">только что</string>
+    <string name="conversation_usage_minutes_ago">%1$d мин назад</string>
+    <string name="conversation_usage_hours_ago">%1$d ч назад</string>
+    <string name="conversation_usage_at">в %1$s</string>
+    <string name="conversation_usage_signed_out">Вход не выполнен</string>
+</resources>

@@ -129,6 +129,9 @@ class ChatRouteTest {
         rule.waitUntil(5_000) { nav.currentBackStackEntry?.toRoute<SessionRoute>()?.id?.let(::isComposeChatId) == true }
         rule.node(ComposerTags.INPUT).assertTextEquals("unfinished new session")
         rule.onNodeWithText("Ported, with tests.").assertDoesNotExist()
+        // Back alone until the first send (iOS 323fb2e9f): no name, no compose.
+        rule.node(ChatScreenTags.COMPOSE).assertDoesNotExist()
+        rule.onNodeWithText("New chat").assertDoesNotExist()
         assertEquals(listOf("unfinished current chat"), writes)
         rule.runOnIdle {
             assertEquals("fixture-home", nav.previousBackStackEntry?.destination?.route)
@@ -139,7 +142,11 @@ class ChatRouteTest {
         assertEquals("unfinished new session", creation.draft.value.input)
     }
 
-    /** The empty chat's composer writes the new-session draft; a start that is refused says why and keeps the text. */
+    /**
+     * The empty chat's composer writes the new-session draft; a start that is
+     * refused says why and keeps the text. With no computer in yet the send
+     * says they are still loading (happy-ios c9adf9162).
+     */
     @Test
     fun aRefusedStartSaysWhyAndKeepsTheText() {
         val creation = HomeServices.of(graph).newSession(ApplicationProvider.getApplicationContext())
@@ -149,7 +156,7 @@ class ChatRouteTest {
         rule.node(ComposerTags.INPUT).performTextInput("start something")
         rule.waitUntil(5_000) { creation.draft.value.input == "start something" }
         rule.node(ComposerTags.PRIMARY).performClick()
-        rule.waitUntilAtLeastOneExists(hasText("Please select a machine"), 5_000)
+        rule.waitUntilAtLeastOneExists(hasText("Your computers are still loading. Try again in a moment."), 5_000)
         rule.node(ComposerTags.INPUT).assertTextEquals("start something")
         assertEquals("start something", creation.draft.value.input)
     }

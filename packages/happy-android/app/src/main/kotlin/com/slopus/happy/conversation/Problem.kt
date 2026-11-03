@@ -26,6 +26,12 @@ sealed interface Problem {
     /** The pictures picked to send couldn't be read on the phone. */
     data object PicturesUnreadable : Problem
 
+    /** Slash command [name] is no longer offered (404): unknown, or just removed. */
+    data class CommandGone(val name: String) : Problem
+
+    /** Slash command [name] can't run in the agent's current state (409). */
+    data class CommandBusy(val name: String) : Problem
+
     /** Nothing says why. */
     data object Unknown : Problem
 }

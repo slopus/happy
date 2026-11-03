@@ -1,5 +1,8 @@
 package com.slopus.happy.ui.chat
 
+import com.slopus.happy.connection.accountLinkState
+import com.slopus.happy.connection.networkPath
+import com.slopus.happy.net.ConnectionStatus
 import com.slopus.happy.ui.page
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -12,6 +15,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalResources
@@ -22,6 +26,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
+import com.slopus.happy.model.ComposeKind
 import com.slopus.happy.chat.ChatActions
 import com.slopus.happy.chat.ChatFeed
 import com.slopus.happy.chat.ChatMessage
@@ -68,6 +73,7 @@ import com.slopus.happy.ui.usage.LocalUsageDisplay
 import com.slopus.happy.ui.usage.UsageDisplay
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -139,7 +145,15 @@ private fun ChatRoute(
     // No session yet: the composer is the new-session draft's.
     val drafting = compose?.composing == true
     // The empty chat stands until the session its send started has loaded, so nothing flashes between.
-    val composing = compose != null && (drafting || state.session == null)
+    // Its row is waited for 15 s at most; once seen, or the wait over, an absent one is deleted (iOS 7d4ed9797).
+    var awaitingRecord by rememberSaveable(compose?.routeId) { mutableStateOf(true) }
+    val recordSeen = state.session != null
+    LaunchedEffect(compose?.startedId, recordSeen) {
+        if (compose?.startedId == null || !awaitingRecord) return@LaunchedEffect
+        if (!recordSeen) delay(ComposeChat.RECORD_WAIT_MILLIS)
+        awaitingRecord = false
+    }
+    val composing = compose != null && (drafting || (state.session == null && awaitingRecord))
     // One flow per account and chat: a new one would start a new draft.
     val mirrorFlow = remember(account, sessionId, drafting) { if (drafting) compose?.mirror else account?.composer?.mirror(sessionId) }
     val mirror by remember(mirrorFlow, drafting) { mirrorFlow.takeUnless { drafting } ?: flowOf(ComposerMirror()) }.collectAsStateWithLifecycle(ComposerMirror())
@@ -182,8 +196,15 @@ private fun ChatRoute(
     val notSent = stringResource(R.string.errors_unknown_error)
     val latestState by rememberUpdatedState(state)
     val latestSettings by rememberUpdatedState(settings)
-    // An empty chat takes images for its first message; whether they can go is the start's to say.
-    val images = rememberComposerImages(enabled = composing || (state.session != null && canUseAttachments(state.session?.metadata)))
+    // An empty chat takes images for its first message when the harness it starts does (happy-ios 20e20e0a8).
+    val composeOptions = compose?.newSession?.options?.collectAsStateWithLifecycle()?.value
+    val images = rememberComposerImages(
+        enabled = when {
+            drafting -> composeOptions?.let { canUseAttachments(starting = it.startAgent) } ?: true
+            composing -> true
+            else -> canUseAttachments(state.session?.metadata)
+        },
+    )
     val latestImages by rememberUpdatedState(images)
     val notices = remember { mutableStateListOf<Alert>() }
     // Not lifecycle-bound: the change to the background is the one that matters.
@@ -294,18 +315,30 @@ private fun ChatRoute(
         LocalSuggestionSource provides rememberSessionSuggestions(graph, sessionId, state.session?.metadata),
         LocalUsageDisplay provides UsageDisplay(settings.alwaysShowContextSize, settings.usageLimitShowRemaining),
     ) {
+        // The account's link, as home reads it: its socket, its catch-up and the network (iOS's LegacyLink).
+        val socket by graph.connectionStatus.collectAsStateWithLifecycle()
+        val catchingUp by graph.isSyncing.collectAsStateWithLifecycle()
+        val context = androidx.compose.ui.platform.LocalContext.current
+        val network by remember(context) { context.networkPath() }.collectAsStateWithLifecycle(initialValue = true)
+        val link = rememberShownLinkState(accountLinkState(socket == ConnectionStatus.CONNECTED, catchingUp, network))
         // A compose chat that has started is its session's chat: the checkout's tabs are that session's.
         val slots = rememberSessionScreenSlots(graph, if (compose != null) sessionId else routeId, route.pending, state, onSwitch = { onOpenSession(sessionId, it) }, onBack = onBack)
         val chatSlots = if (compose != null && composing) {
+            val kind by compose.newSession.kind.collectAsStateWithLifecycle()
             ChatScreenSlots(
                 headerSubtitle = compose.progress(),
-                pending = ChatPendingSlot(compose.session) { ComposeTarget(compose) },
+                pending = ChatPendingSlot(
+                    compose.session,
+                    composerPlaceholder = if (kind == ComposeKind.Task) stringResource(R.string.compose_task_placeholder) else null,
+                    headerShown = !compose.composing || compose.starting,
+                ) { ComposeTarget(compose) },
             )
         } else {
             slots.chat
         }
         ChatScreen(
             state = state,
+            link = link,
             draft = draft.text,
             bubbleColor = settings.userMessageBubbleColor,
             actions = screenActions,

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="media_download">下載</string>
+    <string name="media_pause_download">暫停下載</string>
+    <string name="data_storage_title">資料與儲存空間</string>
+    <string name="data_storage_usage">儲存空間用量</string>
+    <string name="data_storage_calculating">正在計算…</string>
+    <string name="data_storage_clear_media">清除媒體</string>
+    <string name="data_storage_clear_footer">照片、影片和檔案會一直保存在這支手機上，沒有網路也能開啟。清除後可釋放空間；清除的內容在開啟時會重新下載。</string>
+    <string name="data_storage_clear_confirm">要從這支手機清除 %1$s 的媒體嗎？開啟時會重新下載。</string>
+    <string name="data_storage_clear">清除</string>
+    <string name="data_storage_auto">自動下載媒體</string>
+    <string name="data_storage_auto_footer">不超過大小上限的媒體在聊天中出現時會自動下載，離線也能查看。Wi-Fi 和行動數據相同。</string>
+    <string name="data_storage_photos">照片</string>
+    <string name="data_storage_videos">影片</string>
+    <string name="data_storage_limit">上限</string>
+</resources>

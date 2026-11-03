@@ -7,7 +7,11 @@ import UIKit
 /// chosen in one place.
 @MainActor
 enum SurfaceScreens {
+    /// The screen for `surface`, which the person is opening: the Feed
+    /// counts it seen.
     static func make(session: Session, surface: AgentWire.Surface) -> UIViewController {
+        let subject = FeedSubject(type: "surface", id: surface.id)
+        Task { [feed = session.engine.feed] in await feed.seen(subject) }
         switch surface.type {
         case "document":
             return DocumentScreens.make(session: session, surfaceId: surface.id, name: surface.name)

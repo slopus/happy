@@ -37,6 +37,17 @@
     <string name="conversation_permission_from">%1$s asks for permission</string>
     <string name="conversation_answer">Answer</string>
     <string name="conversation_answer_placeholder">Your answer</string>
+    <string name="conversation_ask_choose_one">Choose one</string>
+    <string name="conversation_ask_choose_any">Choose any</string>
+    <string name="conversation_ask_reply_in_composer">Reply in the message box</string>
+    <string name="conversation_ask_answered">Answered</string>
+    <string name="conversation_ask_no_answer">No answer</string>
+    <string name="conversation_ask_submit">Submit</string>
+    <string name="conversation_ask_not_sent">Answer not sent: %1$s</string>
+    <string name="conversation_command_gone">The /%1$s command isn\'t available any more.</string>
+    <string name="conversation_command_busy">/%1$s can\'t run right now. Try again once the agent is idle.</string>
+    <string name="conversation_command_kind_skill">Skill</string>
+    <string name="conversation_command_kind_compaction">Compaction</string>
     <string name="conversation_secret_name">Name for this secret</string>
     <string name="conversation_secret_name_placeholder" translatable="false">deploy-api</string>
     <string name="conversation_secret_value_placeholder">Value</string>
@@ -75,15 +86,11 @@
     <string name="conversation_chief_unavailable">Can\'t open the Chief of Staff</string>
     <string name="conversation_chief_missing">There\'s no Chief of Staff on this computer.</string>
     <string name="conversation_mode_permission">Permissions</string>
-    <string name="conversation_mode_model">Model</string>
-    <string name="conversation_mode_effort">Effort</string>
     <string name="conversation_send">Send</string>
     <string name="conversation_stop">Stop</string>
     <string name="conversation_attach_picture">Add picture</string>
     <string name="conversation_remove_picture">Remove picture</string>
     <string name="conversation_composer_more">More</string>
-    <string name="conversation_mode_label">Model %1$s, effort %2$s</string>
-    <string name="conversation_mode_label_model_only">Model %1$s</string>
     <string name="conversation_mode_permission_item">Permissions: %1$s</string>
     <string name="conversation_pictures_too_large_title">Pictures too large</string>
     <string name="conversation_pictures_too_large_message">Together these pictures are more than one message can carry. Remove some and send again.</string>
@@ -102,4 +109,6 @@
     <string name="conversation_failure_context_too_long">This conversation is too long for %1$s, even after a reset.</string>
     <string name="conversation_failure_provider_disabled">%1$s is turned off. Turn it on in Settings, then retry.</string>
     <string name="conversation_failure_internal">Something went wrong: %1$s</string>
+    <string name="conversation_editor_expand">Expand</string>
+    <string name="conversation_editor_collapse">Collapse</string>
 </resources>

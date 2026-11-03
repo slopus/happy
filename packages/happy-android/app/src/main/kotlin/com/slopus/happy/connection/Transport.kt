@@ -133,6 +133,7 @@ class TailcatTransport internal constructor(
         category: RequestCategory,
     ): TransportResponse {
         val head = TailcatHttp.requestHead(method, path, port, credential, body, headers)
+        val progress = kotlinx.coroutines.currentCoroutineContext()[BodyProgress]
         val lease = clients.lease(category)
         val deadline = if (category == RequestCategory.File) fileTimeoutMillis else requestTimeoutMillis
         return try {
@@ -141,7 +142,10 @@ class TailcatTransport internal constructor(
                     val stream: TailcatConnection = lease.client.openTCP(port)
                     try {
                         stream.write(head, timeoutMillis = requestTimeoutMillis)
-                        if (body != null) stream.write(body, timeoutMillis = requestTimeoutMillis)
+                        if (body != null) {
+                            if (progress == null) stream.write(body, timeoutMillis = requestTimeoutMillis)
+                            else progress.write(body) { stream.write(it, timeoutMillis = requestTimeoutMillis) }
+                        }
                         val parser = HttpResponseParser()
                         while (true) {
                             val bytes = stream.read(65536, timeoutMillis = requestTimeoutMillis)

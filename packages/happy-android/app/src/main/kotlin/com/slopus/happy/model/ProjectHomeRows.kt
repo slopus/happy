@@ -58,7 +58,7 @@ data class WorktreeToggle(
     val blocked: Boolean,
 )
 
-enum class ProjectHomeSection { Bots, Projects }
+enum class ProjectHomeSection { Bots, Tasks, Projects }
 
 @Immutable
 sealed interface ProjectHomeRow {
@@ -75,6 +75,11 @@ sealed interface ProjectHomeRow {
 
     data class Bot(val session: SessionRowData) : ProjectHomeRow {
         override val key get() = "bot-${session.id}"
+    }
+
+    /** A task: drawn as a bot is, in the person's own order; left or archived, it leaves every list. */
+    data class Task(val session: SessionRowData) : ProjectHomeRow {
+        override val key get() = "task-${session.id}"
     }
 
     data class ProjectCard(val project: ProjectHomeEntry) : ProjectHomeRow {
@@ -190,6 +195,7 @@ private fun projectRows(project: ProjectGroupData, expanded: Set<String>): List<
 
 private class MachineSection(val machineId: String?, val machineName: String, val rig: Boolean) {
     val bots = mutableListOf<SessionRowData>()
+    val tasks = mutableListOf<SessionRowData>()
     val projects = mutableListOf<ProjectHomeRow>()
     var lastActivityAt = 0L
 }
@@ -207,7 +213,7 @@ private fun projectsByMachine(items: List<SessionListItem>, machineName: (String
 }
 
 /**
- * buildProjectHomeRows: each computer, then its bots, then its projects (a
+ * buildProjectHomeRows: each computer, then its bots, its tasks, then its projects (a
  * card per project with its worktrees under it). Happy Agent computers lead,
  * then the most recently worked on; chats that name no computer go last. The
  * archive trails behind its toggle as the flat, date-grouped tail.
@@ -234,10 +240,14 @@ fun buildProjectHomeRows(
     }
 
     for (item in items) {
-        if (item !is SessionListItem.Bots) continue
-        for (session in item.sessions) {
+        val (sessions, task) = when (item) {
+            is SessionListItem.Bots -> item.sessions to false
+            is SessionListItem.Tasks -> item.sessions to true
+            else -> continue
+        }
+        for (session in sessions) {
             val section = sectionFor(session.machineId)
-            section.bots.add(session)
+            (if (task) section.tasks else section.bots).add(session)
             section.lastActivityAt = maxOf(section.lastActivityAt, session.lastActivityAt)
         }
     }
@@ -259,12 +269,16 @@ fun buildProjectHomeRows(
     )
     val rows = mutableListOf<ProjectHomeRow>()
     for (section in ordered) {
-        if (section.bots.isEmpty() && section.projects.isEmpty()) continue
+        if (section.bots.isEmpty() && section.tasks.isEmpty() && section.projects.isEmpty()) continue
         val key = section.machineId ?: "unknown"
         rows.add(ProjectHomeRow.MachineHeader(section.machineId, section.machineName))
         if (section.bots.isNotEmpty()) {
             rows.add(ProjectHomeRow.Section("bots:$key", ProjectHomeSection.Bots))
             section.bots.forEach { rows.add(ProjectHomeRow.Bot(it)) }
+        }
+        if (section.tasks.isNotEmpty()) {
+            rows.add(ProjectHomeRow.Section("tasks:$key", ProjectHomeSection.Tasks))
+            section.tasks.forEach { rows.add(ProjectHomeRow.Task(it)) }
         }
         if (section.projects.isNotEmpty()) {
             rows.add(ProjectHomeRow.Section("projects:$key", ProjectHomeSection.Projects))

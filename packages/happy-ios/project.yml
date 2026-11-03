@@ -36,6 +36,7 @@ targets:
     sources:
       - path: Sources/HappyApp
       - path: App/Assets.xcassets
+      - path: App/PrivacyInfo.xcprivacy
     dependencies:
       - package: HappyIOS
         product: HappyKit
@@ -67,6 +68,8 @@ targets:
           PRODUCT_BUNDLE_IDENTIFIER: com.ex3ndr.happy
           INFOPLIST_FILE: App/Info-Production.plist
           CODE_SIGN_ENTITLEMENTS: App/Happy-Production.entitlements
+          MARKETING_VERSION: "2.0.0"
+          CURRENT_PROJECT_VERSION: "155"
   HappyMac:
     # Genuine AppKit/macOS SDK target. No UIKit, Catalyst or iPad binary.
     type: application

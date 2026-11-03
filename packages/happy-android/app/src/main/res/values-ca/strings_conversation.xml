@@ -37,6 +37,17 @@
     <string name="conversation_permission_from">%1$s demana permís</string>
     <string name="conversation_answer">Respon</string>
     <string name="conversation_answer_placeholder">La teva resposta</string>
+    <string name="conversation_ask_choose_one">Tria\'n una</string>
+    <string name="conversation_ask_choose_any">Tria\'n les que vulguis</string>
+    <string name="conversation_ask_reply_in_composer">Respon al quadre de missatge</string>
+    <string name="conversation_ask_answered">Respost</string>
+    <string name="conversation_ask_no_answer">Sense resposta</string>
+    <string name="conversation_ask_submit">Envia</string>
+    <string name="conversation_ask_not_sent">No s\'ha enviat la resposta: %1$s</string>
+    <string name="conversation_command_gone">L\'ordre /%1$s ja no està disponible.</string>
+    <string name="conversation_command_busy">Ara mateix no es pot executar /%1$s. Torna-ho a provar quan l\'agent estigui inactiu.</string>
+    <string name="conversation_command_kind_skill">Habilitat</string>
+    <string name="conversation_command_kind_compaction">Compactació</string>
     <string name="conversation_secret_name">Nom per a aquest secret</string>
     <string name="conversation_secret_value_placeholder">Valor</string>
     <string name="conversation_secret_save">Desa i respon</string>
@@ -73,15 +84,11 @@
     <string name="conversation_chief_unavailable">No es pot obrir el Chief of Staff</string>
     <string name="conversation_chief_missing">No hi ha cap Chief of Staff en aquest ordinador.</string>
     <string name="conversation_mode_permission">Permisos</string>
-    <string name="conversation_mode_model">Model</string>
-    <string name="conversation_mode_effort">Esforç</string>
     <string name="conversation_send">Envia</string>
     <string name="conversation_stop">Atura</string>
     <string name="conversation_attach_picture">Afegeix una imatge</string>
     <string name="conversation_remove_picture">Treu la imatge</string>
     <string name="conversation_composer_more">Més</string>
-    <string name="conversation_mode_label">Model %1$s, esforç %2$s</string>
-    <string name="conversation_mode_label_model_only">Model %1$s</string>
     <string name="conversation_mode_permission_item">Permisos: %1$s</string>
     <string name="conversation_pictures_too_large_title">Imatges massa grans</string>
     <string name="conversation_pictures_too_large_message">Juntes, aquestes imatges superen el que hi cap en un missatge. Treu-ne algunes i torna a enviar.</string>
@@ -98,4 +105,6 @@
     <string name="conversation_failure_context_too_long">Aquesta conversa és massa llarga per a %1$s, fins i tot després de restablir-la.</string>
     <string name="conversation_failure_provider_disabled">%1$s està desactivat. Activa\'l a Configuració i torna-ho a provar.</string>
     <string name="conversation_failure_internal">Alguna cosa ha anat malament: %1$s</string>
+    <string name="conversation_editor_expand">Amplia</string>
+    <string name="conversation_editor_collapse">Redueix</string>
 </resources>

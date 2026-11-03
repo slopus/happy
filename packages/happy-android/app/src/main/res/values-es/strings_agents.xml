@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_agents.xml in es: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="compose_tasks_unsupported">Happy Agent en este ordenador aún no puede crear tareas. Actualízalo y vuelve a intentarlo.</string>
+    <string name="compose_creating_task">Creando tarea…</string>
+    <string name="compose_opening_task">Abriendo tarea…</string>
+    <string name="compose_task_placeholder">¿Qué debe hacer esta tarea?</string>
+    <string name="compose_loading_computers">Cargando ordenadores…</string>
+    <string name="compose_still_loading">Tus ordenadores aún se están cargando. Inténtalo de nuevo en un momento.</string>
+    <string name="compose_offline_computer">Este ordenador está desconectado. Inicia Happy en él o elige otro.</string>
+    <string name="compose_offline_happy_agent">Happy Agent está desconectado en este ordenador. Inícialo o elige otro ordenador.</string>
+    <string name="compose_offline_happy_cli">Happy CLI en este ordenador está desconectado. Ejecuta `happy daemon start` allí o elige otro ordenador.</string>
+    <string name="compose_machines_bots">Ordenadores cuyo Happy Agent crea bots</string>
+    <string name="compose_machines_tasks">Ordenadores cuyo Happy Agent crea tareas</string>
+    <string name="compose_chip_happy_agent_offline">Happy Agent desconectado</string>
+    <string name="compose_chip_happy_cli_offline">Happy CLI desconectado</string>
+    <string name="compose_ago_now">ahora</string>
+    <string name="compose_ago_minutes">%1$d min</string>
+    <string name="compose_ago_hours">%1$d h</string>
+    <string name="compose_ago_days">%1$d d</string>
+    <string name="compose_ago_weeks">%1$d sem</string>
+    <string name="compose_ago_months">%1$d mes</string>
+    <string name="compose_ago_years">%1$d a</string>
+    <string name="task_leave">Salir de la tarea</string>
+    <string name="task_archive">Archivar tarea</string>
+    <string name="task_failed_to_leave">No se pudo salir de la tarea</string>
+    <string name="task_archive_needs_machine">Conéctate al ordenador de la tarea para archivarla.</string>
+    <string name="task_leave_needs_machine">Conéctate al ordenador de la tarea para salir de ella.</string>
+    <string name="task_cannot_leave">Happy Agent en este ordenador aún no puede salir de tareas. Actualízalo y vuelve a intentarlo.</string>
+    <string name="agent_search_new_task">Nueva tarea</string>
+    <string name="agent_search_new_task_picture">Nueva tarea con una imagen</string>
+    <string name="agent_search_connect_agent">Conectar Happy Agent</string>
+    <string name="agent_home_unanswered">El ordenador no respondió.</string>
+</resources>

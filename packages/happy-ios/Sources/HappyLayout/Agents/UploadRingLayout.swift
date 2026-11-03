@@ -1,4 +1,7 @@
+import Foundation
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 
 /// Telegram's radial status over a sending photo (`RadialStatusNode` in
 /// `ChatMessageInteractiveMediaNode`): a dark disc in the tile's middle,

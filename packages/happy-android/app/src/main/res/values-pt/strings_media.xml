@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="media_download">Baixar</string>
+    <string name="media_pause_download">Pausar download</string>
+    <string name="data_storage_title">Dados e armazenamento</string>
+    <string name="data_storage_usage">Uso do armazenamento</string>
+    <string name="data_storage_calculating">Calculando…</string>
+    <string name="data_storage_clear_media">Limpar mídia</string>
+    <string name="data_storage_clear_footer">Fotos, vídeos e arquivos ficam guardados neste telefone para sempre, então abrem sem rede. Limpá-los libera espaço; o que for limpo será baixado de novo ao ser aberto.</string>
+    <string name="data_storage_clear_confirm">Limpar %1$s de mídia deste telefone? Será baixado de novo ao ser aberto.</string>
+    <string name="data_storage_clear">Limpar</string>
+    <string name="data_storage_auto">Download automático de mídia</string>
+    <string name="data_storage_auto_footer">Mídia até o limite de tamanho é baixada sozinha quando aparece em um chat, então fica disponível offline. O mesmo no Wi-Fi e nos dados móveis.</string>
+    <string name="data_storage_photos">Fotos</string>
+    <string name="data_storage_videos">Vídeos</string>
+    <string name="data_storage_limit">Até</string>
+</resources>

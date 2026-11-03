@@ -4,7 +4,7 @@
   catalogs. AndroidStringsTranslatedTest fails while one is missing here.
 -->
 <resources>
-    <string name="pairing_title">連線代理程式</string>
+    <string name="pairing_title">連接 Happy Agent</string>
     <string name="pairing_connecting">正在連線到 %1$s…</string>
     <string name="pairing_unverified">名稱來自代碼，連線完成前尚未驗證。</string>
     <string name="pairing_compare">確認 %1$s 顯示相同的四個表情符號，且順序相同。</string>

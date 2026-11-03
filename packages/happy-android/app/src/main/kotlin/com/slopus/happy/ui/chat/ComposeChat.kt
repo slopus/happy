@@ -1,8 +1,35 @@
 package com.slopus.happy.ui.chat
 
 import com.slopus.happy.text.words
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
+import androidx.annotation.StringRes
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import com.slopus.happy.model.BotRequest
+import com.slopus.happy.model.ComposeKind
+import com.slopus.happy.model.ComposeOffline
+import com.slopus.happy.model.describeBotNameProblem
+import com.slopus.happy.model.sanitizeBotName
+import com.slopus.happy.ui.components.MenuSpec
+import com.slopus.happy.ui.home.BotFaceFailure
+import com.slopus.happy.ui.home.BotFaceLeg
+import com.slopus.happy.ui.home.HARNESS_SETUP_HELP_URL
+import com.slopus.happy.ui.theme.HappyTheme
+import java.util.Locale
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -46,7 +73,6 @@ import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.components.HappyDropdownMenu
-import com.slopus.happy.ui.components.HappyMenuDivider
 import com.slopus.happy.ui.components.HappyMenuItem
 import com.slopus.happy.ui.components.HappyMenuSection
 import com.slopus.happy.ui.components.Ionicon
@@ -109,7 +135,9 @@ object ComposeChatTags {
     const val TARGET = "composeChat.target"
     const val MACHINE_MENU = "composeChat.machineMenu"
     const val FOLDER_MENU = "composeChat.folderMenu"
+    const val HARNESS_MENU = "composeChat.harnessMenu"
     fun option(page: NewSessionPage, key: String) = "composeChat.option.${page.name}.$key"
+    fun kind(kind: ComposeKind) = "composeChat.kind.${kind.name}"
     const val CUSTOM_PATH = "composeChat.customPath"
 }
 
@@ -121,7 +149,13 @@ class ComposeChat internal constructor(
     private val scope: CoroutineScope,
     private val resources: android.content.res.Resources,
     started: MutableState<String?>,
+    private val retryFace: suspend (sessionId: String, seed: String) -> BotFaceFailure? = { _, _ -> null },
 ) {
+    companion object {
+        /** How long a started session's row is on its way before its absence means deleted (iOS `recordWait`). */
+        const val RECORD_WAIT_MILLIS = 15_000L
+    }
+
     /** The session the first send started; null until then. Kept through a recreation. */
     var startedId by started
         private set
@@ -139,6 +173,14 @@ class ComposeChat internal constructor(
     internal var notices by mutableStateOf<List<Alert>>(emptyList())
     internal var confirming by mutableStateOf<Pair<String, CompletableDeferred<Boolean>>?>(null)
     internal var prompting by mutableStateOf<Prompt?>(null)
+    internal var faceRetry by mutableStateOf<FaceRetry?>(null)
+
+    /** Why the bot's name is refused, said inside its field until it is typed into. */
+    var nameProblem by mutableStateOf<String?>(null)
+        internal set
+
+    /** Bumped each time the name field should take the keyboard. */
+    internal var nameFocus by mutableIntStateOf(0)
 
     /** The composer's text while composing: the new-session draft's, which outlives the screen. */
     val mirror: Flow<ComposerMirror> = newSession.draft.map { ComposerMirror(draft = it.input) }.distinctUntilChanged()
@@ -177,14 +219,32 @@ class ComposeChat internal constructor(
         val picked = images?.images?.toList().orEmpty()
         if (prompt.isEmpty() && picked.isEmpty()) return
         newSession.setInput(prompt)
+        // The folder the chat shows is where it starts, even if the computer's chats came in a moment ago.
+        newSession.followMachine()
+        val kind = newSession.kind.value
+        val bot = newSession.bot.value
+        // A bot's name is asked for where it is typed, before anything starts; the text stays.
+        if (kind == ComposeKind.Bot) describeBotNameProblem(bot.name)?.let { problem -> return askName(resources.words(problem)) }
+        // A computer that doesn't answer, or isn't in yet, is said so in full before anything is asked of it.
+        val options = newSession.options.value
+        val warning = if (options == null || options.awaitsComputers) R.string.compose_still_loading else options.offline?.let(::offlineText)
+        if (warning != null) {
+            alert = error(resources.getString(warning))
+            return
+        }
         starting = true
         scope.launch {
             try {
-                val result = newSession.starter.start(attachments = picked) { directory ->
+                val request = if (kind == ComposeKind.Bot) BotRequest(bot.name.trim(), bot.faceSeed) else null
+                val result = newSession.starter.start(attachments = picked, bot = request, botMessage = true, task = kind == ComposeKind.Task) { directory ->
                     CompletableDeferred<Boolean>().also { confirming = directory to it }.await()
                 }
                 when (result) {
                     is StartResult.Started -> {
+                        // The next compose offers a session again; a next bot a clean name and fresh faces.
+                        if (request != null) newSession.botCreated(bot)
+                        if (kind == ComposeKind.Task) newSession.taskCreated()
+                        result.faceFailure?.let { failure -> if (request != null) faceRetry = FaceRetry(result.sessionId, request, failure) }
                         picked.forEach { images?.remove(it.id) }
                         // The starter cleared what it sent; anything left was typed since.
                         val rest = newSession.draft.value.input
@@ -205,13 +265,43 @@ class ComposeChat internal constructor(
         }
     }
 
+    /** The bot needs a name: the field takes the keyboard and says why, with a tick. */
+    private fun askName(problem: String) {
+        nameProblem = problem
+        nameFocus++
+    }
+
+    /** The bot's name as typed: a pasted line break becomes a space and the daemon's ceiling is kept. */
+    fun setBotName(name: String) {
+        nameProblem = null
+        newSession.setBotName(sanitizeBotName(name))
+    }
+
+    /** Only the face, on the bot already made; another failure offers it again. */
+    internal fun retryFace(retry: FaceRetry) {
+        scope.launch {
+            val again = retryFace(retry.sessionId, retry.bot.faceSeed)
+            faceRetry = again?.let { retry.copy(failure = it) }
+        }
+    }
+
     /** The screen went before the machine answered: the start stops; the draft stays. */
     internal fun leave() {
         if (composing && starting) newSession.starter.cancel()
     }
 
+    @StringRes
+    private fun offlineText(offline: ComposeOffline): Int = when (offline) {
+        is ComposeOffline.Computer -> R.string.compose_offline_computer
+        ComposeOffline.HappyAgent -> R.string.compose_offline_happy_agent
+        ComposeOffline.HappyCli -> R.string.compose_offline_happy_cli
+    }
+
     private fun error(message: String) = Alert(resources.getString(R.string.common_error), message, listOf(AlertButton(resources.getString(R.string.common_ok))))
 }
+
+/** A bot made from the empty chat that couldn't put on its face: offered again over its chat. */
+internal data class FaceRetry(val sessionId: String, val bot: BotRequest, val failure: BotFaceFailure)
 
 /** The route's [ComposeChat], or null for a route that isn't one. */
 @Composable
@@ -223,7 +313,11 @@ fun rememberComposeChat(graph: AppGraph, routeId: String): ComposeChat? {
     val newSession = remember(services, context) { services.newSession(context.applicationContext) }
     val scope = rememberCoroutineScope()
     val started = rememberSaveable(routeId) { mutableStateOf<String?>(null) }
-    val compose = remember(routeId, newSession, scope, resources) { ComposeChat(routeId, newSession, scope, resources, started) }
+    val compose = remember(routeId, newSession, scope, resources) {
+        // A computer picked on an earlier compose holds a kept bot or task no longer: this one routes it again.
+        newSession.forgetPickedMachine()
+        ComposeChat(routeId, newSession, scope, resources, started) { id, seed -> services.retryBotFace(context.applicationContext, id, seed) }
+    }
     DisposableEffect(compose) { onDispose { compose.leave() } }
     return compose
 }
@@ -262,15 +356,35 @@ fun composeChatModes(options: NewSessionOptions?): ComposerModes {
 fun ComposeChat.progress(): String? {
     val phase by newSession.starter.phase.collectAsStateWithLifecycle()
     val options by newSession.options.collectAsStateWithLifecycle()
+    val kind by newSession.kind.collectAsStateWithLifecycle()
     if (!starting) return null
-    val step = resolveStartProgress(phase, options?.agent?.name.orEmpty(), options?.picksWorkspaces == true) ?: return null
+    val step = resolveStartProgress(
+        phase, options?.agent?.name.orEmpty(), options?.picksWorkspaces == true,
+        createsBot = kind == ComposeKind.Bot, createsTask = kind == ComposeKind.Task,
+    ) ?: return null
     return startProgressText(step)
 }
 
-/** The start's alerts and questions: an error, the images' notices, "Create Directory?", the custom path. */
+/** The start's alerts and questions: an error, the images' notices, "Create Directory?", the custom path, a bot's face. */
 @Composable
 fun ComposeChat.Dialogs() {
     alert?.let { HappyAlert(it, onDismiss = { alert = null }) }
+    faceRetry?.let { retry ->
+        HappyAlert(
+            Alert(
+                stringResource(R.string.home_dock_bot_face_failed_title),
+                stringResource(
+                    if (retry.failure.leg == BotFaceLeg.Uploading) R.string.home_dock_bot_face_upload_failed else R.string.home_dock_bot_face_failed,
+                    retry.bot.name,
+                ),
+                listOf(
+                    AlertButton(stringResource(R.string.home_dock_bot_not_now)),
+                    AlertButton(stringResource(R.string.home_dock_bot_try_again)) { retryFace(retry) },
+                ),
+            ),
+            onDismiss = { faceRetry = null },
+        )
+    }
     notices.firstOrNull()?.let { notice -> HappyAlert(notice, onDismiss = { notices = notices.drop(1) }) }
     prompting?.let { PromptModal(it, onDismiss = { prompting = null }) }
     confirming?.let { (directory, answer) ->
@@ -293,82 +407,243 @@ fun ComposeChat.Dialogs() {
 /**
  * Over the empty chat, centred between the bar and the composer as Happy
  * Agent's new work asks Task or Bot (happy-ios NewWorkPanel `.session`,
- * [NewWorkRoom]): where its first send goes, as rows on the name field's
- * ground. The computer (a desktop glyph), only when there is more than one,
- * then its folder (a folder glyph), each opening a menu: the computers;
- * the chosen one's folders, a custom path and, where there is a choice,
- * the harness. A computer with no folder picked starts in its most recent
- * one ([NewSessionServices.followMachine]). Fixed while the start runs; it
- * fades once the session has started.
+ * [NewWorkGivingWay]): what the first send makes and where it goes.
+ *
+ * - Session | Bot | Task always heads it, so nothing comes or goes as the
+ *   computers arrive: a kind no computer's Happy Agent makes shows dimmed,
+ *   and while they are still arriving every kind can be picked (500c1c485,
+ *   c9adf9162). Picking Bot or Task moves the draft to a computer whose
+ *   Happy Agent makes it and answers ([NewSessionServices.setKind]).
+ * - The computer, always, with whether it answers in a chip on its corner
+ *   ("Online", "Offline · 3d", "Happy Agent offline", "…" while arriving);
+ *   its menu lists, for a bot or a task, only computers whose Happy Agent
+ *   makes it, those that answer first, and leads with why the chosen one
+ *   can't take the send while it can't.
+ * - A session's folder and harness; a bot's name ("Name your bot", its
+ *   refusal said inside the field) and what a bot is; a task asks nothing
+ *   more.
+ *
+ * Fixed while the start runs; it fades once the session has started.
  */
 @Composable
-fun ComposeTarget(compose: ComposeChat) {
+fun ComposeTarget(compose: ComposeChat, onReturn: () -> Unit = {}) {
     val newSession = compose.newSession
     val options by newSession.options.collectAsStateWithLifecycle()
     val draft by newSession.draft.collectAsStateWithLifecycle()
+    val kind by newSession.kind.collectAsStateWithLifecycle()
+    val bot by newSession.bot.collectAsStateWithLifecycle()
     // The folders follow the computer, while nothing has started.
-    LaunchedEffect(draft.selectedMachineId, draft.selectedPath, draft.selectedProjectId, options != null) {
+    // Its chats may arrive after it: the most recent folder is looked for again as its places come in.
+    LaunchedEffect(draft.selectedMachineId, draft.selectedPath, draft.selectedProjectId, options?.projects?.size) {
         if (compose.composing) newSession.followMachine()
     }
-    val current = options ?: return
+    val current = options
+    val awaits = current == null || current.awaitsComputers
     var open by remember { mutableStateOf<NewSessionPage?>(null) }
     val enabled = !compose.starting
-    NewWorkRoom(compose.composing) {
-        Column(
-            Modifier.fillMaxWidth().testTag(ComposeChatTags.TARGET),
-            verticalArrangement = Arrangement.spacedBy(NewWorkSpec.rowGap),
+    val kinds = ComposeKind.entries
+    val offered = buildSet {
+        add(ComposeKind.Session)
+        add(kind)
+        if (current == null || !current.machinesSynced) addAll(kinds)
+        if (current?.offersBots == true) add(ComposeKind.Bot)
+        if (current?.offersTasks == true) add(ComposeKind.Task)
+    }
+    val kindLabels = listOf(
+        stringResource(R.string.home_dock_kind_session),
+        stringResource(R.string.new_work_bot),
+        stringResource(R.string.new_work_task),
+    )
+    val kindLabel = stringResource(R.string.home_dock_bot_kind)
+
+    val machineTitle = if (awaits) stringResource(R.string.compose_loading_computers) else current.machine?.name ?: stringResource(R.string.home_dock_select_machine)
+    val machineStatus = composeMachineStatus(current, awaits)
+    val machineRow: @Composable () -> Unit = {
+        NewWorkMenuRow(
+            Ionicon.DesktopOutline, machineTitle, enabled,
+            onClick = { open = NewSessionPage.Machine },
+            status = machineStatus,
+            modifier = Modifier.testTag(NewWorkTags.MACHINE).semantics { contentDescription = listOfNotNull(machineTitle, machineStatus?.text).joinToString(", ") },
         ) {
-            if (current.machines.size > 1) {
-                val machine = current.machine?.name ?: stringResource(R.string.home_dock_select_machine)
-                NewWorkMenuRow(
-                    Ionicon.DesktopOutline, machine, enabled,
-                    onClick = { open = NewSessionPage.Machine },
-                    modifier = Modifier.testTag(NewWorkTags.MACHINE).semantics { contentDescription = machine },
-                ) {
-                    HappyDropdownMenu(expanded = open == NewSessionPage.Machine, onDismissRequest = { open = null }, modifier = Modifier.testTag(ComposeChatTags.MACHINE_MENU)) {
-                        MachineMenu(compose, current) { open = null }
+            HappyDropdownMenu(expanded = open == NewSessionPage.Machine, onDismissRequest = { open = null }, modifier = Modifier.testTag(ComposeChatTags.MACHINE_MENU)) {
+                MachineMenu(compose, current, kind, awaits) { open = null }
+            }
+        }
+    }
+    val rows = buildList<@Composable () -> Unit> {
+        add(machineRow)
+        when (kind) {
+            ComposeKind.Session -> {
+                val folder = current?.project?.name ?: "~"
+                add {
+                    NewWorkMenuRow(
+                        Ionicon.FolderOutline, folder, enabled && current != null,
+                        onClick = { open = NewSessionPage.Project },
+                        modifier = Modifier.testTag(NewWorkTags.FOLDER).semantics { contentDescription = folder },
+                    ) {
+                        if (current != null) {
+                            HappyDropdownMenu(expanded = open == NewSessionPage.Project, onDismissRequest = { open = null }, modifier = Modifier.testTag(ComposeChatTags.FOLDER_MENU)) {
+                                FolderMenu(compose, current) { open = null }
+                            }
+                        }
                     }
                 }
+                add { HarnessRow(compose, current, awaits, enabled, open == NewSessionPage.Agent, onOpen = { open = NewSessionPage.Agent }, onClose = { open = null }) }
             }
-            val folder = current.project?.name ?: "~"
-            NewWorkMenuRow(
-                Ionicon.FolderOutline, folder, enabled,
-                onClick = { open = NewSessionPage.Project },
-                modifier = Modifier.testTag(NewWorkTags.FOLDER).semantics { contentDescription = folder },
-            ) {
-                HappyDropdownMenu(expanded = open == NewSessionPage.Project, onDismissRequest = { open = null }, modifier = Modifier.testTag(ComposeChatTags.FOLDER_MENU)) {
-                    FolderMenu(compose, current) { open = null }
-                }
-            }
+            ComposeKind.Bot -> add { BotNameRow(compose, bot.name, enabled, onReturn) }
+            ComposeKind.Task -> Unit
         }
     }
+    NewWorkGivingWay(
+        shown = compose.composing,
+        kind = {
+            NewWorkSegments(
+                labels = kindLabels,
+                selected = kinds.indexOf(kind),
+                enabled = enabled,
+                tag = { ComposeChatTags.kind(kinds[it]) },
+                onPick = { newSession.setKind(kinds[it]) },
+                segmentEnabled = { kinds[it] in offered },
+                modifier = Modifier.semantics { contentDescription = kindLabel },
+            )
+        },
+        rows = rows,
+        note = if (kind == ComposeKind.Bot) {
+            {
+                Text(
+                    stringResource(R.string.home_dock_bot_lede),
+                    style = NewWorkSpec.note,
+                    color = HappyTheme.colors.textSecondary,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth().testTag(NewWorkTags.NOTE),
+                )
+            }
+        } else {
+            null
+        },
+        modifier = Modifier.testTag(ComposeChatTags.TARGET),
+    )
 }
 
-/** The computers, in [HappyDropdownMenu]'s look: under their title, the picked one highlighted and checked. */
+/**
+ * The computer row's chip (happy-ios 0c242b369): "● Online" in green,
+ * "● Offline · 3d" or the daemon that doesn't answer in the warning colour,
+ * "● …" in grey while the computers are still arriving; null with no
+ * computer chosen.
+ */
 @Composable
-private fun MachineMenu(compose: ComposeChat, options: NewSessionOptions, close: () -> Unit) {
-    HappyMenuSection(pageTitle(NewSessionPage.Machine, options.picksWorkspaces))
-    for (option in options.machines) {
-        MenuOption(NewSessionPage.Machine, option, option.key == options.resolvedMachineId) { page, key ->
-            close()
-            compose.newSession.select(page, key)
-        }
+private fun composeMachineStatus(options: NewSessionOptions?, awaits: Boolean): NewWorkStatus? {
+    val colors = HappyTheme.colors
+    if (awaits) return NewWorkStatus("● …", colors.textSecondary)
+    if (options?.currentTarget == null) return null
+    val resources = LocalResources.current
+    val text = when (val offline = options.offline) {
+        null -> stringResource(R.string.status_online).capitalized()
+        is ComposeOffline.Computer -> stringResource(R.string.status_offline).capitalized() + " · " + compactAgo(resources, offline.lastSeenAt, System.currentTimeMillis())
+        ComposeOffline.HappyAgent -> stringResource(R.string.compose_chip_happy_agent_offline)
+        ComposeOffline.HappyCli -> stringResource(R.string.compose_chip_happy_cli_offline)
+    }
+    return NewWorkStatus("● $text", if (options.offline == null) colors.status.connected else colors.boxWarning.text)
+}
+
+private fun String.capitalized(): String = replaceFirstChar { it.titlecase(Locale.getDefault()) }
+
+/** "now", "5m", "2h", "3d", "2w", "4mo", "1y" (happy-ios ComposeTarget.compact): never a date, which the chip has no room for. */
+internal fun compactAgo(resources: android.content.res.Resources, activeAt: Long, now: Long): String {
+    val minutes = (now - activeAt).coerceAtLeast(0) / 60_000
+    val hours = minutes / 60
+    val days = hours / 24
+    return when {
+        minutes < 1 -> resources.getString(R.string.compose_ago_now)
+        minutes < 60 -> resources.getString(R.string.compose_ago_minutes, minutes.toInt())
+        hours < 24 -> resources.getString(R.string.compose_ago_hours, hours.toInt())
+        days < 7 -> resources.getString(R.string.compose_ago_days, days.toInt())
+        days < 30 -> resources.getString(R.string.compose_ago_weeks, (days / 7).toInt())
+        days < 365 -> resources.getString(R.string.compose_ago_months, (days / 30).toInt())
+        else -> resources.getString(R.string.compose_ago_years, (days / 365).toInt())
     }
 }
 
-/** The chosen computer's folders, most recent first, a custom path, and the harness when there is a choice of one. */
+/**
+ * The computers [kind] can go to, those that answer first, each with a
+ * status dot and "online" or "last seen …"; under the menu's title, or,
+ * while the chosen one can't take the send, under why.
+ */
+@Composable
+private fun MachineMenu(compose: ComposeChat, options: NewSessionOptions?, kind: ComposeKind, awaits: Boolean, close: () -> Unit) {
+    val colors = HappyTheme.colors
+    val resources = LocalResources.current
+    val targets = options?.targets(kind).orEmpty()
+    val title = when {
+        awaits && targets.isEmpty() -> null
+        options?.offline != null -> stringResource(
+            when (options.offline) {
+                is ComposeOffline.Computer -> R.string.compose_offline_computer
+                ComposeOffline.HappyAgent -> R.string.compose_offline_happy_agent
+                ComposeOffline.HappyCli -> R.string.compose_offline_happy_cli
+            },
+        )
+        else -> null
+    } ?: stringResource(
+        when (kind) {
+            ComposeKind.Session -> R.string.home_dock_picker_machine
+            ComposeKind.Bot -> R.string.compose_machines_bots
+            ComposeKind.Task -> R.string.compose_machines_tasks
+        },
+    )
+    if (options?.offline != null) {
+        // The whole sentence, which a section title would cut.
+        Text(
+            title,
+            style = MenuSpec.supporting,
+            color = colors.boxWarning.text,
+            modifier = Modifier.padding(horizontal = MenuSpec.itemInset + 12.dp, vertical = 8.dp).widthIn(max = 280.dp),
+        )
+    } else {
+        HappyMenuSection(title)
+    }
+    if (targets.isEmpty() && awaits) {
+        HappyMenuItem(label = stringResource(R.string.compose_loading_computers), onClick = {}, enabled = false)
+        return
+    }
+    val now = System.currentTimeMillis()
+    for (target in targets) {
+        val online = target.isOnline(kind)
+        val status = target.lastSeen(kind)?.let { resources.getString(R.string.status_last_seen, formatLastSeen(resources, it, now)) }
+            ?: resources.getString(if (online) R.string.status_online else R.string.status_offline)
+        HappyMenuItem(
+            label = target.name,
+            supporting = status,
+            selected = target.id == options?.currentTarget?.id,
+            leading = { StatusDot(if (online) colors.status.connected else colors.status.disconnected) },
+            onClick = {
+                close()
+                compose.newSession.selectMachine(target.id)
+            },
+            modifier = Modifier.testTag(ComposeChatTags.option(NewSessionPage.Machine, target.id)),
+        )
+    }
+}
+
+@Composable
+private fun StatusDot(color: Color) {
+    Box(Modifier.size(8.dp).clip(CircleShape).background(color))
+}
+
+/** The chosen computer's folders, most recent first, and a custom path. */
 @Composable
 private fun FolderMenu(compose: ComposeChat, options: NewSessionOptions, close: () -> Unit) {
     val newSession = compose.newSession
     val customTitle = stringResource(R.string.machine_launcher_enter_custom_path)
     val customPlaceholder = stringResource(R.string.home_dock_custom_path_placeholder)
     val ok = stringResource(R.string.common_ok)
-    fun pick(page: NewSessionPage, key: String) {
-        close()
-        newSession.select(page, key)
-    }
     HappyMenuSection(stringResource(R.string.home_dock_picker_projects))
-    for (option in options.projects) MenuOption(NewSessionPage.Project, option, option.key == options.project?.key, ::pick)
+    for (option in options.projects) {
+        MenuOption(NewSessionPage.Project, option, option.key == options.project?.key) { page, key ->
+            close()
+            newSession.select(page, key)
+        }
+    }
     HappyMenuItem(
         label = customTitle,
         onClick = {
@@ -383,11 +658,69 @@ private fun FolderMenu(compose: ComposeChat, options: NewSessionOptions, close: 
         },
         modifier = Modifier.testTag(ComposeChatTags.CUSTOM_PATH),
     )
-    if (options.agents.size > 1) {
-        HappyMenuDivider()
-        HappyMenuSection(pageTitle(NewSessionPage.Agent, options.picksWorkspaces))
-        for (option in options.agents) MenuOption(NewSessionPage.Agent, option, option.key == options.agent.key, ::pick)
+}
+
+/**
+ * The harness, a row of its own under the folder (happy-ios 01c9b0b53).
+ * With nothing to run on the computer it reads Help and opens the setup
+ * guide; not while the computers are still arriving, when nothing is known.
+ */
+@Composable
+private fun HarnessRow(
+    compose: ComposeChat,
+    options: NewSessionOptions?,
+    awaits: Boolean,
+    enabled: Boolean,
+    expanded: Boolean,
+    onOpen: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val uriHandler = LocalUriHandler.current
+    val help = options != null && !options.hasHarness && !awaits
+    val title = when {
+        help -> stringResource(R.string.home_dock_harness_help)
+        else -> options?.agent?.name ?: compose.newSession.draft.value.agentType.displayName
     }
+    val description = if (help) stringResource(R.string.home_dock_harness_help_label) else stringResource(R.string.home_dock_picker_harness) + ": " + title
+    NewWorkMenuRow(
+        if (help) Ionicon.HelpCircleOutline else Ionicon.HardwareChipOutline, title, enabled && options != null,
+        onClick = { if (help) uriHandler.openUri(HARNESS_SETUP_HELP_URL) else onOpen() },
+        modifier = Modifier.testTag(NewWorkTags.HARNESS).semantics { contentDescription = description },
+    ) {
+        if (options != null && !help) {
+            HappyDropdownMenu(expanded = expanded, onDismissRequest = onClose, modifier = Modifier.testTag(ComposeChatTags.HARNESS_MENU)) {
+                HappyMenuSection(pageTitle(NewSessionPage.Agent, options.picksWorkspaces))
+                for (option in options.agents) {
+                    MenuOption(NewSessionPage.Agent, option, option.key == options.agent.key) { page, key ->
+                        onClose()
+                        compose.newSession.select(page, key)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** A bot's name: it can't go without one; a refusal is said inside the field, which takes the keyboard. */
+@Composable
+private fun BotNameRow(compose: ComposeChat, name: String, enabled: Boolean, onReturn: () -> Unit) {
+    val focus = remember { FocusRequester() }
+    val haptics = LocalHapticFeedback.current
+    LaunchedEffect(compose.nameFocus) {
+        if (compose.nameFocus > 0) {
+            focus.requestFocus()
+            haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)
+        }
+    }
+    NewWorkNameField(
+        value = name,
+        onValueChange = compose::setBotName,
+        placeholder = stringResource(R.string.home_dock_bot_name_placeholder),
+        enabled = enabled,
+        onReturn = onReturn,
+        problem = compose.nameProblem,
+        modifier = Modifier.focusRequester(focus),
+    )
 }
 
 @Composable

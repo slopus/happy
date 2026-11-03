@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The composer's model and effort chips and their lists (iOS e2238fdc4, 083c30df4; desktop ComposerModelControl.tsx). -->
+<resources>
+    <string name="conversation_models_not_configured">Modelli non configurati</string>
+    <string name="conversation_model_hidden_account">Account nascosto. Funziona ancora; è solo tenuto fuori dagli elenchi.</string>
+    <string name="conversation_model_account_removed">L’account %1$s non è più configurato su questo Happy Agent.</string>
+    <string name="conversation_model_account_off">L’account %1$s è disattivato, quindi non gli viene inviato nulla.</string>
+    <string name="conversation_model_chip">Modello: %1$s</string>
+    <string name="conversation_effort_chip">Impegno: %1$s</string>
+    <string name="conversation_select_model">Scegli il modello</string>
+    <string name="conversation_select_effort">Scegli l’impegno</string>
+    <string name="conversation_accounts_of">Account %1$s</string>
+    <string name="conversation_heading_label">Account %1$s: %2$s</string>
+    <string name="conversation_usage_unknown">Utilizzo sconosciuto</string>
+    <string name="conversation_limit_reached">Limite raggiunto</string>
+    <string name="conversation_limit_resets">Il limite si azzera %1$s</string>
+    <string name="conversation_usage_updating">Aggiornamento…</string>
+    <string name="conversation_usage_couldnt_refresh">Impossibile aggiornare</string>
+    <string name="conversation_usage_updated">Aggiornato %1$s</string>
+    <string name="conversation_usage_updated_failed">Aggiornato %1$s · impossibile aggiornare</string>
+    <string name="conversation_usage_as_of">%1$s alle %2$s</string>
+    <string name="conversation_usage_just_now">proprio ora</string>
+    <string name="conversation_usage_minutes_ago">%1$d min fa</string>
+    <string name="conversation_usage_hours_ago">%1$d h fa</string>
+    <string name="conversation_usage_at">alle %1$s</string>
+    <string name="conversation_usage_signed_out">Disconnesso</string>
+</resources>

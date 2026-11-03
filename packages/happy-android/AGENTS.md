@@ -163,11 +163,18 @@ win:
   Computer page swallows back; here back leaves the app as on any root.
 - **Home's top bar:** the current account's avatar on the left opens a
   drop-down of the relay accounts and agent connections (avatar and
-  name each, a check on the open one), then one "Add"
+  name each, a check on the open one), then one "Add". The two kinds are
+  "Happy CLI" (a relay account) and "Happy Agent" (an agent connection),
+  never "legacy" (iOS 64edb6a34): one with no name of its own goes by
+  its kind, and TalkBack hears the kind after each row's name
   (`ui/home/AccountMenu.kt`); picking one switches
   (`AppGraph.open`). Settings on the right. The legacy home and agent
   home share one bar (`AgentTopBar`, `BarTitle`): the account's name as
-  the title, with an unhealthy connection under it. No logo, filter menu
+  the title. While the link is on its way (iOS 7aee3a9b8, Telegram's
+  title) "Waiting for network…", "Connecting…" or "Updating…" stands in
+  the name's place behind a 16 spinner, debounced by `LinkStateDebounce`
+  and swapped with a 6 slide and fade over 250 ms; offline keeps the
+  name, since home's list says why. No logo, filter menu
   (grouping is in Appearance) or "Sessions" title. Compose is a FAB at the
   bottom right of both homes (`ComposeFab`); home has no text input. One account is open at a
   time: a Happy account or an agent connection (`openAgentId`); each has
@@ -211,14 +218,23 @@ win:
   (`ui/chat/ComposeChat.kt`, iOS's LegacyComposeStart): its composer
   writes the account's new-session draft; centred between the bar and the
   composer (`ui/chat/NewWorkPanel.kt`, iOS's NewWorkPanel/NewWorkLayout)
-  sit the computer (only with two or more) and the folder, each a menu,
-  the folders following the computer; its first send starts the session
-  with that text and images, and the screen then shows that session. A
-  refused or failed start says why and keeps the text; leaving before the
-  computer answers stops the start and the draft stays. On a tablet the
-  sidebar's New session opens the same chat in the detail pane. Legacy
-  compose makes sessions only; a legacy bot is made on the new-session
-  screen (`/new`). An agent connection's empty chat asks Task or Bot and an
+  sit Session | Bot | Task (always shown; a kind no computer's Happy Agent
+  makes is dimmed, all pickable while the computers are still arriving),
+  the computer (always, with an Online / Offline · 3d / Happy Agent offline
+  chip on its corner, "Loading computers…" until they are in), then a
+  session's folder and harness, or a bot's name (a refusal said inside the
+  field), each a menu, the folders following the computer. Bot and Task
+  go to a computer whose Happy Agent makes them and answers
+  (`MachineTarget`, `NewSessionServices.setKind`), moved off an offline
+  one unless the person picked it. Short of room the block drops its note,
+  then tightens. Its first send starts the session, bot or task (Happy
+  Agent's `target: {kind: "task"}`) with that text and images, and the
+  screen then shows it. A send to a computer that doesn't answer, or
+  before the computers are in, is refused in full before anything starts;
+  a refused or failed start says why and keeps the text; leaving before
+  the computer answers stops the start and the draft stays. On a tablet
+  the sidebar's New session opens the same chat in the detail pane. An
+  agent connection's empty chat asks Task or Bot and an
   optional name in the same place; its first send makes that kind under
   that name (`POST /v0/tasks` or `/v0/bots`, once, the same ids on a
   retry) and only then sends, so a refusal keeps the text and says why.
@@ -232,6 +248,16 @@ win:
   inside). Day and section headings become gaps; a computer heads its
   cards only when there is more than one; the archive is one card under
   its toggle. Rows show no timestamp.
+- **Legacy tasks** (iOS 36b11c5bf): a Happy Agent session with
+  `metadata.task` is a task. Each computer's tasks follow its bots, in
+  the person's `orderKey` (plain string order), then unjoined ones newest
+  first. A task is named by the task, placed at `~/Tasks/<folder>`, wears
+  its seed's face with no harness badge, and its folder is never a place
+  for new work. Its machine alone ends it: Leave task (`leaveTask`, offered
+  where `rpcMethods` lists it; also the swipe) and Archive task
+  (`killSession`, only where `task.canArchive`); never a server archive or
+  delete. Left or archived, it leaves every list at once and comes back
+  only with the machine's refusal.
 - **Fonts:** the system font for all text, the platform monospace
   (`FontFamily.Monospace`) for code. Not IBM Plex.
 - **Home rows** have strict, precomputed heights, per row kind and font
@@ -1075,6 +1101,272 @@ pages across and is dragged away up or down. A recording plays in its page
 (`VideoPage`). The position reads "N of M" for TalkBack only, as iOS has it
 for VoiceOver (`message.mediaPosition` in happy-app's catalogs).
 
+A picture opens out of its thumbnail and closes back into it, as
+Telegram's PhotoViewer does. A thumbnail that opens the viewer carries
+`Modifier.viewerOrigin(key, radius)`, keyed as the viewer keys the item
+(a chat tile by its cache key, an artifact file by
+`ArtifactMedia.resourceId`). It says where it is on the screen in
+`ViewerOrigins.Shared` and draws nothing while it is `hidden`. The viewer
+lays the picture out at rest and scales, moves and clips it there
+(`PictureViewing.flight`), so it starts from Coil's memory copy of the
+thumbnail (`rememberMemoryImage`). It hides the thumbnail only once its
+dialog window has focus. It closes into the thumbnail if that is on the
+screen, by tap, back or a drag, and otherwise fades. Then it waits for the
+thumbnail to draw again (`ViewerOrigins.drawn`) before it goes, so there
+is no hole. A recording neither flies nor hides its tile.
+
+A tap on a kept recording's play button plays it as soon as its first
+playable range is on the phone (iOS 42121e99e, `VideoOpening`). The
+retriever reads the header through the same ranged source the player
+reads. Until then the play glyph is a small spinner (`MediaRingState.Starting`:
+0.7 of a circle, a fifth of the disc across, turning every 0.8 s), and the
+rest of the file reads on behind. A second tap while it spins gives up.
+This applies to the chat's tiles and the agent page's grid.
+
+### Conversation turns
+
+Each run of a Happy Agent conversation is a turn, drawn as desktop draws it
+(iOS 7f6355041). A tool call is one line in plain words:
+`ui/conversation/ToolWords` ports desktop's `toolVerb` / `humanizeToolName`
+/ `toolGlyph`, so it reads "Shell ls", "Edit x.ts +3 −1" or "Explored a.ts",
+in the present tense while the call runs. `ui/chat/ToolView` is not used
+here. Once a run has `endedAt`, `Conversation.derive` adds a
+`ConversationRow.TurnEnd` ("Completed in 12s", which also copies the final
+answer, so that answer has no copy button of its own). `conversation/TurnFold`
+then folds the turn behind a `Trace` row ("View traces · N tools"). Folded,
+the turn keeps the person's words, the answer, file edits, media, artifacts
+and failures. `Conversation.toggleTurn` opens or folds it, and
+`FoldHold` in ConversationScreen keeps the trace row where it was on screen.
+Words are in `strings_turns.xml`.
+
+A tap on a tool line opens the call (`ToolCallRoute`, `ToolCallScreen`;
+iOS ToolDetailViewController, 1575b41b8). It is titled with the line's
+subject, under a header card (kind, tool name, status pill), then what the
+call did from its `presentation`: a command in the terminal panel
+(`CommandView`), an edit as each file's diff drawn from the hunks as sent
+(`ToolPatch` builds a patch for DiffFilesList; each file opens alone with
+`file` set), a look around as its steps, a search with its sources. A call
+without one is read from its vendor's arguments (`conversation/ToolCalls`:
+`ToolKind`, `ToolPlan`, `ToolSubagent`, `ToolMessage`) and otherwise shown
+as fields (`ToolValue`: priority keys first, long strings as blocks,
+nested past depth 2 as JSON). Then the review, if the call crossed it, and
+the raw JSON, folded. The chat's copy may lack the raw data (history read
+with `omitToolData`) or have it cut at 32 KB (`ToolData`); `ToolCallModel`
+then reads that run once more whole (`ToolCallReader`). Words are in
+`strings_tool_detail.xml`. The agent page's "Changes" row opens the
+workspace's own Git changes (`WorkspaceChangesRoute`, `WorkspaceGit` over
+`/v0/workspaces/:id/git`, `file-revision` and `file`); five files or fewer
+open whole.
+
+A person's message past ten lines folds the same way (`UserFold` in
+ProseViews; iOS c52fd2842). `Prose.cut` counts the laid-out lines, so the
+cut is decided while composing and not after measuring. Code and tables
+count their own lines. The bubble shows the lines up to the tenth line's
+foot, then "Show full". If that line is inside code, the cut falls at ten
+lines of text height. A tap on the bubble calls `Conversation.toggleMessage`
+and flips `ConversationRow.User.opened`. `FoldHold` keeps the row above the
+message in place, so the bubble opens downward.
+
+Code in a Happy Agent chat works as on desktop (3365ef9f, 3e08585d).
+ConversationScreen provides `LocalCodeCopy` = `CodeCopy.Icon`, so
+MarkdownView's code block shows a quiet 14 copy glyph in a 24 box, 6 in
+from its corner, which turns into a check for 1.6 s. The relay chat keeps
+its "Copy" pill. `proseSpans` marks inline code with `INLINE_CODE`. A long
+press on that code selects the whole span, both in place (`SelectionStart`)
+and in the lift's Select (`LiftSelection`).
+
+A held message lifts over the chat (MessageLift). Only the header and the
+transcript blur (`liftBackdrop`). The veil stops at the composer's top
+(`liftClear` sets `MessageLift.clear`), so the input stays sharp and
+undimmed. The lifted message and its menu keep 10 above the composer. The
+light veil is white at 0.6, so the chat reads frosted white, not grey; the
+dark veil is black at 0.6. A card's shadow (8% black, 12 blur) and the
+menu's 4 elevation part white from white without shading the composer.
+
+A conversation that finishes chimes as on desktop (a72f8304, 962201a2).
+`AgentSession.follow` asks `CompletionWatch` about each journal event. It
+chimes for a `run.finished` of a top-level conversation that home lists,
+for its current run, ended within 30 s (so a replay after reconnecting
+stays quiet), unless the connection's `happy-desktop.completionSound` is
+"never" or the bot is muted or hidden (`happy-desktop.bot.<id>`).
+`CompletionChime` renders desktop's two sines (659.25 Hz, then 880 Hz at
+0.11 s; 15 ms attack, decay to 0.42 s) as a sonification AudioTrack and
+stays silent unless the ringer is normal. The link only runs while the
+connection is open and the app is in the foreground, so on the phone
+When focused and Always chime alike. Appearance shows the setting.
+
+The composers' primary button is one button that changes its glyph
+(`PrimaryGlyph`, iOS `AgentInputPrimaryGlyphMotion`). The glyph going away
+shrinks to 0.5 and fades while the new one grows in, over 0.2 s; Reduce
+Motion keeps only the fade. The relay chat's fill changes over the same
+0.2 s. A stop that fails shakes the button in both chats (Shaker.tsx). The
+Happy Agent field's placeholder is iOS's "Type a message ..."
+(`session_input_placeholder`).
+
+Composer pictures come and go as on iOS 8eed293c9 (`PictureStripMotion`):
+one added grows from 0.2 and fades in, one taken out shrinks to 0.2 and fades
+where it was while the rest slide, over 0.4 s on the (0.38, 0.7, 0.125, 1)
+curve. Both strips use it (the Happy Agent composer's and `AttachmentStrip`).
+A lazy row never redraws an item it is taking out, so `PictureStripFrame`
+draws the leaving picture itself, under the row at its last place. The strip
+records a picture as leaving during composition, so it shows in the same
+frame the row drops it. The picker hands over its own list, which it changes
+in place, so the strip keeps a copy to compare against. The last picture
+keeps the strip open until it has gone. Pictures already there when the
+composer is made arrive without animating.
+
+On a phone held upright, the attach sheet grows out of the + and goes back
+into it (`AttachMorph`, iOS `morphIn`/`morphOut` from 8eed293c9 and da11ed4af).
+The composer marks its + with `Modifier.attachButton(rememberAttachButton {
+glyph })` and passes it to `AttachSheet`. When the morph takes the +, it hides
+the button and draws the glyph on the morph, and gives the button back only
+once the sheet has gone. The sheet is clipped to a rounded rect that runs from
+the button to the sheet: the centre on one spring, the size on another, and
+the corners over 0.2 s. The page and the sheet's ground fade in over 0.2 s,
+and the glyph fades out over 0.15 s. On the way back the page fades out over
+0.12 s, the glyph returns over 0.22 s, and the ground goes last, so the +
+alone lands on the button. iOS gives its springs as damping plus duration;
+these use the same damping ratio, at the stiffness that settles in that
+duration. Tablets, landscape and Reduce Motion slide the sheet up as before.
+
+A Happy Agent picture on its way to the computer wears Telegram's ring in the
+bubble (`UploadRing`, iOS 5ac4296c2). The tile is dimmed, with a dark disc
+and a white arc for the share written; the arc turns while it fills. Its cross
+takes that picture out with its workspace file (`Conversation.removePicture`,
+iOS `removeAttachment`): the write in flight stops and the rest goes again
+under the same id, its text no longer naming that file, and a message left
+empty is taken back. A picture whose file is already written stays. Pictures
+go as workspace files, so the share is that file's request body as the
+transport writes it: `BodyProgress` in the coroutine context gets each chunk
+and `UploadBoard` holds a share per picture. Before its file's bytes go, the
+arc is short and turning; once the file is written the ring fills and shrinks
+away. The photos are movable content, so a bubble that changes keeps its
+rings.
+
+Presented chat media is kept on the phone for good (`media/`, iOS
+ba7b68346, after Telegram's MediaBox). Each agent connection has a
+`MediaLibrary` beside its kept catalog (`<connection>.media/` in no-backup
+storage), and it goes when the connection does. A file is kept under the
+SHA-256 of its ID (`tool/<agentId>/<toolCallId>/<index>`). While it arrives
+it is a `.part` file with holes plus a `.part.meta` record of the ranges held,
+so a download resumes after a relaunch. `MediaDownloads` reads one file a
+range at a time over the media route with `Range`: 1 MiB chunks for a whole
+file, and a player's range first (256 KiB). At most two automatic downloads
+run at once; a tap or a player goes past them. Three failures in a row, or
+one 4xx, mark the file failed until the next tap. `KeptMedia` connects a
+conversation to its library: photos and small files read themselves as they
+show (`MediaAutoDownload`, Data and Storage), and anything else waits for a
+tap on its ring. Tiles draw `DownloadStatus`: the ring (`MediaRing`, the
+same component as the upload ring) shows an arrow, progress or retry, and a
+recording's ring is its play button. A size badge in the top-left corner
+shows a recording's length over "1.2 / 8.4 MB". A recording streams through
+the library (`MediaStream`), so what was played is kept. Clear Media
+empties the library. `rememberKeptMedia` builds a `KeptMedia` for a chat and
+for its agent page, whose shared grid reads and rings the same way. A file
+card's chip is `FileStatusChip`: a blue ring with the arrow or progress
+until the file is here, then its glyph, with the size or "1.2 / 8.4 MB" in
+the detail line; the chip's tap reads or pauses, and the card's tap opens.
+An artifact's own files go through the same library under
+`artifact/<artifactId>/<version>/<path>` (a numbered version never changes),
+with no automatic rules: opening it reads it. Gallery and document tiles
+draw `MediaStatus`. Happy accounts keep attachments in a library of their
+own (`legacy-media/<publicId>/`, removed on sign-out): plaintext once
+secretbox has checked the MAC, and a sent picture is kept at upload, so the
+sender never downloads it. A legacy download is one request with progress
+from the body; it can't pause.
+
+### Context meter and usage ring
+
+Under an agent connection's composer, `ui/conversation/ContextMeter` draws
+desktop's ContextMeter as iOS does (083c30df4). It is a 64 × 4 bar in a
+20 dp row under the pill, its end under send (`ComposerViewport`'s
+`meter` slot; the one-row composer has none). A tap shows "42% 84k/200k"
+for 4 s, and a hold shows it while held. The bar is coloured only near
+compaction. `conversation/ContextGauge.derive` reads it from
+`ConversationState.context` (the bootstrap's `context`, then each
+`agent.context.updated`, applied without deriving rows) against the
+window in `ModeCatalog.windows`. Before the first measurement it shows
+the selected model's window. There is none while history is read or
+before new work is made.
+
+The model chip wears desktop's usage ring while the selected account
+runs low (`AccountUsage.warning`: the week before the session, under 25 %
+low, under 10 % or blocked critical) and reads the warning out.
+`AgentSession.usage` (`AgentUsageSource`) reads `GET /v0/usage` while a
+chat shows, and again on `provider.usage.*`, `config.updated` and each
+reconnect. It keeps following for 30 s after the last chat goes. Words
+are in `strings_context_meter.xml`.
+
+### One-row composer
+
+The chat's composer is one row when the full card with one line would
+leave the transcript under 120 dp between the bar's foot and the card
+(iOS ac81745ac, `ChatScreenLayout.compactBelow`). That is a phone held
+sideways with the keyboard up. It is also one row wherever the card
+can't fit at all. The decision comes from the card with one line, never
+from the card as it is, so typing and going to one row can't undo it.
+It is read where the keyboard rests (`keyboardPadding`), not mid-drag.
+The row is [+], the field (two lines, then it scrolls, with the expand
+button), the chips and send. The buttons stay at the row's foot as the
+field grows. Android keeps the chips in the row rather than behind iOS's
+options button: a sideways phone has the width for them.
+
+### Full-screen editor
+
+Past the lines the card shows (eight, or the one row's two, measured at
+the field's width without the button), the composer offers Telegram's
+expand as iOS does (efea2b139): send's size, centred over send, as far
+from the card's top as send is from its foot, and the words wrap clear of
+it. In the one row it stands at the field's end. It fades in over 0.1 s.
+It opens `ui/conversation/ComposerEditor` over the chat: the same draft,
+caret where it was, from the top inset to the keyboard, with the collapse
+button 8 in from the top end. Collapse or Back hands the caret back, and
+the composer takes focus before the editor fades out so the keyboard
+stays up. If the keyboard was put away first, it stays away. It is drawn
+in the chat's own window, not a dialog, so the keyboard never drops as
+focus moves between the two fields. While it is up, the chat under it is
+out of TalkBack's tree. Compose text has no exclusion paths, so every
+line keeps clear of the collapse button, not only the first two.
+
+### Pasting a picture
+
+The agent composer's field carries a content receiver
+(`Modifier.contentReceiver`), so a copied picture offers Paste in the
+field's own text menu and attaches as a waiting picture, as iOS's
+`AgentInputTextView` does. A keyboard's inserted image takes the same way.
+The picture is what was meant: its name or address, often copied with it
+as text, is dropped. Copied text alone pastes as words. Pictures go
+through `ImagePicker.receive`, so they get the same room check and
+normalization as the photo picker.
+
+### Model and effort chips
+
+The composer's label slot holds two chips, as iOS does (e2238fdc4,
+083c30df4): the model (bold) and its effort (`ConversationModelChips`).
+Each opens its own list (`ui/conversation/ModelPicker`), in Android's
+menu card instead of iOS glass. The list's trailing edge sits on the
+chip's, 10 dp above it, and it opens scrolled to the checked line.
+`conversation/ModelMenus` builds the model list from `ModeCatalog`'s
+providers: one service per provider type under a heading with the
+selected account, its readings and a chevron. A hidden account or
+model is left out unless it is the selection. A switched-off account is
+listed dimmed, and its service opens on an account that works. A
+selection that is gone, off or hidden gets a notice. The chevron
+stacks that service's accounts over the list in place (same trailing edge
+and bottom), each with its week reading and the selected one's windows.
+Switching account keeps the model list up; any other pick closes it. A
+touch outside, or Back, closes the accounts first.
+
+A pick of another model runs at that model's default effort. The same
+model keeps its effort, and an account switch keeps it when the model
+runs it (`ModeCatalog.pick`, desktop's
+`happyAgentSelectionModelUpdate`). Opening the model list asks
+`POST /v0/usage/refresh` for the accounts it lists, then reads three
+times 2 s apart (`AgentUsageSource.refresh`). `config.updated` and each
+reconnect read `/v0/config` again (`Conversation.rereadCatalog`), so a
+model hidden on the computer leaves the list while it is open. Words are
+in `strings_model_picker.xml`.
+
 ### Image loading
 
 One Coil 3 `ImageLoader` (`ui/components/RemoteImage.kt`) for every
@@ -1088,6 +1380,14 @@ hand-rolled loader would re-implement caching and downsampling. The
 loader uses its own OkHttp client without Happy headers (these URLs are
 third-party). Tests swap it through `LocalImageLoader` with coil-test's
 `FakeImageLoaderEngine`.
+
+A picture with a thumbhash shows it from its first frame (iOS 5ebfc1c0b).
+`rememberThumbHash` decodes in place as the view is composed, from one
+process-wide `ThumbHashCache` (256 kept, least recently used out, a hash
+that isn't one kept as nothing). The decoder works its cosines out per
+row and column. The picture dissolves in over it in 0.2 s
+(`HappyImageLoader.FADE_MS`, iOS `ImageFade`). One from the memory cache,
+or any under Reduce Motion, replaces it at once.
 
 ### Avatars
 
@@ -1279,3 +1579,20 @@ ChatComposer's `overlay` slot and the shared `ComposerCursor` into its
 `cursor` parameter (the composer reports the selection, places the cursor
 after an insert, and offers hardware keys to `cursor.onKey` first: arrows,
 Enter/Tab and Escape drive the list while it shows).
+
+Happy Agent chats reuse the same list and cursor for the agent's own slash
+commands (desktop d04fbfef, 4078fd44, aa8a2529). The catalog is
+`ConversationState.commands`: the bootstrap's and every focused agent
+response's `slashCommands`, replaced whole by `agent.slash_commands.updated`,
+and kept offline with the conversation. `conversation/SlashCommands.kt` holds
+desktop's rules: the list shows only while the whole draft is `/` plus a word
+some command begins, commands before skills; a submitted `/name args` with an
+offered name runs instead of sending. `ui/conversation/ConversationCommands`
+is the `SuggestionSource`, through three hooks the CLI source leaves at their
+defaults: `query` (the whole draft, not the word at the cursor), `pick` (a
+command runs at once and the draft clears) and `draft` (a skill becomes
+`/name ` for its arguments). `Conversation.runCommand` invokes a command with
+`POST /slash-commands/:name` and the composer's mode (404 and 409 are
+`Problem.CommandGone`/`CommandBusy`); a skill is a user message `/name args`
+carrying one `read_skill` tool_call_request, as desktop sends it. The command's
+words never go out as a message otherwise.

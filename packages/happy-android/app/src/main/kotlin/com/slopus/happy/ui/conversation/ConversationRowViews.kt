@@ -17,6 +17,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -34,12 +35,16 @@ import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.chat.ChatMessage
 import com.slopus.happy.chat.ChatRow
-import com.slopus.happy.chat.MessageMeta
-import com.slopus.happy.chat.ToolCall
-import com.slopus.happy.chat.ToolState
+import com.slopus.happy.chat.MessageDelivery
 import com.slopus.happy.chat.UserDisplay
 import com.slopus.happy.artifacts.formatDuration
 import com.slopus.happy.conversation.Block
+import androidx.compose.foundation.layout.fillMaxSize
+import com.slopus.happy.conversation.UploadPhase
+import com.slopus.happy.conversation.UploadBoard
+import com.slopus.happy.conversation.KeptMedia
+import com.slopus.happy.media.MediaSizeText
+import com.slopus.happy.media.NotKept
 import com.slopus.happy.conversation.ConversationRow
 import com.slopus.happy.conversation.ConversationViewing
 import com.slopus.happy.conversation.Delivery
@@ -51,9 +56,9 @@ import androidx.compose.runtime.withFrameNanos
 import com.slopus.happy.conversation.MediaFlow
 import com.slopus.happy.conversation.MediaRef
 import com.slopus.happy.conversation.NoticeKind
+import com.slopus.happy.conversation.ToolUse
 import com.slopus.happy.ui.chat.BubblePalette
 import com.slopus.happy.ui.chat.MessageCallbacks
-import com.slopus.happy.ui.chat.ToolView
 import com.slopus.happy.ui.chat.UserMessage
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
@@ -65,8 +70,6 @@ import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
 
 object ConversationRowTags {
     /** Every row's outermost box, as tall as it is drawn. */
@@ -80,9 +83,11 @@ object ConversationRowTags {
     const val FAILURE = "conversation.failure"
     const val FAILURE_RETRY = "conversation.failure.retry"
     const val NOTICE = "conversation.notice"
+    /** A long message's Show full / Show less ([UserFold]). */
+    const val USER_FOLD = "conversation.user.fold"
 }
 
-/** The rows' own measures; text, tools and user bubbles are the legacy chat's (MessageSpec, ToolSpec). */
+/** The rows' own measures; text and user bubbles are the legacy chat's (MessageSpec), a turn's own rows [TurnRowSpec]. */
 object ConversationRowSpec {
     val marginHorizontal = 16.dp
     val marginVertical = 6.dp
@@ -112,12 +117,55 @@ class ConversationRowActions(
     val onOpenMedia: ((MediaRef) -> Unit)? = null,
     /** What that is doing: reading, or why it could not open. */
     val mediaOpening: (MediaRef) -> MediaOpening? = { null },
+    /** The waiting question's ticks and answer; null where nothing answers. */
+    val asks: AskActions? = null,
+    /** Opens a finished turn on its work, or folds it again, by its run. */
+    val onToggleTurn: (String) -> Unit = {},
+    /** Opens a person's long message whole, or cuts it back, by its row's key. */
+    val onToggleMessage: (String) -> Unit = {},
+    /** Each outgoing picture's way to the computer, for its ring; null where nothing sends. */
+    val uploads: UploadBoard? = null,
+    /** Takes picture `index` out of a message still on its way. */
+    val onRemovePicture: (messageId: String, index: Int) -> Unit = { _, _ -> },
+    /** Opens a tool call on its own screen, by its id; null where nothing opens it. */
+    val onOpenTool: ((String) -> Unit)? = null,
+    /** Presented media kept on this phone: each tile's download ring and size badge; null where nothing is kept. */
+    val kept: KeptMedia? = null,
+    /** A recording's tap: it plays once its first range is here, the tile spinning till then. */
+    val videos: VideoOpening? = null,
 )
 
+/** Plays the recording [ref] whose tile is [key]: in the viewer, once it can ([VideoOpening]). */
+internal fun ConversationRowActions.play(key: String, ref: MediaRef) {
+    val videos = videos ?: return onOpenPicture(key)
+    videos.open(key, ref) { onOpenPicture(key) }
+}
+
+/** What opens [tool]'s screen: only a call with an id, where the screen opens calls at all. */
+internal fun ConversationRowActions.opener(tool: ToolUse?): (() -> Unit)? {
+    val id = tool?.id ?: return null
+    val open = onOpenTool ?: return null
+    return { open(id) }
+}
+
 /**
- * One conversation row. User bubbles, agent text and tool rows are the
- * legacy chat's own components (MessageView, ToolView in compact form, so
- * tool output stays hidden); the rest are drawn here. Spec: every row here
+ * What a call showed under its line, [TurnRowSpec.resultGap] apart (iOS
+ * `ToolResultLayout`); alone where no call presented it.
+ */
+@Composable
+private fun ToolResult(tool: ToolUse?, actions: ConversationRowActions, modifier: Modifier, body: @Composable (Modifier) -> Unit) {
+    if (tool == null) return body(modifier)
+    Column(modifier) {
+        ToolLine(tool, bottom = TurnRowSpec.resultGap - ConversationRowSpec.marginVertical, onOpen = actions.opener(tool))
+        body(Modifier)
+    }
+}
+
+/**
+ * One conversation row. User bubbles and agent text are the legacy chat's
+ * own components (MessageView); a tool call is its one line in plain words
+ * and a turn's end and fold control are desktop's ([TurnRowSpec]); the rest
+ * are drawn here. Spec: every row here
  * is 16 in from the sides and 6 above and below. Reasoning: an 13/18
  * semibold "Thinking" line with a 16 chevron in textSecondary, opening to
  * the 14/20 text in textSecondary. Pictures are laid out as iOS lays them
@@ -149,39 +197,26 @@ fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: Co
         when (row) {
             is ConversationRow.User -> UserRow(row, bubble, actions, content)
             is ConversationRow.Text -> TextRow(row, actions, content)
-            is ConversationRow.Tool -> ToolView(
-                ChatMessage.ToolCallMessage(
-                    id = row.key,
-                    createdAt = row.createdAt,
-                    tool = ToolCall(
-                        callId = row.callId,
-                        name = row.name,
-                        state = when (row.status) {
-                            "completed" -> ToolState.Completed
-                            "failed" -> ToolState.Error
-                            else -> ToolState.Running
-                        },
-                        input = row.input,
-                        createdAt = row.createdAt,
-                    ),
-                ),
-                actions.legacy,
-                content,
-            )
+            is ConversationRow.Tool -> ToolLine(row.tool, content, onOpen = actions.opener(row.tool))
             is ConversationRow.Reasoning -> ReasoningProse(row, content)
             is ConversationRow.Picture -> Box(content.fillMaxWidth().padding(horizontal = ConversationRowSpec.marginHorizontal, vertical = ConversationRowSpec.marginVertical)) {
                 InlinePictures(row.key, listOf(row.image), actions, MediaFlow.tool, alignEnd = false)
             }
-            is ConversationRow.Media -> MediaRow(row, actions, content)
-            is ConversationRow.Artifact -> InfoCard(
-                icon = Ionicon.LayersOutline,
-                title = row.title.ifEmpty { stringResource(R.string.conversation_artifact) },
-                detail = stringResource(R.string.conversation_artifact_unavailable).takeIf { actions.onOpenArtifact == null },
-                onClick = actions.onOpenArtifact?.let { open -> { open(row) } },
-                modifier = content.testTag(ConversationRowTags.ARTIFACT),
-            )
+            is ConversationRow.Media -> ToolResult(row.tool, actions, content) { MediaRow(row, actions, it) }
+            is ConversationRow.Artifact -> ToolResult(row.tool, actions, content) {
+                InfoCard(
+                    icon = Ionicon.LayersOutline,
+                    title = row.title.ifEmpty { stringResource(R.string.conversation_artifact) },
+                    detail = stringResource(R.string.conversation_artifact_unavailable).takeIf { actions.onOpenArtifact == null },
+                    onClick = actions.onOpenArtifact?.let { open -> { open(row) } },
+                    modifier = it.testTag(ConversationRowTags.ARTIFACT),
+                )
+            }
             is ConversationRow.Collaborator -> CollaboratorProse(row, actions.legacy, content)
             is ConversationRow.Failure -> FailureRow(row, actions, content)
+            is ConversationRow.Ask -> AskRow(row, actions.asks, content)
+            is ConversationRow.TurnEnd -> TurnEndRow(row, content)
+            is ConversationRow.Trace -> TraceRow(row, actions.onToggleTurn, content)
             is ConversationRow.Notice -> Text(
                 stringResource(
                     when (row.kind) {
@@ -214,7 +249,7 @@ private fun TextRow(row: ConversationRow.Text, actions: ConversationRowActions, 
     val reveal = rememberTextReveal(row.key, streaming = row.live != null) { row.live?.isFresh() == true }
     val text = live?.text ?: row.text
     val blocks = live?.blocks ?: row.blocks
-    AnswerProse(ProseSource(row.key, ProseKind.Answer, text, blocks), actions.legacy, modifier, reveal)
+    AnswerProse(ProseSource(row.key, ProseKind.Answer, text, blocks), actions.legacy, modifier, reveal, copies = row.copies)
 }
 
 /**
@@ -233,40 +268,57 @@ internal fun framed(live: LiveText): LiveText.Content {
 
 @Composable
 private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: ConversationRowActions, modifier: Modifier) {
-    val failed = (row.delivery as? Delivery.Failed)?.let { problemText(it.reason) }
-    // A send waiting behind a running turn reads "Sends after this turn"; one on its way, "Sending…".
-    val message = remember(row, failed) {
-        ChatMessage.UserText(
-            id = row.key,
-            localId = row.messageId,
-            createdAt = if (row.delivery == Delivery.Sending) System.currentTimeMillis() else 0,
-            text = row.text,
-            meta = if (row.delivery == Delivery.Pending) MessageMeta(buildJsonObject { put("queuedWhileBusy", JsonPrimitive(true)) }) else null,
-            pending = row.delivery == Delivery.Sending || row.delivery == Delivery.Pending,
-            sendError = failed,
-        )
+    val failed = row.delivery is Delivery.Failed
+    // The mark says where it stands (iOS 3c24acf5c): the clock on its way, one check
+    // taken by the agent's API, two once a run took it, a red mark if refused.
+    val delivery = when (row.delivery) {
+        Delivery.Sending -> MessageDelivery.Sending
+        Delivery.Pending -> MessageDelivery.Received
+        Delivery.Sent -> MessageDelivery.Accepted
+        is Delivery.Failed -> MessageDelivery.Failed
     }
-    // The photos go under the words, against the right edge as the bubble is.
-    val photos = @Composable {
-        InlinePictures(row.key, row.pictures, actions, MediaFlow.message, alignEnd = true, measure = MediaFlow::messageMeasure, limit = true)
+    val message = remember(row) {
+        ChatMessage.UserText(id = row.key, localId = row.messageId, createdAt = row.createdAt, text = row.text)
     }
-    if (row.text.isNotEmpty() || failed != null) {
+    // The photos go under the words, against the right edge as the bubble is; each still
+    // going to the computer under its ring (iOS 5ac4296c2). Movable: a message of pictures
+    // alone comes back captioned ("Attached images."), and its rings fill on in the bubble.
+    val photos = remember {
+        movableContentOf { row: ConversationRow.User, actions: ConversationRowActions ->
+            val sending = row.delivery == Delivery.Sending
+            InlinePictures(
+                row.key, row.pictures, actions, MediaFlow.message, alignEnd = true, measure = MediaFlow::messageMeasure, limit = true,
+                upload = { index -> if (sending) actions.uploads?.phase(UploadBoard.pictureKey(row.messageId, index)) ?: UploadPhase.Preparing else null },
+                onCancel = { index -> actions.onRemovePicture(row.messageId, index) },
+            )
+        }
+    }
+    // Past its first lines it is cut, and a tap on the bubble opens it or cuts it back ([UserFold]).
+    val prose = if (row.text.isNotEmpty()) rememberProse(ProseSource(row.key, ProseKind.User, row.text, row.blocks)) else null
+    val cut = remember(prose) { prose?.cut(UserFold.PREVIEW_LINES) }
+    val toggle = stringResource(if (row.opened) R.string.machine_launcher_show_less else R.string.conversation_show_full)
+    if (row.text.isNotEmpty() || failed) {
         UserMessage(
-            ChatRow.User(message, UserDisplay.Text(row.text, row.blocks), failedLocalId = row.messageId.takeIf { failed != null }),
+            ChatRow.User(message, UserDisplay.Text(row.text, row.blocks), delivery = delivery, time = row.createdAt),
             bubble,
             actions.legacy,
             modifier.fillMaxWidth(),
+            statusLine = false,
+            onRetry = if (failed) ({ actions.legacy.onRetry(row.messageId) }) else null,
+            onDiscard = if (failed) ({ actions.legacy.onDiscard(row.messageId) }) else null,
             attachments = if (row.pictures.isEmpty()) null else {
-                { Box(Modifier.padding(top = ConversationRowSpec.photosGap)) { photos() } }
+                { Box(Modifier.padding(top = ConversationRowSpec.photosGap)) { photos(row, actions) } }
             },
-            body = if (row.text.isNotEmpty()) { _ -> UserProse(row, actions.legacy) } else null,
+            onTap = if (cut != null) ({ actions.onToggleMessage(row.key) }) else null,
+            tapLabel = toggle,
+            body = if (prose != null) { _ -> UserProse(row, prose, cut, actions.legacy) } else null,
         )
     } else if (row.pictures.isNotEmpty()) {
         Box(
             modifier
                 .fillMaxWidth()
                 .padding(horizontal = ConversationRowSpec.marginHorizontal, vertical = ConversationRowSpec.marginVertical),
-        ) { photos() }
+        ) { photos(row, actions) }
     }
 }
 
@@ -285,6 +337,9 @@ private fun InlinePictures(
     alignEnd: Boolean,
     measure: (Float) -> Float = { it },
     limit: Boolean = false,
+    /** Where each picture is on its way to the computer; null once it is there (or never went from here). */
+    upload: (index: Int) -> UploadPhase? = { null },
+    onCancel: (index: Int) -> Unit = {},
 ) {
     val shown = if (limit) MediaFlow.messageShown(pictures.size) else pictures.size
     val more = if (limit) MediaFlow.messageMore(pictures.size) else 0
@@ -300,14 +355,22 @@ private fun InlinePictures(
     ) { index ->
         val bytes = decoded[index].bytes
         val cacheKey = ConversationViewing.pictureKey(key, index)
-        MediaTile(
-            bytes = bytes,
-            cacheKey = cacheKey,
-            contentDescription = label,
-            failed = bytes == null,
-            onClick = bytes?.let { { actions.onOpenPicture(cacheKey) } },
-            more = if (index == decoded.lastIndex) more else 0,
-        )
+        Box {
+            MediaTile(
+                bytes = bytes,
+                cacheKey = cacheKey,
+                contentDescription = label,
+                failed = bytes == null,
+                onClick = bytes?.let { { actions.onOpenPicture(cacheKey) } },
+                more = if (index == decoded.lastIndex) more else 0,
+                modifier = Modifier.fillMaxSize(),
+            )
+            // Seen going, it stays to fill and shrink away once the picture is there.
+            val phase = upload(index)
+            var going by remember { mutableStateOf(false) }
+            if (phase != null) going = true
+            if (going) UploadRing(phase ?: UploadPhase.Done, onCancel = { onCancel(index) }, modifier = Modifier.matchParentSize())
+        }
     }
 }
 
@@ -320,7 +383,12 @@ private fun MediaRow(row: ConversationRow.Media, actions: ConversationRowActions
         verticalArrangement = Arrangement.spacedBy(MediaFlow.GAP.dp),
     ) {
         if (visual.isNotEmpty()) {
-            val loads = visual.map { ref -> key(ref.key) { if (ref.item.kind == "video") null else rememberMediaBytes(ref, actions.loadMedia) } }
+            // A kept picture read again once its download completes.
+            val loads = visual.map { ref ->
+                key(ref.key) {
+                    if (ref.item.kind == "video") null else rememberMediaBytes(ref, actions.loadMedia, here = actions.kept?.phase(ref)?.isComplete == true)
+                }
+            }
             val posters = visual.map { ref -> key(ref.key) { if (ref.item.kind == "video") rememberVideoPoster(ref, actions.loadVideo) else null } }
             // As stated, else the hash's shape; one that stated no size takes its own once read.
             val items = visual.mapIndexed { index, ref ->
@@ -338,49 +406,70 @@ private fun MediaRow(row: ConversationRow.Media, actions: ConversationRowActions
                 val ref = visual[index]
                 val key = ConversationViewing.presentedKey(ref)
                 val thumbhash = rememberThumbHash(ref.item.thumbhash)
+                val kept = actions.kept
                 if (ref.item.kind == "video") {
                     val poster = posters[index]
                     val frame = poster?.frame
                     val still = remember(frame) { frame?.asImageBitmap() }
-                    MediaTile(
-                        bytes = null,
-                        cacheKey = key,
-                        contentDescription = ref.item.name.ifEmpty { stringResource(R.string.artifact_video) },
-                        failed = false,
-                        onClick = { actions.onOpenPicture(key) },
-                        placeholder = still ?: thumbhash,
-                        video = true,
-                        duration = poster?.seconds?.let(::formatDuration),
-                    )
+                    val duration = poster?.seconds?.let(::formatDuration)
+                    Box {
+                        MediaTile(
+                            bytes = null,
+                            cacheKey = key,
+                            contentDescription = ref.item.name.ifEmpty { stringResource(R.string.artifact_video) },
+                            failed = false,
+                            onClick = { if (kept != null) actions.play(key, ref) else actions.onOpenPicture(key) },
+                            placeholder = still ?: thumbhash,
+                            video = true,
+                            // Kept, the ring is the play button and the badge says the length.
+                            duration = if (kept == null) duration else null,
+                            playButton = kept == null,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        if (kept != null) DownloadStatus(ref, kept, video = true, duration = duration, starting = actions.videos?.isStarting(key) == true, onPlay = { actions.play(key, ref) })
+                    }
                 } else {
                     val load = loads[index]
                     val bytes = load?.getOrNull()?.bytes
-                    MediaTile(
-                        bytes = bytes,
-                        cacheKey = key,
-                        contentDescription = ref.item.name.ifEmpty { stringResource(R.string.conversation_picture) },
-                        failed = load?.isFailure == true,
-                        onClick = bytes?.let { { actions.onOpenPicture(key) } },
-                        placeholder = thumbhash,
-                    )
+                    // Waiting for a tap, the ring says so; the tile isn't a failure.
+                    val waiting = load?.exceptionOrNull() is NotKept || (kept != null && kept.phase(ref)?.let { !it.isComplete } == true)
+                    Box {
+                        MediaTile(
+                            bytes = bytes,
+                            cacheKey = key,
+                            contentDescription = ref.item.name.ifEmpty { stringResource(R.string.conversation_picture) },
+                            failed = load?.isFailure == true && !waiting,
+                            onClick = bytes?.let { { actions.onOpenPicture(key) } },
+                            placeholder = thumbhash,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        if (kept != null) DownloadStatus(ref, kept, video = false)
+                    }
                 }
             }
         }
         other.forEach { ref ->
             val opening = actions.mediaOpening(ref)
             val open = actions.onOpenMedia
+            // Kept, its chip follows the download and the detail says how far it is (Telegram's file bubble).
+            val kept = actions.kept
+            if (kept != null) LaunchedEffect(ref.key) { kept.shown(ref) }
+            val phase = kept?.phase(ref)
             InfoCard(
                 icon = Ionicon.DocumentTextOutline,
                 title = ref.item.name,
                 detail = when {
                     opening is MediaOpening.Failed -> opening.reason
+                    phase != null && !phase.isComplete -> MediaSizeText.text(phase)
                     opening is MediaOpening.Reading -> stringResource(R.string.conversation_media_reading)
                     open == null -> stringResource(R.string.conversation_file_unavailable)
-                    else -> null
+                    // Here, its size, as Telegram's file bubble says.
+                    else -> phase?.let(MediaSizeText::text)
                 },
                 onClick = open?.let { { it(ref) } },
                 modifier = Modifier.testTag(ConversationRowTags.MEDIA_FILE),
                 vertical = 0.dp,
+                chip = kept?.let { { FileStatusChip(ref.key, phase, Ionicon.DocumentTextOutline, onTap = { it.toggle(ref) }) } },
             )
         }
     }
@@ -406,8 +495,10 @@ private class MediaBytes(val bytes: ByteArray, val size: MediaFlow.Image)
 
 /** A presented picture's bytes, read once per item while it is shown; null until they come. */
 @Composable
-private fun rememberMediaBytes(ref: MediaRef, load: suspend (MediaRef) -> ByteArray): Result<MediaBytes>? {
-    val bytes by produceState<Result<MediaBytes>?>(null, ref.key) {
+private fun rememberMediaBytes(ref: MediaRef, load: suspend (MediaRef) -> ByteArray, here: Boolean = false): Result<MediaBytes>? {
+    val bytes by produceState<Result<MediaBytes>?>(null, ref.key, here) {
+        // What was read stays while it is read again.
+        if (here && value?.isSuccess == true) return@produceState
         value = try {
             val bytes = load(ref)
             Result.success(MediaBytes(bytes, withContext(Dispatchers.Default) { pictureSize(bytes) }))
@@ -428,6 +519,8 @@ private fun InfoCard(
     onClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
     vertical: androidx.compose.ui.unit.Dp = ConversationRowSpec.marginVertical,
+    /** In the icon's place: a file's chip that follows its download. */
+    chip: (@Composable () -> Unit)? = null,
 ) {
     val colors = HappyTheme.colors
     Row(
@@ -441,7 +534,7 @@ private fun InfoCard(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, 22.dp, colors.textSecondary)
+        if (chip != null) chip() else Icon(icon, 22.dp, colors.textSecondary)
         Column(Modifier.weight(1f)) {
             Text(title, style = ConversationRowSpec.label, color = colors.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (detail != null) Text(detail, style = ConversationRowSpec.notice, color = colors.textSecondary)

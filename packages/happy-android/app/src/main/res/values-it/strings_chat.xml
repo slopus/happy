@@ -32,4 +32,8 @@
     <string name="files_no_comparison">Il confronto con origin/main non è disponibile per questo spazio di lavoro.</string>
     <string name="files_no_details">Nessun dettaglio dei file disponibile per questo confronto.</string>
     <string name="chat_unsupported_message">Questo messaggio non può essere mostrato qui (%1$s)</string>
+    <string name="link_status_updating">sincronizzazione…</string>
+    <string name="link_status_connecting">connessione…</string>
+    <string name="link_status_waiting_for_network">in attesa di rete…</string>
+    <string name="message_select">Seleziona</string>
 </resources>

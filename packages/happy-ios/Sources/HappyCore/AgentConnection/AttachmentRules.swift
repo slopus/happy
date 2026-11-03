@@ -166,7 +166,7 @@ extension AgentClient {
             }
             try await sendMessage(message.agentID, id: message.id,
                 text: AttachmentRules.text(message.text, files: message.files ?? []),
-                images: images, mode: mode, progress: progress)
+                images: images, toolRequest: message.toolRequest, mode: mode, progress: progress)
             for key in pictureKeys { board.set(key, .done) }
         } catch {
             // To go again, now or once retried: what didn't finish starts over.

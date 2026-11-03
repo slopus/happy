@@ -95,6 +95,7 @@ within a chat): `outbox` in `direct.sqlite` (agent,
 | Edit a document Surface | every change kept at once in `documents/<surfaceId>/`, sent in batches under a mutation ID a retry repeats, the rest sent on reconnect or after a relaunch with or without the editor open (`DocumentSync`, docs/DOCUMENT-EDITOR.md) | — |
 | Rename a Surface | intent `rename`, kind `surface` (`PATCH /v0/surfaces/:id`) | — |
 | Change a todo list (add, edit, check off, move, delete, restore) | intents `todo.create`, `todo.text`, `todo.status`, `todo.move`, one slot per todo and kind: shown at once over the list (`TodoReducer.overlay`), a todo's changes sent in the order made, the intent ID as the mutation ID and the todo ID as a creation's retry key; one the computer already has is dropped unsent; a 409 takes the computer's todo and sends the change again over it (3 tries, as desktop); any other 4xx is undone with a notice (`TodoLibrary`) | — |
+| See a Feed entry, Mark All Read | intents `feed.seen` (one slot per subject, `through` the entry's cursor) and `feed.readAll`: the dot and the count go at once (`FeedLibrary`), kept through a relaunch, the computer's answer closing the held entries; an older daemon's 404 counts as done, any other 4xx is dropped quietly | — (no Feed) |
 | Delete a session | — (no delete for agent work) | intent `delete`: gone here at once, a list read meanwhile doesn't bring it back (`LocalStore.deletePending`); refused, a full pass of the list brings it back |
 | Settings (mute, hide projects, Prioritizing, …) | `pendingSetting` (existing) | `pendingSettings` (existing) |
 | Permission mode / model | the dock's pick is kept locally and sent with the next message | kept in `composerState`, sent with the next message |
@@ -117,6 +118,9 @@ Not covered yet, and why:
   before. With the socket down, it is this phone that can't reach it, so
   the action waits.
 - Legacy rename, pin and unarchive: the legacy app has none.
+- The Feed's Following (follow, mute) and peeking are online only, as on
+  desktop: they act on the computer's subscriptions, which nothing on
+  the phone lays a pending change over yet.
 
 ## What is kept per account kind
 
@@ -127,6 +131,7 @@ Not covered yet, and why:
 | Profiles, team members | bootstrap `profile`, checkpoint `users` | `accountProfile` |
 | Avatars and pictures | `pictures/` (`OfflineFile.keepPicture`) | `session.avatar` descriptor + `AttachmentPictures` |
 | Artifact metadata | checkpoint `artifacts` | — |
+| Feed | checkpoint `feed`: the newest 200 entries, the unread count and its cursor, whether the computer keeps a feed, and the people credited | — |
 | Surfaces, todo lists | checkpoints `surface-catalog` and `todos:<surfaceId>`: each list opened, its deleted ones once shown, and the names of who added them | — |
 | Documents opened | `documents/<surfaceId>/`: the Yjs replica, local changes since, the batch on its way (`DocumentKeep`) | — |
 | Media | `media/` (`MediaStore`, docs/media.md) | `media/` beside `files/` |

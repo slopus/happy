@@ -134,6 +134,30 @@ data class AgentCatalog(
     fun withoutSurface(surfaceId: String): AgentCatalog =
         if (surfaceId in surfaces) copy(surfaces = surfaces - surfaceId) else this
 
+    /**
+     * A task left or archived, a bot archived or a subtask ([kind] `agent`)
+     * archived here and taken by the computer: out of home until a
+     * snapshot says otherwise, so it doesn't come back between the answer
+     * and the event that says so.
+     */
+    fun withoutListed(kind: String, id: String): AgentCatalog = when (kind) {
+        "task" -> if (id in memberships || id in tasks) copy(tasks = tasks - id, memberships = memberships - id) else this
+        "bot" -> if (id in bots) copy(bots = bots - id) else this
+        "agent" -> if (id in agents) copy(agents = agents - id) else this
+        "surface" -> withoutSurface(id)
+        else -> this
+    }
+
+    /** A task or bot ([kind]) renamed here and taken: it wears [name] until the computer's event brings its own copy. */
+    fun withName(kind: String, id: String, name: String): AgentCatalog {
+        fun renamed(map: Map<String, JsonObject>) = map[id]?.let { map + (id to JsonObject(it + ("name" to JsonPrimitive(name)))) }
+        return when (kind) {
+            "task" -> renamed(tasks)?.let { copy(tasks = it) }
+            "bot" -> renamed(bots)?.let { copy(bots = it) }
+            else -> null
+        } ?: this
+    }
+
     /** [event] applied, for the kinds home shows; anything else leaves the catalog as it is. */
     fun apply(event: AgentEvent): Applied {
         val data = event.data

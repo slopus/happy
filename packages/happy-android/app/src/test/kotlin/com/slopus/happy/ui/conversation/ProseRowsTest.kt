@@ -254,8 +254,11 @@ class ProseRowsTest {
             } else {
                 Box(Modifier.fillMaxWidth().testTag(ConversationRowTags.ROW)) {
                     UserMessage(
-                        ChatRow.User(ChatMessage.UserText(id = user.key, localId = user.messageId, createdAt = 0, text = text), UserDisplay.Text(text, user.blocks)),
-                        bubble, MessageCallbacks(), Modifier.contentMaxWidth(LocalWindowLayout.current).fillMaxWidth(),
+                        ChatRow.User(
+                            ChatMessage.UserText(id = user.key, localId = user.messageId, createdAt = 0, text = text), UserDisplay.Text(text, user.blocks),
+                            delivery = com.slopus.happy.chat.MessageDelivery.Accepted, time = 0,
+                        ),
+                        bubble, MessageCallbacks(), Modifier.contentMaxWidth(LocalWindowLayout.current).fillMaxWidth(), statusLine = false,
                     )
                 }
             }

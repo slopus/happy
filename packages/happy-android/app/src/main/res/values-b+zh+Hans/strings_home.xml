@@ -36,12 +36,8 @@
     <string name="home_info_running">%1$s 个运行中</string>
     <string name="home_info_tasks">任务</string>
     <string name="home_info_tasks_detail">%1$s 个进行中 · %2$s 个待处理</string>
-    <string name="home_info_raw_json">原始 JSON（开发者模式）</string>
-    <string name="home_info_raw_agent_state">代理状态</string>
-    <string name="home_info_raw_metadata">元数据</string>
     <string name="home_info_raw_status">会话状态</string>
     <string name="home_info_raw_session">完整会话对象</string>
-    <string name="home_dock_placeholder">规划、提问、构建…</string>
     <string name="home_dock_ask">询问 %1$s</string>
     <string name="home_dock_send">发送</string>
     <string name="home_dock_add_image">添加图片</string>
@@ -74,7 +70,6 @@
     <string name="home_create_directory_title">创建目录？</string>
     <string name="home_create_directory_message">目录“%1$s”不存在。要创建吗？</string>
     <string name="home_dock_kind_session">会话</string>
-    <string name="home_dock_kind_bot">机器人</string>
     <string name="home_dock_bot_kind">要创建什么</string>
     <string name="home_dock_bot_lede">机器人是虚拟同事，非常适合发布、竞品分析等重复性工作，或负责跨多个项目和 Worktree 的大型功能</string>
     <string name="home_dock_bot_name_placeholder">给机器人起个名字</string>
@@ -95,7 +90,6 @@
     <string name="home_start_unknown_machine">这个会话所在的电脑未注册到此账号，因此无法在其上开始会话。请确认 Happy 正在那台电脑上运行并已登录此账号。</string>
     <string name="home_start_happy_agent_missing">这台电脑上没有运行 Happy Agent</string>
     <string name="home_start_happy_cli_missing">你的电脑上没有可用的 Happy CLI。请在电脑上运行 `happy daemon start`，然后重试。</string>
-    <string name="home_start_machine_offline">设备处于离线状态</string>
     <string name="home_start_happy_cli_offline">你电脑上的 Happy CLI 处于离线状态。请在电脑上运行 `happy daemon start`，然后重试。</string>
     <string name="home_start_cannot_start_happy_agent">这台设备无法开始 Happy Agent 会话</string>
     <string name="home_start_project_needs_happy_agent">只有 Happy Agent 知道这个项目在哪里，其他运行环境无法打开它。请把运行环境切回 Happy Agent，或选择项目的文件夹。</string>

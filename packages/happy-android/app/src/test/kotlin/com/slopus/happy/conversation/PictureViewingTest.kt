@@ -120,4 +120,38 @@ class PictureViewingTest {
         assertEquals("Picture", entries[7].item.label)
         assertFalse(entries[7].item.isVideo)
     }
+
+    // Telegram's PhotoViewer: out of the thumbnail, filling it as it crops, corners and all; at rest, untouched.
+    @Test fun `on its thumbnail the picture fills it as the thumbnail crops it, and at rest it is untouched`() {
+        val tile = PictureViewing.Box(40f, 400f, 160f, 160f)
+        val frame = PictureViewing.Box(0f, 300f, 1000f, 750f)
+        val start = PictureViewing.flight(tile, frame, originRadius = 24f, progress = 0f)
+        // Square tile, 4:3 picture: its height fills the tile, its sides are cut.
+        assertEquals(160f / 750f, start.scale, 1e-4f)
+        assertEquals(tile.centerX, frame.centerX + start.dx, 1e-3f)
+        assertEquals(tile.centerY, frame.centerY + start.dy, 1e-3f)
+        assertEquals("the window is the tile, in the picture's px", 160f, start.clip.width * start.scale, 1e-3f)
+        assertEquals(160f, start.clip.height * start.scale, 1e-3f)
+        assertEquals("centred on the picture", (frame.width - start.clip.width) / 2, start.clip.x, 1e-3f)
+        assertEquals("the tile's corners on the screen", 24f, start.radius * start.scale, 1e-3f)
+
+        val rest = PictureViewing.flight(tile, frame, 24f, 1f)
+        assertEquals(1f, rest.scale, 0f)
+        assertEquals(0f, rest.dx, 0f)
+        assertEquals(0f, rest.dy, 0f)
+        assertEquals(PictureViewing.Box(0f, 0f, 1000f, 750f), rest.clip)
+        assertEquals(0f, rest.radius, 0f)
+
+        val half = PictureViewing.flight(tile, frame, 24f, 0.5f)
+        assertEquals("halfway between, on the screen", (160f + 1000f) / 2, half.clip.width * half.scale, 1e-2f)
+        assertEquals((tile.centerY + frame.centerY) / 2, frame.centerY + half.dy, 1e-3f)
+    }
+
+    @Test fun `a thumbnail off the screen is no place to close into`() {
+        val screen = PictureViewing.Box(0f, 0f, 1080f, 2400f)
+        assertTrue(PictureViewing.Box(40f, 400f, 160f, 160f).meets(screen))
+        assertFalse(PictureViewing.Box(40f, -300f, 160f, 160f).meets(screen))
+        assertFalse(PictureViewing.Box(40f, 2400f, 160f, 160f).meets(screen))
+        assertFalse(PictureViewing.Box(40f, 400f, 0f, 0f).meets(screen))
+    }
 }

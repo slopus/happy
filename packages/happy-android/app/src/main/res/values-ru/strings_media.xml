@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="media_download">Скачать</string>
+    <string name="media_pause_download">Приостановить загрузку</string>
+    <string name="data_storage_title">Данные и память</string>
+    <string name="data_storage_usage">Использование памяти</string>
+    <string name="data_storage_calculating">Подсчёт…</string>
+    <string name="data_storage_clear_media">Очистить медиа</string>
+    <string name="data_storage_clear_footer">Фото, видео и файлы хранятся на этом телефоне всегда, поэтому открываются без сети. Очистка освобождает место; очищенное будет скачано снова при открытии.</string>
+    <string name="data_storage_clear_confirm">Очистить %1$s медиа с этого телефона? Они будут скачаны снова при открытии.</string>
+    <string name="data_storage_clear">Очистить</string>
+    <string name="data_storage_auto">Автозагрузка медиа</string>
+    <string name="data_storage_auto_footer">Медиа до заданного размера скачиваются сами, когда появляются в чате, и доступны без сети. Одинаково для Wi-Fi и мобильной сети.</string>
+    <string name="data_storage_photos">Фото</string>
+    <string name="data_storage_videos">Видео</string>
+    <string name="data_storage_limit">До</string>
+</resources>

@@ -32,6 +32,8 @@ data class HomeSnapshot(
      * Until then no machines means "not read yet", not "link a computer".
      */
     val ready: Boolean = true,
+    /** A sync has finished for this account, so its computers are all in; until then an empty or short list may still grow. */
+    val machinesSynced: Boolean = true,
 )
 
 /**
@@ -76,6 +78,7 @@ fun homeSnapshots(
             projects = catalog,
             gitStatuses = git,
             ready = wasSynced || machines.isNotEmpty(),
+            machinesSynced = wasSynced,
         )
     }
 }

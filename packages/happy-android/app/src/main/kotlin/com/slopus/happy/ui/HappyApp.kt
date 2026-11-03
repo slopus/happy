@@ -157,6 +157,7 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                                     account.id,
                                     onOpenConversation = { agentId -> nav.openConversation(account.id, agentId) },
                                     onCompose = { nav.composeConversation(account.id) },
+                                    onComposeWithPicture = { nav.composeConversation(account.id, attach = true) },
                                     onSettings = { nav.navigate(SettingsRoute()) },
                                     onSettingsRow = { row -> nav.openAgentSettingsRow(account.id, row) },
                                     onOpenArtifacts = { nav.navigate(AgentArtifactsRoute(account.id)) },

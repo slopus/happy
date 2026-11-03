@@ -118,6 +118,9 @@ public struct DesktopSnapshot: Codable, Equatable, Sendable {
     public var surfaces: [Surface]?
     public var profile: Profile?
     public var userSettings: [UserSetting]?
+    /// How many Feed entries the person has not looked at; nil from a
+    /// daemon without the Feed, and for a guest.
+    public var feedUnread: Int?
     public var cursor: String
 }
 

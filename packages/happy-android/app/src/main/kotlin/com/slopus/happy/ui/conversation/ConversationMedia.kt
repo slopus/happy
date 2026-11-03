@@ -139,12 +139,16 @@ fun MediaTile(
     video: Boolean = false,
     duration: String? = null,
     more: Int = 0,
+    /** A recording's play circle; off where a ring shows it instead. */
+    playButton: Boolean = true,
 ) {
     val colors = HappyTheme.colors
     val shape = RoundedCornerShape(ConversationMediaSpec.radius)
     Box(
         modifier
             .testTag(ConversationMediaTags.TILE)
+            // The viewer opens from it and closes into it, by the key it pages by.
+            .then(if (onClick != null) Modifier.viewerOrigin(cacheKey, ConversationMediaSpec.radius) else Modifier)
             .clip(shape)
             .background(colors.surfacePressed)
             .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier)
@@ -165,27 +169,27 @@ fun MediaTile(
         } else if (placeholder != null && !failed) {
             androidx.compose.foundation.Image(placeholder, null, Modifier.matchParentSize(), contentScale = if (video) ContentScale.Fit else ContentScale.FillBounds)
         }
-        if (video) {
+        if (video && playButton) {
             Box(
                 Modifier.size(MediaFlow.PLAY_SIZE.dp).clip(CircleShape).background(PlayFill).testTag(ConversationMediaTags.PLAY),
                 contentAlignment = Alignment.Center,
             ) {
                 androidx.compose.material3.Icon(MaterialSymbols.PlayArrow, null, tint = PlayGlyph, modifier = Modifier.size(ConversationMediaSpec.playIcon))
             }
-            if (duration != null) {
-                Box(
-                    Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(ConversationMediaSpec.badgeInset)
-                        .testTag(ConversationMediaTags.DURATION)
-                        .heightIn(min = ConversationMediaSpec.badgeHeight)
-                        .clip(RoundedCornerShape(ConversationMediaSpec.badgeHeight / 2))
-                        .background(PlayFill)
-                        .padding(horizontal = ConversationMediaSpec.badgePadding),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(duration, style = ConversationMediaSpec.badge, color = PlayGlyph, maxLines = 1)
-                }
+        }
+        if (video && duration != null) {
+            Box(
+                Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(ConversationMediaSpec.badgeInset)
+                    .testTag(ConversationMediaTags.DURATION)
+                    .heightIn(min = ConversationMediaSpec.badgeHeight)
+                    .clip(RoundedCornerShape(ConversationMediaSpec.badgeHeight / 2))
+                    .background(PlayFill)
+                    .padding(horizontal = ConversationMediaSpec.badgePadding),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(duration, style = ConversationMediaSpec.badge, color = PlayGlyph, maxLines = 1)
             }
         }
         if (more > 0) {

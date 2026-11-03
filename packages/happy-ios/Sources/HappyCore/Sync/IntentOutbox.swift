@@ -19,9 +19,15 @@ public struct Intent: Codable, Equatable, Sendable {
         case todoText = "todo.text"
         case todoStatus = "todo.status"
         case todoMove = "todo.move"
+        /// The Feed's (`FeedLibrary`): a subject seen, one slot per
+        /// subject, and every entry read, one slot.
+        case feedSeen = "feed.seen"
+        case feedReadAll = "feed.readAll"
 
         /// A todo list's, sent by `TodoLibrary`.
         public var isTodo: Bool { [.todoCreate, .todoText, .todoStatus, .todoMove].contains(self) }
+        /// The Feed's, sent by `FeedLibrary`.
+        public var isFeed: Bool { self == .feedSeen || self == .feedReadAll }
 
         /// The kinds that set one thing share it: a later one replaces an
         /// earlier one still waiting.
@@ -399,7 +405,7 @@ public struct IntentOverlay: Equatable, Sendable {
             case .unarchive: restored.insert(intent.target)
             case .rename: if let title = intent.value["title"]?.stringValue ?? intent.value.stringValue { titles[intent.target] = title }
             case .answer: answers[intent.target] = intent.value
-            case .todoCreate, .todoText, .todoStatus, .todoMove: break
+            case .todoCreate, .todoText, .todoStatus, .todoMove, .feedSeen, .feedReadAll: break
             }
         }
     }

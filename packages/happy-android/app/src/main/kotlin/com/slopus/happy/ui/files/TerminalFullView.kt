@@ -91,7 +91,7 @@ private object TerminalColors {
  * palette (bash and shell-session), selectable.
  */
 @Composable
-private fun CommandView(
+internal fun CommandView(
     command: String,
     prompt: String,
     stdout: String?,

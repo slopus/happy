@@ -139,11 +139,33 @@ class SessionOps internal constructor(
         }
     }
 
+    /** Happy Agent's `leaveTask`: the task leaves this person's list and runs on for everyone else. */
+    suspend fun leaveTask(sessionId: String): TaskOpResult = taskRpc(sessionId, "leaveTask")
+
+    /** A task's archive: `killSession` alone, its refusal kept (only its owner may). */
+    suspend fun archiveTask(sessionId: String): TaskOpResult = taskRpc(sessionId, "killSession")
+
+    private suspend fun taskRpc(sessionId: String, method: String): TaskOpResult {
+        val answer = try {
+            rpc.sessionRpc(sessionId, method, JsonObject(emptyMap()))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            return TaskOpResult.Unreachable
+        } as? JsonObject
+        if ((answer?.get("success") as? JsonPrimitive)?.booleanOrNull == true) return TaskOpResult.Done
+        val reason = answer?.string("error") ?: answer?.string("message")
+        return if (reason == "Method not found") TaskOpResult.Unsupported else TaskOpResult.Refused(reason?.takeIf { it.isNotBlank() })
+    }
+
     /** ops.ts `sessionDelete`: the session and everything in it, for good. */
     suspend fun delete(sessionId: String): OpResult {
-        if (metadata(sessionId)?.bot != null) {
+        val metadata = metadata(sessionId)
+        if (metadata?.bot != null) {
             return OpResult(false, "A bot keeps one continuous conversation. Archive the bot instead.")
         }
+        // happy-ios SessionDetailActions.taskDeleteMessage.
+        if (metadata?.task != null) return OpResult(false, "A task’s conversation can’t be deleted. Leave the task instead.")
         return try {
             api.deleteSession(sessionId)
             OpResult(true)

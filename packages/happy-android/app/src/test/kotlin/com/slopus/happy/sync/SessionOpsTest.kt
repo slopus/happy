@@ -200,6 +200,30 @@ class SessionOpsTest {
         assertNotNull(server.session("bot"))
     }
 
+    /** happy-ios 36b11c5bf: a task is left or archived through its machine alone, its refusal kept. */
+    @Test
+    fun aTaskIsLeftOrArchivedOnlyThroughItsMachine() = runBlocking {
+        server.addSession(
+            "task",
+            updatedAt = 100,
+            metadata = buildJsonObject {
+                rigMetadataJson(rpcMethods = listOf("leaveTask")).forEach { (key, value) -> put(key, value) }
+                putJsonObject("task") { put("id", "t1"); put("name", "Release") }
+            },
+        )
+        h.startAndSync()
+        assertEquals(TaskOpResult.Unreachable, ops.leaveTask("task"))
+        val left = respond("task", "leaveTask", buildJsonObject { put("success", true) })
+        assertEquals(TaskOpResult.Done, ops.leaveTask("task"))
+        assertEquals(listOf<JsonElement>(JsonObject(emptyMap())), left.toList())
+        respond("task", "leaveTask", buildJsonObject { put("error", "Method not found") })
+        assertEquals(TaskOpResult.Unsupported, ops.leaveTask("task"))
+        respond("task", "killSession", buildJsonObject { put("error", "Only the task's owner can archive it") })
+        assertEquals(TaskOpResult.Refused("Only the task's owner can archive it"), ops.archiveTask("task"))
+        assertFalse(ops.delete("task").success)
+        assertNotNull(server.session("task"))
+    }
+
     @Test
     fun archiveDeactivatesTheSessionOnTheServer() = runBlocking {
         h.startAndSync()

@@ -1,5 +1,10 @@
 package com.slopus.happy.ui.chat
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import com.slopus.happy.ui.conversation.ConversationHeaderSpec
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +43,7 @@ import com.slopus.happy.chat.ChatSessionInfo
 import com.slopus.happy.chat.ChatState
 import com.slopus.happy.chat.ComposerModes
 import com.slopus.happy.chat.isCurrentTurnComplete
+import com.slopus.happy.connection.LinkState
 import com.slopus.happy.model.GitStatus
 import com.slopus.happy.model.SessionState
 import com.slopus.happy.model.settings.ModeOption
@@ -46,6 +52,10 @@ import com.slopus.happy.ui.components.GlassBarLayout
 import com.slopus.happy.ui.components.GlassSpec
 import com.slopus.happy.ui.components.glassSource
 import com.slopus.happy.ui.components.rememberGlassSource
+import com.slopus.happy.ui.conversation.LocalSendFlight
+import com.slopus.happy.ui.conversation.ProsePalette
+import com.slopus.happy.ui.conversation.SendFlight
+import com.slopus.happy.ui.conversation.SendFlightOverlay
 import com.slopus.happy.ui.conversation.keyboardPadding
 import com.slopus.happy.ui.conversation.rememberKeyboardLift
 import com.slopus.happy.ui.conversation.riding
@@ -154,13 +164,31 @@ class ChatScreenSlots(
 )
 
 /**
- * A chat being started: "New chat" in the header, [placeholder] in place of
+ * A chat being started: "New chat" in the header (none before the first
+ * send without [headerShown]), [placeholder] in place of
  * the transcript, and the composer under it, its chips read from [anchor]
  * (the chat it was opened beside, which decides how it runs). The
  * keyboard waits for a tap in the composer.
  */
 @Immutable
-class ChatPendingSlot(val anchor: ChatSessionInfo?, val placeholder: @Composable () -> Unit)
+class ChatPendingSlot(
+    val anchor: ChatSessionInfo?,
+    /** What the composer asks for while empty (a task's first message); null for the chat's own. */
+    val composerPlaceholder: String? = null,
+    /** False until the first send: the header is Back alone (compose's empty chat). */
+    val headerShown: Boolean = true,
+    val placeholder: @Composable () -> Unit,
+)
+
+/** Shown at once, or faded in ease-out over 0.25 s once [shown] turns true; nothing while false. */
+@Composable
+private fun HeaderFadeIn(shown: Boolean, content: @Composable () -> Unit) {
+    AnimatedVisibility(
+        visible = shown,
+        enter = fadeIn(tween(ConversationHeaderSpec.FADE_MILLIS, easing = ConversationHeaderSpec.easing)),
+        exit = ExitTransition.None,
+    ) { content() }
+}
 
 /**
  * One chat (SessionView.tsx). Spec: the header ([ChatHeaderTitle]: back;
@@ -215,6 +243,8 @@ fun ChatScreen(
     goalBar: (@Composable () -> Unit)? = null,
     /** The activity bar (RigActivityBar), just over the composer; fades with the details. */
     activityBar: (@Composable () -> Unit)? = null,
+    /** The account's link as headers show it, debounced ([rememberShownLinkState]). */
+    link: LinkState = LinkState.Online,
 ) {
     val colors = HappyTheme.colors
     val session = state.session
@@ -257,115 +287,134 @@ fun ChatScreen(
     val keyboard = rememberKeyboardLift()
     val glass = rememberGlassSource(colors.surface)
     glass.travel = keyboard.travel
-    GlassBarLayout(
-        modifier = modifier
-            .testTag(ChatScreenTags.SCREEN)
-            .fillMaxSize()
-            .background(colors.surface),
-        ground = colors.surface,
-        source = glass,
-        // Only the transcript runs under the bar; what stands in for it is held below the bar's foot.
-        feathered = showsList,
-        bar = {
-            Column {
-                Header(
-                    left = { HeaderBackButton(actions.onBack) },
-                    titleContent = {
-                        ChatHeaderTitle(slots.headerTitle ?: title, session, gitStatus, onClick = if (session != null) actions.onInfo else null, subtitleOverride = slots.headerSubtitle, working = state.sessionState == SessionState.Thinking)
-                    },
-                    right = { ChatHeaderActions(session, modes, session?.metadata ?: pending?.anchor?.metadata, actions) },
-                )
-                slots.headerAccessory?.invoke()
-                if (!tablet) com.slopus.happy.ui.voice.VoiceStatusBar()
-            }
-        },
-    ) { top ->
-        Column(Modifier.fillMaxSize().keyboardPadding(keyboard).riding(keyboard).glassSource(glass)) {
-            val floating = !tablet && !LocalWindowLayout.current.isLandscape
-            // A pending chat's composer runs as the chat it was opened beside.
-            val composerSession = session ?: pending?.anchor
-            val docked = floating && composerSession != null
-            // SessionView `isChatAtBottom`, reset for each chat.
-            var atNewest by remember(session?.id) { mutableStateOf(true) }
-            val showDetails = !floating || atNewest
-            val density = LocalDensity.current
-            var dockHeight by remember { mutableIntStateOf(0) }
-            // The composer card's distance from the list's bottom, in pixels: both move together with the keyboard, so it doesn't.
-            val list = remember { arrayOfNulls<LayoutCoordinates>(1) }
-            var cardInset by remember { mutableStateOf<Float?>(null) }
-            val dockInset = if (docked) with(density) { dockHeight.toDp() } else 0.dp
-            val inputPadding = if (tablet) ChatScreenSpec.tabletInputPaddingHorizontal else ChatScreenSpec.inputPaddingHorizontal
-            val dock = @Composable { dockModifier: Modifier, composerModifier: Modifier ->
-                if (composerSession != null) {
-                    ChatDock(
-                        state, composerSession, draft, actions, now, modes, inactiveHint.takeIf { session != null }, goalBar, activityBar, inputPadding, showDetails,
-                        onPanelPositioned = if (docked) { coordinates ->
-                            cardInset = list[0]?.takeIf { it.isAttached }?.let { it.size.height - it.localPositionOf(coordinates, Offset.Zero).y }
-                        } else null,
-                        modifier = dockModifier,
-                        composerModifier = composerModifier,
-                    )
-                }
-            }
-            Box(
+    // A message sent at the newest end flies from the composer to its row, over everything (SendFlight).
+    val flight = remember(session?.id) { SendFlight() }
+    // A held message lifts over the chat, blurred and veiled behind it above the composer (iOS 8c2a92172).
+    val lift = remember(session?.id) { MessageLift() }
+    val blur = with(LocalDensity.current) { MessageLiftSpec.blur.toPx() }
+    Box(modifier.fillMaxSize()) {
+        CompositionLocalProvider(LocalSendFlight provides flight, LocalMessageLift provides lift) {
+            GlassBarLayout(
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .onPlaced { list[0] = it },
-            ) {
-                // The list runs under the bar and the floating dock; anything else keeps to the room between them.
-                Box(Modifier.fillMaxSize().padding(top = if (showsList) 0.dp else top - GlassSpec.feather, bottom = if (showsList) 0.dp else dockInset)) {
-                    when {
-                        session == null && pending != null -> pending.placeholder()
-                        !state.sessionLoaded -> Spinner(Modifier.align(Alignment.Center).testTag(ChatScreenTags.LOADING))
-                        session == null -> DeletedSession()
-                        state.snapshot.rows.isNotEmpty() -> CompositionLocalProvider(LocalToolEnvironment provides toolEnvironment, LocalToolAgentState provides session.agentState) {
-                            ChatList(
-                                rows = state.snapshot.rows,
-                                hasMoreOlder = state.snapshot.hasMoreOlder,
-                                isLoadingOlder = state.snapshot.isLoadingOlder,
-                                controlledByUser = session.usesControlledSessionUi && session.agentState?.controlledByUser == true,
-                                bubble = bubble,
-                                callbacks = callbacks,
-                                pager = pager,
-                                state = listState,
-                                bottomInset = dockInset,
-                                topInset = top,
-                                scrollButtonInset = cardInset?.takeIf { docked }?.let { with(density) { it.coerceAtLeast(0f).toDp() } },
-                                onNewestVisibleChange = if (floating) { visible -> atNewest = visible } else null,
-                                sessionId = session.id,
-                                groupToolCalls = groupToolCalls,
-                                currentTurnComplete = isCurrentTurnComplete(state.thinking, session.agentState),
-                                foreground = foreground,
-                                working = state.sessionState == SessionState.Thinking,
+                    .testTag(ChatScreenTags.SCREEN)
+                    .fillMaxSize()
+                    .background(colors.surface),
+                ground = colors.surface,
+                source = glass,
+                // Only the transcript runs under the bar; what stands in for it is held below the bar's foot.
+                feathered = showsList,
+                bar = {
+                    Column(Modifier.liftBackdrop(lift, blur)) {
+                        // An empty chat's header is Back alone; its name and actions fade in with the first send (iOS 323fb2e9f).
+                        val headerShown = session != null || pending?.headerShown != false
+                        Header(
+                            left = { HeaderBackButton(actions.onBack) },
+                            titleContent = {
+                                HeaderFadeIn(headerShown) {
+                                    ChatHeaderTitle(slots.headerTitle ?: title, session, gitStatus, onClick = if (session != null) actions.onInfo else null, subtitleOverride = slots.headerSubtitle, working = state.sessionState == SessionState.Thinking, link = link)
+                                }
+                            },
+                            right = { HeaderFadeIn(headerShown) { ChatHeaderActions(session, modes, session?.metadata ?: pending?.anchor?.metadata, actions) } },
+                        )
+                        slots.headerAccessory?.invoke()
+                        if (!tablet) com.slopus.happy.ui.voice.VoiceStatusBar()
+                    }
+                },
+            ) { top ->
+                Column(Modifier.fillMaxSize().keyboardPadding(keyboard).riding(keyboard).glassSource(glass)) {
+                    val floating = !tablet && !LocalWindowLayout.current.isLandscape
+                    // A pending chat's composer runs as the chat it was opened beside.
+                    val composerSession = session ?: pending?.anchor
+                    val docked = floating && composerSession != null
+                    // SessionView `isChatAtBottom`, reset for each chat.
+                    var atNewest by remember(session?.id) { mutableStateOf(true) }
+                    val showDetails = !floating || atNewest
+                    val density = LocalDensity.current
+                    var dockHeight by remember { mutableIntStateOf(0) }
+                    // The composer card's distance from the list's bottom, in pixels: both move together with the keyboard, so it doesn't.
+                    val list = remember { arrayOfNulls<LayoutCoordinates>(1) }
+                    var cardInset by remember { mutableStateOf<Float?>(null) }
+                    val dockInset = if (docked) with(density) { dockHeight.toDp() } else 0.dp
+                    val inputPadding = if (tablet) ChatScreenSpec.tabletInputPaddingHorizontal else ChatScreenSpec.inputPaddingHorizontal
+                    val dock = @Composable { dockModifier: Modifier, composerModifier: Modifier ->
+                        if (composerSession != null) {
+                            ChatDock(
+                                state, composerSession, draft, actions, now, modes, inactiveHint.takeIf { session != null }, goalBar, activityBar, inputPadding, showDetails,
+                                placeholder = pending?.composerPlaceholder.takeIf { session == null },
+                                onPanelPositioned = if (docked) { coordinates ->
+                                    cardInset = list[0]?.takeIf { it.isAttached }?.let { it.size.height - it.localPositionOf(coordinates, Offset.Zero).y }
+                                } else null,
+                                modifier = dockModifier,
+                                composerModifier = composerModifier,
                             )
                         }
-                        state.snapshot.loaded -> EmptyMessages(
-                            session = session,
-                            hasMoreOlder = state.snapshot.hasMoreOlder,
-                            isLoadingOlder = state.snapshot.isLoadingOlder,
-                            pager = pager,
-                            now = now,
-                        )
-                        else -> Spinner(Modifier.align(Alignment.Center).testTag(ChatScreenTags.LOADING))
                     }
-                }
-                // Over the transcript, not in it; hidden on a landscape phone, as in happy-app.
-                if (session != null && showCliWarning && !(LocalWindowLayout.current.isLandscape && !tablet)) {
-                    CliWarningPill(actions.onDismissCliWarning, Modifier.align(Alignment.TopCenter).padding(top = top))
-                }
-                if (docked) {
-                    if (dockHeight > 0) DockScrim(dockHeight, Modifier.align(Alignment.BottomCenter))
-                    dock(
-                        Modifier
-                            .align(Alignment.BottomCenter)
-                            .onSizeChanged { dockHeight = it.height }
-                            .windowInsetsPadding(WindowInsets.navigationBars),
-                        Modifier,
-                    )
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .onPlaced { list[0] = it },
+                    ) {
+                        // The list runs under the bar and the floating dock; anything else keeps to the room between them.
+                        // The chat blurs behind a held message; the composer stays sharp ([liftClear]).
+                        Box(Modifier.fillMaxSize().liftBackdrop(lift, blur).padding(top = if (showsList) 0.dp else top - GlassSpec.feather, bottom = if (showsList) 0.dp else dockInset)) {
+                            when {
+                                session == null && pending != null -> pending.placeholder()
+                                !state.sessionLoaded -> Spinner(Modifier.align(Alignment.Center).testTag(ChatScreenTags.LOADING))
+                                session == null -> DeletedSession()
+                                state.snapshot.rows.isNotEmpty() -> CompositionLocalProvider(LocalToolEnvironment provides toolEnvironment, LocalToolAgentState provides session.agentState) {
+                                    ChatList(
+                                        rows = state.snapshot.rows,
+                                        hasMoreOlder = state.snapshot.hasMoreOlder,
+                                        isLoadingOlder = state.snapshot.isLoadingOlder,
+                                        controlledByUser = session.usesControlledSessionUi && session.agentState?.controlledByUser == true,
+                                        bubble = bubble,
+                                        callbacks = callbacks,
+                                        pager = pager,
+                                        state = listState,
+                                        bottomInset = dockInset,
+                                        topInset = top,
+                                        scrollButtonInset = cardInset?.takeIf { docked }?.let { with(density) { it.coerceAtLeast(0f).toDp() } },
+                                        onNewestVisibleChange = if (floating) { visible -> atNewest = visible } else null,
+                                        sessionId = session.id,
+                                        groupToolCalls = groupToolCalls,
+                                        currentTurnComplete = isCurrentTurnComplete(state.thinking, session.agentState),
+                                        foreground = foreground,
+                                        working = state.sessionState == SessionState.Thinking,
+                                        flight = flight,
+                                    )
+                                }
+                                state.snapshot.loaded -> EmptyMessages(
+                                    session = session,
+                                    hasMoreOlder = state.snapshot.hasMoreOlder,
+                                    isLoadingOlder = state.snapshot.isLoadingOlder,
+                                    pager = pager,
+                                    now = now,
+                                )
+                                else -> Spinner(Modifier.align(Alignment.Center).testTag(ChatScreenTags.LOADING))
+                            }
+                        }
+                        // Over the transcript, not in it; hidden on a landscape phone, as in happy-app.
+                        if (session != null && showCliWarning && !(LocalWindowLayout.current.isLandscape && !tablet)) {
+                            CliWarningPill(actions.onDismissCliWarning, Modifier.align(Alignment.TopCenter).padding(top = top))
+                        }
+                        if (docked) {
+                            if (dockHeight > 0) DockScrim(dockHeight, Modifier.align(Alignment.BottomCenter))
+                            dock(
+                                Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .onSizeChanged { dockHeight = it.height }
+                                    .liftClear(lift)
+                                    .windowInsetsPadding(WindowInsets.navigationBars),
+                                Modifier,
+                            )
+                        }
+                    }
+                    if (!docked) dock(Modifier.liftClear(lift), Modifier.windowInsetsPadding(WindowInsets.navigationBars))
                 }
             }
-            if (!docked) dock(Modifier, Modifier.windowInsetsPadding(WindowInsets.navigationBars))
         }
+        SendFlightOverlay(flight, bubble, remember(colors) { ProsePalette.of(colors) })
+        CompositionLocalProvider(LocalMessageLift provides null) { MessageLiftOverlay(lift) }
     }
 }

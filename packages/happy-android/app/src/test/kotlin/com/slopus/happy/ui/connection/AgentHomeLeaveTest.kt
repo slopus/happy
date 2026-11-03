@@ -156,13 +156,28 @@ class AgentHomeLeaveTest {
     }
 
     @Test
-    fun anAgentThatGivesNoWordsIsSaidNotToHaveAnswered() {
-        show(session(503, null))
+    fun aNoWithNoWordsIsSaidNotToHaveAnswered() {
+        show(session(422, null))
         holdAndLeave()
         rule.onNodeWithText("Leave").performClick()
         gate.complete(Unit)
         rule.waitUntil(10_000) { rule.onAllNodesWithText("The agent didn't answer. Try again in a moment.").fetchSemanticsNodes().isNotEmpty() }
         assertEquals(1, rows("surface-s1"))
+    }
+
+    /** iOS IntentOutbox: a leave the agent can't take yet is no refusal; it stays gone and goes again later. */
+    @Test
+    fun aLeaveThatCantGoYetStaysGoneAndIsKept() {
+        val session = session(503, null)
+        show(session)
+        holdAndLeave()
+        rule.onNodeWithText("Leave").performClick()
+        gate.complete(Unit)
+        rule.waitUntil(10_000) { synchronized(leaves) { leaves.isNotEmpty() } }
+        rule.waitUntil(10_000) { session.intents.pending.value.single().attempts >= 1 }
+        rule.waitForIdle()
+        assertEquals(0, rows("surface-s1"))
+        assertEquals(0, rule.onAllNodesWithText("The agent didn't answer. Try again in a moment.").fetchSemanticsNodes().size)
     }
 
     @Test

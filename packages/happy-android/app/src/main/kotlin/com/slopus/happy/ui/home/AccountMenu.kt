@@ -182,9 +182,13 @@ fun AccountMenuButton(
             modifier = Modifier.testTag(AccountMenuTags.MENU),
         ) {
             for (entry in menu.entries) {
+                // The two kinds (iOS 64edb6a34): an agent connection is Happy Agent, a relay account Happy CLI. One
+                // with no name of its own goes by its kind; the rows look alike, so TalkBack hears the kind after the name.
+                val kind = stringResource(if (entry.agent) R.string.account_kind_agent else R.string.account_kind_cli)
+                val name = entry.name ?: kind
                 HappyMenuItem(
-                    label = entry.name ?: stringResource(if (entry.agent) R.string.account_menu_unnamed_agent else R.string.account_menu_unnamed_account),
-                    supporting = entry.detail ?: if (entry.agent) stringResource(R.string.account_menu_agent) else null,
+                    label = name,
+                    supporting = entry.detail,
                     leading = { Avatar(entry.seed, AccountMenuSpec.rowAvatar, imageUri = entry.imageUrl, thumbhash = entry.thumbhash, animated = false) },
                     trailing = if (entry.attention && !entry.active) {
                         { Icon(Ionicon.AlertCircleOutline, AccountMenuSpec.attentionIcon, colors.textDestructive) }
@@ -196,7 +200,9 @@ fun AccountMenuButton(
                         open = false
                         if (!entry.active) onSwitch(entry.id)
                     },
-                    modifier = Modifier.testTag(AccountMenuTags.entry(entry.id)),
+                    modifier = Modifier
+                        .semantics { contentDescription = if (name == kind) name else "$name, $kind" }
+                        .testTag(AccountMenuTags.entry(entry.id)),
                 )
             }
             if (menu.entries.isNotEmpty()) HappyMenuDivider()

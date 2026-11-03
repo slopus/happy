@@ -65,6 +65,9 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
         super.viewDidLoad()
         view.backgroundColor = UIColor(Palette.surface)
         view.accessibilityIdentifier = "artifact"
+        // Opened: the Feed counts the artifact seen.
+        let subject = FeedSubject(type: "artifact", id: artifact.id)
+        Task { [feed = session.engine.feed] in await feed.seen(subject) }
         scrollView.alwaysBounceVertical = true
         view.addSubview(scrollView)
         message.font = Fonts.ui(.regular, size: 15)

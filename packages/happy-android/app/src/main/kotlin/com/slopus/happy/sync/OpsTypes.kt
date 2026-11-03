@@ -16,6 +16,23 @@ import kotlinx.serialization.json.put
 @Serializable
 data class OpResult(val success: Boolean, val message: String? = null)
 
+/**
+ * A task's archive or leave (happy-ios 36b11c5bf), asked of its machine
+ * alone: a task is never archived or deleted on the server.
+ */
+sealed interface TaskOpResult {
+    data object Done : TaskOpResult
+
+    /** The machine said no, in its own words when it gave any (only its owner may archive). */
+    data class Refused(val reason: String?) : TaskOpResult
+
+    /** Its machine couldn't be reached. */
+    data object Unreachable : TaskOpResult
+
+    /** An older Happy Agent without the method ("Method not found"). */
+    data object Unsupported : TaskOpResult
+}
+
 /** ops.ts `SpawnSessionResult`; resume answers the same way. */
 sealed interface SpawnSessionResult {
     data class Success(val sessionId: String) : SpawnSessionResult
@@ -74,6 +91,11 @@ sealed interface HappyAgentSpawnTarget {
     /** A new bot, always named here: the daemon never invents a name for one. */
     data class Bot(val name: String) : HappyAgentSpawnTarget {
         override fun toJson() = buildJsonObject { put("kind", "bot"); put("name", name) }
+    }
+
+    /** A new task, unnamed: the daemon derives its id from the request and names it from its first message. */
+    data object Task : HappyAgentSpawnTarget {
+        override fun toJson() = buildJsonObject { put("kind", "task") }
     }
 }
 

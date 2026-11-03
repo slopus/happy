@@ -441,4 +441,54 @@ class SessionStarterTest {
         assertEquals(StartResult.Failed(Words.ours(R.string.home_bot_name_empty)), blank.starter.start(bot = BotRequest("  ", "s"), confirmDirectory = yes))
         assertTrue(old.machines.spawns.isEmpty() && blank.machines.spawns.isEmpty())
     }
+
+    /** The same Happy Agent, new enough to make tasks too. */
+    private val taskRig = machine(
+        "t1",
+        machineMetadata {
+            put("machineKind", "rig")
+            putJsonObject("capabilities") { put("newSession", true); put("bots", true); put("tasks", true) }
+            putJsonObject("defaults") { put("providerId", "codex"); put("modelId", "gpt"); put("permissionMode", "auto") }
+            putJsonArray("models") {
+                addJsonObject {
+                    put("code", "gpt"); put("value", "GPT"); put("providerId", "codex"); put("id", "gpt")
+                    putJsonArray("thinkingLevels") { add("low"); add("high") }
+                    put("defaultThinkingLevel", "high")
+                }
+            }
+            putJsonArray("operatingModes") { addJsonObject { put("code", "auto"); put("value", "Auto") } }
+        },
+    )
+
+    /**
+     * happy-ios 36b11c5bf / 500c1c485: a task is Happy Agent's spawn with
+     * `target: {kind: "task"}` alone, whatever harness the draft chose, then
+     * the text as its first message; the draft's text is cleared.
+     */
+    @Test fun aTaskIsMadeOnHappyAgentWithItsFirstMessage() = runTest {
+        val h = harness(listOf(taskRig), NewSessionDraft(input = "Ship the release", selectedMachineId = "t1", selectedPath = "~/code", agentType = AgentType.Claude))
+        assertEquals(StartResult.Started("s1"), h.starter.start(task = true, confirmDirectory = yes))
+        val request = h.machines.spawns.single()
+        assertEquals("rig", request.agent)
+        assertEquals(HappyAgentSpawnTarget.Task, request.happyAgentTarget)
+        assertEquals("""{"kind":"task"}""", request.happyAgentTarget!!.toJson().toString())
+        assertEquals("request-1", request.clientRequestId)
+        assertEquals(listOf("s1" to "Ship the release"), h.sent)
+        assertEquals("", h.drafts.draft.value.input)
+    }
+
+    @Test fun anOlderHappyAgentMakesNoTask() = runTest {
+        val h = harness(listOf(botRig), NewSessionDraft(input = "x", selectedMachineId = "b1"))
+        assertEquals(StartResult.Refused(StartRefusal.TasksUnsupported), h.starter.start(task = true, confirmDirectory = yes))
+        assertTrue(h.machines.spawns.isEmpty())
+    }
+
+    /** The empty chat's bot (500c1c485) takes the text sent as its first message, after its face. */
+    @Test fun aComposeChatBotSendsItsFirstMessage() = runTest {
+        val h = harness(listOf(botRig), NewSessionDraft(input = "Own releases", selectedMachineId = "b1"))
+        assertEquals(StartResult.Started("s1"), h.starter.start(bot = BotRequest("Release Bot", "seed"), botMessage = true, confirmDirectory = yes))
+        assertEquals(HappyAgentSpawnTarget.Bot("Release Bot"), h.machines.spawns.single().happyAgentTarget)
+        assertEquals(listOf("s1" to "Own releases"), h.sent)
+        assertEquals("", h.drafts.draft.value.input)
+    }
 }

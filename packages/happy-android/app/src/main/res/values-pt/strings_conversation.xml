@@ -37,6 +37,17 @@
     <string name="conversation_permission_from">%1$s pede permissão</string>
     <string name="conversation_answer">Responder</string>
     <string name="conversation_answer_placeholder">Sua resposta</string>
+    <string name="conversation_ask_choose_one">Escolha uma</string>
+    <string name="conversation_ask_choose_any">Escolha quantas quiser</string>
+    <string name="conversation_ask_reply_in_composer">Responda na caixa de mensagem</string>
+    <string name="conversation_ask_answered">Respondida</string>
+    <string name="conversation_ask_no_answer">Sem resposta</string>
+    <string name="conversation_ask_submit">Enviar</string>
+    <string name="conversation_ask_not_sent">Resposta não enviada: %1$s</string>
+    <string name="conversation_command_gone">O comando /%1$s já não está disponível.</string>
+    <string name="conversation_command_busy">Não é possível executar /%1$s agora. Tente novamente quando o agente estiver inativo.</string>
+    <string name="conversation_command_kind_skill">Habilidade</string>
+    <string name="conversation_command_kind_compaction">Compactação</string>
     <string name="conversation_secret_name">Nome para este segredo</string>
     <string name="conversation_secret_value_placeholder">Valor</string>
     <string name="conversation_secret_save">Salvar e responder</string>
@@ -73,15 +84,11 @@
     <string name="conversation_chief_unavailable">Não foi possível abrir o Chief of Staff</string>
     <string name="conversation_chief_missing">Não há um Chief of Staff neste computador.</string>
     <string name="conversation_mode_permission">Permissões</string>
-    <string name="conversation_mode_model">Modelo</string>
-    <string name="conversation_mode_effort">Esforço</string>
     <string name="conversation_send">Enviar</string>
     <string name="conversation_stop">Parar</string>
     <string name="conversation_attach_picture">Adicionar imagem</string>
     <string name="conversation_remove_picture">Remover imagem</string>
     <string name="conversation_composer_more">Mais</string>
-    <string name="conversation_mode_label">Modelo %1$s, esforço %2$s</string>
-    <string name="conversation_mode_label_model_only">Modelo %1$s</string>
     <string name="conversation_mode_permission_item">Permissões: %1$s</string>
     <string name="conversation_pictures_too_large_title">Imagens grandes demais</string>
     <string name="conversation_pictures_too_large_message">Juntas, estas imagens passam do que uma mensagem comporta. Remova algumas e envie de novo.</string>
@@ -98,4 +105,6 @@
     <string name="conversation_failure_context_too_long">Esta conversa é longa demais para %1$s, mesmo depois de redefinir.</string>
     <string name="conversation_failure_provider_disabled">%1$s está desativado. Ative-o nas Configurações e tente de novo.</string>
     <string name="conversation_failure_internal">Algo deu errado: %1$s</string>
+    <string name="conversation_editor_expand">Expandir</string>
+    <string name="conversation_editor_collapse">Recolher</string>
 </resources>

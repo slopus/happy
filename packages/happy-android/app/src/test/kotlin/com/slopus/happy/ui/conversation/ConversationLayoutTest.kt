@@ -14,7 +14,10 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasStateDescription
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
@@ -23,6 +26,7 @@ import androidx.compose.ui.test.swipe
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.slopus.happy.connection.LinkState
 import com.slopus.happy.conversation.Activity
 import com.slopus.happy.conversation.AgentInfo
 import com.slopus.happy.conversation.Block
@@ -39,15 +43,19 @@ import com.slopus.happy.conversation.ModeCatalog
 import com.slopus.happy.conversation.ModelChoice
 import com.slopus.happy.conversation.Presentation
 import com.slopus.happy.conversation.Problem
+import com.slopus.happy.conversation.AskPhase
 import com.slopus.happy.conversation.Question
 import com.slopus.happy.chat.markdown.parseMarkdown
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
+import com.slopus.happy.ui.chat.LinkStatusTags
 import com.slopus.happy.ui.chat.MessageCallbacks
 import com.slopus.happy.ui.chat.PrimaryAction
 import com.slopus.happy.ui.chat.userMessageBubblePalette
 import com.slopus.happy.ui.node
+import com.slopus.happy.ui.chat.DeliveryTags
+import com.slopus.happy.ui.chat.MessageTags
 import com.slopus.happy.ui.layout.ProvideWindowLayout
 import com.slopus.happy.ui.setHappyContent
 import androidx.compose.ui.unit.dp
@@ -88,7 +96,7 @@ class ConversationLayoutTest {
             listOf(
                 Block.Reasoning("The redirect loop suggests the session cookie is not set before the callback."),
                 Block.ToolCall("c1", "Bash", "completed", Presentation.Command("grep -rn redirect sources/auth", "...")),
-                Block.ToolCall("c2", "Read", "completed", Presentation.Exploration(listOf("sources/auth/callback.ts"))),
+                Block.ToolCall("c2", "Read", "completed", Presentation.Exploration.reads("sources/auth/callback.ts")),
                 Block.Text("Found it: the callback rewrites the URL **before** the cookie is written.\n\n```ts\nawait setSession(token)\nredirect(next)\n```"),
             ),
         ),
@@ -131,13 +139,15 @@ class ConversationLayoutTest {
         rule.onNodeWithText("New chat").assertDoesNotExist()
     }
 
-    @Test fun `a new chat asks Task or Bot, with compose and overflow in the header`() {
+    @Test fun `a new chat asks Task or Bot, with Back and overflow alone in the header`() {
         show(ConversationState(created = false, loaded = true, newWork = com.slopus.happy.conversation.NewWork(com.slopus.happy.conversation.WorkChoice())))
-        rule.node(ConversationScreenTags.TITLE).assertIsDisplayed()
-        rule.onNodeWithText("New chat").assertIsDisplayed()
+        // No name and no compose until the first send (iOS 323fb2e9f); the overflow keeps the permission mode.
+        rule.onNodeWithText("New chat").assertDoesNotExist()
+        rule.node(ConversationScreenTags.TITLE_BUTTON).assertDoesNotExist()
+        rule.node(ConversationScreenTags.BACK).assertIsDisplayed()
         rule.node(com.slopus.happy.ui.chat.NewWorkTags.PANEL).assertIsDisplayed()
         rule.node(ConversationScreenTags.EMPTY).assertDoesNotExist()
-        rule.node(ConversationScreenTags.COMPOSE).assertIsDisplayed()
+        rule.node(ConversationScreenTags.COMPOSE).assertDoesNotExist()
         rule.node(ConversationScreenTags.MORE).assertIsDisplayed()
         rule.node(ConversationScreenTags.DETAILS).assertDoesNotExist()
         // The composer runs edge to edge, 8 in, above the navigation bar.
@@ -145,6 +155,40 @@ class ConversationLayoutTest {
         assertDp("composer left", 0, composer.left)
         assertDp("composer width", 411, composer.width)
         shot("new-chat")
+    }
+
+    @Test fun `the name, status and compose fade in with the first send`() {
+        var created by androidx.compose.runtime.mutableStateOf(false)
+        rule.setHappyContent {
+            ConversationScreen(
+                ConversationState(created = created, loaded = true, knownTitle = "Fix it", newWork = if (created) null else com.slopus.happy.conversation.NewWork(com.slopus.happy.conversation.WorkChoice())),
+                null,
+                ConversationScreenActions(),
+            )
+        }
+        rule.node(ConversationScreenTags.TITLE_BUTTON).assertDoesNotExist()
+        fun darkestNow(): Int {
+            val image = rule.onRoot().captureToImage().asAndroidBitmap()
+            val title = rule.node(ConversationScreenTags.TITLE).bounds
+            val density = image.width / 411f
+            return ((title.left.value * density).toInt() until (title.right.value * density).toInt()).minOf { x ->
+                ((title.top.value * density).toInt() until (title.bottom.value * density).toInt()).minOf { y -> image.getPixel(x, y) and 0xff }
+            }
+        }
+        rule.mainClock.autoAdvance = false
+        created = true
+        // Frame by frame, as the screen draws them: from the fade's first frame to half its time.
+        var frames = 0
+        while (darkestNow() == 0xff && frames++ < 10) rule.mainClock.advanceTimeByFrame()
+        repeat(ConversationHeaderSpec.FADE_MILLIS / 2 / 16) { rule.mainClock.advanceTimeByFrame() }
+        val half = darkestNow()
+        rule.mainClock.autoAdvance = true
+        rule.waitForIdle()
+        val whole = darkestNow()
+        // Ease-out: more than half shown at half the time, and black once over.
+        assertTrue("half way: $half, then $whole", half in 0x10 until 0x80 && whole < 0x10)
+        rule.node(ConversationScreenTags.TITLE).assertTextEquals("Fix it")
+        rule.node(ConversationScreenTags.COMPOSE).assertIsDisplayed()
     }
 
     @Test fun `history renders text, tools, media and a failure, with the connection state in the header`() {
@@ -213,22 +257,25 @@ class ConversationLayoutTest {
     @Test fun `the link and the work coming and going move neither the title nor the transcript`() {
         var state by mutableStateOf(ConversationState(created = true, loaded = true, rows = history, agent = agent))
         var connection by mutableStateOf<String?>(null)
-        rule.setHappyContent { ConversationScreen(state, connection, ConversationScreenActions()) }
+        var link by mutableStateOf(LinkState.Online)
+        rule.setHappyContent { ConversationScreen(state, connection, ConversationScreenActions(), link = link) }
         val bar = rule.node(ConversationScreenTags.BAR).bounds
         val title = rule.node(ConversationScreenTags.TITLE).bounds
         val list = rule.node(ConversationScreenTags.LIST).bounds
         val idle = state
-        val flips = listOf<Triple<String?, Activity?, Boolean>>(
-            Triple("connecting", null, false), Triple(null, null, false),
-            Triple("offline", Activity.Thinking, false), Triple(null, Activity.Thinking, true),
-            Triple(null, Activity.Thinking, false), Triple(null, Activity.AwaitingAnswer, false),
-            Triple("connecting", Activity.AwaitingAnswer, false), Triple(null, null, false),
+        // (offline words, link, activity, chat syncing)
+        val flips = listOf<Flip>(
+            Flip(null, LinkState.Connecting, null, false), Flip(null, LinkState.Online, null, false),
+            Flip("offline", LinkState.Offline, Activity.Thinking, false), Flip(null, LinkState.Online, Activity.Thinking, true),
+            Flip(null, LinkState.WaitingForNetwork, Activity.Thinking, false), Flip(null, LinkState.Online, Activity.AwaitingAnswer, false),
+            Flip(null, LinkState.Syncing, Activity.AwaitingAnswer, false), Flip(null, LinkState.Online, null, false),
         )
-        for ((link, activity, syncing) in flips) {
-            val at = "${link ?: "live"}, ${activity ?: "idle"}"
+        for (flip in flips) {
+            val at = "${flip.link}, ${flip.activity ?: "idle"}, syncing ${flip.syncing}"
             rule.mainClock.autoAdvance = false
-            connection = link
-            state = idle.copy(working = activity != null, activity = activity, syncing = syncing)
+            connection = flip.words
+            link = flip.link
+            state = idle.copy(working = flip.activity != null, activity = flip.activity, syncing = flip.syncing)
             Snapshot.sendApplyNotifications()
             rule.mainClock.advanceTimeByFrame()
             rule.mainClock.advanceTimeBy(64)
@@ -241,14 +288,34 @@ class ConversationLayoutTest {
             assertEquals("title, $at", title, rule.node(ConversationScreenTags.TITLE).bounds)
             assertEquals("transcript, $at", list, rule.node(ConversationScreenTags.LIST).bounds)
             rule.node(ConversationScreenTags.SUBTITLE).assertExists()
-            val label = link ?: when {
-                syncing -> "syncing"
-                activity == Activity.Thinking -> "Thinking…"
-                activity == Activity.AwaitingAnswer -> "Waiting for your answer"
+            val label = flip.words ?: when {
+                flip.link == LinkState.Connecting -> "connecting…"
+                flip.link == LinkState.WaitingForNetwork -> "waiting for network…"
+                flip.link == LinkState.Syncing || flip.syncing -> "updating…"
+                flip.activity == Activity.Thinking -> "Thinking…"
+                flip.activity == Activity.AwaitingAnswer -> "Waiting for your answer"
                 else -> "online"
             }
             rule.onNodeWithText(label, useUnmergedTree = true).assertExists()
+            // The link on its way, or the chat catching up, turns a spinner before the words (iOS 7aee3a9b8).
+            val spins = label.endsWith("…") && label != "Thinking…"
+            assertEquals("spinner, $at", spins, rule.onAllNodesWithTag(LinkStatusTags.SPINNER, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
         }
+    }
+
+    private data class Flip(val words: String?, val link: LinkState, val activity: Activity?, val syncing: Boolean)
+
+    @Test fun `a link on its way says so with a 14 spinner 5 before its words`() {
+        rule.setHappyContent {
+            ConversationScreen(ConversationState(created = true, loaded = true, rows = history, agent = agent), null, ConversationScreenActions(), link = LinkState.Connecting)
+        }
+        val spinner = rule.node(LinkStatusTags.SPINNER).bounds
+        val words = rule.onNodeWithText("connecting…", useUnmergedTree = true).bounds
+        assertDp("14 wide", 14, spinner.right - spinner.left)
+        assertDp("14 high", 14, spinner.bottom - spinner.top)
+        assertDp("5 before the words", 5, words.left - spinner.right)
+        assertDp("centred on their line", (words.top + words.bottom) / 2, (spinner.top + spinner.bottom) / 2)
+        shot("link-connecting")
     }
 
     @Test fun `a sent message stays in view, and reading older history is left alone`() {
@@ -279,20 +346,24 @@ class ConversationLayoutTest {
             ConversationState(created = true, loaded = true, rows = listOf(failed), agent = agent),
             actions = ConversationScreenActions(onRetrySend = { retries += it }),
         )
-        rule.onNodeWithText("Not sent: Unknown model.", substring = true).assertIsDisplayed()
-        rule.onNodeWithText("Retry").performClick()
+        // iOS 65f9eb1a0: the red mark says it, with no line under the bubble; a tap sends it again.
+        rule.onNodeWithText("Not sent: Unknown model.", substring = true).assertDoesNotExist()
+        rule.onNode(hasTestTag(DeliveryTags.MARK) and hasStateDescription("Message failed to send."), useUnmergedTree = true).assertExists()
+        rule.node(MessageTags.USER_BUBBLE).performClick()
         assertEquals(listOf("x"), retries)
         shot("failed-send")
     }
 
-    @Test fun `a question shows over the composer and answers`() {
+    @Test fun `a question waits in the transcript, not over the composer`() {
         val question = Question(
             "q1", "pending", "The billing service needs storage.",
             listOf(Question.Prompt("p1", "Database", "Which database should it use?", false, listOf(Question.Option("PostgreSQL", "Matches the stack."), Question.Option("SQLite", null)), null)),
             null, false,
         )
-        show(ConversationState(created = true, loaded = true, rows = history, agent = agent, question = question, activity = Activity.AwaitingAnswer))
-        rule.node(ConversationQuestionTags.CARD).assertIsDisplayed()
+        val rows = listOf(ConversationRow.Ask(ConversationRowBuilder.askKey("q1"), question, AskPhase.Pending)) + history
+        show(ConversationState(created = true, loaded = true, rows = rows, agent = agent, question = question, activity = Activity.AwaitingAnswer))
+        rule.node(ConversationQuestionTags.CARD).assertDoesNotExist()
+        rule.node(AskTags.ROW).assertIsDisplayed()
         rule.onNodeWithText("Waiting for your answer").assertIsDisplayed()
         shot("question")
     }
@@ -303,7 +374,8 @@ class ConversationLayoutTest {
         rule.setContent {
             com.slopus.happy.ui.theme.HappyTheme(preference = if (dark) com.slopus.happy.ui.theme.ThemePreference.Dark else com.slopus.happy.ui.theme.ThemePreference.Light) {
                 surface = com.slopus.happy.ui.theme.HappyTheme.colors.surface.toArgb()
-                ConversationScreen(ConversationState(created = true, loaded = true, rows = history, agent = agent), null, ConversationScreenActions())
+                // The newest rows only, so no row lies under the bar's right edge, where its colour is read.
+                ConversationScreen(ConversationState(created = true, loaded = true, rows = history.take(2), agent = agent), null, ConversationScreenActions())
             }
         }
         for (mode in listOf(false, true)) {
@@ -348,7 +420,7 @@ class ConversationLayoutTest {
         shot("error")
     }
 
-    @Test fun `the composer picks the model, keeping the effort it runs`() {
+    @Test fun `the composer picks the model, at the model's own effort`() {
         val catalog = ModeCatalog(
             listOf(
                 ModelChoice("claude", "Current CLI", "claude", "anthropic/opus-5", "Opus 5 1M", listOf("low", "medium", "high", "max"), "high", emptyList()),
@@ -361,7 +433,7 @@ class ConversationLayoutTest {
             ConversationState(created = true, loaded = true, rows = history, agent = agent, mode = mode, catalog = catalog),
             actions = ConversationScreenActions(onModeChange = { picks += it }),
         )
-        // ChatGPT's Work composer: at rest no label; in use, model and effort as one label beside send.
+        // ChatGPT's Work composer: at rest no chips; in use, the model and effort chips beside send.
         rule.node(ConversationModeTags.MODEL).assertDoesNotExist()
         rule.node(ConversationComposerTags.INPUT).performSemanticsAction(SemanticsActions.RequestFocus)
         rule.waitForIdle()
@@ -373,7 +445,8 @@ class ConversationLayoutTest {
         rule.onNodeWithText("GPT-5.6 Sol").assertIsDisplayed()
         rule.onNodeWithText("GPT-5.6 Sol").performClick()
         rule.waitForIdle()
-        assertEquals(listOf(Mode("codex", "openai/gpt-5.6-sol", "high", null, "auto")), picks)
+        // Another model runs at its own default effort, never one carried over (desktop's happyAgentSelectionModelUpdate).
+        assertEquals(listOf(Mode("codex", "openai/gpt-5.6-sol", "medium", null, "auto")), picks)
         // [+] is exclusively attachments; permissions live in the header overflow.
         rule.node(ConversationComposerTags.MORE).performClick()
         rule.waitForIdle()
@@ -405,6 +478,12 @@ class ConversationLayoutTest {
         rule.onNodeWithText("Retry").performClick()
         assertEquals(1, retries)
         shot("chief-missing")
+    }
+
+    @Test fun `a chief of staff being looked up is titled with the name its computer gives it`() {
+        rule.setHappyContent { ChiefOfStaffScreen(null, onRetry = {}, onBack = {}, name = "Happy") }
+        rule.onNodeWithText("Happy").assertIsDisplayed()
+        rule.onAllNodesWithText("Chief of Staff").assertCountEquals(0)
     }
 
     @Test fun `a prefilled composer shows the kept draft below the prefix`() {
@@ -513,7 +592,8 @@ class ConversationLayoutTest {
     private fun tallQuestion() {
         val question = Question(
             "q2", "pending", (1..12).joinToString("\n\n") { "Step $it of the migration touches another table." },
-            listOf(Question.Prompt("p1", "Plan", "Which order should the tables move in?", false, emptyList(), null)),
+            // A secret's form is the one question still over the composer.
+            listOf(Question.Prompt("p1", "Plan", "Which key should the migration use?", false, emptyList(), Question.SecretRequest("stripe", "Billing's key.", listOf(Question.SecretVariable("STRIPE_KEY", null))))),
             null, false,
         )
         show(ConversationState(created = true, loaded = true, rows = history, agent = agent, question = question, activity = Activity.AwaitingAnswer))

@@ -71,11 +71,13 @@ import com.slopus.happy.autocomplete.SuggestionList
 import com.slopus.happy.autocomplete.SuggestionSource
 import com.slopus.happy.autocomplete.TextSelection
 import com.slopus.happy.autocomplete.applySuggestion
-import com.slopus.happy.autocomplete.findActiveWord
+import com.slopus.happy.conversation.SlashCommand
 import com.slopus.happy.model.SessionMetadata
+import com.slopus.happy.ui.connection.AgentPicture
 import com.slopus.happy.ui.chat.ChatTheme
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.components.glass
 import com.slopus.happy.ui.files.FileIcon
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.theme.HappyTheme
@@ -106,6 +108,8 @@ object AutocompleteSpec {
     val commandGap = 12.dp
     val description = happyTextStyle(fontSize = 13)
     val iconCircle = 32.dp
+    /** An agent command's artwork, a rounded square in the icon's place. */
+    val artworkRadius = 8.dp
     val icon = 18.dp
     val iconGap = 12.dp
     val path = happyTextStyle(fontSize = 14)
@@ -154,6 +158,7 @@ class ComposerAutocomplete internal constructor(val cursor: ComposerCursor) {
     internal var text = ""
     internal var onTextChange: (String) -> Unit = {}
     internal var onPicked: () -> Unit = {}
+    internal var source: SuggestionSource? = null
 
     /** The rows on show: none without an active word. */
     val suggestions: List<Suggestion> get() = if (query == null || query == dismissed) emptyList() else list.suggestions
@@ -170,6 +175,19 @@ class ComposerAutocomplete internal constructor(val cursor: ComposerCursor) {
     /** AgentInput `handleSuggestionSelect`: swap the active word for the pick and a space, the cursor after it. */
     fun select(index: Int) {
         val suggestion = suggestions.getOrNull(index) ?: return
+        // Run as it is (an agent's command): the draft that chose it goes.
+        if (source?.pick(suggestion) == true) {
+            cursor.placement = ComposerCursor.Placement("", TextRange.Zero)
+            onTextChange("")
+            onPicked()
+            return
+        }
+        source?.draft(suggestion)?.let { draft ->
+            cursor.placement = ComposerCursor.Placement(draft, TextRange(draft.length))
+            onTextChange(draft)
+            onPicked()
+            return
+        }
         val result = applySuggestion(text, cursor.selection.toTextSelection(text), suggestion.text, COMPOSER_PREFIXES, addSpace = true)
         cursor.placement = ComposerCursor.Placement(result.text, TextRange(result.cursorPosition))
         onTextChange(result.text)
@@ -209,15 +227,19 @@ private fun TextRange.toTextSelection(text: String) = TextSelection(start.coerce
  * ones, and an abandoned query's results never land.
  */
 @Composable
-fun rememberComposerAutocomplete(text: String, onTextChange: (String) -> Unit): ComposerAutocomplete {
-    val source = LocalSuggestionSource.current
+fun rememberComposerAutocomplete(
+    text: String,
+    source: SuggestionSource? = LocalSuggestionSource.current,
+    onTextChange: (String) -> Unit,
+): ComposerAutocomplete {
     val haptics = LocalHapticFeedback.current
     val state = remember { ComposerAutocomplete(ComposerCursor()) }
     state.text = text
     state.onTextChange = onTextChange
     state.onPicked = { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove) }
     state.cursor.onKey = state::onKey
-    val query = source?.let { findActiveWord(text, state.cursor.selection.toTextSelection(text), COMPOSER_PREFIXES)?.activeWord }
+    state.source = source
+    val query = source?.query(text, state.cursor.selection.toTextSelection(text))
     state.query = query
     if (state.dismissed != null && state.dismissed != query) state.dismissed = null
     LaunchedEffect(source, query) {
@@ -240,7 +262,12 @@ private val exitEasing = CubicBezierEasing(0.32f, 0f, 0.67f, 0f)
  * from 0.96 scale and 8 lower, and fades out over 140 ms.
  */
 @Composable
-fun ComposerSuggestions(state: ComposerAutocomplete, modifier: Modifier = Modifier) {
+fun ComposerSuggestions(
+    state: ComposerAutocomplete,
+    modifier: Modifier = Modifier,
+    /** What the card is frosted glass over, as the composer under it is; null keeps its strong glass tint alone. */
+    backdrop: com.slopus.happy.ui.components.GlassSource? = null,
+) {
     val suggestions = state.suggestions
     var shown by remember { mutableStateOf(suggestions) }
     if (suggestions.isNotEmpty()) shown = suggestions
@@ -253,18 +280,19 @@ fun ComposerSuggestions(state: ComposerAutocomplete, modifier: Modifier = Modifi
             slideInVertically(tween(AutocompleteSpec.ENTER_MS, easing = enterEasing)) { with(density) { 8.dp.roundToPx() } },
         exit = fadeOut(tween(AutocompleteSpec.EXIT_MS, easing = exitEasing)),
     ) {
-        SuggestionCard(shown, state.selected, onSelect = state::select)
+        SuggestionCard(shown, state.selected, onSelect = state::select, backdrop = backdrop)
     }
 }
 
 @Composable
-private fun SuggestionCard(suggestions: List<Suggestion>, selected: Int, onSelect: (Int) -> Unit) {
+private fun SuggestionCard(suggestions: List<Suggestion>, selected: Int, onSelect: (Int) -> Unit, backdrop: com.slopus.happy.ui.components.GlassSource? = null) {
     val colors = HappyTheme.colors
     val shape = RoundedCornerShape(AutocompleteSpec.radius)
     val hairline = with(LocalDensity.current) { 1f.toDp() }
     val width = LocalWindowLayout.current.width
     val wide = width.isFinite && width > AutocompleteSpec.wideScreen
     val listState = rememberLazyListState()
+    val blurs = com.slopus.happy.ui.components.rememberGlassBlur()
     // Keyboard selection keeps the selected row in view, scrolling no further than needed.
     LaunchedEffect(selected) {
         if (selected < 0) return@LaunchedEffect
@@ -292,14 +320,19 @@ private fun SuggestionCard(suggestions: List<Suggestion>, selected: Int, onSelec
             .fillMaxWidth()
             .heightIn(max = AutocompleteSpec.maxHeight)
             .shadow(AutocompleteSpec.shadow, shape)
-            .clip(shape)
-            .background(colors.glass.backgroundStrong)
-            .border(hairline, ChatTheme.colors.glassBorder, shape),
+            .then(
+                if (backdrop != null) {
+                    Modifier.glass(backdrop, shape, com.slopus.happy.ui.components.GlassColors.of(colors.dark), blurs).clip(shape)
+                } else {
+                    Modifier.clip(shape).background(colors.glass.backgroundStrong).border(hairline, ChatTheme.colors.glassBorder, shape)
+                },
+            ),
     ) {
         itemsIndexed(suggestions, key = { _, it -> it.key }) { index, suggestion ->
             SuggestionRow(selected = index == selected, onClick = { onSelect(index) }) {
                 when (suggestion) {
                     is Suggestion.Command -> CommandSuggestion(suggestion)
+                    is Suggestion.AgentCommand -> AgentCommandSuggestion(suggestion)
                     is Suggestion.FileMention -> FileMentionSuggestion(suggestion)
                 }
             }
@@ -396,4 +429,68 @@ private fun RowScope.FileMentionSuggestion(suggestion: Suggestion.FileMention) {
         color = colors.textSecondary,
         modifier = Modifier.padding(start = AutocompleteSpec.labelGap).testTag(AutocompleteTags.LABEL),
     )
+}
+
+/**
+ * An agent's own command, as desktop's palette lists it (CommandPicker,
+ * fd553cc3) in this list's rows: its artwork (the ThumbHash until the
+ * bytes come) in a radius 8 square, else its kind's glyph (18) in a 32
+ * surfaceHigh circle, 12 before "/name" 14 semibold; then what it does, 13
+ * secondary on one line, 12 after; its kind 12 secondary, 8 after that.
+ */
+@Composable
+private fun RowScope.AgentCommandSuggestion(suggestion: Suggestion.AgentCommand) {
+    val colors = HappyTheme.colors
+    val command = suggestion.command
+    Box(
+        modifier = Modifier
+            .padding(end = AutocompleteSpec.iconGap)
+            .testTag(AutocompleteTags.ICON)
+            .requiredSize(AutocompleteSpec.iconCircle)
+            .clip(if (command.image) RoundedCornerShape(AutocompleteSpec.artworkRadius) else CircleShape)
+            .background(colors.surfaceHigh),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (command.image) {
+            AgentPicture(SlashCommand.imagePath(suggestion.agentId, command.name), command.thumbhash, AutocompleteSpec.iconCircle, AutocompleteSpec.artworkRadius)
+        } else {
+            Icon(
+                when (command.kind) {
+                    SlashCommand.COMPACTION -> Ionicon.ContractOutline
+                    SlashCommand.SKILL -> Ionicon.ExtensionPuzzleOutline
+                    else -> Ionicon.FlashOutline
+                },
+                AutocompleteSpec.icon,
+                colors.textSecondary,
+            )
+        }
+    }
+    Text(
+        suggestion.text,
+        style = AutocompleteSpec.command,
+        color = colors.text,
+        maxLines = 1,
+        modifier = Modifier.padding(end = AutocompleteSpec.commandGap),
+    )
+    Text(
+        command.description,
+        style = AutocompleteSpec.description,
+        color = colors.textSecondary,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = Modifier.weight(1f),
+    )
+    command.kind?.let { kind ->
+        Text(
+            when (kind) {
+                SlashCommand.SKILL -> stringResource(R.string.conversation_command_kind_skill)
+                SlashCommand.COMPACTION -> stringResource(R.string.conversation_command_kind_compaction)
+                else -> kind
+            },
+            style = AutocompleteSpec.label,
+            color = colors.textSecondary,
+            maxLines = 1,
+            modifier = Modifier.padding(start = AutocompleteSpec.labelGap).testTag(AutocompleteTags.LABEL),
+        )
+    }
 }

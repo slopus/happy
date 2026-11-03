@@ -5,20 +5,13 @@
 -->
 <resources>
     <string name="agent_home_working">工作中…</string>
-    <string name="agent_home_show_subtasks">显示子任务</string>
-    <string name="agent_home_hide_subtasks">隐藏子任务</string>
-    <string name="agent_home_connecting">正在连接 %1$s…</string>
     <string name="agent_home_empty_title">还没有对话</string>
     <string name="agent_home_empty_body">与此智能体开始聊天，对话会显示在这里。</string>
     <string name="agent_home_offline_title">无法连接 %1$s</string>
     <string name="agent_home_offline_body">请确认智能体正在运行且在线。Happy 会自动重新连接。</string>
     <string name="agent_home_revoked">此手机已在 Happy Agent 中移除。请重新连接智能体后再使用。</string>
     <string name="agent_home_update_required">此智能体需要更新版本的 Happy。请更新应用后再使用。</string>
-    <string name="agent_home_status_offline">离线</string>
-    <string name="agent_home_status_revoked">已移除</string>
-    <string name="agent_home_status_update">需要更新</string>
     <string name="agent_artifacts_untitled">无标题</string>
-    <string name="agent_artifacts_empty">还没有工件。</string>
     <string name="agent_artifacts_failed">无法读取工件</string>
     <string name="agent_surface_add_todo">添加待办</string>
     <string name="agent_surface_no_todos">这里还没有内容。</string>
@@ -31,7 +24,6 @@
     <string name="agent_search_conversations">对话</string>
     <string name="agent_search_actions">快捷操作</string>
     <string name="agent_search_no_results">没有“%1$s”的结果</string>
-    <string name="agent_search_add">添加账户或智能体</string>
     <string name="agent_search_open_settings">打开设置</string>
     <string name="agent_settings_edit_name">编辑名称</string>
     <string name="agent_settings_edit_avatar">编辑头像</string>

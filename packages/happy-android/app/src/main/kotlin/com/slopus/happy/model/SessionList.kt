@@ -16,6 +16,10 @@ data class SessionRowData(
     val id: String,
     val botId: String? = null,
     val botUsername: String? = null,
+    /** A task (`metadata.task`): listed under "Tasks", its folder as its place, no harness badge. */
+    val task: Boolean = false,
+    /** A task whose machine takes `leaveTask`: its swipe leaves it. A task without it doesn't swipe. */
+    val leavesTask: Boolean = false,
     /** Null: "New chat". */
     val name: String? = null,
     /** Null: "unknown". */
@@ -74,6 +78,8 @@ enum class ProjectSource { Rig, Happy }
 @Immutable
 sealed interface SessionListItem {
     data class Bots(val sessions: List<SessionRowData>) : SessionListItem
+    /** Each computer's tasks, after its bots, in the person's own order ([taskOrder]). */
+    data class Tasks(val sessions: List<SessionRowData>) : SessionListItem
     data class Header(val title: DayTitle, val day: LocalDate) : SessionListItem
     data class ProjectsHeader(val source: ProjectSource) : SessionListItem
     data class ProjectItem(val source: ProjectSource, val project: ProjectGroupData) : SessionListItem
@@ -100,6 +106,32 @@ data class SessionListInputs(
 fun Session.isArchived(archiving: Set<String>): Boolean =
     id in archiving || metadata?.lifecycleState == "archived" || (!metadata.isRig() && !active)
 
+/**
+ * A task archived by its owner or left by this person (its machine archives
+ * a left task's session for them alone). Lists drop these rather than show
+ * them archived: there is no way back to a task yet (happy-ios `isRetiredTask`).
+ */
+fun Session.isRetiredTask(archiving: Set<String>): Boolean = isTask && isArchived(archiving)
+
+/**
+ * happy-ios `taskPrecedes`: by computer, then the person's own order
+ * (`task.orderKey`, compared as plain strings, as the keys are made: "45"
+ * before "5"), then the tasks they haven't joined, newest first.
+ */
+val taskOrder: Comparator<Session> = Comparator { a, b ->
+    val machine = (a.metadata?.machineId ?: "").compareTo(b.metadata?.machineId ?: "")
+    if (machine != 0) return@Comparator machine
+    val keyA = a.taskOrNull()?.orderKey
+    val keyB = b.taskOrNull()?.orderKey
+    when {
+        keyA != null && keyB != null -> if (keyA != keyB) keyA.compareTo(keyB) else a.id.compareTo(b.id)
+        keyA != null -> -1
+        keyB != null -> 1
+        a.createdAt != b.createdAt -> b.createdAt.compareTo(a.createdAt)
+        else -> a.id.compareTo(b.id)
+    }
+}
+
 fun buildSessionRowData(session: Session, inputs: SessionListInputs): SessionRowData {
     val metadata = session.metadata
     val rigIdentity = metadata.rigIdentity()
@@ -116,6 +148,8 @@ fun buildSessionRowData(session: Session, inputs: SessionListInputs): SessionRow
         id = session.id,
         botId = metadata?.bot?.id,
         botUsername = metadata?.bot?.username,
+        task = session.isTask,
+        leavesTask = session.canLeaveTask,
         name = session.displayName(),
         subtitle = session.displaySubtitle(),
         avatarId = session.avatarId(),
@@ -172,9 +206,9 @@ fun relativeDayTitle(timestamp: Long, today: LocalDate, zone: ZoneId): DayTitle 
 }
 
 /**
- * buildSessionListViewData: bots, then Rig projects, then Happy CLI
+ * buildSessionListViewData: bots, then tasks, then Rig projects, then Happy CLI
  * projects, then the archive as a flat tail split by day. Side chats never
- * appear. Projects sort active first, then by last activity, which keys off
+ * appear, nor do retired tasks. Projects sort active first, then by last activity, which keys off
  * the last meaningful message, not updatedAt, so streaming sessions do not
  * make the list jump.
  */
@@ -185,15 +219,17 @@ fun buildSessionListViewData(
 ): List<SessionListItem> {
     val rigProjectSessions = mutableListOf<Session>()
     val botSessions = mutableListOf<Session>()
+    val taskSessions = mutableListOf<Session>()
     val rigPathSessions = mutableListOf<Session>()
     val happySessions = mutableListOf<Session>()
     val archivedSessions = mutableListOf<Session>()
 
     for (session in inputs.sessions) {
-        if (session.metadata?.isSideChat == true) continue
+        if (session.metadata?.isSideChat == true || session.isRetiredTask(inputs.archivingSessionIds)) continue
         when {
             session.isArchived(inputs.archivingSessionIds) -> archivedSessions.add(session)
             session.metadata?.bot != null -> botSessions.add(session)
+            session.isTask -> taskSessions.add(session)
             session.metadata.isRig() -> if (session.isProjectSession()) rigProjectSessions.add(session) else rigPathSessions.add(session)
             else -> happySessions.add(session)
         }
@@ -218,6 +254,10 @@ fun buildSessionListViewData(
             if (aKey != bKey) aKey.compareTo(bKey) else a.id.compareTo(b.id)
         }
         items.add(SessionListItem.Bots(botSessions.map(toRow)))
+    }
+    if (taskSessions.isNotEmpty()) {
+        taskSessions.sortWith(taskOrder)
+        items.add(SessionListItem.Tasks(taskSessions.map(toRow)))
     }
 
     val rigProjects = buildProjectGroups(rigProjectSessions, toRow, isActive) +
@@ -268,7 +308,7 @@ fun visibleSessionListItems(items: List<SessionListItem>, hideArchived: Boolean)
         when (item) {
             is SessionListItem.ProjectsHeader -> if (item.source in visibleSources) result.add(item)
             is SessionListItem.ProjectItem -> visibleProjects[index]?.let(result::add)
-            is SessionListItem.Bots -> result.add(item)
+            is SessionListItem.Bots, is SessionListItem.Tasks -> result.add(item)
             else -> Unit
         }
     }
@@ -316,6 +356,7 @@ fun buildFlatSessionRows(items: List<SessionListItem>, sortByActivity: Boolean):
     for (item in items) {
         when (item) {
             is SessionListItem.Bots -> item.sessions.forEach { rows.add(toFlatSessionRow(it)) }
+            is SessionListItem.Tasks -> item.sessions.forEach { rows.add(toFlatSessionRow(it)) }
             is SessionListItem.ProjectItem -> for (workspace in item.project.workspaces) {
                 for (session in workspace.sessions) {
                     rows.add(FlatSessionRowData(session, item.project.name, workspace.name ?: workspace.id.ifEmpty { null }))
@@ -331,6 +372,8 @@ fun buildFlatSessionRows(items: List<SessionListItem>, sortByActivity: Boolean):
 /** toFlatSessionRow: a row outside any project card placed by the same worktree rule the cards use. */
 fun toFlatSessionRow(session: SessionRowData): FlatSessionRowData {
     if (session.botId != null) return FlatSessionRowData(session, "@${session.botUsername ?: ""}", null)
+    // A task's place is its folder under Tasks (its subtitle).
+    if (session.task) return FlatSessionRowData(session, session.subtitle ?: "~/Tasks", null)
     val path = session.path?.trim().orEmpty()
     val worktree = WorktreePaths.isWorktree(path)
     val projectPath = if (worktree) WorktreePaths.repoPath(path) else path

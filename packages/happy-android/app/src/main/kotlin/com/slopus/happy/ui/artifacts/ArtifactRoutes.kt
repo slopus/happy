@@ -119,6 +119,7 @@ private class ArtifactHolder(session: AgentSession?, route: ArtifactRoute, resou
             labels = { isVideo, name ->
                 resources.getString(R.string.artifact_media_label, resources.getString(if (isVideo) R.string.artifact_video else R.string.artifact_picture), name)
             },
+            library = it.media,
         ).also(ArtifactLoader::load)
     }
 

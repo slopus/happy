@@ -88,12 +88,13 @@ class ChatFeedTest {
     fun unchangedRowsKeepTheirIdentity() {
         val reduction = ChatReduction { 0 }
         val info = ChatSessionInfo.from(session())
-        val first = reduction.apply(ChatPage(listOf(user("u1", "hello", 1))), info)
-        val second = reduction.apply(ChatPage(listOf(user("u1", "hello", 1), agent("a1", "reply", 2))), info)
-        assertEquals(2, second.rows.size)
+        val first = reduction.apply(ChatPage(listOf(user("u1", "hello", 1), agent("a1", "reply", 2))), info)
+        val second = reduction.apply(ChatPage(listOf(user("u1", "hello", 1), agent("a1", "reply", 2), agent("a2", "more", 3))), info)
+        assertEquals(3, second.rows.size)
         assertSame(first.rows[0], second.rows[1])
+        assertSame(first.rows[1], second.rows[2])
         // Nothing new: the same snapshot comes back.
-        assertSame(second, reduction.apply(ChatPage(listOf(user("u1", "hello", 1), agent("a1", "reply", 2))), info))
+        assertSame(second, reduction.apply(ChatPage(listOf(user("u1", "hello", 1), agent("a1", "reply", 2), agent("a2", "more", 3))), info))
     }
 
     @Test
@@ -136,6 +137,32 @@ class ChatFeedTest {
         assertEquals(SessionState.PermissionRequired, ChatState(session = info, online = true).sessionState)
         assertEquals(SessionState.Disconnected, ChatState(session = info, online = false).sessionState)
         assertEquals(SessionState.Thinking, ChatState(session = ChatSessionInfo.from(session()), online = true, thinking = true).sessionState)
+    }
+
+    /** iOS 3c24acf5c: in the outbox the clock, stored one check, answered two; the bubble keeps the send's time. */
+    @Test
+    fun ownMessagesCarryTheirMarkAndFirstTime() {
+        val reduction = ChatReduction { 0 }
+        val info = ChatSessionInfo.from(session())
+        fun only(page: ChatPage) = reduction.apply(page, info).rows.filterIsInstance<ChatRow.User>().single()
+        val queued = only(ChatPage(emptyList(), outbox = listOf(send("L", "hi", OutboxState.QUEUED))))
+        assertEquals(MessageDelivery.Sending, queued.delivery)
+        assertEquals(5L, queued.time)
+        val stored = only(ChatPage(listOf(user("S", "hi", 60_000, localId = "L")), outbox = listOf(send("L", "hi", OutboxState.SENT))))
+        assertEquals("no receipts and no answer yet", MessageDelivery.Received, stored.delivery)
+        assertEquals("the echo's stamp doesn't move the time", 5L, stored.time)
+        val answered = only(ChatPage(listOf(user("S", "hi", 60_000, localId = "L"), agent("A", "ok", 60_001))))
+        assertEquals(MessageDelivery.Accepted, answered.delivery)
+        assertEquals(5L, answered.time)
+    }
+
+    @Test
+    fun aRefusedSendIsFailed() {
+        val reduction = ChatReduction { 0 }
+        val info = ChatSessionInfo.from(session())
+        val failed = reduction.apply(ChatPage(emptyList(), outbox = listOf(send("L", "hi", OutboxState.FAILED, "nope"))), info).rows.single() as ChatRow.User
+        assertEquals(MessageDelivery.Failed, failed.delivery)
+        assertEquals("L", failed.failedLocalId)
     }
 
     @Test

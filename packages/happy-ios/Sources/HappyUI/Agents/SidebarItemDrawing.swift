@@ -23,9 +23,31 @@ struct SidebarItemDrawing: Drawing, Equatable {
     /// The screen's pixels per point, for whole-pixel text boxes.
     var displayScale: CGFloat
 
+    /// Equal when they draw the same: the row's fields the bitmap and its
+    /// sheen read, not the rest it carries (when it last did something,
+    /// its subtasks, where it opens). A working row's activity moves every
+    /// minute; drawn again for that, it would be measured and drawn anew
+    /// for nothing.
+    static func == (a: Self, b: Self) -> Bool {
+        a.frame == b.frame && a.selected == b.selected && a.dark == b.dark && a.displayScale == b.displayScale
+            && a.row.kind == b.row.kind && a.row.label == b.row.label && a.row.unread == b.row.unread
+            && a.row.isNew == b.row.isNew && a.row.status == b.row.status && a.row.collapsed == b.row.collapsed
+            && a.row.hasHiddenSessions == b.row.hasHiddenSessions && a.row.lineChanges == b.row.lineChanges
+            && a.row.targetKind == b.row.targetKind && a.row.count == b.row.count
+    }
+
+    #if DEBUG
+    /// Tests stand in for a slow display queue (a hot phone, many rows) with
+    /// this: each drawing takes up to this many seconds longer.
+    nonisolated(unsafe) static var testDrawDelay: Double = 0
+    #endif
+
     func draw(in context: CGContext, bounds: CGRect) {
         #if DEBUG || HAPPY_FIXTURES
         dispatchPrecondition(condition: .notOnQueue(.main))
+        #endif
+        #if DEBUG
+        if Self.testDrawDelay > 0 { Thread.sleep(forTimeInterval: .random(in: 0...Self.testDrawDelay)) }
         #endif
         UIGraphicsPushContext(context)
         defer { UIGraphicsPopContext() }
@@ -58,7 +80,8 @@ struct SidebarItemDrawing: Drawing, Equatable {
         }
         SidebarTypography.draw(title, in: frame.label, scale: displayScale)
         if let box = frame.lineChanges {
-            SidebarLineChanges.draw(row.lineChanges, in: box, scale: displayScale)
+            if let count = row.count { SidebarLineChanges.draw(count: count, in: box, scale: displayScale) }
+            else { SidebarLineChanges.draw(row.lineChanges, in: box, scale: displayScale) }
         }
         if (row.kind == .space || row.kind == .session) && row.collapsed != nil, let glyph = frame.chevronGlyph {
             Self.drawGlyph(chevron(Metrics.chevronGlyph), color: UIColor(Palette.rowText), in: glyph)

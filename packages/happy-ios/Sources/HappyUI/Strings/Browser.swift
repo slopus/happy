@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import HappyCore
 
 // The in-app browser has no screen in happy-app; these are this app's own,

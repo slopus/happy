@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import com.slopus.happy.R
 import com.slopus.happy.ui.components.GlassBarScreen
 import com.slopus.happy.ui.components.Ionicon
@@ -35,19 +36,20 @@ object ChiefOfStaffTags {
 
 /**
  * While the Chief of Staff is looked up: the conversation's top app bar
- * titled "Chief of Staff", on glass ([GlassBarScreen]), over a centred
- * spinner, or, when it can't be found, why, with Retry.
+ * titled with its [name] as the computer calls it (desktop ca4c303f),
+ * "Chief of Staff" until that is known, on glass ([GlassBarScreen]), over
+ * a centred spinner, or, when it can't be found, why, with Retry.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ChiefOfStaffScreen(problem: String?, onRetry: () -> Unit, onBack: () -> Unit) {
+fun ChiefOfStaffScreen(problem: String?, onRetry: () -> Unit, onBack: () -> Unit, name: String? = null) {
     val colors = HappyTheme.colors
     GlassBarScreen(
         modifier = Modifier.fillMaxSize().background(colors.surface).testTag(ChiefOfStaffTags.SCREEN),
         ground = colors.surface,
         bar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.conversation_chief_of_staff)) },
+                title = { Text(name ?: stringResource(R.string.conversation_chief_of_staff), maxLines = 1, overflow = TextOverflow.Ellipsis) },
                 navigationIcon = {
                     IconButton(onClick = onBack, modifier = Modifier.testTag(ConversationScreenTags.BACK)) {
                         Icon(MaterialSymbols.ArrowBack, stringResource(R.string.common_back))

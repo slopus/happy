@@ -130,7 +130,7 @@ class AttachmentApi(
      * it (with the bearer token only when it is the server's; presigned S3
      * URLs reject extra headers).
      */
-    suspend fun download(token: String, sessionId: String, ref: String): ByteArray {
+    suspend fun download(token: String, sessionId: String, ref: String, progress: ((done: Long, total: Long?) -> Unit)? = null): ByteArray {
         val server = serverUrl()
         val requestUrl = "$server/v1/sessions/$sessionId/attachments/request-download"
         fun requestInput(status: Int? = null, statusText: String? = null, message: String? = null) = AttachmentDiagnosticInput(
@@ -179,12 +179,28 @@ class AttachmentApi(
                 )
             }
             try {
-                it.body.bytes()
+                if (progress == null) it.body.bytes() else read(it.body, progress)
             } catch (e: IOException) {
                 val message = errorMessageFromUnknown(e)
                 throw createAttachmentDiagnosticError(format("Attachment download body read error", message), blobInput(message = message))
             }
         }
+    }
+
+    /** [body] a piece at a time, telling [progress] how far, for the picture's download ring. */
+    private fun read(body: okhttp3.ResponseBody, progress: (done: Long, total: Long?) -> Unit): ByteArray {
+        val total = body.contentLength().takeIf { it >= 0 }
+        val out = java.io.ByteArrayOutputStream(total?.toInt() ?: 64 * 1024)
+        val buffer = ByteArray(64 * 1024)
+        body.byteStream().use { input ->
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                out.write(buffer, 0, count)
+                progress(out.size().toLong(), total)
+            }
+        }
+        return out.toByteArray()
     }
 
     /** Sends [request]; a non-2xx goes to [onError], which throws. Returns the body text. */

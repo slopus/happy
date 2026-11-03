@@ -3,6 +3,7 @@ package com.slopus.happy.ui.components
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -107,5 +108,30 @@ class ThumbHashTest {
         const val EXPO_SHA_1 = "c84b099a8794cb9ee4b37538ce0613d49d3c9b9b51ebfa2b1386201232673cec"
         const val EXPO_SHA_2 = "9efb063dfa59e77963e845628bed3f08e020bd31b104ad19e4b2817637de745b"
         const val EXPO_SHA_3 = "9a305790ef70cd4129e2e74185dfdfe5443515ff524eb09ff3c7ef61b7c0f491"
+    }
+
+    // iOS ThumbHashCache: one decode a hash, a hash that isn't one kept as nothing, 256 kept, the least recently used first out.
+    @Test fun theCacheDecodesEachHashOnceAndKeepsTheLatest() {
+        val cache = ThumbHashCache()
+        val hash = vectors[0].hash
+        assertNotNull(cache.picture(hash))
+        assertNotNull(cache.picture(hash))
+        assertNull(cache.picture("AAAA"))
+        assertNull(cache.picture("AAAA"))
+        assertNull(cache.picture(null))
+        assertEquals(2, cache.makes)
+        assertEquals(256, ThumbHashCache.LIMIT)
+
+        val small = ThumbHashCache(limit = 2)
+        small.picture(vectors[0].hash)
+        small.picture(vectors[1].hash)
+        small.picture(vectors[0].hash)
+        small.picture(vectors[2].hash)
+        assertEquals(2, small.size)
+        // The first was used last but one, so the second went.
+        small.picture(vectors[0].hash)
+        assertEquals(3, small.makes)
+        small.picture(vectors[1].hash)
+        assertEquals(4, small.makes)
     }
 }

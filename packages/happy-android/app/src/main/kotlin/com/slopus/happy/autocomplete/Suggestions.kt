@@ -1,5 +1,6 @@
 package com.slopus.happy.autocomplete
 
+import com.slopus.happy.conversation.SlashCommand
 import com.slopus.happy.model.SessionMetadata
 import kotlinx.coroutines.CancellationException
 
@@ -13,6 +14,12 @@ sealed interface Suggestion {
         override val text get() = "/$command"
     }
 
+    /** A Happy Agent's own command ([SlashCommand]): its artwork or kind's glyph, what it does, and its kind. */
+    data class AgentCommand(val command: SlashCommand, val agentId: String) : Suggestion {
+        override val key get() = "agent-cmd-${command.name}"
+        override val text get() = "/${command.name}"
+    }
+
     data class FileMention(val fileName: String, val filePath: String, val fullPath: String, val fileType: FileItem.FileType) : Suggestion {
         override val key get() = "file-$fullPath"
         override val text get() = "@$fullPath"
@@ -22,6 +29,15 @@ sealed interface Suggestion {
 /** What the composer asks for suggestions: an active word such as `/co` or `@src/ma`. */
 fun interface SuggestionSource {
     suspend fun suggestions(query: String): List<Suggestion>
+
+    /** The query [text] asks about with the cursor at [selection]: the `@` or `/` word there, by default. */
+    fun query(text: String, selection: TextSelection): String? = findActiveWord(text, selection, COMPOSER_PREFIXES)?.activeWord
+
+    /** A row was picked; true when this took it (ran it), so the draft is cleared rather than completed. */
+    fun pick(suggestion: Suggestion): Boolean = false
+
+    /** The whole draft a picked row leaves, where its query is the whole draft; null completes the word at the cursor. */
+    fun draft(suggestion: Suggestion): String? = null
 }
 
 /** suggestions.ts asks both searches for 50. */

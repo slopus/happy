@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tool_open">Obre els detalls</string>
+    <string name="tool_open_file">Obre el fitxer</string>
+    <string name="tool_plan_progress">pla · %1$d de %2$d fets</string>
+    <string name="tool_unavailable">Aquesta crida d’eina ja no és a la conversa.</string>
+    <string name="tool_reading_whole">S’està llegint la crida sencera…</string>
+    <string name="tool_whole_failed">No s’ha pogut llegir la crida sencera. Es mostra el que tenia el xat.</string>
+    <string name="tool_kind_file_edit">Edició de fitxer</string>
+    <string name="tool_kind_exploration">Exploració</string>
+    <string name="tool_kind_x_search">Cerca a X</string>
+    <string name="tool_kind_web_page">Pàgina web</string>
+    <string name="tool_kind_plan">Pla</string>
+    <string name="tool_kind_media">Mostrat per a tu</string>
+    <string name="tool_kind_tool_call">Crida d’eina</string>
+    <string name="tool_status_running">En curs</string>
+    <string name="tool_section_arguments">Arguments</string>
+    <string name="tool_section_result">Resultat</string>
+    <string name="tool_section_sources">Fonts</string>
+    <string name="tool_section_steps">Passos</string>
+    <string name="tool_section_instructions">Instruccions</string>
+    <string name="tool_section_review">Revisió</string>
+    <string name="tool_section_raw">Dades en brut</string>
+    <string name="tool_field_query">Consulta</string>
+    <string name="tool_field_explanation">Explicació</string>
+    <string name="tool_field_title">Títol</string>
+    <string name="tool_field_model">Model</string>
+    <string name="tool_field_to">Per a</string>
+    <string name="tool_field_address">Adreça</string>
+    <string name="tool_field_prompt">Indicació</string>
+    <string name="tool_field_running">En execució</string>
+    <string name="tool_op_list">Llista</string>
+    <string name="tool_op_in">a %1$s</string>
+    <string name="tool_review_decision">Decisió</string>
+    <string name="tool_review_allowed">Permès</string>
+    <string name="tool_review_denied">Denegat</string>
+    <string name="tool_review_unproven">Sense revisar</string>
+    <string name="tool_review_why">Motiu</string>
+    <string name="tool_review_timed_out">La revisió ha esgotat el temps</string>
+    <string name="tool_review_unavailable">El revisor no estava disponible</string>
+    <string name="tool_review_risk">Risc</string>
+    <string name="tool_review_asked">Demanat</string>
+    <string name="tool_review_access">Accés</string>
+    <string name="tool_review_full_access">S’ha executat amb accés complet</string>
+    <string name="tool_review_sandbox">S’ha quedat al sandbox</string>
+    <string name="tool_level_low">Baix</string>
+    <string name="tool_level_medium">Mitjà</string>
+    <string name="tool_level_high">Alt</string>
+    <string name="tool_level_critical">Crític</string>
+    <string name="tool_level_unknown">Desconegut</string>
+    <plurals name="tool_diff_more_lines">
+        <item quantity="one">No es mostra %1$d línia més de %2$s</item>
+        <item quantity="many">No es mostren %1$d línies més de %2$s</item>
+        <item quantity="other">No es mostren %1$d línies més de %2$s</item>
+    </plurals>
+    <plurals name="tool_diff_more_files">
+        <item quantity="one">No es mostra %1$d fitxer més</item>
+        <item quantity="many">No es mostren %1$d fitxers més</item>
+        <item quantity="other">No es mostren %1$d fitxers més</item>
+    </plurals>
+</resources>

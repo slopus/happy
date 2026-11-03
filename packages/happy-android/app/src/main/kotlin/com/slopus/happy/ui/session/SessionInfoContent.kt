@@ -11,6 +11,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -27,6 +28,9 @@ import com.slopus.happy.model.formatPathRelativeToHome
 import com.slopus.happy.model.gitPresentation
 import com.slopus.happy.model.isCliOutdated
 import com.slopus.happy.model.isRig
+import com.slopus.happy.model.isTask
+import com.slopus.happy.model.canLeaveTask
+import com.slopus.happy.model.taskCanArchive
 import com.slopus.happy.model.resumeCommand
 import com.slopus.happy.model.rigIdentity
 import com.slopus.happy.model.sandboxSummary
@@ -46,6 +50,7 @@ import com.slopus.happy.ui.components.ItemList
 import com.slopus.happy.ui.components.Octicon
 import com.slopus.happy.ui.components.confirm
 import com.slopus.happy.ui.home.ArchiveResult
+import com.slopus.happy.ui.home.taskFailureMessage
 import com.slopus.happy.ui.home.GitChanges
 import com.slopus.happy.ui.home.ResumeBlock
 import com.slopus.happy.ui.home.canForkSession
@@ -71,6 +76,7 @@ internal fun SessionInfoContent(
     live: SessionInfoLive,
 ) {
     val colors = HappyTheme.colors
+    val resources = LocalResources.current
     val scope = rememberCoroutineScope()
     var alert by remember { mutableStateOf<Alert?>(null) }
     var forking by remember { mutableStateOf(false) }
@@ -211,29 +217,55 @@ internal fun SessionInfoContent(
                     modifier = Modifier.testTag(SessionInfoTags.PARENT),
                 )
             }
-            Item(
-                title = stringResource(R.string.session_info_archive_session),
-                subtitle = stringResource(R.string.session_info_archive_session_subtitle),
-                icon = { Icon(Ionicon.ArchiveOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.red) },
-                loading = archiving,
-                onClick = {
-                    archiving = true
-                    val successor = actions.tabSuccessor(session.id)
-                    scope.launch {
-                        try {
-                            if (metadata?.bot == null) cleanupWorktree()
-                            when (val result = controls.archive(session)) {
-                                ArchiveResult.Archived -> actions.onArchived(successor)
-                                is ArchiveResult.Failed -> show(errorTitle, result.message ?: if (result.bot) botArchiveFailed else archiveFailed)
+            // A task: anyone in it may leave, only its owner or the team's may archive (happy-ios 36b11c5bf).
+            val task = session.isTask
+            fun finished(result: ArchiveResult, successor: String?) = when (result) {
+                ArchiveResult.Archived -> actions.onArchived(successor)
+                is ArchiveResult.Failed -> show(errorTitle, result.message ?: if (result.bot) botArchiveFailed else archiveFailed)
+                is ArchiveResult.TaskFailed -> show(errorTitle, taskFailureMessage(result, resources::getString))
+            }
+            if (task && session.canLeaveTask) {
+                Item(
+                    title = stringResource(R.string.task_leave),
+                    icon = { Icon(Ionicon.ExitOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.red) },
+                    loading = archiving,
+                    onClick = {
+                        archiving = true
+                        val successor = actions.tabSuccessor(session.id)
+                        scope.launch {
+                            try {
+                                finished(controls.leave(session), successor)
+                            } finally {
+                                archiving = false
                             }
-                        } finally {
-                            archiving = false
                         }
-                    }
-                },
-                modifier = Modifier.testTag(SessionInfoTags.ARCHIVE),
-            )
-            if (metadata?.bot == null) {
+                    },
+                    modifier = Modifier.testTag(SessionInfoTags.LEAVE_TASK),
+                )
+            }
+            if (!task || session.taskCanArchive) {
+                Item(
+                    title = stringResource(if (task) R.string.task_archive else R.string.session_info_archive_session),
+                    subtitle = if (task) null else stringResource(R.string.session_info_archive_session_subtitle),
+                    icon = { Icon(Ionicon.ArchiveOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.red) },
+                    loading = archiving,
+                    onClick = {
+                        archiving = true
+                        val successor = actions.tabSuccessor(session.id)
+                        scope.launch {
+                            try {
+                                if (metadata?.bot == null && !task) cleanupWorktree()
+                                finished(controls.archive(session), successor)
+                            } finally {
+                                archiving = false
+                            }
+                        }
+                    },
+                    modifier = Modifier.testTag(SessionInfoTags.ARCHIVE),
+                )
+            }
+            // A bot or a task keeps one conversation for life: never deleted.
+            if (metadata?.bot == null && !task) {
                 Item(
                     title = deleteTitle,
                     subtitle = stringResource(R.string.session_info_delete_session_subtitle),

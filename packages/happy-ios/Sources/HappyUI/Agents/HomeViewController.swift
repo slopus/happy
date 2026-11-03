@@ -427,6 +427,7 @@ final class HomeViewController: UIViewController {
         }
         if shown is ArtifactsViewController { return rows.first { $0.targetKind == "artifacts" }?.id }
         if shown is TodoListsViewController { return rows.first { $0.targetKind == "todos" }?.id }
+        if shown is FeedViewController { return rows.first { $0.targetKind == "feed" }?.id }
         return nil
     }
 
@@ -458,6 +459,9 @@ final class HomeViewController: UIViewController {
         case .space where row.targetKind == "todos":
             sidebar.selectedRowId = row.id
             show(TodoListsViewController(session: session), for: row, animated: animated)
+        case .space where row.targetKind == "feed":
+            sidebar.selectedRowId = row.id
+            show(FeedViewController(session: session), for: row, animated: animated)
         case .search:
             beginSearch()
         case .create:

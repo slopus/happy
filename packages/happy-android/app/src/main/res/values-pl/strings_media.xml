@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="media_download">Pobierz</string>
+    <string name="media_pause_download">Wstrzymaj pobieranie</string>
+    <string name="data_storage_title">Dane i pamięć</string>
+    <string name="data_storage_usage">Użycie pamięci</string>
+    <string name="data_storage_calculating">Obliczanie…</string>
+    <string name="data_storage_clear_media">Wyczyść multimedia</string>
+    <string name="data_storage_clear_footer">Zdjęcia, filmy i pliki zostają na tym telefonie na stałe, więc otwierają się bez sieci. Wyczyszczenie zwalnia miejsce; to, co wyczyścisz, zostanie pobrane ponownie przy otwarciu.</string>
+    <string name="data_storage_clear_confirm">Wyczyścić %1$s multimediów z tego telefonu? Zostaną pobrane ponownie przy otwarciu.</string>
+    <string name="data_storage_clear">Wyczyść</string>
+    <string name="data_storage_auto">Automatyczne pobieranie multimediów</string>
+    <string name="data_storage_auto_footer">Multimedia do limitu rozmiaru pobierają się same, gdy pojawią się w czacie, więc są dostępne offline. Tak samo przez Wi-Fi i dane komórkowe.</string>
+    <string name="data_storage_photos">Zdjęcia</string>
+    <string name="data_storage_videos">Filmy</string>
+    <string name="data_storage_limit">Do</string>
+</resources>

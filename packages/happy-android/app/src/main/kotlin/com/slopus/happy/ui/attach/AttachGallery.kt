@@ -59,6 +59,7 @@ import com.slopus.happy.ui.components.rememberImageLoader
 import com.slopus.happy.ui.components.rememberReduceMotion
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
+import com.slopus.happy.ui.conversation.viewerOrigin
 
 /** The gallery as the sheet shows it: how far the app may read, and what it read. */
 @Immutable
@@ -142,6 +143,7 @@ internal fun GalleryCell(item: GalleryItem, number: Int, sheet: Color, colors: A
         Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
+            .viewerOrigin(item.uri)
             .testTag(AttachTags.CELL),
     ) {
         Box(

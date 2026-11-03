@@ -4,7 +4,7 @@
   catalogs. AndroidStringsTranslatedTest fails while one is missing here.
 -->
 <resources>
-    <string name="pairing_title">Подключить агента</string>
+    <string name="pairing_title">Подключить Happy Agent</string>
     <string name="pairing_connecting">Подключение к %1$s…</string>
     <string name="pairing_unverified">Имя взято из кода и не проверено, пока подключение не завершится.</string>
     <string name="pairing_compare">Проверьте, что %1$s показывает те же четыре эмодзи в том же порядке.</string>

@@ -37,6 +37,17 @@
     <string name="conversation_permission_from">%1$s запрашивает разрешение</string>
     <string name="conversation_answer">Ответить</string>
     <string name="conversation_answer_placeholder">Ваш ответ</string>
+    <string name="conversation_ask_choose_one">Выберите один</string>
+    <string name="conversation_ask_choose_any">Выберите любые</string>
+    <string name="conversation_ask_reply_in_composer">Ответьте в поле сообщения</string>
+    <string name="conversation_ask_answered">Отвечено</string>
+    <string name="conversation_ask_no_answer">Нет ответа</string>
+    <string name="conversation_ask_submit">Отправить</string>
+    <string name="conversation_ask_not_sent">Ответ не отправлен: %1$s</string>
+    <string name="conversation_command_gone">Команда /%1$s больше недоступна.</string>
+    <string name="conversation_command_busy">Сейчас нельзя выполнить /%1$s. Повторите, когда агент освободится.</string>
+    <string name="conversation_command_kind_skill">Навык</string>
+    <string name="conversation_command_kind_compaction">Сжатие</string>
     <string name="conversation_secret_name">Имя для этого секрета</string>
     <string name="conversation_secret_value_placeholder">Значение</string>
     <string name="conversation_secret_save">Сохранить и ответить</string>
@@ -73,15 +84,11 @@
     <string name="conversation_chief_unavailable">Не удаётся открыть Chief of Staff</string>
     <string name="conversation_chief_missing">На этом компьютере нет Chief of Staff.</string>
     <string name="conversation_mode_permission">Разрешения</string>
-    <string name="conversation_mode_model">Модель</string>
-    <string name="conversation_mode_effort">Усилие</string>
     <string name="conversation_send">Отправить</string>
     <string name="conversation_stop">Остановить</string>
     <string name="conversation_attach_picture">Добавить изображение</string>
     <string name="conversation_remove_picture">Удалить изображение</string>
     <string name="conversation_composer_more">Ещё</string>
-    <string name="conversation_mode_label">Модель %1$s, усилие %2$s</string>
-    <string name="conversation_mode_label_model_only">Модель %1$s</string>
     <string name="conversation_mode_permission_item">Разрешения: %1$s</string>
     <string name="conversation_pictures_too_large_title">Изображения слишком большие</string>
     <string name="conversation_pictures_too_large_message">Вместе эти изображения больше, чем вмещает одно сообщение. Удалите некоторые и отправьте снова.</string>
@@ -98,4 +105,6 @@
     <string name="conversation_failure_context_too_long">Этот разговор слишком длинный для %1$s, даже после сброса.</string>
     <string name="conversation_failure_provider_disabled">%1$s выключен. Включите его в настройках и повторите.</string>
     <string name="conversation_failure_internal">Что-то пошло не так: %1$s</string>
+    <string name="conversation_editor_expand">Развернуть</string>
+    <string name="conversation_editor_collapse">Свернуть</string>
 </resources>

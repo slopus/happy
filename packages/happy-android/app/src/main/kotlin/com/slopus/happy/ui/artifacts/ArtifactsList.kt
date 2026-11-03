@@ -161,7 +161,7 @@ fun ArtifactsScreen(
                 tag = ArtifactsTags.FAILED,
             )
             read.items.isEmpty() && !read.loaded -> LoadingIndicator(Modifier.testTag(PlaceTags.LOADER))
-            read.items.isEmpty() -> StatePage(title = null, body = stringResource(R.string.agent_artifacts_empty), icon = Ionicon.LayersOutline, tag = ArtifactsTags.EMPTY)
+            read.items.isEmpty() -> StatePage(title = null, body = stringResource(R.string.artifacts_empty), icon = Ionicon.LayersOutline, tag = ArtifactsTags.EMPTY)
             else -> {
                 val untitled = stringResource(R.string.agent_artifacts_untitled)
                 LazyColumn(Modifier.fillMaxSize().contentMaxWidth(LocalWindowLayout.current)) {

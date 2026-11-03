@@ -36,6 +36,18 @@ class HappyStoreTest {
 
     /** Logout moves the store to another database and closes the old one while a read may still be on it. */
     @Test
+    fun theAccountsKeptIntentsStayUntilTakenAndGoWithASignOut() {
+        assertNull(store.intents())
+        store.saveIntents("""[{"id":"i1","kind":"archive","target":"s1","createdAt":1}]""")
+        assertEquals("""[{"id":"i1","kind":"archive","target":"s1","createdAt":1}]""", store.intents())
+        store.saveIntents(null)
+        assertNull(store.intents())
+        store.saveIntents("[]")
+        store.clearAll()
+        assertNull(store.intents())
+    }
+
+    @Test
     fun retiringADatabaseWaitsForTheReadOnIt() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val old = HappyDatabase(context, name = null)

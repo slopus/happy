@@ -99,29 +99,7 @@ class HappyAgentGit internal constructor(
         requireSupported(sessionId)
         if (!validFile(file)) throw RpcException("Happy Agent returned an invalid Git file.")
         if (!REVISION.matches(gitBase)) throw RpcException("Happy Agent returned an invalid Git comparison base.")
-        unsupportedMessage(file)?.let { return GitFileContent.Message(it) }
-
-        val beforePath = if (file.status == "added" || file.status == "untracked") null else file.previousPath ?: file.path
-        val afterPath = if (file.status == "deleted") null else file.path
-        if (beforePath == null && afterPath == null) return GitFileContent.Message("This file has no readable comparison side.")
-
-        if (file.binary) {
-            val nonImage = (beforePath != null && imageMimeType(beforePath) == null) ||
-                (afterPath != null && imageMimeType(afterPath) == null)
-            if (nonImage) return GitFileContent.Message(BINARY)
-        }
-
-        // Both sides start together, and both settle before either failure is reported.
-        val (before, after) = supervisorScope {
-            val before = async { beforePath?.let { readSide(sessionId, it, gitBase) } }
-            val after = async { afterPath?.let { readSide(sessionId, it, null) } }
-            val results = listOf(settle { before.await() }, settle { after.await() })
-            results[0].getOrThrow() to results[1].getOrThrow()
-        }
-
-        return withContext(io) {
-            if (file.binary) images(beforePath, before, afterPath, after) else text(before, after)
-        }
+        return compare(file, io) { path, base -> readSide(sessionId, path, if (base) gitBase else null) }
     }
 
     private suspend fun requireSupported(sessionId: String) {
@@ -144,34 +122,6 @@ class HappyAgentGit internal constructor(
             (revision != null || response.string("hash")?.let(HASH::matches) == true)
         if (!valid) throw RpcException(INVALID_FILE)
         return content
-    }
-
-    private fun images(beforePath: String?, before: String?, afterPath: String?, after: String?): GitFileContent {
-        val uris = arrayOfNulls<String>(2)
-        for ((index, side) in listOf(beforePath to before, afterPath to after).withIndex()) {
-            val (path, content) = side
-            if (path == null || content == null) continue
-            val inspected = inspectBase64(content) ?: throw RpcException(INVALID_CONTENTS)
-            if (inspected.decodedBytes > MAX_BYTES) throw RpcException(TOO_LARGE)
-            if (inspected.decodedBytes == 0) return GitFileContent.Message("Image content is empty.")
-            val mime = imageMimeType(path) ?: return GitFileContent.Message(BINARY)
-            uris[index] = "data:$mime;base64,${inspected.normalized}"
-        }
-        return GitFileContent.Image(uris[0], uris[1])
-    }
-
-    private fun text(before: String?, after: String?): GitFileContent {
-        val old = if (before == null) Base64Size("", 0) else inspectBase64(before)
-        val new = if (after == null) Base64Size("", 0) else inspectBase64(after)
-        if (old == null || new == null) throw RpcException(INVALID_CONTENTS)
-        if (old.decodedBytes > MAX_BYTES || new.decodedBytes > MAX_BYTES) throw RpcException(TOO_LARGE)
-        val oldText = decodeUtf8(old).getOrElse { return GitFileContent.Message(it.message!!) }
-        val newText = decodeUtf8(new).getOrElse { return GitFileContent.Message(it.message!!) }
-        val oldLines = countLinesWithin(oldText, MAX_TEXT_LINES)
-        if (oldLines == null || countLinesWithin(newText, MAX_TEXT_LINES - oldLines) == null) {
-            return GitFileContent.Message("This file has too many lines to preview here.")
-        }
-        return GitFileContent.Text(oldText, newText)
     }
 
     private class Base64Size(val normalized: String, val decodedBytes: Int)
@@ -199,6 +149,66 @@ class HappyAgentGit internal constructor(
         private const val INVALID_CONTENTS = "Happy Agent returned invalid file contents."
         private const val TOO_LARGE = "This file is too large to preview on the phone."
         private const val BINARY = "Binary file changes cannot be previewed."
+
+        /**
+         * Both sides of [file], read through [read] (`base` true for the
+         * comparison base's side), ready to show; the checks and limits of
+         * `readHappyAgentGitFile`, whoever reads the bytes.
+         */
+        internal suspend fun compare(file: GitFile, io: CoroutineDispatcher, read: suspend (path: String, base: Boolean) -> String): GitFileContent {
+            if (!validFile(file)) throw RpcException("Happy Agent returned an invalid Git file.")
+            unsupportedMessage(file)?.let { return GitFileContent.Message(it) }
+
+            val beforePath = if (file.status == "added" || file.status == "untracked") null else file.previousPath ?: file.path
+            val afterPath = if (file.status == "deleted") null else file.path
+            if (beforePath == null && afterPath == null) return GitFileContent.Message("This file has no readable comparison side.")
+
+            if (file.binary) {
+                val nonImage = (beforePath != null && imageMimeType(beforePath) == null) ||
+                    (afterPath != null && imageMimeType(afterPath) == null)
+                if (nonImage) return GitFileContent.Message(BINARY)
+            }
+
+            // Both sides start together, and both settle before either failure is reported.
+            val (before, after) = supervisorScope {
+                val before = async { beforePath?.let { read(it, true) } }
+                val after = async { afterPath?.let { read(it, false) } }
+                val results = listOf(settle { before.await() }, settle { after.await() })
+                results[0].getOrThrow() to results[1].getOrThrow()
+            }
+
+            return withContext(io) {
+                if (file.binary) images(beforePath, before, afterPath, after) else text(before, after)
+            }
+        }
+
+        private fun images(beforePath: String?, before: String?, afterPath: String?, after: String?): GitFileContent {
+            val uris = arrayOfNulls<String>(2)
+            for ((index, side) in listOf(beforePath to before, afterPath to after).withIndex()) {
+                val (path, content) = side
+                if (path == null || content == null) continue
+                val inspected = inspectBase64(content) ?: throw RpcException(INVALID_CONTENTS)
+                if (inspected.decodedBytes > MAX_BYTES) throw RpcException(TOO_LARGE)
+                if (inspected.decodedBytes == 0) return GitFileContent.Message("Image content is empty.")
+                val mime = imageMimeType(path) ?: return GitFileContent.Message(BINARY)
+                uris[index] = "data:$mime;base64,${inspected.normalized}"
+            }
+            return GitFileContent.Image(uris[0], uris[1])
+        }
+
+        private fun text(before: String?, after: String?): GitFileContent {
+            val old = if (before == null) Base64Size("", 0) else inspectBase64(before)
+            val new = if (after == null) Base64Size("", 0) else inspectBase64(after)
+            if (old == null || new == null) throw RpcException(INVALID_CONTENTS)
+            if (old.decodedBytes > MAX_BYTES || new.decodedBytes > MAX_BYTES) throw RpcException(TOO_LARGE)
+            val oldText = decodeUtf8(old).getOrElse { return GitFileContent.Message(it.message!!) }
+            val newText = decodeUtf8(new).getOrElse { return GitFileContent.Message(it.message!!) }
+            val oldLines = countLinesWithin(oldText, MAX_TEXT_LINES)
+            if (oldLines == null || countLinesWithin(newText, MAX_TEXT_LINES - oldLines) == null) {
+                return GitFileContent.Message("This file has too many lines to preview here.")
+            }
+            return GitFileContent.Text(oldText, newText)
+        }
 
         /** happyAgentGit.ts `supportsHappyAgentGit`: native v1, readable files, and every Git RPC advertised. */
         fun supportsHappyAgentGit(metadata: SessionMetadata?): Boolean {
@@ -239,17 +249,24 @@ class HappyAgentGit internal constructor(
         private fun validFile(file: GitFile) = file.path.isNotEmpty() && file.previousPath?.isEmpty() != true &&
             file.status in STATUSES && (file.insertions ?: 0) >= 0 && (file.deletions ?: 0) >= 0
 
-        internal fun parseState(element: JsonElement?): GitState? {
+        /**
+         * A git state object. The session RPC's is strict: every optional
+         * string present (null when unset) and the base a commit hash. The
+         * workspace API's ([workspace]) leaves an unset one out and may name
+         * its base by any commit-ish (`origin/main`), which it reads back.
+         */
+        internal fun parseState(element: JsonElement?, workspace: Boolean = false): GitState? {
             val git = element as? JsonObject ?: return null
             val facts = git["facts"] as? JsonObject ?: return null
+            fun JsonObject.optional(key: String): Nullable? = if (workspace && key !in this) Nullable(null) else nullableString(key)
             val comparison = git.string("comparison")?.takeIf { it == "ready" || it == "unavailable" } ?: return null
-            val base = git.nullableString("base") ?: return null
-            if (base.value != null && !REVISION.matches(base.value)) return null
+            val base = git.optional("base") ?: return null
+            if (base.value != null && !(if (workspace) base.value.isNotBlank() else REVISION.matches(base.value))) return null
             if (comparison == "ready" && base.value == null) return null
             val files = (git["files"] as? JsonArray ?: return null).map { parseFile(it) ?: return null }
-            val branch = facts.nullableString("branch") ?: return null
-            val head = facts.nullableString("head") ?: return null
-            val upstream = facts.nullableString("upstream") ?: return null
+            val branch = facts.optional("branch") ?: return null
+            val head = facts.optional("head") ?: return null
+            val upstream = facts.optional("upstream") ?: return null
             return GitState(
                 facts = GitFacts(
                     branch = branch.value,

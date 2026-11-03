@@ -1,5 +1,8 @@
 package com.slopus.happy.ui.attach
 
+import androidx.compose.runtime.DisposableEffect
+import android.content.res.Configuration
+import androidx.compose.ui.platform.LocalConfiguration
 import android.app.Activity
 import android.content.ClipboardManager
 import android.content.Context
@@ -72,7 +75,8 @@ import java.nio.ByteBuffer
  * [caption] (the composer's words, edited here too) once Send is pressed:
  * each pick is copied into the app's cache first ([AttachmentStaging]),
  * then [onSend] has them. Room is [room] picks. [onClosed] runs once the
- * sheet has gone, after its own close.
+ * sheet has gone, after its own close. On a phone held upright it grows
+ * out of [button] and goes back into it ([AttachMorph]).
  */
 @Composable
 fun AttachSheet(
@@ -83,6 +87,7 @@ fun AttachSheet(
     onSend: (List<AttachmentPreview>) -> Unit,
     onClosed: () -> Unit,
     room: Int = accepts.maxItems,
+    button: AttachButton? = null,
 ) {
     if (!open) return
     val tabs = accepts.tabs
@@ -104,11 +109,15 @@ fun AttachSheet(
     var sending by remember { mutableStateOf(false) }
     var viewing by remember { mutableStateOf<Int?>(null) }
     val closeExtra = with(LocalDensity.current) { AttachSpec.closeExtra.toPx() }
+    val configuration = LocalConfiguration.current
+    val grows = configuration.screenWidthDp < AttachMorph.MAX_WIDTH_DP && configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+    DisposableEffect(motion) { onDispose { motion.giveBack() } }
 
     fun close() {
         if (motion.closing) return
         scope.launch {
             motion.close(closeExtra, reduceMotion)
+            motion.giveBack()
             closed()
         }
     }
@@ -249,7 +258,7 @@ fun AttachSheet(
             @Suppress("DEPRECATION")
             window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
         }
-        LaunchedEffect(Unit) { motion.open(reduceMotion) }
+        LaunchedEffect(Unit) { motion.open(reduceMotion, button.takeIf { grows }) }
         val dismissAt = context.resources.displayMetrics.xdpi / 2.54f * AttachSpec.DISMISS_CM
         PredictiveBackHandler(enabled = !motion.closing) { progress ->
             try {

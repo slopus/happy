@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="media_download">Baixa</string>
+    <string name="media_pause_download">Pausa la baixada</string>
+    <string name="data_storage_title">Dades i emmagatzematge</string>
+    <string name="data_storage_usage">Ús de l\'emmagatzematge</string>
+    <string name="data_storage_calculating">Calculant…</string>
+    <string name="data_storage_clear_media">Esborra els fitxers multimèdia</string>
+    <string name="data_storage_clear_footer">Les fotos, els vídeos i els fitxers es guarden en aquest telèfon per sempre, així s\'obren sense xarxa. Esborrar-los allibera l\'espai; el que s\'esborri es tornarà a baixar quan s\'obri.</string>
+    <string name="data_storage_clear_confirm">Vols esborrar %1$s de fitxers multimèdia d\'aquest telèfon? Es tornaran a baixar quan s\'obrin.</string>
+    <string name="data_storage_clear">Esborra</string>
+    <string name="data_storage_auto">Baixada automàtica de fitxers multimèdia</string>
+    <string name="data_storage_auto_footer">Els fitxers multimèdia fins al límit de mida es baixen sols quan apareixen en un xat, així són aquí sense connexió. El mateix amb Wi-Fi i dades mòbils.</string>
+    <string name="data_storage_photos">Fotos</string>
+    <string name="data_storage_videos">Vídeos</string>
+    <string name="data_storage_limit">Fins a</string>
+</resources>

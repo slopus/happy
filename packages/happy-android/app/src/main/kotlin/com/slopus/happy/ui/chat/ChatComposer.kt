@@ -1,5 +1,8 @@
 package com.slopus.happy.ui.chat
 
+import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.text.TextLayoutResult
 import com.slopus.happy.ui.components.rememberHoistedTextFieldState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.foundation.background
@@ -53,6 +56,7 @@ import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.Octicon
 import com.slopus.happy.ui.components.StatusDot
+import com.slopus.happy.ui.conversation.SendFlight
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
@@ -182,6 +186,10 @@ fun ChatComposer(
     showDetails: Boolean = true,
     /** Where the card lands, for what floats just above it (the scroll-to-bottom button). */
     onPanelPositioned: ((LayoutCoordinates) -> Unit)? = null,
+    /** Where a sent message's words fly from ([SendFlight]), when Send sends them alone. */
+    flight: SendFlight? = null,
+    /** What the empty input asks for; null for "Type a message…". */
+    placeholder: String? = null,
 ) {
     // No focus is ever asked for: the keyboard comes up only for a tap in the field.
     val colors = HappyTheme.colors
@@ -195,8 +203,24 @@ fun ChatComposer(
         placed = { words -> cursor?.placement?.takeIf { it.text == words }?.selection },
     )
     LaunchedEffect(field, cursor) { snapshotFlow { field.selection }.collect { cursor?.selection = it } }
-    val hairline = with(LocalDensity.current) { 1f.toDp() }
+    val density = LocalDensity.current
+    val hairline = with(density) { 1f.toDp() }
     val shell = RoundedCornerShape(ComposerSpec.shellRadius)
+    // The field's words as last laid out, and where they are: what a sent message flies from.
+    val fieldLayout = remember { arrayOfNulls<() -> TextLayoutResult?>(1) }
+    val fieldAt = remember { arrayOfNulls<LayoutCoordinates>(1) }
+    val press = if (flight == null || primary != PrimaryAction.Send) onPrimary else {
+        {
+            // Taken before the send clears the field; launched once its row is on the way.
+            val sent = field.text.toString()
+            val layout = fieldLayout[0]?.invoke()
+            val at = fieldAt[0]?.takeIf { it.isAttached }
+            onPrimary()
+            if (layout != null && at != null && layout.size.height <= at.size.height + 1) {
+                flight.launch(sent, layout, at.positionInRoot(), density, colors.input.text)
+            }
+        }
+    }
     val layout = LocalWindowLayout.current
     Column(
         modifier = modifier
@@ -247,7 +271,9 @@ fun ChatComposer(
                     inputTransformation = typed,
                     textStyle = ComposerSpec.input.copy(color = colors.input.text),
                     cursorBrush = SolidColor(colors.input.text),
+                    onTextLayout = { result -> fieldLayout[0] = result },
                     modifier = Modifier
+                        .onPlaced { fieldAt[0] = it }
                         .onPreviewKeyEvent { cursor?.onKey?.invoke(it) == true || onKey(it) }
                         .testTag(ComposerTags.INPUT)
                         .fillMaxWidth()
@@ -256,7 +282,7 @@ fun ChatComposer(
                         Box {
                             if (field.text.isEmpty()) {
                                 Text(
-                                    stringResource(R.string.session_input_placeholder),
+                                    placeholder ?: stringResource(R.string.session_input_placeholder),
                                     style = ComposerSpec.input,
                                     color = colors.input.placeholder,
                                     maxLines = 1,
@@ -277,7 +303,7 @@ fun ChatComposer(
                 }
                 // With the row gap on each side: 2 + 8 between the middle and the button, as in RN.
                 Spacer(Modifier.width(ComposerSpec.primaryMarginLeft - ComposerSpec.actionRowGap))
-                PrimaryButton(primary, aborting, onPrimary, primaryShake)
+                PrimaryButton(primary, aborting, press, primaryShake)
             }
         }
         AnimatedFade(showDetails) { bottom() }
@@ -288,12 +314,17 @@ fun ChatComposer(
 private fun PrimaryButton(action: PrimaryAction, aborting: Boolean, onClick: () -> Unit, shake: ShakeState?) {
     val colors = HappyTheme.colors
     val dark = colors.dark
-    val background = when (action) {
-        PrimaryAction.Stop -> if (dark) Color(0xFFF5F5F5) else colors.button.primaryBackground
-        PrimaryAction.Blocked -> colors.surfaceHigh
-        PrimaryAction.Send, PrimaryAction.Voice -> colors.surfaceHighest
-        PrimaryAction.Idle -> if (dark) Color(0xFF3A3A3C) else Color(0xFFD1D1D6)
-    }
+    // The fill changes with the glyph, over its 0.2 s ([PrimaryGlyphMotion]).
+    val background by androidx.compose.animation.animateColorAsState(
+        when (action) {
+            PrimaryAction.Stop -> if (dark) Color(0xFFF5F5F5) else colors.button.primaryBackground
+            PrimaryAction.Blocked -> colors.surfaceHigh
+            PrimaryAction.Send, PrimaryAction.Voice -> colors.surfaceHighest
+            PrimaryAction.Idle -> if (dark) Color(0xFF3A3A3C) else Color(0xFFD1D1D6)
+        },
+        androidx.compose.animation.core.tween(PrimaryGlyphMotion.DURATION_MS),
+        label = "primaryFill",
+    )
     // A locked send still takes the tap, to refuse it.
     val enabled = action != PrimaryAction.Idle
     // Literal in happy-app (AgentInput.tsx accessibilityLabel).
@@ -314,25 +345,27 @@ private fun PrimaryButton(action: PrimaryAction, aborting: Boolean, onClick: () 
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
     ) {
-        when {
-            aborting -> CircularProgressIndicator(
-                Modifier.size(20.dp),
-                color = if (action == PrimaryAction.Stop && dark) Color.Black else colors.text,
-                strokeWidth = 2.dp,
-            )
-            action == PrimaryAction.Stop -> Icon(Octicon.Stop, ComposerSpec.primaryIcon, if (dark) Color.Black else Color.White)
-            action == PrimaryAction.Blocked -> Icon(Ionicon.LockClosed, ComposerSpec.lockIcon, colors.textSecondary)
-            action == PrimaryAction.Voice -> androidx.compose.foundation.Image(
-                painter = androidx.compose.ui.res.painterResource(com.slopus.happy.R.drawable.icon_voice_white),
-                contentDescription = null,
-                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(colors.text),
-                modifier = Modifier.size(24.dp),
-            )
-            else -> Icon(
-                Octicon.ArrowUp,
-                ComposerSpec.primaryIcon,
-                if (action == PrimaryAction.Send) colors.text else colors.textSecondary,
-            )
+        PrimaryGlyph(if (aborting) null else action) { shown ->
+            when {
+                shown == null -> CircularProgressIndicator(
+                    Modifier.size(20.dp),
+                    color = if (action == PrimaryAction.Stop && dark) Color.Black else colors.text,
+                    strokeWidth = 2.dp,
+                )
+                shown == PrimaryAction.Stop -> Icon(Octicon.Stop, ComposerSpec.primaryIcon, if (dark) Color.Black else Color.White)
+                shown == PrimaryAction.Blocked -> Icon(Ionicon.LockClosed, ComposerSpec.lockIcon, colors.textSecondary)
+                shown == PrimaryAction.Voice -> androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(com.slopus.happy.R.drawable.icon_voice_white),
+                    contentDescription = null,
+                    colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(colors.text),
+                    modifier = Modifier.size(24.dp),
+                )
+                else -> Icon(
+                    Octicon.ArrowUp,
+                    ComposerSpec.primaryIcon,
+                    if (shown == PrimaryAction.Send) colors.text else colors.textSecondary,
+                )
+            }
         }
     }
 }

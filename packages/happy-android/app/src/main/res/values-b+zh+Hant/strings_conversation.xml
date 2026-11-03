@@ -37,6 +37,17 @@
     <string name="conversation_permission_from">%1$s 請求權限</string>
     <string name="conversation_answer">回答</string>
     <string name="conversation_answer_placeholder">你的回答</string>
+    <string name="conversation_ask_choose_one">選擇一項</string>
+    <string name="conversation_ask_choose_any">可多選</string>
+    <string name="conversation_ask_reply_in_composer">在訊息框中回覆</string>
+    <string name="conversation_ask_answered">已回答</string>
+    <string name="conversation_ask_no_answer">未回答</string>
+    <string name="conversation_ask_submit">提交</string>
+    <string name="conversation_ask_not_sent">回答未送出：%1$s</string>
+    <string name="conversation_command_gone">/%1$s 指令已無法使用。</string>
+    <string name="conversation_command_busy">現在無法執行 /%1$s。請在代理閒置後再試一次。</string>
+    <string name="conversation_command_kind_skill">技能</string>
+    <string name="conversation_command_kind_compaction">壓縮</string>
     <string name="conversation_secret_name">此密鑰的名稱</string>
     <string name="conversation_secret_value_placeholder">值</string>
     <string name="conversation_secret_save">儲存並回答</string>
@@ -73,15 +84,11 @@
     <string name="conversation_chief_unavailable">無法開啟 Chief of Staff</string>
     <string name="conversation_chief_missing">此電腦上沒有 Chief of Staff。</string>
     <string name="conversation_mode_permission">權限</string>
-    <string name="conversation_mode_model">模型</string>
-    <string name="conversation_mode_effort">思考強度</string>
     <string name="conversation_send">傳送</string>
     <string name="conversation_stop">停止</string>
     <string name="conversation_attach_picture">新增圖片</string>
     <string name="conversation_remove_picture">移除圖片</string>
     <string name="conversation_composer_more">更多</string>
-    <string name="conversation_mode_label">模型 %1$s，思考強度 %2$s</string>
-    <string name="conversation_mode_label_model_only">模型 %1$s</string>
     <string name="conversation_mode_permission_item">權限：%1$s</string>
     <string name="conversation_pictures_too_large_title">圖片太大</string>
     <string name="conversation_pictures_too_large_message">這些圖片加起來超出了一則訊息的容量。請移除一些後再傳送。</string>
@@ -98,4 +105,6 @@
     <string name="conversation_failure_context_too_long">即使重設後，這個對話對 %1$s 來說也太長了。</string>
     <string name="conversation_failure_provider_disabled">%1$s 已關閉。請在設定中開啟，然後重試。</string>
     <string name="conversation_failure_internal">發生了問題：%1$s</string>
+    <string name="conversation_editor_expand">展開</string>
+    <string name="conversation_editor_collapse">收合</string>
 </resources>

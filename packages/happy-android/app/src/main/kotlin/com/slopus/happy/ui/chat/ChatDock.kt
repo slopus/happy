@@ -40,6 +40,8 @@ import com.slopus.happy.ui.attachments.ComposerAttachmentStrip
 import com.slopus.happy.ui.attachments.hasComposerImages
 import com.slopus.happy.ui.autocomplete.ComposerSuggestions
 import com.slopus.happy.ui.autocomplete.rememberComposerAutocomplete
+import com.slopus.happy.ui.components.rememberReduceMotion
+import com.slopus.happy.ui.conversation.LocalSendFlight
 import com.slopus.happy.ui.layout.CenteredInputWidth
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.usage.ComposerUsageRow
@@ -93,6 +95,7 @@ internal fun ChatDock(
     onPanelPositioned: ((LayoutCoordinates) -> Unit)?,
     modifier: Modifier,
     composerModifier: Modifier,
+    placeholder: String? = null,
 ) {
     Column(modifier.testTag(ChatScreenTags.DOCK).fillMaxWidth()) {
         if (inactiveHint != null) {
@@ -108,7 +111,7 @@ internal fun ChatDock(
         }
         // On the column with no inset of its own: the bar keeps its 16, on the messages' keyline.
         if (activityBar != null) AnimatedFade(showDetails) { CenteredInputWidth(horizontalPadding = 0.dp) { activityBar() } }
-        ChatComposerFor(state, session, draft, actions, now, modes, showDetails, onPanelPositioned, composerModifier)
+        ChatComposerFor(state, session, draft, actions, now, modes, showDetails, onPanelPositioned, composerModifier, placeholder)
     }
 }
 
@@ -131,6 +134,7 @@ private fun ChatComposerFor(
     showDetails: Boolean,
     onPanelPositioned: ((LayoutCoordinates) -> Unit)?,
     modifier: Modifier,
+    placeholder: String?,
 ) {
     val sessionState = state.sessionState
     val metadata = session.metadata
@@ -151,10 +155,13 @@ private fun ChatComposerFor(
         blocked = blocked,
         canVoice = voiceAction != null,
     )
-    val autocomplete = rememberComposerAutocomplete(draft, actions.onDraftChange)
+    val autocomplete = rememberComposerAutocomplete(draft, onTextChange = actions.onDraftChange)
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val panelShake = rememberShake()
+    val flight = LocalSendFlight.current
+    val reduceMotion = rememberReduceMotion()
+    val pictures = hasComposerImages()
     val primaryShake = rememberShake()
     fun abort() {
         if (aborting) return
@@ -184,6 +191,7 @@ private fun ChatComposerFor(
         onTextChange = actions.onDraftChange,
         // A chat with no session yet (being started) has no status to tell.
         status = if (state.session != null) rememberComposerStatus(sessionState, state.activeAt, now) else null,
+        placeholder = placeholder,
         primary = primary,
         aborting = aborting,
         onPrimary = {
@@ -225,6 +233,8 @@ private fun ChatComposerFor(
         },
         panelShake = panelShake,
         primaryShake = primaryShake,
+        // A message sent alone flies to its row; pictures come in with theirs (iOS 3c24acf5c).
+        flight = flight?.takeIf { !pictures && !reduceMotion },
         bottom = { ComposerUsageRow(state.snapshot.usage, session.agentState?.usageLimits) },
     )
 }

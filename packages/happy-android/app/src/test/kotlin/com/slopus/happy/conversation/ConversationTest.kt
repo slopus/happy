@@ -15,6 +15,8 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -43,6 +45,15 @@ private class FakeAgent {
     var refuseFiles = 0
     /** The next draft saves don't get through. */
     var failDrafts = 0
+    /** A question's answer is refused with this status. */
+    var answerStatus: Int? = null
+    /** A slash command's invocation answers this status; accepted, with [commandsAfter] as the catalog. */
+    var commandStatus = 202
+    /** A picture file's write gets half its body out, then waits for this before writing the rest and answering. */
+    var halfway: CompletableDeferred<Unit>? = null
+    /** What `GET /v0/config` answers. */
+    var config = CONFIG
+    var commandsAfter = """[{"name":"compact","hasArguments":false,"description":"Summarize.","kind":"compaction"}]"""
 
     val request: AgentRequest = { method, path, body, _ ->
         requests += Triple(method, path, body as? JsonObject)
@@ -55,6 +66,14 @@ private class FakeAgent {
             route.endsWith("/bootstrap") -> { beforeBootstrap(); ok(bootstrap) }
             method == "PUT" && route.startsWith("/v0/workspaces/") && route.endsWith("/file") -> {
                 val o = body as JsonObject
+                val held = halfway
+                if (held != null && !o["path"]!!.toString().trim('"').endsWith(".gitignore")) {
+                    val bytes = body.toString().toByteArray()
+                    val progress = kotlinx.coroutines.currentCoroutineContext()[com.slopus.happy.connection.BodyProgress]
+                    progress?.report(bytes, bytes.size / 2)
+                    held.await()
+                    progress?.report(bytes, bytes.size)
+                }
                 val key = route.removePrefix("/v0/workspaces/").removeSuffix("/file") + ":" + o["path"]!!.toString().trim('"')
                 val bytes = java.util.Base64.getDecoder().decode(o["content"]!!.toString().trim('"'))
                 fun hash(b: ByteArray) = java.security.MessageDigest.getInstance("SHA-256").digest(b).joinToString("") { "%02x".format(it) }
@@ -70,7 +89,13 @@ private class FakeAgent {
             route.endsWith("/messages") -> ok(page)
             route.endsWith("/send") && failSends > 0 -> { failSends--; TransportResponse(503, body = """{"error":"busy"}""".toByteArray()) }
             route.endsWith("/send") -> TransportResponse(sendStatus, body = """{"error":"Unknown model.","code":"invalid_request"}""".toByteArray())
-            route == "/v0/config" -> ok(CONFIG)
+            route.endsWith("/answer") && answerStatus != null -> TransportResponse(answerStatus!!, body = """{"error":"busy"}""".toByteArray())
+            method == "POST" && "/slash-commands/" in route -> if (commandStatus == 202) {
+                TransportResponse(202, body = """{"agent":{"id":"a1","workspaceId":"w1","status":"working","title":"Fix it"},"profiles":[],"slashCommands":$commandsAfter,"command":{"name":"compact","hasArguments":false,"description":"Summarize."},"cursor":"c1"}""".toByteArray())
+            } else {
+                TransportResponse(commandStatus, body = """{"error":"The daemon's own words.","code":"conflict"}""".toByteArray())
+            }
+            route == "/v0/config" -> ok(config)
             route.endsWith("/draft") && failDrafts > 0 -> { failDrafts--; TransportResponse(503, body = """{"error":"busy"}""".toByteArray()) }
             route.endsWith("/draft") -> ok("""{"draft":${(body as JsonObject).let { """{"value":${it["draft"]},"updatedAt":${it["updatedAt"]}}""" }}}""")
             else -> ok("{}")
@@ -216,7 +241,26 @@ class ConversationTest {
         // Newest first.
         assertEquals(listOf("m3:user", "m2:2", "m2:1", "m2:0", "m1:user"), state.rows.map { it.key })
         assertEquals(Delivery.Pending, (state.rows[0] as ConversationRow.User).delivery)
-        assertEquals("ls", (state.rows[2] as ConversationRow.Tool).detail)
+        assertEquals(Presentation.Command("ls", null), (state.rows[2] as ConversationRow.Tool).tool.presentation)
+    }
+
+    @Test fun `a person's message opens whole and is cut back by its key, pending or in a run`() = runTest {
+        val agent = FakeAgent()
+        agent.page = """{"runs":[{"id":"r1","status":"completed","messages":[
+            {"id":"m1","role":"user","createdAt":1,"content":[{"type":"text","text":"Hi"}],"metadata":{}}
+        ]}],"hasMore":false}"""
+        agent.bootstrap = agent.bootstrap.replace("\"pending\":[]", """"pending":[{"id":"m3","role":"user","status":"pending","createdAt":3,"content":[{"type":"text","text":"Next"}],"metadata":{}}]""")
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        fun opened() = chat.state.value.rows.filterIsInstance<ConversationRow.User>().filter { it.opened }.map { it.key }
+        assertEquals(emptyList<String>(), opened())
+        chat.toggleMessage("m1:user")
+        chat.toggleMessage("m3:user")
+        advanceUntilIdle()
+        assertEquals(listOf("m3:user", "m1:user"), opened())
+        chat.toggleMessage("m1:user")
+        advanceUntilIdle()
+        assertEquals(listOf("m3:user"), opened())
     }
 
     @Test fun `home's name is the title before anything is read, and the computer's title wins once it is`() = runTest {
@@ -651,6 +695,54 @@ class ConversationTest {
         assertEquals(Json.parseToJsonElement("""{"p1":["Postgres"]}"""), answer.third!!["answers"])
     }
 
+    @Test fun `a question waits at the end and settles answered in its turn`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        val args = """{"questions":[{"id":"p1","header":"DB","question":"Which?","multiSelect":false,"options":[{"label":"Postgres"},{"label":"SQLite"}]}]}"""
+        signals.emit(event("run.started", """{"agentId":"a1","run":{"id":"r1","status":"running","startedAt":5},"acceptedMessageIds":[]}"""))
+        signals.emit(event("message.created", """{"agentId":"a1","runId":"r1","message":{"id":"m","role":"agent","createdAt":5,"content":[{"type":"text","text":"Picking storage."},{"type":"tool_call","id":"q1","name":"request_user_input","status":"running","arguments":$args}],"metadata":{}}}"""))
+        advanceUntilIdle()
+        // Asked, not yet read as a question: the call's row is left out rather than shown as a tool.
+        assertTrue(chat.state.value.rows.none { it is ConversationRow.Tool })
+        signals.emit(event("question.created", """{"question":{"id":"q1","agentId":"a1","status":"pending","questions":[{"id":"p1","header":"DB","question":"Which?","multiSelect":false,"options":[{"label":"Postgres"},{"label":"SQLite"}]}]}}"""))
+        advanceUntilIdle()
+        // Waiting: pinned to the end, under the work (rows are newest first).
+        val waiting = chat.state.value.rows.first() as ConversationRow.Ask
+        assertEquals(AskPhase.Pending, waiting.phase)
+        assertEquals(1, chat.state.value.rows.count { it is ConversationRow.Ask })
+        chat.answer("q1", mapOf("p1" to listOf("Postgres")))
+        advanceUntilIdle()
+        // Answered: it stays where it was asked, under the words before it, saying what was answered.
+        val rows = chat.state.value.rows.asReversed()
+        val settled = rows.single { it is ConversationRow.Ask } as ConversationRow.Ask
+        assertEquals(AskPhase.Answered, settled.phase)
+        assertEquals(mapOf("p1" to listOf("Postgres")), settled.question.answers)
+        assertEquals(waiting.key, settled.key)
+        assertEquals(rows.indexOfFirst { it is ConversationRow.Text } + 1, rows.indexOf(settled))
+        // History read again says the same from the call's result.
+        val output = "Request q1:\nWhich?\nStatus: Answered\nAnswer:\nSelected: Postgres"
+        signals.emit(event("message.updated", """{"agentId":"a1","runId":"r1","message":{"id":"m","role":"agent","createdAt":5,"content":[{"type":"text","text":"Picking storage."},{"type":"tool_call","id":"q1","name":"request_user_input","status":"completed","arguments":$args,"result":{"output":${Json.encodeToString(kotlinx.serialization.json.JsonPrimitive(output))}}}],"metadata":{}}}"""))
+        advanceUntilIdle()
+        val read = chat.state.value.rows.single { it is ConversationRow.Ask } as ConversationRow.Ask
+        assertEquals(AskPhase.Answered, read.phase)
+        assertEquals(listOf("Postgres"), read.question.answers?.get("p1"))
+    }
+
+    @Test fun `a refused answer says why and may go again`() = runTest {
+        val agent = FakeAgent()
+        agent.answerStatus = 500
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        signals.emit(event("question.created", """{"question":{"id":"q1","agentId":"a1","status":"pending","questions":[{"id":"p1","question":"Which?","options":[{"label":"Postgres"}]}]}}"""))
+        advanceUntilIdle()
+        runCatching { chat.answer("q1", mapOf("p1" to listOf("Postgres"))) }
+        advanceUntilIdle()
+        val ask = chat.state.value.rows.first() as ConversationRow.Ask
+        assertTrue(ask.phase is AskPhase.Failed)
+        assertEquals("q1", chat.state.value.question?.id)
+    }
+
     @Test fun `working line follows the agent's status`() = runTest {
         val agent = FakeAgent()
         val chat = conversation(agent)
@@ -757,6 +849,18 @@ class ConversationTest {
         assertEquals(Mode("codex", "openai/gpt-5.6-luna", "low", null, "auto"), catalog.pick(sol, "codex", "openai/gpt-5.6-luna"))
         assertEquals(sol.copy(effort = "low"), catalog.pick(sol.copy(effort = "low"), "codex", "openai/gpt-5.6-sol"))
         assertEquals(sol, catalog.pick(sol, "grok", "xai/grok-4.5"))
+    }
+
+    @Test fun `the computer's config changed reads the models again`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        assertEquals(3, chat.state.value.catalog?.models?.size)
+        agent.config = FakeAgent.CONFIG.replace(""""grok":{"type":"grok","enabled":false""", """"grok":{"type":"grok","enabled":true""")
+        signals.emit(event("config.updated", "{}"))
+        advanceUntilIdle()
+        assertEquals("xai/grok-4.5", chat.state.value.catalog?.models?.last()?.modelId)
+        assertEquals(4, chat.state.value.catalog?.models?.size)
     }
 
     @Test fun `a picked mode is kept with the draft at once and sends with the next message`() = runTest {
@@ -1065,6 +1169,305 @@ class ConversationTest {
             mode = Mode("codex", "m", "low", null, "auto"),
         )
         assertEquals(kept, KeptConversation.parse(Json.parseToJsonElement(kept.json().toString()).jsonObject))
+    }
+
+    private val catalog = """[{"name":"compact","hasArguments":false,"description":"Summarize older messages to free context space.","kind":"compaction"},""" +
+        """{"name":"code-review","hasArguments":true,"description":"Review the current changes.","kind":"skill","image":{"thumbhash":"1QcSHQRnh493V4dIh4eXh1h4kJUI"}}]"""
+
+    private fun FakeAgent.withCommands() = apply {
+        bootstrap = """{"agent":{"id":"a1","workspaceId":"w1","status":"idle","title":"Fix it"},"mode":${FakeAgent.MODE},"draft":{"value":null,"updatedAt":null},"pending":[],"slashCommands":$catalog}"""
+    }
+
+    @Test fun `the agent's slash commands come with its bootstrap and an update replaces them whole`() = runTest {
+        val chat = conversation(FakeAgent().withCommands())
+        advanceUntilIdle()
+        assertEquals(
+            listOf(
+                SlashCommand("compact", false, "Summarize older messages to free context space.", "compaction"),
+                SlashCommand("code-review", true, "Review the current changes.", "skill", image = true, thumbhash = "1QcSHQRnh493V4dIh4eXh1h4kJUI"),
+            ),
+            chat.state.value.commands,
+        )
+        signals.emit(event("agent.slash_commands.updated", """{"agentId":"a1","slashCommands":[{"name":"deploy","hasArguments":true,"description":"Ship it."}]}"""))
+        advanceUntilIdle()
+        assertEquals(listOf(SlashCommand("deploy", true, "Ship it.")), chat.state.value.commands)
+        // An update that carries no list leaves what is known.
+        signals.emit(event("agent.slash_commands.updated", """{"agentId":"a1"}"""))
+        advanceUntilIdle()
+        assertEquals(listOf("deploy"), chat.state.value.commands.map { it.name })
+    }
+
+    @Test fun `the context measurement comes with the bootstrap and each update replaces it, null clearing it`() = runTest {
+        val agent = FakeAgent().apply {
+            bootstrap = bootstrap.replace("\"pending\":[]", """"pending":[],"context":{"approximate":false,"contextTokens":84000,"contextWindow":200000,"modelId":"m","providerId":"codex"}""")
+        }
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        assertEquals(ContextMeasurement(false, 84000.0, 200000.0, "m", "codex"), chat.state.value.context)
+        val rows = chat.state.value.rows
+        signals.emit(event("agent.context.updated", """{"agentId":"a1","context":{"approximate":true,"contextTokens":120000,"contextWindow":200000,"modelId":"m","providerId":"codex"}}"""))
+        advanceUntilIdle()
+        assertEquals(ContextMeasurement(true, 120000.0, 200000.0, "m", "codex"), chat.state.value.context)
+        // Only the meter moves: the rows are the same list.
+        assertTrue(rows === chat.state.value.rows)
+        signals.emit(event("agent.context.updated", """{"agentId":"a1","context":null}"""))
+        advanceUntilIdle()
+        assertNull(chat.state.value.context)
+    }
+
+    @Test fun `a command runs on its module under the composer's mode and is never a message`() = runTest {
+        val agent = FakeAgent().withCommands()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        chat.setDraft("/compact")
+        assertTrue(chat.runCommand("compact", "ignored, it takes none"))
+        advanceUntilIdle()
+        val (method, path, body) = agent.requests.single { "/slash-commands/" in it.second }
+        assertEquals("POST", method)
+        assertEquals("/v0/agents/a1/slash-commands/compact", path)
+        assertEquals(setOf("mode", "mutationId"), body!!.keys)
+        assertEquals(Mode.parse(Json.parseToJsonElement(FakeAgent.MODE)), Mode.parse(body["mode"]))
+        assertTrue(agent.paths("POST").none { it.endsWith("/send") })
+        assertEquals("", chat.state.value.draft)
+        // The answer's catalog replaces the one known.
+        assertEquals(listOf("compact"), chat.state.value.commands.map { it.name })
+        assertNull(chat.state.value.alert)
+    }
+
+    @Test fun `a command's arguments go as one string when it takes them`() = runTest {
+        val agent = FakeAgent().apply {
+            bootstrap = """{"agent":{"id":"a1","workspaceId":"w1","status":"idle"},"mode":${FakeAgent.MODE},"pending":[],"slashCommands":[{"name":"deploy now","hasArguments":true,"description":"Ship."}]}"""
+        }
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        chat.runCommand("deploy now", "  to staging, quietly ")
+        advanceUntilIdle()
+        val (_, path, body) = agent.requests.single { "/slash-commands/" in it.second }
+        assertEquals("/v0/agents/a1/slash-commands/deploy%20now", path)
+        assertEquals("to staging, quietly", body!!["arguments"]!!.toString().trim('"'))
+    }
+
+    @Test fun `a command gone or busy says so in the phone's words`() = runTest {
+        val agent = FakeAgent().withCommands()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        agent.commandStatus = 404
+        chat.runCommand("compact", null)
+        advanceUntilIdle()
+        assertEquals(Problem.CommandGone("compact"), chat.state.value.alert)
+        chat.dismissAlert()
+        agent.commandStatus = 409
+        chat.runCommand("compact", null)
+        advanceUntilIdle()
+        assertEquals(Problem.CommandBusy("compact"), chat.state.value.alert)
+        chat.dismissAlert()
+        agent.commandStatus = 400
+        chat.runCommand("compact", null)
+        advanceUntilIdle()
+        assertEquals(Problem.Said("The daemon's own words."), chat.state.value.alert)
+        chat.dismissAlert()
+        // One the phone doesn't know isn't asked for at all.
+        val asked = agent.requests.size
+        chat.runCommand("nonsense", null)
+        advanceUntilIdle()
+        assertEquals(Problem.CommandGone("nonsense"), chat.state.value.alert)
+        assertEquals(asked, agent.requests.size)
+    }
+
+    @Test fun `a skill goes as the person's message asking for read_skill first`() = runTest {
+        val agent = FakeAgent().withCommands()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        chat.runCommand("code-review", "focus on auth")
+        advanceUntilIdle()
+        assertTrue(agent.requests.none { "/slash-commands/" in it.second })
+        val body = agent.requests.single { it.second.endsWith("/send") }.third!!
+        assertEquals("/code-review focus on auth", body["text"]!!.toString().trim('"'))
+        assertEquals(
+            Json.parseToJsonElement("""[{"type":"tool_call_request","name":"read_skill","arguments":{"name":"code-review"}}]"""),
+            body["content"],
+        )
+        chat.runCommand("code-review", "  ")
+        advanceUntilIdle()
+        assertEquals("/code-review", agent.requests.last { it.second.endsWith("/send") }.third!!["text"]!!.toString().trim('"'))
+    }
+
+    @Test fun `the commands are kept with the history and shown offline`() = runTest {
+        val store = object : ConversationKeeper {
+            var kept: JsonObject? = null
+            override fun read() = kept
+            override fun write(value: JsonObject) { kept = value }
+        }
+        val history = FakeAgent().withCommands().apply {
+            page = """{"runs":[{"id":"r1","status":"completed","messages":[{"id":"m1","role":"user","createdAt":1,"content":[{"type":"text","text":"hi"}]}]}],"hasMore":false}"""
+        }
+        val first = conversation(history, keeper = store)
+        advanceUntilIdle()
+        first.close()
+        advanceUntilIdle()
+        assertEquals(2, KeptConversation.parse(store.kept)!!.slashCommands!!.size)
+        val offline = FakeAgent().apply { beforeBootstrap = { throw AgentConnectionException(AgentConnectionException.Reason.Unavailable) } }
+        val second = conversation(offline, keeper = store)
+        advanceUntilIdle()
+        assertEquals(listOf("compact", "code-review"), second.state.value.commands.map { it.name })
+    }
+
+
+    private val endedTurn = """{"runs":[{"id":"r1","status":"completed","startedAt":1000,"endedAt":13000,"reason":"completed","messages":[
+        {"id":"m1","role":"user","createdAt":1,"content":[{"type":"text","text":"Fix it"}],"metadata":{}},
+        {"id":"m2","role":"agent","createdAt":2,"content":[
+            {"type":"reasoning","text":"Look first."},
+            {"type":"tool_call","id":"c1","name":"exec_command","status":"completed","presentation":{"type":"exec_command","command":"ls"}},
+            {"type":"tool_call","id":"c2","name":"apply_patch","status":"completed","presentation":{"type":"file_diff","files":[{"path":"src/a.ts","kind":"update","added":3,"deleted":1}]}},
+            {"type":"text","text":"Done"}
+        ],"metadata":{}}
+    ]}],"hasMore":false}"""
+
+    @Test fun `a finished turn folds its work behind its trace and says how it ended`() = runTest {
+        val agent = FakeAgent().apply { page = endedTurn }
+        val keeper = MemoryKeeper()
+        val chat = conversation(agent, keeper = keeper)
+        advanceUntilIdle()
+        // Folded: the person's words, the file it edited, the control, the answer and how it ended.
+        assertEquals(listOf("r1:status", "m2:3", "r1:trace", "m2:2", "m1:user"), chat.state.value.rows.map { it.key })
+        val ended = chat.state.value.rows[0] as ConversationRow.TurnEnd
+        assertEquals(ConversationRow.TurnEnd("r1:status", "r1", "completed", 12_000, 2, "Done"), ended)
+        assertTrue(ended.complete)
+        // Its copy is the turn's: the answer has none of its own.
+        assertFalse((chat.state.value.rows[1] as ConversationRow.Text).copies)
+        assertEquals(ConversationRow.Trace("r1:trace", "r1", false, 2), chat.state.value.rows[2])
+        val edit = (chat.state.value.rows[3] as ConversationRow.Tool).tool
+        assertEquals("apply_patch", edit.name)
+        assertTrue(edit.isResult)
+
+        // Open: every step, the control riding the first.
+        chat.toggleTurn("r1")
+        advanceUntilIdle()
+        assertEquals(listOf("r1:status", "m2:3", "m2:2", "m2:1", "m2:0", "r1:trace", "m1:user"), chat.state.value.rows.map { it.key })
+        assertTrue((chat.state.value.rows[5] as ConversationRow.Trace).open)
+        // A step right above how it ended keeps it 4 further off; here the answer is.
+        assertFalse((chat.state.value.rows[0] as ConversationRow.TurnEnd).afterStep)
+
+        chat.toggleTurn("r1")
+        advanceUntilIdle()
+        assertEquals("r1:trace", chat.state.value.rows[2].key)
+
+        // When and why it ended are kept with it.
+        val kept = KeptConversation.parse(keeper.value)!!.runs.single()
+        assertEquals(13_000L, kept.endedAt)
+        assertEquals("completed", kept.reason)
+    }
+
+    @Test fun `a turn still running is shown whole and ends when its run finishes`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        signals.emit(event("run.started", """{"agentId":"a1","run":{"id":"r1","status":"running","startedAt":1000},"acceptedMessageIds":[]}"""))
+        signals.emit(event("message.created", """{"agentId":"a1","runId":"r1","message":{"id":"m","role":"agent","createdAt":5,"content":[{"type":"tool_call","id":"c1","name":"exec_command","status":"completed","presentation":{"type":"exec_command","command":"ls"}},{"type":"text","text":"Hi"}],"metadata":{}}}"""))
+        advanceUntilIdle()
+        assertEquals(listOf("m:1", "m:0"), chat.state.value.rows.map { it.key })
+
+        // Steered: the run ends by the boundary, which says why, and offers no copy.
+        signals.emit(event("run.boundary", """{"agentId":"a1","finishedRun":{"id":"r1","status":"completed","startedAt":1000,"endedAt":4000,"reason":"steering"},"startedRun":{"id":"r2","status":"running","startedAt":4000},"acceptedMessageIds":[]}"""))
+        advanceUntilIdle()
+        val steered = chat.state.value.rows.first { it is ConversationRow.TurnEnd } as ConversationRow.TurnEnd
+        assertEquals("steering", steered.reason)
+        assertEquals(3_000L, steered.durationMs)
+        assertFalse(steered.complete)
+
+        signals.emit(event("message.created", """{"agentId":"a1","runId":"r2","message":{"id":"n","role":"agent","createdAt":6,"content":[{"type":"text","text":"Again"}],"metadata":{}}}"""))
+        signals.emit(event("run.finished", """{"agentId":"a1","run":{"id":"r2","status":"completed","startedAt":4000,"endedAt":9000,"reason":"error"}}"""))
+        advanceUntilIdle()
+        val failed = chat.state.value.rows[0] as ConversationRow.TurnEnd
+        assertEquals(ConversationRow.TurnEnd("r2:status", "r2", "error", 5_000, 0, "Again"), failed)
+    }
+
+
+    /** Pictures [fills] staged on the phone, each a file the bubble draws as `Block.Image(png, fill)`. */
+    private fun pictures(vararg fills: Char): List<com.slopus.happy.attachments.AttachmentPreview> {
+        val dir = kotlin.io.path.createTempDirectory("pictures").toFile()
+        return fills.map { fill ->
+            val file = java.io.File(dir, "$fill.png").apply { writeBytes(fill.toString().repeat(4000).toByteArray()) }
+            preview(file.toURI().toString(), "image/png", file.length(), name = "$fill.png")
+        }
+    }
+
+    private val drawPictures: (List<java.io.File>) -> List<Block.Image> = { list -> list.map { Block.Image("image/png", it.nameWithoutExtension) } }
+
+    /** Each picture file write, in order, by its letter. */
+    private fun writtenPictures(agent: FakeAgent) = agent.requests
+        .filter { it.first == "PUT" && it.second.endsWith("/file") }
+        .map { it.third!!["path"]!!.jsonPrimitive.content }
+        .filter { it.endsWith(".png") }
+        .map { it.substringAfterLast('-').first() }
+
+    @Test fun `a sending picture says how much of its file is written and is forgotten once taken`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        val gate = CompletableDeferred<Unit>().also { agent.halfway = it }
+        assertTrue(chat.send("Look", pictures('A', 'B'), drawPictures))
+        advanceUntilIdle()
+        val id = chat.state.value.rows.filterIsInstance<ConversationRow.User>().single().messageId
+        // Half the first file: that picture half written, the second waiting its turn.
+        val first = chat.uploads.phase(UploadBoard.pictureKey(id, 0))
+        val second = chat.uploads.phase(UploadBoard.pictureKey(id, 1))
+        assertTrue("first: $first", first is UploadPhase.Uploading && first.share in 0.45f..0.55f)
+        assertEquals(UploadPhase.Preparing, second)
+        gate.complete(Unit)
+        advanceUntilIdle()
+        // Taken: all there until the agent's own copy comes back.
+        assertEquals(UploadPhase.Done, chat.uploads.phase(UploadBoard.pictureKey(id, 1)))
+        assertEquals(Delivery.Pending, chat.state.value.rows.filterIsInstance<ConversationRow.User>().single().delivery)
+        signals.emit(event("message.created", """{"agentId":"a1","runId":null,"message":{"id":"$id","role":"user","status":"pending","createdAt":5,"content":[{"type":"text","text":"Look"}],"metadata":{}}}"""))
+        advanceUntilIdle()
+        assertEquals(null, chat.uploads.phase(UploadBoard.pictureKey(id, 0)))
+    }
+
+    @Test fun `taking a picture out on its way sends the rest under the same id, and the last one takes the message back`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        val gate = CompletableDeferred<Unit>().also { agent.halfway = it }
+        assertTrue(chat.send("", pictures('A', 'B', 'C'), drawPictures))
+        advanceUntilIdle()
+        val id = chat.state.value.rows.filterIsInstance<ConversationRow.User>().single().messageId
+        // B waits behind A's write: taken out, A is written again and B never.
+        chat.removePicture(id, 1)
+        advanceUntilIdle()
+        assertEquals("written again without it", listOf('A', 'A'), writtenPictures(agent))
+        val left = chat.state.value.rows.filterIsInstance<ConversationRow.User>().single()
+        assertEquals(listOf("A", "C"), left.pictures.map { it.data })
+        assertFalse("its path is no longer named", left.text.contains("1-B.png"))
+
+        chat.removePicture(id, 1)
+        advanceUntilIdle()
+        chat.removePicture(id, 0)
+        advanceUntilIdle()
+        assertTrue("nothing left: taken back", chat.state.value.rows.filterIsInstance<ConversationRow.User>().isEmpty())
+        gate.complete(Unit)
+        advanceUntilIdle()
+        assertEquals(listOf('A', 'A', 'A'), writtenPictures(agent))
+        assertTrue("nothing sent", agent.requests.none { it.second.endsWith("/send") })
+    }
+
+    @Test fun `a picture already in the workspace stays when its cross is pressed`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        val gate = CompletableDeferred<Unit>()
+        agent.halfway = gate
+        assertTrue(chat.send("Two", pictures('A', 'B'), drawPictures))
+        advanceUntilIdle()
+        val id = chat.state.value.rows.filterIsInstance<ConversationRow.User>().single().messageId
+        // A goes all the way; B's write is what is held now.
+        gate.complete(Unit)
+        agent.halfway = CompletableDeferred()
+        advanceUntilIdle()
+        assertEquals(UploadPhase.Done, chat.uploads.phase(UploadBoard.pictureKey(id, 0)))
+        chat.removePicture(id, 0)
+        advanceUntilIdle()
+        assertEquals(2, chat.state.value.rows.filterIsInstance<ConversationRow.User>().single().pictures.size)
     }
 }
 

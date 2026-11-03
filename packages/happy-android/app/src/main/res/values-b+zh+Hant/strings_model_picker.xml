@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The composer's model and effort chips and their lists (iOS e2238fdc4, 083c30df4; desktop ComposerModelControl.tsx). -->
+<resources>
+    <string name="conversation_models_not_configured">未設定模型</string>
+    <string name="conversation_model_hidden_account">隱藏的帳戶。它仍然可用，只是不顯示在列表中。</string>
+    <string name="conversation_model_account_removed">%1$s 帳戶已不再設定在此 Happy Agent 上。</string>
+    <string name="conversation_model_account_off">%1$s 帳戶已關閉，因此不會向它傳送任何內容。</string>
+    <string name="conversation_model_chip">模型：%1$s</string>
+    <string name="conversation_effort_chip">思考強度：%1$s</string>
+    <string name="conversation_select_model">選擇模型</string>
+    <string name="conversation_select_effort">選擇思考強度</string>
+    <string name="conversation_accounts_of">%1$s 帳戶</string>
+    <string name="conversation_heading_label">%1$s 帳戶：%2$s</string>
+    <string name="conversation_usage_unknown">用量未知</string>
+    <string name="conversation_limit_reached">已達上限</string>
+    <string name="conversation_limit_resets">上限將於 %1$s 重設</string>
+    <string name="conversation_usage_updating">正在更新…</string>
+    <string name="conversation_usage_couldnt_refresh">無法重新整理</string>
+    <string name="conversation_usage_updated">更新於 %1$s</string>
+    <string name="conversation_usage_updated_failed">更新於 %1$s · 無法重新整理</string>
+    <string name="conversation_usage_as_of">%1$s（截至 %2$s）</string>
+    <string name="conversation_usage_just_now">剛剛</string>
+    <string name="conversation_usage_minutes_ago">%1$d 分鐘前</string>
+    <string name="conversation_usage_hours_ago">%1$d 小時前</string>
+    <string name="conversation_usage_at">%1$s</string>
+    <string name="conversation_usage_signed_out">已登出</string>
+</resources>

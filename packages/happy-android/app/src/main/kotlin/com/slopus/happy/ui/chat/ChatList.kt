@@ -23,6 +23,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import com.slopus.happy.ui.components.PageProgressIndicator as CircularProgressIndicator
 import androidx.compose.material3.Text
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -52,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.chat.ChatListItem
 import com.slopus.happy.chat.ChatRow
+import com.slopus.happy.chat.UserDisplay
 import com.slopus.happy.chat.WorkGroupExpansion
 import com.slopus.happy.chat.chatListItems
 import com.slopus.happy.chat.groupChatRowsForDisplay
@@ -64,6 +67,9 @@ import com.slopus.happy.ui.components.RoundButtonSize
 import com.slopus.happy.ui.components.ShimmerSpec
 import com.slopus.happy.ui.components.rememberReduceMotion
 import com.slopus.happy.ui.components.shimmer
+import com.slopus.happy.ui.conversation.LocalSendFlight
+import com.slopus.happy.ui.conversation.SendFlight
+import com.slopus.happy.ui.conversation.flying
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
@@ -223,6 +229,8 @@ fun ChatList(
     foreground: Boolean = true,
     /** The agent is working: the scroll button's arrow shimmers, as iOS's jump does. */
     working: Boolean = false,
+    /** A message sent at the newest end flies from the composer to its row. */
+    flight: SendFlight? = null,
 ) {
     val colors = HappyTheme.colors
     val scope = rememberCoroutineScope()
@@ -282,17 +290,31 @@ fun ChatList(
         }
     }
 
+    // Only the newest reply comes out as it arrives (iOS 0a0ff3084, 70c8f6de7).
+    val focus = remember(sessionId) { RevealFocus() }
+    val streamingKey = focus.update(rows, working)
+    val reveal = remember(state) { ListReveal(state, leading = 1) }
+    // Past the footer, with the newest row's foot in view (iOS 3c24acf5c flies within 20 of the end; Android's conversation at it).
+    flight?.atNewest = { state.firstVisibleItemIndex == 0 && state.firstVisibleItemScrollOffset == 0 }
+
     Box(modifier = modifier.fillMaxSize()) {
         LazyColumn(
             state = state,
             reverseLayout = true,
             contentPadding = PaddingValues(top = topInset, bottom = ChatListSpec.newestPadding + bottomInset),
-            modifier = Modifier.testTag(ChatListTags.LIST).fillMaxSize(),
+            modifier = Modifier.testTag(ChatListTags.LIST).fillMaxSize().graphicsLayer { translationY = reveal.lag() },
         ) {
             item(key = "footer", contentType = "footer") { ChatFooter(controlledByUser) }
             items(listItems, key = { it.key }, contentType = { item -> if (item is ChatListItem.Row) item.row::class else WORK_HEADER }) { item ->
                 when (item) {
-                    is ChatListItem.Row -> MessageView(item.row, bubble, callbacks)
+                    is ChatListItem.Row -> CompositionLocalProvider(LocalRevealHost provides reveal, LocalSendFlight provides flight) {
+                        val row = item.row
+                        val textReveal = if (row is ChatRow.AgentText) rememberTextReveal(row.key, streaming = row.key == streamingKey) { true } else null
+                        // Its words are on their way from the composer: it shows once they land.
+                        val sent = (row as? ChatRow.User)?.takeIf { it.display is UserDisplay.Text }?.message?.text
+                        val moves = if (flight != null && flight.claim(row.key, sent)) Modifier.flying(flight, row.key) else Modifier
+                        MessageView(row, bubble, callbacks, moves, reveal = textReveal)
+                    }
                     // Toggled by the group, not the row: both headers of an open group drive one state.
                     is ChatListItem.WorkHeader -> AgentWorkGroupHeader(
                         group = item.group,
@@ -432,5 +454,30 @@ fun ChatFooter(controlledByUser: Boolean, modifier: Modifier = Modifier) {
                 )
             }
         }
+    }
+}
+
+/**
+ * Which reply reveals in the relay chat (iOS's `RevealFocus`): the newest
+ * row, while the agent works, when it arrived alone while the chat was
+ * open. Never the history the chat opens with, nor several rows in one
+ * update (a catch-up); a row that stops being the newest finishes.
+ */
+internal class RevealFocus {
+    private var known: Set<String>? = null
+    private var revealing: String? = null
+
+    /** Takes the rows as composed now (newest first); the key that streams now, if any. */
+    fun update(rows: List<ChatRow>, working: Boolean): String? {
+        val before = known
+        known = rows.mapTo(HashSet(rows.size * 2)) { it.key }
+        val newest = rows.firstOrNull()
+        if (before.isNullOrEmpty()) {
+            revealing = null
+        } else if (newest != null && newest.key !in before) {
+            val added = rows.count { it.key !in before }
+            revealing = newest.key.takeIf { added == 1 && newest is ChatRow.AgentText && working }
+        }
+        return revealing?.takeIf { working && it == newest?.key }
     }
 }

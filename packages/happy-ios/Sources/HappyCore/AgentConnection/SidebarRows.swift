@@ -6,8 +6,16 @@ import HappyWire
 /// Sections have no titles and nothing folds: each section is parted from
 /// the one before by a separator, and every nested row is shown.
 public enum SidebarRows {
+    /// Desktop's fixed Feed row under Artifacts, shown while the computer
+    /// keeps a feed for the person: how many entries they haven't seen.
+    public struct FeedRow: Equatable, Sendable {
+        public var unread: Int
+        public init(unread: Int) { self.unread = unread }
+    }
+
     /// `users`: the team members the tasks belong to, as last read, by ID.
-    public static func make(_ desktop: DesktopSnapshot, settings: [String: JSONValue], users: [String: TeamUser] = [:]) -> [Row] {
+    /// `feed`: the Feed's row, nil for none.
+    public static func make(_ desktop: DesktopSnapshot, settings: [String: JSONValue], users: [String: TeamUser] = [:], feed: FeedRow? = nil) -> [Row] {
         var rows: [Row] = []
         var descendants = Set<String>()
         let tasksByID = Dictionary((desktop.tasks ?? []).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -51,6 +59,12 @@ public enum SidebarRows {
             for child in children { agentRow(child, depth: depth + 1, muted: muted) }
         }
         rows.append(Row(id: "direct:artifacts", nodeId: "direct:artifacts", kind: .space, label: "Artifacts", mark: .glyph("doc"), targetKind: "artifacts"))
+        if let feed {
+            // Bold while something is unread, with how many beside it.
+            var row = Row(id: "direct:feed", nodeId: "direct:feed", kind: .space, label: "Feed", mark: .glyph("feed"), unread: feed.unread > 0, targetKind: "feed")
+            row.count = feed.unread > 0 ? feed.unread : nil
+            rows.append(row)
+        }
         rows.append(Row(id: "direct:todos", nodeId: "direct:todos", kind: .space, label: "Todos", mark: .glyph(Rows.surfaceGlyph("todo")), targetKind: "todos"))
         let joined = (desktop.surfaces ?? []).compactMap { surface -> (DesktopSnapshot.Surface, String)? in
             guard let member = surface.members.first(where: { $0.userId == desktop.profile?.userId }) else { return nil }

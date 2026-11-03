@@ -7,7 +7,9 @@ extension TranslationCatalog {
     ///
     /// The two kinds of account are named by their products, Happy Agent
     /// and Happy CLI, which no language translates.
-    static let nativeSources: [String: [String: String]] = [
+    static let nativeSources: [String: [String: String]] = accountAndCommandSources.merging(feedSources) { kept, feed in kept.merging(feed) { first, _ in first } }
+
+    private static let accountAndCommandSources: [String: [String: String]] = [
         "en": [
             "native.accountKind.addCLIAccount": "Add Happy CLI account",
             "native.accountKind.connectAgent": "Connect Happy Agent",
@@ -29,6 +31,13 @@ extension TranslationCatalog {
             "native.onboarding.secretKeyBody": "Paste your secret key. It is in ${path} on your other device.",
             "native.imageUpload.willRetryOne": "One image couldn’t be uploaded yet. The message will be sent when the connection is back.",
             "native.imageUpload.willRetryMany": "${count} images couldn’t be uploaded yet. The message will be sent when the connection is back.",
+            "native.slashCommands.unavailable": "/${name} is no longer available.",
+            "native.slashCommands.busy": "/${name} can’t run right now. Try again when the agent is idle.",
+            "native.slashCommands.unreachable": "Couldn’t reach Happy Agent to run /${name}. Try again when it’s back.",
+            "native.slashCommands.refused": "Happy Agent couldn’t run /${name}.",
+            "native.slashCommands.notSaved": "/${name} could not be saved on this phone. Your text is still here.",
+            "native.slashCommands.kindSkill": "Skill",
+            "native.slashCommands.kindCompaction": "Compaction",
         ],
         "ru": [
             "native.accountKind.addCLIAccount": "Добавить аккаунт Happy CLI",
@@ -51,6 +60,13 @@ extension TranslationCatalog {
             "native.onboarding.secretKeyBody": "Вставьте секретный ключ. Он находится в разделе ${path} на другом устройстве.",
             "native.imageUpload.willRetryOne": "Одно изображение пока не загрузилось. Сообщение уйдёт, когда вернётся сеть.",
             "native.imageUpload.willRetryMany": "Изображения пока не загрузились (${count}). Сообщение уйдёт, когда вернётся сеть.",
+            "native.slashCommands.unavailable": "Команда /${name} больше недоступна.",
+            "native.slashCommands.busy": "Команду /${name} сейчас нельзя выполнить. Попробуйте снова, когда агент освободится.",
+            "native.slashCommands.unreachable": "Не удалось связаться с Happy Agent, чтобы выполнить /${name}. Попробуйте снова, когда связь вернётся.",
+            "native.slashCommands.refused": "Happy Agent не смог выполнить /${name}.",
+            "native.slashCommands.notSaved": "Не удалось сохранить /${name} на этом телефоне. Ваш текст остался здесь.",
+            "native.slashCommands.kindSkill": "Навык",
+            "native.slashCommands.kindCompaction": "Сжатие",
         ],
         "pl": [
             "native.accountKind.addCLIAccount": "Dodaj konto Happy CLI",
@@ -73,6 +89,13 @@ extension TranslationCatalog {
             "native.onboarding.secretKeyBody": "Wklej swój tajny klucz. Znajdziesz go w ${path} na drugim urządzeniu.",
             "native.imageUpload.willRetryOne": "Jeden obraz nie został jeszcze przesłany. Wiadomość zostanie wysłana, gdy połączenie wróci.",
             "native.imageUpload.willRetryMany": "Obrazy nie zostały jeszcze przesłane (${count}). Wiadomość zostanie wysłana, gdy połączenie wróci.",
+            "native.slashCommands.unavailable": "Polecenie /${name} nie jest już dostępne.",
+            "native.slashCommands.busy": "Nie można teraz uruchomić /${name}. Spróbuj ponownie, gdy agent skończy pracę.",
+            "native.slashCommands.unreachable": "Nie udało się połączyć z Happy Agent, aby uruchomić /${name}. Spróbuj ponownie, gdy połączenie wróci.",
+            "native.slashCommands.refused": "Happy Agent nie mógł uruchomić /${name}.",
+            "native.slashCommands.notSaved": "Nie udało się zapisać /${name} na tym telefonie. Twój tekst nadal tu jest.",
+            "native.slashCommands.kindSkill": "Umiejętność",
+            "native.slashCommands.kindCompaction": "Kompaktowanie",
         ],
         "es": [
             "native.accountKind.addCLIAccount": "Añadir cuenta de Happy CLI",
@@ -95,6 +118,13 @@ extension TranslationCatalog {
             "native.onboarding.secretKeyBody": "Pega tu clave secreta. Está en ${path} en tu otro dispositivo.",
             "native.imageUpload.willRetryOne": "Una imagen aún no se ha podido subir. El mensaje se enviará cuando vuelva la conexión.",
             "native.imageUpload.willRetryMany": "${count} imágenes aún no se han podido subir. El mensaje se enviará cuando vuelva la conexión.",
+            "native.slashCommands.unavailable": "El comando /${name} ya no está disponible.",
+            "native.slashCommands.busy": "No se puede ejecutar /${name} ahora. Inténtalo de nuevo cuando el agente esté libre.",
+            "native.slashCommands.unreachable": "No se pudo conectar con Happy Agent para ejecutar /${name}. Inténtalo de nuevo cuando vuelva.",
+            "native.slashCommands.refused": "Happy Agent no pudo ejecutar /${name}.",
+            "native.slashCommands.notSaved": "No se pudo guardar /${name} en este teléfono. Tu texto sigue aquí.",
+            "native.slashCommands.kindSkill": "Habilidad",
+            "native.slashCommands.kindCompaction": "Compactación",
         ],
         "it": [
             "native.accountKind.addCLIAccount": "Aggiungi account Happy CLI",
@@ -117,6 +147,13 @@ extension TranslationCatalog {
             "native.onboarding.secretKeyBody": "Incolla la tua chiave segreta. Si trova in ${path} sull’altro dispositivo.",
             "native.imageUpload.willRetryOne": "Un’immagine non è ancora stata caricata. Il messaggio verrà inviato quando torna la connessione.",
             "native.imageUpload.willRetryMany": "${count} immagini non sono ancora state caricate. Il messaggio verrà inviato quando torna la connessione.",
+            "native.slashCommands.unavailable": "Il comando /${name} non è più disponibile.",
+            "native.slashCommands.busy": "Impossibile eseguire /${name} adesso. Riprova quando l’agente è libero.",
+            "native.slashCommands.unreachable": "Impossibile raggiungere Happy Agent per eseguire /${name}. Riprova quando torna disponibile.",
+            "native.slashCommands.refused": "Happy Agent non è riuscito a eseguire /${name}.",
+            "native.slashCommands.notSaved": "Impossibile salvare /${name} su questo telefono. Il tuo testo è ancora qui.",
+            "native.slashCommands.kindSkill": "Abilità",
+            "native.slashCommands.kindCompaction": "Compattazione",
         ],
         "pt": [
             "native.accountKind.addCLIAccount": "Adicionar conta do Happy CLI",
@@ -139,6 +176,13 @@ extension TranslationCatalog {
             "native.onboarding.secretKeyBody": "Cole sua chave secreta. Ela está em ${path} no seu outro dispositivo.",
             "native.imageUpload.willRetryOne": "Uma imagem ainda não foi carregada. A mensagem será enviada quando a conexão voltar.",
             "native.imageUpload.willRetryMany": "${count} imagens ainda não foram carregadas. A mensagem será enviada quando a conexão voltar.",
+            "native.slashCommands.unavailable": "O comando /${name} não está mais disponível.",
+            "native.slashCommands.busy": "Não é possível executar /${name} agora. Tente novamente quando o agente estiver livre.",
+            "native.slashCommands.unreachable": "Não foi possível conectar ao Happy Agent para executar /${name}. Tente novamente quando ele voltar.",
+            "native.slashCommands.refused": "O Happy Agent não conseguiu executar /${name}.",
+            "native.slashCommands.notSaved": "Não foi possível salvar /${name} neste telefone. Seu texto continua aqui.",
+            "native.slashCommands.kindSkill": "Habilidade",
+            "native.slashCommands.kindCompaction": "Compactação",
         ],
         "ca": [
             "native.accountKind.addCLIAccount": "Afegeix un compte de Happy CLI",
@@ -161,6 +205,13 @@ extension TranslationCatalog {
             "native.onboarding.secretKeyBody": "Enganxa la teva clau secreta. És a ${path} a l’altre dispositiu.",
             "native.imageUpload.willRetryOne": "Encara no s’ha pogut pujar una imatge. El missatge s’enviarà quan torni la connexió.",
             "native.imageUpload.willRetryMany": "Encara no s’han pogut pujar ${count} imatges. El missatge s’enviarà quan torni la connexió.",
+            "native.slashCommands.unavailable": "L’ordre /${name} ja no està disponible.",
+            "native.slashCommands.busy": "Ara no es pot executar /${name}. Torna-ho a provar quan l’agent estigui lliure.",
+            "native.slashCommands.unreachable": "No s’ha pogut connectar amb Happy Agent per executar /${name}. Torna-ho a provar quan torni.",
+            "native.slashCommands.refused": "Happy Agent no ha pogut executar /${name}.",
+            "native.slashCommands.notSaved": "No s’ha pogut desar /${name} en aquest telèfon. El text encara és aquí.",
+            "native.slashCommands.kindSkill": "Habilitat",
+            "native.slashCommands.kindCompaction": "Compactació",
         ],
         "zh-Hans": [
             "native.accountKind.addCLIAccount": "添加 Happy CLI 账户",
@@ -183,6 +234,13 @@ extension TranslationCatalog {
             "native.onboarding.secretKeyBody": "粘贴你的密钥。它位于另一台设备的 ${path} 中。",
             "native.imageUpload.willRetryOne": "有 1 张图片暂未上传。网络恢复后会发送这条消息。",
             "native.imageUpload.willRetryMany": "有 ${count} 张图片暂未上传。网络恢复后会发送这条消息。",
+            "native.slashCommands.unavailable": "/${name} 已不可用。",
+            "native.slashCommands.busy": "现在无法运行 /${name}。请在代理空闲时重试。",
+            "native.slashCommands.unreachable": "无法连接 Happy Agent 来运行 /${name}。连接恢复后请重试。",
+            "native.slashCommands.refused": "Happy Agent 无法运行 /${name}。",
+            "native.slashCommands.notSaved": "无法在此手机上保存 /${name}。你的文字仍在这里。",
+            "native.slashCommands.kindSkill": "技能",
+            "native.slashCommands.kindCompaction": "压缩",
         ],
         "zh-Hant": [
             "native.accountKind.addCLIAccount": "新增 Happy CLI 帳戶",
@@ -205,6 +263,13 @@ extension TranslationCatalog {
             "native.onboarding.secretKeyBody": "貼上你的金鑰。它位於另一台裝置的 ${path} 中。",
             "native.imageUpload.willRetryOne": "有 1 張圖片暫未上傳。網路恢復後會傳送這則訊息。",
             "native.imageUpload.willRetryMany": "有 ${count} 張圖片暫未上傳。網路恢復後會傳送這則訊息。",
+            "native.slashCommands.unavailable": "/${name} 已無法使用。",
+            "native.slashCommands.busy": "現在無法執行 /${name}。請在代理閒置時重試。",
+            "native.slashCommands.unreachable": "無法連線到 Happy Agent 來執行 /${name}。連線恢復後請重試。",
+            "native.slashCommands.refused": "Happy Agent 無法執行 /${name}。",
+            "native.slashCommands.notSaved": "無法在這支手機上儲存 /${name}。你的文字仍在這裡。",
+            "native.slashCommands.kindSkill": "技能",
+            "native.slashCommands.kindCompaction": "壓縮",
         ],
         "ja": [
             "native.accountKind.addCLIAccount": "Happy CLI アカウントを追加",
@@ -227,6 +292,13 @@ extension TranslationCatalog {
             "native.onboarding.secretKeyBody": "シークレットキーを貼り付けてください。もう一方のデバイスの ${path} にあります。",
             "native.imageUpload.willRetryOne": "画像 1 枚をまだアップロードできていません。接続が戻るとメッセージが送信されます。",
             "native.imageUpload.willRetryMany": "画像 ${count} 枚をまだアップロードできていません。接続が戻るとメッセージが送信されます。",
+            "native.slashCommands.unavailable": "/${name} は使用できなくなりました。",
+            "native.slashCommands.busy": "/${name} は今は実行できません。エージェントが空いてからもう一度お試しください。",
+            "native.slashCommands.unreachable": "/${name} を実行するために Happy Agent に接続できませんでした。接続が戻ってからもう一度お試しください。",
+            "native.slashCommands.refused": "Happy Agent は /${name} を実行できませんでした。",
+            "native.slashCommands.notSaved": "/${name} をこのスマートフォンに保存できませんでした。テキストはそのまま残っています。",
+            "native.slashCommands.kindSkill": "スキル",
+            "native.slashCommands.kindCompaction": "コンパクション",
         ],
     ]
 }

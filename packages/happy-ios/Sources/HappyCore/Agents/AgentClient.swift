@@ -295,6 +295,24 @@ public final class AgentClient: Sendable {
         return try await decode(AgentWire.MessagesResponse.self, "GET", "/v0/agents/\(Self.escape(agentId))/messages?\(query)")
     }
 
+    /// One tool call's whole block, raw data included: the run `before`
+    /// names the run after it (nil for the newest run), read alone with its
+    /// tool data, which the transcript's own pages leave out. Nil when the
+    /// run has no such call.
+    public func toolCall(_ agentId: String, id: String, before: String?) async throws -> JSONValue? {
+        var query = "limit=1&omitToolData=false"
+        if let before { query += "&before=\(Self.escape(before))" }
+        let page = try await decode(JSONValue.self, "GET", "/v0/agents/\(Self.escape(agentId))/messages?\(query)")
+        for run in page["runs"]?.arrayValue ?? [] {
+            for message in run["messages"]?.arrayValue ?? [] {
+                for block in message["content"]?.arrayValue ?? [] where block["type"]?.stringValue == "tool_call" && block["id"]?.stringValue == id {
+                    return block
+                }
+            }
+        }
+        return nil
+    }
+
     /// The mode a conversation with no last composer mode sends with (`GET /v0/config` `defaults`).
     /// What new work is sent with when nothing was picked: desktop's
     /// default selection, the declared model at its own default effort.
@@ -334,8 +352,8 @@ public final class AgentClient: Sendable {
     /// Always steering, as desktop sends: mid-turn it is taken at the next
     /// boundary rather than waiting behind the run; idle, it starts one.
     /// `progress` hears each image's share written, in order, as the body goes out.
-    public func sendMessage(_ agentId: String, id: String, text: String, images: [(mimeType: String, data: Data)], mode: AgentWire.Mode,
-        progress: (@Sendable ([Double]) -> Void)? = nil) async throws {
+    public func sendMessage(_ agentId: String, id: String, text: String, images: [(mimeType: String, data: Data)], toolRequest: AgentWire.ToolCallRequest? = nil,
+        mode: AgentWire.Mode, progress: (@Sendable ([Double]) -> Void)? = nil) async throws {
         guard images.allSatisfy({ $0.data.count <= AttachmentRules.maxInlineImageBytes }),
               images.reduce(0, { $0 + $1.data.count }) <= AttachmentRules.maxInlineImageTotalBytes else {
             throw AttachmentRules.invalid("Inline images exceed the model's image limit.")
@@ -346,11 +364,11 @@ public final class AgentClient: Sendable {
             "clientMetadata": .object(["composer": .string("mobile")]),
         ]
         let encoded = images.map { $0.data.base64EncodedString() }
-        if !images.isEmpty {
+        if !images.isEmpty || toolRequest != nil {
             // /send prepends its required top-level text to these rich blocks.
             object["content"] = .array(zip(images, encoded).map {
                 .object(["type": .string("image"), "mimeType": .string($0.0.mimeType), "data": .string($0.1)])
-            })
+            } + (toolRequest.map { [$0.json] } ?? []))
         }
         object["mode"] = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(mode))
         let path = "/v0/agents/\(Self.escape(agentId))/send"
@@ -368,6 +386,22 @@ public final class AgentClient: Sendable {
         let ranges = UploadRanges(body: body, encoded: encoded)
         progress(ranges.shares(sent: 0))
         _ = try await send("POST", path, raw: body, category: category, sent: { progress(ranges.shares(sent: $0)) })
+    }
+
+    /// Runs one slash command on the module that offers it
+    /// (`POST /v0/agents/:agentId/slash-commands/:name`), under the mode a
+    /// message would go with. `arguments` only for one that takes them.
+    /// The catalog as the computer has it after its refresh; what the
+    /// command does comes as events. 404: no such command now; 409: it
+    /// can't run in the agent's current state.
+    public func invokeSlashCommand(_ agentId: String, name: String, arguments: String?, mode: AgentWire.Mode, mutationId: String) async throws -> [AgentWire.SlashCommand]? {
+        var body: [String: JSONValue] = [
+            "mode": try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(mode)),
+            "mutationId": .string(mutationId),
+        ]
+        if let arguments { body["arguments"] = .string(arguments) }
+        let answer = try await decode(JSONValue.self, "POST", "/v0/agents/\(Self.escape(agentId))/slash-commands/\(Self.escape(name))", json: .object(body))
+        return AgentWire.SlashCommand.catalog(answer["slashCommands"])
     }
 
     /// The composer's draft as the computer keeps it for this person.

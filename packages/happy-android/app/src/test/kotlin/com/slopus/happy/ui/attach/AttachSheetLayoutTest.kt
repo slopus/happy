@@ -67,6 +67,7 @@ internal fun SheetUnderTest(
     selection: AttachSelection = remember { AttachSelection(20) },
     startTab: AttachTabKind = AttachTabKind.Gallery,
     onClose: () -> Unit = {},
+    motion: AttachSheetMotion = remember { AttachSheetMotion(settled = true) },
 ) {
     var tab by remember { mutableStateOf(startTab) }
     var caption by remember { mutableStateOf("") }
@@ -80,7 +81,7 @@ internal fun SheetUnderTest(
         selection = selection,
         caption = caption,
         onCaptionChange = { caption = it },
-        motion = remember { AttachSheetMotion(settled = true) },
+        motion = motion,
         onClose = onClose,
         onSend = {},
         onToggleGallery = { selection.toggle(it.picked()) },

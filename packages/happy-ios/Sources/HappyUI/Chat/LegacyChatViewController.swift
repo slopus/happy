@@ -1964,8 +1964,8 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
         case .copyMenu, .selectable, .markdownSelectable:
             // Long presses; see `chatList(_:hold:frame:at:)`.
             break
-        case .openMedia, .openArtifact, .toggleTurn:
-            // Only V2 conversations show media, artifacts and turns.
+        case .openMedia, .openArtifact, .toggleTurn, .openURL:
+            // Only V2 conversations show media, artifacts, turns and tool screens.
             break
         case .toggleDownload(let ref):
             chatAttachments?.toggle(ref)

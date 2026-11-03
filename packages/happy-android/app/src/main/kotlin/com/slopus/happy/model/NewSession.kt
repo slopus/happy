@@ -130,7 +130,8 @@ fun collectSessionPlaces(machineIds: Collection<String>, sessions: Collection<Se
     selectedPath?.trim()?.takeIf { it.isNotEmpty() }?.let { remember(SessionPlace(it, it, it), named = false) }
     for (session in sessions) {
         val metadata = session.metadata ?: continue
-        if (metadata.bot != null) continue
+        // A bot's or a task's folder is its own, not a place for new work (happy-ios 36b11c5bf).
+        if (metadata.bot != null || metadata.task != null) continue
         val path = metadata.path.trim().takeIf { it.isNotEmpty() } ?: continue
         if (metadata.machineId != null && metadata.machineId !in ids) continue
         if (metadata.lifecycleState == "archived") continue
@@ -161,7 +162,8 @@ fun collectSessionWorkspaces(machineIds: Collection<String>, projectId: String?,
     val byId = LinkedHashMap<String, SessionWorkspace>()
     for (session in sessions) {
         val metadata = session.metadata ?: continue
-        if (metadata.bot != null) continue
+        // A bot's or a task's folder is its own, not a place for new work (happy-ios 36b11c5bf).
+        if (metadata.bot != null || metadata.task != null) continue
         val workspace = metadata.workspace ?: continue
         val path = metadata.path.trim().takeIf { it.isNotEmpty() } ?: continue
         if (metadata.project?.id != project) continue
@@ -193,18 +195,24 @@ sealed interface StartProgress {
     data class CreatingWorkspace(val workspace: Boolean) : StartProgress
     data class Starting(val agentName: String) : StartProgress
     data object CreatingBot : StartProgress
+    /** A task's words follow the bot's (happy-ios NewSessionProgress). */
+    data object CreatingTask : StartProgress
     /** "Putting on a face…": the bot's picture is painted, uploaded and worn. */
     data object Avatar : StartProgress
-    data class Opening(val bot: Boolean = false) : StartProgress
+    data class Opening(val bot: Boolean = false, val task: Boolean = false) : StartProgress
 }
 
 /** resolveNewSessionProgressLabel: the step, named for a bot while one is being made. */
-fun resolveStartProgress(phase: StartPhase?, agentName: String, picksWorkspaces: Boolean, createsBot: Boolean = false): StartProgress? = when (phase) {
+fun resolveStartProgress(phase: StartPhase?, agentName: String, picksWorkspaces: Boolean, createsBot: Boolean = false, createsTask: Boolean = false): StartProgress? = when (phase) {
     null -> null
     StartPhase.Worktree -> StartProgress.CreatingWorkspace(picksWorkspaces)
-    StartPhase.Spawning -> if (createsBot) StartProgress.CreatingBot else StartProgress.Starting(agentName)
+    StartPhase.Spawning -> when {
+        createsBot -> StartProgress.CreatingBot
+        createsTask -> StartProgress.CreatingTask
+        else -> StartProgress.Starting(agentName)
+    }
     StartPhase.Avatar -> StartProgress.Avatar
-    StartPhase.Opening -> StartProgress.Opening(createsBot)
+    StartPhase.Opening -> StartProgress.Opening(createsBot, createsTask && !createsBot)
 }
 
 /** newSessionProgress.ts `NewSessionPrimaryAction`: the one button at the end of the composer. */

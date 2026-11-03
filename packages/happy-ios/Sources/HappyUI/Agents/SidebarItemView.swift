@@ -106,8 +106,9 @@ final class SidebarItemView: ListRowView {
 
     func apply(_ next: SidebarItem, transition: ListTransition) {
         let previous = item.entry.row
-        // The view was made from `item`'s node: only another one draws anew.
-        let fresh = next !== item
+        // The view was made from `item`'s node: only another one draws
+        // anew. A row that changed only what isn't drawn keeps it.
+        let fresh = next.node !== item.node
         item = next
         entry = next.entry
         if fresh { next.node.apply(to: drawingView, transition: transition) }
@@ -222,9 +223,12 @@ final class SidebarItemView: ListRowView {
     override func applyPreparation(_ preparation: ListPreparation, width: Double, environment: RenderEnvironment) {
         drawingView.applyPreparation(preparation, width: width, environment: environment)
         // Drawn for a width change: the fill, the mark and the sheen follow
-        // the drawing in the same pass.
+        // the drawing in the same pass, from a slot laid out at that width.
+        // One not made there yet (the list's slots were replaced since)
+        // falls back to the item's own, which would put the fill back at
+        // the old width.
         let shown = item.entry(at: width)
-        guard abs(shown.size.width - entry.size.width) > 0.5 else { return }
+        guard abs(shown.size.width - width) <= 0.5, abs(shown.size.width - entry.size.width) > 0.5 else { return }
         entry = shown
         applyTitleBand(shown, fresh: true)
         applyFill()
@@ -232,6 +236,13 @@ final class SidebarItemView: ListRowView {
     }
 
     override func update(width: Double, transition: ListTransition) -> Double { entry.size.height }
+
+    /// The list's pass is over: the bitmap's view hears it too, so a
+    /// shorter drawing waiting for the pass's end shows.
+    override func visibleRectUpdated(_ rect: CGRect?) {
+        super.visibleRectUpdated(rect)
+        drawingView.visibleRectUpdated(rect)
+    }
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
@@ -284,7 +295,7 @@ final class SidebarItemView: ListRowView {
         case .clay(let slug): slug
         default: nil
         }
-        let value = [row.isNew ? Strings.newRow : nil, wears, item.entry.drawing.shimmers ? Strings.workingRow : nil, SidebarLineChanges.accessibility(row.lineChanges)].compactMap { $0 }
+        let value = [row.isNew ? Strings.newRow : nil, wears, item.entry.drawing.shimmers ? Strings.workingRow : nil, SidebarLineChanges.accessibility(row.lineChanges), row.count.map(Strings.Feed.unreadCount)].compactMap { $0 }
         accessibilityValue = value.isEmpty ? nil : value.joined(separator: ", ")
     }
 
@@ -342,5 +353,36 @@ final class SidebarItemView: ListRowView {
     var fillCorners: (radius: CGFloat, mask: CACornerMask) { (fill.layer.cornerRadius, fill.layer.maskedCorners) }
     var tileColor: UIColor? { tile.isHidden ? nil : tile.backgroundColor }
     var workingSignalRunning: Bool { signal.animating }
+
+    /// What the bitmap's view shows now: the hosts it holds, shown or still
+    /// hidden, each with its drawing, its size and the bitmap on screen (in
+    /// points); and how many other views stand in it (a picture of a host it
+    /// gave away).
+    var shownDrawing: (shown: [(drawing: SidebarItemDrawing?, size: CGSize, bitmap: CGSize?)], hidden: Int, others: Int) {
+        let hosts = drawingView.subviews.compactMap { $0 as? NodeHostView }
+        let shown = hosts.filter { !$0.isHidden }.map { host -> (SidebarItemDrawing?, CGSize, CGSize?) in
+            let layer = host.rootNode.view?.layer
+            let drawn = ([layer] + (layer?.sublayers ?? [])).lazy.compactMap { $0 }.first { $0.contents != nil }
+            let bitmap = drawn.map { layer -> CGSize in
+                let image = layer.contents as! CGImage
+                return CGSize(width: CGFloat(image.width) / layer.contentsScale, height: CGFloat(image.height) / layer.contentsScale)
+            }
+            return (host.rootNode.drawing as? SidebarItemDrawing, host.bounds.size, bitmap)
+        }
+        return (shown, hosts.count - shown.count, drawingView.subviews.count - hosts.count)
+    }
+
+    /// The views drawing the bitmap now, shown or waiting.
+    var drawingHosts: [NodeHostView] { drawingView.subviews.compactMap { $0 as? NodeHostView } }
+
+    /// The bitmap view's state, for a log.
+    var drawingDiagnostics: String {
+        let hosts = drawingView.subviews.map { view -> String in
+            guard let host = view as? NodeHostView else { return "other \(type(of: view)) \(view.frame)" }
+            let drawing = host.rootNode.drawing as? SidebarItemDrawing
+            return "host hidden \(host.isHidden) hasContent \(host.hasContent) complete \(host.isContentComplete) frame \(host.frame) label.y \(drawing?.frame.label.minY ?? -1)"
+        }
+        return "drawingView \(drawingView.frame) ready \(drawingView.isDisplayReady) window \(window != nil) [" + hosts.joined(separator: ", ") + "]"
+    }
 }
 #endif

@@ -87,6 +87,11 @@ fun HomeListHost(graph: AppGraph, navigation: HomeNavigation, phone: Boolean = f
         onDuplicate = { duplicating = it },
         showAlert = showAlert,
     )
+    // A refusal no screen waited on, said once here (iOS a4049a03a).
+    val refusal by services.archiver.refusal.collectAsStateWithLifecycle()
+    LaunchedEffect(refusal, menus) {
+        refusal?.let { menus.report(it); services.archiver.heard() }
+    }
     val context = LocalContext.current
     // ProjectHomeList's "+": an empty chat on a new workspace of that project, on the phone and in the tablet's detail.
     val onCreateWorkspace = remember(services, context, navigation) {
@@ -120,7 +125,7 @@ fun HomeListHost(graph: AppGraph, navigation: HomeNavigation, phone: Boolean = f
         HomeListCallbacks(
             onOpen = onOpenSession,
             onMenu = menus::open,
-            onArchive = menus::archive,
+            onArchive = menus::swipe,
             onSetArchiveHidden = { hidden -> graph.settings.change { it.copy(hideInactiveSessions = hidden) } },
             onToggleProject = { id ->
                 graph.localSettings.change { it.copy(expandedProjects = it.expandedProjects + (id to it.expandedProjects[id].let { open -> open != true })) }

@@ -325,7 +325,9 @@ final class SidebarList: UIView {
         for entry in next.entries {
             let item: SidebarItem
             if let existing = items[entry.row.id], existing.revision == entry.revision {
-                item = existing
+                // Drawn the same: a row that changed only what isn't drawn
+                // keeps its node, so it is neither measured nor drawn again.
+                item = existing.entry.row == entry.row ? existing : SidebarItem(entry: entry, owner: self, node: existing.node)
             } else {
                 item = SidebarItem(entry: entry, owner: self)
                 touched += 1
@@ -628,12 +630,21 @@ final class SidebarItem: ListRow {
     /// A slot is as tall as its kind's row, at any width.
     var hasFixedHeight: Bool { true }
 
-    init(entry: SidebarList.Entry, owner: SidebarList) {
+    /// `node`: the one an item of the same revision already drew, for a
+    /// row that changed only what isn't drawn.
+    init(entry: SidebarList.Entry, owner: SidebarList, node: NodeRow? = nil) {
         identity = entry.row.id
         revision = entry.revision
         self.entry = entry
         self.owner = owner
-        node = NodeRow(identity: entry.row.id, revision: entry.revision) { Self.root(entry) }
+        self.node = node ?? NodeRow(identity: entry.row.id, revision: entry.revision) { Self.root(entry) }
+    }
+
+    /// The revision is what is drawn; the row itself changes more often
+    /// (a tap opens where it says), and its view takes the new row in place.
+    func isEqual(to other: any ListRow) -> Bool {
+        guard let other = other as? SidebarItem else { return false }
+        return identity == other.identity && revision == other.revision && entry.row == other.entry.row
     }
 
     private nonisolated static func root(_ entry: SidebarList.Entry) -> UltraNode {

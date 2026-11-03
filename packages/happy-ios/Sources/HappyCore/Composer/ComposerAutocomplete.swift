@@ -197,6 +197,9 @@ public struct ComposerSuggestion: Equatable, Sendable {
     public enum Kind: Equatable, Sendable {
         case command(name: String, description: String?)
         case file(name: String, path: String, isFolder: Bool)
+        /// A Happy Agent command: its picture (`imagePath`, shown on its
+        /// thumbhash first) and its kind.
+        case agentCommand(AgentWire.SlashCommand, imagePath: String)
     }
 
     public var key: String

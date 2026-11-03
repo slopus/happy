@@ -14,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -76,8 +77,10 @@ import com.slopus.happy.agent.AgentFamily
 import com.slopus.happy.agent.AgentFeedRow
 import com.slopus.happy.agent.ConversationKind
 import com.slopus.happy.connection.TransportResponse
+import com.slopus.happy.artifacts.formatDuration
 import com.slopus.happy.conversation.AgentChild
 import com.slopus.happy.conversation.InlinePicture
+import com.slopus.happy.conversation.KeptMedia
 import com.slopus.happy.conversation.AgentDetail
 import com.slopus.happy.conversation.ConversationViewing
 import com.slopus.happy.conversation.ContextUsage
@@ -146,6 +149,7 @@ object AgentPageTags {
     const val ACTIVITY_ROW = "agentPage.activity.row"
     const val DETAILS = "agentPage.details"
     const val DETAILS_ROW = "agentPage.details.row"
+    const val CHANGES = "agentPage.details.changes"
 }
 
 /**
@@ -247,6 +251,10 @@ data class AgentPageState(
     val project: String? = null,
     val workspace: String? = null,
     val parent: AgentPageParent? = null,
+    /** The workspace it works in, whose Git changes it opens; null where it has none known. */
+    val workspaceId: String? = null,
+    /** That workspace's changed lines, as home's row counts them. */
+    val lineChanges: com.slopus.happy.agent.WorkspaceLineChanges? = null,
 )
 
 class AgentPageActions(
@@ -258,6 +266,10 @@ class AgentPageActions(
     val loadMedia: suspend (MediaRef) -> ByteArray = { throw IllegalStateException() },
     /** One byte range of a presented recording, so it streams; null where ranges can't be asked for. */
     val loadMediaRange: (suspend (MediaRef, LongRange) -> TransportResponse)? = null,
+    /** The connection's media kept on this phone, which the grid reads through and rings over, as the chat does. */
+    val kept: KeptMedia? = null,
+    /** The workspace's changes against its base ([WorkspaceChangesRoute]). */
+    val onOpenChanges: (String) -> Unit = {},
 )
 
 /**
@@ -485,7 +497,7 @@ private fun FamilyRow(member: AgentFamily.Member, last: Boolean, actions: AgentP
 }
 
 @Composable
-private fun androidx.compose.foundation.layout.BoxScope.Divider(start: Dp) {
+private fun BoxScope.Divider(start: Dp) {
     Box(
         Modifier
             .align(Alignment.BottomStart)
@@ -598,8 +610,10 @@ private fun SharedSections(state: AgentPageState, actions: AgentPageActions) {
     var linksLimit by rememberSaveable { mutableIntStateOf(AgentPageSpec.LINKS_PAGE) }
     LaunchedEffect(mediaLimit, linksLimit) { actions.onWant(mediaLimit + 1, linksLimit + 1) }
     val shared = state.shared
-    val store = rememberConversationMediaStore(actions.loadMedia, actions.loadMediaRange)
+    val store = rememberConversationMediaStore(actions.loadMedia, actions.loadMediaRange, actions.kept)
     val opener = rememberMediaOpener()
+    // A recording plays once its first range is here, its tile spinning till then.
+    val videos = rememberVideoOpening(store::video)
     var viewing by remember { mutableStateOf<Int?>(null) }
     val media = shared.media.take(mediaLimit)
     if (media.isNotEmpty() || (state.sharedReading && shared.isEmpty)) {
@@ -611,15 +625,24 @@ private fun SharedSections(state: AgentPageState, actions: AgentPageActions) {
                     val visual = remember(shared.media) { shared.media.filter { it.isVisual } }
                     MediaGrid(media.size) { index ->
                         val one = media[index]
-                        MediaCell(one, store, opener) {
+                        MediaCell(one, store, opener, starting = videos.isStarting(one.key)) {
                             when (one) {
-                                is SharedMedia.Presented -> if (!one.ref.item.isVisual) {
-                                    opener.open(one.ref.key, one.ref.item) { actions.loadMedia(one.ref) }
-                                    return@MediaCell
+                                is SharedMedia.Presented -> {
+                                    if (!one.ref.item.isVisual) {
+                                        opener.open(one.ref.key, one.ref.item) { store.file(one.ref) }
+                                        return@MediaCell
+                                    }
+                                    // A picture not here yet is read first, as a tap on its ring does.
+                                    val kept = store.kept
+                                    if (kept != null && !one.isVideo && kept.phase(one.ref)?.isComplete != true) {
+                                        kept.toggle(one.ref)
+                                        return@MediaCell
+                                    }
                                 }
                                 is SharedMedia.Picture -> Unit
                             }
-                            viewing = visual.indexOfFirst { it.key == one.key }.takeIf { it >= 0 }
+                            val at = visual.indexOfFirst { it.key == one.key }.takeIf { it >= 0 }
+                            if (one is SharedMedia.Presented && one.isVideo) videos.open(one.key, one.ref) { viewing = at } else viewing = at
                         }
                     }
                     if (shared.media.size > mediaLimit || state.sharedMore) {
@@ -663,7 +686,7 @@ private fun MediaGrid(count: Int, cell: @Composable (Int) -> Unit) {
  * it lands. A file being opened shows a spinner, and why it couldn't open.
  */
 @Composable
-private fun MediaCell(media: SharedMedia, store: ConversationMediaStore, opener: MediaOpener, onClick: () -> Unit) {
+private fun MediaCell(media: SharedMedia, store: ConversationMediaStore, opener: MediaOpener, starting: Boolean = false, onClick: () -> Unit) {
     val colors = HappyTheme.colors
     val pictureLabel = stringResource(R.string.conversation_picture)
     val videoLabel = stringResource(R.string.artifact_video)
@@ -674,6 +697,7 @@ private fun MediaCell(media: SharedMedia, store: ConversationMediaStore, opener:
     Box(
         Modifier
             .fillMaxSize()
+            .then(if (media.isVisual) Modifier.viewerOrigin(media.key) else Modifier)
             .testTag(AgentPageTags.MEDIA_CELL)
             .background(colors.surfacePressed)
             .clickable(role = Role.Button, onClick = onClick)
@@ -685,13 +709,14 @@ private fun MediaCell(media: SharedMedia, store: ConversationMediaStore, opener:
                 val bytes = remember(media.key) { InlinePicture.of(media.image).bytes }
                 RemoteImage(model = bytes, contentDescription = null, cacheKey = media.key, modifier = Modifier.fillMaxSize())
             }
-            is SharedMedia.Presented -> PresentedCell(media.ref, media.key, store, opener)
+            is SharedMedia.Presented -> PresentedCell(media.ref, media.key, store, opener, starting, onClick)
         }
     }
 }
 
+/** A presented item's square; kept, it reads, rings and plays as the chat's tile does (iOS `SharedMediaCell`). */
 @Composable
-private fun PresentedCell(ref: MediaRef, key: String, store: ConversationMediaStore, opener: MediaOpener) {
+private fun BoxScope.PresentedCell(ref: MediaRef, key: String, store: ConversationMediaStore, opener: MediaOpener, starting: Boolean, onPlay: () -> Unit) {
     val colors = HappyTheme.colors
     val item = ref.item
     when {
@@ -702,12 +727,21 @@ private fun PresentedCell(ref: MediaRef, key: String, store: ConversationMediaSt
             val still = remember(poster) { poster?.frame?.asImageBitmap() }
             val placeholder = rememberThumbHash(item.thumbhash)
             (still ?: placeholder)?.let { Image(it, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop) }
-            Box(Modifier.size(AgentPageSpec.playSize).clip(CircleShape).background(PlayFill), contentAlignment = Alignment.Center) {
-                androidx.compose.material3.Icon(MaterialSymbols.PlayArrow, null, tint = PlayGlyph, modifier = Modifier.size(18.dp))
+            val kept = store.kept
+            if (kept != null) {
+                DownloadStatus(ref, kept, video = true, duration = poster?.seconds?.let(::formatDuration), starting = starting, onPlay = onPlay)
+            } else {
+                Box(Modifier.size(AgentPageSpec.playSize).clip(CircleShape).background(PlayFill), contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.Icon(MaterialSymbols.PlayArrow, null, tint = PlayGlyph, modifier = Modifier.size(18.dp))
+                }
             }
         }
         item.isVisual -> {
-            val bytes by produceState<ByteArray?>(null, ref.key) {
+            // Read again once it is here, where it waited for a tap.
+            val kept = store.kept
+            val here = kept?.phase(ref)?.isComplete == true
+            val bytes by produceState<ByteArray?>(null, ref.key, here) {
+                if (value != null) return@produceState
                 value = try {
                     store.bytes(ref)
                 } catch (e: kotlinx.coroutines.CancellationException) {
@@ -723,6 +757,7 @@ private fun PresentedCell(ref: MediaRef, key: String, store: ConversationMediaSt
                 placeholder = rememberThumbHash(item.thumbhash),
                 modifier = Modifier.fillMaxSize(),
             )
+            if (kept != null) DownloadStatus(ref, kept, video = false)
         }
         else -> {
             val opening = opener.state(ref.key)
@@ -980,6 +1015,18 @@ private fun Details(state: AgentPageState, actions: AgentPageActions) {
         state.detail?.context?.let { add { last -> DetailRow(stringResource(R.string.agent_page_context), contextText(it), last) } }
         state.project?.let { add { last -> DetailRow(stringResource(R.string.home_dock_picker_project), it, last) } }
         state.workspace?.let { add { last -> DetailRow(stringResource(R.string.home_dock_picker_workspace), it, last) } }
+        state.workspaceId?.let { id ->
+            add { last ->
+                DetailRow(
+                    stringResource(R.string.files_changes),
+                    changesText(state.lineChanges),
+                    last,
+                    chevron = true,
+                    onClick = { actions.onOpenChanges(id) },
+                    tag = AgentPageTags.CHANGES,
+                )
+            }
+        }
         state.parent?.let { parent ->
             add { last ->
                 DetailRow(
@@ -1004,15 +1051,25 @@ private fun contextText(context: ContextUsage): String {
     return context.window?.let { stringResource(R.string.agent_page_context_value, used, DetailFormat.tokens(it)) } ?: used
 }
 
+/** A workspace's changed lines as home's row counts them ("+12 −3"); nothing when it has none to show. */
+internal fun changesText(changes: com.slopus.happy.agent.WorkspaceLineChanges?): String {
+    if (changes == null || !changes.visible) return ""
+    return listOfNotNull(
+        if (!changes.countsExact) "≈" else null,
+        if (changes.insertions > 0) "+${com.slopus.happy.model.compactCount(changes.insertions)}" else null,
+        if (changes.deletions > 0) "\u2212${com.slopus.happy.model.compactCount(changes.deletions)}" else null,
+    ).joinToString(" ")
+}
+
 /** A detail: its name, then its value at the end (secondary, one line), 52 high. */
 @Composable
-private fun DetailRow(title: String, value: String, last: Boolean, chevron: Boolean = false, onClick: (() -> Unit)? = null) {
+private fun DetailRow(title: String, value: String, last: Boolean, chevron: Boolean = false, onClick: (() -> Unit)? = null, tag: String = AgentPageTags.DETAILS_ROW) {
     val colors = HappyTheme.colors
     Box(
         Modifier
             .fillMaxWidth()
             .heightIn(min = AgentPageSpec.row)
-            .testTag(AgentPageTags.DETAILS_ROW)
+            .testTag(tag)
             .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier.semantics(mergeDescendants = true) {}),
     ) {
         Row(

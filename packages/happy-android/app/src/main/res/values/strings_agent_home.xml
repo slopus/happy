@@ -5,21 +5,14 @@
 -->
 <resources>
     <string name="agent_home_working">Working…</string>
-    <string name="agent_home_show_subtasks">Show subtasks</string>
-    <string name="agent_home_hide_subtasks">Hide subtasks</string>
-    <string name="agent_home_connecting">Connecting to %1$s…</string>
     <string name="agent_home_empty_title">No conversations yet</string>
     <string name="agent_home_empty_body">Start a chat with this agent and it shows here.</string>
     <string name="agent_home_offline_title">Can\'t reach %1$s</string>
     <string name="agent_home_offline_body">Check that the agent is running and online. Happy reconnects by itself.</string>
     <string name="agent_home_revoked">This phone was removed in Happy Agent. Connect the agent again to use it.</string>
     <string name="agent_home_update_required">This agent needs a newer Happy. Update the app to use it.</string>
-    <string name="agent_home_status_offline">offline</string>
-    <string name="agent_home_status_revoked">removed</string>
-    <string name="agent_home_status_update">update required</string>
 
     <string name="agent_artifacts_untitled">Untitled</string>
-    <string name="agent_artifacts_empty">No artifacts yet.</string>
     <string name="agent_artifacts_failed">Couldn\'t read the artifacts</string>
     <string name="agent_surface_add_todo">Add a todo</string>
     <string name="agent_surface_no_todos">Nothing here yet.</string>
@@ -33,7 +26,6 @@
     <string name="agent_search_conversations">Conversations</string>
     <string name="agent_search_actions">Quick actions</string>
     <string name="agent_search_no_results">No results for “%1$s”</string>
-    <string name="agent_search_add">Add account or agent</string>
     <string name="agent_search_open_settings">Open settings</string>
 
     <string name="agent_settings_edit_name">Edit name</string>

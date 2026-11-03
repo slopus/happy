@@ -5,20 +5,13 @@
 -->
 <resources>
     <string name="agent_home_working">Trabajando…</string>
-    <string name="agent_home_show_subtasks">Mostrar subtareas</string>
-    <string name="agent_home_hide_subtasks">Ocultar subtareas</string>
-    <string name="agent_home_connecting">Conectando con %1$s…</string>
     <string name="agent_home_empty_title">Aún no hay conversaciones</string>
     <string name="agent_home_empty_body">Empieza un chat con este agente y aparecerá aquí.</string>
     <string name="agent_home_offline_title">No se puede contactar con %1$s</string>
     <string name="agent_home_offline_body">Comprueba que el agente esté en marcha y en línea. Happy se reconecta solo.</string>
     <string name="agent_home_revoked">Este teléfono se quitó en Happy Agent. Vuelve a conectar el agente para usarlo.</string>
     <string name="agent_home_update_required">Este agente necesita una versión más reciente de Happy. Actualiza la app para usarlo.</string>
-    <string name="agent_home_status_offline">sin conexión</string>
-    <string name="agent_home_status_revoked">eliminado</string>
-    <string name="agent_home_status_update">requiere actualización</string>
     <string name="agent_artifacts_untitled">Sin título</string>
-    <string name="agent_artifacts_empty">Aún no hay artefactos.</string>
     <string name="agent_artifacts_failed">No se pudieron leer los artefactos</string>
     <string name="agent_surface_add_todo">Añadir tarea</string>
     <string name="agent_surface_no_todos">Aún no hay nada aquí.</string>
@@ -31,7 +24,6 @@
     <string name="agent_search_conversations">Conversaciones</string>
     <string name="agent_search_actions">Acciones rápidas</string>
     <string name="agent_search_no_results">No hay resultados para «%1$s»</string>
-    <string name="agent_search_add">Añadir cuenta o agente</string>
     <string name="agent_search_open_settings">Abrir configuración</string>
     <string name="agent_settings_edit_name">Editar nombre</string>
     <string name="agent_settings_edit_avatar">Editar avatar</string>

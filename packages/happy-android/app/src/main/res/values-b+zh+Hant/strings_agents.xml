@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_agents.xml in b+zh+Hant: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="compose_tasks_unsupported">這台電腦上的 Happy Agent 還不能建立任務。請更新後重試。</string>
+    <string name="compose_creating_task">正在建立任務…</string>
+    <string name="compose_opening_task">正在開啟任務…</string>
+    <string name="compose_task_placeholder">這個任務要做什麼？</string>
+    <string name="compose_loading_computers">正在載入電腦…</string>
+    <string name="compose_still_loading">你的電腦仍在載入。請稍後再試。</string>
+    <string name="compose_offline_computer">這台電腦處於離線狀態。請在上面啟動 Happy，或選擇另一台。</string>
+    <string name="compose_offline_happy_agent">這台電腦上的 Happy Agent 處於離線狀態。請啟動它，或選擇另一台電腦。</string>
+    <string name="compose_offline_happy_cli">這台電腦上的 Happy CLI 處於離線狀態。請在那裡執行 `happy daemon start`，或選擇另一台電腦。</string>
+    <string name="compose_machines_bots">Happy Agent 可建立機器人的電腦</string>
+    <string name="compose_machines_tasks">Happy Agent 可建立任務的電腦</string>
+    <string name="compose_chip_happy_agent_offline">Happy Agent 離線</string>
+    <string name="compose_chip_happy_cli_offline">Happy CLI 離線</string>
+    <string name="compose_ago_now">剛剛</string>
+    <string name="compose_ago_minutes">%1$d分鐘</string>
+    <string name="compose_ago_hours">%1$d小時</string>
+    <string name="compose_ago_days">%1$d天</string>
+    <string name="compose_ago_weeks">%1$d週</string>
+    <string name="compose_ago_months">%1$d個月</string>
+    <string name="compose_ago_years">%1$d年</string>
+    <string name="task_leave">離開任務</string>
+    <string name="task_archive">封存任務</string>
+    <string name="task_failed_to_leave">無法離開任務</string>
+    <string name="task_archive_needs_machine">請連線到任務所在的電腦後再封存。</string>
+    <string name="task_leave_needs_machine">請連線到任務所在的電腦後再離開。</string>
+    <string name="task_cannot_leave">這台電腦上的 Happy Agent 還不能離開任務。請更新後重試。</string>
+    <string name="agent_search_new_task">新任務</string>
+    <string name="agent_search_new_task_picture">帶圖片的新任務</string>
+    <string name="agent_search_connect_agent">連接 Happy Agent</string>
+    <string name="agent_home_unanswered">電腦沒有回應。</string>
+</resources>

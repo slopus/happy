@@ -156,7 +156,7 @@ final class AgentTurnsTests: XCTestCase {
         var (conversation, _, updates) = await open(server)
         let snapshot = try await next(&updates) { $0.items.count >= 4 }
         XCTAssertEqual(snapshot.items.map(\.id), ["u-r", "m-r", "t1", "m-r/2", "r:status"])
-        XCTAssertEqual(snapshot.items[2].role, .tool(.init(name: "exec_command", status: "completed", presentation: AgentWire.Presentation(type: "exec_command", command: "ls"))))
+        XCTAssertEqual(snapshot.items[2].role, .tool(.init(name: "exec_command", status: "completed", presentation: AgentWire.Presentation(type: "exec_command", command: "ls"), callId: "t1")))
         XCTAssertEqual(snapshot.items[4].role, .turnEnd(.init(reason: "completed", durationMs: 12_000, tools: 1, copyText: "Done.")))
         XCTAssertEqual(Set(snapshot.items.map(\.turn)), ["r"])
         await conversation.stop()

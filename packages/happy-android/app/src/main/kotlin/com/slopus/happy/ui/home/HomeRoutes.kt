@@ -23,6 +23,10 @@ import androidx.navigation.NavHostController
 import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.BuildConfig
+import com.slopus.happy.connection.accountLinkState
+import com.slopus.happy.net.ConnectionStatus
+import com.slopus.happy.ui.chat.rememberShownLinkState
+import com.slopus.happy.ui.connection.rememberNetworkPath
 import com.slopus.happy.model.Settings
 import com.slopus.happy.model.gitStatusKey
 import com.slopus.happy.model.parseJsonObject
@@ -116,6 +120,9 @@ fun LegacyHome(graph: AppGraph, nav: NavHostController, onOpenSession: (sessionI
                 accounts = rememberAccountMenu(graph),
                 listState = host.listState,
                 syncing = host.syncing,
+                link = rememberShownLinkState(
+                    accountLinkState(host.connectionStatus == ConnectionStatus.CONNECTED, catchingUp = host.syncing || host.state == null, network = rememberNetworkPath()),
+                ),
             )
         }
     }

@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tool_open">Abrir detalles</string>
+    <string name="tool_open_file">Abrir archivo</string>
+    <string name="tool_plan_progress">plan · %1$d de %2$d hechos</string>
+    <string name="tool_unavailable">Esta llamada de herramienta ya no está en la conversación.</string>
+    <string name="tool_reading_whole">Leyendo la llamada completa…</string>
+    <string name="tool_whole_failed">No se pudo leer la llamada completa. Se muestra lo que tenía el chat.</string>
+    <string name="tool_kind_file_edit">Edición de archivo</string>
+    <string name="tool_kind_exploration">Exploración</string>
+    <string name="tool_kind_x_search">Búsqueda en X</string>
+    <string name="tool_kind_web_page">Página web</string>
+    <string name="tool_kind_plan">Plan</string>
+    <string name="tool_kind_media">Mostrado para ti</string>
+    <string name="tool_kind_tool_call">Llamada de herramienta</string>
+    <string name="tool_status_running">En curso</string>
+    <string name="tool_section_arguments">Argumentos</string>
+    <string name="tool_section_result">Resultado</string>
+    <string name="tool_section_sources">Fuentes</string>
+    <string name="tool_section_steps">Pasos</string>
+    <string name="tool_section_instructions">Instrucciones</string>
+    <string name="tool_section_review">Revisión</string>
+    <string name="tool_section_raw">Datos sin procesar</string>
+    <string name="tool_field_query">Consulta</string>
+    <string name="tool_field_explanation">Explicación</string>
+    <string name="tool_field_title">Título</string>
+    <string name="tool_field_model">Modelo</string>
+    <string name="tool_field_to">Para</string>
+    <string name="tool_field_address">Dirección</string>
+    <string name="tool_field_prompt">Indicación</string>
+    <string name="tool_field_running">Ejecutando</string>
+    <string name="tool_op_list">Listar</string>
+    <string name="tool_op_in">en %1$s</string>
+    <string name="tool_review_decision">Decisión</string>
+    <string name="tool_review_allowed">Permitido</string>
+    <string name="tool_review_denied">Denegado</string>
+    <string name="tool_review_unproven">Sin revisar</string>
+    <string name="tool_review_why">Motivo</string>
+    <string name="tool_review_timed_out">La revisión agotó el tiempo</string>
+    <string name="tool_review_unavailable">El revisor no estaba disponible</string>
+    <string name="tool_review_risk">Riesgo</string>
+    <string name="tool_review_asked">Pedido</string>
+    <string name="tool_review_access">Acceso</string>
+    <string name="tool_review_full_access">Se ejecutó con acceso total</string>
+    <string name="tool_review_sandbox">Se quedó en el sandbox</string>
+    <string name="tool_level_low">Bajo</string>
+    <string name="tool_level_medium">Medio</string>
+    <string name="tool_level_high">Alto</string>
+    <string name="tool_level_critical">Crítico</string>
+    <string name="tool_level_unknown">Desconocido</string>
+    <plurals name="tool_diff_more_lines">
+        <item quantity="one">No se muestra %1$d línea más de %2$s</item>
+        <item quantity="many">No se muestran %1$d líneas más de %2$s</item>
+        <item quantity="other">No se muestran %1$d líneas más de %2$s</item>
+    </plurals>
+    <plurals name="tool_diff_more_files">
+        <item quantity="one">No se muestra %1$d archivo más</item>
+        <item quantity="many">No se muestran %1$d archivos más</item>
+        <item quantity="other">No se muestran %1$d archivos más</item>
+    </plurals>
+</resources>

@@ -20,7 +20,7 @@ data class CliAvailability(
 )
 
 @Immutable
-data class MachineCapabilities(val bots: Boolean?, val newSession: Boolean?, val resume: Boolean?, val worktrees: Boolean?)
+data class MachineCapabilities(val bots: Boolean?, val newSession: Boolean?, val resume: Boolean?, val worktrees: Boolean?, val tasks: Boolean? = null)
 
 @Immutable
 data class RigDefaults(val effort: String?, val modelId: String?, val permissionMode: String?, val providerId: String?)
@@ -121,6 +121,7 @@ data class MachineMetadata(
                         newSession = o.optional("newSession", Read.boolean),
                         resume = o.optional("resume", Read.boolean),
                         worktrees = o.optional("worktrees", Read.boolean),
+                        tasks = o.optional("tasks", Read.boolean),
                     )
                 },
             ),

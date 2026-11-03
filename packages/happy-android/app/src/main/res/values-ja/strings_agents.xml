@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_agents.xml in ja: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="compose_tasks_unsupported">このコンピューターの Happy Agent はまだタスクを作成できません。アップデートしてからもう一度お試しください。</string>
+    <string name="compose_creating_task">タスクを作成中…</string>
+    <string name="compose_opening_task">タスクを開いています…</string>
+    <string name="compose_task_placeholder">このタスクで何をしますか？</string>
+    <string name="compose_loading_computers">コンピューターを読み込み中…</string>
+    <string name="compose_still_loading">コンピューターをまだ読み込んでいます。少し待ってからもう一度お試しください。</string>
+    <string name="compose_offline_computer">このコンピューターはオフラインです。そこで Happy を起動するか、別のコンピューターを選んでください。</string>
+    <string name="compose_offline_happy_agent">このコンピューターの Happy Agent はオフラインです。起動するか、別のコンピューターを選んでください。</string>
+    <string name="compose_offline_happy_cli">このコンピューターの Happy CLI はオフラインです。そこで `happy daemon start` を実行するか、別のコンピューターを選んでください。</string>
+    <string name="compose_machines_bots">Happy Agent がボットを作成できるコンピューター</string>
+    <string name="compose_machines_tasks">Happy Agent がタスクを作成できるコンピューター</string>
+    <string name="compose_chip_happy_agent_offline">Happy Agent オフライン</string>
+    <string name="compose_chip_happy_cli_offline">Happy CLI オフライン</string>
+    <string name="compose_ago_now">今</string>
+    <string name="compose_ago_minutes">%1$d分</string>
+    <string name="compose_ago_hours">%1$d時間</string>
+    <string name="compose_ago_days">%1$d日</string>
+    <string name="compose_ago_weeks">%1$d週</string>
+    <string name="compose_ago_months">%1$dか月</string>
+    <string name="compose_ago_years">%1$d年</string>
+    <string name="task_leave">タスクから抜ける</string>
+    <string name="task_archive">タスクをアーカイブ</string>
+    <string name="task_failed_to_leave">タスクから抜けられませんでした</string>
+    <string name="task_archive_needs_machine">アーカイブするには、タスクのコンピューターに接続してください。</string>
+    <string name="task_leave_needs_machine">抜けるには、タスクのコンピューターに接続してください。</string>
+    <string name="task_cannot_leave">このコンピューターの Happy Agent はまだタスクから抜けられません。アップデートしてからもう一度お試しください。</string>
+    <string name="agent_search_new_task">新しいタスク</string>
+    <string name="agent_search_new_task_picture">画像付きの新しいタスク</string>
+    <string name="agent_search_connect_agent">Happy Agent を接続</string>
+    <string name="agent_home_unanswered">コンピューターから応答がありませんでした。</string>
+</resources>

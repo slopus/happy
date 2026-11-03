@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The composer's model and effort chips and their lists (iOS e2238fdc4, 083c30df4; desktop ComposerModelControl.tsx). -->
+<resources>
+    <string name="conversation_models_not_configured">モデルが設定されていません</string>
+    <string name="conversation_model_hidden_account">非表示のアカウントです。引き続き使えますが、一覧には表示されません。</string>
+    <string name="conversation_model_account_removed">%1$s アカウントはこの Happy Agent に設定されていません。</string>
+    <string name="conversation_model_account_off">%1$s アカウントはオフになっているため、何も送信されません。</string>
+    <string name="conversation_model_chip">モデル: %1$s</string>
+    <string name="conversation_effort_chip">思考量: %1$s</string>
+    <string name="conversation_select_model">モデルを選択</string>
+    <string name="conversation_select_effort">思考量を選択</string>
+    <string name="conversation_accounts_of">%1$s のアカウント</string>
+    <string name="conversation_heading_label">%1$s のアカウント: %2$s</string>
+    <string name="conversation_usage_unknown">使用状況不明</string>
+    <string name="conversation_limit_reached">上限に達しました</string>
+    <string name="conversation_limit_resets">上限は %1$s にリセット</string>
+    <string name="conversation_usage_updating">更新中…</string>
+    <string name="conversation_usage_couldnt_refresh">更新できませんでした</string>
+    <string name="conversation_usage_updated">%1$s に更新</string>
+    <string name="conversation_usage_updated_failed">%1$s に更新 · 更新できませんでした</string>
+    <string name="conversation_usage_as_of">%1$s（%2$s 時点）</string>
+    <string name="conversation_usage_just_now">たった今</string>
+    <string name="conversation_usage_minutes_ago">%1$d 分前</string>
+    <string name="conversation_usage_hours_ago">%1$d 時間前</string>
+    <string name="conversation_usage_at">%1$s</string>
+    <string name="conversation_usage_signed_out">サインアウト済み</string>
+</resources>

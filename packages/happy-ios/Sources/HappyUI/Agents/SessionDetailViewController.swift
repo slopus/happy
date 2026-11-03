@@ -415,7 +415,9 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
         ).contentHeight
         let workCount = (detail?.running.count ?? 0) + (detail?.terminals.count ?? 0)
         let settled = detail?.completed.count ?? 0
-        sections.show(permissionChoice?().map { [ProfileSection(id: "controls", rows: [Self.permissionRow($0) { [weak self] in self?.permissionChoice?() } relaid: { [weak self] in self?.view.setNeedsLayout() }])] } ?? [])
+        var shownSections = permissionChoice?().map { [ProfileSection(id: "controls", rows: [Self.permissionRow($0) { [weak self] in self?.permissionChoice?() } relaid: { [weak self] in self?.view.setNeedsLayout() }])] } ?? []
+        if let workspaceId = row?.workspaceId { shownSections.append(ProfileSection(id: "workspace", rows: [changesRow(workspaceId)])) }
+        sections.show(shownSections)
         let layout = SessionDetailLayout(
             width: width, nameHeight: header.nameHeight, nameWidth: header.nameWidth,
             renames: canRename, subtitleHeight: header.subtitleHeight, tiles: tiles.count,
@@ -463,6 +465,19 @@ final class SessionDetailViewController: UIViewController, UIGestureRecognizerDe
         var row = SettingsRow(id: "permission-mode", title: Strings.ChatActions.permissionMode, icon: ("shield-checkmark-outline", .blue), value: current.current, accessory: .none)
         row.pullDown = { choice()?.uiMenu(picked: relaid) }
         return row
+    }
+
+    /// Its workspace's changes against the branch base, the lines its row
+    /// counts as the value.
+    private func changesRow(_ workspaceId: String) -> SettingsRow {
+        let value = row?.lineChanges.flatMap { changes -> String? in
+            guard changes.insertions > 0 || changes.deletions > 0 else { return nil }
+            return [changes.insertions > 0 ? "+\(changes.insertions)" : nil, changes.deletions > 0 ? "\u{2212}\(changes.deletions)" : nil].compactMap { $0 }.joined(separator: " ")
+        }
+        return SettingsRow(id: "workspace-changes", title: Strings.WorkspaceChanges.changes, icon: ("git-compare-outline", .orange), value: value, accessory: .chevron, action: { [weak self] in
+            guard let self else { return }
+            navigationController?.pushViewController(WorkspaceChangesViewController(session: session, workspaceId: workspaceId), animated: true)
+        })
     }
 
     private var heldSize = SessionDetailLayout.HeldSize()

@@ -36,12 +36,8 @@
     <string name="home_info_running">%1$s en execució</string>
     <string name="home_info_tasks">Tasques</string>
     <string name="home_info_tasks_detail">%1$s en curs · %2$s pendents</string>
-    <string name="home_info_raw_json">JSON en brut (mode de desenvolupador)</string>
-    <string name="home_info_raw_agent_state">Estat de l\'agent</string>
-    <string name="home_info_raw_metadata">Metadades</string>
     <string name="home_info_raw_status">Estat de la sessió</string>
     <string name="home_info_raw_session">Objecte de sessió complet</string>
-    <string name="home_dock_placeholder">Planifica, pregunta, construeix…</string>
     <string name="home_dock_ask">Pregunta a %1$s</string>
     <string name="home_dock_send">Envia</string>
     <string name="home_dock_add_image">Afegeix una imatge</string>
@@ -74,7 +70,6 @@
     <string name="home_create_directory_title">Vols crear el directori?</string>
     <string name="home_create_directory_message">El directori «%1$s» no existeix. Vols crear-lo?</string>
     <string name="home_dock_kind_session">Sessió</string>
-    <string name="home_dock_kind_bot">Bot</string>
     <string name="home_dock_bot_kind">Què vols crear</string>
     <string name="home_dock_bot_lede">Els bots són companys virtuals ideals per a feina recurrent com ara llançaments, anàlisi de la competència o encarregar-se d\'una gran funcionalitat en diversos projectes i worktrees</string>
     <string name="home_dock_bot_name_placeholder">Posa nom al teu bot</string>
@@ -95,7 +90,6 @@
     <string name="home_start_unknown_machine">L\'ordinador d\'aquesta sessió no està registrat en aquest compte, així que no s\'hi pot iniciar cap sessió. Comprova que Happy s\'hi executi i hi hagi iniciat sessió amb aquest compte.</string>
     <string name="home_start_happy_agent_missing">Happy Agent no s\'està executant en aquest ordinador</string>
     <string name="home_start_happy_cli_missing">Happy CLI no està disponible a l\'ordinador. Executa `happy daemon start` a l\'ordinador i torna-ho a provar.</string>
-    <string name="home_start_machine_offline">La màquina està fora de línia</string>
     <string name="home_start_happy_cli_offline">Happy CLI està fora de línia a l\'ordinador. Executa `happy daemon start` a l\'ordinador i torna-ho a provar.</string>
     <string name="home_start_cannot_start_happy_agent">Aquesta màquina no pot iniciar sessions de Happy Agent</string>
     <string name="home_start_project_needs_happy_agent">Només Happy Agent sap on és aquest projecte, així que cap altre entorn no el pot obrir. Torna a canviar l\'entorn a Happy Agent o tria la carpeta del projecte.</string>

@@ -34,6 +34,11 @@ sealed interface TabletGroupedRow {
         override val key get() = "bots"
     }
 
+    /** "Tasks", then each task as a flat row, after the bots. */
+    data class Tasks(val sessions: List<SessionRowData>) : TabletGroupedRow {
+        override val key get() = "tasks"
+    }
+
     /** A computer's rule; null for chats that name none. */
     data class MachineHeader(val machineId: String?, val machineName: String) : TabletGroupedRow {
         override val key get() = "machine-header-$machineId"
@@ -73,7 +78,7 @@ sealed interface TabletGroupedRow {
 }
 
 /**
- * SessionsList.tsx's data when it is not flat: the bots, then each
+ * SessionsList.tsx's data when it is not flat: the bots, the tasks, then each
  * computer's projects (sessionDisplayOrder.ts `buildSessionProjectDisplayGroups`),
  * then the archive toggle and the date-grouped archive. [machines] are the
  * online ones (`useAllMachines()`), so an offline computer goes by its id.
@@ -98,6 +103,7 @@ fun buildTabletGroupedRows(
 
     val rows = mutableListOf<TabletGroupedRow>()
     items.filterIsInstance<SessionListItem.Bots>().forEach { rows.add(TabletGroupedRow.Bots(it.sessions)) }
+    items.filterIsInstance<SessionListItem.Tasks>().forEach { rows.add(TabletGroupedRow.Tasks(it.sessions)) }
 
     val byMachine = LinkedHashMap<String?, MutableList<SessionListItem.ProjectItem>>()
     items.filterIsInstance<SessionListItem.ProjectItem>().forEach { byMachine.getOrPut(it.project.machineId) { mutableListOf() }.add(it) }

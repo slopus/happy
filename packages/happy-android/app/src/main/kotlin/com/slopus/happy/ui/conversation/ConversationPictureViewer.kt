@@ -35,6 +35,24 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionOnScreen
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeoutOrNull
+import android.os.Build
+import android.view.ViewTreeObserver
+import kotlin.coroutines.resume
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
@@ -83,6 +101,7 @@ import com.slopus.happy.conversation.ViewerItem
 import com.slopus.happy.conversation.MediaFiles
 import com.slopus.happy.ui.components.MaterialSymbols
 import com.slopus.happy.ui.components.RemoteImage
+import com.slopus.happy.ui.components.rememberMemoryImage
 import com.slopus.happy.ui.components.rememberThumbHash
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -109,6 +128,8 @@ object PictureViewerTags {
 object PictureViewerSpec {
     /** The cross-dissolve it comes and goes with. */
     const val FADE_MS = 250
+    /** The longest it waits for its window to show before it begins anyway. */
+    const val SHOW_WAIT_MS = 1_500L
     /** Let go short of closing, it springs back (UIKit's 0.35 s, damping 0.85). */
     const val SPRING_DAMPING = 0.85f
     const val SPRING_STIFFNESS = 322f
@@ -165,32 +186,104 @@ fun PictureViewer(items: List<ViewerItem>, index: Int, source: ViewerSource, onC
     val scope = rememberCoroutineScope()
     val shown = remember { Animatable(0f) }
     val leave by rememberUpdatedState(onClose)
+    val showing by rememberUpdatedState(items)
+    val origins = ViewerOrigins.Shared
+    val pager = rememberPagerState(initialPage = index.coerceIn(0, items.lastIndex)) { items.size }
+    val zooms = remember(items) { List(items.size) { PageZoom() } }
     val motion = remember { ViewerMotion(scope) { leave() } }
+    // Opened from its thumbnail, the picture flies out of it; a recording, or one without, fades in.
+    val flight = remember {
+        ViewerFlight().apply {
+            val item = items[pager.currentPage]
+            origin = if (item.isVideo) null else origins[item.key]
+        }
+    }
+    // The picture in view's thumbnail, while it is on the screen: where it closes into.
+    val home: () -> ViewerOrigins.Origin? = remember {
+        {
+            showing.getOrNull(pager.currentPage)?.takeIf { !it.isVideo }?.let { origins[it.key] }
+                ?.takeIf { origin -> flight.screen?.let(origin.bounds::meets) ?: false }
+        }
+    }
     // One lambda for the viewer's life: the pages' gestures are keyed on it.
     val close: () -> Unit = remember {
         {
             if (!motion.leaving) {
                 motion.leaving = true
+                zooms.getOrNull(pager.currentPage)?.reset()
+                val target = home()
+                flight.origin = target
+                // Fading, the thumbnail shows again under the black as it goes.
+                origins.hidden = if (target != null) showing[pager.currentPage].key else null
                 scope.launch {
-                    shown.animateTo(0f, tween(PictureViewerSpec.FADE_MS, easing = FastOutSlowInEasing))
+                    coroutineScope {
+                        if (target != null && motion.drag != Offset.Zero) launch {
+                            animate(Offset.VectorConverter, motion.drag, Offset.Zero, animationSpec = tween(PictureViewerSpec.FADE_MS, easing = FastOutSlowInEasing)) { value, _ -> motion.drag = value }
+                        }
+                        shown.animateTo(0f, tween(PictureViewerSpec.FADE_MS, easing = FastOutSlowInEasing))
+                    }
+                    // Under the picture where it landed, the thumbnail is back, and drawn, before the viewer goes.
+                    origins.hidden?.let { key ->
+                        val drawn = origins.drawn(key)
+                        origins.hidden = null
+                        // Counted in frames, not time: a window that doesn't draw (gone, or a test's) can't hold it.
+                        for (frame in 0 until LANDING_WAIT_FRAMES) {
+                            withFrameNanos {}
+                            if (drawn.isCompleted) break
+                        }
+                        repeat(LANDING_FRAMES) { withFrameNanos {} }
+                    }
                     leave()
                 }
             }
         }
     }
-    LaunchedEffect(Unit) { shown.animateTo(1f, tween(PictureViewerSpec.FADE_MS, easing = LinearOutSlowInEasing)) }
+    motion.homeward = {
+        if (home() != null) {
+            close()
+            true
+        } else false
+    }
+    LaunchedEffect(Unit) {
+        // Its window takes a few frames to come: the thumbnail stays until the picture is there over it, then goes.
+        snapshotFlow { flight.screen != null && flight.visible }.first { it }
+        if (flight.origin != null && !motion.leaving) origins.hidden = items[pager.currentPage].key
+        shown.animateTo(1f, tween(PictureViewerSpec.FADE_MS, easing = LinearOutSlowInEasing))
+    }
+    // Paged to another, its thumbnail is the one hidden.
+    LaunchedEffect(pager.currentPage) {
+        if (!motion.leaving && flight.origin != null && flight.screen != null) {
+            val item = items.getOrNull(pager.currentPage)
+            origins.hidden = item?.takeIf { !it.isVideo && origins[it.key] != null }?.key
+        }
+    }
+    DisposableEffect(Unit) { onDispose { origins.hidden = null } }
 
     Dialog(onDismissRequest = close, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         // Its own black fades; the window's dim would stay behind it. Light status icons over the black.
         val window = (LocalView.current.parent as? DialogWindowProvider)?.window
         SideEffect {
             window?.setDimAmount(0f)
+            // It comes and goes by its own motion, not the system's dialog fade over it.
+            window?.setWindowAnimations(0)
             window?.let { WindowCompat.getInsetsController(it, it.decorView).isAppearanceLightStatusBars = false }
+        }
+        // Its window has focus once the system shows it, a while after it is laid out on a slow phone; not before is the flight begun.
+        val view = LocalView.current
+        LaunchedEffect(view) {
+            withTimeoutOrNull(PictureViewerSpec.SHOW_WAIT_MS) {
+                suspendCancellableCoroutine { going ->
+                    val listener = ViewTreeObserver.OnWindowFocusChangeListener { focused -> if (focused && going.isActive) going.resume(Unit) }
+                    view.viewTreeObserver.addOnWindowFocusChangeListener(listener)
+                    going.invokeOnCancellation { view.viewTreeObserver.removeOnWindowFocusChangeListener(listener) }
+                    // Robolectric gives a dialog no focus, ever.
+                    if (view.hasWindowFocus() || Build.FINGERPRINT == "robolectric") going.resume(Unit)
+                }
+            }
+            flight.visible = true
         }
         val density = LocalDensity.current
         motion.density = density.density
-        val pager = rememberPagerState(initialPage = index.coerceIn(0, items.lastIndex)) { items.size }
-        val zooms = remember(items) { List(items.size) { PageZoom() } }
         val pages by remember(items) {
             derivedStateOf { PictureViewing.pages(zooms.getOrNull(pager.currentPage)?.zoomed == true, motion.drag != Offset.Zero || motion.leaving) }
         }
@@ -199,6 +292,10 @@ fun PictureViewer(items: List<ViewerItem>, index: Int, source: ViewerSource, onC
             Modifier
                 .fillMaxSize()
                 .onSizeChanged { motion.height = it.height }
+                .onGloballyPositioned { coordinates ->
+                    val at = coordinates.positionOnScreen()
+                    flight.screen = PictureViewing.Box(at.x, at.y, coordinates.size.width.toFloat(), coordinates.size.height.toFloat())
+                }
                 .drawBehind { drawRect(Color.Black.copy(alpha = shown.value * motion.dismissal().groundAlpha)) }
                 .testTag(PictureViewerTags.VIEWER),
         ) {
@@ -212,6 +309,8 @@ fun PictureViewer(items: List<ViewerItem>, index: Int, source: ViewerSource, onC
             ) { page ->
                 val item = items[page]
                 val current = pager.currentPage == page
+                // The picture flying to or from its thumbnail is whole all the way; the rest fade.
+                val flying = current && !item.isVideo && flight.origin != null
                 val position = PictureViewing.position(page, items.size)?.let { (number, count) ->
                     stringResource(R.string.message_media_position, number, count)
                 }
@@ -227,7 +326,7 @@ fun PictureViewer(items: List<ViewerItem>, index: Int, source: ViewerSource, onC
                                 scaleX = dismissal.scale
                                 scaleY = dismissal.scale
                             }
-                            alpha = shown.value
+                            alpha = if (flying) (if (flight.screen == null) 0f else 1f) else shown.value
                         }
                         .semantics { if (position != null) stateDescription = position },
                 ) {
@@ -237,7 +336,7 @@ fun PictureViewer(items: List<ViewerItem>, index: Int, source: ViewerSource, onC
                         val zoom = zooms[page]
                         // Turned away from, a page is whole again when it comes back.
                         LaunchedEffect(pager.settledPage == page) { if (pager.settledPage != page) zoom.reset() }
-                        PicturePage(item, source, zoom, current, motion, scope, onTap = close)
+                        PicturePage(item, source, zoom, current, motion, scope, flight.takeIf { flying }, { shown.value }, onTap = close)
                     }
                 }
             }
@@ -259,6 +358,12 @@ fun PictureViewer(items: List<ViewerItem>, index: Int, source: ViewerSource, onC
     }
 }
 
+/** Frames the viewer stays once the thumbnail under its landed picture has drawn again, so that frame is on the screen. */
+private const val LANDING_FRAMES = 2
+
+/** The most frames the viewer waits for the thumbnail to draw again: gone meanwhile, it doesn't. */
+private const val LANDING_WAIT_FRAMES = 30
+
 /** One picture held in memory, alone in the viewer. */
 @Composable
 fun PictureViewer(bytes: ByteArray, cacheKey: String, name: String?, onClose: () -> Unit) {
@@ -279,6 +384,8 @@ fun PictureViewer(bytes: ByteArray, cacheKey: String, name: String?, onClose: ()
 internal class ViewerMotion(private val scope: CoroutineScope, private val onClose: () -> Unit) {
     /** The dismissal drag, in px; animated back or away once let go. */
     var drag by mutableStateOf(Offset.Zero)
+    /** Let go to close: back into its thumbnail where it is on the screen (true), else away. */
+    var homeward: () -> Boolean = { false }
     var leaving by mutableStateOf(false)
     var height by mutableIntStateOf(0)
     var density = 1f
@@ -298,6 +405,7 @@ internal class ViewerMotion(private val scope: CoroutineScope, private val onClo
     /** Let go with [velocityY] px/s: away the way it was going, or back to rest. */
     fun release(velocityY: Float) {
         val outcome = PictureDismissal.of(drag.y / density, velocityY / density, height / density)
+        if (outcome.closes && homeward()) return
         settling = scope.launch {
             if (outcome.closes) {
                 // On off the screen the way it was going, as the rest of the black goes.
@@ -320,6 +428,36 @@ internal class ViewerMotion(private val scope: CoroutineScope, private val onClo
                 ) { value, _ -> drag = value }
             }
         }
+    }
+}
+
+/**
+ * The thumbnail the viewer flies its picture out of and back into, and
+ * where the viewer itself is on the screen (its window may not start where
+ * the app's does), so the thumbnail's place reads in the viewer's px.
+ */
+@Stable
+internal class ViewerFlight {
+    var origin by mutableStateOf<ViewerOrigins.Origin?>(null)
+    var screen by mutableStateOf<PictureViewing.Box?>(null)
+    /** Its window is on the screen: the flight can begin. */
+    var visible by mutableStateOf(false)
+
+    /** The picture resting at [frame] (viewer px) at [progress]; null at rest or with nothing to fly from. */
+    fun at(frame: PictureViewing.Box, progress: Float): PictureViewing.Flight? {
+        if (progress >= 1f) return null
+        val origin = origin ?: return null
+        val screen = screen ?: return null
+        val from = origin.bounds.copy(x = origin.bounds.x - screen.x, y = origin.bounds.y - screen.y)
+        return PictureViewing.flight(from, frame, origin.radius, progress)
+    }
+}
+
+/** What shows of a flying picture: the window between its thumbnail and its frame, in the picture's px. */
+private class FlightShape(private val way: PictureViewing.Flight) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        val clip = way.clip
+        return Outline.Rounded(RoundRect(clip.x, clip.y, clip.x + clip.width, clip.y + clip.height, CornerRadius(way.radius)))
     }
 }
 
@@ -418,7 +556,17 @@ internal fun Modifier.viewerGestures(motion: ViewerMotion, zoom: PageZoom?, scop
  * picture, laid out at its own size ([PictureViewing.fitted]).
  */
 @Composable
-private fun PicturePage(item: ViewerItem, source: ViewerSource, zoom: PageZoom, current: Boolean, motion: ViewerMotion, scope: CoroutineScope, onTap: () -> Unit) {
+private fun PicturePage(
+    item: ViewerItem,
+    source: ViewerSource,
+    zoom: PageZoom,
+    current: Boolean,
+    motion: ViewerMotion,
+    scope: CoroutineScope,
+    flight: ViewerFlight?,
+    progress: () -> Float,
+    onTap: () -> Unit,
+) {
     // Decoded once per page, not on every recomposition.
     val initial = remember(item.key) { source.cached(item.key) }
     val bytes by produceState(initial, item.key) {
@@ -432,7 +580,8 @@ private fun PicturePage(item: ViewerItem, source: ViewerSource, zoom: PageZoom, 
             }
         }
     }
-    val placeholder = rememberThumbHash(item.thumbhash)
+    // The thumbnail it flies out of, as the chat drew it, until its own bytes are read; else its thumbhash.
+    val placeholder = rememberMemoryImage(item.key) ?: rememberThumbHash(item.thumbhash)
     val read = remember(bytes) { bytes?.let(::pictureSize)?.let { image -> image.width?.let { w -> image.height?.let { h -> w to h } } } }
     val density = LocalDensity.current
     val direction = LocalLayoutDirection.current
@@ -462,10 +611,17 @@ private fun PicturePage(item: ViewerItem, source: ViewerSource, zoom: PageZoom, 
                 .offset(frame.x.dp, frame.y.dp)
                 .size(frame.width.dp, frame.height.dp)
                 .graphicsLayer {
-                    scaleX = zoom.scale
-                    scaleY = zoom.scale
-                    translationX = zoom.offset.x
-                    translationY = zoom.offset.y
+                    val way = flight?.at(PictureViewing.Box(frame.x * density.density, frame.y * density.density, size.width, size.height), progress())
+                    scaleX = zoom.scale * (way?.scale ?: 1f)
+                    scaleY = zoom.scale * (way?.scale ?: 1f)
+                    translationX = zoom.offset.x + (way?.dx ?: 0f)
+                    translationY = zoom.offset.y + (way?.dy ?: 0f)
+                    if (way != null) {
+                        clip = true
+                        shape = FlightShape(way)
+                    } else {
+                        clip = false
+                    }
                 }
                 // Inside the layer: its bounds are where the picture is drawn.
                 .then(if (current) Modifier.testTag(PictureViewerTags.IMAGE) else Modifier),

@@ -29,6 +29,9 @@ struct ToolWords: Equatable {
         case "agent_spawn":
             verb = status == "failed" ? W.failedToSpawn : tool.running ? W.spawning : W.spawned
             subject = presentation?.model.map { W.subAgent($0.name) } ?? W.subAgent
+        case "compaction":
+            verb = status == "failed" ? W.failedCall : tool.running ? W.compacting : W.compacted
+            subject = W.compaction(before: presentation?.tokensBefore, after: presentation?.tokensAfter)
         case "search":
             verb = Self.verb(name, status: status, presentation: presentation)
             subject = presentation?.query ?? ""
@@ -68,7 +71,13 @@ struct ToolWords: Equatable {
             mono = true
         default:
             verb = Self.verb(name, status: status, presentation: presentation)
-            if name.hasPrefix("mcp__"), presentation == nil {
+            if let plan = Self.plan(tool) {
+                verb = status == "failed" ? W.failedCall : W.updated
+                subject = plan
+            } else if presentation == nil, ["webfetch", "web_fetch"].contains(lower), let url = tool.arguments?["url"]?.stringValue, !url.isEmpty {
+                verb = status == "failed" ? W.failedCall : tool.running ? W.reading : W.read
+                subject = url.replacingOccurrences(of: "^https?://", with: "", options: .regularExpression)
+            } else if name.hasPrefix("mcp__"), presentation == nil {
                 let parts = name.components(separatedBy: "__")
                 subject = parts.count >= 3 ? "\(parts[1]) · \(parts[2...].joined(separator: " "))" : Self.humanize(name)
             } else {
@@ -76,6 +85,16 @@ struct ToolWords: Equatable {
             }
         }
         glyph = Self.glyph(name, presentation: presentation, failed: tool.failed)
+        if !tool.failed, presentation == nil, ["update_plan", "todo_write", "todowrite"].contains(lower) { glyph = .ionicons("checkbox-outline") }
+    }
+
+    /// A plan's line says how far it has got (`ToolDetail`'s checklist).
+    static func plan(_ tool: ChatItem.Tool) -> String? {
+        guard tool.presentation == nil, tool.arguments != nil, ["update_plan", "todo_write", "todowrite"].contains(tool.name.lowercased()) else { return nil }
+        for case .checklist(_, let todos) in ToolDetail(tool).sections where !todos.isEmpty {
+            return Strings.ToolDetail.planProgress(done: todos.filter { $0.state == .done }.count, of: todos.count)
+        }
+        return nil
     }
 
     private static func matches(_ pattern: String, _ text: String) -> Bool {
@@ -247,9 +266,13 @@ struct ToolLine {
         return items
     }
 
-    /// A long press copies what scrolled out of the line.
-    func hits(_ layout: ToolRowLayout) -> [ChatHit] {
-        words.subject.isEmpty ? [] : [ChatHit(frame: CGRect(origin: .zero, size: layout.size), action: .copyMenu(words.subject), hold: true)]
+    /// A tap opens the call's own screen (`AgentToolViewController`); a
+    /// long press copies what scrolled out of the line.
+    func hits(_ layout: ToolRowLayout, id: String) -> [ChatHit] {
+        let line = CGRect(origin: .zero, size: layout.size)
+        var hits = [ChatHit(frame: line, action: .openMessage(id))]
+        if !words.subject.isEmpty { hits.append(ChatHit(frame: line, action: .copyMenu(words.subject), hold: true)) }
+        return hits
     }
 
     var spoken: String {
@@ -263,7 +286,7 @@ extension ChatPlanner {
     static func tool(_ tool: ChatItem.Tool, id: String, key: Key) -> ChatRowPlan {
         let line = ToolLine(tool, environment: key.environment)
         let layout = line.layout(key)
-        return ChatRowPlan(id: id, size: layout.size, items: line.draw(layout), hits: line.hits(layout), accessibilityLabel: line.spoken)
+        return ChatRowPlan(id: id, size: layout.size, items: line.draw(layout), hits: line.hits(layout, id: id), accessibilityLabel: line.spoken)
     }
 
     /// A call that showed the person something (desktop's media and
@@ -278,7 +301,7 @@ extension ChatPlanner {
             return result.body
         }
         let spoken = [line.spoken, body.accessibilityLabel ?? ""].filter { !$0.isEmpty }.joined(separator: "\n\n")
-        return ChatRowPlan(id: item.id, size: body.size, items: line.draw(row) + body.items, hits: body.hits + line.hits(row), accessibilityLabel: spoken, proposals: body.proposals)
+        return ChatRowPlan(id: item.id, size: body.size, items: line.draw(row) + body.items, hits: body.hits + line.hits(row, id: item.id), accessibilityLabel: spoken, proposals: body.proposals)
     }
 
     /// The words desktop's `TurnSummary` ends a turn with, by its reason.

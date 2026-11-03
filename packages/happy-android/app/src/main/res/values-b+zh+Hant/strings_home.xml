@@ -36,12 +36,8 @@
     <string name="home_info_running">%1$s 個執行中</string>
     <string name="home_info_tasks">任務</string>
     <string name="home_info_tasks_detail">%1$s 個進行中 · %2$s 個待處理</string>
-    <string name="home_info_raw_json">原始 JSON（開發者模式）</string>
-    <string name="home_info_raw_agent_state">代理狀態</string>
-    <string name="home_info_raw_metadata">中繼資料</string>
     <string name="home_info_raw_status">工作階段狀態</string>
     <string name="home_info_raw_session">完整工作階段物件</string>
-    <string name="home_dock_placeholder">規劃、提問、建構…</string>
     <string name="home_dock_ask">詢問 %1$s</string>
     <string name="home_dock_send">傳送</string>
     <string name="home_dock_add_image">新增圖片</string>
@@ -74,7 +70,6 @@
     <string name="home_create_directory_title">建立目錄？</string>
     <string name="home_create_directory_message">目錄「%1$s」不存在。要建立嗎？</string>
     <string name="home_dock_kind_session">工作階段</string>
-    <string name="home_dock_kind_bot">機器人</string>
     <string name="home_dock_bot_kind">要建立什麼</string>
     <string name="home_dock_bot_lede">機器人是虛擬同事，非常適合發布、競品分析等重複性工作，或負責跨多個專案和 Worktree 的大型功能</string>
     <string name="home_dock_bot_name_placeholder">為機器人取個名字</string>
@@ -95,7 +90,6 @@
     <string name="home_start_unknown_machine">這個工作階段所在的電腦未註冊到此帳號，因此無法在其上開始工作階段。請確認 Happy 正在那台電腦上執行並已登入此帳號。</string>
     <string name="home_start_happy_agent_missing">這台電腦上沒有執行 Happy Agent</string>
     <string name="home_start_happy_cli_missing">你的電腦上沒有可用的 Happy CLI。請在電腦上執行 `happy daemon start`，然後重試。</string>
-    <string name="home_start_machine_offline">裝置處於離線狀態</string>
     <string name="home_start_happy_cli_offline">你電腦上的 Happy CLI 處於離線狀態。請在電腦上執行 `happy daemon start`，然後重試。</string>
     <string name="home_start_cannot_start_happy_agent">這台裝置無法開始 Happy Agent 工作階段</string>
     <string name="home_start_project_needs_happy_agent">只有 Happy Agent 知道這個專案在哪裡，其他執行環境無法開啟它。請把執行環境切回 Happy Agent，或選擇專案的資料夾。</string>

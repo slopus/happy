@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_agents.xml in pl: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="compose_tasks_unsupported">Happy Agent na tym komputerze nie umie jeszcze tworzyć zadań. Zaktualizuj go i spróbuj ponownie.</string>
+    <string name="compose_creating_task">Tworzenie zadania…</string>
+    <string name="compose_opening_task">Otwieranie zadania…</string>
+    <string name="compose_task_placeholder">Co ma zrobić to zadanie?</string>
+    <string name="compose_loading_computers">Wczytywanie komputerów…</string>
+    <string name="compose_still_loading">Twoje komputery wciąż się wczytują. Spróbuj za chwilę.</string>
+    <string name="compose_offline_computer">Ten komputer jest offline. Uruchom na nim Happy albo wybierz inny.</string>
+    <string name="compose_offline_happy_agent">Happy Agent jest offline na tym komputerze. Uruchom go albo wybierz inny komputer.</string>
+    <string name="compose_offline_happy_cli">Happy CLI na tym komputerze jest offline. Uruchom tam `happy daemon start` albo wybierz inny komputer.</string>
+    <string name="compose_machines_bots">Komputery, na których Happy Agent tworzy boty</string>
+    <string name="compose_machines_tasks">Komputery, na których Happy Agent tworzy zadania</string>
+    <string name="compose_chip_happy_agent_offline">Happy Agent offline</string>
+    <string name="compose_chip_happy_cli_offline">Happy CLI offline</string>
+    <string name="compose_ago_now">teraz</string>
+    <string name="compose_ago_minutes">%1$d min</string>
+    <string name="compose_ago_hours">%1$d godz.</string>
+    <string name="compose_ago_days">%1$d d</string>
+    <string name="compose_ago_weeks">%1$d tydz.</string>
+    <string name="compose_ago_months">%1$d mies.</string>
+    <string name="compose_ago_years">%1$d r.</string>
+    <string name="task_leave">Opuść zadanie</string>
+    <string name="task_archive">Archiwizuj zadanie</string>
+    <string name="task_failed_to_leave">Nie udało się opuścić zadania</string>
+    <string name="task_archive_needs_machine">Połącz się z komputerem zadania, aby je zarchiwizować.</string>
+    <string name="task_leave_needs_machine">Połącz się z komputerem zadania, aby je opuścić.</string>
+    <string name="task_cannot_leave">Happy Agent na tym komputerze nie umie jeszcze opuszczać zadań. Zaktualizuj go i spróbuj ponownie.</string>
+    <string name="agent_search_new_task">Nowe zadanie</string>
+    <string name="agent_search_new_task_picture">Nowe zadanie z obrazem</string>
+    <string name="agent_search_connect_agent">Połącz z Happy Agent</string>
+    <string name="agent_home_unanswered">Komputer nie odpowiedział.</string>
+</resources>

@@ -32,4 +32,8 @@
     <string name="files_no_comparison">このワークスペースでは origin/main との比較を利用できません。</string>
     <string name="files_no_details">この比較にはファイルの詳細がありません。</string>
     <string name="chat_unsupported_message">このメッセージはここでは表示できません（%1$s）</string>
+    <string name="link_status_updating">同期中…</string>
+    <string name="link_status_connecting">接続中…</string>
+    <string name="link_status_waiting_for_network">ネットワーク待機中…</string>
+    <string name="message_select">選択</string>
 </resources>

@@ -83,9 +83,12 @@ class ConversationComposerGlassTest {
         rule.waitForIdle()
         val open = pillHeight()
         assertTrue("open card ~92, was $open", open.value in 88f..100f)
-        val label = rule.node(ConversationModeTags.MODEL).bounds
+        // The model chip, then the effort chip just before send.
+        val model = rule.node(ConversationModeTags.MODEL).bounds
+        val effort = rule.node(ConversationModeTags.EFFORT).bounds
         val primary = rule.node(ConversationComposerTags.PRIMARY).bounds
-        assertTrue("label just before send: $label $primary", label.right in (primary.left - 16.dp)..(primary.left + 8.dp))
+        assertTrue("effort just before send: $effort $primary", effort.right in (primary.left - 16.dp)..(primary.left + 8.dp))
+        assertTrue("model before effort: $model $effort", model.right <= effort.left + 0.5.dp)
 
         // A long draft grows the card, up to its line cap.
         rule.node(ConversationComposerTags.INPUT).performTextInput((1..20).joinToString("\n") { "line $it" })
@@ -123,14 +126,16 @@ class ConversationComposerGlassTest {
         assertClear("a long draft")
     }
 
-    @Test fun `TalkBack reads model and effort as one button`() {
+    @Test fun `TalkBack reads the model and the effort as a button each`() {
         show(ConversationState(created = true, loaded = true, rows = rows, agent = agent, mode = mode, catalog = catalog))
         rule.node(ConversationComposerTags.INPUT).performSemanticsAction(SemanticsActions.RequestFocus)
         rule.waitForIdle()
-        rule.onAllNodes(hasContentDescription("Model Opus 5 1M, effort High")).assertCountEquals(1)
-        rule.onAllNodes(hasContentDescription("Model Opus 5 1M, effort High"))[0]
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
-            .assert(SemanticsMatcher.keyIsDefined(SemanticsActions.OnClick))
+        for (label in listOf("Model: Opus 5 1M", "Effort: High")) {
+            rule.onAllNodes(hasContentDescription(label)).assertCountEquals(1)
+            rule.onAllNodes(hasContentDescription(label))[0]
+                .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+                .assert(SemanticsMatcher.keyIsDefined(SemanticsActions.OnClick))
+        }
     }
 
     @Test fun `with Reduce Motion the pill opens at once`() {

@@ -4,7 +4,7 @@
   Translated in values-*/ (AndroidStringsTranslatedTest).
 -->
 <resources>
-    <string name="pairing_title">Connect Agent</string>
+    <string name="pairing_title">Connect Happy Agent</string>
     <string name="pairing_connecting">Connecting to %1$s…</string>
     <string name="pairing_unverified">The name comes from the code and isn\'t verified until the connection completes.</string>
     <string name="pairing_compare">Check that %1$s shows the same four emoji, in the same order.</string>

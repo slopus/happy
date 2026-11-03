@@ -36,6 +36,8 @@ class AgentSessions(
     private val openId: StateFlow<String?>,
     private val foreground: StateFlow<Boolean>,
     private val identityRefreshMillis: Long = 60_000,
+    /** Desktop's completion chime, for a conversation that finished while its connection is open ([CompletionWatch]). */
+    private val chime: () -> Unit = {},
     private val makeTransport: (AgentConnectionCredentials) -> Transport = { agentTransport(it.address, it.port, it.publicUrl, it.tailcatAvailable != false) },
 ) {
     private val sessions = HashMap<String, AgentSession>()
@@ -125,6 +127,7 @@ class AgentSessions(
                     active = combine(openId, foreground) { open, front -> open == connectionId && front },
                     parent = scope,
                     makeTransport = makeTransport,
+                    chime = chime,
                 )
             }
         }

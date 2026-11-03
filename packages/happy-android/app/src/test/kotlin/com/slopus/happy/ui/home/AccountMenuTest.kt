@@ -1,6 +1,10 @@
 package com.slopus.happy.ui.home
 
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
@@ -42,9 +46,16 @@ class AccountMenuTest {
         }
         rule.node(AccountMenuTags.BUTTON).performClick()
         rule.onNodeWithText("Steve").assertExists()
-        rule.onNodeWithText("Happy account").assertExists()
+        // No name of its own: named as its kind (iOS 64edb6a34), and the rows say no kind under the name.
+        rule.onNodeWithText("Happy CLI").assertExists()
         rule.onNodeWithText("selfhost.test").assertExists()
         rule.onNodeWithText("Studio").assertExists()
+        rule.onAllNodesWithText("Agent connection").assertCountEquals(0)
+        rule.onAllNodesWithText("Happy Agent").assertCountEquals(0)
+        // The rows look alike, so TalkBack hears each one's kind.
+        rule.node(AccountMenuTags.entry("agent-connection-1")).assert(hasContentDescription("Studio, Happy Agent"))
+        rule.node(AccountMenuTags.entry("0123456789abcdef")).assert(hasContentDescription("Steve, Happy CLI"))
+        rule.node(AccountMenuTags.entry("fedcba9876543210")).assert(hasContentDescription("Happy CLI"))
         rule.node(AccountMenuTags.entry("0123456789abcdef")).assertIsSelected()
         rule.node(AccountMenuTags.entry("agent-connection-1")).assertIsNotSelected()
         rule.assertActionsLabelled()

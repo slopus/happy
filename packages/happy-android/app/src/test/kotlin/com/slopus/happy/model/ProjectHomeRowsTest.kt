@@ -60,9 +60,10 @@ class ProjectHomeRowsTest {
 
     private fun shape(rows: List<ProjectHomeRow>): List<String> = rows.map { item ->
         when (item) {
-            is ProjectHomeRow.Section -> "section:${if (item.section == ProjectHomeSection.Bots) "Bots" else "Projects"}"
+            is ProjectHomeRow.Section -> "section:${item.section}"
             is ProjectHomeRow.MachineHeader -> "machine:${item.machineName}"
             is ProjectHomeRow.Bot -> "bot:${item.session.id}"
+            is ProjectHomeRow.Task -> "task:${item.session.id}"
             is ProjectHomeRow.ProjectCard -> "project:${item.project.name}(${item.project.worktreeCount})"
             is ProjectHomeRow.Worktree -> "worktree:${item.worktree.workspaceName}${if (item.last) ":last" else ""}"
             is ProjectHomeRow.Toggle -> if (item.toggle.expanded) "toggle:less" else "toggle:+${item.toggle.hiddenCount}"

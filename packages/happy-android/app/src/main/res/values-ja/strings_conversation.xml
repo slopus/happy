@@ -37,6 +37,17 @@
     <string name="conversation_permission_from">%1$s が許可を求めています</string>
     <string name="conversation_answer">回答</string>
     <string name="conversation_answer_placeholder">あなたの回答</string>
+    <string name="conversation_ask_choose_one">1つ選択</string>
+    <string name="conversation_ask_choose_any">複数選択可</string>
+    <string name="conversation_ask_reply_in_composer">メッセージ欄で返信</string>
+    <string name="conversation_ask_answered">回答済み</string>
+    <string name="conversation_ask_no_answer">回答なし</string>
+    <string name="conversation_ask_submit">送信</string>
+    <string name="conversation_ask_not_sent">回答を送信できませんでした: %1$s</string>
+    <string name="conversation_command_gone">/%1$s コマンドは利用できなくなりました。</string>
+    <string name="conversation_command_busy">今は /%1$s を実行できません。エージェントが待機中になってから再度お試しください。</string>
+    <string name="conversation_command_kind_skill">スキル</string>
+    <string name="conversation_command_kind_compaction">圧縮</string>
     <string name="conversation_secret_name">このシークレットの名前</string>
     <string name="conversation_secret_value_placeholder">値</string>
     <string name="conversation_secret_save">保存して回答</string>
@@ -73,15 +84,11 @@
     <string name="conversation_chief_unavailable">Chief of Staff を開けません</string>
     <string name="conversation_chief_missing">このコンピュータには Chief of Staff がいません。</string>
     <string name="conversation_mode_permission">権限</string>
-    <string name="conversation_mode_model">モデル</string>
-    <string name="conversation_mode_effort">エフォート</string>
     <string name="conversation_send">送信</string>
     <string name="conversation_stop">停止</string>
     <string name="conversation_attach_picture">画像を追加</string>
     <string name="conversation_remove_picture">画像を削除</string>
     <string name="conversation_composer_more">その他</string>
-    <string name="conversation_mode_label">モデル %1$s、エフォート %2$s</string>
-    <string name="conversation_mode_label_model_only">モデル %1$s</string>
     <string name="conversation_mode_permission_item">権限: %1$s</string>
     <string name="conversation_pictures_too_large_title">画像が大きすぎます</string>
     <string name="conversation_pictures_too_large_message">これらの画像は合わせると 1 通のメッセージに収まりません。いくつか削除してもう一度送信してください。</string>
@@ -98,4 +105,6 @@
     <string name="conversation_failure_context_too_long">この会話はリセット後も %1$s には長すぎます。</string>
     <string name="conversation_failure_provider_disabled">%1$s はオフになっています。設定でオンにしてから再試行してください。</string>
     <string name="conversation_failure_internal">問題が発生しました: %1$s</string>
+    <string name="conversation_editor_expand">展開</string>
+    <string name="conversation_editor_collapse">折りたたむ</string>
 </resources>

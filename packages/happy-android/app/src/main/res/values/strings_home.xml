@@ -41,13 +41,8 @@
     <string name="home_info_running">%1$s running</string>
     <string name="home_info_tasks">Tasks</string>
     <string name="home_info_tasks_detail">%1$s in progress · %2$s pending</string>
-    <string name="home_info_raw_json">Raw JSON (Dev Mode)</string>
-    <string name="home_info_raw_agent_state">Agent State</string>
-    <string name="home_info_raw_metadata">Metadata</string>
     <string name="home_info_raw_status">Session Status</string>
     <string name="home_info_raw_session">Full Session Object</string>
-    <!-- HomeDock.tsx, homeDockInteraction.ts, newSessionProgress.ts -->
-    <string name="home_dock_placeholder">Plan, ask, build…</string>
     <string name="home_dock_ask">Ask %1$s</string>
     <string name="home_dock_send">Send</string>
     <string name="home_dock_add_image">Add image</string>
@@ -83,7 +78,6 @@
     <string name="home_create_directory_title">Create Directory?</string>
     <string name="home_create_directory_message">The directory \'%1$s\' does not exist. Would you like to create it?</string>
     <string name="home_dock_kind_session">Session</string>
-    <string name="home_dock_kind_bot">Bot</string>
     <string name="home_dock_bot_kind">What to create</string>
     <string name="home_dock_bot_lede">Bots are virtual colleagues great for recurring work like releases, competitor analysis, or to own a large feature across several projects and worktrees</string>
     <string name="home_dock_bot_name_placeholder">Name your bot</string>
@@ -105,9 +99,8 @@
     <string name="home_start_unknown_machine">This session’s computer is not registered with this account, so nothing can start a session on it. Check that Happy is running there and signed in to this account.</string>
     <string name="home_start_happy_agent_missing">Happy Agent is not running on this computer</string>
     <string name="home_start_happy_cli_missing">Happy CLI is not available on your computer. Run `happy daemon start` on your computer, then try again.</string>
-    <string name="home_start_machine_offline">Machine is offline</string>
     <string name="home_start_happy_cli_offline">Happy CLI is offline on your computer. Run `happy daemon start` on your computer, then try again.</string>
-    <string name="home_start_cannot_start_happy_agent">This machine cannot start Happy agent sessions</string>
+    <string name="home_start_cannot_start_happy_agent">This machine cannot start Happy Agent sessions</string>
     <string name="home_start_project_needs_happy_agent">Only Happy Agent knows where this project is, so no other harness can open it. Switch the harness back to Happy Agent, or pick the project’s folder.</string>
     <string name="home_start_workspace_unavailable">The selected Happy Agent workspace is no longer available.</string>
     <string name="home_start_bots_unsupported">Happy Agent on this computer cannot create bots yet. Update it and try again.</string>

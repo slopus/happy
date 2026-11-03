@@ -14,6 +14,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.test.hasStateDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -68,6 +69,7 @@ class AgentHomeLayoutTest {
 
     private val opened = mutableListOf<String>()
     private var composed = 0
+    private var composedWithPicture = 0
     private var settings = 0
     private val settingsRows = mutableListOf<AgentSettingsRow>()
     private var artifacts = 0
@@ -75,6 +77,7 @@ class AgentHomeLayoutTest {
     private val actions = AgentHomeActions(
         onOpenConversation = { opened += it },
         onCompose = { composed++ },
+        onComposeWithPicture = { composedWithPicture++ },
         onSettings = { settings++ },
         onSettingsRow = { settingsRows += it },
         onSwitchAccount = {},
@@ -207,6 +210,8 @@ class AgentHomeLayoutTest {
         assertDp("compose at the end", list.right - 16.dp, compose.right)
         assertDp("compose at the bottom", list.bottom - 16.dp, compose.bottom)
         assertDp("compose is a 56 FAB", 56, compose.width)
+        // New work is "New task" (happy-ios 7a605f6ce).
+        rule.onNodeWithContentDescription("New task", useUnmergedTree = true).assertExists()
         rule.node(AgentHomeTags.COMPOSE).performClick()
         rule.node(AgentHomeTags.SETTINGS).performClick()
         assertEquals(1, composed)
@@ -430,9 +435,15 @@ class AgentHomeLayoutTest {
         rule.node(AgentSearchTags.FIELD).performTextInput("appear")
         rule.waitForIdle()
         rule.node(AgentSearchTags.result("entry-${AgentSettingsTags.APPEARANCE}")).assertExists()
-        rule.node(AgentSearchTags.FIELD).performTextReplacement("new")
-        rule.node(AgentSearchTags.result("entry-new-chat")).performClick()
+        // happy-ios 7a605f6ce: "New task", and "New task with a picture" opening new work with "+"'s sheet up.
+        rule.node(AgentSearchTags.FIELD).performTextReplacement("new task")
+        rule.onNodeWithText("New task with a picture").assertExists()
+        rule.node(AgentSearchTags.result("entry-new-work-picture")).performClick()
+        assertEquals(1, composedWithPicture)
+        rule.node(AgentSearchTags.result("entry-new-work")).performClick()
         assertEquals(1, composed)
+        rule.node(AgentSearchTags.FIELD).performTextReplacement("connect")
+        rule.onNodeWithText("Connect Happy Agent").assertExists()
         rule.node(AgentSearchTags.FIELD).performTextReplacement("Settings")
         rule.node(AgentSearchTags.result("entry-settings")).performClick()
         assertEquals(1, settings)
@@ -479,11 +490,6 @@ class AgentHomeLayoutTest {
         val bar = rule.node(AgentHomeTags.BAR).bounds
         val title = rule.node(AgentHomeTags.TITLE).bounds
         val first = rule.node(AgentHomeTags.row("section-places")).bounds
-        fun stillPut(at: String) {
-            assertEquals("bar, $at", bar, rule.node(AgentHomeTags.BAR).bounds)
-            assertEquals("title, $at", title, rule.node(AgentHomeTags.TITLE).bounds)
-            assertEquals("first row, $at", first, rule.node(AgentHomeTags.row("section-places")).bounds)
-        }
         // Online says nothing: the name stands alone.
         rule.onAllNodesWithTag(AgentHomeTags.STATUS, useUnmergedTree = true).assertCountEquals(0)
         rule.onAllNodesWithText("online", useUnmergedTree = true).assertCountEquals(0)
@@ -491,14 +497,29 @@ class AgentHomeLayoutTest {
         for (next in flips) {
             status = next
             rule.waitForIdle()
-            stillPut("on $next")
-            val label = when (next) {
-                AgentLinkStatus.Connected -> null
-                AgentLinkStatus.Connecting -> "connecting"
-                else -> "offline"
+            assertEquals("bar, on $next", bar, rule.node(AgentHomeTags.BAR).bounds)
+            // A computer that doesn't answer is said by the list's first row, which pushes the rows down (iOS ba0d7da0e).
+            if (next == AgentLinkStatus.Offline) {
+                val notice = rule.node(AgentHomeTags.BANNER).bounds
+                rule.onNodeWithText("The computer did not answer.", useUnmergedTree = true).assertExists()
+                val pushed = rule.node(AgentHomeTags.row("section-places")).bounds
+                assertTrue("the notice above where the rows began", notice.top <= first.top)
+                assertTrue("the rows pushed under it", pushed.top >= notice.bottom && pushed.top > first.top)
+            } else {
+                rule.onAllNodesWithTag(AgentHomeTags.BANNER, useUnmergedTree = true).assertCountEquals(0)
+                assertEquals("first row, on $next", first, rule.node(AgentHomeTags.row("section-places")).bounds)
             }
-            rule.onAllNodesWithTag(AgentHomeTags.STATUS, useUnmergedTree = true).assertCountEquals(if (label == null) 0 else 1)
-            label?.let { rule.onNodeWithText(it, useUnmergedTree = true).assertExists() }
+            // Connecting stands in the name's place; offline keeps the name, which TalkBack hears offline after.
+            if (next == AgentLinkStatus.Connecting) {
+                rule.onAllNodesWithTag(AgentHomeTags.TITLE, useUnmergedTree = true).assertCountEquals(0)
+                rule.node(AgentHomeTags.STATUS).assertExists()
+                rule.onNodeWithText("Connecting…", useUnmergedTree = true).assertExists()
+            } else {
+                assertEquals("title, on $next", title, rule.node(AgentHomeTags.TITLE).bounds)
+                rule.onAllNodesWithTag(AgentHomeTags.STATUS, useUnmergedTree = true).assertCountEquals(0)
+                rule.onAllNodes(hasStateDescription("offline"), useUnmergedTree = true)
+                    .assertCountEquals(if (next == AgentLinkStatus.Offline) 1 else 0)
+            }
         }
     }
 
@@ -512,11 +533,14 @@ class AgentHomeLayoutTest {
         status = AgentLinkStatus.Offline
         rule.waitForIdle()
         rule.node(AgentHomeTags.OFFLINE).assertExists()
-        // Offline with a cached home: the rows, and the state under the name.
+        // Offline with a cached home: the rows, and the name.
         current = feed()
         rule.waitForIdle()
         rule.node(AgentHomeTags.row("agent-ab1")).assertExists()
-        rule.node(AgentHomeTags.STATUS).assertExists()
+        rule.node(AgentHomeTags.TITLE).assertExists()
+        rule.onAllNodesWithTag(AgentHomeTags.STATUS, useUnmergedTree = true).assertCountEquals(0)
+        rule.node(AgentHomeTags.BANNER).assertExists()
+        rule.onNodeWithText("The computer did not answer.", useUnmergedTree = true).assertExists()
         status = AgentLinkStatus.Revoked
         rule.waitForIdle()
         rule.node(AgentHomeTags.BANNER).assertExists()

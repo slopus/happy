@@ -33,6 +33,12 @@ struct RenderServices: Equatable, Sendable {
         RenderServices(diffDocuments: DiffDocumentCache(), diffSyntax: DiffSyntaxService(), codeSyntax: CodeSyntaxService())
     }
 
+    /// A paired computer's own (`Session`), which outlives its screens.
+    @MainActor
+    init(_ session: Session) {
+        self.init(diffDocuments: session.diffDocuments, diffSyntax: session.diffSyntax, codeSyntax: session.syntax)
+    }
+
     private init(diffDocuments: DiffDocumentCache, diffSyntax: DiffSyntaxService, codeSyntax: CodeSyntaxService) {
         self.diffDocuments = diffDocuments
         self.diffSyntax = diffSyntax

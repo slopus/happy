@@ -39,7 +39,8 @@ object ChangesTags {
 sealed interface ChangesContent {
     data object Loading : ChangesContent
     data class Legacy(val state: LegacyChanges.State) : ChangesContent
-    data class Agent(val state: AgentChanges.State, val supported: Boolean) : ChangesContent
+    /** [expandFew]: a handful of files (five or fewer) opens whole, as a workspace's changes do. */
+    data class Agent(val state: AgentChanges.State, val supported: Boolean, val expandFew: Boolean = false) : ChangesContent
 }
 
 class ChangesActions(
@@ -105,10 +106,11 @@ private fun AgentBody(content: ChangesContent.Agent, actions: ChangesActions, sc
         else -> {
             val notices = state.notices
             val colors = HappyTheme.colors
+            val items = state.items()
             DiffFilesList(
-                items = state.items(),
+                items = items,
                 scrollToPath = scrollToFile,
-                defaultCollapsed = true,
+                defaultCollapsed = !(content.expandFew && items.size <= 5),
                 onRequestContent = actions.onRequestContent,
                 onExpandContext = actions.onExpandContext,
                 emptyText = if (state.clean) stringResource(R.string.files_no_changes) else stringResource(R.string.files_no_details),

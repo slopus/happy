@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_agents.xml in ru: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="compose_tasks_unsupported">Happy Agent на этом компьютере пока не умеет создавать задачи. Обновите его и попробуйте снова.</string>
+    <string name="compose_creating_task">Создаём задачу…</string>
+    <string name="compose_opening_task">Открываем задачу…</string>
+    <string name="compose_task_placeholder">Что должна сделать эта задача?</string>
+    <string name="compose_loading_computers">Загружаем компьютеры…</string>
+    <string name="compose_still_loading">Ваши компьютеры ещё загружаются. Попробуйте через минуту.</string>
+    <string name="compose_offline_computer">Этот компьютер не в сети. Запустите на нём Happy или выберите другой.</string>
+    <string name="compose_offline_happy_agent">Happy Agent не в сети на этом компьютере. Запустите его или выберите другой компьютер.</string>
+    <string name="compose_offline_happy_cli">Happy CLI на этом компьютере не в сети. Выполните там `happy daemon start` или выберите другой компьютер.</string>
+    <string name="compose_machines_bots">Компьютеры, где Happy Agent создаёт ботов</string>
+    <string name="compose_machines_tasks">Компьютеры, где Happy Agent создаёт задачи</string>
+    <string name="compose_chip_happy_agent_offline">Happy Agent не в сети</string>
+    <string name="compose_chip_happy_cli_offline">Happy CLI не в сети</string>
+    <string name="compose_ago_now">сейчас</string>
+    <string name="compose_ago_minutes">%1$d мин</string>
+    <string name="compose_ago_hours">%1$d ч</string>
+    <string name="compose_ago_days">%1$d д</string>
+    <string name="compose_ago_weeks">%1$d нед</string>
+    <string name="compose_ago_months">%1$d мес</string>
+    <string name="compose_ago_years">%1$d г</string>
+    <string name="task_leave">Покинуть задачу</string>
+    <string name="task_archive">Архивировать задачу</string>
+    <string name="task_failed_to_leave">Не удалось покинуть задачу</string>
+    <string name="task_archive_needs_machine">Подключитесь к компьютеру задачи, чтобы архивировать её.</string>
+    <string name="task_leave_needs_machine">Подключитесь к компьютеру задачи, чтобы покинуть её.</string>
+    <string name="task_cannot_leave">Happy Agent на этом компьютере пока не умеет покидать задачи. Обновите его и попробуйте снова.</string>
+    <string name="agent_search_new_task">Новая задача</string>
+    <string name="agent_search_new_task_picture">Новая задача с картинкой</string>
+    <string name="agent_search_connect_agent">Подключить Happy Agent</string>
+    <string name="agent_home_unanswered">Компьютер не ответил.</string>
+</resources>

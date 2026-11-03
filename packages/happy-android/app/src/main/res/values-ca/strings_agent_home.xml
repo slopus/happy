@@ -5,20 +5,13 @@
 -->
 <resources>
     <string name="agent_home_working">Treballant…</string>
-    <string name="agent_home_show_subtasks">Mostra les subtasques</string>
-    <string name="agent_home_hide_subtasks">Amaga les subtasques</string>
-    <string name="agent_home_connecting">Connectant amb %1$s…</string>
     <string name="agent_home_empty_title">Encara no hi ha converses</string>
     <string name="agent_home_empty_body">Comença un xat amb aquest agent i apareixerà aquí.</string>
     <string name="agent_home_offline_title">No es pot contactar amb %1$s</string>
     <string name="agent_home_offline_body">Comprova que l\'agent s\'executa i està en línia. Happy es torna a connectar sol.</string>
     <string name="agent_home_revoked">Aquest telèfon s\'ha eliminat a Happy Agent. Torna a connectar l\'agent per fer-lo servir.</string>
     <string name="agent_home_update_required">Aquest agent necessita una versió més nova de Happy. Actualitza l\'app per fer-lo servir.</string>
-    <string name="agent_home_status_offline">fora de línia</string>
-    <string name="agent_home_status_revoked">eliminat</string>
-    <string name="agent_home_status_update">cal actualitzar</string>
     <string name="agent_artifacts_untitled">Sense títol</string>
-    <string name="agent_artifacts_empty">Encara no hi ha artefactes.</string>
     <string name="agent_artifacts_failed">No s\'han pogut llegir els artefactes</string>
     <string name="agent_surface_add_todo">Afegeix una tasca</string>
     <string name="agent_surface_no_todos">Encara no hi ha res aquí.</string>
@@ -31,7 +24,6 @@
     <string name="agent_search_conversations">Converses</string>
     <string name="agent_search_actions">Accions ràpides</string>
     <string name="agent_search_no_results">No hi ha resultats per a «%1$s»</string>
-    <string name="agent_search_add">Afegeix un compte o un agent</string>
     <string name="agent_search_open_settings">Obre la configuració</string>
     <string name="agent_settings_edit_name">Edita el nom</string>
     <string name="agent_settings_edit_avatar">Edita l\'avatar</string>

@@ -5,20 +5,13 @@
 -->
 <resources>
     <string name="agent_home_working">Pracuje…</string>
-    <string name="agent_home_show_subtasks">Pokaż podzadania</string>
-    <string name="agent_home_hide_subtasks">Ukryj podzadania</string>
-    <string name="agent_home_connecting">Łączenie z %1$s…</string>
     <string name="agent_home_empty_title">Brak rozmów</string>
     <string name="agent_home_empty_body">Rozpocznij czat z tym agentem, a pojawi się tutaj.</string>
     <string name="agent_home_offline_title">Nie można połączyć się z %1$s</string>
     <string name="agent_home_offline_body">Sprawdź, czy agent działa i jest online. Happy połączy się ponownie samodzielnie.</string>
     <string name="agent_home_revoked">Ten telefon został usunięty w Happy Agent. Połącz agenta ponownie, aby z niego korzystać.</string>
     <string name="agent_home_update_required">Ten agent wymaga nowszej wersji Happy. Zaktualizuj aplikację, aby z niego korzystać.</string>
-    <string name="agent_home_status_offline">offline</string>
-    <string name="agent_home_status_revoked">usunięty</string>
-    <string name="agent_home_status_update">wymagana aktualizacja</string>
     <string name="agent_artifacts_untitled">Bez tytułu</string>
-    <string name="agent_artifacts_empty">Brak artefaktów.</string>
     <string name="agent_artifacts_failed">Nie udało się odczytać artefaktów</string>
     <string name="agent_surface_add_todo">Dodaj zadanie</string>
     <string name="agent_surface_no_todos">Na razie nic tu nie ma.</string>
@@ -31,7 +24,6 @@
     <string name="agent_search_conversations">Rozmowy</string>
     <string name="agent_search_actions">Szybkie akcje</string>
     <string name="agent_search_no_results">Brak wyników dla „%1$s”</string>
-    <string name="agent_search_add">Dodaj konto lub agenta</string>
     <string name="agent_search_open_settings">Otwórz ustawienia</string>
     <string name="agent_settings_edit_name">Edytuj nazwę</string>
     <string name="agent_settings_edit_avatar">Edytuj awatar</string>

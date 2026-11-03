@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The composer's context meter and the model label's usage warning (iOS 083c30df4; desktop ContextMeter.tsx, ComposerModelControl.tsx usageWarning). -->
+<resources>
+    <string name="conversation_context_used">Использовано %1$s из %2$s токенов контекста</string>
+    <string name="conversation_context_used_approximate">Использовано %1$s из %2$s токенов контекста (приблизительно)</string>
+    <string name="conversation_context_pending">Ожидание первого измерения контекста (окно %1$s токенов)</string>
+    <string name="conversation_context_compacts_at">сжатие при %1$s</string>
+    <string name="conversation_context_compact_soon">сжатие скоро; сожмите сейчас, чтобы выбрать момент</string>
+    <string name="conversation_context_compact_next">следующий ход сожмёт разговор</string>
+    <string name="conversation_usage_week_limit">Недельный лимит</string>
+    <string name="conversation_usage_session_limit">Лимит сессии</string>
+    <string name="conversation_usage_left">%1$s · осталось %2$d%%</string>
+    <string name="conversation_usage_reached">%1$s исчерпан</string>
+</resources>

@@ -6,6 +6,7 @@ import com.slopus.happy.accounts.AccountStore
 import com.slopus.happy.accounts.RnServerConfigImporter
 import com.slopus.happy.accounts.accountId
 import com.slopus.happy.agent.AgentSessions
+import com.slopus.happy.agent.CompletionChime
 import com.slopus.happy.auth.AndroidKeyStoreKeys
 import com.slopus.happy.auth.AuthCredentials
 import com.slopus.happy.auth.CredentialStore
@@ -107,6 +108,13 @@ class AppGraph(
 
     /** Animated Avatars, kept on this phone for every account (not cleared with local settings). */
     val liveAvatars = LiveAvatarsSetting(context.getSharedPreferences(LiveAvatarsSetting.PREFS_NAME, Context.MODE_PRIVATE))
+
+    /** Where Happy account [publicId] keeps its attachments for good, a folder of its own (no backup: the server has them); gone with its sign-out. */
+    fun legacyMediaDirectory(publicId: String?): File? =
+        publicId?.filter { it.isLetterOrDigit() || it == '-' || it == '_' }?.takeIf { it.isNotEmpty() }?.let { File(appContext.noBackupFilesDir, "legacy-media/$it") }
+
+    /** Data and Storage's Automatic Media Download, kept on this phone for every account. */
+    val mediaAutoDownload = com.slopus.happy.media.MediaAutoDownloadSetting(context.getSharedPreferences(com.slopus.happy.media.MediaAutoDownloadSetting.PREFS_NAME, Context.MODE_PRIVATE))
 
     private val okHttp = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -459,6 +467,7 @@ class AppGraph(
         cacheDir = File(appContext.noBackupFilesDir, "agent-connections"),
         openId = openAgentId,
         foreground = isForeground,
+        chime = CompletionChime(appContext)::play,
     )
 
     /**
@@ -502,6 +511,7 @@ class AppGraph(
             val last = accountStore.registry.value.entries.size <= 1
             withContext(Dispatchers.IO) {
                 store.clearAll()
+                leaving?.let { legacyMediaDirectory(it.publicId)?.deleteRecursively() }
                 // persistence.ts clearPersistence: with the last account, everything in the default MMKV goes; the server choice stays.
                 if (last) {
                     localSettings.clear()

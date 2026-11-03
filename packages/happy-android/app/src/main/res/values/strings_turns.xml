@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    A turn's own rows in a Happy Agent chat, in desktop's words (iOS
+    Strings.Turns): a tool call's verb and subject (AgentActivityRow.tsx),
+    how the turn ended (TurnSummary.tsx) and its fold control
+    (agentTraceMeta.ts).
+-->
+<resources>
+    <!-- How a turn ended; %1$s is how long it took, e.g. "12s" or "3m 7s". -->
+    <string name="turn_completed">Completed</string>
+    <string name="turn_completed_in">Completed in %1$s</string>
+    <string name="turn_steered">Steered</string>
+    <string name="turn_steered_after">Steered after %1$s</string>
+    <string name="turn_stopped">Stopped</string>
+    <string name="turn_stopped_after">Stopped after %1$s</string>
+    <string name="turn_failed">Failed</string>
+    <string name="turn_failed_after">Failed after %1$s</string>
+    <string name="turn_worked">Worked</string>
+    <string name="turn_worked_for">Worked for %1$s</string>
+    <string name="turn_copy_final">Copy final message</string>
+    <string name="turn_final_copied">Final message copied</string>
+
+    <!-- A finished turn's fold control. -->
+    <string name="turn_view_traces">View traces</string>
+    <string name="turn_hide_traces">Hide traces</string>
+    <plurals name="turn_tools">
+        <item quantity="one">%1$d tool</item>
+        <item quantity="other">%1$d tools</item>
+    </plurals>
+
+    <!-- A tool call's verb, while it runs and once it ran. -->
+    <string name="turn_spawning">Spawning</string>
+    <string name="turn_spawned">Spawned</string>
+    <string name="turn_failed_to_spawn">Failed to spawn</string>
+    <string name="turn_sub_agent">sub-agent</string>
+    <string name="turn_sub_agent_model">%1$s sub-agent</string>
+    <string name="turn_searching">Searching</string>
+    <string name="turn_searched">Searched</string>
+    <string name="turn_exploring">Exploring</string>
+    <string name="turn_explored">Explored</string>
+    <string name="turn_typing">Typing</string>
+    <string name="turn_typed">Typed</string>
+    <string name="turn_waiting">Waiting</string>
+    <string name="turn_waited">Waited</string>
+    <string name="turn_for_subagents">for subagents</string>
+    <string name="turn_shell">Shell</string>
+    <string name="turn_reading">Reading</string>
+    <string name="turn_read">Read</string>
+    <string name="turn_editing">Editing</string>
+    <string name="turn_edited">Edited</string>
+    <string name="turn_tool">Tool</string>
+    <string name="turn_used">Used</string>
+    <string name="turn_edit">Edit</string>
+    <string name="turn_added">Added</string>
+    <string name="turn_deleted">Deleted</string>
+    <string name="turn_creating">Creating</string>
+    <string name="turn_created">Created</string>
+    <string name="turn_updating">Updating</string>
+    <string name="turn_updated">Updated</string>
+    <string name="turn_opening">Opening</string>
+    <string name="turn_opened">Opened</string>
+    <!-- A skill the agent reads, before its name: "Read skill: release-notes". -->
+    <string name="turn_reading_skill">Reading skill:</string>
+    <string name="turn_read_skill">Read skill:</string>
+    <string name="turn_failed_call">Failed</string>
+    <string name="turn_artifact">artifact</string>
+    <!-- Said for a screen reader while a call runs; %1$s is the tool's name. -->
+    <string name="turn_is_running">%1$s is running</string>
+
+    <!-- The steps of a look around the files. -->
+    <string name="turn_list">List %1$s</string>
+    <string name="turn_read_file">Read %1$s</string>
+    <string name="turn_search">Search %1$s</string>
+    <!-- %1$s is what was looked for, %2$s where. -->
+    <string name="turn_search_in">%1$s in %2$s</string>
+
+    <!-- What one call showed, by kind. -->
+    <string name="turn_image">Image</string>
+    <string name="turn_images">Images</string>
+    <string name="turn_video">Video</string>
+    <string name="turn_videos">Videos</string>
+    <string name="turn_document">Document</string>
+    <string name="turn_documents">Documents</string>
+    <string name="turn_file">File</string>
+    <string name="turn_files">Files</string>
+
+    <!-- A paste typed into a terminal: its first line, and how many more. -->
+    <plurals name="turn_more_lines">
+        <item quantity="one">%1$s … +%2$d line</item>
+        <item quantity="other">%1$s … +%2$d lines</item>
+    </plurals>
+
+    <!-- Tools known by their own names (humanizeToolName). -->
+    <string name="turn_tool_subagent">Subagent</string>
+    <string name="turn_tool_compaction">Context compaction</string>
+    <string name="turn_tool_terminal_input">Terminal input</string>
+    <string name="turn_tool_task_list">Task list</string>
+    <string name="turn_tool_background_output">Background output</string>
+    <string name="turn_tool_start_subagent">Start subagent</string>
+    <string name="turn_tool_wait_subagents">Wait for subagents</string>
+    <string name="turn_tool_workflow">Workflow</string>
+    <!-- A person's long message, cut at its first lines (iOS Strings.showFull); Show less is machine_launcher_show_less. -->
+    <string name="conversation_show_full">Show full</string>
+    <!-- A code block's copy button in a Happy Agent chat, said by a screen reader (desktop CopyButton "Copy code"). -->
+    <string name="markdown_copy_code">Copy code</string>
+    <!-- Desktop's Completion sound for an agent connection, on its Appearance page (happy-desktop.completionSound). -->
+    <string name="agent_settings_completion_sound">Completion sound</string>
+    <string name="agent_settings_completion_sound_always">Always</string>
+    <string name="agent_settings_completion_sound_focused">When focused</string>
+    <string name="agent_settings_completion_sound_never">Never</string>
+    <string name="agent_settings_completion_sound_footer">A chime when a conversation finishes. On this phone it plays while this connection is open, so When focused is the same as Always. Each connection keeps your choice, on every device you use it from.</string>
+</resources>

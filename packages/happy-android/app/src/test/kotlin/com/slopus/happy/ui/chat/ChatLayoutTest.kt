@@ -296,6 +296,34 @@ class ChatLayoutTest {
         assertDp("8 under the footer", 8, composer.top - footer.bottom)
     }
 
+    // iOS 7aee3a9b8: the account's link on its way takes the subtitle's place, a 14 spinner 5 before the words.
+    @Test
+    fun headerSaysTheLinkWithASpinner() {
+        var link by mutableStateOf(com.slopus.happy.connection.LinkState.WaitingForNetwork)
+        rule.setHappyContent {
+            ChatScreen(
+                state = ChatState(ChatSnapshot(listOf(userRow("Question")), loaded = true), session(), sessionLoaded = true, online = true),
+                draft = "",
+                bubbleColor = "gray",
+                actions = ChatScreenActions(),
+                slots = ChatScreenSlots(headerSubtitle = "1 tab"),
+                link = link,
+            )
+        }
+        val words = rule.onNodeWithText("waiting for network…", useUnmergedTree = true).bounds
+        val spinner = rule.node(LinkStatusTags.SPINNER).bounds
+        assertDp("14 wide", 14, spinner.right - spinner.left)
+        assertDp("5 before the words", 5, words.left - spinner.right)
+        assertDp("centred on their line", (words.top + words.bottom) / 2, (spinner.top + spinner.bottom) / 2)
+        val title = rule.node(HeaderTags.TITLE).bounds
+        link = com.slopus.happy.connection.LinkState.Online
+        rule.waitForIdle()
+        rule.onAllNodesWithTag(LinkStatusTags.SPINNER).assertCountEquals(0)
+        rule.onNodeWithText("waiting for network…").assertDoesNotExist()
+        rule.onNodeWithText("1 tab", useUnmergedTree = true).assertExists()
+        assertEquals("the words take the subtitle's place: the title stays put", title, rule.node(HeaderTags.TITLE).bounds)
+    }
+
     // The header is glass: the transcript runs the full height under it, as the agent chat's does.
     @Test
     fun transcriptRunsUnderTheGlassBar() {

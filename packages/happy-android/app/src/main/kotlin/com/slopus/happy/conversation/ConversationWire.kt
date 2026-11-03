@@ -85,11 +85,59 @@ data class MediaItem(
 /** What a tool call showed the person (`presentation`), when the daemon typed it. */
 sealed interface Presentation {
     data class Command(val command: String, val output: String?) : Presentation
-    data class Exploration(val operations: List<String>) : Presentation
-    data class Search(val query: String, val target: String) : Presentation
+    /** The steps of a look around: `list` a target, `read` a file by name, `search` by command, query and path. */
+    data class Exploration(val operations: List<Operation>) : Presentation {
+        data class Operation(
+            val kind: String,
+            val name: String? = null,
+            val target: String? = null,
+            val command: String? = null,
+            val query: String? = null,
+            val path: String? = null,
+        )
+
+        companion object {
+            /** Files read, by name. */
+            fun reads(vararg names: String) = Exploration(names.map { Operation("read", name = it) })
+        }
+    }
+    /** A web or X search (`target` `web` or `x`); the [sources] it drew from come with its end. */
+    data class Search(val query: String, val target: String, val sources: List<Source> = emptyList()) : Presentation {
+        data class Source(val title: String, val url: String)
+    }
     /** [columns] is the grid the producer asked for (`layout` `{type: "columns", columns}`, 1 or 2), else 0: justified rows. */
     data class Media(val items: List<MediaItem>, val columns: Int = 0) : Presentation
     data class Artifact(val artifactId: String, val artifactType: String?, val title: String?, val version: Int?, val shows: String? = null) : Presentation
+    /** An answered question as the person was shown it, and the values they gave (`user_input`). */
+    data class UserInput(val prompts: List<Question.Prompt>, val answers: Map<String, List<String>>) : Presentation
+    /**
+     * Files a call changed (`file_diff`): `kind` is `add`, `delete` or
+     * `update`, [File.added] and [File.deleted] the whole file's totals, and
+     * [File.hunks] the lines as the daemon kept them (at most 500 a call,
+     * [File.omittedLines] past that; [omittedFiles] past 20 files).
+     */
+    data class FileDiff(val files: List<File>, val omittedFiles: Int = 0) : Presentation {
+        data class File(
+            val path: String,
+            val kind: String,
+            val added: Int? = null,
+            val deleted: Int? = null,
+            val hunks: List<Hunk> = emptyList(),
+            /** The daemon's name for its language, for colour. */
+            val language: String? = null,
+            val omittedLines: Int = 0,
+        )
+
+        /** A run of lines; a start is one-based, zero for the side a whole-file add or delete lacks. */
+        data class Hunk(val oldStart: Int, val newStart: Int, val lines: List<Line>)
+
+        /** `kind` is `context`, `add` or `delete`. */
+        data class Line(val kind: String, val text: String)
+    }
+    /** A subagent started (`agent_spawn`), with its model's name when said. */
+    data class AgentSpawn(val model: String?) : Presentation
+    /** What was typed into a background terminal (`background_terminal_interaction`), and the command it runs. */
+    data class Terminal(val input: String, val command: String?) : Presentation
 
     companion object {
         fun parse(value: JsonElement?): Presentation? {
@@ -99,12 +147,69 @@ sealed interface Presentation {
                 "exploration" -> Exploration(
                     o["operations"].arr.orEmpty().mapNotNull { op ->
                         val operation = op.obj ?: return@mapNotNull null
-                        operation["name"].str ?: operation["target"].str ?: operation["query"].str ?: operation["command"].str
+                        Exploration.Operation(
+                            kind = operation["kind"].str ?: "search",
+                            name = operation["name"].str,
+                            target = operation["target"].str,
+                            command = operation["command"].str,
+                            query = operation["query"].str,
+                            path = operation["path"].str,
+                        )
                     },
                 )
-                "search" -> Search(o["query"].str ?: return null, o["target"].str ?: "web")
+                "search" -> Search(
+                    o["query"].str ?: return null,
+                    o["target"].str ?: "web",
+                    o["sources"].arr.orEmpty().mapNotNull { value ->
+                        val source = value.obj ?: return@mapNotNull null
+                        Search.Source(source["title"].str.orEmpty(), source["url"].str ?: return@mapNotNull null)
+                    },
+                )
                 "media" -> Media(o["items"].arr.orEmpty().mapNotNull(MediaItem::parse), columns(o["layout"]))
                 "artifact" -> Artifact(o["artifactId"].str ?: return null, o["artifactType"].str, o["title"].str, o["version"].num?.toInt(), o["shows"].str)
+                "user_input" -> UserInput(
+                    o["questions"].arr.orEmpty().mapNotNull { value ->
+                        val q = value.obj ?: return@mapNotNull null
+                        Question.Prompt(
+                            id = q["id"].str ?: return@mapNotNull null,
+                            header = q["header"].str,
+                            question = q["question"].str.orEmpty(),
+                            multiSelect = q["multiSelect"].bool ?: false,
+                            options = q["options"].arr.orEmpty().mapNotNull { option ->
+                                option.obj?.let { opt -> opt["label"].str?.let { Question.Option(it, opt["description"].str?.takeIf(String::isNotEmpty)) } }
+                            },
+                            secret = null,
+                        )
+                    }.takeIf { it.isNotEmpty() } ?: return null,
+                    o["answers"].obj?.let(Question::answersOf).orEmpty(),
+                )
+                "file_diff" -> FileDiff(
+                    o["files"].arr.orEmpty().mapNotNull { value ->
+                        val file = value.obj ?: return@mapNotNull null
+                        FileDiff.File(
+                            path = file["path"].str ?: return@mapNotNull null,
+                            kind = file["kind"].str ?: "update",
+                            added = file["added"].num?.toInt(),
+                            deleted = file["deleted"].num?.toInt(),
+                            hunks = file["hunks"].arr.orEmpty().mapNotNull { hunk ->
+                                val h = hunk.obj ?: return@mapNotNull null
+                                FileDiff.Hunk(
+                                    oldStart = h["oldStart"].num?.toInt() ?: 0,
+                                    newStart = h["newStart"].num?.toInt() ?: 0,
+                                    lines = h["lines"].arr.orEmpty().mapNotNull { line ->
+                                        val l = line.obj ?: return@mapNotNull null
+                                        FileDiff.Line(l["kind"].str ?: return@mapNotNull null, l["text"].str.orEmpty())
+                                    },
+                                )
+                            },
+                            language = file["language"].str,
+                            omittedLines = file["omittedLines"].num?.toInt() ?: 0,
+                        )
+                    },
+                    o["omittedFiles"].num?.toInt() ?: 0,
+                )
+                "agent_spawn" -> AgentSpawn(o["model"].obj?.get("name").str)
+                "background_terminal_interaction" -> Terminal(o["input"].str.orEmpty(), o["command"].str)
                 else -> null
             }
         }
@@ -117,14 +222,89 @@ sealed interface Presentation {
     }
 }
 
+/**
+ * How the automatic reviewer judged a call (`review`): `allowed` or
+ * `denied` with its [risk] (`low` to `critical`) and how strongly the
+ * conversation asked for it ([userAuthorization]); or `unproven`, with
+ * why no decision could be made ([kind]: `timed_out` or `unavailable`).
+ */
+data class ToolReview(
+    val outcome: String,
+    val reason: String,
+    val risk: String? = null,
+    val userAuthorization: String? = null,
+    val kind: String? = null,
+) {
+    companion object {
+        fun parse(value: JsonElement?): ToolReview? {
+            val o = value.obj ?: return null
+            return ToolReview(
+                outcome = o["outcome"].str ?: return null,
+                reason = o["reason"].str.orEmpty(),
+                risk = o["risk"].str,
+                userAuthorization = o["userAuthorization"].str,
+                kind = o["kind"].str,
+            )
+        }
+    }
+}
+
+/** A tool call's raw data as the phone keeps it: every string at most [LIMIT] long. */
+object ToolData {
+    /** UTF-16 units a raw string keeps; a longer one ends in [MARK]. */
+    const val LIMIT = 32_000
+    const val MARK = "\n…"
+
+    class Bounded(val value: JsonElement, val cut: Boolean)
+
+    fun bound(value: JsonElement): Bounded {
+        var cut = false
+        fun walk(element: JsonElement): JsonElement = when (element) {
+            is JsonObject -> JsonObject(element.mapValues { (_, child) -> walk(child) })
+            is kotlinx.serialization.json.JsonArray -> kotlinx.serialization.json.JsonArray(element.map(::walk))
+            is JsonPrimitive -> if (element.isString && element.content.length > LIMIT) {
+                cut = true
+                JsonPrimitive(element.content.take(LIMIT) + MARK)
+            } else {
+                element
+            }
+            else -> element
+        }
+        val bounded = walk(value)
+        return Bounded(if (cut) bounded else value, cut)
+    }
+}
+
 /** One content block. Unknown types are kept by name so a message still reads in order. */
 sealed interface Block {
     data class Text(val text: String) : Block
     data class Reasoning(val text: String) : Block
     /** `data` is base64; history may leave a large picture's bytes out, and then it is [Unknown]. */
     data class Image(val mimeType: String, val data: String) : Block
-    /** [arguments] are the raw input, sent only where no presentation stands for it. */
-    data class ToolCall(val id: String?, val name: String, val status: String, val presentation: Presentation?, val arguments: JsonElement? = null) : Block
+    /**
+     * [arguments] and [result] are the raw data, which history leaves out
+     * where a presentation stands for it (`omitToolData`); a string in them
+     * past [ToolData.LIMIT] is cut, and then [cut] says so and the whole call
+     * is read again when opened. A question ([Question.TOOL_NAME]) also
+     * keeps its result's [output], which says how it was answered.
+     * [review] and [elevated] come together, for a call that crossed the
+     * automatic review.
+     */
+    data class ToolCall(
+        val id: String?,
+        val name: String,
+        val status: String,
+        val presentation: Presentation?,
+        val arguments: JsonElement? = null,
+        val output: String? = null,
+        val result: JsonElement? = null,
+        val review: ToolReview? = null,
+        val elevated: Boolean? = null,
+        val cut: Boolean = false,
+    ) : Block {
+        val running: Boolean get() = status == "running"
+        val failed: Boolean get() = status == "failed"
+    }
     /** One context compaction, inside a service message: `running`, then `completed` or `failed`. */
     data class Compaction(val status: String) : Block
     data class Unknown(val type: String) : Block
@@ -140,13 +320,23 @@ sealed interface Block {
                     val data = o["data"].str
                     if (mimeType != null && data != null) Image(mimeType, data) else Unknown(type)
                 }
-                "tool_call" -> ToolCall(
-                    id = o["id"].str,
-                    name = o["name"].str.orEmpty(),
-                    status = o["status"].str ?: "running",
-                    presentation = Presentation.parse(o["presentation"]),
-                    arguments = o["arguments"]?.takeIf { it is JsonObject },
-                )
+                "tool_call" -> {
+                    val name = o["name"].str.orEmpty()
+                    val arguments = o["arguments"]?.takeIf { it is JsonObject }?.let(ToolData::bound)
+                    val result = o["result"]?.takeIf { it !is JsonNull }?.let(ToolData::bound)
+                    ToolCall(
+                        id = o["id"].str,
+                        name = name,
+                        status = o["status"].str ?: "running",
+                        presentation = Presentation.parse(o["presentation"]),
+                        arguments = arguments?.value,
+                        output = if (name == Question.TOOL_NAME) o["result"].obj?.get("output").str else null,
+                        result = result?.value,
+                        review = ToolReview.parse(o["review"]),
+                        elevated = o["elevated"].bool,
+                        cut = arguments?.cut == true || result?.cut == true,
+                    )
+                }
                 "compaction" -> Compaction(o["status"].str ?: "running")
                 else -> Unknown(type)
             }
@@ -188,8 +378,19 @@ data class Message(
     }
 }
 
-/** A run of history: the messages one turn of work holds, oldest first. */
-data class Run(val id: String, val status: String, val startedAt: Long?, val messages: List<Message>) {
+/**
+ * A run of history: the messages one turn of work holds, oldest first, and
+ * once it ended when and why (`completed`, `steering`, `abort`, `error`,
+ * `compaction`).
+ */
+data class Run(
+    val id: String,
+    val status: String,
+    val startedAt: Long?,
+    val messages: List<Message>,
+    val endedAt: Long? = null,
+    val reason: String? = null,
+) {
     companion object {
         fun parse(value: JsonElement?): Run? {
             val o = value.obj ?: return null
@@ -198,6 +399,8 @@ data class Run(val id: String, val status: String, val startedAt: Long?, val mes
                 status = o["status"].str ?: "completed",
                 startedAt = o["startedAt"].long,
                 messages = o["messages"].arr.orEmpty().mapNotNull(Message::parse),
+                endedAt = o["endedAt"].long,
+                reason = o["reason"].str,
             )
         }
     }
@@ -293,8 +496,20 @@ data class AgentInfo(
     }
 }
 
-/** `GET /v0/agents/:id/bootstrap`: the agent, its mode and draft, and what waits to be taken. */
-data class Bootstrap(val agent: AgentInfo, val mode: Mode?, val draft: Draft?, val pending: List<Message>, val cursor: String?) {
+/**
+ * `GET /v0/agents/:id/bootstrap`: the agent, its mode and draft, what waits
+ * to be taken, and its slash commands (null from a daemon that sends none).
+ */
+data class Bootstrap(
+    val agent: AgentInfo,
+    val mode: Mode?,
+    val draft: Draft?,
+    val pending: List<Message>,
+    val cursor: String?,
+    val slashCommands: List<SlashCommand>? = null,
+    /** The conversation's latest context measurement; null until the provider reported one. */
+    val context: ContextMeasurement? = null,
+) {
     companion object {
         fun parse(value: JsonElement?): Bootstrap? {
             val o = value.obj ?: return null
@@ -304,6 +519,8 @@ data class Bootstrap(val agent: AgentInfo, val mode: Mode?, val draft: Draft?, v
                 draft = Draft.parse(o["draft"]),
                 pending = o["pending"].arr.orEmpty().mapNotNull(Message::parse),
                 cursor = o["cursor"].str,
+                slashCommands = SlashCommand.parseAll(o["slashCommands"]),
+                context = ContextMeasurement.parse(o["context"]),
             )
         }
     }
@@ -321,6 +538,8 @@ data class Question(
     /** Who asks for permission, by display name; null for the agent's own question. */
     val permissionFrom: String?,
     val isPermission: Boolean,
+    /** Each prompt's values by its ID, once answered. */
+    val answers: Map<String, List<String>>? = null,
 ) {
     data class Option(val label: String, val description: String?)
 
@@ -351,6 +570,93 @@ data class Question(
     val answerable: Boolean get() = prompts.isNotEmpty()
 
     companion object {
+        /** The tool that asks a question; its call's ID is the question's. */
+        const val TOOL_NAME = "request_user_input"
+
+        /**
+         * A question as its call asked it (`request_user_input` arguments)
+         * and, from the result the agent was given (`formatUserInputForModel`),
+         * how it was answered; null when the call says neither (iOS
+         * 7f6355041 `AgentWire.Question.asked`).
+         */
+        fun asked(id: String, arguments: JsonElement?, output: String?): Question? {
+            val args = arguments.obj ?: return null
+            // One question may come bare, as the batch's `question_1`.
+            val entries = args["questions"].arr?.takeIf { it.isNotEmpty() }
+                ?: args.takeIf { it["question"].str != null }?.let { listOf(it) }
+                ?: return null
+            val prompts = entries.mapIndexed { offset, entry ->
+                val e = entry.obj ?: return null
+                val question = e["question"].str ?: return null
+                // Options come as a list, or as `{ choices, multiSelect }`.
+                val options = e["options"]
+                val choices = options.arr ?: options.obj?.get("choices").arr
+                Prompt(
+                    id = e["id"].str ?: "question_${offset + 1}",
+                    header = e["header"].str,
+                    question = question,
+                    multiSelect = e["multiSelect"].bool ?: options.obj?.get("multiSelect").bool ?: false,
+                    options = choices.orEmpty().mapNotNull { choice ->
+                        choice.obj?.get("label").str?.let { Option(it, choice.obj?.get("description").str) }
+                    },
+                    secret = null,
+                )
+            }
+            val asked = Question(id, "pending", args["context"].str, prompts, null, false)
+            if (output == null) return asked
+            if (!output.contains("\nStatus: Answered")) return asked.copy(status = "canceled")
+            return asked.copy(status = "answered", answers = answers(output, prompts))
+        }
+
+        /**
+         * Each prompt's values from a result's `Answer:` section: `id: value`
+         * lines, a value `Selected: a, b` then any text typed under it.
+         */
+        internal fun answers(output: String, prompts: List<Prompt>): Map<String, List<String>> {
+            val start = output.indexOf("\nAnswer:\n").takeIf { it >= 0 } ?: return emptyMap()
+            val lines = output.substring(start + "\nAnswer:\n".length).split("\n")
+            val values = LinkedHashMap<String, MutableList<String>>()
+            var current: String? = null
+            for (line in lines) {
+                val prompt = prompts.firstOrNull { line.startsWith("${it.id}: ") }
+                when {
+                    prompt != null -> {
+                        current = prompt.id
+                        values[prompt.id] = mutableListOf(line.substring(prompt.id.length + 2))
+                    }
+                    current != null -> values.getOrPut(current) { mutableListOf() } += line
+                    // A single question's answer carries no ID.
+                    prompts.size == 1 -> {
+                        current = prompts[0].id
+                        values[prompts[0].id] = mutableListOf(line)
+                    }
+                }
+            }
+            val answers = LinkedHashMap<String, List<String>>()
+            for (prompt in prompts) {
+                val body = values[prompt.id]?.takeIf { it.isNotEmpty() } ?: continue
+                val picked = ArrayList<String>()
+                var rest: List<String> = body
+                if (body[0].startsWith("Selected: ")) {
+                    val selected = body[0].removePrefix("Selected: ")
+                    // Labels may hold ", " themselves: the known ones are read whole.
+                    picked += prompt.options.map { it.label }.filter {
+                        selected == it || selected.startsWith("$it, ") || selected.endsWith(", $it") || selected.contains(", $it, ")
+                    }
+                    if (picked.isEmpty()) picked += selected.split(", ")
+                    rest = body.drop(1)
+                }
+                val text = rest.joinToString("\n").trim()
+                if (text.isNotEmpty()) picked += text
+                answers[prompt.id] = picked
+            }
+            return answers
+        }
+
+        /** `{ promptId: [values] }`, as `answers` and `question.updated` carry them. */
+        fun answersOf(value: JsonObject): Map<String, List<String>> =
+            value.mapValues { (_, values) -> values.arr.orEmpty().mapNotNull { it.str } }
+
         fun parse(value: JsonElement?): Question? {
             val o = value.obj ?: return null
             val permission = o["permissionRequest"].obj
@@ -383,6 +689,7 @@ data class Question(
                 },
                 permissionFrom = permission?.let { it["serverTitle"].str ?: it["server"].str },
                 isPermission = permission != null,
+                answers = o["answers"].obj?.let(::answersOf),
             )
         }
     }
