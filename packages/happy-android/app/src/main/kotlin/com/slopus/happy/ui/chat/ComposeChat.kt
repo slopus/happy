@@ -200,6 +200,8 @@ class ComposeChat internal constructor(
         val picked = images?.images?.toList().orEmpty()
         if (prompt.isEmpty() && picked.isEmpty()) return
         newSession.setInput(prompt)
+        // The folder the chat shows is where it starts, even if the computer's chats came in a moment ago.
+        newSession.followMachine()
         val kind = newSession.kind.value
         val bot = newSession.bot.value
         // A bot's name is asked for where it is typed, before anything starts; the text stays.
@@ -383,7 +385,8 @@ fun ComposeTarget(compose: ComposeChat, onReturn: () -> Unit = {}) {
     val kind by newSession.kind.collectAsStateWithLifecycle()
     val bot by newSession.bot.collectAsStateWithLifecycle()
     // The folders follow the computer, while nothing has started.
-    LaunchedEffect(draft.selectedMachineId, draft.selectedPath, draft.selectedProjectId, options != null) {
+    // Its chats may arrive after it: the most recent folder is looked for again as its places come in.
+    LaunchedEffect(draft.selectedMachineId, draft.selectedPath, draft.selectedProjectId, options?.projects?.size) {
         if (compose.composing) newSession.followMachine()
     }
     val current = options

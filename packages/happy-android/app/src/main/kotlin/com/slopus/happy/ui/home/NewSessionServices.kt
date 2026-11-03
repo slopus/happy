@@ -229,7 +229,10 @@ class NewSessionServices(
     /**
      * LegacyComposeStart's followMachine: a computer with no folder picked
      * (another was just chosen, or nothing ever was) starts in its most
-     * recent folder, or home, so the folders follow the computer.
+     * recent folder, so the folders follow the computer. With none known
+     * yet nothing is written, and the start goes home (`~`): a computer
+     * whose chats are still arriving takes its most recent folder once they
+     * are in, instead of being held at home by an early answer.
      */
     fun followMachine() {
         val snapshot = snapshots.value ?: return
@@ -237,7 +240,7 @@ class NewSessionServices(
             if (draft.selectedPath != null || draft.selectedProjectId != null) return@change draft
             val choice = findMachineChoice(collectMachineChoices(snapshot.machines), draft.selectedMachineId) ?: return@change draft
             val recent = collectSessionPlaces(choice.machineIds, snapshot.sessions).firstOrNull { it.projectId == null && it.path != null }
-            draft.withPath(recent?.path ?: "~")
+            recent?.path?.let(draft::withPath) ?: draft
         }
     }
 
