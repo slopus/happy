@@ -66,6 +66,12 @@ public final class ShellViewController: UIViewController {
     /// display-mode changes until it settles are the split's, not the
     /// person's.
     private var resizing = false
+    /// The voice call's bar across the window's top (`CallController`), and
+    /// whether it shows. While it does, the content starts at its foot.
+    let callBar = CallBarView()
+    private(set) var callBarShown = false
+    /// What fills the window under the bar: `phone` or the split.
+    private var content: UIViewController?
 
     /// `splits`: hold the split view, as an iPad does. A test can ask for
     /// it on any device.
@@ -86,7 +92,9 @@ public final class ShellViewController: UIViewController {
         fatalError("init(coder:) is not supported")
     }
 
-    public override var childForStatusBarStyle: UIViewController? { isExpanded ? main : phone }
+    public override var childForStatusBarStyle: UIViewController? { callBarShown ? nil : isExpanded ? main : phone }
+    /// White over the call's bar.
+    public override var preferredStatusBarStyle: UIStatusBarStyle { callBarShown ? .lightContent : .default }
     public override var childForStatusBarHidden: UIViewController? { isExpanded ? main : phone }
     public override var childForHomeIndicatorAutoHidden: UIViewController? { isExpanded ? main : phone }
 
@@ -132,6 +140,74 @@ public final class ShellViewController: UIViewController {
         child.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(child.view)
         child.didMove(toParent: self)
+        content = child
+        callBar.isHidden = true
+        view.addSubview(callBar)
+    }
+
+    // MARK: The call's bar
+
+    /// Slides the call's bar in from above the window, or back out, while
+    /// the content moves down by its height or back: Telegram's in-call
+    /// status bar (adapted from Telegram-iOS
+    /// `Display/Source/Navigation/NavigationController.swift`,
+    /// `setForceInCallStatusBar`), the navigation bar pushed down with the
+    /// rest rather than covered. Reduce Motion fades it instead.
+    func setCallBarShown(_ shown: Bool, animated: Bool) {
+        guard shown != callBarShown else { return }
+        callBarShown = shown
+        view.bringSubviewToFront(callBar)
+        placeCallBar()
+        let hidden = CGAffineTransform(translationX: 0, y: CallBarMotion.hiddenOffset(barHeight: callBar.barHeight))
+        let slides = animated && !UIAccessibility.isReduceMotionEnabled
+        if shown {
+            callBar.isHidden = false
+            callBar.transform = slides ? hidden : .identity
+            callBar.alpha = slides || !animated ? 1 : 0
+        }
+        let changes = {
+            self.callBar.transform = shown || !slides ? .identity : hidden
+            if !slides { self.callBar.alpha = shown ? 1 : 0 }
+            self.layoutCallBar()
+            self.content?.view.layoutIfNeeded()
+            self.setNeedsStatusBarAppearanceUpdate()
+        }
+        let done: (Bool) -> Void = { _ in
+            guard !self.callBarShown else { return }
+            self.callBar.isHidden = true
+            self.callBar.transform = .identity
+            self.callBar.alpha = 1
+        }
+        guard animated, view.window != nil else {
+            changes()
+            done(true)
+            return
+        }
+        UIView.animate(withDuration: CallBarMotion.duration, delay: 0, options: [.curveEaseInOut, .beginFromCurrentState], animations: changes, completion: done)
+    }
+
+    /// The bar at the window's top, from the window's own safe area and
+    /// status bar, and the content from its foot down (`CallBarLayout`).
+    private func layoutCallBar() {
+        guard let content else { return }
+        placeCallBar()
+        let frame = CallBarLayout.content(in: view.bounds, barHeight: callBarShown ? callBar.barHeight : 0)
+        if content.view.frame != frame { content.view.frame = frame }
+    }
+
+    /// The bar alone, where it is when shown; a transform slides it.
+    private func placeCallBar() {
+        let bounds = view.bounds
+        let landscape = bounds.width > bounds.height
+        callBar.environment = CallBarView.Environment(
+            safeArea: LayoutInsets(view.safeAreaInsets),
+            statusBar: view.window?.windowScene?.statusBarManager?.statusBarFrame.height ?? view.safeAreaInsets.top,
+            compactWidth: traitCollection.horizontalSizeClass == .compact,
+            landscape: landscape
+        )
+        let waves = CGRect(x: 0, y: 0, width: bounds.width, height: callBar.barHeight + CallWaves.overhang)
+        callBar.bounds = CGRect(origin: .zero, size: waves.size)
+        callBar.center = CGPoint(x: waves.midX, y: waves.midY)
     }
 
     // MARK: The one stack
@@ -288,6 +364,7 @@ public final class ShellViewController: UIViewController {
 
     public override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        layoutCallBar()
         syncStacks()
     }
 
@@ -447,6 +524,7 @@ extension ShellViewController: UINavigationControllerDelegate {
         // An interactive pop that was cancelled ends here on the screen it
         // started from.
         if navigationController === main { followMainPanel() }
+        CallController.shared.topDidChange()
     }
 
     /// Every screen in the stack, legacy and agent alike, is gone back to

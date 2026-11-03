@@ -1,0 +1,139 @@
+package com.slopus.happy.call
+
+import android.content.Context
+import io.elevenlabs.AgentOverrides
+import io.elevenlabs.ConversationClient
+import io.elevenlabs.ConversationConfig
+import io.elevenlabs.ConversationSession
+import io.elevenlabs.Language
+import io.elevenlabs.Overrides
+import io.elevenlabs.models.ConversationMode
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/**
+ * The hosted call agent over the official SDK (iOS `ElevenLabsCallConnection`).
+ * Apart from the relay's `ElevenLabsTransport` on purpose: no prompt,
+ * greeting or relay tools are sent; the hosted agent has its own, and its
+ * one variable is `initialConversationContext`. Tool calls are answered one
+ * at a time, by their provider ID, and an ID seen before is never run again.
+ * Everything the SDK reports comes back on [scope]'s thread.
+ */
+class ElevenLabsCallConnection private constructor(
+    private val session: ConversationSession,
+    private val scope: CoroutineScope,
+) : CallConnection {
+    private val handled = HashSet<String>()
+    private val tools = HashMap<String, Job>()
+    private var ended = false
+
+    override suspend fun end() {
+        ended = true
+        tools.values.forEach { it.cancel() }
+        tools.clear()
+        withContext(NonCancellable) { session.endSession() }
+    }
+
+    override suspend fun setMuted(muted: Boolean) = session.setMicMuted(muted)
+    override fun update(context: String) {
+        if (com.slopus.happy.BuildConfig.DEBUG) CallProbe.sent("update", context)
+        session.sendContextualUpdate(context)
+    }
+
+    override fun say(prompt: String) {
+        if (com.slopus.happy.BuildConfig.DEBUG) CallProbe.sent("prompt", prompt)
+        session.sendUserMessage(prompt)
+    }
+
+    private fun answer(call: CallToolCall, events: CallEvents) {
+        if (ended || !handled.add(call.id)) return
+        tools[call.id] = scope.launch {
+            val result = events.tool(call)
+            if (com.slopus.happy.BuildConfig.DEBUG) CallProbe.tool(call, result)
+            if (ended) return@launch
+            if (call.expectsResponse) session.sendToolResult(call.id, result.text, result.isError)
+            tools.remove(call.id)
+        }
+    }
+
+    /**
+     * Who is speaking, from the agent's mode and the person's voice activity,
+     * held 300 ms past the end of the person's speech.
+     */
+    private class Tracker(private val scope: CoroutineScope, private val changed: (CallActivity, Float, Float?) -> Unit) {
+        private var speaking = false
+        private var silence: Job? = null
+        var audio: Float? = null
+
+        fun agentSpeaking(value: Boolean) {
+            speaking = value
+            silence?.cancel(); silence = null
+            changed(if (value) CallActivity.AgentSpeaking else CallActivity.Listening, 0f, audio)
+        }
+
+        fun vad(score: Float) {
+            if (speaking) return
+            if (score > 0.5f) {
+                silence?.cancel(); silence = null
+                changed(CallActivity.UserSpeaking, score, null)
+            } else if (silence == null) {
+                silence = scope.launch {
+                    delay(300)
+                    silence = null
+                    if (!speaking) changed(CallActivity.Listening, 0f, null)
+                }
+            }
+        }
+
+        fun level(value: Float) {
+            audio = value
+            if (speaking) changed(CallActivity.AgentSpeaking, 0f, value)
+        }
+    }
+
+    companion object {
+        suspend fun connect(context: Context, scope: CoroutineScope, grant: CallGrant, request: CallStart, events: CallEvents): ElevenLabsCallConnection {
+            val tracker = Tracker(scope, events.activity)
+            var connection: ElevenLabsCallConnection? = null
+            // Calls that come before the session is handed back wait for it.
+            val early = ArrayList<CallToolCall>()
+            val config = ConversationConfig(
+                // A minted token when a Happy service grants one; a public agent by its ID otherwise.
+                agentId = grant.agentId.takeIf { grant.conversationToken == null },
+                conversationToken = grant.conversationToken,
+                userId = grant.userId,
+                dynamicVariables = mapOf("initialConversationContext" to request.context),
+                overrides = request.language?.let(Language::fromCode)?.let { Overrides(agent = AgentOverrides(language = it)) },
+                onUnhandledClientToolCall = { call ->
+                    val parameters = call.parameters.toJson() as? kotlinx.serialization.json.JsonObject ?: kotlinx.serialization.json.JsonObject(emptyMap())
+                    val request = CallToolCall(call.toolCallId, call.toolName, parameters, call.expectsResponse)
+                    scope.launch { connection?.answer(request, events) ?: early.add(request) }
+                },
+                onModeChange = { mode -> scope.launch { tracker.agentSpeaking(mode == ConversationMode.SPEAKING) } },
+                onVadScore = { score -> scope.launch { tracker.vad(score) } },
+                onAudioLevelChanged = { level -> scope.launch { tracker.level(level) } },
+                onUserTranscript = { text -> if (com.slopus.happy.BuildConfig.DEBUG) scope.launch { CallProbe.line("user", text) } },
+                onAgentResponse = { text -> if (com.slopus.happy.BuildConfig.DEBUG) scope.launch { CallProbe.line("agent", text) } },
+                onDisconnect = { scope.launch { events.disconnected() } },
+                onError = { _, _ -> scope.launch { events.disconnected() } },
+            )
+            var opened: ConversationSession? = null
+            try {
+                val session = ConversationClient.startSession(config, context)
+                opened = session
+                return ElevenLabsCallConnection(session, scope).also { made ->
+                    connection = made
+                    early.forEach { made.answer(it, events) }
+                    early.clear()
+                }
+            } catch (error: Throwable) {
+                withContext(NonCancellable) { opened?.endSession() }
+                throw error
+            }
+        }
+    }
+}

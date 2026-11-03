@@ -45,6 +45,7 @@ enum class Octicon(val codepoint: Int) {
 
 /** The MaterialCommunityIcons glyphs happy-app uses (glyphmaps/MaterialCommunityIcons.json). */
 enum class MaterialCommunityIcon(val codepoint: Int) {
+    PhoneHangup(0xf03f5), // phone-hangup
     Tree(0xf0531), // tree
 }
 

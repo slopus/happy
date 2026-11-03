@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>HappyCallAgentID</key>
+	<string>$(HAPPY_CALL_AGENT_ID)</string>
 	<key>HappyGuestPreviewInvites</key>
 	<true/>
 	<key>CADisableMinimumFrameDurationOnPhone</key>

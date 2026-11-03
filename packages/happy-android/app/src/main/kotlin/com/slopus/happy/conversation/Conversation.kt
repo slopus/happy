@@ -773,6 +773,24 @@ class Conversation(
     }
 
     /**
+     * A voice call's send (iOS's `send(id:text:)`): [text] exactly as given,
+     * under the caller's [id], delivered in order with the composer's. The
+     * composer's draft is left as it is. False on a chat not made yet, and
+     * for an [id] this conversation already has, which goes only once.
+     */
+    suspend fun sendAs(id: String, text: String): Boolean = withContext(lane) {
+        if (!created || closed || text.isBlank()) return@withContext false
+        if (outgoing.any { it.id == id } || id in messages) return@withContext false
+        outgoing += Outgoing(id, text, emptyList(), sentAt = now())
+        publish()
+        pump()
+        true
+    }
+
+    /** Whether [id] is a message here already: one of this phone's sends, or one the computer has. */
+    suspend fun has(id: String): Boolean = withContext(lane) { outgoing.any { it.id == id } || id in messages }
+
+    /**
      * [send] with [attachments] (staged copies on this phone): pictures the
      * model reads go inline, read in order with the sends around it; the
      * rest are written into the agent's workspace before the message goes

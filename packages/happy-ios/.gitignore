@@ -11,3 +11,5 @@ DerivedData/
 .build-mac/
 .build-ios/
 .build-sim/
+# The voice agent's ID (Config/Call.xcconfig)
+Config/Call.local.xcconfig

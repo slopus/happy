@@ -153,6 +153,26 @@ nothing here is wired to the release skill or to EAS.
   a missing client RevenueCat configuration never prevents a valid grant.
   Voice stops on background, account switch/sign-out, audio interruption or
   headphone removal. Client tools use the existing outbox and permission RPCs.
+- **An agent connection's voice call** (`HappyCore/Call`, `HappyUI/Call`) is
+  apart from that relay voice: home's three-bar button beside compose starts
+  it, and Telegram's in-call bar (`CallBarLayout`, `CallWaves`, adapted with
+  Steve's permission) sits above the navigation bar and pushes the window
+  down by its height. It talks to a new hosted ElevenLabs agent of its own
+  with five client tools (`CallTool`: listSessions, getSessionContext,
+  openSession, setSessionWatch, sendMessage) and no permission or question
+  tool; a conversation waiting on the person is a `needsInput` flag only.
+  It ends on background, interruption, lost route, account change and when
+  the relay's voice starts. For launch it connects to a public agent by its
+  ID (`PublicAgentCallGrants`): a connection mechanism, not authentication.
+  The ID is injected at build time (`HAPPY_CALL_AGENT_ID`, from the ignored
+  `Config/Call.local.xcconfig` or the command line) and is never committed
+  in code, docs or tests. Without it the tap ends at once as "Voice isn't
+  set up for this connection yet"; never fake a live call. Each device gets
+  20 free connected minutes in any rolling 30 days (`CallAllowance`, local,
+  provisional). Contract, prompt, tool schemas and rationale:
+  `docs/agent-voice-call.md` at the repository root. Harness hooks
+  (`HAPPY_CALL_FIXTURE`, `HAPPY_CALL_TAP`, `-callLive`, `CallProbe`) are
+  DEBUG only.
 - **Offline first.** Everything the account has is kept in the local
   SQLite store, and the UI reads only from that store. The network only
   moves deltas:

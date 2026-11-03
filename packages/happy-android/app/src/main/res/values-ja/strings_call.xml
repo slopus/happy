@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="call_start">音声通話を開始</string>
+    <string name="call_voice_call">音声通話</string>
+    <string name="call_muted">ミュート中</string>
+    <string name="call_mute">マイクをミュート</string>
+    <string name="call_unmute">マイクのミュートを解除</string>
+    <string name="call_end">通話を終了</string>
+    <string name="call_close">閉じる</string>
+    <string name="call_listening">聞いています</string>
+    <string name="call_user_speaking">話しています</string>
+    <string name="call_agent_speaking">Happy が話しています</string>
+    <string name="call_not_set_up">この接続では音声がまだ設定されていません</string>
+    <string name="call_microphone">マイクへのアクセスがオフです</string>
+    <string name="call_subscription">音声にはサブスクリプションが必要です</string>
+    <string name="call_limit">無料の音声時間を使い切りました：30日ごとに20分</string>
+    <string name="call_authentication">音声を使うにはもう一度サインインしてください</string>
+    <string name="call_connection">通話終了：接続が切れました</string>
+    <string name="call_open_settings">設定を開く</string>
+</resources>

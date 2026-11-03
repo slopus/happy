@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="call_start">開始語音通話</string>
+    <string name="call_voice_call">語音通話</string>
+    <string name="call_muted">已靜音</string>
+    <string name="call_mute">將麥克風靜音</string>
+    <string name="call_unmute">取消麥克風靜音</string>
+    <string name="call_end">結束通話</string>
+    <string name="call_close">關閉</string>
+    <string name="call_listening">正在聆聽</string>
+    <string name="call_user_speaking">你正在說話</string>
+    <string name="call_agent_speaking">Happy 正在說話</string>
+    <string name="call_not_set_up">此連線尚未設定語音</string>
+    <string name="call_microphone">麥克風存取已關閉</string>
+    <string name="call_subscription">語音需要訂閱</string>
+    <string name="call_limit">免費語音時間已用完：每 30 天 20 分鐘</string>
+    <string name="call_authentication">請重新登入以使用語音</string>
+    <string name="call_connection">通話已結束：連線中斷</string>
+    <string name="call_open_settings">打開設定</string>
+</resources>

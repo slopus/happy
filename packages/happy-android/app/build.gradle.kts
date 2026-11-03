@@ -42,6 +42,16 @@ val revenueCatGoogleKey = providers.environmentVariable("EXPO_PUBLIC_REVENUE_CAT
     ?.takeIf { it.isNotBlank() }
     ?: providers.gradleProperty("happy.revenueCatGoogleKey").orNull.orEmpty()
 
+// The agent connection voice call's public ElevenLabs agent
+// (docs/agent-voice-call.md): never in the repository, so from the
+// environment, -Phappy.callAgentId or the ignored local.properties. Without
+// it the voice button says voice isn't set up.
+val callAgentId = providers.environmentVariable("HAPPY_CALL_AGENT_ID").orNull?.takeIf { it.isNotBlank() }
+    ?: providers.gradleProperty("happy.callAgentId").orNull?.takeIf { it.isNotBlank() }
+    ?: Properties().apply {
+        providers.fileContents(rootProject.layout.projectDirectory.file("local.properties")).asText.orNull?.let { load(it.reader()) }
+    }.getProperty("happy.callAgentId")?.takeIf { it.isNotBlank() }
+
 // Versions follow happy-app (app.config.js, eas.json): versionName is the
 // app's `version`, read from app.config.js so the two never drift; versionCode
 // is EAS's remote, auto-incremented build number, which a store build must
@@ -103,6 +113,7 @@ android {
             .find(providers.fileContents(layout.projectDirectory.file("../../happy-app/app.config.js")).asText.get())
             ?.groupValues?.get(1) ?: error("app.config.js has no elevenLabsAgentId")
         buildConfigField("String", "ELEVENLABS_AGENT_ID", "\"$voiceAgentId\"")
+        buildConfigField("String", "CALL_AGENT_ID", callAgentId?.let { groovy.json.JsonOutput.toJson(it.trim()) } ?: "null")
         buildConfigField("String", "BUILD_COMMIT_SHA", buildCommitSha?.let { "\"$it\"" } ?: "null")
         buildConfigField("String", "BUILD_COMMIT_TIMESTAMP", buildCommitTimestamp?.let { "\"$it\"" } ?: "null")
     }

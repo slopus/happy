@@ -23,6 +23,8 @@
 	<string>1</string>
 	<key>HappyAppVariant</key>
 	<string>development</string>
+	<key>HappyCallAgentID</key>
+	<string>$(HAPPY_CALL_AGENT_ID)</string>
 	<key>HappyPostHogKey</key>
 	<string>$(HAPPY_POSTHOG_API_KEY)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>

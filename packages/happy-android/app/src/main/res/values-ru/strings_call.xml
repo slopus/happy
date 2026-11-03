@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="call_start">Начать голосовой звонок</string>
+    <string name="call_voice_call">Голосовой звонок</string>
+    <string name="call_muted">Микрофон выключен</string>
+    <string name="call_mute">Выключить микрофон</string>
+    <string name="call_unmute">Включить микрофон</string>
+    <string name="call_end">Завершить звонок</string>
+    <string name="call_close">Закрыть</string>
+    <string name="call_listening">Слушает</string>
+    <string name="call_user_speaking">Вы говорите</string>
+    <string name="call_agent_speaking">Говорит Happy</string>
+    <string name="call_not_set_up">Голос для этого подключения ещё не настроен</string>
+    <string name="call_microphone">Нет доступа к микрофону</string>
+    <string name="call_subscription">Для голоса нужна подписка</string>
+    <string name="call_limit">Бесплатное время голоса исчерпано: 20 мин за 30 дней</string>
+    <string name="call_authentication">Войдите снова, чтобы пользоваться голосом</string>
+    <string name="call_connection">Звонок завершён: связь потеряна</string>
+    <string name="call_open_settings">Открыть настройки</string>
+</resources>

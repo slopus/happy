@@ -226,6 +226,24 @@ class AgentHomeLayoutTest {
     }
 
     @Test
+    fun theVoiceButtonIsImmediatelyLeftOfCompose() {
+        var calls = 0
+        val voiced = AgentHomeActions(onOpenConversation = {}, onCompose = {}, onSettings = {}, onSettingsRow = {}, onSwitchAccount = {}, onAdd = {}, onVoice = { calls++ })
+        rule.setHappyContent { AgentHomeScreen("Studio", feed(), AgentLinkStatus.Connected, accounts, voiced) }
+        val compose = rule.node(AgentHomeTags.COMPOSE).bounds
+        val voice = rule.node(AgentHomeTags.VOICE).bounds
+        assertBox("voice", voice, compose.left - AgentHomeSpec.fabGap - 56.dp, compose.top, 56.dp, 56.dp)
+        rule.onNodeWithContentDescription("Start voice call").performClick()
+        assertEquals(1, calls)
+    }
+
+    @Test
+    fun withoutAVoiceCallThereIsNoVoiceButton() {
+        show(feed())
+        rule.node(AgentHomeTags.VOICE).assertDoesNotExist()
+    }
+
+    @Test
     fun artifactsAndTheJoinedSurfacesOpenTheFirstCard() {
         show(feed())
         val rows = listOf("artifacts", "todos", "surface-s1", "surface-s2").map { rule.node(AgentHomeTags.row(it)).bounds }

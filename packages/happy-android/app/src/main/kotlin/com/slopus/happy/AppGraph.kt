@@ -6,6 +6,7 @@ import com.slopus.happy.accounts.AccountRemovals
 import com.slopus.happy.accounts.AccountStore
 import com.slopus.happy.accounts.RnServerConfigImporter
 import com.slopus.happy.accounts.accountId
+import com.slopus.happy.call.CallController
 import com.slopus.happy.agent.AgentSessions
 import com.slopus.happy.agent.CompletionChime
 import com.slopus.happy.auth.AndroidKeyStoreKeys
@@ -57,6 +58,7 @@ import com.slopus.happy.voice.VoiceOptions
 import com.slopus.happy.voice.VoicePaywall
 import com.slopus.happy.voice.VoicePreferences
 import com.slopus.happy.voice.VoiceTools
+import com.slopus.happy.voice.VoiceStatus
 import com.slopus.happy.voice.VoiceUpsell
 import com.slopus.happy.chat.AgentState
 import com.slopus.happy.sync.SendOptions
@@ -73,6 +75,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
@@ -507,6 +510,21 @@ class AppGraph(
         network = appContext.networkPath(),
         chime = CompletionChime(appContext)::play,
     )
+
+    /**
+     * The agent connection's voice call, apart from the relay's [voice]:
+     * made the first time home's voice button or the bar asks for it.
+     */
+    val calls: CallController by lazy {
+        CallController(
+            appContext,
+            agentSessions,
+            foreground = isForeground,
+            openAccount = openAccount.map { (it as? OpenAccount.Agent)?.id },
+            relayVoiceActive = voice.state.map { it.status != VoiceStatus.Disconnected },
+            stopRelayVoice = voice::stop,
+        )
+    }
 
     /**
      * Starts reading the open account's home from disk: the agent

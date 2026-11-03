@@ -32,6 +32,15 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         item.sharesBackground = false
         return item
     }()
+    /// A voice call with this connection's agents, just left of compose
+    /// (`CallController`).
+    private lazy var voiceItem: UIBarButtonItem = {
+        let item = UIBarButtonItem(image: .voiceIcon(), primaryAction: UIAction { [weak self] _ in self?.startCall() })
+        item.accessibilityLabel = Strings.Call.start
+        item.accessibilityIdentifier = "voice-call"
+        item.sharesBackground = false
+        return item
+    }()
     private var switcher: AccountSwitcher?
     private var headerWatch: Watch?
     /// The list's room under the bar and above the toolbar, as home last
@@ -118,7 +127,7 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
             bottomBar.follow(v2.list)
         } else {
             search.install()
-            toolbarItems = [navigationItem.searchBarPlacementBarButtonItem, .flexibleSpace(), composeItem]
+            toolbarItems = [navigationItem.searchBarPlacementBarButtonItem, .flexibleSpace(), voiceItem, composeItem]
             bottomBar.follow(nil)
         }
         updateBar()
@@ -159,8 +168,41 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
         HeaderBar.edge(v2.resultsList ?? v2.list, in: self)
     }
 
+    private func startCall() {
+        guard let session = Session.session(for: id, context: context) else { return }
+        CallController.shared.start(session: session, from: self)
+    }
+
+    #if DEBUG
+    /// Screenshots: `HAPPY_CALL_FIXTURE` draws the bar from a script (no
+    /// call), `HAPPY_CALL_TAP` presses the voice button once, for real.
+    private static var launchedCall = false
+    private func launchCall() {
+        guard !Self.launchedCall else { return }
+        let environment = ProcessInfo.processInfo.environment
+        let delay = environment["HAPPY_CALL_DELAY"].flatMap(Double.init) ?? 0
+        if let fixture = environment["HAPPY_CALL_FIXTURE"] {
+            Self.launchedCall = true
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(delay))
+                guard let self else { return }
+                CallController.shared.showFixture(fixture, from: self)
+            }
+        } else if environment["HAPPY_CALL_TAP"] == "1" {
+            Self.launchedCall = true
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(delay))
+                self?.startCall()
+            }
+        }
+    }
+    #endif
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        #if DEBUG
+        launchCall()
+        #endif
         standing = true
         // The bar and the toolbar are where home rests: the list's room is
         // read from them again (`HomeListRoom`).

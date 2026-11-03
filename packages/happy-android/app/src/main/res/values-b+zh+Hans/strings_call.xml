@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="call_start">开始语音通话</string>
+    <string name="call_voice_call">语音通话</string>
+    <string name="call_muted">已静音</string>
+    <string name="call_mute">静音麦克风</string>
+    <string name="call_unmute">取消静音麦克风</string>
+    <string name="call_end">结束通话</string>
+    <string name="call_close">关闭</string>
+    <string name="call_listening">正在聆听</string>
+    <string name="call_user_speaking">你正在说话</string>
+    <string name="call_agent_speaking">Happy 正在说话</string>
+    <string name="call_not_set_up">此连接尚未设置语音</string>
+    <string name="call_microphone">麦克风访问已关闭</string>
+    <string name="call_subscription">语音需要订阅</string>
+    <string name="call_limit">免费语音时长已用完：每 30 天 20 分钟</string>
+    <string name="call_authentication">请重新登录以使用语音</string>
+    <string name="call_connection">通话已结束：连接中断</string>
+    <string name="call_open_settings">打开设置</string>
+</resources>

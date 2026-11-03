@@ -104,6 +104,7 @@ object AgentHomeTags {
     const val SEARCH = "agentHome.search"
     const val SETTINGS = "agentHome.settings"
     const val COMPOSE = "agentHome.compose"
+    const val VOICE = "agentHome.voice"
     fun row(key: String) = "agentHome.row.$key"
     const val ROW_TITLE = "agentHome.rowTitle"
     const val ROW_MARK = "agentHome.rowMark"
@@ -153,6 +154,8 @@ object AgentHomeSpec {
     /** The compose button's margin from the window's corner, and the room under the last card to scroll it clear. */
     val fabMargin = 16.dp
     val fabClearance = 96.dp
+    /** Between the voice button and compose, immediately left of it. */
+    val fabGap = 12.dp
     const val TITLE_LINE = 22
     val title = happyTextStyle(fontSize = 17, lineHeight = TITLE_LINE)
     /** A time at a row's end, where a place lists one (home's rows show none). */

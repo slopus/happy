@@ -18,6 +18,11 @@ configs:
   Debug: debug
   Preview: release
   Release: release
+# HAPPY_CALL_AGENT_ID, from an ignored Config/Call.local.xcconfig.
+configFiles:
+  Debug: Config/Call.xcconfig
+  Preview: Config/Call.xcconfig
+  Release: Config/Call.xcconfig
 settings:
   base:
     SWIFT_VERSION: "6.0"

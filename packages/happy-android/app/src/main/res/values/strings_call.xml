@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The agent connection's voice call (ui/call): new with the native apps, so no
+  happy-app catalog key has these. Not generated; translated in values-*/ (AndroidStringsTranslatedTest).
+-->
+<resources>
+    <string name="call_title" translatable="false">Happy</string>
+    <string name="call_start">Start voice call</string>
+    <string name="call_voice_call">Voice call</string>
+    <string name="call_muted">Muted</string>
+    <string name="call_mute">Mute microphone</string>
+    <string name="call_unmute">Unmute microphone</string>
+    <string name="call_end">End call</string>
+    <string name="call_close">Close</string>
+    <string name="call_listening">Listening</string>
+    <string name="call_user_speaking">You’re speaking</string>
+    <string name="call_agent_speaking">Happy is speaking</string>
+    <string name="call_not_set_up">Voice isn’t set up for this connection yet</string>
+    <string name="call_microphone">Microphone access is off</string>
+    <string name="call_subscription">Voice needs a subscription</string>
+    <string name="call_limit">Free voice time used: 20 min per 30 days</string>
+    <string name="call_authentication">Sign in again to use voice</string>
+    <string name="call_connection">Call ended: connection lost</string>
+    <string name="call_open_settings">Open Settings</string>
+</resources>

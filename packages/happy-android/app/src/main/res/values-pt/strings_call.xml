@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="call_start">Iniciar chamada de voz</string>
+    <string name="call_voice_call">Chamada de voz</string>
+    <string name="call_muted">Silenciado</string>
+    <string name="call_mute">Silenciar microfone</string>
+    <string name="call_unmute">Ativar microfone</string>
+    <string name="call_end">Encerrar chamada</string>
+    <string name="call_close">Fechar</string>
+    <string name="call_listening">Ouvindo</string>
+    <string name="call_user_speaking">Você está falando</string>
+    <string name="call_agent_speaking">Happy está falando</string>
+    <string name="call_not_set_up">A voz ainda não está configurada para esta conexão</string>
+    <string name="call_microphone">O acesso ao microfone está desativado</string>
+    <string name="call_subscription">A voz precisa de uma assinatura</string>
+    <string name="call_limit">Tempo de voz grátis esgotado: 20 min a cada 30 dias</string>
+    <string name="call_authentication">Entre novamente para usar a voz</string>
+    <string name="call_connection">Chamada encerrada: conexão perdida</string>
+    <string name="call_open_settings">Abrir Configurações</string>
+</resources>

@@ -15,6 +15,24 @@ architectures comparable (local store, delta sync, crypto layer).
 - **Voice** uses Happy's server-controlled allowance and RevenueCat paywalls,
   with ElevenLabs over WebRTC. The pinned SDK source patch in
   `vendor/elevenlabs` fixes audio focus, teardown and call-local mute.
+- **An agent connection's voice call** (`call/`, `ui/call/`), iOS's
+  `HappyCore/Call` ported: apart from the relay's voice above, its own new
+  hosted ElevenLabs agent and five client tools (`CallTool`), no permission
+  or question tool. Home's three-bar button sits immediately left of compose
+  (`ComposeFab(onVoice)`); the call's bar (`CallFrame`, after Telegram-iOS's
+  in-call status bar) slides down over the status bar and pushes the whole
+  window, the top app bar first, down by its height, taking the top inset.
+  It ends when the app leaves the foreground, another account opens or the
+  relay's voice starts. For launch it connects to a public agent by its ID
+  (`PublicAgentCallGrants`), a connection mechanism and not authentication;
+  the ID comes from `HAPPY_CALL_AGENT_ID`, `-Phappy.callAgentId` or the
+  ignored `local.properties` into `BuildConfig.CALL_AGENT_ID`, and is never
+  committed. Without it the tap says "Voice isn't set up for this
+  connection yet". Each device gets 20 free connected minutes in any
+  rolling 30 days (`CallAllowance`, local, provisional). See
+  `docs/agent-voice-call.md` at the repository root. The `happy.call.*`
+  intent extras (`CallFixtures`), `CallProbe` and `CallLiveDeviceCheck`
+  are for debug builds only.
 - **Offline first.** Everything the account has lives on the phone; the
   server is only asked for what changed since the last sync.
 - **Tool outputs are hidden by default** once the chat UI exists.

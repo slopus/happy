@@ -66,6 +66,8 @@ import com.slopus.happy.ui.tablet.MainPanelKey
 import com.slopus.happy.ui.tablet.MainPanelOpener
 import com.slopus.happy.ui.tablet.MainPanelPlaceholder
 import com.slopus.happy.ui.home.LocalHomeInSidebar
+import com.slopus.happy.ui.call.CallFrame
+import com.slopus.happy.ui.call.CallScreenEffect
 import com.slopus.happy.ui.connect.connectRoutes
 import com.slopus.happy.ui.files.filesRoutes
 import com.slopus.happy.ui.home.homeRoutes
@@ -135,12 +137,15 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
         val afterStart = LocalAfterStart.current
         val started by produceState(false) { afterStart.await(); value = true }
         if (started) PaywallHost(graph.purchases)
+        // The voice call's bar, when one shows, pushes everything down (ui/call/CallFrame).
+        CallFrame(graph.calls) {
         DissolveBox(dissolve) { CompositionLocalProvider(LocalAccountSwitcher provides switcher, LocalOverlays provides overlays) {
         // Each account has its own back stack, replaced when another opens (but not from Settings).
         key(stack) {
             val nav = rememberNavController()
             shown[0] = nav
             SideEffect { onNavigationReady(nav) }
+            CallScreenEffect(graph.calls, nav, agent)
             val openSession = { id: String -> nav.navigate(SessionRoute(id)) }
             val troubleshoot = { nav.navigate(TroubleshootRoute) }
             val connectAgent = remember(nav) { { code: String -> nav.connectAgent(graph, code) } }
@@ -218,6 +223,7 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
             PushRegistrationEffect(graph)
         }
         } }
+        }
     } } } }
 }
 

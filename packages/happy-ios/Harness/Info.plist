@@ -4,6 +4,8 @@
 <dict>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
+	<key>HappyCallAgentID</key>
+	<string>$(HAPPY_CALL_AGENT_ID)</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Allow Happy Chat Harness to show your photos and videos so you can share them in chats.</string>
 	<key>NSCameraUsageDescription</key>

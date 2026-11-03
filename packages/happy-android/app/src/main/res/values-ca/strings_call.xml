@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="call_start">Inicia una trucada de veu</string>
+    <string name="call_voice_call">Trucada de veu</string>
+    <string name="call_muted">Silenciat</string>
+    <string name="call_mute">Silencia el micròfon</string>
+    <string name="call_unmute">Activa el micròfon</string>
+    <string name="call_end">Finalitza la trucada</string>
+    <string name="call_close">Tanca</string>
+    <string name="call_listening">Escoltant</string>
+    <string name="call_user_speaking">Estàs parlant</string>
+    <string name="call_agent_speaking">Happy està parlant</string>
+    <string name="call_not_set_up">La veu encara no està configurada per a aquesta connexió</string>
+    <string name="call_microphone">L’accés al micròfon està desactivat</string>
+    <string name="call_subscription">La veu necessita una subscripció</string>
+    <string name="call_limit">Temps de veu gratuït esgotat: 20 min cada 30 dies</string>
+    <string name="call_authentication">Torna a iniciar la sessió per fer servir la veu</string>
+    <string name="call_connection">Trucada finalitzada: s’ha perdut la connexió</string>
+    <string name="call_open_settings">Obre la configuració</string>
+</resources>

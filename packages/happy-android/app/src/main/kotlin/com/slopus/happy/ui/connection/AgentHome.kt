@@ -1,5 +1,13 @@
 package com.slopus.happy.ui.connection
 
+import com.slopus.happy.BuildConfig
+import androidx.compose.ui.platform.LocalContext
+import com.slopus.happy.ui.voice.rememberMicrophonePermission
+import com.slopus.happy.ui.call.CallFixtures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import com.slopus.happy.ui.call.VoiceGlyph
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.graphics.graphicsLayer
@@ -147,6 +155,8 @@ class AgentHomeActions(
     /** Opens new work with "+"'s sheet up, for its first message's picture. */
     val onComposeWithPicture: () -> Unit = onCompose,
     val onOpenTodos: () -> Unit = {},
+    /** Starts a voice call on this connection ([com.slopus.happy.call.CallController]); null shows no voice button. */
+    val onVoice: (() -> Unit)? = null,
 )
 
 /** The colours of every bar on an agent connection's screens: the page's own [container], scrolled or not. */
@@ -424,7 +434,7 @@ fun AgentHomeScreen(
                     }
                 }
                 if (sidebar == null && feed.loaded && !searching) {
-                    ComposeFab(actions.onCompose, AgentHomeTags.COMPOSE, stringResource(R.string.agent_search_new_task))
+                    ComposeFab(actions.onCompose, AgentHomeTags.COMPOSE, stringResource(R.string.agent_search_new_task), onVoice = actions.onVoice)
                 }
                 // While search is open the sidebar's field holds still at its rest, Cancel beside it, whatever the list did.
                 if (sidebar != null && searching) {
@@ -615,20 +625,30 @@ private fun rememberSearchEntries(actions: AgentHomeActions, endSearch: () -> Un
 /**
  * A home's compose: a floating button at the bottom end of the content
  * column (so on a tablet it stays with the rows), clear of the navigation
- * bar. Put it last in a box over the page.
+ * bar. Put it last in a box over the page. With [onVoice], an agent
+ * connection's home has the voice call's button immediately left of it,
+ * the same size, [AgentHomeSpec.fabGap] apart (iOS's toolbar item beside
+ * compose), wearing the three bars ([VoiceGlyph]).
  */
 @Composable
-internal fun BoxScope.ComposeFab(onClick: () -> Unit, tag: String, label: String = stringResource(R.string.session_new_chat)) {
+internal fun BoxScope.ComposeFab(onClick: () -> Unit, tag: String, label: String = stringResource(R.string.session_new_chat), onVoice: (() -> Unit)? = null) {
     Box(Modifier.align(Alignment.BottomCenter).contentMaxWidth(LocalWindowLayout.current)) {
-        FloatingActionButton(
-            onClick = onClick,
+        Row(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .windowInsetsPadding(WindowInsets.navigationBars)
-                .padding(AgentHomeSpec.fabMargin)
-                .testTag(tag),
+                .padding(AgentHomeSpec.fabMargin),
+            horizontalArrangement = Arrangement.spacedBy(AgentHomeSpec.fabGap),
         ) {
-            Icon(Ionicon.CreateOutline, 24.dp, LocalContentColor.current, contentDescription = label)
+            if (onVoice != null) {
+                val voiceLabel = stringResource(R.string.call_start)
+                FloatingActionButton(onClick = onVoice, modifier = Modifier.testTag(AgentHomeTags.VOICE).semantics { contentDescription = voiceLabel }) {
+                    VoiceGlyph(24.dp, LocalContentColor.current)
+                }
+            }
+            FloatingActionButton(onClick = onClick, modifier = Modifier.testTag(tag)) {
+                Icon(Ionicon.CreateOutline, 24.dp, LocalContentColor.current, contentDescription = label)
+            }
         }
     }
 }
@@ -720,7 +740,10 @@ fun AgentHome(
     ReportDrawnWhen { feed.loaded || status != AgentLinkStatus.Connecting }
     val add = LocalAddFlow.current
     val switchAccount = rememberHomeAccountSwitch(graph)
-    val actions = remember(graph, session, onOpenConversation, onCompose, onComposeWithPicture, onSettings, onSettingsRow, onOpenArtifacts, onOpenSurface, onOpenArtifact, onOpenFeed, add, switchAccount, onSignIn, onOpenTodos) {
+    val microphone = rememberMicrophonePermission()
+    val voice = remember(graph, id, microphone) { { graph.calls.start(id) { microphone.request().granted } } }
+    if (BuildConfig.DEBUG) CallLaunchHooks(graph, voice)
+    val actions = remember(graph, session, onOpenConversation, onCompose, onComposeWithPicture, onSettings, onSettingsRow, onOpenArtifacts, onOpenSurface, onOpenArtifact, onOpenFeed, add, switchAccount, onSignIn, onOpenTodos, voice) {
         AgentHomeActions(
             onOpenConversation = onOpenConversation,
             onCompose = onCompose,
@@ -736,6 +759,7 @@ fun AgentHome(
             onOpenFeed = onOpenFeed,
             onLeaveSurface = { session.leaveSurface(it.id) },
             onSignIn = { graph.agentConnections.accounts.value.firstOrNull { it.id == id }?.server?.let(onSignIn) },
+            onVoice = voice,
         )
     }
     CompositionLocalProvider(LocalAgentPictures provides session.pictures) {
@@ -815,4 +839,24 @@ internal fun rememberAgentHomeListState(graph: AppGraph, id: String): LazyListSt
             .collect { places[id] = it }
     }
     return state
+}
+
+/**
+ * Debug builds only, for screenshots: an intent's `happy.call.fixture`
+ * draws the call's bar in one state from a script (no microphone, provider
+ * or grant), and `happy.call.tap` presses the voice button once, for real.
+ */
+@Composable
+private fun CallLaunchHooks(graph: AppGraph, voice: () -> Unit) {
+    val intent = (LocalContext.current as? android.app.Activity)?.intent ?: return
+    LaunchedEffect(intent) {
+        val delayMillis = intent.getLongExtra("happy.call.delay", 0L)
+        val fixture = intent.getStringExtra("happy.call.fixture")
+        val tap = intent.getBooleanExtra("happy.call.tap", false)
+        if (fixture == null && !tap) return@LaunchedEffect
+        intent.removeExtra("happy.call.fixture")
+        intent.removeExtra("happy.call.tap")
+        kotlinx.coroutines.delay(delayMillis)
+        if (tap) voice() else CallFixtures.show(graph.calls, fixture!!)
+    }
 }

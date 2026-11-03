@@ -83,6 +83,8 @@ private actor DemoComputer: AgentTransport {
             // A picked video is kept in the workspace, as the computer would.
             value = .object(["hash": .string(SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined())])
         } else if method == "POST" {
+            // What a call's tools would have changed on a real computer (`CallLiveCheck`).
+            print("[computer] POST \(path) \(body.map { String(decoding: $0.prefix(400), as: UTF8.self) } ?? "")")
             value = .object([:])
         } else {
             return .init(status: 404, body: Data("{}".utf8))
@@ -167,18 +169,29 @@ private struct SplitComposeMachine: HomeOps, HomeSessionOps {
 /// (`ChatScrollProbe`), `-pageProbe` the open page's scroll view
 /// (`PageScrollProbe`), `-long` gives the agent's conversation 60 more
 /// rounds, `-composeMachine` lets compose's first send make a session on
-/// the seeded computer (`SplitComposeMachine`).
+/// the seeded computer (`SplitComposeMachine`), `-callLive <directory>`
+/// talks to the build's hosted voice agent from files (`CallLiveCheck`).
 @MainActor
 final class SplitAppHarness {
     private var coordinator: AppCoordinator?
+    private var recorder: FrameRecorder?
     private var probe: ChatScrollProbe?
     private var pageProbe: PageScrollProbe?
+    #if DEBUG
+    private var liveCall: CallLiveCheck?
+    #endif
 
     init(window: UIWindow, arguments: [String]) {
         func option(_ name: String) -> String? {
             arguments.firstIndex(of: name).flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
         }
         let agent = arguments.contains("-agent")
+        #if DEBUG
+        if let directory = option("-callLive") {
+            do { liveCall = try CallLiveCheck(directory: URL(fileURLWithPath: directory)) }
+            catch { print("[call-live] \(error)") }
+        }
+        #endif
         if arguments.contains("-composeMachine") { SplitComposeMachine.install() }
         let computer = DemoComputer(rounds: arguments.contains("-long") ? 60 : 0)
         let controller = AccountController(
@@ -204,6 +217,9 @@ final class SplitAppHarness {
             let coordinator = AppCoordinator(window: window, context: context)
             self.coordinator = coordinator
             coordinator.start()
+            if let seconds = option("-recordFrames").flatMap(Double.init) {
+                self.recorder = FrameRecorder(window: window, seconds: seconds, top: option("-recordTop").flatMap(Double.init).map { CGFloat($0) })
+            }
             try? await Task.sleep(for: .seconds(2))
             guard let shell = window.rootViewController as? ShellViewController, let home = shell.stack.first else { return }
             // After the account's own theme has been applied.

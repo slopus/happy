@@ -1,0 +1,8 @@
+// The hosted voice agent's public ElevenLabs ID, for agent connection calls
+// (HappyCore CallAgent). Never committed: a public ID lets anyone start a
+// conversation billed to its owner. Set it in Call.local.xcconfig next to
+// this file (ignored by git) or on the build's command line:
+//     HAPPY_CALL_AGENT_ID = agent_...
+// Without it, the voice button says voice isn't set up.
+HAPPY_CALL_AGENT_ID =
+#include? "Call.local.xcconfig"
