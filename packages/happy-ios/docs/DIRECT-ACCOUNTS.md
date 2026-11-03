@@ -54,9 +54,12 @@ no longer publish or save anything of it, so nothing waits for them.
 engine up to 10 s to close its database (one stuck on the network doesn't
 hold the rest back), and deletes the folder off the main thread.
 
-Device tokens cannot access connector management routes. Disconnect therefore
-forgets this phone's credentials locally; desktop device management handles
-server-side revocation. There is no invented phone revocation endpoint.
+Device tokens cannot access connector management routes, except one: a
+phone removes its own device with `DELETE /v0/mobile-connector/device`.
+Disconnect forgets this phone's credentials locally at once and hands that
+request, with the pairing's own token, to `DeviceRevokeQueue`, which sends it
+until the agent answers (see docs/accounts.md). A daemon from before the
+route answers 403; the desktop's device list removes it there.
 
 The combined home switcher lists both account kinds. A single account keeps
 the app logo; multiple accounts show the current avatar. Selecting a direct

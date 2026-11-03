@@ -1147,6 +1147,17 @@ is `packages/happy-ios`. The wire keeps its own names
   checks its MAC before anything is kept; `AgentIdentity` reads health
   (protocol 27 or later) and `config.node`; `AgentConnections` keeps each
   connection's credentials Keystore-encrypted, apart from relay credentials.
+- **Disconnect revokes the device** (`connection/DeviceRevokes.kt`, iOS's
+  `DeviceRevokeQueue`): `AgentConnections.remove` hands the pairing's
+  credentials over before they go, and `DELETE /v0/mobile-connector/device`
+  with that pairing's own token is sent until the agent answers 2xx, 401
+  (already gone) or 403 (a daemon from before the route), or any other 4xx
+  but 408 and 429. Otherwise it is retried at 1 … 30 s, on every return to
+  the foreground (the first one at start) and on every new pairing, for up
+  to 30 days, kept in its own Keystore-encrypted prefs
+  (`agent-device-revokes`, out of backups). A token a connection here holds
+  now is never sent, so pairing again is never revoked; the agent's list
+  keeps one device per pairing on the phone.
 - **Transport** (`TailcatTransport`): tailcat-kotlin, and a fresh TCP
   stream to `server.tailcat:<port>` per HTTP/1.1 request, framed by
   `HttpResponseParser`. Each request says its `RequestCategory`, which

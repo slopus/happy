@@ -130,6 +130,17 @@ It returns the cleanup, which nothing on screen waits for:
   10 s, then its store erased and closed (a closed store refuses whatever a
   stuck request would still write), pictures closed, folder and device
   settings deleted;
+- for a paired agent, its device's removal from the agent handed to
+  `DeviceRevokeQueue` with that pairing's credentials, in its own Keychain
+  item, `happy-ios:device-revoke`, before the credentials go (a launch
+  that finishes a killed disconnect hands it over from the credentials
+  still saved). It sends `DELETE /v0/mobile-connector/device` with the
+  pairing's own token at once and, until the agent answers (2xx; 401, the
+  device already gone; 403, a daemon from before the route; any other 4xx
+  but 408 and 429), again at 1, 2, 4 … 30 s, at each launch and foreground,
+  and as soon as the phone pairs again, for up to 30 days. A token a
+  connection on the phone holds now is dropped unsent, so a re-pairing is
+  never revoked;
 - for an agent: credentials and cached identity, then up to 10 s for its
   engine to close `direct.sqlite`, then its folder (media included);
 - the journal entry struck off, only once all of it went.

@@ -357,7 +357,13 @@ nothing here is wired to the release skill or to EAS.
     deleted) runs after, written first to `Happy/removals.json`
     (`AccountRemovalJournal`), so a kill midway is finished by the next
     launch and the account is never listed again, even while its Keychain
-    item is still there. See docs/accounts.md. Signed-out logout never deletes unknown RN bytes. If RN
+    item is still there. See docs/accounts.md. Disconnecting a pairing also
+    removes its device from the agent (`DeviceRevokeQueue`: `DELETE
+    /v0/mobile-connector/device` with that pairing's own token, kept in
+    the Keychain item `happy-ios:device-revoke` until the agent answers
+    200, 401 or 403, retried at 1 … 30 s, at launch, on foreground and on
+    the next pairing, for up to 30 days), so pairing again leaves one
+    device there. A token a connection here holds is never sent. Signed-out logout never deletes unknown RN bytes. If RN
     authenticates an account also held in an own item, recovery removes that
     redundant own item only after reading the shared credentials successfully.
   - **Origin.** Each registry entry records how the account came here

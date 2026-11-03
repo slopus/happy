@@ -160,6 +160,7 @@ public final class AppCoordinator {
     /// Foreground/background, for the server's push suppression.
     public func appStateChanged(active: Bool) {
         Task { await context.account.agentConnections.setForeground(active) }
+        if active { context.account.resumeDeviceRevokes() }
         guard let session = context.account.session else { return }
         Task { await session.sendAppState(active ? "active" : "background") }
     }

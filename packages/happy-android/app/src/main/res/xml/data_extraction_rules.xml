@@ -7,17 +7,20 @@
   out). backup_rules.xml says the same for Android 11 and older.
   SecureStore: the Happy account (happy-app's item); account-credentials: the
   other Happy accounts; agent-connection-credentials: paired agents' device
-  tokens and team servers' refresh tokens.
+  tokens and team servers' refresh tokens; agent-device-revokes: disconnected
+  pairings' device tokens still to be revoked on their agents.
 -->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="SecureStore.xml" />
         <exclude domain="sharedpref" path="account-credentials.xml" />
         <exclude domain="sharedpref" path="agent-connection-credentials.xml" />
+        <exclude domain="sharedpref" path="agent-device-revokes.xml" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="SecureStore.xml" />
         <exclude domain="sharedpref" path="account-credentials.xml" />
         <exclude domain="sharedpref" path="agent-connection-credentials.xml" />
+        <exclude domain="sharedpref" path="agent-device-revokes.xml" />
     </device-transfer>
 </data-extraction-rules>

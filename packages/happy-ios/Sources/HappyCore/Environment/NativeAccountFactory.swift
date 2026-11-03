@@ -27,7 +27,8 @@ public enum NativeAccountFactory {
             localSettingsFactory: { UserDefaultsStore(suiteName: suite(LocalSettings.storageSuite(accountID: $0))) },
             appState: appState,
             deliveryActivity: deliveryActivity,
-            pushUnregisterStore: KeychainPushUnregisterStore(backend: backend)
+            pushUnregisterStore: KeychainPushUnregisterStore(backend: backend),
+            deviceRevokeStore: KeychainDeviceRevokeStore(backend: backend)
         )
     }
 }

@@ -32,6 +32,7 @@ import com.slopus.happy.payments.PurchaseAccount
 import com.slopus.happy.payments.PurchasesRepository
 import com.slopus.happy.payments.RevenueCatPurchases
 import com.slopus.happy.connection.AgentConnections
+import com.slopus.happy.connection.DeviceRevokes
 import com.slopus.happy.connection.PairingFlow
 import com.slopus.happy.connection.ServerAuthClient
 import com.slopus.happy.connection.ServerSignInFlow
@@ -257,8 +258,19 @@ class AppGraph(
     /** Team server sign-in and token refresh (edge SSO): discovery, code exchange, refresh; never follows a redirect. */
     val serverAuth = ServerAuthClient(okHttp)
 
+    /** Disconnected pairings' devices on their way off their agents (`DeviceRevokes`). */
+    private val deviceRevokes = DeviceRevokes(
+        store = ExpoSecureStore(
+            prefs = context.getSharedPreferences(DeviceRevokes.PREFS, Context.MODE_PRIVATE),
+            keys = secureStoreKeys,
+            keychainService = DeviceRevokes.KEYCHAIN_SERVICE,
+        ),
+        scope = scope,
+    )
+
     val agentConnections = AgentConnections(
         serverAuth = serverAuth,
+        revokes = deviceRevokes,
         secrets = ExpoSecureStore(
             prefs = context.getSharedPreferences(AgentConnections.SECRETS_PREFS, Context.MODE_PRIVATE),
             keys = secureStoreKeys,
@@ -434,9 +446,10 @@ class AppGraph(
     /** Whether the app is in the foreground (MainActivity started). */
     val isForeground: StateFlow<Boolean> = foreground.asStateFlow()
 
-    /** The app came to the foreground or left it (MainActivity onStart/onStop). */
+    /** The app came to the foreground or left it (MainActivity onStart/onStop). In front, what waits to be revoked goes now (the first time, at start). */
     fun setForeground(value: Boolean) {
         foreground.value = value
+        if (value) deviceRevokes.resume()
     }
 
     /** Each agent connection's live link and cached home (AgentSessions). */
