@@ -119,8 +119,8 @@ class InstallDesktopScreenTest {
         show()
         for ((label, tap) in listOf(
             "Enter link manually" to "link",
-            "Restore Legacy Account" to "restore",
-            "Legacy Server" to "server",
+            "Restore Happy CLI account" to "restore",
+            "Happy CLI server" to "server",
         )) {
             rule.onNodeWithContentDescription("More").performClick()
             rule.node(StartTags.MENU).assertExists()

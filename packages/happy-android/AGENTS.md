@@ -188,10 +188,11 @@ win:
   approves that terminal in one step (`AuthRepository.createAccount`'s
   `prepare`; a failed approval keeps no account), `happy:///account?`
   says it needs a signed-in phone, `happy://direct?` pairs an agent. The
-  ⋮ drop-down holds Enter link manually (same routing), Restore Legacy
-  Account and Legacy Server, and nothing else: no "Get help", and no
-  "Create account" because a Happy account is only ever made by a
-  terminal code. A pasted link routes exactly as the scanned code does
+  ⋮ drop-down is iOS's StartMenu: Enter link manually (same routing),
+  Restore Happy CLI account and Happy CLI server, then Get help. There is
+  no "Create account" because a Happy account is only ever made by a
+  terminal code. "Legacy" is never shown, in any language: relay accounts
+  are Happy CLI, as on iOS (its rule 10). A pasted link routes exactly as the scanned code does
   (`ConnectFlow.connectWithUrl` through `route`); only a link of no known
   kind reads differently, as "Invalid authentication URL". Dialogs are Material 3
   (`HappyAlert`, `PromptModal`), not happy-app's iOS-style card, and only

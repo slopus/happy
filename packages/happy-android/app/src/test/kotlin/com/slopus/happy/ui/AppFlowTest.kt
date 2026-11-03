@@ -92,7 +92,7 @@ class AppFlowTest {
         server.setSettings(buildJsonObject { put("analyticsOptOut", true) }, version = 2)
 
         rule.onNodeWithContentDescription("More").performClick()
-        rule.onNodeWithText("Restore Legacy Account").performClick()
+        rule.onNodeWithText("Restore Happy CLI account").performClick()
         rule.onNodeWithText("Use a secret key instead").performClick()
         rule.onNodeWithTag(RestoreTags.KEY_INPUT)
             .performTextReplacement(SecretKeyBackup.format(encodeBase64(server.secret, Base64Variant.Url)))
@@ -106,7 +106,7 @@ class AppFlowTest {
     @Test
     fun aWrongSecretKeyShowsTheError() {
         rule.onNodeWithContentDescription("More").performClick()
-        rule.onNodeWithText("Restore Legacy Account").performClick()
+        rule.onNodeWithText("Restore Happy CLI account").performClick()
         rule.onNodeWithText("Use a secret key instead").performClick()
         rule.onNodeWithTag(RestoreTags.KEY_INPUT).performTextReplacement("AAAAA-BBBBB")
         rule.onNodeWithText("Restore").performClick()

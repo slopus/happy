@@ -8,8 +8,8 @@
     <string name="start_connect">Conectar</string>
     <string name="start_more">Más</string>
     <string name="start_enter_link">Introducir enlace manualmente</string>
-    <string name="start_restore_legacy">Restaurar cuenta antigua</string>
-    <string name="start_legacy_server">Servidor antiguo</string>
+    <string name="start_restore_cli_account">Restaurar cuenta de Happy CLI</string>
+    <string name="start_cli_server">Servidor de Happy CLI</string>
     <string name="start_enter_link_title">Introducir enlace</string>
     <string name="start_enter_link_message">Pega el enlace de Happy en tu ordenador o de Happy Agent.</string>
     <string name="start_account_code">Este código añade un teléfono a una cuenta. Escanéalo con un teléfono que tenga la sesión iniciada.</string>

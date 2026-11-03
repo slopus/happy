@@ -8,8 +8,8 @@
     <string name="start_connect">连接</string>
     <string name="start_more">更多</string>
     <string name="start_enter_link">手动输入链接</string>
-    <string name="start_restore_legacy">恢复旧版账户</string>
-    <string name="start_legacy_server">旧版服务器</string>
+    <string name="start_restore_cli_account">恢复 Happy CLI 账户</string>
+    <string name="start_cli_server">Happy CLI 服务器</string>
     <string name="start_enter_link_title">输入链接</string>
     <string name="start_enter_link_message">粘贴电脑上 Happy 或 Happy Agent 中的链接。</string>
     <string name="start_account_code">此代码用于将手机添加到账户。请用已登录的手机扫描。</string>

@@ -104,12 +104,12 @@ class NavMotionTest {
         rule.waitUntilAtLeastOneExists(hasTestTag(StartTags.CONTENT), 5_000)
     }
 
-    /** Start's ⋮ › Legacy Server, a push; the clock is held from the tap on. */
+    /** Start's ⋮ › Happy CLI server, a push; the clock is held from the tap on. */
     private fun pushServer() {
         rule.onNodeWithContentDescription("More").performClick()
         rule.waitForIdle()
         rule.mainClock.autoAdvance = false
-        rule.onNodeWithText("Legacy Server").performClick()
+        rule.onNodeWithText("Happy CLI server").performClick()
         rule.mainClock.advanceTimeByFrame()
     }
 
