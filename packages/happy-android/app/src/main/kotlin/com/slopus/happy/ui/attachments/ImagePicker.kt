@@ -142,6 +142,7 @@ class ImagePicker internal constructor(
     private val scope: CoroutineScope,
     private val launchPicker: (Int) -> Unit,
     private val readClipboard: () -> ImageSource?,
+    private val source: (Uri) -> ImageSource = { throw IOException("No resolver for $it") },
 ) {
     val images: List<AttachmentPreview> get() = state.images
 
@@ -158,6 +159,12 @@ class ImagePicker internal constructor(
         if (!state.checkRoom()) return
         val source = readClipboard() ?: return state.nothingToPaste()
         scope.launch { state.add(listOf(source)) }
+    }
+
+    /** Pictures pasted into the field or put there by the keyboard: as many as there is room for. */
+    fun receive(uris: List<Uri>) {
+        if (uris.isEmpty() || !state.checkRoom()) return
+        picked(uris, source)
     }
 
     fun remove(id: String) = state.remove(id)
@@ -221,6 +228,7 @@ fun rememberImagePicker(): ImagePicker {
                 if (remaining == 1) single.launch(request) else multiple.launch(request)
             },
             readClipboard = { clipboardImage(context) },
+            source = { contentSource(context, it) },
         )
     }
     pickerRef = picker

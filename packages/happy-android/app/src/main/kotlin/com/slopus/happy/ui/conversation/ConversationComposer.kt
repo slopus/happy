@@ -9,6 +9,10 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.foundation.content.MediaType
+import androidx.compose.foundation.content.ReceiveContentListener
+import androidx.compose.foundation.content.contentReceiver
+import androidx.compose.foundation.content.hasMediaType
 import androidx.compose.ui.graphics.graphicsLayer
 import com.slopus.happy.ui.components.rememberHoistedTextFieldState
 import androidx.compose.foundation.text.input.TextFieldLineLimits
@@ -170,6 +174,7 @@ private object Slot {
  * Its vertical margins shrink to preserve a 48 dp surface where it fits;
  * picture previews hide while space is short, their count on [+].
  */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 internal fun ConversationComposer(
     state: ConversationState,
@@ -238,6 +243,17 @@ internal fun ConversationComposer(
 
     val reduceMotion = rememberReduceMotion()
     val density = LocalDensity.current
+    // A picture on the clipboard offers Paste in the field's menu and attaches (iOS AgentInputTextView), as
+    // one a keyboard inserts does. The picture is what was meant, not the name or address it often carries
+    // as text too; copied text alone pastes as words.
+    val receivePictures = remember(pictures) {
+        ReceiveContentListener { content ->
+            if (pictures == null || !content.hasMediaType(MediaType.Image)) return@ReceiveContentListener content
+            val clip = content.clipEntry.clipData
+            pictures.receive((0 until clip.itemCount).mapNotNull { clip.getItemAt(it).uri })
+            null
+        }
+    }
     // The field's width without the expand button, as last laid out: whether the words are past
     // the lines it shows is measured there, so the button taking its room never decides it.
     val fullWidth = remember { mutableIntStateOf(0) }
@@ -362,6 +378,7 @@ internal fun ConversationComposer(
                         .focusRequester(focus)
                         .onFocusChanged { focused = it.isFocused }
                         .onPreviewKeyEvent { cursor?.onKey?.invoke(it) == true }
+                        .then(if (pictures != null) Modifier.contentReceiver(receivePictures) else Modifier)
                         .onPlaced { fieldAt[0] = it }
                         .testTag(ConversationComposerTags.INPUT),
                 )

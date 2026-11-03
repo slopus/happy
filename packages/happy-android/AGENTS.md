@@ -1264,6 +1264,17 @@ focus moves between the two fields. While it is up, the chat under it is
 out of TalkBack's tree. Compose text has no exclusion paths, so every
 line keeps clear of the collapse button, not only the first two.
 
+### Pasting a picture
+
+The agent composer's field carries a content receiver
+(`Modifier.contentReceiver`), so a copied picture offers Paste in the
+field's own text menu and attaches as a waiting picture, as iOS's
+`AgentInputTextView` does. A keyboard's inserted image takes the same way.
+The picture is what was meant: its name or address, often copied with it
+as text, is dropped. Copied text alone pastes as words. Pictures go
+through `ImagePicker.receive`, so they get the same room check and
+normalization as the photo picker.
+
 ### Model and effort chips
 
 The composer's label slot holds two chips, as iOS does (e2238fdc4,
