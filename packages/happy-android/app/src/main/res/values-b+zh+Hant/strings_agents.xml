@@ -30,4 +30,7 @@
     <string name="task_archive_needs_machine">請連線到任務所在的電腦後再封存。</string>
     <string name="task_leave_needs_machine">請連線到任務所在的電腦後再離開。</string>
     <string name="task_cannot_leave">這台電腦上的 Happy Agent 還不能離開任務。請更新後重試。</string>
+    <string name="agent_search_new_task">新任務</string>
+    <string name="agent_search_new_task_picture">帶圖片的新任務</string>
+    <string name="agent_search_connect_agent">連接 Happy Agent</string>
 </resources>

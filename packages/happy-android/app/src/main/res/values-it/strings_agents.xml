@@ -30,4 +30,7 @@
     <string name="task_archive_needs_machine">Collegati al computer dell\'attività per archiviarla.</string>
     <string name="task_leave_needs_machine">Collegati al computer dell\'attività per abbandonarla.</string>
     <string name="task_cannot_leave">Happy Agent su questo computer non può ancora abbandonare attività. Aggiornalo e riprova.</string>
+    <string name="agent_search_new_task">Nuova attività</string>
+    <string name="agent_search_new_task_picture">Nuova attività con un\'immagine</string>
+    <string name="agent_search_connect_agent">Collega Happy Agent</string>
 </resources>

@@ -30,4 +30,7 @@
     <string name="task_archive_needs_machine">アーカイブするには、タスクのコンピューターに接続してください。</string>
     <string name="task_leave_needs_machine">抜けるには、タスクのコンピューターに接続してください。</string>
     <string name="task_cannot_leave">このコンピューターの Happy Agent はまだタスクから抜けられません。アップデートしてからもう一度お試しください。</string>
+    <string name="agent_search_new_task">新しいタスク</string>
+    <string name="agent_search_new_task_picture">画像付きの新しいタスク</string>
+    <string name="agent_search_connect_agent">Happy Agent を接続</string>
 </resources>

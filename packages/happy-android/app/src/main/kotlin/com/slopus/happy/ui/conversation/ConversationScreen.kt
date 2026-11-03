@@ -238,6 +238,8 @@ fun ConversationScreen(
     usage: Map<String, com.slopus.happy.conversation.AccountUsage> = emptyMap(),
     /** A model or effort list opened: ask the computer again for these accounts' readings. */
     onRefreshUsage: (List<String>) -> Unit = {},
+    /** "+"'s sheet is up as the screen first opens. */
+    opensAttach: Boolean = false,
 ) {
     RecomposeProbe.mark(ConversationScreenTags.PROBE_SCREEN)
     val colors = HappyTheme.colors
@@ -597,6 +599,7 @@ fun ConversationScreen(
                                 // The same centred column as the messages; the bar above stays full width.
                                 modifier = Modifier.contentMaxWidth(LocalWindowLayout.current),
                                 backdrop = glass,
+                                opensAttach = opensAttach,
                                 focusAsks = nameReturns,
                                 flight = flight,
                                 cursor = autocomplete.cursor,

@@ -30,4 +30,7 @@
     <string name="task_archive_needs_machine">Connecta\'t a l\'ordinador de la tasca per arxivar-la.</string>
     <string name="task_leave_needs_machine">Connecta\'t a l\'ordinador de la tasca per deixar-la.</string>
     <string name="task_cannot_leave">Happy Agent en aquest ordinador encara no pot deixar tasques. Actualitza\'l i torna-ho a provar.</string>
+    <string name="agent_search_new_task">Tasca nova</string>
+    <string name="agent_search_new_task_picture">Tasca nova amb una imatge</string>
+    <string name="agent_search_connect_agent">Connecta Happy Agent</string>
 </resources>

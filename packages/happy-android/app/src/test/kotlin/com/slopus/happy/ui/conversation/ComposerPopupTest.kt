@@ -81,6 +81,18 @@ class ComposerPopupTest {
         assertEquals(draft, rule.node(ConversationComposerTags.INPUT).fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
     }
 
+    /** Search's "New task with a picture" (happy-ios 7a605f6ce): new work opens with "+"'s sheet up. */
+    @Test fun `new work opened for a picture has the attachment sheet up`() {
+        rule.setHappyContent {
+            ConversationScreen(
+                ConversationState(created = false, loaded = true, mode = mode, catalog = catalog),
+                null, ConversationScreenActions(), opensAttach = true,
+            )
+        }
+        rule.waitForIdle()
+        rule.node(com.slopus.happy.ui.attach.AttachTags.SHEET).assertExists()
+    }
+
     @Test fun `panels mirror with RTL and clamp to small window edges`() {
         val anchor = IntRect(12, 400, 399, 492)
         val size = IntSize(280, 180)

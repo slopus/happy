@@ -33,7 +33,6 @@
     <string name="agent_search_conversations">Conversations</string>
     <string name="agent_search_actions">Quick actions</string>
     <string name="agent_search_no_results">No results for “%1$s”</string>
-    <string name="agent_search_add">Add account or agent</string>
     <string name="agent_search_open_settings">Open settings</string>
 
     <string name="agent_settings_edit_name">Edit name</string>

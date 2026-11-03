@@ -106,6 +106,8 @@ class AgentHomeActions(
     val onLeaveSurface: (suspend (AgentFeedRow.Surface) -> String?)? = null,
     /** Signs a team server in again, once its sign-in expired (edge SSO). */
     val onSignIn: () -> Unit = {},
+    /** Opens new work with "+"'s sheet up, for its first message's picture. */
+    val onComposeWithPicture: () -> Unit = onCompose,
 )
 
 /** The colours of every bar on an agent connection's screens: the page's own [container], scrolled or not. */
@@ -302,7 +304,7 @@ fun AgentHomeScreen(
                     )
                 }
             }
-            if (feed.loaded && !searching) ComposeFab(actions.onCompose, AgentHomeTags.COMPOSE)
+            if (feed.loaded && !searching) ComposeFab(actions.onCompose, AgentHomeTags.COMPOSE, stringResource(R.string.agent_search_new_task))
             // Home dims under the results, and a tap on it ends the search; it stays as it was underneath.
             // Both start at the bar's own foot.
             AnimatedVisibility(
@@ -401,14 +403,20 @@ private enum class HomePhase { Loading, Offline, Empty, List }
  */
 @Composable
 private fun rememberSearchEntries(actions: AgentHomeActions): Pair<List<AgentSearchEntry>, List<AgentSearchEntry>> {
-    val newChat = stringResource(R.string.session_new_chat)
-    val add = stringResource(R.string.agent_search_add)
+    val newTask = stringResource(R.string.agent_search_new_task)
+    val newTaskPicture = stringResource(R.string.agent_search_new_task_picture)
+    val connect = stringResource(R.string.agent_search_connect_agent)
+    val scan = stringResource(R.string.onboarding_scan_button)
     val openSettings = stringResource(R.string.agent_search_open_settings)
     val index = agentSettingsIndex()
-    return remember(actions, newChat, add, openSettings, index) {
+    return remember(actions, newTask, newTaskPicture, connect, scan, openSettings, index) {
+        // happy-ios HomeViewController.quickActions (7a605f6ce). Connect and Scan both open the
+        // scanner here: Android's one Add scanner takes a computer's, a terminal's or an agent's code.
         listOf(
-            AgentSearchEntry("new-chat", newChat, Ionicon.CreateOutline, actions.onCompose),
-            AgentSearchEntry("add", add, Ionicon.QrCodeOutline, actions.onAdd),
+            AgentSearchEntry("new-work", newTask, Ionicon.CreateOutline, actions.onCompose),
+            AgentSearchEntry("new-work-picture", newTaskPicture, Ionicon.ImageOutline, actions.onComposeWithPicture),
+            AgentSearchEntry("connect-agent", connect, Ionicon.LaptopOutline, actions.onAdd),
+            AgentSearchEntry("scan", scan, Ionicon.QrCodeOutline, actions.onAdd),
             AgentSearchEntry("settings", openSettings, Ionicon.SettingsOutline, actions.onSettings),
         ) to index.map { row -> AgentSearchEntry(row.id, row.title, row.icon) { actions.onSettingsRow(row) } }
     }
@@ -475,7 +483,7 @@ internal fun BarTitle(name: String, status: BarStatus?, titleTag: String, status
  * bar. Put it last in a box over the page.
  */
 @Composable
-internal fun BoxScope.ComposeFab(onClick: () -> Unit, tag: String) {
+internal fun BoxScope.ComposeFab(onClick: () -> Unit, tag: String, label: String = stringResource(R.string.session_new_chat)) {
     Box(Modifier.align(Alignment.BottomCenter).contentMaxWidth(LocalWindowLayout.current)) {
         FloatingActionButton(
             onClick = onClick,
@@ -485,7 +493,7 @@ internal fun BoxScope.ComposeFab(onClick: () -> Unit, tag: String) {
                 .padding(AgentHomeSpec.fabMargin)
                 .testTag(tag),
         ) {
-            Icon(Ionicon.CreateOutline, 24.dp, LocalContentColor.current, contentDescription = stringResource(R.string.session_new_chat))
+            Icon(Ionicon.CreateOutline, 24.dp, LocalContentColor.current, contentDescription = label)
         }
     }
 }
@@ -540,6 +548,7 @@ fun AgentHome(
     onCompose: () -> Unit,
     onSettings: () -> Unit,
     onSettingsRow: (AgentSettingsRow) -> Unit,
+    onComposeWithPicture: () -> Unit = onCompose,
     onOpenArtifacts: () -> Unit = {},
     onOpenSurface: (AgentFeedRow.Surface) -> Unit = {},
     /** Signs the team server at [server] in again ([AgentConnection.server]). */
@@ -553,10 +562,11 @@ fun AgentHome(
     ReportDrawnWhen { feed.loaded || status != AgentLinkStatus.Connecting }
     val add = LocalAddFlow.current
     val switchAccount = rememberHomeAccountSwitch(graph)
-    val actions = remember(graph, session, onOpenConversation, onCompose, onSettings, onSettingsRow, onOpenArtifacts, onOpenSurface, add, switchAccount, onSignIn) {
+    val actions = remember(graph, session, onOpenConversation, onCompose, onComposeWithPicture, onSettings, onSettingsRow, onOpenArtifacts, onOpenSurface, add, switchAccount, onSignIn) {
         AgentHomeActions(
             onOpenConversation = onOpenConversation,
             onCompose = onCompose,
+            onComposeWithPicture = onComposeWithPicture,
             onSettings = onSettings,
             onSettingsRow = onSettingsRow,
             onSwitchAccount = switchAccount,

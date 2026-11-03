@@ -193,6 +193,8 @@ internal fun ConversationComposer(
     modifier: Modifier = Modifier,
     backdrop: GlassSource? = null,
     pictures: ImagePicker? = rememberComposerImages(enabled = true),
+    /** "+"'s sheet is up as the composer first shows. */
+    opensAttach: Boolean = false,
     /** Raised to take the keyboard into the composer (Return in new work's name). */
     focusAsks: Int = 0,
     /** Where a sent message's words fly from ([SendFlight]). */
@@ -234,7 +236,7 @@ internal fun ConversationComposer(
     LaunchedEffect(field, cursor) { androidx.compose.runtime.snapshotFlow { field.selection }.collect { cursor?.selection = it } }
     val keyboard = LocalSoftwareKeyboardController.current
     var focused by remember { mutableStateOf(false) }
-    var attaching by rememberSaveable { mutableStateOf(false) }
+    var attaching by rememberSaveable { mutableStateOf(opensAttach) }
     val plus = rememberAttachButton { Icon(MaterialSymbols.Add, contentDescription = null, tint = colors.text) }
     var menu by remember { mutableStateOf(false) }
     var picker by rememberSaveable { mutableStateOf<PickerList?>(null) }

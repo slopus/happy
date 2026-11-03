@@ -31,7 +31,6 @@
     <string name="agent_search_conversations">对话</string>
     <string name="agent_search_actions">快捷操作</string>
     <string name="agent_search_no_results">没有“%1$s”的结果</string>
-    <string name="agent_search_add">添加账户或智能体</string>
     <string name="agent_search_open_settings">打开设置</string>
     <string name="agent_settings_edit_name">编辑名称</string>
     <string name="agent_settings_edit_avatar">编辑头像</string>

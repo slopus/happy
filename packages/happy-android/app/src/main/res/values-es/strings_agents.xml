@@ -30,4 +30,7 @@
     <string name="task_archive_needs_machine">Conéctate al ordenador de la tarea para archivarla.</string>
     <string name="task_leave_needs_machine">Conéctate al ordenador de la tarea para salir de ella.</string>
     <string name="task_cannot_leave">Happy Agent en este ordenador aún no puede salir de tareas. Actualízalo y vuelve a intentarlo.</string>
+    <string name="agent_search_new_task">Nueva tarea</string>
+    <string name="agent_search_new_task_picture">Nueva tarea con una imagen</string>
+    <string name="agent_search_connect_agent">Conectar Happy Agent</string>
 </resources>

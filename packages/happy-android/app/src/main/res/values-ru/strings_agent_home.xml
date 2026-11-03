@@ -31,7 +31,6 @@
     <string name="agent_search_conversations">Разговоры</string>
     <string name="agent_search_actions">Быстрые действия</string>
     <string name="agent_search_no_results">Ничего не найдено по запросу «%1$s»</string>
-    <string name="agent_search_add">Добавить аккаунт или агента</string>
     <string name="agent_search_open_settings">Открыть настройки</string>
     <string name="agent_settings_edit_name">Изменить имя</string>
     <string name="agent_settings_edit_avatar">Изменить аватар</string>

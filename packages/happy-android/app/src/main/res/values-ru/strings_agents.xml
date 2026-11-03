@@ -30,4 +30,7 @@
     <string name="task_archive_needs_machine">Подключитесь к компьютеру задачи, чтобы архивировать её.</string>
     <string name="task_leave_needs_machine">Подключитесь к компьютеру задачи, чтобы покинуть её.</string>
     <string name="task_cannot_leave">Happy Agent на этом компьютере пока не умеет покидать задачи. Обновите его и попробуйте снова.</string>
+    <string name="agent_search_new_task">Новая задача</string>
+    <string name="agent_search_new_task_picture">Новая задача с картинкой</string>
+    <string name="agent_search_connect_agent">Подключить Happy Agent</string>
 </resources>

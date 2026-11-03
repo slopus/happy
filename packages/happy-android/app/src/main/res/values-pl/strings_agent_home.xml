@@ -31,7 +31,6 @@
     <string name="agent_search_conversations">Rozmowy</string>
     <string name="agent_search_actions">Szybkie akcje</string>
     <string name="agent_search_no_results">Brak wyników dla „%1$s”</string>
-    <string name="agent_search_add">Dodaj konto lub agenta</string>
     <string name="agent_search_open_settings">Otwórz ustawienia</string>
     <string name="agent_settings_edit_name">Edytuj nazwę</string>
     <string name="agent_settings_edit_avatar">Edytuj awatar</string>

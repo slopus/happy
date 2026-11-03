@@ -68,6 +68,7 @@ class AgentHomeLayoutTest {
 
     private val opened = mutableListOf<String>()
     private var composed = 0
+    private var composedWithPicture = 0
     private var settings = 0
     private val settingsRows = mutableListOf<AgentSettingsRow>()
     private var artifacts = 0
@@ -75,6 +76,7 @@ class AgentHomeLayoutTest {
     private val actions = AgentHomeActions(
         onOpenConversation = { opened += it },
         onCompose = { composed++ },
+        onComposeWithPicture = { composedWithPicture++ },
         onSettings = { settings++ },
         onSettingsRow = { settingsRows += it },
         onSwitchAccount = {},
@@ -207,6 +209,8 @@ class AgentHomeLayoutTest {
         assertDp("compose at the end", list.right - 16.dp, compose.right)
         assertDp("compose at the bottom", list.bottom - 16.dp, compose.bottom)
         assertDp("compose is a 56 FAB", 56, compose.width)
+        // New work is "New task" (happy-ios 7a605f6ce).
+        rule.onNodeWithContentDescription("New task", useUnmergedTree = true).assertExists()
         rule.node(AgentHomeTags.COMPOSE).performClick()
         rule.node(AgentHomeTags.SETTINGS).performClick()
         assertEquals(1, composed)
@@ -430,9 +434,15 @@ class AgentHomeLayoutTest {
         rule.node(AgentSearchTags.FIELD).performTextInput("appear")
         rule.waitForIdle()
         rule.node(AgentSearchTags.result("entry-${AgentSettingsTags.APPEARANCE}")).assertExists()
-        rule.node(AgentSearchTags.FIELD).performTextReplacement("new")
-        rule.node(AgentSearchTags.result("entry-new-chat")).performClick()
+        // happy-ios 7a605f6ce: "New task", and "New task with a picture" opening new work with "+"'s sheet up.
+        rule.node(AgentSearchTags.FIELD).performTextReplacement("new task")
+        rule.onNodeWithText("New task with a picture").assertExists()
+        rule.node(AgentSearchTags.result("entry-new-work-picture")).performClick()
+        assertEquals(1, composedWithPicture)
+        rule.node(AgentSearchTags.result("entry-new-work")).performClick()
         assertEquals(1, composed)
+        rule.node(AgentSearchTags.FIELD).performTextReplacement("connect")
+        rule.onNodeWithText("Connect Happy Agent").assertExists()
         rule.node(AgentSearchTags.FIELD).performTextReplacement("Settings")
         rule.node(AgentSearchTags.result("entry-settings")).performClick()
         assertEquals(1, settings)

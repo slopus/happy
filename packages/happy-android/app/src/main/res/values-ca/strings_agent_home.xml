@@ -31,7 +31,6 @@
     <string name="agent_search_conversations">Converses</string>
     <string name="agent_search_actions">Accions ràpides</string>
     <string name="agent_search_no_results">No hi ha resultats per a «%1$s»</string>
-    <string name="agent_search_add">Afegeix un compte o un agent</string>
     <string name="agent_search_open_settings">Obre la configuració</string>
     <string name="agent_settings_edit_name">Edita el nom</string>
     <string name="agent_settings_edit_avatar">Edita l\'avatar</string>

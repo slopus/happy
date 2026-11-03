@@ -31,7 +31,6 @@
     <string name="agent_search_conversations">對話</string>
     <string name="agent_search_actions">快速動作</string>
     <string name="agent_search_no_results">沒有「%1$s」的結果</string>
-    <string name="agent_search_add">新增帳戶或代理程式</string>
     <string name="agent_search_open_settings">開啟設定</string>
     <string name="agent_settings_edit_name">編輯名稱</string>
     <string name="agent_settings_edit_avatar">編輯頭像</string>

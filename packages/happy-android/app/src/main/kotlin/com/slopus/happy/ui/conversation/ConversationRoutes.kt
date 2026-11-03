@@ -71,7 +71,13 @@ import kotlinx.serialization.Serializable
  * is a new, empty chat. [prefill] goes in the composer once, unsent
  * ([Conversation.prefill]).
  */
-@Serializable data class ConversationRoute(val connectionId: String, val agentId: String? = null, val prefill: String? = null)
+@Serializable data class ConversationRoute(
+    val connectionId: String,
+    val agentId: String? = null,
+    val prefill: String? = null,
+    /** New work opens with "+"'s sheet up (search's "New task with a picture", happy-ios 7a605f6ce). */
+    val attach: Boolean = false,
+)
 
 /** The connection's Chief of Staff chat, found when opened, with [prefix] waiting in its composer. */
 @Serializable data class ChiefOfStaffRoute(val connectionId: String, val prefix: String)
@@ -127,14 +133,14 @@ fun NavHostController.openChiefOfStaff(connectionId: String, prefix: String) {
  * A new, empty chat: pushed from home; from a chat it replaces that chat
  * (animated by the NavHost's transition), so Back goes home.
  */
-fun NavHostController.composeConversation(connectionId: String) {
+fun NavHostController.composeConversation(connectionId: String, attach: Boolean = false) {
     val current = currentBackStackEntry
     if (current?.destination?.hasRoute<ConversationRoute>() == true) {
-        navigate(ConversationRoute(connectionId)) {
+        navigate(ConversationRoute(connectionId, attach = attach)) {
             popUpTo(current.destination.id) { inclusive = true }
         }
     } else {
-        navigate(ConversationRoute(connectionId))
+        navigate(ConversationRoute(connectionId, attach = attach))
     }
 }
 
@@ -348,6 +354,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
     ProvideLinks(links) { androidx.compose.runtime.CompositionLocalProvider(com.slopus.happy.ui.connection.LocalAgentPictures provides session.pictures) {
         ConversationScreen(
             state = state,
+            opensAttach = route.attach,
             // Offline says why in words of its own; the link on its way spins (iOS 7aee3a9b8).
             connection = if (link == LinkState.Offline) linkStatusText(status) ?: stringResource(R.string.status_offline) else null,
             link = link,
