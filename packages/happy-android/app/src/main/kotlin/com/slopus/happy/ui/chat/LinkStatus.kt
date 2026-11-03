@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.connection.LinkState
@@ -39,10 +40,10 @@ fun linkStatusWords(state: LinkState): String? = when (state) {
     LinkState.Online, LinkState.Offline -> null
 }
 
-/** The spinner turning before a link status's words. */
+/** The spinner turning before a link status's words: [size] 14 in a chat's header, 16 in home's title. */
 @Composable
-fun LinkSpinner(color: Color, modifier: Modifier = Modifier) {
-    PageProgressIndicator(modifier.size(LinkStatusSpec.spinner).testTag(LinkStatusTags.SPINNER), color = color, strokeWidth = LinkStatusSpec.stroke)
+fun LinkSpinner(color: Color, modifier: Modifier = Modifier, size: Dp = LinkStatusSpec.spinner) {
+    PageProgressIndicator(modifier.size(size).testTag(LinkStatusTags.SPINNER), color = color, strokeWidth = LinkStatusSpec.stroke)
 }
 
 /** [wanted] as a header shows it, debounced ([com.slopus.happy.connection.LinkStateDebounce]): a short wobble never shows. */

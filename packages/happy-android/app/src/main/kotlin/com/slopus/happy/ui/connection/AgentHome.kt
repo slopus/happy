@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -50,7 +49,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -59,6 +57,9 @@ import com.slopus.happy.R
 import com.slopus.happy.agent.AgentFeed
 import com.slopus.happy.agent.AgentFeedRow
 import com.slopus.happy.agent.AgentLinkStatus
+import com.slopus.happy.connection.LinkState
+import com.slopus.happy.ui.chat.rememberShownLinkState
+import com.slopus.happy.ui.conversation.linkState
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.GlassBarLayout
@@ -72,7 +73,6 @@ import com.slopus.happy.ui.components.PopupMotion
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.StateArt
 import com.slopus.happy.ui.components.StatePage
-import com.slopus.happy.ui.components.StatusDot
 import com.slopus.happy.ui.connect.LocalAddFlow
 import com.slopus.happy.ui.home.AccountMenu
 import com.slopus.happy.ui.home.AccountMenuButton
@@ -168,7 +168,7 @@ internal fun AgentTopBar(
 /**
  * Home while an agent connection is open: a Material top app bar with the
  * account menu (the agent's own picture) as its navigation, the agent's
- * name as its title (with how the link stands under it while it's down),
+ * name as its title (the link's status in its place while on its way, [BarTitle]),
  * and search and settings as its actions. No composer. Then the
  * conversations ([AgentHomeList]), with new chat as a floating button at
  * the bottom end, or a state page while there are none to show. Search swaps the bar for a
@@ -186,6 +186,8 @@ fun AgentHomeScreen(
     actions: AgentHomeActions,
     /** A team server signed in to but without the person's profile yet: SignInRequired asks for a name instead. */
     profileRequired: Boolean = false,
+    /** What the title shows of the link, debounced ([rememberShownLinkState]) by [AgentHome]; as [status] stands by default. */
+    link: LinkState = status.linkState(syncing = false, network = true),
 ) {
     val colors = HappyTheme.colors
     var searching by rememberSaveable { mutableStateOf(false) }
@@ -249,7 +251,7 @@ fun AgentHomeScreen(
                     tag = AgentHomeTags.BAR,
                     container = ground,
                     navigationIcon = { AccountMenuButton(accounts, actions.onSwitchAccount, actions.onAdd) },
-                    title = { BarTitle(name, barStatus(status), AgentHomeTags.TITLE, AgentHomeTags.STATUS) },
+                    title = { BarTitle(name, link, AgentHomeTags.TITLE, AgentHomeTags.STATUS) },
                     actions = {
                         BarIconButton(Ionicon.SearchOutline, stringResource(R.string.tools_names_search), { searching = true }, Modifier.testTag(AgentHomeTags.SEARCH))
                         BarIconButton(Ionicon.SettingsOutline, stringResource(R.string.settings_title), actions.onSettings, Modifier.testTag(AgentHomeTags.SETTINGS))
@@ -423,61 +425,6 @@ private fun rememberSearchEntries(actions: AgentHomeActions): Pair<List<AgentSea
 }
 
 /**
- * How a home's link stands, after its name in the bar: connecting,
- * offline, removed and the like; null while all is well, which says nothing.
- */
-@Immutable
-data class BarStatus(val text: String, val color: Color, val pulsing: Boolean = false)
-
-/** How the agent connection stands, for its bar. */
-@Composable
-private fun barStatus(status: AgentLinkStatus): BarStatus? {
-    if (status == AgentLinkStatus.Connected) return null
-    val colors = HappyTheme.colors
-    val color = when (status) {
-        AgentLinkStatus.Connecting -> colors.status.connecting
-        AgentLinkStatus.Offline -> colors.status.disconnected
-        else -> colors.status.error
-    }
-    val text = stringResource(
-        when (status) {
-            AgentLinkStatus.Connecting -> R.string.status_connecting
-            AgentLinkStatus.Offline -> R.string.status_offline
-            AgentLinkStatus.Revoked -> R.string.agent_home_status_revoked
-            AgentLinkStatus.SignInRequired -> R.string.team_server_status_signed_out
-            else -> R.string.agent_home_status_update
-        },
-    )
-    return BarStatus(text, color, pulsing = status == AgentLinkStatus.Connecting)
-}
-
-/**
- * A home's bar title: the agent's or account's [name], 18 semibold. While
- * the link isn't up, how it stands ([status]) follows the name on the same
- * line, so the name never moves; all well says nothing.
- */
-@Composable
-internal fun BarTitle(name: String, status: BarStatus?, titleTag: String, statusTag: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            name,
-            style = AgentHomeSpec.barTitle,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false).testTag(titleTag),
-        )
-        if (status != null) {
-            Spacer(Modifier.width(10.dp))
-            Row(modifier = Modifier.testTag(statusTag), verticalAlignment = Alignment.CenterVertically) {
-                StatusDot(color = status.color, pulsing = status.pulsing, size = 6.dp)
-                Spacer(Modifier.width(6.dp))
-                Text(status.text, style = MaterialTheme.typography.labelMedium, color = status.color, maxLines = 1)
-            }
-        }
-    }
-}
-
-/**
  * A home's compose: a floating button at the bottom end of the content
  * column (so on a tablet it stays with the rows), clear of the navigation
  * bar. Put it last in a box over the page.
@@ -558,6 +505,8 @@ fun AgentHome(
     val agents by graph.agentConnections.accounts.collectAsStateWithLifecycle()
     val feed by session.feed.collectAsStateWithLifecycle()
     val status by session.status.collectAsStateWithLifecycle()
+    val syncing by session.isSyncing.collectAsStateWithLifecycle()
+    val link = rememberShownLinkState(status.linkState(syncing, rememberNetworkPath()))
     // Fully drawn (cold start's timeToFullDisplay, research/cold-start.md): home past its loader.
     ReportDrawnWhen { feed.loaded || status != AgentLinkStatus.Connecting }
     val add = LocalAddFlow.current
@@ -585,6 +534,7 @@ fun AgentHome(
             accounts = rememberAccountMenu(graph),
             actions = actions,
             profileRequired = agents.firstOrNull { it.id == id }?.profileRequired == true,
+            link = link,
         )
     }
 }

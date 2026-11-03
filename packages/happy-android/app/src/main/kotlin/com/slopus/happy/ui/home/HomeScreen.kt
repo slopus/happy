@@ -53,7 +53,8 @@ import com.slopus.happy.ui.components.hairline
 import com.slopus.happy.ui.connection.AgentHomeSpec
 import com.slopus.happy.ui.connection.AgentTopBar
 import com.slopus.happy.ui.connection.BarIconButton
-import com.slopus.happy.ui.connection.BarStatus
+import com.slopus.happy.connection.LinkState
+import com.slopus.happy.connection.accountLinkState
 import com.slopus.happy.ui.connection.BarTitle
 import com.slopus.happy.ui.connection.ComposeFab
 import com.slopus.happy.ui.layout.LocalWindowLayout
@@ -146,6 +147,8 @@ fun HomeScreen(
     accounts: AccountMenu = AccountMenu(),
     listState: LazyListState = rememberLazyListState(),
     syncing: Boolean = false,
+    /** What the title shows of the link, debounced ([com.slopus.happy.ui.chat.rememberShownLinkState]) by [LegacyHome]; as the socket stands by default. */
+    link: LinkState = accountLinkState(connectionStatus == ConnectionStatus.CONNECTED, catchingUp = syncing || state == null, network = true),
 ) {
     val colors = HappyTheme.colors
     val listed = state != null && state.emptyState != HomeEmptyState.Link && state.emptyState != HomeEmptyState.Offline &&
@@ -158,7 +161,7 @@ fun HomeScreen(
         feathered = listed,
         bar = {
             Column {
-                HomeHeader(connectionStatus, accounts, actions, syncing || state == null)
+                HomeHeader(link, accounts, actions)
                 com.slopus.happy.ui.voice.VoiceStatusBar()
             }
         },
@@ -206,34 +209,24 @@ fun HomeScreen(
 
 /**
  * Home's top bar, the agent connection home's ([AgentTopBar]): the account
- * menu, the open account's name, then settings. How the connection stands
- * follows the name while it isn't online (connecting, offline, or catching
- * up after a connect); online says nothing.
+ * menu, the open account's name, then settings. While the socket is on its
+ * way back, or catching up after a connect, its status stands in the
+ * name's place ([BarTitle]); online says nothing.
  */
 @Composable
-private fun HomeHeader(connectionStatus: ConnectionStatus, accounts: AccountMenu, actions: HomeScreenActions, syncing: Boolean) {
+private fun HomeHeader(link: LinkState, accounts: AccountMenu, actions: HomeScreenActions) {
     val colors = HappyTheme.colors
     val name = accounts.active?.name ?: stringResource(R.string.account_menu_unnamed_account)
     AgentTopBar(
         tag = HomeTags.BAR,
         container = colors.surface,
         navigationIcon = { AccountMenuButton(accounts, actions.onSwitchAccount) },
-        title = { BarTitle(name, homeBarStatus(connectionStatus, syncing), HomeTags.TITLE, HomeTags.STATUS) },
+        title = { BarTitle(name, link, HomeTags.TITLE, HomeTags.STATUS) },
         actions = {
             BarIconButton(Ionicon.SettingsOutline, stringResource(R.string.settings_title), actions.onSettings, Modifier.testTag(HomeTags.SETTINGS))
         },
         inset = HomeCardSpec.inset,
     )
-}
-
-/** The connection as the bar says it; a healthy socket can still be catching up. */
-@Composable
-private fun homeBarStatus(status: ConnectionStatus, syncing: Boolean): BarStatus? {
-    val catchingUp = status == ConnectionStatus.CONNECTED && syncing
-    if (status == ConnectionStatus.CONNECTED && !catchingUp) return null
-    val color = connectionStatusColor(HappyTheme.colors, if (catchingUp) ConnectionStatus.CONNECTING else status)
-    val text = stringResource(if (catchingUp) R.string.status_syncing else status.label)
-    return BarStatus(text, color, pulsing = status == ConnectionStatus.CONNECTING || catchingUp)
 }
 
 fun connectionStatusColor(colors: HappyColors, status: ConnectionStatus) = when (status) {
@@ -242,13 +235,6 @@ fun connectionStatusColor(colors: HappyColors, status: ConnectionStatus) = when 
     ConnectionStatus.DISCONNECTED -> colors.status.disconnected
     ConnectionStatus.ERROR -> colors.status.error
 }
-
-private val ConnectionStatus.label: Int
-    get() = when (this) {
-        ConnectionStatus.CONNECTED -> R.string.status_online
-        ConnectionStatus.CONNECTING -> R.string.status_connecting
-        ConnectionStatus.DISCONNECTED, ConnectionStatus.ERROR -> R.string.status_offline
-    }
 
 /**
  * SessionsList: the banners, then the rows. The phone home draws them

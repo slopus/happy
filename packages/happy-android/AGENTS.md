@@ -164,7 +164,11 @@ win:
   (`ui/home/AccountMenu.kt`); picking one switches
   (`AppGraph.open`). Settings on the right. The legacy home and agent
   home share one bar (`AgentTopBar`, `BarTitle`): the account's name as
-  the title, with an unhealthy connection under it. No logo, filter menu
+  the title. While the link is on its way (iOS 7aee3a9b8, Telegram's
+  title) "Waiting for network…", "Connecting…" or "Updating…" stands in
+  the name's place behind a 16 spinner, debounced by `LinkStateDebounce`
+  and swapped with a 6 slide and fade over 250 ms; offline keeps the
+  name, since home's list says why. No logo, filter menu
   (grouping is in Appearance) or "Sessions" title. Compose is a FAB at the
   bottom right of both homes (`ComposeFab`); home has no text input. One account is open at a
   time: a Happy account or an agent connection (`openAgentId`); each has

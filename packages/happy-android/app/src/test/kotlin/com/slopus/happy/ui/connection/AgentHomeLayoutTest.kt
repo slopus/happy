@@ -14,6 +14,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.test.hasStateDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -489,11 +490,6 @@ class AgentHomeLayoutTest {
         val bar = rule.node(AgentHomeTags.BAR).bounds
         val title = rule.node(AgentHomeTags.TITLE).bounds
         val first = rule.node(AgentHomeTags.row("section-places")).bounds
-        fun stillPut(at: String) {
-            assertEquals("bar, $at", bar, rule.node(AgentHomeTags.BAR).bounds)
-            assertEquals("title, $at", title, rule.node(AgentHomeTags.TITLE).bounds)
-            assertEquals("first row, $at", first, rule.node(AgentHomeTags.row("section-places")).bounds)
-        }
         // Online says nothing: the name stands alone.
         rule.onAllNodesWithTag(AgentHomeTags.STATUS, useUnmergedTree = true).assertCountEquals(0)
         rule.onAllNodesWithText("online", useUnmergedTree = true).assertCountEquals(0)
@@ -501,14 +497,19 @@ class AgentHomeLayoutTest {
         for (next in flips) {
             status = next
             rule.waitForIdle()
-            stillPut("on $next")
-            val label = when (next) {
-                AgentLinkStatus.Connected -> null
-                AgentLinkStatus.Connecting -> "connecting"
-                else -> "offline"
+            assertEquals("bar, on $next", bar, rule.node(AgentHomeTags.BAR).bounds)
+            assertEquals("first row, on $next", first, rule.node(AgentHomeTags.row("section-places")).bounds)
+            // Connecting stands in the name's place; offline keeps the name, which TalkBack hears offline after.
+            if (next == AgentLinkStatus.Connecting) {
+                rule.onAllNodesWithTag(AgentHomeTags.TITLE, useUnmergedTree = true).assertCountEquals(0)
+                rule.node(AgentHomeTags.STATUS).assertExists()
+                rule.onNodeWithText("Connecting…", useUnmergedTree = true).assertExists()
+            } else {
+                assertEquals("title, on $next", title, rule.node(AgentHomeTags.TITLE).bounds)
+                rule.onAllNodesWithTag(AgentHomeTags.STATUS, useUnmergedTree = true).assertCountEquals(0)
+                rule.onAllNodes(hasStateDescription("offline"), useUnmergedTree = true)
+                    .assertCountEquals(if (next == AgentLinkStatus.Offline) 1 else 0)
             }
-            rule.onAllNodesWithTag(AgentHomeTags.STATUS, useUnmergedTree = true).assertCountEquals(if (label == null) 0 else 1)
-            label?.let { rule.onNodeWithText(it, useUnmergedTree = true).assertExists() }
         }
     }
 
@@ -522,11 +523,12 @@ class AgentHomeLayoutTest {
         status = AgentLinkStatus.Offline
         rule.waitForIdle()
         rule.node(AgentHomeTags.OFFLINE).assertExists()
-        // Offline with a cached home: the rows, and the state under the name.
+        // Offline with a cached home: the rows, and the name.
         current = feed()
         rule.waitForIdle()
         rule.node(AgentHomeTags.row("agent-ab1")).assertExists()
-        rule.node(AgentHomeTags.STATUS).assertExists()
+        rule.node(AgentHomeTags.TITLE).assertExists()
+        rule.onAllNodesWithTag(AgentHomeTags.STATUS, useUnmergedTree = true).assertCountEquals(0)
         status = AgentLinkStatus.Revoked
         rule.waitForIdle()
         rule.node(AgentHomeTags.BANNER).assertExists()

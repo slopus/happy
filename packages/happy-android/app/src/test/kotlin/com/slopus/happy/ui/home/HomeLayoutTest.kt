@@ -55,6 +55,8 @@ import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.components.GlassSpec
 import com.slopus.happy.ui.components.HeaderTags
 import com.slopus.happy.ui.components.HomeCardTags
+import com.slopus.happy.connection.accountLinkState
+import com.slopus.happy.ui.chat.LinkStatusTags
 import com.slopus.happy.ui.connection.AgentHomeSpec
 import kotlinx.serialization.json.buildJsonObject
 import com.slopus.happy.ui.hasRole
@@ -198,44 +200,69 @@ class HomeLayoutTest {
     }
 
     @Test
-    fun anUnhealthyConnectionFollowsTheName() {
-        show(state(listOf(cli("a"))), ConnectionStatus.DISCONNECTED)
+    fun aSocketOnItsWayBackStandsInTheNamesPlace() {
+        val home = state(listOf(cli("a")))
+        var connection by mutableStateOf(ConnectionStatus.CONNECTED)
+        rule.setHappyContent { HomeScreen(home, connection, home.grouping, callbacks, actions, accounts = accounts) }
         val bar = rule.node(HomeTags.BAR).bounds
-        val title = rule.node(HomeTags.TITLE).bounds
+        val name = rule.node(HomeTags.TITLE).bounds
+        // A socket that is down is one on its way back (iOS's LegacyLink): "Connecting…", not "offline".
+        connection = ConnectionStatus.DISCONNECTED
+        rule.waitForIdle()
+        rule.onAllNodesWithTag(HomeTags.TITLE, useUnmergedTree = true).assertCountEquals(0)
+        rule.onAllNodesWithText("Steve", useUnmergedTree = true).assertCountEquals(0)
+        rule.onNodeWithText("Connecting…", useUnmergedTree = true).assertExists()
         val status = rule.node(HomeTags.STATUS).bounds
+        val spinner = rule.node(LinkStatusTags.SPINNER).bounds
+        val words = rule.onNodeWithText("Connecting…", useUnmergedTree = true).getUnclippedBoundsInRoot()
+        assertDp("the status starts where the name did", name.left, status.left)
         assertDp("status centred in the bar", (bar.top + bar.bottom) / 2, (status.top + status.bottom) / 2)
-        assertTrue("status after the name", status.left >= title.right)
-        rule.onNodeWithText("offline", useUnmergedTree = true).assertExists()
+        assertDp("16 spinner", 16, spinner.right - spinner.left)
+        assertDp("spinner centred on the words", (words.top + words.bottom) / 2, (spinner.top + spinner.bottom) / 2)
+        assertDp("6 before the words", spinner.right + 6.dp, words.left)
+        assertDp("the words a title's line", with(rule.density) { AgentHomeSpec.barTitle.lineHeight.toDp() }, words.height())
     }
 
     @Test
-    fun theConnectionChangingMovesNeitherTheNameNorTheRows() {
+    fun theConnectionChangingMovesNeitherTheBarNorTheRows() {
         val home = state(listOf(cli("a")))
         var connection by mutableStateOf(ConnectionStatus.CONNECTED)
         var syncing by mutableStateOf(false)
+        var network by mutableStateOf(true)
         rule.setHappyContent {
-            HomeScreen(home, connection, home.grouping, callbacks, actions, accounts = accounts, syncing = syncing)
+            HomeScreen(
+                home, connection, home.grouping, callbacks, actions, accounts = accounts, syncing = syncing,
+                link = accountLinkState(connection == ConnectionStatus.CONNECTED, syncing, network),
+            )
         }
         val first = rule.onAllNodesWithTag(FlatRowTags.ROW, useUnmergedTree = true)[0].bounds
-        val title = rule.node(HomeTags.TITLE).bounds
-        for ((status, catchingUp) in listOf(
-            ConnectionStatus.CONNECTING to false, ConnectionStatus.CONNECTED to true,
-            ConnectionStatus.CONNECTED to false, ConnectionStatus.DISCONNECTED to false,
-            ConnectionStatus.ERROR to false, ConnectionStatus.CONNECTING to true,
-            ConnectionStatus.CONNECTED to true, ConnectionStatus.CONNECTED to false,
+        val bar = rule.node(HomeTags.BAR).bounds
+        val name = rule.node(HomeTags.TITLE).bounds
+        for ((status, catchingUp, path) in listOf(
+            Triple(ConnectionStatus.CONNECTING, false, true), Triple(ConnectionStatus.CONNECTED, true, true),
+            Triple(ConnectionStatus.CONNECTED, false, true), Triple(ConnectionStatus.DISCONNECTED, false, true),
+            Triple(ConnectionStatus.ERROR, false, false), Triple(ConnectionStatus.CONNECTING, true, true),
+            Triple(ConnectionStatus.CONNECTED, true, true), Triple(ConnectionStatus.CONNECTED, false, true),
         )) {
             connection = status
             syncing = catchingUp
+            network = path
             rule.waitForIdle()
             assertEquals(first, rule.onAllNodesWithTag(FlatRowTags.ROW, useUnmergedTree = true)[0].bounds)
-            assertEquals(title, rule.node(HomeTags.TITLE).bounds)
-            val label = when (status) {
-                ConnectionStatus.CONNECTED -> if (catchingUp) "syncing" else null
-                ConnectionStatus.CONNECTING -> "connecting"
-                else -> "offline"
+            assertEquals(bar, rule.node(HomeTags.BAR).bounds)
+            val label = when {
+                !path -> "Waiting for network…"
+                status != ConnectionStatus.CONNECTED -> "Connecting…"
+                catchingUp -> "Updating…"
+                else -> null
             }
             rule.onAllNodesWithTag(HomeTags.STATUS, useUnmergedTree = true).assertCountEquals(if (label == null) 0 else 1)
-            if (label != null) rule.onNodeWithText(label, useUnmergedTree = true).assertExists()
+            if (label != null) {
+                rule.onNodeWithText(label, useUnmergedTree = true).assertExists()
+                rule.onAllNodesWithTag(HomeTags.TITLE, useUnmergedTree = true).assertCountEquals(0)
+            } else {
+                assertEquals("the name back where it was", name, rule.node(HomeTags.TITLE).bounds)
+            }
         }
     }
 
