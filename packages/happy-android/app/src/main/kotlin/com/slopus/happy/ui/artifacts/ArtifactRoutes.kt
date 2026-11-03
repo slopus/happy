@@ -161,9 +161,9 @@ private fun ArtifactEntry(graph: AppGraph, nav: NavHostController, route: Artifa
                     graph.agentConnections.accounts.value.firstOrNull { it.id == route.connectionId }?.instanceId
                         ?.let { HappyUrls.format(HappyLink.Reference(HappyReferenceKind.Artifact, id), it) }
                 },
-                fileReader = { file ->
+                fileReader = { file, progress ->
                     val version = loader.version ?: throw IllegalStateException("not read")
-                    ArtifactClient(session!!.client).bytes(route.artifactId, version.number, file.path)
+                    ArtifactClient(session!!.client).bytes(route.artifactId, version.number, file.path, chunk = ArtifactClient.PROGRESS_CHUNK, progress = progress)
                 },
                 artifactKey = "artifact-${route.artifactId}",
             )

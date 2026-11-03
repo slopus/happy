@@ -103,6 +103,21 @@ class ArtifactsTest {
         assertEquals("bytes=0-${ArtifactClient.RANGE_CHUNK - 1}", routes.asked[0].second)
     }
 
+    @Test fun aFileReadForAnotherAppTellsHowFarItIs() = runBlocking {
+        val bytes = ByteArray(1_200_000) { it.toByte() }
+        val routes = Routes { _, range ->
+            val (from, to) = range!!.removePrefix("bytes=").split('-').map(String::toInt)
+            val end = minOf(to, bytes.size - 1)
+            TransportResponse(206, mapOf("content-range" to "bytes $from-$end/${bytes.size}"), bytes.copyOfRange(from, end + 1))
+        }
+        val heard = ArrayList<Pair<Long, Long>>()
+        val read = ArtifactClient(AgentClient(routes, "t")).bytes("a1", 1, "paper.pdf", chunk = ArtifactClient.PROGRESS_CHUNK) { done, total -> heard += done to total }
+        assertArrayEquals(bytes, read)
+        val total = bytes.size.toLong()
+        assertEquals(listOf(524_288L to total, 1_048_576L to total, total to total), heard)
+        assertEquals("bytes=0-${ArtifactClient.PROGRESS_CHUNK - 1}", routes.asked[0].second)
+    }
+
     @Test fun aServerThatIgnoresRangesAndAnEmptyFile() = runBlocking {
         val whole = ArtifactClient(AgentClient(Routes { _, _ -> TransportResponse(200, body = byteArrayOf(1, 2, 3)) }, "t"))
         assertArrayEquals(byteArrayOf(1, 2, 3), whole.bytes("a1", 1, "a.bin"))

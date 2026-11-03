@@ -183,6 +183,47 @@ class ArtifactScreensTest {
         shot("artifact-openable")
     }
 
+    @Test fun aFileReadForAnotherAppShowsHowFarItIsAndTriesAgainWhenItFails() {
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        var reads = 0
+        val actions = ArtifactActions(onBack = {}, fileReader = { _, progress ->
+            reads++
+            progress(1_258_291, 3_250_586)
+            gate.await()
+            throw IllegalStateException("offline")
+        })
+        rule.setHappyContent { ArtifactScreen("Paper", ArtifactUi.Openable(ArtifactFile("paper.pdf", "application/pdf", 3_250_586)), null, "Studio", actions) }
+        rule.node(ArtifactTags.OPEN_RING).assertDoesNotExist()
+        rule.node(ArtifactTags.OPEN).performClick()
+        rule.waitForIdle()
+        rule.node(ArtifactTags.OPEN_RING).assertExists()
+        rule.onNodeWithText("1.2 / 3.1 MB").assertExists()
+        rule.onNodeWithText("Cancel").assertExists()
+        rule.mainClock.advanceTimeBy(600)
+        shot("artifact-openable-reading")
+        gate.complete(Unit)
+        rule.waitUntil(3_000) { rule.onAllNodesWithText("Retry").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithText("Couldn't open this. Tap to try again.").assertExists()
+        rule.mainClock.advanceTimeBy(600)
+        shot("artifact-openable-failed")
+        rule.node(ArtifactTags.OPEN).performClick()
+        rule.waitUntil(3_000) { reads == 2 }
+    }
+
+    @Test fun tappedWhileReadingTheReadStops() {
+        val actions = ArtifactActions(onBack = {}, fileReader = { _, _ -> kotlinx.coroutines.awaitCancellation() })
+        rule.setHappyContent(dark = true) { ArtifactScreen("Paper", ArtifactUi.Openable(ArtifactFile("paper.pdf", "application/pdf", 1)), null, "Studio", actions) }
+        rule.node(ArtifactTags.OPEN).performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Opening…").assertExists()
+        rule.mainClock.advanceTimeBy(600)
+        shot("artifact-openable-waiting-dark")
+        rule.node(ArtifactTags.OPEN).performClick()
+        rule.waitForIdle()
+        rule.node(ArtifactTags.OPEN_RING).assertDoesNotExist()
+        rule.onNodeWithText("Open in another app").assertExists()
+    }
+
     @Test fun deletedAndUnavailableSaySoInPlace() {
         var ui by androidx.compose.runtime.mutableStateOf<ArtifactUi>(ArtifactUi.Message(deleted = true))
         rule.setHappyContent { ArtifactScreen("Report", ui, null, "Studio", ArtifactActions(onBack = {})) }

@@ -55,12 +55,20 @@ open class ArtifactClient(private val client: AgentClient) {
         )
     }
 
-    /** The whole file, read a range at a time. */
-    suspend fun bytes(artifactId: String, version: Int, path: String, limit: Long = Long.MAX_VALUE): ByteArray {
+    /** The whole file, read a range of [chunk] at a time; [progress] hears how much of how much is here after each. */
+    suspend fun bytes(
+        artifactId: String,
+        version: Int,
+        path: String,
+        limit: Long = Long.MAX_VALUE,
+        chunk: Int = RANGE_CHUNK,
+        progress: ((done: Long, total: Long) -> Unit)? = null,
+    ): ByteArray {
         val out = java.io.ByteArrayOutputStream()
-        read({ range -> file(artifactId, version, path, range?.let { "bytes=${it.first}-${it.last}" }) }) { piece, total ->
+        read({ range -> file(artifactId, version, path, range?.let { "bytes=${it.first}-${it.last}" }) }, chunk) { piece, total ->
             if (total > limit) throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
             out.write(piece)
+            progress?.invoke(out.size().toLong(), total)
         }
         return out.toByteArray()
     }
@@ -73,19 +81,22 @@ open class ArtifactClient(private val client: AgentClient) {
         /** One answer holds at most 8 MiB (`HttpResponseParser`), so a whole file is read in ranges of this size. */
         const val RANGE_CHUNK = 4 * 1024 * 1024
 
+        /** The ranges a file read for another app is read in, so its ring moves on a file of a few megabytes. */
+        const val PROGRESS_CHUNK = 512 * 1024
+
         /**
          * Reads a file a range at a time through [fetch] (null: the whole
          * file, for one that is empty). [each] takes the pieces in order,
          * with the file's whole length. A server that ignores ranges answers
          * the first with the whole file.
          */
-        suspend fun read(fetch: suspend (LongRange?) -> TransportResponse, each: suspend (piece: ByteArray, total: Long) -> Unit) {
+        suspend fun read(fetch: suspend (LongRange?) -> TransportResponse, chunk: Int = RANGE_CHUNK, each: suspend (piece: ByteArray, total: Long) -> Unit) {
             var offset = 0L
             var total = Long.MAX_VALUE
             while (offset < total) {
                 currentCoroutineContext().ensureActive()
                 val response = try {
-                    fetch(offset until offset + RANGE_CHUNK)
+                    fetch(offset until offset + chunk)
                 } catch (e: AgentApiException) {
                     if (e.status == 416 && offset == 0L) {
                         val whole = fetch(null)

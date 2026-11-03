@@ -49,7 +49,11 @@ import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.media.MediaSizeText
 import com.slopus.happy.ui.conversation.MediaOpening
+import com.slopus.happy.ui.conversation.MediaRing
+import com.slopus.happy.ui.conversation.MediaRingState
+import com.slopus.happy.ui.conversation.UploadRingSpec
 import com.slopus.happy.ui.conversation.rememberMediaOpener
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
@@ -61,6 +65,8 @@ object ArtifactTags {
     const val DOCUMENT = "artifact.document"
     const val PICTURE = "artifact.picture"
     const val OPEN = "artifact.open"
+    const val OPEN_RING = "artifact.open.ring"
+    const val OPEN_STATUS = "artifact.open.status"
 }
 
 /** What the artifact screen does with a tap, outside itself. */
@@ -77,8 +83,8 @@ class ArtifactActions(
     val onOpenExternal: (String) -> Unit = {},
     /** An artifact's external Happy link, for sharing; null where its server has no instance id ([BrowserView]). */
     val artifactLink: (artifactId: String) -> String? = { null },
-    /** A file read whole, for handing to another app. */
-    val fileReader: suspend (ArtifactFile) -> ByteArray = { throw IllegalStateException("no reader") },
+    /** A file read whole, for handing to another app; it tells how much of how much is here as it reads. */
+    val fileReader: suspend (ArtifactFile, progress: (done: Long, total: Long) -> Unit) -> ByteArray = { _, _ -> throw IllegalStateException("no reader") },
     /** Names this artifact's staged files apart from others'. */
     val artifactKey: String = "artifact",
 )
@@ -192,7 +198,10 @@ private fun DocumentPicture(block: MarkdownBlock.Image, item: ArtifactMediaItem?
 /**
  * A file Android's WebView would only download: its name and kind, and a
  * button that reads it through the agent connection and hands it to an app
- * that opens it.
+ * that opens it (desktop d122790d's download states). While it reads, the
+ * glyph wears Telegram's ring (RadialProgress2), filling as the ranges come,
+ * with how much of how much is here under the name, and the button stops it;
+ * failed, the ring's retry arrow and the reason, and the button tries again.
  */
 @Composable
 private fun ArtifactOpenable(file: ArtifactFile, actions: ArtifactActions) {
@@ -200,24 +209,59 @@ private fun ArtifactOpenable(file: ArtifactFile, actions: ArtifactActions) {
     val opener = rememberMediaOpener()
     val key = "${actions.artifactKey}-${file.path.hashCode()}"
     val state = opener.state(key)
+    var read by remember(key) { mutableStateOf<Pair<Long, Long>?>(null) }
+    val open = {
+        if (state !is MediaOpening.Reading) read = null
+        opener.open(key, MediaItem("file", file.path, file.mimeType)) { actions.fileReader(file) { done, total -> read = done to total } }
+    }
     Column(
         Modifier.fillMaxSize().padding(horizontal = 32.dp, vertical = 56.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Box(Modifier.size(64.dp), contentAlignment = Alignment.Center) { Icon(Ionicon.DocumentTextOutline, 48.dp, colors.textSecondary) }
+        Box(Modifier.size(64.dp), contentAlignment = Alignment.Center) {
+            val ring = when (state) {
+                MediaOpening.Reading -> read?.takeIf { it.second > 0 }?.let { MediaRingState.Progress((it.first.toFloat() / it.second).coerceIn(0f, 1f)) } ?: MediaRingState.Waiting
+                is MediaOpening.Failed -> MediaRingState.Failed
+                null -> null
+            }
+            if (ring == null) {
+                Icon(Ionicon.DocumentTextOutline, 48.dp, colors.textSecondary)
+            } else {
+                MediaRing(
+                    state = ring,
+                    onClick = open,
+                    label = stringResource(if (ring == MediaRingState.Failed) R.string.common_retry else R.string.common_cancel),
+                    modifier = Modifier.size(64.dp).testTag(ArtifactTags.OPEN_RING),
+                    disc = if (colors.dark) UploadRingSpec.fileDiscDark else UploadRingSpec.fileDisc,
+                )
+            }
+        }
         Text(file.name, style = happyTextStyle(fontSize = 17, lineHeight = 22), color = colors.text, textAlign = TextAlign.Center)
         Text(
-            (state as? MediaOpening.Failed)?.reason ?: stringResource(R.string.artifact_open_with_body),
-            style = happyTextStyle(fontSize = 15, lineHeight = 21),
+            when (state) {
+                is MediaOpening.Failed -> state.reason
+                MediaOpening.Reading -> read?.let { (done, total) -> MediaSizeText.progress(done, total) } ?: stringResource(R.string.conversation_media_reading)
+                null -> stringResource(R.string.artifact_open_with_body)
+            },
+            style = happyTextStyle(fontSize = 15, lineHeight = 21).copy(fontFeatureSettings = "tnum"),
             color = colors.textSecondary,
             textAlign = TextAlign.Center,
+            modifier = Modifier.testTag(ArtifactTags.OPEN_STATUS),
         )
         Button(
-            onClick = { opener.open(key, MediaItem("file", file.path, file.mimeType)) { actions.fileReader(file) } },
+            onClick = open,
             modifier = Modifier.testTag(ArtifactTags.OPEN).semantics { contentDescription = file.name },
         ) {
-            Text(stringResource(if (state == MediaOpening.Reading) R.string.conversation_media_reading else R.string.artifact_open_with))
+            Text(
+                stringResource(
+                    when (state) {
+                        MediaOpening.Reading -> R.string.common_cancel
+                        is MediaOpening.Failed -> R.string.common_retry
+                        null -> R.string.artifact_open_with
+                    },
+                ),
+            )
         }
     }
 }
