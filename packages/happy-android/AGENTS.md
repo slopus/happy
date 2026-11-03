@@ -805,6 +805,12 @@ the flows are tested with a fake.
   top left with the other ways in (iOS's `AccountAdding.otherWays`): enter
   a link, Restore Happy CLI account, Happy CLI server; a pick returns
   `ScanResult.Chose`.
+- As iOS's ff88dfcd6: the preview and analysis follow the display's
+  rotation (a display listener, since the activity handles rotation and a
+  180° turn reports no configuration change), and a camera whose nearest
+  focus is farther than a 30 mm code filling the viewfinder is zoomed
+  until it is in focus, at most 3x (`ScanFocus`, Camera2's minimum focus
+  distance and field of view).
 - `QrDecoderTest` decodes ZXing-encoded luminance frames; `QrScannerTest`
   covers the result contract, the refused permission and the layout.
 
