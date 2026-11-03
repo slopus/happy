@@ -248,6 +248,7 @@ internal class ConversationHolder(
             keeper = session.conversationKeeper(agentId),
             typesetter = typesetter,
             read = session::markRead,
+            references = session.references,
         )
         conversation.start()
         saved.takePrefill(route.prefill)?.let(conversation::prefill)
@@ -330,6 +331,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
     val typesetter = Typesetter.of(LocalContext.current)
     // Before the conversation's lane lays out its first rows, which it draws ahead in these colours.
     typesetter.reportPalette(ProsePalette.of(HappyTheme.colors))
+    com.slopus.happy.ui.references.ProvideReferenceWords(session.references)
     val holder = viewModel(key = "conversation") { ConversationHolder(session, route, createSavedStateHandle(), typesetter) }
     val conversation = holder.conversation
     com.slopus.happy.ui.components.StartedEffect(conversation) {
@@ -352,8 +354,11 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
     val network by remember(context) { context.networkPath() }.collectAsStateWithLifecycle(initialValue = true)
     val link = rememberShownLinkState(status.linkState(syncing, network))
     val computer = computerName(graph, route.connectionId)
-    val links = remember(nav, computer, conversation.agentId) {
-        LinkOpener.agent(context, computer) { url -> nav.navigate(BrowserRoute(route.connectionId, url, conversation.agentId)) }
+    // A name a message wrote, or a Happy URL, opens what it names here.
+    val happyLinks = com.slopus.happy.ui.connection.LocalHappyLinks.current
+    val references = remember(nav, session, happyLinks) { com.slopus.happy.ui.references.ReferenceOpener(nav, route.connectionId, session.references, happyLinks) }
+    val links = remember(nav, computer, conversation.agentId, references) {
+        LinkOpener.agent(context, computer, app = references::open) { url -> nav.navigate(BrowserRoute(route.connectionId, url, conversation.agentId)) }
     }
     val kept = rememberKeptMedia(graph, session, conversation.agentId)
     // A command's artwork is read and kept as the agent's other pictures are.

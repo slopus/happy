@@ -60,4 +60,15 @@
     <string name="artifact_card_kind_image_series">Serie di immagini</string>
     <string name="artifact_card_kind_document">Documento</string>
     <string name="artifact_card_version">%1$s · Versione %2$d</string>
+
+    <string name="reference_artifact">artefatto</string>
+    <string name="reference_untitled_agent">Agente senza titolo</string>
+    <string name="reference_untitled_workspace">Spazio di lavoro senza titolo</string>
+    <string name="reference_unavailable_artifact">un artefatto non disponibile</string>
+    <string name="reference_unavailable_agent">un agente non disponibile</string>
+    <string name="reference_unavailable_workspace">uno spazio di lavoro non disponibile</string>
+    <string name="reference_unavailable_project">un progetto non disponibile</string>
+    <string name="reference_unavailable_service">un servizio non disponibile</string>
+    <string name="reference_unavailable_user">un utente non disponibile</string>
+    <string name="reference_unavailable">un riferimento non disponibile</string>
 </resources>

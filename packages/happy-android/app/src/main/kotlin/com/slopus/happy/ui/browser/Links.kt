@@ -58,6 +58,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.browser.BrowserPolicy
+import com.slopus.happy.references.HappyReferences
 import com.slopus.happy.ui.components.MaterialSymbols
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
@@ -107,13 +108,18 @@ class LinkOpener internal constructor(
 
     companion object {
         /**
-         * Agent mode: web links in the in-app browser through [connectionId]
+         * Agent mode: what the app opens itself ([app]: a reference, a Happy
+         * URL) there, web links in the in-app browser through [connectionId]
          * ([navigateBrowser] pushes it), anything else (`mailto:`, `tel:`) to
          * the system, as `BrowserPolicy.route` sorts them.
          */
-        fun agent(context: Context, computer: String, navigateBrowser: (String) -> Unit): LinkOpener {
+        fun agent(context: Context, computer: String, app: (String) -> Boolean = { false }, navigateBrowser: (String) -> Unit): LinkOpener {
             val browse = { url: String ->
-                if (BrowserPolicy.route(url) == BrowserPolicy.Route.Web) navigateBrowser(url) else openOutside(context, url).let {}
+                when {
+                    app(url) -> Unit
+                    BrowserPolicy.route(url) == BrowserPolicy.Route.Web -> navigateBrowser(url)
+                    else -> openOutside(context, url).let {}
+                }
             }
             return LinkOpener(proxied = true, computer = computer, tap = browse, inApp = browse, external = { openOutside(context, it) })
         }
@@ -122,7 +128,8 @@ class LinkOpener internal constructor(
         fun legacy(context: Context, system: UriHandler, dark: Boolean = false): LinkOpener = LinkOpener(
             proxied = false,
             computer = null,
-            tap = system::openUri,
+            // The app's own links are an agent connection's; the system has nothing to open them with.
+            tap = { url -> if (!com.slopus.happy.agent.HappyUrls.owns(url) && !HappyReferences.owns(url)) system.openUri(url) },
             inApp = { url -> if (BrowserPolicy.route(url) == BrowserPolicy.Route.Web) openCustomTab(context, url, dark) else openOutside(context, url) },
             external = { openOutside(context, it) },
         )
@@ -163,8 +170,9 @@ internal fun openCustomTab(context: Context, url: String, dark: Boolean) {
  * handler, the message's long-press copy menu or text selection see it: a
  * tap opens the link as its annotation would, a long press (with a haptic)
  * opens [LocalLinkOpener]'s menu and nothing else. Moving past the touch
- * slop lets go, so a drag that starts on a link still scrolls. Links that
- * aren't web addresses, and screens without a [LinkOpener], are untouched.
+ * slop lets go, so a drag that starts on a link still scrolls. The app's
+ * own links ([HappyReferences.opensInApp]) only open, on a tap. Other links
+ * that aren't web addresses, and screens without a [LinkOpener], are untouched.
  */
 @Composable
 fun Modifier.webLinkGestures(text: AnnotatedString, layout: State<TextLayoutResult?>): Modifier {
@@ -187,7 +195,9 @@ internal fun Modifier.webLinkGestures(key: Any, find: (Offset) -> Link?): Modifi
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
             val link = linkAt(down.position) ?: return@awaitEachGesture
-            val url = link.url ?: return@awaitEachGesture
+            // The app's own links (a reference, a Happy URL) open on a tap and have no menu.
+            val url = link.url
+            if (url == null && link.target?.let(HappyReferences::opensInApp) != true) return@awaitEachGesture
             down.consume()
             val slop = viewConfiguration.touchSlop
             val ended = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) {
@@ -205,7 +215,7 @@ internal fun Modifier.webLinkGestures(key: Any, find: (Offset) -> Link?): Modifi
             when (ended) {
                 true -> link.activate(handler)
                 false -> Unit
-                null -> {
+                null -> if (url != null) {
                     haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                     opener.showMenu(url)
                     // The rest of this touch is the menu's: no click, copy menu or selection under it.
@@ -249,13 +259,14 @@ internal fun linkAt(text: AnnotatedString, layout: TextLayoutResult, position: O
     return null
 }
 
-/** A link in text: its web address, if it has one, and what tapping it does. */
+/** A link in text: where it goes ([target]), its web address if that is one ([url]), and what tapping it does. */
 internal class Link(private val annotation: LinkAnnotation) {
-    val url: String? = when (annotation) {
+    val target: String? = when (annotation) {
         is LinkAnnotation.Url -> annotation.url
         is LinkAnnotation.Clickable -> annotation.tag
         else -> null
-    }?.takeIf { BrowserPolicy.route(it) == BrowserPolicy.Route.Web }
+    }
+    val url: String? = target?.takeIf { BrowserPolicy.route(it) == BrowserPolicy.Route.Web }
 
     fun activate(handler: UriHandler) {
         val listener = annotation.linkInteractionListener

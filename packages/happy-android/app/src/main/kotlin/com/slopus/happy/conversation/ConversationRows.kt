@@ -5,6 +5,8 @@ import com.slopus.happy.chat.markdown.MarkdownBlock
 import com.slopus.happy.chat.markdown.parseMarkdown
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
+import com.slopus.happy.references.HappyReferences
+import com.slopus.happy.references.References
 import kotlinx.serialization.json.JsonObject
 
 /** Where a message this phone sent stands. */
@@ -191,7 +193,18 @@ class ConversationRowBuilder(
     private val typesetter: RowTypesetter? = null,
     private val now: () -> Long = System::currentTimeMillis,
 ) {
-    private class Built(val message: Message, val streaming: Boolean, val rows: List<ConversationRow>)
+    /**
+     * What Happy references read as now ([com.slopus.happy.references]):
+     * a message that names one is built again when it changes; null leaves
+     * the tags as written.
+     */
+    var references: References? = null
+
+    /** Told the words of each message built that may name references, so their titles and names are read. */
+    var named: ((String) -> Unit)? = null
+
+    /** [names]: the message's words may hold a reference, so its rows follow [references]. */
+    private class Built(val message: Message, val streaming: Boolean, val rows: List<ConversationRow>, val references: References?, val names: Boolean)
 
     private val cache = HashMap<String, Built>()
 
@@ -199,8 +212,11 @@ class ConversationRowBuilder(
     private val lives = HashMap<String, LiveText>()
 
     fun rows(message: Message, agentId: String, parentAgentId: String?, streaming: Boolean): List<ConversationRow> {
-        cache[message.id]?.let { if (!streaming && !it.streaming && it.message == message) return it.rows }
-        val rows = build(message, agentId, parentAgentId, streaming, if (streaming) ::live else null)
+        val references = references
+        cache[message.id]?.let { if (!streaming && !it.streaming && it.message == message && (!it.names || it.references === references)) return it.rows }
+        val rows = build(message, agentId, parentAgentId, streaming, if (streaming) ::live else null, references)
+        val names = message.content.any { it is Block.Text && References.mayHold(it.text) }
+        if (names) named?.let { tell -> message.content.forEach { if (it is Block.Text) tell(it.text) } }
         // The pictures are read here, on the lane, so the rows find them read on the main thread.
         for (row in rows) when (row) {
             is ConversationRow.User -> row.pictures.forEach(InlinePicture::of)
@@ -208,7 +224,7 @@ class ConversationRowBuilder(
             else -> Unit
         }
         if (!streaming) lives.keys.removeAll { it.startsWith(message.id + ":") }
-        cache[message.id] = Built(message, streaming, rows)
+        cache[message.id] = Built(message, streaming, rows, references, names)
         return rows
     }
 
@@ -241,8 +257,9 @@ class ConversationRowBuilder(
             else -> return false
         }
         if (text.isEmpty()) return false
-        live.update(text, message.content[index] is Block.Text)
-        cache[message.id] = Built(message, true, built.rows)
+        val markdown = message.content[index] is Block.Text
+        live.update(if (markdown) resolved(text, references, streaming = true) else text, markdown)
+        cache[message.id] = Built(message, true, built.rows, built.references, built.names)
         return true
     }
 
@@ -259,6 +276,8 @@ class ConversationRowBuilder(
             parentAgentId: String?,
             streaming: Boolean,
             live: ((key: String, text: String, markdown: Boolean) -> LiveText)? = null,
+            /** Tags read as their names: links in what agents say, words in what the person said; null leaves them as written. */
+            references: References? = null,
         ): List<ConversationRow> {
             val id = message.id
             if (message.role == "service") {
@@ -275,13 +294,14 @@ class ConversationRowBuilder(
             val sender = message.senderAgentId
             if (sender != null && sender != agentId && sender != parentAgentId) {
                 val text = inboundText(message.text, sender).trim()
-                return listOf(ConversationRow.Collaborator("$id:from", sender, text, parseMarkdown(text)))
+                return listOf(ConversationRow.Collaborator("$id:from", sender, plain(text, references), parseMarkdown(resolved(text, references, false))))
             }
             // The agent that manages this one gives it its work: it reads as the person's lane.
             val fromManager = message.role == "agent" && sender != null && sender != agentId
             if (message.role == "user" || fromManager) {
                 val text = message.content.filterIsInstance<Block.Text>().joinToString("\n") { it.text }
                     .let { if (fromManager && sender != null) inboundText(it, sender) else it }.trim()
+                    .let { plain(it, references) }
                 val pictures = message.content.filterIsInstance<Block.Image>()
                 if (text.isEmpty() && pictures.isEmpty()) return emptyList()
                 val delivery = if (message.status == "pending") Delivery.Pending else Delivery.Sent
@@ -294,8 +314,9 @@ class ConversationRowBuilder(
                 val growing = live?.takeIf { streaming && index == message.content.lastIndex }
                 when (block) {
                     is Block.Text -> block.text.trim().takeIf { it.isNotEmpty() }?.let { text ->
-                        val holder = growing?.invoke(key, text, true)
-                        rows += ConversationRow.Text(key, text, holder?.content?.value?.blocks ?: parseMarkdown(text), holder)
+                        val shown = resolved(text, references, growing != null)
+                        val holder = growing?.invoke(key, shown, true)
+                        rows += ConversationRow.Text(key, plain(text, references), holder?.content?.value?.blocks ?: parseMarkdown(shown), holder)
                     }
                     is Block.Reasoning -> block.text.trim().takeIf { it.isNotEmpty() }?.let {
                         rows += ConversationRow.Reasoning(key, it, streaming && index == message.content.lastIndex, growing?.invoke(key, it, false))
@@ -332,6 +353,18 @@ class ConversationRowBuilder(
                 else -> listOf(ConversationRow.Tool(key, call.id, tool))
             }
         }
+
+        /** [text]'s Markdown with its references as [references] reads them; still [streaming], a tag only partly come is held back. */
+        internal fun resolved(text: String, references: References?, streaming: Boolean): String = when {
+            references == null -> text
+            streaming -> HappyReferences.markdown(text, references, streaming = true)
+            References.mayHold(text) -> HappyReferences.markdown(text, references)
+            else -> text
+        }
+
+        /** [text] with its references as words: what the person wrote, and what is copied. */
+        internal fun plain(text: String, references: References?): String =
+            if (references == null || !References.mayHold(text)) text else HappyReferences.plain(text, references)
 
         /** A question's row, one key waiting at the end or settled in its turn, so it moves rather than swaps. */
         fun askKey(questionId: String): String = "ask:$questionId"

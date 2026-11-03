@@ -56,4 +56,15 @@
     <string name="artifact_card_kind_image_series">图片系列</string>
     <string name="artifact_card_kind_document">文档</string>
     <string name="artifact_card_version">%1$s · 版本 %2$d</string>
+
+    <string name="reference_artifact">工件</string>
+    <string name="reference_untitled_agent">无标题代理</string>
+    <string name="reference_untitled_workspace">无标题工作区</string>
+    <string name="reference_unavailable_artifact">不可用的工件</string>
+    <string name="reference_unavailable_agent">不可用的代理</string>
+    <string name="reference_unavailable_workspace">不可用的工作区</string>
+    <string name="reference_unavailable_project">不可用的项目</string>
+    <string name="reference_unavailable_service">不可用的服务</string>
+    <string name="reference_unavailable_user">不可用的用户</string>
+    <string name="reference_unavailable">不可用的引用</string>
 </resources>

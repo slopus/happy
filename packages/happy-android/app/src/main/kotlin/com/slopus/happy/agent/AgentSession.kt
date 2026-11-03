@@ -217,6 +217,15 @@ class AgentSession internal constructor(
         }
     }
 
+    /** What the Happy references in this connection's messages read as, and the titles and names they need read. */
+    val references: com.slopus.happy.references.ReferenceReader by lazy {
+        com.slopus.happy.references.ReferenceReader(
+            scope, catalog, events,
+            readArtifact = { com.slopus.happy.artifacts.ArtifactClient(client).artifact(it) },
+            readUsers = { com.slopus.happy.references.ReferenceReader.userNames(client, it) },
+        )
+    }
+
     /** Bots' pictures, as home's rows draw them. */
     /** Chat media kept on this phone for good, beside the catalog (iOS `MediaLibrary.agent`); null where nothing is kept. */
     val media: com.slopus.happy.media.MediaLibrary? = cacheFile?.let { com.slopus.happy.media.MediaLibrary(File(it.parentFile, it.nameWithoutExtension + ".media")) }

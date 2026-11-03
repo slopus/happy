@@ -68,4 +68,16 @@
     <string name="artifact_card_kind_image_series">Image series</string>
     <string name="artifact_card_kind_document">Document</string>
     <string name="artifact_card_version">%1$s · Version %2$d</string>
+
+    <!-- Happy references in agent messages (references/References.kt): what a tag reads as when nothing names it -->
+    <string name="reference_artifact">artifact</string>
+    <string name="reference_untitled_agent">Untitled agent</string>
+    <string name="reference_untitled_workspace">Untitled workspace</string>
+    <string name="reference_unavailable_artifact">an unavailable artifact</string>
+    <string name="reference_unavailable_agent">an unavailable agent</string>
+    <string name="reference_unavailable_workspace">an unavailable workspace</string>
+    <string name="reference_unavailable_project">an unavailable project</string>
+    <string name="reference_unavailable_service">an unavailable service</string>
+    <string name="reference_unavailable_user">an unavailable user</string>
+    <string name="reference_unavailable">an unavailable reference</string>
 </resources>

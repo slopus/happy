@@ -337,4 +337,25 @@ class LinksTest {
         assertEquals("mailto:someone@example.com", started?.dataString)
         assertTrue(opener.proxied)
     }
+
+    @Test fun agentLinksTheAppOpensItselfGoNowhereElse() {
+        val browsed = mutableListOf<String>()
+        val app = mutableListOf<String>()
+        val opener = LinkOpener.agent(ApplicationProvider.getApplicationContext(), "Studio", app = { url -> url.startsWith("happy://").also { if (it) app += url } }) { browsed += it }
+        opener.open("happy://artifacts/r1")
+        opener.open(url)
+        assertEquals(listOf("happy://artifacts/r1"), app)
+        assertEquals(listOf(url), browsed)
+        assertEquals(null, org.robolectric.Shadows.shadowOf(ApplicationProvider.getApplicationContext<android.app.Application>()).nextStartedActivity)
+    }
+
+    @Test fun legacyTapsLeaveTheAppsOwnLinksAlone() {
+        val opened = mutableListOf<String>()
+        val system = object : UriHandler { override fun openUri(uri: String) { opened += uri } }
+        val opener = LinkOpener.legacy(ApplicationProvider.getApplicationContext(), system)
+        opener.open("happy://artifacts/r1")
+        opener.open(com.slopus.happy.references.HappyReferences.link(com.slopus.happy.references.HappyReferences.Reference("agent", "a1")))
+        opener.open(url)
+        assertEquals(listOf(url), opened)
+    }
 }

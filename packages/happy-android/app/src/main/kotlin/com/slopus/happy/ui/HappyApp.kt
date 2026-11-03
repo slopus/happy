@@ -253,7 +253,11 @@ private fun rememberLinks(graph: AppGraph, nav: NavHostController, agent: String
         return remember(system, dark) { LinkOpener.legacy(context, system, dark) }
     }
     val computer = computerName(graph, agent)
-    return remember(nav, agent, computer) { LinkOpener.agent(context, computer) { url -> nav.navigate(BrowserRoute(agent, url)) } }
+    // A Happy URL in the connection's screens opens in the app (LocalHappyLinks, provided just above).
+    val happy = LocalHappyLinks.current
+    return remember(nav, agent, computer, happy) {
+        LinkOpener.agent(context, computer, app = { url -> happy?.open(url, agent) == true }) { url -> nav.navigate(BrowserRoute(agent, url)) }
+    }
 }
 
 @Composable

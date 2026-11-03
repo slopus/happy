@@ -56,4 +56,15 @@
     <string name="artifact_card_kind_image_series">画像シリーズ</string>
     <string name="artifact_card_kind_document">ドキュメント</string>
     <string name="artifact_card_version">%1$s · バージョン %2$d</string>
+
+    <string name="reference_artifact">アーティファクト</string>
+    <string name="reference_untitled_agent">無題のエージェント</string>
+    <string name="reference_untitled_workspace">無題のワークスペース</string>
+    <string name="reference_unavailable_artifact">利用できないアーティファクト</string>
+    <string name="reference_unavailable_agent">利用できないエージェント</string>
+    <string name="reference_unavailable_workspace">利用できないワークスペース</string>
+    <string name="reference_unavailable_project">利用できないプロジェクト</string>
+    <string name="reference_unavailable_service">利用できないサービス</string>
+    <string name="reference_unavailable_user">利用できないユーザー</string>
+    <string name="reference_unavailable">利用できない参照</string>
 </resources>

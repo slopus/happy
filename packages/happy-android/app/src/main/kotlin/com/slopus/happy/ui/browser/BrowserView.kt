@@ -440,7 +440,7 @@ internal fun openOutside(context: Context, url: String): Boolean = if (com.slopu
  * one) and nothing else's; a scheme that isn't web handed to the system on
  * a tap; on an artifact's page, a tapped link to another origin opened in a
  * browser of its own, as iOS does; and every load's start, end and failure
- * told to [state].
+ * told to [state]. A Happy URL tapped on an artifact's page opens in the app.
  */
 private class BrowserClient(
     private val page: BrowserPage,
@@ -463,6 +463,12 @@ private class BrowserClient(
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
         val url = request.url.toString()
         if (BrowserPolicy.isInPage(url)) return false
+        // A Happy URL followed in an artifact's page opens in the app (desktop 1ff04853, c6e1caad);
+        // a scripted navigation to one, or one on any other page, opens nothing.
+        if (com.slopus.happy.agent.HappyUrls.owns(url)) {
+            if (page.artifactId != null && request.hasGesture()) onElsewhere(url)
+            return true
+        }
         if (BrowserPolicy.route(url) == BrowserPolicy.Route.System) {
             val nothingShown = view.copyBackForwardList().size == 0
             if (request.isForMainFrame && (request.hasGesture() || nothingShown) && !openOutside(view.context, url)) {

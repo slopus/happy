@@ -153,7 +153,8 @@ private fun ArtifactEntry(graph: AppGraph, nav: NavHostController, route: Artifa
                 onBack = { nav.popBackStack() },
                 link = loader::link,
                 onOpenFile = { version, path -> nav.navigate(route.copy(openedVersion = version, path = path)) },
-                onOpenWeb = { url -> nav.navigate(BrowserRoute(route.connectionId, url)) },
+                // A Happy URL the page followed opens in the app; any other its own browser.
+                onOpenWeb = { url -> if (happyLinks?.open(url, route.connectionId) != true) nav.navigate(BrowserRoute(route.connectionId, url)) },
                 // A Happy URL stays in the app: an internal one means this connection, an external one its own.
                 onOpenExternal = { url -> if (happyLinks?.open(url, route.connectionId) != true) openOutside(context, url) },
                 artifactLink = { id ->

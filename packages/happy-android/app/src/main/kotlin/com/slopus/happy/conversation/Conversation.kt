@@ -163,6 +163,8 @@ class Conversation(
     private val typesetter: RowTypesetter? = null,
     /** Reads the chat: the connection's outbox, kept until the computer hears ([com.slopus.happy.agent.AgentSession.markRead]); null asks [api] once. */
     private val read: (suspend (String) -> Unit)? = null,
+    /** What the Happy references in its messages read as ([AgentSession.references][com.slopus.happy.agent.AgentSession.references]); null leaves the tags as written. */
+    private val references: com.slopus.happy.references.ReferenceReader? = null,
 ) {
     /**
      * A send on its way: the person's [text], its pictures inline and its
@@ -199,7 +201,10 @@ class Conversation(
     val state: StateFlow<ConversationState> = _state.asStateFlow()
 
     private var snapshot = _state.value
-    private val builder = ConversationRowBuilder(typesetter = typesetter)
+    private val builder = ConversationRowBuilder(typesetter = typesetter).apply {
+        references = this@Conversation.references?.references?.value
+        named = this@Conversation.references?.let { reader -> reader::read }
+    }
     private val runs = ArrayList<Pair<String, MutableList<String>>>()
     /** Each run's status, start and end as last read, so it is kept as it came. */
     private val runInfo = HashMap<String, RunInfo>()
@@ -255,6 +260,17 @@ class Conversation(
         following = scope.launch(lane) {
             // The picker's choices; a failure here is asked again when a send needs the default.
             launch { try { readCatalog() } catch (e: CancellationException) { throw e } catch (_: Exception) {} }
+            // A title or name read, or a conversation renamed: the rows that name it read it so.
+            references?.let { reader ->
+                launch {
+                    reader.references.collect { now ->
+                        if (builder.references !== now) {
+                            builder.references = now
+                            publish()
+                        }
+                    }
+                }
+            }
             if (created) reload()
             signals.collect { signal ->
                 // The computer's models changed, or may have while away: the pickers read them again.

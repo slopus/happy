@@ -58,6 +58,7 @@ class DeepLinkRoutingTest {
                 composable<ArtifactRoute> { Text("artifact") }
                 composable<ConversationRoute> { Text("conversation") }
                 composable<AgentSurfaceRoute> { Text("surface") }
+                composable<com.slopus.happy.ui.files.WorkspaceFileRoute> { Text("file") }
             }
             DeepLinkEffect(nav, signedIn, onOpenSession = { opened += it }, openConnection = openConnection, onHappyLink = { happy += it })
         }
@@ -136,8 +137,11 @@ class DeepLinkRoutingTest {
         assertEquals(ArtifactRoute("c1", "abc"), nav.currentBackStackEntry!!.toRoute<ArtifactRoute>())
         open(HappyLink.Reference(HappyReferenceKind.Agent, "a1"))
         assertEquals(ConversationRoute("c1", "a1"), nav.currentBackStackEntry!!.toRoute<ConversationRoute>())
-        open(HappyLink.File(HappyLink.Target.Agent("a2"), "src/a.ts", 3..3))
-        assertEquals(ConversationRoute("c1", "a2"), nav.currentBackStackEntry!!.toRoute<ConversationRoute>())
+        // A file opens in the viewer at its first line, by its agent or its workspace.
+        open(HappyLink.File(HappyLink.Target.Agent("a2"), "src/a.ts", 3..9))
+        assertEquals(com.slopus.happy.ui.files.WorkspaceFileRoute("c1", "src/a.ts", agentId = "a2", line = 3), nav.currentBackStackEntry!!.toRoute<com.slopus.happy.ui.files.WorkspaceFileRoute>())
+        open(HappyLink.File(HappyLink.Target.Workspace("w1"), "README.md"))
+        assertEquals(com.slopus.happy.ui.files.WorkspaceFileRoute("c1", "README.md", workspaceId = "w1"), nav.currentBackStackEntry!!.toRoute<com.slopus.happy.ui.files.WorkspaceFileRoute>())
         open(HappyLink.Reference(HappyReferenceKind.Surface, "s1"))
         assertEquals(AgentSurfaceRoute("c1", "s1", "todo", "Groceries"), nav.currentBackStackEntry!!.toRoute<AgentSurfaceRoute>())
         // Nothing to show on the phone: the connection's home.
