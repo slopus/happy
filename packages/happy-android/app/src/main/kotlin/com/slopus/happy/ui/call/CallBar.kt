@@ -7,7 +7,14 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import android.os.PowerManager
+import android.os.Build
 import android.os.SystemClock
+import android.view.Gravity
+import android.view.View
+import android.view.ViewGroup
+import android.view.Window
+import android.view.inspector.WindowInspector
+import android.view.WindowManager
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.animateDpAsState
@@ -44,6 +51,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,10 +72,12 @@ import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
@@ -110,9 +120,14 @@ object CallBarSpec {
     val row = 24.dp
     /** The bar never gets shorter than this. */
     val minHeight = 40.dp
-    /** A button's glyph, and the box around it that takes a touch. */
+    /**
+     * A button's glyph, its 44 dp slot in the row (Telegram's), and the box
+     * that takes a touch: 48 dp, Android's least, reaching past the slot
+     * toward the title and up into the bar.
+     */
     val glyph = 18.dp
     val button = 44.dp
+    val touch = 48.dp
     /** From the bar's side to a button's glyph. */
     val sideInset = 14.dp
     /** Between the title and the clock. */
@@ -152,6 +167,8 @@ object CallBarTags {
     const val MUTE = "call-bar-mute"
     const val END = "call-bar-end"
     const val CONTENT = "call-frame-content"
+    /** A bar a window over it carries again, left out for TalkBack. */
+    const val COVERED = "call-bar-covered"
 }
 
 /**
@@ -165,8 +182,14 @@ object CallBarTags {
 fun CallFrame(calls: CallController, content: @Composable () -> Unit) =
     CallFrame(calls.state, calls.level, calls::toggleMute, calls::close, content)
 
-/** What a [CallFrame] shows, for the windows over it to show the same ([WindowCallFrame]). */
-class CallFrameSource(val state: StateFlow<CallState>, val level: StateFlow<Float>, val onMute: () -> Unit, val onEnd: () -> Unit)
+/**
+ * What a [CallFrame] shows, for the windows over it to show the same
+ * ([WindowCallFrame]). While one of them carries its own bar, this one's is
+ * covered and is left out for TalkBack, so the call is read once.
+ */
+class CallFrameSource(val state: StateFlow<CallState>, val level: StateFlow<Float>, val onMute: () -> Unit, val onEnd: () -> Unit) {
+    var covers by mutableIntStateOf(0)
+}
 
 /** The call the window under this one shows its bar for, if any. */
 val LocalCallFrame = staticCompositionLocalOf<CallFrameSource?> { null }
@@ -180,7 +203,65 @@ val LocalCallFrame = staticCompositionLocalOf<CallFrameSource?> { null }
 @Composable
 fun WindowCallFrame(content: @Composable () -> Unit) {
     val source = LocalCallFrame.current ?: return content()
+    DisposableEffect(source) {
+        source.covers++
+        onDispose { source.covers-- }
+    }
     CallFrame(source.state, source.level, source.onMute, source.onEnd, content)
+}
+
+/**
+ * A dialog someone else lays out ([dialog], RevenueCat's paywall), kept
+ * below the call's bar: its window, full-screen on a phone, is moved down
+ * by the bar's height while a call shows and given back the whole screen
+ * after. It dims nothing behind it, and touches outside it go to the app's
+ * window, so the bar works as it does everywhere else. The window is the dialog window
+ * that appears after this is composed; Android 9 and older can't list
+ * windows, so there the dialog covers the bar.
+ */
+@Composable
+fun DialogBelowCallBar(dialog: @Composable () -> Unit) {
+    val source = LocalCallFrame.current
+    val before = remember { dialogWindows() }
+    dialog()
+    if (source == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+    val state by source.state.collectAsStateWithLifecycle()
+    val density = LocalDensity.current
+    val view = LocalView.current
+    val statusTop = WindowInsets.statusBars.getTop(density)
+    val bar = if (state.isShown) with(density) { CallBarSpec.height(statusTop.toDp()).roundToPx() } else 0
+    var window by remember { mutableStateOf<Window?>(null) }
+    LaunchedEffect(Unit) {
+        // A few seconds of frames: it opens on the next, unless it decides not to open at all.
+        repeat(300) {
+            withFrameNanos {}
+            window = dialogWindows().firstOrNull { it !in before } ?: return@repeat
+            return@LaunchedEffect
+        }
+    }
+    val moved = window ?: return
+    DisposableEffect(moved, bar) {
+        val whole = WindowManager.LayoutParams().apply { copyFrom(moved.attributes) }
+        if (bar > 0) {
+            moved.attributes = WindowManager.LayoutParams().apply {
+                copyFrom(whole)
+                gravity = Gravity.TOP
+                y = bar
+                height = view.rootView.height - bar
+                // Its dim would lie over the bar alone, all the rest being the dialog.
+                flags = (flags or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL) and WindowManager.LayoutParams.FLAG_DIM_BEHIND.inv()
+            }
+        }
+        onDispose { if (bar > 0) moved.attributes = whole }
+    }
+}
+
+/** The windows of the dialogs Compose shows in this process. */
+private fun dialogWindows(): List<Window> {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return emptyList()
+    fun find(view: View): Window? = (view as? DialogWindowProvider)?.window
+        ?: (view as? ViewGroup)?.let { group -> (0 until group.childCount).firstNotNullOfOrNull { find(group.getChildAt(it)) } }
+    return WindowInspector.getGlobalWindowViews().mapNotNull(::find)
 }
 
 /** [CallFrame] over a call's [calls] state and waves' [level]. */
@@ -198,7 +279,7 @@ fun CallFrame(calls: StateFlow<CallState>, level: StateFlow<Float>, onMute: () -
     val visible = shown > 0.dp
     StatusIcons(lightOverBar = visible && shown >= statusTop / 2)
     Column(Modifier.fillMaxSize()) {
-        Box(Modifier.zIndex(1f).fillMaxWidth().height(shown)) {
+        Box(Modifier.zIndex(1f).fillMaxWidth().height(shown).then(if (source.covers > 0) Modifier.clearAndSetSemantics { testTag = CallBarTags.COVERED } else Modifier)) {
             if (visible) {
                 CallBar(
                     state = last,
@@ -341,9 +422,10 @@ fun CallBar(
 }
 
 /**
- * A 44 dp square touch box standing on the bar's foot, so it reaches up into
- * the bar and never below it; its glyph [CallBarSpec.sideInset] in from the
- * bar's side, in the row. It dims while pressed.
+ * A [CallBarSpec.touch] square touch box standing on the bar's foot at the
+ * bar's side, so it reaches up into the bar and in toward the title, never
+ * below the bar; its glyph [CallBarSpec.sideInset] in from the bar's side,
+ * in the row. It dims while pressed.
  */
 @Composable
 private fun BarButton(description: String, onClick: () -> Unit, tag: String, leading: Boolean, glyph: @Composable () -> Unit) {
@@ -353,9 +435,11 @@ private fun BarButton(description: String, onClick: () -> Unit, tag: String, lea
         Modifier
             .fillMaxSize()
             .layout { measurable, constraints ->
-                val side = CallBarSpec.button.roundToPx()
+                val side = CallBarSpec.touch.roundToPx()
                 val placeable = measurable.measure(Constraints.fixed(side, side))
-                layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(0, constraints.maxHeight - side) }
+                layout(constraints.maxWidth, constraints.maxHeight) {
+                    placeable.place(if (leading) 0 else constraints.maxWidth - side, constraints.maxHeight - side)
+                }
             }
             .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onClick)
             .semantics { contentDescription = description }

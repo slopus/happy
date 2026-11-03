@@ -73,9 +73,9 @@ class CallBarLayoutTest {
         assertBox("bar", bar, 0.dp, 0.dp, 411.dp, CallBarSpec.minHeight)
         // Pushed, not covered: the page starts at the bar's foot and keeps the rest of the window.
         assertBox("page", rule.node("page").bounds, 0.dp, bar.bottom, 411.dp, 891.dp - bar.bottom)
-        // Mute and end stand on the bar's foot, 44 square, at its ends.
-        assertBox("mute", rule.node(CallBarTags.MUTE).bounds, 0.dp, bar.bottom - 44.dp, 44.dp, 44.dp)
-        assertBox("end", rule.node(CallBarTags.END).bounds, 411.dp - 44.dp, bar.bottom - 44.dp, 44.dp, 44.dp)
+        // Mute and end take a touch in 48 dp squares on the bar's foot, at its ends.
+        assertBox("mute", rule.node(CallBarTags.MUTE).bounds, 0.dp, bar.bottom - 48.dp, 48.dp, 48.dp)
+        assertBox("end", rule.node(CallBarTags.END).bounds, 411.dp - 48.dp, bar.bottom - 48.dp, 48.dp, 48.dp)
         // "Happy" and the clock, centred together in the row.
         val title = rule.node(CallBarTags.TITLE).bounds
         val clock = rule.node(CallBarTags.SUBTITLE).bounds

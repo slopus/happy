@@ -1,6 +1,7 @@
 package com.slopus.happy.ui.conversation
 
 import com.slopus.happy.conversation.pictureSize
+import com.slopus.happy.ui.components.WindowDialog
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.media.MediaDataSource
@@ -261,7 +262,7 @@ fun PictureViewer(items: List<ViewerItem>, index: Int, source: ViewerSource, onC
     DisposableEffect(Unit) { onDispose { origins.hidden = null } }
 
     TrackOverlay(true, close)
-    Dialog(onDismissRequest = close, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+    WindowDialog(onDismissRequest = close, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         // Its own black fades; the window's dim would stay behind it. Light status icons over the black.
         val window = (LocalView.current.parent as? DialogWindowProvider)?.window
         SideEffect {

@@ -40,7 +40,13 @@ fun PageBackHandler(enabled: Boolean = true, onBack: () -> Unit) {
 @Composable
 fun PageDialog(onDismissRequest: () -> Unit, properties: DialogProperties = DialogProperties(), content: @Composable () -> Unit) {
     TrackOverlay(true, onDismissRequest)
-    if (LocalPageActive.current) Dialog(onDismissRequest, properties) {
+    if (LocalPageActive.current) WindowDialog(onDismissRequest, properties, content)
+}
+
+/** A dialog whose window, edge to edge, carries the call bar it covers ([WindowCallFrame]). */
+@Composable
+fun WindowDialog(onDismissRequest: () -> Unit, properties: DialogProperties = DialogProperties(), content: @Composable () -> Unit) {
+    Dialog(onDismissRequest, properties) {
         if (properties.decorFitsSystemWindows) content() else WindowCallFrame(content)
     }
 }

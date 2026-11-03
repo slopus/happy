@@ -23,6 +23,9 @@ architectures comparable (local store, delta sync, crypto layer).
   (`ComposeFab(onVoice)`); the call's bar (`CallFrame`, after Telegram-iOS's
   in-call status bar) slides down over the status bar and pushes the whole
   window, the top app bar first, down by its height, taking the top inset.
+  A full-screen dialog goes through `PageDialog` or `WindowDialog` so that it
+  carries the bar. A full-screen dialog from a library goes inside
+  `DialogBelowCallBar` (as the RevenueCat paywall does).
   It ends when the app leaves the foreground, another account opens or the
   relay's voice starts. For launch it connects to a public agent by its ID
   (`PublicAgentCallGrants`), a connection mechanism and not authentication;

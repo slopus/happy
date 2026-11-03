@@ -1,6 +1,7 @@
 package com.slopus.happy.ui.attach
 
 import androidx.compose.runtime.DisposableEffect
+import com.slopus.happy.ui.components.WindowDialog
 import android.content.res.Configuration
 import androidx.compose.ui.platform.LocalConfiguration
 import android.app.Activity
@@ -278,7 +279,7 @@ fun AttachSheet(
         }
     }
 
-    Dialog(
+    WindowDialog(
         onDismissRequest = { if (camera?.full == true) camera.back() else close() },
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {

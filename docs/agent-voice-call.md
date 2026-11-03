@@ -68,15 +68,25 @@ ID, biometrics, store confirmations) stay above it.
   element at the bar's place, saying what the bar says, with mute and end
   as actions. UIKit's own controllers (alerts, share sheets, pickers) are
   left as UIKit made them, under the bar.
-- Android: `CallFrame` wraps the app's navigation. Every edge-to-edge dialog
-  of the app's (`PageDialog` with `decorFitsSystemWindows = false`: the
-  picture viewer, the attach sheet, the question form) covers the window and
-  carries the same bar in its own `CallFrame` (`WindowCallFrame`). A centred
-  card dialog leaves the bar under its dim, where a tap dismisses the card.
-  The QR scanner is an activity of its own: it counts as the app being in
-  the foreground, so the call isn't hung up, and it shows the bar too.
-  `AlertDialog`, `ModalBottomSheet` and RevenueCat's paywall are left as
-  they are, over the bar.
+- Android: `CallFrame` wraps the app's navigation.
+  - Edge-to-edge dialogs: every one of the app's (`PageDialog` or
+    `WindowDialog` with `decorFitsSystemWindows = false`: the picture viewer,
+    the attach sheet, the question form) covers the window and carries the
+    same bar in its own `CallFrame` (`WindowCallFrame`). The covered bar
+    under it is cleared from the semantics tree, so TalkBack reads the call
+    once.
+  - RevenueCat's paywall, full-screen on a phone and laid out by RevenueCat,
+    keeps its own window: `DialogBelowCallBar` moves that window below the
+    bar while a call shows and drops its dim. Touches outside it reach the
+    bar, and the paywall gets the whole screen back when the call ends. This
+    needs Android 10; on 8 and 9 the paywall covers the bar.
+  - Dims without covering: a centred card (`AlertDialog`, prompts) leaves
+    the bar under its dim, where a tap dismisses the card. So does the link
+    menu's `ModalBottomSheet`, whose few rows keep it well below the bar.
+  - The QR scanner is an activity of its own. It counts as the app being in
+    the foreground, so the call isn't hung up, and it shows the bar too.
+  - Mute and End take touches in 48 dp squares (Android's least) around
+    glyphs placed as Telegram's 44 pt slots place them.
 
 ## Free time, counted on the device
 

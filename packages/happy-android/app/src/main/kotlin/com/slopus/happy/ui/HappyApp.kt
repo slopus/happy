@@ -136,9 +136,10 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
         // RevenueCat's paywall host, once the start is over: no paywall opens before a tap.
         val afterStart = LocalAfterStart.current
         val started by produceState(false) { afterStart.await(); value = true }
-        if (started) PaywallHost(graph.purchases)
         // The voice call's bar, when one shows, pushes everything down (ui/call/CallFrame).
         CallFrame(graph.calls) {
+        // Inside the frame, so the paywall's window stays below a call's bar.
+        if (started) PaywallHost(graph.purchases)
         DissolveBox(dissolve) { CompositionLocalProvider(LocalAccountSwitcher provides switcher, LocalOverlays provides overlays) {
         // Each account has its own back stack, replaced when another opens (but not from Settings).
         key(stack) {

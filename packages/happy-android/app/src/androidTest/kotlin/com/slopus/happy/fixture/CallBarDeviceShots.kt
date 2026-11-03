@@ -16,7 +16,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
+import com.slopus.happy.R
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
 import com.slopus.happy.ui.call.CallBarTags
@@ -54,6 +56,14 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.ui.window.Dialog
+import androidx.test.uiautomator.By
+import com.slopus.happy.ui.call.DialogBelowCallBar
 import kotlin.math.sin
 
 /**
@@ -217,16 +227,22 @@ class CallBarDeviceShots {
         run(800)
         full.value = true
         run(1_200)
-        val bars = rule.onAllNodesWithTag(CallBarTags.BAR, useUnmergedTree = true).fetchSemanticsNodes()
+        // As TalkBack is given them: a cleared node's children are left out of the merged tree.
+        val bars = rule.onAllNodesWithTag(CallBarTags.BAR).fetchSemanticsNodes()
         val barBottom = bars.maxOf { it.boundsInRoot.bottom }
         val top = rule.onNodeWithTag("dialog-top", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.top
-        android.util.Log.i("CallBarShots", "dialog: bars=${bars.size} barBottom=$barBottom contentTop=$top")
-        assertEquals("the dialog carries its own bar", 2, bars.size)
+        android.util.Log.i("CallBarShots", "dialog: bars read=${bars.size} barBottom=$barBottom contentTop=$top")
+        assertEquals("the dialog carries its own bar; the window's under it is covered", 1, bars.size)
+        assertEquals(1, rule.onAllNodesWithTag(CallBarTags.COVERED).fetchSemanticsNodes().size)
+        // The covered one under it is left out: TalkBack reads the call once, from the dialog's.
+        val read = rule.onAllNodes(hasContentDescription("Voice call", substring = true)).fetchSemanticsNodes()
+        assertEquals("one bar read", 1, read.size)
+        assertEquals("the end button read is the dialog's", 1, rule.onAllNodes(hasContentDescription(app.getString(R.string.call_end))).fetchSemanticsNodes().size)
         assertTrue("the dialog's content starts below its bar ($top < $barBottom)", top >= barBottom - 1)
         device.takeScreenshot(File(dir, "${if (dark) "dark" else "light"}-over-full-dialog.png"))
         // End in the dialog's bar ends the call; the content takes the top back.
-        rule.onAllNodesWithTag(CallBarTags.END, useUnmergedTree = true).fetchSemanticsNodes().size.let { assertEquals(2, it) }
-        rule.onAllNodesWithTag(CallBarTags.END, useUnmergedTree = true)[1].performClick()
+        rule.onAllNodesWithTag(CallBarTags.END).fetchSemanticsNodes().size.let { assertEquals(1, it) }
+        rule.onAllNodesWithTag(CallBarTags.END)[0].performClick()
         run(1_000)
         val after = rule.onNodeWithTag("dialog-top", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.top
         android.util.Log.i("CallBarShots", "dialog after hang-up: contentTop=$after state=${state.value}")
@@ -240,6 +256,83 @@ class CallBarDeviceShots {
         run(1_200)
         assertEquals("a card leaves the one bar", 1, rule.onAllNodesWithTag(CallBarTags.BAR, useUnmergedTree = true).fetchSemanticsNodes().size)
         device.takeScreenshot(File(dir, "${if (dark) "dark" else "light"}-under-card-dialog.png"))
+    }
+
+    /**
+     * A dialog someone else lays out (RevenueCat's paywall is one), full
+     * screen and edge to edge, is moved below the bar ([DialogBelowCallBar]):
+     * the bar stays bright and takes a real tap, and once the call ends the
+     * dialog has the whole screen again. A Material bottom sheet as the app
+     * uses one (the link menu) stays below the bar and only dims it.
+     */
+    @OptIn(ExperimentalMaterial3Api::class)
+    @Test
+    fun belowVendorDialogAndSheet() {
+        val vendor = MutableStateFlow(false)
+        val sheet = MutableStateFlow(false)
+        rule.runOnUiThread { rule.activity.enableEdgeToEdge() }
+        rule.setContent {
+            HappyTheme(if (dark) ThemePreference.Dark else ThemePreference.Light) {
+                CallFrame(state, level, onMute = {}, onEnd = { state.value = CallState.Idle }) {
+                    val accounts = AccountMenu(listOf(AccountMenuEntry("fx-connection", "Studio Mac", agent = true, active = true)))
+                    AgentHomeScreen("Studio Mac", feed(), AgentLinkStatus.Connected, accounts, AgentHomeActions({}, {}, {}, {}, {}, {}, onVoice = {}))
+                    val showVendor by vendor.collectAsState()
+                    val showSheet by sheet.collectAsState()
+                    if (showVendor) {
+                        DialogBelowCallBar {
+                            Dialog({ vendor.value = false }, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+                                Box(Modifier.fillMaxSize().background(Color(0xFF203040)).windowInsetsPadding(WindowInsets.statusBars)) {
+                                    Text("Vendor top", color = Color.White)
+                                }
+                            }
+                        }
+                    }
+                    if (showSheet) {
+                        ModalBottomSheet(onDismissRequest = { sheet.value = false }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)) {
+                            Column(Modifier.fillMaxWidth().padding(24.dp)) {
+                                repeat(4) { Text("Sheet row ${it + 1}", modifier = Modifier.padding(vertical = 12.dp)) }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        rule.waitForIdle()
+        state.value = CallState.Active(CallActivity.Listening, false, SystemClock.elapsedRealtime() - 42_000)
+        rule.mainClock.autoAdvance = false
+        run(800)
+        vendor.value = true
+        run(1_500)
+        val end = device.findObject(By.desc(app.getString(R.string.call_end)))
+        val top = device.findObject(By.text("Vendor top"))
+        assertTrue("the bar's End is there", end != null)
+        assertTrue("the vendor's dialog is there", top != null)
+        val below = top.visibleBounds.top
+        android.util.Log.i("CallBarShots", "vendor: end=${end.visibleBounds} vendorTop=$below")
+        assertTrue("the vendor's dialog starts below the bar ($below vs ${end.visibleBounds})", below >= end.visibleBounds.bottom)
+        device.takeScreenshot(File(dir, "${if (dark) "dark" else "light"}-below-vendor-dialog.png"))
+        // A real tap: outside the dialog's window, it reaches the bar.
+        device.click(end.visibleBounds.centerX(), end.visibleBounds.centerY())
+        run(1_200)
+        assertEquals(CallState.Idle, state.value)
+        val whole = device.findObject(By.text("Vendor top")).visibleBounds.top
+        android.util.Log.i("CallBarShots", "vendor after hang-up: vendorTop=$whole")
+        assertTrue("the dialog has the whole screen again ($whole vs $below)", whole < below)
+        device.takeScreenshot(File(dir, "${if (dark) "dark" else "light"}-vendor-dialog-after.png"))
+        vendor.value = false
+        run(800)
+        state.value = CallState.Active(CallActivity.Listening, false, SystemClock.elapsedRealtime() - 42_000)
+        run(800)
+        sheet.value = true
+        run(1_500)
+        val barEnd = device.findObject(By.desc(app.getString(R.string.call_end)))
+        val row = device.findObject(By.text("Sheet row 1"))
+        android.util.Log.i("CallBarShots", "sheet: end=${barEnd?.visibleBounds} firstRow=${row?.visibleBounds}")
+        assertTrue("the sheet is there", row != null)
+        assertTrue("the sheet stays below the bar", barEnd == null || row.visibleBounds.top > barEnd.visibleBounds.bottom)
+        device.takeScreenshot(File(dir, "${if (dark) "dark" else "light"}-under-sheet.png"))
+        sheet.value = false
+        run(800)
     }
 
     /** The fixture states one after another, for `screenrecord`: about 20 s. */
