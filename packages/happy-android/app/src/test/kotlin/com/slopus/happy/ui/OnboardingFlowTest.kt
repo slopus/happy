@@ -75,7 +75,7 @@ class OnboardingFlowTest {
     @Test
     fun restoreByScanningTheCodeFromTheOtherPhone() {
         rule.onNodeWithContentDescription("More").performClick()
-        rule.onNodeWithText("Restore Legacy Account").performClick()
+        rule.onNodeWithText("Restore Happy CLI account").performClick()
         rule.waitUntilAtLeastOneExists(hasTestTag(RestoreTags.QR_CODE), 5_000)
 
         // The code carries the key the request was registered with.
@@ -103,7 +103,7 @@ class OnboardingFlowTest {
     @Test
     fun anApprovalWhileTheSecretKeyScreenIsOpenStillSignsIn() {
         rule.onNodeWithContentDescription("More").performClick()
-        rule.onNodeWithText("Restore Legacy Account").performClick()
+        rule.onNodeWithText("Restore Happy CLI account").performClick()
         rule.waitUntilAtLeastOneExists(hasTestTag(RestoreTags.QR_CODE), 5_000)
         val publicKey = synchronized(server) { server.accountRequests.keys.single() }
 

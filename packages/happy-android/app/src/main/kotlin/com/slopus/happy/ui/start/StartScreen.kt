@@ -254,9 +254,9 @@ internal fun StartMenu(
         }
         item(stringResource(R.string.start_enter_link), Ionicon.LinkOutline, StartTags.ENTER_LINK, onClick = onEnterLink)
         HappyMenuDivider()
-        item(stringResource(R.string.start_restore_legacy), Ionicon.KeyOutline, StartTags.RESTORE, onClick = onRestore)
+        item(stringResource(R.string.account_kind_restore_cli_account), Ionicon.KeyOutline, StartTags.RESTORE, onClick = onRestore)
         item(
-            stringResource(R.string.start_legacy_server),
+            stringResource(R.string.account_kind_cli_server),
             Ionicon.ServerOutline,
             StartTags.SERVER,
             detail = customServerLabel,

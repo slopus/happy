@@ -8,11 +8,7 @@
     <string name="start_connect">Подключить</string>
     <string name="start_more">Ещё</string>
     <string name="start_enter_link">Ввести ссылку вручную</string>
-    <string name="start_restore_legacy">Восстановить старый аккаунт</string>
-    <string name="start_legacy_server">Старый сервер</string>
     <string name="start_enter_link_title">Введите ссылку</string>
-    <string name="start_enter_link_message">Вставьте ссылку из Happy на компьютере или из Happy Agent.</string>
-    <string name="start_account_code">Этот код добавляет телефон в аккаунт. Отсканируйте его телефоном, на котором выполнен вход.</string>
     <string name="start_slide_happy_title">Любая модель. Ваша команда. Одно приложение.</string>
     <string name="start_slide_happy_body">Happy объединяет модели, команды и вычисления в одном приложении с открытым исходным кодом.</string>
     <string name="start_slide_team_title">Многопользовательский изначально</string>

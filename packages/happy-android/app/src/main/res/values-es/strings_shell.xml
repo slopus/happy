@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The app shell: account kinds, Add, the scanner, the tablet shell and search.
+  Account kinds are iOS's (Strings/AccountKinds.swift, NativeTranslations.swift): Happy Agent and
+  Happy CLI, never "legacy". Shared with other areas; reuse these keys.
+-->
+<resources>
+    <string name="account_kind_add_cli_account">Añadir cuenta de Happy CLI</string>
+    <string name="account_kind_connect_agent">Conectar Happy Agent</string>
+    <string name="account_kind_restore_cli_account">Restaurar cuenta de Happy CLI</string>
+    <string name="account_kind_cli_server">Servidor de Happy CLI</string>
+    <string name="account_kind_disconnect_agent_title">¿Desconectar Happy Agent?</string>
+    <string name="account_kind_sign_out_cli_title">¿Cerrar sesión en Happy CLI?</string>
+    <string name="account_kind_device_needs_cli_account">Este código necesita una cuenta de Happy CLI. Primero añade una en este teléfono.</string>
+    <string name="account_kind_account_not_shareable">Esta cuenta se creó para tu ordenador y su clave nunca sale de este teléfono. Solo una cuenta de Happy CLI con una clave secreta que puedas guardar se puede vincular a otro dispositivo.</string>
+    <string name="account_kind_enter_link_message">Pega el enlace de Happy CLI en tu ordenador o de Happy Agent.</string>
+    <string name="account_kind_agent_unreachable">No se puede acceder a %1$s.\nComprueba la conexión con Happy Agent y vuelve a cargar.</string>
+    <string name="account_kind_restore_another_cli_account">Restaurar una cuenta de Happy CLI</string>
+    <string name="account_kind_restore_another_footer">Inicia sesión en otra cuenta de Happy CLI con su clave secreta o con un teléfono que la tenga. Esta cuenta se queda aquí.</string>
+</resources>

@@ -9,5 +9,4 @@
     <string name="account_menu_unnamed_account">Аккаунт Happy</string>
     <string name="account_menu_unnamed_agent">Агент</string>
     <string name="account_menu_agent">Подключение агента</string>
-    <string name="agent_home_connected">Подключено к %1$s</string>
 </resources>

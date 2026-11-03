@@ -33,6 +33,10 @@ architectures comparable (local store, delta sync, crypto layer).
   concept and stays). Call the protocol Happy Protocol V2 in strings, docs
   and prose; never "direct" or "direct mode", except where the wire itself
   says it (`happy://direct?`, endpoints, JSON keys).
+- **Naming on screen** (iOS's 64edb6a34): the two kinds of account are
+  Happy Agent (an agent connection) and Happy CLI (a relay Happy account)
+  wherever the person reads them; "legacy" is never shown. The words are
+  `account_kind_*` in `strings_shell.xml`, iOS's own translations.
 - **Naming in code:** current code has no prefix; old relay code that
   clashes is `Legacy*`; never `V2`, `New`, `Direct` or feature prefixes.
   `Legacy*` = used only by the legacy relay protocol or its UI. Shared
@@ -199,8 +203,8 @@ win:
   approves that terminal in one step (`AuthRepository.createAccount`'s
   `prepare`; a failed approval keeps no account), `happy:///account?`
   says it needs a signed-in phone, `happy://direct?` pairs an agent. The
-  ⋮ drop-down holds Enter link manually (same routing), Restore Legacy
-  Account and Legacy Server, and nothing else: no "Get help", and no
+  ⋮ drop-down holds Enter link manually (same routing), Restore Happy CLI
+  account and Happy CLI server, and nothing else: no "Get help", and no
   "Create account" because a Happy account is only ever made by a
   terminal code. A pasted link routes exactly as the scanned code does
   (`ConnectFlow.connectWithUrl` through `route`); only a link of no known

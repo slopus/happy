@@ -287,7 +287,7 @@ private fun rememberConnectFlow(
         terminalElsewhere = stringResource(R.string.scan_terminal_code_elsewhere),
         accountElsewhere = stringResource(R.string.scan_account_code_elsewhere),
         pairingUnavailable = stringResource(R.string.scan_pairing_unavailable),
-        accountSignedOut = stringResource(R.string.start_account_code),
+        accountSignedOut = stringResource(R.string.account_kind_device_needs_cli_account),
         invalidUrl = invalid,
         serverInvalid = stringResource(R.string.team_server_code_invalid),
         serverAtPath = stringResource(R.string.team_server_code_path),
@@ -349,7 +349,7 @@ fun rememberAddConnect(approve: suspend (url: String) -> Unit): ConnectFlow {
         PromptModal(
             prompt = Prompt(
                 title = stringResource(R.string.start_enter_link_title),
-                message = stringResource(R.string.start_enter_link_message),
+                message = stringResource(R.string.account_kind_enter_link_message),
                 placeholder = "happy://…",
                 confirmText = stringResource(R.string.start_connect),
                 onResult = { url -> url?.trim()?.takeIf { it.isNotEmpty() }?.let(flow::connectWithUrl) },

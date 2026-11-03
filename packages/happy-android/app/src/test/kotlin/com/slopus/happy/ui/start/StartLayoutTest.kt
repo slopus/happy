@@ -132,8 +132,8 @@ class StartLayoutTest {
         rule.onNodeWithText("Start").performClick()
         for ((label, tap) in listOf(
             "Enter link manually" to "link",
-            "Restore Legacy Account" to "restore",
-            "Legacy Server" to "server",
+            "Restore Happy CLI account" to "restore",
+            "Happy CLI server" to "server",
         )) {
             rule.onNodeWithContentDescription("More").performClick()
             rule.node(StartTags.MENU).assertExists()
@@ -150,12 +150,12 @@ class StartLayoutTest {
         rule.onNodeWithText("Get help").assertDoesNotExist()
     }
 
-    /** Legacy Server names a custom server under it, and says nothing for the default one. */
+    /** Happy CLI server names a custom server under it, and says nothing for the default one. */
     @Test
     fun theDefaultServerHasNoSubtitle() {
         show(server = null)
         rule.onNodeWithContentDescription("More").performClick()
-        rule.onNodeWithText("Legacy Server").assertExists()
+        rule.onNodeWithText("Happy CLI server").assertExists()
         rule.onNodeWithText("Default").assertDoesNotExist()
     }
 

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The app shell: account kinds, Add, the scanner, the tablet shell and search.
+  Account kinds are iOS's (Strings/AccountKinds.swift, NativeTranslations.swift): Happy Agent and
+  Happy CLI, never "legacy". Shared with other areas; reuse these keys.
+-->
+<resources>
+    <string name="account_kind_add_cli_account">Happy CLI アカウントを追加</string>
+    <string name="account_kind_connect_agent">Happy Agent を接続</string>
+    <string name="account_kind_restore_cli_account">Happy CLI アカウントを復元</string>
+    <string name="account_kind_cli_server">Happy CLI サーバー</string>
+    <string name="account_kind_disconnect_agent_title">Happy Agent の接続を解除しますか？</string>
+    <string name="account_kind_sign_out_cli_title">Happy CLI からログアウトしますか？</string>
+    <string name="account_kind_device_needs_cli_account">このコードには Happy CLI アカウントが必要です。先にこのスマートフォンで追加してください。</string>
+    <string name="account_kind_account_not_shareable">このアカウントはお使いのコンピューター用に作成されたもので、キーがこのスマートフォンから出ることはありません。他のデバイスにリンクできるのは、バックアップできるシークレットキーを持つ Happy CLI アカウントだけです。</string>
+    <string name="account_kind_enter_link_message">コンピューターの Happy CLI、または Happy Agent のリンクを貼り付けてください。</string>
+    <string name="account_kind_agent_unreachable">%1$s に接続できません。\nHappy Agent との接続を確認してから、再読み込みしてください。</string>
+    <string name="account_kind_restore_another_cli_account">Happy CLI アカウントを復元</string>
+    <string name="account_kind_restore_another_footer">別の Happy CLI アカウントに、そのシークレットキーか、そのアカウントがあるスマートフォンでサインインします。このアカウントはここに残ります。</string>
+</resources>

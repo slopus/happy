@@ -263,7 +263,7 @@ class ConnectFlowTest {
         assertEquals(listOf("happy://direct?abc"), paired)
 
         approved.clear()
-        assertScanSays(ScanResult.Scanned(accountUrl), "This code adds a phone to an account. Scan it with a phone that's signed in.")
+        assertScanSays(ScanResult.Scanned(accountUrl), "This code asks for a Happy CLI account. Add one on this phone first.")
         assertScanSays(ScanResult.Scanned("happy://something?else"), "This QR code isn't a Happy code.")
         assertScanSays(ScanResult.Scanned("https://example.com"), "This QR code isn't a Happy code.")
     }
@@ -278,7 +278,7 @@ class ConnectFlowTest {
         rule.runOnIdle { flow.connectWithUrl("happy://direct?xyz") }
         rule.waitUntil { paired.isNotEmpty() }
         rule.runOnIdle { flow.connectWithUrl(accountUrl) }
-        rule.onNodeWithText("This code adds a phone to an account. Scan it with a phone that's signed in.").assertExists()
+        rule.onNodeWithText("This code asks for a Happy CLI account. Add one on this phone first.").assertExists()
         rule.onNodeWithText("OK").performClick()
         rule.runOnIdle { flow.connectWithUrl("hello") }
         rule.onNodeWithText("Invalid authentication URL").assertExists()

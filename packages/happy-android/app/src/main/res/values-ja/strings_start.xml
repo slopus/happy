@@ -8,11 +8,7 @@
     <string name="start_connect">接続</string>
     <string name="start_more">その他</string>
     <string name="start_enter_link">リンクを手動で入力</string>
-    <string name="start_restore_legacy">旧アカウントを復元</string>
-    <string name="start_legacy_server">旧サーバー</string>
     <string name="start_enter_link_title">リンクを入力</string>
-    <string name="start_enter_link_message">コンピュータの Happy か Happy Agent のリンクを貼り付けてください。</string>
-    <string name="start_account_code">このコードはアカウントにスマートフォンを追加します。サインイン済みのスマートフォンでスキャンしてください。</string>
     <string name="start_slide_happy_title">どんなモデルでも。あなたのチームで。ひとつのアプリで。</string>
     <string name="start_slide_happy_body">Happy はモデル、チーム、コンピューティングをひとつのオープンソースのアプリに統合します。</string>
     <string name="start_slide_team_title">ネイティブにマルチプレイヤー</string>
