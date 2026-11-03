@@ -65,7 +65,7 @@ class QrScannerActivity : ComponentActivity() {
         setContent {
             HappyTheme(preference = ThemePreference.Dark) {
                 ProvideWindowLayout {
-                    QrScannerRoute(onResult = ::finishWith)
+                    QrScannerRoute(scan = Contract.request(intent), onResult = ::finishWith)
                 }
             }
         }
@@ -77,18 +77,28 @@ class QrScannerActivity : ComponentActivity() {
             is ScanResult.Scanned -> setResult(RESULT_OK, Intent().putExtra(EXTRA_VALUE, result.value))
             is ScanResult.Failed -> setResult(RESULT_FAILED, Intent().putExtra(EXTRA_FAILURE, result.reason.name))
             ScanResult.Cancelled -> setResult(RESULT_CANCELED)
+            is ScanResult.Chose -> setResult(RESULT_CHOSE, Intent().putExtra(EXTRA_WAY, result.way.name))
         }
         finish()
     }
 
     /** Starts the scanner; the result is what it read, a cancel, or why it couldn't. */
-    object Contract : ActivityResultContract<Unit, ScanResult>() {
-        override fun createIntent(context: Context, input: Unit): Intent = Intent(context, QrScannerActivity::class.java)
+    object Contract : ActivityResultContract<ScanRequest, ScanResult>() {
+        override fun createIntent(context: Context, input: ScanRequest): Intent = Intent(context, QrScannerActivity::class.java)
+            .putExtra(EXTRA_WAYS, input.ways.map { it.name }.toTypedArray())
+            .putExtra(EXTRA_SERVER_LABEL, input.serverLabel)
+
+        internal fun request(intent: Intent?) = ScanRequest(
+            ways = intent?.getStringArrayExtra(EXTRA_WAYS).orEmpty().mapNotNull { name -> ScannerWay.entries.firstOrNull { it.name == name } },
+            serverLabel = intent?.getStringExtra(EXTRA_SERVER_LABEL),
+        )
 
         override fun parseResult(resultCode: Int, intent: Intent?): ScanResult {
             val value = intent?.getStringExtra(EXTRA_VALUE)
             return when {
                 resultCode == RESULT_OK && value != null -> ScanResult.Scanned(value)
+                resultCode == RESULT_CHOSE -> ScannerWay.entries.firstOrNull { it.name == intent?.getStringExtra(EXTRA_WAY) }
+                    ?.let(ScanResult::Chose) ?: ScanResult.Cancelled
                 resultCode == RESULT_FAILED -> ScanResult.Failed(
                     ScanFailure.entries.firstOrNull { it.name == intent?.getStringExtra(EXTRA_FAILURE) } ?: ScanFailure.CameraFailed,
                 )
@@ -100,7 +110,11 @@ class QrScannerActivity : ComponentActivity() {
     internal companion object {
         const val EXTRA_VALUE = "value"
         const val EXTRA_FAILURE = "failure"
+        const val EXTRA_WAYS = "ways"
+        const val EXTRA_SERVER_LABEL = "serverLabel"
+        const val EXTRA_WAY = "way"
         const val RESULT_FAILED = Activity.RESULT_FIRST_USER
+        const val RESULT_CHOSE = Activity.RESULT_FIRST_USER + 1
     }
 }
 
@@ -110,7 +124,7 @@ class QrScannerActivity : ComponentActivity() {
  * the camera.
  */
 @Composable
-internal fun QrScannerRoute(onResult: (ScanResult) -> Unit) {
+internal fun QrScannerRoute(scan: ScanRequest = ScanRequest(), onResult: (ScanResult) -> Unit) {
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
     val granted = { ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED }
@@ -148,6 +162,9 @@ internal fun QrScannerRoute(onResult: (ScanResult) -> Unit) {
             camera?.cameraControl?.enableTorch(torchOn)
         },
         onBack = { onResult(ScanResult.Cancelled) },
+        ways = scan.ways,
+        serverLabel = scan.serverLabel,
+        onWay = { onResult(ScanResult.Chose(it)) },
         onOpenSettings = {
             context.startActivity(
                 Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null)),
@@ -161,6 +178,7 @@ internal fun QrScannerRoute(onResult: (ScanResult) -> Unit) {
 /**
  * Binds a preview and a [QrAnalyzer] to the back camera (else the front)
  * for as long as it is composed, following the activity's lifecycle.
+
  */
 @Composable
 private fun CameraBinding(

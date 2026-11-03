@@ -801,7 +801,10 @@ the flows are tested with a fake.
   the camera fills the window under transparent system bars, a floating ✕
   top right (= back), a scrim with a centred square viewfinder, a hint
   under it, and a torch toggle when the camera has a flash. Close and
-  system back return `Cancelled`.
+  system back return `Cancelled`. Add's scan (`ScanRequest`) also has a ⋮
+  top left with the other ways in (iOS's `AccountAdding.otherWays`): enter
+  a link, Restore Happy CLI account, Happy CLI server; a pick returns
+  `ScanResult.Chose`.
 - `QrDecoderTest` decodes ZXing-encoded luminance frames; `QrScannerTest`
   covers the result contract, the refused permission and the layout.
 

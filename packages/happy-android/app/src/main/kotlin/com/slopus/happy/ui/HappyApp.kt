@@ -54,6 +54,7 @@ import com.slopus.happy.ui.connection.signInToServer
 import com.slopus.happy.ui.connection.signInToServerAgain
 import com.slopus.happy.connection.ServerInvite
 import com.slopus.happy.ui.connect.rememberAddFlow
+import com.slopus.happy.ui.start.rememberCustomServerLabel
 import com.slopus.happy.ui.tablet.TabletShell
 import com.slopus.happy.ui.connect.connectRoutes
 import com.slopus.happy.ui.files.filesRoutes
@@ -137,7 +138,12 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
             // Every scanner, signed in or out, sends happy://direct? codes here.
             CompositionLocalProvider(LocalAgentPairing provides connectAgent, LocalServerSignIn provides signInToServer, LocalHappyLinks provides happyLinks) {
               // Add (the first screen's Connect, the account menu's Add): scan, then route the code.
-              val add = rememberAddFlow(graph)
+              val add = rememberAddFlow(
+                  graph,
+                  onRestore = { nav.navigate(RestoreRoute) },
+                  onServer = { nav.navigate(ServerRoute) },
+                  serverLabel = rememberCustomServerLabel(graph),
+              )
               CompositionLocalProvider(LocalAddFlow provides add) {
                 // Links: through the open agent connection in its browser, or as ever on a Happy account.
                 ProvideLinks(rememberLinks(graph, nav, agent)) {

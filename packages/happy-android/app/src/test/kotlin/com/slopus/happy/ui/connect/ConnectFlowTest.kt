@@ -40,8 +40,10 @@ class ConnectFlowTest {
     private class FakeScanner : QrScanner {
         val results = ArrayDeque<ScanResult>()
         var scans = 0
-        override suspend fun scan(): ScanResult {
+        var lastRequest: ScanRequest? = null
+        override suspend fun scan(request: ScanRequest): ScanResult {
             scans++
+            lastRequest = request
             return results.removeFirst()
         }
     }
@@ -238,13 +240,50 @@ class ConnectFlowTest {
     }
 
     private val paired = CopyOnWriteArrayList<String>()
+    private val ways = CopyOnWriteArrayList<String>()
 
     private fun setStart() {
         rule.setHappyContent {
             CompositionLocalProvider(LocalQrScanner provides scanner, LocalAgentPairing provides { paired += it }) {
-                flow = rememberAddConnect(approve = { url -> failWith?.let { throw it }; approved += url })
+                flow = rememberAddConnect(
+                    approve = { url -> failWith?.let { throw it }; approved += url },
+                    onRestore = { ways += "restore" },
+                    onServer = { ways += "server" },
+                    serverLabel = "happy.example.com",
+                )
             }
         }
+    }
+
+    /** Add's scanner offers the other ways in under its ⋮ (iOS's AccountAdding.otherWays), and each goes where it says. */
+    @Test
+    fun addsScannerOffersTheOtherWaysIn() {
+        setStart()
+        scanner.results += ScanResult.Chose(ScannerWay.Restore)
+        rule.runOnIdle { flow.scan() }
+        rule.waitUntil { ways.isNotEmpty() }
+        assertEquals(
+            ScanRequest(listOf(ScannerWay.EnterLink, ScannerWay.Restore, ScannerWay.Server), "happy.example.com"),
+            scanner.lastRequest,
+        )
+        scanner.results += ScanResult.Chose(ScannerWay.Server)
+        rule.runOnIdle { flow.scan() }
+        rule.waitUntil { ways.size == 2 }
+        assertEquals(listOf("restore", "server"), ways)
+
+        scanner.results += ScanResult.Chose(ScannerWay.EnterLink)
+        rule.runOnIdle { flow.scan() }
+        rule.onNodeWithText("Paste the link from Happy CLI on your computer or from Happy Agent.").assertExists()
+    }
+
+    /** Other flows' scanners have no ⋮. */
+    @Test
+    fun aTerminalScanOffersNoOtherWays() {
+        setTerminal()
+        scanner.results += ScanResult.Cancelled
+        rule.runOnIdle { flow.scan() }
+        rule.waitUntil { scanner.scans == 1 }
+        assertEquals(ScanRequest(), scanner.lastRequest)
     }
 
     /** The first screen: a terminal code is approved (by a new account), a pairing code pairs, the rest say what they are. */

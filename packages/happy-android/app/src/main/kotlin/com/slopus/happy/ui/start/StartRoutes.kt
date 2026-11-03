@@ -61,8 +61,9 @@ fun InstallDesktop(graph: AppGraph, nav: NavHostController, add: ConnectFlow) {
     )
 }
 
+/** The custom server's host, or null on the default one: what the menus show under Happy CLI server. */
 @Composable
-private fun rememberCustomServerLabel(graph: AppGraph): String? {
+internal fun rememberCustomServerLabel(graph: AppGraph): String? {
     val serverUrl by graph.serverConfig.url.collectAsStateWithLifecycle()
     return remember(serverUrl) { graph.serverConfig.customHostLabel }
 }
