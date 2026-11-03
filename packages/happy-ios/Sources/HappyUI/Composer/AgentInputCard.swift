@@ -203,12 +203,15 @@ public struct AgentInputAttachmentPreview: Equatable, Sendable {
     public var fileURL: URL
     public var name: String?
     public var mimeType: String?
+    /// Still being read: `fileURL` is its thumbnail, under a turning ring.
+    public var preparing: Bool
 
-    public init(id: String, fileURL: URL, name: String? = nil, mimeType: String? = nil) {
+    public init(id: String, fileURL: URL, name: String? = nil, mimeType: String? = nil, preparing: Bool = false) {
         self.id = id
         self.fileURL = fileURL
         self.name = name
         self.mimeType = mimeType
+        self.preparing = preparing
     }
 }
 
@@ -2030,6 +2033,10 @@ final class AttachmentStripView: UIScrollView {
         for attachment in attachments {
             if let view = existing[attachment.id], view.attachment == attachment {
                 next.append(view)
+            } else if let view = existing[attachment.id], view.attachment.preparing {
+                // Read: the picture takes its thumbnail's place, where it is.
+                view.attachment = attachment
+                next.append(view)
             } else {
                 let view = AttachmentThumbnailView(attachment: attachment)
                 view.onRemove = { [weak self] id in self?.onRemove?(id) }
@@ -2101,9 +2108,17 @@ final class AttachmentStripView: UIScrollView {
 /// One thumbnail: the picture (cover, radius 8) in a 1pt divider ring,
 /// and an 18pt remove button.
 final class AttachmentThumbnailView: UIView {
-    let attachment: AgentInputAttachmentPreview
+    var attachment: AgentInputAttachmentPreview {
+        didSet {
+            guard attachment != oldValue else { return }
+            if attachment.fileURL != oldValue.fileURL { load() }
+            applyPreparing()
+        }
+    }
     var onRemove: ((String) -> Void)?
     private let imageView = UIImageView()
+    /// Telegram's ring, turning while the picture is still being read.
+    private var progress: MediaRingView?
     /// The ring is a view of its own under the remove button: a layer's
     /// border is drawn over its sublayers, and would cross the button.
     private let ring = UIView()
@@ -2132,6 +2147,24 @@ final class AttachmentThumbnailView: UIView {
             self.applyColors()
         }
         load()
+        applyPreparing()
+    }
+
+    private func applyPreparing() {
+        if attachment.preparing {
+            let ring = progress ?? MediaRingView()
+            if progress == nil {
+                progress = ring
+                insertSubview(ring, belowSubview: self.ring)
+                setNeedsLayout()
+            }
+            ring.set(.waiting, animated: false)
+            accessibilityValue = Strings.SessionDetail.loading
+        } else if let ring = progress {
+            progress = nil
+            accessibilityValue = nil
+            UIView.animate(withDuration: 0.2) { ring.alpha = 0 } completion: { _ in ring.removeFromSuperview() }
+        }
     }
 
     @available(*, unavailable)
@@ -2172,6 +2205,7 @@ final class AttachmentThumbnailView: UIView {
         super.layoutSubviews()
         imageView.frame = bounds
         ring.frame = bounds
+        progress?.frame = AgentInputCardLayout.attachmentProgress
         removeButton.frame = AgentInputCardLayout.attachmentRemoveButton
     }
 

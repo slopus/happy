@@ -198,6 +198,53 @@ final class NewTaskTests: XCTestCase {
         XCTAssertEqual(writes.filter { $0.path.hasSuffix("/send") }.compactMap { $0.body?["id"]?.stringValue }, ["m1"])
         await chat.stop()
     }
+
+    /// A picture still being read when the message is sent: the message is
+    /// drawn with its thumbnail and waits; once the picture is in, it goes
+    /// with it. One taken out meanwhile is left out.
+    func testASendWaitsForPicturesStillBeingRead() async throws {
+        let computer = TaskComputer()
+        let store = Store(client: AgentClient(transport: computer, token: "t"))
+        let task = await store.newTask()
+        let (chat, _) = conversation(computer, task)
+        var updates = chat.updates.makeAsyncIterator()
+        await chat.start()
+
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let thumb = folder.appendingPathComponent("thumb.jpg")
+        try Data([0xFF, 0xD8, 0xFF]).write(to: thumb)
+        let previews = [PreviewAttachment(id: "a", thumbnail: thumb, width: 4032, height: 3024), PreviewAttachment(id: "b", thumbnail: thumb, width: 10, height: 10)]
+        let sent = await chat.send(id: "m1", text: "Look", previews: previews)
+        XCTAssertTrue(sent)
+        var drawn: ChatItem?
+        while drawn == nil, let snapshot = await updates.next() {
+            drawn = snapshot.items.first { $0.id == "m1" }
+        }
+        let tiles = drawn?.pieces.compactMap { piece -> ChatItem.SentFile? in if case .sentFile(let file) = piece { file } else { nil } }
+        XCTAssertEqual(tiles?.map(\.id), ["m1:p1", "m1:p2"])
+        XCTAssertEqual(tiles?.first?.width, 4032)
+        try await Task.sleep(for: .milliseconds(300))
+        var writes = await computer.writes
+        XCTAssertFalse(writes.contains { $0.path.hasSuffix("/send") }, "it went before its pictures were read")
+
+        await chat.removeAttachment("m1", key: "m1:p2")
+        let full = folder.appendingPathComponent("full.png")
+        try Data(repeating: 7, count: 64).write(to: full)
+        await chat.prepared("m1", [
+            "a": OutgoingAttachment(fileURL: full, name: "full.png", mimeType: "image/png", size: 64, width: 4032, height: 3024),
+            "b": OutgoingAttachment(fileURL: full, name: "other.png", mimeType: "image/png", size: 64),
+        ])
+        for _ in 0..<100 where !writes.contains(where: { $0.path.hasSuffix("/send") }) {
+            try await Task.sleep(for: .milliseconds(20))
+            writes = await computer.writes
+        }
+        let send = try XCTUnwrap(writes.first { $0.path.hasSuffix("/send") })
+        let images = send.body?["images"]?.arrayValue ?? send.body?["content"]?.arrayValue?.filter { $0["type"]?.stringValue == "image" } ?? []
+        XCTAssertEqual(images.count, 1, "\(String(describing: send.body))")
+        await chat.stop()
+    }
 }
 
 /// A computer that makes tasks under the names it is given and takes

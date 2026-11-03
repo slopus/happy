@@ -153,6 +153,11 @@ final class FixtureAttachLibrary: AttachLibrary {
 
     func prepare(_ range: Range<Int>, pixels size: CGSize) {}
 
+    func preview(_ id: String) async -> (image: UIImage, pixels: CGSize)? {
+        guard items.contains(where: { $0.id == id }), let index = Int(id.dropFirst("fixture-".count)) else { return nil }
+        return (Self.picture(index, pixels: CGSize(width: 192, height: 192)), CGSize(width: 600, height: 600))
+    }
+
     func read(_ ids: [String]) async -> [LibraryPick] {
         let wanted = ids.compactMap { id in items.first { $0.id == id } }
         return await Task.detached(priority: .userInitiated) {

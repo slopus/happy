@@ -29,6 +29,9 @@ final class AttachMenuPresenter: NSObject {
         var setText: (String) -> Void
         /// The composer's own send.
         var send: () -> Void
+        /// Its send takes pictures still being read (`PreviewAttachment`);
+        /// without, a send from the menu waits until they are in.
+        var sendsWhilePreparing = false
     }
 
     let pictures: ComposerImagePicker
@@ -107,16 +110,19 @@ final class AttachMenuPresenter: NSObject {
         }.onCancel = { [weak self] in self?.settle(added: false) }
     }
 
-    /// Sent from the menu: its picks wait in the composer, the caption is
-    /// the composer's text, and the composer sends them as its button does.
-    /// As in Telegram, the keyboard stays down after.
+    /// Sent from the menu: its picks show in the composer at once, from
+    /// the library's thumbnails, each with a ring while the picture itself
+    /// is read (from iCloud if need be), a few side by side. The caption is
+    /// the composer's text, and the composer sends them as its button does,
+    /// at once where it can send pictures still being read, else once they
+    /// are in. As in Telegram, the keyboard stays down after.
     func send(_ ids: [String], caption: String, from library: AttachLibrary) {
         keyboardOwed = false
         Task { [weak self] in
-            let picks = await library.read(ids)
-            guard let self else { return LibraryPicker.discard(picks) }
-            await read(picks)
+            guard let self else { return }
+            await pictures.add(library: ids, from: library)
             composer.setText(caption)
+            if !composer.sendsWhilePreparing { await pictures.ready() }
             composer.send()
             settle(added: false)
         }

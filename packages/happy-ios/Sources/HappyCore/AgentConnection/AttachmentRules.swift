@@ -43,7 +43,8 @@ public enum AttachmentRules {
     }
 
     /// Copies all bytes before the composer can discard its temporary picks.
-    public static func stage(_ attachments: [OutgoingAttachment], messageID: String, directory: URL) throws -> [QueuedFile] {
+    /// `first` numbers the copies after those a message already has.
+    public static func stage(_ attachments: [OutgoingAttachment], messageID: String, directory: URL, first: Int = 0) throws -> [QueuedFile] {
         guard !attachments.isEmpty else { return [] }
         guard !messageID.isEmpty, messageID.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }) else {
             throw invalid("Invalid attachment message identity.")
@@ -58,7 +59,7 @@ public enum AttachmentRules {
                 guard values.isRegularFile == true, let size = values.fileSize, size <= maxFileBytes else {
                     throw invalid("An attachment exceeds the 50 MB file limit or cannot be read.")
                 }
-                let filename = "\(index)-\(safeName(attachment.name))"
+                let filename = "\(first + index)-\(safeName(attachment.name))"
                 let destination = group.appendingPathComponent(filename)
                 // Each send has a fresh ID. A pre-existing local target is never replaced.
                 try FileManager.default.copyItem(at: source, to: destination)
