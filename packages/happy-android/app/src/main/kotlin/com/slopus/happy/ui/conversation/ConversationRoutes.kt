@@ -172,7 +172,16 @@ internal fun AgentSession.conversationRequest(): AgentRequest = { method, path, 
     try {
         client.send(method, path, body, category = category)
     } catch (e: AgentApiException) {
-        throw ConversationApiException(e.status, e.code, e.message)
+        throw ConversationApiException(e.status, e.code, e.message, e.body as? kotlinx.serialization.json.JsonObject)
+    }
+}
+
+/** [conversationRequest] for a body already made as JSON bytes: a workspace file's upload. */
+internal fun AgentSession.conversationBytesRequest(): com.slopus.happy.conversation.AgentBytesRequest = { method, path, body, _ ->
+    try {
+        client.sendBytes(method, path, body, mapOf("Content-Type" to "application/json"))
+    } catch (e: AgentApiException) {
+        throw ConversationApiException(e.status, e.code, e.message, e.body as? kotlinx.serialization.json.JsonObject)
     }
 }
 
@@ -232,7 +241,7 @@ internal class ConversationHolder(
         val agentId = route.agentId ?: task!!.agentId
         // A send still on its way when this chat was last left: the same conversation, so it shows and never goes twice.
         conversation = route.agentId?.let(session.parkedConversations::adopt) ?: Conversation(
-            api = ConversationApi(session.conversationRequest()),
+            api = ConversationApi(bytesRequest = session.conversationBytesRequest(), request = session.conversationRequest()),
             signals = session.events.signalsFor(agentId),
             scope = scope,
             agentId = agentId,

@@ -974,6 +974,45 @@ class ConversationTest {
         assertTrue(refused is ConversationApiException && refused.status == 409)
     }
 
+    /** desktop 3885593e: a 50 MB file's JSON made once from the disk; a whole string of it ran a phone's heap out. */
+    @Test fun `a file's upload body is its base64 made from the disk a piece at a time`() {
+        val dir = kotlin.io.path.createTempDirectory("body").toFile()
+        val random = java.util.Random(7)
+        // Empty, short, a chunk exactly, and past several chunks with a remainder.
+        for (size in listOf(0, 2, 3 * 64 * 1024, 3 * 64 * 1024 * 3 + 5)) {
+            val bytes = ByteArray(size).also(random::nextBytes)
+            val file = java.io.File(dir, "f$size").apply { writeBytes(bytes) }
+            val (body, hash) = WorkspaceUploads.body(".happy-uploads/m/0-a \"b\".bin", file)
+            val o = Json.parseToJsonElement(body.decodeToString()).jsonObject
+            assertEquals(".happy-uploads/m/0-a \"b\".bin", o["path"]!!.jsonPrimitive.content)
+            assertEquals(kotlinx.serialization.json.JsonNull, o["expectedHash"])
+            assertTrue(java.util.Base64.getDecoder().decode(o["content"]!!.jsonPrimitive.content).contentEquals(bytes))
+            assertEquals(WorkspaceUploads.hex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes)), hash)
+        }
+    }
+
+    @Test fun `a file uploads from disk as bytes, and a refused write that holds them already counts as written`() = runTest {
+        val agent = FakeAgent()
+        // The connection's client: a refusal is thrown with its answer, as AgentClient.check does.
+        val bytesRequest: AgentBytesRequest = { method, path, body, category ->
+            val response = agent.request(method, path, Json.parseToJsonElement(body.decodeToString()), category)
+            if (response.status !in 200..299) {
+                val answer = Json.parseToJsonElement(response.text).jsonObject
+                throw ConversationApiException(response.status, answer["code"]?.jsonPrimitive?.content, null, answer)
+            }
+            response
+        }
+        val api = ConversationApi(bytesRequest, agent.request)
+        val dir = kotlin.io.path.createTempDirectory("upload").toFile()
+        val file = java.io.File(dir, "big.bin").apply { writeBytes(ByteArray(700_000) { (it % 251).toByte() }) }
+        api.uploadFile("w1", "big.bin", file, kotlin.coroutines.EmptyCoroutineContext)
+        api.uploadFile("w1", "big.bin", file, kotlin.coroutines.EmptyCoroutineContext)
+        assertTrue(agent.written.getValue("w1:big.bin").contentEquals(file.readBytes()))
+        file.writeBytes(byteArrayOf(1))
+        val refused = runCatching { api.uploadFile("w1", "big.bin", file, kotlin.coroutines.EmptyCoroutineContext) }.exceptionOrNull()
+        assertTrue(refused is ConversationApiException && refused.status == 409)
+    }
+
     @Test fun `pictures fit one message up to the inline limits`() {
         val mib = 1024L * 1024
         assertTrue(InlinePictures.fit(List(5) { 5 * mib }))

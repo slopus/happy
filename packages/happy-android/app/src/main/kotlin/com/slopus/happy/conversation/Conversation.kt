@@ -1030,8 +1030,7 @@ class Conversation(
             ?: throw IllegalStateException("This chat has no folder on the computer to put files in.")
         for (file in files) {
             if (file.uploaded) continue
-            val bytes = withContext(io) { file.file.readBytes() }
-            withRetries { api.uploadFile(workspaceId, file.path, bytes) }
+            withRetries { api.uploadFile(workspaceId, file.path, file.file, io) }
             file.uploaded = true
         }
     }
