@@ -27,6 +27,8 @@ extension TranslationCatalog {
             "native.machine.needsRelogin": "Computer with an old Happy CLI sign-in",
             "native.machine.reloginHint": "Run happy auth login --force on it",
             "native.onboarding.secretKeyBody": "Paste your secret key. It is in ${path} on your other device.",
+            "native.imageUpload.willRetryOne": "One image couldn’t be uploaded yet. The message will be sent when the connection is back.",
+            "native.imageUpload.willRetryMany": "${count} images couldn’t be uploaded yet. The message will be sent when the connection is back.",
         ],
         "ru": [
             "native.accountKind.addCLIAccount": "Добавить аккаунт Happy CLI",
@@ -47,6 +49,8 @@ extension TranslationCatalog {
             "native.machine.needsRelogin": "Компьютер со старым входом Happy CLI",
             "native.machine.reloginHint": "Выполните на нём happy auth login --force",
             "native.onboarding.secretKeyBody": "Вставьте секретный ключ. Он находится в разделе ${path} на другом устройстве.",
+            "native.imageUpload.willRetryOne": "Одно изображение пока не загрузилось. Сообщение уйдёт, когда вернётся сеть.",
+            "native.imageUpload.willRetryMany": "Изображения пока не загрузились (${count}). Сообщение уйдёт, когда вернётся сеть.",
         ],
         "pl": [
             "native.accountKind.addCLIAccount": "Dodaj konto Happy CLI",
@@ -67,6 +71,8 @@ extension TranslationCatalog {
             "native.machine.needsRelogin": "Komputer ze starym logowaniem Happy CLI",
             "native.machine.reloginHint": "Uruchom na nim happy auth login --force",
             "native.onboarding.secretKeyBody": "Wklej swój tajny klucz. Znajdziesz go w ${path} na drugim urządzeniu.",
+            "native.imageUpload.willRetryOne": "Jeden obraz nie został jeszcze przesłany. Wiadomość zostanie wysłana, gdy połączenie wróci.",
+            "native.imageUpload.willRetryMany": "Obrazy nie zostały jeszcze przesłane (${count}). Wiadomość zostanie wysłana, gdy połączenie wróci.",
         ],
         "es": [
             "native.accountKind.addCLIAccount": "Añadir cuenta de Happy CLI",
@@ -87,6 +93,8 @@ extension TranslationCatalog {
             "native.machine.needsRelogin": "Ordenador con un inicio de sesión antiguo de Happy CLI",
             "native.machine.reloginHint": "Ejecuta happy auth login --force en él",
             "native.onboarding.secretKeyBody": "Pega tu clave secreta. Está en ${path} en tu otro dispositivo.",
+            "native.imageUpload.willRetryOne": "Una imagen aún no se ha podido subir. El mensaje se enviará cuando vuelva la conexión.",
+            "native.imageUpload.willRetryMany": "${count} imágenes aún no se han podido subir. El mensaje se enviará cuando vuelva la conexión.",
         ],
         "it": [
             "native.accountKind.addCLIAccount": "Aggiungi account Happy CLI",
@@ -107,6 +115,8 @@ extension TranslationCatalog {
             "native.machine.needsRelogin": "Computer con un vecchio accesso di Happy CLI",
             "native.machine.reloginHint": "Esegui happy auth login --force su di esso",
             "native.onboarding.secretKeyBody": "Incolla la tua chiave segreta. Si trova in ${path} sull’altro dispositivo.",
+            "native.imageUpload.willRetryOne": "Un’immagine non è ancora stata caricata. Il messaggio verrà inviato quando torna la connessione.",
+            "native.imageUpload.willRetryMany": "${count} immagini non sono ancora state caricate. Il messaggio verrà inviato quando torna la connessione.",
         ],
         "pt": [
             "native.accountKind.addCLIAccount": "Adicionar conta do Happy CLI",
@@ -127,6 +137,8 @@ extension TranslationCatalog {
             "native.machine.needsRelogin": "Computador com um login antigo do Happy CLI",
             "native.machine.reloginHint": "Execute happy auth login --force nele",
             "native.onboarding.secretKeyBody": "Cole sua chave secreta. Ela está em ${path} no seu outro dispositivo.",
+            "native.imageUpload.willRetryOne": "Uma imagem ainda não foi carregada. A mensagem será enviada quando a conexão voltar.",
+            "native.imageUpload.willRetryMany": "${count} imagens ainda não foram carregadas. A mensagem será enviada quando a conexão voltar.",
         ],
         "ca": [
             "native.accountKind.addCLIAccount": "Afegeix un compte de Happy CLI",
@@ -147,6 +159,8 @@ extension TranslationCatalog {
             "native.machine.needsRelogin": "Ordinador amb un inici de sessió antic de Happy CLI",
             "native.machine.reloginHint": "Executa happy auth login --force en aquest ordinador",
             "native.onboarding.secretKeyBody": "Enganxa la teva clau secreta. És a ${path} a l’altre dispositiu.",
+            "native.imageUpload.willRetryOne": "Encara no s’ha pogut pujar una imatge. El missatge s’enviarà quan torni la connexió.",
+            "native.imageUpload.willRetryMany": "Encara no s’han pogut pujar ${count} imatges. El missatge s’enviarà quan torni la connexió.",
         ],
         "zh-Hans": [
             "native.accountKind.addCLIAccount": "添加 Happy CLI 账户",
@@ -167,6 +181,8 @@ extension TranslationCatalog {
             "native.machine.needsRelogin": "使用旧版 Happy CLI 登录的电脑",
             "native.machine.reloginHint": "在该电脑上运行 happy auth login --force",
             "native.onboarding.secretKeyBody": "粘贴你的密钥。它位于另一台设备的 ${path} 中。",
+            "native.imageUpload.willRetryOne": "有 1 张图片暂未上传。网络恢复后会发送这条消息。",
+            "native.imageUpload.willRetryMany": "有 ${count} 张图片暂未上传。网络恢复后会发送这条消息。",
         ],
         "zh-Hant": [
             "native.accountKind.addCLIAccount": "新增 Happy CLI 帳戶",
@@ -187,6 +203,8 @@ extension TranslationCatalog {
             "native.machine.needsRelogin": "使用舊版 Happy CLI 登入的電腦",
             "native.machine.reloginHint": "在該電腦上執行 happy auth login --force",
             "native.onboarding.secretKeyBody": "貼上你的金鑰。它位於另一台裝置的 ${path} 中。",
+            "native.imageUpload.willRetryOne": "有 1 張圖片暫未上傳。網路恢復後會傳送這則訊息。",
+            "native.imageUpload.willRetryMany": "有 ${count} 張圖片暫未上傳。網路恢復後會傳送這則訊息。",
         ],
         "ja": [
             "native.accountKind.addCLIAccount": "Happy CLI アカウントを追加",
@@ -207,6 +225,8 @@ extension TranslationCatalog {
             "native.machine.needsRelogin": "古い Happy CLI でサインインしたコンピューター",
             "native.machine.reloginHint": "そのコンピューターで happy auth login --force を実行してください",
             "native.onboarding.secretKeyBody": "シークレットキーを貼り付けてください。もう一方のデバイスの ${path} にあります。",
+            "native.imageUpload.willRetryOne": "画像 1 枚をまだアップロードできていません。接続が戻るとメッセージが送信されます。",
+            "native.imageUpload.willRetryMany": "画像 ${count} 枚をまだアップロードできていません。接続が戻るとメッセージが送信されます。",
         ],
     ]
 }

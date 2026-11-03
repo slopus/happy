@@ -188,7 +188,11 @@ nothing here is wired to the release skill or to EAS.
     again). A direct chat's message does the same. A refusal (a 4xx but
     408, 409, 429; a session it can't be encrypted to) is `failed` and
     waits for the person's Retry or discard; a message with any refused
-    part never goes by itself. Retry by hand works in both states.
+    part never goes by itself. Retry by hand works in both states. The
+    composer's "Upload Failed" alert says an `interrupted` picture will be
+    sent when the connection is back (`native.imageUpload.willRetry*`), not
+    that it wasn't sent, raises no second alert when a retry fails again,
+    and closes once the session has no attachment left in the outbox.
     When a picture's upload fails, happy-app and Android keep the message
     in the composer instead, so there is nothing for them to resume.
   - Unsupported permission modes are refused before acceptance: `send` throws

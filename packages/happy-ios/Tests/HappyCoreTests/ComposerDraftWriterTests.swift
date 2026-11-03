@@ -765,7 +765,7 @@ final class ComposerDraftStoreTests: XCTestCase {
         XCTAssertEqual([cost.fetches, cost.reads, cost.deliveries], [4, 2, 2], "a failed upload: a fetch, a read, a delivery")
         XCTAssertEqual(deliveries.all.map(\.value), [
             ComposerStoreValue(draft: "unsent"),
-            ComposerStoreValue(draft: "unsent", failedAttachments: 1),
+            ComposerStoreValue(draft: "unsent", failedAttachments: 1, unsentAttachments: 1),
         ])
         XCTAssertEqual(deliveries.offMain, 0)
         writer.close()
@@ -1251,5 +1251,23 @@ final class ComposerDraftModelTests: XCTestCase {
         XCTAssertEqual(model.receive(delivery("", 0, picks: plan, failed: 0), text: "", synced: false, composing: false), .init())
         XCTAssertEqual(model.receive(delivery("", 0, failed: 1), text: "", synced: false, composing: false),
                        .init(picks: ComposerPicks(), newlyFailedAttachments: 1))
+    }
+
+    /// An upload out of reach goes again by itself: the alert says it will
+    /// be sent, a retry that fails again raises none, and once it has gone
+    /// the alert still up is out of date. One refused for good says so.
+    func testAnUploadThatGoesAgainByItselfSaysSoAndSettlesOnceSent() {
+        var model = ComposerDraftModel()
+        func outbox(failed: Int = 0, retrying: Int = 0, unsent: Int) -> ComposerDraftModel.Change {
+            let value = ComposerStoreValue(failedAttachments: failed, retryingAttachments: retrying, unsentAttachments: unsent)
+            return model.receive(ComposerStoreDelivery(value: value, generation: 0), text: "", synced: false, composing: false)
+        }
+        _ = outbox(unsent: 2)
+        XCTAssertEqual(outbox(failed: 1, retrying: 1, unsent: 2), .init(newlyFailedAttachments: 1, failuresWillRetry: true))
+        XCTAssertEqual(outbox(unsent: 2), .init(), "back in the queue")
+        XCTAssertEqual(outbox(failed: 1, retrying: 1, unsent: 2), .init(), "failing again on the retry is not news")
+        XCTAssertEqual(outbox(unsent: 0), .init(attachmentsSettled: true))
+        _ = outbox(unsent: 1)
+        XCTAssertEqual(outbox(failed: 1, unsent: 1), .init(newlyFailedAttachments: 1), "refused: not sent by itself")
     }
 }

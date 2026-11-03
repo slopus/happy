@@ -91,6 +91,12 @@ extension Strings {
         public static func fileTooLargeMessage(name: String, maxMb: Int) -> String { localized("imageUpload.fileTooLargeMessage", ["name": .text(name), "maxMb": .number(maxMb)], "\"\(name)\" exceeds the \(maxMb)MB limit and was not added.") }
         public static var uploadFailedTitle: String { localized("imageUpload.uploadFailedTitle", "Upload Failed") }
         public static func uploadFailedMessage(_ count: Int) -> String { localized("imageUpload.uploadFailedMessage", ["count": .number(count)], count == 1 ? "One image could not be uploaded and was not sent." : "\(count) images could not be uploaded and were not sent.") }
+        /// The relay outbox's: what failed goes again by itself (`interrupted`).
+        public static func uploadWillRetryMessage(_ count: Int) -> String {
+            count == 1
+                ? localized("native.imageUpload.willRetryOne", "One image couldn’t be uploaded yet. The message will be sent when the connection is back.")
+                : localized("native.imageUpload.willRetryMany", ["count": .number(count)], "\(count) images couldn’t be uploaded yet. The message will be sent when the connection is back.")
+        }
         public static var notSupportedTitle: String { localized("imageUpload.notSupportedTitle", "Images Not Supported") }
         public static var notSupportedMessage: String { localized("imageUpload.notSupportedMessage", "This agent does not support image attachments. Images were not sent.") }
         public static var nothingToPasteTitle: String { localized("imageUpload.nothingToPasteTitle", "Nothing to Paste") }

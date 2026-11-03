@@ -65,6 +65,9 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     private var state: ChatComposerState?
     private var picks = ComposerPicks()
+    /// "Upload Failed" while it is up: gone once the outbox holds no
+    /// attachment of the session any more (sent by itself, or discarded).
+    private weak var uploadAlert: UIAlertController?
     private var modes: ComposerModes
     /// The session's status: the header's capsule says it
     /// (`headerStatus`), not the row over the card, which says only a
@@ -993,8 +996,12 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         // The opening draft is in (or there is none): its height is
         // waited for before the composer shows.
         awaitRestore()
+        if change.attachmentsSettled, let uploadAlert, uploadAlert.presentingViewController != nil {
+            uploadAlert.dismiss(animated: true)
+        }
         if change.newlyFailedAttachments > 0 {
-            alert(Strings.ImageUpload.uploadFailedTitle, Strings.ImageUpload.uploadFailedMessage(change.newlyFailedAttachments))
+            let count = change.newlyFailedAttachments
+            uploadAlert = alert(Strings.ImageUpload.uploadFailedTitle, change.failuresWillRetry ? Strings.ImageUpload.uploadWillRetryMessage(count) : Strings.ImageUpload.uploadFailedMessage(count))
         }
     }
 
@@ -1109,11 +1116,13 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     // MARK: Attachments
 
-    private func alert(_ title: String, _ message: String) {
-        guard let host = hostViewController else { return }
+    @discardableResult
+    private func alert(_ title: String, _ message: String) -> UIAlertController? {
+        guard let host = hostViewController else { return nil }
         let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: Strings.Common.ok, style: .cancel))
         host.present(alert, animated: true)
+        return alert
     }
 
     private var hostViewController: UIViewController? {

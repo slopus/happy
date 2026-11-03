@@ -31,6 +31,8 @@ final class AccountKindNamingTests: XCTestCase {
         "native.machine.needsRelogin",
         "native.machine.reloginHint",
         "native.onboarding.secretKeyBody",
+        "native.imageUpload.willRetryOne",
+        "native.imageUpload.willRetryMany",
     ]
 
     /// "Legacy" as each language would put it before "account": the word
