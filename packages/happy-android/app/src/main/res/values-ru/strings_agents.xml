@@ -24,4 +24,10 @@
     <string name="compose_ago_weeks">%1$d нед</string>
     <string name="compose_ago_months">%1$d мес</string>
     <string name="compose_ago_years">%1$d г</string>
+    <string name="task_leave">Покинуть задачу</string>
+    <string name="task_archive">Архивировать задачу</string>
+    <string name="task_failed_to_leave">Не удалось покинуть задачу</string>
+    <string name="task_archive_needs_machine">Подключитесь к компьютеру задачи, чтобы архивировать её.</string>
+    <string name="task_leave_needs_machine">Подключитесь к компьютеру задачи, чтобы покинуть её.</string>
+    <string name="task_cannot_leave">Happy Agent на этом компьютере пока не умеет покидать задачи. Обновите его и попробуйте снова.</string>
 </resources>

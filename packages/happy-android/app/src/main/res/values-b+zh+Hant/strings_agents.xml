@@ -24,4 +24,10 @@
     <string name="compose_ago_weeks">%1$d週</string>
     <string name="compose_ago_months">%1$d個月</string>
     <string name="compose_ago_years">%1$d年</string>
+    <string name="task_leave">離開任務</string>
+    <string name="task_archive">封存任務</string>
+    <string name="task_failed_to_leave">無法離開任務</string>
+    <string name="task_archive_needs_machine">請連線到任務所在的電腦後再封存。</string>
+    <string name="task_leave_needs_machine">請連線到任務所在的電腦後再離開。</string>
+    <string name="task_cannot_leave">這台電腦上的 Happy Agent 還不能離開任務。請更新後重試。</string>
 </resources>

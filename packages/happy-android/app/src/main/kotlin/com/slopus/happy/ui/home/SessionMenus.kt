@@ -13,6 +13,7 @@ import com.slopus.happy.chat.prettyJson
 import com.slopus.happy.diagnostics.ClientLogs
 import com.slopus.happy.model.Session
 import com.slopus.happy.model.forkSource
+import com.slopus.happy.model.isTask
 import com.slopus.happy.resume.ResumeOutcome
 import com.slopus.happy.resume.ResumeTexts
 import com.slopus.happy.resume.rememberResumeTexts
@@ -29,6 +30,8 @@ class SessionMenus(
     private val services: HomeServices,
     private val buildMenu: (Session) -> Alert?,
     private val showError: (String?, Boolean) -> Unit,
+    /** A task's archive or leave its machine didn't take. */
+    private val showTaskError: (ArchiveResult.TaskFailed) -> Unit = {},
     /** maybeCleanupWorktree's "Delete Worktree?". */
     private val confirmCleanup: suspend () -> Boolean = { false },
     /** On the press, before the machine is asked: a screen standing on the chat leaves first. */
@@ -44,9 +47,26 @@ class SessionMenus(
     fun archive(sessionId: String) {
         val session = services.session(sessionId) ?: return
         onBeforeArchive(sessionId)
-        services.launch {
-            val result = services.archiver.archive(session) { services.cleanupWorktree(session, confirmCleanup) }
-            if (result is ArchiveResult.Failed) showError(result.message, result.bot)
+        services.launch { report(services.archiver.archive(session) { services.cleanupWorktree(session, confirmCleanup) }) }
+    }
+
+    /** Leaves a task: out of this person's list, running on for the rest. */
+    fun leave(sessionId: String) {
+        val session = services.session(sessionId) ?: return
+        onBeforeArchive(sessionId)
+        services.launch { report(services.archiver.leave(session)) }
+    }
+
+    /** A row's swipe: a task's leaves it (happy-ios 36b11c5bf), anything else's archives. */
+    fun swipe(sessionId: String) {
+        if (services.session(sessionId)?.isTask == true) leave(sessionId) else archive(sessionId)
+    }
+
+    private fun report(result: ArchiveResult) {
+        when (result) {
+            is ArchiveResult.Failed -> showError(result.message, result.bot)
+            is ArchiveResult.TaskFailed -> showTaskError(result)
+            ArchiveResult.Archived -> Unit
         }
     }
 }
@@ -76,6 +96,8 @@ internal fun rememberSessionMenus(
         cleanupDelete = stringResource(R.string.session_info_worktree_cleanup_delete),
         cleanupKeep = stringResource(R.string.session_info_worktree_cleanup_keep),
         archive = stringResource(R.string.session_archive_action),
+        archiveTask = stringResource(R.string.task_archive),
+        leaveTask = stringResource(R.string.task_leave),
         cancel = stringResource(R.string.common_cancel),
         error = stringResource(R.string.common_error),
         ok = stringResource(R.string.common_ok),
@@ -150,12 +172,14 @@ internal fun rememberSessionMenus(
                                 copied(copyToClipboard(context, ClientLogs.metadataAndLogs(prettyJson(metadata.raw), logs)))
                             }
                         }
-                        SessionActionId.Archive -> AlertButton(strings.archive, destructive = true) { menus.archive(session.id) }
+                        SessionActionId.LeaveTask -> AlertButton(strings.leaveTask, destructive = true) { menus.leave(session.id) }
+                        SessionActionId.Archive -> AlertButton(if (session.isTask) strings.archiveTask else strings.archive, destructive = true) { menus.archive(session.id) }
                     }
                 }
                 Alert(strings.title, null, buttons + AlertButton(strings.cancel)).also(showAlert)
             },
             showError = { message, bot -> error(message ?: if (bot) strings.botArchiveFailed else strings.archiveFailed) },
+            showTaskError = { failure -> error(taskFailureMessage(failure, context::getString)) },
             confirmCleanup = {
                 confirm(showAlert, strings.cleanupTitle, strings.cleanupMessage, strings.cleanupDelete, strings.cleanupKeep, destructive = true)
             },
@@ -177,6 +201,8 @@ private data class SessionMenuStrings(
     val cleanupDelete: String,
     val cleanupKeep: String,
     val archive: String,
+    val archiveTask: String,
+    val leaveTask: String,
     val cancel: String,
     val error: String,
     val ok: String,

@@ -94,6 +94,8 @@ class HomeServices private constructor(private val graph: AppGraph) {
     val infoControls: SessionInfoControls = object : SessionInfoControls {
         override suspend fun archive(session: Session): ArchiveResult = archiver.archive(session)
 
+        override suspend fun leave(session: Session): ArchiveResult = archiver.leave(session)
+
         override suspend fun delete(session: Session): OpResult {
             // Best effort: a running agent would otherwise keep writing into a deleted session.
             if (session.isOnline) sessionActions.kill(session.id)

@@ -24,4 +24,10 @@
     <string name="compose_ago_weeks">%1$d sem</string>
     <string name="compose_ago_months">%1$d mes</string>
     <string name="compose_ago_years">%1$d a</string>
+    <string name="task_leave">Salir de la tarea</string>
+    <string name="task_archive">Archivar tarea</string>
+    <string name="task_failed_to_leave">No se pudo salir de la tarea</string>
+    <string name="task_archive_needs_machine">Conéctate al ordenador de la tarea para archivarla.</string>
+    <string name="task_leave_needs_machine">Conéctate al ordenador de la tarea para salir de ella.</string>
+    <string name="task_cannot_leave">Happy Agent en este ordenador aún no puede salir de tareas. Actualízalo y vuelve a intentarlo.</string>
 </resources>

@@ -1,6 +1,9 @@
 package com.slopus.happy.model
 
 import com.slopus.happy.sync.ForkSource
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 // How a session is named and placed, from happy-app's utils/sessionUtils.ts,
 // utils/sessionActivity.ts, utils/worktreePaths.ts and utils/sessionFork.ts.
@@ -8,13 +11,36 @@ import com.slopus.happy.sync.ForkSource
 // from the translation table are left to the caller (null = the fallback).
 
 /**
- * getSessionName: the bot's name, else the summary, else null, which the
- * screens show as "New chat" (`session.newChat`).
+ * getSessionName: the bot's name, else a task's, else the summary, else
+ * null, which the screens show as "New chat" (`session.newChat`).
  */
-fun Session.displayName(): String? = metadata?.bot?.name ?: metadata?.summary?.text
+fun Session.displayName(): String? = metadata?.bot?.name ?: taskOrNull()?.name ?: metadata?.summary?.text
+
+/**
+ * A task's membership (happy-ios 36b11c5bf): it lives like a bot (one
+ * conversation for its whole life, stopped only by its machine, never
+ * deleted) but has no face of its own. A session naming both is a bot.
+ */
+fun Session.taskOrNull(): SessionTask? = metadata?.takeIf { it.bot == null }?.task
+
+val Session.isTask: Boolean get() = taskOrNull() != null
+
+/** The task's machine takes `leaveTask`: out of this person's list, running on for the rest. */
+val Session.canLeaveTask: Boolean
+    get() {
+        if (!isTask) return false
+        val methods = (metadata?.raw?.get("capabilities") as? JsonObject)?.get("rpcMethods") as? JsonArray ?: return false
+        return methods.any { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content == "leaveTask" }
+    }
+
+/** The paired person may archive this task (its owner, or the team's). */
+val Session.taskCanArchive: Boolean get() = taskOrNull()?.canArchive == true
+
+/** Happy Desktop's `displayPath` for a task: its folder under Tasks. */
+fun SessionTask.displayPath(): String = folderName?.let { "~/Tasks/$it" } ?: "~/Tasks"
 
 /** getSessionSubtitle: the path relative to home, or null ("unknown"). */
-fun Session.displaySubtitle(): String? = metadata?.let { formatPathRelativeToHome(it.path, it.homeDir) }
+fun Session.displaySubtitle(): String? = taskOrNull()?.displayPath() ?: metadata?.let { formatPathRelativeToHome(it.path, it.homeDir) }
 
 /**
  * getSessionAvatarId: deterministic per machine and path (or bot), so the
@@ -23,6 +49,8 @@ fun Session.displaySubtitle(): String? = metadata?.let { formatPathRelativeToHom
 fun Session.avatarId(): String {
     val metadata = metadata
     if (metadata?.bot != null) return "${metadata.machineId ?: ""}:bot:${metadata.bot.id}"
+    // A task keeps its face when its folder would move it.
+    taskOrNull()?.id?.let { return "${metadata?.machineId ?: ""}:task:$it" }
     val machineId = metadata?.machineId
     if (metadata != null && !machineId.isNullOrEmpty() && metadata.path.isNotEmpty()) return "$machineId:${metadata.path}"
     return id

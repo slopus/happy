@@ -80,7 +80,7 @@ private val HomeRow.isCardRow: Boolean
     get() = when (this) {
         is HomeRow.Chat -> true
         is HomeRow.Project -> when (row) {
-            is ProjectHomeRow.Bot, is ProjectHomeRow.ProjectCard, is ProjectHomeRow.Worktree,
+            is ProjectHomeRow.Bot, is ProjectHomeRow.Task, is ProjectHomeRow.ProjectCard, is ProjectHomeRow.Worktree,
             is ProjectHomeRow.Toggle, is ProjectHomeRow.Archived -> true
             else -> false
         }

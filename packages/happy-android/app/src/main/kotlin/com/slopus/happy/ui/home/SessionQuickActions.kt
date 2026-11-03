@@ -2,8 +2,11 @@ package com.slopus.happy.ui.home
 
 import com.slopus.happy.model.Machine
 import com.slopus.happy.model.Session
+import com.slopus.happy.model.canLeaveTask
 import com.slopus.happy.model.forkSource
 import com.slopus.happy.model.isRig
+import com.slopus.happy.model.isTask
+import com.slopus.happy.model.taskCanArchive
 
 /** Why resume is offered but can't run, or null when it can (useSessionQuickActions getResumeAvailability). */
 enum class ResumeBlock { MissingMachine, MissingBackendId, SameMachineOnly, MachineOffline }
@@ -39,7 +42,7 @@ fun canForkSession(session: Session, machine: Machine?, continuationExperiments:
     continuationExperiments && !session.metadata.isRig() && session.forkSource() != null && machine?.isOnline == true
 
 /** The "Session" alert's rows, in order (useSessionQuickActions actionItems). */
-enum class SessionActionId { Details, Resume, Fork, Duplicate, CopyMetadata, CopyMetadataAndLogs, Archive }
+enum class SessionActionId { Details, Resume, Fork, Duplicate, CopyMetadata, CopyMetadataAndLogs, LeaveTask, Archive }
 
 fun sessionActionIds(session: Session, machine: Machine?, continuationExperiments: Boolean, devMode: Boolean): List<SessionActionId> = buildList {
     add(SessionActionId.Details)
@@ -52,5 +55,11 @@ fun sessionActionIds(session: Session, machine: Machine?, continuationExperiment
         add(SessionActionId.CopyMetadata)
         add(SessionActionId.CopyMetadataAndLogs)
     }
-    add(SessionActionId.Archive)
+    if (session.isTask) {
+        // Anyone in it may leave; only its owner or the team's may archive (happy-ios 36b11c5bf).
+        if (session.canLeaveTask) add(SessionActionId.LeaveTask)
+        if (session.taskCanArchive) add(SessionActionId.Archive)
+    } else {
+        add(SessionActionId.Archive)
+    }
 }

@@ -130,7 +130,8 @@ fun collectSessionPlaces(machineIds: Collection<String>, sessions: Collection<Se
     selectedPath?.trim()?.takeIf { it.isNotEmpty() }?.let { remember(SessionPlace(it, it, it), named = false) }
     for (session in sessions) {
         val metadata = session.metadata ?: continue
-        if (metadata.bot != null) continue
+        // A bot's or a task's folder is its own, not a place for new work (happy-ios 36b11c5bf).
+        if (metadata.bot != null || metadata.task != null) continue
         val path = metadata.path.trim().takeIf { it.isNotEmpty() } ?: continue
         if (metadata.machineId != null && metadata.machineId !in ids) continue
         if (metadata.lifecycleState == "archived") continue
@@ -161,7 +162,8 @@ fun collectSessionWorkspaces(machineIds: Collection<String>, projectId: String?,
     val byId = LinkedHashMap<String, SessionWorkspace>()
     for (session in sessions) {
         val metadata = session.metadata ?: continue
-        if (metadata.bot != null) continue
+        // A bot's or a task's folder is its own, not a place for new work (happy-ios 36b11c5bf).
+        if (metadata.bot != null || metadata.task != null) continue
         val workspace = metadata.workspace ?: continue
         val path = metadata.path.trim().takeIf { it.isNotEmpty() } ?: continue
         if (metadata.project?.id != project) continue

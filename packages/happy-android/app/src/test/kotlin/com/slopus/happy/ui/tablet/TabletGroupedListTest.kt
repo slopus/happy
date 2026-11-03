@@ -40,6 +40,7 @@ class TabletGroupedListTest {
     private fun shape(rows: List<TabletGroupedRow>) = rows.map { row ->
         when (row) {
             is TabletGroupedRow.Bots -> "bots:${row.sessions.joinToString(",") { it.id }}"
+            is TabletGroupedRow.Tasks -> "tasks:${row.sessions.joinToString(",") { it.id }}"
             is TabletGroupedRow.MachineHeader -> "machine:${row.machineName}"
             is TabletGroupedRow.Checkout ->
                 "checkout:${row.projectName}/${row.branch ?: "main"}:${row.workspace.sessions.joinToString(",") { it.id }}${if (row.lastOfProject) ":last" else ""}"

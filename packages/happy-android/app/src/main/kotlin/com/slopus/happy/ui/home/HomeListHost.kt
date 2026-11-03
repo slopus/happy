@@ -120,7 +120,7 @@ fun HomeListHost(graph: AppGraph, navigation: HomeNavigation, phone: Boolean = f
         HomeListCallbacks(
             onOpen = onOpenSession,
             onMenu = menus::open,
-            onArchive = menus::archive,
+            onArchive = menus::swipe,
             onSetArchiveHidden = { hidden -> graph.settings.change { it.copy(hideInactiveSessions = hidden) } },
             onToggleProject = { id ->
                 graph.localSettings.change { it.copy(expandedProjects = it.expandedProjects + (id to it.expandedProjects[id].let { open -> open != true })) }

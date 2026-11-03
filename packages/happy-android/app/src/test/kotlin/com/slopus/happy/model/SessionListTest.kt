@@ -269,6 +269,7 @@ class SessionListTest {
         val shape = items.map {
             when (it) {
                 is SessionListItem.Bots -> "bots:" + it.sessions.joinToString(",") { r -> r.id }
+                is SessionListItem.Tasks -> "tasks:" + it.sessions.joinToString(",") { r -> r.id }
                 is SessionListItem.ProjectsHeader -> "header:${it.source}"
                 is SessionListItem.ProjectItem -> "project:${it.project.name}:" + it.project.workspaces.flatMap { w -> w.sessions }.joinToString(",") { r -> r.id }
                 is SessionListItem.Header -> "day:${it.title}"

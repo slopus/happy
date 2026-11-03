@@ -132,10 +132,19 @@ fun ProjectHomeRowContent(row: ProjectHomeRow, callbacks: HomeListCallbacks, car
         is ProjectHomeRow.Section -> if (carded) {
             Spacer(Modifier.fillMaxWidth().height(HomeCardSpec.gap).testTag(ProjectListTags.SECTION))
         } else {
-            SectionRow(stringResource(if (row.section == ProjectHomeSection.Bots) R.string.sidebar_bots else R.string.sidebar_projects))
+            SectionRow(
+                stringResource(
+                    when (row.section) {
+                        ProjectHomeSection.Bots -> R.string.sidebar_bots
+                        ProjectHomeSection.Tasks -> R.string.home_info_tasks
+                        ProjectHomeSection.Projects -> R.string.sidebar_projects
+                    },
+                ),
+            )
         }
         is ProjectHomeRow.MachineHeader -> MachineHeaderRow(row.machineId, row.machineName, callbacks, carded)
         is ProjectHomeRow.Bot -> ChatRow(row.session, bot = true, archived = false, callbacks)
+        is ProjectHomeRow.Task -> ChatRow(row.session, bot = false, archived = false, callbacks)
         is ProjectHomeRow.ProjectCard -> ProjectCardRow(row.project, callbacks, carded)
         is ProjectHomeRow.Worktree -> WorktreeRow(row.worktree, row.last, callbacks)
         is ProjectHomeRow.Toggle -> WorktreeToggleRow(row.toggle, callbacks)
@@ -396,27 +405,41 @@ private fun WorktreeToggleRow(toggle: WorktreeToggle, callbacks: HomeListCallbac
 }
 
 /** A bot, or an archived chat: avatar, name, then a 10 dot while it waits or is unread (no time). Archived rows are faded to 0.6. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ChatRow(session: SessionRowData, bot: Boolean, archived: Boolean, callbacks: HomeListCallbacks) {
     LocalHomeRowObserver.current?.let { observe -> SideEffect { observe(session.id) } }
     val presentation = resolveFlatRowPresentation(session.state, session.hasUnread, archived || session.machineOffline)
     val dot = presentation.topRight as? FlatRowTopRight.Dot
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(ProjectListSpec.botRow)
-            .alpha(if (archived) ProjectListSpec.ARCHIVED_ALPHA else 1f)
-            .testTag(ProjectListTags.CHAT)
-            .sessionPressDown(session.id, callbacks)
-            .clickable(role = Role.Button) { callbacks.onOpen(session.id) }
-            .padding(horizontal = ProjectListSpec.rowPaddingX),
-        verticalAlignment = Alignment.CenterVertically,
+    // A task's swipe leaves it where its machine takes that (happy-ios 36b11c5bf); its long press holds the rest.
+    SwipeToArchive(
+        enabled = session.task && session.leavesTask,
+        onArchive = { callbacks.onArchive(session.id) },
+        leave = true,
     ) {
-        AvatarLane { Avatar(id = session.avatarId, size = ProjectListSpec.avatar, bot = bot, imageUri = session.avatarUri, thumbhash = session.avatarThumbhash) }
-        RowName(session.name ?: stringResource(R.string.session_new_chat), presentation.shimmerTitle, ProjectListSpec.projectName)
-        if (dot != null) {
-            Box(modifier = Modifier.padding(start = ProjectListSpec.trailingGap)) {
-                StatusDot(color = if (dot.blocked) BlockedDotColor else UnreadDotColor, size = ProjectListSpec.chatDot)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(ProjectListSpec.botRow)
+                .alpha(if (archived) ProjectListSpec.ARCHIVED_ALPHA else 1f)
+                .testTag(ProjectListTags.CHAT)
+                .sessionPressDown(session.id, callbacks)
+                .then(
+                    if (session.task) {
+                        Modifier.combinedClickable(role = Role.Button, onClick = { callbacks.onOpen(session.id) }, onLongClick = { callbacks.onMenu(session.id) })
+                    } else {
+                        Modifier.clickable(role = Role.Button) { callbacks.onOpen(session.id) }
+                    },
+                )
+                .padding(horizontal = ProjectListSpec.rowPaddingX),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AvatarLane { Avatar(id = session.avatarId, size = ProjectListSpec.avatar, bot = bot, imageUri = session.avatarUri, thumbhash = session.avatarThumbhash) }
+            RowName(session.name ?: stringResource(R.string.session_new_chat), presentation.shimmerTitle, ProjectListSpec.projectName)
+            if (dot != null) {
+                Box(modifier = Modifier.padding(start = ProjectListSpec.trailingGap)) {
+                    StatusDot(color = if (dot.blocked) BlockedDotColor else UnreadDotColor, size = ProjectListSpec.chatDot)
+                }
             }
         }
     }

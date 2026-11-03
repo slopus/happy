@@ -80,6 +80,7 @@ import com.slopus.happy.ui.theme.happyTextStyle
 object TabletGroupedTags {
     const val LIST = "tabletGrouped.list"
     const val BOTS = "tabletGrouped.bots"
+    const val TASKS = "tabletGrouped.tasks"
     const val MACHINE = "tabletGrouped.machine"
     const val MACHINE_NAME = "tabletGrouped.machineName"
     const val CHECKOUT = "tabletGrouped.checkout"
@@ -189,7 +190,8 @@ fun TabletGroupedList(
         }
         items(rows, key = { it.key }, contentType = { it::class }) { row ->
             when (row) {
-                is TabletGroupedRow.Bots -> BotsSection(row.sessions, callbacks, selectedSessionId)
+                is TabletGroupedRow.Bots -> BotsSection(stringResource(R.string.sidebar_bots), row.sessions, callbacks, selectedSessionId)
+                is TabletGroupedRow.Tasks -> BotsSection(stringResource(R.string.home_info_tasks), row.sessions, callbacks, selectedSessionId, TabletGroupedTags.TASKS)
                 is TabletGroupedRow.MachineHeader -> MachineRule(row.machineId, row.machineName, callbacks)
                 is TabletGroupedRow.Checkout -> CheckoutSection(row, callbacks, grouped, selectedSessionId, stopping)
                 is TabletGroupedRow.ArchiveToggle -> ArchiveToggleRow(row.hidden, banded = false, callbacks)
@@ -204,9 +206,15 @@ fun TabletGroupedList(
 
 /** SessionsList's "bots" item: "Bots" in the section band, then each bot as a flat row. */
 @Composable
-private fun BotsSection(sessions: List<SessionRowData>, callbacks: HomeListCallbacks, selectedSessionId: String?) {
+private fun BotsSection(
+    title: String,
+    sessions: List<SessionRowData>,
+    callbacks: HomeListCallbacks,
+    selectedSessionId: String?,
+    tag: String = TabletGroupedTags.BOTS,
+) {
     val colors = HappyTheme.colors
-    Column(Modifier.fillMaxWidth().testTag(TabletGroupedTags.BOTS)) {
+    Column(Modifier.fillMaxWidth().testTag(tag)) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -218,7 +226,7 @@ private fun BotsSection(sessions: List<SessionRowData>, callbacks: HomeListCallb
                     bottom = HomeSpec.sectionPaddingBottom,
                 ),
         ) {
-            Text(stringResource(R.string.sidebar_bots), style = HomeSpec.sectionHeader, color = colors.grouped.sectionTitle)
+            Text(title, style = HomeSpec.sectionHeader, color = colors.grouped.sectionTitle)
         }
         sessions.forEachIndexed { index, session ->
             FlatSessionRow(

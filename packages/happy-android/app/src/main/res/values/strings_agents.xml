@@ -25,4 +25,10 @@
     <string name="compose_ago_weeks">%1$dw</string>
     <string name="compose_ago_months">%1$dmo</string>
     <string name="compose_ago_years">%1$dy</string>
+    <string name="task_leave">Leave task</string>
+    <string name="task_archive">Archive task</string>
+    <string name="task_failed_to_leave">Failed to leave task</string>
+    <string name="task_archive_needs_machine">Connect to the task’s machine to archive it.</string>
+    <string name="task_leave_needs_machine">Connect to the task’s machine to leave it.</string>
+    <string name="task_cannot_leave">Happy Agent on this computer cannot leave tasks yet. Update it and try again.</string>
 </resources>

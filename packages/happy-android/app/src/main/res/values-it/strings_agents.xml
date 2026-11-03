@@ -24,4 +24,10 @@
     <string name="compose_ago_weeks">%1$d sett</string>
     <string name="compose_ago_months">%1$d mesi</string>
     <string name="compose_ago_years">%1$d a</string>
+    <string name="task_leave">Abbandona attività</string>
+    <string name="task_archive">Archivia attività</string>
+    <string name="task_failed_to_leave">Impossibile abbandonare l\'attività</string>
+    <string name="task_archive_needs_machine">Collegati al computer dell\'attività per archiviarla.</string>
+    <string name="task_leave_needs_machine">Collegati al computer dell\'attività per abbandonarla.</string>
+    <string name="task_cannot_leave">Happy Agent su questo computer non può ancora abbandonare attività. Aggiornalo e riprova.</string>
 </resources>

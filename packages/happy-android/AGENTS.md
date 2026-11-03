@@ -233,6 +233,16 @@ win:
   inside). Day and section headings become gaps; a computer heads its
   cards only when there is more than one; the archive is one card under
   its toggle. Rows show no timestamp.
+- **Legacy tasks** (iOS 36b11c5bf): a Happy Agent session with
+  `metadata.task` is a task. Each computer's tasks follow its bots, in
+  the person's `orderKey` (plain string order), then unjoined ones newest
+  first. A task is named by the task, placed at `~/Tasks/<folder>`, wears
+  its seed's face with no harness badge, and its folder is never a place
+  for new work. Its machine alone ends it: Leave task (`leaveTask`, offered
+  where `rpcMethods` lists it; also the swipe) and Archive task
+  (`killSession`, only where `task.canArchive`); never a server archive or
+  delete. Left or archived, it leaves every list at once and comes back
+  only with the machine's refusal.
 - **Fonts:** the system font for all text, the platform monospace
   (`FontFamily.Monospace`) for code. Not IBM Plex.
 - **Home rows** have strict, precomputed heights, per row kind and font

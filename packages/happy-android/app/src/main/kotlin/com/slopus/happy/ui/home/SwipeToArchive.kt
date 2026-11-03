@@ -41,12 +41,15 @@ import kotlinx.coroutines.launch
  * Swipeable with a right action: dragging left uncovers a 112 Archive
  * button (error red, white archive glyph over "Archive Session") and stops
  * there; it never overshoots. Releasing past half way leaves it open.
+ * With [leave] it leaves a task instead: an exit glyph over "Leave task"
+ * (happy-ios 36b11c5bf, as Happy Desktop's row control does).
  */
 @Composable
 internal fun SwipeToArchive(
     enabled: Boolean,
     onArchive: () -> Unit,
     modifier: Modifier = Modifier,
+    leave: Boolean = false,
     content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit,
 ) {
     val colors = HappyTheme.colors
@@ -69,9 +72,9 @@ internal fun SwipeToArchive(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                Icon(Ionicon.ArchiveOutline, size = FlatRowSpec.swipeIcon, color = Color.White)
+                Icon(if (leave) Ionicon.ExitOutline else Ionicon.ArchiveOutline, size = FlatRowSpec.swipeIcon, color = Color.White)
                 Text(
-                    text = stringResource(R.string.session_info_archive_session),
+                    text = stringResource(if (leave) R.string.task_leave else R.string.session_info_archive_session),
                     style = FlatRowSpec.swipeText,
                     color = Color.White,
                     textAlign = TextAlign.Center,

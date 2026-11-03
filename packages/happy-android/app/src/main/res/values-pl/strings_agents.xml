@@ -24,4 +24,10 @@
     <string name="compose_ago_weeks">%1$d tydz.</string>
     <string name="compose_ago_months">%1$d mies.</string>
     <string name="compose_ago_years">%1$d r.</string>
+    <string name="task_leave">Opuść zadanie</string>
+    <string name="task_archive">Archiwizuj zadanie</string>
+    <string name="task_failed_to_leave">Nie udało się opuścić zadania</string>
+    <string name="task_archive_needs_machine">Połącz się z komputerem zadania, aby je zarchiwizować.</string>
+    <string name="task_leave_needs_machine">Połącz się z komputerem zadania, aby je opuścić.</string>
+    <string name="task_cannot_leave">Happy Agent na tym komputerze nie umie jeszcze opuszczać zadań. Zaktualizuj go i spróbuj ponownie.</string>
 </resources>

@@ -24,4 +24,10 @@
     <string name="compose_ago_weeks">%1$d setm</string>
     <string name="compose_ago_months">%1$d mes</string>
     <string name="compose_ago_years">%1$d a</string>
+    <string name="task_leave">Deixa la tasca</string>
+    <string name="task_archive">Arxiva la tasca</string>
+    <string name="task_failed_to_leave">No s\'ha pogut deixar la tasca</string>
+    <string name="task_archive_needs_machine">Connecta\'t a l\'ordinador de la tasca per arxivar-la.</string>
+    <string name="task_leave_needs_machine">Connecta\'t a l\'ordinador de la tasca per deixar-la.</string>
+    <string name="task_cannot_leave">Happy Agent en aquest ordinador encara no pot deixar tasques. Actualitza\'l i torna-ho a provar.</string>
 </resources>

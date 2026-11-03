@@ -185,9 +185,11 @@ fun FlatSessionRow(
         else -> flatListBackground(colors)
     }
 
+    // A task's swipe leaves it, where its machine takes that; it never archives.
     SwipeToArchive(
-        enabled = !archiving,
+        enabled = !archiving && (!session.task || session.leavesTask),
         onArchive = { callbacks.onArchive(session.id) },
+        leave = session.task,
         modifier = if (carded) modifier.fillMaxHeight() else modifier,
     ) {
         Row(
@@ -223,7 +225,8 @@ fun FlatSessionRow(
                     monochrome = faded,
                     flavor = session.flavor,
                     clientId = session.clientId,
-                    badgeLocation = AvatarBadgeLocation.SessionList,
+                    // A task wears no harness badge (happy-ios TaskAvatarViewTests).
+                    badgeLocation = if (session.task) AvatarBadgeLocation.None else AvatarBadgeLocation.SessionList,
                     imageUri = session.avatarUri,
                     thumbhash = session.avatarThumbhash,
                 )

@@ -3,6 +3,8 @@ package com.slopus.happy.model
 import androidx.compose.runtime.Immutable
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 
 // Session metadata as happy-app's storageTypes.ts `MetadataSchema` reads it.
 // A document that fails the schema is no metadata at all (sessionEncryption.ts
@@ -36,6 +38,37 @@ data class RigBot(
 
         private fun bounded(min: Int, max: Int): FieldReader<String> = {
             Read.string(it).also { s -> if (s.length !in min..max) Read.fail("string of $min..$max") }
+        }
+    }
+}
+
+/**
+ * A task (`metadata.task`, happy-ios 36b11c5bf): one conversation for one
+ * piece of work, with a folder of its own under ~/Tasks. Read loosely, as
+ * iOS does: any object makes the session a task, and a missing field is
+ * only missing. [orderKey] is the paired person's own place for it; absent
+ * for a task they haven't joined. [canArchive]: they may archive it (its
+ * owner or the team's); absent means no.
+ */
+@Immutable
+data class SessionTask(
+    val id: String?,
+    val name: String?,
+    val folderName: String?,
+    val orderKey: String?,
+    val canArchive: Boolean,
+) {
+    companion object {
+        fun of(value: JsonElement?): SessionTask? {
+            val task = value as? JsonObject ?: return null
+            fun text(key: String) = (task[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
+            return SessionTask(
+                id = text("id"),
+                name = text("name"),
+                folderName = text("folderName"),
+                orderKey = text("orderKey"),
+                canArchive = (task["canArchive"] as? JsonPrimitive)?.takeUnless { it.isString }?.booleanOrNull == true,
+            )
         }
     }
 }
@@ -205,6 +238,7 @@ data class McpServerStatus(val name: String, val status: String)
 data class SessionMetadata(
     val raw: JsonObject,
     val bot: RigBot? = null,
+    val task: SessionTask? = null,
     val models: List<ModelEntry>? = null,
     val currentModelCode: String? = null,
     val operatingModes: List<CodeOption>? = null,
@@ -279,6 +313,7 @@ data class SessionMetadata(
         private fun read(f: JsonFields) = SessionMetadata(
             raw = f.raw,
             bot = f.optional("bot", RigBot.read),
+            task = SessionTask.of(f.raw["task"]),
             models = f.optional("models", Read.arrayOf(ModelEntry.reader(defaultThinkingLevelNullish = false))),
             currentModelCode = f.optional("currentModelCode", Read.string),
             operatingModes = f.optional("operatingModes", Read.arrayOf(CodeOption.read)),
