@@ -531,6 +531,41 @@ extension OutboxSender: ComposerStorage {
 /// isn't written again (`Persist.never`). So whenever a read is as new as
 /// the composer's writes, the writer has the text it last saved to compare
 /// the stored draft with.
+/// The composer's one "Upload Failed" alert: what it says while it is up.
+/// A message's pictures fail one delivery at a time, so a failure while it
+/// shows adds to it instead of raising another (which UIKit would refuse
+/// to present over it), and it is closed once the outbox has let them go.
+public struct UploadAlertModel: Equatable, Sendable {
+    public enum Action: Equatable, Sendable {
+        /// Raise it, saying `count` and `willRetry`.
+        case show
+        /// The one up says `count` and `willRetry` now.
+        case update
+        /// The one up is out of date.
+        case dismiss
+    }
+
+    /// Pictures the alert speaks of.
+    public private(set) var count = 0
+    /// They all go again by themselves.
+    public private(set) var willRetry = true
+
+    public init() {}
+
+    /// What `change` does to the alert, `showing` whether it is up.
+    public mutating func receive(_ change: ComposerDraftModel.Change, showing: Bool) -> Action? {
+        if !showing { self = UploadAlertModel() }
+        if change.newlyFailedAttachments > 0 {
+            count += change.newlyFailedAttachments
+            willRetry = willRetry && change.failuresWillRetry
+            return showing ? .update : .show
+        }
+        guard showing, change.attachmentsSettled else { return nil }
+        self = UploadAlertModel()
+        return .dismiss
+    }
+}
+
 public struct ComposerDraftModel: Equatable, Sendable {
     /// A write to hand to the writer.
     public struct Write: Equatable, Sendable {

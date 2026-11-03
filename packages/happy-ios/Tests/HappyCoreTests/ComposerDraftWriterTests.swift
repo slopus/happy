@@ -1270,4 +1270,37 @@ final class ComposerDraftModelTests: XCTestCase {
         _ = outbox(unsent: 1)
         XCTAssertEqual(outbox(failed: 1, unsent: 1), .init(newlyFailedAttachments: 1), "refused: not sent by itself")
     }
+
+    /// A message's two pictures fail in two deliveries in a row: one alert,
+    /// raised by the first and counted up to two by the second, closed once
+    /// the message has gone by itself. A refusal among them says not sent.
+    func testTwoFailuresInARowMakeOneAlertThatClosesOnceSent() {
+        var model = ComposerDraftModel()
+        var alert = UploadAlertModel()
+        var showing = false
+        func outbox(failed: Int = 0, retrying: Int = 0, unsent: Int) -> UploadAlertModel.Action? {
+            let value = ComposerStoreValue(failedAttachments: failed, retryingAttachments: retrying, unsentAttachments: unsent)
+            let change = model.receive(ComposerStoreDelivery(value: value, generation: 0), text: "", synced: false, composing: false)
+            let action = alert.receive(change, showing: showing)
+            if action == .show { showing = true }
+            if action == .dismiss { showing = false }
+            return action
+        }
+        _ = outbox(unsent: 2)
+        XCTAssertEqual(outbox(failed: 1, retrying: 1, unsent: 2), .show)
+        XCTAssertEqual(outbox(failed: 2, retrying: 2, unsent: 2), .update, "the second adds to the one up")
+        XCTAssertEqual([alert.count], [2])
+        XCTAssertTrue(alert.willRetry)
+        XCTAssertNil(outbox(unsent: 2), "back in the queue: it stays up")
+        XCTAssertEqual(outbox(unsent: 0), .dismiss, "sent by itself")
+
+        // Closed by OK, then a picture fails again: a new one, counted afresh.
+        _ = outbox(unsent: 2)
+        XCTAssertEqual(outbox(failed: 1, retrying: 1, unsent: 2), .show)
+        showing = false
+        XCTAssertEqual(outbox(failed: 2, retrying: 1, unsent: 2), .show)
+        XCTAssertEqual(alert.count, 1)
+        XCTAssertFalse(alert.willRetry, "refused for good")
+        XCTAssertNil(alert.receive(.init(attachmentsSettled: true), showing: false), "nothing up to close")
+    }
 }

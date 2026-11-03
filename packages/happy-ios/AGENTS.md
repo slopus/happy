@@ -192,7 +192,9 @@ nothing here is wired to the release skill or to EAS.
     composer's "Upload Failed" alert says an `interrupted` picture will be
     sent when the connection is back (`native.imageUpload.willRetry*`), not
     that it wasn't sent, raises no second alert when a retry fails again,
-    and closes once the session has no attachment left in the outbox.
+    and closes once the session has no attachment left in the outbox. A
+    message's pictures fail one delivery at a time: the alert up counts
+    them (`UploadAlertModel`) instead of another being raised over it.
     When a picture's upload fails, happy-app and Android keep the message
     in the composer instead, so there is nothing for them to resume.
   - Unsupported permission modes are refused before acceptance: `send` throws
