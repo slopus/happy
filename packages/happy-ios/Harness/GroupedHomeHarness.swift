@@ -85,8 +85,56 @@ private actor GroupedHomeTransport: AgentTransport {
         ]
     }
 
-    private var tasks: [[String: Any]] { made + Self.tasks }
+    private var tasks: [[String: Any]] { made + base }
     private var bots: [[String: Any]] { madeBots + Self.bots }
+    private lazy var base: [[String: Any]] = Self.tasks + (churns ? (1...24).map { n in
+        ["id": "busy\(n)", "name": "Busy task number \(n) with a long title", "agent": Self.agent("busy\(n)-agent", "Busy task \(n)", status: n % 3 == 0 ? "idle" : "working", ago: Double(n))]
+    } : [])
+    private var counts: [String: (Int, Int)] = [:]
+    var churns = false
+    private var fresh = 0
+    func setChurns(_ on: Bool) { churns = on }
+
+    /// One step of a computer whose agents work: line counts tick, a run
+    /// starts or ends, an agent does something, a new task arrives on top.
+    func churn(_ step: Int) {
+        var random = SystemRandomNumberGenerator()
+        let working = (made + base).compactMap { $0["agent"] as? [String: Any] }.filter { $0["status"] as? String == "working" }
+        for agent in working.shuffled().prefix(3) {
+            guard let workspace = agent["workspaceId"] as? String else { continue }
+            var count = counts[workspace] ?? (Int.random(in: 1...300, using: &random), Int.random(in: 0...90, using: &random))
+            count.0 += Int.random(in: 1...40, using: &random)
+            if Bool.random(using: &random) { count.1 += Int.random(in: 1...9, using: &random) }
+            counts[workspace] = count
+            tell("git.updated", ["workspaceId": workspace, "git": ["comparison": "ready", "insertions": count.0, "deletions": count.1, "countsExact": true, "scannedAt": Date().timeIntervalSince1970 * 1000]])
+        }
+        switch Int.random(in: 0..<8, using: &random) {
+        case 0:
+            fresh += 1
+            let n = fresh
+            let agentId = "fresh\(n)-agent"
+            let task: [String: Any] = ["id": "fresh\(n)", "name": "Fresh work \(n): Creating and Writing Artifacts", "status": "active", "agent": Self.agent(agentId, "Fresh \(n)", status: "working", ago: 0)]
+            made.insert(task, at: 0)
+            tell("task.created", ["task": task])
+        case 1, 2:
+            var all = made + base
+            guard !all.isEmpty else { return }
+            let index = Int.random(in: 0..<all.count, using: &random)
+            guard var agent = all[index]["agent"] as? [String: Any] else { return }
+            agent["status"] = agent["status"] as? String == "working" ? "idle" : "working"
+            agent["lastActivityAt"] = Date().timeIntervalSince1970 * 1000
+            all[index]["agent"] = agent
+            if index < made.count { made[index] = all[index] } else { base[index - made.count] = all[index] }
+            tell("agent.updated", ["agent": agent])
+        case 3, 4:
+            if made.count > 6 {
+                let gone = made.remove(at: Int.random(in: 0..<made.count, using: &random))
+                tell("task.updated", ["taskId": gone["id"]!])
+            }
+        default:
+            break
+        }
+    }
 
     private func tell(_ type: String, _ payload: [String: Any]) {
         sequence += 1
@@ -99,6 +147,14 @@ private actor GroupedHomeTransport: AgentTransport {
         if route == "/v0/projects/p1/avatar" { return .init(status: 200, body: avatar) }
         let sent = body.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
         if route == "/v0/git/watch" {
+            if churns {
+                var snapshots: [String: Any] = [:]
+                for id in sent["workspaceIds"] as? [String] ?? [] {
+                    let count = counts[id] ?? (0, 0)
+                    snapshots[id] = ["comparison": "ready", "insertions": count.0, "deletions": count.1, "countsExact": true, "scannedAt": Self.now]
+                }
+                return .init(status: 200, body: try JSONSerialization.data(withJSONObject: ["snapshots": snapshots]))
+            }
             let samples: [String: (Int, Int, Bool)] = lineCounts ? [
                 "w-happy-sub1": (42, 7, true), "w-research-agent": (1250, 0, true),
                 "w-release-agent": (0, 18, true), "w-landing-agent": (128, 34, true),
@@ -202,8 +258,13 @@ final class GroupedHomeHarness {
         if arguments.contains("-dark") { window.overrideUserInterfaceStyle = .dark }
         if arguments.contains("-light") { window.overrideUserInterfaceStyle = .light }
         let bottom = arguments.contains("-bottom")
+        let churns = arguments.contains("-churn")
+        if let index = arguments.firstIndex(of: "-drawDelay"), arguments.indices.contains(index + 1) {
+            SidebarItemDrawing.testDrawDelay = Double(arguments[index + 1]) ?? 0
+        }
         Task {
-            await open(window: window)
+            await open(window: window, churns: churns)
+            if churns { await churn(window: window, jumps: !arguments.contains("-noJumps"), flips: !arguments.contains("-noFlips")) }
             // With `-bottom`, the list's end, where the projects are.
             guard bottom else { return }
             try? await Task.sleep(for: .seconds(1.5))
@@ -225,8 +286,12 @@ final class GroupedHomeHarness {
         }
     }
 
-    private func open(window: UIWindow) async {
+    private var transport: GroupedHomeTransport?
+
+    private func open(window: UIWindow, churns: Bool) async {
         let transport = GroupedHomeTransport(avatar: Self.repoPicture(), lineCounts: lineCounts)
+        await transport.setChurns(churns)
+        self.transport = transport
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/grouped-home",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
@@ -247,6 +312,141 @@ final class GroupedHomeHarness {
             window.layoutIfNeeded()
         } catch {
             print("GROUPED_HOME error: \(error)")
+        }
+    }
+}
+
+extension GroupedHomeHarness {
+    /// `-churn`: the computer keeps working, the list scrolls now and then,
+    /// and every few seconds, after a quiet moment, each row on the list is
+    /// checked: it shows its own latest drawing, at its size, with nothing
+    /// else in its bitmap's view. What it finds goes to the log and to
+    /// Documents/stale-rows.txt, with a picture of the screen.
+    private func churn(window: UIWindow, jumps: Bool, flips: Bool) async {
+        let log = URL.documentsDirectory.appendingPathComponent("stale-rows.txt")
+        try? "".write(to: log, atomically: true, encoding: .utf8)
+        func note(_ line: String) {
+            print("STALE_ROWS \(line)")
+            if let handle = try? FileHandle(forWritingTo: log) {
+                handle.seekToEndOfFile(); handle.write(Data((line + "\n").utf8)); try? handle.close()
+            }
+        }
+        try? await Task.sleep(for: .seconds(2))
+        var step = 0
+        var checks = 0
+        var samples = 0, wrongSamples = 0, wrongRows = 0, pictured = false
+        var kinds: [String: Int] = [:]
+        while true {
+            let burst = ContinuousClock.now + .seconds(Double.random(in: 4...9))
+            while ContinuousClock.now < burst {
+                step += 1
+                await transport?.churn(step)
+                if jumps, Int.random(in: 0..<6) == 0, let list = home?.view.firstSubview(of: SidebarList.self) {
+                    let end = max(-list.contentInsets.top, list.edge.contentSize.height + list.contentInsets.bottom - list.bounds.height)
+                    list.setContentOffsetY(Bool.random() ? -list.contentInsets.top : CGFloat.random(in: -list.contentInsets.top...end), animated: Bool.random())
+                }
+                if Int.random(in: 0..<40) == 0, let navigation = home?.navigationController, navigation.viewControllers.count == 1 {
+                    // A chat opens over home, and comes back a moment later.
+                    let pushed = UIViewController()
+                    pushed.view.backgroundColor = .systemBackground
+                    navigation.pushViewController(pushed, animated: Bool.random())
+                    let away = Double.random(in: 0.2...3)
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .seconds(away))
+                        navigation.popViewController(animated: Bool.random())
+                    }
+                }
+                if flips, Int.random(in: 0..<40) == 0 {
+                    // To the background and back: iOS draws the app in both
+                    // appearances for the switcher.
+                    let style = window.overrideUserInterfaceStyle
+                    window.overrideUserInterfaceStyle = style == .dark ? .light : .dark
+                    window.layoutIfNeeded()
+                    if Bool.random() { try? await Task.sleep(for: .milliseconds(Int.random(in: 1...120))) }
+                    window.overrideUserInterfaceStyle = style
+                    window.layoutIfNeeded()
+                }
+                try? await Task.sleep(for: .milliseconds(Int.random(in: 30...350)))
+                // Mid-stream: rows on screen whose words or counts aren't their row's.
+                if let list = home?.view.firstSubview(of: SidebarList.self) {
+                    let visible = list.bounds.inset(by: UIEdgeInsets(top: list.contentInsets.top, left: 0, bottom: list.contentInsets.bottom, right: 0))
+                    func reason(_ view: SidebarItemView) -> String? {
+                        guard view.convert(view.box, to: list).intersects(visible), view.row.kind != .separator else { return nil }
+                        let shown = view.shownDrawing.shown
+                        guard shown.count == 1, let drawing = shown[0].drawing else { return "no host (\(view.shownDrawing.hidden) waiting)" }
+                        let current = view.item.entry.drawing
+                        if drawing.dark != current.dark { return "drawn \(drawing.dark ? "dark" : "light")" }
+                        if drawing.frame != current.frame { return "frame label.y \(drawing.frame.label.minY) -> \(current.frame.label.minY)" }
+                        if drawing.row.label != view.row.label || drawing.row.lineChanges != view.row.lineChanges { return "words" }
+                        return nil
+                    }
+                    let reasons = list.mountedViews.compactMap { view in reason(view).map { (view, $0) } }
+                    let off = reasons.map(\.0)
+                    for (_, why) in reasons { kinds[String(why.prefix(8)), default: 0] += 1 }
+                    samples += 1
+                    if !off.isEmpty { wrongSamples += 1; wrongRows += off.count }
+                    if off.count >= 2, !pictured {
+                        pictured = true
+                        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in _ = window.drawHierarchy(in: window.bounds, afterScreenUpdates: false) }
+                        try? image.pngData()?.write(to: URL.documentsDirectory.appendingPathComponent("mid-stream.png"))
+                        note("pictured mid-stream: " + reasons.map { "\($0.0.row.label): \($0.1)" }.joined(separator: ", "))
+                    }
+                }
+            }
+            note("stream so far: \(wrongSamples) of \(samples) samples had rows on screen showing other words or counts than their row (\(wrongRows) rows in all: \(kinds.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", ")))")
+            if let navigation = home?.navigationController, navigation.viewControllers.count > 1 { navigation.popToRootViewController(animated: false) }
+            try? await Task.sleep(for: .seconds(2.5))
+            guard let list = home?.view.firstSubview(of: SidebarList.self) else { continue }
+            checks += 1
+            // What is wrong now and still wrong a moment later, at rest:
+            // a reveal mid-glide is not a stale row.
+            func wrong(_ list: SidebarList) -> [ObjectIdentifier: String] {
+                var found: [ObjectIdentifier: String] = [:]
+                for view in list.mountedViews {
+                    let current = view.item.entry
+                    let shown = view.shownDrawing
+                    var problems: [String] = []
+                    if shown.shown.count != 1 { problems.append("\(shown.shown.count) hosts shown") }
+                    if let host = shown.shown.first {
+                        if host.drawing != current.drawing {
+                            let what = host.drawing.map { "\"\($0.row.label)\" \($0.row.lineChanges.map { "+\($0.insertions)-\($0.deletions)" } ?? "") label.y \($0.frame.label.minY) dark \($0.dark)" } ?? "nothing"
+                            problems.append("shows \(what); current \(current.row.lineChanges.map { "+\($0.insertions)-\($0.deletions)" } ?? "") label.y \(current.drawing.frame.label.minY) dark \(current.drawing.dark)")
+                        }
+                        if abs(host.size.height - current.size.height) > 0.5 { problems.append("host \(host.size.height) tall, slot \(current.size.height)") }
+                        if host.bitmap == nil, view.row.kind != .separator { problems.append("no bitmap") }
+                    }
+                    if shown.hidden != 0 { problems.append("\(shown.hidden) hidden hosts waiting") }
+                    if shown.others != 0 { problems.append("\(shown.others) leftover views") }
+                    if !problems.isEmpty { found[ObjectIdentifier(view)] = "\(view.row.id) r\(view.item.revision) \"\(view.row.label)\": " + problems.joined(separator: "; ") + " | " + view.drawingDiagnostics }
+                }
+                // A row view still on screen that the list no longer shows.
+                let mounted = Set(list.mountedViews.map(ObjectIdentifier.init))
+                func strays(in view: UIView) -> [SidebarItemView] {
+                    if let row = view as? SidebarItemView {
+                        return !mounted.contains(ObjectIdentifier(row)) && !row.isHidden && row.alpha > 0.01 && row.layer.opacity > 0.01 ? [row] : []
+                    }
+                    if view.isHidden || view.alpha < 0.01 { return [] }
+                    return view.subviews.flatMap(strays)
+                }
+                for stray in strays(in: list.list) {
+                    found[ObjectIdentifier(stray)] = "STRAY \(stray.row.id) \"\(stray.row.label)\" in \(type(of: stray.superview!)) at \(stray.convert(stray.bounds, to: list)) | " + stray.drawingDiagnostics
+                }
+                return found
+            }
+            var bad: [String] = []
+            let first = wrong(list)
+            if !first.isEmpty {
+                try? await Task.sleep(for: .seconds(1.5))
+                let second = wrong(list)
+                bad = first.keys.compactMap { key in first[key] == second[key] ? second[key] : nil }
+                if list.isDragging || list.isDecelerating { bad = [] }
+            }
+            note("check \(checks) step \(step): \(list.mountedViews.count) rows, \(bad.count) wrong")
+            for line in bad { note("  " + line) }
+            if !bad.isEmpty || checks % 5 == 1 {
+                let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in _ = window.drawHierarchy(in: window.bounds, afterScreenUpdates: false) }
+                try? image.pngData()?.write(to: URL.documentsDirectory.appendingPathComponent(bad.isEmpty ? "latest.png" : "stale-rows-\(checks).png"))
+            }
         }
     }
 }
