@@ -104,6 +104,26 @@ class InstallDesktopScreenTest {
         assertDp("scan's bottom", start.bottom, scan.bottom)
     }
 
+    /** On a tablet too the bar is the window's, as the first screen's top row is: ⋮ where Start's ⋮ is, back across from it. */
+    @Test
+    @Config(qualifiers = "w1280dp-h800dp-xhdpi")
+    fun onATabletTheMenuIsWhereTheFirstScreensIs() {
+        var install by mutableStateOf(false)
+        rule.setHappyContent {
+            if (install) {
+                InstallDesktopScreen(false, null, {}, {}, {}, {}, {}, {})
+            } else {
+                StartScreen(connecting = false, customServerLabel = null, onStart = {}, onEnterLink = {}, onRestore = {}, onServer = {})
+            }
+        }
+        val more = rule.node(StartTags.MORE).bounds
+        install = true
+        rule.waitForIdle()
+        val menu = rule.node(InstallDesktopTags.MORE).bounds
+        assertDp("⋮ at the window's end, as Start's", more.right, menu.right)
+        assertTrue("back at the window's start, not the column's", rule.node(HeaderTags.LEFT).bounds.left < 16.dp)
+    }
+
     @Test
     fun scanTheSiteAndBack() {
         show()

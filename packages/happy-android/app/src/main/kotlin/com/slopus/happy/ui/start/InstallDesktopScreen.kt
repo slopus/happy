@@ -35,7 +35,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -54,7 +53,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
-import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.RoundButton
 import com.slopus.happy.ui.components.SceneAnimation
@@ -199,15 +197,13 @@ fun InstallDesktopScreen(
                 )
             }
         }
-        // Clear: the gradient shows through the bar, over the first screen's top row.
+        // Clear: the gradient shows through the bar, over the first screen's top row, its ⋮ where that screen's is.
         Box(Modifier.windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))) {
             CompositionLocalProvider(LocalBarOnGlass provides true) {
-                StackHeader(title = "", onBack = onBack) {
+                StackHeader(title = "", onBack = onBack, fullWidth = true) {
                     Box {
                         var open by remember { mutableStateOf(false) }
-                        IconButton(onClick = { open = true }, modifier = Modifier.testTag(InstallDesktopTags.MORE)) {
-                            Icon(Ionicon.EllipsisVertical, StartSpec.controlIcon, text, contentDescription = stringResource(R.string.start_more))
-                        }
+                        StartControl(Ionicon.EllipsisVertical, stringResource(R.string.start_more), text, { open = true }, Modifier.testTag(InstallDesktopTags.MORE))
                         StartMenu(
                             open = open,
                             enabled = !scanning,

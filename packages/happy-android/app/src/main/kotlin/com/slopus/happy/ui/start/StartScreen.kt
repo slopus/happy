@@ -206,7 +206,7 @@ fun StartScreen(
 
 /** A 48 round touch target with a 24 glyph in the palette's text colour, straight on the gradient. */
 @Composable
-private fun StartControl(icon: Ionicon, description: String, tint: Color, onClick: () -> Unit, modifier: Modifier = Modifier) {
+internal fun StartControl(icon: Ionicon, description: String, tint: Color, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .size(StartSpec.control)
