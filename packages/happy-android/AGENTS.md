@@ -1247,9 +1247,23 @@ chat shows, and again on `provider.usage.*`, `config.updated` and each
 reconnect. It keeps following for 30 s after the last chat goes. Words
 are in `strings_context_meter.xml`.
 
+### One-row composer
+
+The chat's composer is one row when the full card with one line would
+leave the transcript under 120 dp between the bar's foot and the card
+(iOS ac81745ac, `ChatScreenLayout.compactBelow`). That is a phone held
+sideways with the keyboard up. It is also one row wherever the card
+can't fit at all. The decision comes from the card with one line, never
+from the card as it is, so typing and going to one row can't undo it.
+It is read where the keyboard rests (`keyboardPadding`), not mid-drag.
+The row is [+], the field (two lines, then it scrolls, with the expand
+button), the chips and send. The buttons stay at the row's foot as the
+field grows. Android keeps the chips in the row rather than behind iOS's
+options button: a sideways phone has the width for them.
+
 ### Full-screen editor
 
-Past the lines the card shows (eight, or the one row's one, measured at
+Past the lines the card shows (eight, or the one row's two, measured at
 the field's width without the button), the composer offers Telegram's
 expand as iOS does (efea2b139): send's size, centred over send, as far
 from the card's top as send is from its foot, and the words wrap clear of

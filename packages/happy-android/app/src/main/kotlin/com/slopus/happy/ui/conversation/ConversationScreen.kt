@@ -602,6 +602,8 @@ fun ConversationScreen(
                                 onRefreshUsage = onRefreshUsage,
                                 onExpand = { at -> if (editing < 0) editing = (at.start.toLong() shl 32) or at.end.toLong() },
                                 returned = returned,
+                                // Sideways with the keyboard up, one row once the full card would leave the transcript too little.
+                                barFoot = barFoot,
                             )
                         }
                     }

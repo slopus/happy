@@ -144,6 +144,10 @@ object ConversationComposerSpec {
     val primary = 36.dp
     val expandGlyph = 18.dp
     const val MAX_LINES = 8
+    /** The one row shows this many lines, then scrolls (iOS `compactTextCap`). */
+    const val COMPACT_LINES = 2
+    /** The least transcript the full card may leave between the bar and itself; under it the composer is one row. */
+    val transcriptMin = 120.dp
 }
 
 private object Slot {
@@ -169,8 +173,10 @@ private object Slot {
  * The model menu floats above the composer and keyboard, keeping the draft
  * and caret in place. The pill is glass over [backdrop] (the transcript under
  * it), its tint alone where nothing blurs. With Reduce Motion it changes shape
- * at once. When the available height cannot fit the open card it uses one
- * row, retaining [+], an internally scrolling field, model/effort and send.
+ * at once. When the open card with one line would leave the transcript under
+ * 120 (a phone held sideways with the keyboard up, iOS ac81745ac), or cannot
+ * fit at all, it uses one row: [+], the field (two lines, then it scrolls),
+ * model/effort and send at the row's foot.
  * Its vertical margins shrink to preserve a 48 dp surface where it fits;
  * picture previews hide while space is short, their count on [+].
  */
@@ -201,6 +207,12 @@ internal fun ConversationComposer(
     onExpand: ((TextRange) -> Unit)? = null,
     /** The full-screen editor closed: the caret it left, taken back here. */
     returned: ComposerReturn? = null,
+    /**
+     * Where the bar over the transcript ends, from the top of the room the composer is given. With it,
+     * the composer goes to one row when the full card would leave the transcript less than
+     * [ConversationComposerSpec.transcriptMin] (iOS `ChatScreenLayout.compactBelow`).
+     */
+    barFoot: Dp? = null,
 ) {
     RecomposeProbe.mark(ConversationScreenTags.PROBE_COMPOSER)
     val colors = HappyTheme.colors
@@ -257,6 +269,8 @@ internal fun ConversationComposer(
     // The field's width without the expand button, as last laid out: whether the words are past
     // the lines it shows is measured there, so the button taking its room never decides it.
     val fullWidth = remember { mutableIntStateOf(0) }
+    // How many lines the one row shows as last laid out: two where they fit, else one.
+    val compactLines = remember { mutableIntStateOf(1) }
     val measurer = rememberTextMeasurer(cacheSize = 0)
     val bodyStyle = MaterialTheme.typography.bodyLarge
     // The field's words as last laid out, and where the field is: what a sent message flies from.
@@ -318,9 +332,10 @@ internal fun ConversationComposer(
         minimumCompact,
         modifier,
         meter = gauge?.let { { ContextMeter(it) } },
+        keep = barFoot?.let { it + ConversationComposerSpec.transcriptMin } ?: 0.dp,
     ) { compact ->
         // Telegram's expand: once the words scroll (past the card's eight lines, or the one row's one).
-        val shownLines = if (compact) 1 else ConversationComposerSpec.MAX_LINES
+        val shownLines = if (compact) compactLines.intValue else ConversationComposerSpec.MAX_LINES
         val words = field.text
         val width = fullWidth.intValue
         val expands = onExpand != null && width > 0 && words.isNotEmpty() &&
@@ -338,7 +353,7 @@ internal fun ConversationComposer(
             PictureStripVisibility(attached.isNotEmpty() && !compact, immediate = compact) {
                 ComposerPictures(attached, strip, onRemove = { pictures?.remove(it) })
             }
-            ComposerLayout(open, compact, if (compact || !open) minimumCompact else minimumActions, fullWidth) {
+            ComposerLayout(open, compact, if (compact || !open) minimumCompact else minimumActions, fullWidth, lineHeight, compactLines) {
                 Box(Modifier.layoutId(Slot.MORE)) {
                     IconButton(onClick = { picker = null; moreCenterY = anchor(0); if (showCount) menu = true else attaching = true }, modifier = Modifier.testTag(ConversationComposerTags.MORE)
                         .attachButton(plus)
@@ -528,7 +543,15 @@ private fun ExpandButton(reduceMotion: Boolean, modifier: Modifier, onClick: () 
  * then the label and send at the end.
  */
 @Composable
-private fun ComposerLayout(open: Boolean, compact: Boolean, minimumRowHeight: Dp, fullWidth: androidx.compose.runtime.MutableIntState, content: @Composable () -> Unit) {
+private fun ComposerLayout(
+    open: Boolean,
+    compact: Boolean,
+    minimumRowHeight: Dp,
+    fullWidth: androidx.compose.runtime.MutableIntState,
+    lineHeight: Dp,
+    compactLines: androidx.compose.runtime.MutableIntState,
+    content: @Composable () -> Unit,
+) {
     Layout(content) { measurables, constraints ->
         val width = constraints.maxWidth
         val loose = Constraints(maxWidth = width, maxHeight = constraints.maxHeight)
@@ -545,14 +568,23 @@ private fun ComposerLayout(open: Boolean, compact: Boolean, minimumRowHeight: Dp
             full(wide)
             // The expand button stands at the field's end, the words clear of it.
             val fieldWidth = (wide - (expand?.width ?: 0)).coerceAtLeast(0)
-            val field = slot(Slot.FIELD)!!.measure(Constraints(minWidth = fieldWidth, maxWidth = fieldWidth, maxHeight = rowHeight))
+            // Two lines where the room lets them, then it scrolls (iOS `compactTextCap`).
+            val line = lineHeight.roundToPx().coerceAtLeast(1)
+            val padding = 2 * ConversationComposerSpec.fieldVertical.roundToPx()
+            val cap = (ConversationComposerSpec.COMPACT_LINES * line + padding).coerceAtMost(constraints.maxHeight).coerceAtLeast(rowHeight)
+            val lines = ((cap - padding) / line).coerceIn(1, ConversationComposerSpec.COMPACT_LINES)
+            if (compactLines.intValue != lines) compactLines.intValue = lines
+            val field = slot(Slot.FIELD)!!.measure(Constraints(minWidth = fieldWidth, maxWidth = fieldWidth, maxHeight = cap))
             val height = maxOf(rowHeight, field.height, label?.height ?: 0).coerceAtMost(constraints.maxHeight)
+            // The buttons stand where they do beside one line, at the row's foot, however many it grows to.
+            val foot = height - rowHeight
+            fun row(h: Int) = foot + (rowHeight - h) / 2
             layout(width, height) {
-                more.place(0, (height - more.height) / 2)
-                field.place(more.width, (height - field.height) / 2)
-                expand?.place(more.width + fieldWidth, (height - expand.height) / 2)
-                primary.place(width - primary.width, (height - primary.height) / 2)
-                label?.place(width - primary.width - label.width, (height - label.height) / 2)
+                more.place(0, row(more.height))
+                field.place(more.width, if (field.height > rowHeight) 0 else row(field.height))
+                expand?.place(more.width + fieldWidth, (if (field.height > rowHeight) 0 else foot) + (rowHeight - expand.height) / 2)
+                primary.place(width - primary.width, row(primary.height))
+                label?.place(width - primary.width - label.width, row(label.height))
             }
         } else {
             val inset = ConversationComposerSpec.fieldPadding.roundToPx()
@@ -576,18 +608,27 @@ private fun ComposerLayout(open: Boolean, compact: Boolean, minimumRowHeight: Dp
 }
 
 /**
- * Keep the full card when it fits; otherwise use one row and spend spare
- * height on margins. With a [meter], its 20 row stands under the full card,
+ * Keep the full card when it fits and leaves [keep] above it, judged from
+ * the card with one line so neither typing nor going to one row flips it;
+ * otherwise use one row and spend spare height on margins. With a [meter], its 20 row stands under the full card,
  * the bar's end under send (iOS `ChatScreenLayout.meter`); the one-row
  * composer has none, as the transcript needs every point.
  */
 @Composable
-private fun ComposerViewport(minimumOpen: Dp, minimumCompact: Dp, modifier: Modifier, meter: (@Composable () -> Unit)? = null, content: @Composable (Boolean) -> Unit) {
+private fun ComposerViewport(
+    minimumOpen: Dp,
+    minimumCompact: Dp,
+    modifier: Modifier,
+    meter: (@Composable () -> Unit)? = null,
+    /** Room the full card must leave above itself, or it is one row: decided from the card with one line, never as it is. */
+    keep: Dp = 0.dp,
+    content: @Composable (Boolean) -> Unit,
+) {
     // The margins are worked out where it measures, so the room round it changing (the keyboard
     // settling) measures the pill again and composes it only when it changes shape.
     SubcomposeLayout(modifier.fillMaxWidth().testTag(ConversationComposerTags.COMPOSER)) { constraints ->
         val below = if (meter != null) ContextMeterSpec.height else 8.dp
-        val compact = constraints.hasBoundedHeight && constraints.maxHeight.toDp() < minimumOpen + 8.dp + below
+        val compact = constraints.hasBoundedHeight && constraints.maxHeight.toDp() < minimumOpen + 8.dp + below + keep
         // Split whole spare pixels so rounding each margin cannot steal
         // one pixel from the minimum touch surface at fractional densities.
         val vertical = if (compact) ((constraints.maxHeight - minimumCompact.roundToPx()).coerceAtLeast(0) / 2).coerceAtMost(8.dp.roundToPx()) else 8.dp.roundToPx()
