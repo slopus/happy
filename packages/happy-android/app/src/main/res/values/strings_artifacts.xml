@@ -30,8 +30,6 @@
 
     <string name="browser_via">via %1$s</string>
     <string name="browser_default_computer">agent connection</string>
-    <string name="browser_unreachable">Can’t reach %1$s.\nCheck the agent connection, then tap Reload.</string>
-    <string name="browser_unreachable_page">Can’t reach %1$s.\nCheck the connection or page address, then tap Reload.</string>
     <string name="browser_unsupported">This phone’s WebView can’t send pages through your computer. Update Android System WebView, then tap Reload.</string>
     <string name="browser_forward">Forward</string>
     <string name="browser_close">Close</string>

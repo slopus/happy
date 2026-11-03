@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_browser.xml in ja: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="browser_stop">停止</string>
+    <string name="browser_try_again">再試行</string>
+    <string name="browser_problem_offline_title">オフラインです</string>
+    <string name="browser_problem_offline_message">このスマートフォンはインターネットに接続されていません。接続されるとページが開きます。</string>
+    <string name="browser_problem_unreachable_title">%1$s に接続できません</string>
+    <string name="browser_problem_unreachable_message">ページは %1$s を経由して開きますが、応答がありません。スリープしておらず、Happy が起動していることを確認してください。</string>
+    <string name="browser_problem_unavailable_title">このページを開けません</string>
+    <string name="browser_problem_unavailable_message">ページは Happy Agent が動いているコンピュータを経由して開きますが、このページを開くための接続がありません。</string>
+    <string name="browser_problem_host_not_found_title">サーバが見つかりません</string>
+    <string name="browser_problem_host_not_found_message">%1$s は「%2$s」を見つけられませんでした。アドレスを確認してください。</string>
+    <string name="browser_problem_host_not_found_message_no_host">%1$s はサーバを見つけられませんでした。アドレスを確認してください。</string>
+    <string name="browser_problem_server_title">サーバが応答していません</string>
+    <string name="browser_problem_server_message">コンピュータ上の「%1$s」のサーバが応答していません。起動していることを確認してから、もう一度お試しください。</string>
+    <string name="browser_problem_server_message_no_host">コンピュータ上のサーバが応答していません。起動していることを確認してから、もう一度お試しください。</string>
+    <string name="browser_problem_timed_out_title">ページの応答に時間がかかりすぎています</string>
+    <string name="browser_problem_timed_out_message">「%1$s」が時間内に応答しませんでした。</string>
+    <string name="browser_problem_timed_out_message_no_host">サーバが時間内に応答しませんでした。</string>
+    <string name="browser_problem_insecure_title">安全に開けません</string>
+    <string name="browser_problem_insecure_message">「%1$s」と安全に接続できませんでした。</string>
+    <string name="browser_problem_insecure_message_no_host">サーバと安全に接続できませんでした。</string>
+    <string name="browser_problem_cleartext_message">Android は http:// のページを localhost からのみ開きます。「%1$s」は https:// で開いてください。</string>
+    <string name="browser_problem_cleartext_message_no_host">Android は http:// のページを localhost からのみ開きます。https:// のアドレスを使ってください。</string>
+    <string name="browser_problem_http_title">ページエラー %1$d</string>
+    <string name="browser_problem_http_message">サーバは「%1$s」と応答し、表示する内容がありません。</string>
+    <string name="browser_problem_http_message_no_reason">サーバはエラーを返し、表示する内容がありません。</string>
+    <string name="browser_problem_crashed_title">このページは動作を停止しました</string>
+    <string name="browser_problem_crashed_message">読み込み中に問題が繰り返し起きました。もう一度開いてみてください。</string>
+    <string name="browser_problem_unsupported_title">このリンクを開けません</string>
+    <string name="browser_problem_unsupported_message">このスマートフォンには「%1$s:」のリンクを開くアプリがありません。</string>
+    <string name="browser_problem_unsupported_message_no_scheme">このスマートフォンにはこのリンクを開くアプリがありません。</string>
+</resources>

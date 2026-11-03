@@ -23,8 +23,6 @@
     <string name="artifact_open_with_body">Android ではこのファイルをここに表示できません。このスマートフォンで読み込めるアプリで開きます。</string>
     <string name="browser_via">%1$s 経由</string>
     <string name="browser_default_computer">エージェント接続</string>
-    <string name="browser_unreachable">%1$s に接続できません。\nエージェント接続を確認してから「再読み込み」をタップしてください。</string>
-    <string name="browser_unreachable_page">%1$s に接続できません。\n接続またはページのアドレスを確認してから「再読み込み」をタップしてください。</string>
     <string name="browser_unsupported">このスマートフォンの WebView はコンピュータ経由でページを送れません。Android System WebView を更新してから「再読み込み」をタップしてください。</string>
     <string name="browser_forward">進む</string>
     <string name="browser_close">閉じる</string>

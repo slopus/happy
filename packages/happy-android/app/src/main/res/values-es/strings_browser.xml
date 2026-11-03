@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_browser.xml in es: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="browser_stop">Detener</string>
+    <string name="browser_try_again">Reintentar</string>
+    <string name="browser_problem_offline_title">Sin conexión</string>
+    <string name="browser_problem_offline_message">Este teléfono no está conectado a internet. Las páginas se abrirán cuando lo esté.</string>
+    <string name="browser_problem_unreachable_title">No se puede contactar con %1$s</string>
+    <string name="browser_problem_unreachable_message">Las páginas se abren a través de %1$s y no responde. Asegúrate de que esté encendido y de que Happy se esté ejecutando allí.</string>
+    <string name="browser_problem_unavailable_title">No se puede abrir esta página</string>
+    <string name="browser_problem_unavailable_message">Las páginas se abren a través de un ordenador con Happy Agent y no hay ninguna conexión para abrir esta.</string>
+    <string name="browser_problem_host_not_found_title">No se encuentra el servidor</string>
+    <string name="browser_problem_host_not_found_message">%1$s no encuentra «%2$s». Comprueba la dirección.</string>
+    <string name="browser_problem_host_not_found_message_no_host">%1$s no encuentra el servidor. Comprueba la dirección.</string>
+    <string name="browser_problem_server_title">El servidor no responde</string>
+    <string name="browser_problem_server_message">El servidor de tu ordenador en «%1$s» no responde. Asegúrate de que esté en marcha e inténtalo de nuevo.</string>
+    <string name="browser_problem_server_message_no_host">El servidor de tu ordenador no responde. Asegúrate de que esté en marcha e inténtalo de nuevo.</string>
+    <string name="browser_problem_timed_out_title">La página tardó demasiado</string>
+    <string name="browser_problem_timed_out_message">«%1$s» no respondió a tiempo.</string>
+    <string name="browser_problem_timed_out_message_no_host">El servidor no respondió a tiempo.</string>
+    <string name="browser_problem_insecure_title">No se puede abrir de forma segura</string>
+    <string name="browser_problem_insecure_message">No se pudo establecer una conexión segura con «%1$s».</string>
+    <string name="browser_problem_insecure_message_no_host">No se pudo establecer una conexión segura con el servidor.</string>
+    <string name="browser_problem_cleartext_message">Android solo abre páginas http:// desde localhost. Abre «%1$s» con https://.</string>
+    <string name="browser_problem_cleartext_message_no_host">Android solo abre páginas http:// desde localhost. Usa una dirección https://.</string>
+    <string name="browser_problem_http_title">Error de página %1$d</string>
+    <string name="browser_problem_http_message">El servidor respondió «%1$s» sin nada que mostrar.</string>
+    <string name="browser_problem_http_message_no_reason">El servidor respondió con un error y sin nada que mostrar.</string>
+    <string name="browser_problem_crashed_title">Esta página dejó de funcionar</string>
+    <string name="browser_problem_crashed_message">Se repitió un problema mientras se cargaba. Intenta abrirla de nuevo.</string>
+    <string name="browser_problem_unsupported_title">No se puede abrir este enlace</string>
+    <string name="browser_problem_unsupported_message">Ninguna app de este teléfono abre enlaces «%1$s:».</string>
+    <string name="browser_problem_unsupported_message_no_scheme">Ninguna app de este teléfono abre este enlace.</string>
+</resources>

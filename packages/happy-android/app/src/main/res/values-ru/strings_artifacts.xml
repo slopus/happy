@@ -29,8 +29,6 @@
     <string name="artifact_open_with_body">Android не может показать этот файл здесь. Он откроется в приложении на телефоне, которое умеет его читать.</string>
     <string name="browser_via">через %1$s</string>
     <string name="browser_default_computer">подключение агента</string>
-    <string name="browser_unreachable">Не удаётся связаться с %1$s.\nПроверьте подключение агента, затем нажмите «Обновить».</string>
-    <string name="browser_unreachable_page">Не удаётся связаться с %1$s.\nПроверьте подключение или адрес страницы, затем нажмите «Обновить».</string>
     <string name="browser_unsupported">WebView этого телефона не может передавать страницы через ваш компьютер. Обновите Android System WebView, затем нажмите «Обновить».</string>
     <string name="browser_forward">Вперёд</string>
     <string name="browser_close">Закрыть</string>

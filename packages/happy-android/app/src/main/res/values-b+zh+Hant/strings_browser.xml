@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_browser.xml in zh-Hant: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="browser_stop">停止</string>
+    <string name="browser_try_again">再試一次</string>
+    <string name="browser_problem_offline_title">你已離線</string>
+    <string name="browser_problem_offline_message">此手機未連線到網際網路。連線後即可開啟網頁。</string>
+    <string name="browser_problem_unreachable_title">無法連線到 %1$s</string>
+    <string name="browser_problem_unreachable_message">網頁透過 %1$s 開啟，但它沒有回應。請確認它未進入睡眠且正在執行 Happy。</string>
+    <string name="browser_problem_unavailable_title">無法開啟此網頁</string>
+    <string name="browser_problem_unavailable_message">網頁透過執行 Happy Agent 的電腦開啟，但沒有可用來開啟此網頁的連線。</string>
+    <string name="browser_problem_host_not_found_title">找不到伺服器</string>
+    <string name="browser_problem_host_not_found_message">%1$s 找不到「%2$s」。請檢查網址。</string>
+    <string name="browser_problem_host_not_found_message_no_host">%1$s 找不到伺服器。請檢查網址。</string>
+    <string name="browser_problem_server_title">伺服器沒有回應</string>
+    <string name="browser_problem_server_message">你電腦上「%1$s」的伺服器沒有回應。請確認它正在執行，然後再試一次。</string>
+    <string name="browser_problem_server_message_no_host">你電腦上的伺服器沒有回應。請確認它正在執行，然後再試一次。</string>
+    <string name="browser_problem_timed_out_title">網頁回應時間過長</string>
+    <string name="browser_problem_timed_out_message">「%1$s」沒有及時回應。</string>
+    <string name="browser_problem_timed_out_message_no_host">伺服器沒有及時回應。</string>
+    <string name="browser_problem_insecure_title">無法安全開啟</string>
+    <string name="browser_problem_insecure_message">無法與「%1$s」建立安全連線。</string>
+    <string name="browser_problem_insecure_message_no_host">無法與伺服器建立安全連線。</string>
+    <string name="browser_problem_cleartext_message">Android 只允許從 localhost 開啟 http:// 網頁。請改用 https:// 開啟「%1$s」。</string>
+    <string name="browser_problem_cleartext_message_no_host">Android 只允許從 localhost 開啟 http:// 網頁。請改用 https:// 網址。</string>
+    <string name="browser_problem_http_title">網頁錯誤 %1$d</string>
+    <string name="browser_problem_http_message">伺服器回應「%1$s」，沒有可顯示的內容。</string>
+    <string name="browser_problem_http_message_no_reason">伺服器回應錯誤，沒有可顯示的內容。</string>
+    <string name="browser_problem_crashed_title">此網頁已停止運作</string>
+    <string name="browser_problem_crashed_message">載入時一再發生問題。請試著重新開啟。</string>
+    <string name="browser_problem_unsupported_title">無法開啟此連結</string>
+    <string name="browser_problem_unsupported_message">此手機上沒有 App 可以開啟「%1$s:」連結。</string>
+    <string name="browser_problem_unsupported_message_no_scheme">此手機上沒有 App 可以開啟此連結。</string>
+</resources>

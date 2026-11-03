@@ -41,6 +41,7 @@ import com.slopus.happy.chat.markdown.MarkdownBlock
 import com.slopus.happy.conversation.MediaItem
 import com.slopus.happy.ui.browser.BrowserPage
 import com.slopus.happy.ui.browser.BrowserView
+import com.slopus.happy.ui.browser.rememberBrowserState
 import com.slopus.happy.ui.chat.MarkdownView
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
@@ -94,6 +95,7 @@ class ArtifactActions(
 fun ArtifactScreen(title: String, ui: ArtifactUi, media: ArtifactMedia?, computer: String, actions: ArtifactActions) {
     var viewing by remember { mutableStateOf<Pair<List<ArtifactMediaItem>, Int>?>(null) }
     var missing by remember { mutableStateOf(false) }
+    val browser = rememberBrowserState()
     PlaceScaffold(title.ifBlank { stringResource(R.string.artifact_untitled) }, actions.onBack, ArtifactTags.SCREEN) {
         when (ui) {
             ArtifactUi.Loading -> LoadingIndicator(Modifier.testTag(PlaceTags.LOADER))
@@ -116,7 +118,7 @@ fun ArtifactScreen(title: String, ui: ArtifactUi, media: ArtifactMedia?, compute
                 },
             )
             is ArtifactUi.Gallery -> if (media != null) ArtifactGallery(ui.items, media) { index -> viewing = ui.items to index }
-            is ArtifactUi.Page -> BrowserView(prepare = ui.prepare, computer = computer, onOpenElsewhere = actions.onOpenWeb, artifactLink = actions.artifactLink)
+            is ArtifactUi.Page -> BrowserView(browser, prepare = ui.prepare, computer = computer, onOpenElsewhere = actions.onOpenWeb, artifactLink = actions.artifactLink)
             is ArtifactUi.Openable -> ArtifactOpenable(ui.file, actions)
         }
     }

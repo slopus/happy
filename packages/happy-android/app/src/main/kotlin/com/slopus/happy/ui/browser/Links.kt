@@ -113,7 +113,7 @@ class LinkOpener internal constructor(
          */
         fun agent(context: Context, computer: String, navigateBrowser: (String) -> Unit): LinkOpener {
             val browse = { url: String ->
-                if (BrowserPolicy.route(url) == BrowserPolicy.Route.Web) navigateBrowser(url) else openOutside(context, url)
+                if (BrowserPolicy.route(url) == BrowserPolicy.Route.Web) navigateBrowser(url) else openOutside(context, url).let {}
             }
             return LinkOpener(proxied = true, computer = computer, tap = browse, inApp = browse, external = { openOutside(context, it) })
         }

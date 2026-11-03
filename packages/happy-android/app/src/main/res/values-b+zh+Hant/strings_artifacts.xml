@@ -23,8 +23,6 @@
     <string name="artifact_open_with_body">Android 無法在此顯示此檔案。它會在此手機上能讀取它的 App 中開啟。</string>
     <string name="browser_via">經由 %1$s</string>
     <string name="browser_default_computer">代理程式連線</string>
-    <string name="browser_unreachable">無法連線到 %1$s。\n請檢查代理程式連線，然後點一下「重新載入」。</string>
-    <string name="browser_unreachable_page">無法連線到 %1$s。\n請檢查連線或網頁位址，然後點一下「重新載入」。</string>
     <string name="browser_unsupported">此手機的 WebView 無法透過你的電腦傳送網頁。請更新 Android System WebView，然後點一下「重新載入」。</string>
     <string name="browser_forward">下一頁</string>
     <string name="browser_close">關閉</string>

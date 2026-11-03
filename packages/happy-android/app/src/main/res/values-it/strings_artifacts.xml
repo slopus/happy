@@ -27,8 +27,6 @@
     <string name="artifact_open_with_body">Android non può mostrare questo file qui. Si apre in un\'app di questo telefono in grado di leggerlo.</string>
     <string name="browser_via">tramite %1$s</string>
     <string name="browser_default_computer">connessione agente</string>
-    <string name="browser_unreachable">Impossibile raggiungere %1$s.\nControlla la connessione dell\'agente, poi tocca Ricarica.</string>
-    <string name="browser_unreachable_page">Impossibile raggiungere %1$s.\nControlla la connessione o l\'indirizzo della pagina, poi tocca Ricarica.</string>
     <string name="browser_unsupported">Il WebView di questo telefono non può inviare pagine tramite il computer. Aggiorna Android System WebView, poi tocca Ricarica.</string>
     <string name="browser_forward">Avanti</string>
     <string name="browser_close">Chiudi</string>

@@ -381,6 +381,7 @@ dependencies {
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.webkit)
     implementation(libs.androidx.browser)
+    implementation(libs.androidx.swiperefreshlayout)
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

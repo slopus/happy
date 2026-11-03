@@ -23,8 +23,6 @@
     <string name="artifact_open_with_body">Android 无法在此显示此文件。它会在此手机上能读取它的应用中打开。</string>
     <string name="browser_via">经由 %1$s</string>
     <string name="browser_default_computer">智能体连接</string>
-    <string name="browser_unreachable">无法连接 %1$s。\n请检查智能体连接，然后点按“重新加载”。</string>
-    <string name="browser_unreachable_page">无法连接 %1$s。\n请检查连接或页面地址，然后点按“重新加载”。</string>
     <string name="browser_unsupported">此手机的 WebView 无法通过你的电脑发送页面。请更新 Android System WebView，然后点按“重新加载”。</string>
     <string name="browser_forward">前进</string>
     <string name="browser_close">关闭</string>

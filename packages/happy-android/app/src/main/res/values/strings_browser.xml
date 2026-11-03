@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_browser.xml: the in-app browser's words (iOS's Strings/Browser.swift, 34aa464e1;
+  happy-app has no browser). AndroidStringsTranslatedTest checks every locale has them.
+-->
+<resources>
+    <string name="browser_stop">Stop</string>
+    <string name="browser_try_again">Try Again</string>
+    <string name="browser_problem_offline_title">You’re Offline</string>
+    <string name="browser_problem_offline_message">This phone isn’t connected to the internet. Pages open once it is.</string>
+    <string name="browser_problem_unreachable_title">Can’t Reach %1$s</string>
+    <string name="browser_problem_unreachable_message">Pages open through %1$s, and it isn’t answering. Make sure it’s awake and Happy is running there.</string>
+    <string name="browser_problem_unavailable_title">Can’t Open This Page</string>
+    <string name="browser_problem_unavailable_message">Pages open through a computer running Happy Agent, and there’s no connection to open this one through.</string>
+    <string name="browser_problem_host_not_found_title">Can’t Find the Server</string>
+    <string name="browser_problem_host_not_found_message">%1$s couldn’t find “%2$s”. Check the address.</string>
+    <string name="browser_problem_host_not_found_message_no_host">%1$s couldn’t find the server. Check the address.</string>
+    <string name="browser_problem_server_title">Server Isn’t Responding</string>
+    <string name="browser_problem_server_message">The server on your computer at “%1$s” isn’t responding. Make sure it’s running, then try again.</string>
+    <string name="browser_problem_server_message_no_host">The server on your computer isn’t responding. Make sure it’s running, then try again.</string>
+    <string name="browser_problem_timed_out_title">Page Took Too Long</string>
+    <string name="browser_problem_timed_out_message">“%1$s” didn’t answer in time.</string>
+    <string name="browser_problem_timed_out_message_no_host">The server didn’t answer in time.</string>
+    <string name="browser_problem_insecure_title">Can’t Open Securely</string>
+    <string name="browser_problem_insecure_message">A secure connection to “%1$s” couldn’t be made.</string>
+    <string name="browser_problem_insecure_message_no_host">A secure connection to the server couldn’t be made.</string>
+    <string name="browser_problem_cleartext_message">Android opens plain http:// pages only from localhost. Open “%1$s” with https:// instead.</string>
+    <string name="browser_problem_cleartext_message_no_host">Android opens plain http:// pages only from localhost. Use an https:// address instead.</string>
+    <string name="browser_problem_http_title">Page Error %1$d</string>
+    <string name="browser_problem_http_message">The server answered “%1$s” with nothing to show.</string>
+    <string name="browser_problem_http_message_no_reason">The server answered with an error and nothing to show.</string>
+    <string name="browser_problem_crashed_title">This Page Stopped Working</string>
+    <string name="browser_problem_crashed_message">A problem kept happening while it loaded. Try opening it again.</string>
+    <string name="browser_problem_unsupported_title">Can’t Open This Link</string>
+    <string name="browser_problem_unsupported_message">No app on this phone opens “%1$s:” links.</string>
+    <string name="browser_problem_unsupported_message_no_scheme">No app on this phone opens this link.</string>
+</resources>

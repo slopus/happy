@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  values/strings_browser.xml in ca: Android-only strings, not in happy-app's
+  catalogs. AndroidStringsTranslatedTest fails while one is missing here.
+-->
+<resources>
+    <string name="browser_stop">Atura</string>
+    <string name="browser_try_again">Torna-ho a provar</string>
+    <string name="browser_problem_offline_title">No tens connexió</string>
+    <string name="browser_problem_offline_message">Aquest telèfon no està connectat a internet. Les pàgines s’obriran quan ho estigui.</string>
+    <string name="browser_problem_unreachable_title">No es pot contactar amb %1$s</string>
+    <string name="browser_problem_unreachable_message">Les pàgines s’obren a través de %1$s, i no respon. Assegura’t que estigui engegat i que Happy s’hi executi.</string>
+    <string name="browser_problem_unavailable_title">No es pot obrir aquesta pàgina</string>
+    <string name="browser_problem_unavailable_message">Les pàgines s’obren a través d’un ordinador amb Happy Agent, i no hi ha cap connexió per obrir aquesta.</string>
+    <string name="browser_problem_host_not_found_title">No es troba el servidor</string>
+    <string name="browser_problem_host_not_found_message">%1$s no troba «%2$s». Comprova l’adreça.</string>
+    <string name="browser_problem_host_not_found_message_no_host">%1$s no troba el servidor. Comprova l’adreça.</string>
+    <string name="browser_problem_server_title">El servidor no respon</string>
+    <string name="browser_problem_server_message">El servidor del teu ordinador a «%1$s» no respon. Assegura’t que estigui en marxa i torna-ho a provar.</string>
+    <string name="browser_problem_server_message_no_host">El servidor del teu ordinador no respon. Assegura’t que estigui en marxa i torna-ho a provar.</string>
+    <string name="browser_problem_timed_out_title">La pàgina ha trigat massa</string>
+    <string name="browser_problem_timed_out_message">«%1$s» no ha respost a temps.</string>
+    <string name="browser_problem_timed_out_message_no_host">El servidor no ha respost a temps.</string>
+    <string name="browser_problem_insecure_title">No es pot obrir de manera segura</string>
+    <string name="browser_problem_insecure_message">No s’ha pogut establir una connexió segura amb «%1$s».</string>
+    <string name="browser_problem_insecure_message_no_host">No s’ha pogut establir una connexió segura amb el servidor.</string>
+    <string name="browser_problem_cleartext_message">Android només obre pàgines http:// des de localhost. Obre «%1$s» amb https://.</string>
+    <string name="browser_problem_cleartext_message_no_host">Android només obre pàgines http:// des de localhost. Fes servir una adreça https://.</string>
+    <string name="browser_problem_http_title">Error de pàgina %1$d</string>
+    <string name="browser_problem_http_message">El servidor ha respost «%1$s» sense res per mostrar.</string>
+    <string name="browser_problem_http_message_no_reason">El servidor ha respost amb un error i sense res per mostrar.</string>
+    <string name="browser_problem_crashed_title">Aquesta pàgina ha deixat de funcionar</string>
+    <string name="browser_problem_crashed_message">Es repetia un problema mentre es carregava. Prova d’obrir-la de nou.</string>
+    <string name="browser_problem_unsupported_title">No es pot obrir aquest enllaç</string>
+    <string name="browser_problem_unsupported_message">Cap app d’aquest telèfon obre enllaços «%1$s:».</string>
+    <string name="browser_problem_unsupported_message_no_scheme">Cap app d’aquest telèfon obre aquest enllaç.</string>
+</resources>

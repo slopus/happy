@@ -5,9 +5,7 @@ import android.content.res.Resources
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
@@ -175,21 +173,15 @@ private fun ArtifactEntry(graph: AppGraph, nav: NavHostController, route: Artifa
 @Composable
 private fun BrowserEntry(graph: AppGraph, nav: NavHostController, route: BrowserRoute) {
     val session = remember(route.connectionId) { graph.agentSessions.session(route.connectionId) }
-    val computer = computerName(graph, route.connectionId)
-    val host = remember(route.url) { runCatching { java.net.URI(route.url).host }.getOrNull().orEmpty() }
-    var title by remember { mutableStateOf(host) }
-    var url by remember { mutableStateOf(route.url) }
     BrowserScreen(
-        title = title,
-        url = url,
-        onUrl = { url = it },
-        computer = computer,
+        url = route.url,
+        computer = computerName(graph, route.connectionId),
+        agentStatus = session?.status?.collectAsStateWithLifecycle()?.value,
         prepare = {
             val client = session?.client ?: throw IllegalStateException("no connection")
             BrowserPage(route.url, BrowserProxy.Scope.Workspace(client) { client.browserWorkspace(agentId = route.agentId) })
         },
         onBack = { nav.popBackStack() },
-        onTitle = { title = it },
         onOpenElsewhere = { url ->
             if (BrowserPolicy.route(url) == BrowserPolicy.Route.Web) nav.navigate(BrowserRoute(route.connectionId, url, route.agentId))
         },

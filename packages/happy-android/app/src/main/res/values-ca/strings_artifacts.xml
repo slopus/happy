@@ -27,8 +27,6 @@
     <string name="artifact_open_with_body">Android no pot mostrar aquest fitxer aquí. S\'obre en una app d\'aquest telèfon que el pugui llegir.</string>
     <string name="browser_via">a través de %1$s</string>
     <string name="browser_default_computer">connexió d\'agent</string>
-    <string name="browser_unreachable">No es pot contactar amb %1$s.\nComprova la connexió de l\'agent i toca Torna a carregar.</string>
-    <string name="browser_unreachable_page">No es pot contactar amb %1$s.\nComprova la connexió o l\'adreça de la pàgina i toca Torna a carregar.</string>
     <string name="browser_unsupported">El WebView d\'aquest telèfon no pot enviar pàgines a través de l\'ordinador. Actualitza Android System WebView i toca Torna a carregar.</string>
     <string name="browser_forward">Endavant</string>
     <string name="browser_close">Tanca</string>

@@ -715,8 +715,9 @@ dark app on a light phone):
   HappyApp's first frame and on every change.
 - Every WebView is a `themedWebView`: the app's night mode for
   `prefers-color-scheme`, and the theme's colour until the page draws. The
-  browser then puts white under a page that paints no background and asks
-  for no dark one (`BARE_PAGE`).
+  browser's WebView is see-through instead (WebView keeps the first
+  background it is given) over the theme's colour, which turns white under
+  a page that paints no background and asks for no dark one (`BARE_PAGE`).
 
 A new WebView or window goes through these too. `AppNightModeTest` covers
 dark on a light phone and light on a dark one. `tools/flashscan` records a
