@@ -147,6 +147,11 @@ class ComposeChat internal constructor(
     started: MutableState<String?>,
     private val retryFace: suspend (sessionId: String, seed: String) -> BotFaceFailure? = { _, _ -> null },
 ) {
+    companion object {
+        /** How long a started session's row is on its way before its absence means deleted (iOS `recordWait`). */
+        const val RECORD_WAIT_MILLIS = 15_000L
+    }
+
     /** The session the first send started; null until then. Kept through a recreation. */
     var startedId by started
         private set

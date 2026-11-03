@@ -4,6 +4,8 @@ import com.slopus.happy.attachments.AttachAccepts
 import com.slopus.happy.attachments.AttachTabKind
 import com.slopus.happy.attachments.PickedKind
 import com.slopus.happy.attachments.PickedMedia
+import com.slopus.happy.model.AgentType
+import com.slopus.happy.ui.attachments.canUseAttachments
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -48,6 +50,14 @@ class AttachSelectionTest {
         assertEquals(AttachAccepts.RelayPictures, AttachAccepts.relay(null, canUseAttachments = true))
         assertEquals(AttachAccepts.None, AttachAccepts.relay(null, canUseAttachments = false))
         assertTrue(AttachAccepts.None.tabs.isEmpty())
+    }
+
+    @Test fun `the empty chat takes pictures by the harness its first send starts`() {
+        // happy-ios 20e20e0a8: Claude, Codex and Happy Agent (a bot or a task too); not Gemini, OpenClaw or Antigravity.
+        assertEquals(
+            listOf(AgentType.Claude, AgentType.Codex, AgentType.Rig),
+            AgentType.entries.filter { canUseAttachments(starting = it) },
+        )
     }
 
     @Test fun `a file's type and size against what a chat takes`() {

@@ -37,6 +37,7 @@ import com.slopus.happy.attachments.AttachmentUploadResult
 import com.slopus.happy.attachments.prepareAttachmentSend
 import com.slopus.happy.attachments.readAttachmentBytes
 import com.slopus.happy.attachments.supportsImageAttachmentsForFlavor
+import com.slopus.happy.model.AgentType
 import com.slopus.happy.model.SessionMetadata
 import com.slopus.happy.model.isRigV1
 import com.slopus.happy.sync.rigCanUseAttachments
@@ -55,6 +56,16 @@ val LocalComposerImages = compositionLocalOf<ImagePicker?> { null }
 /** SessionView.tsx `canUseAttachments`: the rig's capability for rig v1 sessions, else the flavor. */
 fun canUseAttachments(metadata: SessionMetadata?): Boolean =
     if (metadata.isRigV1()) metadata.rigCanUseAttachments() else supportsImageAttachmentsForFlavor(metadata?.flavor)
+
+/**
+ * happy-ios `canUseAttachments(starting:)`: before the session exists, the
+ * harness its first send starts. Happy Agent's session sets its own policy
+ * once made, so pictures are offered and the start names any it refuses.
+ */
+fun canUseAttachments(starting: AgentType): Boolean = when (starting) {
+    AgentType.Claude, AgentType.Codex, AgentType.Rig -> true
+    AgentType.Gemini, AgentType.OpenClaw, AgentType.Agy -> false
+}
 
 /**
  * [ImagePicker] for a chat, or null when [enabled] is false. Like

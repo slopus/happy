@@ -37,6 +37,7 @@ import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import com.slopus.happy.ui.chat.ComposerTags
+import com.slopus.happy.ui.attachments.AttachmentStripTags
 import com.slopus.happy.ui.components.HeaderTags
 import com.slopus.happy.ui.home.FlatRowTags
 import com.slopus.happy.ui.home.HomeServices
@@ -167,9 +168,12 @@ class ComposeJourneyTest {
         rule.waitForIdle()
         rule.onAllNodes(hasTestTag(ChatScreenTags.SCREEN), useUnmergedTree = true).assertCountEquals(1)
 
+        rule.node(ChatScreenTags.COMPOSE).assertDoesNotExist()
         rule.node(ComposerTags.INPUT).performTextInput("Tidy the docs")
         rule.node(ComposerTags.PRIMARY).performClick()
         rule.waitFor(MessageTags.USER, 15_000)
+        // The header's name and compose came with the send.
+        rule.waitFor(ChatScreenTags.COMPOSE)
         rule.waitUntilDoesNotExist(hasTestTag(ComposeChatTags.TARGET), 5_000)
         rule.onAllNodes(hasTestTag(ChatScreenTags.SCREEN), useUnmergedTree = true).assertCountEquals(1)
         assertEquals("/h/repo", spawns.single()["directory"]!!.jsonPrimitive.content)
@@ -178,6 +182,34 @@ class ComposeJourneyTest {
             rule.onAllNodes(hasTestTag(FlatRowTags.ROW) and isSelected() and hasAnyDescendant(hasText("Fresh chat")), useUnmergedTree = true)
                 .fetchSemanticsNodes().isNotEmpty()
         }
+    }
+
+    /**
+     * happy-ios 7d4ed9797: the started chat waits for its session's row; one
+     * seen and then gone is deleted, not an empty chat again.
+     */
+    @Test
+    fun aStartedChatWhoseSessionIsDeletedSaysSo() {
+        journey.machine()
+        journey.session("s0", updatedAt = 100, title = "Existing chat")
+        journey.rpc(Journey.MACHINE, "spawn-happy-session") { request ->
+            server.addSession(NEW, updatedAt = 90_000, metadata = Journey.sessionMetadata(request["directory"]!!.jsonPrimitive.content, "Fresh chat"))
+            buildJsonObject { put("type", "success"); put("sessionId", NEW) }
+        }
+        val graph = journey.graph()
+        journey.signIn(graph)
+        rule.setContent { HappyApp(graph) }
+        rule.waitFor(FlatRowTags.ROW)
+
+        rule.node(HomeTags.COMPOSE).performClick()
+        rule.waitFor(ComposeChatTags.TARGET)
+        rule.node(ComposerTags.INPUT).performTextInput("Tidy the docs")
+        rule.node(ComposerTags.PRIMARY).performClick()
+        rule.waitFor(MessageTags.USER, 15_000)
+
+        server.emitUpdate(buildJsonObject { put("t", "delete-session"); put("sid", NEW) })
+        rule.waitForText("Session has been deleted")
+        rule.node(ComposeChatTags.TARGET).assertDoesNotExist()
     }
 
     /**
@@ -207,6 +239,8 @@ class ComposeJourneyTest {
         rule.node(ComposeChatTags.kind(ComposeKind.Task)).performClick()
         rule.waitForText("What should this task do?")
         rule.node(NewWorkTags.FOLDER).assertDoesNotExist()
+        // A task is Happy Agent's: its first send takes pictures (20e20e0a8).
+        rule.node(AttachmentStripTags.ADD).assertExists()
         rule.node(ComposeChatTags.kind(ComposeKind.Bot)).performClick()
         rule.waitFor(NewWorkTags.NAME_FIELD)
         rule.node(NewWorkTags.FOLDER).assertDoesNotExist()

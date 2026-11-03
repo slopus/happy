@@ -129,6 +129,9 @@ class ChatRouteTest {
         rule.waitUntil(5_000) { nav.currentBackStackEntry?.toRoute<SessionRoute>()?.id?.let(::isComposeChatId) == true }
         rule.node(ComposerTags.INPUT).assertTextEquals("unfinished new session")
         rule.onNodeWithText("Ported, with tests.").assertDoesNotExist()
+        // Back alone until the first send (iOS 323fb2e9f): no name, no compose.
+        rule.node(ChatScreenTags.COMPOSE).assertDoesNotExist()
+        rule.onNodeWithText("New chat").assertDoesNotExist()
         assertEquals(listOf("unfinished current chat"), writes)
         rule.runOnIdle {
             assertEquals("fixture-home", nav.previousBackStackEntry?.destination?.route)

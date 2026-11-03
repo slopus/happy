@@ -1,5 +1,10 @@
 package com.slopus.happy.ui.chat
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import com.slopus.happy.ui.conversation.ConversationHeaderSpec
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -159,7 +164,8 @@ class ChatScreenSlots(
 )
 
 /**
- * A chat being started: "New chat" in the header, [placeholder] in place of
+ * A chat being started: "New chat" in the header (none before the first
+ * send without [headerShown]), [placeholder] in place of
  * the transcript, and the composer under it, its chips read from [anchor]
  * (the chat it was opened beside, which decides how it runs). With
  * [focusComposer] the composer takes the keyboard as it first shows (an
@@ -171,8 +177,20 @@ class ChatPendingSlot(
     val focusComposer: Boolean = false,
     /** What the composer asks for while empty (a task's first message); null for the chat's own. */
     val composerPlaceholder: String? = null,
+    /** False until the first send: the header is Back alone (compose's empty chat). */
+    val headerShown: Boolean = true,
     val placeholder: @Composable () -> Unit,
 )
+
+/** Shown at once, or faded in ease-out over 0.25 s once [shown] turns true; nothing while false. */
+@Composable
+private fun HeaderFadeIn(shown: Boolean, content: @Composable () -> Unit) {
+    AnimatedVisibility(
+        visible = shown,
+        enter = fadeIn(tween(ConversationHeaderSpec.FADE_MILLIS, easing = ConversationHeaderSpec.easing)),
+        exit = ExitTransition.None,
+    ) { content() }
+}
 
 /**
  * One chat (SessionView.tsx). Spec: the header ([ChatHeaderTitle]: back;
@@ -289,12 +307,16 @@ fun ChatScreen(
                 feathered = showsList,
                 bar = {
                     Column(Modifier.liftBackdrop(lift, blur)) {
+                        // An empty chat's header is Back alone; its name and actions fade in with the first send (iOS 323fb2e9f).
+                        val headerShown = session != null || pending?.headerShown != false
                         Header(
                             left = { HeaderBackButton(actions.onBack) },
                             titleContent = {
-                                ChatHeaderTitle(slots.headerTitle ?: title, session, gitStatus, onClick = if (session != null) actions.onInfo else null, subtitleOverride = slots.headerSubtitle, working = state.sessionState == SessionState.Thinking, link = link)
+                                HeaderFadeIn(headerShown) {
+                                    ChatHeaderTitle(slots.headerTitle ?: title, session, gitStatus, onClick = if (session != null) actions.onInfo else null, subtitleOverride = slots.headerSubtitle, working = state.sessionState == SessionState.Thinking, link = link)
+                                }
                             },
-                            right = { ChatHeaderActions(session, modes, session?.metadata ?: pending?.anchor?.metadata, actions) },
+                            right = { HeaderFadeIn(headerShown) { ChatHeaderActions(session, modes, session?.metadata ?: pending?.anchor?.metadata, actions) } },
                         )
                         slots.headerAccessory?.invoke()
                         if (!tablet) com.slopus.happy.ui.voice.VoiceStatusBar()
