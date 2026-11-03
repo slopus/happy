@@ -80,6 +80,8 @@ class BrowserProxy(parent: CoroutineScope) {
         val username = token()
         val password = token()
         internal val authorization = basic(username, password)
+        /** Why tunnels to each host were refused, for the screen to say. */
+        val refusals = BrowserRefusals()
         private var resolved: Deferred<String>? = null
 
         /** Keep-alive connections for this page's artifact API, closed with the page. */
@@ -219,6 +221,7 @@ class BrowserProxy(parent: CoroutineScope) {
 
     private suspend fun serve(local: TransportSocket) {
         var started = false
+        var refused: Pair<Page, BrowserPolicy.Authority>? = null
         try {
             val (head, rest) = BrowserRelay.head(local)
             val page = authenticate(head)
@@ -231,6 +234,7 @@ class BrowserProxy(parent: CoroutineScope) {
             if (parts[0] == "CONNECT") {
                 val authority = BrowserPolicy.Authority.parse(parts[1]) ?: throw BrowserException(BrowserException.Kind.Forbidden)
                 val owner = owner(authority, page)
+                refused = owner to authority
                 when (val scope = owner.scope) {
                     is Scope.Artifact if scope.authority == authority -> {
                         local.write(ESTABLISHED)
@@ -291,7 +295,10 @@ class BrowserProxy(parent: CoroutineScope) {
             val failure = BrowserFailure.of(e)
             Log.w(TAG, "Browser proxy failure: ${failure.code}, status ${failure.status}")
             // Never append another HTTP response to a started one or an opaque tunnel.
-            if (!started) runCatching { local.write(failure.bytes) }
+            if (!started) {
+                refused?.let { (owner, authority) -> owner.refusals.record(BrowserProxyRefusal(failure.status, failure.code), authority) }
+                runCatching { local.write(failure.bytes) }
+            }
         }
     }
 

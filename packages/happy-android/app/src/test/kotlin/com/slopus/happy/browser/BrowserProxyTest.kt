@@ -246,5 +246,18 @@ class BrowserProxyTest {
         assertEquals(1, daemon.ended.get())
     }
 
+    /** WebView reports only ERR_TUNNEL_CONNECTION_FAILED for a refused CONNECT: the page keeps why, per host (iOS 34aa464e1). */
+    @Test fun aRefusedTunnelIsKeptForItsHost() {
+        val other = proxy.open(BrowserProxy.Scope.Workspace(client) { "wsother" }, webView = true, isolated = true)
+        assertEquals(null, other.refusals.last("https://secure.example/"))
+        runCatching { through(other).newCall(Request.Builder().url("https://secure.example/").build()).execute().close() }
+        assertEquals(BrowserProxyRefusal(404, "browser_proxy_upstream_refused"), other.refusals.last("https://secure.example/"))
+        assertEquals(null, other.refusals.last("https://elsewhere.example/"))
+        assertEquals(null, page.refusals.last("https://secure.example/"))
+        other.refusals.clear()
+        assertEquals(null, other.refusals.last("https://secure.example/"))
+        other.close()
+    }
+
     private fun response(path: String, check: (okhttp3.Response) -> Unit) = get(path).use(check)
 }

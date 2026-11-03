@@ -24,6 +24,13 @@ object BrowserPolicy {
     }
 
     /**
+     * Addresses WebView resolves inside the page, with nothing to fetch
+     * (iOS's `isInPage`): a blank or srcdoc frame, data and blob URLs,
+     * `javascript:` links.
+     */
+    fun isInPage(url: String): Boolean = url.substringBefore(':', "").lowercase() in IN_PAGE_SCHEMES
+
+    /**
      * The host and port (-1: none) of [uri]. java.net.URI leaves a host such
      * as `127.1` or `0x7f000001` unparsed, as a registry authority; this
      * reads it as a browser does. Null with credentials in it.
@@ -169,6 +176,7 @@ object BrowserPolicy {
     internal fun percentDecode(text: String): String? = com.slopus.happy.artifacts.ArtifactMarkdown.percentDecode(text)
 
     private val WEB_SCHEMES = setOf("http", "https", "ws", "wss")
+    private val IN_PAGE_SCHEMES = setOf("about", "data", "blob", "javascript")
 }
 
 /** A bounded HTTP head, keeping duplicate fields (notably Set-Cookie) in order. */
