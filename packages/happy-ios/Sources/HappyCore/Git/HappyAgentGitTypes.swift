@@ -59,13 +59,16 @@ public struct HappyAgentGitState: Codable, Equatable, Sendable {
     public var filesTruncated: Bool { raw["filesTruncated"]!.boolValue! }
     public var scannedAt: Double { raw["scannedAt"]!.numberValue! }
 
-    public init(_ raw: JSONValue) throws {
+    /// `base` checks the comparison base: the session RPC's is a commit
+    /// hash (the default), the agent API's may be a commit-ish (`origin/main`).
+    public init(_ raw: JSONValue, base: ((String) -> Bool)? = nil) throws {
+        let base = base ?? gitRevision
         let invalid = SessionActionError.failed("Happy Agent returned an invalid Git state.")
         guard let facts = raw["facts"], facts.objectValue != nil,
               ["branch", "head", "upstream"].allSatisfy({ facts[$0] == .null || facts[$0]?.stringValue != nil }),
               facts["detached"]?.boolValue != nil, gitCount(facts["ahead"]), gitCount(facts["behind"]),
               let comparison = raw["comparison"]?.stringValue, HappyAgentGitComparison(rawValue: comparison) != nil,
-              raw["base"] == .null || raw["base"]?.stringValue.map(gitRevision) == true,
+              raw["base"] == .null || raw["base"]?.stringValue.map(base) == true,
               comparison != "ready" || raw["base"]?.stringValue != nil,
               ["changedFiles", "insertions", "deletions"].allSatisfy({ gitCount(raw[$0]) }),
               ["countsExact", "conflicted", "filesTruncated"].allSatisfy({ raw[$0]?.boolValue != nil }),

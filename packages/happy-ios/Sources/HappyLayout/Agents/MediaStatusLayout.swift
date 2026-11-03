@@ -1,4 +1,7 @@
+import Foundation
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 
 /// Telegram's media status over a photo, video or file
 /// (`ChatMessageInteractiveMediaNode`, `ChatMessageInteractiveMediaBadge`):

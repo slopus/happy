@@ -206,7 +206,7 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
 
     /// The title's style cuts a line at its tail; ToolHeader cuts it in the
     /// middle. Applied each time the label draws, at any text size.
-    nonisolated private static func truncatingMiddle(_ text: NSMutableAttributedString) {
+    nonisolated static func truncatingMiddle(_ text: NSMutableAttributedString) {
         var styles: [(NSParagraphStyle, NSRange)] = []
         text.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: text.length)) { value, range, _ in
             if let style = value as? NSParagraphStyle { styles.append((style, range)) }

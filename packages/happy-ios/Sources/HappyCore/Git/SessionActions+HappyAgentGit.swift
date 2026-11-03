@@ -33,36 +33,9 @@ extension SessionActions {
         guard gitRevision(gitBase) else {
             throw SessionActionError.failed("Happy Agent returned an invalid Git comparison base.")
         }
-        switch file.status {
-        case .conflicted: return .message("This file has unresolved conflicts and cannot be previewed.")
-        case .submodule: return .message("Submodule changes cannot be previewed.")
-        case .type_changed: return .message("This file changed type and cannot be previewed.")
-        default: break
+        return try await HappyAgentGitFileRead.content(file) { path, after in
+            await self.gitReadSide(sessionId: sessionId, path: path, revision: gitBase, after: after)
         }
-        let before = file.status == .added || file.status == .untracked ? nil : file.previousPath ?? file.path
-        let after = file.status == .deleted ? nil : file.path
-        guard before != nil || after != nil else { return .message("This file has no readable comparison side.") }
-        if file.binary, [before, after].compactMap({ $0 }).contains(where: { gitImageMIME($0) == nil }) {
-            return .message("Binary file changes cannot be previewed.")
-        }
-        // Both calls settle before either error is surfaced, as in Promise.allSettled.
-        async let oldResult = gitReadSide(sessionId: sessionId, path: before, revision: gitBase, after: false)
-        async let newResult = gitReadSide(sessionId: sessionId, path: after, revision: gitBase, after: true)
-        let (old, new) = await (oldResult, newResult)
-        let oldContent = try old.get()
-        let newContent = try new.get()
-        if file.binary {
-            var uris: [String?] = []
-            for (path, content) in [(before, oldContent), (after, newContent)] {
-                guard let path, let content else { uris.append(nil); continue }
-                let (bytes, normalized) = try GitFileDecoding.inspectBase64(content)
-                guard !bytes.isEmpty else { return .message("Image content is empty.") }
-                guard let mime = gitImageMIME(path) else { return .message("Binary file changes cannot be previewed.") }
-                uris.append("data:\(mime);base64,\(normalized)")
-            }
-            return .image(before: uris[0], after: uris[1])
-        }
-        return try GitFileDecoding.text(old: oldContent ?? "", new: newContent ?? "")
     }
 
     private func gitReadSide(
@@ -79,6 +52,46 @@ extension SessionActions {
                   !after || gitHash(response["hash"]?.stringValue) else { throw SessionActionError.failed(invalid) }
             return .success(content)
         } catch { return .failure(error) }
+    }
+}
+
+/// One changed file's two sides, read through `side` (the path, and
+/// whether it is the working tree's side rather than the base's), however
+/// the computer is reached: session RPC or the agent API.
+enum HappyAgentGitFileRead {
+    static func content(
+        _ file: HappyAgentGitFile, side: @Sendable (_ path: String?, _ after: Bool) async -> Result<String?, any Error>
+    ) async throws -> HappyAgentFileContent {
+        switch file.status {
+        case .conflicted: return .message("This file has unresolved conflicts and cannot be previewed.")
+        case .submodule: return .message("Submodule changes cannot be previewed.")
+        case .type_changed: return .message("This file changed type and cannot be previewed.")
+        default: break
+        }
+        let before = file.status == .added || file.status == .untracked ? nil : file.previousPath ?? file.path
+        let after = file.status == .deleted ? nil : file.path
+        guard before != nil || after != nil else { return .message("This file has no readable comparison side.") }
+        if file.binary, [before, after].compactMap({ $0 }).contains(where: { gitImageMIME($0) == nil }) {
+            return .message("Binary file changes cannot be previewed.")
+        }
+        // Both calls settle before either error is surfaced, as in Promise.allSettled.
+        async let oldResult = side(before, false)
+        async let newResult = side(after, true)
+        let (old, new) = await (oldResult, newResult)
+        let oldContent = try old.get()
+        let newContent = try new.get()
+        if file.binary {
+            var uris: [String?] = []
+            for (path, content) in [(before, oldContent), (after, newContent)] {
+                guard let path, let content else { uris.append(nil); continue }
+                let (bytes, normalized) = try GitFileDecoding.inspectBase64(content)
+                guard !bytes.isEmpty else { return .message("Image content is empty.") }
+                guard let mime = gitImageMIME(path) else { return .message("Binary file changes cannot be previewed.") }
+                uris.append("data:\(mime);base64,\(normalized)")
+            }
+            return .image(before: uris[0], after: uris[1])
+        }
+        return try GitFileDecoding.text(old: oldContent ?? "", new: newContent ?? "")
     }
 }
 

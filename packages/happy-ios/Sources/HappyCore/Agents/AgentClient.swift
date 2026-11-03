@@ -284,6 +284,24 @@ public final class AgentClient: Sendable {
         return try await decode(AgentWire.MessagesResponse.self, "GET", "/v0/agents/\(Self.escape(agentId))/messages?\(query)")
     }
 
+    /// One tool call's whole block, raw data included: the run `before`
+    /// names the run after it (nil for the newest run), read alone with its
+    /// tool data, which the transcript's own pages leave out. Nil when the
+    /// run has no such call.
+    public func toolCall(_ agentId: String, id: String, before: String?) async throws -> JSONValue? {
+        var query = "limit=1&omitToolData=false"
+        if let before { query += "&before=\(Self.escape(before))" }
+        let page = try await decode(JSONValue.self, "GET", "/v0/agents/\(Self.escape(agentId))/messages?\(query)")
+        for run in page["runs"]?.arrayValue ?? [] {
+            for message in run["messages"]?.arrayValue ?? [] {
+                for block in message["content"]?.arrayValue ?? [] where block["type"]?.stringValue == "tool_call" && block["id"]?.stringValue == id {
+                    return block
+                }
+            }
+        }
+        return nil
+    }
+
     /// The mode a conversation with no last composer mode sends with (`GET /v0/config` `defaults`).
     /// What new work is sent with when nothing was picked: desktop's
     /// default selection, the declared model at its own default effort.

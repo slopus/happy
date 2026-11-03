@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(Network)
 import Network
+#endif
 
 /// Whether this phone has a way out at all, as the system says
 /// (`NWPathMonitor`): with none, headers say "Waiting for network…" rather
@@ -8,7 +10,9 @@ import Network
 public final class NetworkPath: @unchecked Sendable {
     public static let shared = NetworkPath()
 
+    #if canImport(Network)
     private let monitor = NWPathMonitor()
+    #endif
     private let lock = NSLock()
     private var satisfied = true
     private var latest = NetworkPathDetails(satisfied: true)
@@ -19,11 +23,13 @@ public final class NetworkPath: @unchecked Sendable {
     #endif
 
     private init() {
+        #if canImport(Network)
         monitor.pathUpdateHandler = { [weak self] path in
             self?.describe(path)
             self?.update(path.status == .satisfied)
         }
         monitor.start(queue: DispatchQueue(label: "engineering.happy.network-path", qos: .utility))
+        #endif
     }
 
     /// Whether there is a way out; true until the system says otherwise.
@@ -47,6 +53,7 @@ public final class NetworkPath: @unchecked Sendable {
         return value
     }
 
+    #if canImport(Network)
     private func describe(_ path: NWPath) {
         let interface: NetworkPathDetails.Interface = if path.status != .satisfied { .none }
             else if path.usesInterfaceType(.wifi) { .wifi }
@@ -57,6 +64,7 @@ public final class NetworkPath: @unchecked Sendable {
         let value = NetworkPathDetails(satisfied: path.status == .satisfied, interface: interface, expensive: path.isExpensive, constrained: path.isConstrained)
         lock.lock(); latest = value; lock.unlock()
     }
+    #endif
 
     private func update(_ value: Bool) {
         lock.lock()

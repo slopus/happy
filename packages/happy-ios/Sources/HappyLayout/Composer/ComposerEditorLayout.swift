@@ -1,4 +1,7 @@
+import Foundation
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 
 /// The composer's text full screen, as Telegram's input expands once it
 /// is past the lines the card shows: the text from the safe area's top to

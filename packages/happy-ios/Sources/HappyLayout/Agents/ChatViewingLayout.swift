@@ -1,4 +1,7 @@
+import Foundation
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 
 /// A conversation's pictures side by side, one a screen wide, `gap` apart
 /// as Photos keeps them: the paging scroll view is a gap wider than the

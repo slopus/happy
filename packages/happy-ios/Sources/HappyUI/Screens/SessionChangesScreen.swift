@@ -339,7 +339,7 @@ final class SessionChangesViewController: UIViewController {
 /// HappyAgentDiffView's ChangesMessage (and the legacy viewer's empty
 /// text): a centred message, with Retry under it when there is something to
 /// retry.
-private final class ChangesMessageView: UIView {
+final class ChangesMessageView: UIView {
     private let label = StyledLabel(style: DiffTextStyles.body, color: Palette.textSecondary, alignment: .center)
     private let retry = UIControl()
     private let retryLabel = StyledLabel(style: DiffTextStyles.retry, color: Palette.text, lines: 1)

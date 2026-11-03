@@ -1,4 +1,6 @@
+#if canImport(CoreGraphics)
 import CoreGraphics
+#endif
 import Foundation
 
 /// Desktop's `mediaLayout.ts`: where pictures shown together go, and how big

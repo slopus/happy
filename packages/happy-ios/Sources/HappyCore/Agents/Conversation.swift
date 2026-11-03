@@ -666,6 +666,22 @@ public actor Conversation {
     }
 
     /// Runs older than the first one shown.
+    /// A tool call's raw `arguments` and `result` as the computer holds
+    /// them, unbounded: read with its run, which the transcript's pages
+    /// read without tool data. Nil when it isn't in a run here or can't be read.
+    public func fullToolCall(_ callId: String) async -> (arguments: JSONValue?, result: JSONValue?)? {
+        func holds(_ messageId: String) -> Bool {
+            messages[messageId]?.content.contains { block in
+                if case .toolCall(let id, _, _, _, _, _, _, _) = block { return id == callId }
+                return false
+            } ?? false
+        }
+        guard let index = runs.firstIndex(where: { $0.messageIds.contains(where: holds) }) else { return nil }
+        let before = index + 1 < runs.count ? runs[index + 1].id : nil
+        guard let block = try? await client.toolCall(agentId, id: callId, before: before) else { return nil }
+        return (block["arguments"], block["result"])
+    }
+
     public func loadOlder() async {
         guard snapshot.hasMore, heldEvents == nil, let first = runs.first?.id else { return }
         do {
@@ -1725,7 +1741,8 @@ public actor Conversation {
                 let key = "\(message.id):\(index)"
                 if pictures[key] == nil { pictures[key] = Data(base64Encoded: data) }
                 if let bytes = pictures[key] { pieces.append(.picture(id: key, mimeType: mimeType, data: bytes)) }
-            case .toolCall(let id, let name, let status, let presentation, let arguments, let output):
+            case .toolCall(let id, let name, let status, let presentation, let arguments, let output, let result, let review):
+                let tool = ChatItem.Tool(name: name, status: status, presentation: presentation, callId: id, arguments: arguments, result: result, review: review)
                 if let shows = presentation.flatMap({ Self.shows($0, toolCallId: id, shown: &shown) }) {
                     // One proposal card across every version: a revision redraws its rows.
                     let showing = shows.filter { piece in
@@ -1737,7 +1754,7 @@ public actor Conversation {
                     // what it showed under it, a row of its own, so it stays
                     // when the turn folds.
                     flush(next: "\(message.id)/\(index + 1)")
-                    items.append(ChatItem(id: id, role: .tool(ChatItem.Tool(name: name, status: status, presentation: presentation)), pieces: showing, delivery: .sent))
+                    items.append(ChatItem(id: id, role: .tool(tool), pieces: showing, delivery: .sent))
                     continue
                 }
                 guard role == .agent else { continue }
@@ -1754,7 +1771,7 @@ public actor Conversation {
                     if status == "running" { continue }
                 }
                 flush(next: "\(message.id)/\(index + 1)")
-                items.append(ChatItem(id: id, role: .tool(ChatItem.Tool(name: name, status: status, presentation: presentation)), pieces: [], delivery: .sent))
+                items.append(ChatItem(id: id, role: .tool(tool), pieces: [], delivery: .sent))
             case .reasoning, .compaction, .unknown:
                 continue
             }
