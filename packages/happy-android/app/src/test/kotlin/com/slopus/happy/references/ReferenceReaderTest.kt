@@ -86,7 +86,7 @@ class ReferenceReaderTest {
 
     @Test
     fun aTitleReadFollowsItsArtifactsEvents() = runTest {
-        val fake = Fake().apply { artifacts["r1"] = """{"title":"Draft","type":"html","latestVersion":1}""" }
+        val fake = Fake().apply { artifacts["r1"] = """{"title":"Draft","type":"markdown","latestVersion":1}""" }
         val events = MutableSharedFlow<AgentEvent>()
         val reader = reader(fake, events = events)
         runCurrent()
@@ -96,10 +96,62 @@ class ReferenceReaderTest {
         // One no message named is not kept.
         events.emit(AgentEvent("c2", "artifact.updated", Json.parseToJsonElement("""{"artifactId":"other","changes":{"title":"x"}}""") as JsonObject))
         runCurrent()
-        assertEquals(mapOf("r1" to References.Artifact.Active("Launch page", "html", 3)), reader.references.value.artifacts)
+        assertEquals(mapOf("r1" to References.Artifact.Active("Launch page", "markdown", 3)), reader.references.value.artifacts)
         events.emit(AgentEvent("c3", "artifact.deleted", Json.parseToJsonElement("""{"artifactId":"r1"}""") as JsonObject))
         runCurrent()
         assertEquals(References.Artifact.Deleted("Launch page"), reader.references.value.artifacts["r1"])
+    }
+
+    /** iOS LoopInTests: an HTML artifact that asks to be shown inline is a page the conversation draws. */
+    @Test
+    fun anArtifactThatAsksToBeInlineIsAPage() {
+        fun page(changes: String = "") = References.page(
+            Json.parseToJsonElement(
+                """{"id":"p1","type":"html","status":"active","latestVersion":3,"entry":{"path":"index.html"},"display":"inline_expanded","live":null,"background":null$changes}""",
+            ) as JsonObject,
+        )
+        assertEquals(References.Page(3, "index.html"), page())
+        assertEquals("#0b0b0f", page(""","background":"#0B0B0F"""")?.background)
+        assertEquals(null, page(""","background":"red"""")?.background)
+        for (display in listOf("null", "\"side\"", "\"inline_compact\"", "\"someday\"")) assertEquals(display, null, page(""","display":$display"""))
+        assertEquals(null, page(""","type":"markdown""""))
+        assertEquals(null, page(""","status":"deleted""""))
+        assertEquals(null, page(""","live":{"url":"http://localhost:5173/"}"""))
+        assertEquals(null, page(""","entry":null"""))
+    }
+
+    @Test
+    fun aPageFollowsItsArtifactsNewVersionsAndGoesWithIt() = runTest {
+        val fake = Fake().apply {
+            artifacts["p1"] = """{"title":"Waveform","type":"html","latestVersion":1,"entry":{"path":"index.html"},"display":"inline_expanded"}"""
+            artifacts["m1"] = """{"title":"Notes","type":"markdown","latestVersion":1}"""
+        }
+        val events = MutableSharedFlow<AgentEvent>()
+        val reader = reader(fake, events = events)
+        runCurrent()
+        reader.readArtifacts(listOf("p1", "m1"))
+        runCurrent()
+        assertEquals(mapOf("p1" to References.Page(1, "index.html")), reader.references.value.pages)
+        // A new version is read again, for its version, entry and display.
+        fake.artifacts["p1"] = """{"title":"Waveform","type":"html","latestVersion":2,"entry":{"path":"v2/main.html"},"display":"inline_expanded"}"""
+        events.emit(AgentEvent("c1", "artifact.updated", Json.parseToJsonElement("""{"artifactId":"p1","changes":{"latestVersion":2}}""") as JsonObject))
+        events.emit(AgentEvent("c2", "artifact.updated", Json.parseToJsonElement("""{"artifactId":"m1","changes":{"latestVersion":2}}""") as JsonObject))
+        runCurrent()
+        assertEquals(References.Page(2, "v2/main.html"), reader.references.value.pages["p1"])
+        assertEquals("only an HTML artifact is read again", listOf("p1", "m1", "p1"), fake.asked)
+        // One that no longer asks to be inline is a card again.
+        fake.artifacts["p1"] = """{"title":"Waveform","type":"html","latestVersion":3,"entry":{"path":"index.html"},"display":"side"}"""
+        events.emit(AgentEvent("c3", "artifact.updated", Json.parseToJsonElement("""{"artifactId":"p1","changes":{"latestVersion":3}}""") as JsonObject))
+        runCurrent()
+        assertEquals(emptyMap<String, References.Page>(), reader.references.value.pages)
+        fake.artifacts["p1"] = """{"title":"Waveform","type":"html","latestVersion":4,"entry":{"path":"index.html"},"display":"inline_expanded"}"""
+        events.emit(AgentEvent("c4", "artifact.updated", Json.parseToJsonElement("""{"artifactId":"p1","changes":{"latestVersion":4}}""") as JsonObject))
+        runCurrent()
+        assertEquals(References.Page(4, "index.html"), reader.references.value.pages["p1"])
+        events.emit(AgentEvent("c5", "artifact.deleted", Json.parseToJsonElement("""{"artifactId":"p1"}""") as JsonObject))
+        runCurrent()
+        assertEquals(emptyMap<String, References.Page>(), reader.references.value.pages)
+        assertEquals(References.Artifact.Deleted("Waveform"), reader.references.value.artifacts["p1"])
     }
 
     @Test

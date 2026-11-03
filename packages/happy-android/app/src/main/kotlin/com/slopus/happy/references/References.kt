@@ -3,6 +3,7 @@ package com.slopus.happy.references
 import androidx.compose.runtime.Immutable
 import com.slopus.happy.agent.AgentCatalog
 import com.slopus.happy.chat.num
+import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonNull
@@ -23,6 +24,8 @@ data class References(
     val agents: Map<String, Entity> = emptyMap(),
     val workspaces: Map<String, Entity> = emptyMap(),
     val artifacts: Map<String, Artifact> = emptyMap(),
+    /** The artifacts read so far that want to be shown inline, by ID. */
+    val pages: Map<String, Page> = emptyMap(),
     /** The conversation's own subagents, by ID, as titled ("" untitled): a hidden one reads as its title, and opens nothing. */
     val subagents: Map<String, String> = emptyMap(),
     /** The people a message may mention, by user ID, as named. */
@@ -42,6 +45,13 @@ data class References(
         data class Deleted(val title: String) : Artifact
         data object Missing : Artifact
     }
+
+    /**
+     * An HTML artifact whose latest version asks to be shown inline at its
+     * full height (`display` `inline_expanded`): the version and entry the
+     * conversation's page loads, and the colour behind it, if any.
+     */
+    data class Page(val version: Int, val entry: String, val background: String? = null)
 
     sealed interface View {
         val label: String
@@ -160,6 +170,23 @@ data class References(
             if (artifact["status"].str == "deleted") return Artifact.Deleted(title)
             return Artifact.Active(title, artifact["type"].str.orEmpty(), artifact["latestVersion"].num?.toInt() ?: 1)
         }
+
+        /**
+         * An artifact object as a page the conversation shows inline: an
+         * active HTML artifact of files (not a live URL) whose latest version
+         * asks for `inline_expanded`. Null for anything else, which stays a card.
+         */
+        fun page(artifact: JsonObject): Page? {
+            if (artifact["status"].str == "deleted" || artifact["type"].str != "html" || artifact["display"].str != "inline_expanded") return null
+            if (artifact["live"].let { it != null && it !is JsonNull }) return null
+            val entry = artifact["entry"].obj?.get("path").str ?: return null
+            val version = artifact["latestVersion"].num?.toInt() ?: return null
+            // `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`, and nothing else.
+            val background = artifact["background"].str?.takeIf { BACKGROUND.matches(it) }?.lowercase()
+            return Page(version, entry, background)
+        }
+
+        private val BACKGROUND = Regex("^#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
     }
 }
 

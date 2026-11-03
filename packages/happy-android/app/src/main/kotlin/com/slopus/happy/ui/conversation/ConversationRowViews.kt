@@ -1,5 +1,7 @@
 package com.slopus.happy.ui.conversation
 
+import com.slopus.happy.ui.artifacts.ArtifactInlinePage
+import com.slopus.happy.ui.artifacts.InlinePages
 import com.slopus.happy.ui.artifacts.artifactCardDetail
 import com.slopus.happy.ui.artifacts.artifactCardGlyph
 import com.slopus.happy.conversation.InlinePicture
@@ -135,6 +137,8 @@ class ConversationRowActions(
     val kept: KeptMedia? = null,
     /** A recording's tap: it plays once its first range is here, the tile spinning till then. */
     val videos: VideoOpening? = null,
+    /** HTML artifacts shown inline under their cards; null where none are. */
+    val pages: InlinePages? = null,
 )
 
 /** Plays the recording [ref] whose tile is [key]: in the viewer, once it can ([VideoOpening]). */
@@ -208,13 +212,24 @@ fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: Co
             }
             is ConversationRow.Media -> ToolResult(row.tool, actions, content) { MediaRow(row, actions, it) }
             is ConversationRow.Artifact -> ToolResult(row.tool, actions, content) {
-                InfoCard(
-                    icon = artifactCardGlyph(row.type.orEmpty()),
-                    title = row.title.ifEmpty { stringResource(R.string.artifact_untitled) },
-                    detail = if (actions.onOpenArtifact == null) stringResource(R.string.conversation_artifact_unavailable) else artifactCardDetail(row.type.orEmpty(), row.version ?: 1),
-                    onClick = actions.onOpenArtifact?.let { open -> { open(row) } },
-                    modifier = it.testTag(ConversationRowTags.ARTIFACT),
-                )
+                Column(it) {
+                    InfoCard(
+                        icon = artifactCardGlyph(row.type.orEmpty()),
+                        title = row.title.ifEmpty { stringResource(R.string.artifact_untitled) },
+                        detail = if (actions.onOpenArtifact == null) stringResource(R.string.conversation_artifact_unavailable) else artifactCardDetail(row.type.orEmpty(), row.version ?: 1),
+                        onClick = actions.onOpenArtifact?.let { open -> { open(row) } },
+                        modifier = Modifier.testTag(ConversationRowTags.ARTIFACT),
+                    )
+                    // Desktop's inline page, under its card, at the column's width.
+                    val page = row.page
+                    val pages = actions.pages
+                    if (page != null && pages != null) {
+                        ArtifactInlinePage(
+                            row.artifactId, row.title, page, pages,
+                            Modifier.padding(start = ConversationRowSpec.marginHorizontal, end = ConversationRowSpec.marginHorizontal, top = 2.dp, bottom = ConversationRowSpec.marginVertical),
+                        )
+                    }
+                }
             }
             is ConversationRow.Collaborator -> CollaboratorProse(row, actions.legacy, content)
             is ConversationRow.Failure -> FailureRow(row, actions, content)

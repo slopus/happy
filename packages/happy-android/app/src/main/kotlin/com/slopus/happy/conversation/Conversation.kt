@@ -204,6 +204,7 @@ class Conversation(
     private val builder = ConversationRowBuilder(typesetter = typesetter).apply {
         references = this@Conversation.references?.references?.value
         named = this@Conversation.references?.let { reader -> reader::read }
+        pages = this@Conversation.references?.let { reader -> reader::readArtifacts }
     }
     private val runs = ArrayList<Pair<String, MutableList<String>>>()
     /** Each run's status, start and end as last read, so it is kept as it came. */

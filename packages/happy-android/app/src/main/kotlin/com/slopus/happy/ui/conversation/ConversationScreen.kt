@@ -188,6 +188,8 @@ class ConversationScreenActions(
     /** The connection's media kept on this phone, with Telegram's download ring on each tile; null where nothing is kept. */
     val kept: com.slopus.happy.conversation.KeptMedia? = null,
     val onOpenArtifact: ((com.slopus.happy.conversation.ConversationRow.Artifact) -> Unit)? = null,
+    /** HTML artifacts shown inline under their cards; null where none are. */
+    val pages: com.slopus.happy.ui.artifacts.InlinePages? = null,
     /** The newest message is on screen while the app is up: unread clears. */
     val onVisible: (Boolean) -> Unit = {},
     /** How a secret request is made and answered; null where this build cannot. */
@@ -310,6 +312,7 @@ fun ConversationScreen(
             onOpenTool = actions.onOpenTool,
             kept = store.kept,
             videos = videos,
+            pages = actions.pages,
         )
     }
     val atNewest by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }

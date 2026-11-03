@@ -57,7 +57,9 @@ import com.slopus.happy.ui.artifacts.openArtifact
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import androidx.compose.ui.platform.LocalContext
+import com.slopus.happy.browser.BrowserPolicy
 import com.slopus.happy.ui.artifacts.BrowserRoute
+import com.slopus.happy.ui.artifacts.InlinePages
 import com.slopus.happy.ui.artifacts.computerName
 import com.slopus.happy.ui.browser.LinkOpener
 import com.slopus.happy.ui.browser.ProvideLinks
@@ -399,6 +401,12 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                     onAnswer = conversation::answer,
                     onLoadOlder = { retry -> conversation.loadOlder(retry) },
                     onOpenArtifact = { row -> nav.openArtifact(route.connectionId, row.ref) },
+                    // A Happy URL a page followed opens in the app; any other its own browser.
+                    pages = InlinePages.of(session.client) { url ->
+                        if (happyLinks?.open(url, route.connectionId) != true && BrowserPolicy.route(url) == BrowserPolicy.Route.Web) {
+                            nav.navigate(BrowserRoute(route.connectionId, url, conversation.agentId))
+                        }
+                    },
                     onRetryLoad = conversation::retryLoad,
                     loadMedia = conversation::media,
                     // A recording streams a range at a time, as iOS's MediaStream asks.

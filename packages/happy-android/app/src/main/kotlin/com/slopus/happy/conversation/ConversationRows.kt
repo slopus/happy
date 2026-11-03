@@ -109,7 +109,10 @@ sealed interface ConversationRow {
      */
     data class Media(override val key: String, val items: List<MediaRef>, val columns: Int = 0, val tool: ToolUse? = null) : ConversationRow
 
-    /** An artifact a tool made or changed, under the [tool]'s line; `shows: "latest"` follows it, else it opens [version]. */
+    /**
+     * An artifact a tool made or changed, under the [tool]'s line; `shows: "latest"` follows it, else it opens [version].
+     * [page]: an HTML artifact that follows its latest version and asks to be shown inline, drawn under its card.
+     */
     data class Artifact(
         override val key: String,
         val artifactId: String,
@@ -118,6 +121,7 @@ sealed interface ConversationRow {
         val version: Int? = null,
         val shows: String? = null,
         val tool: ToolUse? = null,
+        val page: References.Page? = null,
     ) : ConversationRow {
         val ref: com.slopus.happy.artifacts.ArtifactRef get() = com.slopus.happy.artifacts.ArtifactRef.presented(artifactId, version, type, title, shows)
     }
@@ -203,7 +207,10 @@ class ConversationRowBuilder(
     /** Told the words of each message built that may name references, so their titles and names are read. */
     var named: ((String) -> Unit)? = null
 
-    /** [names]: the message's words may hold a reference, so its rows follow [references]. */
+    /** Told the HTML artifacts calls show at their latest version whose artifact isn't read yet, so whether each is shown inline is read. */
+    var pages: ((List<String>) -> Unit)? = null
+
+    /** [names]: the message's words may hold a reference, or it shows an HTML artifact, so its rows follow [references]. */
     private class Built(val message: Message, val streaming: Boolean, val rows: List<ConversationRow>, val references: References?, val names: Boolean)
 
     private val cache = HashMap<String, Built>()
@@ -215,8 +222,10 @@ class ConversationRowBuilder(
         val references = references
         cache[message.id]?.let { if (!streaming && !it.streaming && it.message == message && (!it.names || it.references === references)) return it.rows }
         val rows = build(message, agentId, parentAgentId, streaming, if (streaming) ::live else null, references)
-        val names = message.content.any { it is Block.Text && References.mayHold(it.text) }
+        val shown = message.content.mapNotNull { block -> (block as? Block.ToolCall)?.presentation?.let(::inlineCandidate) }
+        val names = shown.isNotEmpty() || message.content.any { it is Block.Text && References.mayHold(it.text) }
         if (names) named?.let { tell -> message.content.forEach { if (it is Block.Text) tell(it.text) } }
+        if (references != null) shown.filter { references.artifacts[it] == null }.takeIf { it.isNotEmpty() }?.let { pages?.invoke(it) }
         // The pictures are read here, on the lane, so the rows find them read on the main thread.
         for (row in rows) when (row) {
             is ConversationRow.User -> row.pictures.forEach(InlinePicture::of)
@@ -322,14 +331,18 @@ class ConversationRowBuilder(
                         rows += ConversationRow.Reasoning(key, it, streaming && index == message.content.lastIndex, growing?.invoke(key, it, false))
                     }
                     is Block.Image -> rows += ConversationRow.Picture(key, block)
-                    is Block.ToolCall -> rows += toolRows(key, block)
+                    is Block.ToolCall -> rows += toolRows(key, block, references)
                     is Block.Compaction, is Block.Unknown -> Unit
                 }
             }
             return rows
         }
 
-        private fun toolRows(key: String, call: Block.ToolCall): List<ConversationRow> {
+        /** The artifact [presentation] shows, when it may be a page shown inline: HTML, following its latest version. */
+        private fun inlineCandidate(presentation: Presentation): String? =
+            (presentation as? Presentation.Artifact)?.takeIf { it.artifactType == "html" && it.shows == "latest" }?.artifactId
+
+        private fun toolRows(key: String, call: Block.ToolCall, references: References?): List<ConversationRow> {
             if (call.name == Question.TOOL_NAME && call.id != null) {
                 // Answered, as the card the call keeps says, or else its result: it settles here.
                 // Otherwise the conversation decides (Conversation.derive).
@@ -349,7 +362,13 @@ class ConversationRowBuilder(
                 } else {
                     listOf(ConversationRow.Media(key, p.items.mapIndexed { index, item -> MediaRef(call.id, index, item) }, p.columns, tool))
                 }
-                is Presentation.Artifact -> listOf(ConversationRow.Artifact(key, p.artifactId, p.title.orEmpty(), p.artifactType, p.version, p.shows, tool))
+                // Desktop's inline page, under its card: only where the call follows the latest version.
+                is Presentation.Artifact -> listOf(
+                    ConversationRow.Artifact(
+                        key, p.artifactId, p.title.orEmpty(), p.artifactType, p.version, p.shows, tool,
+                        page = if (p.shows == "latest") references?.pages?.get(p.artifactId) else null,
+                    ),
+                )
                 else -> listOf(ConversationRow.Tool(key, call.id, tool))
             }
         }

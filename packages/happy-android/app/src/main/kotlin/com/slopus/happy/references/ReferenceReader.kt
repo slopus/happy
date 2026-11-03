@@ -31,7 +31,9 @@ import kotlin.coroutines.CoroutineContext
  * entities from its [catalog], and the artifact titles and people's names
  * its messages named, read once each when a message is first built
  * ([read]) and kept for as long as the connection. An `artifact.updated`
- * or `artifact.deleted` changes a title already read.
+ * or `artifact.deleted` changes a title already read, and an HTML
+ * artifact's is read again, so a page shown inline follows its latest
+ * version, entry and display.
  */
 class ReferenceReader(
     private val scope: CoroutineScope,
@@ -46,6 +48,7 @@ class ReferenceReader(
     compute: CoroutineContext = Dispatchers.Default,
 ) {
     private val artifacts = MutableStateFlow<Map<String, References.Artifact>>(emptyMap())
+    private val pages = MutableStateFlow<Map<String, References.Page>>(emptyMap())
     private val users = MutableStateFlow<Map<String, String>>(emptyMap())
     private val missingUsers = MutableStateFlow<Set<String>>(emptySet())
     private val wordState = MutableStateFlow(ReferenceWords.English)
@@ -62,9 +65,9 @@ class ReferenceReader(
     /** What references read as now; equal readings are the same instance, so a row built with one is built again only when it changes. */
     val references: StateFlow<References> = combine(
         catalog.map(::entities).distinctUntilChanged(),
-        artifacts, users, missingUsers, wordState,
-    ) { entities, artifacts, users, missing, words ->
-        References(entities.agents, entities.workspaces, artifacts, users = users, me = entities.me, missingUsers = missing, words = words)
+        combine(artifacts, pages, ::Pair), users, missingUsers, wordState,
+    ) { entities, (artifacts, pages), users, missing, words ->
+        References(entities.agents, entities.workspaces, artifacts, pages, users = users, me = entities.me, missingUsers = missing, words = words)
     }
         .distinctUntilChanged()
         .flowOn(compute)
@@ -95,8 +98,12 @@ class ReferenceReader(
         if (wanted.isEmpty()) return
         scope.launch(io) {
             for (id in wanted) {
+                var page: References.Page? = null
                 val read = try {
-                    References.artifact(readArtifact(id))
+                    readArtifact(id).let { artifact ->
+                        page = References.page(artifact)
+                        References.artifact(artifact)
+                    }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: AgentApiException) {
@@ -106,7 +113,10 @@ class ReferenceReader(
                 }
                 synchronized(artifactReads) { artifactReads.remove(id) }
                 // Not read (offline, refused): asked again by the next message that names it.
-                if (read != null) artifacts.update { it + (id to read) }
+                if (read != null) {
+                    pages.update { held -> page?.let { held + (id to it) } ?: (held - id) }
+                    artifacts.update { it + (id to read) }
+                }
             }
         }
     }
@@ -131,7 +141,7 @@ class ReferenceReader(
         }
     }
 
-    /** An artifact a message named changed: its title, or its deletion, follows. */
+    /** An artifact a message named changed: its title, or its deletion, follows; an HTML one's page is read again. */
     private fun take(event: AgentEvent) {
         if (event.type != "artifact.updated" && event.type != "artifact.deleted") return
         val id = event.data["artifactId"].str ?: return
@@ -154,6 +164,11 @@ class ReferenceReader(
                 else -> before
             }
             if (after == before) held else held + (id to after)
+        }
+        if (deleted) {
+            pages.update { it - id }
+        } else if ((artifacts.value[id] as? References.Artifact.Active)?.type == "html") {
+            readArtifacts(listOf(id))
         }
     }
 
