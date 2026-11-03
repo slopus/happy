@@ -118,6 +118,8 @@ class SidebarChromeTest {
         assertEquals("open at its rest", field.top.value, open.top.value, 0.5f)
         assertDp("Cancel 16 off the end", 344, cancel.right)
         assertDp("Cancel 8 after the field", open.right + 8.dp, cancel.left)
+        // Nothing typed: the bots and tasks last active, over the faded list.
+        rule.onNode(hasTestTag(AgentSearchTags.result("agent-ab1")) and hasAnyAncestorTag(AgentSearchTags.RESULTS), useUnmergedTree = true).assertExists()
 
         rule.node(AgentSearchTags.FIELD).performTextInput("re")
         rule.waitForIdle()
@@ -129,6 +131,20 @@ class SidebarChromeTest {
         rule.waitForIdle()
         assertEquals(0, rule.onAllNodesWithTagCount(SidebarTags.SEARCH_CANCEL))
         assertEquals(0, rule.onAllNodesWithTagCount(AgentSearchTags.RESULTS))
+    }
+
+    /** The foot's "New task" takes the main panel, so an open search gives it back first (iOS `compose`). */
+    @Test
+    fun newTaskEndsAnOpenSearch() {
+        show()
+        rule.node(SidebarTags.SEARCH).performClick()
+        rule.node(AgentSearchTags.FIELD).performTextInput("re")
+        rule.waitForIdle()
+        rule.node(SidebarTags.COMPOSE).performClick()
+        rule.waitForIdle()
+        assertEquals(1, composed)
+        assertEquals(0, rule.onAllNodesWithTagCount(AgentSearchTags.RESULTS))
+        assertEquals(0, rule.onAllNodesWithTagCount(SidebarTags.SEARCH_CANCEL))
     }
 
     @Test

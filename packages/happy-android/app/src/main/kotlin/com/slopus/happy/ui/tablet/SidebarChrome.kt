@@ -174,7 +174,7 @@ fun SidebarSearchField(
     modifier: Modifier = Modifier,
 ) {
     val colors = HappyTheme.colors
-    val placeholder = stringResource(R.string.agent_search_placeholder)
+    val placeholder = stringResource(R.string.tools_names_search)
     Row(
         modifier = modifier.fillMaxWidth().padding(horizontal = SidebarSpec.side).height(SidebarSpec.searchHeight),
         horizontalArrangement = Arrangement.spacedBy(SidebarSpec.searchCancelSpacing),

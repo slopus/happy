@@ -12,11 +12,11 @@ import com.slopus.happy.ui.components.PageBackHandler as BackHandler
 import androidx.activity.compose.ReportDrawnWhen
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.EaseOut
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.PaddingValues
@@ -48,6 +48,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -93,7 +94,6 @@ import com.slopus.happy.ui.components.HomeCardSpec
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.LoadingIndicator
 import com.slopus.happy.ui.components.LocalBarOnGlass
-import com.slopus.happy.ui.components.PopupMotion
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.StateArt
 import com.slopus.happy.ui.components.StatePage
@@ -197,8 +197,8 @@ internal fun AgentTopBar(
  * and search and settings as its actions. No composer. Then the
  * conversations ([AgentHomeList]), with new chat as a floating button at
  * the bottom end, or a state page while there are none to show. Search swaps the bar for a
- * search bar of the same height, and the results lie over home in a panel
- * of their own ([AgentSearchResults]), so opening and closing it moves
+ * search bar of the same height, and the results fade in over home on its
+ * own ground ([AgentSearchResults]), so opening and closing it moves
  * nothing and home keeps its scroll.
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -239,15 +239,26 @@ fun AgentHomeScreen(
     BackHandler(enabled = searching, onBack = closeSearch)
 
     val items = remember(feed) { agentHomeItems(feed) }
-    val searchEntries = rememberSearchEntries(actions)
+    // New work takes the screen, so the search gives it back first (iOS); everything else leaves it for coming back.
+    val compose = {
+        closeSearch()
+        actions.onCompose()
+    }
+    val searchEntries = rememberSearchEntries(actions, closeSearch)
     val untitled = stringResource(R.string.session_new_chat)
-    val headings = Triple(
-        stringResource(R.string.agent_search_conversations),
-        stringResource(R.string.agent_search_actions),
-        stringResource(R.string.settings_title),
-    )
+    val artifacts = stringResource(R.string.artifacts_title)
+    val headings = stringResource(R.string.agent_search_actions) to stringResource(R.string.settings_title)
     val results = remember(feed, query, searchEntries) {
-        agentSearchResults(feed, query, untitled, headings, searchEntries.first, searchEntries.second)
+        val label = { row: AgentFeedRow ->
+            when (row) {
+                is AgentFeedRow.Conversation -> row.title ?: untitled
+                is AgentFeedRow.Folder -> row.name
+                is AgentFeedRow.Surface -> row.name
+                AgentFeedRow.Artifacts -> artifacts
+                is AgentFeedRow.Section -> null
+            }
+        }
+        agentSearchResults(feed, query, label, headings, searchEntries.first, searchEntries.second)
     }
 
     // One ground under the bar and the page, the chat's own (surface), light and dark; the cards sit on it, as on iOS.
@@ -301,10 +312,10 @@ fun AgentHomeScreen(
         ) { top ->
             Box(modifier = Modifier.fillMaxSize()) {
                 val barFoot = top - GlassSpec.feather
-                // The sidebar's results hang from its search field's rest, under the field; the list fades from under them.
+                // The sidebar's results start under its search field's rest; the list fades from under them.
                 val resultsTop = if (sidebar != null) top + SidebarSpec.searchTop + SidebarSpec.searchHeight + SidebarSpec.searchGap else barFoot
-                val listFaded = sidebar != null && searching && query.isNotBlank()
-                val listAlpha by animateFloatAsState(if (listFaded) 0f else 1f, tween(if (listFaded) PopupMotion.ENTER_MS else PopupMotion.EXIT_MS), label = "sidebarSearch")
+                val listFaded = sidebar != null && searching
+                val listAlpha by animateFloatAsState(if (listFaded) 0f else 1f, tween(AgentSearchSpec.FADE_MS, easing = EaseOut), label = "sidebarSearch")
                 // The loader fades into what comes, and every state into the next.
                 Crossfade(phase, label = "agentHome") { shown ->
                     when (shown) {
@@ -376,9 +387,7 @@ fun AgentHomeScreen(
                         )
                     }
                 }
-                if (sidebar != null) {
-                    SidebarFootBar(if (feed.loaded) stringResource(R.string.agent_search_new_task) else null, actions.onSettings, actions.onCompose)
-                } else if (feed.loaded && !searching) {
+                if (sidebar == null && feed.loaded && !searching) {
                     ComposeFab(actions.onCompose, AgentHomeTags.COMPOSE, stringResource(R.string.agent_search_new_task))
                 }
                 // While search is open the sidebar's field holds still at its rest, Cancel beside it, whatever the list did.
@@ -392,36 +401,38 @@ fun AgentHomeScreen(
                         modifier = Modifier.padding(top = top + SidebarSpec.searchTop),
                     )
                 }
-                // Home dims under the results, and a tap on it ends the search; it stays as it was underneath.
-                // Both start at the bar's own foot. The sidebar's list fades instead, on the sidebar's ground.
-                AnimatedVisibility(
-                    visible = sidebar == null && searching && query.isNotBlank(),
-                    enter = fadeIn(tween(PopupMotion.ENTER_MS)),
-                    exit = fadeOut(tween(PopupMotion.EXIT_MS)),
-                    modifier = Modifier.padding(top = barFoot),
-                ) {
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f))
-                            .clickable(interactionSource = null, indication = null, onClick = closeSearch)
-                            .testTag(AgentSearchTags.SCRIM),
-                    )
-                }
+                // The results fade in over home, which stays exactly as it was under them, and fade away again.
                 AnimatedVisibility(
                     visible = searching,
-                    enter = fadeIn(tween(PopupMotion.ENTER_MS)),
-                    exit = fadeOut(tween(PopupMotion.EXIT_MS)),
+                    enter = fadeIn(tween(AgentSearchSpec.FADE_MS, easing = EaseOut)),
+                    exit = fadeOut(tween(AgentSearchSpec.FADE_MS, easing = EaseOut)),
                     modifier = Modifier.padding(top = resultsTop),
                 ) {
+                    // What a result opens leaves the search as it was, for coming back; only the keyboard goes.
                     AgentSearchResults(
                         query = query,
                         results = results,
                         onOpenConversation = { id ->
-                            closeSearch()
+                            focus.clearFocus()
                             actions.onOpenConversation(id)
                         },
+                        onOpenArtifacts = {
+                            focus.clearFocus()
+                            actions.onOpenArtifacts()
+                        },
+                        onOpenSurface = { surface ->
+                            focus.clearFocus()
+                            actions.onOpenSurface(surface)
+                        },
+                        onPull = { focus.clearFocus() },
+                        onClose = closeSearch,
+                        selected = sidebar?.selected,
+                        bottomClearance = if (sidebar != null) SidebarSpec.listClearance() else 0.dp,
                     )
+                }
+                // The sidebar's foot stands over home and search's results alike.
+                if (sidebar != null) {
+                    SidebarFootBar(if (feed.loaded) stringResource(R.string.agent_search_new_task) else null, actions.onSettings, compose)
                 }
             }
         }
@@ -492,7 +503,8 @@ private enum class HomePhase { Loading, Offline, Empty, List }
  * `SettingsIndex.computer`): one opens its page at the row, flashing it.
  */
 @Composable
-private fun rememberSearchEntries(actions: AgentHomeActions): Pair<List<AgentSearchEntry>, List<AgentSearchEntry>> {
+private fun rememberSearchEntries(actions: AgentHomeActions, endSearch: () -> Unit): Pair<List<AgentSearchEntry>, List<AgentSearchEntry>> {
+    val end by rememberUpdatedState(endSearch)
     val newTask = stringResource(R.string.agent_search_new_task)
     val newTaskPicture = stringResource(R.string.agent_search_new_task_picture)
     val connect = stringResource(R.string.agent_search_connect_agent)
@@ -503,8 +515,9 @@ private fun rememberSearchEntries(actions: AgentHomeActions): Pair<List<AgentSea
         // happy-ios HomeViewController.quickActions (7a605f6ce). Connect and Scan both open the
         // scanner here: Android's one Add scanner takes a computer's, a terminal's or an agent's code.
         listOf(
-            AgentSearchEntry("new-work", newTask, Ionicon.CreateOutline, actions.onCompose),
-            AgentSearchEntry("new-work-picture", newTaskPicture, Ionicon.ImageOutline, actions.onComposeWithPicture),
+            // New work takes the screen, so the search gives it back first.
+            AgentSearchEntry("new-work", newTask, Ionicon.CreateOutline) { end(); actions.onCompose() },
+            AgentSearchEntry("new-work-picture", newTaskPicture, Ionicon.ImageOutline) { end(); actions.onComposeWithPicture() },
             AgentSearchEntry("connect-agent", connect, Ionicon.LaptopOutline, actions.onAdd),
             AgentSearchEntry("scan", scan, Ionicon.QrCodeOutline, actions.onAdd),
             AgentSearchEntry("settings", openSettings, Ionicon.SettingsOutline, actions.onSettings),

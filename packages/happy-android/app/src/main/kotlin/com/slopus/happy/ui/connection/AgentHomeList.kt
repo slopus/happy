@@ -335,34 +335,89 @@ fun LazyListScope.agentHomeRows(
                     .height(if (item.first) AgentHomeSpec.contentTop else AgentHomeSpec.cardGap)
                     .testTag(AgentHomeTags.row(item.key)),
             )
-            is AgentHomeItem.Row -> CardRow(item, motion, selected != null && selected == panelKey(item.row)) {
-                when (val row = item.row) {
-                    is AgentFeedRow.Conversation -> ConversationRow(row, onOpen, onHold)
-                    is AgentFeedRow.Folder -> FolderRow(row)
-                    AgentFeedRow.Artifacts -> PlaceRow(stringResource(R.string.artifacts_title), Ionicon.DocumentTextOutline, RowTile.Purple, onOpenArtifacts)
-                    is AgentFeedRow.Surface -> SurfaceRow(row, { onOpenSurface(row) }, onLeaveSurface)
-                    is AgentFeedRow.Section -> Unit
-                }
-            }
+            is AgentHomeItem.Row -> AgentHomeCardRow(
+                item, motion, selected != null && selected == item.row.panelKey(), AgentHomeTags.row(item.key),
+                onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface, onHold,
+            )
         }
     }
 }
 
-/** One row's part of its card ([HomeCardRow]), 48 high at the default font scale, the hairline from its title. */
+/**
+ * One row in its part of its card ([HomeCardRow]), 48 high at the default
+ * font scale, the hairline from its title: home's, and search's, which
+ * draws home's rows as home does ([AgentSearchResults]).
+ */
 @Composable
-private fun CardRow(item: AgentHomeItem.Row, modifier: Modifier, selected: Boolean, content: @Composable () -> Unit) {
+internal fun AgentHomeCardRow(
+    item: AgentHomeItem.Row,
+    modifier: Modifier,
+    selected: Boolean,
+    tag: String,
+    onOpen: (String) -> Unit,
+    onOpenArtifacts: () -> Unit,
+    onOpenSurface: (AgentFeedRow.Surface) -> Unit,
+    onLeaveSurface: ((AgentFeedRow.Surface) -> Unit)? = null,
+    onHold: ((AgentFeedRow.Conversation, Rect) -> Unit)? = null,
+) {
     HomeCardRow(
         place = HomeCardPlace(item.first, item.last),
         height = AgentHomeSpec.rowHeight(),
         dividerStart = titleStart(item.row),
         modifier = modifier,
-        tag = AgentHomeTags.row(item.key),
+        tag = tag,
         selected = selected,
-    ) { content() }
+    ) {
+        when (val row = item.row) {
+            is AgentFeedRow.Conversation -> ConversationRow(row, onOpen, onHold)
+            is AgentFeedRow.Folder -> FolderRow(row)
+            AgentFeedRow.Artifacts -> PlaceRow(stringResource(R.string.artifacts_title), Ionicon.DocumentTextOutline, RowTile.Purple, onOpenArtifacts)
+            is AgentFeedRow.Surface -> SurfaceRow(row, { onOpenSurface(row) }, onLeaveSurface)
+            is AgentFeedRow.Section -> Unit
+        }
+    }
+}
+
+/**
+ * A quick action or a setting search found, in its card: its glyph plain
+ * in the mark's lane (no tile: iOS's `RowView.tint` is a home row's), and
+ * its title as a home row's.
+ */
+@Composable
+internal fun AgentSearchEntryRow(title: String, glyph: Ionicon, place: HomeCardPlace, tag: String, onClick: () -> Unit) {
+    val colors = HappyTheme.colors
+    HomeCardRow(
+        place = place,
+        height = AgentHomeSpec.rowHeight(),
+        dividerStart = AgentHomeSpec.markInset + AgentHomeSpec.mark + AgentHomeSpec.markGap,
+        tag = tag,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .clickable(role = Role.Button, onClick = onClick)
+                .padding(start = AgentHomeSpec.markInset, end = AgentHomeSpec.paddingEnd),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(modifier = Modifier.size(AgentHomeSpec.mark), contentAlignment = Alignment.Center) { Icon(glyph, 22.dp, colors.text) }
+            Text(
+                title,
+                style = AgentHomeSpec.title,
+                color = colors.text,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .padding(start = AgentHomeSpec.markGap)
+                    .weight(1f)
+                    .wrapContentHeight(unbounded = true)
+                    .agentTitleBaseline(),
+            )
+        }
+    }
 }
 
 /** What a row opens, as the tablet's main panel names its root. */
-private fun panelKey(row: AgentFeedRow): String? = when (row) {
+internal fun AgentFeedRow.panelKey(): String? = when (val row = this) {
     is AgentFeedRow.Conversation -> MainPanelKey.conversation(row.agentId)
     is AgentFeedRow.Surface -> MainPanelKey.surface(row.id)
     AgentFeedRow.Artifacts -> MainPanelKey.ARTIFACTS

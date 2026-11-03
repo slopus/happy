@@ -26,6 +26,9 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.unit.sp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.agent.AgentCatalog
@@ -399,33 +402,72 @@ class AgentHomeLayoutTest {
         rule.waitForIdle()
         assertEquals(bar, rule.node(AgentHomeTags.BAR).bounds)
         assertEquals(row, rule.node(AgentHomeTags.row("agent-at20")).bounds)
-        rule.onAllNodesWithTag(AgentSearchTags.RESULTS, useUnmergedTree = true).assertCountEquals(0)
+        val results = rule.node(AgentSearchTags.RESULTS).bounds
+        assertDp("the results start under the bar", bar.bottom, results.top)
 
         rule.node(AgentSearchTags.FIELD).performTextInput("number 3")
         rule.waitForIdle()
-        val panel = rule.node(AgentSearchTags.RESULTS).bounds
-        assertDp("the panel starts under the bar", bar.bottom, panel.top)
-        rule.node(AgentSearchTags.result("agent-at3")).assertExists()
-        // Home stays composed under the panel, rows and scroll as they were.
+        // Home's rows, drawn as home draws them: the grouped list's 8 under the bar.
+        val found = rule.node(AgentSearchTags.result("agent-at3")).bounds
+        assertBox("a found row", found, 0.dp, results.top + 8.dp, 411.dp, 48.dp)
+        // Home stays composed under the results, rows and scroll as they were.
         assertEquals(row, rule.node(AgentHomeTags.row("agent-at20")).bounds)
 
         rule.node(AgentSearchTags.FIELD).performTextReplacement("zzzz")
         rule.waitForIdle()
-        rule.node(AgentSearchTags.NO_RESULTS).assertExists()
-        assertTrue("nothing found is one line, not a page", rule.node(AgentSearchTags.RESULTS).bounds.height < 80.dp)
-        // A tap on dimmed home ends the search where it was.
-        rule.node(AgentSearchTags.SCRIM).performClick()
-        rule.waitForIdle()
-        rule.onAllNodesWithTag(AgentSearchTags.FIELD, useUnmergedTree = true).assertCountEquals(0)
-        assertEquals(row, rule.node(AgentHomeTags.row("agent-at20")).bounds)
-        rule.node(AgentHomeTags.SEARCH).performClick()
+        val none = rule.node(AgentSearchTags.NO_RESULTS)
+        none.assertTextEquals("Nothing found")
+        assertDp("nothing found stands 32 under where the results start", results.top + 32.dp, none.bounds.top)
 
+        // What a result opens leaves the search as it was, for coming back.
         rule.node(AgentSearchTags.FIELD).performTextReplacement("number 3")
         rule.node(AgentSearchTags.result("agent-at3")).performClick()
         rule.waitForIdle()
         assertEquals(listOf("at3"), opened)
-        rule.onAllNodesWithTag(AgentSearchTags.RESULTS, useUnmergedTree = true).assertCountEquals(0)
+        rule.node(AgentSearchTags.FIELD).assertTextEquals("number 3")
+        rule.node(AgentSearchTags.result("agent-at3")).assertExists()
         assertEquals(row, rule.node(AgentHomeTags.row("agent-at20")).bounds)
+    }
+
+    /** iOS 8f745821b, 1a3b026a9: focused with nothing typed, the bots and tasks last active, with no title. */
+    @Test
+    fun anEmptySearchShowsTheBotsAndTasksLastActive() {
+        show(feed())
+        rule.node(AgentHomeTags.SEARCH).performClick()
+        rule.waitForIdle()
+        val tops = listOf("agent-at1", "agent-ab1", "agent-ab2", "agent-at2", "agent-at3").map { rule.node(AgentSearchTags.result(it)).bounds.top }
+        assertEquals(tops.sorted(), tops)
+        rule.onAllNodesWithTag(AgentSearchTags.result("agent-as1"), useUnmergedTree = true).assertCountEquals(0)
+        rule.onAllNodesWithTag(AgentSearchTags.result("artifacts"), useUnmergedTree = true).assertCountEquals(0)
+        rule.onAllNodesWithTag(AgentSearchTags.NO_RESULTS, useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    /** HomeSearchPresentationLayout: pulled down from their top, the results close search when let go far enough, not short of it. */
+    @Test
+    fun aPullFromTheResultsTopClosesSearch() {
+        show(feed())
+        rule.node(AgentHomeTags.SEARCH).performClick()
+        rule.waitForIdle()
+        rule.node(AgentSearchTags.RESULTS).performTouchInput { swipeDown(startY = top + 20f, endY = top + 20f + 40.dp.toPx(), durationMillis = 1_000) }
+        rule.waitForIdle()
+        rule.node(AgentSearchTags.FIELD).assertExists()
+        rule.node(AgentSearchTags.RESULTS).performTouchInput { swipeDown(startY = top + 20f, endY = top + 20f + 160.dp.toPx()) }
+        rule.waitForIdle()
+        rule.onAllNodesWithTag(AgentSearchTags.FIELD, useUnmergedTree = true).assertCountEquals(0)
+        rule.onAllNodesWithTag(AgentSearchTags.RESULTS, useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    /** Search.rows: a nested match keeps what it nests under, the project and the worktree over a worktree's chat. */
+    @Test
+    fun aNestedMatchKeepsItsProjectAndWorktree() {
+        show(feed())
+        rule.node(AgentHomeTags.SEARCH).performClick()
+        rule.node(AgentSearchTags.FIELD).performTextInput("jumps")
+        rule.waitForIdle()
+        val project = rule.node(AgentSearchTags.result("folder-p1")).bounds
+        val chat = rule.node(AgentSearchTags.result("agent-aw1")).bounds
+        assertTrue("the project over its worktree's chat", project.bottom < chat.top)
+        rule.onAllNodesWithTag(AgentSearchTags.result("agent-ap1"), useUnmergedTree = true).assertCountEquals(0)
     }
 
     @Test
@@ -440,9 +482,16 @@ class AgentHomeLayoutTest {
         rule.onNodeWithText("New task with a picture").assertExists()
         rule.node(AgentSearchTags.result("entry-new-work-picture")).performClick()
         assertEquals(1, composedWithPicture)
+        // New work takes the screen, so the search gives it back first.
+        rule.waitForIdle()
+        rule.onAllNodesWithTag(AgentSearchTags.FIELD, useUnmergedTree = true).assertCountEquals(0)
+        rule.node(AgentHomeTags.SEARCH).performClick()
+        rule.node(AgentSearchTags.FIELD).performTextInput("new task")
         rule.node(AgentSearchTags.result("entry-new-work")).performClick()
         assertEquals(1, composed)
-        rule.node(AgentSearchTags.FIELD).performTextReplacement("connect")
+        rule.waitForIdle()
+        rule.node(AgentHomeTags.SEARCH).performClick()
+        rule.node(AgentSearchTags.FIELD).performTextInput("connect")
         rule.onNodeWithText("Connect Happy Agent").assertExists()
         rule.node(AgentSearchTags.FIELD).performTextReplacement("Settings")
         rule.node(AgentSearchTags.result("entry-settings")).performClick()

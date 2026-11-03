@@ -19,11 +19,8 @@
     <string name="agent_surface_empty_document">Aquest document és buit.</string>
     <string name="agent_surface_open_on_computer">Obre-ho a l\'ordinador per fer-ho servir.</string>
     <string name="agent_surface_failed">No s\'ha pogut llegir</string>
-    <string name="agent_search_placeholder">Cerca converses i configuració</string>
     <string name="agent_search_clear">Esborra</string>
-    <string name="agent_search_conversations">Converses</string>
     <string name="agent_search_actions">Accions ràpides</string>
-    <string name="agent_search_no_results">No hi ha resultats per a «%1$s»</string>
     <string name="agent_search_open_settings">Obre la configuració</string>
     <string name="agent_settings_edit_name">Edita el nom</string>
     <string name="agent_settings_edit_avatar">Edita l\'avatar</string>

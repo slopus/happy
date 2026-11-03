@@ -21,11 +21,8 @@
     <string name="agent_surface_open_on_computer">Open this on your computer to use it.</string>
     <string name="agent_surface_failed">Couldn\'t read this</string>
 
-    <string name="agent_search_placeholder">Search conversations and settings</string>
     <string name="agent_search_clear">Clear</string>
-    <string name="agent_search_conversations">Conversations</string>
     <string name="agent_search_actions">Quick actions</string>
-    <string name="agent_search_no_results">No results for “%1$s”</string>
     <string name="agent_search_open_settings">Open settings</string>
 
     <string name="agent_settings_edit_name">Edit name</string>

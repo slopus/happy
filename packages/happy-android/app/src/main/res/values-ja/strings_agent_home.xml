@@ -19,11 +19,8 @@
     <string name="agent_surface_empty_document">このドキュメントは空です。</string>
     <string name="agent_surface_open_on_computer">使うにはコンピュータで開いてください。</string>
     <string name="agent_surface_failed">読み込めませんでした</string>
-    <string name="agent_search_placeholder">会話と設定を検索</string>
     <string name="agent_search_clear">クリア</string>
-    <string name="agent_search_conversations">会話</string>
     <string name="agent_search_actions">クイックアクション</string>
-    <string name="agent_search_no_results">「%1$s」の結果はありません</string>
     <string name="agent_search_open_settings">設定を開く</string>
     <string name="agent_settings_edit_name">名前を編集</string>
     <string name="agent_settings_edit_avatar">アバターを編集</string>

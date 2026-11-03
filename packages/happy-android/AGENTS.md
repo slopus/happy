@@ -297,6 +297,16 @@ win:
   `agentSettingsIndex()` (iOS's `SettingsIndex.computer`):
   `openAgentSettingsRow` opens the agent's Settings or Appearance page with
   `reveal`, or Chief of Staff with the ask for name and avatar.
+- **Agent home search** is iOS's (`HappyCore/Agents/Search.swift`,
+  `ui/connection/AgentSearch.kt`), not desktop's wider ⌘K palette: the
+  results fade in over home (200 ms ease-out) on its own ground, drawn as
+  home is, and home never moves under them. Nothing typed shows the eight
+  bots and tasks last active (`AgentSearch.recent`); a query shows home's
+  rows that answer it with what they nest under (`AgentSearch.rows`), one
+  card, then at most six quick actions and six settings under their
+  headings, or "Nothing found" in a capsule. What a result opens leaves the
+  search for coming back; new work, Cancel or back, and a pull down from
+  the results' top end it. The Happy CLI home has no search, as on iOS.
 - **QR codes:** every scan is classified (terminal, account, agent
   connection, or not ours) and routed. A code the screen can't use shows an
   error; nothing is silently ignored. Scanning works while signed in.

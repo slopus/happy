@@ -19,11 +19,8 @@
     <string name="agent_surface_empty_document">Este documento está vacío.</string>
     <string name="agent_surface_open_on_computer">Ábrelo en tu ordenador para usarlo.</string>
     <string name="agent_surface_failed">No se pudo leer</string>
-    <string name="agent_search_placeholder">Buscar conversaciones y configuración</string>
     <string name="agent_search_clear">Borrar</string>
-    <string name="agent_search_conversations">Conversaciones</string>
     <string name="agent_search_actions">Acciones rápidas</string>
-    <string name="agent_search_no_results">No hay resultados para «%1$s»</string>
     <string name="agent_search_open_settings">Abrir configuración</string>
     <string name="agent_settings_edit_name">Editar nombre</string>
     <string name="agent_settings_edit_avatar">Editar avatar</string>

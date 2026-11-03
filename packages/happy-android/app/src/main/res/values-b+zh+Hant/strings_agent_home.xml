@@ -19,11 +19,8 @@
     <string name="agent_surface_empty_document">此文件是空的。</string>
     <string name="agent_surface_open_on_computer">請在電腦上開啟以使用。</string>
     <string name="agent_surface_failed">無法讀取</string>
-    <string name="agent_search_placeholder">搜尋對話和設定</string>
     <string name="agent_search_clear">清除</string>
-    <string name="agent_search_conversations">對話</string>
     <string name="agent_search_actions">快速動作</string>
-    <string name="agent_search_no_results">沒有「%1$s」的結果</string>
     <string name="agent_search_open_settings">開啟設定</string>
     <string name="agent_settings_edit_name">編輯名稱</string>
     <string name="agent_settings_edit_avatar">編輯頭像</string>
