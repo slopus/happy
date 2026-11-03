@@ -164,6 +164,18 @@ class QrScannerTest {
     }
 
     @Test
+    @Config(qualifiers = "w891dp-h411dp-land-xxhdpi")
+    fun onItsSideTheTorchMovesBesideTheSquareOutOfTheHintsWay() {
+        rule.setHappyContent(dark = true) {
+            QrScannerScreen(CameraAccess.Granted, torchOn = false, onTorch = {}, onBack = {}, onOpenSettings = {}) {}
+        }
+        assertBox("viewfinder", rule.node(QrScannerTags.VIEWFINDER).bounds, 360.dp, 120.dp, 171.dp, 171.dp)
+        assertBox("torch", rule.node(QrScannerTags.TORCH).bounds, 803.dp, 177.5.dp, 56.dp, 56.dp)
+        val hint = rule.node(QrScannerTags.HINT).bounds
+        assertTrue("the hint ends at ${hint.bottom}, off the window", hint.bottom <= 411.dp)
+    }
+
+    @Test
     fun noFlashNoTorch() {
         rule.setHappyContent(dark = true) {
             QrScannerScreen(CameraAccess.Granted, torchOn = null, onTorch = {}, onBack = {}, onOpenSettings = {}) {}

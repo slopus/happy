@@ -10,15 +10,19 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -107,7 +111,9 @@ object QrScannerSpec {
  * 144), at least 120, its 2 white border rounded 24. The hint (15/20, white
  * 80%) is centred 24 below the square, 32 in from the sides. With a flash,
  * a 56 round torch button (white 20%, white 26 bolt, filled while on) sits
- * centred 32 above the navigation bar. Without the camera permission: no
+ * centred 32 above the navigation bar; in a window wider than tall, where
+ * the hint takes the room below, it sits centred 32 in from the end (past
+ * a side navigation bar or cutout) instead. Without the camera permission: no
  * scrim, the message (17/24, white, centred, 32 in) and Open Settings 24
  * under it, centred vertically. [torchOn] is null when the camera has no
  * flash.
@@ -177,10 +183,17 @@ fun QrScannerScreen(
                         contentDescription = stringResource(if (torchOn) R.string.scan_torch_off else R.string.scan_torch_on),
                         role = Role.Switch,
                         onClick = onTorch,
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .windowInsetsPadding(WindowInsets.navigationBars)
-                            .padding(bottom = QrScannerSpec.torchBottom)
+                        modifier = if (maxWidth > maxHeight) {
+                            Modifier
+                                .align(Alignment.CenterEnd)
+                                .windowInsetsPadding(WindowInsets.navigationBars.union(WindowInsets.displayCutout).only(WindowInsetsSides.End))
+                                .padding(end = QrScannerSpec.torchBottom)
+                        } else {
+                            Modifier
+                                .align(Alignment.BottomCenter)
+                                .windowInsetsPadding(WindowInsets.navigationBars)
+                                .padding(bottom = QrScannerSpec.torchBottom)
+                        }
                             .size(QrScannerSpec.torchSize)
                             .testTag(QrScannerTags.TORCH),
                     )
