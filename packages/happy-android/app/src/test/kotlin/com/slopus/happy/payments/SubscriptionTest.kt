@@ -35,7 +35,7 @@ import java.time.Instant
 @RunWith(AndroidJUnit4::class)
 class SubscriptionTest {
     private val preferences = ApplicationProvider.getApplicationContext<Context>().getSharedPreferences("voice-subscription-test", Context.MODE_PRIVATE)
-    private val now = Instant.parse("2026-11-04T10:00:00Z").toEpochMilli()
+    private var now = Instant.parse("2026-11-04T10:00:00Z").toEpochMilli()
 
     @Before fun clear() { preferences.edit().clear().commit() }
 
@@ -46,7 +46,7 @@ class SubscriptionTest {
     private fun TestScope.subscription(store: SubscriptionStore? = this@SubscriptionTest.store, rc: RevenueCat? = this@SubscriptionTest.rc) =
         Subscription(backgroundScope, store, rc, preferences, now = { now }).also { runCurrent() }
 
-    /** Bought elsewhere, or by RevenueCat's SDK: no attempt of this install's names it. */
+    /** Bought elsewhere, or by RevenueCat's SDK: no customer id of this install's names it. */
     private fun bought(token: String, purchased: Boolean = true, acknowledged: Boolean = false, product: String = "happy") =
         StorePurchase(token, listOf(product), purchased, acknowledged)
 
@@ -170,16 +170,67 @@ class SubscriptionTest {
     }
 
     @Test
-    fun aFailedSheetEndsItsAttemptToo() = runTest {
+    fun aFailedSheetLetsAnotherOpenForTheSameCustomerId() = runTest {
         val subscription = subscription()
         subscription.refresh(); runCurrent()
         assertTrue(subscription.buy(activity)); runCurrent()
-        val attempt = store.opened.last().second
         store.updates.emit(StoreUpdate.Failed(7)); runCurrent()
-        // Whatever later turns up named by it is no one's to post.
-        store.owned += StorePurchase("late", listOf("happy"), purchased = true, acknowledged = false, attempt = attempt)
+        assertTrue(subscription.buy(activity))
+        // One id per customer, whatever the sheet: the store names every purchase and renewal of theirs with it.
+        assertEquals(store.opened[0].second, store.opened[1].second)
+        subscription.relay("account-b"); runCurrent()
         subscription.refresh(); runCurrent()
-        assertTrue(posts().isEmpty())
+        store.updates.emit(StoreUpdate.Cancelled); runCurrent()
+        assertTrue(subscription.buy(activity))
+        assertNotEquals(store.opened[0].second, store.opened[2].second)
+        // RevenueCat's SDK's id for the same customer: the SHA-256 of its id, never the id itself.
+        val sha = java.security.MessageDigest.getInstance("SHA-256").digest("account-b".toByteArray()).joinToString("") { "%02x".format(it) }
+        assertEquals(sha, store.opened[2].second)
+    }
+
+    /**
+     * A later purchase under the same customer id (bought again after a
+     * lapse; on Apple, every renewal) is its buyer's after a sign-out,
+     * another account, a restart, and told twice, without granting whoever
+     * is signed in.
+     */
+    @Test
+    fun aRenewalIsItsBuyersWhoeverIsSignedInAfterARestartAndToldTwice() = runTest {
+        val subscription = subscription()
+        subscription.relay("account-a"); runCurrent()
+        subscription.refresh(); runCurrent()
+        val first = buys(subscription, "ta")
+        store.emit(first); runCurrent()
+        subscription.relay(null); runCurrent()
+        subscription.relay("account-b"); runCurrent()
+        subscription.refresh(); runCurrent()
+        val renewal = first.copy(token = "ta-renewed")
+        store.emit(renewal); runCurrent()
+        store.emit(renewal); runCurrent()
+        assertEquals(listOf("post account-a ta [happy] restore=false", "post account-a ta-renewed [happy] restore=false"), posts())
+        assertFalse(subscription.pro.value)
+        // After a restart, the sweep finds it finished.
+        store.owned += renewal.copy(acknowledged = true)
+        store.owned += first.copy(token = "ta-renewed-again")
+        val again = subscription()
+        again.relay("account-b"); runCurrent()
+        again.refresh(); runCurrent()
+        assertEquals("post account-a ta-renewed-again [happy] restore=false", posts().last())
+        assertEquals(3, posts().size)
+        assertFalse(again.pro.value)
+    }
+
+    @Test
+    fun aPurchasePendingForMonthsIsStillItsBuyers() = runTest {
+        val subscription = subscription()
+        subscription.relay("account-a"); runCurrent()
+        subscription.refresh(); runCurrent()
+        val pending = buys(subscription, "ta", purchased = false)
+        store.emit(pending); runCurrent()
+        subscription.relay("account-b"); runCurrent()
+        now += 120L * 24 * 60 * 60 * 1000
+        store.emit(pending.copy(purchased = true)); runCurrent()
+        assertEquals(listOf("post account-a ta [happy] restore=false"), posts())
     }
 
     @Test

@@ -21,16 +21,16 @@ import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.resume
 
 /**
- * A subscription the store holds for this device's store account. [attempt]:
- * the purchase sheet it was bought from, as [SubscriptionStore.buy] named it
- * (Play's obfuscated account id); null for one bought elsewhere.
+ * A subscription the store holds for this device's store account. [account]:
+ * the customer id it was bought for, as [SubscriptionStore.buy] gave it
+ * (Play's obfuscated account id); null for one bought without one.
  */
 data class StorePurchase(
     val token: String,
     val products: List<String>,
     val purchased: Boolean,
     val acknowledged: Boolean,
-    val attempt: String? = null,
+    val account: String? = null,
 )
 
 /** What the store's purchase sheet came to. */
@@ -61,10 +61,10 @@ interface SubscriptionStore {
 
     /**
      * Shows the store's purchase sheet, the purchase it makes named
-     * [attempt] for good ([StorePurchase.attempt]); what comes of it arrives
+     * [account] for good ([StorePurchase.account]); what comes of it arrives
      * in [updates]. False if it couldn't open.
      */
-    suspend fun buy(activity: Activity, offer: StoreOffer, attempt: String): Boolean
+    suspend fun buy(activity: Activity, offer: StoreOffer, account: String): Boolean
 
     suspend fun acknowledge(token: String): Boolean
 }
@@ -121,12 +121,12 @@ class PlayBilling(context: Context) : SubscriptionStore {
         }
     }
 
-    override suspend fun buy(activity: Activity, offer: StoreOffer, attempt: String): Boolean {
+    override suspend fun buy(activity: Activity, offer: StoreOffer, account: String): Boolean {
         val (details, offerToken) = synchronized(found) { found[offer] } ?: return false
         if (!connect()) return false
         val params = BillingFlowParams.newBuilder().setProductDetailsParamsList(
             listOf(BillingFlowParams.ProductDetailsParams.newBuilder().setProductDetails(details).setOfferToken(offerToken).build()),
-        ).setObfuscatedAccountId(attempt).build()
+        ).setObfuscatedAccountId(account).build()
         return client.launchBillingFlow(activity, params).ok
     }
 
@@ -159,6 +159,6 @@ class PlayBilling(context: Context) : SubscriptionStore {
         products = purchase.products,
         purchased = purchase.purchaseState == Purchase.PurchaseState.PURCHASED,
         acknowledged = purchase.isAcknowledged,
-        attempt = purchase.accountIdentifiers?.obfuscatedAccountId,
+        account = purchase.accountIdentifiers?.obfuscatedAccountId,
     )
 }

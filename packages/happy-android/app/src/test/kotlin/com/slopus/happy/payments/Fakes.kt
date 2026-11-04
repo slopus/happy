@@ -15,15 +15,15 @@ internal class FakeStore : SubscriptionStore {
     var monthly: StoreOffer? = StoreOffer("happy", "monthly", "9,99 €")
     val owned = ArrayList<StorePurchase>()
     val acknowledged = ArrayList<String>()
-    /** Each purchase sheet opened, and the attempt it was opened for. */
+    /** Each purchase sheet opened, and the customer id it was opened for. */
     val opened = ArrayList<Pair<StoreOffer, String>>()
     override suspend fun monthly(product: String, basePlan: String) = monthly?.takeIf { it.product == product && it.basePlan == basePlan }
     override suspend fun owned() = owned.toList()
-    override suspend fun buy(activity: Activity, offer: StoreOffer, attempt: String) = opened.add(offer to attempt)
+    override suspend fun buy(activity: Activity, offer: StoreOffer, account: String) = opened.add(offer to account)
 
-    /** What the last sheet bought, named by its attempt as Play names it. */
+    /** What the last sheet bought, named by its customer id as Play names it. */
     fun bought(token: String, purchased: Boolean = true, product: String = "happy") =
-        StorePurchase(token, listOf(product), purchased, acknowledged = false, attempt = opened.last().second)
+        StorePurchase(token, listOf(product), purchased, acknowledged = false, account = opened.last().second)
 
     suspend fun emit(vararg purchases: StorePurchase) = updates.emit(StoreUpdate.Purchases(purchases.toList()))
     override suspend fun acknowledge(token: String): Boolean {
