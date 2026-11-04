@@ -1,6 +1,5 @@
 package com.slopus.happy.ui.conversation
 
-import android.text.format.DateFormat
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
@@ -31,8 +30,6 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicText
-import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.verticalScroll
 import com.slopus.happy.ui.components.PageProgressIndicator as CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -53,10 +50,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
@@ -66,12 +60,10 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.slopus.happy.R
 import com.slopus.happy.agent.AgentFamily
 import com.slopus.happy.agent.AgentFeedRow
@@ -103,12 +95,17 @@ import com.slopus.happy.ui.components.Screen
 import com.slopus.happy.ui.components.ShimmerSpec
 import com.slopus.happy.ui.components.ShimmerText
 import com.slopus.happy.ui.components.StackHeader
+import com.slopus.happy.ui.components.ProfileHeader
+import com.slopus.happy.ui.components.ProfileHeaderSpec
+import com.slopus.happy.ui.components.ProfileHeaderTags
+import com.slopus.happy.ui.components.ProfileTile
+import com.slopus.happy.ui.components.ProfilePlaceholder
+import com.slopus.happy.ui.components.profileStartedText
 import com.slopus.happy.ui.components.avatar.PlaceholderAvatar
 import com.slopus.happy.ui.components.barInsetTop
 import com.slopus.happy.ui.components.hairline
 import com.slopus.happy.ui.components.rememberReduceMotion
 import com.slopus.happy.ui.components.rememberThumbHash
-import com.slopus.happy.ui.components.shimmer
 import com.slopus.happy.ui.connection.AgentHomeSpec
 import com.slopus.happy.ui.connection.ConversationMark
 import com.slopus.happy.ui.connection.RowTile
@@ -117,26 +114,22 @@ import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.Date
 
 object AgentPageTags {
     const val SCREEN = "agentPage.screen"
     const val SCROLL = "agentPage.scroll"
     const val ERROR = "agentPage.error"
-    const val MARK = "agentPage.mark"
-    const val NAME = "agentPage.name"
-    const val SUBTITLE = "agentPage.subtitle"
+    const val MARK = ProfileHeaderTags.AVATAR
+    const val NAME = ProfileHeaderTags.NAME
+    const val SUBTITLE = ProfileHeaderTags.SUBTITLE
     /** Every section's heading: Family, Media, Links, Activity, Details. */
     const val HEADING = "agentPage.heading"
     const val FAMILY = "agentPage.family"
     const val FAMILY_ROW = "agentPage.family.row"
     const val TILES = "agentPage.tiles"
-    const val TILE = "agentPage.tile"
+    const val TILE = ProfileHeaderTags.TILE
     /** A value not known yet: a shimmering bar in its place. */
-    const val PLACEHOLDER = "agentPage.placeholder"
+    const val PLACEHOLDER = ProfileHeaderTags.PLACEHOLDER
     const val MEDIA = "agentPage.media"
     const val MEDIA_CELL = "agentPage.media.cell"
     const val MEDIA_MORE = "agentPage.media.more"
@@ -165,22 +158,22 @@ object AgentPageTags {
  * heading (13/18, capitals) 16 in over its card with 8 under it.
  */
 object AgentPageSpec {
-    val top = 12.dp
-    val mark = 88.dp
+    val top = ProfileHeaderSpec.top
+    val mark = ProfileHeaderSpec.mark
     /** iOS rounds a picture's or placeholder's corners at 0.22 of its side. */
     val markRadius = 19.dp
-    val nameGap = 14.dp
-    val subtitleGap = 2.dp
-    val textSide = 24.dp
+    val nameGap = ProfileHeaderSpec.nameGap
+    val subtitleGap = ProfileHeaderSpec.subtitleGap
+    val textSide = ProfileHeaderSpec.textSide
     val side = ContentTokens.inset
     val radius = 26.dp
     val cardGap = 24.dp
-    val tilesTop = 24.dp
-    val tileGap = 10.dp
-    val tileHeight = 80.dp
-    val tileRadius = 22.dp
-    val tileInset = 16.dp
-    val valueTop = 14.dp
+    val tilesTop = ProfileHeaderSpec.tilesTop
+    val tileGap = ProfileHeaderSpec.tileGap
+    val tileHeight = ProfileHeaderSpec.tileHeight
+    val tileRadius = ProfileHeaderSpec.tileRadius
+    val tileInset = ProfileHeaderSpec.tileInset
+    val valueTop = ProfileHeaderSpec.valueTop
     val headingInset = 16.dp
     val headingGap = 8.dp
     /** Telegram's shared media: three to a row, square, 2 apart. */
@@ -204,11 +197,11 @@ object AgentPageSpec {
     val trailing = 16.dp
     val bottom = 32.dp
 
-    val name = happyTextStyle(fontSize = 28, lineHeight = 34, weight = FontWeight.Medium)
-    val subtitle = happyTextStyle(fontSize = 17, lineHeight = 22)
+    val name = ProfileHeaderSpec.name
+    val subtitle = ProfileHeaderSpec.subtitle
     val heading = happyTextStyle(fontSize = 13, lineHeight = 18)
-    val value = happyTextStyle(fontSize = 24, lineHeight = 30, weight = FontWeight.SemiBold)
-    val label = happyTextStyle(fontSize = 13, lineHeight = 18)
+    val value = ProfileHeaderSpec.value
+    val label = ProfileHeaderSpec.label
     val title = happyTextStyle(fontSize = 17, lineHeight = 22)
     val meta = happyTextStyle(fontSize = 13, lineHeight = 18)
     val fileName = happyTextStyle(fontSize = 12, lineHeight = 15)
@@ -365,53 +358,16 @@ private fun Page(state: AgentPageState, name: String?, actions: AgentPageActions
 /** The mark, the name and the kind line, centred. */
 @Composable
 private fun Hero(state: AgentPageState, name: String?) {
-    val colors = HappyTheme.colors
-    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        Spacer(Modifier.height(AgentPageSpec.top))
-        Box(Modifier.size(AgentPageSpec.mark).testTag(AgentPageTags.MARK)) {
-            val row = state.row
-            if (row != null) ConversationMark(row, AgentPageSpec.mark, AgentPageSpec.markRadius)
-            else PlaceholderAvatar(state.agentId, AgentPageSpec.mark, shape = RoundedCornerShape(AgentPageSpec.markRadius))
-        }
-        Spacer(Modifier.height(AgentPageSpec.nameGap))
-        val nameLine = with(LocalDensity.current) { AgentPageSpec.name.lineHeight.toDp() }
-        Box(
-            Modifier
-                .padding(horizontal = AgentPageSpec.textSide)
-                .heightIn(min = nameLine)
-                .testTag(AgentPageTags.NAME),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (name != null) {
-                Text(
-                    name,
-                    style = AgentPageSpec.name,
-                    color = colors.text,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.semantics { heading() },
-                )
-            } else {
-                Placeholder(Modifier.width(180.dp).height(26.dp))
-            }
-        }
-        Spacer(Modifier.height(AgentPageSpec.subtitleGap))
-        val kind = state.kind?.let { kindName(it) }
-        val doing = when {
-            state.awaitingAnswer -> stringResource(R.string.agent_page_awaiting_answer)
-            state.working -> stringResource(R.string.conversation_status_working)
-            else -> null
-        }
-        Text(
-            listOfNotNull(kind, doing).joinToString(" · "),
-            style = AgentPageSpec.subtitle,
-            color = colors.textSecondary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(horizontal = AgentPageSpec.textSide).fillMaxWidth().testTag(AgentPageTags.SUBTITLE),
-        )
+    val kind = state.kind?.let { kindName(it) }
+    val doing = when {
+        state.awaitingAnswer -> stringResource(R.string.agent_page_awaiting_answer)
+        state.working -> stringResource(R.string.conversation_status_working)
+        else -> null
+    }
+    ProfileHeader(name, listOfNotNull(kind, doing).joinToString(" · ")) {
+        val row = state.row
+        if (row != null) ConversationMark(row, ProfileHeaderSpec.mark, AgentPageSpec.markRadius)
+        else PlaceholderAvatar(state.agentId, ProfileHeaderSpec.mark, shape = RoundedCornerShape(AgentPageSpec.markRadius))
     }
 }
 
@@ -456,21 +412,6 @@ private fun Card(tag: String, content: @Composable ColumnScope.() -> Unit) {
             .clip(RoundedCornerShape(AgentPageSpec.radius))
             .background(HappyTheme.colors.surface),
         content = content,
-    )
-}
-
-/** A value being read: a quiet bar with desktop's sheen through it (still with animations off). */
-@Composable
-private fun Placeholder(modifier: Modifier) {
-    val colors = HappyTheme.colors
-    val ground = colors.surfaceHighest
-    val still = rememberReduceMotion()
-    Box(
-        modifier
-            .testTag(AgentPageTags.PLACEHOLDER)
-            .clip(RoundedCornerShape(6.dp))
-            .background(ground)
-            .then(if (still) Modifier else Modifier.shimmer(lerp(ground, if (colors.dark) Color.White else Color.Black, 0.06f))),
     )
 }
 
@@ -539,7 +480,7 @@ private fun Tiles(state: AgentPageState, now: Long) {
     val tiles = buildList {
         add((state.modelName ?: mode?.modelId ?: none.takeUnless { reading }) to stringResource(R.string.conversation_details_model))
         add((mode?.effort?.let(ModeOptions::effortDisplayName) ?: none.takeUnless { reading }) to stringResource(R.string.conversation_details_effort))
-        add((created?.let { startedText(it, now) } ?: none.takeUnless { reading }) to stringResource(R.string.agent_page_started))
+        add((created?.let { profileStartedText(it, now) } ?: none.takeUnless { reading }) to stringResource(R.string.agent_page_started))
         if (tokens != null) add(DetailFormat.tokens(tokens) to stringResource(R.string.usage_tokens))
     }
     Column(
@@ -548,57 +489,9 @@ private fun Tiles(state: AgentPageState, now: Long) {
     ) {
         tiles.chunked(2).forEach { pair ->
             Row(horizontalArrangement = Arrangement.spacedBy(AgentPageSpec.tileGap)) {
-                pair.forEach { (value, label) -> Tile(value, label, Modifier.weight(1f)) }
+                pair.forEach { (value, label) -> ProfileTile(value, label, Modifier.weight(1f)) }
             }
         }
-    }
-}
-
-/** One number: large (24/30 semibold, shrinking to fit), over what it counts (13/18). */
-@Composable
-private fun Tile(value: String?, label: String, modifier: Modifier) {
-    val colors = HappyTheme.colors
-    Column(
-        modifier
-            .testTag(AgentPageTags.TILE)
-            .heightIn(min = AgentPageSpec.tileHeight)
-            .clip(RoundedCornerShape(AgentPageSpec.tileRadius))
-            .background(colors.surface)
-            .semantics(mergeDescendants = true) {}
-            .padding(start = AgentPageSpec.tileInset, end = AgentPageSpec.tileInset, top = AgentPageSpec.valueTop, bottom = 4.dp),
-    ) {
-        val line = with(LocalDensity.current) { AgentPageSpec.value.lineHeight.toDp() }
-        Box(Modifier.fillMaxWidth().heightIn(min = line), contentAlignment = Alignment.CenterStart) {
-            if (value != null) {
-                BasicText(
-                    value,
-                    style = AgentPageSpec.value.copy(color = colors.text),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    autoSize = TextAutoSize.StepBased(minFontSize = 14.sp, maxFontSize = AgentPageSpec.value.fontSize),
-                )
-            } else {
-                Placeholder(Modifier.width(72.dp).height(20.dp))
-            }
-        }
-        Text(label, style = AgentPageSpec.label, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
-}
-
-@Composable
-private fun startedText(since: Long, now: Long): String {
-    val context = LocalContext.current
-    val locale = LocalConfiguration.current.locales[0]
-    val zone = ZoneId.systemDefault()
-    val date = Instant.ofEpochMilli(since).atZone(zone)
-    fun pattern(skeleton: String) = DateTimeFormatter.ofPattern(DateFormat.getBestDateTimePattern(locale, skeleton), locale)
-    val time = DateFormat.getTimeFormat(context).format(Date(since))
-    return when (DetailFormat.started(since, now, zone)) {
-        DetailFormat.Started.Today -> stringResource(R.string.agent_page_started_today, time)
-        DetailFormat.Started.Yesterday -> stringResource(R.string.agent_page_started_yesterday, time)
-        DetailFormat.Started.Weekday -> date.format(pattern("EEEjmm"))
-        DetailFormat.Started.ThisYear -> date.format(pattern("MMMd"))
-        DetailFormat.Started.Date -> date.format(pattern("yMMMd"))
     }
 }
 
@@ -635,7 +528,7 @@ private fun SharedSections(state: AgentPageState, actions: AgentPageActions) {
         Section(stringResource(R.string.agent_page_media)) {
             Card(AgentPageTags.MEDIA) {
                 if (media.isEmpty()) {
-                    MediaGrid(AgentPageSpec.MEDIA_COLUMNS) { Placeholder(Modifier.fillMaxSize()) }
+                    MediaGrid(AgentPageSpec.MEDIA_COLUMNS) { ProfilePlaceholder(Modifier.fillMaxSize()) }
                 } else {
                     val visual = remember(shared.media) { shared.media.filter { it.isVisual } }
                     MediaGrid(media.size) { index ->

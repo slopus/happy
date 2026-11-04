@@ -49,6 +49,7 @@ import com.slopus.happy.ui.session.SessionInfoLive
 import com.slopus.happy.ui.session.SessionInfoPermission
 import com.slopus.happy.ui.session.SessionInfoRoute
 import com.slopus.happy.ui.session.SessionInfoScreen
+import com.slopus.happy.model.resolveAvatar
 import com.slopus.happy.ui.settings.ChangelogRoute
 import com.slopus.happy.ui.tablet.MainPanelKey
 import com.slopus.happy.ui.tablet.MainPanelOpener
@@ -198,6 +199,7 @@ private fun SessionInfoRouteScreen(graph: AppGraph, id: String, nav: NavHostCont
         gitStatus = pathKey?.let(statuses::get),
         gitStatusFiles = pathKey?.let { account?.fileCache?.statusFiles(it)?.files },
         composer = mirror,
+        avatar = session?.resolveAvatar(snapshot?.projects.orEmpty()),
     )
     // Opened over its chat, the chat's permission mode is picked here, as its header's menu picks it (iOS da5fda505).
     val overChat = remember(nav, id) {

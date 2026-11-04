@@ -148,6 +148,7 @@ internal fun SessionInfoContent(
     }
 
     ItemList {
+        SessionInfoHeader(session, live.avatar ?: session.avatar)
         permission?.takeIf { metadata != null && it.modes.canChangePermission && it.modes.availableModes.isNotEmpty() }?.let {
             PermissionGroup(it, metadata) { field, option ->
                 scope.launch {

@@ -17,6 +17,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.width
+import androidx.compose.ui.unit.height
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.model.GitFileStatus
 import com.slopus.happy.model.GitFileStatusKind
@@ -45,8 +47,11 @@ import com.slopus.happy.ui.assertActionsLabelled
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.components.HeaderTags
+import com.slopus.happy.ui.components.ProfileHeaderTags
+import com.slopus.happy.ui.components.GlassSpec
 import com.slopus.happy.ui.hasRole
 import com.slopus.happy.ui.home.ArchiveResult
+import com.slopus.happy.ui.layout.ProvideWindowLayout
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import kotlinx.serialization.json.JsonNull
@@ -167,6 +172,67 @@ class SessionInfoScreenTest {
     }
 
     @Test
+    fun theProfileHeadUsesHomesAvatarAndShowsItsNameStatusAndTwoEqualTiles() {
+        show(claudeSession())
+        val bar = rule.node(HeaderTags.BAR).bounds
+        val avatar = rule.node(ProfileHeaderTags.AVATAR).bounds
+        val name = rule.node(ProfileHeaderTags.NAME).bounds
+        val subtitle = rule.node(ProfileHeaderTags.SUBTITLE).bounds
+        assertDp("avatar under feather", bar.bottom + GlassSpec.feather + 12.dp, avatar.top)
+        assertDp("avatar width", 88, avatar.width)
+        assertDp("avatar height", 88, avatar.height)
+        assertDp("avatar centred", (PHONE_WIDTH.dp - 88.dp) / 2, avatar.left)
+        assertDp("name gap", avatar.bottom + 14.dp, name.top)
+        assertDp("status gap", name.bottom + 2.dp, subtitle.top)
+        rule.onNode(hasText("Fix the build") and hasAnyAncestor(hasTestTag(ProfileHeaderTags.NAME)), useUnmergedTree = true).assertExists()
+        rule.node(ProfileHeaderTags.SUBTITLE).assert(hasText("online"))
+        val tiles = rule.onAllNodesWithTag(ProfileHeaderTags.TILE, useUnmergedTree = true)
+        tiles.assertCountEquals(2)
+        val model = tiles[0].bounds
+        val started = tiles[1].bounds
+        assertDp("tiles below status", subtitle.bottom + 24.dp, model.top)
+        assertDp("model tile height", 80, model.height)
+        assertDp("equal tile widths", model.width, started.width)
+        assertDp("tile gap", model.right + 10.dp, started.left)
+        assertDp("settings inset", 16, model.left)
+        rule.onAllNodesWithTag(ProfileHeaderTags.TILE)[0].assert(hasText("Model") and hasText("—"))
+        rule.onAllNodesWithTag(ProfileHeaderTags.TILE)[1].assert(hasText("Started"))
+        assertTrue("cards follow the tiles", rule.node(SessionInfoTags.CHANGES).bounds.top >= model.bottom)
+    }
+
+    @Test
+    @Config(qualifiers = "w1280dp-h800dp-xhdpi")
+    fun theProfileHeaderKeepsTheSettingsColumnOnAWideWindow() {
+        rule.setHappyContent {
+            ProvideWindowLayout { SessionInfoHeader(claudeSession(), null) }
+        }
+        val avatar = rule.node(ProfileHeaderTags.AVATAR).bounds
+        val tiles = rule.onAllNodesWithTag(ProfileHeaderTags.TILE, useUnmergedTree = true)
+        val first = tiles[0].bounds
+        val second = tiles[1].bounds
+        assertDp("avatar centred in the window", (1280.dp - 88.dp) / 2, avatar.left)
+        assertDp("800 column plus its inset", 256, first.left)
+        assertDp("column end inset", 1024, second.right)
+        assertDp("tiles share width", first.width, second.width)
+        assertDp("tiles keep their gap", first.right + 10.dp, second.left)
+    }
+
+    @Test
+    fun theBotProfileNamesItsKindAndItsPublishedModel() {
+        show(claudeSession {
+            putJsonObject("bot") {
+                put("id", "bot-1"); put("name", "Helper"); put("username", "helper")
+                put("workspaceId", "workspace-1"); put("orderKey", "a")
+            }
+            putJsonObject("client") { put("id", "rig"); put("name", "Happy Agent"); put("version", "test") }
+            put("currentModelCode", "GPT-6")
+        })
+        rule.onNode(hasText("Helper") and hasAnyAncestor(hasTestTag(ProfileHeaderTags.NAME)), useUnmergedTree = true).assertExists()
+        rule.node(ProfileHeaderTags.SUBTITLE).assert(hasText("Bot · online"))
+        rule.onAllNodesWithTag(ProfileHeaderTags.TILE)[0].assert(hasText("GPT-6"))
+    }
+
+    @Test
     fun materialBarAndQuickActionsInOrder() {
         show(claudeSession())
         val bar = rule.node(HeaderTags.BAR).bounds
@@ -175,7 +241,7 @@ class SessionInfoScreenTest {
         val back = rule.node(HeaderTags.LEFT).bounds
         val title = rule.node(HeaderTags.TITLE).bounds
         assertTrue("title after back, at the start", title.left >= back.right && title.left < (PHONE_WIDTH / 4).dp)
-        rule.onNodeWithText("Fix the build").assertExists()
+        rule.node(HeaderTags.TITLE).assert(hasText("Fix the build"))
         val order = listOf(
             SessionInfoTags.CHANGES, SessionInfoTags.MACHINE, SessionInfoTags.FORK, SessionInfoTags.DUPLICATE,
             SessionInfoTags.ARCHIVE, SessionInfoTags.DELETE,
@@ -442,7 +508,7 @@ class SessionInfoScreenTest {
     @Test
     fun sessionInfoReadsForTalkBack() {
         show(claudeSession(), live = SessionInfoLive(composer = ComposerMirror(permissionMode = "bypassPermissions")))
-        rule.onNode(isHeading(), useUnmergedTree = true).assertExists()
+        rule.onNode(hasText("Fix the build") and isHeading() and hasAnyAncestor(hasTestTag(ProfileHeaderTags.NAME)), useUnmergedTree = true).assertExists()
         rule.onNode(hasText("Changes") and hasRole(Role.Button)).assertExists()
         rule.onNodeWithTag(SessionInfoTags.SKIP_PERMISSIONS).performScrollTo()
             .assert(hasText("Dangerously Skip Permissions") and hasText("Enabled"))

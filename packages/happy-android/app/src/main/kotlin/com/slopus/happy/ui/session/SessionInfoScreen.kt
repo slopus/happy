@@ -98,6 +98,8 @@ data class SessionInfoLive(
     val gitStatus: GitStatus? = null,
     val gitStatusFiles: GitStatusFiles? = null,
     val composer: ComposerMirror = ComposerMirror(),
+    /** Home's resolved session picture, including its Happy Agent project's fallback. */
+    val avatar: com.slopus.happy.model.ProjectAvatar? = null,
 )
 
 /**
