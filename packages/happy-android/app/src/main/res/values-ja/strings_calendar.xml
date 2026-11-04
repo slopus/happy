@@ -14,4 +14,31 @@
     <string name="calendar_truncated">最初の5,000件のみ表示されます。期間を短くしてください。</string>
     <plurals name="calendar_more"><item quantity="other">他%1$d件</item></plurals>
     <plurals name="calendar_event_count"><item quantity="other">%1$d件の予定</item></plurals>
+    <string name="calendar_event">予定</string>
+    <string name="calendar_new_event">新しい予定</string>
+    <string name="calendar_delete_event">予定を削除しますか？</string>
+    <string name="calendar_delete_message">この予定は削除されます。</string>
+    <string name="calendar_series_delete">この繰り返しのすべての予定が削除されます。</string>
+    <string name="calendar_series_edit">この繰り返しのすべての予定を変更します</string>
+    <string name="calendar_starts">開始</string>
+    <string name="calendar_ends">終了</string>
+    <string name="calendar_time_zone">タイムゾーン</string>
+    <string name="calendar_location">場所</string>
+    <string name="calendar_notes">メモ</string>
+    <string name="calendar_invalid">日時、タイムゾーン、繰り返し設定を確認してください。</string>
+    <string name="calendar_save_failed">変更を保存できませんでした。もう一度お試しください。</string>
+    <string name="calendar_conflict">この予定は別の場所で変更されました</string>
+    <string name="calendar_use_updated">更新された予定を使用</string>
+    <string name="calendar_deleted_elsewhere">この予定は別の場所で削除されました。</string>
+    <string name="calendar_repeat">繰り返し</string>
+    <string name="calendar_repeat_none">なし</string>
+    <string name="calendar_repeat_interval">間隔</string>
+    <string name="calendar_repeat_end">繰り返しの終了</string>
+    <string name="calendar_repeat_forever">終了しない</string>
+    <string name="calendar_repeat_until">指定日</string>
+    <string name="calendar_repeat_count">予定の回数</string>
+    <string name="calendar_repeat_daily">毎日</string>
+    <string name="calendar_repeat_weekly">毎週</string>
+    <string name="calendar_repeat_monthly">毎月</string>
+    <string name="calendar_repeat_yearly">毎年</string>
 </resources>

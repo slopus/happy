@@ -14,4 +14,31 @@
     <string name="calendar_truncated">僅顯示前5,000次行程。請選擇較短的時段。</string>
     <plurals name="calendar_more"><item quantity="other">另有%1$d項</item></plurals>
     <plurals name="calendar_event_count"><item quantity="other">%1$d項行程</item></plurals>
+    <string name="calendar_event">行程</string>
+    <string name="calendar_new_event">新增行程</string>
+    <string name="calendar_delete_event">刪除行程？</string>
+    <string name="calendar_delete_message">此行程將被刪除。</string>
+    <string name="calendar_series_delete">此系列中的所有行程都將被刪除。</string>
+    <string name="calendar_series_edit">變更此系列中的所有行程</string>
+    <string name="calendar_starts">開始</string>
+    <string name="calendar_ends">結束</string>
+    <string name="calendar_time_zone">時區</string>
+    <string name="calendar_location">地點</string>
+    <string name="calendar_notes">備註</string>
+    <string name="calendar_invalid">請檢查日期、時區和重複設定。</string>
+    <string name="calendar_save_failed">無法儲存變更。請再試一次。</string>
+    <string name="calendar_conflict">此行程已在其他地方變更</string>
+    <string name="calendar_use_updated">使用更新後的行程</string>
+    <string name="calendar_deleted_elsewhere">此行程已在其他地方刪除。</string>
+    <string name="calendar_repeat">重複</string>
+    <string name="calendar_repeat_none">不重複</string>
+    <string name="calendar_repeat_interval">間隔</string>
+    <string name="calendar_repeat_end">結束重複</string>
+    <string name="calendar_repeat_forever">永不結束</string>
+    <string name="calendar_repeat_until">指定日期</string>
+    <string name="calendar_repeat_count">行程次數</string>
+    <string name="calendar_repeat_daily">每天</string>
+    <string name="calendar_repeat_weekly">每週</string>
+    <string name="calendar_repeat_monthly">每月</string>
+    <string name="calendar_repeat_yearly">每年</string>
 </resources>

@@ -14,4 +14,31 @@
     <string name="calendar_truncated">Wyświetlono tylko pierwsze 5000 wystąpień. Wybierz krótszy okres.</string>
     <plurals name="calendar_more"><item quantity="one">+%1$d więcej</item><item quantity="few">+%1$d więcej</item><item quantity="many">+%1$d więcej</item><item quantity="other">+%1$d więcej</item></plurals>
     <plurals name="calendar_event_count"><item quantity="one">%1$d wydarzenie</item><item quantity="few">%1$d wydarzenia</item><item quantity="many">%1$d wydarzeń</item><item quantity="other">%1$d wydarzenia</item></plurals>
+    <string name="calendar_event">Wydarzenie</string>
+    <string name="calendar_new_event">Nowe wydarzenie</string>
+    <string name="calendar_delete_event">Usunąć wydarzenie?</string>
+    <string name="calendar_delete_message">To wydarzenie zostanie usunięte.</string>
+    <string name="calendar_series_delete">Wszystkie wydarzenia z tej serii zostaną usunięte.</string>
+    <string name="calendar_series_edit">Zmienia wszystkie wydarzenia z tej serii</string>
+    <string name="calendar_starts">Początek</string>
+    <string name="calendar_ends">Koniec</string>
+    <string name="calendar_time_zone">Strefa czasowa</string>
+    <string name="calendar_location">Miejsce</string>
+    <string name="calendar_notes">Notatki</string>
+    <string name="calendar_invalid">Sprawdź daty, strefę czasową i powtarzanie.</string>
+    <string name="calendar_save_failed">Nie udało się zapisać zmiany. Spróbuj ponownie.</string>
+    <string name="calendar_conflict">To wydarzenie zmieniono w innym miejscu</string>
+    <string name="calendar_use_updated">Użyj aktualnego wydarzenia</string>
+    <string name="calendar_deleted_elsewhere">To wydarzenie usunięto w innym miejscu.</string>
+    <string name="calendar_repeat">Powtarzaj</string>
+    <string name="calendar_repeat_none">Nigdy</string>
+    <string name="calendar_repeat_interval">Co</string>
+    <string name="calendar_repeat_end">Koniec powtarzania</string>
+    <string name="calendar_repeat_forever">Nigdy</string>
+    <string name="calendar_repeat_until">Do dnia</string>
+    <string name="calendar_repeat_count">Liczba wydarzeń</string>
+    <string name="calendar_repeat_daily">Codziennie</string>
+    <string name="calendar_repeat_weekly">Co tydzień</string>
+    <string name="calendar_repeat_monthly">Co miesiąc</string>
+    <string name="calendar_repeat_yearly">Co rok</string>
 </resources>

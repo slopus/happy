@@ -14,4 +14,31 @@
     <string name="calendar_truncated">Només es mostren les primeres 5.000 ocurrències. Tria un període més curt.</string>
     <plurals name="calendar_more"><item quantity="one">+%1$d més</item><item quantity="many">+%1$d més</item><item quantity="other">+%1$d més</item></plurals>
     <plurals name="calendar_event_count"><item quantity="one">%1$d esdeveniment</item><item quantity="many">%1$d esdeveniments</item><item quantity="other">%1$d esdeveniments</item></plurals>
+    <string name="calendar_event">Esdeveniment</string>
+    <string name="calendar_new_event">Esdeveniment nou</string>
+    <string name="calendar_delete_event">Vols suprimir l\'esdeveniment?</string>
+    <string name="calendar_delete_message">Se suprimirà aquest esdeveniment.</string>
+    <string name="calendar_series_delete">Se suprimiran tots els esdeveniments d\'aquesta sèrie.</string>
+    <string name="calendar_series_edit">Canvia tots els esdeveniments d\'aquesta sèrie</string>
+    <string name="calendar_starts">Inici</string>
+    <string name="calendar_ends">Final</string>
+    <string name="calendar_time_zone">Fus horari</string>
+    <string name="calendar_location">Ubicació</string>
+    <string name="calendar_notes">Notes</string>
+    <string name="calendar_invalid">Revisa les dates, el fus horari i la repetició.</string>
+    <string name="calendar_save_failed">No s\'ha pogut desar el canvi. Torna-ho a provar.</string>
+    <string name="calendar_conflict">Aquest esdeveniment ha canviat en un altre lloc</string>
+    <string name="calendar_use_updated">Utilitza l\'esdeveniment actualitzat</string>
+    <string name="calendar_deleted_elsewhere">Aquest esdeveniment s\'ha suprimit en un altre lloc.</string>
+    <string name="calendar_repeat">Repeteix</string>
+    <string name="calendar_repeat_none">Mai</string>
+    <string name="calendar_repeat_interval">Cada</string>
+    <string name="calendar_repeat_end">Final de la repetició</string>
+    <string name="calendar_repeat_forever">Mai</string>
+    <string name="calendar_repeat_until">En una data</string>
+    <string name="calendar_repeat_count">Nombre d\'esdeveniments</string>
+    <string name="calendar_repeat_daily">Diàriament</string>
+    <string name="calendar_repeat_weekly">Setmanalment</string>
+    <string name="calendar_repeat_monthly">Mensualment</string>
+    <string name="calendar_repeat_yearly">Anualment</string>
 </resources>

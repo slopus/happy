@@ -59,7 +59,7 @@ import java.time.format.DateTimeFormatter
 /** Desktop calendar controls in the native grouped-card screen, with a chosen-day agenda on phones. */
 @Composable
 internal fun CalendarScreen(state: CalendarFeed.State, name: String, zone: ZoneId, onRange: (CalendarWindow) -> Unit,
-    onBack: () -> Unit, onEvent: (CalendarItem) -> Unit, actions: @Composable RowScope.() -> Unit = {}) {
+    onBack: () -> Unit, onEvent: (CalendarItem) -> Unit, onNewEvent: ((LocalDate) -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
     var chosenDay by rememberSaveable { mutableStateOf(LocalDate.now(zone).toEpochDay()) }
     var week by rememberSaveable { mutableStateOf(false) }
     val chosen = LocalDate.ofEpochDay(chosenDay)
@@ -83,6 +83,7 @@ internal fun CalendarScreen(state: CalendarFeed.State, name: String, zone: ZoneI
         if (week) "${window.firstDate.format(format)} – ${window.firstDate.plusDays(6).format(format)}" else chosen.format(format)
     }
     PlaceScaffold(name, onBack, tag = "calendar.screen", actions = {
+        if (onNewEvent != null) BarIconButton(Ionicon.Add, stringResource(R.string.calendar_new_event), { onNewEvent(chosen) }, Modifier.testTag("calendar.new"))
         CalendarViewMenu(week) { week = it }
         actions()
     }) {

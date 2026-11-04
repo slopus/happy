@@ -14,4 +14,31 @@
     <string name="calendar_truncated">仅显示前5,000次日程。请选择更短的时段。</string>
     <plurals name="calendar_more"><item quantity="other">另有%1$d项</item></plurals>
     <plurals name="calendar_event_count"><item quantity="other">%1$d项日程</item></plurals>
+    <string name="calendar_event">日程</string>
+    <string name="calendar_new_event">新建日程</string>
+    <string name="calendar_delete_event">删除日程？</string>
+    <string name="calendar_delete_message">此日程将被删除。</string>
+    <string name="calendar_series_delete">此系列中的所有日程都将被删除。</string>
+    <string name="calendar_series_edit">更改此系列中的所有日程</string>
+    <string name="calendar_starts">开始</string>
+    <string name="calendar_ends">结束</string>
+    <string name="calendar_time_zone">时区</string>
+    <string name="calendar_location">地点</string>
+    <string name="calendar_notes">备注</string>
+    <string name="calendar_invalid">请检查日期、时区和重复设置。</string>
+    <string name="calendar_save_failed">无法保存更改。请重试。</string>
+    <string name="calendar_conflict">此日程已在其他地方更改</string>
+    <string name="calendar_use_updated">使用更新后的日程</string>
+    <string name="calendar_deleted_elsewhere">此日程已在其他地方删除。</string>
+    <string name="calendar_repeat">重复</string>
+    <string name="calendar_repeat_none">不重复</string>
+    <string name="calendar_repeat_interval">间隔</string>
+    <string name="calendar_repeat_end">结束重复</string>
+    <string name="calendar_repeat_forever">永不结束</string>
+    <string name="calendar_repeat_until">指定日期</string>
+    <string name="calendar_repeat_count">日程次数</string>
+    <string name="calendar_repeat_daily">每天</string>
+    <string name="calendar_repeat_weekly">每周</string>
+    <string name="calendar_repeat_monthly">每月</string>
+    <string name="calendar_repeat_yearly">每年</string>
 </resources>

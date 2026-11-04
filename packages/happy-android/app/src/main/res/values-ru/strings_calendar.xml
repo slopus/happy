@@ -14,4 +14,31 @@
     <string name="calendar_truncated">Показаны только первые 5 000 вхождений. Выберите меньший период.</string>
     <plurals name="calendar_more"><item quantity="one">Ещё %1$d</item><item quantity="few">Ещё %1$d</item><item quantity="many">Ещё %1$d</item><item quantity="other">Ещё %1$d</item></plurals>
     <plurals name="calendar_event_count"><item quantity="one">%1$d событие</item><item quantity="few">%1$d события</item><item quantity="many">%1$d событий</item><item quantity="other">%1$d события</item></plurals>
+    <string name="calendar_event">Событие</string>
+    <string name="calendar_new_event">Новое событие</string>
+    <string name="calendar_delete_event">Удалить событие?</string>
+    <string name="calendar_delete_message">Это событие будет удалено.</string>
+    <string name="calendar_series_delete">Все события этой серии будут удалены.</string>
+    <string name="calendar_series_edit">Изменяет все события этой серии</string>
+    <string name="calendar_starts">Начало</string>
+    <string name="calendar_ends">Конец</string>
+    <string name="calendar_time_zone">Часовой пояс</string>
+    <string name="calendar_location">Место</string>
+    <string name="calendar_notes">Заметки</string>
+    <string name="calendar_invalid">Проверьте даты, часовой пояс и настройки повторения.</string>
+    <string name="calendar_save_failed">Не удалось сохранить изменение. Повторите попытку.</string>
+    <string name="calendar_conflict">Событие изменено в другом месте</string>
+    <string name="calendar_use_updated">Использовать обновлённое событие</string>
+    <string name="calendar_deleted_elsewhere">Событие удалено в другом месте.</string>
+    <string name="calendar_repeat">Повтор</string>
+    <string name="calendar_repeat_none">Никогда</string>
+    <string name="calendar_repeat_interval">Интервал</string>
+    <string name="calendar_repeat_end">Конец повторения</string>
+    <string name="calendar_repeat_forever">Никогда</string>
+    <string name="calendar_repeat_until">До даты</string>
+    <string name="calendar_repeat_count">Количество событий</string>
+    <string name="calendar_repeat_daily">Ежедневно</string>
+    <string name="calendar_repeat_weekly">Еженедельно</string>
+    <string name="calendar_repeat_monthly">Ежемесячно</string>
+    <string name="calendar_repeat_yearly">Ежегодно</string>
 </resources>

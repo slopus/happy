@@ -14,4 +14,31 @@
     <string name="calendar_truncated">Only the first 5,000 occurrences are shown. Choose a shorter range.</string>
     <plurals name="calendar_more"><item quantity="one">+%1$d more</item><item quantity="other">+%1$d more</item></plurals>
     <plurals name="calendar_event_count"><item quantity="one">%1$d event</item><item quantity="other">%1$d events</item></plurals>
+    <string name="calendar_event">Event</string>
+    <string name="calendar_new_event">New event</string>
+    <string name="calendar_delete_event">Delete event?</string>
+    <string name="calendar_delete_message">This event will be deleted.</string>
+    <string name="calendar_series_delete">Every event in this series will be deleted.</string>
+    <string name="calendar_series_edit">Changes all events in this series</string>
+    <string name="calendar_starts">Starts</string>
+    <string name="calendar_ends">Ends</string>
+    <string name="calendar_time_zone">Time zone</string>
+    <string name="calendar_location">Location</string>
+    <string name="calendar_notes">Notes</string>
+    <string name="calendar_invalid">Check the dates, time zone, and repeat settings.</string>
+    <string name="calendar_save_failed">The change could not be saved. Try again.</string>
+    <string name="calendar_conflict">This event changed elsewhere</string>
+    <string name="calendar_use_updated">Use updated event</string>
+    <string name="calendar_deleted_elsewhere">This event was deleted elsewhere.</string>
+    <string name="calendar_repeat">Repeat</string>
+    <string name="calendar_repeat_none">Never</string>
+    <string name="calendar_repeat_interval">Every</string>
+    <string name="calendar_repeat_end">Repeat ends</string>
+    <string name="calendar_repeat_forever">Never</string>
+    <string name="calendar_repeat_until">On date</string>
+    <string name="calendar_repeat_count">Number of events</string>
+    <string name="calendar_repeat_daily">Daily</string>
+    <string name="calendar_repeat_weekly">Weekly</string>
+    <string name="calendar_repeat_monthly">Monthly</string>
+    <string name="calendar_repeat_yearly">Yearly</string>
 </resources>

@@ -14,4 +14,31 @@
     <string name="calendar_truncated">Sono mostrate solo le prime 5.000 occorrenze. Scegli un periodo più breve.</string>
     <plurals name="calendar_more"><item quantity="one">+%1$d altro</item><item quantity="many">+%1$d altri</item><item quantity="other">+%1$d altri</item></plurals>
     <plurals name="calendar_event_count"><item quantity="one">%1$d evento</item><item quantity="many">%1$d eventi</item><item quantity="other">%1$d eventi</item></plurals>
+    <string name="calendar_event">Evento</string>
+    <string name="calendar_new_event">Nuovo evento</string>
+    <string name="calendar_delete_event">Eliminare l\'evento?</string>
+    <string name="calendar_delete_message">Questo evento verrà eliminato.</string>
+    <string name="calendar_series_delete">Tutti gli eventi di questa serie verranno eliminati.</string>
+    <string name="calendar_series_edit">Modifica tutti gli eventi di questa serie</string>
+    <string name="calendar_starts">Inizio</string>
+    <string name="calendar_ends">Fine</string>
+    <string name="calendar_time_zone">Fuso orario</string>
+    <string name="calendar_location">Luogo</string>
+    <string name="calendar_notes">Note</string>
+    <string name="calendar_invalid">Controlla le date, il fuso orario e la ripetizione.</string>
+    <string name="calendar_save_failed">Impossibile salvare la modifica. Riprova.</string>
+    <string name="calendar_conflict">Questo evento è stato modificato altrove</string>
+    <string name="calendar_use_updated">Usa evento aggiornato</string>
+    <string name="calendar_deleted_elsewhere">Questo evento è stato eliminato altrove.</string>
+    <string name="calendar_repeat">Ripeti</string>
+    <string name="calendar_repeat_none">Mai</string>
+    <string name="calendar_repeat_interval">Ogni</string>
+    <string name="calendar_repeat_end">Fine ripetizione</string>
+    <string name="calendar_repeat_forever">Mai</string>
+    <string name="calendar_repeat_until">In data</string>
+    <string name="calendar_repeat_count">Numero di eventi</string>
+    <string name="calendar_repeat_daily">Ogni giorno</string>
+    <string name="calendar_repeat_weekly">Ogni settimana</string>
+    <string name="calendar_repeat_monthly">Ogni mese</string>
+    <string name="calendar_repeat_yearly">Ogni anno</string>
 </resources>
