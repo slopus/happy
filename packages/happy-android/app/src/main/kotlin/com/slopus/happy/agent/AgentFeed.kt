@@ -166,6 +166,8 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
             intents: IntentOverlay = IntentOverlay(),
             /** The Feed's unread count; null where there is no Feed. */
             feedUnread: Int? = null,
+            /** Team members read so far ([TeamDirectory]), whose faces their tasks wear. */
+            users: Map<String, TeamUser> = emptyMap(),
         ): AgentFeed {
             if (!catalog.loaded) return Empty
             val removed = intents.removed
@@ -283,7 +285,18 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
                     val agentId = (task["agent"] as? JsonObject)?.string("id") ?: return@forEach
                     val id = task.string("id")
                     if (id != null && id in removed) return@forEach
-                    agentRows(agentId, id?.let(intents.titles::get) ?: task.string("name"), ConversationKind.Task, 0, seed = id ?: agentId)
+                    // In a team a task wears its author's face (iOS a2597f4d6): the person's own from the profile,
+                    // another member's as read, else that member's placeholder.
+                    val author = task.string("ownerUserId")?.takeIf { catalog.userId != null }
+                    val photo = when (author) {
+                        null -> null
+                        catalog.userId -> catalog.profilePhoto
+                        else -> users[author]?.photo
+                    }
+                    agentRows(
+                        agentId, id?.let(intents.titles::get) ?: task.string("name"), ConversationKind.Task, 0,
+                        picture = author?.takeIf { photo != null }?.let(TeamUser::photoPath), thumbhash = photo, seed = author ?: id ?: agentId,
+                    )
                 }
             }
             if (!catalog.projectsHidden) section(AgentFeedSection.Projects) {

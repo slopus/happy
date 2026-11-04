@@ -29,6 +29,8 @@ data class AgentCatalog(
     val surfaces: Map<String, JsonObject> = emptyMap(),
     /** The person this phone is paired for (`profile.userId`). */
     val userId: String? = null,
+    /** Their profile photo's ThumbHash, the bytes at `/v0/profile/photo`; null without one. */
+    val profilePhoto: String? = null,
     /**
      * The person's user settings by key, each the whole setting object as
      * the agent confirmed it (`key`, `value`, `updatedAt`, `version`); the
@@ -89,6 +91,11 @@ data class AgentCatalog(
 
     fun agent(id: String): WireAgent? = agents[id]?.let(::decodeAgent)
 
+    /** The person's profile as read again: its photo. */
+    fun withProfile(profile: JsonObject): AgentCatalog = photoOf(profile).let { if (it == profilePhoto) this else copy(profilePhoto = it) }
+
+    private fun photoOf(profile: JsonObject?): String? = (profile?.get("photo") as? JsonObject)?.string("thumbhash")
+
     /** The whole snapshot from `GET /v0/bootstrap/desktop`, replacing what was here. */
     fun withBootstrap(bootstrap: WireDesktopBootstrap): AgentCatalog {
         val index = HashMap<String, JsonObject>()
@@ -104,6 +111,7 @@ data class AgentCatalog(
             agents = index,
             surfaces = bootstrap.surfaces.orEmpty().mapNotNull { s -> s.string("id")?.let { it to s } }.toMap(),
             userId = bootstrap.profile?.string("userId"),
+            profilePhoto = photoOf(bootstrap.profile),
             // Merged by version rather than replaced: a snapshot read while a
             // write was answered never undoes the newer copy. Nothing is lost
             // that way, as a cleared setting stays a setting with a null value.
@@ -218,6 +226,8 @@ data class AgentCatalog(
                 val taskId = (data["membership"] as? JsonObject)?.string("taskId")
                 Applied(if (taskId == null) moved else moved.copy(memberships = memberships - taskId))
             }
+            // Standalone, the whole profile comes; a team's is only who changed ([withProfile] when read).
+            "profile.updated" -> Applied((data["profile"] as? JsonObject)?.let(moved::withProfile) ?: moved)
             // A whole setting, not a version-chained diff: the greater version wins.
             "user_settings.updated" -> Applied((data["setting"] as? JsonObject)?.let(moved::withSetting) ?: moved)
             // Who is in a Surface and where it sits in their list come only whole, with the snapshot (as iOS reads them).

@@ -185,12 +185,25 @@ class AgentSession internal constructor(
     /** A refusal the computer gave to something done here, for home's notice; it clears after [NOTICE_MILLIS]. */
     val notice: StateFlow<String?> = noticeState.asStateFlow()
 
+    /**
+     * The team members this phone shows (iOS's `users`): their tasks' authors
+     * on home, the Feed's people, todos' and documents' authors. Kept beside
+     * the catalog; none outside a team.
+     */
+    val team = TeamDirectory(
+        scope,
+        read = { ids -> client.teamUsers(ids) },
+        kept = { withContext(Dispatchers.IO) { cachedResource(TeamDirectory.RESOURCE) } },
+        keep = { value -> withContext(Dispatchers.IO) { keepResource(TeamDirectory.RESOURCE, value) } },
+    )
+
     /** Home's rows, derived off the main thread; equal rows keep their instances. */
     val feed: StateFlow<AgentFeed> = combine(
         catalogState, intents.pending, gitSnapshots,
         feedLibrary.state.map { if (it.available == true) it.unread else null }.distinctUntilChanged(),
-    ) { catalog, pending, git, feedUnread ->
-        AgentFeed.derive(catalog.withSurfaceIntents(pending), git = git, intents = IntentOverlay.of(pending), feedUnread = feedUnread)
+        team.users,
+    ) { catalog, pending, git, feedUnread, users ->
+        AgentFeed.derive(catalog.withSurfaceIntents(pending), git = git, intents = IntentOverlay.of(pending), feedUnread = feedUnread, users = users)
     }
         .distinctUntilChanged()
         .scan(null as AgentFeed?) { previous, next -> AgentFeed.reuse(previous, next) }
@@ -537,6 +550,8 @@ class AgentSession internal constructor(
     init {
         intents.handle(setOf(Intent.READ, Intent.ARCHIVE, Intent.LEAVE, Intent.RENAME, SURFACE_JOIN), ::deliver)
         feedLibrary.start()
+        // The members the listed tasks belong to, read as they are listed.
+        scope.launch { catalogState.map(TeamUser::authors).distinctUntilChanged().collect(team::want) }
         // Sent while the link is up; every connect sends what waits at once.
         scope.launch { statusState.collect { intents.setOnline(it == AgentLinkStatus.Connected) } }
         scope.launch {
@@ -705,6 +720,8 @@ class AgentSession internal constructor(
                         statusState.value = AgentLinkStatus.Connected
                         // Reads the Feed's newest page each time, so a gap loses nothing.
                         feedLibrary.connected()
+                        // Faces may have changed while away.
+                        team.connected()
                         gitRenewal.update { it + 1 }
                         onConnected()
                         // Every connect sends what was changed while offline.
@@ -717,6 +734,7 @@ class AgentSession internal constructor(
                         }
                         apply(event)
                         if (event.type.startsWith("feed.")) feedLibrary.receive(event)
+                        if (event.type == "profile.updated") profileChanged(event)
                     }
                     val listed = { agentId: String -> feed.value.conversations.any { it.agentId == agentId } }
                     if (completions.finished(event, catalogState.value, listed, System.currentTimeMillis()) != null) chime()
@@ -727,6 +745,27 @@ class AgentSession internal constructor(
             documents.closed()
             feedLibrary.disconnected()
             stream.close()
+        }
+    }
+
+    /**
+     * A profile changed (iOS `profileChanged`, `authorChanged`): standalone,
+     * the event carries it ([AgentCatalog.apply]); in a team it only names
+     * who, so the person's own is read again and another member's face too.
+     */
+    private fun profileChanged(event: AgentEvent) {
+        if (event.data["profile"] is JsonObject) return
+        val id = event.data.string("userId") ?: return
+        if (id != catalogState.value.userId) return team.changed(id)
+        scope.launch {
+            val profile = try {
+                client.decode<JsonObject>("GET", "/v0/profile")["profile"] as? JsonObject
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            } ?: return@launch
+            catalogLock.withLock { catalogState.update { it.withProfile(profile) } }
         }
     }
 
