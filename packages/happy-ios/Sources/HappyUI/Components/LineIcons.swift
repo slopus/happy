@@ -3,15 +3,10 @@ import HappyLayout
 import UIKit
 
 /// Lucide's line icons that happy-app's fonts don't have, drawn as strokes
-/// on Lucide's 24 grid: `zap` (a direct connection), `monitor`,
-/// `smartphone`, `cloud`, `database` and `router`.
+/// on Lucide's 24 grid: `zap` (a direct connection) and `monitor`.
 enum LineIcon {
     case zap
     case monitor
-    case smartphone
-    case cloud
-    case database
-    case router
 
     /// The outline on the 24 grid.
     var path: UIBezierPath {
@@ -31,38 +26,6 @@ enum LineIcon {
             rect(2, 3, 20, 14, radius: 2)
             line([(8, 21), (16, 21)])
             line([(12, 17), (12, 21)])
-        case .smartphone:
-            rect(5, 2, 14, 20, radius: 2)
-            line([(12, 18), (12.01, 18)])
-        case .cloud:
-            path.move(to: CGPoint(x: 17.5, y: 19))
-            path.addLine(to: CGPoint(x: 9, y: 19))
-            path.addArc(withCenter: CGPoint(x: 9, y: 12), radius: 7, startAngle: .pi / 2, endAngle: -16.6 * .pi / 180, clockwise: true)
-            path.addLine(to: CGPoint(x: 17.5, y: 10))
-            path.addArc(withCenter: CGPoint(x: 17.5, y: 14.5), radius: 4.5, startAngle: -.pi / 2, endAngle: .pi / 2, clockwise: true)
-            path.close()
-        case .database:
-            // Three stacked ellipses, 9 by 3, joined at the sides.
-            func lowerHalf(_ y: CGFloat) -> UIBezierPath {
-                let half = CGMutablePath()
-                half.addArc(center: .zero, radius: 1, startAngle: 0, endAngle: .pi, clockwise: false, transform: CGAffineTransform(translationX: 12, y: y).scaledBy(x: 9, y: 3))
-                return UIBezierPath(cgPath: half)
-            }
-            path.append(UIBezierPath(ovalIn: CGRect(x: 3, y: 2, width: 18, height: 6)))
-            line([(3, 5), (3, 19)])
-            line([(21, 5), (21, 19)])
-            path.append(lowerHalf(12))
-            path.append(lowerHalf(19))
-        case .router:
-            rect(2, 14, 20, 8, radius: 2)
-            line([(6.01, 18), (6, 18)])
-            line([(10.01, 18), (10, 18)])
-            line([(15, 10), (15, 14)])
-            // Two waves about (15, 10), as Lucide's arcs draw them.
-            for radius in [4, 8] as [CGFloat] {
-                let wave = UIBezierPath(arcCenter: CGPoint(x: 15, y: 10), radius: radius, startAngle: -.pi / 4, endAngle: -3 * .pi / 4, clockwise: false)
-                path.append(wave)
-            }
         }
         return path
     }

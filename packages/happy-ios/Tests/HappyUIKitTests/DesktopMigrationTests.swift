@@ -5,7 +5,7 @@ import HappyLayout
 import UIKit
 import XCTest
 
-/// The Happy CLI home's migration card and the section its screen opens.
+/// The Happy CLI home's migration card.
 @MainActor
 final class DesktopMigrationTests: XCTestCase {
     override func setUp() {
@@ -42,33 +42,6 @@ final class DesktopMigrationTests: XCTestCase {
         XCTAssertEqual(close.name, Strings.DesktopMigration.close)
         XCTAssertTrue(close.actionHandler?(close) ?? false)
         XCTAssertEqual(closed, 1)
-    }
-
-    /// Closed until its title is tapped; open, it measures its paragraphs
-    /// too, and each tap tells the host.
-    func testTheSectionOpensWhenTapped() throws {
-        let section = DisclosureSectionView(
-            title: "Running Happy on a server?",
-            paragraphs: ["In Happy Desktop, select the remote server.", "Ask Chief of Staff."],
-            titleStyle: TextStyles.checklistTitle,
-            style: TextStyles.startSlideBody,
-            titleColor: Palette.startText,
-            color: Palette.startTextSecondary,
-            identifier: "section"
-        )
-        var toggles = 0
-        section.onToggle = { toggles += 1 }
-        let closed = section.sizeThatFits(CGSize(width: 354, height: CGFloat.greatestFiniteMagnitude))
-        XCTAssertEqual(closed.height, 40)
-        let header = try XCTUnwrap(section.subviews.compactMap { $0 as? UIControl }.first)
-        XCTAssertEqual(header.accessibilityIdentifier, "section")
-        header.sendActions(for: .touchUpInside)
-        XCTAssertTrue(section.isExpanded)
-        XCTAssertEqual(toggles, 1)
-        XCTAssertGreaterThan(section.sizeThatFits(CGSize(width: 354, height: CGFloat.greatestFiniteMagnitude)).height, closed.height)
-        header.sendActions(for: .touchUpInside)
-        XCTAssertFalse(section.isExpanded)
-        XCTAssertEqual(toggles, 2)
     }
 }
 #endif

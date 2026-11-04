@@ -144,10 +144,10 @@ final class HomeRendererHarness {
     }
 }
 
-/// `-desktopCard show|open|bottom|scan|server|close`: shows the migration
-/// card and presses its own controls, as a finger would, once home has
-/// drawn it: none, the card, then Scan QR code on the screen it opens, its
-/// foot scrolled to, or its server section opened; or the card's ×.
+/// `-desktopCard show|open|bottom|scan|close`: shows the migration card and
+/// presses its own controls, as a finger would, once home has drawn it:
+/// none, the card, then Scan QR code on the screen it opens, or its foot
+/// scrolled to; or the card's ×.
 @MainActor
 enum DesktopCardScript {
     static func run(_ script: String, in window: UIWindow) {
@@ -156,14 +156,12 @@ enum DesktopCardScript {
             if script == "show" { return }
             if script == "close" { card.close.sendActions(for: .touchUpInside); return }
             card.sendActions(for: .touchUpInside)
-            guard script != "open", let list = await find(DisclosureSectionView.self, in: window)?.superview as? UIScrollView else { return }
+            guard script != "open", let list = await find(StepNumberView.self, in: window)?.superview as? UIScrollView else { return }
             try? await Task.sleep(for: .seconds(1))
             if script == "bottom" {
                 list.setContentOffset(CGPoint(x: 0, y: max(0, list.contentSize.height - list.bounds.height)), animated: false)
             } else if script == "scan" {
                 list.subviews.compactMap { $0 as? RoundButton }.first?.sendActions(for: .touchUpInside)
-            } else if script == "server", let section = first(DisclosureSectionView.self, in: list) {
-                section.subviews.compactMap { $0 as? UIControl }.first?.sendActions(for: .touchUpInside)
             }
         }
     }

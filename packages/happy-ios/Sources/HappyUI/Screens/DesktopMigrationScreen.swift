@@ -46,10 +46,9 @@ enum DesktopMigrationCard {
 /// What the Happy CLI home's card opens, for its path, in the first-run
 /// screens' look (`InstallDesktopViewController`): their Grain Gradient
 /// under a clear bar, the path's picture, a slide's title and line, the
-/// before and after picture (agent connection only), the steps in their words, and
-/// their Scan QR code (the one Add flow, `AccountAdding`, whose scanner
-/// reads the code Happy Desktop shows) with Learn more and the server's
-/// case (closed until asked for) under it. `MigrationScreenLayout` places
+/// steps in their words (a server's case last), and their Scan QR code (the
+/// one Add flow, `AccountAdding`, whose scanner reads the code Happy
+/// Desktop shows) with Learn more under it. `MigrationScreenLayout` places
 /// it.
 final class DesktopMigrationViewController: UIViewController {
     private typealias S = Strings.DesktopMigration
@@ -63,21 +62,9 @@ final class DesktopMigrationViewController: UIViewController {
     private let art: UIView
     private let titleLabel: StyledLabel
     private let bodyLabel: StyledLabel
-    /// Only on the agent connection path: on the desktop path the move is
-    /// the news.
-    private let diagram: ConnectionDiagramView?
     private let numbers: [StepNumberView]
     private let steps: [StyledLabel]
     private let links: [SiteLink?]
-    private let server = DisclosureSectionView(
-        title: Strings.DesktopMigration.serverTitle,
-        paragraphs: Strings.DesktopMigration.serverParagraphs,
-        titleStyle: TextStyles.checklistTitle,
-        style: TextStyles.startSlideBody,
-        titleColor: Palette.startText,
-        color: Palette.startTextSecondary,
-        identifier: "desktop-migration-server"
-    )
     private let scan = RoundButton(title: S.scan)
     private let learnMore = SiteLink(prefix: "", linked: S.learnMore, identifier: "desktop-migration-learn-more")
     private var busy = false {
@@ -90,12 +77,10 @@ final class DesktopMigrationViewController: UIViewController {
         switch path {
         case .desktop:
             art = StateSceneView(scene: .tv, size: MigrationScreenLayout.Metrics.art, replayLabel: Strings.Start.replay(path.title))
-            diagram = nil
         case .agentConnection:
             let zap = LineIconView(.zap, tint: Palette.startText)
             zap.weight = 1
             art = zap
-            diagram = ConnectionDiagramView()
         }
         titleLabel = StartGalleryView.titleLabel(path.title)
         bodyLabel = StartGalleryView.bodyLabel(path.body)
@@ -128,14 +113,13 @@ final class DesktopMigrationViewController: UIViewController {
         scroll.contentInsetAdjustmentBehavior = .never
         view.addSubview(scroll)
         titleLabel.decoration = StartGalleryView.noOrphan
-        server.onToggle = { [weak self] in self?.serverToggled() }
         scan.accessibilityIdentifier = "desktop-migration-scan"
         scan.onTap = { [weak self] in self?.startScan() }
         learnMore.onTap = { UIApplication.shared.open(S.learnMoreURL) }
         for link in links.compactMap({ $0 }) {
             link.onTap = { UIApplication.shared.open(Strings.Onboarding.desktopURL) }
         }
-        for subview in [art, titleLabel, bodyLabel] + [diagram].compactMap({ $0 }) + numbers + steps + links.compactMap({ $0 }) + [server, scan, learnMore] as [UIView] {
+        for subview in [art, titleLabel, bodyLabel] + numbers + steps + links.compactMap({ $0 }) + [scan, learnMore] as [UIView] {
             scroll.addSubview(subview)
         }
     }
@@ -148,10 +132,7 @@ final class DesktopMigrationViewController: UIViewController {
             safeArea: LayoutInsets(view.safeAreaInsets),
             title: titleLabel.measurable,
             body: bodyLabel.measurable,
-            diagram: diagram?.measurable,
             steps: zip(zip(numbers, steps), links).map { .init(number: $0.0.label.measurable, text: $0.1.measurable, link: $1?.label.measurable) },
-            section: server.measurable,
-            sectionHeader: server.closedMeasurable,
             button: button,
             learnMore: learnMore.label.measurable
         )
@@ -160,28 +141,14 @@ final class DesktopMigrationViewController: UIViewController {
         art.setLayoutFrame(layout.art)
         titleLabel.setLayoutFrame(layout.title)
         bodyLabel.setLayoutFrame(layout.body)
-        if let frame = layout.diagram { diagram?.setLayoutFrame(frame) }
         for (index, frames) in layout.steps.enumerated() {
             numbers[index].setLayoutFrame(frames.number)
             numbers[index].label.setLayoutFrame(frames.numberLabel)
             steps[index].setLayoutFrame(frames.text)
             if let link = frames.link { links[index]?.apply(link) }
         }
-        server.setLayoutFrame(layout.section)
         scan.setLayoutFrame(layout.button)
         learnMore.apply(layout.learnMore)
-    }
-
-    /// The server's section opened or closed: it grows or shrinks in place,
-    /// and opened, it is scrolled to.
-    private func serverToggled() {
-        UIView.animate(withDuration: 0.25) {
-            self.view.setNeedsLayout()
-            self.view.layoutIfNeeded()
-        } completion: { _ in
-            guard self.server.isExpanded else { return }
-            self.scroll.scrollRectToVisible(self.server.frame, animated: true)
-        }
     }
 
     /// The scanner; whatever it reads, `HappyScan` routes.

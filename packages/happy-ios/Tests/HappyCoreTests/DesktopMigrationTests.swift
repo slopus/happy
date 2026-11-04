@@ -48,7 +48,7 @@ final class DesktopMigrationTests: XCTestCase {
     func testEveryLanguageHasTheWords() {
         let english = TranslationCatalog.desktopMigrationSources["en"] ?? [:]
         XCTAssertEqual(Set(TranslationCatalog.desktopMigrationSources.keys), Set(AppLanguage.supported.map(\.code)))
-        XCTAssertEqual(english.count, 19)
+        XCTAssertEqual(english.count, 8)
         for language in AppLanguage.supported.map(\.code) {
             let words = TranslationCatalog.desktopMigrationSources[language] ?? [:]
             let catalog = TranslationCatalog.catalog(for: language)
@@ -61,7 +61,7 @@ final class DesktopMigrationTests: XCTestCase {
                 }
             }
             if language != "en" {
-                for key in ["native.desktopMigration.desktopTitle", "native.desktopMigration.agentConnectionBody", "native.desktopMigration.serverTitle"] {
+                for key in ["native.desktopMigration.desktopTitle", "native.desktopMigration.agentConnectionBody", "native.desktopMigration.serverStep"] {
                     XCTAssertNotEqual(words[key], english[key], "\(language) \(key) is English")
                 }
             }

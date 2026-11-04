@@ -6,10 +6,10 @@ import CoreGraphics
 /// The migration screen (DesktopMigrationViewController), in the first-run
 /// screens' look (`InstallDesktopLayout`): their column, 24 in from the safe
 /// area and at most 440 wide; the path's picture where their animated TV
-/// is; the title and its line centred in a slide's type; Scan QR code
-/// centred, as wide as its label (at least 200), Learn more and the
-/// server's section under it, closed at the foot of the window while
-/// everything fits; and a site's 40 tall target.
+/// is; the title and its line centred in a slide's type; the numbered
+/// steps; Scan QR code centred, as wide as its label (at least 200), and
+/// Learn more under it, at the foot of the window while everything fits;
+/// and a site's 40 tall target.
 ///
 ///     picture                        centred
 ///     16
@@ -17,19 +17,16 @@ import CoreGraphics
 ///     8
 ///     line                           centred
 ///     20
-///     before and after               the column's width (direct only)
-///     20
 ///     ① step                         the number's dot, then the words
 ///        Download from happy.engineering   (a step's link, under it)
 ///     12
 ///     ② step
+///     12
+///     ③ step
 ///     20 at least
 ///     Scan QR code                   centred
 ///     4
-///     Learn more                     centred
-///     8
-///     Running Happy on a server? ⌄   the column's width; closed, its foot
-///                                    on the safe area's; open, it scrolls
+///     Learn more                     centred, its foot on the safe area's
 ///
 /// Taller than the window, it scrolls, the button after the words.
 public struct MigrationScreenLayout: Equatable, Sendable {
@@ -49,7 +46,6 @@ public struct MigrationScreenLayout: Equatable, Sendable {
         public static let stepGap: CGFloat = 12
         public static let buttonGap: CGFloat = 20
         public static let learnMoreGap: CGFloat = 4
-        public static let serverGap: CGFloat = 8
         public static let buttonMinWidth: CGFloat = StartLayout.Metrics.buttonMinWidth
         /// A link's target, as a text action's (`TextActionLayout`).
         public static let linkMinHeight: CGFloat = TextActionLayout.Metrics.minHeight
@@ -86,16 +82,13 @@ public struct MigrationScreenLayout: Equatable, Sendable {
     public var art: CGRect
     public var title: CGRect
     public var body: CGRect
-    public var diagram: CGRect?
     public var steps: [StepFrames]
-    public var section: CGRect
     public var button: CGRect
     public var learnMore: Link
     public var contentHeight: CGFloat
 
     /// `safeArea` includes the bar. `button` is Scan QR code's own size.
-    /// `sectionHeader` is the server's section closed, `section` as it is.
-    public init(size: CGSize, safeArea: LayoutInsets, title: Measurable, body: Measurable, diagram: Measurable?, steps: [Step], section: Measurable, sectionHeader: Measurable, button buttonSize: CGSize, learnMore: Measurable) {
+    public init(size: CGSize, safeArea: LayoutInsets, title: Measurable, body: Measurable, steps: [Step], button buttonSize: CGSize, learnMore: Measurable) {
         typealias M = Metrics
         let width = max(0, size.width - safeArea.horizontal)
         let viewport = max(0, size.height - safeArea.vertical)
@@ -117,13 +110,6 @@ public struct MigrationScreenLayout: Equatable, Sendable {
         y = self.title.maxY + M.titleGap
         self.body = centred(body.size(fitting: column), y)
         y = self.body.maxY + M.sectionGap
-        if let diagram {
-            let frame = CGRect(x: x, y: y, width: column, height: diagram.height(fitting: column))
-            self.diagram = frame
-            y = frame.maxY + M.sectionGap
-        } else {
-            self.diagram = nil
-        }
         let textX = x + M.number + M.numberGap
         let textWidth = max(0, column - M.number - M.numberGap)
         var frames: [StepFrames] = []
@@ -144,13 +130,11 @@ public struct MigrationScreenLayout: Equatable, Sendable {
         let buttonWidth = min(column, max(M.buttonMinWidth, buttonSize.width))
         let learnSize = learnMore.size(fitting: max(0, column - M.linkPadding * 2))
         let learnHeight = max(M.linkMinHeight, learnSize.height)
-        let closed = sectionHeader.height(fitting: column)
-        let lowest = safeArea.top + viewport - closed - M.serverGap - learnHeight - M.learnMoreGap - buttonSize.height
+        let lowest = safeArea.top + viewport - learnHeight - M.learnMoreGap - buttonSize.height
         self.button = centred(CGSize(width: buttonWidth, height: buttonSize.height), max(y + M.buttonGap, lowest))
         var learn = makeLink(learnMore, x: 0, y: self.button.maxY + M.learnMoreGap, width: column - M.linkPadding * 2)
         learn.target.origin.x = x + (column - learn.target.width) / 2
         self.learnMore = learn
-        self.section = CGRect(x: x, y: learn.target.maxY + M.serverGap, width: column, height: section.height(fitting: column))
-        contentHeight = max(size.height, self.section.maxY + safeArea.bottom)
+        contentHeight = max(size.height, learn.target.maxY + safeArea.bottom)
     }
 }
