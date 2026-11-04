@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Leaving a Surface from an agent connection's home, and the agent chat's
-  jump to the newest message (ui/connection, ui/conversation). Not in
+  Leaving a Surface from an agent connection's home, the agent chat's
+  jump to the newest message and the document Surface's editor
+  (ui/connection, ui/conversation, ui/surfaces, ui/documents). Not in
   happy-app's catalogs; written here, with every supported language in its
   own values-*/strings_surfaces.xml.
 -->
@@ -22,4 +23,45 @@
 
     <!-- Desktop's missing Surface page: a Surface this computer doesn't know. -->
     <string name="surface_missing">This isn’t here. It may belong to a Happy Agent this one can’t reach.</string>
+
+    <!-- A document Surface (iOS Strings.Documents, desktop DocumentSurface): its bar, menu and status words. -->
+    <string name="document_untitled">Untitled</string>
+    <string name="document_saved">Saved</string>
+    <string name="document_saving">Saving…</string>
+    <string name="document_waiting">Waiting to sync</string>
+    <string name="document_unavailable">This document couldn’t be opened.</string>
+    <string name="document_markdown_only">Editing this document needs a newer Happy Agent.</string>
+    <string name="document_gone">This document is gone.</string>
+    <string name="document_refused">The agent didn’t take a change, so this document was read again.</string>
+    <string name="document_rename_title">Rename Document</string>
+    <string name="document_name">Name</string>
+
+    <!-- The formatting bar over the keyboard and its text style menu (iOS DocumentToolbar). -->
+    <string name="document_text_style">Text Style</string>
+    <string name="document_text">Text</string>
+    <string name="document_heading">Heading %1$d</string>
+    <string name="document_bold">Bold</string>
+    <string name="document_italic">Italic</string>
+    <string name="document_strike">Strikethrough</string>
+    <string name="document_code">Code</string>
+    <string name="document_link">Link</string>
+    <string name="document_bullets">Bulleted List</string>
+    <string name="document_numbers">Numbered List</string>
+    <string name="document_checklist">Checklist</string>
+    <string name="document_quote">Quote</string>
+    <string name="document_code_block">Code Block</string>
+    <string name="document_indent">Indent</string>
+    <string name="document_outdent">Outdent</string>
+    <string name="document_divider">Divider</string>
+    <string name="document_hide_keyboard">Hide Keyboard</string>
+
+    <!-- What TalkBack says of a line beyond its text (iOS Strings.Documents). -->
+    <string name="document_task_done">Done</string>
+    <string name="document_task_not_done">Not done</string>
+    <string name="document_picture">Picture</string>
+    <string name="document_table">Table</string>
+    <string name="document_unsupported">Something Happy can’t show here</string>
+
+    <!-- This phone's name for desktop's cursor label when the profile has none (iOS Strings.Documents.someone). -->
+    <string name="document_someone">Someone</string>
 </resources>

@@ -268,6 +268,11 @@ class DocumentSync internal constructor(
         if (save == DocumentSaveState.Saved) shutDown()
     }
 
+    /** [release] for a holder that can't wait for it, a screen going away: on this sync's own scope. */
+    fun releaseLater() {
+        scope.launch { release() }
+    }
+
     private fun follow() {
         following += scope.launch { for (update in localChannel) received(update) }
         following += scope.launch { for (presence in presenceChannel) setPresence(presence.state) }
