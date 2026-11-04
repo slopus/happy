@@ -513,6 +513,54 @@ class AgentSessionTest {
     private fun surfaces(session: AgentSession) = session.feed.value.rows.filterIsInstance<AgentFeedRow.Surface>().map { it.id }
 
     @Test
+    fun refreshingSurfacesMergesVersionsAndRetainsAccessibleUnjoinedInstances() = runBlocking {
+        agent.bootstrap = Wire.bootstrap(surfaces = listOf(Wire.surface("s1", "Groceries", "todo").with("version", "02"),
+            Wire.surface("s2", "Team notes", "document", mapOf("u2" to "1")).with("version", "01")))
+        agent.resources["/v0/surfaces"] = buildJsonObject { put("surfaces", kotlinx.serialization.json.JsonArray(listOf(
+            Wire.surface("s1", "Old title", "todo").with("version", "01"), Wire.surface("s3", "Launch", "todo").with("version", "01")))) }
+        val session = sessions().session(id)!!
+        eventually({ session.surfaces.value.surfaces.size }) { it == 2 }
+        assertTrue(session.refreshSurfaces())
+        eventually({ session.surfaces.value.surfaces.size }) { it == 3 }
+        assertEquals("Groceries", session.surfaces.value["s1"]?.name)
+        assertEquals("Team notes", session.surfaces.value["s2"]?.name)
+    }
+
+    @Test
+    fun aSurfaceWrittenDuringRefreshCannotBeRolledBackByThatRead() = runBlocking {
+        agent.bootstrap = Wire.bootstrap(surfaces = listOf(Wire.surface("s1", "Groceries", "todo").with("version", "01")))
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val session = sessions(transport = { object : Transport by agent {
+            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
+                if (path != "/v0/surfaces") return agent.request(method, path, credential, body, headers, category)
+                val response = if (method == "GET") {
+                    started.complete(Unit); release.await()
+                    buildJsonObject { put("surfaces", kotlinx.serialization.json.JsonArray(listOf(Wire.surface("s1", "Older read", "todo").with("version", "02")))) }
+                } else buildJsonObject { put("surface", Wire.surface("s1", "Latest answer", "todo").with("version", "03")) }
+                return TransportResponse(200, body = response.toString().toByteArray())
+            }
+        } }).session(id)!!
+        eventually({ session.surfaces.value.loaded }) { it }
+        val reading = async { session.refreshSurfaces() }
+        started.await()
+        session.createSurface("todo", "Latest answer", "s1")
+        release.complete(Unit)
+        assertTrue(reading.await())
+        eventually({ session.surfaces.value["s1"]?.name }) { it == "Latest answer" }
+        assertEquals("03", session.surfaces.value["s1"]?.version)
+    }
+
+    @Test
+    fun unsupportedSurfaceRefreshLeavesTheKeptCatalogAvailable() = runBlocking {
+        agent.bootstrap = Wire.bootstrap(surfaces = listOf(Wire.surface("s1", "Groceries", "todo")))
+        val session = sessions().session(id)!!
+        eventually({ session.surfaces.value.loaded }) { it }
+        assertFalse(session.refreshSurfaces())
+        assertEquals("Groceries", session.surfaces.value["s1"]?.name)
+    }
+
+    @Test
     fun leavingASurfaceTakesItsRowAtOnceAndAsksTheAgent(): Unit = runBlocking {
         val gate = CompletableDeferred<Unit>()
         val bodies = mutableListOf<String>()

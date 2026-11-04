@@ -458,6 +458,29 @@ class AgentSession internal constructor(
         return Surface.parse(surface) ?: throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
     }
 
+    /**
+     * Refresh the Surface catalog for the lists' pull gesture. A journal or
+     * local Surface change during the read wins; its snapshot cannot roll
+     * that change back. Merge by resource version and retain accessible
+     * instances omitted by older daemons' joined-only response.
+     * False means this daemon has no Surface routes (404/501).
+     */
+    suspend fun refreshSurfaces(): Boolean {
+        val before = catalogLock.withLock { catalogState.value }
+        val body = try { client.decode<JsonObject>("GET", "/v0/surfaces") }
+        catch (error: AgentApiException) { if (error.status == 404 || error.status == 501) return false else throw error }
+        val rows = body["surfaces"] as? JsonArray ?: throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
+        val surfaces = rows.map { it as? JsonObject ?: throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse) }
+        if (surfaces.any { Surface.parse(it) == null }) throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
+        catalogLock.withLock {
+            catalogState.update { current ->
+                if (current.cursor != before.cursor || current.surfaces !== before.surfaces) current
+                else surfaces.fold(current) { catalog, surface -> catalog.withSurface(surface) }
+            }
+        }
+        return true
+    }
+
     /** A bot as `POST /v0/bots` answered: home lists it before `bot.created` comes. */
     fun upsertBot(bot: JsonObject) {
         catalogState.update { it.withResource("bot", bot) }
