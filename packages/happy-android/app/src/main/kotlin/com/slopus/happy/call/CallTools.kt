@@ -26,8 +26,8 @@ enum class CallTool(val wire: String) {
 
     /** The client tool's description, as the hosted agent shows it to the model. */
     val summary: String get() = when (this) {
-        ListSessions -> "List the person's conversations (tasks, bots and chats) with their targetRef, title, kind and status. query keeps those whose title contains it as a case-insensitive substring. Page with nextCursor."
-        GetSessionContext -> "Read one conversation: whether it is working or needs the person, its last two finished turns (the person's message and the agent's final answer), and the person's latest message if nothing has answered it yet. It doesn't open the conversation or change what you hear from."
+        ListSessions -> "List the conversations the person sees in the app (bots, tasks, subtasks and project conversations), in the sidebar's order, with their targetRef, title, kind, status and parents (the titles of what each sits under). query keeps those whose title contains it as a case-insensitive substring. Page with nextCursor."
+        GetSessionContext -> "Read one conversation: whether it is working or needs the person, and its last five turns, each the person's message and the agent's last words, or as much of the pair as there is; the person's latest message, if nothing has answered it yet, is the fifth (pendingUserMessage). It doesn't open the conversation or change what you hear from."
         OpenSession -> "Show a conversation on the person's screen. Like any conversation they open, it joins the four most recently visited, whose new replies you hear."
         SendMessage -> "Send the person's message to a conversation's agent, exactly as given (at most 8 KiB of UTF-8). It doesn't open the conversation. \"queued\" means queued on the person's device, not confirmed delivered or read; after \"uncertain\", never send it again."
     }

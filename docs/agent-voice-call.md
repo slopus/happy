@@ -209,7 +209,9 @@ a task the person left). iOS reads it from the same rows home draws
 (`SidebarRows`, then the spaces sidebar's for anything not there yet;
 `CallTarget.list`); a conversation is a bot or a task by its row's
 `targetKind`, a subtask when it sits under another conversation, else a
-project's conversation. Each is named by the sidebar's own label, whatever
+project's conversation. Android reads home's rows the same way
+(`AgentFeed`, `CallTarget.from`): a project's or worktree's folder is a
+heading, Surfaces, Artifacts and todos are skipped. Each is named by the sidebar's own label, whatever
 it is: "New Task", "New Bot" or "Untitled" too. The tools reach any of
 them, by reference, whether or not the person opened it; there is no list
 of the call's own. The agent reads it as indented lines:
@@ -235,8 +237,8 @@ the context pairs them (`listSessions` aside, which is a directory query).
 
 **How the directory changes.** A change to the sidebar (something came,
 went, moved or was renamed; a status alone is none) is due one second
-after the first such change (`CallContext.Limits.settle`, iOS
-`DirectorySettle`); later changes never put that off. Then the sidebar is
+after the first such change (`CallContext.Limits.settle`,
+`DirectorySettle` on both); later changes never put that off. Then the sidebar is
 read again, as it is then, and if that isn't what the agent last had, it
 goes whole:
 
@@ -308,9 +310,9 @@ next step in that run completes nothing. The agent's last words in its
 newest run while it still works never go, however long it pauses. Each
 piece goes once: a status change, a refresh or the same state again sends
 nothing. A piece longer than 4 KB goes cut there, with `"truncated":true`.
-(Android still sends the earlier streaming events: `assistant_text` deltas
-at most every 0.5 s with `final`, and `assistant_text_reset`, by
-`target`. Its rework is on hold.)
+Android has no run on a row: there a turn's rows come together with its
+end after them, so its words are of that run, and words with a step after
+them (a tool call, a picture, more words, a failure, the end) are complete.
 
 Nothing else: no tool calls or results, no working, run, status or
 needs-input changes, no messages of the person's, and no prompt asking the
@@ -339,9 +341,7 @@ with no message of the person's only the agent's words, one an error ended
 its `error`. The person's latest message, when no finished turn answers it
 yet, is the fifth, labelled `pendingUserMessage`, so then four finished
 turns come with it. Each text is cut at 4 KB, and the whole within 32 KB
-(iOS; the oldest turns give way, `olderTurns` says more exist). Android
-still gives the last two finished turns that answered or failed, plus
-`pendingUserMessage`, and its directory is still the JSON rows of before.
+(the oldest turns give way, `olderTurns` says more exist).
 
 `queued` is not a receipt. A message the call sent that later fails to
 reach the computer shows as `pendingUserMessage.delivery: "failed"` on the
@@ -373,7 +373,7 @@ Use a new, versioned agent. Leave the relay's agent (`sendMessageToSession`,
 - Overrides: none needed. The app sends no prompt, first message or
   language, only the one dynamic variable.
 - Dynamic variable: `initialConversationContext` (a string). It holds a JSON
-  snapshot (`schema` 2 on iOS): the directory as text, the conversation on
+  snapshot (`schema` 2): the directory as text, the conversation on
   screen with its last five turns, and `focusRevision`. It is limited to
   32 KB.
 - Client tools: exactly the four below, each with "Wait for response" on and
@@ -384,8 +384,8 @@ Use a new, versioned agent. Leave the relay's agent (`sendMessageToSession`,
 
 ### System prompt
 
-This is the prompt for the agent's next version, written for iOS's
-updates as above. The hosted agent is not changed from the app or this
+This is the prompt for the agent's next version, written for the
+updates as above (iOS and Android send the same). The hosted agent is not changed from the app or this
 repo; until someone puts this in its dashboard, it runs the prompt it has.
 The live check below ran against that, unchanged.
 
@@ -441,29 +441,15 @@ First message: optional (for example "Hi, Happy here."). Language: auto.
 
 Paste each object into the dashboard's client-tool JSON editor, or send them
 through the agents API. Names, descriptions and parameters must stay exactly
-as they are here: they are `CallTool` on Android, and an Android unit test
-(`CallContextTest.theDocsHoldTheseToolsExactly`) fails if this page and the
-code differ. iOS's `CallTool.parameters` are the same. Two of iOS's
-descriptions (`CallTool.summary`) have moved on, for the agent's next
-version alongside the prompt above; Android's follow when its rework does:
-
-- listSessions: "List the conversations the person sees in the app (bots,
-  tasks, subtasks and project conversations), in the sidebar's order, with
-  their targetRef, title, kind, status and parents (the titles of what each
-  sits under). query keeps those whose title contains it as a
-  case-insensitive substring. Page with nextCursor."
-- getSessionContext: "Read one conversation: whether it is working or needs
-  the person, and its last five turns, each the person's message and the
-  agent's last words, or as much of the pair as there is; the person's
-  latest message, if nothing has answered it yet, is the fifth
-  (pendingUserMessage). It doesn't open the conversation or change what you
-  hear from."
+as they are here: they are `CallTool` on iOS and Android, and an Android unit
+test (`CallContextTest.theDocsHoldTheseToolsExactly`) fails if this page and
+the code differ.
 
 ```json
 {
   "type": "client",
   "name": "listSessions",
-  "description": "List the person's conversations (tasks, bots and chats) with their targetRef, title, kind and status. query keeps those whose title contains it as a case-insensitive substring. Page with nextCursor.",
+  "description": "List the conversations the person sees in the app (bots, tasks, subtasks and project conversations), in the sidebar's order, with their targetRef, title, kind, status and parents (the titles of what each sits under). query keeps those whose title contains it as a case-insensitive substring. Page with nextCursor.",
   "expects_response": true,
   "response_timeout_secs": 10,
   "parameters": {
@@ -487,7 +473,7 @@ version alongside the prompt above; Android's follow when its rework does:
 {
   "type": "client",
   "name": "getSessionContext",
-  "description": "Read one conversation: whether it is working or needs the person, its last two finished turns (the person's message and the agent's final answer), and the person's latest message if nothing has answered it yet. It doesn't open the conversation or change what you hear from.",
+  "description": "Read one conversation: whether it is working or needs the person, and its last five turns, each the person's message and the agent's last words, or as much of the pair as there is; the person's latest message, if nothing has answered it yet, is the fifth (pendingUserMessage). It doesn't open the conversation or change what you hear from.",
   "expects_response": true,
   "response_timeout_secs": 10,
   "parameters": {

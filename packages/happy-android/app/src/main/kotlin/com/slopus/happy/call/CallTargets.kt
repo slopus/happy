@@ -9,15 +9,27 @@ import com.slopus.happy.conversation.ConversationState
 import com.slopus.happy.conversation.Delivery
 import com.slopus.happy.conversation.FailureReason
 
-/** One conversation a call can talk about: a bot, a task or another conversation of the connection the call is bound to. */
+/**
+ * One conversation a call can talk about, as home lists it (iOS's
+ * `CallTarget`, the sidebar's): a bot, a task, a subtask under any of them,
+ * or a project's conversation. The call sees what the person sees, nothing
+ * more and nothing less.
+ */
 data class CallTarget(
     val agentId: String,
+    /** Home's label, whatever it is: "New Task" or "Untitled" too. */
     val title: String,
     val kind: Kind,
-    val project: String? = null,
     val status: Status,
+    val parents: List<Parent> = emptyList(),
 ) {
-    enum class Kind(val wire: String) { Bot("bot"), Task("task"), Conversation("conversation") }
+    enum class Kind(val wire: String) {
+        Bot("bot"),
+        Task("task"),
+        Subtask("subtask"),
+        /** A project's or a worktree's own conversation. */
+        Conversation("conversation"),
+    }
 
     enum class Status(val wire: String) {
         Running("running"),
@@ -27,29 +39,82 @@ data class CallTarget(
         Idle("idle"),
     }
 
+    /** What a conversation sits under on home, outermost first: a project or a worktree heading, or the conversation a subtask is of. */
+    data class Parent(
+        /** Home's row key, unique among the rows. */
+        val id: String,
+        val title: String,
+        /** `project` or `workspace` for a heading, else the conversation's kind. */
+        val kind: String,
+        /** The conversation's, for one; null for a heading. */
+        val agentId: String? = null,
+    )
+
     companion object {
-        /** Home's conversations, each once, in its order. */
+        /**
+         * The labels home shows for work nobody has named yet: the
+         * computer's, until the first message names it, and the rows' own
+         * for none.
+         */
+        val placeholders = setOf("", "New Task", "New Bot", "Untitled")
+
+        /** Longest a title goes into the call, in UTF-8. */
+        const val TITLE_BYTES = 200
+
+        /**
+         * Every conversation home's rows open, in their order, once each (the
+         * first row wins), with what each sits under. Rows that open none
+         * (Surfaces, Artifacts, todos) are skipped; a project or a worktree is
+         * a heading.
+         */
         fun from(feed: AgentFeed): List<CallTarget> {
+            val result = ArrayList<CallTarget>()
             val seen = HashSet<String>()
-            return feed.rows.mapNotNull { row ->
-                val conversation = row as? AgentFeedRow.Conversation ?: return@mapNotNull null
-                if (!seen.add(conversation.agentId)) return@mapNotNull null
-                CallTarget(
-                    agentId = conversation.agentId,
-                    title = conversation.title.orEmpty(),
-                    kind = when (conversation.kind) {
+            val path = ArrayList<Pair<Int, Parent>>()
+            for (row in feed.rows) {
+                val depth = when (row) {
+                    is AgentFeedRow.Folder -> row.depth
+                    is AgentFeedRow.Conversation -> row.depth
+                    else -> {
+                        path.clear()
+                        continue
+                    }
+                }
+                while (path.isNotEmpty() && path.last().first >= depth) path.removeAt(path.lastIndex)
+                if (row is AgentFeedRow.Folder) {
+                    path += depth to Parent(row.key, clean(row.name), if (depth == 0) "project" else "workspace")
+                    continue
+                }
+                row as AgentFeedRow.Conversation
+                val target = CallTarget(
+                    agentId = row.agentId,
+                    title = clean(row.title ?: "Untitled"),
+                    kind = when (row.kind) {
                         ConversationKind.Bot -> Kind.Bot
                         ConversationKind.Task -> Kind.Task
-                        else -> Kind.Conversation
+                        ConversationKind.Subtask -> Kind.Subtask
+                        // A conversation under another's is its subtask.
+                        ConversationKind.Project -> if (path.lastOrNull()?.second?.agentId != null) Kind.Subtask else Kind.Conversation
                     },
                     status = when {
-                        conversation.blocked -> Status.NeedsInput
-                        conversation.waiting -> Status.Waiting
-                        conversation.working -> Status.Running
+                        row.blocked -> Status.NeedsInput
+                        row.waiting -> Status.Waiting
+                        row.working -> Status.Running
                         else -> Status.Idle
                     },
+                    parents = path.map { it.second },
                 )
+                path += depth to Parent(row.key, target.title, target.kind.wire, target.agentId)
+                if (seen.add(target.agentId)) result += target
             }
+            return result
+        }
+
+        /** A label on one line, without control characters, cut at [TITLE_BYTES]. */
+        fun clean(label: String): String {
+            // A line break, a tab or any other control character is a space.
+            val plain = buildString { label.codePoints().forEach { appendCodePoint(if (Character.getType(it) == Character.CONTROL.toInt()) ' '.code else it) } }
+            return CallContext.truncated(plain.trim(' '), TITLE_BYTES)
         }
     }
 }
@@ -60,9 +125,15 @@ data class CallMessage(
     val role: Role,
     val text: String,
     val time: Long? = null,
-    /** False while the agent is still writing it. */
+    /**
+     * The agent has gone on past it (a tool call, more words after one, a
+     * turn's end) or its run is over: what it says is complete. False for
+     * the agent's last words while it still works.
+     */
     val final: Boolean = true,
     val delivery: Delivery? = null,
+    /** The agent's run it is of, once that run has ended ([ConversationRow.TurnEnd.turn]); null in the run still going. */
+    val turn: String? = null,
 ) {
     enum class Role(val wire: String) { User("user"), Assistant("assistant") }
 
@@ -97,7 +168,7 @@ data class CallTurn(
  */
 data class CallTargetState(
     val target: CallTarget,
-    /** Every public message, the agent's still being written included (`final` false): what the live words are read from. */
+    /** Every public message, the agent's still being written included (`final` false). The agent's are its words between steps, one message each. */
     val messages: List<CallMessage> = emptyList(),
     val turns: List<CallTurn> = emptyList(),
     /** The person's latest message, when no finished turn answers it. */
@@ -113,12 +184,12 @@ data class CallTargetState(
     companion object {
         /**
          * A conversation's state as the call reads it: the person's and the
-         * agent's words only; the agent's last words while it works are not
-         * final. A question that waits is a flag, never its words. A run's
-         * rows come together, its turn end after them, so a turn is what
-         * came since the previous turn end: its first message of the
-         * person's, its answer, and the failure that ended it, worded by
-         * [failureText].
+         * agent's words only, each of the agent's text blocks its own message
+         * (its words between steps, as iOS has them). A question that waits is
+         * a flag, never its words. A run's rows come together, its turn end
+         * after them, so a turn is what came since the previous turn end: its
+         * first message of the person's, its answer, and the failure that
+         * ended it, worded by [failureText].
          */
         fun from(state: ConversationState, target: CallTarget, failureText: (FailureReason) -> String = { "" }): CallTargetState {
             val messages = ArrayList<CallMessage>()
@@ -127,7 +198,11 @@ data class CallTargetState(
             var failure: String? = null
             var pending: CallMessage? = null
             var needsInput = state.question != null
+            // The agent's words in the run still going, by index in [messages], and that run's last step.
+            val running = ArrayList<Int>()
+            var lastStep: ConversationRow? = null
             for (row in state.rows) {
+                if (row.isStep) lastStep = row
                 when (row) {
                     is ConversationRow.User -> if (row.text.isNotEmpty()) {
                         val delivery = when (row.delivery) {
@@ -143,18 +218,14 @@ data class CallTargetState(
                     is ConversationRow.Text -> {
                         val text = row.current
                         if (text.isEmpty()) continue
-                        // A message's text blocks are one message: keys are "<message>:<block>".
-                        val id = row.key.substringBeforeLast(':')
-                        val last = messages.lastOrNull()
-                        if (last != null && last.role == CallMessage.Role.Assistant && last.id == id) {
-                            messages[messages.lastIndex] = last.copy(text = last.text + "\n\n" + text)
-                        } else {
-                            messages += CallMessage(id, CallMessage.Role.Assistant, text)
-                        }
+                        running += messages.size
+                        messages += CallMessage(row.key, CallMessage.Role.Assistant, text)
                     }
                     is ConversationRow.Failure -> failure = failureText(row.reason)
                     is ConversationRow.TurnEnd -> {
                         turns += CallTurn(row.turn, asked, row.copyText, row.reason, failure.takeIf { row.reason == "error" })
+                        for (index in running) messages[index] = messages[index].copy(turn = row.turn)
+                        running.clear()
                         asked = null
                         failure = null
                         pending = null
@@ -163,9 +234,13 @@ data class CallTargetState(
                     else -> Unit
                 }
             }
-            if (state.working) {
-                val last = messages.lastIndex
-                if (last >= 0 && messages[last].role == CallMessage.Role.Assistant) messages[last] = messages[last].copy(final = false)
+            // The agent's words are complete once it went on past them in their run, or the run is over: only the
+            // run still going may end mid-block, and in it words with a step after them (a tool call, more words, a
+            // failure) are complete. Anything else after them, the person's message or another agent's, says nothing of that.
+            val last = lastStep
+            if (state.working && last is ConversationRow.Text) {
+                val index = messages.indexOfLast { it.role == CallMessage.Role.Assistant && it.id == last.key }
+                if (index >= 0 && index in running) messages[index] = messages[index].copy(final = false)
             }
             val status = when {
                 needsInput -> CallTarget.Status.NeedsInput
@@ -187,6 +262,13 @@ data class CallTargetState(
     }
 }
 
+/** What the agent itself does in a run: its words, a tool call and what it presented, the run's end or failure. */
+private val ConversationRow.isStep: Boolean get() = when (this) {
+    is ConversationRow.Text, is ConversationRow.Tool, is ConversationRow.Media, is ConversationRow.Artifact,
+    is ConversationRow.Failure, is ConversationRow.TurnEnd -> true
+    else -> false
+}
+
 sealed interface CallSendOutcome {
     /** Kept on this phone and on its way; the computer's answer comes later as a delivery update. */
     data object Queued : CallSendOutcome
@@ -199,7 +281,7 @@ sealed interface CallSendOutcome {
  * can name another account, an endpoint or a credential.
  */
 interface CallTargets {
-    /** Every conversation home lists, in its order. */
+    /** Every conversation home lists, in its order, with what each sits under. */
     suspend fun directory(): List<CallTarget>
     /** One conversation, read if it must be (a bounded page); null if the connection has none by that ID. */
     suspend fun state(agentId: String): CallTargetState?

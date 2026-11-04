@@ -12,6 +12,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.yield
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -33,9 +36,16 @@ data class CallUpdate(val context: List<String> = emptyList()) {
  * focus, and the last four conversations the person visited during the
  * call, which are the ones it hears from; it runs the four tools one at a
  * time. A visited conversation says only what its agent writes from then on,
- * as it comes, and an error that stopped it: never its tools, its state or
- * the person's messages. Every other conversation contributes its directory
- * row alone.
+ * each piece once it is complete and whole, and an error that stopped it:
+ * never its words as they stream, its tools, its state or the person's
+ * messages.
+ *
+ * The directory is home's: every bot, task, subtask and project
+ * conversation the person sees, in its order and nesting, as indented lines
+ * that give each its reference. What changes in it settles for a second
+ * ([Limits.SETTLE_MS]) and goes as the whole directory again. Updates name a
+ * conversation by its title and what it sits under, never by its reference,
+ * unless that alone leaves it unclear.
  *
  * All state lives on [lane], one coroutine at a time: like iOS's actor, a
  * wait inside a tool lets other changes in, so what was checked before a
@@ -50,20 +60,29 @@ class CallContext(
 ) {
     object Limits {
         const val TOTAL_BYTES = 32 * 1024
-        /** Finished turns a read shows: the person's message and the agent's final answer each. */
-        const val TURNS = 2
+        /**
+         * Turns a read shows, the person's message still waiting for an answer
+         * counted as one: each the person's message and the agent's last
+         * words, or as much of the pair as there is.
+         */
+        const val TURNS = 5
         const val MESSAGE_BYTES = 4 * 1024
         const val ERROR_BYTES = 1024
+        /** Conversations a directory snapshot shows, and its size. */
         const val DIRECTORY = 100
+        const val DIRECTORY_BYTES = 12 * 1024
+        /** One `directory_entries` event's size: the entries a snapshot couldn't show go in as many as they take, [PAGES] per update. */
+        const val ENTRIES_BYTES = 4 * 1024
+        const val PAGES = 2
         const val PAGE = 50
         /** Conversations the call hears from: the last ones visited, the one on screen included. */
         const val VISITED = 4
         /** The agent's messages looked at per change, newest last. */
         const val MESSAGES = 20
         const val TEXT_BYTES = 8 * 1024
-        /** A conversation's new words while its agent writes them, at most this often. */
-        const val STREAM_INTERVAL_MS = 500L
         const val TOOL_DEADLINE_MS = 8_000L
+        /** From the first change to the directory to the one update that tells it; later changes never put that off. */
+        const val SETTLE_MS = 1_000L
     }
 
     private val scope = CoroutineScope(SupervisorJob() + lane)
@@ -76,10 +95,19 @@ class CallContext(
     private var begun = false
     /** Newest first. */
     private val visited = ArrayList<String>()
-    private val directory = HashMap<String, CallTarget>()
-    private val removed = HashSet<String>()
+    /** Home's conversations as last seen, in order and by ID. */
+    private var entries: List<CallTarget> = emptyList()
+    private var directory: Map<String, CallTarget> = emptyMap()
+    /** The directory the agent last had whole: the first snapshot's, or the last `directory` event's. */
+    private var listed: List<Listing> = emptyList()
+    /** What the agent has been told each conversation is: by a directory snapshot, an entry or `listSessions`. */
+    private val told = HashMap<String, Listing>()
+    /** Each conversation as the first snapshot had it: one that differs since is news the agent must have. */
+    private var first: Map<String, Listing> = emptyMap()
+    /** News the snapshots couldn't show and no update has carried yet, in order ([moreDirectory]). */
+    private val owed = ArrayList<String>()
     private val heard = HashMap<String, Heard>()
-    private var updates = 0
+    private var spoken = 0
     /**
      * Sends whose answer the agent may not have had, by target and text: the
      * same words to the same conversation again go under the same ID, which
@@ -92,24 +120,23 @@ class CallContext(
     private var closed = false
 
     /**
-     * What the agent has of one visited conversation: the words of each of
-     * its agent's messages, those there when it was first seen counted as
-     * had, and the errors it knows of.
+     * What the agent has of one visited conversation: its agent's complete
+     * messages, those there when it was first seen counted as had, and the
+     * errors it knows of.
      */
     private class Heard(
-        var said: Map<String, Said> = emptyMap(),
+        val had: HashSet<String> = HashSet(),
+        /** The messages this call told of, with the event that told it, in the order told. */
+        val said: HashMap<String, Pair<Int, String>> = HashMap(),
         var errors: Set<String> = emptySet(),
-        /** The errors this call told of, by turn, with what it said. */
-        var told: Map<String, String?> = emptyMap(),
-        var at: Long = Long.MIN_VALUE / 2,
+        /** The errors this call told of, by turn, with the event that told it. */
+        var told: Map<String, String> = emptyMap(),
     )
 
-    /**
-     * [full]: at [Limits.MESSAGE_BYTES], nothing more of it goes. [final]: its
-     * end was told (or it was finished when first seen). [streamed]: words of
-     * it went during the call, the last time at this count of its updates.
-     */
-    private data class Said(val text: String, val full: Boolean, val final: Boolean, val streamed: Int? = null)
+    /** A conversation as the directory tells it: never its status. */
+    private data class Listing(val agentId: String, val title: String, val kind: CallTarget.Kind, val parents: List<CallTarget.Parent>) {
+        constructor(target: CallTarget) : this(target.agentId, target.title, target.kind, target.parents)
+    }
 
     /** The conversations the call hears from now, the latest visited first. */
     suspend fun followed(): List<String> = withContext(lane) { visited.toList() }
@@ -122,11 +149,12 @@ class CallContext(
 
     // The first snapshot
 
-    /** `initialConversationContext`, the hosted prompt's one variable: the directory, and the conversation on screen with its last two finished turns. */
+    /** `initialConversationContext`, the hosted prompt's one variable: the directory, and the conversation on screen with its last five turns. */
     suspend fun initial(): String = withContext(lane) {
         begun = true
-        val entries = targets.directory()
-        for (entry in entries) directory[entry.agentId] = entry
+        see(targets.directory())
+        listed = entries.map(::Listing)
+        first = listed.associateBy { it.agentId }
         val focused = targets.focused()
         focus = focused
         var state: CallTargetState? = null
@@ -135,19 +163,17 @@ class CallContext(
             state = targets.state(focused)?.also { if (heard[focused] == null) listen(it) }
         }
         val envelope = linkedMapOf<String, JsonElement>(
-            "schema" to JsonPrimitive(1),
+            "schema" to JsonPrimitive(2),
             "at" to JsonPrimitive(timestamp(now())),
             "tools" to JsonArray(CallTool.entries.map { JsonPrimitive(it.wire) }),
             "focusRevision" to JsonPrimitive(focusRevision),
         )
-        val rows = entries.take(Limits.DIRECTORY).map(::row).toMutableList()
-        var directoryTruncated = entries.size > Limits.DIRECTORY
         val turns = state?.let(::recent)?.toMutableList() ?: mutableListOf()
-        fun encode(): String {
+        var budget = Limits.DIRECTORY_BYTES
+        fun encode(telling: Boolean = false): String {
             val value = LinkedHashMap(envelope)
-            value["focus"] = state?.let { body(it, turns) } ?: JsonNull
-            value["directory"] = JsonArray(rows)
-            value["directoryTruncated"] = JsonPrimitive(directoryTruncated)
+            value["focus"] = state?.let { body(it, turns, address(it.target)) } ?: JsonNull
+            value["directory"] = JsonPrimitive(directoryText(budget, showing = state?.target, telling = telling))
             return CallJson.encode(JsonObject(value))
         }
         var text = encode()
@@ -156,43 +182,66 @@ class CallContext(
             turns.removeAt(0)
             text = encode()
         }
-        while (text.utf8Size() > Limits.TOTAL_BYTES && rows.isNotEmpty()) {
-            rows.removeAt(rows.lastIndex)
-            directoryTruncated = true
+        while (text.utf8Size() > Limits.TOTAL_BYTES && budget > 512) {
+            budget /= 2
             text = encode()
         }
-        text
+        encode(telling = true)
     }
 
     // What changes
 
     /**
-     * Home's conversations came, went or were renamed: silently, and not for
-     * a status, which a read gives. A conversation that went away can't be
-     * named again this call, and is no longer heard from.
+     * Home changed, a status maybe and nothing more. True when what the agent
+     * last had of the directory is no longer so: something came, went, moved
+     * or was renamed. Then [flushDirectory] is due once [Limits.SETTLE_MS] has
+     * passed since the first such change, and no later ([DirectorySettle]).
      */
-    suspend fun directoryChanged(entries: List<CallTarget>): CallUpdate = withContext(lane) {
+    suspend fun directoryChanged(now: List<CallTarget>): Boolean = withContext(lane) {
+        if (closed || !begun) return@withContext false
+        see(now)
+        entries.map(::Listing) != listed
+    }
+
+    /**
+     * The directory, settled: read again as it is now, and if it isn't what
+     * the agent last had, told whole (`directory`). What came and went before
+     * this says nothing; work nobody has named yet goes by home's own label.
+     * Entries a snapshot can't show that are new or changed since the last
+     * one follow in `directory_entries`, up to [Limits.PAGES] here and the
+     * rest in [moreDirectory]. A conversation that went away is no longer
+     * heard from, and its reference reaches it again only if it comes back.
+     */
+    suspend fun flushDirectory(): CallUpdate = withContext(lane) {
         if (closed || !begun) return@withContext CallUpdate()
-        val changed = ArrayList<JsonElement>()
-        val ids = entries.mapTo(HashSet()) { it.agentId }
-        for (entry in entries.take(Limits.DIRECTORY)) {
-            val old = directory.put(entry.agentId, entry)
-            if (old?.title != entry.title || old.kind != entry.kind || old.project != entry.project) changed += row(entry)
-        }
-        val gone = ArrayList<String>()
-        for (id in directory.keys.toList()) {
-            if (id in ids) continue
-            directory.remove(id)
-            removed += id
+        val now = targets.directory()
+        if (closed) return@withContext CallUpdate()
+        see(now)
+        for (id in visited.toList()) if (directory[id] == null) {
             visited.remove(id)
             heard.remove(id)
-            if (refs[id] != null) gone += ref(id)
         }
-        if (changed.isEmpty() && gone.isEmpty()) return@withContext CallUpdate()
-        val event = linkedMapOf<String, JsonElement>("event" to JsonPrimitive("directory"))
-        if (changed.isNotEmpty()) event["changed"] = JsonArray(changed)
-        if (gone.isNotEmpty()) event["removed"] = JsonArray(gone.sorted().map(::JsonPrimitive))
-        CallUpdate(context = listOf(CallJson.encode(JsonObject(event))))
+        told.keys.retainAll(directory.keys)
+        val listing = entries.map(::Listing)
+        if (listing == listed) return@withContext CallUpdate()
+        val before = listed.associateBy { it.agentId }
+        listed = listing
+        val text = directoryText(Limits.DIRECTORY_BYTES, telling = true)
+        owe(entries.filter { told[it.agentId] != Listing(it) && before[it.agentId] != Listing(it) }.map { it.agentId })
+        CallUpdate(listOf(event("event" to JsonPrimitive("directory"), "text" to JsonPrimitive(text))) + pages())
+    }
+
+    /** News of the directory no update has carried yet. */
+    suspend fun owesDirectory(): Boolean = withContext(lane) { owed.isNotEmpty() }
+
+    /**
+     * The next [Limits.PAGES] of what the directory owes; empty once all of
+     * it has gone. Each update stays well within what a call keeps waiting
+     * ([CallSession.PENDING_BYTES]): one that is lost anyway is put right by
+     * [resync], which owes it all again.
+     */
+    suspend fun moreDirectory(): CallUpdate = withContext(lane) {
+        if (closed) CallUpdate() else CallUpdate(pages())
     }
 
     /**
@@ -202,145 +251,268 @@ class CallContext(
      */
     suspend fun focusChanged(agentId: String?): CallUpdate = withContext(lane) {
         if (closed || agentId == focus) return@withContext CallUpdate()
+        // Newer than the directory as last seen: as home has it now.
+        if (agentId != null && directory[agentId] == null) {
+            see(targets.directory())
+            if (closed || agentId == focus) return@withContext CallUpdate()
+        }
+        moveFocus(agentId)
+    }
+
+    /** The focus moves, by the person or by `openSession`. A conversation the agent doesn't know as it is now is told first (`directory_entries`). */
+    private fun moveFocus(agentId: String?, telling: Boolean = true): CallUpdate {
+        if (closed || agentId == focus) return CallUpdate()
         focus = agentId
         focusRevision += 1
-        val event = linkedMapOf<String, JsonElement>(
-            "event" to JsonPrimitive("focus"),
-            "focusRevision" to JsonPrimitive(focusRevision),
-            "targetRef" to JsonNull,
-        )
+        val context = ArrayList<String>()
+        val event = linkedMapOf<String, JsonElement>("event" to JsonPrimitive("focus"), "focusRevision" to JsonPrimitive(focusRevision), "title" to JsonNull)
         if (agentId != null) {
             visit(agentId)
-            event["targetRef"] = JsonPrimitive(ref(agentId))
-            directory[agentId]?.let { event["title"] = JsonPrimitive(it.title) }
+            directory[agentId]?.let { entry ->
+                if (telling) context += tell(entry)
+                event.putAll(address(entry))
+            }
         }
-        CallUpdate(context = listOf(CallJson.encode(JsonObject(event))))
+        return CallUpdate(context + CallJson.encode(JsonObject(event)))
     }
 
     /**
-     * One visited conversation's newest state. The first one the call sees is
-     * what was there already, and says nothing; after it, only the agent's
-     * new words, at most every half second while it writes (`assistant_text`,
-     * the words since the last), a message rewritten rather than added to
-     * (`assistant_text_reset`, the whole of it), and a turn an error ended
-     * (`session_error`).
+     * One visited conversation's newest state. The first one the call sees
+     * is what was there already, and says nothing; after it, each of its
+     * agent's messages once it is complete ([CallMessage.final]), whole
+     * (`assistant_text`), never while it grows; and a turn an error ended
+     * (`session_error`). Nothing is told twice. A conversation the agent
+     * doesn't know as it is now (new, renamed) is told first.
      */
     suspend fun targetChanged(state: CallTargetState): CallUpdate = withContext(lane) { changed(state) }
 
     private fun changed(state: CallTargetState): CallUpdate {
         val id = state.target.agentId
-        if (closed || id !in visited) return CallUpdate()
+        // Gone from home, even before the directory settles: never told of again, and nothing about it goes.
+        if (closed || id !in visited || directory[id] == null) return CallUpdate()
         val known = heard[id] ?: run {
             listen(state)
             return CallUpdate()
         }
-        val at = now()
-        val due = !state.working || at - known.at >= Limits.STREAM_INTERVAL_MS
+        val address = address(state.target)
         val context = ArrayList<String>()
-        val said = known.said.toMutableMap()
-        var streamed = false
+        val ended = state.turns.mapTo(HashSet()) { it.id }
+        val last = HashMap<String, String>()
+        for (message in state.messages) if (message.role == CallMessage.Role.Assistant) message.turn?.let { last[it] = message.id }
         for (message in state.messages.takeLast(Limits.MESSAGES)) {
-            if (message.role != CallMessage.Role.Assistant) continue
-            var had = said[message.id] ?: Said("", full = false, final = false)
-            // Words to send, or the same words now finished: their end goes once.
-            if (!due || had.full || (message.text == had.text && (!message.final || had.final))) continue
-            updates += 1
-            val event = linkedMapOf<String, JsonElement>(
-                "target" to JsonPrimitive(ref(id)),
-                "messageId" to JsonPrimitive(message.id),
-                "final" to JsonPrimitive(message.final),
-            )
-            if (message.text.startsWith(had.text)) {
-                val room = (Limits.MESSAGE_BYTES - had.text.utf8Size()).coerceAtLeast(0)
-                var delta = message.text.substring(had.text.length)
-                var full = false
-                if (delta.utf8Size() > room) {
-                    delta = truncated(delta, room)
-                    full = true
-                    event["truncated"] = JsonPrimitive(true)
-                }
-                had = Said(had.text + delta, full, message.final, updates)
-                event["event"] = JsonPrimitive("assistant_text")
-                event["delta"] = JsonPrimitive(delta)
-            } else {
-                val text = truncated(message.text, Limits.MESSAGE_BYTES)
-                had = Said(text, text.length < message.text.length, message.final, updates)
-                event["event"] = JsonPrimitive("assistant_text_reset")
-                event["text"] = JsonPrimitive(text)
-                if (had.full) event["truncated"] = JsonPrimitive(true)
-            }
-            said[message.id] = had
-            streamed = true
-            context += CallJson.encode(JsonObject(event))
+            if (message.role != CallMessage.Role.Assistant || !message.final) continue
+            if (message.id in known.had || message.text.isEmpty()) continue
+            known.had += message.id
+            val text = truncated(message.text, Limits.MESSAGE_BYTES)
+            val event = LinkedHashMap(address)
+            event["event"] = JsonPrimitive("assistant_text")
+            event["text"] = JsonPrimitive(text)
+            if (text.length < message.text.length) event["truncated"] = JsonPrimitive(true)
+            // Its run is over and these were its last words.
+            val turn = message.turn
+            if (turn != null && turn in ended && last[turn] == message.id) event["finishedTurn"] = JsonPrimitive(true)
+            val line = CallJson.encode(JsonObject(event))
+            spoken += 1
+            known.said[message.id] = spoken to line
+            context += line
         }
-        if (streamed) known.at = at
-        val present = state.messages.mapTo(HashSet()) { it.id }
-        known.said = said.filterKeys { it in present }
         val told = known.told.toMutableMap()
         for (turn in state.turns) {
             if (turn.ended != "error" || turn.id in known.errors) continue
-            val reason = turn.error?.takeIf { it.isNotEmpty() }?.let { truncated(it, Limits.ERROR_BYTES) }
-            told[turn.id] = reason
-            context += stopped(id, reason)
+            val event = LinkedHashMap(address)
+            event["event"] = JsonPrimitive("session_error")
+            turn.error?.takeIf { it.isNotEmpty() }?.let { event["reason"] = JsonPrimitive(truncated(it, Limits.ERROR_BYTES)) }
+            val line = CallJson.encode(JsonObject(event))
+            told[turn.id] = line
+            context += line
         }
         known.errors = state.turns.filter { it.ended == "error" }.mapTo(HashSet()) { it.id }
         known.told = told.filterKeys { it in known.errors }
-        return CallUpdate(context)
+        if (context.isEmpty()) return CallUpdate()
+        return CallUpdate(tell(state.target) + context)
     }
 
     /**
      * The context waiting for the call was too much and went unsent
      * ([CallSession.PENDING_BYTES]): what the agent now has wrong is put right
-     * in one go, within half of [Limits.TOTAL_BYTES] so it never overflows the
-     * wait itself. The focus as it is now, marked `resync`, then the errors
-     * this call told of and each message it streamed, whole as far as it went
-     * (`assistant_text_reset`), the most recent kept first. What doesn't fit
+     * in one go. The directory as it is (its news beyond the snapshot owed,
+     * for [moreDirectory]), then the focus, marked `resync`, then the errors
+     * this call told of and each message it told, as it told it, the most
+     * recent kept first, within half of [Limits.TOTAL_BYTES]. What doesn't fit
      * is counted in `omitted`; a read (`getSessionContext`) has it.
      */
     suspend fun resync(): CallUpdate = withContext(lane) {
         if (closed) return@withContext CallUpdate()
+        told.clear()
+        listed = entries.map(::Listing)
+        val directoryEvent = event("event" to JsonPrimitive("directory"), "text" to JsonPrimitive(directoryText(Limits.DIRECTORY_BYTES, telling = true)))
+        // Every piece of news since the first snapshot that this one can't show is owed again, whatever was lost.
+        owe(entries.filter { told[it.agentId] == null && first[it.agentId] != Listing(it) }.map { it.agentId })
         val errors = ArrayList<String>()
         val streamed = ArrayList<Pair<Int, String>>()
         for (id in visited) {
             val known = heard[id] ?: continue
-            for ((messageId, said) in known.said) {
-                val at = said.streamed ?: continue
-                val event = linkedMapOf<String, JsonElement>(
-                    "event" to JsonPrimitive("assistant_text_reset"),
-                    "target" to JsonPrimitive(ref(id)),
-                    "messageId" to JsonPrimitive(messageId),
-                    "text" to JsonPrimitive(said.text),
-                    "final" to JsonPrimitive(said.final),
-                )
-                if (said.full) event["truncated"] = JsonPrimitive(true)
-                streamed += at to CallJson.encode(JsonObject(event))
-            }
-            for (turn in known.told.keys.sorted()) errors += stopped(id, known.told[turn])
+            streamed += known.said.values
+            for (turn in known.told.keys.sorted()) errors += known.told.getValue(turn)
         }
+        val items = errors + streamed.sortedByDescending { it.first }.map { it.second }
         val focusEvent = linkedMapOf<String, JsonElement>(
             "event" to JsonPrimitive("focus"),
             "focusRevision" to JsonPrimitive(focusRevision),
-            "targetRef" to JsonNull,
+            "title" to JsonNull,
             "resync" to JsonPrimitive(true),
         )
-        focus?.let { focused ->
-            focusEvent["targetRef"] = JsonPrimitive(ref(focused))
-            directory[focused]?.let { focusEvent["title"] = JsonPrimitive(it.title) }
+        var entry = emptyList<String>()
+        focus?.let { directory[it] }?.let { target ->
+            entry = tell(target)
+            focusEvent.putAll(address(target))
         }
+        val kept = ArrayList<String>()
         var bytes = CallJson.encode(JsonObject(focusEvent)).utf8Size() + 32
-        fun fits(item: String) = (bytes + item.utf8Size() + 1 <= Limits.TOTAL_BYTES / 2).also { if (it) bytes += item.utf8Size() + 1 }
-        val keptErrors = errors.filter(::fits)
-        // The most recent first while they fit, then oldest first, as they would have come.
-        val keptWords = streamed.sortedByDescending { it.first }.map { it.second }.filter(::fits).reversed()
-        val omitted = errors.size + streamed.size - keptErrors.size - keptWords.size
-        if (omitted > 0) focusEvent["omitted"] = JsonPrimitive(omitted)
-        CallUpdate(listOf(CallJson.encode(JsonObject(focusEvent))) + keptErrors + keptWords)
+        for (item in items) {
+            if (bytes + item.utf8Size() + 1 > Limits.TOTAL_BYTES / 2) continue
+            kept += item
+            bytes += item.utf8Size() + 1
+        }
+        if (kept.size < items.size) focusEvent["omitted"] = JsonPrimitive(items.size - kept.size)
+        // Oldest first, as they would have come.
+        val errorCount = kept.takeWhile { it in errors }.size
+        CallUpdate(listOf(directoryEvent) + entry + CallJson.encode(JsonObject(focusEvent)) + kept.take(errorCount) + kept.drop(errorCount).reversed())
     }
 
-    private fun stopped(agentId: String, reason: String?): String {
-        val event = linkedMapOf<String, JsonElement>("event" to JsonPrimitive("session_error"), "target" to JsonPrimitive(ref(agentId)))
-        reason?.let { event["reason"] = JsonPrimitive(it) }
-        return CallJson.encode(JsonObject(event))
+    // The directory
+
+    /** Home's conversations, as just read. */
+    private fun see(now: List<CallTarget>) {
+        entries = now
+        val byId = LinkedHashMap<String, CallTarget>()
+        for (entry in now) byId.putIfAbsent(entry.agentId, entry)
+        directory = byId
+    }
+
+    /**
+     * The directory as the agent reads it: a line for each conversation,
+     * indented under what it sits in, with its kind and reference; a project
+     * or a worktree a heading without one. Within [bytes] and
+     * [Limits.DIRECTORY] conversations, the rest counted at the end;
+     * [showing] goes after them when it was among the rest. [telling] marks
+     * each one shown as told.
+     */
+    private fun directoryText(bytes: Int, showing: CallTarget? = null, telling: Boolean): String {
+        val marker = 96
+        val all = lines(entries, "Conversation directory:", bytes - marker, Limits.DIRECTORY)
+        var text = all.text
+        val shown = all.shown.toMutableList()
+        val omitted = entries.size - all.taken
+        if (showing != null && showing.agentId !in shown) {
+            val extra = lines(listOf(showing), "\nOn screen:", Limits.ENTRIES_BYTES, 1)
+            text += extra.text
+            shown += extra.shown
+        }
+        if (omitted > 0) text += "\n… and $omitted more; listSessions finds them by title."
+        if (telling) for (id in shown) directory[id]?.let { told[id] = Listing(it) }
+        return text
+    }
+
+    /** [ids] owed from now, after what is owed already. */
+    private fun owe(ids: List<String>) {
+        for (id in ids) if (id !in owed) owed += id
+    }
+
+    /** The next [Limits.PAGES] of what is owed, as it is now: what went away, or was told since, is owed no longer. */
+    private fun pages(): List<String> {
+        val list = owed.mapNotNull { id -> directory[id]?.takeIf { told[id] != Listing(it) } }
+        val (events, rest) = entryEvents(list, Limits.PAGES)
+        owed.clear()
+        owed += rest.map { it.agentId }
+        return events
+    }
+
+    /**
+     * Entries the agent doesn't have as they are now, in `directory_entries`
+     * events of up to [Limits.ENTRIES_BYTES], each with what it sits under;
+     * [pages] of them at most, and the entries they didn't hold.
+     */
+    private fun entryEvents(list: List<CallTarget>, pages: Int = Int.MAX_VALUE): Pair<List<String>, List<CallTarget>> {
+        var rest = list
+        val events = ArrayList<String>()
+        while (rest.isNotEmpty() && events.size < pages) {
+            val made = lines(rest, "More of the conversation directory:", Limits.ENTRIES_BYTES, rest.size)
+            if (made.taken == 0) break
+            rest = rest.drop(made.taken)
+            for (id in made.shown) (list.firstOrNull { it.agentId == id } ?: directory[id])?.let { told[id] = Listing(it) }
+            events += event("event" to JsonPrimitive("directory_entries"), "text" to JsonPrimitive(made.text))
+        }
+        return events to rest
+    }
+
+    /** [entry] told as it is now, if the agent doesn't have it so. */
+    private fun tell(entry: CallTarget): List<String> = if (told[entry.agentId] == Listing(entry)) emptyList() else entryEvents(listOf(entry)).first
+
+    private class Lines(val text: String, val shown: List<String>, val taken: Int)
+
+    /**
+     * [list] as indented lines under [header], as many as fit, each with
+     * whatever it sits under that the lines before didn't show. The
+     * conversations shown, the ones they sit under included, by ID; the
+     * first [count] of [list] at most.
+     */
+    private fun lines(list: List<CallTarget>, header: String, bytes: Int, count: Int): Lines {
+        var text = header
+        var path = emptyList<String>()
+        val shown = ArrayList<String>()
+        var taken = 0
+        for (entry in list) {
+            if (taken >= count) break
+            val keys = entry.parents.map { it.agentId ?: it.id }
+            val common = path.zip(keys).takeWhile { (a, b) -> a == b }.size
+            var chunk = StringBuilder()
+            var under = ArrayList<String>()
+            var flat = false
+            entry.parents.forEachIndexed { depth, parent ->
+                if (depth < common) return@forEachIndexed
+                val indent = "  ".repeat(depth)
+                if (parent.agentId != null) {
+                    chunk.append("\n$indent${parent.title} [${parent.kind}; ref=${ref(parent.agentId)}]")
+                    under += parent.agentId
+                } else {
+                    chunk.append("\n$indent${parent.title} [${parent.kind}]")
+                }
+            }
+            val line = "${entry.title} [${entry.kind.wire}; ref=${ref(entry.agentId)}]"
+            chunk.append("\n${"  ".repeat(entry.parents.size)}$line")
+            // Sizes as the JSON that carries them: quotes, backslashes and control characters take more there.
+            if (taken == 0 && encoded(text) + encoded(chunk.toString()) > bytes) {
+                flat = true
+                // What it sits under too deep for the lines: on one of its own, cut to fit, the entry under it unindented.
+                val room = (bytes - encoded(text) - encoded(line) - 16).coerceAtLeast(0)
+                val trail = truncated(entry.parents.joinToString(" > ") { it.title }, room, ::encoded)
+                chunk = StringBuilder("\n(under $trail)\n$line")
+                under = ArrayList()
+            }
+            if (encoded(text) + encoded(chunk.toString()) > bytes) break
+            text += chunk
+            // Lines after a flat one show what they sit under again.
+            path = if (flat) emptyList() else keys + entry.agentId
+            shown += under
+            shown += entry.agentId
+            taken += 1
+        }
+        return Lines(text, shown, taken)
+    }
+
+    /**
+     * How updates name a conversation: its title and the titles of what it
+     * sits under, outermost first. Its reference too, only when those leave
+     * it unclear: another one is named the same under the same, or it has no
+     * name of its own yet ("New Task").
+     */
+    private fun address(target: CallTarget): LinkedHashMap<String, JsonElement> {
+        val parents = target.parents.map { it.title }
+        val value = linkedMapOf<String, JsonElement>("title" to JsonPrimitive(target.title), "parents" to JsonArray(parents.map(::JsonPrimitive)))
+        val twins = entries.count { it.title == target.title && it.parents.map { parent -> parent.title } == parents }
+        if (twins > 1 || target.title in CallTarget.placeholders) value["ref"] = JsonPrimitive(ref(target.agentId))
+        return value
     }
 
     // Tools
@@ -396,41 +568,46 @@ class CallContext(
                 val needle = query.trim().lowercase()
                 val start = (if (cursor.isEmpty()) 0 else cursor.toIntOrNull())?.takeIf { it >= 0 }
                     ?: return CallToolResult.refused("That isn't a cursor listSessions gave.")
-                val entries = targets.directory()
-                for (entry in entries) directory[entry.agentId] = entry
+                see(targets.directory())
                 val matching = if (needle.isEmpty()) entries else entries.filter { needle in it.title.lowercase() }
                 val page = matching.drop(start).take(Limits.PAGE)
+                // A directory query: what it gives, the agent has.
+                for (entry in page) told[entry.agentId] = Listing(entry)
                 val value = linkedMapOf<String, JsonElement>("sessions" to JsonArray(page.map(::row)))
                 if (start + page.size < matching.size) value["nextCursor"] = JsonPrimitive((start + page.size).toString())
                 CallToolResult.json(JsonObject(value))
             }
 
             CallTool.GetSessionContext -> {
-                val id = resolve(arguments["targetRef"])
-                val state = id?.let { targets.state(it) }
-                when {
-                    id == null -> CallToolResult.refused("No such conversation.")
-                    state == null -> CallToolResult.refused("That conversation can't be read now.")
-                    else -> CallToolResult.json(body(state, recent(state)))
+                val id = resolve(arguments["targetRef"]) ?: return CallToolResult.refused("No such conversation.")
+                val state = targets.state(id) ?: return CallToolResult.refused("That conversation can't be read now.")
+                // Within the snapshot's budget too: the oldest turns give way. Asked for by its reference, it is named by its title alone.
+                val name = linkedMapOf<String, JsonElement>(
+                    "title" to JsonPrimitive(state.target.title),
+                    "parents" to JsonArray(state.target.parents.map { JsonPrimitive(it.title) }),
+                )
+                val turns = recent(state).toMutableList()
+                var value = body(state, turns, name)
+                while (CallJson.encode(value).utf8Size() > Limits.TOTAL_BYTES && turns.isNotEmpty()) {
+                    turns.removeAt(0)
+                    value = body(state, turns, name)
                 }
+                CallToolResult.json(value)
             }
 
             CallTool.OpenSession -> {
-                val id = resolve(arguments["targetRef"])
-                when {
-                    id == null -> CallToolResult.refused("No such conversation.")
-                    revisionOf(arguments["focusRevision"]) != focusRevision -> STALE
-                    !targets.open(id) -> CallToolResult.refused("It didn't open.")
-                    else -> {
-                        // In front now as far as the call goes, with the revision the
-                        // next step takes. The screen says so too; whichever of the two
-                        // comes second says nothing.
-                        focusChanged(id)
-                        CallToolResult.json(JsonObject(mapOf(
-                            "opened" to JsonPrimitive(true), "targetRef" to JsonPrimitive(ref(id)), "focusRevision" to JsonPrimitive(focusRevision),
-                        )))
-                    }
-                }
+                val id = resolve(arguments["targetRef"]) ?: return CallToolResult.refused("No such conversation.")
+                if (revisionOf(arguments["focusRevision"]) != focusRevision) return STALE
+                // Past its deadline the answer is gone: nothing moves on screen after it.
+                if (closed) return CallToolResult.refused("No answer in time.")
+                if (!targets.open(id)) return CallToolResult.refused("It didn't open.")
+                // In front now as far as the call goes, with the revision the next step takes. The screen says so
+                // too; whichever of the two comes second says nothing. The agent named it by its reference, so it
+                // needs no telling.
+                moveFocus(id, telling = false)
+                CallToolResult.json(JsonObject(mapOf(
+                    "opened" to JsonPrimitive(true), "targetRef" to JsonPrimitive(ref(id)), "focusRevision" to JsonPrimitive(focusRevision),
+                )))
             }
 
             CallTool.SendMessage -> send(arguments, call)
@@ -468,10 +645,12 @@ class CallContext(
         "s${nextRef++}".also { agents[it] = agentId }
     }
 
-    private fun resolve(value: JsonElement?): String? {
+    /** The conversation a reference names, while home lists it: one that went away isn't reached, and is again if it comes back, under the same reference. */
+    private suspend fun resolve(value: JsonElement?): String? {
         val ref = (value as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return null
         val id = agents[ref] ?: return null
-        return id.takeIf { it !in removed }
+        see(targets.directory())
+        return id.takeIf { directory[it] != null }
     }
 
     /** [agentId] becomes the latest visited; the oldest past the limit is forgotten, so visiting it again starts from what is there then. */
@@ -483,17 +662,17 @@ class CallContext(
 
     /**
      * What is there when the call first sees a conversation is had: the
-     * agent's finished messages and the errors so far. A reply still being
-     * written is new, and goes from its start.
+     * agent's complete messages and the errors so far. One still being
+     * written is new, and goes once it is complete.
      */
     private fun listen(state: CallTargetState) {
         heard[state.target.agentId] = Heard(
-            said = state.messages.filter { it.role == CallMessage.Role.Assistant && it.final }
-                .associate { it.id to Said(it.text, it.text.utf8Size() >= Limits.MESSAGE_BYTES, final = true) },
+            had = state.messages.filter { it.role == CallMessage.Role.Assistant && it.final }.mapTo(HashSet()) { it.id },
             errors = state.turns.filter { it.ended == "error" }.mapTo(HashSet()) { it.id },
         )
     }
 
+    /** One of `listSessions`' answers. */
     private fun row(target: CallTarget): JsonObject {
         val value = linkedMapOf<String, JsonElement>(
             "targetRef" to JsonPrimitive(ref(target.agentId)),
@@ -501,12 +680,17 @@ class CallContext(
             "kind" to JsonPrimitive(target.kind.wire),
             "status" to JsonPrimitive(target.status.wire),
         )
-        target.project?.let { value["project"] = JsonPrimitive(it) }
+        if (target.parents.isNotEmpty()) value["parents"] = JsonArray(target.parents.map { JsonPrimitive(it.title) })
         return JsonObject(value)
     }
 
-    private fun body(state: CallTargetState, turns: List<CallTurn>): JsonObject {
-        val value = LinkedHashMap(row(state.target))
+    /**
+     * A conversation as read: [name], then whether it works or waits for the
+     * person, and its turns. Never its kind, status or reference beyond what
+     * [name] holds: the directory has those.
+     */
+    private fun body(state: CallTargetState, turns: List<CallTurn>, name: Map<String, JsonElement>): JsonObject {
+        val value = LinkedHashMap(name)
         value["working"] = JsonPrimitive(state.working)
         value["needsInput"] = JsonPrimitive(state.needsInput)
         value["turns"] = JsonArray(turns.map(::turn))
@@ -521,17 +705,25 @@ class CallContext(
         return JsonObject(value)
     }
 
+    private fun event(vararg fields: Pair<String, JsonElement>): String = CallJson.encode(JsonObject(linkedMapOf(*fields)))
+
     companion object {
         private val STALE = CallToolResult.refused("The screen changed since; check the focus again.")
 
         /** What "queued" is, in the result as well as the tool's description: told only the status, the agent says "sent". */
         const val QUEUED = "on the person's device, not confirmed delivered or read"
 
-        /** The last finished turns that answered or failed: what a read shows. */
-        fun recent(state: CallTargetState): List<CallTurn> = answering(state).takeLast(Limits.TURNS)
+        /** The last finished turns a read shows: five with the person's message still waiting for an answer, which is the fifth. */
+        fun recent(state: CallTargetState): List<CallTurn> =
+            answering(state).takeLast(if (state.unanswered == null) Limits.TURNS else Limits.TURNS - 1)
 
+        /**
+         * Finished turns with something to say: the person's message, the
+         * agent's last words, an error, or as much of that as there is. Never
+         * the agent's words between its steps.
+         */
         private fun answering(state: CallTargetState): List<CallTurn> =
-            state.turns.filter { !it.reply.isNullOrEmpty() || it.ended == "error" }
+            state.turns.filter { !it.user.isNullOrEmpty() || !it.reply.isNullOrEmpty() || it.ended == "error" }
 
         fun turn(turn: CallTurn): JsonObject {
             val value = linkedMapOf<String, JsonElement>("ended" to JsonPrimitive(turn.ended))
@@ -549,19 +741,39 @@ class CallContext(
             return JsonObject(value)
         }
 
-        /** The longest prefix of whole characters (code points) within [bytes] of UTF-8. */
-        fun truncated(text: String, bytes: Int): String {
-            if (text.utf8Size() <= bytes) return text
+        /** The longest prefix of whole characters (code points) within [bytes] of UTF-8, or of what [size] counts. */
+        fun truncated(text: String, bytes: Int, size: (String) -> Int = { it.utf8Size() }): String {
+            if (size(text) <= bytes) return text
             var count = 0
             var end = 0
             while (end < text.length) {
                 val point = text.codePointAt(end)
-                val size = String(Character.toChars(point)).utf8Size()
-                if (count + size > bytes) break
-                count += size
+                val next = size(String(Character.toChars(point)))
+                if (count + next > bytes) break
+                count += next
                 end += Character.charCount(point)
             }
             return text.substring(0, end)
+        }
+
+        /**
+         * [text]'s size inside a JSON string as [CallJson] writes it: a quote,
+         * a backslash and \n, \r, \t, \b, \f two bytes each, any other control
+         * character six, the rest its UTF-8.
+         */
+        fun encoded(text: String): Int {
+            var sum = 0
+            var index = 0
+            while (index < text.length) {
+                val point = text.codePointAt(index)
+                sum += when (point) {
+                    0x22, 0x5C, 0x0A, 0x0D, 0x09, 0x08, 0x0C -> 2
+                    in 0 until 0x20 -> 6
+                    else -> String(Character.toChars(point)).utf8Size()
+                }
+                index += Character.charCount(point)
+            }
+            return sum
         }
 
         fun timestamp(millis: Long): String = Instant.ofEpochSecond(millis / 1000).toString()
@@ -582,6 +794,80 @@ class CallContext(
         }
 
         private fun JsonObject.string(name: String): String? = (this[name] as? JsonPrimitive)?.takeIf { it.isString }?.content
+
+        /**
+         * What the directory owes, sent into [session] one bounded update at a
+         * time, only while the call is connected; what is left waits for the
+         * next call of this. Never past the call's end. Android's connection
+         * takes an update at once, in order ([CallConnection.update]), so one
+         * sent is one on its way: the next goes after it.
+         */
+        suspend fun drain(context: CallContext, session: CallSession) {
+            while (session.state.value is CallState.Active && context.owesDirectory()) {
+                val update = context.moreDirectory()
+                if (update.isEmpty || session.state.value !is CallState.Active) return
+                session.deliver(update)
+                yield()
+            }
+        }
+    }
+}
+
+/**
+ * A call's one directory update on its way ([CallContext.flushDirectory]):
+ * due [delayMillis] after the first change it tells, whatever comes after; a
+ * change after it has gone starts the next. Cancelled with its call's scope.
+ */
+class DirectorySettle(
+    private val scope: CoroutineScope,
+    private val delayMillis: Long = CallContext.Limits.SETTLE_MS,
+    private val flush: suspend () -> Unit,
+) {
+    private var waiting: Job? = null
+
+    /** The directory changed: the flush in [delayMillis], or the one already due. */
+    fun changed() {
+        if (waiting != null) return
+        waiting = scope.launch {
+            delay(delayMillis)
+            waiting = null
+            flush()
+        }
+    }
+
+    fun cancel() {
+        waiting?.cancel()
+        waiting = null
+    }
+}
+
+/**
+ * A call's one sender of what its directory owes ([CallContext.drain]):
+ * asked again while it runs, it goes round once more instead of starting a
+ * second, so no more than one of it runs at a time. Cancelled with its
+ * call's scope.
+ */
+class DirectoryDrain(private val scope: CoroutineScope, private val context: CallContext, private val session: CallSession) {
+    private var running: Job? = null
+    private var again = false
+
+    fun start() {
+        if (running != null) {
+            again = true
+            return
+        }
+        running = scope.launch {
+            do {
+                again = false
+                CallContext.drain(context, session)
+            } while (again)
+            running = null
+        }
+    }
+
+    fun cancel() {
+        running?.cancel()
+        running = null
     }
 }
 
