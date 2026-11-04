@@ -186,8 +186,6 @@ actor ChatPlanner {
         case .user:
             // Desktop's own message: the text as written (Figtree 16/24), lines and all, in
             // the accent bubble at the right, its photos under it, whole.
-            // Another person's stands at the left in a neutral bubble,
-            // under their name, with no delivery mark.
             // Only a ludicrous one, past `foldLines`, is cut there until
             // tapped open.
             // A file that is no picture or video is named under the words.
@@ -225,46 +223,18 @@ actor ChatPlanner {
             let ink = onMedia ? Palette.deliveryOnMedia : Palette.deliveryInk
             let time = MessageTime.text(item.time, ink: ink, in: environment)
             let status = MessageTime.status(time, in: environment)
-            let me = key.references.me
-            let other = item.sender.flatMap { me != nil && $0 != me ? $0 : nil }
-            // Instagram's story reply: "You replied" over the reader's own; over
-            // a teammate's, whose story it answers. The conversation's own
-            // agent's is the reader's (the phone doesn't read who owns a team task).
-            let note = item.story.map { story in
-                other == nil ? Strings.replied : story.userId.flatMap { $0 == me ? nil : Strings.repliedToStory(key.references.users[$0] ?? "") } ?? Strings.repliedToYourStory
-            }
-            let header: NSAttributedString? = (other != nil || note != nil) ? {
-                let line = NSMutableAttributedString(attributedString: ChatTextStyles.sender.string(other.map { key.references.users[$0] ?? "" } ?? Strings.you, color: Palette.text, lineBreakMode: .byTruncatingTail, in: environment))
-                if let note { line.append(ChatTextStyles.senderNote.string(" " + note, color: Palette.textSecondary, lineBreakMode: .byTruncatingTail, in: environment)) }
-                return line
-            }() : nil
             let layout = MessageLayout.user(
                 width: width, maxContentWidth: key.maxContentWidth, text: body?.measurable,
                 fold: body.map { _ in .init(preview: preview.measurable, control: control.measurable, opened: opened, lineHeight: ChatTextStyles.text.lineHeight ?? 24) },
                 // A refusal is the red mark in the slot, as Telegram's: no
                 // line under the bubble, so the row never grows when a send fails.
                 pictures: pictures.map(\.image), showsStatus: false,
-                delivery: other == nil ? status : nil, trailing: body?.trailing,
-                header: header.map { line in Measurable { _ in ChatTextLayout(unwrapped: line).size } }, quote: item.story != nil, leading: other != nil
+                delivery: status, trailing: body?.trailing
             )
             var items: [ChatDrawItem] = []
             var hits: [ChatHit] = []
-            if let header, let placed = layout.header {
-                items.append(.media(ChatMedia(key: MediaLoader.personKey(other ?? me ?? ""), isVideo: false, thumbhash: nil, label: "", cover: placed.avatar.width / 2), frame: placed.avatar))
-                items.append(.text(ChatTextLayout(header, width: placed.name.width, maxLines: 1), placed.name))
-            }
-            if let story = item.story, let placed = layout.quote {
-                items.append(.box(ChatBox(frame: placed.bar, fill: Palette.quoteBar, radius: placed.bar.width / 2)))
-                // The still, never played; without one, a quiet tile in its place.
-                if let frame = story.frame {
-                    items.append(.media(ChatMedia(key: MediaLoader.storyKey(item.id), isVideo: false, thumbhash: frame["thumbhash"]?.stringValue, label: Strings.picture, cover: ChatMediaView.radius), frame: placed.frame))
-                } else {
-                    items.append(.box(ChatBox(frame: placed.frame, fill: Palette.rowPressed, radius: ChatMediaView.radius)))
-                }
-            }
-            let fill = other == nil ? Palette.userBubble : Palette.surfacePressed
             if let bubble = layout.bubble {
-                items.append(.box(ChatBox(frame: bubble, fill: fill, radius: M.bubbleRadius)))
+                items.append(.box(ChatBox(frame: bubble, fill: Palette.userBubble, radius: M.bubbleRadius)))
                 if layout.foldControl != nil { hits.append(ChatHit(frame: bubble, action: .toggleTool(item.id))) }
                 else if failure { hits.append(ChatHit(frame: bubble, action: .retry(localId: item.id))) }
                 hits.append(ChatHit(frame: bubble, action: .copyMenu(text), hold: true))
@@ -299,8 +269,8 @@ actor ChatPlanner {
                 items += placed.items
                 if failure { hits.insert(ChatHit(frame: placed.mark.insetBy(dx: -8, dy: -8), action: .retry(localId: item.id)), at: 0) }
             }
-            let label = [header?.string, text, failure ? Strings.sendFailed : ""].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
-            let shape = layout.bubble.map { ChatBox(frame: $0, fill: fill, radius: M.bubbleRadius) }
+            let label = [text, failure ? Strings.sendFailed : ""].filter { !$0.isEmpty }.joined(separator: ", ")
+            let shape = layout.bubble.map { ChatBox(frame: $0, fill: Palette.userBubble, radius: M.bubbleRadius) }
                 ?? ChatBox(frame: layout.pictures.reduce(CGRect.null) { $0.union($1) })
             let flight = ChatRowFlight(bubble: shape, text: layout.text, status: layout.delivery, media: !pictures.isEmpty)
             let selection = layout.bubble.flatMap { bubble in

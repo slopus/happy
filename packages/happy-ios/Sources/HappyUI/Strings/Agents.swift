@@ -53,11 +53,6 @@ extension Strings {
     /// An agent this one spawned that has no title yet (`projectSubagents`).
     public static let subagent = "Subagent"
     public static let untitledAgent = "Untitled agent"
-    /// Over a story reply, after who wrote it: the reader's own is "You replied".
-    public static let you = "You"
-    public static let replied = "replied"
-    public static let repliedToYourStory = "Replied to your story"
-    public static func repliedToStory(_ name: String) -> String { "Replied to \(name)’s story" }
     public static let agentMessageOpenHint = "Shows the message"
     public static let agentMessageCloseHint = "Hides the message"
     /// A section's "+", for VoiceOver.

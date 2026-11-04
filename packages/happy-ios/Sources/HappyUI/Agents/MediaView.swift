@@ -148,8 +148,6 @@ final class ChatMediaView: UIView, UploadRingTile, DownloadShowing {
         picture.layer.removeAllAnimations()
         picture.alpha = 1
         picture.image = nil
-        if !fills { picture.contentMode = media?.cover == nil ? .scaleAspectFit : .scaleAspectFill }
-        if !fills { layer.cornerRadius = media?.cover ?? Self.radius; outline.layer.cornerRadius = layer.cornerRadius }
         accessibilityLabel = media?.label
         accessibilityTraits = media?.isVideo == true ? .button : .image
         accessibilityValue = Strings.mediaLoading

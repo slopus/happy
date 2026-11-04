@@ -1124,7 +1124,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             Task { await store.readArtifacts(pages) }
         }
         // So are the names of the people they mention.
-        let people = fresh.flatMap { references.unknownUsers(in: $0.text) + [$0.story?.userId, $0.sender].compactMap { $0 }.filter { references.users[$0] == nil } }
+        let people = fresh.flatMap { references.unknownUsers(in: $0.text) }
         if !people.isEmpty {
             let store = session.store
             Task { await store.readUsers(people) }

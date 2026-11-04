@@ -1,7 +1,6 @@
 #if canImport(UIKit)
 import AVFoundation
 import HappyCore
-import HappyLayout
 import os
 import UIKit
 import UniformTypeIdentifiers
@@ -26,8 +25,6 @@ final class MediaLoader: NSObject, ChatMediaSource {
     private var sent: [String: Data] = [:]
     /// Files still on their way, read from their copy on this phone.
     private var local: [String: ChatItem.SentFile] = [:]
-    /// Story replies' messages by their frame's key.
-    private var stories: [String: String] = [:]
     private var streams: [String: MediaStream] = [:]
     private var durations: [String: Double] = [:]
     /// Files a person asked for, read whatever the automatic rules say.
@@ -75,7 +72,6 @@ final class MediaLoader: NSObject, ChatMediaSource {
     /// What the conversation shows now, by the keys its plans draw.
     func register(_ items: [ChatItem]) {
         for item in items {
-            if item.story != nil { stories[Self.storyKey(item.id)] = item.id }
             for piece in item.pieces {
                 switch piece {
                 case .picture(let id, _, let data): sent[Self.sentKey(id)] = data
@@ -90,9 +86,6 @@ final class MediaLoader: NSObject, ChatMediaSource {
     }
 
     nonisolated static func sentKey(_ id: String) -> String { "sent/\(id)" }
-    nonisolated static func storyKey(_ id: String) -> String { "story/\(id)" }
-    /// A person's face: their placeholder.
-    nonisolated static func personKey(_ userId: String) -> String { "person/\(userId)" }
 
     func media(_ key: String) -> Media? { tools[key] }
 
@@ -172,10 +165,6 @@ final class MediaLoader: NSObject, ChatMediaSource {
             image = await Self.picture(file, pixels: pixels)
         } else if let media = tools[key] {
             image = media.isVideo ? await poster(media, pixels: pixels) : await picture(media, pixels: pixels)
-        } else if let messageId = stories[key] {
-            image = await Self.read(client, "/v0/agents/\(agentId)/messages/\(messageId)/story-frame", pixels: pixels)
-        } else if key.hasPrefix("person/") {
-            image = await AvatarPlaceholderImages.image(seed: String(key.dropFirst("person/".count)), side: AuthorRowLayout.avatar)
         } else {
             image = nil
         }
@@ -184,11 +173,6 @@ final class MediaLoader: NSObject, ChatMediaSource {
             images.setObject(Decoded(pixels: pixels, image: image), forKey: key as NSString, cost: cost)
         }
         return image
-    }
-
-    private nonisolated static func read(_ client: AgentClient, _ path: String, pixels: Int) async -> UIImage? {
-        guard let data = try? await client.image(path) else { return nil }
-        return await Task.detached(priority: .userInitiated) { Images.decode(data, maxPixels: pixels) }.value
     }
 
     /// A tool's picture from the library: read first where the rules or a
