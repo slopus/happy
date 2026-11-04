@@ -1,4 +1,4 @@
-package com.slopus.happy.call
+package com.slopus.happy.payments
 
 import android.content.SharedPreferences
 import com.slopus.happy.chat.obj
@@ -13,7 +13,7 @@ import java.time.ZoneOffset
 
 /** One month of the subscription's voice hours, [start] to [end]. */
 @Serializable
-data class VoicePeriod(val start: Long, val end: Long)
+data class ProMonth(val start: Long, val end: Long)
 
 /**
  * RevenueCat's word on a customer's `pro` entitlement, from a subscriber
@@ -24,7 +24,7 @@ data class VoicePeriod(val start: Long, val end: Long)
  * time when it answered ([checkedAt], `request_date`).
  */
 @Serializable
-data class VoicePass(val purchased: Long, val expires: Long?, val grace: Boolean, val checkedAt: Long) {
+data class ProPass(val purchased: Long, val expires: Long?, val grace: Boolean, val checkedAt: Long) {
     /** Active at RevenueCat's [at]: the device's clock decides nothing here. */
     fun active(at: Long = checkedAt): Boolean = expires == null || expires > at
 
@@ -36,12 +36,12 @@ data class VoicePass(val purchased: Long, val expires: Long?, val grace: Boolean
      * failed) begins on one: in grace the month before it still runs, and
      * grace gives no new hours. Null when not [active].
      */
-    fun period(at: Long = checkedAt): VoicePeriod? {
+    fun period(at: Long = checkedAt): ProMonth? {
         if (!active(at)) return null
         var months = 0L
         while (month(months + 1) <= at) months++
         if (grace && months > 0) months--
-        return VoicePeriod(month(months), month(months + 1))
+        return ProMonth(month(months), month(months + 1))
     }
 
     private fun month(n: Long): Long = Instant.ofEpochMilli(purchased).atOffset(ZoneOffset.UTC).plusMonths(n).toInstant().toEpochMilli()
@@ -54,7 +54,7 @@ data class VoicePass(val purchased: Long, val expires: Long?, val grace: Boolean
          * none, the response isn't one, or the grant is malformed (a date
          * that isn't one, `expires_date` missing rather than null).
          */
-        fun from(response: JsonElement): VoicePass? {
+        fun from(response: JsonElement): ProPass? {
             val checkedAt = date(response.obj?.get("request_date")) ?: return null
             val granted = response.obj?.get("subscriber").obj?.get("entitlements").obj?.get(ENTITLEMENT).obj ?: return null
             val purchased = date(granted["purchase_date"]) ?: return null
@@ -66,7 +66,7 @@ data class VoicePass(val purchased: Long, val expires: Long?, val grace: Boolean
                 null, JsonNull -> false
                 else -> date(value)?.let { true } ?: return null
             }
-            return VoicePass(purchased, expires, grace, checkedAt)
+            return ProPass(purchased, expires, grace, checkedAt)
         }
 
         /** Whether [response] is a subscriber response at all, with `pro` or without. */
@@ -81,19 +81,19 @@ data class VoicePass(val purchased: Long, val expires: Long?, val grace: Boolean
 }
 
 /**
- * The last [VoicePass] RevenueCat gave a customer, and the device's clock
+ * The last [ProPass] RevenueCat gave a customer, and the device's clock
  * when it did. Used until RevenueCat says otherwise, only while it would
  * still be active at RevenueCat's time moved on by the device's, and never
  * longer than [maxAge] since it was asked: past that, or with the clock put
  * back, access is unknown and nothing is granted until RevenueCat answers.
  */
-class VoicePassCache(private val preferences: SharedPreferences, private val maxAge: Long = MAX_AGE_MILLIS) {
-    @Serializable private data class Entry(val customer: String, val pass: VoicePass?, val askedAt: Long)
+class ProPassCache(private val preferences: SharedPreferences, private val maxAge: Long = MAX_AGE_MILLIS) {
+    @Serializable private data class Entry(val customer: String, val pass: ProPass?, val askedAt: Long)
 
-    @Serializable private data class Month(val customer: String, val period: VoicePeriod)
+    @Serializable private data class Month(val customer: String, val period: ProMonth)
 
     /** RevenueCat's answer for [customer] at device time [now]; a null [pass] is a customer without `pro`. */
-    fun save(customer: String, pass: VoicePass?, now: Long) {
+    fun save(customer: String, pass: ProPass?, now: Long) {
         preferences.edit().putString(KEY, Json.encodeToString(Entry.serializer(), Entry(customer, pass, now))).apply()
     }
 
@@ -103,7 +103,7 @@ class VoicePassCache(private val preferences: SharedPreferences, private val max
      * month already running (a product changed, or bought again) doesn't
      * start a new one: only a renewal's month does.
      */
-    fun period(customer: String, now: Long): VoicePeriod? {
+    fun period(customer: String, now: Long): ProMonth? {
         val entry = entry(customer, now) ?: return null
         val pass = entry.pass ?: return null
         val period = pass.period(pass.checkedAt + (now - entry.askedAt)) ?: return null

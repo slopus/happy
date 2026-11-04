@@ -5,6 +5,7 @@ import android.content.Context
 import android.os.SystemClock
 import com.slopus.happy.BuildConfig
 import com.slopus.happy.agent.AgentSessions
+import com.slopus.happy.payments.Subscription
 import com.slopus.happy.ui.conversation.Typesetter
 import com.slopus.happy.ui.conversation.failureText
 import kotlinx.coroutines.CoroutineScope
@@ -44,7 +45,7 @@ class CallController(
     relayVoiceActive: Flow<Boolean>,
     private val stopRelayVoice: suspend () -> Unit,
     /** Voice's subscription: what the sheets offer, and the month of hours it gives. */
-    private val subscription: VoiceSubscription,
+    private val subscription: Subscription,
     /** The build's public hosted agent, if it has one ([CallAgent]). */
     private val grants: CallGrants = CallAgent.hostedAgentId?.let(::PublicAgentCallGrants) ?: UnconfiguredCallGrants,
     private val preferences: android.content.SharedPreferences = appContext.getSharedPreferences(PreferencesCallUsageStore.PREFS_NAME, Context.MODE_PRIVATE),
@@ -71,7 +72,7 @@ class CallController(
     private val testOffer = MutableStateFlow<CallOffer.Preview?>(null)
 
     /**
-     * What the sheets offer ([VoiceSubscription.offer]). Debug builds draw
+     * What the sheets offer ([Subscription.offer]). Debug builds draw
      * the subscription as if it were on sale for their test screens when
      * asked ([testOffer]), a preview that charges and grants nothing; a
      * release build never.
@@ -81,7 +82,7 @@ class CallController(
     val offer: CallOffer get() = offers.value
 
     /** The store holds a voice subscription RevenueCat hasn't confirmed yet. */
-    val unconfirmed: StateFlow<Boolean> = subscription.problem.map { it == VoiceSubscription.Problem.Unconfirmed }
+    val unconfirmed: StateFlow<Boolean> = subscription.problem.map { it == Subscription.Problem.Unconfirmed }
         .stateIn(scope, SharingStarted.Eagerly, false)
 
     private var session: CallSession? = null
@@ -111,7 +112,7 @@ class CallController(
     /** The sheet's "Restore Purchases". */
     suspend fun restore(): CallRestore = when {
         subscription.restore() -> CallRestore.Restored
-        subscription.problem.value.let { it != null && it != VoiceSubscription.Problem.NoProduct } -> CallRestore.Failed
+        subscription.problem.value.let { it != null && it != Subscription.Problem.NoProduct } -> CallRestore.Failed
         else -> CallRestore.NothingFound
     }
 

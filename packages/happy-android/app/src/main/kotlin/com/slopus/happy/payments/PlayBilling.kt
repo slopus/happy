@@ -27,7 +27,7 @@ data class StorePurchase(val token: String, val products: List<String>, val purc
 data class StoreOffer(val product: String, val basePlan: String, val price: String)
 
 /** The store voice buys through, apart so voice's purchases can be tested without Play. */
-interface VoiceStore {
+interface SubscriptionStore {
     /** Purchases as the store reports them after a buy, or when one pending completes. */
     val updates: SharedFlow<List<StorePurchase>>
 
@@ -48,7 +48,7 @@ interface VoiceStore {
  * for voice's subscription. Its own client, beside the SDK's; it asks
  * nothing of RevenueCat itself.
  */
-class PlayBilling(context: Context) : VoiceStore {
+class PlayBilling(context: Context) : SubscriptionStore {
     private val mutableUpdates = MutableSharedFlow<List<StorePurchase>>(extraBufferCapacity = 8, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     override val updates: SharedFlow<List<StorePurchase>> = mutableUpdates
 

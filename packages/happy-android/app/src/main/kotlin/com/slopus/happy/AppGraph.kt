@@ -36,7 +36,7 @@ import com.slopus.happy.payments.PurchaseAccount
 import com.slopus.happy.payments.PlayBilling
 import com.slopus.happy.payments.PurchasesRepository
 import com.slopus.happy.payments.RevenueCatApi
-import com.slopus.happy.call.VoiceSubscription
+import com.slopus.happy.payments.Subscription
 import com.slopus.happy.payments.RevenueCatPurchases
 import com.slopus.happy.push.PushApi
 import com.slopus.happy.push.PushUnregisterQueue
@@ -480,10 +480,10 @@ class AppGraph(
             var relay: String? = null
             combine(auth.state, openAccount, accountStore.registry) { _, _, _ -> voiceRelay(relay).also { relay = it } }
                 .distinctUntilChanged()
-                .collect(voiceSubscription::relay)
+                .collect(subscription::relay)
         }
         scope.launch {
-            foreground.collect { if (it) voiceSubscription.refresh() }
+            foreground.collect { if (it) subscription.refresh() }
         }
         scope.launch {
             auth.state.collect { state -> accountLock.withLock { openAccount(state) } }
@@ -506,7 +506,7 @@ class AppGraph(
      */
     private fun voiceRelay(last: String?): String? = when (openAccount.value) {
         is OpenAccount.Happy -> (auth.state.value as? AuthState.SignedIn)?.publicId?.takeIf(String::isNotBlank)
-        is OpenAccount.Agent -> (last ?: voiceSubscription.account)?.takeIf { subject ->
+        is OpenAccount.Agent -> (last ?: subscription.account)?.takeIf { subject ->
             accountStore.registry.value.entries.any { accountStore.credentials(it.id)?.credentials?.token?.let(::tokenSubject) == subject }
         }
         OpenAccount.None -> null
@@ -557,22 +557,22 @@ class AppGraph(
             openAccount = openAccount.map { (it as? OpenAccount.Agent)?.id },
             relayVoiceActive = voice.state.map { it.status != VoiceStatus.Disconnected },
             stopRelayVoice = voice::stop,
-            subscription = voiceSubscription,
+            subscription = subscription,
         )
     }
 
     /**
-     * Voice's subscription, RevenueCat's `pro` through Play and RevenueCat's
-     * REST API, under the Happy account when one is signed in. Without the
-     * build's RevenueCat key it offers nothing.
+     * The app's one subscription, RevenueCat's `pro` through Play and
+     * RevenueCat's REST API, under the Happy account when one is signed in.
+     * Without the build's RevenueCat key it offers nothing.
      */
-    val voiceSubscription: VoiceSubscription by lazy {
+    val subscription: Subscription by lazy {
         val key = BuildConfig.REVENUE_CAT_GOOGLE_KEY
-        VoiceSubscription(
+        Subscription(
             scope,
             store = PlayBilling(appContext).takeIf { key.isNotBlank() },
             revenueCat = RevenueCatApi(okHttp, key).takeIf { key.isNotBlank() },
-            preferences = appContext.getSharedPreferences(VoiceSubscription.PREFS_NAME, Context.MODE_PRIVATE),
+            preferences = appContext.getSharedPreferences(Subscription.PREFS_NAME, Context.MODE_PRIVATE),
         )
     }
 

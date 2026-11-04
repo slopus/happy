@@ -1,10 +1,11 @@
-package com.slopus.happy.call
+package com.slopus.happy.payments
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.slopus.happy.call.CallAllowance
+import com.slopus.happy.call.MemoryUsageStore
 import com.slopus.happy.net.HappyJson
-import com.slopus.happy.payments.RevenueCat
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -15,24 +16,24 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.time.Instant
 
-/** RevenueCat's `pro` as voice reads it ([VoicePass]), the month of hours it gives, and how long its word is kept. */
+/** RevenueCat's `pro` as voice reads it ([ProPass]), the month of hours it gives, and how long its word is kept. */
 @RunWith(AndroidJUnit4::class)
-class VoicePassTest {
+class ProPassTest {
     private val preferences = ApplicationProvider.getApplicationContext<Context>().getSharedPreferences("voice-pass-test", Context.MODE_PRIVATE)
-    private val cache = VoicePassCache(preferences)
+    private val cache = ProPassCache(preferences)
     private fun ms(text: String) = Instant.parse(text).toEpochMilli()
 
     @Before fun clear() { preferences.edit().clear().commit() }
 
     /** RevenueCat's answer at [at], kept as if asked at device time [at] too. */
     private fun told(at: String, pro: String?, customer: String = "a") {
-        cache.save(customer, VoicePass.from(subscriber(at, pro)), ms(at))
+        cache.save(customer, ProPass.from(subscriber(at, pro)), ms(at))
     }
 
     @Test
     fun aMonthlySubscriptionsMonthIsFromItsPurchase() {
         told("2026-11-04T10:00:00Z", pro("2026-10-20T08:00:00Z", "2026-11-20T08:00:00Z"))
-        assertEquals(VoicePeriod(ms("2026-10-20T08:00:00Z"), ms("2026-11-20T08:00:00Z")), cache.period("a", ms("2026-11-04T10:00:00Z")))
+        assertEquals(ProMonth(ms("2026-10-20T08:00:00Z"), ms("2026-11-20T08:00:00Z")), cache.period("a", ms("2026-11-04T10:00:00Z")))
     }
 
     @Test
@@ -78,7 +79,7 @@ class VoicePassTest {
     fun aYearlyOrLifetimeProIsFiveHoursAMonthNotAYear() {
         told("2026-03-25T00:00:00Z", pro("2026-01-31T00:00:00Z", "2027-01-31T00:00:00Z"))
         // Each month from the purchase: Jan 31, Feb 28, Mar 31.
-        assertEquals(VoicePeriod(ms("2026-02-28T00:00:00Z"), ms("2026-03-31T00:00:00Z")), cache.period("a", ms("2026-03-25T00:00:00Z")))
+        assertEquals(ProMonth(ms("2026-02-28T00:00:00Z"), ms("2026-03-31T00:00:00Z")), cache.period("a", ms("2026-03-25T00:00:00Z")))
         told("2027-06-10T00:00:00Z", pro("2026-01-15T00:00:00Z", null), customer = "b")
         assertEquals(ms("2027-05-15T00:00:00Z"), cache.period("b", ms("2027-06-10T00:00:00Z"))!!.start)
     }
@@ -88,20 +89,20 @@ class VoicePassTest {
         told("2026-11-05T00:00:00Z", pro("2026-10-20T08:00:00Z", "2026-11-04T12:00:00Z"))
         assertNull(cache.period("a", ms("2026-11-05T00:00:00Z")))
         val dropped = subscriber("2026-11-05T00:00:00Z", null)
-        assertTrue(VoicePass.answered(dropped))
-        assertNull(VoicePass.from(dropped))
+        assertTrue(ProPass.answered(dropped))
+        assertNull(ProPass.from(dropped))
     }
 
     @Test
     fun aMalformedGrantIsNone() {
-        assertNull(VoicePass.from(HappyJson.parseToJsonElement("""{"code":7225,"message":"Invalid API key"}""")))
-        assertFalse(VoicePass.answered(HappyJson.parseToJsonElement("""{"subscriber":{}}""")))
+        assertNull(ProPass.from(HappyJson.parseToJsonElement("""{"code":7225,"message":"Invalid API key"}""")))
+        assertFalse(ProPass.answered(HappyJson.parseToJsonElement("""{"subscriber":{}}""")))
         // expires_date missing is not a lifetime grant; only an explicit null is.
-        assertNull(VoicePass.from(subscriber("2026-11-04T10:00:00Z", """"pro":{"purchase_date":"2026-10-20T08:00:00Z"}""")))
-        assertNull(VoicePass.from(subscriber("2026-11-04T10:00:00Z", """"pro":{"purchase_date":"2026-10-20T08:00:00Z","expires_date":12}""")))
-        assertNull(VoicePass.from(subscriber("2026-11-04T10:00:00Z", """"pro":{"purchase_date":"soon","expires_date":null}""")))
-        assertNull(VoicePass.from(subscriber("2026-11-04T10:00:00Z", pro("2026-10-20T08:00:00Z", "2026-11-20T08:00:00Z", grace = "later"))))
-        assertNotNull(VoicePass.from(subscriber("2026-11-04T10:00:00Z", pro("2026-10-20T08:00:00Z", null))))
+        assertNull(ProPass.from(subscriber("2026-11-04T10:00:00Z", """"pro":{"purchase_date":"2026-10-20T08:00:00Z"}""")))
+        assertNull(ProPass.from(subscriber("2026-11-04T10:00:00Z", """"pro":{"purchase_date":"2026-10-20T08:00:00Z","expires_date":12}""")))
+        assertNull(ProPass.from(subscriber("2026-11-04T10:00:00Z", """"pro":{"purchase_date":"soon","expires_date":null}""")))
+        assertNull(ProPass.from(subscriber("2026-11-04T10:00:00Z", pro("2026-10-20T08:00:00Z", "2026-11-20T08:00:00Z", grace = "later"))))
+        assertNotNull(ProPass.from(subscriber("2026-11-04T10:00:00Z", pro("2026-10-20T08:00:00Z", null))))
     }
 
     @Test
@@ -113,11 +114,11 @@ class VoicePassTest {
         assertNotNull(cache.period("a", asked + 3_600_000))
         assertNull(cache.period("b", asked))
         // A day on, or the clock put back: not known.
-        assertNull(cache.period("a", asked + VoicePassCache.MAX_AGE_MILLIS + 1))
+        assertNull(cache.period("a", asked + ProPassCache.MAX_AGE_MILLIS + 1))
         assertNull(cache.period("a", asked - 1))
         assertFalse(cache.known("a", asked - 1))
         // RevenueCat's time moved on by the device's: past the expiry, gone, though within the day.
-        cache.save("a", VoicePass.from(subscriber("2026-11-20T07:00:00Z", pro("2026-10-20T08:00:00Z", "2026-11-20T08:00:00Z"))), asked)
+        cache.save("a", ProPass.from(subscriber("2026-11-20T07:00:00Z", pro("2026-10-20T08:00:00Z", "2026-11-20T08:00:00Z"))), asked)
         assertNotNull(cache.period("a", asked + 3_000_000))
         assertNull(cache.period("a", asked + 3_700_000))
     }
@@ -139,13 +140,13 @@ class VoicePassTest {
 
     @Test
     fun aSubscriberHasFiveHoursInTheirMonthAndANewMonthStartsAfresh() {
-        var period: VoicePeriod? = VoicePeriod(1_000_000L, 2_000_000_000L)
+        var period: ProMonth? = ProMonth(1_000_000L, 2_000_000_000L)
         val allowance = CallAllowance(MemoryUsageStore(), period = { period })
         assertEquals(CallAllowance.PAID_MILLIS, allowance.remaining(1_000_000L))
         allowance.record("a", 1_000_000L, 1_000_000L + 4 * 3_600_000L)
         assertEquals(3_600_000L, allowance.remaining(1_000_000L + 4 * 3_600_000L))
         // The next month counts nothing from before it.
-        period = VoicePeriod(1_000_000L + 4 * 3_600_000L, 2_000_000_000L)
+        period = ProMonth(1_000_000L + 4 * 3_600_000L, 2_000_000_000L)
         assertEquals(CallAllowance.PAID_MILLIS, allowance.remaining(1_000_000L + 4 * 3_600_000L))
         // Without pro, the free 20 minutes, already spent.
         period = null

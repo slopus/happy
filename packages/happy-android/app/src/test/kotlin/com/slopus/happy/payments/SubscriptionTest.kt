@@ -1,17 +1,14 @@
-package com.slopus.happy.call
+package com.slopus.happy.payments
 
 import android.app.Activity
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.slopus.happy.call.VoicePassTest.Companion.pro
-import com.slopus.happy.call.VoicePassTest.Companion.subscriber
-import com.slopus.happy.net.HappyJson
-import com.slopus.happy.payments.RevenueCat
+import com.slopus.happy.call.CallOffer
+import com.slopus.happy.payments.ProPassTest.Companion.pro
+import com.slopus.happy.payments.ProPassTest.Companion.subscriber
 import com.slopus.happy.payments.RevenueCat.Answer
-import com.slopus.happy.payments.StoreOffer
-import com.slopus.happy.payments.StorePurchase
-import com.slopus.happy.payments.VoiceStore
+import com.slopus.happy.net.HappyJson
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
@@ -32,18 +29,18 @@ import java.time.Instant
 
 /**
  * Voice's subscription against a store and RevenueCat that are only this
- * test's ([VoiceSubscription]): what is offered, what is posted and
+ * test's ([Subscription]): what is offered, what is posted and
  * acknowledged, for whom, and what a change of account in the middle of
  * it does. No store, network or charge.
  */
 @RunWith(AndroidJUnit4::class)
-class VoiceSubscriptionTest {
+class SubscriptionTest {
     private val preferences = ApplicationProvider.getApplicationContext<Context>().getSharedPreferences("voice-subscription-test", Context.MODE_PRIVATE)
     private val now = Instant.parse("2026-11-04T10:00:00Z").toEpochMilli()
 
     @Before fun clear() { preferences.edit().clear().commit() }
 
-    private class Store : VoiceStore {
+    private class Store : SubscriptionStore {
         override val updates = MutableSharedFlow<List<StorePurchase>>(extraBufferCapacity = 8)
         var monthly: StoreOffer? = StoreOffer("happy", "monthly", "9,99 €")
         val owned = ArrayList<StorePurchase>()
@@ -102,8 +99,8 @@ class VoiceSubscriptionTest {
     private val rc = Rc()
     private val activity: Activity by lazy { Robolectric.buildActivity(Activity::class.java).get() }
 
-    private fun TestScope.subscription(store: VoiceStore? = this@VoiceSubscriptionTest.store, rc: RevenueCat? = this@VoiceSubscriptionTest.rc) =
-        VoiceSubscription(backgroundScope, store, rc, preferences, now = { now }).also { runCurrent() }
+    private fun TestScope.subscription(store: SubscriptionStore? = this@SubscriptionTest.store, rc: RevenueCat? = this@SubscriptionTest.rc) =
+        Subscription(backgroundScope, store, rc, preferences, now = { now }).also { runCurrent() }
 
     private fun bought(token: String, purchased: Boolean = true, acknowledged: Boolean = false, product: String = "happy") =
         StorePurchase(token, listOf(product), purchased, acknowledged)
@@ -115,7 +112,7 @@ class VoiceSubscriptionTest {
         val subscription = subscription(rc = null)
         subscription.refresh(); runCurrent()
         assertEquals(CallOffer.Unavailable, subscription.offer.value)
-        assertEquals(VoiceSubscription.Problem.Unconfigured, subscription.problem.value)
+        assertEquals(Subscription.Problem.Unconfigured, subscription.problem.value)
     }
 
     @Test
@@ -132,7 +129,7 @@ class VoiceSubscriptionTest {
         val subscription = subscription()
         subscription.refresh(); runCurrent()
         assertEquals(CallOffer.Unavailable, subscription.offer.value)
-        assertEquals(VoiceSubscription.Problem.NoProduct, subscription.problem.value)
+        assertEquals(Subscription.Problem.NoProduct, subscription.problem.value)
     }
 
     @Test
@@ -143,7 +140,7 @@ class VoiceSubscriptionTest {
         store.updates.emit(listOf(bought("t1"))); runCurrent()
         assertTrue(store.acknowledged.isEmpty())
         assertNull(subscription.period())
-        assertEquals(VoiceSubscription.Problem.Unconfirmed, subscription.problem.value)
+        assertEquals(Subscription.Problem.Unconfirmed, subscription.problem.value)
         rc.refusePosts = null
         store.updates.emit(listOf(bought("t1"))); runCurrent()
         assertEquals(listOf("t1"), store.acknowledged)
@@ -197,7 +194,7 @@ class VoiceSubscriptionTest {
         val subscription = subscription()
         subscription.refresh(); runCurrent()
         assertEquals(CallOffer.Unavailable, subscription.offer.value)
-        assertEquals(VoiceSubscription.Problem.Unconfirmed, subscription.problem.value)
+        assertEquals(Subscription.Problem.Unconfirmed, subscription.problem.value)
         assertNull(subscription.period())
         assertFalse(subscription.restore())
         assertTrue(store.acknowledged.isEmpty())
@@ -242,6 +239,44 @@ class VoiceSubscriptionTest {
         subscription.refresh(); runCurrent()
         assertTrue(posts().none { it.startsWith("post account-b") })
         assertNull(subscription.period())
+    }
+
+    @Test
+    fun anAccountsExistingProCountsWhateverIsOnSaleAndWithNothingBoughtHere() = runTest {
+        // Bought long ago, a yearly product, on another device: RevenueCat's word is enough.
+        rc.pro["account-a"] = "happy_yearly"
+        store.monthly = null
+        val subscription = subscription()
+        subscription.relay("account-a"); runCurrent()
+        subscription.refresh(); runCurrent()
+        assertTrue(subscription.pro.value)
+        assertTrue(subscription.hasPro())
+        assertEquals(CallOffer.Subscribed, subscription.offer.value)
+        assertEquals(Subscription.Problem.NoProduct, subscription.problem.value)
+        assertTrue(posts().isEmpty())
+        // Offline at the next launch, within the day: still pro, without asking.
+        rc.unreachable = true
+        val again = subscription()
+        again.relay("account-a"); runCurrent()
+        assertTrue(again.pro.value)
+    }
+
+    @Test
+    fun proGoesTheMomentTheAccountChangesAndNeverComesBackForAnother() = runTest {
+        rc.pro["account-a"] = "happy"
+        val subscription = subscription()
+        subscription.relay("account-a"); runCurrent()
+        subscription.refresh(); runCurrent()
+        assertTrue(subscription.pro.value)
+        subscription.relay("account-b")
+        assertFalse(subscription.pro.value)
+        assertFalse(subscription.hasPro())
+        runCurrent()
+        subscription.refresh(); runCurrent()
+        assertFalse(subscription.pro.value)
+        subscription.relay(null); runCurrent()
+        subscription.refresh(); runCurrent()
+        assertFalse(subscription.pro.value)
     }
 
     @Test
@@ -329,7 +364,7 @@ class VoiceSubscriptionTest {
         rc.unreachable = true
         subscription.refresh(); runCurrent()
         assertEquals(CallOffer.Subscribed, subscription.offer.value)
-        assertEquals(VoiceSubscription.Problem.Unreached, subscription.problem.value)
+        assertEquals(Subscription.Problem.Unreached, subscription.problem.value)
     }
 
     @Test

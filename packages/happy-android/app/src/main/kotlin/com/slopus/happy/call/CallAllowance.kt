@@ -1,6 +1,7 @@
 package com.slopus.happy.call
 
 import android.content.SharedPreferences
+import com.slopus.happy.payments.ProMonth
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
@@ -86,7 +87,7 @@ class CallAllowance(
     private val store: CallUsageStore,
     private val free: Long = FREE_MILLIS,
     private val window: Long = WINDOW_MILLIS,
-    private val period: () -> VoicePeriod? = { null },
+    private val period: () -> ProMonth? = { null },
 ) {
     private var usage = store.load()
 
@@ -117,7 +118,7 @@ class CallAllowance(
 
 /**
  * What voice's sheets offer: the subscription, RevenueCat's `pro`, at the
- * store's price ([VoiceSubscription]); nothing, where the build has no
+ * store's price ([Subscription]); nothing, where the build has no
  * RevenueCat key or the store or RevenueCat has no monthly product to sell;
  * or nothing because this customer has `pro` already.
  */

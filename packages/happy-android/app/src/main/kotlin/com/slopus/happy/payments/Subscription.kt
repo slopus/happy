@@ -1,12 +1,9 @@
-package com.slopus.happy.call
+package com.slopus.happy.payments
 
 import android.app.Activity
 import android.content.SharedPreferences
-import com.slopus.happy.payments.RevenueCat
+import com.slopus.happy.call.CallOffer
 import com.slopus.happy.payments.RevenueCat.Answer
-import com.slopus.happy.payments.StoreOffer
-import com.slopus.happy.payments.StorePurchase
-import com.slopus.happy.payments.VoiceStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -19,15 +16,22 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * Voice's subscription: RevenueCat's `pro`, bought through the store
- * ([VoiceStore]) and told to RevenueCat's REST API ([RevenueCat]), without
- * its SDK. Whose it is: the Happy account's when one is signed in (by the
- * subject RevenueCat already knows it by), otherwise this install's own
- * anonymous customer. Signing in merges the install into the account
- * (`identify`) before the account is used; signing out starts a new install
- * customer, never the one an account was merged with.
+ * The app's one subscription: RevenueCat's `pro`, bought through the store
+ * ([SubscriptionStore]) and told to RevenueCat's REST API ([RevenueCat]),
+ * without its SDK. Everything that sells it or asks about it asks here:
+ * voice's sheets and hours, the relay's voice, Support us.
  *
- * Access is only what RevenueCat says, kept a day at most ([VoicePassCache]).
+ * Whose it is: the Happy account's when one is signed in (by the subject
+ * RevenueCat already knows it by), otherwise this install's own
+ * anonymous customer, so buying needs no sign-in. Signing in after this
+ * install bought something asks RevenueCat to bring the install into the
+ * account (`identify`) before the account is used. That is not a promise:
+ * RevenueCat merges only into an account it hasn't merged an install into
+ * before, otherwise it just switches, and then only Restore moves a
+ * purchase. Signing out starts a new install customer, never one an
+ * account was brought together with.
+ *
+ * Access is only what RevenueCat says, kept a day at most ([ProPassCache]).
  * Everything that asks RevenueCat or the store runs one at a time ([work]),
  * and each customer change starts a new [generation] at once: an answer
  * asked under an older one is dropped. A purchase belongs to the customer
@@ -36,9 +40,9 @@ import java.util.concurrent.atomic.AtomicLong
  * is finished at the next launch or foreground. Restore posts every
  * subscription the store account holds, whatever is on sale now.
  */
-class VoiceSubscription(
+class Subscription(
     private val scope: CoroutineScope,
-    private val store: VoiceStore?,
+    private val store: SubscriptionStore?,
     private val revenueCat: RevenueCat?,
     private val preferences: SharedPreferences,
     private val now: () -> Long = System::currentTimeMillis,
@@ -61,7 +65,7 @@ class VoiceSubscription(
         data object Unconfirmed : Problem
     }
 
-    private val cache = VoicePassCache(preferences)
+    private val cache = ProPassCache(preferences)
     private val work = Mutex()
     private val generation = AtomicLong()
     @Volatile private var relay: String? = null
@@ -75,8 +79,16 @@ class VoiceSubscription(
     val offer: StateFlow<CallOffer> = mutableOffer.asStateFlow()
     private val mutableProblem = MutableStateFlow<Problem?>(if (revenueCat == null || store == null) Problem.Unconfigured else null)
     val problem: StateFlow<Problem?> = mutableProblem.asStateFlow()
+    private val mutablePro = MutableStateFlow(false)
 
-    /** Whose subscription voice asks about now. */
+    /**
+     * Whether [customer] has `pro` now, as RevenueCat last said within a
+     * day: any product that grants it, whatever is on sale. False while
+     * the customer changes. [hasPro] asks at this moment.
+     */
+    val pro: StateFlow<Boolean> = mutablePro.asStateFlow()
+
+    /** Whose subscription this is now. */
     val customer: String get() = preferences.getString(CUSTOMER, null) ?: install
 
     /** The Happy account's subject when [customer] is one, null when it is this install's. */
@@ -91,7 +103,9 @@ class VoiceSubscription(
     }
 
     /** The month of 5 hours [customer] has now; null without `pro`, or when RevenueCat hasn't said within a day. */
-    fun period(): VoicePeriod? = if (changing) null else cache.period(customer, now())
+    fun period(): ProMonth? = if (changing) null else cache.period(customer, now())
+
+    fun hasPro(): Boolean = period() != null
 
     /**
      * The Happy account signed in now, by its subject; null when none.
@@ -106,6 +120,7 @@ class VoiceSubscription(
         val asked = generation.incrementAndGet()
         changing = true
         mutableOffer.value = CallOffer.Unavailable
+        mutablePro.value = false
         scope.launch {
             work.withLock {
                 if (subject == null && preferences.getString(CUSTOMER, null) != null) {
@@ -184,7 +199,7 @@ class VoiceSubscription(
         val answer = revenueCat.subscriber(customer)
         if (asked != generation.get()) return
         when (answer) {
-            is Answer.Ok -> if (VoicePass.answered(answer.body)) cache.save(customer, VoicePass.from(answer.body), now())
+            is Answer.Ok -> if (ProPass.answered(answer.body)) cache.save(customer, ProPass.from(answer.body), now())
             else -> trouble(answer)
         }
         publish()
@@ -207,7 +222,7 @@ class VoiceSubscription(
      * customer now), acknowledges it once RevenueCat has it, and keeps
      * RevenueCat's answer only for the customer of generation [asked].
      */
-    private suspend fun post(revenueCat: RevenueCat, store: VoiceStore, purchase: StorePurchase, restore: Boolean, asked: Long): Boolean {
+    private suspend fun post(revenueCat: RevenueCat, store: SubscriptionStore, purchase: StorePurchase, restore: Boolean, asked: Long): Boolean {
         val customer = customer
         val owner = if (restore) customer else preferences.getString(OWNER, null) ?: customer
         val basePlan = monthly?.takeIf { it.product in purchase.products }?.basePlan
@@ -222,7 +237,7 @@ class VoiceSubscription(
             .apply { if (owner == install && preferences.getString(CUSTOMER, null) == null) putBoolean(POSTED_BY_INSTALL, true) }
             .apply()
         if (!purchase.acknowledged) store.acknowledge(purchase.token)
-        if (owner == customer && asked == generation.get() && VoicePass.answered(answer.body)) cache.save(customer, VoicePass.from(answer.body), now())
+        if (owner == customer && asked == generation.get() && ProPass.answered(answer.body)) cache.save(customer, ProPass.from(answer.body), now())
         return true
     }
 
@@ -255,8 +270,10 @@ class VoiceSubscription(
     }
 
     private fun publish() {
+        val pro = hasPro()
+        mutablePro.value = pro
         mutableOffer.value = when {
-            period() != null -> CallOffer.Subscribed
+            pro -> CallOffer.Subscribed
             unconfirmed -> CallOffer.Unavailable.also { mutableProblem.value = Problem.Unconfirmed }
             else -> monthly?.let { CallOffer.OnSale(it.price) } ?: CallOffer.Unavailable
         }
