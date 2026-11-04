@@ -1,5 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="camera_timer">Samowyzwalacz</string>
+    <string name="camera_timer_seconds">%1$d s</string>
+    <string name="camera_shape">Format zdjęcia</string>
+    <string name="camera_grid">Siatka</string>
+    <string name="camera_flash">Lampa błyskowa</string>
+    <string name="camera_flash_auto">Automatycznie</string>
+    <string name="camera_on">Wł.</string>
+    <string name="camera_off">Wył.</string>
+    <string name="camera_flip">Przełącz aparat</string>
+    <string name="camera_exposure">Ekspozycja</string>
+    <string name="camera_ae_af_lock">BLOKADA AE/AF</string>
+    <string name="camera_af_lock">BLOKADA AF</string>
+    <string name="camera_ae_lock">BLOKADA AE</string>
+    <string name="camera_zoom">Powiększenie %1$s</string>
     <string name="camera_take_photo">Zrób zdjęcie</string>
     <string name="camera_retake">Zrób ponownie</string>
     <string name="camera_use_photo">Użyj zdjęcia</string>

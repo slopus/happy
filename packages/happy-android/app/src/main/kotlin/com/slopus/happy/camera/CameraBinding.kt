@@ -2,10 +2,12 @@ package com.slopus.happy.camera
 
 import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CaptureRequest
+import android.hardware.camera2.CaptureResult
 import android.hardware.camera2.TotalCaptureResult
 import android.hardware.display.DisplayManager
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.util.Log
 import android.util.Range
 import androidx.annotation.OptIn
@@ -53,6 +55,8 @@ internal fun CameraBinding(
     onState: (CameraState?) -> Unit = {},
     onFirstFrame: () -> Unit = {},
     previewResolution: ResolutionSelector? = null,
+    onCanFlip: (Boolean) -> Unit = {},
+    onDarkScene: ((Boolean) -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
@@ -62,6 +66,8 @@ internal fun CameraBinding(
     val stateChanged by rememberUpdatedState(onState)
     val firstFrame by rememberUpdatedState(onFirstFrame)
     val rotated by rememberUpdatedState(onDisplayRotation)
+    val canFlip by rememberUpdatedState(onCanFlip)
+    val scene by rememberUpdatedState(onDarkScene)
     LaunchedEffect(owner, useCases, front, frameRate, previewResolution) {
         val provider = try {
             ProcessCameraProvider.awaitInstance(context)
@@ -78,6 +84,7 @@ internal fun CameraBinding(
             listOf(CameraSelector.DEFAULT_BACK_CAMERA, CameraSelector.DEFAULT_FRONT_CAMERA)
         }
         val selector = choices.firstOrNull { runCatching { provider.hasCamera(it) }.getOrDefault(false) }
+        canFlip(choices.all { runCatching { provider.hasCamera(it) }.getOrDefault(false) })
         if (selector == null) {
             failed(CameraFailure.NoCamera)
             return@LaunchedEffect
@@ -91,9 +98,19 @@ internal fun CameraBinding(
         frameRate?.let(builder::setTargetFrameRate)
         previewResolution?.let(builder::setResolutionSelector)
         Camera2Interop.Extender(builder).setSessionCaptureCallback(object : CameraCaptureSession.CaptureCallback() {
+            private var sampledAt = 0L
+            private var lastDark: Boolean? = null
             override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
                 // A sensor frame, not a claim about when a compositor displayed its picture.
                 if (seenFrame.compareAndSet(false, true)) main.execute { if (!released.get()) firstFrame() }
+                if (scene != null && SystemClock.elapsedRealtime() - sampledAt >= 300) {
+                    sampledAt = SystemClock.elapsedRealtime()
+                    val dark = darkPhotoScene(result.get(CaptureResult.LENS_APERTURE), result.get(CaptureResult.SENSOR_EXPOSURE_TIME), result.get(CaptureResult.SENSOR_SENSITIVITY))
+                    if (dark != null && dark != lastDark) {
+                        lastDark = dark
+                        main.execute { if (!released.get()) scene?.invoke(dark) }
+                    }
+                }
             }
         })
         val preview = builder.build().apply { setSurfaceProvider { surface(it) } }

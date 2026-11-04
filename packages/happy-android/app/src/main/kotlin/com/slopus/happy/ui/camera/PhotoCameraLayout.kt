@@ -39,6 +39,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.BlurEffect
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -60,6 +61,9 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.slopus.happy.R
 import com.slopus.happy.attachments.AttachmentPreview
+import com.slopus.happy.camera.PhotoControl
+import com.slopus.happy.camera.PhotoPreferences
+import com.slopus.happy.camera.PhotoShape
 import com.slopus.happy.ui.components.Header
 import com.slopus.happy.ui.components.MaterialSymbols
 import com.slopus.happy.ui.components.rememberImageLoader
@@ -103,6 +107,13 @@ internal fun PhotoCameraLayout(
     onRetry: () -> Unit,
     preview: @Composable () -> Unit,
     tileClip: () -> Rect? = tile,
+    control: PhotoControl? = null,
+    previewGestures: Modifier = Modifier,
+    rotation: Float = 0f,
+    onFlip: () -> Unit = {},
+    flip: () -> Float = { 0f },
+    obscured: () -> Float = { 0f },
+    screenFlash: () -> Float = { 0f },
 ) {
     val density = LocalDensity.current
     val tablet = LocalWindowLayout.current.isTablet
@@ -112,7 +123,8 @@ internal fun PhotoCameraLayout(
     HappyTheme(preference = ThemePreference.Dark) {
         BoxWithConstraints(Modifier.fillMaxSize().graphicsLayer { alpha = motion.fade.value }) {
             val size = Size(constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat())
-            val frames = PhotoFrames.of(size, top, bottom, tablet, density.density)
+            val shape = if (full && control != null) PhotoPreferences.shape else PhotoShape.Standard
+            val frames = PhotoFrames.of(size, top, bottom, tablet, density.density, if (shape == PhotoShape.Wide) 16f / 9 else 4f / 3)
             fun slide(): Float = if (motion.morphs) 0f else size.height * (1 - motion.progress.value)
             fun transform(): PreviewTransform {
                 val origin = tile()
@@ -128,7 +140,7 @@ internal fun PhotoCameraLayout(
             if (review == null && (full || tile() != null)) {
                 Box(
                     Modifier.fillMaxSize()
-                        .graphicsLayer { clip = true; shape = PreviewClip(transform().clip) }
+                        .graphicsLayer { clip = true; this.shape = PreviewClip(transform().clip) }
                         // The embedded viewfinder is above the sheet. Its clipped parent forwards a
                         // tap to the tile's same action; accessibility stays on the gallery's tile.
                         .then(if (!full) Modifier.pointerInput(onOpen) { detectTapGestures { onOpen() } }.clearAndSetSemantics {}
@@ -136,6 +148,7 @@ internal fun PhotoCameraLayout(
                 ) {
                     Box(
                         Modifier.frame(frames.preview, density)
+                            .then(if (full && ready && !busy) previewGestures else Modifier)
                             .graphicsLayer {
                                 val at = transform()
                                 scaleX = at.scale; scaleY = at.scale
@@ -144,7 +157,14 @@ internal fun PhotoCameraLayout(
                             }
                             .testTag(PhotoTags.PREVIEW),
                     ) {
-                        preview()
+                        Box(Modifier.fillMaxSize().graphicsLayer {
+                            rotationY = flip()
+                            cameraDistance = 12 * density.density
+                            val radius = obscured() * 16 * density.density
+                            renderEffect = if (android.os.Build.VERSION.SDK_INT >= 31 && radius > 0) BlurEffect(radius, radius) else null
+                        }) { preview() }
+                        Box(Modifier.fillMaxSize().drawBehind { drawRect(Color.Black, alpha = obscured() * 0.3f) })
+                        if (full && control != null) PhotoPictureControls(control, frames.preview.size, shape, rotation)
                         Box(Modifier.fillMaxSize().drawBehind { drawRect(Color.Black, alpha = blink().coerceIn(0f, 1f)) })
                     }
                 }
@@ -181,6 +201,21 @@ internal fun PhotoCameraLayout(
                         onTake = onTake,
                         modifier = Modifier.frame(frames.shutter, density).graphicsLayer { alpha = motion.controls.value; translationY = slide() },
                     )
+                    if (control != null) {
+                        val crop = fitPhoto(Size(shape.ratio.toFloat(), 1f), frames.preview, portrait = frames.preview.height >= frames.preview.width)
+                        val count = control.zoomBounds.stops.size
+                        val width = (count * 48 + 6) * density.density
+                        val foot = if (tablet) crop.bottom else minOf(crop.bottom, frames.mode.top)
+                        val bar = Rect(frames.preview.center.x - width / 2, foot - 60 * density.density, frames.preview.center.x + width / 2, foot - 12 * density.density)
+                        PhotoZoomBar(control, rotation, ready && !busy, Modifier.frame(bar, density).graphicsLayer { alpha = motion.controls.value; translationY = slide() })
+                        if (control.canFlip) {
+                            val side = 48 * density.density
+                            val x = if (tablet) size.width - 60 * density.density else (frames.shutter.right + size.width) / 2
+                            val y = if (tablet) frames.shutter.bottom + 24 * density.density + side / 2 else frames.shutter.center.y
+                            PhotoFlip(ready && !busy && control.countdown == null, rotation, onFlip,
+                                Modifier.frame(Rect(x - side / 2, y - side / 2, x + side / 2, y + side / 2), density).graphicsLayer { alpha = motion.controls.value; translationY = slide() })
+                        }
+                    }
                     if (problem != null) {
                         Box(Modifier.frame(frames.preview, density).graphicsLayer { translationY = slide() }, contentAlignment = Alignment.Center) {
                             CameraMessage(problem, onSettings, onRetry)
@@ -191,14 +226,22 @@ internal fun PhotoCameraLayout(
                     title = stringResource(R.string.attach_photo_label),
                     background = Color.Black,
                     left = { IconButton(onClick = onBack) { Icon(MaterialSymbols.ArrowBack, stringResource(R.string.common_back), tint = Color.White) } },
+                    right = if (!tablet && control != null && review == null) ({ PhotoTools(control, false, ready && !busy && control.countdown == null, rotation) }) else null,
                     modifier = Modifier.align(Alignment.TopCenter).graphicsLayer { alpha = motion.controls.value; translationY = slide() },
                 )
+                if (tablet && control != null && review == null) {
+                    Box(Modifier.offset { IntOffset((size.width - 84 * density.density).roundToInt(), (top - 56 * density.density).roundToInt()) }
+                        .graphicsLayer { alpha = motion.controls.value; translationY = slide() }) {
+                        PhotoTools(control, true, ready && !busy && control.countdown == null, rotation)
+                    }
+                }
+                Box(Modifier.fillMaxSize().drawBehind { drawRect(Color.White, alpha = screenFlash().coerceIn(0f, 1f)) }.clearAndSetSemantics {})
             }
         }
     }
 }
 
-private fun Modifier.frame(rect: Rect, density: Density): Modifier =
+internal fun Modifier.frame(rect: Rect, density: Density): Modifier =
     offset { IntOffset(rect.left.roundToInt(), rect.top.roundToInt()) }.size(with(density) { rect.width.toDp() }, with(density) { rect.height.toDp() })
 
 @Composable

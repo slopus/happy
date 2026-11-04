@@ -36,12 +36,12 @@ internal object PhotoTags {
 /** CameraScreenLayout.swift: the photo frame, 96 shutter target, 120 tablet column and 96 review bar. */
 internal data class PhotoFrames(val preview: Rect, val shutter: Rect, val mode: Rect, val review: Rect) {
     companion object {
-        fun of(size: Size, top: Float, bottom: Float, tablet: Boolean, unit: Float): PhotoFrames {
+        fun of(size: Size, top: Float, bottom: Float, tablet: Boolean, unit: Float, ratio: Float = 4f / 3): PhotoFrames {
             val column = if (tablet) 120 * unit else 0f
             val area = Rect(0f, top, (size.width - column).coerceAtLeast(0f), (size.height - bottom).coerceAtLeast(top))
-            val preview = if (!tablet && size.width * 4 / 3 <= area.height) {
-                Rect(0f, top, size.width, top + size.width * 4 / 3)
-            } else fitPhoto(Size(4f, 3f), area, portrait = area.height >= area.width)
+            val preview = if (!tablet && size.width * ratio <= area.height) {
+                Rect(0f, top, size.width, top + size.width * ratio)
+            } else fitPhoto(Size(ratio, 1f), area, portrait = area.height >= area.width)
             val side = 96 * unit
             val shutter = if (tablet) {
                 Rect(size.width - column / 2 - side / 2, area.center.y - side / 2, size.width - column / 2 + side / 2, area.center.y + side / 2)

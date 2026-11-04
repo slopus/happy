@@ -59,6 +59,7 @@ import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.components.rememberReduceMotion
+import com.slopus.happy.ui.components.TrackOverlay
 import com.slopus.happy.ui.conversation.PictureViewer
 import com.slopus.happy.ui.conversation.ViewerSource
 import com.slopus.happy.ui.files.WorkspaceFilePicker
@@ -138,6 +139,8 @@ fun AttachSheet(
             closed()
         }
     }
+    // A link must close the whole attachment flow, even while its camera is on top.
+    TrackOverlay(open) { close() }
 
     fun say(title: Int, message: String) {
         alert = Alert(resources.getString(title), message, listOf(AlertButton(resources.getString(R.string.common_ok))))

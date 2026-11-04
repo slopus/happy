@@ -1,5 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="camera_timer">Temporitzador</string>
+    <string name="camera_timer_seconds">%1$d s</string>
+    <string name="camera_shape">Format de foto</string>
+    <string name="camera_grid">Quadrícula</string>
+    <string name="camera_flash">Flaix</string>
+    <string name="camera_flash_auto">Automàtic</string>
+    <string name="camera_on">Activat</string>
+    <string name="camera_off">Desactivat</string>
+    <string name="camera_flip">Canvia la càmera</string>
+    <string name="camera_exposure">Exposició</string>
+    <string name="camera_ae_af_lock">BLOQUEIG AE/AF</string>
+    <string name="camera_af_lock">BLOQUEIG AF</string>
+    <string name="camera_ae_lock">BLOQUEIG AE</string>
+    <string name="camera_zoom">Zoom %1$s</string>
     <string name="camera_take_photo">Fes una foto</string>
     <string name="camera_retake">Repeteix</string>
     <string name="camera_use_photo">Utilitza la foto</string>

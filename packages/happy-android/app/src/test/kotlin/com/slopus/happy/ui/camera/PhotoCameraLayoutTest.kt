@@ -21,6 +21,13 @@ import androidx.compose.ui.unit.height
 import androidx.compose.ui.unit.width
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.attachments.AttachmentPreview
+import com.slopus.happy.camera.PhotoControl
+import com.slopus.happy.camera.PhotoPreferences
+import com.slopus.happy.camera.PhotoShape
+import com.slopus.happy.camera.PhotoFlash
+import java.util.concurrent.Executor
+import org.junit.After
+import org.junit.Before
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
@@ -43,6 +50,7 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class PhotoCameraLayoutTest {
     @get:Rule val rule = createComposeRule()
+    @Before @After fun resetPreferences() { PhotoPreferences.shape = PhotoShape.Standard; PhotoPreferences.grid = false; PhotoPreferences.flash = PhotoFlash.Auto }
 
     @Composable
     private fun Camera(
@@ -54,13 +62,49 @@ class PhotoCameraLayoutTest {
         settings: () -> Unit = {},
         use: () -> Unit = {},
         preview: @Composable () -> Unit = { Box(Modifier.fillMaxSize().background(Color.DarkGray)) },
+        control: PhotoControl? = null,
+        flip: () -> Unit = {},
     ) {
         PhotoCameraLayout(
             full = true, motion = motion, tile = tile, ready = problem == null, busy = false,
             problem = problem, review = review, firstFrame = { 1f }, blink = { 0f },
             onOpen = {}, onBack = {}, onTake = take, onRetake = {}, onUse = use,
-            onSettings = settings, onRetry = {}, preview = preview,
+            onSettings = settings, onRetry = {}, preview = preview, control = control, onFlip = flip,
         )
+    }
+
+    @Test fun photoToolsHaveAndroidTargetsAndChangeTheActualChoicesWithoutInventingFlashOrZoom() {
+        val control = PhotoControl(Executor { it.run() })
+        rule.setHappyContent { ProvideWindowLayout { Camera(control = control) } }
+        for (tag in listOf("camera.timer", "camera.shape", "camera.grid")) {
+            assertDp("Android target", 48, rule.node(tag).bounds.width)
+            assertDp("Android target", 48, rule.node(tag).bounds.height)
+            rule.node(tag).performClick()
+        }
+        assertEquals(3, control.timer)
+        assertEquals(PhotoShape.Wide, PhotoPreferences.shape)
+        assertTrue(PhotoPreferences.grid)
+        rule.node("camera.flash").assertDoesNotExist()
+        rule.node("camera.flip").assertDoesNotExist()
+        rule.node("camera.zoom.0").assertDoesNotExist()
+        rule.node("camera.shape").performClick()
+        assertEquals(PhotoShape.Square, PhotoPreferences.shape)
+        assertDp("square keeps the4:3 sensor preview", 548, rule.node(PhotoTags.PREVIEW).bounds.height)
+    }
+
+    @Test @Config(qualifiers = "w1280dp-h600dp-xhdpi")
+    fun tabletToolsStayAboveTheShutterAndFlipBelowItEvenInAShortWindow() {
+        val control = PhotoControl(Executor { it.run() }).apply { canFlip = true }
+        var flips = 0
+        rule.setHappyContent { ProvideWindowLayout { Camera(control = control, flip = { flips++ }) } }
+        val shutter = rule.node(PhotoTags.SHUTTER).bounds
+        val tools = rule.node("camera.grid").bounds
+        val flip = rule.node("camera.flip").bounds
+        assertTrue(tools.bottom < shutter.top)
+        assertTrue(flip.top > shutter.bottom)
+        assertTrue(tools.left >= 1160.dp && flip.left >= 1160.dp)
+        rule.node("camera.flip").performClick()
+        assertEquals(1, flips)
     }
 
     @Test

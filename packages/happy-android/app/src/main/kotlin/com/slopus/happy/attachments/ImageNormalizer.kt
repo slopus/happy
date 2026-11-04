@@ -3,11 +3,13 @@ package com.slopus.happy.attachments
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
+import android.graphics.Rect
 import androidx.exifinterface.media.ExifInterface
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import kotlin.math.max
+import kotlin.math.floor
 import kotlin.math.roundToInt
 
 /** useImagePicker.ts limits. */
@@ -37,7 +39,7 @@ object ImageNormalizer {
      * [open] is called more than once (bounds, orientation, pixels). Throws
      * [IOException] when the bytes aren't an image.
      */
-    fun normalize(open: () -> InputStream, fileName: String?, outputDir: File, now: Long = System.currentTimeMillis()): NormalizedImage {
+    fun normalize(open: () -> InputStream, fileName: String?, outputDir: File, now: Long = System.currentTimeMillis(), cropRatio: Double? = null): NormalizedImage {
         val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         open().use { BitmapFactory.decodeStream(it, null, bounds) }
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IOException("Not an image")
@@ -47,21 +49,24 @@ object ImageNormalizer {
             ExifInterface.ORIENTATION_NORMAL
         }
 
-        val longEdge = max(bounds.outWidth, bounds.outHeight)
+        // Cut before downsizing: a4032×3024 square keeps3024px, not2304px.
+        val boundsCrop = cropRect(bounds.outWidth, bounds.outHeight, cropRatio)
+        val longEdge = max(boundsCrop.width(), boundsCrop.height())
         var sample = 1
         while (longEdge / (sample * 2) >= ATTACHMENT_MAX_DIMENSION) sample *= 2
         val decoded = open().use { BitmapFactory.decodeStream(it, null, BitmapFactory.Options().apply { inSampleSize = sample }) }
             ?: throw IOException("Not an image")
 
-        val (width, height) = targetSize(decoded.width, decoded.height)
+        val crop = cropRect(decoded.width, decoded.height, cropRatio)
+        val (width, height) = targetSize(crop.width(), crop.height())
         val matrix = Matrix().apply {
-            postScale(width.toFloat() / decoded.width, height.toFloat() / decoded.height)
+            postScale(width.toFloat() / crop.width(), height.toFloat() / crop.height())
             applyOrientation(orientation)
         }
-        val output = if (matrix.isIdentity) {
+        val output = if (matrix.isIdentity && crop.width() == decoded.width && crop.height() == decoded.height) {
             decoded
         } else {
-            Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true)
+            Bitmap.createBitmap(decoded, crop.left, crop.top, crop.width(), crop.height(), matrix, true)
         }
         val file = File(outputDir, "attachment_${now}_${(Math.random() * 1e9).toLong()}.jpg")
         file.outputStream().use { if (!output.compress(Bitmap.CompressFormat.JPEG, ATTACHMENT_JPEG_QUALITY, it)) throw IOException("JPEG encode failed") }
@@ -70,6 +75,20 @@ object ImageNormalizer {
         val size = file.length()
         if (size <= 0) throw IOException("Could not determine normalized image size")
         return NormalizedImage(file, outputWidth(width, height, orientation), outputHeight(width, height, orientation), size, withJpegExtension(fileName, now))
+    }
+
+    /** CameraCrop.rect: centred, ratio=long/short, independent of EXIF orientation. */
+    internal fun cropRect(width: Int, height: Int, ratio: Double?): Rect {
+        if (ratio == null || !ratio.isFinite() || ratio < 1 || width <= 0 || height <= 0) return Rect(0, 0, width, height)
+        val long = max(width, height)
+        val short = minOf(width, height)
+        val cutLong = minOf(long, floor(short * ratio).toInt()).coerceAtLeast(1)
+        val cutShort = minOf(short, floor(long / ratio).toInt()).coerceAtLeast(1)
+        val w = if (width >= height) cutLong else cutShort
+        val h = if (width >= height) cutShort else cutLong
+        val x = (width - w) / 2
+        val y = (height - h) / 2
+        return Rect(x, y, x + w, y + h)
     }
 
     /** manipulateAsync's resize by the long edge alone: aspect kept, rounded; nothing when already within 3072. */

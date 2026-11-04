@@ -1,5 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="camera_timer">Таймер</string>
+    <string name="camera_timer_seconds">%1$d с</string>
+    <string name="camera_shape">Формат фото</string>
+    <string name="camera_grid">Сетка</string>
+    <string name="camera_flash">Вспышка</string>
+    <string name="camera_flash_auto">Авто</string>
+    <string name="camera_on">Вкл.</string>
+    <string name="camera_off">Выкл.</string>
+    <string name="camera_flip">Переключить камеру</string>
+    <string name="camera_exposure">Экспозиция</string>
+    <string name="camera_ae_af_lock">ФИКСАЦИЯ АЭ/АФ</string>
+    <string name="camera_af_lock">ФИКСАЦИЯ АФ</string>
+    <string name="camera_ae_lock">ФИКСАЦИЯ АЭ</string>
+    <string name="camera_zoom">Масштаб %1$s</string>
     <string name="camera_take_photo">Сделать фото</string>
     <string name="camera_retake">Переснять</string>
     <string name="camera_use_photo">Использовать фото</string>

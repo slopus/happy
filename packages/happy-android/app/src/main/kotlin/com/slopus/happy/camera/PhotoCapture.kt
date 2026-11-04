@@ -34,6 +34,7 @@ internal suspend fun capturePhoto(
     files: PhotoFiles,
     mirrored: Boolean,
     maxBytes: Long,
+    cropRatio: Double? = null,
     onStarted: () -> Unit = {},
 ): CapturedPhoto {
     // Assign inside the IO block so cancellation on its return still knows what to clean.
@@ -65,7 +66,7 @@ internal suspend fun capturePhoto(
         }
         return withContext(Dispatchers.IO) {
             val normalized = try {
-                ImageNormalizer.normalize(raw::inputStream, "photo.jpg", directory)
+                ImageNormalizer.normalize(raw::inputStream, "photo.jpg", directory, cropRatio = cropRatio)
             } finally {
                 raw.delete()
             }

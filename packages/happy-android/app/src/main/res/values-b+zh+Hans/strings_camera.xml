@@ -1,5 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="camera_timer">定时器</string>
+    <string name="camera_timer_seconds">%1$d秒</string>
+    <string name="camera_shape">照片比例</string>
+    <string name="camera_grid">网格</string>
+    <string name="camera_flash">闪光灯</string>
+    <string name="camera_flash_auto">自动</string>
+    <string name="camera_on">开启</string>
+    <string name="camera_off">关闭</string>
+    <string name="camera_flip">切换相机</string>
+    <string name="camera_exposure">曝光</string>
+    <string name="camera_ae_af_lock">自动曝光/对焦锁定</string>
+    <string name="camera_af_lock">自动对焦锁定</string>
+    <string name="camera_ae_lock">自动曝光锁定</string>
+    <string name="camera_zoom">缩放 %1$s</string>
     <string name="camera_take_photo">拍照</string>
     <string name="camera_retake">重拍</string>
     <string name="camera_use_photo">使用照片</string>

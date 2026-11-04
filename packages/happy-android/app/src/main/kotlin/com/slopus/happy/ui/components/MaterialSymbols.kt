@@ -12,6 +12,15 @@ import androidx.compose.ui.unit.dp
  * 24 dp vectors for `material3.Icon`, which tints them.
  */
 object MaterialSymbols {
+    val CameraFlip: ImageVector by lazy { icon("CameraFlip", "M20,5h-3.17L15,3H9L7.17,5H4c-1.1,0 -2,0.9 -2,2v12c0,1.1 0.9,2 2,2h16c1.1,0 2,-0.9 2,-2V7c0,-1.1 -0.9,-2 -2,-2zM12,18c-2.76,0 -5,-2.24 -5,-5H5l3,-3 3,3H9c0,1.66 1.34,3 3,3v2zM16,16l-3,-3h2c0,-1.66 -1.34,-3 -3,-3V8c2.76,0 5,2.24 5,5h2l-3,3z") }
+    val CameraTimer: ImageVector by lazy { icon("CameraTimer", "M9,1h6v2H9zM19.03,4.55l-1.42,1.42C16.07,4.74 14.12,4 12,4c-4.97,0 -9,4.03 -9,9s4.03,9 9,9 9,-4.03 9,-9c0,-2.12 -0.74,-4.07 -1.97,-5.61l1.42,-1.42 -1.42,-1.42zM12,20c-3.87,0 -7,-3.13 -7,-7s3.13,-7 7,-7 7,3.13 7,7 -3.13,7 -7,7zM11,8h2v6h-2z") }
+    val CameraGrid: ImageVector by lazy { icon("CameraGrid", "M3,3h18v2H3zM3,10h18v2H3zM3,19h18v2H3zM3,3h2v18H3zM10,3h2v18h-2zM19,3h2v18h-2z") }
+    val CameraFlash: ImageVector by lazy { icon("CameraFlash", "M7,2v11h3v9l7,-12h-4l4,-8H7z") }
+    val CameraFlashAuto: ImageVector by lazy {
+        ImageVector.Builder("CameraFlashAuto", 24.dp, 24.dp, 24f, 24f)
+            .addPath(addPathNodes("M7,2v11h3v9l7,-12h-4l4,-8H7z"), fill = null, stroke = SolidColor(Color.Black), strokeLineWidth = 1.5f).build()
+    }
+    val CameraFlashOff: ImageVector by lazy { icon("CameraFlashOff", "M3.27,2L2,3.27 7,8.27V13h3v9l3.58,-6.14L20.73,23 22,21.73 3.27,2zM17,10h-4l4,-8H7v1.18l8.45,8.45L17,10z") }
     val ArrowBack: ImageVector by lazy { icon("ArrowBack", "M20,11H7.83l5.59,-5.59L12,4l-8,8 8,8 1.41,-1.41L7.83,13H20v-2z", mirrored = true) }
     /** iPadOS's `sidebar.left`: a window with its leading column ruled off. */
     val Sidebar: ImageVector by lazy {
