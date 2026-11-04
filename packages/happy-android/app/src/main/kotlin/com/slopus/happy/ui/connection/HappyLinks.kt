@@ -79,10 +79,7 @@ class HappyLinks internal constructor(
         }
     }
 
-    private fun go(connectionId: String, link: HappyLink) = nav.openHappyLink(connectionId, link) { surfaceId ->
-        graph.agentSessions.session(connectionId)?.feed?.value?.rows
-            ?.firstNotNullOfOrNull { row -> (row as? AgentFeedRow.Surface)?.takeIf { it.id == surfaceId } }
-    }
+    private fun go(connectionId: String, link: HappyLink) = nav.openHappyLink(connectionId, link)
 
     companion object {
         /** The connection an external link for [instanceId] opens on: the open one if it is that installation, else the first that is; null if none. */
@@ -113,21 +110,18 @@ fun rememberHappyLinks(graph: AppGraph, nav: NavHostController, openConnection: 
 }
 
 /**
- * [link] on [connectionId]: an artifact, a conversation, a joined Surface,
+ * [link] on [connectionId]: an artifact, a conversation, a Surface,
  * a workspace's file at its line. What the phone has no screen for
- * (a workspace, project, service or person, or a Surface not joined:
- * [surface] is the connection's joined one) opens the connection's home.
+ * (a workspace, project, service or person) opens the connection's home.
  */
-fun NavHostController.openHappyLink(connectionId: String, link: HappyLink, surface: (id: String) -> AgentFeedRow.Surface?) {
+fun NavHostController.openHappyLink(connectionId: String, link: HappyLink) {
     when (link) {
         is HappyLink.Reference -> when (link.kind) {
             HappyReferenceKind.Artifact -> navigate(
                 ArtifactRoute(connectionId, link.id, version = link.version ?: 1, followsLatest = link.version == null, pinned = link.version != null),
             )
             HappyReferenceKind.Agent -> openConversation(connectionId, link.id)
-            HappyReferenceKind.Surface -> surface(link.id)
-                ?.let { navigate(AgentSurfaceRoute(connectionId, it.id, it.type, it.name)) }
-                ?: popBackStack(HomeRoute, inclusive = false)
+            HappyReferenceKind.Surface -> navigate(com.slopus.happy.ui.surfaces.SurfaceRoute(connectionId, link.id))
             else -> popBackStack(HomeRoute, inclusive = false)
         }
         // The file itself, in the viewer at its first line (unit files' entry).

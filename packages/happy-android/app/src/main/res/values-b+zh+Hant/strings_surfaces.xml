@@ -7,4 +7,6 @@
     <string name="surface_leave_no_answer">代理程式沒有回應。請稍後再試。</string>
     <string name="conversation_jump_to_latest">跳到最新</string>
     <string name="conversation_jump_working">工作中</string>
+    <string name="surface_join_failed">無法加入「%1$s」</string>
+    <string name="surface_missing">這裡沒有它。它可能屬於這個 Happy Agent 無法存取的另一個 Happy Agent。</string>
 </resources>

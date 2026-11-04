@@ -7,4 +7,6 @@
     <string name="surface_leave_no_answer">Агент не ответил. Попробуйте ещё раз чуть позже.</string>
     <string name="conversation_jump_to_latest">К последним сообщениям</string>
     <string name="conversation_jump_working">работает</string>
+    <string name="surface_join_failed">Не удалось присоединиться к «%1$s»</string>
+    <string name="surface_missing">Здесь этого нет. Возможно, это принадлежит Happy Agent, до которого отсюда не достучаться.</string>
 </resources>

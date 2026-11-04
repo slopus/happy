@@ -7,4 +7,6 @@
     <string name="surface_leave_no_answer">El agente no respondió. Inténtalo de nuevo en un momento.</string>
     <string name="conversation_jump_to_latest">Ir a lo más reciente</string>
     <string name="conversation_jump_working">trabajando</string>
+    <string name="surface_join_failed">No se pudo unir a «%1$s»</string>
+    <string name="surface_missing">Esto no está aquí. Puede pertenecer a un Happy Agent al que este no llega.</string>
 </resources>

@@ -14,6 +14,8 @@ import com.slopus.happy.diagnostics.traced
 import com.slopus.happy.feed.AgentFeedRoutes
 import com.slopus.happy.feed.FeedLibrary
 import com.slopus.happy.feed.FeedLookups
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -121,6 +123,7 @@ class AgentSession internal constructor(
     // Empty until the kept catalog is read off the main thread (init), then live.
     private val catalogState = MutableStateFlow(AgentCatalog())
     private val catalogLock = Mutex()
+    private val surfaceJoinLock = Mutex()
 
     /** Everything home is drawn from; current to [AgentCatalog.cursor]. */
     val catalog: StateFlow<AgentCatalog> = catalogState.asStateFlow()
@@ -185,7 +188,7 @@ class AgentSession internal constructor(
         catalogState, intents.pending, gitSnapshots,
         feedLibrary.state.map { if (it.available == true) it.unread else null }.distinctUntilChanged(),
     ) { catalog, pending, git, feedUnread ->
-        AgentFeed.derive(catalog, git = git, intents = IntentOverlay.of(pending), feedUnread = feedUnread)
+        AgentFeed.derive(catalog.withSurfaceIntents(pending), git = git, intents = IntentOverlay.of(pending), feedUnread = feedUnread)
     }
         .distinctUntilChanged()
         .scan(null as AgentFeed?) { previous, next -> AgentFeed.reuse(previous, next) }
@@ -252,7 +255,6 @@ class AgentSession internal constructor(
             readUsers = { com.slopus.happy.references.ReferenceReader.userNames(client, it) },
         )
     }
-
     /** Bots' pictures, as home's rows draw them. */
     /** Chat media kept on this phone for good, beside the catalog (iOS `MediaLibrary.agent`); null where nothing is kept. */
     val media: com.slopus.happy.media.MediaLibrary? = cacheFile?.let { com.slopus.happy.media.MediaLibrary(File(it.parentFile, it.nameWithoutExtension + ".media")) }
@@ -324,6 +326,12 @@ class AgentSession internal constructor(
         val mutation = buildJsonObject { put("mutationId", intent.id) }
         try {
             when (intent.kind) {
+                SURFACE_JOIN -> {
+                    val body = client.decode<JsonObject>("POST", "/v0/surfaces/$id/join", mutation)
+                    val surface = body["surface"] as? JsonObject
+                        ?: throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
+                    catalogLock.withLock { catalogState.update { it.withSurface(surface) } }
+                }
                 Intent.READ -> client.send("POST", "/v0/agents/$id/read", JsonObject(emptyMap()))
                 Intent.LEAVE -> client.send("POST", if (intent.of == "surface") "/v0/surfaces/$id/leave" else "/v0/tasks/$id/leave", mutation)
                 Intent.ARCHIVE -> when (intent.of) {
@@ -342,7 +350,7 @@ class AgentSession internal constructor(
                 else -> throw IntentRefusal("")
             }
         } catch (e: AgentApiException) {
-            if (e.status in 400..499 && e.status != 404 && e.status != 408 && e.status != 429) throw IntentRefusal(e.message.orEmpty())
+            if (e.status in 400..499 && (e.status != 404 || intent.kind == SURFACE_JOIN) && e.status != 408 && e.status != 429) throw IntentRefusal(e.message.orEmpty())
             if (e.status != 404) throw e
         }
         // Left or archived: out of the catalog too, so it stays gone once the intent is.
@@ -376,6 +384,62 @@ class AgentSession internal constructor(
         return ((body?.get(key) as? JsonObject)?.get("version") as? JsonPrimitive)?.contentOrNull ?: throw AgentApiException(500, "invalid_response", null)
     }
 
+    /** Every Surface on the computer, joined or not, kept with the catalog (iOS's `SurfaceCatalogFeed`). */
+    val surfaces: StateFlow<SurfaceCatalog> = combine(catalogState, intents.pending) { catalog, pending ->
+        SurfaceCatalog.of(catalog.withSurfaceIntents(pending))
+    }
+        .distinctUntilChanged()
+        .flowOn(Dispatchers.Default)
+        .stateIn(scope, SharingStarted.Eagerly, SurfaceCatalog.of(catalogState.value))
+
+    /** One Surface, live; null while the catalog doesn't know it. */
+    fun surface(surfaceId: String): Flow<Surface?> = surfaces.map { it[surfaceId] }.distinctUntilChanged()
+
+    private val joinRefusalState = MutableStateFlow<Map<String, String>>(emptyMap())
+
+    /** Joins the agent refused, by Surface, with its words (empty where it gave none), until [dismissJoinRefusal]. */
+    val joinRefusals: StateFlow<Map<String, String>> = joinRefusalState.asStateFlow()
+
+    fun dismissJoinRefusal(surfaceId: String) = joinRefusalState.update { it - surfaceId }
+
+    /**
+     * Joins a Surface the person opened without being in it
+     * (`POST /v0/surfaces/:id/join`, desktop de78af49): it takes its place
+     * in their list at once and the computer's answer places it. A refusal
+     * takes it out again and is kept in [joinRefusals] for the open Surface
+     * to say, which stays open. A joined Surface sends nothing. Runs in the
+     * session, so leaving the screen doesn't cancel it. Answers null once
+     * joined or kept for retry, otherwise the refusal.
+     */
+    fun joinSurface(surfaceId: String): Deferred<String?> = scope.async {
+        val intent = surfaceJoinLock.withLock {
+            val known = catalogState.value.withSurfaceIntents(intents.pending.value)
+            if (known.surfaces[surfaceId]?.let(Surface::parse)?.joinedBy(known.userId) == true) return@async null
+            intents.pending.value.firstOrNull { it.kind == SURFACE_JOIN && it.target == surfaceId }
+                ?: intents.enqueue(SURFACE_JOIN, surfaceId)
+        }
+        val refusal = (intents.attempt(intent.id) as? IntentOutbox.Verdict.Refused)?.reason
+        if (refusal != null) joinRefusalState.update { it + (surfaceId to refusal) }
+        refusal
+    }
+
+    /**
+     * Makes a Surface of [type] named [name] (`POST /v0/surfaces`), under an
+     * id chosen here so a retry makes the same one; it is in the catalog,
+     * and the person's list, once the computer answers.
+     */
+    suspend fun createSurface(type: String, name: String, id: String = AgentClient.newId()): Surface {
+        val body = client.decode<JsonObject>("POST", "/v0/surfaces", buildJsonObject {
+            put("id", id)
+            put("type", type)
+            put("name", name)
+            put("mutationId", AgentClient.newId())
+        })
+        val surface = body["surface"] as? JsonObject ?: throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
+        catalogLock.withLock { catalogState.update { it.withSurface(surface) } }
+        return Surface.parse(surface) ?: throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
+    }
+
     /** A bot as `POST /v0/bots` answered: home lists it before `bot.created` comes. */
     fun upsertBot(bot: JsonObject) {
         catalogState.update { it.withResource("bot", bot) }
@@ -392,12 +456,16 @@ class AgentSession internal constructor(
     val parkedConversations = ParkedConversations(scope)
 
     init {
-        intents.handle(setOf(Intent.READ, Intent.ARCHIVE, Intent.LEAVE, Intent.RENAME), ::deliver)
+        intents.handle(setOf(Intent.READ, Intent.ARCHIVE, Intent.LEAVE, Intent.RENAME, SURFACE_JOIN), ::deliver)
         feedLibrary.start()
         // Sent while the link is up; every connect sends what waits at once.
         scope.launch { statusState.collect { intents.setOnline(it == AgentLinkStatus.Connected) } }
         scope.launch {
             intents.rejections.collectLatest { rejection ->
+                if (rejection.intent.kind == SURFACE_JOIN) {
+                    joinRefusalState.update { it + (rejection.intent.target to rejection.reason) }
+                    return@collectLatest
+                }
                 // A refused read or seen entry is nothing to tell; a screen that heard the refusal said it already.
                 if (rejection.intent.kind == Intent.READ || rejection.intent.kind in FeedLibrary.KINDS || rejection.heard) return@collectLatest
                 noticeState.value = rejection.reason

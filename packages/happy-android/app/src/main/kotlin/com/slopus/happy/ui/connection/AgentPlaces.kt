@@ -46,11 +46,10 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.navigation.NavHostController
-import com.slopus.happy.AppGraph
+import com.slopus.happy.agent.AgentSession
+import com.slopus.happy.ui.surfaces.SeedlingEmpty
 import com.slopus.happy.R
 import com.slopus.happy.agent.AgentEvent
-import com.slopus.happy.agent.AgentFeedRow
 import com.slopus.happy.chat.arr
 import com.slopus.happy.chat.bool
 import com.slopus.happy.chat.markdown.parseMarkdown
@@ -58,7 +57,6 @@ import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
 import com.slopus.happy.conversation.Conversation
 import com.slopus.happy.conversation.Problem
-import com.slopus.happy.feed.FeedSubject
 import com.slopus.happy.conversation.ConversationApi
 import com.slopus.happy.conversation.Todo
 import com.slopus.happy.ui.artifacts.PlaceTags
@@ -84,14 +82,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
-
-/** One Surface the person joined; [name] titles the bar before anything is read. */
-@Serializable data class AgentSurfaceRoute(val connectionId: String, val surfaceId: String, val type: String, val name: String)
 
 object AgentPlacesTags {
     const val SURFACE = "agentPlaces.surface"
@@ -217,36 +211,37 @@ internal class SurfaceReader(
     }
 }
 
+/**
+ * A todo list or document read whole ([SurfaceReader]), shown by
+ * [SurfaceScreen]; the bar keeps up with a rename, as iOS's does.
+ */
 @Composable
-internal fun AgentSurface(graph: AppGraph, nav: NavHostController, route: AgentSurfaceRoute) {
-    val session = remember(route.connectionId) { graph.agentSessions.session(route.connectionId) }
+internal fun ReadSurface(session: AgentSession, surfaceId: String, type: String, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val reader = remember(session) { session?.let { SurfaceReader(
-            ConversationApi(it.conversationRequest()), scope, route.surfaceId, route.type,
-            cached = { it.cachedResource("surface" + route.surfaceId) },
-            keep = { value -> it.keepResource("surface" + route.surfaceId, value) },
-        ) } }
+    val reader = remember(session, surfaceId, type) {
+        SurfaceReader(
+            ConversationApi(session.conversationRequest()), scope, surfaceId, type,
+            cached = { session.cachedResource("surface$surfaceId") },
+            keep = { value -> session.keepResource("surface$surfaceId", value) },
+        )
+    }
     com.slopus.happy.ui.components.StartedEffect(reader) {
-        if (session == null || reader == null) return@StartedEffect
         reader.read()
         try {
-            if (route.type == SurfaceReader.TODO) session.events.filter(reader::hears).collect { reader.read() }
+            if (type == SurfaceReader.TODO) session.events.filter(reader::hears).collect { reader.read() }
             else kotlinx.coroutines.awaitCancellation()
         } finally { reader.pauseReads() }
     }
-    // Opened: its Feed entry is seen (iOS `SurfaceScreens`).
-    LaunchedEffect(session, route.surfaceId) { session?.feedLibrary?.seen(FeedSubject.surface(route.surfaceId)) }
-    // The bar keeps up with a rename, as iOS's does.
-    val feed = session?.feed?.collectAsStateWithLifecycle()?.value
-    val name = feed?.rows?.firstNotNullOfOrNull { (it as? AgentFeedRow.Surface)?.takeIf { s -> s.id == route.surfaceId }?.name } ?: route.name
-    val read = reader?.state?.collectAsStateWithLifecycle()?.value ?: PlaceRead.Failed(Problem.Unavailable)
+    val name = session.surface(surfaceId).collectAsStateWithLifecycle(null).value?.name.orEmpty()
+    val read = reader.state.collectAsStateWithLifecycle().value
     SurfaceScreen(
         name = name,
         read = read,
-        onBack = { nav.popBackStack() },
-        onAdd = { reader?.add(it) },
-        onRetry = { reader?.retry() },
-        onRefresh = { reader?.refresh() },
+        onBack = onBack,
+        onAdd = { reader.add(it) },
+        onRetry = { reader.retry() },
+        onRefresh = { reader.refresh() },
+        actions = { com.slopus.happy.ui.surfaces.SurfaceMenu(session, surfaceId, onBack) },
     )
 }
 
@@ -263,8 +258,9 @@ fun SurfaceScreen(
     onAdd: (String) -> Unit,
     onRetry: () -> Unit,
     onRefresh: suspend () -> Unit = {},
+    actions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {},
 ) {
-    PlaceScaffold(name, onBack, AgentPlacesTags.SURFACE) {
+    PlaceScaffold(name, onBack, AgentPlacesTags.SURFACE, actions = actions) {
         when (read) {
             PlaceRead.Reading -> LoadingIndicator(Modifier.testTag(PlaceTags.LOADER))
             is PlaceRead.Failed -> StatePage(
@@ -276,7 +272,7 @@ fun SurfaceScreen(
             is PlaceRead.Ready -> when (val body = read.value) {
                 is SurfaceBody.Todos -> TodoList(body.todos, onAdd)
                 is SurfaceBody.Document -> SurfaceDocument(body.markdown, onRefresh)
-                SurfaceBody.Elsewhere -> PlaceMessage(stringResource(R.string.agent_surface_open_on_computer))
+                SurfaceBody.Elsewhere -> SeedlingEmpty(stringResource(R.string.agent_surface_open_on_computer))
             }
         }
     }

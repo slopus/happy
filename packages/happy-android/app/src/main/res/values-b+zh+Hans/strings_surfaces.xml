@@ -7,4 +7,6 @@
     <string name="surface_leave_no_answer">智能体没有响应。请稍后重试。</string>
     <string name="conversation_jump_to_latest">跳到最新</string>
     <string name="conversation_jump_working">工作中</string>
+    <string name="surface_join_failed">无法加入“%1$s”</string>
+    <string name="surface_missing">这里没有它。它可能属于这个 Happy Agent 无法访问的另一个 Happy Agent。</string>
 </resources>

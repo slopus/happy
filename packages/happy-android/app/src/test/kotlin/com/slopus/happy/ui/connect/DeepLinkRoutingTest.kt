@@ -15,7 +15,7 @@ import com.slopus.happy.agent.HappyReferenceKind
 import com.slopus.happy.connection.AgentConnection
 import com.slopus.happy.ui.HomeRoute
 import com.slopus.happy.ui.artifacts.ArtifactRoute
-import com.slopus.happy.ui.connection.AgentSurfaceRoute
+import com.slopus.happy.ui.surfaces.SurfaceRoute
 import com.slopus.happy.ui.connection.HappyLinks
 import com.slopus.happy.ui.connection.openHappyLink
 import com.slopus.happy.ui.conversation.ConversationRoute
@@ -57,7 +57,7 @@ class DeepLinkRoutingTest {
                 composable<SessionChangesRoute> { Text("changes") }
                 composable<ArtifactRoute> { Text("artifact") }
                 composable<ConversationRoute> { Text("conversation") }
-                composable<AgentSurfaceRoute> { Text("surface") }
+                composable<SurfaceRoute> { Text("surface") }
                 composable<com.slopus.happy.ui.files.WorkspaceFileRoute> { Text("file") }
             }
             DeepLinkEffect(nav, signedIn, onOpenSession = { opened += it }, openConnection = openConnection, onHappyLink = { happy += it })
@@ -123,9 +123,8 @@ class DeepLinkRoutingTest {
     @Test
     fun aHappyLinkOpensItsScreenOnItsConnection() {
         setHost(signedIn = true)
-        val joined = AgentFeedRow.Surface("s1", "Groceries", "todo")
         fun open(link: HappyLink) {
-            rule.runOnUiThread { nav.openHappyLink("c1", link) { id -> joined.takeIf { it.id == id } } }
+            rule.runOnUiThread { nav.openHappyLink("c1", link) }
             rule.waitForIdle()
         }
         open(HappyLink.Reference(HappyReferenceKind.Artifact, "abc", version = 2))
@@ -143,10 +142,10 @@ class DeepLinkRoutingTest {
         open(HappyLink.File(HappyLink.Target.Workspace("w1"), "README.md"))
         assertEquals(com.slopus.happy.ui.files.WorkspaceFileRoute("c1", "README.md", workspaceId = "w1"), nav.currentBackStackEntry!!.toRoute<com.slopus.happy.ui.files.WorkspaceFileRoute>())
         open(HappyLink.Reference(HappyReferenceKind.Surface, "s1"))
-        assertEquals(AgentSurfaceRoute("c1", "s1", "todo", "Groceries"), nav.currentBackStackEntry!!.toRoute<AgentSurfaceRoute>())
-        // Nothing to show on the phone: the connection's home.
+        assertEquals(SurfaceRoute("c1", "s1"), nav.currentBackStackEntry!!.toRoute<SurfaceRoute>())
+        // An unjoined or unknown Surface opens too; its screen joins or explains that it is unavailable.
         open(HappyLink.Reference(HappyReferenceKind.Surface, "s9"))
-        assertAt<HomeRoute>()
+        assertEquals(SurfaceRoute("c1", "s9"), nav.currentBackStackEntry!!.toRoute<SurfaceRoute>())
         open(HappyLink.Reference(HappyReferenceKind.Agent, "a1"))
         open(HappyLink.Reference(HappyReferenceKind.Service, "web", workspaceId = "w1"))
         assertAt<HomeRoute>()

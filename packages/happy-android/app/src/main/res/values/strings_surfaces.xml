@@ -16,4 +16,10 @@
     <!-- iOS's Strings.jumpToLatest and jumpWorking, for TalkBack. -->
     <string name="conversation_jump_to_latest">Jump to latest</string>
     <string name="conversation_jump_working">working</string>
+
+    <!-- Desktop de78af49: opening a Surface the person isn't in joins it; a refusal is said while it stays open. -->
+    <string name="surface_join_failed">Couldn’t join “%1$s”</string>
+
+    <!-- Desktop's missing Surface page: a Surface this computer doesn't know. -->
+    <string name="surface_missing">This isn’t here. It may belong to a Happy Agent this one can’t reach.</string>
 </resources>

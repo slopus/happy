@@ -44,7 +44,7 @@ import com.slopus.happy.ui.chat.isComposeChatId
 import com.slopus.happy.ui.components.MaterialSymbols
 import com.slopus.happy.ui.components.SceneAnimation
 import com.slopus.happy.ui.components.StateArt
-import com.slopus.happy.ui.connection.AgentSurfaceRoute
+import com.slopus.happy.ui.surfaces.SurfaceRoute
 import com.slopus.happy.ui.conversation.ConversationRoute
 import com.slopus.happy.ui.home.NewSessionRoute
 import com.slopus.happy.ui.machine.MachineRoute
@@ -201,7 +201,7 @@ object MainPanelKey {
                 .let { if (isComposeChatId(it)) entry.savedStateHandle.get<String>(COMPOSE_STARTED) else it }
                 ?.let(::session)
             destination.hasRoute<ConversationRoute>() -> entry.toRoute<ConversationRoute>().agentId?.let(::conversation)
-            destination.hasRoute<AgentSurfaceRoute>() -> surface(entry.toRoute<AgentSurfaceRoute>().surfaceId)
+            destination.hasRoute<SurfaceRoute>() -> surface(entry.toRoute<SurfaceRoute>().surfaceId)
             destination.hasRoute<AgentArtifactsRoute>() -> ARTIFACTS
             destination.hasRoute<AgentFeedRoute>() -> FEED
             destination.hasRoute<SettingsRoute>() -> SETTINGS

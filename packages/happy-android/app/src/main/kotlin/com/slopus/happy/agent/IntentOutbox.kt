@@ -63,7 +63,11 @@ data class Intent(
         const val RENAME = "rename"
 
         /** Kinds that set one thing share a slot: an unarchive replaces an archive still waiting. */
-        fun slotOf(kind: String): String = if (kind == UNARCHIVE) ARCHIVE else kind
+        fun slotOf(kind: String): String = when (kind) {
+            UNARCHIVE -> ARCHIVE
+            SURFACE_JOIN -> LEAVE
+            else -> kind
+        }
     }
 }
 

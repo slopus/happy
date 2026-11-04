@@ -7,4 +7,6 @@
     <string name="surface_leave_no_answer">L\'agent no ha respost. Torna-ho a provar d\'aquí a un moment.</string>
     <string name="conversation_jump_to_latest">Vés als més recents</string>
     <string name="conversation_jump_working">treballant</string>
+    <string name="surface_join_failed">No s’ha pogut unir a «%1$s»</string>
+    <string name="surface_missing">Això no és aquí. Pot ser d’un Happy Agent al qual aquest no arriba.</string>
 </resources>

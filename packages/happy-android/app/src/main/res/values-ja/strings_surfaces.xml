@@ -7,4 +7,6 @@
     <string name="surface_leave_no_answer">エージェントが応答しませんでした。少し待ってからもう一度お試しください。</string>
     <string name="conversation_jump_to_latest">最新へ移動</string>
     <string name="conversation_jump_working">作業中</string>
+    <string name="surface_join_failed">「%1$s」に参加できませんでした</string>
+    <string name="surface_missing">ここにはありません。この Happy Agent からは届かない別の Happy Agent のものかもしれません。</string>
 </resources>

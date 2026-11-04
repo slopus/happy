@@ -46,7 +46,7 @@ import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.connect.DeepLinkEffect
 import com.slopus.happy.ui.connection.AgentHome
-import com.slopus.happy.ui.connection.AgentSurfaceRoute
+import com.slopus.happy.ui.surfaces.openSurface
 import com.slopus.happy.ui.connect.LocalAddFlow
 import com.slopus.happy.ui.connect.LocalAgentPairing
 import com.slopus.happy.ui.connection.LocalServerSignIn
@@ -167,7 +167,7 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                                 onSettings = { go.open(MainPanelKey.SETTINGS) { nav.navigate(SettingsRoute()) } },
                                 onSettingsRow = { row -> go.open(null) { nav.openAgentSettingsRow(account.id, row) } },
                                 onOpenArtifacts = { go.open(MainPanelKey.ARTIFACTS) { nav.navigate(AgentArtifactsRoute(account.id)) } },
-                                onOpenSurface = { go.open(MainPanelKey.surface(it.id)) { nav.navigate(AgentSurfaceRoute(account.id, it.id, it.type, it.name)) } },
+                                onOpenSurface = { go.open(MainPanelKey.surface(it.id)) { nav.openSurface(graph, account.id, it.id) } },
                                 onOpenArtifact = { go.open(null) { nav.openArtifact(account.id, it) } },
                                 onOpenFeed = { go.open(MainPanelKey.FEED) { nav.navigate(AgentFeedRoute(account.id)) } },
                                 onSignIn = { server -> go.open(null) { nav.signInToServerAgain(graph, server, replacing = account.id) } },

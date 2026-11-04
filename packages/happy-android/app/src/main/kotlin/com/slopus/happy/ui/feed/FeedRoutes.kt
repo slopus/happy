@@ -21,9 +21,9 @@ import com.slopus.happy.feed.FeedRow
 import com.slopus.happy.feed.FeedRows
 import com.slopus.happy.feed.FeedTarget
 import com.slopus.happy.ui.artifacts.openArtifact
-import com.slopus.happy.ui.connection.AgentSurfaceRoute
 import com.slopus.happy.ui.conversation.openConversation
 import com.slopus.happy.ui.page
+import com.slopus.happy.ui.surfaces.openSurface
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -152,7 +152,7 @@ private fun AgentFeed(graph: AppGraph, nav: NavHostController, route: AgentFeedR
                 onBack = { nav.popBackStack() },
                 onOpen = { row ->
                     library.state.value.items.firstOrNull { it.id == row.id }?.let { scope.launch { library.open(it) } }
-                    nav.openFeedTarget(route.connectionId, row.target)
+                    nav.openFeedTarget(graph, route.connectionId, row.target)
                 },
                 onRefresh = library::refresh,
                 onLoadMore = library::loadMore,
@@ -171,10 +171,10 @@ private fun AgentFeed(graph: AppGraph, nav: NavHostController, route: AgentFeedR
  * Surface's screen, an artifact's viewer. Chats count themselves read;
  * Surfaces and artifacts tell the Feed they were opened.
  */
-private fun NavHostController.openFeedTarget(connectionId: String, target: FeedTarget?) {
+private fun NavHostController.openFeedTarget(graph: AppGraph, connectionId: String, target: FeedTarget?) {
     when (target) {
         is FeedTarget.Chat -> openConversation(connectionId, target.agentId)
-        is FeedTarget.Surface -> navigate(AgentSurfaceRoute(connectionId, target.id, target.type, target.name))
+        is FeedTarget.Surface -> openSurface(graph, connectionId, target.id)
         is FeedTarget.Artifact -> openArtifact(connectionId, target.ref)
         null -> Unit
     }
@@ -213,7 +213,7 @@ private fun AgentFeedPeek(graph: AppGraph, nav: NavHostController, route: AgentF
         actions = remember(peeking, nav) {
             FeedActions(
                 onBack = { nav.popBackStack() },
-                onOpen = { row -> nav.openFeedTarget(route.connectionId, row.target) },
+                onOpen = { row -> nav.openFeedTarget(graph, route.connectionId, row.target) },
                 onRefresh = peeking::read,
             )
         },

@@ -509,9 +509,94 @@ class AgentSessionTest {
         assertNull(again.await())
         assertEquals(1, agent.calls.count { it == "POST /v0/surfaces/s1/leave" })
         assertTrue("It names its mutation", bodies.single().contains("\"mutationId\":\""))
-        // Out of the catalog too, so it stays gone once the leave is answered.
+        // Out of the person's list too, so it stays gone once the leave is answered; still in the catalog.
         assertEquals(listOf("s2"), surfaces(session))
-        assertFalse("s1" in session.catalog.value.surfaces)
+        val left = session.surfaces.value
+        assertFalse(left.joined(left["s1"]!!))
+    }
+
+    @Test
+    fun openingASurfaceNotJoinedJoinsItAtOnceAndTheAnswerPlacesIt(): Unit = runBlocking {
+        agent.bootstrap = Wire.bootstrap(surfaces = listOf(Wire.surface("s1", "Groceries", "todo"), Wire.surface("s2", "Plan", "document", mapOf("u2" to "1"))))
+        agent.resources["/v0/surfaces/s2/join"] = buildJsonObject {
+            put("surface", Wire.surface("s2", "Plan", "document", mapOf("u2" to "1", Wire.USER to "5")).with("version", "02"))
+        }
+        val session = sessions().session(id)!!
+        eventually({ session.surfaces.value.surfaces.size }) { it == 2 }
+        eventually({ surfaces(session) }) { it == listOf("s1") }
+        assertEquals(listOf("Groceries"), session.surfaces.value.of("todo").map { it.name })
+
+        val answer = session.joinSurface("s2")
+        assertNull(withTimeout(5_000) { answer.await() })
+        assertEquals(1, agent.calls.count { it == "POST /v0/surfaces/s2/join" })
+        // The computer's answer put it after Groceries ("5" > "1").
+        eventually({ surfaces(session) }) { it == listOf("s1", "s2") }
+        eventually({ session.surfaces.value["s2"]?.version }) { it == "02" }
+        // A joined Surface is only opened.
+        assertNull(session.joinSurface("s1").await())
+        assertEquals(0, agent.calls.count { it == "POST /v0/surfaces/s1/join" })
+    }
+
+    @Test
+    fun aJoinThatCannotGoYetSurvivesRelaunchAndRetriesTheSameMutation(): Unit = runBlocking {
+        agent.bootstrap = Wire.bootstrap(surfaces = listOf(Wire.surface("s2", "Plan", "document", mapOf("u2" to "1"))))
+        var accepting = false
+        val mutations = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val transport = object : Transport by agent {
+            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
+                if (!path.endsWith("/join")) return agent.request(method, path, credential, body, headers, category)
+                mutations += body!!.decodeToString()
+                return if (!accepting) TransportResponse(503, body = "{}".toByteArray())
+                else TransportResponse(200, body = buildJsonObject {
+                    put("surface", Wire.surface("s2", "Plan", "document", mapOf("u2" to "1", Wire.USER to "5")).with("version", "02"))
+                }.toString().toByteArray())
+            }
+        }
+        val first = sessions(transport = { transport }).session(id)!!
+        eventually({ first.surfaces.value.loaded }) { it }
+        eventually({ File(cacheDir, "$id.json").exists() }) { it }
+        assertNull(first.joinSurface("s2").await())
+        eventually({ surfaces(first) }) { it == listOf("s2") }
+        assertEquals(1, first.intents.pending.value.size)
+        assertTrue(first.joinRefusals.value.isEmpty())
+        first.close()
+        foreground.value = false
+        accepting = true
+        val restored = sessions(transport = { transport }).session(id)!!
+        eventually({ surfaces(restored) }) { it == listOf("s2") }
+        assertEquals(1, mutations.size)
+        agent.frames = Channel(Channel.UNLIMITED)
+        agent.frames.send(Wire.hello("c0"))
+        foreground.value = true
+        eventually({ restored.intents.pending.value }) { it.isEmpty() }
+        assertEquals(2, mutations.size)
+        assertEquals(mutations[0], mutations[1])
+        eventually({ restored.surfaces.value["s2"]?.version }) { it == "02" }
+    }
+
+    @Test
+    fun aRefusedJoinTakesTheRowOutAgainAndKeepsTheReason(): Unit = runBlocking {
+        agent.bootstrap = Wire.bootstrap(surfaces = listOf(Wire.surface("s1", "Groceries", "todo"), Wire.surface("s2", "Plan", "document", mapOf("u2" to "1"))))
+        val gate = CompletableDeferred<Unit>()
+        val session = sessions {
+            object : Transport by agent {
+                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
+                    if (!path.endsWith("/join")) return agent.request(method, path, credential, body, headers)
+                    gate.await()
+                    return TransportResponse(403, body = "{\"error\":\"Only members of the team may join.\",\"code\":\"forbidden\"}".toByteArray())
+                }
+            }
+        }.session(id)!!
+        eventually({ session.surfaces.value.surfaces.size }) { it == 2 }
+        val answer = session.joinSurface("s2")
+        // Shown in the list while the computer is asked.
+        eventually({ surfaces(session) }) { it == listOf("s1", "s2") }
+        gate.complete(Unit)
+        assertEquals("Only members of the team may join.", withTimeout(5_000) { answer.await() })
+        eventually({ surfaces(session) }) { it == listOf("s1") }
+        assertEquals(mapOf("s2" to "Only members of the team may join."), session.joinRefusals.value)
+        session.dismissJoinRefusal("s2")
+        assertEquals(emptyMap<String, String>(), session.joinRefusals.value)
     }
 
     @Test

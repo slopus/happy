@@ -130,9 +130,38 @@ data class AgentCatalog(
         return if (index == agents) this else copy(agents = index)
     }
 
-    /** The person left [surfaceId]: out of their list until a snapshot says otherwise. */
-    fun withoutSurface(surfaceId: String): AgentCatalog =
-        if (surfaceId in surfaces) copy(surfaces = surfaces - surfaceId) else this
+    /** The person left [surfaceId]: out of their list until a snapshot says otherwise; still in the catalog. */
+    fun withoutSurface(surfaceId: String): AgentCatalog {
+        val surface = surfaces[surfaceId] ?: return this
+        val members = (surface["members"] as? JsonArray).orEmpty()
+        val left = members.filterNot { it is JsonObject && it.string("userId") == userId }
+        if (left.size == members.size) return this
+        return copy(surfaces = surfaces + (surfaceId to JsonObject(surface + ("members" to JsonArray(left)))))
+    }
+
+    /**
+     * The person joined [surfaceId] (desktop's optimistic `surfaceJoin`): it
+     * goes last in their list until the computer's answer or a snapshot
+     * places it.
+     */
+    fun withJoinedSurface(surfaceId: String): AgentCatalog {
+        val surface = surfaces[surfaceId] ?: return this
+        val user = userId
+        val members = (surface["members"] as? JsonArray).orEmpty()
+        if (members.any { (it as? JsonObject)?.string("userId") == user }) return this
+        // Decimal fractional keys sort as text, so the last key with a 1 after it sorts after every other.
+        val last = surfaces.values.flatMap { s -> (s["members"] as? JsonArray).orEmpty().filterIsInstance<JsonObject>() }
+            .filter { it.string("userId") == user }.mapNotNull { it.string("orderKey") }.maxOrNull()
+        val member = JsonObject(mapOf("userId" to JsonPrimitive(user), "orderKey" to JsonPrimitive((last ?: "") + "1")))
+        return copy(surfaces = surfaces + (surfaceId to JsonObject(surface + ("members" to JsonArray(members + member)))))
+    }
+
+    /** A Surface as the computer answered a write (`{surface}`); the higher `version` wins. */
+    fun withSurface(surface: JsonObject): AgentCatalog {
+        val id = surface.string("id") ?: return this
+        if (!newer(surface, surfaces[id])) return this
+        return copy(surfaces = surfaces + (id to surface))
+    }
 
     /**
      * A task left or archived, a bot archived or a subtask ([kind] `agent`)
