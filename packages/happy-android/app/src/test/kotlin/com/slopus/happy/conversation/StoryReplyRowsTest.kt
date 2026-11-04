@@ -19,18 +19,18 @@ class StoryReplyRowsTest {
     private fun row(message: Message, references: References? = null) =
         ConversationRowBuilder.build(message, "a1", null, false, references = references).single() as ConversationRow.User
 
-    @Test fun `an agent's story is quoted by its name and frame`() {
+    @Test fun `the conversation's own story is the reader's, quoted by its frame`() {
         val message = reply("""{"kind":"story","storyId":"s1","agentId":"a1","userId":null,"caption":"Launch day","expiresAt":2,"frame":{"mimeType":"image/jpeg","thumbhash":"1QcSHQRnh493V4dIh4eXh1h4kJUI"}}""")
-        val row = row(message, References(agents = mapOf("a1" to References.Entity("Scout", "a1"))))
+        val row = row(message, References(me = "me"))
         assertEquals("Looks great!", row.text)
-        assertEquals(ConversationRow.StoryQuote("a1", "a1", person = false, author = "Scout", frame = true, thumbhash = "1QcSHQRnh493V4dIh4eXh1h4kJUI"), row.story)
+        assertEquals(ConversationRow.StoryQuote("a1", replier = "me", owner = null, frame = true, thumbhash = "1QcSHQRnh493V4dIh4eXh1h4kJUI"), row.story)
     }
 
-    @Test fun `a person's repost is theirs, and without a frame it says so`() {
+    @Test fun `another person's repost is theirs, and without a frame it says so`() {
         val message = reply("""{"kind":"story","storyId":"s1","agentId":"a1","userId":"u7","caption":null,"expiresAt":2,"frame":null}""")
-        assertEquals(ConversationRow.StoryQuote("a1", "u7", person = true, author = "Ana", frame = false), row(message, References(users = mapOf("u7" to "Ana"))).story)
-        // Not yet named.
-        assertNull(row(message).story?.author)
+        assertEquals(ConversationRow.StoryQuote("a1", replier = "me", owner = "Ana", frame = false), row(message, References(users = mapOf("u7" to "Ana"), me = "me")).story)
+        // The reader's own repost is theirs.
+        assertNull(row(message, References(me = "u7")).story?.owner)
     }
 
     @Test fun `a teammate's reply names them, and the reader's own names no one`() {

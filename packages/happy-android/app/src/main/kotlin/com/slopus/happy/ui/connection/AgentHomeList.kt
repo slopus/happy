@@ -254,7 +254,7 @@ internal fun FolderMarkView(mark: FolderMark, size: Dp) {
 
 /** A picture the agent serves, read once ([AgentPictures]), a rounded square over its ThumbHash. */
 @Composable
-internal fun AgentPicture(path: String, thumbhash: String?, size: Dp, radius: Dp = AgentHomeSpec.tileRadius, height: Dp = size) {
+internal fun AgentPicture(path: String, thumbhash: String?, size: Dp, radius: Dp = AgentHomeSpec.tileRadius) {
     val pictures = LocalAgentPictures.current
     val bytes by produceState(pictures?.kept(path, thumbhash), pictures, path, thumbhash) {
         value = pictures?.kept(path, thumbhash) ?: try {
@@ -269,7 +269,7 @@ internal fun AgentPicture(path: String, thumbhash: String?, size: Dp, radius: Dp
     RemoteImage(
         model = bytes,
         contentDescription = null,
-        modifier = Modifier.size(size, height).clip(RoundedCornerShape(radius)),
+        modifier = Modifier.size(size).clip(RoundedCornerShape(radius)),
         background = HappyTheme.colors.surfaceHighest,
         cacheKey = pictures?.key(path, thumbhash),
         placeholder = rememberThumbHash(thumbhash),

@@ -80,11 +80,12 @@ sealed interface ConversationRow {
     data class Sender(val userId: String, val name: String)
 
     /**
-     * A story reply's quote: who posted the story (a person who reposted it,
-     * else its agent; [author] as named now, null while unnamed). Its first
-     * frame is the message's `story-frame` when [frame], over [thumbhash].
+     * A story reply's quote: who wrote the reply ([replier], their face's
+     * seed) and, when the story isn't the reader's, whose it is ([owner], a
+     * person who reposted it, as named now). Its first frame is the
+     * message's `story-frame` when [frame], over [thumbhash].
      */
-    data class StoryQuote(val agentId: String, val seed: String, val person: Boolean, val author: String?, val frame: Boolean, val thumbhash: String? = null)
+    data class StoryQuote(val agentId: String, val replier: String, val owner: String?, val frame: Boolean, val thumbhash: String? = null)
 
     /**
      * An answer's text. While it streams, [live] carries its words as they
@@ -324,7 +325,7 @@ class ConversationRowBuilder(
             // The agent that manages this one gives it its work: it reads as the person's lane.
             val fromManager = message.role == "agent" && sender != null && sender != agentId
             if (message.role == "user" || fromManager) {
-                val story = message.quote?.takeIf { message.role == "user" && it["kind"].str == "story" }?.let { storyQuote(it, references) }
+                val story = message.quote?.takeIf { message.role == "user" && it["kind"].str == "story" }?.let { storyQuote(it, message.userId, references) }
                 val text = message.content.filterIsInstance<Block.Text>().joinToString("\n") { it.text }
                     .let { if (fromManager && sender != null) inboundText(it, sender) else it }.trim()
                     .let { plain(it, references) }
@@ -408,11 +409,11 @@ class ConversationRowBuilder(
         fun askKey(questionId: String): String = "ask:$questionId"
 
         /** What another agent said, without the addressing line the daemon puts ahead of it. */
-        fun storyQuote(quote: JsonObject, references: References?): ConversationRow.StoryQuote? {
+        /** The conversation's own agent's story is the reader's: the phone doesn't read who owns a team task. */
+        fun storyQuote(quote: JsonObject, replier: String?, references: References?): ConversationRow.StoryQuote? {
             val agentId = quote["agentId"].str ?: return null
-            val userId = quote["userId"].str
-            val author = if (userId != null) references?.users?.get(userId) else references?.agents?.get(agentId)?.label
-            return ConversationRow.StoryQuote(agentId, userId ?: agentId, userId != null, author, quote["frame"].obj != null, quote["frame"].obj?.get("thumbhash").str)
+            val owner = quote["userId"].str?.takeIf { it != references?.me }?.let { references?.users?.get(it).orEmpty() }
+            return ConversationRow.StoryQuote(agentId, replier ?: references?.me.orEmpty(), owner, quote["frame"].obj != null, quote["frame"].obj?.get("thumbhash").str)
         }
 
         fun inboundText(text: String, agentId: String): String {

@@ -291,8 +291,7 @@ fun ConversationScreen(
     val videoLabel = stringResource(R.string.artifact_video)
     val folds = remember(listState) { FoldHold(listState) }
     val videos = rememberVideoOpening(store::video)
-    val title = state.agent?.title
-    val rowActions = remember(actions, legacy, pictures, media, store, pictureLabel, videoLabel, asks, folds, videos, title) {
+    val rowActions = remember(actions, legacy, pictures, media, store, pictureLabel, videoLabel, asks, folds, videos) {
         ConversationRowActions(
             legacy = legacy,
             onRetryFailure = actions.onRetryFailure,
@@ -317,7 +316,6 @@ fun ConversationScreen(
             kept = store.kept,
             videos = videos,
             pages = actions.pages,
-            title = title,
         )
     }
     val atNewest by remember { derivedStateOf { listState.firstVisibleItemIndex == 0 } }

@@ -340,41 +340,44 @@ class ConversationLayoutTest {
         rule.onNodeWithText("And again").assertDoesNotExist()
     }
 
-    @Test fun `a story reply quotes the story as a photo with its author, 8 over its bubble, against the right`() {
+    @Test fun `the reader's story reply says so over the frame, its bar at the right, 4 over the bubble`() {
         val reply = ConversationRow.User(
             "r:user", "r", "Looks great!", parseMarkdown("Looks great!"), emptyList(), Delivery.Sent,
-            story = ConversationRow.StoryQuote("a1", "a1", person = false, author = "Scout", frame = false),
+            story = ConversationRow.StoryQuote("a1", replier = "me", owner = null, frame = false),
         )
         show(ConversationState(created = true, loaded = true, rows = listOf(reply), agent = agent))
         val quote = rule.node(ConversationRowTags.STORY).bounds
         val bubble = rule.node(MessageTags.USER_BUBBLE).bounds
-        // One 9:16 photo of a message, 360 tall, then 6 and the 20 author row.
-        assertDp("quote height", 386, quote.height)
+        val line = rule.node(MessageTags.USER_AUTHOR).bounds
+        // One 9:16 photo of a message, 360 tall, then 8 and the 3 bar at the edge.
+        assertDp("quote height", 360, quote.height)
+        assertDp("quote width", 202.5f.dp + 11.dp, quote.width)
         assertDp("against the bubble's right", bubble.right, quote.right)
-        assertDp("8 over the bubble", bubble.top - 8.dp, quote.bottom)
-        rule.onNodeWithText("Scout").assertIsDisplayed()
-        rule.onNodeWithText("Story").assertDoesNotExist()
-        rule.onNodeWithText("Replying to", substring = true).assertDoesNotExist()
+        assertDp("4 over the bubble", bubble.top - 4.dp, quote.bottom)
+        assertDp("the line 4 over the quote", quote.top - 4.dp, line.bottom)
+        assertDp("the line against the right", bubble.right, line.right)
+        rule.onNodeWithText("You replied").assertIsDisplayed()
         shot("story-reply")
     }
 
-    @Test fun `a teammate's story reply stands at the left under their name`() {
+    @Test fun `a teammate's story reply stands at the left, their line in place of their name`() {
         val reply = ConversationRow.User(
             "r:user", "r", "Looks great!", parseMarkdown("Looks great!"), emptyList(), Delivery.Sent,
-            story = ConversationRow.StoryQuote("a1", "a1", person = false, author = "Scout", frame = false),
+            story = ConversationRow.StoryQuote("a1", replier = "u7", owner = null, frame = false),
             sender = ConversationRow.Sender("u7", "Ana"),
         )
         show(ConversationState(created = true, loaded = true, rows = listOf(reply), agent = agent))
         val quote = rule.node(ConversationRowTags.STORY).bounds
         val bubble = rule.node(MessageTags.USER_BUBBLE).bounds
-        val name = rule.node(MessageTags.USER_AUTHOR).bounds
+        val line = rule.node(MessageTags.USER_AUTHOR).bounds
         assertDp("the bubble at the left", 16, bubble.left)
-        assertDp("the quote with it", bubble.left, quote.left)
-        assertDp("8 over the bubble", bubble.top - 8.dp, quote.bottom)
-        // The name after its 20 avatar, 4 over the quote.
-        assertDp("name after the avatar", 16 + 20 + 6, name.left)
-        assertDp("4 over the quote", quote.top - 4.dp, name.bottom)
-        rule.onNodeWithText("Ana").assertIsDisplayed()
+        assertDp("the quote's bar with it", bubble.left, quote.left)
+        assertDp("4 over the bubble", bubble.top - 4.dp, quote.bottom)
+        // The line after its 16 avatar, 4 over the quote, once.
+        assertDp("line after the avatar", 16 + 16 + 6, line.left)
+        assertDp("4 over the quote", quote.top - 4.dp, line.bottom)
+        rule.onNodeWithText("Ana Replied to your story").assertIsDisplayed()
+        rule.onAllNodesWithText("Ana", substring = true).assertCountEquals(1)
         shot("story-reply-teammate")
     }
 

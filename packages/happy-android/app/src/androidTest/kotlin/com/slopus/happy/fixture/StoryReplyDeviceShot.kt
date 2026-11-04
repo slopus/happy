@@ -30,6 +30,7 @@ import com.slopus.happy.ui.conversation.ConversationRowTags
 import com.slopus.happy.ui.conversation.ConversationScreen
 import com.slopus.happy.ui.conversation.ConversationScreenActions
 import com.slopus.happy.ui.theme.HappyTheme
+import com.slopus.happy.ui.theme.ThemePreference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -47,9 +48,9 @@ import java.io.File
 /**
  * A reply to the bot's story on a device, over a made-up agent that exists
  * only in this test's memory: the real Conversation and ConversationScreen
- * draw the quote (the story's first frame, the bot's face and name) over
- * the reply, the reader's own at the right and their teammate Ana's at the
- * left under her name. The shots go to the app's external files under
+ * draw the quote (the story's first frame beside its bar) over
+ * the reply under who wrote it, the reader's own at the right and their
+ * teammate Ana's at the left. The shots go to the app's external files under
  * `story-reply/`. Run on an assigned emulator.
  */
 @RunWith(AndroidJUnit4::class)
@@ -88,13 +89,16 @@ class StoryReplyDeviceShot {
 
     @Test fun teammateStoryReply() = shoot("ana", "android-story-reply-teammate.png")
 
-    private fun shoot(from: String, name: String) {
+    /** The bar beside the frame stays plain on the dark ground. */
+    @Test fun teammateStoryReplyDark() = shoot("ana", "android-story-reply-teammate-dark.png", ThemePreference.Dark)
+
+    private fun shoot(from: String, name: String, theme: ThemePreference = ThemePreference.Light) {
         val request = request(from)
         // The reader is "me"; Ana is named when her message asks.
         val references = ReferenceReader(scope, MutableStateFlow(AgentCatalog(userId = "me")), emptyFlow(), { JsonObject(emptyMap()) }, { ids -> ids.associateWith { "Ana Ruiz" } })
         rule.runOnUiThread { rule.activity.enableEdgeToEdge() }
         rule.setContent {
-            HappyTheme {
+            HappyTheme(theme) {
                 val conversation = remember { Conversation(ConversationApi(request), emptyFlow(), scope, AGENT, references = references).also { it.start() } }
                 val pictures = remember { AgentPictures("fixture") { path -> request("GET", path, null, com.slopus.happy.connection.RequestCategory.File).body } }
                 val state by conversation.state.collectAsStateWithLifecycle()
