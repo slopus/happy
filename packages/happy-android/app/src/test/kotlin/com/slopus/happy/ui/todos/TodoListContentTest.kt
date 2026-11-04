@@ -16,6 +16,7 @@ import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipe
 import androidx.compose.ui.test.waitUntilAtLeastOneExists
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.todos.TodoItem
@@ -157,11 +158,29 @@ class TodoListContentTest {
         rule.node("todo.editor").assertExists()
     }
 
+    @Test fun aHistorySwipeOpensOnlyOnePageAndTheNextGestureCanOpenAnother() {
+        val opened = mutableListOf<String>()
+        rule.setHappyContent {
+            TodoListContent(TodoListState(status = TodoListState.Status.Ready, active = listOf(milk)),
+                actions(history = { opened += it.id }))
+        }
+        rule.waitUntilAtLeastOneExists(hasTestTag("todo.row.milk"), 5_000)
+        rule.node("todo.swipe.action").assertDoesNotExist()
+        repeat(2) { index ->
+            rule.node("todo.row.milk").performTouchInput {
+                swipe(Offset(width * .2f, centerY), Offset(width * .95f, centerY), durationMillis = 200)
+            }
+            rule.runOnIdle { assertEquals(List(index + 1) { "milk" }, opened) }
+            rule.node("todo.swipe.action").assertDoesNotExist()
+        }
+    }
+
     private fun actions(
         add: suspend (String) -> Unit = {},
         edit: suspend (String, String) -> Unit = { _, _ -> },
         delete: suspend (String) -> Unit = {},
         restore: suspend (String, TodoLibrary.Place, TodoItem.Status) -> Unit = { _, _, _ -> },
         move: suspend (String, Int) -> Unit = { _, _ -> },
-    ) = TodoActions(add, edit, done = { _, _ -> }, delete, restore, move, history = {}, refresh = {}, dismissFailure = {})
+        history: (TodoItem) -> Unit = {},
+    ) = TodoActions(add, edit, done = { _, _ -> }, delete, restore, move, history, refresh = {}, dismissFailure = {})
 }

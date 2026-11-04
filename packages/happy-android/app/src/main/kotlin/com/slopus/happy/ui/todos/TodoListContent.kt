@@ -11,6 +11,9 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -53,6 +56,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalViewConfiguration
@@ -307,20 +311,36 @@ private fun TodoNotice(text: String, onDismiss: () -> Unit) {
 @Composable
 private fun TodoSwipe(onDelete: () -> Unit, onHistory: () -> Unit, deleted: Boolean, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     val colors = HappyTheme.colors
+    // Material asks whether an anchor may change while crossing it as well
+    // as on release. History is navigation: one gesture must open one page.
+    var acted by remember { mutableStateOf(false) }
     val state = rememberSwipeToDismissBoxState(confirmValueChange = { value ->
-        when (value) {
-            SwipeToDismissBoxValue.EndToStart -> onDelete()
-            SwipeToDismissBoxValue.StartToEnd -> onHistory()
-            else -> Unit
+        if (value != SwipeToDismissBoxValue.Settled && !acted) {
+            acted = true
+            when (value) {
+                SwipeToDismissBoxValue.EndToStart -> onDelete()
+                SwipeToDismissBoxValue.StartToEnd -> onHistory()
+                else -> Unit
+            }
         }
         false
     })
-    SwipeToDismissBox(state = state, modifier = modifier, enableDismissFromStartToEnd = !deleted, backgroundContent = {
-        val history = state.dismissDirection == SwipeToDismissBoxValue.StartToEnd
-        Box(Modifier.fillMaxSize().contentMaxWidth(LocalWindowLayout.current).padding(horizontal = 16.dp).clip(RoundedCornerShape(26.dp))
-            .background(if (history) colors.textSecondary else if (deleted) colors.textLink else colors.textDestructive).padding(horizontal = 24.dp),
-            contentAlignment = if (history) Alignment.CenterStart else Alignment.CenterEnd) {
-            Text(stringResource(if (history) R.string.artifact_history else if (deleted) R.string.onboarding_restore_button else R.string.common_delete), color = androidx.compose.ui.graphics.Color.White, style = CardListSpec.title)
+    SwipeToDismissBox(state = state, modifier = modifier.pointerInput(Unit) {
+        awaitEachGesture {
+            awaitFirstDown(requireUnconsumed = false)
+            acted = false
+            waitForUpOrCancellation()
+        }
+    }, enableDismissFromStartToEnd = !deleted, backgroundContent = {
+        // At rest, painting behind the same rounded edge leaks the action
+        // color through its antialiasing. Only a revealed action draws it.
+        if (state.dismissDirection != SwipeToDismissBoxValue.Settled) {
+            val history = state.dismissDirection == SwipeToDismissBoxValue.StartToEnd
+            Box(Modifier.fillMaxSize().contentMaxWidth(LocalWindowLayout.current).padding(horizontal = 16.dp).clip(RoundedCornerShape(26.dp))
+                .background(if (history) colors.textSecondary else if (deleted) colors.textLink else colors.textDestructive).padding(horizontal = 24.dp).testTag("todo.swipe.action"),
+                contentAlignment = if (history) Alignment.CenterStart else Alignment.CenterEnd) {
+                Text(stringResource(if (history) R.string.artifact_history else if (deleted) R.string.onboarding_restore_button else R.string.common_delete), color = androidx.compose.ui.graphics.Color.White, style = CardListSpec.title)
+            }
         }
     }) { content() }
 }
