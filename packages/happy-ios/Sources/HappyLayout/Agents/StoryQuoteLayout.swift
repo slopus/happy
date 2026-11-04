@@ -1,49 +1,50 @@
 import Foundation
 
-/// Desktop's story-reply quote, a card of its own right above the person's
-/// bubble: the story's first frame at 9:16, and beside it, centred, "Story",
-/// the author's avatar and name, and the caption, each on one line.
+/// Desktop's story-reply quote above the person's bubble, as an attached
+/// photo would be: the story's first frame at 9:16, the size one photo of
+/// that shape is, and under it who posted it, on the bubble's side.
 public struct StoryQuoteLayout: Equatable, Sendable {
     public enum Metrics {
-        public static let frame = CGSize(width: 36, height: 64)
-        /// The card's 10 nested across its 1 border and 5 padding.
-        public static let frameRadius: CGFloat = 4
-        public static let radius: CGFloat = 10
-        public static let border: CGFloat = 1
-        public static let padding: CGFloat = 6
-        public static let endPadding: CGFloat = 12
-        public static let gap: CGFloat = 8
-        public static let rowGap: CGFloat = 2
-        public static let avatar: CGFloat = 20
+        /// The shape alone, as a thumbhash gives it: no stated size caps it.
+        public static let shape = MediaFlow.Image(hashedRatio: 9.0 / 16.0)
+        public static let authorGap: CGFloat = 6
         /// An agent's rounded tile; a person's is a circle.
         public static let agentRadius: CGFloat = 6
-        public static let avatarGap: CGFloat = 6
-        public static let maxWidth: CGFloat = 280
-        public static let bubbleGap: CGFloat = 4
+        public static let bubbleGap: CGFloat = 8
     }
 
-    public var card, frame, label, avatar, name: CGRect
-    public var caption: CGRect?
+    public var frame: CGRect
+    public var author: AuthorRowLayout
 
-    /// Its top at `top`, its end at `trailing`, no wider than `width`; the
-    /// lines measure as wide as they are unwrapped, and a longer one is cut.
-    public init(width: CGFloat, trailing: CGFloat, top: CGFloat, label: Measurable, name: Measurable, caption: Measurable?) {
+    /// Its top at `top`, against `edge` (its end there with `alignEnd`), in
+    /// a message's measure no wider than `width`.
+    public init(width: CGFloat, edge: CGFloat, alignEnd: Bool, top: CGFloat, name: Measurable) {
         typealias M = Metrics
-        let room = max(0, min(width, M.maxWidth) - M.padding - M.endPadding - M.frame.width - M.gap)
-        let label = label.size(fitting: room)
-        let name = name.size(fitting: max(0, room - M.avatar - M.avatarGap))
-        let caption = caption?.size(fitting: room)
-        let row = max(M.avatar, name.height)
-        let stack = label.height + M.rowGap + row + (caption.map { M.rowGap + $0.height } ?? 0)
-        let column = max(label.width, M.avatar + M.avatarGap + name.width, caption?.width ?? 0)
-        let size = CGSize(width: M.padding + M.frame.width + M.gap + column + M.endPadding, height: 2 * M.padding + max(M.frame.height, stack))
-        card = CGRect(origin: CGPoint(x: trailing - size.width, y: top), size: size)
-        frame = CGRect(origin: CGPoint(x: card.minX + M.padding, y: card.midY - M.frame.height / 2), size: M.frame)
-        let x = frame.maxX + M.gap
-        let rowTop = card.midY - stack / 2 + label.height + M.rowGap
-        self.label = CGRect(origin: CGPoint(x: x, y: card.midY - stack / 2), size: label)
-        avatar = CGRect(x: x, y: rowTop + (row - M.avatar) / 2, width: M.avatar, height: M.avatar)
-        self.name = CGRect(x: avatar.maxX + M.avatarGap, y: rowTop + (row - name.height) / 2, width: name.width, height: name.height)
-        self.caption = caption.map { CGRect(origin: CGPoint(x: x, y: rowTop + row + M.rowGap), size: $0) }
+        let measure = min(width, MediaFlow.messageMaxWidth)
+        let media = MediaLayout(width: measure, items: [.init(isVideo: false, image: M.shape)], columns: 0, limits: MediaFlow.message, alignEnd: alignEnd)
+        frame = (media.frames.first ?? .zero).offsetBy(dx: alignEnd ? edge - measure : edge, dy: top)
+        author = AuthorRowLayout(edge: edge, alignEnd: alignEnd, top: frame.maxY + M.authorGap, room: measure, name: name)
+    }
+}
+
+/// A 20 avatar and a name beside it on one line, from `edge` (or ending
+/// there, `alignEnd`): who posted a story, and who sent another person's
+/// message.
+public struct AuthorRowLayout: Equatable, Sendable {
+    public static let avatar: CGFloat = 20
+    public static let gap: CGFloat = 6
+    /// Between another person's name and what they sent.
+    public static let below: CGFloat = 4
+
+    public var avatar, name: CGRect
+    public var maxY: CGFloat
+
+    public init(edge: CGFloat, alignEnd: Bool, top: CGFloat, room: CGFloat, name: Measurable) {
+        let size = name.size(fitting: max(0, room - Self.avatar - Self.gap))
+        let row = max(Self.avatar, size.height)
+        let x = alignEnd ? edge - Self.avatar - Self.gap - size.width : edge
+        avatar = CGRect(x: x, y: top + (row - Self.avatar) / 2, width: Self.avatar, height: Self.avatar)
+        self.name = CGRect(x: avatar.maxX + Self.gap, y: top + (row - size.height) / 2, width: size.width, height: size.height)
+        maxY = top + row
     }
 }

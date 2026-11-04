@@ -59,10 +59,12 @@ final class ConversationTests: XCTestCase {
     /// A story reply quotes its story (`quote`); a quote of a kind this
     /// build doesn't know, or one it can't read, quotes nothing.
     func testAStoryReplyReadsItsQuote() throws {
-        let json = #"{"id":"m","role":"user","createdAt":1,"content":[{"type":"text","text":"Looks great!"}],"quote":{"kind":"story","storyId":"s1","agentId":"a1","userId":null,"caption":"Launch day","expiresAt":2,"frame":{"mimeType":"image/jpeg","thumbhash":"1QcSHQRnh493V4dIh4eXh1h4kJUI"}}}"#
+        let json = #"{"id":"m","role":"user","createdAt":1,"content":[{"type":"text","text":"Looks great!"}],"metadata":{"userId":"ana"},"quote":{"kind":"story","storyId":"s1","agentId":"a1","userId":null,"caption":"Launch day","expiresAt":2,"frame":{"mimeType":"image/jpeg","thumbhash":"1QcSHQRnh493V4dIh4eXh1h4kJUI"}}}"#
         let message = try JSONDecoder().decode(AgentWire.Message.self, from: Data(json.utf8))
         let story = try JSONDecoder().decode(AgentWire.StoryQuote.self, from: JSONEncoder().encode(XCTUnwrap(message.quote)))
         XCTAssertEqual(story.agentId, "a1")
+        // Who wrote it: a teammate's stands apart from the reader's own.
+        XCTAssertEqual(message.metadata?.userId, "ana")
         XCTAssertNil(story.userId)
         XCTAssertEqual(story.caption, "Launch day")
         XCTAssertEqual(story.frame?["thumbhash"]?.stringValue, "1QcSHQRnh493V4dIh4eXh1h4kJUI")

@@ -316,8 +316,10 @@ public struct MessageLayout: Equatable, Sendable {
     /// the bubble at its foot, or on pictures sent alone in `deliveryPill`.
     public var delivery: CGRect? = nil
     public var deliveryPill: CGRect? = nil
-    /// The story a reply answers, its card above the bubble.
+    /// The story a reply answers, above the bubble.
     public var quote: StoryQuoteLayout? = nil
+    /// Another person's message: who sent it, over it at the left.
+    public var sender: AuthorRowLayout? = nil
 
     /// The first Markdown run, for an agent message that is only text.
     public var markdown: MarkdownLayout? {
@@ -398,14 +400,18 @@ public struct MessageLayout: Equatable, Sendable {
     /// message's photos: justified, against the right, at most four.
     /// `delivery` is the time and mark to place at the bubble's foot, with
     /// `trailing` measuring the text's last line (its width, at a width);
-    /// with no text, it goes on the last picture. `quote` is the story a
-    /// reply answers, its card above the rest against the right.
-    public static func user(width: CGFloat, maxContentWidth: CGFloat = .greatestFiniteMagnitude, text: Measurable?, fold: Fold? = nil, pictures: [MediaFlow.Image] = [], showsStatus: Bool, delivery: MessageStatusLayout? = nil, trailing: Measurable? = nil, quote: (label: Measurable, name: Measurable, caption: Measurable?)? = nil) -> MessageLayout {
+    /// with no text, it goes on the last picture. `quote` names who posted
+    /// the story a reply answers, its frame above the rest. `sender` names
+    /// another person who sent it: then it all stands at the left, as
+    /// desktop draws someone else's message, under their name.
+    public static func user(width: CGFloat, maxContentWidth: CGFloat = .greatestFiniteMagnitude, text: Measurable?, fold: Fold? = nil, pictures: [MediaFlow.Image] = [], showsStatus: Bool, delivery: MessageStatusLayout? = nil, trailing: Measurable? = nil, quote: Measurable? = nil, sender: Measurable? = nil) -> MessageLayout {
         typealias M = Metrics
         let column = ChatColumn(rowWidth: width, maxContentWidth: maxContentWidth)
         let inner = max(0, column.width - 2 * M.marginH)
         let maxBubble = max(0, column.width - M.marginH - M.bubbleLeading)
         let right = column.x + column.width - M.marginH
+        let left = column.x + M.marginH
+        let leading = sender != nil
         var bottom = M.marginV
         var bubble: CGRect?
         var textFrame: CGRect?
@@ -413,8 +419,10 @@ public struct MessageLayout: Equatable, Sendable {
         var foldControl: CGRect?
         var deliveryFrame: CGRect?
         var deliveryPill: CGRect?
-        let placedQuote = quote.map { StoryQuoteLayout(width: maxBubble, trailing: right, top: bottom, label: $0.label, name: $0.name, caption: $0.caption) }
-        if let placedQuote { bottom = placedQuote.card.maxY + StoryQuoteLayout.Metrics.bubbleGap }
+        let header = sender.map { AuthorRowLayout(edge: left, alignEnd: false, top: bottom, room: maxBubble, name: $0) }
+        if let header { bottom = header.maxY + AuthorRowLayout.below }
+        let placedQuote = quote.map { StoryQuoteLayout(width: maxBubble, edge: leading ? left : right, alignEnd: !leading, top: bottom, name: $0) }
+        if let placedQuote { bottom = placedQuote.author.maxY + StoryQuoteLayout.Metrics.bubbleGap }
         if let text {
             let measure = max(0, maxBubble - 2 * M.bubblePaddingH)
             var textSize = text.size(fitting: measure)
@@ -443,7 +451,7 @@ public struct MessageLayout: Equatable, Sendable {
                 placedDelivery = placement.frame
             }
             let bubbleWidth = content.width + 2 * M.bubblePaddingH
-            let frame = CGRect(x: right - bubbleWidth, y: bottom, width: bubbleWidth, height: content.height + 2 * M.bubblePaddingV)
+            let frame = CGRect(x: leading ? left : right - bubbleWidth, y: bottom, width: bubbleWidth, height: content.height + 2 * M.bubblePaddingV)
             bubble = frame
             let placed = CGRect(x: frame.minX + M.bubblePaddingH, y: frame.minY + M.bubblePaddingV, width: textSize.width, height: textSize.height)
             textFrame = placed
@@ -458,9 +466,9 @@ public struct MessageLayout: Equatable, Sendable {
             if bubble != nil { bottom += M.blockGap }
             let measure = min(maxBubble, MediaFlow.messageMaxWidth)
             let items = pictures.prefix(MediaFlow.messageMax).map { MediaLayout.Item(isVideo: false, image: $0) }
-            let media = MediaLayout(width: measure, items: items, columns: 0, limits: MediaFlow.message, alignEnd: true)
-            // The photos hug the right edge as the bubble does.
-            pictureFrames = media.frames.map { $0.offsetBy(dx: right - measure, dy: bottom) }
+            let media = MediaLayout(width: measure, items: items, columns: 0, limits: MediaFlow.message, alignEnd: !leading)
+            // The photos hug the bubble's edge.
+            pictureFrames = media.frames.map { $0.offsetBy(dx: leading ? left : right - measure, dy: bottom) }
             bottom += media.size.height
             if bubble == nil, let delivery, let last = pictureFrames.last {
                 let pill = delivery.pill(over: last)
@@ -476,7 +484,7 @@ public struct MessageLayout: Equatable, Sendable {
         return MessageLayout(
             size: CGSize(width: max(0, width), height: bottom + M.marginV),
             parts: [], bubble: bubble, text: textFrame, cut: cut, foldControl: foldControl, pictures: pictureFrames, status: status,
-            delivery: deliveryFrame, deliveryPill: deliveryPill, quote: placedQuote
+            delivery: deliveryFrame, deliveryPill: deliveryPill, quote: placedQuote, sender: header
         )
     }
 }

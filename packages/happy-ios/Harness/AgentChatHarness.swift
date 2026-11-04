@@ -16,10 +16,12 @@ private struct AgentChatSockets: WebSocketConnector {
 /// One agent, `harness`, with forty turns of a question and a few lines of
 /// answer, and nothing streaming. With `slash`, it offers slash commands
 /// (one with a picture), and its last turn is a `/compact`. With `story`,
-/// it is Scout, and its last turn answers a reply to its story.
+/// it is Scout, and its last turn answers the reader's reply to its story;
+/// with `teammate` too, Ana's reply.
 private struct AgentChatComputer: AgentTransport {
     var slash = false
     var story = false
+    var teammate = false
 
     private static func text(_ text: String) -> JSONValue { .object(["type": .string("text"), "text": .string(text)]) }
 
@@ -38,15 +40,16 @@ private struct AgentChatComputer: AgentTransport {
         ])
     }
 
-    /// A person's reply to Scout's story, quoted, and Scout's answer.
-    private static let storyReply: JSONValue = .object([
+    /// A person's reply to Scout's story, quoted, and Scout's answer: the
+    /// reader's, or their teammate Ana's.
+    private static func storyReply(from userId: String) -> JSONValue { .object([
         "id": .string("story-run"), "status": .string("completed"), "startedAt": .number(3_000), "endedAt": .number(4_000), "reason": .string("completed"),
         "messages": .array([
-            .object(["id": .string("story"), "role": .string("user"), "createdAt": .number(1_762_000_000_000), "content": .array([text("This looks so much cleaner! Did the drop-off improve?")]),
+            .object(["id": .string("story"), "role": .string("user"), "createdAt": .number(1_762_000_000_000), "content": .array([text("This looks so much cleaner! Did the drop-off improve?")]), "metadata": .object(["userId": .string(userId)]),
                      "quote": .object(["kind": .string("story"), "storyId": .string("s1"), "agentId": .string("harness"), "userId": .null, "caption": .string("Shipped the new onboarding today"), "expiresAt": .number(0), "frame": .object(["mimeType": .string("image/png")])])]),
             message("story-answer", role: "agent", [text("It did: completion went from 61% to 78% in the first day.")]),
         ]),
-    ])
+    ]) }
 
     /// The story's first frame: a 9:16 sunset over hills.
     private static let frame: Data = UIGraphicsImageRenderer(size: CGSize(width: 180, height: 320)).pngData { context in
@@ -97,18 +100,31 @@ private struct AgentChatComputer: AgentTransport {
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         let value: JSONValue
         if path.contains("/agents/harness/messages?") {
-            value = .object(["hasMore": .bool(false), "runs": .array(Self.runs + (slash ? [Self.compaction] : []) + (story ? [Self.storyReply] : []))])
+            value = .object(["hasMore": .bool(false), "runs": .array(Self.runs + (slash ? [Self.compaction] : []) + (story ? [Self.storyReply(from: teammate ? "ana" : "me")] : []))])
         } else if story, path.hasSuffix("/agents/harness/messages/story/story-frame") {
             return HTTP1Response(status: 200, body: Self.frame)
         } else if path.hasSuffix("/agents/harness/bootstrap") {
             value = .object(["agent": .object(["id": .string("harness"), "workspaceId": .string("w"), "status": .string("idle"), "title": story ? .string("Scout") : .null]), "pending": .array([]),
                              "slashCommands": .array(slash ? Self.commands : [])])
+        } else if story, let read = Self.people(path) {
+            value = read
         } else if slash, path.hasSuffix("/slash-commands/code-review/image") {
             return HTTP1Response(status: 200, body: Self.picture)
         } else {
             throw URLError(.cannotConnectToHost)
         }
         return HTTP1Response(status: 200, body: try JSONEncoder().encode(value))
+    }
+
+    /// Enough of the computer for its people: the reader is "me", and Ana a teammate.
+    private static func people(_ path: String) -> JSONValue? {
+        if path.hasSuffix("/health") { return .object(["ready": .bool(true), "capabilities": .object(["sidebarOperations": .bool(true)])]) }
+        if path.contains("/spaces/sidebar") { return .object(["artifactId": .string("sidebar"), "version": .number(1), "html": .string(""), "spaces": .array([])]) }
+        if path.hasSuffix("/bots") { return .object(["bots": .array([])]) }
+        if path.contains("/tasks?") { return .object(["tasks": .array([])]) }
+        if path.hasSuffix("/profile") { return .object(["profile": .object(["userId": .string("me"), "name": .string("Kirill")])]) }
+        if path.contains("/users?") { return .object(["users": .array([.object(["id": .string("ana"), "name": .string("Ana Ruiz")])])]) }
+        return nil
     }
 
     func stream(path: String, credential: String, headers: [String: String]) async throws -> HTTP1Stream {
@@ -136,7 +152,7 @@ final class AgentChatHarness {
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/agent-chat",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
-            agentConnectionCredentialStore: InMemoryAgentConnectionCredentialStore(), agentTransport: { _ in AgentChatComputer(slash: arguments.contains("-slash"), story: arguments.contains("-story")) },
+            agentConnectionCredentialStore: InMemoryAgentConnectionCredentialStore(), agentTransport: { _ in AgentChatComputer(slash: arguments.contains("-slash"), story: arguments.contains("-story"), teammate: arguments.contains("-teammate")) },
             rnServerImport: { .confirmed(ServerConfig.defaultServerURL) }, transport: AgentChatHTTP(), connector: AgentChatSockets()
         )
         self.account = account
@@ -150,6 +166,8 @@ final class AgentChatHarness {
             AppCoordinator.applyAppearance(to: navigation.navigationBar)
             window.rootViewController = navigation
             window.layoutIfNeeded()
+            // `-story`: the sidebar read once, offline, for who is reading.
+            if arguments.contains("-story") { _ = await session.store.externalResync(loadSidebar: true) }
             let chat = ChatViewController(session: session, agentId: "harness", title: arguments.contains("-story") ? "Scout" : "Cache", spaceId: nil, intro: nil)
             navigation.pushViewController(chat, animated: false)
             let probe = ChatScrollProbe(window: window, chat: chat)

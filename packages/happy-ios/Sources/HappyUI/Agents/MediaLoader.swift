@@ -93,6 +93,8 @@ final class MediaLoader: NSObject, ChatMediaSource {
 
     nonisolated static func sentKey(_ id: String) -> String { "sent/\(id)" }
     nonisolated static func storyKey(_ id: String, avatar: Bool) -> String { avatar ? "story/\(id)/avatar" : "story/\(id)" }
+    /// A person's face: their placeholder.
+    nonisolated static func personKey(_ userId: String) -> String { "person/\(userId)" }
 
     func media(_ key: String) -> Media? { tools[key] }
 
@@ -175,6 +177,8 @@ final class MediaLoader: NSObject, ChatMediaSource {
         } else if case let (messageId, story)? = stories[key] {
             let frame = "/v0/agents/\(agentId)/messages/\(messageId)/story-frame"
             image = key.hasSuffix("/avatar") ? await author(story, pixels: pixels) : await Self.read(client, frame, pixels: pixels)
+        } else if key.hasPrefix("person/") {
+            image = await AvatarPlaceholderImages.image(seed: String(key.dropFirst("person/".count)), side: AuthorRowLayout.avatar)
         } else {
             image = nil
         }
@@ -191,7 +195,7 @@ final class MediaLoader: NSObject, ChatMediaSource {
         let own = story.userId == nil && story.agentId == agentId ? mark : nil
         if case .image(let path, _)? = own { return await Self.read(client, path, pixels: pixels) }
         let seed = if case .placeholder(let seed)? = own { seed } else { story.userId ?? story.agentId }
-        return await AvatarPlaceholderImages.image(seed: seed, side: StoryQuoteLayout.Metrics.avatar)
+        return await AvatarPlaceholderImages.image(seed: seed, side: AuthorRowLayout.avatar)
     }
 
     private nonisolated static func read(_ client: AgentClient, _ path: String, pixels: Int) async -> UIImage? {

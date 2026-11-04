@@ -679,10 +679,11 @@ extension AgentWire {
 
     /// A message's public provenance (`metadata`): the agent that sent a
     /// message the daemon wrote on its behalf, and that agent's one line on
-    /// what it is.
+    /// what it is; the person who wrote a person's message.
     public struct MessageMetadata: Equatable, Sendable, Codable {
         public var senderAgentId: String?
         public var senderAgentExplanation: String?
+        public var userId: String?
 
         public init(senderAgentId: String? = nil, senderAgentExplanation: String? = nil) {
             self.senderAgentId = senderAgentId

@@ -88,6 +88,8 @@ public struct ChatItem: Equatable, Sendable, Identifiable {
     public var time: Double?
     /// The story a person's reply answers, quoted above their words.
     public var story: AgentWire.StoryQuote?
+    /// The person who wrote a person's message, when the daemon says.
+    public var sender: String?
 
     public init(id: String, role: Role, pieces: [Piece], delivery: Delivery, turn: String? = nil, time: Double? = nil) {
         self.id = id
@@ -1818,6 +1820,7 @@ public actor Conversation {
             if !pieces.isEmpty {
                 items.append(ChatItem(id: segment, role: role, pieces: pieces, delivery: role == .user && message.status == "pending" ? .pending : .sent, time: role == .user ? message.createdAt : nil))
                 if segment == message.id { items[items.count - 1].story = story }
+                if role == .user { items[items.count - 1].sender = message.metadata?.userId }
             }
             pieces = []
             segment = next
