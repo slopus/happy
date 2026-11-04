@@ -30,6 +30,8 @@ firebase-messaging = "25.0.1"
 coil = "3.6.3"
 lottie = "6.7.1"
 revenuecat = "10.28.1"
+# Voice's own Play client: the version RevenueCat 10.28.1 already brings, pinned, never ahead of it.
+play-billing = "8.3.0"
 livekit = "2.26.0"
 gson = "2.10.1"
 
@@ -87,6 +89,7 @@ coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version
 coil-test = { module = "io.coil-kt.coil3:coil-test", version.ref = "coil" }
 revenuecat-purchases = { module = "com.revenuecat.purchases:purchases", version.ref = "revenuecat" }
 revenuecat-ui = { module = "com.revenuecat.purchases:purchases-ui", version.ref = "revenuecat" }
+play-billing = { module = "com.android.billingclient:billing", version.ref = "play-billing" }
 livekit = { module = "io.livekit:livekit-android", version.ref = "livekit" }
 gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
 androidx-appcompat = { module = "androidx.appcompat:appcompat", version = "1.7.0" }

@@ -33,7 +33,10 @@ import com.slopus.happy.net.ConnectionStatus
 import com.slopus.happy.net.HappyHttp
 import com.slopus.happy.payments.PreferencesPurchasesCache
 import com.slopus.happy.payments.PurchaseAccount
+import com.slopus.happy.payments.PlayBilling
 import com.slopus.happy.payments.PurchasesRepository
+import com.slopus.happy.payments.RevenueCatApi
+import com.slopus.happy.call.VoiceSubscription
 import com.slopus.happy.payments.RevenueCatPurchases
 import com.slopus.happy.push.PushApi
 import com.slopus.happy.push.PushUnregisterQueue
@@ -73,6 +76,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -473,6 +477,12 @@ class AppGraph(
             foreground.collect { if (it) purchases.refresh() }
         }
         scope.launch {
+            auth.state.map { (it as? AuthState.SignedIn)?.publicId?.takeIf(String::isNotBlank) }.distinctUntilChanged().collect(voiceSubscription::relay)
+        }
+        scope.launch {
+            foreground.collect { if (it) voiceSubscription.refresh() }
+        }
+        scope.launch {
             auth.state.collect { state -> accountLock.withLock { openAccount(state) } }
         }
         scope.launch(Dispatchers.IO) {
@@ -529,6 +539,22 @@ class AppGraph(
             openAccount = openAccount.map { (it as? OpenAccount.Agent)?.id },
             relayVoiceActive = voice.state.map { it.status != VoiceStatus.Disconnected },
             stopRelayVoice = voice::stop,
+            subscription = voiceSubscription,
+        )
+    }
+
+    /**
+     * Voice's subscription, RevenueCat's `pro` through Play and RevenueCat's
+     * REST API, under the Happy account when one is signed in. Without the
+     * build's RevenueCat key it offers nothing.
+     */
+    val voiceSubscription: VoiceSubscription by lazy {
+        val key = BuildConfig.REVENUE_CAT_GOOGLE_KEY
+        VoiceSubscription(
+            scope,
+            store = PlayBilling(appContext).takeIf { key.isNotBlank() },
+            revenueCat = RevenueCatApi(okHttp, key).takeIf { key.isNotBlank() },
+            preferences = appContext.getSharedPreferences(VoiceSubscription.PREFS_NAME, Context.MODE_PRIVATE),
         )
     }
 

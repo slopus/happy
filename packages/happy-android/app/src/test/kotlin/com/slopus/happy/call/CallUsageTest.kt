@@ -60,7 +60,10 @@ class CallUsageTest {
         val store = MemoryUsageStore()
         val allowance = CallAllowance(store, free = 100_000, window = 1_000_000)
         allowance.record("a", 0, 10_000)
+        // Kept past the window, for as long as a subscriber's month could need them.
         allowance.record("b", 2_000_000, 2_010_000)
-        assertEquals(listOf("b"), store.usage.spans.map { it.id })
+        assertEquals(listOf("a", "b"), store.usage.spans.map { it.id })
+        allowance.record("c", CallAllowance.KEEP_MILLIS + 20_000, CallAllowance.KEEP_MILLIS + 30_000)
+        assertEquals(listOf("b", "c"), store.usage.spans.map { it.id })
     }
 }

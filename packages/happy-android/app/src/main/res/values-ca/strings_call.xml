@@ -34,4 +34,11 @@
     <string name="call_preview_note">Previsualització de prova. No es cobra res.</string>
     <string name="call_preview_title">Només previsualització</string>
     <string name="call_preview_message">Les subscripcions de veu encara no estan a la venda. No s’ha comprat ni cobrat res i el teu temps de veu no ha canviat.</string>
+    <string name="call_paid_used">Les 5 hores de veu d’aquest mes s’han esgotat. N’hi haurà més el %1$s.</string>
+    <string name="call_paid_used_later">Les 5 hores de veu d’aquest mes s’han esgotat.</string>
+    <string name="call_restore">Restaura les compres</string>
+    <string name="call_restore_done">S’ha restaurat la subscripció.</string>
+    <string name="call_restore_none">No s’ha trobat cap subscripció de veu en aquest compte de la botiga.</string>
+    <string name="call_restore_failed">No s’ha pogut connectar amb la botiga. Torna-ho a provar més tard.</string>
+    <string name="call_purchase_unconfirmed">La compra encara no s’ha confirmat. Happy ho tornarà a comprovar quan tornis.</string>
 </resources>

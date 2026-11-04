@@ -34,4 +34,11 @@
     <string name="call_preview_note">Vista previa de prueba. No se cobra nada.</string>
     <string name="call_preview_title">Solo vista previa</string>
     <string name="call_preview_message">Las suscripciones de voz aún no están a la venta. No se ha comprado ni cobrado nada y tu tiempo de voz no ha cambiado.</string>
+    <string name="call_paid_used">Las 5 horas de voz de este mes se han agotado. Habrá más el %1$s.</string>
+    <string name="call_paid_used_later">Las 5 horas de voz de este mes se han agotado.</string>
+    <string name="call_restore">Restaurar compras</string>
+    <string name="call_restore_done">Tu suscripción se ha restaurado.</string>
+    <string name="call_restore_none">No se encontró ninguna suscripción de voz en esta cuenta de la tienda.</string>
+    <string name="call_restore_failed">No se pudo conectar con la tienda. Inténtalo más tarde.</string>
+    <string name="call_purchase_unconfirmed">Tu compra aún no está confirmada. Happy lo volverá a comprobar cuando vuelvas.</string>
 </resources>

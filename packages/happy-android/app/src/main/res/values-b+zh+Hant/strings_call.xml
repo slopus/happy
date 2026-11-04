@@ -34,4 +34,11 @@
     <string name="call_preview_note">測試預覽，不會收費。</string>
     <string name="call_preview_title">僅預覽</string>
     <string name="call_preview_message">語音訂閱尚未開賣。沒有購買或收取任何費用，你的語音時數也沒有變化。</string>
+    <string name="call_paid_used">本月的 5 小時語音已用完。%1$s 起可再次使用。</string>
+    <string name="call_paid_used_later">本月的 5 小時語音已用完。</string>
+    <string name="call_restore">回復購買項目</string>
+    <string name="call_restore_done">你的訂閱已回復。</string>
+    <string name="call_restore_none">此商店帳號中找不到語音訂閱。</string>
+    <string name="call_restore_failed">無法連線至商店，請稍後再試。</string>
+    <string name="call_purchase_unconfirmed">你的購買尚未確認。下次回到 Happy 時會再次檢查。</string>
 </resources>

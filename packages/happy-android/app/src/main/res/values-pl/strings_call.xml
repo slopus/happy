@@ -34,4 +34,11 @@
     <string name="call_preview_note">Podgląd testowy. Nic nie jest pobierane.</string>
     <string name="call_preview_title">Tylko podgląd</string>
     <string name="call_preview_message">Subskrypcje głosu nie są jeszcze w sprzedaży. Nic nie zostało kupione ani pobrane, a Twój czas głosowy się nie zmienił.</string>
+    <string name="call_paid_used">Wykorzystano 5 godzin rozmów głosowych w tym miesiącu. Więcej od %1$s.</string>
+    <string name="call_paid_used_later">Wykorzystano 5 godzin rozmów głosowych w tym miesiącu.</string>
+    <string name="call_restore">Przywróć zakupy</string>
+    <string name="call_restore_done">Subskrypcja została przywrócona.</string>
+    <string name="call_restore_none">Na tym koncie sklepu nie znaleziono subskrypcji głosu.</string>
+    <string name="call_restore_failed">Nie udało się połączyć ze sklepem. Spróbuj ponownie później.</string>
+    <string name="call_purchase_unconfirmed">Zakup nie jest jeszcze potwierdzony. Happy sprawdzi to ponownie, gdy wrócisz.</string>
 </resources>

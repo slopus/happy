@@ -1,5 +1,6 @@
 package com.slopus.happy.call
 
+import android.app.Activity
 import android.content.Context
 import android.os.SystemClock
 import com.slopus.happy.BuildConfig
@@ -13,6 +14,10 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -38,10 +43,12 @@ class CallController(
     /** The relay's voice is on: one call at a time, the newer wins. */
     relayVoiceActive: Flow<Boolean>,
     private val stopRelayVoice: suspend () -> Unit,
+    /** Voice's subscription: what the sheets offer, and the month of hours it gives. */
+    private val subscription: VoiceSubscription,
     /** The build's public hosted agent, if it has one ([CallAgent]). */
     private val grants: CallGrants = CallAgent.hostedAgentId?.let(::PublicAgentCallGrants) ?: UnconfiguredCallGrants,
     private val preferences: android.content.SharedPreferences = appContext.getSharedPreferences(PreferencesCallUsageStore.PREFS_NAME, Context.MODE_PRIVATE),
-    private val allowance: CallAllowance = CallAllowance(PreferencesCallUsageStore(preferences)),
+    private val allowance: CallAllowance = CallAllowance(PreferencesCallUsageStore(preferences), period = subscription::period),
     private val intro: CallIntro = CallIntro(preferences),
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -61,7 +68,21 @@ class CallController(
     /** What the welcome's "Start Voice Session" starts. */
     private var welcomed: (() -> Unit)? = null
     /** Debug builds' test screens only: the subscription drawn as if on sale ([offer]). */
-    var testOffer: CallOffer.Preview? = null
+    private val testOffer = MutableStateFlow<CallOffer.Preview?>(null)
+
+    /**
+     * What the sheets offer ([VoiceSubscription.offer]). Debug builds draw
+     * the subscription as if it were on sale for their test screens when
+     * asked ([testOffer]), a preview that charges and grants nothing; a
+     * release build never.
+     */
+    val offers: StateFlow<CallOffer> = combine(testOffer, subscription.offer) { test, offer -> test?.takeIf { BuildConfig.DEBUG } ?: offer }
+        .stateIn(scope, SharingStarted.Eagerly, subscription.offer.value)
+    val offer: CallOffer get() = offers.value
+
+    /** The store holds a voice subscription RevenueCat hasn't confirmed yet. */
+    val unconfirmed: StateFlow<Boolean> = subscription.problem.map { it == VoiceSubscription.Problem.Unconfirmed }
+        .stateIn(scope, SharingStarted.Eagerly, false)
 
     private var session: CallSession? = null
     private var context: CallContext? = null
@@ -78,13 +99,21 @@ class CallController(
         foreground.filter { !it }.onEach { hangUp() }.launchIn(scope)
         openAccount.drop(1).distinctUntilChanged().onEach { id -> if (state.value.isShown && id != connectionId) close() }.launchIn(scope)
         relayVoiceActive.distinctUntilChanged().filter { it }.onEach { if (state.value.isLive) close() }.launchIn(scope)
+        // Subscribed while the used-up sheet is up: it goes once there is time again.
+        subscription.offer.filter { it == CallOffer.Subscribed }.onEach {
+            if (sheet.value is CallSheet.Used && allowance.remaining(System.currentTimeMillis()) > 0) dismissSheet()
+        }.launchIn(scope)
     }
 
-    /**
-     * Nothing is on sale. Debug builds draw the subscription as if it were
-     * for their test screens when asked ([testOffer]); a release build never.
-     */
-    val offer: CallOffer get() = testOffer?.takeIf { BuildConfig.DEBUG } ?: CallOffer.Unavailable
+    /** The sheet's "Subscribe": the store's purchase sheet; false if it couldn't open. */
+    suspend fun subscribe(activity: Activity): Boolean = subscription.buy(activity)
+
+    /** The sheet's "Restore Purchases". */
+    suspend fun restore(): CallRestore = when {
+        subscription.restore() -> CallRestore.Restored
+        subscription.problem.value.let { it != null && it != VoiceSubscription.Problem.NoProduct } -> CallRestore.Failed
+        else -> CallRestore.NothingFound
+    }
 
     /**
      * The voice button: a call on this connection, or the one already on.
@@ -255,7 +284,7 @@ class CallController(
             val now = System.currentTimeMillis()
             allowance.record("test-used", now - CallAllowance.FREE_MILLIS, now)
         }
-        testOffer = offerPrice?.let(CallOffer::Preview)
+        testOffer.value = offerPrice?.let(CallOffer::Preview)
     }
 
     /** Test runs' log line: what is up after a step. */
@@ -276,3 +305,6 @@ class CallController(
             else "%d:%02d:%02d".format(seconds / 3600, (seconds % 3600) / 60, seconds % 60)
     }
 }
+
+/** What a restore came to. */
+enum class CallRestore { Restored, NothingFound, Failed }

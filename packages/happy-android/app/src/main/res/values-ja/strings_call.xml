@@ -34,4 +34,11 @@
     <string name="call_preview_note">テストプレビューです。料金はかかりません。</string>
     <string name="call_preview_title">プレビューのみ</string>
     <string name="call_preview_message">音声のサブスクリプションはまだ販売していません。購入や請求は行われておらず、音声時間も変わっていません。</string>
+    <string name="call_paid_used">今月の音声 5 時間を使い切りました。%1$s にまた使えます。</string>
+    <string name="call_paid_used_later">今月の音声 5 時間を使い切りました。</string>
+    <string name="call_restore">購入を復元</string>
+    <string name="call_restore_done">サブスクリプションを復元しました。</string>
+    <string name="call_restore_none">このストアアカウントには音声のサブスクリプションが見つかりませんでした。</string>
+    <string name="call_restore_failed">ストアに接続できませんでした。後でもう一度お試しください。</string>
+    <string name="call_purchase_unconfirmed">購入はまだ確認されていません。次に Happy を開いたときにもう一度確認します。</string>
 </resources>

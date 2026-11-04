@@ -34,4 +34,11 @@
     <string name="call_preview_note">Prévia de teste. Nada é cobrado.</string>
     <string name="call_preview_title">Apenas prévia</string>
     <string name="call_preview_message">As assinaturas de voz ainda não estão à venda. Nada foi comprado nem cobrado, e seu tempo de voz não mudou.</string>
+    <string name="call_paid_used">As 5 horas de voz deste mês foram usadas. Há mais a partir de %1$s.</string>
+    <string name="call_paid_used_later">As 5 horas de voz deste mês foram usadas.</string>
+    <string name="call_restore">Restaurar compras</string>
+    <string name="call_restore_done">A sua assinatura foi restaurada.</string>
+    <string name="call_restore_none">Não foi encontrada nenhuma assinatura de voz nesta conta da loja.</string>
+    <string name="call_restore_failed">Não foi possível contactar a loja. Tente mais tarde.</string>
+    <string name="call_purchase_unconfirmed">A sua compra ainda não está confirmada. O Happy volta a verificar quando regressar.</string>
 </resources>

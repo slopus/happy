@@ -34,4 +34,11 @@
     <string name="call_preview_note">Тестовый просмотр. Ничего не списывается.</string>
     <string name="call_preview_title">Только просмотр</string>
     <string name="call_preview_message">Голосовые подписки пока не продаются. Ничего не куплено и не списано, ваше время голоса не изменилось.</string>
+    <string name="call_paid_used">5 часов голоса в этом месяце израсходованы. Новые появятся %1$s.</string>
+    <string name="call_paid_used_later">5 часов голоса в этом месяце израсходованы.</string>
+    <string name="call_restore">Восстановить покупки</string>
+    <string name="call_restore_done">Подписка восстановлена.</string>
+    <string name="call_restore_none">В этом аккаунте магазина не найдено подписки на голос.</string>
+    <string name="call_restore_failed">Не удалось связаться с магазином. Попробуйте позже.</string>
+    <string name="call_purchase_unconfirmed">Покупка ещё не подтверждена. Happy проверит снова, когда вы вернётесь.</string>
 </resources>

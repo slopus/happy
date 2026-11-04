@@ -1,6 +1,8 @@
 package com.slopus.happy.ui.call
 
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
 import android.text.format.DateFormat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -69,6 +71,7 @@ import com.airbnb.lottie.compose.rememberLottieComposition
 import com.slopus.happy.R
 import com.slopus.happy.call.CallController
 import com.slopus.happy.call.CallOffer
+import com.slopus.happy.call.CallRestore
 import com.slopus.happy.call.CallSheet
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
@@ -95,6 +98,7 @@ object CallSheetTags {
     const val SUBSCRIBE = "call-sheet-subscribe"
     const val SESSION = "call-sheet-session"
     const val CLOSE = "call-sheet-close"
+    const val RESTORE = "call-sheet-restore"
     const val WARNING = "call-sheet-warning"
 }
 
@@ -114,11 +118,24 @@ object CallSheetSpec {
     val darkWarning = Color(0xFFFFAB00)
 }
 
-/** [calls]' voice sheet while one is up ([CallController.sheet]). */
+/** [calls]' voice sheet while one is up ([CallController.sheet]), offering what is on offer now. */
 @Composable
 fun CallSheet(calls: CallController) {
     val sheet by calls.sheet.collectAsStateWithLifecycle()
-    sheet?.let { CallSheet(it, onStart = calls::startFromSheet, onDismiss = calls::dismissSheet) }
+    val offer by calls.offers.collectAsStateWithLifecycle()
+    val unconfirmed by calls.unconfirmed.collectAsStateWithLifecycle()
+    val activity = LocalContext.current.activity()
+    val scope = rememberCoroutineScope()
+    sheet?.let {
+        CallSheet(
+            it.offering(offer),
+            onStart = calls::startFromSheet,
+            onDismiss = calls::dismissSheet,
+            onSubscribe = { activity?.let { activity -> scope.launch { calls.subscribe(activity) } } },
+            onRestore = calls::restore,
+            unconfirmed = unconfirmed,
+        )
+    }
 }
 
 /**
@@ -132,15 +149,25 @@ fun CallSheet(calls: CallController) {
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CallSheet(sheet: CallSheet, onStart: () -> Unit, onDismiss: () -> Unit) {
+fun CallSheet(
+    sheet: CallSheet,
+    onStart: () -> Unit,
+    onDismiss: () -> Unit,
+    onSubscribe: () -> Unit = {},
+    onRestore: (suspend () -> CallRestore)? = null,
+    unconfirmed: Boolean = false,
+) {
     val dark = HappyTheme.colors.dark
     val ink = if (dark) StartSpec.darkText else StartSpec.lightText
     val palette = if (dark) StartSpec.darkPalette else StartSpec.lightPalette
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
     var preview by remember { mutableStateOf(false) }
+    var restoring by remember { mutableStateOf(false) }
+    var restored by remember { mutableStateOf<CallRestore?>(null) }
     val context = LocalContext.current
-    val used = (sheet as? CallSheet.Used)?.let { usedNote(context, it.freeAgain) }
+    val subscribed = sheet.offer == CallOffer.Subscribed
+    val used = (sheet as? CallSheet.Used)?.let { if (subscribed) paidNote(it.freeAgain) else usedNote(context, it.freeAgain) }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = state,
@@ -178,7 +205,13 @@ fun CallSheet(sheet: CallSheet, onStart: () -> Unit, onDismiss: () -> Unit) {
                             Benefit(Ionicon.ChatbubbleEllipsesOutline, stringResource(R.string.call_welcome_ask), ink)
                             Benefit(Ionicon.PaperPlaneOutline, stringResource(R.string.call_welcome_act), ink)
                             // Once the free time is used, that under its line, in the app's warning colour.
-                            Benefit(Ionicon.GiftOutline, stringResource(R.string.call_welcome_free), ink, used, if (dark) CallSheetSpec.darkWarning else CallSheetSpec.lightWarning)
+                            Benefit(
+                                Ionicon.GiftOutline,
+                                stringResource(if (subscribed) R.string.call_subscribe_allowance else R.string.call_welcome_free),
+                                ink,
+                                used,
+                                if (dark) CallSheetSpec.darkWarning else CallSheetSpec.lightWarning,
+                            )
                         }
                     }
                     Spacer(Modifier.weight(1f))
@@ -186,8 +219,9 @@ fun CallSheet(sheet: CallSheet, onStart: () -> Unit, onDismiss: () -> Unit) {
                     // The subscription, what it gives and what it is for, its button, then the free call under it.
                     Column(Modifier.widthIn(max = CallSheetSpec.column), horizontalAlignment = Alignment.CenterHorizontally) {
                         val offer = sheet.offer
-                        if (offer is CallOffer.Preview) {
-                            Text(stringResource(R.string.call_support_for, offer.price), style = CallSheetSpec.offer, color = ink, textAlign = TextAlign.Center)
+                        val price = offer.price
+                        if (price != null) {
+                            Text(stringResource(R.string.call_support_for, price), style = CallSheetSpec.offer, color = ink, textAlign = TextAlign.Center)
                             Spacer(Modifier.height(2.dp))
                             Text(stringResource(R.string.call_subscribe_allowance), style = CallSheetSpec.detail, color = ink, textAlign = TextAlign.Center)
                             Spacer(Modifier.height(6.dp))
@@ -200,7 +234,7 @@ fun CallSheet(sheet: CallSheet, onStart: () -> Unit, onDismiss: () -> Unit) {
                             Spacer(Modifier.height(20.dp))
                             RoundButton(
                                 title = stringResource(R.string.call_subscribe),
-                                onClick = { preview = true },
+                                onClick = { if (offer is CallOffer.Preview) preview = true else onSubscribe() },
                                 modifier = Modifier.width(CallSheetSpec.button).testTag(CallSheetTags.SUBSCRIBE),
                             )
                             Spacer(Modifier.height(12.dp))
@@ -216,12 +250,39 @@ fun CallSheet(sheet: CallSheet, onStart: () -> Unit, onDismiss: () -> Unit) {
                             },
                             modifier = Modifier.width(CallSheetSpec.button).testTag(CallSheetTags.SESSION),
                         )
+                        // Restore, wherever the subscription could be bought: a reinstall, another phone.
+                        if (price != null && onRestore != null) {
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                stringResource(R.string.call_restore),
+                                style = CallSheetSpec.note,
+                                color = ink.copy(alpha = StartSpec.SECONDARY_ALPHA),
+                                modifier = Modifier
+                                    .alpha(if (restoring) 0.4f else 1f)
+                                    .clickable(enabled = !restoring, role = Role.Button) {
+                                        restoring = true
+                                        scope.launch { restored = onRestore().also { restoring = false } }
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 12.dp)
+                                    .testTag(CallSheetTags.RESTORE),
+                            )
+                        }
                         val notes = buildList {
-                            if (offer.onSale) add(stringResource(R.string.call_preview_note))
+                            if (offer is CallOffer.Preview) add(stringResource(R.string.call_preview_note))
                         }
                         if (notes.isNotEmpty()) {
                             Spacer(Modifier.height(12.dp))
                             Text(notes.joinToString("\n"), style = CallSheetSpec.note, color = ink.copy(alpha = StartSpec.SECONDARY_ALPHA), textAlign = TextAlign.Center)
+                        }
+                        // Bought, and RevenueCat hasn't confirmed it: said, never granted.
+                        if (unconfirmed) {
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                stringResource(R.string.call_purchase_unconfirmed),
+                                style = CallSheetSpec.note,
+                                color = if (dark) CallSheetSpec.darkWarning else CallSheetSpec.lightWarning,
+                                textAlign = TextAlign.Center,
+                            )
                         }
                     }
                 }
@@ -230,6 +291,22 @@ fun CallSheet(sheet: CallSheet, onStart: () -> Unit, onDismiss: () -> Unit) {
                 scope.launch { state.hide() }.invokeOnCompletion { onDismiss() }
             }
         }
+    }
+    restored?.let { outcome ->
+        HappyAlert(
+            Alert(
+                title = stringResource(R.string.call_restore),
+                message = stringResource(
+                    when (outcome) {
+                        CallRestore.Restored -> R.string.call_restore_done
+                        CallRestore.NothingFound -> R.string.call_restore_none
+                        CallRestore.Failed -> R.string.call_restore_failed
+                    },
+                ),
+                buttons = listOf(AlertButton(stringResource(R.string.common_ok))),
+            ),
+            onDismiss = { restored = null },
+        )
     }
     // Debug builds' test preview: what subscribing would say, said plainly as nothing. No product, charge, grant or change to the free time.
     if (preview) {
@@ -351,6 +428,19 @@ private fun usedNote(context: Context, freeAgain: Long?): String {
         days < 7 -> stringResource(R.string.call_used_week, SimpleDateFormat("EEE", Locale.getDefault()).format(date), time)
         else -> stringResource(R.string.call_used_date, DateFormat.format(DateFormat.getBestDateTimePattern(Locale.getDefault(), "MMMd"), date).toString())
     }
+}
+
+/** The subscriber's used-up line: this month's hours are used, and when the next month's begin. */
+@Composable
+private fun paidNote(next: Long?): String {
+    val date = next?.let { DateFormat.format(DateFormat.getBestDateTimePattern(Locale.getDefault(), "MMMd"), Date(it)).toString() }
+    return if (date != null) stringResource(R.string.call_paid_used, date) else stringResource(R.string.call_paid_used_later)
+}
+
+private tailrec fun Context.activity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.activity()
+    else -> null
 }
 
 /** Calendar days from [from] to [to] on the phone's clock. */

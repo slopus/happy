@@ -39,4 +39,11 @@
     <string name="call_preview_note">Test preview. Nothing is charged.</string>
     <string name="call_preview_title">Preview only</string>
     <string name="call_preview_message">Voice subscriptions aren’t on sale yet. Nothing was bought or charged, and your voice time hasn’t changed.</string>
+    <string name="call_paid_used">This month’s 5 hours of voice are used. More comes back on %1$s.</string>
+    <string name="call_paid_used_later">This month’s 5 hours of voice are used.</string>
+    <string name="call_restore">Restore Purchases</string>
+    <string name="call_restore_done">Your subscription is restored.</string>
+    <string name="call_restore_none">No voice subscription was found for this store account.</string>
+    <string name="call_restore_failed">Couldn’t reach the store. Try again later.</string>
+    <string name="call_purchase_unconfirmed">Your purchase isn’t confirmed yet. Happy checks again when you come back.</string>
 </resources>

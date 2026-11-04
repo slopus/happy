@@ -20,10 +20,10 @@ data class CallUsage(val spans: List<Span> = emptyList()) {
      * edge counts only the part after it. A span after [now] (the clock was
      * put back) counts whole: turning the clock back gives no time back.
      */
-    fun used(now: Long, window: Long): Long {
-        val from = now - window
-        return spans.sumOf { maxOf(0L, it.end - maxOf(it.start, from)) }
-    }
+    fun used(now: Long, window: Long): Long = usedSince(now - window)
+
+    /** Milliseconds spent since [from], counted as [used] counts them. */
+    fun usedSince(from: Long): Long = spans.sumOf { maxOf(0L, it.end - maxOf(it.start, from)) }
 
     /** Counts a call up to [end]; the same call again only grows its span. */
     fun record(id: String, start: Long, end: Long): CallUsage {
@@ -76,54 +76,74 @@ class PreferencesCallUsageStore(private val preferences: SharedPreferences) : Ca
 }
 
 /**
- * The free voice time a device has on agent calls (iOS `CallAllowance`): 20
- * minutes in any 30 days, rolling, counted here. Provisional, like the public
- * agent it goes with: no server to ask yet, nothing bought lifts it. Not a
- * number of calls, and no other cap. Used on the main thread.
+ * The voice time a device has on agent calls (iOS `CallAllowance`), counted
+ * here: 20 free minutes in any 30 days, rolling, or, while the subscription
+ * gives a [period], 5 hours in that billing period instead. Provisional, like
+ * the public agent it goes with: nothing on a server counts or enforces it.
+ * Not a number of calls, and no other cap. Used on the main thread.
  */
 class CallAllowance(
     private val store: CallUsageStore,
     private val free: Long = FREE_MILLIS,
     private val window: Long = WINDOW_MILLIS,
+    private val period: () -> VoicePeriod? = { null },
 ) {
     private var usage = store.load()
 
-    fun remaining(now: Long): Long = maxOf(0L, free - usage.used(now, window))
+    fun remaining(now: Long): Long {
+        period()?.let { return maxOf(0L, PAID_MILLIS - usage.usedSince(it.start)) }
+        return maxOf(0L, free - usage.used(now, window))
+    }
 
-    /** When some free time is back, once it has all been used. */
-    fun freeAgain(now: Long): Long? = usage.freeAgain(now, free, window)
+    /** When some time is back, once it has all been used: the free time's, or the period's end. */
+    fun freeAgain(now: Long): Long? {
+        period()?.let { return it.end }
+        return usage.freeAgain(now, free, window)
+    }
 
     fun record(id: String, start: Long, end: Long) {
-        usage = usage.record(id, start, end).forget(end - window)
+        // Kept long enough for a whole billing period, the longest month and then some.
+        usage = usage.record(id, start, end).forget(end - maxOf(window, KEEP_MILLIS))
         store.save(usage)
     }
 
     companion object {
         const val FREE_MILLIS = 20 * 60 * 1000L
         const val WINDOW_MILLIS = 30 * 24 * 60 * 60 * 1000L
+        const val PAID_MILLIS = 5 * 60 * 60 * 1000L
+        const val KEEP_MILLIS = 40 * 24 * 60 * 60 * 1000L
     }
 }
 
 /**
- * What voice's sheets can offer (iOS `CallOffer`). Nothing yet: the store's
- * products, their prices and the subscription's entitlement aren't chosen,
- * so the sheets sell nothing. A purchase and a restore come with the
- * products, never before.
+ * What voice's sheets offer: the subscription, RevenueCat's `pro`, at the
+ * store's price ([VoiceSubscription]); nothing, where the build has no
+ * RevenueCat key or the store or RevenueCat has no monthly product to sell;
+ * or nothing because this customer has `pro` already.
  */
 sealed interface CallOffer {
     data object Unavailable : CallOffer
+
+    /** The monthly subscription, at [price] as the store words it. */
+    data class OnSale(override val price: String) : CallOffer
+
+    /** This customer has `pro`: 5 hours a month, nothing to sell. */
+    data object Subscribed : CallOffer
 
     /**
      * Debug builds' test screens only (`happy.call.offer`): the subscription
      * drawn as if it were on sale, its button a preview that charges and
      * grants nothing. Never in a release build ([CallController.offer]).
      */
-    data class Preview(val price: String) : CallOffer
+    data class Preview(override val price: String) : CallOffer
 
-    val onSale: Boolean get() = this is Preview
+    val onSale: Boolean get() = this is OnSale || this is Preview
+
+    /** The price drawn, where something is on sale. */
+    val price: String? get() = null
 
     companion object {
-        /** The monthly price as approved, until the store's own localised one replaces it. It buys 5 hours of real-time voice a month. */
+        /** The debug preview's price, standing in for the store's own. */
         const val PRICE = "$20"
     }
 }
@@ -131,6 +151,12 @@ sealed interface CallOffer {
 /** Which of voice's sheets is up ([CallController.sheet]). */
 sealed interface CallSheet {
     val offer: CallOffer
+
+    /** The same sheet, offering [offer] now. */
+    fun offering(offer: CallOffer): CallSheet = when (this) {
+        is Welcome -> copy(offer = offer)
+        is Used -> copy(offer = offer)
+    }
 
     /** Before the first call. */
     data class Welcome(override val offer: CallOffer) : CallSheet
