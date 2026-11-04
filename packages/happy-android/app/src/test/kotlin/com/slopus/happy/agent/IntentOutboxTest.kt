@@ -117,6 +117,31 @@ class IntentOutboxTest {
     }
 
     @Test
+    fun aBackgroundRefusalBeforeTheCallerWaitsKeepsItsVerdict(): Unit = runBlocking {
+        val box = outbox()
+        box.handle(setOf(Intent.ARCHIVE)) { throw IntentRefusal("No") }
+        val intent = box.enqueue(Intent.ARCHIVE, "task")
+        box.setOnline(true)
+        eventually({ box.pending.value }) { it.isEmpty() }
+
+        assertEquals(IntentOutbox.Verdict.Refused("No"), box.attempt(intent.id))
+        assertEquals(IntentOutbox.Verdict.Refused("No"), box.verdict(intent.id))
+    }
+
+    @Test
+    fun completedVerdictsAreBoundedAndDoNotReplaceTheNextIntentsAnswer(): Unit = runBlocking {
+        val box = outbox()
+        box.handle(setOf(Intent.ARCHIVE)) { throw IntentRefusal(it.target) }
+        val first = box.enqueue(Intent.ARCHIVE, "first")
+        assertEquals(IntentOutbox.Verdict.Refused("first"), box.attempt(first.id))
+        repeat(IntentOutbox.COMPLETED_LIMIT) { index ->
+            val intent = box.enqueue(Intent.ARCHIVE, "task$index")
+            assertEquals(IntentOutbox.Verdict.Refused("task$index"), box.attempt(intent.id))
+        }
+        assertEquals(IntentOutbox.Verdict.Taken, box.verdict(first.id))
+    }
+
+    @Test
     fun whatIsKeptOnTheDiskComesBackAfterARelaunch(): Unit = runBlocking {
         val file = File(Files.createTempDirectory("intents").toFile(), "c1.intents.json")
         val before = outbox(FileIntentStorage(file))

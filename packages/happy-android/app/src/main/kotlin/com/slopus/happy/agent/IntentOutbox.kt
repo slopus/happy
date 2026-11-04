@@ -144,6 +144,9 @@ class IntentOutbox(
     private val rejected = MutableSharedFlow<Rejection>(extraBufferCapacity = 16)
     private val deliverers = MutableStateFlow<Map<String, suspend (Intent) -> Unit>>(emptyMap())
     private val waiters = HashMap<String, MutableList<CompletableDeferred<Verdict>>>()
+    // A fast background delivery can finish before the caller starts waiting.
+    // Keep its answer under lock with removal so that a refusal cannot become Taken.
+    private val completed = LinkedHashMap<String, Verdict>()
     private val inFlight = HashSet<String>()
     private val pendingState = MutableStateFlow<List<Intent>>(emptyList())
 
@@ -176,14 +179,14 @@ class IntentOutbox(
 
     /** Keeps an action and publishes it, replacing what its slot held; then sends it when it can. */
     suspend fun enqueue(kind: String, target: String, value: JsonObject = JsonObject(emptyMap())): Intent {
-        val (intent, replaced) = lock.withLock {
+        val intent = lock.withLock {
             val before = loaded()
             val intent = Intent(AgentClient.newId(), kind, target, value, maxOf(now(), (before.lastOrNull()?.createdAt ?: 0) + 1))
             val replaced = before.firstOrNull { it.slot == intent.slot }
             write(before.filter { it.slot != intent.slot } + intent)
-            intent to replaced
+            replaced?.let { finish(it.id, Verdict.Taken) }
+            intent
         }
-        replaced?.let { finish(it.id, Verdict.Taken) }
         kicks.trySend(Unit)
         return intent
     }
@@ -192,6 +195,7 @@ class IntentOutbox(
     suspend fun verdict(id: String, withinMillis: Long? = null): Verdict {
         val waiter = CompletableDeferred<Verdict>()
         lock.withLock {
+            completed[id]?.let { return it }
             if (loaded().none { it.id == id }) return Verdict.Taken
             synchronized(waiters) { waiters.getOrPut(id) { mutableListOf() } += waiter }
         }
@@ -202,9 +206,13 @@ class IntentOutbox(
 
     /** Tries [id] once now, connected or not: a person waits on it. Kept as it was if it doesn't go. */
     suspend fun attempt(id: String): Verdict {
-        val intent = lock.withLock { loaded().firstOrNull { it.id == id } } ?: return Verdict.Taken
-        val deliver = deliverers.value[intent.kind] ?: return Verdict.Waiting
-        if (!claim(id)) return verdict(id, ATTEMPT_WAIT_MILLIS)
+        val (intent, deliver, claimed) = lock.withLock {
+            completed[id]?.let { return it }
+            val intent = loaded().firstOrNull { it.id == id } ?: return Verdict.Taken
+            val deliver = deliverers.value[intent.kind] ?: return Verdict.Waiting
+            Triple(intent, deliver, claim(id))
+        }
+        if (!claimed) return verdict(id, ATTEMPT_WAIT_MILLIS)
         return send(intent, deliver, told = true)
     }
 
@@ -224,8 +232,10 @@ class IntentOutbox(
         synchronized(inFlight) { inFlight.remove(id) }
     }
 
-    /** Tells whoever waits on [id]; whether anyone did. */
+    /** Under [lock], remembers the answer and tells whoever waits; whether anyone did. */
     private fun finish(id: String, verdict: Verdict): Boolean {
+        completed[id] = verdict
+        if (completed.size > COMPLETED_LIMIT) completed.remove(completed.keys.first())
         val waiting = synchronized(waiters) { waiters.remove(id) }.orEmpty()
         waiting.forEach { it.complete(verdict) }
         return waiting.isNotEmpty()
@@ -251,14 +261,18 @@ class IntentOutbox(
     private suspend fun send(intent: Intent, deliver: suspend (Intent) -> Unit, told: Boolean = false): Verdict {
         try {
             deliver(intent)
-            lock.withLock { write(loaded().filter { it.id != intent.id }) }
-            finish(intent.id, Verdict.Taken)
+            lock.withLock {
+                write(loaded().filter { it.id != intent.id })
+                finish(intent.id, Verdict.Taken)
+            }
             return Verdict.Taken
         } catch (e: CancellationException) {
             throw e
         } catch (refusal: IntentRefusal) {
-            lock.withLock { write(loaded().filter { it.id != intent.id }) }
-            val heard = finish(intent.id, Verdict.Refused(refusal.reason)) || told
+            val heard = lock.withLock {
+                write(loaded().filter { it.id != intent.id })
+                finish(intent.id, Verdict.Refused(refusal.reason))
+            } || told
             rejected.emit(Rejection(intent, refusal.reason, heard))
             return Verdict.Refused(refusal.reason)
         } catch (_: Exception) {
@@ -273,6 +287,9 @@ class IntentOutbox(
     }
 
     companion object {
+        /** Recent completions only; no payloads or connection-lifetime growth. */
+        internal const val COMPLETED_LIMIT = 256
+
         /** How long [attempt] waits on a send already on its way. */
         const val ATTEMPT_WAIT_MILLIS = 60_000L
 
