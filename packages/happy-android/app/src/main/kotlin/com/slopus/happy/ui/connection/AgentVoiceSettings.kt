@@ -33,6 +33,10 @@ import com.slopus.happy.ui.start.GrainGradient
 import com.slopus.happy.ui.start.StartGallerySpec
 import com.slopus.happy.ui.start.StartSpec
 import com.slopus.happy.ui.theme.happyTextStyle
+import com.slopus.happy.payments.Offer
+import com.slopus.happy.payments.OfferSheet
+import com.slopus.happy.payments.RestoreResult
+import com.slopus.happy.ui.call.OfferActions
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -96,7 +100,7 @@ object AgentVoiceTags {
  * What an agent connection's Settings say about voice (iOS's
  * `AgentVoiceStatus`), read and never changed: this phone's free time
  * ([CallAllowance], read from its store). There is no paid status, because
- * nothing can be bought yet ([com.slopus.happy.call.CallOffer] is
+ * nothing can be bought yet ([com.slopus.happy.payments.Offer] is
  * `Unavailable`), so nothing claims one.
  */
 @Immutable
@@ -217,16 +221,24 @@ fun AgentVoiceScreen(summary: AgentVoiceSummary, onBack: () -> Unit) {
 }
 
 /**
- * Support Happy, from Settings' boba row (iOS's `SupportSheetViewController`):
- * over the first screen's grain, the boba playing where voice's sheet has its
- * mic, a headline and what sending boba is for. Only about supporting Happy:
- * no voice session and nothing about voice. Nothing is on sale yet
- * ([com.slopus.happy.call.CallOffer] is `Unavailable`), so it says so and has
- * no button. With animations removed the boba holds still. Closed by its ✕
- * or back.
+ * Support us, the app's offer sheet opened from Settings
+ * ([OfferSheet.Support]; iOS's `SupportSheetViewController`): over the first
+ * screen's grain, the boba playing where voice's sheet has its mic, a
+ * headline and what sending boba is for. Only about supporting Happy: no
+ * voice session and nothing about voice. Then the subscription at the
+ * store's price with Subscribe and Restore ([OfferActions]); a thank-you
+ * once [offer] is [Offer.Subscribed]; that purchases are unavailable when
+ * nothing is on sale. With animations removed the boba holds still. Closed
+ * by its ✕ or back.
  */
 @Composable
-fun SupportSheet(onDismiss: () -> Unit) {
+fun SupportSheet(
+    offer: Offer,
+    onDismiss: () -> Unit,
+    onSubscribe: () -> Unit = {},
+    onRestore: (suspend () -> RestoreResult)? = null,
+    unconfirmed: Boolean = false,
+) {
     PageDialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         val dark = HappyTheme.colors.dark
         val text = if (dark) StartSpec.darkText else StartSpec.lightText
@@ -260,7 +272,15 @@ fun SupportSheet(onDismiss: () -> Unit) {
                 Spacer(Modifier.height(12.dp))
                 Text(stringResource(R.string.agent_voice_sheet_body), style = StartGallerySpec.body, color = secondary, textAlign = TextAlign.Center, modifier = Modifier.widthIn(max = 440.dp))
                 Spacer(Modifier.weight(1f))
-                Text(stringResource(R.string.agent_voice_sheet_not_yet), style = happyTextStyle(fontSize = 13, lineHeight = 18), color = secondary, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(32.dp))
+                Column(Modifier.widthIn(max = 440.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    OfferActions(offer, onSubscribe, onRestore, unconfirmed, text) {
+                        when {
+                            offer == Offer.Subscribed -> Text(stringResource(R.string.settings_support_us_subtitle_pro), style = StartGallerySpec.body, color = text, textAlign = TextAlign.Center)
+                            offer.price == null -> Text(stringResource(R.string.settings_support_unavailable), style = happyTextStyle(fontSize = 13, lineHeight = 18), color = secondary, textAlign = TextAlign.Center)
+                        }
+                    }
+                }
             }
             Box(
                 Modifier

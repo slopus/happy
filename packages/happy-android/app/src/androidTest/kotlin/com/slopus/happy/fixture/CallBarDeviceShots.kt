@@ -49,7 +49,7 @@ import com.slopus.happy.call.UnconfiguredCallGrants
 import com.slopus.happy.ui.call.CallFrame
 import com.slopus.happy.ui.call.CallSheet
 import com.slopus.happy.ui.call.SheetStatusIcons
-import com.slopus.happy.call.CallOffer
+import com.slopus.happy.payments.Offer
 import com.slopus.happy.call.CallProblem
 import com.slopus.happy.ui.connection.AgentHomeActions
 import com.slopus.happy.ui.connection.AgentHomeScreen
@@ -337,7 +337,7 @@ class CallBarDeviceShots {
                     val accounts = AccountMenu(listOf(AccountMenuEntry("fx-connection", "Studio Mac", agent = true, active = true)))
                     AgentHomeScreen("Studio Mac", feed(), AgentLinkStatus.Connected, accounts, AgentHomeActions({}, {}, {}, {}, {}, {}, onVoice = {}))
                     val shown by paywall.collectAsState()
-                    if (shown) CallSheet(com.slopus.happy.call.CallSheet.Used(System.currentTimeMillis() + 26 * 3_600_000L, CallOffer.Unavailable), onStart = {}, onDismiss = { paywall.value = false })
+                    if (shown) CallSheet(com.slopus.happy.payments.OfferSheet.Used(System.currentTimeMillis() + 26 * 3_600_000L, Offer.Unavailable), onStart = {}, onDismiss = { paywall.value = false })
                 }
             }
         }
@@ -358,13 +358,13 @@ class CallBarDeviceShots {
     @Test
     fun sheets() {
         val later = System.currentTimeMillis() + 26 * 3_600_000L
-        val preview = CallOffer.Preview(CallOffer.PRICE)
+        val preview = Offer.Preview(Offer.PRICE)
         val sheets = listOf(
-            "welcome-preview" to com.slopus.happy.call.CallSheet.Welcome(preview),
-            "used" to com.slopus.happy.call.CallSheet.Used(later, CallOffer.Unavailable),
-            "used-preview" to com.slopus.happy.call.CallSheet.Used(later, preview),
+            "welcome-preview" to com.slopus.happy.payments.OfferSheet.Welcome(preview),
+            "used" to com.slopus.happy.payments.OfferSheet.Used(later, Offer.Unavailable),
+            "used-preview" to com.slopus.happy.payments.OfferSheet.Used(later, preview),
         )
-        val shown = MutableStateFlow<com.slopus.happy.call.CallSheet?>(null)
+        val shown = MutableStateFlow<com.slopus.happy.payments.OfferSheet?>(null)
         val foot = MutableStateFlow(false)
         rule.runOnUiThread { rule.activity.enableEdgeToEdge() }
         rule.setContent {

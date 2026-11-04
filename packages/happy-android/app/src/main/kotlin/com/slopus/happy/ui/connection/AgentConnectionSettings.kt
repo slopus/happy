@@ -18,9 +18,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -226,9 +223,6 @@ fun AgentConnectionSettingsScreen(
         SettingsEditItem(editName, Ionicon.Pencil, SettingsPageTags.EDIT_NAME) { actions.onAskChief(namePrefix) },
     )
     val search = rememberSettingsSearch()
-    // Support Happy's sheet, from the boba row or search.
-    var supporting by rememberSaveable { mutableStateOf(false) }
-    if (supporting) SupportSheet { supporting = false }
     val sections = listOf(
         SettingsSection(
             listOf(
@@ -307,7 +301,7 @@ fun AgentConnectionSettingsScreen(
                 SettingsEntry(AgentSettingsTags.ASK_AVATAR, stringResource(R.string.agent_settings_edit_avatar), icon = { SettingsTile(Ionicon.ImageOutline, SettingsTiles.orange) }, chevron = false, onClick = { actions.onAskChief(avatarPrefix) }, closesSearch = true),
             )
             val profiles = settingsProfileEntries(accounts, accountActions.onSwitch)
-            val rows = listOf(addAgentEntry(accountActions), supportBobaEntry { supporting = true }) + sections.flatMap { it.rows } + appearance
+            val rows = listOf(addAgentEntry(accountActions), supportBobaEntry(aboutActions.onSupport)) + sections.flatMap { it.rows } + appearance
             SettingsSearchResults(search, settingsSearchResults(search.query, profiles, asks, rows))
         } else {
             SettingsDissolveBox {
@@ -317,7 +311,7 @@ fun AgentConnectionSettingsScreen(
                     // Support Happy right under Profile, the first card.
                     for ((index, section) in sections.withIndex()) {
                         SettingsCard(section)
-                        if (index == 0) SupportBobaCard { supporting = true }
+                        if (index == 0) SupportBobaCard(aboutActions.onSupport)
                     }
                     RemoveCard(agent = true, name = profile.name, onRemove = actions.onRemove)
                 }

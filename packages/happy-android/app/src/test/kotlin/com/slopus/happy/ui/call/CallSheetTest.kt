@@ -10,15 +10,17 @@ import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.R
-import com.slopus.happy.call.CallIntro
-import com.slopus.happy.call.CallOffer
-import com.slopus.happy.call.CallSheet
+import com.slopus.happy.payments.CallIntro
+import com.slopus.happy.payments.Offer
+import com.slopus.happy.payments.OfferSheet
+import com.slopus.happy.ui.connection.SupportSheet
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -40,7 +42,7 @@ class CallSheetTest {
     @Test
     fun theWelcomeSaysWhatVoiceDoesAndStartsTheFreeCall() {
         var started = 0
-        rule.setHappyContent { CallSheet(CallSheet.Welcome(CallOffer.Preview("$20")), onStart = { started++ }, onDismiss = {}) }
+        rule.setHappyContent { CallSheet(OfferSheet.Welcome(Offer.Preview("$20")), onStart = { started++ }, onDismiss = {}) }
         rule.waitForIdle()
         rule.node(CallSheetTags.WELCOME).assertExists()
         for (line in listOf("Talk to your agents", "Ask how your work is going", "Open and send by voice", "20 free minutes", "Support Happy for $20/month")) text(line).assertExists()
@@ -54,7 +56,7 @@ class CallSheetTest {
     @Test
     fun usedUpItIsTheSameScreenWithItsStartGreyedOutAndSaysWhenTimeIsBack() {
         var started = 0
-        rule.setHappyContent { CallSheet(CallSheet.Used(System.currentTimeMillis() + 3_600_000, CallOffer.Unavailable), onStart = { started++ }, onDismiss = {}) }
+        rule.setHappyContent { CallSheet(OfferSheet.Used(System.currentTimeMillis() + 3_600_000, Offer.Unavailable), onStart = { started++ }, onDismiss = {}) }
         rule.waitForIdle()
         rule.node(CallSheetTags.PAYWALL).assertExists()
         text("Talk to your agents").assertExists()
@@ -68,7 +70,7 @@ class CallSheetTest {
 
     @Test
     fun withNoTimeComingBackItSaysHowItComesBack() {
-        rule.setHappyContent { CallSheet(CallSheet.Used(null, CallOffer.Unavailable), onStart = {}, onDismiss = {}) }
+        rule.setHappyContent { CallSheet(OfferSheet.Used(null, Offer.Unavailable), onStart = {}, onDismiss = {}) }
         rule.waitForIdle()
         text("Your free voice time is used. It comes back as older calls pass 30 days.").assertExists()
     }
@@ -78,7 +80,7 @@ class CallSheetTest {
     fun thePreviewOfferChargesAndGrantsNothing() {
         var started = 0
         var dismissed = 0
-        rule.setHappyContent { CallSheet(CallSheet.Used(null, CallOffer.Preview("$20")), onStart = { started++ }, onDismiss = { dismissed++ }) }
+        rule.setHappyContent { CallSheet(OfferSheet.Used(null, Offer.Preview("$20")), onStart = { started++ }, onDismiss = { dismissed++ }) }
         rule.waitForIdle()
         for (line in listOf("Support Happy for $20/month", "5 hours of real-time voice included", "Happy is open source. Subscribing to voice pays for its development.", "Test preview. Nothing is charged.")) text(line).assertExists()
         rule.node(CallSheetTags.SUBSCRIBE).performClick()
@@ -95,15 +97,64 @@ class CallSheetTest {
         val intro = CallIntro(preferences)
         intro.reset()
         // Nothing on sale: the button just calls, and the welcome stays due for when something is.
-        assertNull(intro.welcome(CallOffer.Unavailable))
+        assertFalse(intro.welcomes(Offer.Unavailable))
         assertTrue(CallIntro(preferences).due)
-        val preview = CallOffer.Preview("$20")
-        assertEquals(CallSheet.Welcome(preview), intro.welcome(preview))
+        val preview = Offer.Preview("$20")
+        assertTrue(intro.welcomes(preview))
         // Seen, however it was closed: from now on the button calls.
         assertFalse(CallIntro(preferences).due)
-        assertNull(CallIntro(preferences).welcome(preview))
+        assertFalse(CallIntro(preferences).welcomes(preview))
         intro.reset()
         assertTrue(intro.due)
+    }
+
+    /** The relay's voice refused without the subscription: voice's sheet, no free way on, its start greyed out. */
+    @Test
+    fun theRelaysRequiredSheetHasNoFreeWayOn() {
+        var started = 0
+        rule.setHappyContent { CallSheet(OfferSheet.Required(Offer.OnSale("9,99 €")), onStart = { started++ }, onDismiss = {}, onRestore = { com.slopus.happy.payments.RestoreResult.NothingFound }) }
+        rule.waitForIdle()
+        rule.node(CallSheetTags.PAYWALL).assertExists()
+        for (line in listOf("Talk to your agents", "Support Happy for 9,99 €/month", "5 hours of real-time voice included")) text(line).assertExists()
+        rule.node(CallSheetTags.SUBSCRIBE).assertExists()
+        rule.node(CallSheetTags.RESTORE).assertExists()
+        rule.node(CallSheetTags.SESSION).assertIsNotEnabled().performClick()
+        rule.waitForIdle()
+        assertEquals(0, started)
+    }
+
+    /** Support us: the boba's sheet sells the same subscription, says nothing about voice and has no voice session. */
+    @Test
+    fun supportSellsTheSameSubscriptionWithoutVoice() {
+        var subscribed = 0
+        rule.setHappyContent { SupportSheet(Offer.OnSale("9,99 €"), onDismiss = {}, onSubscribe = { subscribed++ }, onRestore = { com.slopus.happy.payments.RestoreResult.NothingFound }) }
+        rule.waitForIdle()
+        text("Support Happy open source").assertExists()
+        text("Support Happy for 9,99 €/month").assertExists()
+        text("Talk to your agents").assertDoesNotExist()
+        text("5 hours of real-time voice included").assertDoesNotExist()
+        rule.node(CallSheetTags.SESSION).assertDoesNotExist()
+        rule.node(CallSheetTags.SUBSCRIBE).performClick()
+        rule.waitForIdle()
+        assertEquals(1, subscribed)
+        rule.node(CallSheetTags.RESTORE).performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText(context.getString(R.string.call_restore_none)).assertExists()
+    }
+
+    /** Nothing on sale, it still opens and says so; with pro, it thanks and sells nothing more. */
+    @Test
+    fun supportSaysWhenNothingIsOnSaleAndThanksASubscriber() {
+        var offer by androidx.compose.runtime.mutableStateOf<Offer>(Offer.Unavailable)
+        rule.setHappyContent { SupportSheet(offer, onDismiss = {}) }
+        rule.waitForIdle()
+        rule.onNodeWithText(context.getString(R.string.settings_support_unavailable)).assertExists()
+        rule.node(CallSheetTags.SUBSCRIBE).assertDoesNotExist()
+        offer = Offer.Subscribed
+        rule.waitForIdle()
+        rule.onNodeWithText(context.getString(R.string.settings_support_us_subtitle_pro)).assertExists()
+        rule.node(CallSheetTags.SUBSCRIBE).assertDoesNotExist()
+        rule.node(CallSheetTags.RESTORE).assertDoesNotExist()
     }
 
     @Test

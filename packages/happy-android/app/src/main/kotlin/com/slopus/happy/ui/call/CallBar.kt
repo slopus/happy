@@ -1,8 +1,6 @@
 package com.slopus.happy.ui.call
 
-import android.app.Activity
 import android.content.Context
-import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
@@ -173,10 +171,7 @@ object CallBarTags {
  */
 @Composable
 fun CallFrame(calls: CallController, content: @Composable () -> Unit) =
-    CallFrame(calls.state, calls.level, calls::toggleMute, calls::close, calls::showPaywall) {
-        content()
-        CallSheet(calls)
-    }
+    CallFrame(calls.state, calls.level, calls::toggleMute, calls::close, calls::showPaywall, content)
 
 /**
  * What a [CallFrame] shows, for the windows over it to show the same
@@ -504,10 +499,4 @@ private fun problemText(problem: CallProblem): String = stringResource(
 
 private fun Context.openAppSettings() {
     startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-}
-
-private tailrec fun Context.activity(): Activity? = when (this) {
-    is Activity -> this
-    is ContextWrapper -> baseContext.activity()
-    else -> null
 }

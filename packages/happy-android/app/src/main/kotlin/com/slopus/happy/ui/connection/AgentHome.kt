@@ -867,8 +867,8 @@ private fun CallLaunchHooks(graph: AppGraph, voice: () -> Unit) {
             kotlinx.coroutines.delay(3_000)
             when (step) {
                 "tap" -> voice()
-                "session" -> graph.calls.startFromSheet()
-                "close" -> graph.calls.dismissSheet()
+                "session" -> graph.offers.start()
+                "close" -> graph.offers.dismiss()
             }
             kotlinx.coroutines.delay(1_000)
             android.util.Log.i("call-steps", "$step -> ${graph.calls.testSummary}")

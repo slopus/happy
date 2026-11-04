@@ -36,7 +36,10 @@ import com.slopus.happy.payments.PurchaseAccount
 import com.slopus.happy.payments.PlayBilling
 import com.slopus.happy.payments.PurchasesRepository
 import com.slopus.happy.payments.RevenueCatApi
+import com.slopus.happy.payments.CallIntro
+import com.slopus.happy.payments.Offers
 import com.slopus.happy.payments.Subscription
+import com.slopus.happy.call.PreferencesCallUsageStore
 import com.slopus.happy.payments.RevenueCatPurchases
 import com.slopus.happy.push.PushApi
 import com.slopus.happy.push.PushUnregisterQueue
@@ -469,6 +472,26 @@ class AppGraph(
         .flatMapLatest { it?.isSyncing ?: flowOf(false) }
         .stateIn(scope, SharingStarted.Eagerly, false)
 
+    /**
+     * The app's one subscription, RevenueCat's `pro` through Play and
+     * RevenueCat's REST API, under the Happy account when one is signed in.
+     * Without the build's RevenueCat key it offers nothing.
+     */
+    val subscription: Subscription by lazy {
+        val key = BuildConfig.REVENUE_CAT_GOOGLE_KEY
+        Subscription(
+            scope,
+            store = PlayBilling(appContext).takeIf { key.isNotBlank() },
+            revenueCat = RevenueCatApi(okHttp, key).takeIf { key.isNotBlank() },
+            preferences = appContext.getSharedPreferences(Subscription.PREFS_NAME, Context.MODE_PRIVATE),
+        )
+    }
+
+    /** The app's offer sheets, one at a time, for everything that sells the [subscription]. */
+    val offers: Offers by lazy {
+        Offers(scope, subscription, CallIntro(appContext.getSharedPreferences(PreferencesCallUsageStore.PREFS_NAME, Context.MODE_PRIVATE)))
+    }
+
     init {
         scope.launch {
             combine(auth.state, serverConfig.url, accountStore.registry) { _, _, _ -> purchaseAccount() }.collect(purchases::setAccount)
@@ -480,7 +503,11 @@ class AppGraph(
             var relay: String? = null
             combine(auth.state, openAccount, accountStore.registry) { _, _, _ -> voiceRelay(relay).also { relay = it } }
                 .distinctUntilChanged()
-                .collect(subscription::relay)
+                .collect {
+                    subscription.relay(it)
+                    // Another account's: whatever sheet was up for the last one goes.
+                    offers.close()
+                }
         }
         scope.launch {
             foreground.collect { if (it) subscription.refresh() }
@@ -558,23 +585,11 @@ class AppGraph(
             relayVoiceActive = voice.state.map { it.status != VoiceStatus.Disconnected },
             stopRelayVoice = voice::stop,
             subscription = subscription,
+            offers = offers,
         )
     }
 
-    /**
-     * The app's one subscription, RevenueCat's `pro` through Play and
-     * RevenueCat's REST API, under the Happy account when one is signed in.
-     * Without the build's RevenueCat key it offers nothing.
-     */
-    val subscription: Subscription by lazy {
-        val key = BuildConfig.REVENUE_CAT_GOOGLE_KEY
-        Subscription(
-            scope,
-            store = PlayBilling(appContext).takeIf { key.isNotBlank() },
-            revenueCat = RevenueCatApi(okHttp, key).takeIf { key.isNotBlank() },
-            preferences = appContext.getSharedPreferences(Subscription.PREFS_NAME, Context.MODE_PRIVATE),
-        )
-    }
+
 
     /**
      * Starts reading the open account's home from disk: the agent

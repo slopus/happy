@@ -4,7 +4,6 @@ import android.app.Activity
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.slopus.happy.call.CallOffer
 import com.slopus.happy.payments.ProPassTest.Companion.pro
 import com.slopus.happy.payments.ProPassTest.Companion.subscriber
 import com.slopus.happy.payments.RevenueCat.Answer
@@ -40,63 +39,8 @@ class SubscriptionTest {
 
     @Before fun clear() { preferences.edit().clear().commit() }
 
-    private class Store : SubscriptionStore {
-        override val updates = MutableSharedFlow<List<StorePurchase>>(extraBufferCapacity = 8)
-        var monthly: StoreOffer? = StoreOffer("happy", "monthly", "9,99 €")
-        val owned = ArrayList<StorePurchase>()
-        val acknowledged = ArrayList<String>()
-        val opened = ArrayList<StoreOffer>()
-        override suspend fun monthly(product: String, basePlan: String) = monthly?.takeIf { it.product == product && it.basePlan == basePlan }
-        override suspend fun owned() = owned.toList()
-        override suspend fun buy(activity: Activity, offer: StoreOffer) = opened.add(offer)
-        override suspend fun acknowledge(token: String): Boolean {
-            acknowledged += token
-            owned.replaceAll { if (it.token == token) it.copy(acknowledged = true) else it }
-            return true
-        }
-    }
-
-    /** RevenueCat as far as voice asks it: `pro` for whoever a receipt was posted for. [hold] makes a call wait. */
-    private class Rc : RevenueCat {
-        val calls = ArrayList<String>()
-        val pro = HashMap<String, String>()
-        var refusePosts: Int? = null
-        var unreachable = false
-        var identifyFails = false
-        val hold = HashMap<String, CompletableDeferred<Unit>>()
-        private suspend fun gate(name: String) { hold[name]?.await() }
-        override suspend fun offerings(customer: String): Answer {
-            calls += "offerings $customer"
-            gate("offerings")
-            if (unreachable) return Answer.Unreached(IOException("offline"))
-            return Answer.Ok(HappyJson.parseToJsonElement("""{"current_offering_id":"d","offerings":[{"identifier":"d","packages":[{"identifier":"${'$'}rc_monthly","platform_product_identifier":"happy","platform_product_plan_identifier":"monthly"}]}]}"""))
-        }
-        override suspend fun subscriber(customer: String): Answer {
-            calls += "subscriber $customer"
-            gate("subscriber")
-            if (unreachable) return Answer.Unreached(IOException("offline"))
-            return Answer.Ok(answer(customer))
-        }
-        override suspend fun post(receipt: RevenueCat.Receipt): Answer {
-            calls += "post ${receipt.customer} ${receipt.token} ${receipt.products} restore=${receipt.restore}"
-            gate("post")
-            refusePosts?.let { return Answer.Refused(it, "invalid receipt") }
-            pro[receipt.customer] = receipt.products.first()
-            return Answer.Ok(answer(receipt.customer))
-        }
-        override suspend fun identify(from: String, to: String): Answer {
-            calls += "identify $from $to"
-            gate("identify")
-            if (identifyFails) return Answer.Unreached(IOException("offline"))
-            pro.remove(from)?.let { pro[to] = it }
-            return Answer.Ok(answer(to))
-        }
-        private fun answer(customer: String) =
-            subscriber("2026-11-04T10:00:00Z", pro[customer]?.let { pro("2026-10-20T08:00:00Z", "2026-11-20T08:00:00Z", product = it) })
-    }
-
-    private val store = Store()
-    private val rc = Rc()
+    private val store = FakeStore()
+    private val rc = FakeRevenueCat()
     private val activity: Activity by lazy { Robolectric.buildActivity(Activity::class.java).get() }
 
     private fun TestScope.subscription(store: SubscriptionStore? = this@SubscriptionTest.store, rc: RevenueCat? = this@SubscriptionTest.rc) =
@@ -111,7 +55,7 @@ class SubscriptionTest {
     fun withoutAKeyNothingIsOfferedAndItSaysWhy() = runTest {
         val subscription = subscription(rc = null)
         subscription.refresh(); runCurrent()
-        assertEquals(CallOffer.Unavailable, subscription.offer.value)
+        assertEquals(Offer.Unavailable, subscription.offer.value)
         assertEquals(Subscription.Problem.Unconfigured, subscription.problem.value)
     }
 
@@ -119,7 +63,7 @@ class SubscriptionTest {
     fun theStoresMonthlyProductIsOnSaleAtItsOwnPrice() = runTest {
         val subscription = subscription()
         subscription.refresh(); runCurrent()
-        assertEquals(CallOffer.OnSale("9,99 €"), subscription.offer.value)
+        assertEquals(Offer.OnSale("9,99 €"), subscription.offer.value)
         assertTrue(subscription.customer.matches(Regex("""\${'$'}RCAnonymousID:[a-f0-9]{32}""")))
     }
 
@@ -128,7 +72,7 @@ class SubscriptionTest {
         store.monthly = null
         val subscription = subscription()
         subscription.refresh(); runCurrent()
-        assertEquals(CallOffer.Unavailable, subscription.offer.value)
+        assertEquals(Offer.Unavailable, subscription.offer.value)
         assertEquals(Subscription.Problem.NoProduct, subscription.problem.value)
     }
 
@@ -144,7 +88,7 @@ class SubscriptionTest {
         rc.refusePosts = null
         store.updates.emit(listOf(bought("t1"))); runCurrent()
         assertEquals(listOf("t1"), store.acknowledged)
-        assertEquals(CallOffer.Subscribed, subscription.offer.value)
+        assertEquals(Offer.Subscribed, subscription.offer.value)
     }
 
     @Test
@@ -169,7 +113,7 @@ class SubscriptionTest {
         subscription.refresh(); runCurrent()
         assertEquals(listOf("post ${subscription.customer} t-old [happy_old] restore=false"), posts())
         assertEquals(listOf("t-old"), store.acknowledged)
-        assertEquals(CallOffer.Subscribed, subscription.offer.value)
+        assertEquals(Offer.Subscribed, subscription.offer.value)
     }
 
     @Test
@@ -193,7 +137,7 @@ class SubscriptionTest {
         store.owned += bought("t1")
         val subscription = subscription()
         subscription.refresh(); runCurrent()
-        assertEquals(CallOffer.Unavailable, subscription.offer.value)
+        assertEquals(Offer.Unavailable, subscription.offer.value)
         assertEquals(Subscription.Problem.Unconfirmed, subscription.problem.value)
         assertNull(subscription.period())
         assertFalse(subscription.restore())
@@ -225,7 +169,7 @@ class SubscriptionTest {
         assertEquals("identify $install account-a", rc.calls.last())
         assertEquals("account-a", subscription.customer)
         subscription.refresh(); runCurrent()
-        assertEquals(CallOffer.Subscribed, subscription.offer.value)
+        assertEquals(Offer.Subscribed, subscription.offer.value)
         // Signed out: a new install customer, neither the account nor the one merged into it.
         subscription.relay(null); runCurrent()
         val after = subscription.customer
@@ -251,7 +195,7 @@ class SubscriptionTest {
         subscription.refresh(); runCurrent()
         assertTrue(subscription.pro.value)
         assertTrue(subscription.hasPro())
-        assertEquals(CallOffer.Subscribed, subscription.offer.value)
+        assertEquals(Offer.Subscribed, subscription.offer.value)
         assertEquals(Subscription.Problem.NoProduct, subscription.problem.value)
         assertTrue(posts().isEmpty())
         // Offline at the next launch, within the day: still pro, without asking.
@@ -317,10 +261,10 @@ class SubscriptionTest {
         // Signed out while RevenueCat was still answering for the account.
         subscription.relay(null)
         assertNull(subscription.period())
-        assertEquals(CallOffer.Unavailable, subscription.offer.value)
+        assertEquals(Offer.Unavailable, subscription.offer.value)
         rc.hold.remove("subscriber")!!.complete(Unit); runCurrent()
         assertNull(subscription.period())
-        assertNotEquals(CallOffer.Subscribed, subscription.offer.value)
+        assertNotEquals(Offer.Subscribed, subscription.offer.value)
         assertNotEquals("account-a", subscription.customer)
     }
 
@@ -363,7 +307,7 @@ class SubscriptionTest {
         subscription.refresh(); runCurrent()
         rc.unreachable = true
         subscription.refresh(); runCurrent()
-        assertEquals(CallOffer.Subscribed, subscription.offer.value)
+        assertEquals(Offer.Subscribed, subscription.offer.value)
         assertEquals(Subscription.Problem.Unreached, subscription.problem.value)
     }
 
@@ -371,7 +315,7 @@ class SubscriptionTest {
     fun theDebugPreviewNeverGrants() = runTest {
         val subscription = subscription()
         subscription.refresh(); runCurrent()
-        assertTrue(CallOffer.Preview(CallOffer.PRICE).onSale)
+        assertTrue(Offer.Preview(Offer.PRICE).onSale)
         assertNull(subscription.period())
         assertTrue(posts().isEmpty())
     }

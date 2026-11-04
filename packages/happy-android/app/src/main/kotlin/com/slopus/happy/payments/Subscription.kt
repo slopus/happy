@@ -2,7 +2,6 @@ package com.slopus.happy.payments
 
 import android.app.Activity
 import android.content.SharedPreferences
-import com.slopus.happy.call.CallOffer
 import com.slopus.happy.payments.RevenueCat.Answer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -75,8 +74,8 @@ class Subscription(
     private var monthly: StoreOffer? = null
     private var unconfirmed = false
 
-    private val mutableOffer = MutableStateFlow<CallOffer>(CallOffer.Unavailable)
-    val offer: StateFlow<CallOffer> = mutableOffer.asStateFlow()
+    private val mutableOffer = MutableStateFlow<Offer>(Offer.Unavailable)
+    val offer: StateFlow<Offer> = mutableOffer.asStateFlow()
     private val mutableProblem = MutableStateFlow<Problem?>(if (revenueCat == null || store == null) Problem.Unconfigured else null)
     val problem: StateFlow<Problem?> = mutableProblem.asStateFlow()
     private val mutablePro = MutableStateFlow(false)
@@ -119,7 +118,7 @@ class Subscription(
         relay = subject
         val asked = generation.incrementAndGet()
         changing = true
-        mutableOffer.value = CallOffer.Unavailable
+        mutableOffer.value = Offer.Unavailable
         mutablePro.value = false
         scope.launch {
             work.withLock {
@@ -147,7 +146,7 @@ class Subscription(
      */
     suspend fun buy(activity: Activity): Boolean {
         val offer = work.withLock {
-            val offer = monthly.takeIf { mutableOffer.value is CallOffer.OnSale } ?: return false
+            val offer = monthly.takeIf { mutableOffer.value is Offer.OnSale } ?: return false
             preferences.edit().putString(OWNER, customer).commit()
             offer
         }
@@ -273,9 +272,9 @@ class Subscription(
         val pro = hasPro()
         mutablePro.value = pro
         mutableOffer.value = when {
-            pro -> CallOffer.Subscribed
-            unconfirmed -> CallOffer.Unavailable.also { mutableProblem.value = Problem.Unconfirmed }
-            else -> monthly?.let { CallOffer.OnSale(it.price) } ?: CallOffer.Unavailable
+            pro -> Offer.Subscribed
+            unconfirmed -> Offer.Unavailable.also { mutableProblem.value = Problem.Unconfirmed }
+            else -> monthly?.let { Offer.OnSale(it.price) } ?: Offer.Unavailable
         }
     }
 

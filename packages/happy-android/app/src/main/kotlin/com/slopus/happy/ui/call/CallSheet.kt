@@ -69,10 +69,11 @@ import com.airbnb.lottie.compose.LottieConstants
 import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieComposition
 import com.slopus.happy.R
-import com.slopus.happy.call.CallController
-import com.slopus.happy.call.CallOffer
-import com.slopus.happy.call.CallRestore
-import com.slopus.happy.call.CallSheet
+import com.slopus.happy.payments.Offer
+import com.slopus.happy.payments.Offers
+import com.slopus.happy.payments.RestoreResult
+import com.slopus.happy.payments.OfferSheet
+import com.slopus.happy.ui.connection.SupportSheet
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
@@ -118,31 +119,32 @@ object CallSheetSpec {
     val darkWarning = Color(0xFFFFAB00)
 }
 
-/** [calls]' voice sheet while one is up ([CallController.sheet]), offering what is on offer now. */
+/**
+ * The app's one offer host ([Offers.sheet]), wherever the sheet was asked
+ * for: voice's sheets ([CallSheet]) or Support us ([SupportSheet]), each
+ * offering what is on offer now, bought and restored through [offers].
+ */
 @Composable
-fun CallSheet(calls: CallController) {
-    val sheet by calls.sheet.collectAsStateWithLifecycle()
-    val offer by calls.offers.collectAsStateWithLifecycle()
-    val unconfirmed by calls.unconfirmed.collectAsStateWithLifecycle()
+fun OfferHost(offers: Offers) {
+    val sheet by offers.sheet.collectAsStateWithLifecycle()
+    val offer by offers.offers.collectAsStateWithLifecycle()
+    val unconfirmed by offers.unconfirmed.collectAsStateWithLifecycle()
     val activity = LocalContext.current.activity()
     val scope = rememberCoroutineScope()
-    sheet?.let {
-        CallSheet(
-            it.offering(offer),
-            onStart = calls::startFromSheet,
-            onDismiss = calls::dismissSheet,
-            onSubscribe = { activity?.let { activity -> scope.launch { calls.subscribe(activity) } } },
-            onRestore = calls::restore,
-            unconfirmed = unconfirmed,
-        )
+    val onSubscribe = { activity?.let { activity -> scope.launch { offers.subscribe(activity) } }; Unit }
+    when (val shown = sheet?.offering(offer)) {
+        null -> Unit
+        is OfferSheet.Support -> SupportSheet(shown.offer, onDismiss = offers::dismiss, onSubscribe = onSubscribe, onRestore = offers::restore, unconfirmed = unconfirmed)
+        else -> CallSheet(shown, onStart = offers::start, onDismiss = offers::dismiss, onSubscribe = onSubscribe, onRestore = offers::restore, unconfirmed = unconfirmed)
     }
 }
 
 /**
- * Voice's two full-height sheets (iOS `CallSheetViewController`), in the
+ * Voice's full-height sheets (iOS `CallSheetViewController`), in the
  * first screen's style: its Grain Gradient behind, its words and pill on it.
  * The welcome a device sees before its first call, and the same screen once
- * its free time is used, its start greyed out. The podcast mic, a headline
+ * its free time is used or the relay's voice needs the subscription, its
+ * start greyed out. The podcast mic, a headline
  * and what voice does; at the bottom the subscription where one is on
  * offer, then "Start Voice Session". Closed by its ✕, back or a swipe down,
  * which starts nothing.
@@ -150,11 +152,11 @@ fun CallSheet(calls: CallController) {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CallSheet(
-    sheet: CallSheet,
+    sheet: OfferSheet,
     onStart: () -> Unit,
     onDismiss: () -> Unit,
     onSubscribe: () -> Unit = {},
-    onRestore: (suspend () -> CallRestore)? = null,
+    onRestore: (suspend () -> RestoreResult)? = null,
     unconfirmed: Boolean = false,
 ) {
     val dark = HappyTheme.colors.dark
@@ -162,12 +164,13 @@ fun CallSheet(
     val palette = if (dark) StartSpec.darkPalette else StartSpec.lightPalette
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
-    var preview by remember { mutableStateOf(false) }
-    var restoring by remember { mutableStateOf(false) }
-    var restored by remember { mutableStateOf<CallRestore?>(null) }
     val context = LocalContext.current
-    val subscribed = sheet.offer == CallOffer.Subscribed
-    val used = (sheet as? CallSheet.Used)?.let { if (subscribed) paidNote(it.freeAgain) else usedNote(context, it.freeAgain) }
+    val subscribed = sheet.offer == Offer.Subscribed
+    val used = when (sheet) {
+        is OfferSheet.Used -> if (subscribed) paidNote(sheet.freeAgain) else usedNote(context, sheet.freeAgain)
+        is OfferSheet.Required -> if (subscribed) null else usedNote(context, null)
+        else -> null
+    }
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = state,
@@ -175,7 +178,7 @@ fun CallSheet(
         containerColor = palette.back,
         dragHandle = null,
         contentWindowInsets = { WindowInsets(0) },
-        modifier = Modifier.testTag(if (sheet is CallSheet.Welcome) CallSheetTags.WELCOME else CallSheetTags.PAYWALL),
+        modifier = Modifier.testTag(if (sheet is OfferSheet.Welcome) CallSheetTags.WELCOME else CallSheetTags.PAYWALL),
     ) {
         SheetIcons(dark)
         Box(Modifier.fillMaxSize()) {
@@ -219,69 +222,33 @@ fun CallSheet(
                     // The subscription, what it gives and what it is for, its button, then the free call under it.
                     Column(Modifier.widthIn(max = CallSheetSpec.column), horizontalAlignment = Alignment.CenterHorizontally) {
                         val offer = sheet.offer
-                        val price = offer.price
-                        if (price != null) {
-                            Text(stringResource(R.string.call_support_for, price), style = CallSheetSpec.offer, color = ink, textAlign = TextAlign.Center)
-                            Spacer(Modifier.height(2.dp))
-                            Text(stringResource(R.string.call_subscribe_allowance), style = CallSheetSpec.detail, color = ink, textAlign = TextAlign.Center)
-                            Spacer(Modifier.height(6.dp))
-                            Text(
-                                stringResource(R.string.call_subscribe_support),
-                                style = CallSheetSpec.detail.copy(lineBreak = LineBreak.Paragraph),
-                                color = ink.copy(alpha = StartSpec.SECONDARY_ALPHA),
-                                textAlign = TextAlign.Center,
-                            )
-                            Spacer(Modifier.height(20.dp))
-                            RoundButton(
-                                title = stringResource(R.string.call_subscribe),
-                                onClick = { if (offer is CallOffer.Preview) preview = true else onSubscribe() },
-                                modifier = Modifier.width(CallSheetSpec.button).testTag(CallSheetTags.SUBSCRIBE),
-                            )
-                            Spacer(Modifier.height(12.dp))
-                        }
-                        SessionButton(
-                            title = stringResource(R.string.call_start_session),
-                            prominent = !offer.onSale,
-                            enabled = sheet is CallSheet.Welcome,
-                            ink = ink,
-                            onClick = {
-                                // The free call, once the sheet has gone.
-                                scope.launch { state.hide() }.invokeOnCompletion { onStart() }
+                        OfferActions(
+                            offer,
+                            onSubscribe,
+                            onRestore,
+                            unconfirmed,
+                            ink,
+                            details = {
+                                Text(stringResource(R.string.call_subscribe_allowance), style = CallSheetSpec.detail, color = ink, textAlign = TextAlign.Center)
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    stringResource(R.string.call_subscribe_support),
+                                    style = CallSheetSpec.detail.copy(lineBreak = LineBreak.Paragraph),
+                                    color = ink.copy(alpha = StartSpec.SECONDARY_ALPHA),
+                                    textAlign = TextAlign.Center,
+                                )
                             },
-                            modifier = Modifier.width(CallSheetSpec.button).testTag(CallSheetTags.SESSION),
-                        )
-                        // Restore, wherever the subscription could be bought: a reinstall, another phone.
-                        if (price != null && onRestore != null) {
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                stringResource(R.string.call_restore),
-                                style = CallSheetSpec.note,
-                                color = ink.copy(alpha = StartSpec.SECONDARY_ALPHA),
-                                modifier = Modifier
-                                    .alpha(if (restoring) 0.4f else 1f)
-                                    .clickable(enabled = !restoring, role = Role.Button) {
-                                        restoring = true
-                                        scope.launch { restored = onRestore().also { restoring = false } }
-                                    }
-                                    .padding(horizontal = 12.dp, vertical = 12.dp)
-                                    .testTag(CallSheetTags.RESTORE),
-                            )
-                        }
-                        val notes = buildList {
-                            if (offer is CallOffer.Preview) add(stringResource(R.string.call_preview_note))
-                        }
-                        if (notes.isNotEmpty()) {
-                            Spacer(Modifier.height(12.dp))
-                            Text(notes.joinToString("\n"), style = CallSheetSpec.note, color = ink.copy(alpha = StartSpec.SECONDARY_ALPHA), textAlign = TextAlign.Center)
-                        }
-                        // Bought, and RevenueCat hasn't confirmed it: said, never granted.
-                        if (unconfirmed) {
-                            Spacer(Modifier.height(12.dp))
-                            Text(
-                                stringResource(R.string.call_purchase_unconfirmed),
-                                style = CallSheetSpec.note,
-                                color = if (dark) CallSheetSpec.darkWarning else CallSheetSpec.lightWarning,
-                                textAlign = TextAlign.Center,
+                        ) {
+                            SessionButton(
+                                title = stringResource(R.string.call_start_session),
+                                prominent = !offer.onSale,
+                                enabled = sheet is OfferSheet.Welcome,
+                                ink = ink,
+                                onClick = {
+                                    // The free call, once the sheet has gone.
+                                    scope.launch { state.hide() }.invokeOnCompletion { onStart() }
+                                },
+                                modifier = Modifier.width(CallSheetSpec.button).testTag(CallSheetTags.SESSION),
                             )
                         }
                     }
@@ -292,15 +259,84 @@ fun CallSheet(
             }
         }
     }
+}
+
+/**
+ * What every offer sheet ends with: the subscription at the store's price
+ * ([details] under it, what it gives), its Subscribe, then [content] (voice's
+ * "Start Voice Session"), "Restore Purchases" wherever it could have been
+ * bought, and the notes: the debug preview's, and a purchase RevenueCat
+ * hasn't confirmed yet. With nothing on sale, only [content] and the notes.
+ */
+@Composable
+internal fun OfferActions(
+    offer: Offer,
+    onSubscribe: () -> Unit,
+    onRestore: (suspend () -> RestoreResult)?,
+    unconfirmed: Boolean,
+    ink: Color,
+    details: @Composable () -> Unit = {},
+    content: @Composable () -> Unit = {},
+) {
+    val dark = HappyTheme.colors.dark
+    val scope = rememberCoroutineScope()
+    var preview by remember { mutableStateOf(false) }
+    var restoring by remember { mutableStateOf(false) }
+    var restored by remember { mutableStateOf<RestoreResult?>(null) }
+    val price = offer.price
+    if (price != null) {
+        Text(stringResource(R.string.call_support_for, price), style = CallSheetSpec.offer, color = ink, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(2.dp))
+        details()
+        Spacer(Modifier.height(20.dp))
+        RoundButton(
+            title = stringResource(R.string.call_subscribe),
+            onClick = { if (offer is Offer.Preview) preview = true else onSubscribe() },
+            modifier = Modifier.width(CallSheetSpec.button).testTag(CallSheetTags.SUBSCRIBE),
+        )
+        Spacer(Modifier.height(12.dp))
+    }
+    content()
+    // Restore, wherever the subscription could be bought: a reinstall, another phone.
+    if (price != null && onRestore != null) {
+        Spacer(Modifier.height(4.dp))
+        Text(
+            stringResource(R.string.call_restore),
+            style = CallSheetSpec.note,
+            color = ink.copy(alpha = StartSpec.SECONDARY_ALPHA),
+            modifier = Modifier
+                .alpha(if (restoring) 0.4f else 1f)
+                .clickable(enabled = !restoring, role = Role.Button) {
+                    restoring = true
+                    scope.launch { restored = onRestore().also { restoring = false } }
+                }
+                .padding(horizontal = 12.dp, vertical = 12.dp)
+                .testTag(CallSheetTags.RESTORE),
+        )
+    }
+    if (offer is Offer.Preview) {
+        Spacer(Modifier.height(12.dp))
+        Text(stringResource(R.string.call_preview_note), style = CallSheetSpec.note, color = ink.copy(alpha = StartSpec.SECONDARY_ALPHA), textAlign = TextAlign.Center)
+    }
+    // Bought, and RevenueCat hasn't confirmed it: said, never granted.
+    if (unconfirmed) {
+        Spacer(Modifier.height(12.dp))
+        Text(
+            stringResource(R.string.call_purchase_unconfirmed),
+            style = CallSheetSpec.note,
+            color = if (dark) CallSheetSpec.darkWarning else CallSheetSpec.lightWarning,
+            textAlign = TextAlign.Center,
+        )
+    }
     restored?.let { outcome ->
         HappyAlert(
             Alert(
                 title = stringResource(R.string.call_restore),
                 message = stringResource(
                     when (outcome) {
-                        CallRestore.Restored -> R.string.call_restore_done
-                        CallRestore.NothingFound -> R.string.call_restore_none
-                        CallRestore.Failed -> R.string.call_restore_failed
+                        RestoreResult.Restored -> R.string.call_restore_done
+                        RestoreResult.NothingFound -> R.string.call_restore_none
+                        RestoreResult.Failed -> R.string.call_restore_failed
                     },
                 ),
                 buttons = listOf(AlertButton(stringResource(R.string.common_ok))),
@@ -437,7 +473,7 @@ private fun paidNote(next: Long?): String {
     return if (date != null) stringResource(R.string.call_paid_used, date) else stringResource(R.string.call_paid_used_later)
 }
 
-private tailrec fun Context.activity(): Activity? = when (this) {
+internal tailrec fun Context.activity(): Activity? = when (this) {
     is Activity -> this
     is ContextWrapper -> baseContext.activity()
     else -> null

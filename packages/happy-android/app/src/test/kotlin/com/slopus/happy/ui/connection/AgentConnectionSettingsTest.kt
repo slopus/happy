@@ -37,6 +37,7 @@ import com.slopus.happy.ui.home.AccountMenu
 import com.slopus.happy.ui.home.AccountMenuEntry
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
+import com.slopus.happy.ui.settings.AboutActions
 import com.slopus.happy.ui.settings.AboutInfo
 import com.slopus.happy.ui.settings.AccountsCardActions
 import com.slopus.happy.ui.settings.SettingsPageTags
@@ -92,6 +93,7 @@ class AgentConnectionSettingsTest {
             accountActions = AccountsCardActions({ done += "switch:$it" }, { done += "add" }),
             person = AgentPerson("Steve"),
             daemonVersion = daemonVersion,
+            aboutActions = AboutActions(onSupport = { done += "support" }),
         )
     }
 
@@ -146,18 +148,13 @@ class AgentConnectionSettingsTest {
         rule.node(AgentVoiceTags.ROW).performScrollTo().assertIsDisplayed()
     }
 
-    /** The boba row opens Support Happy's sheet, which has no voice session. */
+    /** The boba row opens Support us, the app's offer sheet ([com.slopus.happy.payments.OfferSheet.Support]; its content in CallSheetTest). */
     @Test
-    fun theBobaRowOpensTheSupportSheet() {
+    fun theBobaRowOpensSupport() {
         show()
         rule.node(AgentVoiceTags.SUPPORT).performScrollTo().performClick()
         rule.waitForIdle()
-        rule.onNodeWithTag(AgentVoiceTags.SHEET).assertExists()
-        rule.onNodeWithText("Support Happy open source").assertExists()
-        rule.onNodeWithText("Start Voice Session").assertDoesNotExist()
-        rule.onNodeWithTag(AgentVoiceTags.SHEET_CLOSE).performClick()
-        rule.waitForIdle()
-        rule.onNodeWithTag(AgentVoiceTags.SHEET).assertDoesNotExist()
+        assertEquals(listOf("support"), done)
     }
 
     @Test

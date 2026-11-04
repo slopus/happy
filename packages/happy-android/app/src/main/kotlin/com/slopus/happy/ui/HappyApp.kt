@@ -34,6 +34,7 @@ import androidx.navigation.NavGraph
 import androidx.navigation.toRoute
 import com.slopus.happy.push.PushRegistrationEffect
 import com.slopus.happy.payments.PaywallHost
+import com.slopus.happy.ui.call.OfferHost
 import com.slopus.happy.ui.artifacts.AgentArtifactsRoute
 import com.slopus.happy.ui.feed.AgentFeedRoute
 import com.slopus.happy.ui.artifacts.BrowserRoute
@@ -137,6 +138,8 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
         val afterStart = LocalAfterStart.current
         val started by produceState(false) { afterStart.await(); value = true }
         if (started) PaywallHost(graph.purchases)
+        // The app's offer sheets: voice's, Support us.
+        OfferHost(graph.offers)
         // The voice call's bar, when one shows, pushes everything down (ui/call/CallFrame).
         CallFrame(graph.calls) {
         DissolveBox(dissolve) { CompositionLocalProvider(LocalAccountSwitcher provides switcher, LocalOverlays provides overlays) {
