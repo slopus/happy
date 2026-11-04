@@ -2,10 +2,13 @@ package com.slopus.happy.sync
 
 import com.slopus.happy.testing.cancelAndAwait
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -59,5 +62,54 @@ class InvalidateSyncTest {
         gate.complete(Unit)
         withTimeout(5_000) { sync.awaitQueue() }
         assertEquals(2, calls.get())
+    }
+
+    @Test
+    fun stoppingASyncReleasesAnIndependentCallerWaitingForItsRun() = runBlocking {
+        withTimeout(5_000) {
+            val started = CompletableDeferred<Unit>()
+            val gate = CompletableDeferred<Unit>()
+            val sync = InvalidateSync(scope) { started.complete(Unit); gate.await() }
+            val waiting = async(start = CoroutineStart.UNDISPATCHED) {
+                runCatching { sync.invalidateAndAwait() }.exceptionOrNull()
+            }
+            started.await()
+            sync.cancel()
+            assertTrue("A stopped sync cancels its waiter", waiting.await() is CancellationException)
+        }
+    }
+
+    @Test
+    fun aRequestToAnAlreadyStoppedSyncCannotWaitForANonexistentWorker() = runBlocking {
+        scope.cancelAndAwait()
+        val sync = InvalidateSync(scope) {}
+        val failure = withTimeout(5_000) {
+            runCatching { sync.invalidateAndAwait() }.exceptionOrNull()
+        }
+        assertTrue("An old account cannot sync after it stops", failure is CancellationException)
+    }
+
+    @Test
+    fun aCompletedQueueStaysCompleteAfterItsWorkerStops() = runBlocking {
+        val sync = InvalidateSync(scope) {}
+        withTimeout(5_000) { sync.invalidateAndAwait() }
+        sync.cancel()
+        withTimeout(5_000) { sync.awaitQueue() }
+    }
+
+    @Test
+    fun stoppingASyncAlsoReleasesItsQueueWaiter() = runBlocking {
+        withTimeout(5_000) {
+            val started = CompletableDeferred<Unit>()
+            val gate = CompletableDeferred<Unit>()
+            val sync = InvalidateSync(scope) { started.complete(Unit); gate.await() }
+            sync.invalidate()
+            started.await()
+            val waiting = async(start = CoroutineStart.UNDISPATCHED) {
+                runCatching { sync.awaitQueue() }.exceptionOrNull()
+            }
+            sync.cancel()
+            assertTrue("An incomplete stopped queue cancels its waiter", waiting.await() is CancellationException)
+        }
     }
 }

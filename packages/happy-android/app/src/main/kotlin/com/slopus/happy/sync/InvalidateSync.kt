@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.atomic.AtomicLong
@@ -31,7 +32,8 @@ class InvalidateSync(
     private val wake = Channel<Unit>(Channel.CONFLATED)
     private val running = MutableStateFlow(false)
     private val requested = AtomicLong()
-    private val completed = MutableStateFlow(0L)
+    private data class Progress(val completed: Long = 0, val stopped: Boolean = false)
+    private val progress = MutableStateFlow(Progress())
 
     /** True while a run (including its retries) is in progress. */
     val isRunning: StateFlow<Boolean> = running.asStateFlow()
@@ -45,11 +47,17 @@ class InvalidateSync(
             wake.tryReceive()
             try {
                 runWithBackoff()
-                completed.value = maxOf(completed.value, answers)
+                progress.update { it.copy(completed = maxOf(it.completed, answers)) }
             } finally {
                 running.value = false
             }
         }
+    }
+
+    init {
+        // A caller may belong to a screen, not this worker's scope (including an old account).
+        // Completion also runs when the scope was cancelled before the worker ever started.
+        job.invokeOnCompletion { progress.update { it.copy(stopped = true) } }
     }
 
     fun invalidate() {
@@ -58,18 +66,23 @@ class InvalidateSync(
         wake.trySend(Unit)
     }
 
-    /** Asks for a run and waits until one that started after this call has succeeded. */
+    /** Asks for a run and waits until one that started after this call has succeeded; cancelled if the worker stops first. */
     suspend fun invalidateAndAwait() {
         val request = requested.incrementAndGet()
         requests.trySend(Unit)
         wake.trySend(Unit)
-        completed.first { it >= request }
+        await(request)
     }
 
-    /** Waits until every run asked for so far has succeeded. */
+    /** Waits until every run asked for so far has succeeded; cancelled if the worker stops with work unanswered. */
     suspend fun awaitQueue() {
         val request = requested.get()
-        completed.first { it >= request }
+        await(request)
+    }
+
+    private suspend fun await(request: Long) {
+        val answer = progress.first { it.completed >= request || it.stopped }
+        if (answer.completed < request) throw CancellationException("Sync stopped before completing the request")
     }
 
     fun cancel() {

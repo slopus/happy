@@ -19,6 +19,7 @@ import com.slopus.happy.testing.SoftwareKeys
 import com.slopus.happy.sync.SessionFileCache
 import com.slopus.happy.ui.theme.ThemePreference
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CancellationException
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -72,7 +73,17 @@ class MultipleAccountsTest {
 
     private fun syncedTo(graph: AppGraph, ids: Set<String>) {
         eventually(message = "sessions $ids") {
-            graph.account.value?.let { runBlocking { it.syncNow() } }
+            graph.account.value?.let { account ->
+                runBlocking {
+                    try {
+                        account.syncNow()
+                    } catch (e: CancellationException) {
+                        // Auth publishes before its observer replaces the account. A captured old
+                        // account may stop during sync; the next poll uses the replacement.
+                        if (graph.account.value === account) throw e
+                    }
+                }
+            }
             sessionIds(graph) == ids
         }
     }
