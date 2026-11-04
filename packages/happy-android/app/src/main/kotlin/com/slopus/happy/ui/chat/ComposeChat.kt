@@ -56,12 +56,16 @@ import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.chat.ChatSessionInfo
+import com.slopus.happy.chat.ComposerModes
 import com.slopus.happy.model.AgentAttention
 import com.slopus.happy.model.NewSessionOptions
 import com.slopus.happy.model.NewSessionPage
 import com.slopus.happy.model.PickerOption
 import com.slopus.happy.model.Session
 import com.slopus.happy.model.resolveStartProgress
+import com.slopus.happy.model.settings.ModeOption
+import com.slopus.happy.model.settings.ModeOptions
+import com.slopus.happy.sync.AgentModeField
 import com.slopus.happy.sync.ComposerMirror
 import com.slopus.happy.ui.attachments.ImagePicker
 import com.slopus.happy.ui.attachments.attachmentNoticeAlert
@@ -181,7 +185,7 @@ class ComposeChat internal constructor(
     /** The composer's text while composing: the new-session draft's, which outlives the screen. */
     val mirror: Flow<ComposerMirror> = newSession.draft.map { ComposerMirror(draft = it.input) }.distinctUntilChanged()
 
-    /** What the composer runs as before there is a session: nothing known, so no modes, status or voice. */
+    /** What the composer runs as before there is a session: nothing known, so no status or voice; its modes are the draft's ([composeChatModes]). */
     val session = ChatSessionInfo(
         Session(
             id = routeId, seq = 0, createdAt = 0, updatedAt = 0, active = false, activeAt = 0, projectId = null,
@@ -192,6 +196,16 @@ class ComposeChat internal constructor(
 
     fun writeDraft(text: String) {
         if (newSession.draft.value.input != text) newSession.setInput(text)
+    }
+
+    /** A model or effort chip picked before there is a session: the draft's, which the start sends. */
+    fun selectMode(field: AgentModeField, option: ModeOption) {
+        val page = when (field) {
+            AgentModeField.MODEL_MODE -> NewSessionPage.Model
+            AgentModeField.EFFORT_LEVEL -> NewSessionPage.Effort
+            AgentModeField.PERMISSION_MODE -> NewSessionPage.Permission
+        }
+        newSession.select(page, option.key)
     }
 
     /**
@@ -306,6 +320,35 @@ fun rememberComposeChat(graph: AppGraph, routeId: String): ComposeChat? {
     }
     DisposableEffect(compose) { onDispose { compose.leave() } }
     return compose
+}
+
+/**
+ * The composer's chips before there is a session: the draft's model and
+ * effort as the new-session pickers list them for its computer and
+ * harness (a Happy Agent's own catalog, by provider), so what they show
+ * is what the start sends. Nothing to pick until the computers are known.
+ */
+fun composeChatModes(options: NewSessionOptions?): ComposerModes {
+    if (options == null) return ComposerModes.None
+    val models = options.models.flatMap { section ->
+        // HomeDock's one untitled section is a flat list, not a provider.
+        val provider = section.key.takeUnless { section.title == null }
+        section.options.map { ModeOption(it.key, it.name, it.description, providerId = provider, providerName = section.title, providerKind = provider) }
+    }
+    // A Happy Agent's levels are its bare keys.
+    val efforts = options.efforts.map { ModeOption(it.key, if (it.name == it.key) ModeOptions.effortDisplayName(it.key) else it.name, it.description) }
+    val permissions = options.permissions.map { ModeOption(it.key, it.name, it.description) }
+    return ComposerModes(
+        availableModes = permissions,
+        permissionMode = permissions.find { it.key == options.permission?.key },
+        availableModels = models,
+        modelMode = models.find { it.key == options.model?.key },
+        availableEffortLevels = efforts,
+        effortLevel = efforts.find { it.key == options.effort?.key },
+        canChangePermission = true,
+        canChangeModel = true,
+        canChangeEffort = true,
+    )
 }
 
 /** What a compose chat's header says under "New chat" while the start runs: "Starting Claude…" and the rest. */
