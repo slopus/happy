@@ -29,11 +29,13 @@ data class Segment(val label: String, val tag: String)
 
 /**
  * A few views of one thing, as the app's segmented control draws them
- * (BotFacePicker's and new work's: a 32 high track on the subtle glass, 2
- * in, radius 9; the picked segment surfaceHighest, radius 7, in the text
+ * (BotFacePicker's and new work's: a 32 high track, 2
+ * in, radius 9; the picked segment radius 7, in the text
  * colour; the others secondary; 13 semibold). Each segment is as wide as
  * its label plus 14 a side, at least 64; a pick other than [selected]
- * ticks and goes to [onPick].
+ * ticks and goes to [onPick]. Like iOS's UISegmentedControl, an opaque grey
+ * track and a raised light thumb distinguish the selection even on a white
+ * file toolbar. Dark mode uses the system grey thumb, not a second near-black.
  */
 @Composable
 fun SegmentedTabs(segments: List<Segment>, selected: Int, onPick: (Int) -> Unit, modifier: Modifier = Modifier) {
@@ -43,7 +45,7 @@ fun SegmentedTabs(segments: List<Segment>, selected: Int, onPick: (Int) -> Unit,
         modifier
             .heightIn(min = BotFaceSpec.segmentHeight)
             .clip(RoundedCornerShape(BotFaceSpec.segmentRadius))
-            .background(colors.glass.backgroundSubtle)
+            .background(if (colors.dark) Color(0xFF2C2C2E) else Color(0xFFE5E5EA))
             .padding(BotFaceSpec.segmentPadding),
     ) {
         segments.forEachIndexed { index, segment ->
@@ -54,7 +56,7 @@ fun SegmentedTabs(segments: List<Segment>, selected: Int, onPick: (Int) -> Unit,
                     .widthIn(min = 64.dp)
                     .heightIn(min = BotFaceSpec.segmentHeight - BotFaceSpec.segmentPadding * 2)
                     .clip(RoundedCornerShape(BotFaceSpec.segmentItemRadius))
-                    .background(if (picked) colors.surfaceHighest else Color.Transparent)
+                    .background(if (picked) { if (colors.dark) Color(0xFF636366) else Color.White } else Color.Transparent)
                     .clickable(role = Role.Tab) {
                         if (!picked) {
                             haptics.performHapticFeedback(HapticFeedbackType.SegmentTick)

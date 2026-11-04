@@ -92,7 +92,7 @@ fun FixtureScreens(transport: FixtureTransport, scope: CoroutineScope, onConvers
                     ArtifactActions(
                         onBack = { nav.popBackStack() },
                         link = loader::link,
-                        fileReader = { file -> files(transport).bytes(artifactId, loader.version!!.number, file.path) },
+                        fileReader = { file, progress -> files(transport).bytes(artifactId, loader.version!!.number, file.path, progress = progress) },
                         artifactKey = "artifact-$artifactId",
                     )
                 },
