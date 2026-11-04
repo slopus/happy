@@ -23,7 +23,6 @@
     <string name="call_welcome_act">Открывайте и отправляйте голосом</string>
     <string name="call_welcome_free">20 бесплатных минут</string>
     <string name="call_start_session">Начать голосовой сеанс</string>
-    <string name="call_welcome_note">Микрофон включён только во время звонка.</string>
     <string name="call_used_today">Бесплатное время голоса закончилось. Ещё появится в %1$s.</string>
     <string name="call_used_week">Бесплатное время голоса закончилось. Ещё появится: %1$s в %2$s.</string>
     <string name="call_used_date">Бесплатное время голоса закончилось. Ещё появится %1$s.</string>

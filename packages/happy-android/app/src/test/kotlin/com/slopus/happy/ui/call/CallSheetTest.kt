@@ -18,6 +18,7 @@ import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -39,13 +40,11 @@ class CallSheetTest {
     @Test
     fun theWelcomeSaysWhatVoiceDoesAndStartsTheFreeCall() {
         var started = 0
-        rule.setHappyContent { CallSheet(CallSheet.Welcome(CallOffer.Unavailable), onStart = { started++ }, onDismiss = {}) }
+        rule.setHappyContent { CallSheet(CallSheet.Welcome(CallOffer.Preview("$20")), onStart = { started++ }, onDismiss = {}) }
         rule.waitForIdle()
         rule.node(CallSheetTags.WELCOME).assertExists()
-        for (line in listOf("Talk to your agents", "Ask how your work is going", "Open and send by voice", "20 free minutes", "The microphone is on only during a call.")) text(line).assertExists()
-        // Nothing on sale: no price, no Subscribe.
-        rule.node(CallSheetTags.SUBSCRIBE).assertDoesNotExist()
-        text("Support Happy for $20/month").assertDoesNotExist()
+        for (line in listOf("Talk to your agents", "Ask how your work is going", "Open and send by voice", "20 free minutes", "Support Happy for $20/month")) text(line).assertExists()
+        rule.node(CallSheetTags.SUBSCRIBE).assertExists()
         rule.node(CallSheetTags.WARNING).assertDoesNotExist()
         rule.node(CallSheetTags.SESSION).assertIsEnabled().performClick()
         rule.waitForIdle()
@@ -91,14 +90,18 @@ class CallSheetTest {
     }
 
     @Test
-    fun theWelcomeIsDueUntilStartedFrom() {
+    fun theWelcomeShowsOnceAndOnlyWhileSomethingIsOnSale() {
         val preferences = context.getSharedPreferences("call-intro-test", Context.MODE_PRIVATE)
         val intro = CallIntro(preferences)
         intro.reset()
-        assertTrue(intro.due)
+        // Nothing on sale: the button just calls, and the welcome stays due for when something is.
+        assertNull(intro.welcome(CallOffer.Unavailable))
         assertTrue(CallIntro(preferences).due)
-        intro.started()
+        val preview = CallOffer.Preview("$20")
+        assertEquals(CallSheet.Welcome(preview), intro.welcome(preview))
+        // Seen, however it was closed: from now on the button calls.
         assertFalse(CallIntro(preferences).due)
+        assertNull(CallIntro(preferences).welcome(preview))
         intro.reset()
         assertTrue(intro.due)
     }

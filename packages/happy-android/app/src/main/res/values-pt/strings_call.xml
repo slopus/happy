@@ -23,7 +23,6 @@
     <string name="call_welcome_act">Abra e envie por voz</string>
     <string name="call_welcome_free">20 minutos grátis</string>
     <string name="call_start_session">Iniciar sessão de voz</string>
-    <string name="call_welcome_note">O microfone fica ligado só durante uma chamada.</string>
     <string name="call_used_today">Seu tempo de voz grátis acabou. Mais tempo volta às %1$s.</string>
     <string name="call_used_week">Seu tempo de voz grátis acabou. Mais tempo volta %1$s às %2$s.</string>
     <string name="call_used_date">Seu tempo de voz grátis acabou. Mais tempo volta em %1$s.</string>

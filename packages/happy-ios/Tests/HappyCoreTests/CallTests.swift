@@ -1497,17 +1497,19 @@ final class CallUsageTests: XCTestCase {
         }
     }
 
-    /// The welcome is due until the person starts from it; closing it
-    /// leaves it due. Kept in the device's defaults, never an account's.
-    func testTheWelcomeIsDueUntilStartedFrom() throws {
+    /// The welcome shows once, and only while something is on sale; seen,
+    /// however it was closed, the button calls. Kept in the device's
+    /// defaults, never an account's.
+    func testTheWelcomeShowsOnceAndOnlyWhileSomethingIsOnSale() throws {
         let suite = "call-intro-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
+        // Nothing on sale: the button just calls, and the welcome stays due for when something is.
+        XCTAssertFalse(CallIntro(defaults: defaults).welcomes(.unavailable))
         XCTAssertTrue(CallIntro(defaults: defaults).due)
-        // Closed: nothing written, still due.
-        XCTAssertTrue(CallIntro(defaults: defaults).due)
-        CallIntro(defaults: defaults).started()
+        XCTAssertTrue(CallIntro(defaults: defaults).welcomes(.preview(price: "$20")))
         XCTAssertFalse(CallIntro(defaults: defaults).due)
+        XCTAssertFalse(CallIntro(defaults: defaults).welcomes(.preview(price: "$20")))
         XCTAssertEqual(defaults.bool(forKey: CallIntro.key), true)
     }
 

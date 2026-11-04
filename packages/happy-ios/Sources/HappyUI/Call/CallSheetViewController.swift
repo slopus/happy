@@ -132,7 +132,6 @@ final class CallSheetViewController: UIViewController {
         switch screen {
         case .welcome:
             session.addAction(UIAction { [weak self] _ in self?.start() }, for: .touchUpInside)
-            if !offer.onSale { notes.append(Strings.Call.welcomeNote) }
         case .used:
             session.isEnabled = false
         }

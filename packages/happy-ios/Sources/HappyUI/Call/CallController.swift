@@ -67,16 +67,16 @@ final class CallController {
     var isShowing: Bool { state.isShown }
 
     /// The voice button: a call on this connection, or the one already on.
-    /// A device's first one is voice's welcome, whose "Start talking"
-    /// calls; closed, nothing starts and the next tap shows it again.
+    /// While a subscription is on sale, a device's first tap is voice's
+    /// welcome instead, once: its "Start Voice Session" calls, and from then
+    /// on the button does. With nothing on sale there is no welcome.
     func start(session account: Session, from controller: UIViewController) {
         guard let shell = controller.view.window?.rootViewController as? ShellViewController else { return }
         if state.isLive, connectionID == account.accountID { return }
-        if intro.due {
-            guard !Self.showing(in: shell) else { return }
+        guard !Self.showing(in: shell) else { return }
+        if intro.welcomes(Self.offer) {
             CallSheetViewController.present(.welcome(offer: Self.offer), over: Self.top(of: shell)) { [weak self, weak controller] in
                 guard let self, let controller else { return }
-                self.intro.started()
                 self.start(session: account, from: controller)
             }
             return
@@ -309,7 +309,7 @@ final class CallController {
 
     #if DEBUG
     /// Test runs only, from the launch environment: `HAPPY_CALL_INTRO=due`
-    /// shows the welcome again (`started`: never), `HAPPY_CALL_USED=1` spends the free time
+    /// shows the welcome again (`seen`: never), `HAPPY_CALL_USED=1` spends the free time
     /// (a 20-minute call that ended now), and `HAPPY_CALL_STEPS` presses
     /// what a person would, one step every 3 s: `tap` the voice button,
     /// `subscribe`, `session` or `close` on voice's sheet on top, `dismiss` an alert. Each step logs what is
@@ -317,7 +317,7 @@ final class CallController {
     func applyTestEnvironment(tap: @escaping @MainActor () -> Void) {
         let environment = ProcessInfo.processInfo.environment
         if environment["HAPPY_CALL_INTRO"] == "due" { UserDefaults.standard.removeObject(forKey: CallIntro.key) }
-        if environment["HAPPY_CALL_INTRO"] == "started" { intro.started() }
+        if environment["HAPPY_CALL_INTRO"] == "seen" { intro.seen() }
         if environment["HAPPY_CALL_USED"] == "1" {
             let now = Date().timeIntervalSince1970
             allowance.record(call: "test-used", from: now - CallAllowance.freeSeconds, to: now)

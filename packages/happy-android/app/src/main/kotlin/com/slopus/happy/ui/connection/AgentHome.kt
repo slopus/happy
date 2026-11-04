@@ -842,7 +842,7 @@ internal fun rememberAgentHomeListState(graph: AppGraph, id: String): LazyListSt
  * Debug builds only, for screenshots and test runs: an intent's
  * `happy.call.fixture` draws the call's bar in one state from a script (no
  * microphone, provider or grant), `happy.call.tap` presses the voice button
- * once, for real. `happy.call.intro` (`due`, `started`), `happy.call.used`
+ * once, for real. `happy.call.intro` (`due`, `seen`), `happy.call.used`
  * and `happy.call.offer` (a price) set voice's sheets up
  * ([CallController.applyTestEnvironment]); `happy.call.steps` then presses
  * what a person would, one step every 3 s: `tap` the voice button,

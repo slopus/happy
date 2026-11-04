@@ -23,7 +23,6 @@
     <string name="call_welcome_act">用語音開啟和傳送</string>
     <string name="call_welcome_free">20 分鐘免費</string>
     <string name="call_start_session">開始語音工作階段</string>
-    <string name="call_welcome_note">麥克風只在通話期間開啟。</string>
     <string name="call_used_today">免費語音時數已用完。%1$s 恢復更多時數。</string>
     <string name="call_used_week">免費語音時數已用完。%1$s %2$s 恢復更多時數。</string>
     <string name="call_used_date">免費語音時數已用完。%1$s 恢復更多時數。</string>

@@ -28,7 +28,6 @@ extension Strings {
         static var welcomeAct: String { "Open and send by voice" }
         static var welcomeFree: String { "20 free minutes" }
         static var startSession: String { "Start Voice Session" }
-        static var welcomeNote: String { "The microphone is on only during a call." }
         static func usedNote(_ when: String) -> String { "Your free voice time is used. More comes back \(when)." }
         static var usedNoteLater: String { "Your free voice time is used. It comes back as older calls pass 30 days." }
         static func at(_ time: String, day: String? = nil) -> String { day.map { "\($0) at \(time)" } ?? "at \(time)" }

@@ -217,7 +217,6 @@ fun CallSheet(sheet: CallSheet, onStart: () -> Unit, onDismiss: () -> Unit) {
                             modifier = Modifier.width(CallSheetSpec.button).testTag(CallSheetTags.SESSION),
                         )
                         val notes = buildList {
-                            if (sheet is CallSheet.Welcome && !offer.onSale) add(stringResource(R.string.call_welcome_note))
                             if (offer.onSale) add(stringResource(R.string.call_preview_note))
                         }
                         if (notes.isNotEmpty()) {

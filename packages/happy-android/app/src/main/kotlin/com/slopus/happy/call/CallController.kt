@@ -87,19 +87,17 @@ class CallController(
     val offer: CallOffer get() = testOffer?.takeIf { BuildConfig.DEBUG } ?: CallOffer.Unavailable
 
     /**
-     * The voice button: a call on this connection, or the one already on. A
-     * device's first one is voice's welcome, whose "Start Voice Session"
-     * calls; closed, nothing starts and the next tap shows it again.
+     * The voice button: a call on this connection, or the one already on.
+     * While a subscription is on sale, a device's first tap is voice's
+     * welcome instead, once: its "Start Voice Session" calls, and from then
+     * on the button does. With nothing on sale there is no welcome.
      */
     fun start(connection: String, microphone: suspend () -> Boolean) {
         if (state.value.isLive && connectionId == connection) return
-        if (intro.due) {
-            if (sheet.value != null) return
-            welcomed = {
-                intro.started()
-                start(connection, microphone)
-            }
-            mutableSheet.value = CallSheet.Welcome(offer)
+        if (sheet.value != null) return
+        intro.welcome(offer)?.let {
+            welcomed = { start(connection, microphone) }
+            mutableSheet.value = it
             return
         }
         close()
@@ -243,7 +241,7 @@ class CallController(
 
     /**
      * Test runs only, in debug builds: the welcome due again ([intro]
-     * `due`) or never (`started`), the free time spent ([used]: a
+     * `due`) or never (`seen`), the free time spent ([used]: a
      * 20-minute call that ended now), the subscription drawn as if on sale
      * at [offerPrice]. Nothing here charges or grants anything.
      */
@@ -251,7 +249,7 @@ class CallController(
         if (!BuildConfig.DEBUG) return
         when (intro) {
             "due" -> this.intro.reset()
-            "started" -> this.intro.started()
+            "seen" -> this.intro.seen()
         }
         if (used) {
             val now = System.currentTimeMillis()

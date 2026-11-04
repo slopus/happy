@@ -23,7 +23,6 @@
     <string name="call_welcome_act">用语音打开和发送</string>
     <string name="call_welcome_free">20 分钟免费</string>
     <string name="call_start_session">开始语音会话</string>
-    <string name="call_welcome_note">麦克风仅在通话期间开启。</string>
     <string name="call_used_today">免费语音时长已用完。%1$s 恢复更多时长。</string>
     <string name="call_used_week">免费语音时长已用完。%1$s %2$s 恢复更多时长。</string>
     <string name="call_used_date">免费语音时长已用完。%1$s 恢复更多时长。</string>

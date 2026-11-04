@@ -128,11 +128,14 @@ voice's three bars, quieter, under it. A ✕ on top, or a swipe down, closes
 it and starts nothing. No RevenueCat or other vendor UI, and no navigation
 bar.
 
-**The welcome** comes the first time a device taps the voice button. "Start
-Voice Session" closes it and starts the free call, which asks for the
-microphone then, never before. It is shown until the person starts from it
-(`CallIntro`, `call.intro.started` in the device's defaults, beside its
-free time); closed, the next tap shows it again.
+**The welcome** is the upsell: it comes once, on the first tap of the
+voice button while a subscription is on sale. "Start Voice Session" closes
+it and starts the free call, which asks for the microphone then, never
+before. Shown, it is seen, however it was closed: from then on the button
+just calls (`CallIntro`, `call.intro.seen` in the device's defaults, beside
+its free time). With nothing on sale (every release build today) there is
+no welcome and the first tap calls; a subscriber has nothing on sale
+either.
 
 **The paywall** is the same screen once the free time is used: a tap with
 none left (before the microphone is asked for), or a live call reaching the
@@ -146,8 +149,8 @@ older calls pass 30 days" when no time ever comes back, as with a clock put
 back). What is on offer is `CallOffer`:
 
 - `unavailable`, every release build: no subscription, no price and no buy
-  button. "Start Voice Session" is the main pill; once the free time is
-  used, it is greyed out and the ✕ closes the sheet.
+  button, and no welcome. Only the used-up sheet shows: "Start Voice
+  Session" is its main pill, greyed out, and the ✕ closes the sheet.
 - `preview(price:)`, debug builds only and only when launched with
   `HAPPY_CALL_OFFER=preview` (test screens; `HAPPY_CALL_OFFER_PRICE`
   changes the price drawn): the subscription as above, noted "Test preview.
@@ -160,14 +163,14 @@ Android draws the same sheet (`ui/call/CallSheet.kt`): a full-height
 podcast mic (`res/raw/call_podcast_mic.json`, the same bytes), rows, words,
 buttons and warning. `CallSheet` is `Welcome` or `Used`, `CallOffer` is
 `Unavailable` or `Preview(price)` (debug only), and `CallIntro` keeps
-`call.intro.started` in the `call-usage` preferences beside the free time.
+`call.intro.seen` in the `call-usage` preferences beside the free time.
 On a tablet the sidebar's foot has the voice button too, left of the
 compose pill, and a conversation a call opens shows in the main panel
 rather than over the shell.
 
 Test runs drive both without a call or a microphone (debug builds,
 `CallController.applyTestEnvironment`): `HAPPY_CALL_INTRO=due` shows the
-welcome again (`started`: never), `HAPPY_CALL_USED=1` spends the free time,
+welcome again (`seen`: never), `HAPPY_CALL_USED=1` spends the free time,
 and `HAPPY_CALL_STEPS=tap,subscribe,session,close,dismiss,…` presses the
 voice button, the sheet's buttons and an alert's one step every 3 s,
 logging each (`[call-steps]`). Android takes the same as launch extras

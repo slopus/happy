@@ -140,16 +140,23 @@ sealed interface CallSheet {
 }
 
 /**
- * Whether this device has been shown voice's welcome and started from it
- * (iOS `CallIntro`): until then the voice button shows it instead of
- * calling. Closing it without starting shows it again next time. Beside the
+ * Whether this device has seen voice's welcome (iOS `CallIntro`). It shows
+ * once, on the first tap of the voice button while a subscription is on
+ * sale; from then on, however it was closed, the button calls. Beside the
  * device's free time ([PreferencesCallUsageStore]).
  */
 class CallIntro(private val preferences: SharedPreferences) {
     val due: Boolean get() = !preferences.getBoolean(KEY, false)
 
-    /** Started from the welcome: the voice button calls from now on. */
-    fun started() {
+    /** The welcome to show for a tap of the voice button while [offer] is up, counted as seen; null when the button just calls. */
+    fun welcome(offer: CallOffer): CallSheet.Welcome? {
+        if (!offer.onSale || !due) return null
+        seen()
+        return CallSheet.Welcome(offer)
+    }
+
+    /** Shown: the voice button calls from now on. */
+    fun seen() {
         preferences.edit().putBoolean(KEY, true).apply()
     }
 
@@ -159,6 +166,6 @@ class CallIntro(private val preferences: SharedPreferences) {
     }
 
     companion object {
-        const val KEY = "call.intro.started"
+        const val KEY = "call.intro.seen"
     }
 }

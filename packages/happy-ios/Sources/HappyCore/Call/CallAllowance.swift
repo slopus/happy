@@ -133,12 +133,12 @@ public enum CallOffer: Equatable, Sendable {
     }
 }
 
-/// Whether this device has been shown voice's welcome and started from it:
-/// until then the voice button shows it instead of calling. Closing it
-/// without starting shows it again next time. In the device's defaults,
+/// Whether this device has seen voice's welcome. It shows once, on the
+/// first tap of the voice button while a subscription is on sale; from then
+/// on, however it was closed, the button calls. In the device's defaults,
 /// beside its free time (`DefaultsCallUsageStore`).
 public struct CallIntro {
-    public static let key = "call.intro.started"
+    public static let key = "call.intro.seen"
     private let defaults: UserDefaults
 
     public init(defaults: UserDefaults = .standard) {
@@ -147,8 +147,16 @@ public struct CallIntro {
 
     public var due: Bool { !defaults.bool(forKey: Self.key) }
 
-    /// Started from the welcome: the voice button calls from now on.
-    public func started() {
+    /// Whether a tap of the voice button while `offer` is up shows the
+    /// welcome, counted as seen; false when the button just calls.
+    public func welcomes(_ offer: CallOffer) -> Bool {
+        guard offer.onSale, due else { return false }
+        seen()
+        return true
+    }
+
+    /// Shown: the voice button calls from now on.
+    public func seen() {
         defaults.set(true, forKey: Self.key)
     }
 }

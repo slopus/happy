@@ -23,7 +23,6 @@
     <string name="call_welcome_act">Otwieraj i wysyłaj głosem</string>
     <string name="call_welcome_free">20 darmowych minut</string>
     <string name="call_start_session">Rozpocznij sesję głosową</string>
-    <string name="call_welcome_note">Mikrofon jest włączony tylko podczas rozmowy.</string>
     <string name="call_used_today">Darmowy czas głosowy się skończył. Więcej wróci o %1$s.</string>
     <string name="call_used_week">Darmowy czas głosowy się skończył. Więcej wróci: %1$s o %2$s.</string>
     <string name="call_used_date">Darmowy czas głosowy się skończył. Więcej wróci %1$s.</string>

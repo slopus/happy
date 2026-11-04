@@ -33,8 +33,9 @@ architectures comparable (local store, delta sync, crypto layer).
   committed. Without it the tap says "Voice isn't set up for this
   connection yet". Each device gets 20 free connected minutes in any
   rolling 30 days (`CallAllowance`, local, provisional). The app's own sheet
-  (`CallSheet`, no vendor UI) welcomes the first tap and, once the time is
-  used, says when it is back with Start greyed out; nothing is on sale
+  (`CallSheet`, no vendor UI) is the welcome, once, on the first tap while
+  a subscription is on sale, and, once the time is used, says when it is
+  back with Start greyed out; nothing is on sale
   (`CallOffer.Unavailable`): never a price or a buy button before real
   products exist (`Preview` is a debug-only test screen). A `ModalBottomSheet` calls
   `SheetStatusIcons()` so the bar under its scrim keeps light icons.

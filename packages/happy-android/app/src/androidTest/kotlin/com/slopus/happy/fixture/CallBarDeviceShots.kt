@@ -360,7 +360,6 @@ class CallBarDeviceShots {
         val later = System.currentTimeMillis() + 26 * 3_600_000L
         val preview = CallOffer.Preview(CallOffer.PRICE)
         val sheets = listOf(
-            "welcome" to com.slopus.happy.call.CallSheet.Welcome(CallOffer.Unavailable),
             "welcome-preview" to com.slopus.happy.call.CallSheet.Welcome(preview),
             "used" to com.slopus.happy.call.CallSheet.Used(later, CallOffer.Unavailable),
             "used-preview" to com.slopus.happy.call.CallSheet.Used(later, preview),
