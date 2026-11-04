@@ -75,6 +75,7 @@ class TodoListContentTest {
         // Keep the five-second undo window open while the test inspects it.
         rule.mainClock.autoAdvance = false
         rule.runOnIdle { delete.action() }
+        rule.waitUntil(5_000) { state.value.active.none { it.id == "bread" } }
         rule.mainClock.advanceTimeBy(400)
         rule.waitUntilAtLeastOneExists(hasTestTag("todo.undo.button"), 5_000)
         rule.node("todo.undo.button").performClick()
