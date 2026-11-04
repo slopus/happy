@@ -23,7 +23,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -40,10 +39,7 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
@@ -588,10 +584,9 @@ class AgentSession internal constructor(
             settingsQueued.receiveAsFlow().collect { deliverSettings() }
         }
         if (cacheFile != null) {
-            // Undispatched: watching from the first value, so a load that comes first is not dropped as it.
-            @OptIn(FlowPreview::class)
+            // Loading can beat this collector. Its first value may already be a home to keep.
             scope.launch(start = CoroutineStart.UNDISPATCHED) {
-                catalogState.drop(1).filter { it.loaded }.debounce(1_000).collect { writeCache(it) }
+                catalogState.cacheSnapshots().collect { writeCache(it) }
             }
         }
     }
