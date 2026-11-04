@@ -97,6 +97,7 @@ import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 import com.slopus.happy.ui.connection.RowTile
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -124,7 +125,8 @@ private data class Undo(val todo: TodoItem, val after: String?)
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TodoListContent(state: TodoListState, actions: TodoActions, deleted: Boolean = false) {
+fun TodoListContent(state: TodoListState, actions: TodoActions, deleted: Boolean = false,
+    compute: CoroutineDispatcher = Dispatchers.Default) {
     val colors = HappyTheme.colors
     val scope = rememberCoroutineScope()
     val focus = LocalFocusManager.current
@@ -145,8 +147,8 @@ fun TodoListContent(state: TodoListState, actions: TodoActions, deleted: Boolean
     val settlingJobs = remember { mutableMapOf<String, Job>() }
     var undo by remember { mutableStateOf<Undo?>(null) }
     var lastUndo by remember { mutableStateOf<Undo?>(null) }
-    val rows by produceState(emptyList<TodoRow>(), state, deleted, completedShown, settling, drag.order) {
-        value = withContext(Dispatchers.Default) { todoRows(state, deleted, completedShown, settling, drag.order) }
+    val rows by produceState(emptyList<TodoRow>(), state, deleted, completedShown, settling, drag.order, compute) {
+        value = withContext(compute) { todoRows(state, deleted, completedShown, settling, drag.order) }
     }
 
     fun commit(id: String?, stay: Boolean) {

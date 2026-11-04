@@ -9,7 +9,7 @@ import androidx.compose.ui.test.hasStateDescription
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
@@ -32,13 +32,18 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
 
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = PHONE)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
-@OptIn(ExperimentalTestApi::class)
+@OptIn(ExperimentalTestApi::class, ExperimentalCoroutinesApi::class)
 class TodoListContentTest {
-    @get:Rule val rule = createComposeRule()
+    // Drive row publication, composition and Undo's timer with one clock, rather
+    // than racing a real Default worker against Robolectric's virtual frames.
+    private val compute = StandardTestDispatcher()
+    @get:Rule val rule = createComposeRule(effectContext = compute)
     private val milk = TodoItem("milk", "groceries", "Milk", orderKey = "5")
     private val bread = TodoItem("bread", "groceries", "Bread", orderKey = "7")
 
@@ -47,7 +52,7 @@ class TodoListContentTest {
         val additions = mutableListOf<String>()
         rule.setHappyContent {
             TodoListContent(TodoListState(status = TodoListState.Status.Ready, active = listOf(milk)),
-                actions(add = { additions += it }, edit = { id, text -> edits += id to text }))
+                actions(add = { additions += it }, edit = { id, text -> edits += id to text }), compute = compute)
         }
         rule.waitUntilAtLeastOneExists(hasTestTag("todo.row.milk"), 5_000)
         rule.onNodeWithContentDescription("Milk").performClick()
@@ -69,26 +74,31 @@ class TodoListContentTest {
             TodoListContent(state.value, actions(
                 delete = { id -> state.value = state.value.copy(active = state.value.active.filterNot { it.id == id }) },
                 restore = { id, place, status -> restores += Triple(id, place, status) },
-            ))
+            ), compute = compute)
         }
         rule.waitUntilAtLeastOneExists(hasTestTag("todo.row.bread"), 5_000)
         val delete = rule.node("todo.row.bread").fetchSemanticsNode().config[SemanticsActions.CustomActions].first { it.label == "Delete" }
         // Keep the five-second undo window open while the test inspects it.
         rule.mainClock.autoAdvance = false
-        rule.runOnIdle { delete.action() }
-        rule.waitUntil(5_000) { state.value.active.none { it.id == "bread" } }
-        rule.mainClock.advanceTimeBy(400)
-        rule.waitUntilAtLeastOneExists(hasTestTag("todo.undo.button"), 5_000)
-        rule.node("todo.undo.button").performClick()
-        rule.runOnIdle { assertEquals(listOf(Triple("bread", TodoLibrary.Place.After("milk"), TodoItem.Status.Active)), restores) }
-        rule.mainClock.autoAdvance = true
+        try {
+            rule.runOnIdle { delete.action() }
+            // The delete callback launches a coroutine. A wall-clock wait while
+            // this scheduler is paused cannot run it (or publish its new rows).
+            rule.mainClock.advanceTimeBy(400)
+            rule.runOnIdle { assertTrue(state.value.active.none { it.id == "bread" }) }
+            rule.node("todo.undo.button").performClick()
+            rule.mainClock.advanceTimeByFrame()
+            rule.runOnIdle { assertEquals(listOf(Triple("bread", TodoLibrary.Place.After("milk"), TodoItem.Status.Active)), restores) }
+        } finally {
+            rule.mainClock.autoAdvance = true
+        }
     }
 
     @Test fun switchingEditorsSavesThePreviousRowBeforeChangingItsOwner() {
         val edits = mutableListOf<Pair<String, String>>()
         rule.setHappyContent {
             TodoListContent(TodoListState(status = TodoListState.Status.Ready, active = listOf(milk, bread)),
-                actions(edit = { id, text -> edits += id to text }))
+                actions(edit = { id, text -> edits += id to text }), compute = compute)
         }
         rule.waitUntilAtLeastOneExists(hasTestTag("todo.row.bread"), 5_000)
         rule.onNodeWithContentDescription("Milk").performClick()
@@ -102,7 +112,7 @@ class TodoListContentTest {
     @Test fun returningFromAnEmptyAddDismissesItWithoutCreatingATodo() {
         val additions = mutableListOf<String>()
         rule.setHappyContent {
-            TodoListContent(TodoListState(status = TodoListState.Status.Ready), actions(add = { additions += it }))
+            TodoListContent(TodoListState(status = TodoListState.Status.Ready), actions(add = { additions += it }), compute = compute)
         }
         rule.waitUntilAtLeastOneExists(hasTestTag("todo.hit.add"), 5_000)
         rule.node("todo.hit.add").performClick()
@@ -115,7 +125,7 @@ class TodoListContentTest {
         val restores = mutableListOf<Triple<String, TodoLibrary.Place, TodoItem.Status>>()
         rule.setHappyContent {
             TodoListContent(TodoListState(deleted = listOf(milk.copy(status = TodoItem.Status.Deleted)), deletedRead = true),
-                actions(restore = { id, place, status -> restores += Triple(id, place, status) }), deleted = true)
+                actions(restore = { id, place, status -> restores += Triple(id, place, status) }), deleted = true, compute = compute)
         }
         rule.waitUntilAtLeastOneExists(hasTestTag("todo.row.milk"), 5_000)
         rule.onNodeWithContentDescription("Milk").performClick()
@@ -127,7 +137,7 @@ class TodoListContentTest {
         val moves = mutableListOf<Pair<String, Int>>()
         rule.setHappyContent {
             TodoListContent(TodoListState(status = TodoListState.Status.Ready, active = listOf(milk, bread)),
-                actions(move = { id, index -> moves += id to index }))
+                actions(move = { id, index -> moves += id to index }), compute = compute)
         }
         rule.waitUntilAtLeastOneExists(hasTestTag("todo.row.milk"), 5_000)
         rule.node("todo.row.milk").performTouchInput { down(center) }
@@ -146,7 +156,7 @@ class TodoListContentTest {
     @Test fun talkBackGetsOneTodoWithItsAuthorPendingStateAndActions() {
         rule.setHappyContent {
             TodoListContent(TodoListState(status = TodoListState.Status.Ready,
-                active = listOf(milk.copy(authorUserId = "ada"), bread), names = mapOf("ada" to "Ada Lovelace"), waiting = setOf("milk")), actions())
+                active = listOf(milk.copy(authorUserId = "ada"), bread), names = mapOf("ada" to "Ada Lovelace"), waiting = setOf("milk")), actions(), compute = compute)
         }
         rule.waitUntilAtLeastOneExists(hasTestTag("todo.row.milk"), 5_000)
         val todo = rule.onNodeWithContentDescription("Milk")
@@ -162,7 +172,7 @@ class TodoListContentTest {
         val opened = mutableListOf<String>()
         rule.setHappyContent {
             TodoListContent(TodoListState(status = TodoListState.Status.Ready, active = listOf(milk)),
-                actions(history = { opened += it.id }))
+                actions(history = { opened += it.id }), compute = compute)
         }
         rule.waitUntilAtLeastOneExists(hasTestTag("todo.row.milk"), 5_000)
         rule.node("todo.swipe.action").assertDoesNotExist()

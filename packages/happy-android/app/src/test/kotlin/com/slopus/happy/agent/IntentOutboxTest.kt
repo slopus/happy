@@ -1,6 +1,7 @@
 package com.slopus.happy.agent
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -23,6 +24,7 @@ import java.io.File
 import java.nio.file.Files
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.coroutines.CoroutineContext
 
 /** iOS's IntentOutboxTests: kept, one per slot, sent oldest first while up, backed off, refused for good. */
 class IntentOutboxTest {
@@ -65,6 +67,61 @@ class IntentOutboxTest {
         box.setOnline(true)
         eventually({ box.pending.value }) { it.isEmpty() }
         assertEquals(listOf("read a", "archive b"), sent.toList())
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun goingOfflineStopsAQueuedDrainerBeforeItClaimsAnotherIntent(): Unit = runTest {
+        val box = IntentOutbox(backgroundScope, MemoryIntentStorage(), now = { testScheduler.currentTime })
+        val delivered = mutableListOf<String>()
+        box.setOnline(true)
+        runCurrent()
+
+        // Wake the drainer first, then queue collectLatest's offline cancellation.
+        // setOnline(false) must take effect even when that cancellation runs second.
+        box.handle(setOf(Intent.READ)) { delivered += it.target }
+        box.setOnline(false)
+        box.enqueue(Intent.READ, "waiting")
+        runCurrent()
+        assertEquals(emptyList<String>(), delivered)
+        assertEquals(listOf("waiting"), box.pending.value.map { it.target })
+
+        box.setOnline(true)
+        runCurrent()
+        assertEquals(listOf("waiting"), delivered)
+        assertTrue(box.pending.value.isEmpty())
+    }
+
+    @Test
+    fun aReconnectWakesTheDrainerEvenWhenTheOnlineCollectorMissesTheOfflineState(): Unit = runBlocking {
+        // Run the old drainer before the online observer, exactly as separate
+        // workers may. The observer then sees true→true and conflates the cycle.
+        val dispatcher = object : CoroutineDispatcher() {
+            val queued = ArrayDeque<Runnable>()
+            override fun dispatch(context: CoroutineContext, block: Runnable) { queued.addLast(block) }
+            fun next() { queued.removeFirst().run() }
+            fun drain() { while (queued.isNotEmpty()) next() }
+        }
+        val worker = CoroutineScope(SupervisorJob() + dispatcher)
+        try {
+            val box = IntentOutbox(worker, MemoryIntentStorage())
+            val delivered = mutableListOf<String>()
+            box.setOnline(true)
+            dispatcher.drain()
+            box.handle(setOf(Intent.READ)) { delivered += it.target }
+            box.setOnline(false)
+            box.enqueue(Intent.READ, "waiting")
+            dispatcher.next()
+            assertEquals(emptyList<String>(), delivered)
+
+            box.setOnline(true)
+            dispatcher.drain()
+            assertEquals(listOf("waiting"), delivered)
+            assertTrue(box.pending.value.isEmpty())
+        } finally {
+            worker.cancel()
+            dispatcher.drain()
+        }
     }
 
     @Test

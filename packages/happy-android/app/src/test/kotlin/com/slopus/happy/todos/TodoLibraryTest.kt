@@ -6,21 +6,25 @@ import com.slopus.happy.agent.IntentOutbox
 import com.slopus.happy.agent.IntentStorage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
-import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
 
@@ -120,12 +124,12 @@ private class FakeTodoServer(val surfaceId: String) : TodoRoutes {
 }
 
 /** iOS's TodoLibraryTests, against the fake computer, with the same scenarios. */
+@OptIn(ExperimentalCoroutinesApi::class)
 class TodoLibraryTest {
     private val surfaceId = "s0000000000000000000000a"
     private val a1 = "t000000000000000000000a1"
     private val a2 = "t000000000000000000000a2"
     private val a3 = "t000000000000000000000a3"
-    private val scopes = ArrayList<CoroutineScope>()
 
     /** What a connection keeps between launches. */
     private class Disk : IntentStorage {
@@ -138,10 +142,12 @@ class TodoLibraryTest {
     private class Account(val library: TodoLibrary, val outbox: IntentOutbox, val events: MutableSharedFlow<TodoFeedEvent>, val scope: CoroutineScope)
 
     /** One launch: its outbox and library over [disk]. */
-    private fun launch(server: TodoRoutes, disk: Disk, online: Boolean = true): Account {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default).also(scopes::add)
-        val outbox = IntentOutbox(scope, disk)
-        val library = TodoLibrary(server, outbox, kept = { disk.values[it] }, keep = { key, value -> disk.values[key] = value }, scope = scope)
+    private fun TestScope.launch(server: TodoRoutes, disk: Disk, online: Boolean = true): Account {
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val scope = CoroutineScope(backgroundScope.coroutineContext + SupervisorJob(backgroundScope.coroutineContext[Job]))
+        val outbox = IntentOutbox(scope, disk, now = { testScheduler.currentTime })
+        val library = TodoLibrary(server, outbox, kept = { disk.values[it] }, keep = { key, value -> disk.values[key] = value }, scope = scope,
+            now = { testScheduler.currentTime.toDouble() }, dispatcher = dispatcher)
         val events = MutableSharedFlow<TodoFeedEvent>(extraBufferCapacity = 16)
         library.follow(events)
         outbox.setOnline(online)
@@ -156,17 +162,19 @@ class TodoLibraryTest {
         return watcher
     }
 
-    private fun eventually(seconds: Long = 6, condition: () -> Boolean) = runBlocking {
-        withTimeout(seconds * 1000) { while (!condition()) delay(10) }
-    }
-
-    @After
-    fun tearDown() {
-        scopes.forEach { it.cancel() }
+    /** Drive the library, outbox and collectors together, including retry deadlines. */
+    private fun TestScope.eventually(seconds: Long = 6, condition: () -> Boolean) {
+        repeat((seconds * 100).toInt()) {
+            runCurrent()
+            if (condition()) return
+            advanceTimeBy(10)
+        }
+        runCurrent()
+        assertTrue("condition not reached after ${seconds}s of scheduler time", condition())
     }
 
     @Test
-    fun aChangeShowsAtOnceAndReachesTheComputerUnderItsIds() = runBlocking {
+    fun aChangeShowsAtOnceAndReachesTheComputerUnderItsIds() = runTest {
         val server = FakeTodoServer(surfaceId)
         server.seed(a1, "Milk")
         val account = launch(server, Disk())
@@ -185,7 +193,7 @@ class TodoLibraryTest {
     }
 
     @Test
-    fun changesWaitThroughARelaunchAndGoInTheOrderTheyWereMade() = runBlocking {
+    fun changesWaitThroughARelaunchAndGoInTheOrderTheyWereMade() = runTest {
         val server = FakeTodoServer(surfaceId)
         server.seed(a1, "Milk")
         val disk = Disk()
@@ -214,7 +222,7 @@ class TodoLibraryTest {
 
     /** Someone changed the todo first: the computer's version is taken and the change made again on top of it. */
     @Test
-    fun aConflictTakesTheComputersTodoAndAppliesTheChangeAgain() = runBlocking {
+    fun aConflictTakesTheComputersTodoAndAppliesTheChangeAgain() = runTest {
         val server = FakeTodoServer(surfaceId)
         server.seed(a1, "Milk")
         val account = launch(server, Disk())
@@ -231,7 +239,7 @@ class TodoLibraryTest {
     }
 
     @Test
-    fun aChangeToATodoDeletedElsewhereIsDropped() = runBlocking {
+    fun aChangeToATodoDeletedElsewhereIsDropped() = runTest {
         val server = FakeTodoServer(surfaceId)
         server.seed(a1, "Milk")
         val account = launch(server, Disk())
@@ -247,7 +255,7 @@ class TodoLibraryTest {
     }
 
     @Test
-    fun aRefusalUndoesTheChangeAndSaysWhy() = runBlocking {
+    fun aRefusalUndoesTheChangeAndSaysWhy() = runTest {
         val server = FakeTodoServer(surfaceId)
         server.seed(a1, "Milk")
         server.refuseText = "Forbidden"
@@ -263,7 +271,7 @@ class TodoLibraryTest {
     }
 
     @Test
-    fun anUndoneDeleteComesBackWhereItWas() = runBlocking {
+    fun anUndoneDeleteComesBackWhereItWas() = runTest {
         val server = FakeTodoServer(surfaceId)
         listOf(a1 to "Milk", a2 to "Eggs", a3 to "Bread").forEach { (id, text) -> server.seed(id, text) }
         val account = launch(server, Disk())
@@ -280,7 +288,7 @@ class TodoLibraryTest {
     }
 
     @Test
-    fun anUndoBeforeTheDeleteIsSentSendsNothing() = runBlocking {
+    fun anUndoBeforeTheDeleteIsSentSendsNothing() = runTest {
         val server = FakeTodoServer(surfaceId)
         server.seed(a1, "Milk")
         val account = launch(server, Disk())
@@ -290,13 +298,13 @@ class TodoLibraryTest {
         account.library.delete(surfaceId, a1)
         account.library.restore(surfaceId, a1, TodoLibrary.Place.After(null))
         account.outbox.setOnline(true)
-        eventually(10) { account.outbox.pending.value.isEmpty() }
+        eventually(10) { account.outbox.pending.value.isEmpty() && watcher.state.active.map { it.text } == listOf("Milk") && watcher.state.waiting.isEmpty() }
         assertEquals(emptyList<FakeTodoServer.Write>(), server.writeLog())
         assertEquals(listOf("Milk"), watcher.state.active.map { it.text })
     }
 
     @Test
-    fun aMoveSendsWhatComesBeforeIt() = runBlocking {
+    fun aMoveSendsWhatComesBeforeIt() = runTest {
         val server = FakeTodoServer(surfaceId)
         listOf(a1 to "Milk", a2 to "Eggs", a3 to "Bread").forEach { (id, text) -> server.seed(id, text) }
         val account = launch(server, Disk())
@@ -310,7 +318,7 @@ class TodoLibraryTest {
     }
 
     @Test
-    fun eventsFromElsewhereShowAndANewTodoIsRead() = runBlocking {
+    fun eventsFromElsewhereShowAndANewTodoIsRead() = runTest {
         val server = FakeTodoServer(surfaceId)
         val before = server.seed(a1, "Milk", author = "u1")
         val account = launch(server, Disk())
@@ -330,7 +338,7 @@ class TodoLibraryTest {
     }
 
     @Test
-    fun theDeletedListIsReadWhenAskedFor() = runBlocking {
+    fun theDeletedListIsReadWhenAskedFor() = runTest {
         val server = FakeTodoServer(surfaceId)
         server.seed(a1, "Milk")
         server.seed(a2, "Old", status = TodoItem.Status.Deleted)
@@ -346,7 +354,7 @@ class TodoLibraryTest {
     }
 
     @Test
-    fun indexCountsFollowOfflineChangesAndSurviveWithoutOpeningTheList() = runBlocking {
+    fun indexCountsFollowOfflineChangesAndSurviveWithoutOpeningTheList() = runTest {
         val server = FakeTodoServer(surfaceId)
         server.seed(a1, "Milk")
         server.seed(a2, "# Dairy")
@@ -368,7 +376,7 @@ class TodoLibraryTest {
     }
 
     @Test
-    fun anOlderReadCannotOverwriteAJournalChange() = runBlocking {
+    fun anOlderReadCannotOverwriteAJournalChange() = runTest {
         val server = FakeTodoServer(surfaceId)
         val before = server.seed(a1, "Milk")
         val captured = CompletableDeferred<Unit>()
@@ -401,7 +409,7 @@ class TodoLibraryTest {
     }
 
     @Test
-    fun aListOpensOfflineOnWhatWasKept() = runBlocking {
+    fun aListOpensOfflineOnWhatWasKept() = runTest {
         val server = FakeTodoServer(surfaceId)
         server.seed(a1, "Milk")
         val disk = Disk()

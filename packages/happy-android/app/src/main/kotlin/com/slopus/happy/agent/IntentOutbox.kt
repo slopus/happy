@@ -173,6 +173,9 @@ class IntentOutbox(
     /** Whether the connection is up. Off stops at once; what was on its way goes again under the same ID. */
     fun setOnline(online: Boolean) {
         this.online.value = online
+        // A rapid off/on can be conflated by the state collector. Wake a
+        // drainer already waiting as well as starting one through the collector.
+        kicks.trySend(Unit)
     }
 
     /** Sends what is due now rather than at its time: a reconnect. */
@@ -269,6 +272,9 @@ class IntentOutbox(
         while (true) {
             var at: Long? = null
             val next = lock.withLock {
+                // collectLatest's cancellation may be queued behind this drainer.
+                // Going offline must stop new claims before that callback runs.
+                if (!online.value) return@withLock null
                 val handled = deliverers.value
                 val due = loaded().filter { it.kind in handled && synchronized(inFlight) { it.id !in inFlight } }
                 val intent = due.firstOrNull { it.nextAttemptAt <= now() }

@@ -12,6 +12,7 @@ import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -85,6 +86,7 @@ class TodoLibrary(
     private val keep: suspend (String, JsonObject) -> Unit,
     private val scope: CoroutineScope,
     private val now: () -> Double = { System.currentTimeMillis().toDouble() },
+    dispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) {
     private class ListState {
         val confirmed = HashMap<String, TodoItem>()
@@ -100,7 +102,7 @@ class TodoLibrary(
         val flow = MutableStateFlow(TodoListState())
     }
 
-    private val confined = Dispatchers.Default.limitedParallelism(1)
+    private val confined = dispatcher.limitedParallelism(1)
     private val lists = HashMap<String, ListState>()
     /** Every todo change on its way, oldest first. */
     private var ops: List<Pair<Intent, TodoOp>> = emptyList()
