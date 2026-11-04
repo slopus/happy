@@ -76,6 +76,14 @@ sealed interface AgentFeedRow {
         override val key get() = "agent-$agentId"
 
         /**
+         * This row as its line draws it (iOS 2932427fe): what only orders or
+         * nests it ([activityAt], [parentId]) or only opens it elsewhere
+         * ([workspaceId]) left out, so a working agent's activity ticking
+         * redraws nothing.
+         */
+        fun drawn(): Conversation = if (activityAt == 0L && parentId == null && workspaceId == null) this else copy(activityAt = 0, parentId = null, workspaceId = null)
+
+        /**
          * Desktop's `activity == "running"` (summaryActivity): a question
          * waiting on the person outranks everything; then work handed to a
          * subtask counts as this conversation's; then its own turn runs,

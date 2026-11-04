@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -82,6 +83,7 @@ import com.slopus.happy.ui.components.avatar.PlaceholderAvatar
 import com.slopus.happy.ui.components.rememberReduceMotion
 import com.slopus.happy.ui.components.rememberThumbHash
 import com.slopus.happy.ui.home.BlockedDotColor
+import com.slopus.happy.ui.home.LocalHomeRowObserver
 import com.slopus.happy.ui.home.UnreadDotColor
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
@@ -292,6 +294,9 @@ sealed interface AgentHomeItem {
         val last: Boolean,
     ) : AgentHomeItem {
         override val key get() = row.key
+
+        /** As its line draws it ([AgentFeedRow.Conversation.drawn]). */
+        fun drawn(): Row = (row as? AgentFeedRow.Conversation)?.drawn()?.takeIf { it !== row }?.let { copy(row = it) } ?: this
     }
 }
 
@@ -340,8 +345,9 @@ fun LazyListScope.agentHomeRows(
                     .height(if (item.first) AgentHomeSpec.contentTop else AgentHomeSpec.cardGap)
                     .testTag(AgentHomeTags.row(item.key)),
             )
+            // Drawn from what its line shows: a change to nothing on it composes nothing.
             is AgentHomeItem.Row -> AgentHomeCardRow(
-                item, motion, selected != null && selected == item.row.panelKey(), AgentHomeTags.row(item.key),
+                item.drawn(), motion, selected != null && selected == item.row.panelKey(), AgentHomeTags.row(item.key),
                 onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface, onHold, onOpenFeed, onOpenTodos,
             )
         }
@@ -454,6 +460,7 @@ private fun titleStart(row: AgentFeedRow): Dp {
  */
 @Composable
 private fun ConversationRow(row: AgentFeedRow.Conversation, onOpen: (String) -> Unit, onHold: ((AgentFeedRow.Conversation, Rect) -> Unit)? = null) {
+    LocalHomeRowObserver.current?.let { observe -> SideEffect { observe(row.agentId) } }
     val colors = HappyTheme.colors
     val haptics = LocalHapticFeedback.current
     // Where the row is, for the preview to grow out of; read only when held.
