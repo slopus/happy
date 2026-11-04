@@ -469,18 +469,33 @@ public final class Subscription {
 }
 
 /// Keeps a `Subscription.observe` handler; released or cancelled, it hears no more.
+///
+/// Not `isolated deinit`, for the reason HappyUI's `Watch` gives: on iOS
+/// 26 the runtime's hop to the actor aborts in libmalloc ("pointer being
+/// freed was not allocated", under `TaskLocal::StopLookupScope`) when a
+/// screen holding one is freed, and an iPhone 12 on 26.1 does it too.
 @MainActor
 public final class SubscriptionObservation {
-    private var cancel: (() -> Void)?
+    private var cancel: (@MainActor @Sendable () -> Void)?
 
-    init(_ cancel: @escaping () -> Void) { self.cancel = cancel }
+    init(_ cancel: @escaping @MainActor @Sendable () -> Void) { self.cancel = cancel }
 
     public func invalidate() {
+        let cancel = cancel
+        self.cancel = nil
         cancel?()
-        cancel = nil
     }
 
-    isolated deinit { invalidate() }
+    /// Nonisolated, and the only thing left holding the object; the cancel
+    /// is `Sendable` and main-actor, so it is run there.
+    deinit {
+        guard let cancel else { return }
+        if Thread.isMainThread {
+            MainActor.assumeIsolated { cancel() }
+        } else {
+            DispatchQueue.main.async { cancel() }
+        }
+    }
 }
 
 /// Runs its work one at a time, in the order it was asked for.
