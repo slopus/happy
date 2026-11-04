@@ -11,14 +11,21 @@ import java.io.IOException
 
 /** The store as the subscription asks it: what it sells, holds and was asked to open. No Play. */
 internal class FakeStore : SubscriptionStore {
-    override val updates = MutableSharedFlow<List<StorePurchase>>(extraBufferCapacity = 8)
+    override val updates = MutableSharedFlow<StoreUpdate>(extraBufferCapacity = 8)
     var monthly: StoreOffer? = StoreOffer("happy", "monthly", "9,99 €")
     val owned = ArrayList<StorePurchase>()
     val acknowledged = ArrayList<String>()
-    val opened = ArrayList<StoreOffer>()
+    /** Each purchase sheet opened, and the attempt it was opened for. */
+    val opened = ArrayList<Pair<StoreOffer, String>>()
     override suspend fun monthly(product: String, basePlan: String) = monthly?.takeIf { it.product == product && it.basePlan == basePlan }
     override suspend fun owned() = owned.toList()
-    override suspend fun buy(activity: Activity, offer: StoreOffer) = opened.add(offer)
+    override suspend fun buy(activity: Activity, offer: StoreOffer, attempt: String) = opened.add(offer to attempt)
+
+    /** What the last sheet bought, named by its attempt as Play names it. */
+    fun bought(token: String, purchased: Boolean = true, product: String = "happy") =
+        StorePurchase(token, listOf(product), purchased, acknowledged = false, attempt = opened.last().second)
+
+    suspend fun emit(vararg purchases: StorePurchase) = updates.emit(StoreUpdate.Purchases(purchases.toList()))
     override suspend fun acknowledge(token: String): Boolean {
         acknowledged += token
         owned.replaceAll { if (it.token == token) it.copy(acknowledged = true) else it }

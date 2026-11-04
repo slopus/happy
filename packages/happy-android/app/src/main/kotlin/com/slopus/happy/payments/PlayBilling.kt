@@ -20,16 +20,38 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.resume
 
-/** A subscription the store holds for this device's store account. */
-data class StorePurchase(val token: String, val products: List<String>, val purchased: Boolean, val acknowledged: Boolean)
+/**
+ * A subscription the store holds for this device's store account. [attempt]:
+ * the purchase sheet it was bought from, as [SubscriptionStore.buy] named it
+ * (Play's obfuscated account id); null for one bought elsewhere.
+ */
+data class StorePurchase(
+    val token: String,
+    val products: List<String>,
+    val purchased: Boolean,
+    val acknowledged: Boolean,
+    val attempt: String? = null,
+)
+
+/** What the store's purchase sheet came to. */
+sealed interface StoreUpdate {
+    /** Bought or pending, or a pending purchase now paid for. */
+    data class Purchases(val purchases: List<StorePurchase>) : StoreUpdate
+
+    /** Closed without buying. */
+    data object Cancelled : StoreUpdate
+
+    /** The store couldn't sell it (already owned, unavailable, an error). */
+    data class Failed(val code: Int) : StoreUpdate
+}
 
 /** A monthly subscription the store sells: its price as the store words it, for this person's country. */
 data class StoreOffer(val product: String, val basePlan: String, val price: String)
 
 /** The store voice buys through, apart so voice's purchases can be tested without Play. */
 interface SubscriptionStore {
-    /** Purchases as the store reports them after a buy, or when one pending completes. */
-    val updates: SharedFlow<List<StorePurchase>>
+    /** What each purchase sheet came to, and pending purchases as they complete. */
+    val updates: SharedFlow<StoreUpdate>
 
     /** The [product]'s [basePlan] if it renews every month; null if the store doesn't sell it so, or isn't reachable. */
     suspend fun monthly(product: String, basePlan: String): StoreOffer?
@@ -37,8 +59,12 @@ interface SubscriptionStore {
     /** Every subscription the store account holds, pending or bought; null when the store didn't answer. */
     suspend fun owned(): List<StorePurchase>?
 
-    /** Shows the store's purchase sheet; what comes of it arrives in [updates]. False if it couldn't open. */
-    suspend fun buy(activity: Activity, offer: StoreOffer): Boolean
+    /**
+     * Shows the store's purchase sheet, the purchase it makes named
+     * [attempt] for good ([StorePurchase.attempt]); what comes of it arrives
+     * in [updates]. False if it couldn't open.
+     */
+    suspend fun buy(activity: Activity, offer: StoreOffer, attempt: String): Boolean
 
     suspend fun acknowledge(token: String): Boolean
 }
@@ -49,12 +75,18 @@ interface SubscriptionStore {
  * nothing of RevenueCat itself.
  */
 class PlayBilling(context: Context) : SubscriptionStore {
-    private val mutableUpdates = MutableSharedFlow<List<StorePurchase>>(extraBufferCapacity = 8, onBufferOverflow = BufferOverflow.DROP_OLDEST)
-    override val updates: SharedFlow<List<StorePurchase>> = mutableUpdates
+    private val mutableUpdates = MutableSharedFlow<StoreUpdate>(extraBufferCapacity = 8, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    override val updates: SharedFlow<StoreUpdate> = mutableUpdates
 
     private val client = BillingClient.newBuilder(context.applicationContext)
         .setListener { result, purchases ->
-            if (result.responseCode == BillingClient.BillingResponseCode.OK && purchases != null) mutableUpdates.tryEmit(purchases.map(::purchase))
+            mutableUpdates.tryEmit(
+                when (result.responseCode) {
+                    BillingClient.BillingResponseCode.OK -> StoreUpdate.Purchases(purchases.orEmpty().map(::purchase))
+                    BillingClient.BillingResponseCode.USER_CANCELED -> StoreUpdate.Cancelled
+                    else -> StoreUpdate.Failed(result.responseCode)
+                },
+            )
         }
         .enablePendingPurchases(PendingPurchasesParams.newBuilder().enableOneTimeProducts().build())
         .build()
@@ -89,12 +121,12 @@ class PlayBilling(context: Context) : SubscriptionStore {
         }
     }
 
-    override suspend fun buy(activity: Activity, offer: StoreOffer): Boolean {
+    override suspend fun buy(activity: Activity, offer: StoreOffer, attempt: String): Boolean {
         val (details, offerToken) = synchronized(found) { found[offer] } ?: return false
         if (!connect()) return false
         val params = BillingFlowParams.newBuilder().setProductDetailsParamsList(
             listOf(BillingFlowParams.ProductDetailsParams.newBuilder().setProductDetails(details).setOfferToken(offerToken).build()),
-        ).build()
+        ).setObfuscatedAccountId(attempt).build()
         return client.launchBillingFlow(activity, params).ok
     }
 
@@ -127,5 +159,6 @@ class PlayBilling(context: Context) : SubscriptionStore {
         products = purchase.products,
         purchased = purchase.purchaseState == Purchase.PurchaseState.PURCHASED,
         acknowledged = purchase.isAcknowledged,
+        attempt = purchase.accountIdentifiers?.obfuscatedAccountId,
     )
 }

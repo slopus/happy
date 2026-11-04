@@ -10,6 +10,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.MapSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.Json
 import java.security.MessageDigest
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
@@ -34,10 +38,14 @@ import java.util.concurrent.atomic.AtomicLong
  * Everything that asks RevenueCat or the store runs one at a time ([work]),
  * and each customer change starts a new [generation] at once: an answer
  * asked under an older one is dropped. A purchase belongs to the customer
- * who opened the store's sheet ([OWNER], kept until RevenueCat has it), is
+ * who opened the store's sheet for it: each sheet is an attempt with its
+ * own id, which the store keeps on the purchase it makes, and the attempt
+ * remembers its customer here ([ATTEMPTS]) until that purchase is posted,
+ * or the sheet is closed without one. One sheet at a time. A purchase is
  * acknowledged only once RevenueCat has taken it, and one left unfinished
- * is finished at the next launch or foreground. Restore posts every
- * subscription the store account holds, whatever is on sale now.
+ * is finished at the next launch or foreground, for its own customer; one
+ * no attempt here names is left alone. Restore posts every subscription
+ * the store account holds for the customer now, whatever is on sale.
  */
 class Subscription(
     private val scope: CoroutineScope,
@@ -73,6 +81,8 @@ class Subscription(
     @Volatile private var changing = false
     private var monthly: StoreOffer? = null
     private var unconfirmed = false
+    /** The attempt whose purchase sheet is open, if one is. */
+    private var launching: String? = null
 
     private val mutableOffer = MutableStateFlow<Offer>(Offer.Unavailable)
     val offer: StateFlow<Offer> = mutableOffer.asStateFlow()
@@ -142,15 +152,21 @@ class Subscription(
     /**
      * The store's purchase sheet for the monthly subscription, for the
      * customer it opens for: what comes of it is posted for them, whoever
-     * is signed in by then.
+     * is signed in by then. False if it couldn't open, or one is open.
      */
     suspend fun buy(activity: Activity): Boolean {
-        val offer = work.withLock {
+        val store = store ?: return false
+        val (offer, attempt) = work.withLock {
+            if (launching != null) return false
             val offer = monthly.takeIf { mutableOffer.value is Offer.OnSale } ?: return false
-            preferences.edit().putString(OWNER, customer).commit()
-            offer
+            val attempt = UUID.randomUUID().toString()
+            remember(attempt, customer)
+            launching = attempt
+            offer to attempt
         }
-        return store?.buy(activity, offer) == true
+        if (store.buy(activity, offer, attempt)) return true
+        work.withLock { ended(attempt) }
+        return false
     }
 
     /**
@@ -192,7 +208,9 @@ class Subscription(
                 store.acknowledge(purchase.token)
                 continue
             }
-            if (!post(revenueCat, store, purchase, restore, asked)) unfinished = true
+            // Restoring, everything is the customer's now; otherwise only what its own attempt names, for that attempt's customer.
+            val owner = if (restore) customer else ownerOf(purchase) ?: continue
+            if (!post(revenueCat, store, purchase, owner, restore, asked)) unfinished = true
         }
         if (owned != null) unconfirmed = unfinished
         val answer = revenueCat.subscriber(customer)
@@ -204,26 +222,38 @@ class Subscription(
         publish()
     }
 
-    /** What the store sent after a buy, or a pending purchase now paid for: posted for its owner, and acknowledged once taken. */
-    private suspend fun bought(purchases: List<StorePurchase>) = work.withLock {
+    /**
+     * What a purchase sheet came to, or a pending purchase now paid for:
+     * each purchase posted for its own attempt's customer and acknowledged
+     * once taken; a sheet closed without one ends its attempt.
+     */
+    private suspend fun bought(update: StoreUpdate) = work.withLock {
+        val purchases = when (update) {
+            is StoreUpdate.Cancelled, is StoreUpdate.Failed -> return@withLock launching?.let(::ended) ?: Unit
+            is StoreUpdate.Purchases -> update.purchases
+        }
+        // Its sheet has closed: bought, or pending with the attempt kept for when it is paid for.
+        if (purchases.any { it.attempt != null && it.attempt == launching }) launching = null
         val revenueCat = revenueCat ?: return@withLock
         val store = store ?: return@withLock
         settle()
         val asked = generation.get()
         for (purchase in purchases) {
-            if (purchase.purchased && !post(revenueCat, store, purchase, restore = false, asked)) unconfirmed = true
+            if (!purchase.purchased) continue
+            val owner = ownerOf(purchase) ?: continue
+            if (!post(revenueCat, store, purchase, owner, restore = false, asked)) unconfirmed = true
         }
         if (asked == generation.get()) publish()
     }
 
     /**
-     * Posts [purchase] for the customer who bought it (restoring, for the
-     * customer now), acknowledges it once RevenueCat has it, and keeps
-     * RevenueCat's answer only for the customer of generation [asked].
+     * Posts [purchase] for [owner] (the customer who bought it; restoring,
+     * the customer now), acknowledges it once RevenueCat has it, ends its
+     * attempt, and keeps RevenueCat's answer only for the customer of
+     * generation [asked].
      */
-    private suspend fun post(revenueCat: RevenueCat, store: SubscriptionStore, purchase: StorePurchase, restore: Boolean, asked: Long): Boolean {
+    private suspend fun post(revenueCat: RevenueCat, store: SubscriptionStore, purchase: StorePurchase, owner: String, restore: Boolean, asked: Long): Boolean {
         val customer = customer
-        val owner = if (restore) customer else preferences.getString(OWNER, null) ?: customer
         val basePlan = monthly?.takeIf { it.product in purchase.products }?.basePlan
         val answer = revenueCat.post(RevenueCat.Receipt(owner, purchase.token, purchase.products, basePlan, restore))
         if (answer !is Answer.Ok) {
@@ -232,9 +262,9 @@ class Subscription(
         }
         preferences.edit()
             .putStringSet(POSTED, posted() + hash(purchase.token))
-            .remove(OWNER)
             .apply { if (owner == install && preferences.getString(CUSTOMER, null) == null) putBoolean(POSTED_BY_INSTALL, true) }
             .apply()
+        purchase.attempt?.let(::forget)
         if (!purchase.acknowledged) store.acknowledge(purchase.token)
         if (owner == customer && asked == generation.get() && ProPass.answered(answer.body)) cache.save(customer, ProPass.from(answer.body), now())
         return true
@@ -288,6 +318,31 @@ class Subscription(
 
     private fun posted(): Set<String> = preferences.getStringSet(POSTED, emptySet()).orEmpty()
 
+    @Serializable private data class Attempt(val customer: String, val at: Long)
+
+    private fun attempts(): Map<String, Attempt> = preferences.getString(ATTEMPTS, null)
+        ?.let { runCatching { Json.decodeFromString(ATTEMPT_MAP, it) }.getOrNull() }.orEmpty()
+
+    /** Keeps [attempt]'s customer, at once and for good, until its purchase is posted; ones older than a store keeps a purchase pending go. */
+    private fun remember(attempt: String, customer: String) {
+        val kept = attempts().filterValues { now() - it.at < ATTEMPT_MAX_AGE_MILLIS } + (attempt to Attempt(customer, now()))
+        preferences.edit().putString(ATTEMPTS, Json.encodeToString(ATTEMPT_MAP, kept)).commit()
+    }
+
+    private fun forget(attempt: String) {
+        val attempts = attempts()
+        if (attempt in attempts) preferences.edit().putString(ATTEMPTS, Json.encodeToString(ATTEMPT_MAP, attempts - attempt)).commit()
+    }
+
+    /** The open sheet's attempt closed with nothing bought. */
+    private fun ended(attempt: String) {
+        forget(attempt)
+        if (launching == attempt) launching = null
+    }
+
+    /** Who bought [purchase]: its attempt's customer; null for a purchase no attempt here names. */
+    private fun ownerOf(purchase: StorePurchase): String? = purchase.attempt?.let { attempts()[it]?.customer }
+
     /** A new anonymous install customer, as RevenueCat's SDK makes them. */
     private fun fresh(): String {
         val id = ANONYMOUS + UUID.randomUUID().toString().replace("-", "").lowercase()
@@ -300,9 +355,13 @@ class Subscription(
         const val ANONYMOUS = "\$RCAnonymousID:"
         private const val INSTALL = "install"
         private const val CUSTOMER = "customer"
-        private const val OWNER = "owner"
+        private const val ATTEMPTS = "attempts"
         private const val POSTED = "posted"
         private const val POSTED_BY_INSTALL = "posted-by-install"
+
+        /** Longer than Play keeps a purchase pending. */
+        private const val ATTEMPT_MAX_AGE_MILLIS = 40 * 24 * 60 * 60 * 1000L
+        private val ATTEMPT_MAP = MapSerializer(String.serializer(), Attempt.serializer())
 
         private fun hash(token: String) = MessageDigest.getInstance("SHA-256").digest(token.toByteArray()).joinToString("") { "%02x".format(it) }
     }

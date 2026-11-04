@@ -1,5 +1,6 @@
 package com.slopus.happy.payments
 
+import android.app.Activity
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -14,6 +15,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Robolectric
 import java.time.Instant
 
 /**
@@ -29,6 +31,7 @@ class OffersTest {
     private val now = Instant.parse("2026-11-04T10:00:00Z").toEpochMilli()
     private val store = FakeStore()
     private val rc = FakeRevenueCat()
+    private val activity: Activity by lazy { Robolectric.buildActivity(Activity::class.java).get() }
 
     @Before fun clear() {
         preferences.edit().clear().commit()
@@ -82,12 +85,13 @@ class OffersTest {
 
     @Test
     fun proThatCameWhileUpClosesItAsBought() = runTest {
-        val (_, offers) = setUp()
+        val (subscription, offers) = setUp()
         val asked = async { offers.ask(OfferSheet.Required(offers.offer)) }
         runCurrent()
         assertTrue(offers.offer is Offer.OnSale)
         // The store's sheet came back bought, and RevenueCat took it.
-        store.updates.emit(listOf(StorePurchase("t1", listOf("happy"), purchased = true, acknowledged = false)))
+        assertTrue(subscription.buy(activity)); runCurrent()
+        store.emit(store.bought("t1"))
         runCurrent()
         assertEquals(OfferResult.Pro, asked.await())
         assertNull(offers.sheet.value)
@@ -95,10 +99,11 @@ class OffersTest {
 
     @Test
     fun theUsedUpSheetWaitsForItsCallerWhenProComes() = runTest {
-        val (_, offers) = setUp()
+        val (subscription, offers) = setUp()
         val asked = async { offers.ask(OfferSheet.Used(null, offers.offer)) }
         runCurrent()
-        store.updates.emit(listOf(StorePurchase("t1", listOf("happy"), purchased = true, acknowledged = false)))
+        assertTrue(subscription.buy(activity)); runCurrent()
+        store.emit(store.bought("t1"))
         runCurrent()
         assertTrue(offers.sheet.value is OfferSheet.Used)
         offers.dismiss()

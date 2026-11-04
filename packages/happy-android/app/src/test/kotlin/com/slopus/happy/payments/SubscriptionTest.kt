@@ -46,8 +46,16 @@ class SubscriptionTest {
     private fun TestScope.subscription(store: SubscriptionStore? = this@SubscriptionTest.store, rc: RevenueCat? = this@SubscriptionTest.rc) =
         Subscription(backgroundScope, store, rc, preferences, now = { now }).also { runCurrent() }
 
+    /** Bought elsewhere, or by RevenueCat's SDK: no attempt of this install's names it. */
     private fun bought(token: String, purchased: Boolean = true, acknowledged: Boolean = false, product: String = "happy") =
         StorePurchase(token, listOf(product), purchased, acknowledged)
+
+    /** Opens the store's sheet for [subscription]'s customer now and buys [token] there. */
+    private suspend fun TestScope.buys(subscription: Subscription, token: String, purchased: Boolean = true, product: String = "happy"): StorePurchase {
+        assertTrue(subscription.buy(activity))
+        runCurrent()
+        return store.bought(token, purchased, product)
+    }
 
     private fun posts() = rc.calls.filter { it.startsWith("post") }
 
@@ -81,12 +89,13 @@ class SubscriptionTest {
         val subscription = subscription()
         subscription.refresh(); runCurrent()
         rc.refusePosts = 400
-        store.updates.emit(listOf(bought("t1"))); runCurrent()
+        val t1 = buys(subscription, "t1")
+        store.emit(t1); runCurrent()
         assertTrue(store.acknowledged.isEmpty())
         assertNull(subscription.period())
         assertEquals(Subscription.Problem.Unconfirmed, subscription.problem.value)
         rc.refusePosts = null
-        store.updates.emit(listOf(bought("t1"))); runCurrent()
+        store.emit(t1); runCurrent()
         assertEquals(listOf("t1"), store.acknowledged)
         assertEquals(Offer.Subscribed, subscription.offer.value)
     }
@@ -95,25 +104,118 @@ class SubscriptionTest {
     fun aPendingPurchaseIsNeitherPostedNorAcknowledged() = runTest {
         val subscription = subscription()
         subscription.refresh(); runCurrent()
-        store.updates.emit(listOf(bought("t1", purchased = false))); runCurrent()
-        store.owned += bought("t1", purchased = false)
+        val pending = buys(subscription, "t1", purchased = false)
+        store.emit(pending); runCurrent()
+        store.owned += pending
         subscription.refresh(); runCurrent()
         assertTrue(posts().isEmpty())
         assertTrue(store.acknowledged.isEmpty())
     }
 
     @Test
-    fun theSweepFinishesWhatWasLeftUnfinishedWhateverIsOnSale() = runTest {
-        // An older product no longer offered, bought and never finished; and one already done.
-        store.monthly = null
-        store.owned += bought("t-old", product = "happy_old")
+    fun theSweepFinishesWhatWasLeftUnfinishedAfterARestartForItsBuyerWhateverIsOnSale() = runTest {
+        val first = subscription()
+        first.refresh(); runCurrent()
+        val install = first.customer
+        // Bought, and the app died before the store said so; then signed in, and the product went off sale.
+        store.owned += buys(first, "t-old", product = "happy_old")
         store.owned += bought("done", acknowledged = true, product = "relay_pro")
+        store.monthly = null
+        rc.pro["account-a"] = "happy"
+        val subscription = subscription()
+        subscription.relay("account-a"); runCurrent()
+        subscription.refresh(); runCurrent()
+        subscription.refresh(); runCurrent()
+        assertEquals(listOf("post $install t-old [happy_old] restore=false"), posts())
+        assertEquals(listOf("t-old"), store.acknowledged)
+    }
+
+    @Test
+    fun aPurchaseNoAttemptHereNamesIsLeftForRestore() = runTest {
+        store.owned += bought("elsewhere")
+        val subscription = subscription()
+        subscription.relay("account-a"); runCurrent()
+        subscription.refresh(); runCurrent()
+        assertTrue(posts().isEmpty())
+        assertTrue(store.acknowledged.isEmpty())
+        assertNotEquals(Subscription.Problem.Unconfirmed, subscription.problem.value)
+        assertTrue(subscription.restore())
+        assertEquals(listOf("post account-a elsewhere [happy] restore=true"), posts())
+    }
+
+    @Test
+    fun oneSheetAtATime() = runTest {
         val subscription = subscription()
         subscription.refresh(); runCurrent()
+        assertTrue(subscription.buy(activity))
+        assertFalse(subscription.buy(activity))
+        assertEquals(1, store.opened.size)
+        store.updates.emit(StoreUpdate.Cancelled); runCurrent()
+        assertTrue(subscription.buy(activity))
+    }
+
+    @Test
+    fun aCancelledSheetForOneAccountGivesTheNextNothing() = runTest {
+        val subscription = subscription()
+        subscription.relay("account-a"); runCurrent()
         subscription.refresh(); runCurrent()
-        assertEquals(listOf("post ${subscription.customer} t-old [happy_old] restore=false"), posts())
-        assertEquals(listOf("t-old"), store.acknowledged)
-        assertEquals(Offer.Subscribed, subscription.offer.value)
+        assertTrue(subscription.buy(activity)); runCurrent()
+        store.updates.emit(StoreUpdate.Cancelled); runCurrent()
+        subscription.relay("account-b"); runCurrent()
+        subscription.refresh(); runCurrent()
+        val b = buys(subscription, "tb")
+        store.emit(b); runCurrent()
+        assertEquals(listOf("post account-b tb [happy] restore=false"), posts())
+        assertTrue(subscription.pro.value)
+    }
+
+    @Test
+    fun aFailedSheetEndsItsAttemptToo() = runTest {
+        val subscription = subscription()
+        subscription.refresh(); runCurrent()
+        assertTrue(subscription.buy(activity)); runCurrent()
+        val attempt = store.opened.last().second
+        store.updates.emit(StoreUpdate.Failed(7)); runCurrent()
+        // Whatever later turns up named by it is no one's to post.
+        store.owned += StorePurchase("late", listOf("happy"), purchased = true, acknowledged = false, attempt = attempt)
+        subscription.refresh(); runCurrent()
+        assertTrue(posts().isEmpty())
+    }
+
+    @Test
+    fun aPendingPurchaseStaysItsBuyersThroughAnotherAccountsPurchase() = runTest {
+        val subscription = subscription()
+        subscription.relay("account-a"); runCurrent()
+        subscription.refresh(); runCurrent()
+        val pending = buys(subscription, "ta", purchased = false)
+        store.emit(pending); runCurrent()
+        subscription.relay("account-b"); runCurrent()
+        subscription.refresh(); runCurrent()
+        val b = buys(subscription, "tb")
+        store.emit(b); runCurrent()
+        // Paid for at last, days later: still account A's.
+        store.emit(pending.copy(purchased = true)); runCurrent()
+        assertEquals(listOf("post account-b tb [happy] restore=false", "post account-a ta [happy] restore=false"), posts())
+    }
+
+    @Test
+    fun aRestoreWhileAPurchaseIsPendingLeavesItForItsBuyer() = runTest {
+        val subscription = subscription()
+        subscription.relay("account-a"); runCurrent()
+        subscription.refresh(); runCurrent()
+        val pending = buys(subscription, "ta", purchased = false)
+        store.emit(pending); runCurrent()
+        store.owned += pending
+        store.owned += bought("old", acknowledged = true)
+        subscription.relay("account-b"); runCurrent()
+        subscription.restore()
+        assertEquals(listOf("post account-b old [happy] restore=true"), posts())
+        // Paid for, then the app restarted: the sweep posts it for A.
+        store.owned.replaceAll { if (it.token == "ta") it.copy(purchased = true) else it }
+        val again = subscription()
+        again.relay("account-b"); runCurrent()
+        again.refresh(); runCurrent()
+        assertEquals("post account-a ta [happy] restore=false", posts().last())
     }
 
     @Test
@@ -133,9 +235,10 @@ class SubscriptionTest {
 
     @Test
     fun boughtButUnconfirmedOffersNothingAndGrantsNothing() = runTest {
-        rc.refusePosts = 400
-        store.owned += bought("t1")
         val subscription = subscription()
+        subscription.refresh(); runCurrent()
+        rc.refusePosts = 400
+        store.owned += buys(subscription, "t1")
         subscription.refresh(); runCurrent()
         assertEquals(Offer.Unavailable, subscription.offer.value)
         assertEquals(Subscription.Problem.Unconfirmed, subscription.problem.value)
@@ -149,10 +252,10 @@ class SubscriptionTest {
         val subscription = subscription()
         subscription.refresh(); runCurrent()
         val install = subscription.customer
-        assertTrue(subscription.buy(activity))
+        val t1 = buys(subscription, "t1")
         // Signed in while the store's sheet was up.
         subscription.relay("account-a"); runCurrent()
-        store.updates.emit(listOf(bought("t1"))); runCurrent()
+        store.emit(t1); runCurrent()
         assertEquals(listOf("post $install t1 [happy] restore=false"), posts())
         assertEquals("account-a", subscription.customer)
         // The install's purchase isn't the account's access.
@@ -161,8 +264,9 @@ class SubscriptionTest {
 
     @Test
     fun signingInMergesWhatTheInstallBoughtFirstAndSigningOutNeverGoesBackToIt() = runTest {
-        store.owned += bought("t1")
         val subscription = subscription()
+        subscription.refresh(); runCurrent()
+        store.owned += buys(subscription, "t1")
         subscription.refresh(); runCurrent()
         val install = subscription.customer
         subscription.relay("account-a"); runCurrent()
@@ -235,8 +339,9 @@ class SubscriptionTest {
 
     @Test
     fun aFailedMergeKeepsTheInstallAndPostsNothingUnderTheAccount() = runTest {
-        store.owned += bought("t1")
         val subscription = subscription()
+        subscription.refresh(); runCurrent()
+        store.owned += buys(subscription, "t1")
         subscription.refresh(); runCurrent()
         val install = subscription.customer
         rc.identifyFails = true
@@ -270,8 +375,9 @@ class SubscriptionTest {
 
     @Test
     fun aMergeThatAnsweredAfterASignOutStillRetiresTheInstallId() = runTest {
-        store.owned += bought("t1")
         val subscription = subscription()
+        subscription.refresh(); runCurrent()
+        store.owned += buys(subscription, "t1")
         subscription.refresh(); runCurrent()
         val install = subscription.customer
         rc.hold["identify"] = CompletableDeferred()
@@ -302,8 +408,9 @@ class SubscriptionTest {
 
     @Test
     fun offlineKeepsWhatRevenueCatSaidForADay() = runTest {
-        store.owned += bought("t1")
         val subscription = subscription()
+        subscription.refresh(); runCurrent()
+        store.owned += buys(subscription, "t1")
         subscription.refresh(); runCurrent()
         rc.unreachable = true
         subscription.refresh(); runCurrent()
