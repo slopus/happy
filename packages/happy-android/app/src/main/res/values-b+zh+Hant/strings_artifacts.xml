@@ -104,6 +104,11 @@
     <string name="feed_created">已建立</string>
     <string name="feed_changed">已變更</string>
     <string name="feed_peek_empty">過去 30 天這裡沒有任何動態。</string>
+    <string name="feed_you">你</string>
+    <string name="feed_two">%1$s和%2$s</string>
+    <plurals name="feed_others">
+        <item quantity="other">%1$s和另外 %2$d 位</item>
+    </plurals>
     <plurals name="feed_unread">
         <item quantity="other">%1$d 則未讀</item>
     </plurals>

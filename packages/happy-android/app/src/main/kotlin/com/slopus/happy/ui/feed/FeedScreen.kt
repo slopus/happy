@@ -66,6 +66,7 @@ import com.slopus.happy.agent.FolderMark
 import com.slopus.happy.agent.string
 import com.slopus.happy.artifacts.DateBucket
 import com.slopus.happy.feed.FeedCluster
+import com.slopus.happy.feed.FeedActorName
 import com.slopus.happy.feed.FeedFace
 import com.slopus.happy.feed.FeedItem
 import com.slopus.happy.feed.FeedLibrary
@@ -173,6 +174,16 @@ class FeedWords(private val resources: Resources) {
     val peekEmpty: String = resources.getString(R.string.feed_peek_empty)
 
     fun follow(name: String): String = resources.getString(R.string.feed_follow, name)
+
+    /** Who acted, for TalkBack (iOS `FeedWords.actors`): one or two names in full, then how many more, counting those not known by name. */
+    fun actors(names: List<FeedActorName>, count: Int): String {
+        val shown = names.map { if (it is FeedActorName.Named) it.name else resources.getString(R.string.feed_you) }
+        val total = maxOf(count, shown.size)
+        val first = shown.firstOrNull() ?: return ""
+        if (total == 1) return first
+        if (total == 2 && shown.size >= 2) return resources.getString(R.string.feed_two, first, shown[1])
+        return resources.getQuantityString(R.plurals.feed_others, total - 1, first, total - 1)
+    }
     fun mute(name: String): String = resources.getString(R.string.feed_mute, name)
     fun followFailed(reason: String): String = resources.getString(R.string.feed_follow_failed, reason).trim()
 
@@ -571,7 +582,9 @@ private fun FeedEntryRow(item: FeedListItem.Row, onOpen: (FeedRow) -> Unit) {
                 .fillMaxWidth()
                 .padding(horizontal = CardListSpec.inset, vertical = CardListSpec.padding)
                 .semantics(mergeDescendants = true) {
-                    stateDescription = listOfNotNull(if (row.unread) words.unreadMark else null, item.summary, item.time).joinToString(", ")
+                    stateDescription = listOfNotNull(
+                        if (row.unread) words.unreadMark else null, item.summary, words.actors(row.actorNames, row.actorCount).ifEmpty { null }, item.time,
+                    ).joinToString(", ")
                 },
             verticalAlignment = Alignment.CenterVertically,
         ) {

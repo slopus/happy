@@ -22,6 +22,7 @@ import com.slopus.happy.agent.AgentFeed
 import com.slopus.happy.agent.Wire
 import com.slopus.happy.agent.WireDesktopBootstrap
 import com.slopus.happy.feed.FeedActor
+import com.slopus.happy.feed.FeedActorName
 import com.slopus.happy.feed.FeedCluster
 import com.slopus.happy.feed.FeedItem
 import com.slopus.happy.feed.FeedLatest
@@ -89,6 +90,24 @@ class FeedScreenTest {
     private val state = FeedLibrary.State(available = true, items = items, unread = 2, loaded = true)
 
     private fun rows(state: FeedLibrary.State): List<FeedRow> = FeedRows.make(state.items, state::isUnread, catalog, found, "conn")
+
+    @Test fun `who acted is said in full for one or two, then how many more`() {
+        val words = FeedWords(androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>().resources)
+        val ann = FeedActorName.Named("Ann")
+        assertEquals("", words.actors(emptyList(), 0))
+        assertEquals("You", words.actors(listOf(FeedActorName.You), 1))
+        assertEquals("Ann and You", words.actors(listOf(ann, FeedActorName.You), 2))
+        assertEquals("Ann and 1 other", words.actors(listOf(ann), 2))
+        assertEquals("Ann and 4 others", words.actors(listOf(ann, FeedActorName.You), 5))
+    }
+
+    @Test
+    @Config(qualifiers = "ru")
+    fun `who acted counts in the language's plural forms`() {
+        val words = FeedWords(androidx.test.core.app.ApplicationProvider.getApplicationContext<android.content.Context>().resources)
+        assertEquals("Ann и ещё 4", words.actors(listOf(FeedActorName.Named("Ann")), 5))
+        assertEquals("Ann и Вы", words.actors(listOf(FeedActorName.Named("Ann"), FeedActorName.You), 2))
+    }
 
     private fun shot(name: String) {
         rule.waitForIdle()

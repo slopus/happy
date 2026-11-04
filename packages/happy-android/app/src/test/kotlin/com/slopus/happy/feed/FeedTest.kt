@@ -252,12 +252,34 @@ class FeedTest {
         // desktop 0ffabe03, iOS FeedDirectory.face: the person, and the standalone reader, wear their photo.
         val mine = synced.copy(userId = "me")
         val hash = "1QcSHQRnh493V4dIh4eXh1h4kJUI"
-        val photo = FeedFace.Mark("me", round = true, picture = "/v0/profile/photo", thumbhash = hash)
+        // In a team the person's own is read as any member's; standalone, from the profile.
+        val photo = FeedFace.Mark("me", round = true, picture = "/v0/users/me/photo", thumbhash = hash)
         assertEquals(photo, FeedRows.face(FeedActor(userId = "me"), mine, emptyMap(), "conn", hash))
-        assertEquals(photo.copy(seed = "conn"), FeedRows.face(FeedActor(), synced.copy(userId = null), emptyMap(), "conn", hash))
+        assertEquals(FeedFace.Mark("conn", round = true, picture = "/v0/profile/photo", thumbhash = hash), FeedRows.face(FeedActor(), synced.copy(userId = null), emptyMap(), "conn", hash))
         // Someone else, or no photo: the placeholder.
         assertEquals(FeedFace.Mark("u2", round = true), FeedRows.face(FeedActor(userId = "u2"), mine, emptyMap(), "conn", hash))
         assertEquals(FeedFace.Mark("me", round = true), FeedRows.face(FeedActor(userId = "me"), mine, emptyMap(), "conn", null))
+    }
+
+    @Test
+    fun inATeamPeopleWearTheirFacesAndNamesAndATaskItsAuthors() {
+        val hash = "1QcSHQRnh493V4dIh4eXh1h4kJUI"
+        val team = catalog(
+            Wire.bootstrap(tasks = listOf(JsonObject(Wire.task("t1", "Fix login", Wire.agent("at1")) + ("ownerUserId" to kotlinx.serialization.json.JsonPrimitive("u2"))))),
+        )
+        val users = mapOf("u2" to com.slopus.happy.agent.TeamUser("u2", "Ann", hash), "u3" to com.slopus.happy.agent.TeamUser("u3", "Bo"))
+        val items = listOf(
+            item("e1", "c1", subject = FeedSubject("task", "t1"), actors = listOf(FeedActor(userId = "u2"), FeedActor(userId = "u3"), FeedActor(userId = Wire.USER), FeedActor(userId = "u9"), FeedActor(agentId = "at1")), actorCount = 6),
+        )
+        // Who the Feed needs read: the actors and the task's author, not the person.
+        assertEquals(setOf("u2", "u3", "u9"), FeedRows.people(items, team))
+        val row = FeedRows.make(items, { false }, team, FeedLookups.Found(), "conn", users = users).single()
+        // The task wears its author's face, a rounded square.
+        assertEquals(FeedFace.Mark("u2", round = false, picture = "/v0/users/u2/photo", thumbhash = hash), row.face)
+        assertEquals(FeedFace.Mark("u2", round = true, picture = "/v0/users/u2/photo", thumbhash = hash), row.actors[0])
+        assertEquals(FeedFace.Mark("u3", round = true), row.actors[1])
+        // Names as known: the person is You; one not read yet is left out; an agent its task's name.
+        assertEquals(listOf(FeedActorName.Named("Ann"), FeedActorName.Named("Bo"), FeedActorName.You, FeedActorName.Named("Fix login")), row.actorNames)
     }
 
     @Test

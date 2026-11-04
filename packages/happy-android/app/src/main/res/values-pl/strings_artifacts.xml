@@ -110,6 +110,14 @@
     <string name="feed_created">Utworzono</string>
     <string name="feed_changed">Zmieniono</string>
     <string name="feed_peek_empty">Przez ostatnie 30 dni nic się tu nie wydarzyło.</string>
+    <string name="feed_you">Ty</string>
+    <string name="feed_two">%1$s i %2$s</string>
+    <plurals name="feed_others">
+        <item quantity="one">%1$s i jeszcze %2$d</item>
+        <item quantity="few">%1$s i jeszcze %2$d</item>
+        <item quantity="many">%1$s i jeszcze %2$d</item>
+        <item quantity="other">%1$s i jeszcze %2$d</item>
+    </plurals>
     <plurals name="feed_unread">
         <item quantity="one">%1$d nieprzeczytany</item>
         <item quantity="few">%1$d nieprzeczytane</item>

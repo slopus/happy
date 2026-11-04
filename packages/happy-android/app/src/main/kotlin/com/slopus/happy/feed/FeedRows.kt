@@ -3,6 +3,7 @@ package com.slopus.happy.feed
 import androidx.compose.runtime.Immutable
 import com.slopus.happy.agent.AgentApiException
 import com.slopus.happy.agent.AgentCatalog
+import com.slopus.happy.agent.TeamUser
 import com.slopus.happy.agent.AgentClient
 import com.slopus.happy.agent.decode
 import com.slopus.happy.agent.AgentEvent
@@ -79,6 +80,8 @@ data class FeedRow(
     val updates: Int,
     /** Who acted, the first few, in the order they first did. */
     val actors: List<FeedFace>,
+    /** What those of them this phone knows are called, in the same order, for TalkBack. */
+    val actorNames: List<FeedActorName> = emptyList(),
     val actorCount: Int,
     /** When it last changed, ms. */
     val lastAt: Long,
@@ -86,6 +89,13 @@ data class FeedRow(
     /** Null where nothing opens it (a deleted artifact). */
     val target: FeedTarget?,
 )
+
+/** What an actor is called (iOS `FeedActorName`): the person reading, or a name. */
+@Immutable
+sealed interface FeedActorName {
+    data object You : FeedActorName
+    data class Named(val name: String) : FeedActorName
+}
 
 /**
  * What the Feed names that the connection doesn't sync whole (iOS
@@ -191,24 +201,57 @@ object FeedRows {
      * A row for each entry that can be shown, in their order. An entry
      * whose subject isn't held is left out, never shown with a stand-in.
      */
-    /** [photo] is the person's own profile photo's ThumbHash, which their face wears (desktop 0ffabe03). */
-    fun make(items: List<FeedItem>, unread: (FeedItem) -> Boolean, catalog: AgentCatalog, found: FeedLookups.Found, personSeed: String, photo: String? = null): List<FeedRow> {
-        val owners = owners(catalog)
-        return items.mapNotNull { row(it, unread(it), catalog, found, owners, personSeed, photo) }
+    /**
+     * [photo] is the person's own profile photo's ThumbHash, which their
+     * face wears (desktop 0ffabe03); [users] the team members read so far
+     * ([com.slopus.happy.agent.TeamDirectory]), whose faces and names theirs.
+     */
+    fun make(
+        items: List<FeedItem>, unread: (FeedItem) -> Boolean, catalog: AgentCatalog, found: FeedLookups.Found, personSeed: String,
+        photo: String? = null, users: Map<String, TeamUser> = emptyMap(),
+    ): List<FeedRow> {
+        val owners = owners(catalog, photo, users)
+        return items.mapNotNull { row(it, unread(it), catalog, found, owners, personSeed, photo, users) }
     }
 
-    /** A bot's or task's conversation: the face it wears, by agent ID. */
-    internal class Owner(val face: FeedFace.Mark)
+    /**
+     * The team members [items] show (iOS `FeedDirectory.named.people`): who
+     * acted, and a task's author, other than the person; none outside a team.
+     */
+    fun people(items: List<FeedItem>, catalog: AgentCatalog): Set<String> {
+        val me = catalog.userId ?: return emptySet()
+        val people = HashSet<String>()
+        for (item in items) {
+            if (item.subject.type == "task") catalog.tasks[item.subject.id]?.string("ownerUserId")?.let(people::add)
+            item.actors.mapNotNullTo(people) { it.userId }
+        }
+        return people - me
+    }
 
-    internal fun owners(catalog: AgentCatalog): Map<String, Owner> {
+    /** A bot's or task's conversation: the face it wears and what it is called, by agent ID. */
+    internal class Owner(val face: FeedFace.Mark, val name: String?)
+
+    internal fun owners(catalog: AgentCatalog, photo: String? = null, users: Map<String, TeamUser> = emptyMap()): Map<String, Owner> {
         val owners = HashMap<String, Owner>()
         for ((kind, list) in listOf("task" to catalog.tasks.values, "bot" to catalog.bots.values)) {
             for (owner in list) {
                 val agentId = (owner["agent"] as? JsonObject)?.string("id") ?: continue
-                owners[agentId] = Owner(mark(kind, owner))
+                val name = owner.string("name") ?: (owner["agent"] as? JsonObject)?.string("title")
+                owners[agentId] = Owner(mark(kind, owner, catalog, photo, users), name)
             }
         }
         return owners
+    }
+
+    /**
+     * A bot's or task's mark, as home's rows wear it: in a team, a task its
+     * author's face (iOS `SidebarRows.ownerMark`), the person's own from
+     * [photo], another member's from [users], else that member's placeholder.
+     */
+    internal fun mark(kind: String, owner: JsonObject, catalog: AgentCatalog, photo: String?, users: Map<String, TeamUser>): FeedFace.Mark {
+        val author = owner.string("ownerUserId")?.takeIf { kind == "task" && catalog.userId != null } ?: return mark(kind, owner)
+        val face = if (author == catalog.userId) photo else users[author]?.photo
+        return FeedFace.Mark(author, round = false, picture = face?.let { TeamUser.photoPath(author) }, thumbhash = face)
     }
 
     /** A bot's or task's mark, as home's rows wear it. */
@@ -224,7 +267,10 @@ object FeedRows {
         )
     }
 
-    private fun row(item: FeedItem, unread: Boolean, catalog: AgentCatalog, found: FeedLookups.Found, owners: Map<String, Owner>, personSeed: String, photo: String?): FeedRow? {
+    private fun row(
+        item: FeedItem, unread: Boolean, catalog: AgentCatalog, found: FeedLookups.Found, owners: Map<String, Owner>, personSeed: String,
+        photo: String?, users: Map<String, TeamUser>,
+    ): FeedRow? {
         val id = item.subject.id
         val title: String
         val face: FeedFace
@@ -238,7 +284,7 @@ object FeedRows {
                 val name = owner.string("name") ?: (owner["agent"] as? JsonObject)?.string("title")
                 if (name.isNullOrEmpty()) return null
                 title = name
-                face = mark(item.subject.type, owner)
+                face = mark(item.subject.type, owner, catalog, photo, users)
                 kind = if (isBot) FeedSubjectKind.Bot else FeedSubjectKind.Task
                 target = (owner["agent"] as? JsonObject)?.string("id")?.let { FeedTarget.Chat(it, name) }
             }
@@ -273,7 +319,8 @@ object FeedRows {
             detail = detail?.trim()?.replace('\n', ' ')?.takeIf { it.isNotEmpty() },
             created = item.created,
             updates = item.updates,
-            actors = item.actors.take(MAX_FACES).map { face(it, catalog, owners, personSeed, photo) },
+            actors = item.actors.take(MAX_FACES).map { face(it, catalog, owners, personSeed, photo, users) },
+            actorNames = item.actors.mapNotNull { name(it, catalog, owners, users) },
             actorCount = maxOf(item.actorCount, item.actors.size),
             lastAt = item.lastAt,
             unread = unread,
@@ -283,17 +330,30 @@ object FeedRows {
 
     /**
      * Who made a change (iOS `FeedDirectory.face`): an agent wears its bot's
-     * or task's face, else its own placeholder; the person, or nobody
-     * (standalone: the installation's one person), their profile photo over
-     * its ThumbHash, else their placeholder, round. Anyone else their
-     * placeholder: this phone keeps no team directory.
+     * or task's face, else its own placeholder; a person their picture over
+     * its ThumbHash (the person's own from [photo], a member's as read into
+     * [users]), else their placeholder, round; nobody (standalone) the
+     * installation's one person.
      */
-    internal fun face(actor: FeedActor, catalog: AgentCatalog, owners: Map<String, Owner>, personSeed: String, photo: String? = null): FeedFace {
+    internal fun face(
+        actor: FeedActor, catalog: AgentCatalog, owners: Map<String, Owner>, personSeed: String,
+        photo: String? = null, users: Map<String, TeamUser> = emptyMap(),
+    ): FeedFace {
         actor.agentId?.let { agentId -> return owners[agentId]?.face ?: FeedFace.Mark(agentId, round = false) }
-        val seed = actor.userId ?: catalog.userId ?: personSeed
-        val own = actor.userId == null || actor.userId == catalog.userId
-        if (own && photo != null) return FeedFace.Mark(seed, round = true, picture = PROFILE_PHOTO, thumbhash = photo)
-        return FeedFace.Mark(seed, round = true)
+        val id = actor.userId ?: return FeedFace.Mark(catalog.userId ?: personSeed, round = true, picture = photo?.let { PROFILE_PHOTO }, thumbhash = photo)
+        val face = if (id == catalog.userId) photo else users[id]?.photo
+        return FeedFace.Mark(id, round = true, picture = face?.let { TeamUser.photoPath(id) }, thumbhash = face)
+    }
+
+    /** What [actor] is called (iOS `FeedDirectory.name`); null while this phone doesn't know. */
+    internal fun name(actor: FeedActor, catalog: AgentCatalog, owners: Map<String, Owner>, users: Map<String, TeamUser>): FeedActorName? {
+        actor.agentId?.let { agentId ->
+            val name = owners[agentId]?.name ?: catalog.agent(agentId)?.title
+            return name?.takeIf { it.isNotEmpty() }?.let(FeedActorName::Named)
+        }
+        val id = actor.userId
+        if (id != null && id != catalog.userId) return users[id]?.name?.takeIf { it.isNotEmpty() }?.let(FeedActorName::Named)
+        return FeedActorName.You
     }
 
     /** The person's own photo, as the agent serves it. */

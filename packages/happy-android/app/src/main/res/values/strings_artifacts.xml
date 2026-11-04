@@ -122,6 +122,12 @@
     <string name="feed_created">Created</string>
     <string name="feed_changed">Changed</string>
     <string name="feed_peek_empty">Nothing has happened here in the last 30 days.</string>
+    <string name="feed_you">You</string>
+    <string name="feed_two">%1$s and %2$s</string>
+    <plurals name="feed_others">
+        <item quantity="one">%1$s and %2$d other</item>
+        <item quantity="other">%1$s and %2$d others</item>
+    </plurals>
     <plurals name="feed_unread">
         <item quantity="one">%1$d unread</item>
         <item quantity="other">%1$d unread</item>

@@ -136,11 +136,13 @@ private fun AgentFeed(graph: AppGraph, nav: NavHostController, route: AgentFeedR
     val found by lookups.found.collectAsStateWithLifecycle()
     val places by following.state.collectAsStateWithLifecycle()
     val photo = rememberProfilePhoto(session)
+    val users by session.team.users.collectAsStateWithLifecycle()
     // The newest page each time the Feed opens; what entries name that the catalog doesn't hold, as they come.
     LaunchedEffect(library) { library.refresh() }
     LaunchedEffect(state.items) { lookups.want(state.items) }
-    val rows by produceState(emptyList<FeedRow>(), state, catalog, found, photo) {
-        value = withContext(Dispatchers.Default) { FeedRows.make(state.items, state::isUnread, catalog, found, route.connectionId, photo) }
+    LaunchedEffect(state.items, catalog.userId) { session.team.want(FeedRows.people(state.items, catalog)) }
+    val rows by produceState(emptyList<FeedRow>(), state, catalog, found, photo, users) {
+        value = withContext(Dispatchers.Default) { FeedRows.make(state.items, state::isUnread, catalog, found, route.connectionId, photo, users) }
     }
     val scope = holder.viewModelScope
     FeedScreen(
@@ -208,10 +210,12 @@ private fun AgentFeedPeek(graph: AppGraph, nav: NavHostController, route: AgentF
     val catalog by session.catalog.collectAsStateWithLifecycle()
     val found by lookups.found.collectAsStateWithLifecycle()
     val photo = rememberProfilePhoto(session)
+    val users by session.team.users.collectAsStateWithLifecycle()
     LaunchedEffect(peek.items) { lookups.want(peek.items) }
+    LaunchedEffect(peek.items, catalog.userId) { session.team.want(FeedRows.people(peek.items, catalog)) }
     // None carries the dot: a peek reads nothing.
-    val rows by produceState(emptyList<FeedRow>(), peek, catalog, found, photo) {
-        value = withContext(Dispatchers.Default) { FeedRows.make(peek.items, { false }, catalog, found, route.connectionId, photo) }
+    val rows by produceState(emptyList<FeedRow>(), peek, catalog, found, photo, users) {
+        value = withContext(Dispatchers.Default) { FeedRows.make(peek.items, { false }, catalog, found, route.connectionId, photo, users) }
     }
     // The place's own name, as it is now.
     val title = remember(catalog, words) { FeedPlace.of(route.feedCluster, catalog, words)?.name.orEmpty() }

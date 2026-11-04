@@ -104,6 +104,11 @@
     <string name="feed_created">作成</string>
     <string name="feed_changed">変更</string>
     <string name="feed_peek_empty">過去30日間、ここでは何も起きていません。</string>
+    <string name="feed_you">あなた</string>
+    <string name="feed_two">%1$sと%2$s</string>
+    <plurals name="feed_others">
+        <item quantity="other">%1$sほか%2$d人</item>
+    </plurals>
     <plurals name="feed_unread">
         <item quantity="other">未読 %1$d 件</item>
     </plurals>
