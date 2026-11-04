@@ -758,11 +758,17 @@ internal class FoldHold(private val list: androidx.compose.foundation.lazy.LazyL
 
     /** The person's message [key] is tapped open or shut while the list shows [rows]. */
     fun toggleMessage(key: String, rows: List<ConversationRow>) {
-        val visible = list.layoutInfo.visibleItemsInfo
-        val at = visible.indexOfFirst { it.key == key }
-        val over = visible.getOrNull(at + 1)?.takeIf { at >= 0 && it.index == visible[at].index + 1 }
+        val info = list.layoutInfo
+        val message = info.visibleItemsInfo.firstOrNull { it.key == key }
         val opened = (rows.firstOrNull { it.key == key } as? ConversationRow.User)?.opened
-        held = if (over != null && opened != null) Held(over.key, over.offset) { (it.firstOrNull { row -> row.key == key } as? ConversationRow.User)?.opened != opened } else null
+        // The row over it, where it is or, past the screen's edge (a folded message is seventy lines), where it would be.
+        val index = rows.indexOfFirst { it.key == key } + 1
+        val overKey = rows.getOrNull(index)?.key ?: OLDER_KEY.takeIf { index == rows.size }
+        held = if (message != null && opened != null && overKey != null) {
+            Held(overKey, message.offset + message.size + info.mainAxisItemSpacing) { (it.firstOrNull { row -> row.key == key } as? ConversationRow.User)?.opened != opened }
+        } else {
+            null
+        }
     }
 
     /** The rows composed now: once the row has turned, the held one is put back where it was, before they are laid out. */

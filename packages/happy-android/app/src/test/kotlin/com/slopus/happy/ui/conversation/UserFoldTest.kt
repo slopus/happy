@@ -43,9 +43,9 @@ import java.io.File
 import kotlin.math.abs
 
 /**
- * A person's long message folds at ten lines behind Show full, as desktop's
- * Message and iOS's bubble (c52fd2842); each test writes its picture under
- * build/conversation-screens.
+ * A person's message shows whole; only one past [UserFold.FOLD_LINES] (70)
+ * lines folds behind Show full (iOS 3928f0f21); each test writes its
+ * picture under build/conversation-screens.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = PHONE)
@@ -55,7 +55,7 @@ class UserFoldTest {
     val rule = createComposeRule()
 
     private val agent = AgentInfo("a1", "w1", null, "Release notes", "idle", null, null, 1_755_300_000_000, 1_755_400_000_000, 0, 2)
-    private val long = (1..30).joinToString("\n") { "Step $it of the plan" }
+    private val long = (1..100).joinToString("\n") { "Step $it of the plan" }
     private val opens = ArrayList<String>()
 
     private fun user(key: String, text: String) =
@@ -88,19 +88,19 @@ class UserFoldTest {
     private fun near(message: String, expected: Dp, actual: Dp, slack: Dp = 1.dp) =
         assertTrue("$message: $actual, not $expected", abs((expected - actual).value) <= slack.value)
 
-    @Test fun `past ten lines the bubble shows ten, Show full 8 under them, and the time on its line`() {
+    @Test fun `past seventy lines the bubble shows seventy, Show full 8 under them, and the time on its line`() {
         show(user("m1:user", long))
         val control = rule.node(ConversationRowTags.USER_FOLD)
         control.assertTextEquals("Show full")
         val bubble = rule.node(MessageTags.USER_BUBBLE).bounds
         val fold = control.bounds
-        // Ten lines, each its own paragraph (8 over, 25 tall, 10 under), over the 8 gap and the 16 line, in the bubble's padding.
+        // Seventy lines, each its own paragraph (8 over, 25 tall, 10 under), over the 8 gap and the 16 line, in the bubble's padding.
         val top = bubble.top + MessageSpec.bubblePaddingVertical
-        near("cut at the tenth line's foot, 8 over the control", (8 + 9 * 43 + 25 + 8).dp, fold.top - top)
+        near("cut at the seventieth line's foot, 8 over the control", (8 + 69 * 43 + 25 + 8).dp, fold.top - top)
         assertDp("control line", 16, fold.height)
         near("bubble foot", fold.bottom + MessageSpec.bubblePaddingVertical, bubble.bottom)
         // Step 30 is not drawn, but read: a screen reader has it whole.
-        rule.onNodeWithText("Step 30 of the plan", substring = true, useUnmergedTree = true).assertExists()
+        rule.onNodeWithText("Step 100 of the plan", substring = true, useUnmergedTree = true).assertExists()
         // The time rides on the control's line.
         val status = rule.node(DeliveryTags.STATUS).bounds
         assertTrue("time on the control's line: $status vs $fold", status.bottom > fold.top && status.top < fold.bottom)
@@ -130,17 +130,16 @@ class UserFoldTest {
         // History above it, so the list has somewhere to go.
         val older = (1..12).map { answer("h$it:0", "Earlier answer $it, a line or two of it to read.") }
         show(user("m1:user", long), answer("a:0", "Ready when you are."), *older.toTypedArray())
-        val over = rule.onNodeWithText("Ready when you are.").bounds
+        // Seventy lines are taller than the screen, so the row over it is out of sight: the bubble's top stands for it.
         val top = rule.node(MessageTags.USER_BUBBLE).bounds.top
         rule.node(MessageTags.USER_BUBBLE).performClick()
         rule.waitForIdle()
-        assertEquals(over, rule.onNodeWithText("Ready when you are.").bounds)
         assertDp("bubble top", top, rule.node(MessageTags.USER_BUBBLE).bounds.top)
         shot("user-fold-opened-in-place")
     }
 
-    @Test fun `ten lines or fewer is the plain bubble a tap does nothing to, and a hold still copies`() {
-        show(user("m1:user", (1..10).joinToString("\n") { "Line $it" }))
+    @Test fun `an ordinary paste of thirty lines shows whole, the plain bubble a tap does nothing to, and a hold still copies`() {
+        show(user("m1:user", (1..30).joinToString("\n") { "Line $it" }))
         rule.node(ConversationRowTags.USER_FOLD).assertDoesNotExist()
         rule.node(MessageTags.USER_BUBBLE).assert(SemanticsMatcher.keyNotDefined(SemanticsActions.OnClick))
         rule.node(MessageTags.USER_BODY).assert(SemanticsMatcher.keyIsDefined(SemanticsActions.OnLongClick))
@@ -148,9 +147,9 @@ class UserFoldTest {
     }
 
     @Test fun `a wrapped paragraph and code count their own lines`() {
-        // Eleven: six of words wrapped in the bubble, then five of code.
+        // Seventy-one: six of words wrapped in the bubble, then sixty-five of code.
         val words = List(6) { "word" }.joinToString(" ") { it.repeat(6) }
-        show(user("m1:user", "$words\n\n```\n${(1..5).joinToString("\n") { "line($it)" }}\n```"))
+        show(user("m1:user", "$words\n\n```\n${(1..65).joinToString("\n") { "line($it)" }}\n```"))
         rule.node(ConversationRowTags.USER_FOLD).assertTextEquals("Show full")
         shot("user-fold-code")
     }

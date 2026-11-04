@@ -1212,12 +1212,13 @@ workspace's own Git changes (`WorkspaceChangesRoute`, `WorkspaceGit` over
 `/v0/workspaces/:id/git`, `file-revision` and `file`); five files or fewer
 open whole.
 
-A person's message past ten lines folds the same way (`UserFold` in
-ProseViews; iOS c52fd2842). `Prose.cut` counts the laid-out lines, so the
-cut is decided while composing and not after measuring. Code and tables
-count their own lines. The bubble shows the lines up to the tenth line's
-foot, then "Show full". If that line is inside code, the cut falls at ten
-lines of text height. A tap on the bubble calls `Conversation.toggleMessage`
+A person's message shows whole; only a ludicrous paste, past seventy
+lines of its own text whatever the screen, folds the same way (`UserFold`
+in ProseViews; iOS c52fd2842, 3928f0f21). `Prose.cut` counts the laid-out
+lines, so the cut is decided while composing and not after measuring. Code
+and tables count their own lines. The bubble shows the lines up to the
+seventieth line's foot, then "Show full". If that line is inside code, the
+cut falls at seventy lines of text height. A tap on the bubble calls `Conversation.toggleMessage`
 and flips `ConversationRow.User.opened`. `FoldHold` keeps the row above the
 message in place, so the bubble opens downward.
 

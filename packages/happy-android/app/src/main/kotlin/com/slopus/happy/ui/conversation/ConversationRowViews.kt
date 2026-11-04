@@ -314,7 +314,7 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
     }
     // Past its first lines it is cut, and a tap on the bubble opens it or cuts it back ([UserFold]).
     val prose = if (row.text.isNotEmpty()) rememberProse(ProseSource(row.key, ProseKind.User, row.text, row.blocks)) else null
-    val cut = remember(prose) { prose?.cut(UserFold.PREVIEW_LINES) }
+    val cut = remember(prose) { prose?.cut(UserFold.FOLD_LINES) }
     val toggle = stringResource(if (row.opened) R.string.machine_launcher_show_less else R.string.conversation_show_full)
     if (row.text.isNotEmpty() || failed) {
         UserMessage(

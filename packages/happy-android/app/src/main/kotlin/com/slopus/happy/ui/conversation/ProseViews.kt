@@ -623,20 +623,22 @@ internal fun CollaboratorProse(row: ConversationRow.Collaborator, callbacks: Mes
 }
 
 /**
- * A person's long message is cut at its first lines until tapped open, as
- * desktop's Message and iOS's bubble are (MESSAGE_PREVIEW_HEIGHT; iOS
- * c52fd2842): past [PREVIEW_LINES] lines it shows those, to the foot of the
- * last, and Show full [gap] under them in [control], the time on that line;
- * opened, all of it and Show less. Cut, it keeps the whole text's width, so
- * opening only grows it down.
+ * A person's message shows whole; only a ludicrously long one is cut at its
+ * first lines until tapped open (iOS 3928f0f21 `MessageLayout.foldLines`):
+ * past [FOLD_LINES] lines of its own text, whatever the screen, a pasted
+ * log or file shows those, to the foot of the last, and Show full [gap]
+ * under them in [control], the time on that line; opened, all of it and
+ * Show less. Cut, it keeps the whole text's width, so opening only grows it
+ * down. (Desktop cuts at ten lines; on a phone that hid most of an ordinary
+ * paste behind a tap.)
  */
 object UserFold {
-    const val PREVIEW_LINES = 10
+    const val FOLD_LINES = 70
     val gap = 8.dp
     val control = TurnRowSpec.traceMeta
 
-    /** Where a cut whose last line is in code or a table falls, in [density]'s pixels: ten lines of text. */
-    fun limit(density: Density): Int = with(density) { (MarkdownSpec.text.lineHeight * PREVIEW_LINES).toPx().roundToInt() }
+    /** Where a cut whose last line is in code or a table falls, in [density]'s pixels: [FOLD_LINES] lines of text. */
+    fun limit(density: Density): Int = with(density) { (MarkdownSpec.text.lineHeight * FOLD_LINES).toPx().roundToInt() }
 }
 
 /**
