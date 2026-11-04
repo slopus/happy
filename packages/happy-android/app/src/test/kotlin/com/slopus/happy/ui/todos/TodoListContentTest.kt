@@ -83,6 +83,33 @@ class TodoListContentTest {
         rule.mainClock.autoAdvance = true
     }
 
+    @Test fun switchingEditorsSavesThePreviousRowBeforeChangingItsOwner() {
+        val edits = mutableListOf<Pair<String, String>>()
+        rule.setHappyContent {
+            TodoListContent(TodoListState(status = TodoListState.Status.Ready, active = listOf(milk, bread)),
+                actions(edit = { id, text -> edits += id to text }))
+        }
+        rule.waitUntilAtLeastOneExists(hasTestTag("todo.row.bread"), 5_000)
+        rule.onNodeWithContentDescription("Milk").performClick()
+        rule.node("todo.editor").performTextReplacement("Oat milk")
+        rule.onNodeWithContentDescription("Bread").performClick()
+        rule.node("todo.editor").performTextReplacement("Rolls")
+        rule.node("todo.editor").performImeAction()
+        rule.runOnIdle { assertEquals(listOf("milk" to "Oat milk", "bread" to "Rolls"), edits) }
+    }
+
+    @Test fun returningFromAnEmptyAddDismissesItWithoutCreatingATodo() {
+        val additions = mutableListOf<String>()
+        rule.setHappyContent {
+            TodoListContent(TodoListState(status = TodoListState.Status.Ready), actions(add = { additions += it }))
+        }
+        rule.waitUntilAtLeastOneExists(hasTestTag("todo.hit.add"), 5_000)
+        rule.node("todo.hit.add").performClick()
+        rule.node("todo.editor").performImeAction()
+        rule.node("todo.editor").assertDoesNotExist()
+        rule.runOnIdle { assertEquals(emptyList<String>(), additions) }
+    }
+
     @Test fun deletedRowsRestoreToTheEndWithoutReopeningAnEditor() {
         val restores = mutableListOf<Triple<String, TodoLibrary.Place, TodoItem.Status>>()
         rule.setHappyContent {

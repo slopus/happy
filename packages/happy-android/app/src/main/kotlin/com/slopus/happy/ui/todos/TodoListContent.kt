@@ -77,6 +77,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.todos.TodoItem
+import com.slopus.happy.todos.TodoText
 import com.slopus.happy.todos.TodoLibrary
 import com.slopus.happy.todos.TodoListState
 import com.slopus.happy.ui.cards.CardListSpec
@@ -144,12 +145,19 @@ fun TodoListContent(state: TodoListState, actions: TodoActions, deleted: Boolean
         value = withContext(Dispatchers.Default) { todoRows(state, deleted, completedShown, settling, drag.order) }
     }
 
-    fun edit(todo: TodoItem?) { text = todo?.text.orEmpty(); editing = todo?.id ?: "add" }
-    fun commit(stay: Boolean) {
-        val id = editing ?: return
+    fun commit(id: String?, stay: Boolean) {
+        if (id == null || editing != id) return
         val value = text
-        if (!stay || id != "add") { editing = null; focus.clearFocus() } else text = ""
-        scope.launch { if (id == "add") actions.add(value) else actions.edit(id, value) }
+        val valid = TodoText.normalized(value) != null
+        if (!stay || id != "add" || !valid) { editing = null; focus.clearFocus() } else text = ""
+        if (valid) scope.launch { if (id == "add") actions.add(value) else actions.edit(id, value) }
+    }
+    fun edit(todo: TodoItem?) {
+        val next = todo?.id ?: "add"
+        if (editing == next) return
+        commit(editing, false)
+        text = todo?.text.orEmpty()
+        editing = next
     }
     fun toggle(todo: TodoItem) {
         val done = todo.status != TodoItem.Status.Completed && todo.id !in settling
@@ -169,7 +177,7 @@ fun TodoListContent(state: TodoListState, actions: TodoActions, deleted: Boolean
     }
     fun restore(todo: TodoItem) { scope.launch { actions.restore(todo.id, TodoLibrary.Place.End, TodoItem.Status.Active) } }
 
-    BackHandler(editing != null) { commit(false) }
+    BackHandler(editing != null) { commit(editing, false) }
     LaunchedEffect(editing) { if (editing == null) rootFocus.requestFocus() }
     LaunchedEffect(undo) { if (undo != null) { delay(5000); undo = null } }
 
@@ -192,7 +200,7 @@ fun TodoListContent(state: TodoListState, actions: TodoActions, deleted: Boolean
                 items(rows, key = { it.key }, contentType = { it::class }) { row ->
                     when (row) {
                         TodoRow.Add -> TodoLine("add", HomeCardPlace(true, true), onCheck = { edit(null) }, checkRole = Role.Button, checkLabel = stringResource(R.string.agent_surface_add_todo), mark = { TodoAddMark() }, text = {
-                            if (editing == "add") TodoEditor(text, { text = it }, { commit(true) }, onBlur = { commit(false) })
+                            if (editing == "add") TodoEditor(text, { if (editing == "add") text = it }, { commit("add", true) }, onBlur = { commit("add", false) })
                             else Text(stringResource(R.string.agent_surface_add_todo), style = happyTextStyle(fontSize = 16, lineHeight = 20), color = colors.textSecondary, modifier = Modifier.fillMaxWidth().clickable { edit(null) })
                         })
                         is TodoRow.Gap -> Spacer(Modifier.height(CardListSpec.headingGap))
@@ -221,7 +229,7 @@ fun TodoListContent(state: TodoListState, actions: TodoActions, deleted: Boolean
                             }
                             val modifier = drag.row(todo.id).contentMaxWidth(LocalWindowLayout.current).padding(start = 32.dp, end = 32.dp, top = 26.dp, bottom = 8.dp).then(accessibility).testTag("todo.heading.${todo.id}")
                             TodoSwipe(onDelete = { remove(todo) }, onHistory = { actions.history(todo) }, deleted = false, modifier = modifier) {
-                                if (editing == todo.id) TodoEditor(text, { text = it }, { commit(false) }, heading = true)
+                                if (editing == todo.id) TodoEditor(text, { if (editing == todo.id) text = it }, { commit(todo.id, false) }, heading = true)
                                 else Text(todo.heading.orEmpty(), style = happyTextStyle(fontSize = 20, lineHeight = 24, weight = FontWeight.SemiBold), maxLines = 3, color = colors.text, modifier = Modifier.fillMaxWidth().clickable { edit(todo) })
                             }
                         }
@@ -257,7 +265,7 @@ fun TodoListContent(state: TodoListState, actions: TodoActions, deleted: Boolean
                                 else TodoLine(todo.id, row.place, semantics, author = author, authorSeed = todo.authorUserId, onCheck = { toggle(todo) }, checked = row.done, checkLabel = mark,
                                     mark = { TodoCheck(row.done) },
                                     text = {
-                                        if (editing == todo.id) TodoEditor(text, { text = it }, { commit(false) })
+                                        if (editing == todo.id) TodoEditor(text, { if (editing == todo.id) text = it }, { commit(todo.id, false) })
                                         else TodoTextLabel(todo.text, row.done) { edit(todo) }
                                     })
                             }
