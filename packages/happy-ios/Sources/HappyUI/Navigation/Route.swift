@@ -35,6 +35,9 @@ enum Route: Hashable {
     case developer
     case server
     case troubleshoot
+    /// From the Happy CLI home's card: how to move to Happy Desktop, or to
+    /// a direct connection.
+    case desktopMigration(MigrationPath)
 }
 
 @MainActor
@@ -50,6 +53,8 @@ enum Screens {
             return ServerConfigViewController(context: context)
         case .troubleshoot:
             return TroubleshootViewController(context: context, session: session)
+        case .desktopMigration(let path):
+            return DesktopMigrationViewController(context: context, path: path)
         case .session(let id):
             return LegacyChatViewController(context: context, session: session, sessionId: id)
         case .sessionInfo(let id):

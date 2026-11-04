@@ -31,6 +31,15 @@ final class HomeRendererHarness {
         // `-freshSettings`: this launch starts from no stored settings or
         // drafts, whatever an earlier one left.
         let fresh = arguments.contains("-freshSettings")
+        // The migration card shows only for `-desktopCard`, so the tests
+        // that drive home without it see home as it was.
+        for path in [MigrationPath.desktop, .agentConnection] {
+            if option("-desktopCard") == nil {
+                DesktopMigrationCard.close(path)
+            } else {
+                UserDefaults.standard.removeObject(forKey: DesktopMigrationCard.closedKey(path))
+            }
+        }
         Task {
             let controller = AccountController(serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/home-renderer-harness", credentialStore: InMemoryCredentialStore(), storeDirectory: nil, rnServerImport: { .confirmed(ServerConfig.defaultServerURL) }, localSettingsFactory: { id in
                 let suite = "home-renderer-harness.\(id)"
@@ -54,8 +63,22 @@ final class HomeRendererHarness {
                 self.account = controller
                 let store = session.store
                 let namedProfile = arguments.contains("-namedProfile")
+                let serverAgent = arguments.contains("-serverAgent")
                 try await Task.detached {
                     try SeededAccount.seed(store)
+                    // `-serverAgent`: Happy Agent runs beside Happy CLI on the
+                    // seeded computer and reaches this account through the
+                    // Happy server, as its daemon registers itself.
+                    if serverAgent, var machine = try store.machines().first {
+                        let sibling = machine.id
+                        machine.id = "harness-agent"
+                        var metadata = machine.metadata?.objectValue ?? [:]
+                        metadata["machineKind"] = .string("rig")
+                        metadata["siblingMachineId"] = .string(sibling)
+                        metadata["displayName"] = .string("Harness Mac — Happy Agent")
+                        machine.metadata = .object(metadata)
+                        try store.upsertMachine(machine)
+                    }
                     // `-namedProfile`: this account has a name and a GitHub
                     // login, as one signed in with GitHub does.
                     if namedProfile {
@@ -112,11 +135,51 @@ final class HomeRendererHarness {
                     qaProbe = ChatUltraQAProbe(window: window, chat: nil)
                 }
                 shell.updateMode()
+                if let script = option("-desktopCard") { DesktopCardScript.run(script, in: window) }
                 if archiveCount > 0, let window = window as? HarnessWindow {
                     archiveProbe = HomeArchiveProbe(window: window, snapshots: store.homeSnapshots())
                 }
             } catch { fatalError("Home harness: \(error)") }
         }
+    }
+}
+
+/// `-desktopCard show|open|bottom|scan|server|close`: shows the migration
+/// card and presses its own controls, as a finger would, once home has
+/// drawn it: none, the card, then Scan QR code on the screen it opens, its
+/// foot scrolled to, or its server section opened; or the card's ×.
+@MainActor
+enum DesktopCardScript {
+    static func run(_ script: String, in window: UIWindow) {
+        Task { @MainActor in
+            guard let card = await find(DesktopCardView.self, in: window) else { return print("desktop-card: no card") }
+            if script == "show" { return }
+            if script == "close" { card.close.sendActions(for: .touchUpInside); return }
+            card.sendActions(for: .touchUpInside)
+            guard script != "open", let list = await find(DisclosureSectionView.self, in: window)?.superview as? UIScrollView else { return }
+            try? await Task.sleep(for: .seconds(1))
+            if script == "bottom" {
+                list.setContentOffset(CGPoint(x: 0, y: max(0, list.contentSize.height - list.bounds.height)), animated: false)
+            } else if script == "scan" {
+                list.subviews.compactMap { $0 as? RoundButton }.first?.sendActions(for: .touchUpInside)
+            } else if script == "server", let section = first(DisclosureSectionView.self, in: list) {
+                section.subviews.compactMap { $0 as? UIControl }.first?.sendActions(for: .touchUpInside)
+            }
+        }
+    }
+
+    private static func find<T: UIView>(_ type: T.Type, in window: UIWindow) async -> T? {
+        for _ in 0..<100 {
+            if let found = first(type, in: window) { return found }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
+        return nil
+    }
+
+    private static func first<T: UIView>(_ type: T.Type, in view: UIView) -> T? {
+        if let match = view as? T, view.window != nil { return match }
+        for subview in view.subviews { if let match = first(type, in: subview) { return match } }
+        return nil
     }
 }
 

@@ -44,17 +44,23 @@ public enum HomeBannerHeights {
     public struct Banner {
         public var title: Measurable
         public var subtitle: Measurable
+        /// The Happy Desktop card (`DesktopCardLayout`) instead of an Item.
+        public var desktopCard: Bool
 
-        public init(title: Measurable, subtitle: Measurable) {
+        public init(title: Measurable, subtitle: Measurable, desktopCard: Bool = false) {
             self.title = title
             self.subtitle = subtitle
+            self.desktopCard = desktopCard
         }
     }
 
     /// One notice, group padding included.
     public static func banner(_ banner: Banner, width: CGFloat, maxWidth: CGFloat?, chevron: CGSize) -> CGFloat {
         let row = Measurable { rowWidth in
-            ItemRowLayout(.init(
+            if banner.desktopCard {
+                return DesktopCardLayout(width: rowWidth, title: banner.title, body: banner.subtitle).size
+            }
+            return ItemRowLayout(.init(
                 width: rowWidth,
                 hasIcon: true,
                 title: banner.title,

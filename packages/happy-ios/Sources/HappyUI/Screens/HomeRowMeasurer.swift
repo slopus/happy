@@ -70,6 +70,8 @@ struct HomeBanners: Hashable, Sendable {
             case nativeUpdate
             /// UpdateBanner's What's new.
             case whatsNew
+            /// The migration card: opens the migration screen for its path.
+            case migration(MigrationPath)
         }
 
         var kind: Kind
@@ -81,20 +83,27 @@ struct HomeBanners: Hashable, Sendable {
     let offlineTitle: String?
     let nativeUpdate: Bool
     let whatsNew: Bool
+    let migration: MigrationPath?
     /// Each notice's title and subtitle, in HomeListHeaderView's order: the
     /// plaque, then the store update or else What's new.
     let notices: [Notice]
 
     @MainActor
-    init(offlineTitle: String? = nil, nativeUpdate: Bool = false, whatsNew: Bool = false) {
+    /// The migration card leads and stands in for What's new: one
+    /// announcement at a time.
+    init(offlineTitle: String? = nil, nativeUpdate: Bool = false, whatsNew: Bool = false, migration: MigrationPath? = nil) {
         self.offlineTitle = offlineTitle
         self.nativeUpdate = nativeUpdate
         self.whatsNew = whatsNew
+        self.migration = migration
         var notices: [Notice] = []
+        if let migration {
+            notices.append(Notice(kind: .migration(migration), title: migration.title, subtitle: migration.body))
+        }
         if let offlineTitle { notices.append(Notice(kind: .offline, title: offlineTitle, subtitle: Strings.Troubleshoot.bannerSubtitle)) }
         if nativeUpdate {
             notices.append(Notice(kind: .nativeUpdate, title: Strings.Home.nativeUpdateAvailable, subtitle: Strings.Home.tapToUpdateAppStore))
-        } else if whatsNew {
+        } else if whatsNew && migration == nil {
             notices.append(Notice(kind: .whatsNew, title: Strings.Home.whatsNew, subtitle: Strings.Home.seeLatest))
         }
         self.notices = notices
@@ -112,7 +121,14 @@ enum HomeRowMeasurer {
     /// is `ContentWidth.maxWidth`, how wide a notice's group may grow.
     nonisolated static func headerHeight(_ banners: HomeBanners, width: CGFloat, maxWidth: CGFloat, environment: HomeTextEnvironment) -> CGFloat {
         let notices = banners.notices.map { notice in
-            HomeBannerHeights.Banner(
+            if case .migration = notice.kind {
+                return HomeBannerHeights.Banner(
+                    title: Measurable { width in measure(notice.title, style: TextStyles.checklistTitle, in: environment.text, width: width, maxLines: 0) },
+                    subtitle: Measurable { width in measure(notice.subtitle, style: TextStyles.checklistBody, in: environment.text, width: width, maxLines: 0) },
+                    desktopCard: true
+                )
+            }
+            return HomeBannerHeights.Banner(
                 // One line beside a subtitle (ItemRowView).
                 title: .fixed(width: 0, height: notice.title.isEmpty ? 0 : environment.bannerTitleLine),
                 subtitle: subtitle(notice.subtitle, environment: environment)

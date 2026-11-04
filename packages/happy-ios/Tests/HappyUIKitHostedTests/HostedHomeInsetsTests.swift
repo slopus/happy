@@ -364,6 +364,11 @@ struct HomeApp {
             try store.addPendingSettings(["sessionListGrouping": .string("flat")])
             try store.upsertSessions((0..<40).map(Self.session))
         }.value
+        // Home as these tests measure it, under no migration card
+        // (`DesktopMigrationTests` checks the card).
+        let closed = [MigrationPath.desktop, .agentConnection].map(DesktopMigrationCard.closedKey)
+        for key in closed { UserDefaults.standard.set(true, forKey: key) }
+        test.addTeardownBlock { for key in closed { UserDefaults.standard.removeObject(forKey: key) } }
         let app = try await start(test, account: account, style: style) { $0 is LegacyHomeViewController }
         let shown = try await until { (app.legacyList?.items.count ?? 0) > 30 }
         XCTAssertTrue(shown, "the legacy home never listed its sessions: \(app.legacyList?.items.map(\.identity) ?? [])")

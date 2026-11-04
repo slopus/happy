@@ -104,6 +104,8 @@ public struct HomeListModel: Equatable, Sendable {
     public var grouped: Bool
     /// Every computer, when all are offline, for the plaque above the rows.
     public var offline: [MachineChoice]?
+    /// `SessionList.hasServerAgent`, for the migration card.
+    public var hasServerAgent = false
 
     public static let empty = HomeListModel(ids: [], rows: [], avatarStyle: .gradient, avatarMonochrome: false, grouped: false, offline: nil)
 
@@ -160,6 +162,7 @@ public struct HomeListModel: Equatable, Sendable {
             grouped: list.projects != nil,
             offline: offline
         )
+        hasServerAgent = list.hasServerAgent
     }
 
     /// A bot's, a task's or an archived chat's row (ProjectHomeList.tsx

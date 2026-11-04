@@ -114,15 +114,16 @@ final class InstallDesktopViewController: UIViewController {
 
 /// "Download from happy.engineering", the domain underlined, a 40 tall
 /// target in the gradient's text colour (the link colour is under AA on
-/// its light tints), read out as it reads, a link.
-private final class SiteLink: UIControl {
+/// its light tints), read out as it reads, a link. The migration screen
+/// uses it too, for the site and for Learn more (`prefix` empty, all of it
+/// underlined).
+final class SiteLink: UIControl {
     let label = StyledLabel(style: TextStyles.secondaryAction, color: Palette.startText, lines: 1)
     var onTap: (() -> Void)?
 
-    init() {
+    init(prefix: String = Strings.Start.installDownloadPrefix, linked: String = Strings.Onboarding.installBodyLink, identifier: String = "install-desktop-site") {
         super.init(frame: .zero)
-        let prefix = Strings.Start.installDownloadPrefix
-        label.string = prefix + Strings.Onboarding.installBodyLink
+        label.string = prefix + linked
         label.decoration = { text in
             let domain = NSRange(location: (prefix as NSString).length, length: text.length - (prefix as NSString).length)
             text.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: domain)
@@ -133,7 +134,7 @@ private final class SiteLink: UIControl {
         isAccessibilityElement = true
         accessibilityLabel = label.string
         accessibilityTraits = .link
-        accessibilityIdentifier = "install-desktop-site"
+        accessibilityIdentifier = identifier
         addTarget(self, action: #selector(tapped), for: .touchUpInside)
     }
 
@@ -141,6 +142,11 @@ private final class SiteLink: UIControl {
 
     func apply(_ layout: InstallDesktopLayout) {
         label.setLayoutFrame(layout.linkLabel)
+    }
+
+    func apply(_ link: MigrationScreenLayout.Link) {
+        setLayoutFrame(link.target)
+        label.setLayoutFrame(link.label)
     }
 
     override var isHighlighted: Bool {

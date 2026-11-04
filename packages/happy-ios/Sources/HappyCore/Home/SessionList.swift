@@ -150,6 +150,10 @@ public struct SessionList: Equatable, Sendable {
     public var avatarMonochrome: Bool
     /// The home filter's choice (`sessionListGrouping`).
     public var grouping: SessionListGrouping
+    /// A Happy Agent daemon reaches this account through the Happy server
+    /// (`MachineChoice.isRigMachine`), so the account already uses Happy
+    /// Agent, not through a direct connection.
+    public var hasServerAgent = false
     /// The list grouped by project, built only while that layout is chosen
     /// (SessionsListWrapper.tsx hands it to ProjectHomeList).
     public var projects: ProjectHomeData?
@@ -222,6 +226,7 @@ public struct SessionList: Equatable, Sendable {
         self.avatarStyle = settings.avatarStyle
         self.avatarMonochrome = settings.avatarMonochrome
         self.grouping = settings.sessionListGrouping
+        self.hasServerAgent = snapshot.machines.machines.contains { MachineChoice.isRigMachine($0.metadata) }
         self.projects = settings.sessionListGrouping == .project ? ProjectHomeData(snapshot, clock: clock, unknownMachine: unknownMachine) : nil
     }
 

@@ -36,6 +36,14 @@ final class HomeListTextSizeTests: XCTestCase {
     override func setUp() {
         super.setUp()
         LegacyFonts.registerBundledFonts()
+        // The rows are measured under the notices alone: the signed-in
+        // Happy CLI account's migration card is closed.
+        for path in [MigrationPath.desktop, .agentConnection] { UserDefaults.standard.set(true, forKey: DesktopMigrationCard.closedKey(path)) }
+    }
+
+    override func tearDown() {
+        for path in [MigrationPath.desktop, .agentConnection] { UserDefaults.standard.removeObject(forKey: DesktopMigrationCard.closedKey(path)) }
+        super.tearDown()
     }
 
     /// A flat session at the largest text size on a 3x screen, summed in
