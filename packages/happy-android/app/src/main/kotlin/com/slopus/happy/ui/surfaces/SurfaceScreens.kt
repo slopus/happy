@@ -20,10 +20,12 @@ import com.slopus.happy.ui.components.HappyAlert
  * `SurfaceScreens`): home's rows, the Surfaces lists and links all open
  * through [openSurface] and land here, so a kind's screen is chosen in one
  * place. Each kind's screen takes the session, the Surface's id and back;
- * a kind the phone doesn't open says to open it on the computer.
+ * a kind the phone doesn't open says to open it on the computer. [open]
+ * pushes a route of the kind's own (a todo list's history) onto the app's
+ * stack.
  */
 @Composable
-fun SurfaceScreens(graph: AppGraph, route: SurfaceRoute, onBack: () -> Unit) {
+fun SurfaceScreens(graph: AppGraph, route: SurfaceRoute, onBack: () -> Unit, open: (Any) -> Unit = {}) {
     val session = remember(route.connectionId) { graph.agentSessions.session(route.connectionId) }
     if (session == null) {
         SurfaceElsewhere(route.name, onBack)
@@ -40,7 +42,7 @@ fun SurfaceScreens(graph: AppGraph, route: SurfaceRoute, onBack: () -> Unit) {
     when (surface?.type) {
         null -> SurfaceMissing(name, loading = !catalog.loaded, onBack)
         SurfaceType.DOCUMENT -> DocumentSurfaceScreen(session, route.surfaceId, onBack)
-        SurfaceType.TODO -> TodoSurfaceScreen(session, route.surfaceId, onBack)
+        SurfaceType.TODO -> TodoSurfaceScreen(session, route.surfaceId, onBack, open)
         SurfaceType.SYSTEM_MONITOR -> SystemMonitorSurfaceScreen(session, route.surfaceId, onBack)
         SurfaceType.CALENDAR -> CalendarSurfaceScreen(session, route.surfaceId, onBack)
         else -> SurfaceElsewhere(name, onBack) { SurfaceMenu(session, route.surfaceId, onBack) }

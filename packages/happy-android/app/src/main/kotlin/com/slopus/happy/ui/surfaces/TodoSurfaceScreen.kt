@@ -5,8 +5,8 @@ import com.slopus.happy.agent.AgentSession
 import com.slopus.happy.agent.SurfaceType
 import com.slopus.happy.ui.connection.ReadSurface
 
-/** A todo list Surface ([SurfaceScreens]' `todo` slot): its todos, read whole, and a field to add one. */
+/** A todo list Surface ([SurfaceScreens]' `todo` slot): its todos, read whole, and a field to add one. [open] pushes the list's own pages. */
 @Composable
-fun TodoSurfaceScreen(session: AgentSession, surfaceId: String, onBack: () -> Unit) {
+fun TodoSurfaceScreen(session: AgentSession, surfaceId: String, onBack: () -> Unit, open: (Any) -> Unit = {}) {
     ReadSurface(session, surfaceId, SurfaceType.TODO, onBack)
 }

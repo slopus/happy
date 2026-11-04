@@ -14,7 +14,7 @@ import kotlinx.serialization.Serializable
 fun NavGraphBuilder.surfaceRoutes(graph: AppGraph, nav: NavHostController) {
     page<SurfaceRoute> { entry ->
         val route = entry.toRoute<SurfaceRoute>()
-        SurfaceScreens(graph, route, onBack = { nav.popBackStack() })
+        SurfaceScreens(graph, route, onBack = { nav.popBackStack() }, open = { nav.navigate(it) })
     }
 }
 
