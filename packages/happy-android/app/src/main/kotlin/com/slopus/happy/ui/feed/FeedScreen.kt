@@ -1,7 +1,6 @@
 package com.slopus.happy.ui.feed
 
 import android.content.res.Resources
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -78,6 +77,7 @@ import com.slopus.happy.ui.artifacts.PlaceScaffold
 import com.slopus.happy.ui.artifacts.PlaceTags
 import com.slopus.happy.ui.artifacts.rememberArtifactListWords
 import com.slopus.happy.ui.cards.CardHeading
+import com.slopus.happy.ui.cards.CardBlock
 import com.slopus.happy.ui.cards.CardListSpec
 import com.slopus.happy.ui.cards.CardNote
 import com.slopus.happy.ui.cards.cardPlaces
@@ -88,15 +88,12 @@ import com.slopus.happy.ui.components.HappySwitch
 import com.slopus.happy.ui.components.HomeCardPlace
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
-import com.slopus.happy.ui.components.hairline
 import com.slopus.happy.ui.connection.AgentTopBar
 import com.slopus.happy.ui.connection.BarIconButton
 import com.slopus.happy.ui.connection.ConversationMark
 import com.slopus.happy.ui.connection.FolderMarkView
 import com.slopus.happy.ui.connection.RowTile
 import com.slopus.happy.ui.conversation.ConversationScreenTags
-import com.slopus.happy.ui.layout.LocalWindowLayout
-import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.tablet.BackOrSidebarToggle
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
@@ -752,48 +749,19 @@ private fun FeedPlaceRow(item: FeedFollowingItem.Place, words: FeedWords, action
 }
 
 /**
- * One row's part of its card, as [com.slopus.happy.ui.cards.CardRow]
- * draws it, never under [minHeight], growing with its text: the card's
- * ground rounded at the card's ends, a press highlighted within them, a
- * hairline under every row but the last from [dividerStart].
+ * Feed content uses the shared card shell, growing above [minHeight] with
+ * its text, with a divider under every row but the last from [dividerStart].
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FeedCard(place: HomeCardPlace, minHeight: Dp, dividerStart: Dp, tag: String, onClick: (() -> Unit)?, content: @Composable BoxScope.() -> Unit) {
-    val colors = HappyTheme.colors
-    val radius = CardListSpec.radius
-    val shape = RoundedCornerShape(
-        topStart = if (place.first) radius else 0.dp,
-        topEnd = if (place.first) radius else 0.dp,
-        bottomStart = if (place.last) radius else 0.dp,
-        bottomEnd = if (place.last) radius else 0.dp,
-    )
-    Box(
-        Modifier
-            .contentMaxWidth(LocalWindowLayout.current)
-            .testTag(tag)
-            .padding(horizontal = CardListSpec.side),
-    ) {
+    CardBlock(place.copy(separated = !place.last), dividerStart = dividerStart, tag = tag) {
         Box(
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = minHeight)
-                .clip(shape)
-                .background(colors.surfaceHigh)
                 .then(if (onClick != null) Modifier.clickable(role = Role.Button, onClick = onClick) else Modifier),
             contentAlignment = Alignment.CenterStart,
-        ) {
-            content()
-            if (!place.last) {
-                Box(
-                    Modifier
-                        .align(Alignment.BottomStart)
-                        .padding(start = dividerStart)
-                        .fillMaxWidth()
-                        .height(hairline())
-                        .background(colors.divider),
-                )
-            }
-        }
+            content = content,
+        )
     }
 }
