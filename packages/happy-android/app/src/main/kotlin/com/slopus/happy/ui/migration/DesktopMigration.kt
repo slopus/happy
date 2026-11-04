@@ -54,11 +54,12 @@ enum class MigrationPath(val wire: String, @param:StringRes val title: Int, @par
 
         /**
          * The card home shows, if any (iOS `DesktopMigrationCard.path`):
-         * none once this phone has an agent connection that isn't revoked,
-         * nor once that path's card was closed here.
+         * none until PostHog's flag is on for the account ([noteOn]), none
+         * once this phone has an agent connection that isn't revoked, nor
+         * once that path's card was closed here.
          */
-        fun shown(agents: List<AgentConnection>, serverAgent: Boolean, closed: Set<MigrationPath>): MigrationPath? {
-            if (agents.any { !it.revoked }) return null
+        fun shown(noteOn: Boolean, agents: List<AgentConnection>, serverAgent: Boolean, closed: Set<MigrationPath>): MigrationPath? {
+            if (!noteOn || agents.any { !it.revoked }) return null
             val path = if (serverAgent) AgentConnection else Desktop
             return path.takeUnless { it in closed }
         }

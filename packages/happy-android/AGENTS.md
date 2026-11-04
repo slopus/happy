@@ -811,6 +811,14 @@ ANDROID_SERIAL=<device> ./gradlew :benchmark:connectedBenchmarkBenchAndroidTest 
   (`keystore.properties.example` lists the keys). Without them `release`
   builds unsigned and `preview` debug-signed, so `assembleRelease` works
   anywhere, CI included.
+- PostHog's public project key comes from `EXPO_PUBLIC_POSTHOG_API_KEY` or
+  `-Phappy.postHogKey`, as happy-app's and Happy Desktop's do; nothing is
+  checked in. A build without it reads every feature flag as off. Only flags
+  are read with it (`config/FeatureFlags.kt`): one `POST /flags/?v=2` per
+  open Happy account with its `anonId` as the distinct id (happy-app's
+  `identify`), each foreground, skipped when the account opted out of
+  analytics. The answer is kept per account in `feature-flags` prefs; a failed
+  ask keeps the last one. Nothing is captured.
 - A signed release or preview build without an explicit versionCode fails in
   `pre<Variant>Build`, before R8, rather than at the Play console.
 - Shipping goes through the `release` skill like every other release.
@@ -859,6 +867,16 @@ Entry points other screens call (all in `ui/onboarding` and `ui/connect`):
 - **Deep links**: MainActivity offers every launching and new intent to
   `DeepLinks.offer(intent)`; `DeepLinkEffect(nav, signedIn, onOpenSession)`
   in HappyApp opens them once signed in. `onOpenSession` is the chat's.
+
+### Migration card
+
+The Happy CLI home leads with `ui/migration`'s card (iOS ea1a0902f) only
+while PostHog's `direct-connection-migration-note` is on for the account
+(`AppGraph.migrationNote`), no agent connection is paired, and its × wasn't
+pressed. Its screen's Scan QR code is `rememberMigrationScan`, not Add: a
+direct code pairs, and a Happy server code first says it isn't direct, then
+Link anyway approves it for the open account as Settings' scan does, never
+creating an account.
 
 ### QR codes
 

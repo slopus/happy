@@ -6,7 +6,11 @@
     <string name="desktop_migration_agent_connection_title">迁移到直接连接</string>
     <string name="desktop_migration_agent_connection_body">你正在通过 Happy 服务器使用 Happy Agent。直接连接可获得最低延迟和最新功能。</string>
     <string name="desktop_migration_settings_step">前往 Settings\u00A0›\u00A0Mobile\u00A0Access。</string>
+    <string name="desktop_migration_up_to_date">请确保 Happy Desktop 已是最新版本。</string>
     <string name="desktop_migration_server_step">在服务器上使用 Happy？</string>
     <string name="desktop_migration_server_step_detail">在 Happy Desktop 中选择它并扫描它的代码。\n要设置新的远程服务器，只需在 Happy Desktop 中询问 Chief of Staff 机器人。</string>
     <string name="desktop_migration_learn_more">了解更多</string>
+    <string name="desktop_migration_server_code_title">这是 Happy 服务器代码</string>
+    <string name="desktop_migration_server_code_body">它会通过 Happy 服务器而不是直接连接你的电脑。如果 Happy Desktop 显示直接连接代码，请扫描那个代码。你可能需要更新 Happy Desktop。</string>
+    <string name="desktop_migration_link_anyway">仍然连接</string>
 </resources>

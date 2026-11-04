@@ -46,7 +46,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.slopus.happy.AppGraph
 import com.slopus.happy.R
+import com.slopus.happy.auth.AuthState
+import com.slopus.happy.auth.approveTerminal
+import com.slopus.happy.ui.components.confirm
+import com.slopus.happy.ui.connect.ConnectFlow
+import com.slopus.happy.ui.connect.rememberTerminalConnect
 import com.slopus.happy.ui.components.HeaderSpec
 import com.slopus.happy.ui.components.LineIcon
 import com.slopus.happy.ui.components.LocalBarOnGlass
@@ -117,8 +123,9 @@ object DesktopMigrationSpec {
  *     16
  *     title, line      centred, a slide's type, 8 apart
  *     20
- *     ① step           a 22 dot, 12, the words; Happy Desktop's first
- *        Download from happy.engineering   step has the site under it
+ *     ① step           a 22 dot, 12, the words, "up to date" under
+ *        Make sure Happy Desktop is up to date.   them; Happy Desktop's
+ *        Download from happy.engineering          path adds the site
  *     22
  *     ② step
  *     22
@@ -126,8 +133,9 @@ object DesktopMigrationSpec {
  *        Select it in Happy Desktop…   its detail, where the site's words
  *                      would be, in their type
  *     20 at least
- *     Scan QR code     centred, as wide as its label (at least 200): the
- *                      app's Add flow, whose scanner reads desktop's code
+ *     Scan QR code     centred, as wide as its label (at least 200):
+ *                      [rememberMigrationScan], a direct code or the
+ *                      Happy server's
  *     4
  *     Learn more       centred, its foot on the window's safe foot while
  *                      everything fits; taller, the page scrolls
@@ -214,7 +222,7 @@ private fun column() = Modifier
     .widthIn(max = StartGallerySpec.columnMaxWidth)
     .fillMaxWidth()
 
-/** A step's words, and the site or the detail under them (iOS `Strings.DesktopMigration.Step`). */
+/** A step's words, then its detail and its site under them (iOS `Strings.DesktopMigration.Step`). */
 private data class Step(val text: String, val linked: Boolean = false, val detail: String? = null)
 
 /**
@@ -225,15 +233,16 @@ private data class Step(val text: String, val linked: Boolean = false, val detai
 @Composable
 private fun Steps(path: MigrationPath, color: Color, onOpenSite: () -> Unit) {
     val open = stringResource(R.string.onboarding_offline_open_step)
+    val upToDate = stringResource(R.string.desktop_migration_up_to_date)
     val server = Step(stringResource(R.string.desktop_migration_server_step), detail = stringResource(R.string.desktop_migration_server_step_detail))
     val steps = when (path) {
         MigrationPath.Desktop -> listOf(
-            Step(open, linked = true),
+            Step(open, linked = true, detail = upToDate),
             Step(stringResource(R.string.start_install_choose) + "\n" + stringResource(R.string.start_install_settings)),
             server,
         )
         // Happy Desktop is set up already, so its onboarding is past: only its settings.
-        MigrationPath.AgentConnection -> listOf(Step(open), Step(stringResource(R.string.desktop_migration_settings_step)), server)
+        MigrationPath.AgentConnection -> listOf(Step(open, detail = upToDate), Step(stringResource(R.string.desktop_migration_settings_step)), server)
     }
     val domain = stringResource(R.string.onboarding_install_body_link)
     val site = stringResource(R.string.start_install_download, domain)
@@ -256,18 +265,43 @@ private fun Steps(path: MigrationPath, color: Color, onOpenSite: () -> Unit) {
                 Spacer(Modifier.width(DesktopMigrationSpec.numberGap))
                 Column(Modifier.weight(1f)) {
                     Text(step.text, style = DesktopMigrationSpec.step, color = color, modifier = Modifier.fillMaxWidth().testTag("${DesktopMigrationTags.STEP}.$index"))
-                    // The target's padding sits outside the words, so they start on the step's edge.
-                    if (step.linked) SiteLink(site, domain, color, onOpenSite, Modifier.offset(x = -SiteLinkSpec.padding), tag = DesktopMigrationTags.SITE)
                     step.detail?.let { detail ->
                         Text(
                             detail,
                             style = DesktopMigrationSpec.detail,
                             color = color,
-                            modifier = Modifier.padding(top = DesktopMigrationSpec.siteInset).fillMaxWidth().testTag(DesktopMigrationTags.DETAIL),
+                            modifier = Modifier.padding(top = DesktopMigrationSpec.siteInset).fillMaxWidth().testTag("${DesktopMigrationTags.DETAIL}.$index"),
                         )
                     }
+                    // The target's padding sits outside the words, so they start on the step's edge.
+                    if (step.linked) SiteLink(site, domain, color, onOpenSite, Modifier.offset(x = -SiteLinkSpec.padding), tag = DesktopMigrationTags.SITE)
                 }
             }
         }
     }
+}
+
+/**
+ * The screen's Scan QR code. A direct connection code pairs. A Happy server
+ * code says first that it isn't direct; Link anyway approves it for the open
+ * Happy account, as Settings' scan does, never making another account.
+ */
+@Composable
+fun rememberMigrationScan(graph: AppGraph): ConnectFlow = rememberMigrationScan(
+    approve = { url ->
+        val account = graph.auth.state.value as? AuthState.SignedIn ?: error("Signed out")
+        approveTerminal(graph.authApi, account.credentials, account.encryption, url)
+    },
+)
+
+/** [rememberMigrationScan] with the approval passed in, for tests. */
+@Composable
+fun rememberMigrationScan(approve: suspend (url: String) -> Unit): ConnectFlow {
+    val flow = rememberTerminalConnect(approve)
+    val title = stringResource(R.string.desktop_migration_server_code_title)
+    val message = stringResource(R.string.desktop_migration_server_code_body)
+    val linkAnyway = stringResource(R.string.desktop_migration_link_anyway)
+    val cancel = stringResource(R.string.common_cancel)
+    flow.confirmTerminal = { confirm({ flow.alert = it }, title, message, confirmText = linkAnyway, cancelText = cancel) }
+    return flow
 }

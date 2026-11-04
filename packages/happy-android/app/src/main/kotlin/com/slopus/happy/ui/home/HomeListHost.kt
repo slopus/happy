@@ -78,10 +78,11 @@ fun HomeListHost(graph: AppGraph, navigation: HomeNavigation, phone: Boolean = f
         if (graph.changelog.lastViewedTitle.value.isEmpty() && latestChangelog.isNotEmpty()) graph.changelog.markViewed(latestChangelog)
     }
     val update = HomeUpdate.resolve(updateUrl, lastViewedChangelog.isNotEmpty() && graph.changelog.hasUnread(latestChangelog))
-    // A paired Happy Agent takes the migration card away; its x hides that path's card on this phone.
+    // PostHog's flag brings the migration card; a paired Happy Agent takes it away; its x hides that path's card on this phone.
+    val migrationNote by graph.migrationNote.collectAsStateWithLifecycle()
     val agents by graph.agentConnections.accounts.collectAsStateWithLifecycle()
     val closedMigrations by graph.desktopMigration.closed.collectAsStateWithLifecycle()
-    val migration = MigrationPath.shown(agents, serverAgent = state?.hasServerAgent == true, closed = closedMigrations)
+    val migration = MigrationPath.shown(migrationNote, agents, serverAgent = state?.hasServerAgent == true, closed = closedMigrations)
     val uriHandler = LocalUriHandler.current
     var alert by remember { mutableStateOf<Alert?>(null) }
     val showAlert = remember { { next: Alert -> alert = next } }

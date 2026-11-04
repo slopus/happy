@@ -2,6 +2,7 @@ package com.slopus.happy.ui.migration
 
 import android.content.Context
 import android.graphics.Bitmap
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -32,6 +33,11 @@ import com.slopus.happy.ui.assertActionsLabelled
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.components.HeaderTags
+import com.slopus.happy.ui.connect.ConnectFlow
+import com.slopus.happy.ui.connect.LocalAgentPairing
+import com.slopus.happy.ui.connect.LocalQrScanner
+import com.slopus.happy.ui.connect.QrScanner
+import com.slopus.happy.ui.connect.ScanResult
 import com.slopus.happy.ui.home.FlatRowTags
 import com.slopus.happy.ui.home.HomeListCallbacks
 import com.slopus.happy.ui.home.HomeListInputs
@@ -55,6 +61,7 @@ import org.robolectric.annotation.GraphicsMode
 import java.io.File
 import java.time.LocalDate
 import java.time.ZoneOffset
+import java.util.concurrent.CopyOnWriteArrayList
 
 private const val PHONE_HEIGHT = 891
 
@@ -95,14 +102,17 @@ class DesktopMigrationTest {
         assertFalse(home(listOf(machine("m1", machineMetadata()))).hasServerAgent)
         assertTrue(home(listOf(machine("m1", machineMetadata()), machine("r1", machineMetadata { put("machineKind", "rig") }))).hasServerAgent)
 
-        assertEquals(MigrationPath.Desktop, MigrationPath.shown(emptyList(), serverAgent = false, closed = emptySet()))
-        assertEquals(MigrationPath.AgentConnection, MigrationPath.shown(emptyList(), serverAgent = true, closed = emptySet()))
-        assertNull(MigrationPath.shown(listOf(agent()), serverAgent = false, closed = emptySet()))
+        // PostHog's flag off, unknown or failed: no card on either path.
+        assertNull(MigrationPath.shown(false, emptyList(), serverAgent = false, closed = emptySet()))
+        assertNull(MigrationPath.shown(false, emptyList(), serverAgent = true, closed = emptySet()))
+        assertEquals(MigrationPath.Desktop, MigrationPath.shown(true, emptyList(), serverAgent = false, closed = emptySet()))
+        assertEquals(MigrationPath.AgentConnection, MigrationPath.shown(true, emptyList(), serverAgent = true, closed = emptySet()))
+        assertNull(MigrationPath.shown(true, listOf(agent()), serverAgent = false, closed = emptySet()))
         // A revoked pairing no longer reaches anything.
-        assertEquals(MigrationPath.Desktop, MigrationPath.shown(listOf(agent(revoked = true)), serverAgent = false, closed = emptySet()))
-        assertNull(MigrationPath.shown(emptyList(), serverAgent = false, closed = setOf(MigrationPath.Desktop)))
+        assertEquals(MigrationPath.Desktop, MigrationPath.shown(true, listOf(agent(revoked = true)), serverAgent = false, closed = emptySet()))
+        assertNull(MigrationPath.shown(true, emptyList(), serverAgent = false, closed = setOf(MigrationPath.Desktop)))
         // Closing one path's card leaves the other's.
-        assertEquals(MigrationPath.AgentConnection, MigrationPath.shown(emptyList(), serverAgent = true, closed = setOf(MigrationPath.Desktop)))
+        assertEquals(MigrationPath.AgentConnection, MigrationPath.shown(true, emptyList(), serverAgent = true, closed = setOf(MigrationPath.Desktop)))
     }
 
     @Test
@@ -200,11 +210,12 @@ class DesktopMigrationTest {
         val body = rule.node(DesktopMigrationTags.BODY).bounds
         val number0 = rule.node("${DesktopMigrationTags.NUMBER}.0").bounds
         val step0 = rule.node("${DesktopMigrationTags.STEP}.0").bounds
+        val upToDate = rule.node("${DesktopMigrationTags.DETAIL}.0").bounds
         val site = rule.node(DesktopMigrationTags.SITE).bounds
         val step1 = rule.node("${DesktopMigrationTags.STEP}.1").bounds
         val number2 = rule.node("${DesktopMigrationTags.NUMBER}.2").bounds
         val step2 = rule.node("${DesktopMigrationTags.STEP}.2").bounds
-        val detail = rule.node(DesktopMigrationTags.DETAIL).bounds
+        val detail = rule.node("${DesktopMigrationTags.DETAIL}.2").bounds
         val scan = rule.node(DesktopMigrationTags.SCAN).bounds
         val learn = rule.node(DesktopMigrationTags.LEARN_MORE).bounds
 
@@ -217,8 +228,10 @@ class DesktopMigrationTest {
         assertDp("dot 22", 22, number0.width)
         assertDp("the column 24 in", 24, number0.left)
         assertDp("words 12 after the dot", number0.right + 12.dp, step0.left)
+        assertDp("up to date 10 under the first step's words", step0.bottom + 10.dp, upToDate.top)
+        rule.onNodeWithText("Make sure Happy Desktop is up to date.").assertExists()
         assertDp("the site's words start on the step's edge", step0.left - 14.dp, site.left)
-        assertDp("site under its step", step0.bottom, site.top)
+        assertDp("site under up to date", upToDate.bottom, site.top)
         assertDp("site a 40 target", 40, site.height)
         assertDp("next step 22 under the site's words", site.top + 30.dp + 22.dp, step1.top)
         rule.onNodeWithText("Choose Link\u00A0Mobile\u00A0App during onboarding.\nOr go to Settings\u00A0›\u00A0Mobile\u00A0Access.").assertExists()
@@ -254,11 +267,14 @@ class DesktopMigrationTest {
         screen(MigrationPath.AgentConnection, dark = true)
         val body = rule.node(DesktopMigrationTags.BODY).bounds
         val step0 = rule.node("${DesktopMigrationTags.STEP}.0").bounds
+        val upToDate = rule.node("${DesktopMigrationTags.DETAIL}.0").bounds
         val step1 = rule.node("${DesktopMigrationTags.STEP}.1").bounds
         val step2 = rule.node("${DesktopMigrationTags.STEP}.2").bounds
-        val detail = rule.node(DesktopMigrationTags.DETAIL).bounds
+        val detail = rule.node("${DesktopMigrationTags.DETAIL}.2").bounds
         assertDp("steps 20 under the line", body.bottom + 20.dp, step0.top)
-        assertDp("no site on this path, 22 between steps", step0.bottom + 22.dp, step1.top)
+        assertDp("up to date 10 under the first step", step0.bottom + 10.dp, upToDate.top)
+        rule.onNodeWithText("Make sure Happy Desktop is up to date.").assertExists()
+        assertDp("no site on this path, 22 from up to date to the next step", upToDate.bottom + 22.dp, step1.top)
         assertDp("22 to the server's step", step1.bottom + 22.dp, step2.top)
         assertDp("its detail 10 under", step2.bottom + 10.dp, detail.top)
         rule.node(DesktopMigrationTags.SITE).assertDoesNotExist()
@@ -274,7 +290,7 @@ class DesktopMigrationTest {
     fun onATabletTheColumnIsHeld() {
         screen(MigrationPath.AgentConnection)
         val number = rule.node("${DesktopMigrationTags.NUMBER}.0").bounds
-        val detail = rule.node(DesktopMigrationTags.DETAIL).bounds
+        val detail = rule.node("${DesktopMigrationTags.DETAIL}.2").bounds
         assertDp("440 wide, centred", 640.dp - 220.dp, number.left)
         assertDp("the detail reaches the column's end", 640.dp + 220.dp, detail.right)
         shot("w25-screen-direct-tablet-light")
@@ -285,13 +301,62 @@ class DesktopMigrationTest {
     @Config(qualifiers = "w411dp-h500dp-xxhdpi")
     fun tooTallItScrolls() {
         screen(MigrationPath.Desktop)
-        val detail = rule.node(DesktopMigrationTags.DETAIL).bounds
+        val detail = rule.node("${DesktopMigrationTags.DETAIL}.2").bounds
         rule.node(DesktopMigrationTags.LEARN_MORE).performScrollTo()
         val scan = rule.node(DesktopMigrationTags.SCAN).bounds
         val learn = rule.node(DesktopMigrationTags.LEARN_MORE).bounds
-        val after = rule.node(DesktopMigrationTags.DETAIL).bounds
+        val after = rule.node("${DesktopMigrationTags.DETAIL}.2").bounds
         assertDp("scan 20 under the detail", after.bottom + 20.dp, scan.top)
         assertTrue("the page scrolled", after.top < detail.top)
         assertTrue("learn more on the screen", learn.bottom <= 500.dp + 0.34.dp)
+    }
+
+    private val scans = ArrayDeque<String>()
+    private val linked = CopyOnWriteArrayList<String>()
+    private val paired = CopyOnWriteArrayList<String>()
+    private lateinit var scan: ConnectFlow
+
+    private fun scanner() {
+        rule.setHappyContent {
+            CompositionLocalProvider(LocalQrScanner provides QrScanner { ScanResult.Scanned(scans.removeFirst()) }, LocalAgentPairing provides { paired += it }) {
+                scan = rememberMigrationScan(approve = { url -> linked += url })
+            }
+        }
+    }
+
+    private val serverCode = "This is a Happy server code"
+
+    /** A direct connection's code pairs at once, with nothing to confirm. */
+    @Test
+    fun aDirectCodePairs() {
+        scanner()
+        scans += "happy://direct?eyJ2IjoxfQ"
+        rule.runOnIdle { scan.scan() }
+        rule.waitUntil { paired.isNotEmpty() }
+        assertEquals(listOf("happy://direct?eyJ2IjoxfQ"), paired)
+        rule.onNodeWithText(serverCode).assertDoesNotExist()
+        assertTrue(linked.isEmpty())
+    }
+
+    /** A Happy server's code says it isn't direct; Link anyway approves it for this account, Cancel leaves it. */
+    @Test
+    fun aHappyServerCodeAsksFirst() {
+        scanner()
+        scans += "happy://terminal?abc"
+        rule.runOnIdle { scan.scan() }
+        rule.onNodeWithText(serverCode).assertExists()
+        rule.onNodeWithText(
+            "This links your computer through the Happy server, not directly. If Happy Desktop shows a direct connection code, scan that instead. You may need to update Happy Desktop.",
+        ).assertExists()
+        rule.onNodeWithText("Cancel").performClick()
+        rule.onNodeWithText(serverCode).assertDoesNotExist()
+        assertTrue(linked.isEmpty())
+
+        scans += "happy://terminal?def"
+        rule.runOnIdle { scan.scan() }
+        rule.onNodeWithText("Link anyway").performClick()
+        rule.waitUntil { linked.isNotEmpty() }
+        assertEquals(listOf("happy://terminal?def"), linked)
+        assertTrue(paired.isEmpty())
     }
 }

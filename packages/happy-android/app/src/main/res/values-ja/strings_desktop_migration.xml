@@ -6,7 +6,11 @@
     <string name="desktop_migration_agent_connection_title">直接接続に移行</string>
     <string name="desktop_migration_agent_connection_body">現在、Happy サーバー経由で Happy Agent を使っています。直接接続すると、最小の遅延と最新の機能を利用できます。</string>
     <string name="desktop_migration_settings_step">Settings\u00A0›\u00A0Mobile\u00A0Access を開きます。</string>
+    <string name="desktop_migration_up_to_date">Happy Desktop が最新であることを確認してください。</string>
     <string name="desktop_migration_server_step">サーバーで Happy を使っていますか？</string>
     <string name="desktop_migration_server_step_detail">Happy Desktop でそのサーバーを選択し、コードをスキャンします。\n新しいリモートサーバーを設定するには、Happy Desktop の Chief of Staff ボットに頼むだけです。</string>
     <string name="desktop_migration_learn_more">詳しく見る</string>
+    <string name="desktop_migration_server_code_title">これは Happy サーバーのコードです</string>
+    <string name="desktop_migration_server_code_body">このコードはコンピューターを直接ではなく Happy サーバー経由でリンクします。Happy Desktop に直接接続のコードが表示されている場合は、そちらをスキャンしてください。Happy Desktop のアップデートが必要な場合があります。</string>
+    <string name="desktop_migration_link_anyway">このままリンク</string>
 </resources>

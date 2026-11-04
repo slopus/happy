@@ -65,6 +65,9 @@ class ConnectFlow internal constructor(
      */
     internal var signInToServer: ((ServerInvite) -> Boolean)? = null
 
+    /** Asked before a terminal code is approved; false leaves it (the migration screen's Happy server code). */
+    internal var confirmTerminal: (suspend () -> Boolean)? = null
+
     /** No scanner on this device: instead of saying so, Add asks for the link. */
     internal var onUnavailable: (() -> Unit)? = null
 
@@ -104,8 +107,10 @@ class ConnectFlow internal constructor(
         when (val code = HappyCode.classify(text)) {
             is HappyCode.AgentPairing -> connectAgent?.invoke(code.text)
                 ?: run { alert = errorAlert(messages.pairingUnavailable) }
-            is HappyCode.Terminal ->
-                if (kind == ConnectKind.Terminal || kind == ConnectKind.Add) process(code.url) else alert = errorAlert(messages.terminalElsewhere)
+            is HappyCode.Terminal -> when {
+                kind != ConnectKind.Terminal && kind != ConnectKind.Add -> alert = errorAlert(messages.terminalElsewhere)
+                confirmTerminal?.invoke() != false -> process(code.url)
+            }
             is HappyCode.Account -> when (kind) {
                 ConnectKind.Account -> process(code.url)
                 ConnectKind.Add -> alert = Alert(messages.accountSignedOutTitle, messages.accountSignedOut, listOf(AlertButton(okTitle)))

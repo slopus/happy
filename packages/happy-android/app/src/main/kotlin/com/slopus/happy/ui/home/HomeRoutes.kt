@@ -4,11 +4,10 @@ import com.slopus.happy.ui.onboarding.DESKTOP_URL
 
 import androidx.compose.ui.platform.LocalUriHandler
 
-import com.slopus.happy.ui.connect.LocalAddFlow
-
 import com.slopus.happy.ui.migration.DesktopMigrationSpec
 
 import com.slopus.happy.ui.migration.DesktopMigrationScreen
+import com.slopus.happy.ui.migration.rememberMigrationScan
 
 import com.slopus.happy.ui.migration.DesktopMigrationRoute
 
@@ -171,13 +170,13 @@ fun NavGraphBuilder.homeRoutes(
 ) {
     page<DesktopMigrationRoute> { entry ->
         val path = MigrationPath.of(entry.toRoute<DesktopMigrationRoute>().path) ?: MigrationPath.Desktop
-        val add = LocalAddFlow.current
+        val scan = rememberMigrationScan(graph)
         val uriHandler = LocalUriHandler.current
         DesktopMigrationScreen(
             path = path,
-            scanning = add?.isLoading == true,
+            scanning = scan.isLoading,
             onBack = { nav.popBackStack() },
-            onScan = { add?.scan() },
+            onScan = scan::scan,
             onOpenSite = { uriHandler.openUri(DESKTOP_URL) },
             onLearnMore = { uriHandler.openUri(DesktopMigrationSpec.LEARN_MORE_URL) },
         )

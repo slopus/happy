@@ -13,6 +13,7 @@ import com.slopus.happy.auth.AndroidKeyStoreKeys
 import com.slopus.happy.auth.AuthCredentials
 import com.slopus.happy.auth.CredentialStore
 import com.slopus.happy.model.Profile
+import com.slopus.happy.model.Settings
 import java.io.File
 import com.slopus.happy.auth.AuthApi
 import com.slopus.happy.auth.AuthRepository
@@ -21,8 +22,10 @@ import com.slopus.happy.auth.ExpoSecureStore
 import com.slopus.happy.auth.SecureStoreCredentialStore
 import com.slopus.happy.auth.SecureStoreKeys
 import com.slopus.happy.auth.tokenSubject
+import com.slopus.happy.config.FeatureFlags
 import com.slopus.happy.config.LiveAvatarsSetting
 import com.slopus.happy.config.LocalSettings
+import com.slopus.happy.config.PostHogFlags
 import com.slopus.happy.config.ServerConfig
 import com.slopus.happy.data.HappyDatabase
 import com.slopus.happy.data.HappyStore
@@ -247,6 +250,11 @@ class AppGraph(
     val desktopMigration = com.slopus.happy.ui.migration.DesktopMigrationCards(
         context.getSharedPreferences(com.slopus.happy.ui.migration.DesktopMigrationCards.PREFS_NAME, Context.MODE_PRIVATE),
     )
+    /** PostHog's flags for each Happy account, kept from the last answer, asked again in the foreground. */
+    val featureFlags = FeatureFlags(
+        context.getSharedPreferences(FeatureFlags.PREFS_NAME, Context.MODE_PRIVATE),
+        BuildConfig.POSTHOG_KEY.takeIf { it.isNotEmpty() }?.let { PostHogFlags(okHttp, it)::fetch },
+    )
     private val accountLock = Mutex()
     /** Selection and removal publish atomically without waiting for another account's sync startup. */
     private val accountSelectionLock = Mutex()
@@ -461,6 +469,14 @@ class AppGraph(
         .flatMapLatest { it?.connectionStatus ?: flowOf(ConnectionStatus.DISCONNECTED) }
         .stateIn(scope, SharingStarted.Eagerly, ConnectionStatus.DISCONNECTED)
 
+    /**
+     * The Happy CLI home's migration card may show: PostHog's flag is on for
+     * the open Happy account, and its analytics are on.
+     */
+    val migrationNote: StateFlow<Boolean> = combine(accountState, settings.settings, featureFlags.on) { account, values, on ->
+        account != null && !values.analyticsOptOut && FeatureFlags.DIRECT_CONNECTION_MIGRATION_NOTE in on[account.anonId].orEmpty()
+    }.stateIn(scope, SharingStarted.Eagerly, false)
+
     /** The open relay account is catching up its stored state. */
     @OptIn(ExperimentalCoroutinesApi::class)
     val isSyncing: StateFlow<Boolean> = accountState
@@ -500,6 +516,15 @@ class AppGraph(
         }
         scope.launch {
             foreground.collect { if (it) subscription.refresh() }
+        }
+        scope.launch {
+            featureFlags.load()
+            // The store is the account's by the time it opens, so its own opt-out is read, never the last account's.
+            combine(foreground, accountState) { visible, account -> account.takeIf { visible } }.collect { account ->
+                if (account != null && !withContext(Dispatchers.IO) { Settings.parse(store.effectiveSettings()).analyticsOptOut }) {
+                    featureFlags.refresh(account.anonId)
+                }
+            }
         }
         scope.launch {
             auth.state.collect { state -> accountLock.withLock { openAccount(state) } }
@@ -785,4 +810,4 @@ sealed interface OpenAccount {
  * empties). The server choice, the secure store (cleared by [AuthRepository])
  * and the push token store (cleared by its own logout hook) are not here.
  */
-private val WIPED_PREFS = listOf(NewSessionDraftStore.PREFS_NAME, PrefsReviewStamps.PREFS_NAME, VoicePreferences.PREFS_NAME)
+private val WIPED_PREFS = listOf(NewSessionDraftStore.PREFS_NAME, PrefsReviewStamps.PREFS_NAME, VoicePreferences.PREFS_NAME, FeatureFlags.PREFS_NAME)

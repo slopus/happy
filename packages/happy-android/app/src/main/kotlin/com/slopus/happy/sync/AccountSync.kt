@@ -66,6 +66,8 @@ class AccountSync(
     private val scope = CoroutineScope(job + io)
 
     val api = SyncApi(http, token)
+    /** The account's analytics id (happy-app's `sync.anonID`), its PostHog distinct id. */
+    val anonId: String = encryption.anonId
     val decoder = RecordDecoder(encryption)
     val presence = Presence(clock)
 

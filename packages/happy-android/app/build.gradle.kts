@@ -52,6 +52,12 @@ val callAgentId = providers.environmentVariable("HAPPY_CALL_AGENT_ID").orNull?.t
         providers.fileContents(rootProject.layout.projectDirectory.file("local.properties")).asText.orNull?.let { load(it.reader()) }
     }.getProperty("happy.callAgentId")?.takeIf { it.isNotBlank() }
 
+// PostHog's public project key, as happy-app's EXPO_PUBLIC_POSTHOG_API_KEY;
+// only feature flags are read with it. Without one every flag is off.
+val postHogKey = providers.environmentVariable("EXPO_PUBLIC_POSTHOG_API_KEY").orNull
+    ?.takeIf { it.isNotBlank() }
+    ?: providers.gradleProperty("happy.postHogKey").orNull.orEmpty()
+
 // Versions follow happy-app (app.config.js, eas.json): versionName is the
 // app's `version`, read from app.config.js so the two never drift; versionCode
 // is EAS's remote, auto-incremented build number, which a store build must
@@ -108,6 +114,7 @@ android {
 
         buildConfigField("String", "DEFAULT_SERVER_URL", "\"https://api.cluster-fluster.com\"")
         buildConfigField("String", "REVENUE_CAT_GOOGLE_KEY", groovy.json.JsonOutput.toJson(revenueCatGoogleKey))
+        buildConfigField("String", "POSTHOG_KEY", groovy.json.JsonOutput.toJson(postHogKey))
         // All three RN variants currently use productionElevenLabsAgentId.
         val voiceAgentId = Regex("""const productionElevenLabsAgentId = ['"]([^'"]+)['"]""")
             .find(providers.fileContents(layout.projectDirectory.file("../../happy-app/app.config.js")).asText.get())

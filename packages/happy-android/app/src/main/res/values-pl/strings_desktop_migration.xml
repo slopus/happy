@@ -6,7 +6,11 @@
     <string name="desktop_migration_agent_connection_title">Przejdź na połączenie bezpośrednie</string>
     <string name="desktop_migration_agent_connection_body">Używasz Happy Agent przez serwer Happy. Połącz się bezpośrednio, aby mieć najmniejsze opóźnienia i najnowsze funkcje.</string>
     <string name="desktop_migration_settings_step">Przejdź do Settings\u00A0›\u00A0Mobile\u00A0Access.</string>
+    <string name="desktop_migration_up_to_date">Upewnij się, że Happy Desktop jest aktualny.</string>
     <string name="desktop_migration_server_step">Używasz Happy na serwerze?</string>
     <string name="desktop_migration_server_step_detail">Wybierz go w Happy Desktop i zeskanuj jego kod.\nAby skonfigurować nowy zdalny serwer, po prostu poproś bota Chief of Staff w Happy Desktop.</string>
     <string name="desktop_migration_learn_more">Dowiedz się więcej</string>
+    <string name="desktop_migration_server_code_title">To kod serwera Happy</string>
+    <string name="desktop_migration_server_code_body">Łączy komputer przez serwer Happy, a nie bezpośrednio. Jeśli Happy Desktop pokazuje kod połączenia bezpośredniego, zeskanuj go zamiast tego. Może być potrzebna aktualizacja Happy Desktop.</string>
+    <string name="desktop_migration_link_anyway">Połącz mimo to</string>
 </resources>

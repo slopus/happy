@@ -6,7 +6,11 @@
     <string name="desktop_migration_agent_connection_title">遷移到直接連線</string>
     <string name="desktop_migration_agent_connection_body">你正在透過 Happy 伺服器使用 Happy Agent。直接連線可獲得最低延遲和最新功能。</string>
     <string name="desktop_migration_settings_step">前往 Settings\u00A0›\u00A0Mobile\u00A0Access。</string>
+    <string name="desktop_migration_up_to_date">請確認 Happy Desktop 已是最新版本。</string>
     <string name="desktop_migration_server_step">在伺服器上使用 Happy？</string>
     <string name="desktop_migration_server_step_detail">在 Happy Desktop 中選擇它並掃描它的代碼。\n要設定新的遠端伺服器，只需在 Happy Desktop 中詢問 Chief of Staff 機器人。</string>
     <string name="desktop_migration_learn_more">了解更多</string>
+    <string name="desktop_migration_server_code_title">這是 Happy 伺服器代碼</string>
+    <string name="desktop_migration_server_code_body">它會透過 Happy 伺服器而不是直接連結你的電腦。如果 Happy Desktop 顯示直接連線代碼，請改為掃描該代碼。你可能需要更新 Happy Desktop。</string>
+    <string name="desktop_migration_link_anyway">仍然連結</string>
 </resources>

@@ -6,7 +6,11 @@
     <string name="desktop_migration_agent_connection_title">Migra a una connexió directa</string>
     <string name="desktop_migration_agent_connection_body">Fas servir Happy Agent a través del servidor de Happy. Connecta’t directament per tenir la latència més baixa i les funcions més noves.</string>
     <string name="desktop_migration_settings_step">Ves a Settings\u00A0›\u00A0Mobile\u00A0Access.</string>
+    <string name="desktop_migration_up_to_date">Assegura’t que Happy Desktop està actualitzat.</string>
     <string name="desktop_migration_server_step">Fas servir Happy en un servidor?</string>
     <string name="desktop_migration_server_step_detail">Selecciona’l a Happy Desktop i escaneja’n el codi.\nPer configurar un servidor remot nou, només cal que ho demanis al bot Chief of Staff a Happy Desktop.</string>
     <string name="desktop_migration_learn_more">Més informació</string>
+    <string name="desktop_migration_server_code_title">Aquest és un codi del servidor de Happy</string>
+    <string name="desktop_migration_server_code_body">Vincula l’ordinador a través del servidor de Happy, no directament. Si Happy Desktop mostra un codi de connexió directa, escaneja aquest. Potser cal actualitzar Happy Desktop.</string>
+    <string name="desktop_migration_link_anyway">Vincula igualment</string>
 </resources>
