@@ -51,7 +51,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -107,8 +110,10 @@ import com.slopus.happy.ui.components.hairline
 import com.slopus.happy.ui.components.rememberReduceMotion
 import com.slopus.happy.ui.components.rememberThumbHash
 import com.slopus.happy.ui.connection.AgentHomeSpec
+import com.slopus.happy.ui.connection.BarIconButton
 import com.slopus.happy.ui.connection.ConversationMark
 import com.slopus.happy.ui.connection.RowTile
+import com.slopus.happy.ui.home.copyToClipboard
 import com.slopus.happy.ui.layout.ContentTokens
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
@@ -119,6 +124,7 @@ object AgentPageTags {
     const val SCREEN = "agentPage.screen"
     const val SCROLL = "agentPage.scroll"
     const val ERROR = "agentPage.error"
+    const val COPY_LINK = "agentPage.copyLink"
     const val MARK = ProfileHeaderTags.AVATAR
     const val NAME = ProfileHeaderTags.NAME
     const val SUBTITLE = ProfileHeaderTags.SUBTITLE
@@ -273,6 +279,12 @@ class AgentPageActions(
     val onOpenFiles: (String) -> Unit = {},
     /** A permission mode picked here, sent through the chat beneath as its header's menu sends it. */
     val onModeChange: (Mode) -> Unit = {},
+    /**
+     * The agent's external Happy link (`happy://<instanceId>/agents/<id>`),
+     * for the bar's Copy Link (iOS `CopyLinkItem`, desktop e712a6e4's Copy
+     * agent ID); null where the daemon reports no instance id.
+     */
+    val link: String? = null,
 )
 
 /**
@@ -311,7 +323,18 @@ fun AgentPageScreen(state: AgentPageState, actions: AgentPageActions, now: Long 
                 title = name.orEmpty(),
                 onBack = actions.onBack,
                 titleAlpha = { ((scroll.value - nameTop) / nameHeight).coerceIn(0f, 1f) },
-            )
+            ) {
+                actions.link?.let { link ->
+                    val context = LocalContext.current
+                    val haptics = LocalHapticFeedback.current
+                    BarIconButton(
+                        Ionicon.LinkOutline,
+                        stringResource(R.string.link_menu_copy),
+                        { if (copyToClipboard(context, link)) haptics.performHapticFeedback(HapticFeedbackType.Confirm) },
+                        Modifier.testTag(AgentPageTags.COPY_LINK),
+                    )
+                }
+            }
         },
         modifier = Modifier.testTag(AgentPageTags.SCREEN),
     ) {

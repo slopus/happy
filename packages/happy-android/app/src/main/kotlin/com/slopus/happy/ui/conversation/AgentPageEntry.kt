@@ -16,6 +16,9 @@ import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.agent.AgentFamily
 import com.slopus.happy.agent.AgentSession
+import com.slopus.happy.agent.HappyLink
+import com.slopus.happy.agent.HappyReferenceKind
+import com.slopus.happy.agent.HappyUrls
 import com.slopus.happy.agent.string
 import com.slopus.happy.connection.RequestCategory
 import com.slopus.happy.conversation.AgentDetail
@@ -190,7 +193,9 @@ internal fun AgentPageEntry(graph: AppGraph, nav: NavHostController, route: Conv
         chatMode = held?.let { warm?.mode ?: warm?.catalog?.defaults },
     )
     val kept = rememberKeptMedia(graph, session, route.agentId)
-    val actions = remember(nav, model, session, route, kept, held) {
+    val connections by graph.agentConnections.accounts.collectAsStateWithLifecycle()
+    val instanceId = connections.firstOrNull { it.id == route.connectionId }?.instanceId?.takeIf(HappyUrls::isInstanceId)
+    val actions = remember(nav, model, session, route, kept, held, instanceId) {
         AgentPageActions(
             onBack = { nav.popBackStack() },
             onOpenConversation = { id -> if (id == route.agentId) nav.popBackStack() else nav.openConversation(route.connectionId, id) },
@@ -208,6 +213,7 @@ internal fun AgentPageEntry(graph: AppGraph, nav: NavHostController, route: Conv
             },
             kept = kept,
             onModeChange = { mode -> held?.setMode(mode) },
+            link = instanceId?.let { HappyUrls.format(HappyLink.Reference(HappyReferenceKind.Agent, route.agentId), it) },
         )
     }
     // A link opens as one in the chat does: through this agent's workspace.

@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.DpRect
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import androidx.compose.ui.unit.width
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.connection.TransportResponse
 import com.slopus.happy.conversation.KeptMedia
@@ -101,6 +102,22 @@ class AgentPageTest {
         assertDp("the kind line is 2 under the name", name.bottom + 2.dp, subtitle.top)
         rule.onNodeWithText("Task · Working").assertIsDisplayed()
         shot("light")
+    }
+
+    /** iOS SessionDetailViewController's bar: Copy Link puts the agent's instance link on the clipboard (desktop e712a6e4). */
+    @Test fun `copy link puts the agents happy link on the clipboard, and without an instance there is none`() {
+        show(actions = AgentPageActions(link = "happy://inst/agents/a1"))
+        val bar = rule.node(GlassBarTags.BAR).bounds
+        val copy = rule.node(AgentPageTags.COPY_LINK).bounds
+        assertTrue("in the bar's end", copy.right <= bar.right && copy.left > (PHONE_WIDTH / 2).dp)
+        rule.node(AgentPageTags.COPY_LINK).performClick()
+        val clipboard = ApplicationProvider.getApplicationContext<android.content.Context>().getSystemService(android.content.ClipboardManager::class.java)
+        assertEquals("happy://inst/agents/a1", clipboard.primaryClip?.getItemAt(0)?.text?.toString())
+    }
+
+    @Test fun `a daemon with no instance id offers no copy link`() {
+        show()
+        rule.node(AgentPageTags.COPY_LINK).assertDoesNotExist()
     }
 
     @Test fun `the tiles are two to a row on the cards inset`() {
