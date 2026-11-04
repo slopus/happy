@@ -12,6 +12,7 @@ import com.slopus.happy.model.settings.PushText
 import com.slopus.happy.model.settings.PushTokensApi
 import com.slopus.happy.push.rememberPushRegistration
 import com.slopus.happy.push.RefreshPushPermissionOnResume
+import com.slopus.happy.ui.browser.LocalLinkOpener
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.Composable
@@ -250,6 +251,7 @@ internal fun rememberAboutInfo(graph: AppGraph): AboutInfo {
 @Composable
 internal fun rememberAboutActions(graph: AppGraph, nav: NavHostController): AboutActions {
     val uriHandler = LocalUriHandler.current
+    val linkOpener = LocalLinkOpener.current
     val alerts = remember { Alerts() }
     val onError = errorAlert(alerts)
     val support = rememberSupportAction(graph.purchases, onError)
@@ -259,7 +261,7 @@ internal fun rememberAboutActions(graph: AppGraph, nav: NavHostController): Abou
     val developerModeDisabled = stringResource(R.string.modals_developer_mode_disabled)
     val ok = stringResource(R.string.common_ok)
     alerts.Host()
-    return remember(graph, nav, uriHandler, support, developerMode, developerModeEnabled, developerModeDisabled, ok) {
+    return remember(graph, nav, uriHandler, linkOpener, support, developerMode, developerModeEnabled, developerModeDisabled, ok) {
         AboutActions(
             onOpenUrl = { url -> openExternalUrl(uriHandler, url) },
             onWhatsNew = { nav.navigate(ChangelogRoute) },
@@ -271,6 +273,10 @@ internal fun rememberAboutActions(graph: AppGraph, nav: NavHostController): Abou
                 }
             },
             onSupport = support::run,
+            onManageSubscriptions = {
+                if (linkOpener != null) linkOpener.openExternal(SettingsSpec.SUBSCRIPTIONS_URL)
+                else openExternalUrl(uriHandler, SettingsSpec.SUBSCRIPTIONS_URL)
+            },
         )
     }
 }

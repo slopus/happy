@@ -374,6 +374,8 @@ class AboutActions(
     /** A tap on Version; ten in a row toggle developer mode (useMultiClick). */
     val onVersion: () -> Unit = {},
     val onSupport: () -> Unit = {},
+    /** Billing belongs to the phone's store/account, even with an agent's proxied browser open. */
+    val onManageSubscriptions: () -> Unit = { onOpenUrl(SettingsSpec.SUBSCRIPTIONS_URL) },
 )
 
 /** Support us (29 heart in a red tile; Pro gets the thanks and no action). */
@@ -401,7 +403,7 @@ fun supportSection(about: AboutInfo, actions: AboutActions) = SettingsSection(
             id = SettingsTags.MANAGE_SUBSCRIPTIONS,
             title = stringResource(R.string.settings_manage_subscriptions),
             icon = { SettingsTile(Ionicon.CardOutline, SettingsTiles.blue) },
-            onClick = { actions.onOpenUrl(SettingsSpec.SUBSCRIPTIONS_URL) },
+            onClick = actions.onManageSubscriptions,
         ),
     ),
 )

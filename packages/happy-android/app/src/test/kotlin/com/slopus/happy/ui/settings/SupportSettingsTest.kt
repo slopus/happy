@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.settings
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -9,6 +10,12 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.height
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.core.app.ApplicationProvider
+import androidx.navigation.compose.rememberNavController
+import com.slopus.happy.AppGraph
+import com.slopus.happy.testing.SoftwareKeys
+import com.slopus.happy.ui.browser.LinkOpener
+import com.slopus.happy.ui.browser.LocalLinkOpener
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.PHONE_WIDTH
 import com.slopus.happy.ui.assertDp
@@ -27,6 +34,26 @@ import org.robolectric.annotation.GraphicsMode
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class SupportSettingsTest {
     @get:Rule val rule = createComposeRule()
+
+    @Test
+    fun anAgentConnectionOpensThePhonesStoreInsteadOfItsProxiedBrowser() {
+        val urls = mutableListOf<String>()
+        val links = LinkOpener(
+            proxied = true, computer = "Studio",
+            tap = { error("must not use the agent's browser") },
+            inApp = { error("must not use the agent's browser") },
+            external = { urls += it },
+        )
+        val graph = AppGraph(ApplicationProvider.getApplicationContext(), "android/test", "http://localhost:1", SoftwareKeys(), databaseName = null)
+        rule.setHappyContent {
+            CompositionLocalProvider(LocalLinkOpener provides links) {
+                val actions = rememberAboutActions(graph, rememberNavController())
+                SupportCard(AboutInfo("1", isPro = true), actions)
+            }
+        }
+        rule.node(SettingsTags.MANAGE_SUBSCRIPTIONS).performClick()
+        assertEquals(listOf("https://play.google.com/store/account/subscriptions"), urls)
+    }
 
     @Test
     fun subscriptionsOpenTheStoresAccountPageWithOrWithoutPro() {
