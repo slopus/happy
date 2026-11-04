@@ -21,9 +21,17 @@ internal class PhotoScreenFlash(private val window: Window?, private val scope: 
     private var original: Float? = null
     private var pending: ImageCapture.ScreenFlashListener? = null
     private var work: Job? = null
+    private var accepting = false
+
+    /** Only an active capture may light the window; CameraX callbacks can arrive after close. */
+    fun prepare() {
+        reset()
+        accepting = true
+    }
 
     override fun apply(expirationTimeMillis: Long, screenFlashListener: ImageCapture.ScreenFlashListener) {
-        reset()
+        if (!accepting) { screenFlashListener.onCompleted(); return }
+        stop()
         pending = screenFlashListener
         original = window?.attributes?.screenBrightness
         window?.let { it.attributes = it.attributes.apply { screenBrightness = 1f } }
@@ -37,6 +45,7 @@ internal class PhotoScreenFlash(private val window: Window?, private val scope: 
     }
 
     override fun clear() {
+        accepting = false
         complete()
         work?.cancel()
         work = scope.launch {
@@ -48,6 +57,11 @@ internal class PhotoScreenFlash(private val window: Window?, private val scope: 
 
     /** Pause, close and disposal can happen before CameraX has called clear. */
     fun reset() {
+        accepting = false
+        stop()
+    }
+
+    private fun stop() {
         work?.cancel()
         work = null
         complete()

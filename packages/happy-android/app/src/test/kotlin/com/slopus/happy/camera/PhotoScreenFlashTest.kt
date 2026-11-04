@@ -22,7 +22,7 @@ class PhotoScreenFlashTest {
         lateinit var flash: PhotoScreenFlash
         var completed = 0
         rule.setContent { val scope = rememberCoroutineScope(); flash = remember { PhotoScreenFlash(window, scope) } }
-        rule.runOnIdle { flash.apply(System.currentTimeMillis() + 3000, ImageCapture.ScreenFlashListener { completed++ }) }
+        rule.runOnIdle { flash.prepare(); flash.apply(System.currentTimeMillis() + 3000, ImageCapture.ScreenFlashListener { completed++ }) }
         assertEquals(1f, window.attributes.screenBrightness)
         rule.mainClock.advanceTimeByFrame()
         rule.mainClock.advanceTimeBy(150)
@@ -44,6 +44,7 @@ class PhotoScreenFlashTest {
         var completed = 0
         rule.setContent { val scope = rememberCoroutineScope(); flash = remember { PhotoScreenFlash(window, scope) } }
         rule.runOnIdle {
+            flash.prepare()
             flash.apply(System.currentTimeMillis() + 3000, ImageCapture.ScreenFlashListener { completed++ })
             flash.reset()
             assertEquals(1, completed)
@@ -56,6 +57,30 @@ class PhotoScreenFlashTest {
             assertEquals(1, completed)
             assertEquals(0f, flash.alpha)
             assertEquals(-1f, window.attributes.screenBrightness)
+        }
+    }
+
+    @Test fun aLateCameraCallbackAfterCloseCompletesWithoutLightingTheWindow() {
+        val window = rule.activity.window
+        window.attributes = window.attributes.apply { screenBrightness = 0.37f }
+        lateinit var flash: PhotoScreenFlash
+        var completed = 0
+        rule.setContent { val scope = rememberCoroutineScope(); flash = remember { PhotoScreenFlash(window, scope) } }
+        rule.runOnIdle {
+            flash.prepare()
+            flash.reset()
+            // CameraX's request can outlive the canceled capture coroutine.
+            flash.apply(System.currentTimeMillis() + 3000, ImageCapture.ScreenFlashListener { completed++ })
+            assertEquals(0.37f, window.attributes.screenBrightness)
+            assertEquals(0f, flash.alpha)
+            assertEquals(1, completed)
+            flash.clear()
+        }
+        rule.mainClock.advanceTimeBy(1000)
+        rule.runOnIdle {
+            assertEquals(0.37f, window.attributes.screenBrightness)
+            assertEquals(0f, flash.alpha)
+            assertEquals(1, completed)
         }
     }
 }

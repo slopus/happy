@@ -339,13 +339,14 @@ internal fun AttachCamera(
     fun take() {
         Log.d("HappyCamera", "shutter ready=$ready busy=$busy counting=${control.countdown != null}")
         if (control.countdown != null) { capturing?.cancel(); control.countdown = null; return }
-        if (!ready || busy || motion.closing || !room()) return
+        if (!state.full || !resumed || !ready || busy || motion.closing || !room()) return
         haptics.performHapticFeedback(HapticFeedbackType.ContextClick)
         capturing = scope.launch {
             try {
                 for (left in control.timer downTo 1) { control.countdown = left; delay(1000) }
                 control.countdown = null
                 busy = true
+                screenFlash.prepare()
                 review = capturePhoto(capture, files, control.actualFront, maxBytes, PhotoPreferences.shape.ratio) {
                     scope.launch { blink.snapTo(1f); blink.animateTo(0f, tween(250)) }
                 }
