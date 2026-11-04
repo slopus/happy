@@ -42,4 +42,10 @@
     <string name="document_table">Tabela</string>
     <string name="document_unsupported">Algo que o Happy não consegue mostrar aqui</string>
     <string name="document_someone">Alguém</string>
+    <string name="document_history">Histórico</string>
+    <string name="document_history_empty">Ainda não há alterações</string>
+    <string name="document_agent">Um agente</string>
+    <string name="document_conversion">Criado a partir de Markdown</string>
+    <string name="document_current">Versão atual</string>
+    <string name="document_version">Versão %1$d</string>
 </resources>

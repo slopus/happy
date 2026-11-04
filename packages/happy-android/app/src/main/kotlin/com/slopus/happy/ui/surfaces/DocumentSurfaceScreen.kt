@@ -4,8 +4,8 @@ import androidx.compose.runtime.Composable
 import com.slopus.happy.agent.AgentSession
 import com.slopus.happy.ui.documents.DocumentScreen
 
-/** A document Surface ([SurfaceScreens]' `document` slot): edited live with the computer and whoever else has it open. */
+/** A document Surface ([SurfaceScreens]' `document` slot): edited live with the computer and whoever else has it open; [open] pushes its history. */
 @Composable
-fun DocumentSurfaceScreen(session: AgentSession, surfaceId: String, onBack: () -> Unit) {
-    DocumentScreen(session, surfaceId, onBack)
+fun DocumentSurfaceScreen(session: AgentSession, surfaceId: String, onBack: () -> Unit, open: (Any) -> Unit = {}) {
+    DocumentScreen(session, surfaceId, onBack, onHistory = { open(DocumentHistoryRoute(session.connectionId, surfaceId)) })
 }

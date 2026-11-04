@@ -42,4 +42,10 @@
     <string name="document_table">表</string>
     <string name="document_unsupported">Happy がここで表示できないもの</string>
     <string name="document_someone">誰か</string>
+    <string name="document_history">履歴</string>
+    <string name="document_history_empty">まだ変更はありません</string>
+    <string name="document_agent">エージェント</string>
+    <string name="document_conversion">Markdown から作成</string>
+    <string name="document_current">現在のバージョン</string>
+    <string name="document_version">バージョン %1$d</string>
 </resources>

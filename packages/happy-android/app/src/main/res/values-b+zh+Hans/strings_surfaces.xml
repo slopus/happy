@@ -42,4 +42,10 @@
     <string name="document_table">表格</string>
     <string name="document_unsupported">Happy 无法在此显示的内容</string>
     <string name="document_someone">某人</string>
+    <string name="document_history">历史记录</string>
+    <string name="document_history_empty">暂无更改</string>
+    <string name="document_agent">代理</string>
+    <string name="document_conversion">由 Markdown 生成</string>
+    <string name="document_current">当前版本</string>
+    <string name="document_version">版本 %1$d</string>
 </resources>

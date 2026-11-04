@@ -42,4 +42,10 @@
     <string name="document_table">Таблица</string>
     <string name="document_unsupported">То, что Happy не может здесь показать</string>
     <string name="document_someone">Кто-то</string>
+    <string name="document_history">История</string>
+    <string name="document_history_empty">Изменений пока нет</string>
+    <string name="document_agent">Агент</string>
+    <string name="document_conversion">Создано из Markdown</string>
+    <string name="document_current">Текущая версия</string>
+    <string name="document_version">Версия %1$d</string>
 </resources>

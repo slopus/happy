@@ -41,7 +41,7 @@ fun SurfaceScreens(graph: AppGraph, route: SurfaceRoute, onBack: () -> Unit, ope
     val name = surface?.name ?: route.name
     when (surface?.type) {
         null -> SurfaceMissing(name, loading = !catalog.loaded, onBack)
-        SurfaceType.DOCUMENT -> DocumentSurfaceScreen(session, route.surfaceId, onBack)
+        SurfaceType.DOCUMENT -> DocumentSurfaceScreen(session, route.surfaceId, onBack, open)
         SurfaceType.TODO -> TodoSurfaceScreen(session, route.surfaceId, onBack, open)
         SurfaceType.SYSTEM_MONITOR -> SystemMonitorSurfaceScreen(session, route.surfaceId, onBack)
         SurfaceType.CALENDAR -> CalendarSurfaceScreen(session, route.surfaceId, onBack)

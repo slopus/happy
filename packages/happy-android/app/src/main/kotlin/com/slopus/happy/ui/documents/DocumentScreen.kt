@@ -77,12 +77,12 @@ object DocumentScreenTags {
  * phone kept the moment it opens, kept in step with the computer by its
  * sync, and with whoever else has it open. The bar says where saving
  * stands (Saved, Saving…, Waiting to sync), or for 4 s that a change was
- * refused; its menu renames the document and leaves it. The formatting bar
+ * refused; its menu renames the document, opens its history and leaves it. The formatting bar
  * rides the keyboard while the text has focus. A computer without shared
  * documents shows the Markdown, read-only.
  */
 @Composable
-fun DocumentScreen(session: AgentSession, surfaceId: String, onBack: () -> Unit) {
+fun DocumentScreen(session: AgentSession, surfaceId: String, onBack: () -> Unit, onHistory: () -> Unit = {}) {
     val holder = viewModel(key = "document:${session.connectionId}:$surfaceId") { DocumentHolder(session, surfaceId) }
     val surface by session.surface(surfaceId).collectAsStateWithLifecycle(null)
     val phase by holder.phase.collectAsStateWithLifecycle()
@@ -118,6 +118,7 @@ fun DocumentScreen(session: AgentSession, surfaceId: String, onBack: () -> Unit)
         actions = {
             SurfaceMenu(session, surfaceId, onBack) { close ->
                 HappyMenuItem(stringResource(R.string.common_rename), onClick = { close(); renaming = true })
+                HappyMenuItem(stringResource(R.string.document_history), onClick = { close(); onHistory() })
             }
         },
         onTool = { holder.controller?.run(it) },
@@ -174,7 +175,7 @@ private fun hideKeyboard(context: Context, view: DocumentTextView) {
 
 /** The content column's keyline in a pane [width] wide, for text that scrolls the whole pane's width. */
 @Composable
-private fun keyline(width: Dp): Dp = LocalWindowLayout.current.content.keyline(width).let { if (width == Dp.Infinity) 16.dp else it }
+internal fun keyline(width: Dp): Dp = LocalWindowLayout.current.content.keyline(width).let { if (width == Dp.Infinity) 16.dp else it }
 
 /**
  * The document's page without its state, for [DocumentScreen] and the
