@@ -191,9 +191,10 @@ object FeedRows {
      * A row for each entry that can be shown, in their order. An entry
      * whose subject isn't held is left out, never shown with a stand-in.
      */
-    fun make(items: List<FeedItem>, unread: (FeedItem) -> Boolean, catalog: AgentCatalog, found: FeedLookups.Found, personSeed: String): List<FeedRow> {
+    /** [photo] is the person's own profile photo's ThumbHash, which their face wears (desktop 0ffabe03). */
+    fun make(items: List<FeedItem>, unread: (FeedItem) -> Boolean, catalog: AgentCatalog, found: FeedLookups.Found, personSeed: String, photo: String? = null): List<FeedRow> {
         val owners = owners(catalog)
-        return items.mapNotNull { row(it, unread(it), catalog, found, owners, personSeed) }
+        return items.mapNotNull { row(it, unread(it), catalog, found, owners, personSeed, photo) }
     }
 
     /** A bot's or task's conversation: the face it wears, by agent ID. */
@@ -223,7 +224,7 @@ object FeedRows {
         )
     }
 
-    private fun row(item: FeedItem, unread: Boolean, catalog: AgentCatalog, found: FeedLookups.Found, owners: Map<String, Owner>, personSeed: String): FeedRow? {
+    private fun row(item: FeedItem, unread: Boolean, catalog: AgentCatalog, found: FeedLookups.Found, owners: Map<String, Owner>, personSeed: String, photo: String?): FeedRow? {
         val id = item.subject.id
         val title: String
         val face: FeedFace
@@ -272,7 +273,7 @@ object FeedRows {
             detail = detail?.trim()?.replace('\n', ' ')?.takeIf { it.isNotEmpty() },
             created = item.created,
             updates = item.updates,
-            actors = item.actors.take(MAX_FACES).map { face(it, catalog, owners, personSeed) },
+            actors = item.actors.take(MAX_FACES).map { face(it, catalog, owners, personSeed, photo) },
             actorCount = maxOf(item.actorCount, item.actors.size),
             lastAt = item.lastAt,
             unread = unread,
@@ -281,12 +282,20 @@ object FeedRows {
     }
 
     /**
-     * Who made a change: an agent wears its bot's or task's face, else its
-     * own placeholder; a person their placeholder, round; nobody
-     * (standalone) the installation's one person.
+     * Who made a change (iOS `FeedDirectory.face`): an agent wears its bot's
+     * or task's face, else its own placeholder; the person, or nobody
+     * (standalone: the installation's one person), their profile photo over
+     * its ThumbHash, else their placeholder, round. Anyone else their
+     * placeholder: this phone keeps no team directory.
      */
-    internal fun face(actor: FeedActor, catalog: AgentCatalog, owners: Map<String, Owner>, personSeed: String): FeedFace {
+    internal fun face(actor: FeedActor, catalog: AgentCatalog, owners: Map<String, Owner>, personSeed: String, photo: String? = null): FeedFace {
         actor.agentId?.let { agentId -> return owners[agentId]?.face ?: FeedFace.Mark(agentId, round = false) }
-        return FeedFace.Mark(actor.userId ?: catalog.userId ?: personSeed, round = true)
+        val seed = actor.userId ?: catalog.userId ?: personSeed
+        val own = actor.userId == null || actor.userId == catalog.userId
+        if (own && photo != null) return FeedFace.Mark(seed, round = true, picture = PROFILE_PHOTO, thumbhash = photo)
+        return FeedFace.Mark(seed, round = true)
     }
+
+    /** The person's own photo, as the agent serves it. */
+    const val PROFILE_PHOTO = "/v0/profile/photo"
 }

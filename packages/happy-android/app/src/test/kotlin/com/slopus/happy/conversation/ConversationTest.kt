@@ -1420,6 +1420,26 @@ class ConversationTest {
         assertEquals(ConversationRow.TurnEnd("r2:status", "r2", "error", 5_000, 0, "Again"), failed)
     }
 
+    @Test fun `another agent's steering joins the run going and its turn stays one`() = runTest {
+        // happy-agent 10b6171c4: only a person's steering is a boundary; another agent's comes as
+        // `message.created` in the run already going, and no lifecycle event.
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        signals.emit(event("run.started", """{"agentId":"a1","run":{"id":"r1","status":"running","startedAt":1000},"acceptedMessageIds":[]}"""))
+        signals.emit(event("message.created", """{"agentId":"a1","runId":"r1","message":{"id":"m","role":"agent","createdAt":5,"content":[{"type":"tool_call","id":"c1","name":"exec_command","status":"completed","presentation":{"type":"exec_command","command":"ls"}}],"metadata":{}}}"""))
+        signals.emit(event("message.created", """{"agentId":"a1","runId":"r1","message":{"id":"s","role":"agent","createdAt":6,"content":[{"type":"text","text":"Message from agent x9: also check the tests"}],"metadata":{"senderAgentId":"x9"}}}"""))
+        signals.emit(event("message.created", """{"agentId":"a1","runId":"r1","message":{"id":"n","role":"agent","createdAt":7,"content":[{"type":"text","text":"Done, tests too"}],"metadata":{}}}"""))
+        signals.emit(event("run.finished", """{"agentId":"a1","run":{"id":"r1","status":"completed","startedAt":1000,"endedAt":9000}}"""))
+        advanceUntilIdle()
+        val rows = chat.state.value.rows
+        val ends = rows.filterIsInstance<ConversationRow.TurnEnd>()
+        assertEquals("one turn", 1, ends.size)
+        assertEquals("completed", ends.single().reason)
+        // Folded, the turn still shows what the other agent said, under its one answer.
+        assertEquals(listOf("r1:status", "n:0", "r1:trace", "s:from"), rows.map { it.key })
+    }
+
 
     private fun picture(fill: Char) = Block.Image("image/png", fill.toString().repeat(4000))
 

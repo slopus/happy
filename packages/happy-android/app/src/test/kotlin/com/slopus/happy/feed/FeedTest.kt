@@ -248,6 +248,19 @@ class FeedTest {
     }
 
     @Test
+    fun thePersonsFaceWearsTheirProfilePhotoOverItsThumbHash() {
+        // desktop 0ffabe03, iOS FeedDirectory.face: the person, and the standalone reader, wear their photo.
+        val mine = synced.copy(userId = "me")
+        val hash = "1QcSHQRnh493V4dIh4eXh1h4kJUI"
+        val photo = FeedFace.Mark("me", round = true, picture = "/v0/profile/photo", thumbhash = hash)
+        assertEquals(photo, FeedRows.face(FeedActor(userId = "me"), mine, emptyMap(), "conn", hash))
+        assertEquals(photo.copy(seed = "conn"), FeedRows.face(FeedActor(), synced.copy(userId = null), emptyMap(), "conn", hash))
+        // Someone else, or no photo: the placeholder.
+        assertEquals(FeedFace.Mark("u2", round = true), FeedRows.face(FeedActor(userId = "u2"), mine, emptyMap(), "conn", hash))
+        assertEquals(FeedFace.Mark("me", round = true), FeedRows.face(FeedActor(userId = "me"), mine, emptyMap(), "conn", null))
+    }
+
+    @Test
     fun homesFeedRowSitsUnderArtifactsWhileTheComputerKeepsAFeed() {
         val with = AgentFeed.derive(synced, feedUnread = 4).rows.map { it.key }
         assertEquals(listOf("section-places", "artifacts", "feed"), with.take(3))
