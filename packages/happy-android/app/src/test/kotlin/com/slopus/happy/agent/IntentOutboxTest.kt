@@ -1,9 +1,11 @@
 package com.slopus.happy.agent
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -18,6 +20,7 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -257,9 +260,40 @@ class IntentOutboxTest {
         val after = outbox(FileIntentStorage(file))
         eventually({ after.pending.value.map { it.kind to it.target } }) { it == listOf(Intent.READ to "a", Intent.LEAVE to "s1") }
         assertEquals("surface", after.pending.value.last().of)
+        val ids = after.pending.value.map { it.id }
         after.handle(setOf(Intent.READ, Intent.LEAVE)) { sent += it.target }
         after.setOnline(true)
-        eventually({ after.pending.value }) { it.isEmpty() }
+        // What was sent is gone from the screen before it is gone from the disk; its verdict comes after both.
+        ids.forEach { assertEquals(IntentOutbox.Verdict.Taken, after.verdict(it)) }
         assertTrue("nothing left to keep", !file.exists())
+    }
+
+    /**
+     * A sent intent leaves [IntentOutbox.pending] at once, before the store has
+     * written it away; its verdict waits for the store. So whoever needs the
+     * disk to agree waits on the verdict, not on pending.
+     */
+    @Test
+    fun aVerdictComesOnlyOnceTheStoreHasWrittenTheIntentAway(): Unit = runBlocking {
+        val gate = CompletableDeferred<Unit>()
+        val saved = CopyOnWriteArrayList<List<Intent>>()
+        val store = object : IntentStorage {
+            override suspend fun load() = emptyList<Intent>()
+            override suspend fun save(intents: List<Intent>) {
+                if (intents.isEmpty()) gate.await()
+                saved += intents
+            }
+        }
+        val box = outbox(store)
+        val intent = box.enqueue(Intent.READ, "a")
+        box.handle(setOf(Intent.READ)) { sent += it.target }
+        val verdict = async { box.verdict(intent.id) }
+        box.setOnline(true)
+        eventually({ box.pending.value }) { it.isEmpty() }
+        assertTrue("the store still holds it", saved.last().isNotEmpty())
+        assertFalse("no verdict while the store writes", verdict.isCompleted)
+        gate.complete(Unit)
+        assertEquals(IntentOutbox.Verdict.Taken, verdict.await())
+        assertTrue("the store has it gone", saved.last().isEmpty())
     }
 }
