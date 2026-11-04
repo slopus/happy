@@ -36,8 +36,8 @@ interface RevenueCat {
         data class Unreached(val error: IOException) : Answer
     }
 
-    /** A Play subscription as `POST /v1/receipts` takes it. */
-    data class Receipt(val customer: String, val token: String, val product: String, val basePlan: String?, val restore: Boolean)
+    /** A Play subscription as `POST /v1/receipts` takes it: its own products, and its base plan where known. */
+    data class Receipt(val customer: String, val token: String, val products: List<String>, val basePlan: String?, val restore: Boolean)
 
     suspend fun offerings(customer: String): Answer
     suspend fun subscriber(customer: String): Answer
@@ -83,9 +83,11 @@ class RevenueCatApi(
             buildJsonObject {
                 put("app_user_id", receipt.customer)
                 put("fetch_token", receipt.token)
-                put("product_ids", buildJsonArray { add(receipt.product) })
+                put("product_ids", buildJsonArray { receipt.products.forEach { add(it) } })
                 put("platform_product_ids", buildJsonArray {
-                    add(buildJsonObject { put("product_id", receipt.product); receipt.basePlan?.let { put("base_plan_id", it) } })
+                    receipt.products.forEach { product ->
+                        add(buildJsonObject { put("product_id", product); receipt.basePlan?.let { put("base_plan_id", it) } })
+                    }
                 })
                 put("is_restore", receipt.restore)
                 put("observer_mode", false)

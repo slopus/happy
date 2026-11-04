@@ -477,7 +477,10 @@ class AppGraph(
             foreground.collect { if (it) purchases.refresh() }
         }
         scope.launch {
-            auth.state.map { (it as? AuthState.SignedIn)?.publicId?.takeIf(String::isNotBlank) }.distinctUntilChanged().collect(voiceSubscription::relay)
+            var relay: String? = null
+            combine(auth.state, openAccount, accountStore.registry) { _, _, _ -> voiceRelay(relay).also { relay = it } }
+                .distinctUntilChanged()
+                .collect(voiceSubscription::relay)
         }
         scope.launch {
             foreground.collect { if (it) voiceSubscription.refresh() }
@@ -492,6 +495,21 @@ class AppGraph(
                 accountStore.updateDisplay(id, AccountDisplay.of(Profile.parse(store.profile())))
             }
         }
+    }
+
+    /**
+     * The Happy account voice's subscription is under: the open one; while
+     * an agent connection is open, the account open before it ([last], or
+     * before this launch), as long as it is still signed in here. Voice is
+     * used on agent connections, so opening one never changes whose
+     * subscription it is.
+     */
+    private fun voiceRelay(last: String?): String? = when (openAccount.value) {
+        is OpenAccount.Happy -> (auth.state.value as? AuthState.SignedIn)?.publicId?.takeIf(String::isNotBlank)
+        is OpenAccount.Agent -> (last ?: voiceSubscription.account)?.takeIf { subject ->
+            accountStore.registry.value.entries.any { accountStore.credentials(it.id)?.credentials?.token?.let(::tokenSubject) == subject }
+        }
+        OpenAccount.None -> null
     }
 
     private fun purchaseAccount(): PurchaseAccount? = (auth.state.value as? AuthState.SignedIn)?.publicId
