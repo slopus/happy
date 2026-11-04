@@ -61,7 +61,6 @@ final class CallSheetViewController: UIViewController {
             body.text = Strings.Call.welcomeBody
             rows = [("text.bubble", Strings.Call.welcomeAsk, Strings.Call.welcomeAskDetail),
                     ("paperplane", Strings.Call.welcomeAct, Strings.Call.welcomeActDetail),
-                    ("checkmark.shield", Strings.Call.welcomeApprove, Strings.Call.welcomeApproveDetail),
                     ("gift", Strings.Call.welcomeFree, Strings.Call.welcomeFreeDetail)]
             primary.setTitle(Strings.Call.welcomeStart, for: .normal)
             note.text = Strings.Call.welcomeNote
@@ -164,7 +163,9 @@ final class CallSheetViewController: UIViewController {
         let label = UILabel()
         var font = UIFont.preferredFont(forTextStyle: style)
         if let weight {
-            font = UIFontMetrics(forTextStyle: style).scaledFont(for: .systemFont(ofSize: font.pointSize, weight: weight))
+            // The style's own size at the person's text size, scaled once.
+            let descriptor = font.fontDescriptor.addingAttributes([.traits: [UIFontDescriptor.TraitKey.weight: weight]])
+            font = UIFont(descriptor: descriptor, size: 0)
         }
         label.font = font
         label.adjustsFontForContentSizeCategory = true

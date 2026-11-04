@@ -26,11 +26,9 @@ extension Strings {
         static var welcomeTitle: String { "Talk to your agents" }
         static var welcomeBody: String { "Talk through your tasks, open conversations, and send messages hands-free." }
         static var welcomeAsk: String { "Ask how your work is going" }
-        static var welcomeAskDetail: String { "Happy reads a conversation’s recent messages when you ask about it, and hears new replies in the ones you open." }
+        static var welcomeAskDetail: String { "Happy reads a conversation’s recent messages when you ask about it, and receives new replies in the ones you open." }
         static var welcomeAct: String { "Open and send by voice" }
-        static var welcomeActDetail: String { "It opens conversations on screen and sends exactly what you ask it to." }
-        static var welcomeApprove: String { "Approvals stay in the app" }
-        static var welcomeApproveDetail: String { "Permissions and questions are answered on screen, never by voice." }
+        static var welcomeActDetail: String { "It opens conversations on screen and sends the messages you ask it to." }
         static var welcomeFree: String { "20 free minutes" }
         static var welcomeFreeDetail: String { "Each device gets 20 minutes of voice in any 30 days." }
         static var welcomeStart: String { "Start talking" }

@@ -121,9 +121,8 @@ no navigation bar.
 
 **The welcome** comes the first time a device taps the voice button: "Talk
 to your agents", what voice does (it reads a conversation's recent messages
-when asked, hears new replies in the ones opened, opens conversations and
-sends exactly what it is told; approvals stay in the app) and the 20 free
-minutes. "Start talking" closes it and starts the call, which asks for the
+when asked, receives new replies in the ones opened, opens conversations and
+sends the messages it is asked to) and the 20 free minutes. "Start talking" closes it and starts the call, which asks for the
 microphone then, never before. It is shown until the person starts from it
 (`CallIntro`, `call.intro.started` in the device's defaults, beside its
 free time); closed, the next tap shows it again.
