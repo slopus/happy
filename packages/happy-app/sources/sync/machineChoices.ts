@@ -254,3 +254,26 @@ export function resolveWorktreeCreationMachine(
     const agentMachine = resolveAgentMachine(choice, agent);
     return agentMachine && isMachineOnline(agentMachine) ? agentMachine : null;
 }
+
+/**
+ * True when the daemon this harness needs is unreachable while another one on the same computer
+ * is answering.
+ *
+ * A computer is offered as one row, so the row reads "online" whenever either daemon is up. When
+ * the harness in the composer is the half that is down, telling the person to switch computers
+ * sends them to a picker holding a single row that already says online. What unblocks them is
+ * picking a harness the live daemon can run.
+ */
+export function machineChoiceHasLiveAlternativeAgent(
+    choice: MachineChoice | null,
+    agent: NewSessionAgentType,
+): boolean {
+    if (!choice) return false;
+    const selected = resolveAgentMachine(choice, agent);
+    if (selected && isMachineOnline(selected)) return false;
+    return listMachineChoiceAvailableAgents(choice).some((candidate) => {
+        if (candidate === agent) return false;
+        const machine = resolveAgentMachine(choice, candidate);
+        return machine !== null && isMachineOnline(machine);
+    });
+}

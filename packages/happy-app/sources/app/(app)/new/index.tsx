@@ -53,6 +53,7 @@ import {
     collectMachineChoices,
     findMachineChoice,
     machineChoiceAgentAvailable,
+    machineChoiceHasLiveAlternativeAgent,
     resolveAgentMachine,
     resolveChoiceAgent,
     resolveNewSessionAgent,
@@ -1257,6 +1258,11 @@ function NewSessionScreen() {
     const offlineHelp = selectedAgent === 'rig'
         ? 'Happy Agent is offline on this computer'
         : t('machine.offlineHelp');
+    // A computer is one row whose status covers both its daemons, so "switch machines" sends the
+    // person to a picker whose only row already reads online. Point at the harness instead.
+    const offlineSwitchHint = machineChoiceHasLiveAlternativeAgent(selectedChoice, selectedAgent)
+        ? t('newSession.switchAgentsHint')
+        : t('newSession.switchMachinesHint');
     const agent = availableAgents.find(a => a.key === selectedAgent)
         ?? ALL_AGENTS.find((candidate) => candidate.key === selectedAgent)
         ?? ALL_AGENTS[0];
@@ -1995,7 +2001,7 @@ function NewSessionScreen() {
                                     </Text>
                                     <Text style={[styles.offlineHelpText, { color: theme.colors.textSecondary }]}>
                                         {offlineHelp}
-                                        {'\n'}{t('newSession.switchMachinesHint')}
+                                        {'\n'}{offlineSwitchHint}
                                     </Text>
                                 </View>
                             </View>
@@ -2187,7 +2193,7 @@ function NewSessionScreen() {
                                     </Text>
                                     <Text style={[styles.offlineHelpText, { color: theme.colors.textSecondary }]}>
                                         {offlineHelp}
-                                        {'\n'}{t('newSession.switchMachinesHint')}
+                                        {'\n'}{offlineSwitchHint}
                                     </Text>
                                 </View>
                             </View>

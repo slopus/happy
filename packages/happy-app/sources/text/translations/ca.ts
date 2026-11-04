@@ -297,6 +297,7 @@ export const ca: TranslationStructure = {
         title: 'Iniciar nova sessió',
         machineOffline: 'La màquina està fora de línia',
         switchMachinesHint: '• Canvia de màquina fent clic a la màquina de dalt',
+        switchAgentsHint: "• Tria un altre agent a dalt — l'altre dimoni d'aquest ordinador està en línia",
     },
 
     sessionHistory: {

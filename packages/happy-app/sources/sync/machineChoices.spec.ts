@@ -4,6 +4,7 @@ import {
     findMachineChoice,
     listMachineChoiceAvailableAgents,
     machineChoiceAgentAvailable,
+    machineChoiceHasLiveAlternativeAgent,
     resolveAgentMachine,
     resolveChoiceAgent,
     resolveNewSessionAgent,
@@ -291,5 +292,31 @@ describe('the harness a new session starts with', () => {
         expect(resolveNewSessionAgent(alone, 'claude', 'codex')).toBe('codex');
         expect(resolveNewSessionAgent(null, 'claude', null)).toBe('claude');
         expect(resolveNewSessionAgent(null, 'claude', 'codex')).toBe('codex');
+    });
+});
+
+describe('what to tell someone whose harness cannot be reached', () => {
+    it('points at the harness picker when the other daemon on this computer is up', () => {
+        const asleep = collectMachineChoices([cli(), rig(RIG, CLI, { active: false })])[0];
+        expect(machineChoiceHasLiveAlternativeAgent(asleep, 'rig')).toBe(true);
+    });
+
+    it('says nothing of the sort when the whole computer is down', () => {
+        const dark = collectMachineChoices([
+            cli(CLI, { active: false }),
+            rig(RIG, CLI, { active: false }),
+        ])[0];
+        expect(machineChoiceHasLiveAlternativeAgent(dark, 'rig')).toBe(false);
+    });
+
+    it('says nothing of the sort while the selected harness is reachable', () => {
+        const paired = collectMachineChoices([cli(), rig()])[0];
+        expect(machineChoiceHasLiveAlternativeAgent(paired, 'rig')).toBe(false);
+        expect(machineChoiceHasLiveAlternativeAgent(paired, 'claude')).toBe(false);
+    });
+
+    it('has nothing to offer on a computer that only registered Happy Agent', () => {
+        const rigOnly = collectMachineChoices([rig('rig-alone', 'nobody', { active: false })])[0];
+        expect(machineChoiceHasLiveAlternativeAgent(rigOnly, 'rig')).toBe(false);
     });
 });

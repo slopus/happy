@@ -295,6 +295,7 @@ export const it: TranslationStructure = {
         title: 'Avvia nuova sessione',
         machineOffline: 'La macchina è offline',
         switchMachinesHint: '• Cambia macchina cliccando sulla macchina sopra',
+        switchAgentsHint: "• Scegli un altro agente qui sopra — l'altro daemon su questo computer è online",
     },
 
     sessionHistory: {
