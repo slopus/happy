@@ -59,4 +59,9 @@
     </plurals>
     <string name="surface_created_by">Criado por %1$s</string>
     <string name="surface_added_by">Adicionado por %1$s</string>
+    <string name="surface_open_artifact">Abrir artefato</string>
+    <string name="surface_open_chat">Abrir conversa</string>
+    <string name="surface_unavailable">“%1$s” não está disponível.</string>
+    <string name="surface_gone_deleted">Foi apagado ou você não pode vê-lo. Fica aqui caso volte.</string>
+    <string name="surface_gone_archived">Foi arquivado ou você não pode vê-lo. Fica aqui caso volte.</string>
 </resources>

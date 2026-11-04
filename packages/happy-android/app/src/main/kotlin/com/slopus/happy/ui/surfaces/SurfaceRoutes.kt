@@ -1,14 +1,21 @@
 package com.slopus.happy.ui.surfaces
 
+import androidx.compose.runtime.remember
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.toRoute
-import androidx.compose.runtime.remember
 import com.slopus.happy.AppGraph
+import com.slopus.happy.agent.AgentCatalog
+import com.slopus.happy.agent.Surface
+import com.slopus.happy.agent.SurfaceType
+import com.slopus.happy.agent.string
+import com.slopus.happy.ui.artifacts.ArtifactRoute
+import com.slopus.happy.ui.conversation.ConversationRoute
 import com.slopus.happy.ui.documents.DocumentHistoryScreen
 import com.slopus.happy.ui.documents.DocumentVersionScreen
 import com.slopus.happy.ui.page
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 
 /** One Surface of an agent connection; [name] titles the bar until the catalog has it. */
 @Serializable data class SurfaceRoute(val connectionId: String, val surfaceId: String, val name: String = "")
@@ -50,6 +57,25 @@ fun NavGraphBuilder.surfaceRoutes(graph: AppGraph, nav: NavHostController) {
  */
 fun NavHostController.openSurface(graph: AppGraph, connectionId: String, surfaceId: String) {
     val session = graph.agentSessions.session(connectionId)
-    val name = session?.surfaces?.value?.get(surfaceId)?.name.orEmpty()
-    navigate(SurfaceRoute(connectionId, surfaceId, name))
+    val surface = session?.surfaces?.value?.get(surfaceId)
+    // An artifact, bot or task kept here opens where it always does (desktop's `surfaceTargetOpen`).
+    surface?.let { surfaceTarget(connectionId, it, session.catalog.value) }?.let { navigate(it); return }
+    navigate(SurfaceRoute(connectionId, surfaceId, surface?.name.orEmpty()))
+}
+
+/**
+ * Where a reference Surface's target opens (desktop's `surfaceTargetOpen`):
+ * the artifact viewer, or the bot's or task's own chat. Null for any other
+ * kind, and for a target this reader can't see or the phone doesn't hold.
+ */
+fun surfaceTarget(connectionId: String, surface: Surface, catalog: AgentCatalog): Any? {
+    val target = surface.target?.takeIf { it.available } ?: return null
+    val id = target.id ?: return null
+    fun chat(owner: JsonObject?) = (owner?.get("agent") as? JsonObject)?.string("id")?.let { ConversationRoute(connectionId, it) }
+    return when (surface.type) {
+        SurfaceType.ARTIFACT -> ArtifactRoute(connectionId, id, title = target.name.orEmpty())
+        SurfaceType.BOT -> chat(catalog.bots[id])
+        SurfaceType.TASK -> chat(catalog.tasks[id])
+        else -> null
+    }
 }

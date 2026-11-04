@@ -57,4 +57,9 @@
     </plurals>
     <string name="surface_created_by">创建者：%1$s</string>
     <string name="surface_added_by">添加者：%1$s</string>
+    <string name="surface_open_artifact">打开工件</string>
+    <string name="surface_open_chat">打开聊天</string>
+    <string name="surface_unavailable">“%1$s”不可用。</string>
+    <string name="surface_gone_deleted">它已被删除，或你无权查看。它会留在这里，以防恢复。</string>
+    <string name="surface_gone_archived">它已被归档，或你无权查看。它会留在这里，以防恢复。</string>
 </resources>

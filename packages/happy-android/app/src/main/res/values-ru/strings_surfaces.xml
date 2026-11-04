@@ -60,4 +60,9 @@
     </plurals>
     <string name="surface_created_by">Автор: %1$s</string>
     <string name="surface_added_by">Добавлено: %1$s</string>
+    <string name="surface_open_artifact">Открыть артефакт</string>
+    <string name="surface_open_chat">Открыть чат</string>
+    <string name="surface_unavailable">«%1$s» недоступно.</string>
+    <string name="surface_gone_deleted">Это удалено или недоступно вам. Останется здесь на случай, если вернётся.</string>
+    <string name="surface_gone_archived">Это в архиве или недоступно вам. Останется здесь на случай, если вернётся.</string>
 </resources>

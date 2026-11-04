@@ -59,4 +59,9 @@
     </plurals>
     <string name="surface_created_by">Creat per %1$s</string>
     <string name="surface_added_by">Afegit per %1$s</string>
+    <string name="surface_open_artifact">Obre l\'artefacte</string>
+    <string name="surface_open_chat">Obre el xat</string>
+    <string name="surface_unavailable">«%1$s» no està disponible.</string>
+    <string name="surface_gone_deleted">S\'ha eliminat o no el pots veure. Es queda aquí per si torna.</string>
+    <string name="surface_gone_archived">S\'ha arxivat o no el pots veure. Es queda aquí per si torna.</string>
 </resources>

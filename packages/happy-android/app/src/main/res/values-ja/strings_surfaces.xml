@@ -57,4 +57,9 @@
     </plurals>
     <string name="surface_created_by">作成者: %1$s</string>
     <string name="surface_added_by">追加した人: %1$s</string>
+    <string name="surface_open_artifact">アーティファクトを開く</string>
+    <string name="surface_open_chat">チャットを開く</string>
+    <string name="surface_unavailable">「%1$s」は利用できません。</string>
+    <string name="surface_gone_deleted">削除されたか、表示する権限がありません。戻ってきたときのためにここに残ります。</string>
+    <string name="surface_gone_archived">アーカイブされたか、表示する権限がありません。戻ってきたときのためにここに残ります。</string>
 </resources>

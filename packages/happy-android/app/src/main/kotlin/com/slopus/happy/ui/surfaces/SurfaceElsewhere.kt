@@ -18,10 +18,14 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
+import com.slopus.happy.agent.SurfaceType
 import com.slopus.happy.ui.artifacts.PlaceScaffold
 import com.slopus.happy.ui.artifacts.PlaceTags
 import com.slopus.happy.ui.components.LoadingIndicator
+import com.slopus.happy.ui.components.RoundButton
+import com.slopus.happy.ui.components.RoundButtonSize
 import com.slopus.happy.ui.components.Seedling
 import com.slopus.happy.ui.components.SeedlingEmptySpec
 import com.slopus.happy.ui.theme.HappyTheme
@@ -33,6 +37,13 @@ object SurfaceTags {
     const val EMPTY = "surface.empty"
     const val EMPTY_MARK = "surface.empty.mark"
     const val EMPTY_TEXT = "surface.empty.text"
+    const val EMPTY_BUTTON = "surface.empty.button"
+    const val REFERENCE = "surface.reference"
+}
+
+/** iOS's `EmptyLayout.Metrics.buttonGap`. */
+object SurfaceSpec {
+    val buttonGap = 24.dp
 }
 
 /**
@@ -61,12 +72,12 @@ internal fun SurfaceMissing(name: String, loading: Boolean, onBack: () -> Unit) 
 }
 
 /**
- * iOS's `EmptyView` without its button (`EmptyLayout`): the 64 seedling
- * (seed "v2"), 20 above a medium 16 line in the row grey, centred as one
- * block, the line at most 360 wide and 24 in from the sides.
+ * iOS's `EmptyView` (`EmptyLayout`): the 64 seedling (seed "v2"), 20 above
+ * a medium 16 line in the row grey, centred as one block, the line at most
+ * 360 wide and 24 in from the sides; its [button], if any, 24 under it.
  */
 @Composable
-internal fun SeedlingEmpty(text: String, modifier: Modifier = Modifier) {
+internal fun SeedlingEmpty(text: String, modifier: Modifier = Modifier, button: Pair<String, () -> Unit>? = null) {
     Box(modifier.fillMaxSize().testTag(SurfaceTags.EMPTY), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Top) {
             Seedling("v2", SeedlingEmptySpec.mark, Modifier.testTag(SurfaceTags.EMPTY_MARK))
@@ -82,6 +93,35 @@ internal fun SeedlingEmpty(text: String, modifier: Modifier = Modifier) {
                     .fillMaxWidth()
                     .testTag(SurfaceTags.EMPTY_TEXT),
             )
+            if (button != null) {
+                Spacer(Modifier.height(SurfaceSpec.buttonGap))
+                RoundButton(
+                    button.first,
+                    onClick = button.second,
+                    modifier = Modifier.padding(horizontal = SeedlingEmptySpec.sideInset).widthIn(max = SeedlingEmptySpec.maxWidth).testTag(SurfaceTags.EMPTY_BUTTON),
+                    size = RoundButtonSize.Normal,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * An artifact, bot or task kept among the Surfaces, when opening it did not
+ * go straight to it (desktop's `HappyAgentSurfaceReferencePage`): what it
+ * points at with a button to open it where it always opens; or, quietly,
+ * that it isn't there for this reader, the Surface keeping its place in
+ * case it comes back.
+ */
+@Composable
+internal fun SurfaceReference(name: String, type: String, target: Any?, targetName: String?, onBack: () -> Unit, open: (Any) -> Unit, actions: @Composable RowScope.() -> Unit = {}) {
+    PlaceScaffold(name, onBack, SurfaceTags.REFERENCE, actions = actions) {
+        if (target != null) {
+            val label = stringResource(if (type == SurfaceType.ARTIFACT) R.string.surface_open_artifact else R.string.surface_open_chat)
+            SeedlingEmpty(targetName?.takeIf { it.isNotEmpty() } ?: name, button = label to { open(target) })
+        } else {
+            val gone = stringResource(if (type == SurfaceType.ARTIFACT) R.string.surface_gone_deleted else R.string.surface_gone_archived)
+            SeedlingEmpty(stringResource(R.string.surface_unavailable, name) + "\n" + gone)
         }
     }
 }

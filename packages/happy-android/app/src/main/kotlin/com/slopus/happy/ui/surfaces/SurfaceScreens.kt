@@ -45,6 +45,12 @@ fun SurfaceScreens(graph: AppGraph, route: SurfaceRoute, onBack: () -> Unit, ope
         SurfaceType.TODO -> TodoSurfaceScreen(session, route.surfaceId, onBack, open)
         SurfaceType.SYSTEM_MONITOR -> SystemMonitorSurfaceScreen(session, route.surfaceId, onBack)
         SurfaceType.CALENDAR -> CalendarSurfaceScreen(session, route.surfaceId, onBack)
+        SurfaceType.ARTIFACT, SurfaceType.BOT, SurfaceType.TASK -> {
+            val agentCatalog by session.catalog.collectAsStateWithLifecycle()
+            SurfaceReference(name, surface.type, surfaceTarget(session.connectionId, surface, agentCatalog), surface.target?.name, onBack, open) {
+                SurfaceMenu(session, route.surfaceId, onBack)
+            }
+        }
         else -> SurfaceElsewhere(name, onBack) { SurfaceMenu(session, route.surfaceId, onBack) }
     }
     JoinRefusal(session, route.surfaceId, name)

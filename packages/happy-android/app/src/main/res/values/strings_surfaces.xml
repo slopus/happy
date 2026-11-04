@@ -88,4 +88,12 @@
     </plurals>
     <string name="surface_created_by">Created by %1$s</string>
     <string name="surface_added_by">Added by %1$s</string>
+
+
+    <!-- An artifact, bot or task kept among the Surfaces (desktop HappyAgentSurfaceReferencePage). -->
+    <string name="surface_open_artifact">Open artifact</string>
+    <string name="surface_open_chat">Open chat</string>
+    <string name="surface_unavailable">%1$s isn’t available.</string>
+    <string name="surface_gone_deleted">It was deleted, or you can’t see it. It stays here in case it comes back.</string>
+    <string name="surface_gone_archived">It was archived, or you can’t see it. It stays here in case it comes back.</string>
 </resources>
