@@ -120,8 +120,8 @@ its text colours and pill. The podcast mic plays on top (Lottie,
 `Animations/PROVENANCE.md`), then "Talk to your agents" and what voice
 does, one icon and a few words a line: "Ask how your work is going",
 "Open and send by voice". At the bottom, where a subscription is on offer:
-"Subscribe for $20/month" (`CallOffer.price`; 5 hours of real-time voice a
-month), "Happy is open source. Subscribing to voice pays for its
+"Subscribe for $20/month" (`CallOffer.price`), "5 hours of real-time voice
+per month", "Happy is open source. Subscribing to voice pays for its
 development.", the "Subscribe" pill, then "Start Voice Session" with
 voice's three bars, quieter, under it. A ✕ on top, or a swipe down, closes
 it and starts nothing. No RevenueCat or other vendor UI, and no navigation

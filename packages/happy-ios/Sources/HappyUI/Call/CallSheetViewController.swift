@@ -97,7 +97,7 @@ final class CallSheetViewController: UIViewController {
         column.spacing = 12
         column.setCustomSpacing(28, after: title)
 
-        // The subscription and what it is for, its button, then the free call under it.
+        // The subscription, what it gives and what it is for, its button, then the free call under it.
         let footer = UIStackView()
         footer.axis = .vertical
         footer.spacing = 12
@@ -107,8 +107,12 @@ final class CallSheetViewController: UIViewController {
             let support = StyledLabel(style: Self.detailStyle, color: Palette.startTextSecondary, alignment: .center)
             support.decoration = StartGalleryView.noOrphan
             support.string = Strings.Call.subscribeSupport
+            let allowance = StyledLabel(style: Self.detailStyle, color: Palette.startText, alignment: .center)
+            allowance.string = Strings.Call.subscribeAllowance
             footer.addArrangedSubview(heading)
-            footer.setCustomSpacing(6, after: heading)
+            footer.setCustomSpacing(2, after: heading)
+            footer.addArrangedSubview(allowance)
+            footer.setCustomSpacing(6, after: allowance)
             footer.addArrangedSubview(support)
             footer.setCustomSpacing(20, after: support)
             subscribe.onTap = { [weak self] in self?.preview() }

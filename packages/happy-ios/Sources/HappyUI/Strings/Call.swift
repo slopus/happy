@@ -34,6 +34,7 @@ extension Strings {
         static func at(_ time: String, day: String? = nil) -> String { day.map { "\($0) at \(time)" } ?? "at \(time)" }
         static func on(_ day: String) -> String { "on \(day)" }
         static func subscribeFor(_ price: String) -> String { "Subscribe for \(price)/month" }
+        static var subscribeAllowance: String { "5 hours of real-time voice per month" }
         static var subscribeSupport: String { "Happy is open source. Subscribing to voice pays for its development." }
         static var subscribe: String { "Subscribe" }
         static var upgradePreviewNote: String { "Test preview. Nothing is charged." }
