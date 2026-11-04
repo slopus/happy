@@ -22,6 +22,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
@@ -101,11 +102,22 @@ class AgentSessionTest {
     @Test
     fun liveDocumentFramesGoToTheirDocumentNeverTheJournal() = runBlocking {
         val session = sessions().session(id)!!
-        val heard = async { withTimeout(10_000) { session.documents.streams.events("d1").take(2).toList() } }
+        val subscribed = CompletableDeferred<Unit>()
+        val heard = async {
+            withTimeout(10_000) {
+                session.documents.streams.events("d1")
+                    .onEach { if (it is DocumentStreamEvent.Connected) subscribed.complete(Unit) }
+                    .take(2).toList()
+            }
+        }
         val journal = mutableListOf<String>()
-        val listening = launch { session.events.collect { journal += it.type } }
+        val listening = launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            session.events.collect { journal += it.type }
+        }
         agent.frames.send("event: hello\ndata: {\"cursor\":\"c0\",\"gap\":false,\"resumed\":true,\"daemonId\":\"d1\",\"streamId\":\"st1\"}\n\n")
         eventually({ session.documents.streams.current }) { it == "st1" }
+        // Seeing the stream's id does not mean callbackFlow's collector has registered yet.
+        withTimeout(10_000) { subscribed.await() }
         agent.frames.send("event: document.update\ndata: {\"surfaceId\":\"d1\",\"seq\":3,\"update\":\"AAA=\"}\n\n")
         agent.frames.send(Wire.frame("c1", "agent.updated", Wire.updated("agentId", "at1", "01", "02", buildJsonObject { put("status", "thinking") })))
         val events = heard.await()
@@ -572,7 +584,9 @@ class AgentSessionTest {
         assertEquals("chat-agent", session.ensureSurfaceChat("s1"))
         assertEquals("Asked twice", 2, asked.size)
         assertEquals("under one mutationId", 1, asked.map { Regex("\"mutationId\":\"([^\"]+)\"").find(it)?.groupValues?.get(1) }.distinct().size)
-        assertEquals("chat-agent", session.surfaces.value["s1"]?.chatAgentId)
+        // The HTTP answer commits the catalog before the derived SurfaceCatalog publishes it.
+        val known = withTimeout(10_000) { session.surfaces.first { it["s1"]?.chatAgentId == "chat-agent" } }
+        assertEquals("chat-agent", known["s1"]?.chatAgentId)
         // Known now: opened without asking.
         assertEquals("chat-agent", session.ensureSurfaceChat("s1"))
         assertEquals(2, asked.size)
@@ -608,7 +622,8 @@ class AgentSessionTest {
         assertTrue("It names its mutation", bodies.single().contains("\"mutationId\":\""))
         // Out of the person's list too, so it stays gone once the leave is answered; still in the catalog.
         assertEquals(listOf("s2"), surfaces(session))
-        val left = session.surfaces.value
+        // leaveSurface commits the catalog; its derived SurfaceCatalog publishes independently.
+        val left = withTimeout(10_000) { session.surfaces.first { !it.joined(it["s1"]!!) } }
         assertFalse(left.joined(left["s1"]!!))
     }
 
