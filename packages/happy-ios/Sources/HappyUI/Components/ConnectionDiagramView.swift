@@ -2,7 +2,8 @@
 import HappyLayout
 import UIKit
 
-/// The current connection and the one after migration, in a card. Now the
+/// The current connection and the one after migration, drawn straight on
+/// the screen's gradient in its text colour. Now the
 /// phone reaches the computer through the Happy server (a cloud with a
 /// database on it), which stores the chats, encrypted; after, through a
 /// relay (a router), which passes them on, still encrypted.
@@ -13,44 +14,36 @@ final class ConnectionDiagramView: UIView {
     /// A row's heading: a group header's size, in its words' own case.
     private static let headingStyle = TextStyle(.semiBold, size: 13, lineHeight: 18, letterSpacing: -0.08)
 
-    private let currentHeading = StyledLabel(style: ConnectionDiagramView.headingStyle, color: Palette.textSecondary, lines: 1, alignment: .center)
-    private let afterHeading = StyledLabel(style: ConnectionDiagramView.headingStyle, color: Palette.text, lines: 1, alignment: .center)
+    private let currentHeading = StyledLabel(style: ConnectionDiagramView.headingStyle, color: Palette.startText, lines: 1)
+    private let afterHeading = StyledLabel(style: ConnectionDiagramView.headingStyle, color: Palette.startText, lines: 1)
     /// Phone, server, computer, its detail; phone, relay, computer, its detail.
     private let words: [StyledLabel]
     private let icons: [LineIconView]
-    private let badge = LineIconView(.database, tint: Palette.textSecondary)
-    private let badgeGround = UIView()
-    private let beforeLines = CAShapeLayer()
-    private let nowLines = CAShapeLayer()
+    private let badge = LineIconView(.database, tint: Palette.startText)
+    /// The cloud with the badge's hole cut out of it.
+    private let badgeHole = CAShapeLayer()
+    private let lines = CAShapeLayer()
 
     override init(frame: CGRect) {
         let texts = [S.phone, S.server, S.computer, S.serverDetail, S.phone, S.relay, S.computer, S.relayDetail]
-        words = texts.enumerated().map { index, text in
-            let label = StyledLabel(style: TextStyles.groupFooter, color: index < 4 ? Palette.textSecondary : Palette.text, alignment: .center)
+        words = texts.map { text in
+            let label = StyledLabel(style: TextStyles.groupFooter, color: Palette.startText, alignment: .center)
             label.string = text
             return label
         }
-        icons = [
-            LineIconView(.smartphone, tint: Palette.textSecondary), LineIconView(.cloud, tint: Palette.textSecondary), LineIconView(.monitor, tint: Palette.textSecondary),
-            LineIconView(.smartphone, tint: Palette.text), LineIconView(.router, tint: Palette.text), LineIconView(.monitor, tint: Palette.text),
-        ]
+        icons = [LineIcon.smartphone, .cloud, .monitor, .smartphone, .router, .monitor].map { LineIconView($0, tint: Palette.startText) }
         super.init(frame: frame)
-        backgroundColor = UIColor(Palette.surface)
-        layer.cornerRadius = ItemGroupLayout.Metrics.cardCornerRadius
-        layer.cornerCurve = .continuous
         currentHeading.string = S.current
         afterHeading.string = S.after
-        for shape in [beforeLines, nowLines] {
-            shape.fillColor = nil
-            shape.lineCap = .round
-            shape.lineJoin = .round
-            shape.lineWidth = 1.5
-            layer.addSublayer(shape)
-        }
+        lines.fillColor = nil
+        lines.lineCap = .round
+        lines.lineJoin = .round
+        lines.lineWidth = 1.5
+        layer.addSublayer(lines)
         badge.weight = 2.5
-        badgeGround.backgroundColor = UIColor(Palette.surface)
-        badgeGround.layer.cornerRadius = M.badgeGroundRadius
-        for view in [currentHeading, afterHeading] + words + icons + [badgeGround, badge] as [UIView] { addSubview(view) }
+        badgeHole.fillRule = .evenOdd
+        icons[1].layer.mask = badgeHole
+        for view in [currentHeading, afterHeading] + words + icons + [badge] as [UIView] { addSubview(view) }
         isAccessibilityElement = true
         accessibilityLabel = S.diagramSpoken
         applyColors()
@@ -82,12 +75,15 @@ final class ConnectionDiagramView: UIView {
         for (label, frame) in zip(words, frames) { label.setLayoutFrame(frame) }
         let iconFrames = [layout.current.phone, layout.current.middle, layout.current.computer, layout.after.phone, layout.after.middle, layout.after.computer]
         for (icon, frame) in zip(icons, iconFrames) { icon.setLayoutFrame(frame) }
-        // The database rides on the cloud, on a patch of the card.
-        badgeGround.setLayoutFrame(layout.current.badgeGround ?? .zero)
+        // The database rides on the cloud, in a hole cut out of it, so the
+        // gradient shows between them.
         badge.setLayoutFrame(layout.current.badge ?? .zero)
-        for shape in [beforeLines, nowLines] { shape.frame = bounds }
-        beforeLines.path = Self.polylines(layout.current.lines + layout.current.arrowheads)
-        nowLines.path = Self.polylines(layout.after.lines + layout.after.arrowheads)
+        let hole = UIBezierPath(rect: CGRect(origin: .zero, size: layout.current.middle.size))
+        if let frame = layout.current.badgeHole { hole.append(UIBezierPath(roundedRect: frame, cornerRadius: M.badgeHoleRadius)) }
+        badgeHole.frame = CGRect(origin: .zero, size: layout.current.middle.size)
+        badgeHole.path = hole.cgPath
+        lines.frame = bounds
+        lines.path = Self.polylines(layout.current.lines + layout.current.arrowheads + layout.after.lines + layout.after.arrowheads)
     }
 
     private static func polylines(_ lines: [[CGPoint]]) -> CGPath {
@@ -101,8 +97,7 @@ final class ConnectionDiagramView: UIView {
     }
 
     private func applyColors() {
-        beforeLines.strokeColor = UIColor(Palette.textSecondary).resolvedColor(with: traitCollection).cgColor
-        nowLines.strokeColor = UIColor(Palette.text).resolvedColor(with: traitCollection).cgColor
+        lines.strokeColor = UIColor(Palette.startText).resolvedColor(with: traitCollection).cgColor
     }
 }
 #endif

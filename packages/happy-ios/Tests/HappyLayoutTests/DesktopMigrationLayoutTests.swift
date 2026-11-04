@@ -29,8 +29,9 @@ final class DesktopMigrationLayoutTests: XCTestCase {
     // MARK: The picture
 
     /// Symmetric about the middle: phone and computer in as far as the wider
-    /// caption needs, each row under its heading, the server's badge on its
-    /// patch of card, and an open arrowhead at each line's end.
+    /// caption needs, each row under its heading, which starts at the phone's
+    /// column, the server's badge in a hole cut out of the cloud, and an open
+    /// arrowhead at each line's end. No card: the picture fills its width.
     func testTheDiagram() {
         let layout = ConnectionDiagramLayout(
             width: 300,
@@ -40,29 +41,30 @@ final class DesktopMigrationLayoutTests: XCTestCase {
             after: .init(heading: .fixed(width: 100, height: 18), middle: .fixed(width: 40, height: 18), detail: .fixed(width: 200, height: 18))
         )
         let current = layout.current
-        assertFrame(current.heading, rect(90, 12, 120, 18))
-        assertFrame(current.phone, rect(28, 36, 28, 28))
-        assertFrame(current.middle, rect(136, 36, 28, 28))
-        assertFrame(current.computer, rect(244, 36, 28, 28))
-        XCTAssertEqual(current.captions, [rect(22, 66, 40, 18), rect(110, 66, 80, 18), rect(228, 66, 60, 18)])
-        assertFrame(current.detail, rect(60, 84, 180, 18))
-        assertFrame(current.badge, rect(153, 51, 14, 14))
-        assertFrame(current.badgeGround, rect(152, 50, 16, 16))
+        assertFrame(current.heading, rect(10, 0, 120, 18))
+        assertFrame(current.phone, rect(16, 24, 28, 28))
+        assertFrame(current.middle, rect(136, 24, 28, 28))
+        assertFrame(current.computer, rect(256, 24, 28, 28))
+        XCTAssertEqual(current.captions, [rect(10, 54, 40, 18), rect(110, 54, 80, 18), rect(240, 54, 60, 18)])
+        assertFrame(current.detail, rect(60, 72, 180, 18))
+        assertFrame(current.badge, rect(153, 39, 14, 14))
+        assertFrame(current.badgeHole, rect(16, 14, 16, 16))
         XCTAssertEqual(current.lines, [
-            [CGPoint(x: 64, y: 50), CGPoint(x: 128, y: 50)],
-            [CGPoint(x: 172, y: 50), CGPoint(x: 236, y: 50)],
+            [CGPoint(x: 52, y: 38), CGPoint(x: 128, y: 38)],
+            [CGPoint(x: 172, y: 38), CGPoint(x: 248, y: 38)],
         ])
         XCTAssertEqual(current.arrowheads, [
-            [CGPoint(x: 124, y: 46), CGPoint(x: 128, y: 50), CGPoint(x: 124, y: 54)],
-            [CGPoint(x: 232, y: 46), CGPoint(x: 236, y: 50), CGPoint(x: 232, y: 54)],
+            [CGPoint(x: 124, y: 34), CGPoint(x: 128, y: 38), CGPoint(x: 124, y: 42)],
+            [CGPoint(x: 244, y: 34), CGPoint(x: 248, y: 38), CGPoint(x: 244, y: 42)],
         ])
         let after = layout.after
-        assertFrame(after.heading, rect(100, 114, 100, 18))
-        assertFrame(after.middle, rect(136, 138, 28, 28))
-        assertFrame(after.detail, rect(50, 186, 200, 18))
+        assertFrame(after.heading, rect(10, 110, 100, 18))
+        assertFrame(after.phone, rect(16, 134, 28, 28))
+        assertFrame(after.middle, rect(136, 134, 28, 28))
+        assertFrame(after.detail, rect(50, 182, 200, 18))
         XCTAssertNil(after.badge)
-        XCTAssertNil(after.badgeGround)
-        assertSize(layout.size, CGSize(width: 300, height: 216))
+        XCTAssertNil(after.badgeHole)
+        assertSize(layout.size, CGSize(width: 300, height: 200))
     }
 
     // MARK: The section that opens
