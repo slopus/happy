@@ -71,6 +71,11 @@ object DocumentTokens {
     const val NOTE_HEIGHT = 44f
     const val NOTE_PADDING = 12f
     const val NOTE_SIZE = 15f
+    /** iOS's table: a 32 row, cells 8 in, text 15, the grid's corner 6. */
+    const val TABLE_ROW = 32f
+    const val CELL_PADDING = 8f
+    const val CELL_SIZE = 15f
+    const val TABLE_CORNER = 6f
 
     /** `#rrggbb` light and dark. */
     class Palette(val light: Int, val dark: Int) {
@@ -149,6 +154,10 @@ class DocumentStyle(resources: Resources, val dark: Boolean, private val labels:
         val notePadding = dp(DocumentTokens.NOTE_PADDING).toFloat()
         val noteHeight = dp(DocumentTokens.NOTE_HEIGHT)
         val noteSize = sp(DocumentTokens.NOTE_SIZE)
+        val tableRow = sp(DocumentTokens.TABLE_ROW).roundToInt()
+        val cellPadding = dp(DocumentTokens.CELL_PADDING).toFloat()
+        val cellSize = sp(DocumentTokens.CELL_SIZE)
+        val tableCorner = dp(DocumentTokens.TABLE_CORNER).toFloat()
         val numberSize = sp(DocumentTokens.BODY_SIZE)
         val bodyLineHeight = sp(DocumentTokens.BODY_LINE_HEIGHT).roundToInt()
 
@@ -280,7 +289,7 @@ class DocumentStyle(resources: Resources, val dark: Boolean, private val labels:
                     "divider" -> null
                     "image" -> line.block.props["caption"]?.stringValue?.takeIf { it.isNotEmpty() }
                         ?: line.block.props["name"]?.stringValue?.takeIf { it.isNotEmpty() } ?: labels.picture
-                    "table" -> labels.table
+                    "table" -> null
                     else -> labels.unsupported
                 }
                 text.setSpan(DocumentObjectSpan(line, label, metrics) { textWidth - metrics.indent(DocumentLineKind.Object, 0) }, start, start + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -288,6 +297,7 @@ class DocumentStyle(resources: Resources, val dark: Boolean, private val labels:
                 val spoken = when (line.block.type) {
                     "divider" -> labels.divider
                     "image" -> line.block.props["caption"]?.stringValue?.takeIf { it.isNotEmpty() }?.let { "${labels.picture}, $it" } ?: labels.picture
+                    "table" -> labels.table
                     else -> label.orEmpty()
                 }
                 text.setSpan(DocumentObjectSpeech(spoken), start, start + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)

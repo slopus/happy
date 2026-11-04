@@ -13,6 +13,7 @@ import android.text.style.LineBackgroundSpan
 import android.text.style.LineHeightSpan
 import android.text.style.ReplacementSpan
 import android.text.style.TtsSpan
+import com.slopus.happy.documents.DocumentBlock
 import com.slopus.happy.documents.DocumentLine
 import com.slopus.happy.documents.yjs.YAny
 import kotlin.math.roundToInt
@@ -193,8 +194,9 @@ class DocumentMarksSpan(val marks: Map<String, YAny>, val trailing: Boolean = fa
  * editor can't show), drawn in its line's U+FFFC (iOS's
  * `DocumentObjectAttachment`): a divider's rule across the middle of one
  * line; a picture once read at its own size (a pixel to a point, as iOS),
- * no wider than the text, and until then a 16:9 note with its caption; the
- * others a rounded note naming what is there.
+ * no wider than the text, and until then a 16:9 note with its caption; a
+ * table's cells on a grid, 32 a row; the others a rounded note naming what
+ * is there.
  */
 class DocumentObjectSpan(
     private val line: DocumentLine,
@@ -205,6 +207,8 @@ class DocumentObjectSpan(
 ) : ReplacementSpan() {
     private val divider = line.block.type == "divider"
     private val image = line.block.type == "image"
+    /** A table's cells' text, row by row (iOS draws them on a grid; editing them is desktop's). */
+    val rows: List<List<String>>? = (line.block.content as? DocumentBlock.Content.Table)?.rows?.map { row -> row.map { cell -> cell.joinToString("") { it.text } } }
     /** The picture, if it has been read (`DocumentPictures`). */
     val picture: DocumentPicture? = if (image) line.block.props["url"]?.stringValue?.takeIf { it.isNotEmpty() }?.let(DocumentPictures::cached) else null
 
@@ -213,6 +217,7 @@ class DocumentObjectSpan(
 
     private fun height(w: Int): Int = when {
         divider -> metrics.bodyLineHeight
+        rows != null -> maxOf(1, rows.size) * metrics.tableRow
         image -> picture?.takeIf { it.width > 0 }?.let { (pictureWidth(w).toFloat() * it.height / it.width).roundToInt() } ?: (w * 9f / 16).roundToInt()
         else -> metrics.noteHeight
     }
@@ -248,6 +253,8 @@ class DocumentObjectSpan(
             paint.isFilterBitmap = true
             canvas.drawBitmap(picture.bitmap, null, box, paint)
             canvas.restore()
+        } else if (rows != null) {
+            drawTable(canvas, rows, x, boxTop, w, h.toFloat(), paint)
         } else if (divider) {
             paint.color = metrics.colors.rule
             paint.style = Paint.Style.FILL
@@ -272,6 +279,37 @@ class DocumentObjectSpan(
         }
         paint.color = saved
         paint.style = style
+    }
+
+    /** iOS's `DocumentObjectLayout.Table`: a rounded grid, the rows and columns even, each cell's text 8 in and centred down. */
+    private fun drawTable(canvas: Canvas, rows: List<List<String>>, x: Float, top: Float, w: Float, h: Float, paint: Paint) {
+        val rowCount = maxOf(1, rows.size)
+        val columns = maxOf(1, rows.maxOfOrNull { it.size } ?: 1)
+        val cellWidth = w / columns
+        val rowHeight = h / rowCount
+        val stroke = paint.strokeWidth
+        paint.color = metrics.colors.rule
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = metrics.hairline
+        val half = metrics.hairline / 2
+        canvas.drawRoundRect(RectF(x + half, top + half, x + w - half, top + h - half), metrics.tableCorner, metrics.tableCorner, paint)
+        for (r in 1 until rowCount) canvas.drawLine(x, top + r * rowHeight, x + w, top + r * rowHeight, paint)
+        for (c in 1 until columns) canvas.drawLine(x + c * cellWidth, top, x + c * cellWidth, top + h, paint)
+        paint.strokeWidth = stroke
+        val textPaint = TextPaint(paint).apply {
+            style = Paint.Style.FILL
+            color = metrics.colors.text
+            textSize = metrics.cellSize
+        }
+        val fm = textPaint.fontMetrics
+        for ((r, row) in rows.withIndex()) {
+            val baseline = top + r * rowHeight + rowHeight / 2 - (fm.ascent + fm.descent) / 2
+            for ((c, cell) in row.withIndex()) {
+                val room = maxOf(0f, cellWidth - metrics.cellPadding * 2)
+                val shown = android.text.TextUtils.ellipsize(cell, textPaint, room, android.text.TextUtils.TruncateAt.END)
+                canvas.drawText(shown, 0, shown.length, x + c * cellWidth + metrics.cellPadding, baseline, textPaint)
+            }
+        }
     }
 }
 
