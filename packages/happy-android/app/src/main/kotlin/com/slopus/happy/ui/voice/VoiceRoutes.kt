@@ -19,7 +19,6 @@ import com.slopus.happy.ui.settings.Alerts
 import com.slopus.happy.ui.settings.errorAlert
 import com.slopus.happy.ui.settings.rememberSupportAction
 import com.slopus.happy.voice.VoiceUpsell
-import com.slopus.happy.voice.VoiceUsage
 import kotlinx.serialization.Serializable
 
 /** [reveal]: the row Settings' search found there ([ProvideRowReveal]). */
@@ -32,15 +31,17 @@ fun NavGraphBuilder.voiceRoutes(graph: AppGraph, nav: NavHostController) {
         val purchases by graph.purchases.purchases.collectAsStateWithLifecycle()
         val alerts = remember { Alerts() }
         val support = rememberSupportAction(graph.purchases, errorAlert(alerts))
-        var usage by remember { mutableStateOf<VoiceUsage?>(null) }
-        var loading by remember { mutableStateOf(true) }
-        LaunchedEffect(graph) {
-            try { usage = graph.voice.usage() } finally { loading = false }
+        var usage by remember { mutableStateOf<VoiceUsageReading>(VoiceUsageReading.Loading) }
+        var retry by remember { mutableIntStateOf(0) }
+        LaunchedEffect(graph, retry) {
+            usage = VoiceUsageReading.Loading
+            usage = graph.voice.usage()?.let { VoiceUsageReading.Loaded(it) } ?: VoiceUsageReading.Unavailable
         }
         ProvideRowReveal(entry.toRoute<VoiceSettingsRoute>().reveal) {
-            VoiceSettingsScreen(settings, graph.settings::change, usage, loading, purchases.entitlements["pro"] == true,
+            VoiceSettingsScreen(settings, graph.settings::change, usage, purchases.entitlements["pro"] == true,
                 onSupport = support::run,
                 onLanguage = { nav.navigate(VoiceLanguageRoute) }, onBack = { nav.popBackStack() },
+                onUsageRetry = { retry++ },
                 developerContent = { VoiceDeveloperSettings(graph) })
         }
         alerts.Host()

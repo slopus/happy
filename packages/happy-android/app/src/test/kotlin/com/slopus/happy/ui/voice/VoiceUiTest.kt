@@ -166,7 +166,7 @@ class VoiceUiTest {
     @Test fun customAgentPromptTrimsAndTogglesDirectConnection() {
         val settings = mutableStateOf(Settings())
         rule.setHappyContent {
-            VoiceSettingsScreen(settings.value, { settings.value = it(settings.value) }, null, false, true, {}, {}, {})
+            VoiceSettingsScreen(settings.value, { settings.value = it(settings.value) }, VoiceUsageReading.Unavailable, true, {}, {}, {})
         }
         rule.node("voice.language").assertExists()
         rule.node("voice.agent").performScrollTo().performClick()
@@ -182,11 +182,34 @@ class VoiceUiTest {
     }
 
     @Test fun usageAndSupportUseStandardSettingsInsets() {
-        rule.setHappyContent { VoiceSettingsScreen(Settings(), {}, VoiceUsage(60, 600, 1, 10), false, false, {}, {}, {}) }
+        rule.setHappyContent { VoiceSettingsScreen(Settings(), {}, VoiceUsageReading.Loaded(VoiceUsage(60, 600, 1, 10)), false, {}, {}, {}) }
         rule.node("voice.usage").assertExists()
         rule.node("voice.support").assertExists()
         rule.onNodeWithText("1m 0s / 10m 0s").assertExists()
         assertDp("usage inset from group", 16, rule.node("voice.usage").bounds.left)
+    }
+
+    @Test fun unavailableUsageCanRetryAndThenShowTheLoadedMeter() {
+        val reading = mutableStateOf<VoiceUsageReading>(VoiceUsageReading.Unavailable)
+        var retries = 0
+        rule.setHappyContent {
+            VoiceSettingsScreen(Settings(), {}, reading.value, true, {}, {}, {}, onUsageRetry = {
+                retries++
+                reading.value = VoiceUsageReading.Loading
+            })
+        }
+        rule.onNodeWithText("Voice service is temporarily unavailable").assertIsDisplayed()
+        rule.onNodeWithText("Retry").assertIsDisplayed()
+        val retry = rule.node(VoiceTags.USAGE_RETRY).bounds
+        assertDp("retry respects the card's left edge", 16, retry.left)
+        assertTrue("the long error remains a tappable row", retry.height >= 56.dp)
+        rule.node(VoiceTags.USAGE_RETRY).performClick()
+        assertEquals(1, retries)
+        rule.node(VoiceTags.USAGE_RETRY).assertDoesNotExist()
+        rule.node("voice.usage").assertDoesNotExist()
+        reading.value = VoiceUsageReading.Loaded(VoiceUsage(60, 600, 1, 10))
+        rule.node("voice.usage").assertIsDisplayed()
+        rule.onNodeWithText("1m 0s / 10m 0s").assertIsDisplayed()
     }
 }
 
@@ -220,7 +243,7 @@ class VoiceTabletTest {
 
     @Test fun voiceSettingsAndLanguageRespectTabletContentWidth() {
         rule.setHappyContent {
-            ProvideWindowLayout { VoiceSettingsScreen(Settings(), {}, null, false, true, {}, {}, {}) }
+            ProvideWindowLayout { VoiceSettingsScreen(Settings(), {}, VoiceUsageReading.Unavailable, true, {}, {}, {}) }
         }
         rule.node("voice.support").assertDoesNotExist()
         val row = rule.node("voice.language").bounds

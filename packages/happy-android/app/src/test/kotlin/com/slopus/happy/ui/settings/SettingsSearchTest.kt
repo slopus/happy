@@ -36,6 +36,7 @@ import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import com.slopus.happy.ui.theme.ThemePreference
 import com.slopus.happy.ui.voice.VoiceSettingsScreen
+import com.slopus.happy.ui.voice.VoiceUsageReading
 import com.slopus.happy.ui.voice.voicePageEntries
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -230,7 +231,7 @@ class SettingsSearchTest {
     @Test
     fun voiceEntriesNameItsRows() = assertPageShows(
         { voicePageEntries(Settings.Defaults, hasPro = false) {} },
-        { VoiceSettingsScreen(Settings.Defaults, {}, null, false, false, onSupport = {}, onLanguage = {}, onBack = {}) },
+        { VoiceSettingsScreen(Settings.Defaults, {}, VoiceUsageReading.Unavailable, false, onSupport = {}, onLanguage = {}, onBack = {}) },
     )
 
     @Test

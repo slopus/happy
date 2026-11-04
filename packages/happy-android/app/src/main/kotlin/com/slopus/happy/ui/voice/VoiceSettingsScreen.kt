@@ -34,6 +34,13 @@ import com.slopus.happy.ui.home.copyToClipboard
 import com.slopus.happy.ui.chat.ChatTheme
 import java.text.NumberFormat
 
+/** A usage request has one visible outcome; failure always leaves a way to ask again. */
+sealed interface VoiceUsageReading {
+    data object Loading : VoiceUsageReading
+    data object Unavailable : VoiceUsageReading
+    data class Loaded(val usage: VoiceUsage) : VoiceUsageReading
+}
+
 /**
  * settings/voice.tsx: standard ItemGroups on the grouped surface. Usage has 16/8
  * insets, 14pt labels, 8-high tracks, radius 4, blue/red at the limit; 13pt totals
@@ -44,12 +51,12 @@ import java.text.NumberFormat
 fun VoiceSettingsScreen(
     settings: Settings,
     onSettingsChange: ((Settings) -> Settings) -> Unit,
-    usage: VoiceUsage?,
-    usageLoading: Boolean,
+    usageReading: VoiceUsageReading,
     hasPro: Boolean,
     onSupport: () -> Unit,
     onLanguage: () -> Unit,
     onBack: () -> Unit,
+    onUsageRetry: () -> Unit = {},
     developerContent: (@Composable () -> Unit)? = null,
 ) {
     val colors = HappyTheme.colors
@@ -57,11 +64,12 @@ fun VoiceSettingsScreen(
     var editing by rememberSaveable { mutableStateOf(false) }
     Screen(header = { StackHeader(stringResource(R.string.settings_voice_assistant), onBack) }) {
         ItemList {
-            if (usageLoading) {
+            if (usageReading == VoiceUsageReading.Loading) {
                 Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(Modifier.size(20.dp), color = colors.textSecondary, strokeWidth = 2.dp)
                 }
-            } else if (usage != null) {
+            } else if (usageReading is VoiceUsageReading.Loaded) {
+                val usage = usageReading.usage
                 ItemGroup(title = stringResource(R.string.settings_voice_usage_title), footer = stringResource(R.string.settings_voice_usage_footer)) {
                     Column(Modifier.testTag("voice.usage").padding(horizontal = 16.dp, vertical = 8.dp)) {
                         VoiceUsageMeter(stringResource(R.string.settings_voice_usage_label), usage.usedSeconds, usage.limitSeconds)
@@ -69,6 +77,17 @@ fun VoiceSettingsScreen(
                         VoiceUsageMeter(stringResource(R.string.settings_voice_conversations_label), usage.conversationCount, usage.conversationLimit)
                         Text("${usage.conversationCount} / ${usage.conversationLimit}", color = Color(0xFF8E8E93), style = happyTextStyle(13), modifier = Modifier.padding(top = 4.dp))
                     }
+                }
+            } else {
+                ItemGroup(title = stringResource(R.string.settings_voice_usage_title), footer = stringResource(R.string.settings_voice_usage_footer)) {
+                    Item(
+                        title = stringResource(R.string.errors_voice_service_unavailable),
+                        detail = stringResource(R.string.common_retry),
+                        icon = { ItemIcon(Ionicon.TimeOutline, SettingsSpec.orange) },
+                        showChevron = false,
+                        onClick = onUsageRetry,
+                        modifier = Modifier.testTag(VoiceTags.USAGE_RETRY),
+                    )
                 }
             }
             if (!hasPro) ItemGroup {
@@ -112,6 +131,7 @@ fun VoiceSettingsScreen(
 }
 
 object VoiceTags {
+    const val USAGE_RETRY = "voice.usage.retry"
     const val SUPPORT = "voice.support"
     const val LANGUAGE = "voice.language"
     const val AGENT = "voice.agent"
