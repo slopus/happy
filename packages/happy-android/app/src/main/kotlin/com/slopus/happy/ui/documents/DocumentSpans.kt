@@ -51,13 +51,15 @@ class DocumentLineSpan(
         val spanned = text as? Spanned ?: return
         val spanStart = spanned.getSpanStart(this)
         val spanEnd = spanned.getSpanEnd(this)
-        // The line height as a fixed box, the extra split as CSS does.
-        val natural = fm.descent - fm.ascent
-        val extra = this.lineHeight - natural
-        fm.ascent -= extra / 2
-        fm.descent += extra - extra / 2
-        fm.top = minOf(fm.top, fm.ascent)
-        fm.bottom = maxOf(fm.bottom, fm.descent)
+        // The line height as a fixed box, the extra split as CSS does; an object's line is as tall as the object.
+        if (kind != DocumentLineKind.Object) {
+            val natural = fm.descent - fm.ascent
+            val extra = this.lineHeight - natural
+            fm.ascent -= extra / 2
+            fm.descent += extra - extra / 2
+            fm.top = minOf(fm.top, fm.ascent)
+            fm.bottom = maxOf(fm.bottom, fm.descent)
+        }
         if (start == spanStart) {
             fm.ascent -= spacingBefore + codeVertical
             fm.top -= spacingBefore + codeVertical

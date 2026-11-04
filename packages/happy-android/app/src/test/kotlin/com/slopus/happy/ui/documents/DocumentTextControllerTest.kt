@@ -211,7 +211,7 @@ class DocumentTextControllerTest {
         val asked = ArrayList<String>()
         controller.loadPicture = { url, done ->
             asked += url
-            DocumentPictures.keep(url, DocumentPicture(android.graphics.Bitmap.createBitmap(40, 20, android.graphics.Bitmap.Config.ARGB_8888), 40, 20))
+            DocumentPictures.keep(url, DocumentPicture(android.graphics.Bitmap.createBitmap(40, 60, android.graphics.Bitmap.Config.ARGB_8888), 40, 60))
             done()
         }
         val url = "/v0/surfaces/doc/files/picture-${System.nanoTime()}.png"
@@ -223,11 +223,13 @@ class DocumentTextControllerTest {
         assertEquals("Asked for once", listOf(url), asked)
         val span = view.text.getSpans(0, view.text.length, DocumentObjectSpan::class.java).single()
         assertTrue("The line shows the picture once read", span.picture != null)
-        // 40 by 20, a pixel to a point: 40 dp across and 20 tall.
+        // 40 by 60, a pixel to a point: 40 dp across and 60 tall, and its line as tall (not a line of text's 22).
         val density = view.resources.displayMetrics.density
         val fm = android.graphics.Paint.FontMetricsInt()
         span.getSize(view.paint, view.text, view.text.getSpanStart(span), view.text.getSpanEnd(span), fm)
-        assertEquals(20 * density, (fm.descent - fm.ascent).toFloat(), 1f)
+        assertEquals(60 * density, (fm.descent - fm.ascent).toFloat(), 1f)
+        val line = view.layout.getLineForOffset(view.text.getSpanStart(span))
+        assertTrue("The line holds the picture", view.layout.getLineBottom(line) - view.layout.getLineTop(line) >= 60 * density - 1)
         editor.replaceLines(1 until 2, listOf(editor.lines[1]))
         idle()
         assertEquals("Kept, not asked for again", listOf(url), asked)
