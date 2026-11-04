@@ -76,7 +76,7 @@ class SettingsPageViewController: UIViewController {
         super.viewDidLayoutSubviews()
         scroll.frame = view.bounds
         let width = scroll.readableColumn(width: view.bounds.width)
-        let specs = SettingsCardView.specs(rows, width: width)
+        let specs = SettingsCardView.specs(rows, width: width, traits: traitCollection)
         let layout = SettingsLayout(width: width, nameHeight: 0, subtitleHeight: 0, cards: specs, footers: SettingsCardView.footers(rows, width: width), searching: true)
         settingsLayout = layout
         for (index, card) in cards.enumerated() where layout.cards.indices.contains(index) {

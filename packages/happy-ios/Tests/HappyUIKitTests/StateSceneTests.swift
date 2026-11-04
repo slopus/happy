@@ -21,6 +21,8 @@ final class StateSceneTests: XCTestCase {
         .llama: "ff16ee4b8a19a782b5e5b12dbe103d145410f16b8801af5723b6636c56a0a0ff",
         // The 📺 sticker Kirill supplied, not desktop's (PROVENANCE.md).
         .tv: "3aad5efeefedef3fcbb2020a12873a40866141ec898a05f7eb67f15482f765fe",
+        // The 🧋 sticker supplied for Settings' Support Happy row (PROVENANCE.md).
+        .boba: "ce7d0449e69bb1e3eba1d06b158a945da94ccc07953cd9e5c477650341b48ae9",
     ]
 
     private func url(_ scene: StateScene) throws -> URL {

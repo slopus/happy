@@ -122,6 +122,10 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     /// and has it (a row that waits on the computer comes a moment later).
     private var reveal: String?
     nonisolated(unsafe) private var rootChange: NSObjectProtocol?
+    /// Support Happy's boba, one for the page, so it plays once and holds.
+    private lazy var boba = SupportBobaArt()
+    /// What the Voice row and page say; tests give their own.
+    var voiceStatus: () -> AgentVoiceStatus = { AgentVoiceStatus.current() }
 
     init(context: AppContext, computer: String?) {
         self.context = context
@@ -158,6 +162,8 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         empty.isHidden = true
         scroll.addSubview(empty)
         setUpBar()
+        // Support Happy's words follow the person's text size; the row grows.
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (self: Self, _) in self.view.setNeedsLayout() }
         observation = context.account.observeAccounts { [weak self] _ in self?.reload() }
         // A switch made here builds the new home in its account's language:
         // this page, kept over it, speaks it too.
@@ -469,8 +475,10 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                 accountRows(),
             ] + serverRows + [
                 [Row(Index.profile, image: profilePhoto, value: profileName.isEmpty ? nil : profileName, action: { [weak self] in self?.openProfile() })],
+                [supportRow()],
                 [
                     Row(Index.appearance, action: { [weak self] in self?.open(.appearance) }),
+                    Row(Index.agentVoice, value: voiceValue(), action: { [weak self] in self?.open(.agentVoice) }),
                     Row(Index.dataStorage, action: { [weak self] in self?.open(.dataStorage) }),
                 ],
                 [Row(Index.supportUs, action: { [weak self] in self?.open(.supportUs) })],
@@ -500,16 +508,32 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         ]
     }
 
+    /// Support Happy, under Profile: the boba and what sending it brings.
+    /// It opens the Voice page, where the subscription is.
+    private func supportRow() -> SettingsRow {
+        var row = SettingsRow(id: SettingsIndex.supportBoba.id, title: Strings.AgentVoice.supportTitle, action: { [weak self] in self?.open(.agentVoice) })
+        row.subtitle = Strings.AgentVoice.supportLine
+        row.art = boba
+        row.spoken = Strings.AgentVoice.supportSpoken
+        return row
+    }
+
+    /// The Voice row's value: the free time left on this device.
+    private func voiceValue() -> String {
+        let minutes = voiceStatus().minutesLeft
+        return minutes > 0 ? Strings.AgentVoice.minutesLeft(minutes) : Strings.AgentVoice.usedUp
+    }
+
     /// The pages a row opens in settings' cards.
     enum Page: CaseIterable {
-        case appearance, supportUs, account, backup, voice, language, dataStorage
+        case appearance, supportUs, account, backup, voice, language, dataStorage, agentVoice
     }
 
     /// Whether `profile`'s page has `page`: a computer's look, or a Happy
     /// account's own pages, once that account is the active one.
     private func has(_ page: Page, _ profile: Profile) -> Bool {
         switch page {
-        case .appearance: profile.isAgentConnection
+        case .appearance, .agentVoice: profile.isAgentConnection
         case .supportUs: true
         case .dataStorage: profile.isAgentConnection || activeSession != nil
         case .account, .backup, .voice, .language: !profile.isAgentConnection && activeSession != nil
@@ -523,6 +547,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         case .account: activeSession.map { AccountSettingsViewController(context: context, session: $0) }
         case .backup: activeSession.map { BackupSettingsViewController(context: context, session: $0) }
         case .voice: activeSession.map { VoiceSettingsViewController(context: context, session: $0) }
+        case .agentVoice: AgentVoiceViewController(status: voiceStatus)
         case .language: activeSession.map { SettingsLanguageViewController(session: $0) }
         case .dataStorage:
             // The shown profile's media: a computer's library, or the active account's.
@@ -661,7 +686,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         // Under the bar, whose row is in the safe area: the cards scroll under it.
         scroll.frame = view.bounds
         let width = scroll.readableColumn(width: view.bounds.width)
-        let specs = SettingsCardView.specs(rows, width: width)
+        let specs = SettingsCardView.specs(rows, width: width, traits: traitCollection)
         let picture = shown == nil ? nil : agentButton.intrinsicContentSize.width
         let layout = SettingsLayout(width: width, nameHeight: ceil(name.font.lineHeight), subtitleHeight: ceil(subtitle.font.lineHeight), cards: specs, footers: SettingsCardView.footers(rows, width: width), searching: searching, showsStrip: false, picture: picture)
         settingsLayout = layout

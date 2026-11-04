@@ -105,6 +105,15 @@ public struct SettingsLayout: Equatable, Sendable {
         public static let subtitledRow: CGFloat = 62
         public static let subtitledTitleTop: CGFloat = 10
         public static let subtitleHeight: CGFloat = 18
+        /// A row led by art (Support's boba): the art a fixed square, as
+        /// far from the row's edge, top and bottom as `artInset`, so the
+        /// row is two rows tall at least; its words beside it, wrapping.
+        public static let art: CGFloat = 72
+        public static let artInset: CGFloat = 16
+        public static let artGap: CGFloat = 14
+        public static let artTextX: CGFloat = artInset + art + artGap
+        /// Between an art row's title and the line under it.
+        public static let artLineGap: CGFloat = 2
     }
 
     public enum Accessory: Equatable, Sendable {
@@ -123,11 +132,26 @@ public struct SettingsLayout: Equatable, Sendable {
         public var textHeight: CGFloat?
         /// A quieter line under the title.
         public var subtitle: Bool
-        public init(hasIcon: Bool, valueWidth: CGFloat? = nil, accessory: Accessory, textHeight: CGFloat? = nil, subtitle: Bool = false) {
+        /// A row led by art: its title's and line's heights, measured at
+        /// `SettingsLayout.artTextWidth`. The row grows to hold them; the
+        /// art never changes size.
+        public var art: ArtText?
+        public init(hasIcon: Bool, valueWidth: CGFloat? = nil, accessory: Accessory, textHeight: CGFloat? = nil, subtitle: Bool = false, art: ArtText? = nil) {
             self.hasIcon = hasIcon
             self.valueWidth = valueWidth
             self.accessory = accessory
             self.textHeight = textHeight
+            self.subtitle = subtitle
+            self.art = art
+        }
+    }
+
+    /// An art row's words, as measured.
+    public struct ArtText: Equatable, Sendable {
+        public var title: CGFloat
+        public var subtitle: CGFloat
+        public init(title: CGFloat, subtitle: CGFloat) {
+            self.title = title
             self.subtitle = subtitle
         }
     }
@@ -144,6 +168,8 @@ public struct SettingsLayout: Equatable, Sendable {
         public var separator: CGRect?
         /// The quieter line under the title, for a row that has one.
         public var subtitle: CGRect? = nil
+        /// An art row's art.
+        public var art: CGRect? = nil
     }
 
     public struct Card: Equatable, Sendable {
@@ -231,6 +257,12 @@ public struct SettingsLayout: Equatable, Sendable {
         max(0, width - 2 * Metrics.side - 2 * Metrics.footerInset)
     }
 
+    /// The width an art row's words are measured at: beside the art, before
+    /// the chevron.
+    public static func artTextWidth(_ width: CGFloat) -> CGFloat {
+        max(0, width - 2 * Metrics.side - Metrics.artTextX - Metrics.trailing - Metrics.chevron.width - Metrics.valueGap)
+    }
+
     /// The width a text row's text is measured at.
     public static func textWidth(_ width: CGFloat) -> CGFloat {
         max(0, width - 2 * Metrics.side - Metrics.plainTextX - Metrics.trailing)
@@ -238,6 +270,27 @@ public struct SettingsLayout: Equatable, Sendable {
 
     static func row(_ spec: RowSpec, y: CGFloat, width: CGFloat, last: Bool) -> Row {
         typealias M = Metrics
+        if let text = spec.art {
+            // The art at the row's edge, the words beside it, both centred
+            // in a row two rows tall, or as tall as the words need.
+            let words = text.title + (text.subtitle > 0 ? M.artLineGap + text.subtitle : 0)
+            let height = max(M.art, words) + 2 * M.artInset
+            let chevron = CGRect(x: width - M.trailing - M.chevron.width, y: y + ((height - M.chevron.height) / 2).rounded(), width: M.chevron.width, height: M.chevron.height)
+            let textWidth = max(0, chevron.minX - M.valueGap - M.artTextX)
+            let top = y + ((height - words) / 2).rounded()
+            let title = CGRect(x: M.artTextX, y: top, width: textWidth, height: text.title)
+            return Row(
+                box: CGRect(x: 0, y: y, width: width, height: height),
+                icon: nil,
+                title: title,
+                value: nil,
+                chevron: chevron,
+                toggle: nil,
+                separator: last ? nil : CGRect(x: M.artTextX, y: y + height - M.separator, width: width - M.artTextX, height: M.separator),
+                subtitle: text.subtitle > 0 ? CGRect(x: M.artTextX, y: title.maxY + M.artLineGap, width: textWidth, height: text.subtitle) : nil,
+                art: CGRect(x: M.artInset, y: y + ((height - M.art) / 2).rounded(), width: M.art, height: M.art)
+            )
+        }
         if let height = spec.textHeight {
             // A block of text the card's width, plain, nothing beside it.
             let box = max(M.row, height + 2 * M.textPadding)

@@ -299,6 +299,14 @@ struct SettingsRow {
     /// What a hold on it offers (signing an account out), and VoiceOver's
     /// actions on it.
     var menu: [MenuItem] = []
+    /// Art that leads the row at its own fixed size (Support's boba), in
+    /// place of the icon: the row is two rows tall, its title and line
+    /// wrap beside it at the person's text size. The page keeps the view,
+    /// so it is the same one each time the row is shown.
+    var art: UIView?
+    /// What VoiceOver reads for the row instead of its words, where they
+    /// read better as one sentence.
+    var spoken: String?
 
     struct MenuItem {
         var title: String
@@ -346,9 +354,15 @@ final class SettingsCardView: UIView {
 
     /// The cards' rows as the layout takes them, a code row measured at
     /// the page's `width`.
-    static func specs(_ cards: [[SettingsRow]], width: CGFloat) -> [[SettingsLayout.RowSpec]] {
+    static func specs(_ cards: [[SettingsRow]], width: CGFloat, traits: UITraitCollection = .current) -> [[SettingsLayout.RowSpec]] {
         cards.map { card in
             card.map { row in
+                if row.art != nil {
+                    let fonts = RowView.artFonts(traits)
+                    let words = SettingsLayout.artTextWidth(width)
+                    let line = row.subtitle.map { height($0, font: fonts.subtitle, width: words) } ?? 0
+                    return SettingsLayout.RowSpec(hasIcon: false, accessory: .chevron, art: SettingsLayout.ArtText(title: height(row.title, font: fonts.title, width: words), subtitle: line))
+                }
                 guard row.isCode else { return spec(row) }
                 let text = height(row.title, font: RowView.codeFont, width: SettingsLayout.textWidth(width))
                 return SettingsLayout.RowSpec(hasIcon: false, accessory: .none, textHeight: text)
@@ -388,11 +402,23 @@ final class SettingsCardView: UIView {
         /// Made for the first row that has one.
         private var subtitle: UILabel?
         private var valueView: UIView?
+        /// An art row's art (`SettingsRow.art`).
+        private var art: UIView?
         /// Over the row while it has a pull-down (`SettingsRow.pullDown`).
         private var pullDownButton: MenuRowButton?
         private var row: SettingsRow?
         private lazy var menuInteraction = UIContextMenuInteraction(delegate: self)
         static let subtitleFont = Fonts.ui(.regular, size: 13)
+
+        /// An art row's words: a row's title and a quieter line under it,
+        /// at the person's text size (to 1.6×, as the call sheet's are), since
+        /// they wrap and the row grows to hold them.
+        static func artFonts(_ traits: UITraitCollection) -> (title: UIFont, subtitle: UIFont) {
+            func scaled(_ font: UIFont, _ style: UIFont.TextStyle) -> UIFont {
+                UIFontMetrics(forTextStyle: style).scaledFont(for: font, maximumPointSize: (font.pointSize * 1.6).rounded(), compatibleWith: traits)
+            }
+            return (scaled(Fonts.ui(.regular, size: 17), .body), scaled(Fonts.ui(.regular, size: 15), .subheadline))
+        }
         /// A fold's chevron, turned down while what it folds is open.
         var chevronTurned = false {
             didSet { chevron.image = Glyphs.image(chevronTurned ? "chevron-down" : "chevron-right", size: 14) }
@@ -456,15 +482,26 @@ final class SettingsCardView: UIView {
                 }
             }
             live.animate(seed: frames.icon != nil && row.avatar ? row.liveSeed : nil)
+            if art !== row.art {
+                art?.removeFromSuperview()
+                art = row.art
+                if let art { addSubview(art) }
+            }
+            if let art, let frame = frames.art { art.frame = local(frame) }
+            let fonts = row.art == nil ? nil : Self.artFonts(traitCollection)
             title.text = row.title
-            title.font = row.isCode ? Self.codeFont : Self.titleFont
-            title.numberOfLines = row.isCode ? 0 : 1
+            title.font = fonts?.title ?? (row.isCode ? Self.codeFont : Self.titleFont)
+            title.numberOfLines = row.isCode || row.art != nil ? 0 : 1
             title.textColor = UIColor(row.destructive ? Palette.settingsDestructive : row.dimmed ? Palette.settingsSecondary : row.icon?.tile == .action ? Palette.textLink : Palette.settingsText)
             title.frame = local(frames.title)
             if let frame = frames.subtitle {
                 let label = subtitle ?? makeSubtitle()
                 label.isHidden = false
                 label.text = row.subtitle
+                // An art row's line wraps, at the person's text size.
+                label.font = fonts?.subtitle ?? Self.subtitleFont
+                label.numberOfLines = fonts == nil ? 1 : 0
+                label.lineBreakMode = fonts == nil ? .byTruncatingMiddle : .byWordWrapping
                 label.frame = local(frame)
             } else {
                 subtitle?.isHidden = true
@@ -520,7 +557,7 @@ final class SettingsCardView: UIView {
             // A pull-down's row is its button to VoiceOver.
             isAccessibilityElement = row.accessory != .toggle && row.pullDown == nil
             let shownValue = row.valueView == nil ? row.value : row.valueView?.accessibilityLabel
-            accessibilityLabel = [row.title, row.subtitle, shownValue].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
+            accessibilityLabel = row.spoken ?? [row.title, row.subtitle, shownValue].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
             accessibilityHint = row.hint
             accessibilityTraits = row.accessory == .toggle ? [] : row.action != nil ? .button : row.dimmed ? .notEnabled : .staticText
             if row.menu.isEmpty {

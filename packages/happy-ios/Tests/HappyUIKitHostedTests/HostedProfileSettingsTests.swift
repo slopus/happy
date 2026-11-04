@@ -203,7 +203,8 @@ final class HostedProfileSettingsTests: XCTestCase {
         }
         XCTAssertTrue(cards.contains(["profile"]), "the Profile row is not a card of its own: \(cards)")
         XCTAssertEqual(cards.firstIndex(of: ["profile"]), 1, "Profile is not right under the accounts")
-        XCTAssertEqual(cards[2], ["appearance", "data-storage"], "a card is left between Profile and Appearance: \(cards)")
+        XCTAssertEqual(cards[2], ["support-boba"], "Support Happy is not right under Profile: \(cards)")
+        XCTAssertEqual(cards[3], ["appearance", "agent-voice", "data-storage"], "a card is left between Support Happy and Appearance: \(cards)")
         XCTAssertEqual(settings.shownRow("profile")?.title, "Profile")
         XCTAssertTrue(settings.agentButton.isDescendant(of: settings.view) && !settings.agentButton.isHidden, "the agent's picture isn't on the page")
         XCTAssertTrue(settings.navigationItem.rightBarButtonItems?.isEmpty ?? true, "the bar still has a button left of search")

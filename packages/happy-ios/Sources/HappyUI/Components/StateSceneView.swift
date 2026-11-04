@@ -31,6 +31,9 @@ public enum StateScene: String, CaseIterable, Sendable {
     case llama
     /// The screen after Start: Happy on the computer (a 📺 sticker).
     case tv
+    /// Supporting Happy every month, which comes with voice time: Settings'
+    /// Support Happy row (a 🧋 sticker; `PROVENANCE.md`).
+    case boba
 }
 
 /// One state picture in a fixed square, drawn the way desktop draws it

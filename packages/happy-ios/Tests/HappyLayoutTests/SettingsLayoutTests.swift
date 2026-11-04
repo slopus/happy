@@ -49,6 +49,35 @@ final class SettingsLayoutTests: XCTestCase {
         XCTAssertEqual(searching.cards[0].frame, CGRect(x: 16, y: 8, width: 358, height: 52))
     }
 
+    /// Support's row under Profile: the boba a fixed 72 square, 16 from the
+    /// card's edge, top and bottom, as a tile sits 16 from its edge, so the
+    /// row is two rows tall; its words wrap beside it, before the chevron.
+    /// Words taller than the art grow the row, never the art.
+    func testAnArtRowIsTwoRowsTallAndGrowsOnlyForItsWords() {
+        typealias L = SettingsLayout
+        XCTAssertEqual(L.artTextWidth(390), 224)
+        // Two lines of title (44) and one of the line under it (20).
+        let two = L(width: 390, nameHeight: 34, subtitleHeight: 22, cards: [[L.RowSpec(hasIcon: false, accessory: .chevron, art: L.ArtText(title: 44, subtitle: 20))]], showsStrip: false)
+        let row = two.cards[0].rows[0]
+        XCTAssertEqual(row.box, CGRect(x: 0, y: 0, width: 358, height: 104))
+        XCTAssertEqual(row.box.height, 2 * L.Metrics.row)
+        XCTAssertEqual(row.art, CGRect(x: 16, y: 16, width: 72, height: 72))
+        XCTAssertEqual(row.title, CGRect(x: 102, y: 19, width: 224, height: 44))
+        XCTAssertEqual(row.subtitle, CGRect(x: 102, y: 65, width: 224, height: 20))
+        XCTAssertEqual(row.chevron, CGRect(x: 334, y: 45, width: 8, height: 14))
+        XCTAssertNil(row.icon)
+        XCTAssertNil(row.separator)
+        // At a large text size: six lines (172) make the row 204 tall; the
+        // art keeps its size, centred.
+        let tall = L(width: 390, nameHeight: 34, subtitleHeight: 22, cards: [[L.RowSpec(hasIcon: false, accessory: .chevron, art: L.ArtText(title: 120, subtitle: 50))]], showsStrip: false).cards[0].rows[0]
+        XCTAssertEqual(tall.box.height, 204)
+        XCTAssertEqual(tall.art, CGRect(x: 16, y: 66, width: 72, height: 72))
+        XCTAssertEqual(tall.title.minY, 16)
+        XCTAssertEqual(tall.subtitle?.maxY, 188)
+        // On a 320 phone the words get 154.
+        XCTAssertEqual(L.artTextWidth(320), 154)
+    }
+
     /// Switching profiles keeps the page where it was, unless the new
     /// page ends before there.
     func testSwitchingKeepsThePlaceUnlessThePageEndsSooner() {

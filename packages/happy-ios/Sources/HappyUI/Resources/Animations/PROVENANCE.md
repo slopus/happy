@@ -55,3 +55,15 @@ author and licence are **not verified**: confirm them before a release
 build ships it. Android ships the same bytes as
 `packages/happy-android/app/src/main/res/raw/call_podcast_mic.json`
 (`CallSheetTest` checks the hash), under the same caveat.
+
+## `boba.json`, Settings' support row
+
+Not desktop's, and not under `LICENSE` here. Supplied with the request for
+the Support Happy row under Profile in an agent connection's Settings
+(`SupportBobaRow`) as a Telegram sticker file, `boba.tgs` (SHA-256
+`e7d7715c1fb01ab45ca9126653a755a2664d4fe2fb0d6fc5b95e2dbe0d77f638`), and
+committed as that file gunzipped, byte for byte (SHA-256
+`ce7d0449e69bb1e3eba1d06b158a945da94ccc07953cd9e5c477650341b48ae9`). Its
+author and licence are **not verified**: confirm them before a release
+build ships it. `packages/happy-android/app/src/main/res/raw/state_boba.json`
+is the same bytes.
