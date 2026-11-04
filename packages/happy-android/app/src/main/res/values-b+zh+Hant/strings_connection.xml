@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="connection_title">連線</string>
+    <string name="connection_status">狀態</string>
+    <string name="connection_type">類型</string>
+    <string name="connection_server">伺服器</string>
+    <string name="connection_network">網路可用</string>
+    <string name="connection_open_flows">應用程式開啟的串流</string>
+    <string name="connection_tunnels">Tailcat 通道</string>
+    <string name="connection_tunnel">通道 %1$d</string>
+    <string name="connection_path">路徑</string>
+    <string name="connection_direct">直連</string>
+    <string name="connection_relayed">經中繼</string>
+    <string name="connection_relay">已設定的中繼</string>
+    <string name="connection_copy">複製診斷資訊</string>
+    <string name="connection_copy_failed">無法複製診斷資訊</string>
+</resources>

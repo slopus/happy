@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="connection_title">Conexión</string>
+    <string name="connection_status">Estado</string>
+    <string name="connection_type">Tipo</string>
+    <string name="connection_server">Servidor</string>
+    <string name="connection_network">Red disponible</string>
+    <string name="connection_open_flows">Flujos abiertos de la app</string>
+    <string name="connection_tunnels">Túneles Tailcat</string>
+    <string name="connection_tunnel">Túnel %1$d</string>
+    <string name="connection_path">Ruta</string>
+    <string name="connection_direct">Directa</string>
+    <string name="connection_relayed">Por retransmisor</string>
+    <string name="connection_relay">Retransmisor configurado</string>
+    <string name="connection_copy">Copiar diagnóstico</string>
+    <string name="connection_copy_failed">No se pudo copiar el diagnóstico</string>
+</resources>

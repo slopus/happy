@@ -141,6 +141,11 @@ internal class TailcatClients<C : Any>(
     /** How many places [category] has, connected or not. */
     internal suspend fun count(category: RequestCategory): Int = lock.withLock { slots.count { it.category == category } }
 
+    /** Connected clients only; no reservations or empty slots, and no connect as a side effect. */
+    internal suspend fun connected(): List<Pair<RequestCategory, C>> = lock.withLock {
+        slots.mapNotNull { slot -> slot.client?.let { slot.category to it } }
+    }
+
     /** Closing a client tells the relay, which is network I/O: never on the caller's (maybe main) thread. */
     private suspend fun closeOffMain(client: C) = withContext(NonCancellable + Dispatchers.IO) {
         try {

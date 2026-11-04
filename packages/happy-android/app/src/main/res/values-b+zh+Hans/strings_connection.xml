@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="connection_title">连接</string>
+    <string name="connection_status">状态</string>
+    <string name="connection_type">类型</string>
+    <string name="connection_server">服务器</string>
+    <string name="connection_network">网络可用</string>
+    <string name="connection_open_flows">应用打开的流</string>
+    <string name="connection_tunnels">Tailcat 隧道</string>
+    <string name="connection_tunnel">隧道 %1$d</string>
+    <string name="connection_path">路径</string>
+    <string name="connection_direct">直连</string>
+    <string name="connection_relayed">经中继</string>
+    <string name="connection_relay">已配置的中继</string>
+    <string name="connection_copy">复制诊断信息</string>
+    <string name="connection_copy_failed">无法复制诊断信息</string>
+</resources>

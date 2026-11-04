@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="connection_title">Connexió</string>
+    <string name="connection_status">Estat</string>
+    <string name="connection_type">Tipus</string>
+    <string name="connection_server">Servidor</string>
+    <string name="connection_network">Xarxa disponible</string>
+    <string name="connection_open_flows">Fluxos oberts de l’app</string>
+    <string name="connection_tunnels">Túnels Tailcat</string>
+    <string name="connection_tunnel">Túnel %1$d</string>
+    <string name="connection_path">Ruta</string>
+    <string name="connection_direct">Directa</string>
+    <string name="connection_relayed">Per retransmissor</string>
+    <string name="connection_relay">Retransmissor configurat</string>
+    <string name="connection_copy">Copia el diagnòstic</string>
+    <string name="connection_copy_failed">No s’ha pogut copiar el diagnòstic</string>
+</resources>

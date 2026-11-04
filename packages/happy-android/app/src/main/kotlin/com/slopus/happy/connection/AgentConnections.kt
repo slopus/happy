@@ -75,6 +75,7 @@ class AgentConnections(
     private val state = MutableStateFlow(readRegistry())
     private val endpointLock = Any()
     private val endpoints = mutableMapOf<String, AgentEndpoint>()
+    private val diagnosticTransports = TransportDiagnosticsRegistry()
 
     init {
         // Credentials whose entry went in a disconnect the process didn't live to finish.
@@ -86,8 +87,10 @@ class AgentConnections(
         val endpoint = synchronized(endpointLock) {
             endpoints.getOrPut(id) { AgentEndpoint(credentials) { next -> saveEndpoint(id, next) } }
         }
-        return AgentEndpointTransport(endpoint, make)
+        return diagnosticTransports.track(id, AgentEndpointTransport(endpoint, make))
     }
+
+    suspend fun diagnostics(id: String): List<TransportDiagnostics> = diagnosticTransports.snapshot(id)
 
     private suspend fun saveEndpoint(id: String, next: AgentConnectionCredentials) = lock.withLock {
         withContext(Dispatchers.IO) {

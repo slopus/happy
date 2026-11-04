@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="connection_title">Połączenie</string>
+    <string name="connection_status">Stan</string>
+    <string name="connection_type">Typ</string>
+    <string name="connection_server">Serwer</string>
+    <string name="connection_network">Sieć dostępna</string>
+    <string name="connection_open_flows">Otwarte strumienie aplikacji</string>
+    <string name="connection_tunnels">Tunele Tailcat</string>
+    <string name="connection_tunnel">Tunel %1$d</string>
+    <string name="connection_path">Trasa</string>
+    <string name="connection_direct">Bezpośrednia</string>
+    <string name="connection_relayed">Przez przekaźnik</string>
+    <string name="connection_relay">Skonfigurowany przekaźnik</string>
+    <string name="connection_copy">Kopiuj diagnostykę</string>
+    <string name="connection_copy_failed">Nie udało się skopiować diagnostyki</string>
+</resources>

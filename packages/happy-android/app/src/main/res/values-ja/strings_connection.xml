@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="connection_title">接続</string>
+    <string name="connection_status">状態</string>
+    <string name="connection_type">種類</string>
+    <string name="connection_server">サーバー</string>
+    <string name="connection_network">ネットワーク利用可能</string>
+    <string name="connection_open_flows">アプリの開いているストリーム</string>
+    <string name="connection_tunnels">Tailcat トンネル</string>
+    <string name="connection_tunnel">トンネル %1$d</string>
+    <string name="connection_path">経路</string>
+    <string name="connection_direct">直接</string>
+    <string name="connection_relayed">リレー経由</string>
+    <string name="connection_relay">設定済みリレー</string>
+    <string name="connection_copy">診断情報をコピー</string>
+    <string name="connection_copy_failed">診断情報をコピーできませんでした</string>
+</resources>

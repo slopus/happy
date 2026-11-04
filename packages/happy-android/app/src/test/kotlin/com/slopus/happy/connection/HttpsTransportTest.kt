@@ -16,6 +16,32 @@ import org.junit.Test
 import javax.net.ssl.SSLHandshakeException
 
 class HttpsTransportTest {
+    @Test fun diagnosticsCountOpenTlsFlowsAndCategoryResetWithoutMakingRequests() = runBlocking {
+        val (serverKeys, clientRoots) = certificates()
+        server(serverKeys).use { server ->
+            val transport = HttpsTransport(AgentOrigin.parse("https://localhost:${server.port}"), clientRoots.sslSocketFactory())
+            try {
+                assertEquals(0, transport.diagnostics().openFlows)
+                assertEquals(0, server.requestCount)
+                server.enqueue(MockResponse.Builder().addHeader("Content-Type", "text/event-stream").body("data: one\n\n").build())
+                val events = transport.stream("/v0/events/stream", "token")
+                val browser = transport.socket()
+                assertEquals(2, transport.diagnostics().openFlows)
+                transport.reset(RequestCategory.Query)
+                assertEquals(2, transport.diagnostics().openFlows)
+                transport.reset(RequestCategory.Realtime)
+                assertEquals(1, transport.diagnostics().openFlows)
+                events.close()
+                events.close()
+                assertEquals(1, transport.diagnostics().openFlows)
+                browser.close()
+                browser.close()
+                assertEquals(0, transport.diagnostics().openFlows)
+                assertEquals(1, server.requestCount)
+            } finally { transport.close() }
+        }
+    }
+
     @Test fun ownDeadlineIsUnavailableButCallerDeadlineRemainsCancellation() = runBlocking {
         val (serverKeys, clientRoots) = certificates()
         server(serverKeys).use { server ->

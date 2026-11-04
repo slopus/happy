@@ -26,6 +26,9 @@ class TransportResponse(val status: Int, val headers: Map<String, String> = empt
  * id, or the device token.
  */
 interface Transport {
+    /** Current app-owned flows and public path data, without connecting or making requests. */
+    suspend fun diagnostics(): TransportDiagnostics? = null
+
     /**
      * One request as [category]: over that category's client, with its
      * deadline. A transport with one way to the agent ignores it.
@@ -122,7 +125,54 @@ class TailcatTransport internal constructor(
         TailcatClient.connect(address, ClientConfiguration(privateKey = key, mapProvider = derpMap, connectTimeoutMillis = connectTimeoutMillis))
     })
 
-    private val clients = TailcatClients(connect, disconnect = TailcatClient::close)
+    private val flows = OpenFlows()
+    private val owners = java.util.concurrent.ConcurrentHashMap<TailcatClient, OpenFlows.Owner>()
+    private val clients = TailcatClients(
+        connect = { category, key ->
+            val client = connect(category, key)
+            try {
+                owners[client] = flows.owner()
+                client
+            } catch (error: Throwable) {
+                client.close()
+                throw error
+            }
+        },
+        disconnect = { client ->
+            owners.remove(client)?.close()
+            client.close()
+        },
+    )
+
+    private class OpenFlow(private val stream: TailcatConnection, private val ownership: OpenFlows.Owner.Flow) {
+        fun read(maximumBytes: Int) = stream.read(maximumBytes)
+        fun read(maximumBytes: Int, timeoutMillis: Long) = stream.read(maximumBytes, timeoutMillis = timeoutMillis)
+        fun write(bytes: ByteArray) = stream.write(bytes)
+        fun write(bytes: ByteArray, timeoutMillis: Long) = stream.write(bytes, timeoutMillis = timeoutMillis)
+        fun close() = ownership.close()
+    }
+
+    private fun open(client: TailcatClient): OpenFlow {
+        val owner = owners[client] ?: throw AgentConnectionException(AgentConnectionException.Reason.Unavailable)
+        val stream = client.openTCP(port)
+        return OpenFlow(stream, owner.opened(stream::close))
+    }
+
+    override suspend fun diagnostics(): TransportDiagnostics {
+        val tunnels = clients.connected().mapNotNull { (category, client) ->
+            val owner = owners[client] ?: return@mapNotNull null
+            val path = when (client.path) {
+                is io.tailcat.ConnectionPath.Direct -> TransportDiagnostics.Path.Direct
+                io.tailcat.ConnectionPath.Relay -> TransportDiagnostics.Path.Relayed
+            }
+            val address = client.serverAddress
+            val relay = address.regions.firstOrNull { it.regionID == address.regionID }?.nodes
+                ?.firstOrNull { !it.stunOnly }?.hostName
+                ?.takeIf { it.length <= 253 && it.all { char -> char.isLetterOrDigit() || char in ".-:" } }
+            TransportDiagnostics.Tunnel(category, path, relay, owner.count)
+        }
+        return TransportDiagnostics(TransportDiagnostics.Kind.Tailcat, tunnels.sumOf { it.openFlows }, tunnels)
+    }
 
     override suspend fun request(
         method: String,
@@ -139,7 +189,7 @@ class TailcatTransport internal constructor(
         return try {
             withTimeout(deadline) {
                 runInterruptible(Dispatchers.IO) {
-                    val stream: TailcatConnection = lease.client.openTCP(port)
+                    val stream = open(lease.client)
                     try {
                         stream.write(head, timeoutMillis = requestTimeoutMillis)
                         if (body != null) {
@@ -176,28 +226,41 @@ class TailcatTransport internal constructor(
     override suspend fun stream(path: String, credential: String, headers: Map<String, String>, silenceMillis: Long): TransportStream {
         val head = TailcatHttp.requestHead("GET", path, port, credential, null, headers + ("Accept" to "text/event-stream"))
         val lease = clients.lease(RequestCategory.Realtime)
-        val socket: TailcatConnection = try {
+        val opening = java.util.concurrent.atomic.AtomicReference<OpenFlow?>()
+        val socket: OpenFlow = try {
             withTimeout(requestTimeoutMillis) {
                 runInterruptible(Dispatchers.IO) {
-                    lease.client.openTCP(port).also { it.write(head, timeoutMillis = requestTimeoutMillis) }
+                    val opened = open(lease.client)
+                    opening.set(opened)
+                    try {
+                        opened.write(head, timeoutMillis = requestTimeoutMillis)
+                        opened
+                    } catch (error: Throwable) {
+                        opened.close()
+                        throw error
+                    }
                 }
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
+            opening.getAndSet(null)?.close()
             lease.release()
             if (e !is kotlinx.coroutines.TimeoutCancellationException) throw e
             failed(lease, e)
             throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
         } catch (e: Exception) {
+            opening.getAndSet(null)?.close()
             lease.release()
             failed(lease, e)
             throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
         }
         val reader = object : ByteSource {
             override suspend fun read(): ByteArray = try {
-                runInterruptible(Dispatchers.IO) { socket.read(65536, timeoutMillis = silenceMillis) }
+                runInterruptible(Dispatchers.IO) { socket.read(65536, timeoutMillis = silenceMillis) }.also { if (it.isEmpty()) close() }
             } catch (e: kotlinx.coroutines.CancellationException) {
+                close()
                 throw e
             } catch (e: Exception) {
+                close()
                 failed(lease, e)
                 throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
             }
@@ -216,21 +279,24 @@ class TailcatTransport internal constructor(
 
     override suspend fun socket(): TransportSocket {
         val lease = clients.lease(RequestCategory.File)
-        val stream: TailcatConnection = try {
-            withTimeout(requestTimeoutMillis) { runInterruptible(Dispatchers.IO) { lease.client.openTCP(port) } }
+        val opening = java.util.concurrent.atomic.AtomicReference<OpenFlow?>()
+        val stream: OpenFlow = try {
+            withTimeout(requestTimeoutMillis) { runInterruptible(Dispatchers.IO) { open(lease.client).also { opening.set(it) } } }
         } catch (e: kotlinx.coroutines.CancellationException) {
+            opening.getAndSet(null)?.close()
             lease.release()
             if (e !is kotlinx.coroutines.TimeoutCancellationException) throw e
             failed(lease, e)
             throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
         } catch (e: Exception) {
+            opening.getAndSet(null)?.close()
             lease.release()
             failed(lease, e)
             throw AgentConnectionException(AgentConnectionException.Reason.Unavailable).initCause(e)
         }
         return object : TransportSocket {
             // A cancelled read or write closes the stream, which wakes the blocked call.
-            override suspend fun read(maximumBytes: Int): ByteArray = io { stream.read(maximumBytes) }
+            override suspend fun read(maximumBytes: Int): ByteArray = io { stream.read(maximumBytes) }.also { if (it.isEmpty()) close() }
 
             override suspend fun write(bytes: ByteArray) {
                 io { stream.write(bytes) }
@@ -269,7 +335,10 @@ class TailcatTransport internal constructor(
 
     override suspend fun reset(category: RequestCategory) = clients.reset(category)
 
-    override suspend fun close() = clients.close()
+    override suspend fun close() = kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable + Dispatchers.IO) {
+        flows.close()
+        clients.close()
+    }
 
     companion object {
         /**

@@ -42,6 +42,10 @@ class HttpsTransport internal constructor(
 
     override suspend fun overHttps(): Boolean = true
 
+    override suspend fun diagnostics(): TransportDiagnostics = synchronized(lock) {
+        TransportDiagnostics(TransportDiagnostics.Kind.Https, sockets.count { it.connected } + tunnels.size, server = origin.authority)
+    }
+
     override suspend fun webSocketTunnel(path: String, credential: String): TransportSocket {
         if (!path.startsWith("/") || path.any { it.code <= 32 || it.code >= 127 } || credential.any { it.code < 32 || it.code >= 127 }) {
             throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
@@ -55,7 +59,15 @@ class HttpsTransport internal constructor(
         }
         // Forgotten when it closes, so a long-lived transport doesn't hold every tunnel it made.
         return object : TransportSocket by tunnel {
+            private val ended = java.util.concurrent.atomic.AtomicBoolean()
+            override suspend fun read(maximumBytes: Int): ByteArray = try {
+                tunnel.read(maximumBytes).also { if (it.isEmpty()) close() }
+            } catch (error: Throwable) { close(); throw error }
+            override suspend fun write(bytes: ByteArray) {
+                try { tunnel.write(bytes) } catch (error: Throwable) { close(); throw error }
+            }
             override fun close() {
+                if (!ended.compareAndSet(false, true)) return
                 synchronized(lock) { tunnels.remove(tunnel) }
                 tunnel.close()
             }
@@ -80,6 +92,7 @@ class HttpsTransport internal constructor(
                 tls.soTimeout = 35_000
                 tls.startHandshake()
                 tls.soTimeout = 0
+                stream.connected()
             }
             return stream
         } catch (error: Throwable) {
@@ -152,6 +165,13 @@ class HttpsTransport internal constructor(
         override val authority: String get() = origin.authority
         private var tls: SSLSocket? = null
         private var ended = false
+        @Volatile var connected = false
+            private set
+
+        @Synchronized fun connected() {
+            if (ended) throw AgentConnectionException(AgentConnectionException.Reason.Unavailable)
+            connected = true
+        }
 
         @Synchronized fun use(value: SSLSocket) {
             if (ended) { value.close(); throw AgentConnectionException(AgentConnectionException.Reason.Unavailable) }
@@ -186,6 +206,7 @@ class HttpsTransport internal constructor(
             val secure = synchronized(this) {
                 if (ended) return
                 ended = true
+                connected = false
                 tls
             }
             try { raw.close() } catch (_: Exception) { }

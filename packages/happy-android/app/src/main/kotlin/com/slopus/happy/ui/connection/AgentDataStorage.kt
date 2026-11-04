@@ -40,12 +40,14 @@ import kotlinx.serialization.Serializable
 @Serializable data class MediaLimitRoute(val kind: MediaAutoDownload.Kind)
 
 internal fun NavGraphBuilder.dataStorageRoutes(graph: AppGraph, nav: NavHostController) {
+    connectionDiagnosticsRoutes(graph, nav)
     page<LegacyDataStorageRoute> {
         val auth by graph.auth.state.collectAsStateWithLifecycle()
+        val open by graph.openAccount.collectAsStateWithLifecycle()
         val library = remember(auth) {
             if (auth is AuthState.SignedIn) AttachmentServices.of(graph).transfers?.library else null
         }
-        MediaStoragePage(graph, nav, library)
+        MediaStoragePage(graph, nav, library, open.id)
     }
     page<MediaLimitRoute> { entry ->
         val kind = entry.toRoute<MediaLimitRoute>().kind
@@ -74,12 +76,12 @@ object DataStorageTags {
 @Composable
 internal fun AgentDataStorage(graph: AppGraph, nav: NavHostController, connectionId: String) {
     val library = remember(connectionId) { graph.agentSessions.session(connectionId)?.media }
-    MediaStoragePage(graph, nav, library)
+    MediaStoragePage(graph, nav, library, connectionId)
 }
 
 /** Both kinds of account use the library that their existing downloads write into. */
 @Composable
-private fun MediaStoragePage(graph: AppGraph, nav: NavHostController, library: MediaLibrary?) {
+private fun MediaStoragePage(graph: AppGraph, nav: NavHostController, library: MediaLibrary?, connectionId: String?) {
     val rules by graph.mediaAutoDownload.rules.collectAsStateWithLifecycle()
     var usage by remember(library) { mutableStateOf<Long?>(null) }
     var clearing by remember(library) { mutableStateOf(false) }
@@ -102,6 +104,7 @@ private fun MediaStoragePage(graph: AppGraph, nav: NavHostController, library: M
         }),
         onBack = { nav.popBackStack() },
         onChooseLimit = { nav.navigate(MediaLimitRoute(it)) },
+        onConnection = connectionId?.let { id -> { nav.navigate(ConnectionDiagnosticsRoute(id)) } },
     )
 }
 
@@ -109,7 +112,7 @@ private fun MediaStoragePage(graph: AppGraph, nav: NavHostController, library: M
  * Telegram's Data and Storage, as much of iOS's (ba7b68346) as kept chat
  * media needs: what this connection's media takes on the phone, Clear Media
  * after a confirm, and Automatic Media Download's switches and size limits,
- * one setting for every network. Connection diagnostics are added separately.
+ * one setting for every network, with this account's Connection diagnostics on top.
  */
 @Composable
 fun DataStorageScreen(
@@ -119,6 +122,7 @@ fun DataStorageScreen(
     onClear: (() -> Unit)?,
     onBack: () -> Unit,
     onChooseLimit: (MediaAutoDownload.Kind) -> Unit = {},
+    onConnection: (() -> Unit)? = null,
 ) {
     var confirming by remember { mutableStateOf(false) }
     val size = usage?.let(MediaSizeText::size) ?: stringResource(R.string.data_storage_calculating)
@@ -172,6 +176,14 @@ fun DataStorageScreen(
         title = stringResource(R.string.data_storage_auto),
     )
     AgentPage(stringResource(R.string.data_storage_title), onBack) {
+        onConnection?.let { open ->
+            SettingsCard(SettingsSection(listOf(SettingsEntry(
+                id = ConnectionPageTags.ROW,
+                title = stringResource(R.string.connection_title),
+                icon = { SettingsTile(Ionicon.GlobeOutline, SettingsTiles.blue) },
+                onClick = open,
+            ))))
+        }
         SettingsCard(storage)
         SettingsCard(automatic)
     }

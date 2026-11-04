@@ -31,6 +31,21 @@ class TailcatClientsTest {
         disconnect = { it.closed = true },
     )
 
+    @Test fun diagnosticSnapshotContainsOnlyConnectedClientsAndNeverCreatesOne() = runBlocking {
+        assertTrue(clients.connected().isEmpty())
+        assertTrue(made.isEmpty())
+        val query = clients.lease(RequestCategory.Query)
+        assertEquals(listOf(RequestCategory.Query to query.client), clients.connected())
+        clients.reset(query)
+        assertEquals(1, clients.count(RequestCategory.Query))
+        assertTrue(clients.connected().isEmpty())
+        query.release()
+        val replacement = clients.lease(RequestCategory.Query)
+        assertEquals(listOf(RequestCategory.Query to replacement.client), clients.connected())
+        clients.close()
+        assertTrue(clients.connected().isEmpty())
+    }
+
     private fun unavailable(block: suspend () -> Unit) = runBlocking {
         try {
             block()

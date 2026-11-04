@@ -119,6 +119,7 @@ internal class AgentEndpointTransport(
     override suspend fun socket(): TransportSocket = current().first.socket()
     override suspend fun webSocketTunnel(path: String, credential: String): TransportSocket? = current().first.webSocketTunnel(path, credential)
     override suspend fun overHttps(): Boolean = current().first.overHttps()
+    override suspend fun diagnostics(): TransportDiagnostics? = lock.withLock { selected?.first }?.diagnostics()
     override suspend fun reset() { lock.withLock { selected?.first }?.reset() }
     override suspend fun reset(category: RequestCategory) { lock.withLock { selected?.first }?.reset(category) }
     override suspend fun close() {

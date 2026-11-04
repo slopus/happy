@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="connection_title">Connection</string>
+    <string name="connection_status">Status</string>
+    <string name="connection_type">Type</string>
+    <string name="connection_server">Server</string>
+    <string name="connection_network">Network available</string>
+    <string name="connection_open_flows">Open app flows</string>
+    <string name="connection_tunnels">Tailcat tunnels</string>
+    <string name="connection_tunnel">Tunnel %1$d</string>
+    <string name="connection_path">Path</string>
+    <string name="connection_direct">Direct</string>
+    <string name="connection_relayed">Relayed</string>
+    <string name="connection_relay">Configured relay</string>
+    <string name="connection_copy">Copy diagnostics</string>
+    <string name="connection_copy_failed">Couldn’t copy diagnostics</string>
+</resources>

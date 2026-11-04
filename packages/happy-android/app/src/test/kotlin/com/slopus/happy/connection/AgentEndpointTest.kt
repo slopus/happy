@@ -11,6 +11,25 @@ import java.util.UUID
 class AgentEndpointTest {
     private val original = AgentConnectionCredentials("original-tailcat", 24781, "device", "token")
 
+    @Test fun diagnosticsNeverConnectAnIdleOrInvalidatedEndpoint() = runBlocking {
+        val endpoint = AgentEndpoint(original) { }
+        var made = 0
+        val transport = AgentEndpointTransport(endpoint) {
+            made++
+            object : Transport by Fake() {
+                override suspend fun diagnostics() = TransportDiagnostics(TransportDiagnostics.Kind.Tailcat, 1)
+            }
+        }
+        assertNull(transport.diagnostics())
+        assertEquals(0, made)
+        transport.request("GET", "/v0/health", "token")
+        assertEquals(1, transport.diagnostics()!!.openFlows)
+        endpoint.retire()
+        assertNull(transport.diagnostics())
+        assertEquals(1, made)
+        transport.close()
+    }
+
     @Test fun advertisementsPreserveAbsentVersusNullAndIgnoreConnectorProjection() {
         for (text in listOf("""{"config":{}}""", """{"config":{"api":{"localPort":1}}}""", """{"config":{"mobileConnector":{"publicUrl":"https://wrong.example"}}}""")) {
             assertEquals(AgentEndpointAdvertisement.Unchanged, AgentEndpointAdvertisement.decode(text.toByteArray()))

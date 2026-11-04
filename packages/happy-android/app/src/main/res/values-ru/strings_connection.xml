@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="connection_title">Подключение</string>
+    <string name="connection_status">Статус</string>
+    <string name="connection_type">Тип</string>
+    <string name="connection_server">Сервер</string>
+    <string name="connection_network">Сеть доступна</string>
+    <string name="connection_open_flows">Открытые потоки приложения</string>
+    <string name="connection_tunnels">Туннели Tailcat</string>
+    <string name="connection_tunnel">Туннель %1$d</string>
+    <string name="connection_path">Маршрут</string>
+    <string name="connection_direct">Прямой</string>
+    <string name="connection_relayed">Через ретранслятор</string>
+    <string name="connection_relay">Настроенный ретранслятор</string>
+    <string name="connection_copy">Скопировать диагностику</string>
+    <string name="connection_copy_failed">Не удалось скопировать диагностику</string>
+</resources>
