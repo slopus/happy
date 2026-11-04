@@ -205,6 +205,24 @@ final class ProPassTests: XCTestCase {
         XCTAssertEqual(reopened.remaining(at: start + 46 * 86_400), CallAllowance.paidSeconds)
     }
 
+    /// Calls are kept 62 days, and never from inside the paid month: not
+    /// even a month in grace for longer than that.
+    func testNothingFromInsideTheRunningPaidMonthIsForgotten() {
+        let store = MemoryUsageStore()
+        var month: ProMonth? = nil
+        let allowance = CallAllowance(store: store, period: { month })
+        allowance.record(call: "old", from: 0, to: 600)
+        allowance.record(call: "free", from: 61 * 86_400, to: 61 * 86_400 + 60)
+        XCTAssertEqual(store.saved.used(since: 0), 660, "forgotten before 62 days")
+        allowance.record(call: "later", from: 63 * 86_400, to: 63 * 86_400 + 60)
+        XCTAssertEqual(store.saved.used(since: 0), 120)
+        month = ProMonth(start: 63 * 86_400, end: nil)
+        allowance.record(call: "paid", from: 64 * 86_400, to: 64 * 86_400 + 3600)
+        allowance.record(call: "grace", from: 200 * 86_400, to: 200 * 86_400 + 60)
+        XCTAssertEqual(store.saved.used(since: 63 * 86_400), 60 + 3600 + 60)
+        XCTAssertEqual(allowance.remaining(at: 200 * 86_400 + 60), CallAllowance.paidSeconds - 3720)
+    }
+
     func testAnAnnualSliceIsFiveHoursPerMonth() throws {
         let pass = try XCTUnwrap(Self.pass(Self.subscriber("2026-03-25T00:00:00Z", Self.pro("2026-01-31T00:00:00Z", "2027-01-31T00:00:00Z", product: "happy_yearly"))))
         let at = pass.checkedAt

@@ -94,6 +94,8 @@ public final class CallAllowance {
     public static let freeSeconds: Double = 20 * 60
     public static let window: Double = 30 * 86_400
     public static let paidSeconds: Double = 5 * 3600
+    /// How long calls are kept at least, past the 30 days: two months.
+    public static let kept: Double = 62 * 86_400
 
     private let store: any CallUsageStore
     private let free: Double
@@ -125,7 +127,8 @@ public final class CallAllowance {
     public func record(call id: String, from start: Double, to end: Double) {
         usage.record(call: id, from: start, to: end)
         if let month = period() { usage.paidSince = month.start }
-        usage.forget(before: min(end - window, usage.paidSince ?? .infinity))
+        // Never from inside the paid month, which in grace has no end.
+        usage.forget(before: min(end - max(window, Self.kept), usage.paidSince ?? .infinity))
         store.save(usage)
     }
 }

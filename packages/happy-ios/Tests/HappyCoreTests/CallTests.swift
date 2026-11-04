@@ -1519,7 +1519,10 @@ final class CallUsageTests: XCTestCase {
             let allowance = CallAllowance(store: store, free: 100, window: 1_000)
             allowance.record(call: "a", from: 0, to: 10)
             allowance.record(call: "b", from: 2_000, to: 2_010)
-            XCTAssertEqual(store.saved.spans.map(\.id), ["b"])
+            // Kept two months at least, however short the window.
+            XCTAssertEqual(store.saved.spans.map(\.id), ["a", "b"])
+            allowance.record(call: "c", from: CallAllowance.kept + 2_000, to: CallAllowance.kept + 2_010)
+            XCTAssertEqual(store.saved.spans.map(\.id), ["b", "c"])
         }
     }
 }

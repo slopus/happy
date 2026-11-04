@@ -284,6 +284,9 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
             let settings = settings(rig)
             let (navigation, window) = try await host(settings, style: style)
             try await until { settings.shownRow("profile")?.value == "Alex Rivera" }
+            // Settings opens nothing while it is still coming in.
+            try await until { navigation.transitionCoordinator == nil && settings.viewIfLoaded?.window != nil }
+            try await Task.sleep(for: .milliseconds(300))
             settings.tapRow("support-boba")
             try await until { settings.presentedViewController is SupportSheetViewController }
             let sheet = try XCTUnwrap(settings.presentedViewController as? SupportSheetViewController)
