@@ -519,7 +519,8 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
 
     private func openSupport() {
         guard isTop else { return }
-        SupportSheetViewController.present(offer: voiceStatus().offer, over: self)
+        // Always the support sheet, seen or not, on sale or not.
+        Offers.shared.show(.support, over: self)
     }
 
     /// The Voice row's value: the free time left on this device.

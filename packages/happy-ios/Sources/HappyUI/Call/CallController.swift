@@ -34,8 +34,9 @@ final class CallController {
         CallAgent.hostedAgentId.map { PublicAgentCallGrants(agentId: $0) } ?? UnconfiguredCallGrants()
     }
 
-    private let allowance = CallAllowance()
-    private let intro = CallIntro()
+    /// 20 free minutes in 30 days, or the subscription's 5 hours a month.
+    private let allowance = CallAllowance(period: { Offers.shared.month() })
+    private let offers = Offers.shared
 
     private init() {
         let center = NotificationCenter.default
@@ -73,10 +74,11 @@ final class CallController {
     func start(session account: Session, from controller: UIViewController) {
         guard let shell = controller.view.window?.rootViewController as? ShellViewController else { return }
         if state.isLive, connectionID == account.accountID { return }
-        guard !Self.showing(in: shell) else { return }
-        if intro.welcomes(Self.offer) {
-            CallSheetViewController.present(.welcome(offer: Self.offer), over: Self.top(of: shell)) { [weak self, weak controller] in
-                guard let self, let controller else { return }
+        guard !offers.isShowing else { return }
+        if offers.welcomes() {
+            // Only its "Start Voice Session" calls; closing it, or buying there, starts nothing.
+            Task { [weak self, weak controller] in
+                guard let self, await self.offers.ask(.welcome, over: Self.top(of: shell)) == .start, let controller else { return }
                 self.start(session: account, from: controller)
             }
             return
@@ -250,35 +252,19 @@ final class CallController {
         if !state.isShown { self.shell = nil }
     }
 
-    /// The voice paywall over whatever is on top, unless one of voice's
-    /// sheets already is.
+    /// The voice paywall over whatever is on top, unless an offer sheet
+    /// already is. Bought there, the voice button calls again.
     private func showPaywall() {
-        guard let shell, !Self.showing(in: shell) else { return }
+        guard let shell, !offers.isShowing else { return }
         let now = Date().timeIntervalSince1970
         let freeAgain = allowance.freeAgain(after: now).flatMap { $0 > now ? Date(timeIntervalSince1970: $0) : nil }
-        CallSheetViewController.present(.used(freeAgain: freeAgain, offer: Self.offer), over: Self.top(of: shell))
-    }
-
-    /// Nothing is on sale. Debug builds draw the subscription as if it were
-    /// for their test screens when asked (`HAPPY_CALL_OFFER=preview`), with
-    /// the approved price, or the one the run gives (`HAPPY_CALL_OFFER_PRICE`).
-    /// Whatever else offers voice (Settings) asks here, so all say the same.
-    static var offer: CallOffer {
-        #if DEBUG
-        let environment = ProcessInfo.processInfo.environment
-        if environment["HAPPY_CALL_OFFER"] == "preview" { return .preview(price: environment["HAPPY_CALL_OFFER_PRICE"] ?? CallOffer.price) }
-        #endif
-        return .unavailable
+        offers.show(.used(freeAgain: freeAgain), over: Self.top(of: shell))
     }
 
     private static func top(of shell: UIViewController) -> UIViewController {
         var top = shell
         while let next = top.presentedViewController { top = next }
         return top
-    }
-
-    private static func showing(in shell: UIViewController) -> Bool {
-        top(of: shell) is CallSheetViewController
     }
 
     private var clockText: String? {
@@ -317,7 +303,7 @@ final class CallController {
     func applyTestEnvironment(tap: @escaping @MainActor () -> Void) {
         let environment = ProcessInfo.processInfo.environment
         if environment["HAPPY_CALL_INTRO"] == "due" { UserDefaults.standard.removeObject(forKey: CallIntro.key) }
-        if environment["HAPPY_CALL_INTRO"] == "seen" { intro.seen() }
+        if environment["HAPPY_CALL_INTRO"] == "seen" { offers.intro.seen() }
         if environment["HAPPY_CALL_USED"] == "1" {
             let now = Date().timeIntervalSince1970
             allowance.record(call: "test-used", from: now - CallAllowance.freeSeconds, to: now)
@@ -330,7 +316,7 @@ final class CallController {
                 let sheet = UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow?.rootViewController }.first.map(Self.top(of:)) as? CallSheetViewController
                 switch step {
                 case "tap": tap()
-                case "subscribe": sheet?.subscribe?.onTap?()
+                case "subscribe": sheet?.subscribe?.sendActions(for: .touchUpInside)
                 case "session": if sheet?.session.isEnabled == true { sheet?.session.sendActions(for: .touchUpInside) }
                 case "close": sheet?.close.sendActions(for: .primaryActionTriggered)
                 case "dismiss": (UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow?.rootViewController }.first.map(Self.top(of:)) as? UIAlertController)?.dismiss(animated: true)
@@ -339,7 +325,7 @@ final class CallController {
                 try? await Task.sleep(for: .seconds(1))
                 let top = UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow?.rootViewController }.first.map(Self.top(of:))
                 let shown = (top as? CallSheetViewController).map { "\($0.screen)" } ?? top.map { String(describing: type(of: $0)) } ?? "nothing"
-                print("[call-steps] \(step) -> top \(shown), call \(self.state), intro due \(self.intro.due), bar \(self.state.isShown)")
+                print("[call-steps] \(step) -> top \(shown), call \(self.state), intro due \(self.offers.intro.due), bar \(self.state.isShown)")
             }
             print("[call-steps] done")
         }

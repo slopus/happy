@@ -4,10 +4,10 @@ import HappyLayout
 import UIKit
 
 /// What an agent connection's Settings say about voice, read and never
-/// changed: this device's free time (`CallAllowance`, read from its store)
-/// and what is on offer, as the call's paywall has it (`CallController.offer`).
-/// There is no paid status, because nothing can be bought yet, so nothing
-/// claims one. Debug builds can draw it from a
+/// changed: this device's voice time (`CallAllowance`, read from its store:
+/// the free 20 minutes, or the subscription's 5 hours this month) and what
+/// is on offer, as the call's sheets have it (`Offers.offer`). Debug builds
+/// can draw it from a
 /// fixture for their screenshots (`HAPPY_VOICE_SETTINGS_FIXTURE`: `fresh`,
 /// `some` or `used`).
 struct AgentVoiceStatus: Equatable {
@@ -16,6 +16,10 @@ struct AgentVoiceStatus: Equatable {
     /// When some free time is back, once it is all used, if that is known.
     var freeAgain: Date?
     var offer: CallOffer
+    /// Whether the build can restore at all (it has RevenueCat's key).
+    var canRestore = false
+
+    var subscribed: Bool { offer == .subscribed }
 
     var minutesLeft: Int { remaining > 0 ? max(1, Int(remaining / 60)) : 0 }
 
@@ -24,17 +28,17 @@ struct AgentVoiceStatus: Equatable {
         #if DEBUG
         if let fixture = fixture(ProcessInfo.processInfo.environment["HAPPY_VOICE_SETTINGS_FIXTURE"], now: now) { return fixture }
         #endif
-        let allowance = CallAllowance()
+        let allowance = CallAllowance(period: { Offers.shared.month() })
         let time = now.timeIntervalSince1970
         let remaining = allowance.remaining(at: time)
         let freeAgain = remaining > 0 ? nil : allowance.freeAgain(after: time).flatMap { $0 > time ? Date(timeIntervalSince1970: $0) : nil }
-        return AgentVoiceStatus(remaining: remaining, freeAgain: freeAgain, offer: CallController.offer)
+        return AgentVoiceStatus(remaining: remaining, freeAgain: freeAgain, offer: Offers.shared.offer, canRestore: Offers.shared.canRestore)
     }
 
     #if DEBUG
     @MainActor
     static func fixture(_ name: String?, now: Date) -> AgentVoiceStatus? {
-        let offer = CallController.offer
+        let offer = Offers.shared.offer
         return switch name {
         case "fresh": AgentVoiceStatus(remaining: CallAllowance.freeSeconds, freeAgain: nil, offer: offer)
         case "some": AgentVoiceStatus(remaining: 12 * 60 + 20, freeAgain: nil, offer: offer)
@@ -68,17 +72,20 @@ final class SupportBobaArt: UIView {
     }
 }
 
-/// An agent connection's Voice page: what voice is and how much free time
-/// this device has left, then the subscription. Nothing here is a setting;
-/// nothing changes voice. Where nothing is on sale, subscribing and
-/// restoring are listed and say why they can't be used. Restore is a
-/// placeholder for the real one, which comes with the products.
+/// An agent connection's Voice page: what voice is and how much time this
+/// device has left, then the subscription. Nothing here is a setting;
+/// nothing changes voice. Subscribe opens the store's own sheet and Restore
+/// restores (`Offers`), with nothing in between; where nothing is on sale,
+/// subscribing is listed and says so.
 final class AgentVoiceViewController: SettingsPageViewController {
     private let status: () -> AgentVoiceStatus
+    private var observation: SubscriptionObservation?
 
     init(status: @escaping () -> AgentVoiceStatus = { AgentVoiceStatus.current() }) {
         self.status = status
         super.init(title: Strings.AgentVoice.title)
+        // Bought, restored, or another account: the page says so at once.
+        observation = Offers.shared.observe { [weak self] in self?.reload() }
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -92,36 +99,41 @@ final class AgentVoiceViewController: SettingsPageViewController {
         typealias Text = Strings.AgentVoice
         let status = status()
         var allowance = [
-            Row(id: "voice-plan", title: Text.plan, icon: ("mic-outline", .orange), value: Text.free, accessory: .none),
-            Row(id: "voice-free", title: Text.freeTime, icon: ("time-outline", .blue), value: Text.freeTimeValue, accessory: .none),
+            Row(id: "voice-plan", title: Text.plan, icon: ("mic-outline", .orange), value: status.subscribed ? Strings.Offer.subscribed : Text.free, accessory: .none),
+            status.subscribed
+                ? Row(id: "voice-free", title: Strings.Offer.includedVoice, icon: ("time-outline", .blue), value: Strings.Offer.includedValue, accessory: .none)
+                : Row(id: "voice-free", title: Text.freeTime, icon: ("time-outline", .blue), value: Text.freeTimeValue, accessory: .none),
             Row(id: "voice-left", title: Text.left, icon: ("hourglass-outline", .green), value: status.minutesLeft > 0 ? Text.minutes(status.minutesLeft) : Text.usedUp, accessory: .none),
         ]
         if status.minutesLeft == 0, let back = status.freeAgain {
             allowance.append(Row(id: "voice-back", title: Text.back, icon: ("calendar-outline", .gray), value: back.formatted(.dateTime.month(.abbreviated).day().hour().minute()), accessory: .none))
         }
+        if status.subscribed { return [allowance.withFooter(Text.about), [Row(id: "voice-thanks", title: Strings.SupportUs.thankYou, icon: ("heart", .red), accessory: .none)]] }
         let subscribe: Row
         let footer: String
-        if case .preview(let price) = status.offer {
-            subscribe = Row(id: "voice-subscribe", title: Text.subscribe, icon: ("heart", .red), value: Text.perMonth(price), action: { [weak self] in self?.showOffer() })
-            footer = Text.previewFooter
+        if let price = status.offer.price {
+            subscribe = Row(id: "voice-subscribe", title: Text.subscribe, icon: ("heart", .red), value: Text.perMonth(price), action: { [weak self] in self?.buy() })
+            footer = if case .preview = status.offer { Text.previewFooter } else { Strings.Offer.voiceFooter }
         } else {
             subscribe = Row(id: "voice-subscribe", title: Text.subscribe, icon: ("heart", .red), value: Text.notYet, accessory: .none, dimmed: true, hint: Text.notYetHint)
             footer = Text.comingFooter
         }
-        let restore = Row(id: "voice-restore", title: Strings.SupportUs.restore, icon: ("refresh-outline", .gray), value: Strings.SupportUs.notAvailable, accessory: .none, dimmed: true, hint: Text.restoreHint)
+        let restore = status.canRestore
+            ? Row(id: "voice-restore", title: Strings.SupportUs.restore, icon: ("refresh-outline", .gray), action: { [weak self] in self?.restore() })
+            : Row(id: "voice-restore", title: Strings.SupportUs.restore, icon: ("refresh-outline", .gray), value: Strings.SupportUs.notAvailable, accessory: .none, dimmed: true, hint: Text.restoreHint)
         return [
             allowance.withFooter(Text.about),
             [subscribe, restore].withFooter(footer),
         ]
     }
 
-    /// Debug test runs only: voice's own sheet, its subscription drawn as
-    /// on sale. The welcome while free time is left, the used one after;
-    /// closing it starts nothing.
-    private func showOffer() {
-        let status = status()
-        let screen: CallSheetViewController.Screen = status.minutesLeft > 0 ? .welcome(offer: status.offer) : .used(freeAgain: status.freeAgain, offer: status.offer)
-        CallSheetViewController.present(screen, over: self)
+    /// The store's own sheet, which confirms the purchase.
+    private func buy() {
+        Task { await Offers.shared.subscribe(from: self) }
+    }
+
+    private func restore() {
+        Task { await Offers.shared.restore(from: self) }
     }
 }
 #endif

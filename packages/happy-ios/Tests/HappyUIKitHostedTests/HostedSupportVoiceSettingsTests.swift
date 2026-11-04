@@ -146,6 +146,7 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
     }
 
     func testSupportHappySitsUnderProfileAndVoiceSaysTheTimeLeft() async throws {
+        _ = try await hostedOffers("unconfigured", for: self)
         let rig = try await rig()
         for style in [UIUserInterfaceStyle.light, .dark] {
             let settings = settings(rig)
@@ -191,6 +192,7 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
     /// A 320-wide phone and the largest text sizes: the words wrap, the row
     /// grows, the boba stays 72 and nothing is cut.
     func testNarrowAndLargeTextWrapWithoutClipping() async throws {
+        _ = try await hostedOffers("unconfigured", for: self)
         let rig = try await rig()
         for (name, width, size) in [
             ("narrow", CGFloat(320), UIContentSizeCategory.large),
@@ -218,6 +220,7 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
 
     /// Support Happy's sheet with the debug preview of the subscription.
     func testSupportSheetPreview() async throws {
+        _ = try await hostedOffers("unconfigured", preview: CallOffer.price, for: self)
         let rig = try await rig()
         let settings = settings(rig, offer: .preview(price: CallOffer.price))
         let (navigation, window) = try await host(settings)
@@ -234,8 +237,10 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
     }
 
     /// The Voice page with the free time used, and with the debug preview
-    /// of the subscription: never a paid status, a price only in preview.
+    /// of the subscription: a price only in preview, where Subscribe says
+    /// it charges nothing rather than opening the store.
     func testVoicePageStates() async throws {
+        _ = try await hostedOffers("unconfigured", preview: CallOffer.price, for: self)
         for (name, status) in [
             ("fresh", Self.status(20 * 60)),
             ("used", Self.status(0)),
@@ -260,14 +265,10 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(300))
             capture(window, "voice-page-\(name)")
             if name == "preview" {
-                // While free time is left the sheet is the welcome, never the used warning.
                 page.tapRow("voice-subscribe")
-                try await until { page.presentedViewController is CallSheetViewController }
-                let sheet = try XCTUnwrap(page.presentedViewController as? CallSheetViewController)
-                XCTAssertEqual(sheet.screen, .welcome(offer: .preview(price: CallOffer.price)))
-                try await Task.sleep(for: .seconds(1))
-                capture(window, "voice-offer-sheet")
-                sheet.dismiss(animated: false)
+                try await until { (page.presentedViewController as? UIAlertController)?.title == Strings.Call.upgradePreviewTitle }
+                XCTAssertFalse(page.presentedViewController is OfferSheetViewController)
+                await withCheckedContinuation { done in page.presentedViewController?.dismiss(animated: false) { done.resume() } }
             }
             withExtendedLifetime(navigation) {}
             window.isHidden = true
@@ -277,6 +278,7 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
     /// Support Happy's sheet with the boba playing, frame by frame (about
     /// 8 a second), for the motion capture.
     func testBobaFrames() async throws {
+        _ = try await hostedOffers("unconfigured", for: self)
         let rig = try await rig()
         for style in [UIUserInterfaceStyle.light, .dark] {
             let settings = settings(rig)

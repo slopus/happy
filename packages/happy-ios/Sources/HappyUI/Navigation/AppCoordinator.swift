@@ -29,6 +29,7 @@ public final class AppCoordinator {
     /// open it.
     private var notificationSessionID: String?
     private var accountRestored = false
+    private var backgrounded = false
     private var switchingForNotification = false
     private var lookingUpNotification = false
     /// Decides the language of the screens about to be built, holding the
@@ -68,6 +69,8 @@ public final class AppCoordinator {
             await account.restore(openingAgentConnection: v2.takeFilterChoice(), preferred: v2.agentConnectionID)
             self?.show(account.state)
             self?.accountRestored = true
+            // Only now, with the accounts read, is it known whose subscription it is.
+            Offers.shared.follow(account)
             self?.openPendingLink()
             self?.openPendingInstanceLink()
             self?.openNotificationSession()
@@ -160,6 +163,9 @@ public final class AppCoordinator {
     /// Foreground/background, for the server's push suppression.
     public func appStateChanged(active: Bool) {
         Task { await context.account.agentConnections.setForeground(active) }
+        // Back from the background: what the store and RevenueCat say now (launch asks on its own).
+        if active, backgrounded { Offers.shared.foreground() }
+        backgrounded = !active
         guard let session = context.account.session else { return }
         Task { await session.sendAppState(active ? "active" : "background") }
     }
@@ -273,6 +279,7 @@ public final class AppCoordinator {
         let session: AccountSession?
         if case .signedIn(let value) = state { session = value } else { session = nil }
         VoiceCoordinator.shared.accountDidChange(to: session)
+        if accountRestored { Offers.shared.tell(context.account) }
         let identity = session.map(ObjectIdentifier.init)
         let pending = context.account.pendingServerConfirmation
         let agentConnectionID = context.account.agentConnections.activeID

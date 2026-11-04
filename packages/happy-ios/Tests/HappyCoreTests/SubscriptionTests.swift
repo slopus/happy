@@ -123,11 +123,13 @@ final class SubscriptionTests: XCTestCase {
         store.next = .bought
         assertEqual(await subscription.buy(), .unconfirmed)
         XCTAssertTrue(store.finished.isEmpty)
+        XCTAssertTrue(subscription.unconfirmed)
         XCTAssertEqual(subscription.offer, .unavailable)
         XCTAssertFalse(subscription.hasPro)
         revenueCat.failPosts = nil
         subscription.refresh()
         await subscription.idle()
+        XCTAssertFalse(subscription.unconfirmed)
         XCTAssertEqual(revenueCat.posted.map(\.customer), ["a"])
         XCTAssertEqual(revenueCat.posted.last?.source, .queue)
         XCTAssertEqual(store.finished.count, 1)

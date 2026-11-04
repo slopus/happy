@@ -1,20 +1,19 @@
 #if canImport(UIKit)
+import HappyCore
 import HappyLayout
 import UIKit
 
 /// Support us, in settings' cards, the same on a computer's page and a
-/// Happy account's. A useful destination even before purchases are
-/// configured: no purchase SDK is initialized and no paywall, restore, or
-/// network request runs on opening it. Subscription access remains the
-/// server's decision.
+/// Happy account's. Subscribe opens the app's one Support sheet
+/// (`Offers`, always, on sale or not); Restore restores, on the tap only;
+/// a subscriber is thanked. Nothing restores or charges on opening it.
+/// The relay's voice access remains the server's decision.
 ///
 /// happy-app's SettingsView opens its hosted voluntary_support paywall;
-/// its title, subtitle, heart and unavailable copy are retained here. Until
-/// a purchase provider can verify this account's subscriptions, status is
-/// unknown rather than "not subscribed". Add that provider here when its
-/// configuration is available, keeping receipt validation on the server.
+/// its title, subtitle, heart and unavailable copy are retained here.
 final class SupportUsViewController: SettingsPageViewController {
     private let openURL: @MainActor (URL) async -> Bool
+    private var observation: SubscriptionObservation?
 
     convenience init() {
         self.init(openURL: { await UIApplication.shared.open($0) })
@@ -25,6 +24,7 @@ final class SupportUsViewController: SettingsPageViewController {
     init(openURL: @escaping @MainActor (URL) async -> Bool) {
         self.openURL = openURL
         super.init(title: Strings.SupportUs.title)
+        observation = Offers.shared.observe { [weak self] in self?.reload() }
     }
 
     /// Apple's account-wide subscription management page works independently
@@ -38,12 +38,26 @@ final class SupportUsViewController: SettingsPageViewController {
         func unavailable(_ id: String, _ title: String, hint: String) -> Row {
             Row(id: id, title: title, value: Text.notAvailable, accessory: .none, dimmed: true, hint: hint)
         }
+        let offers = Offers.shared
+        let offer = offers.offer
+        let summary = offer == .subscribed
+            ? Row(id: "support-summary", title: Text.thankYou, icon: ("heart", .red), accessory: .none)
+            : Row(id: "support-summary", title: Text.subtitle, icon: ("heart", .red), accessory: .none, footer: offer.onSale ? nil : Text.unavailable)
+        var purchases: [Row] = []
+        if offer != .subscribed {
+            purchases.append(offer.price.map { price in
+                Row(id: "subscribe", title: Text.subscribe, value: Strings.AgentVoice.perMonth(price), action: { [weak self] in self.map { Offers.shared.show(.support, over: $0) } })
+            } ?? unavailable("subscribe", Text.subscribe, hint: Text.unavailable))
+        }
+        purchases.append(offers.canRestore
+            ? Row(id: "restore-purchases", title: Text.restore, action: { [weak self] in
+                guard let self else { return }
+                Task { await Offers.shared.restore(from: self) }
+            })
+            : unavailable("restore-purchases", Text.restore, hint: Text.restoreUnavailable))
         return [
-            [Row(id: "support-summary", title: Text.subtitle, icon: ("heart", .red), accessory: .none, footer: Text.unavailable)],
-            [
-                unavailable("subscribe", Text.subscribe, hint: Text.unavailable),
-                unavailable("restore-purchases", Text.restore, hint: Text.restoreUnavailable),
-            ].withFooter(Text.statusUnavailable),
+            [summary],
+            offers.canRestore ? purchases : purchases.withFooter(Text.statusUnavailable),
             [link("manage-subscriptions", Text.manage, icon: ("card-outline", .blue), value: Text.appStore, url: Self.manageSubscriptionsURL, footer: Text.manageFooter)],
             [
                 link("support-github", Strings.Settings.github, icon: ("logo-github", .gray), value: Strings.Links.githubDetail, url: Strings.Links.github),

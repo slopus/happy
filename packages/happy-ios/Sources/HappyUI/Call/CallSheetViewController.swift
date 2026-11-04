@@ -4,27 +4,18 @@ import HappyLayout
 import Lottie
 import UIKit
 
-/// Voice's two full-height sheets, in the first screen's style
+/// Voice's full-height sheets, in the first screen's style
 /// (`StartViewController`): its Grain Gradient behind, its words and pill
-/// on it, centred. The welcome a device sees before its first call, and
-/// the same screen once its free time is used (`CallAllowance`), its start
-/// greyed out. The podcast mic, a headline and what voice does; at the
-/// bottom the subscription where one is on offer, then "Start Voice
-/// Session". Closed by its ✕ or a swipe down, which starts nothing.
+/// on it, centred. The welcome a device sees before its first call; the
+/// same screen once its time is used (`CallAllowance`), its start greyed
+/// out; and the relay's voice refused without the subscription, with no
+/// start at all. The podcast mic, a headline and what voice does; at the
+/// bottom the subscription where one is on offer (`Offers`) with Restore
+/// Purchases, then "Start Voice Session". Closed by its ✕ or a swipe down,
+/// which starts nothing.
 @MainActor
-final class CallSheetViewController: UIViewController {
-    enum Screen: Equatable {
-        /// Before the first call.
-        case welcome(offer: CallOffer)
-        /// The free time is used; when some is back, if that is known.
-        case used(freeAgain: Date?, offer: CallOffer)
-
-        var offer: CallOffer {
-            switch self {
-            case .welcome(let offer), .used(_, let offer): offer
-            }
-        }
-    }
+final class CallSheetViewController: OfferSheetViewController {
+    typealias Screen = OfferSheet
 
     enum Metrics {
         static let mic: CGFloat = 120
@@ -40,30 +31,30 @@ final class CallSheetViewController: UIViewController {
     static let noteStyle = TextStyle(.regular, size: 13, lineHeight: 18, maxScale: 1.6)
 
     let screen: Screen
-    /// "Start Voice Session" on the welcome: the free call, once the sheet has gone.
-    var onStart: (() -> Void)?
 
     private let gradient = GrainGradientView(palette: StartViewController.Colors.grain)
     private let mic = LottieAnimationView(configuration: LottieConfiguration(renderingEngine: .coreAnimation))
     private let scroll = UIScrollView()
     let close = UIButton(type: .system)
     /// On offer only: the subscription, the main action.
-    let subscribe: RoundButton?
-    /// The free call; the main action when nothing is on offer, greyed out once the free time is used.
-    let session: SessionButton
-    private let note = StyledLabel(style: CallSheetViewController.noteStyle, color: Palette.startTextSecondary, alignment: .center)
+    private(set) var subscribe: RoundButton?
+    /// Restore Purchases, under the subscription; wherever the build can restore.
+    private(set) var restore: OfferLink?
+    /// The free call; the main action when nothing is on offer, greyed out
+    /// once the free time is used. Never on the relay's refusal.
+    private(set) var session: SessionButton
+    private let footer = UIStackView()
     private var subscribeHeight: NSLayoutConstraint?
     private var footerBottom: NSLayoutConstraint?
+    /// What the footer was drawn for.
+    private var drawn: (CallOffer, Bool)?
 
-    init(_ screen: Screen) {
+    init(_ screen: Screen, offers: Offers = .shared) {
         self.screen = screen
-        let offered = screen.offer.onSale
-        subscribe = offered ? RoundButton(title: Strings.Call.subscribe) : nil
-        session = SessionButton(title: Strings.Call.startSession, prominent: !offered)
-        super.init(nibName: nil, bundle: nil)
+        session = SessionButton(title: Strings.Call.startSession, prominent: !offers.offer.onSale)
+        super.init(offers: offers)
         followsTextSize()
     }
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -84,16 +75,20 @@ final class CallSheetViewController: UIViewController {
         title.accessibilityTraits = .header
         title.decoration = StartGalleryView.noOrphan
         title.string = Strings.Call.welcomeTitle
-        let offer = screen.offer
-        // Once the free time is used, that under its line, in the app's warning colour.
+        // Once the time is used, that under its line, in the app's warning colour.
+        let subscribed = offers.offer == .subscribed
         let used: String? = switch screen {
-        case .welcome: nil
-        case .used(let freeAgain, _): freeAgain.map { Strings.Call.usedNote(Self.when($0, now: Date())) } ?? Strings.Call.usedNoteLater
+        case .welcome, .support: nil
+        case .used(let freeAgain):
+            subscribed
+                ? freeAgain.map { Strings.Offer.paidUsedNote(Self.when($0, now: Date())) } ?? Strings.Offer.paidUsedNote
+                : freeAgain.map { Strings.Call.usedNote(Self.when($0, now: Date())) } ?? Strings.Call.usedNoteLater
+        case .required: Strings.Voice.subscriptionRequired
         }
         let benefits = UIStackView(arrangedSubviews: [
             Benefit(symbol: "text.bubble", title: Strings.Call.welcomeAsk),
             Benefit(symbol: "paperplane", title: Strings.Call.welcomeAct),
-            Benefit(symbol: "gift", title: Strings.Call.welcomeFree, warning: used),
+            Benefit(symbol: "gift", title: subscribed ? Strings.Call.subscribeAllowance : Strings.Call.welcomeFree, warning: used),
         ])
         benefits.axis = .vertical
         benefits.alignment = .leading
@@ -103,41 +98,16 @@ final class CallSheetViewController: UIViewController {
         column.spacing = 12
         column.setCustomSpacing(28, after: title)
 
-        // The subscription, what it gives and what it is for, its button, then the free call under it.
-        let footer = UIStackView()
         footer.axis = .vertical
         footer.spacing = 12
-        if case .preview(let price) = offer, let subscribe {
-            let heading = StyledLabel(style: Self.offerStyle, color: Palette.startText, alignment: .center)
-            heading.string = Strings.Call.supportFor(price)
-            let support = StyledLabel(style: Self.detailStyle, color: Palette.startTextSecondary, alignment: .center)
-            support.decoration = StartGalleryView.noOrphan
-            support.string = Strings.Call.subscribeSupport
-            let allowance = StyledLabel(style: Self.detailStyle, color: Palette.startText, alignment: .center)
-            allowance.string = Strings.Call.subscribeAllowance
-            footer.addArrangedSubview(heading)
-            footer.setCustomSpacing(2, after: heading)
-            footer.addArrangedSubview(allowance)
-            footer.setCustomSpacing(6, after: allowance)
-            footer.addArrangedSubview(support)
-            footer.setCustomSpacing(20, after: support)
-            subscribe.onTap = { [weak self] in self?.preview() }
-            subscribe.accessibilityIdentifier = "call-sheet-subscribe"
-            footer.addArrangedSubview(centred(subscribe, width: Metrics.button))
-        }
-        footer.addArrangedSubview(centred(session, width: Metrics.button))
-        footer.addArrangedSubview(note)
         session.accessibilityIdentifier = "call-sheet-session"
-        var notes: [String] = []
         switch screen {
         case .welcome:
-            session.addAction(UIAction { [weak self] _ in self?.start() }, for: .touchUpInside)
-        case .used:
+            session.addAction(UIAction { [weak self] _ in self?.finish(.start) }, for: .touchUpInside)
+        case .used, .required, .support:
             session.isEnabled = false
         }
-        if offer.onSale { notes.append(Strings.Call.upgradePreviewNote) }
-        note.string = notes.joined(separator: "\n")
-        note.isHidden = notes.isEmpty
+        drawFooter()
 
         var cross = UIButton.Configuration.filled()
         cross.image = UIImage(systemName: "xmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .bold))
@@ -148,7 +118,7 @@ final class CallSheetViewController: UIViewController {
         close.configuration = cross
         close.accessibilityLabel = Strings.Call.close
         close.accessibilityIdentifier = "call-sheet-close"
-        close.addAction(UIAction { [weak self] _ in self?.dismiss(animated: true) }, for: .primaryActionTriggered)
+        close.addAction(UIAction { [weak self] _ in self?.finish(.dismissed) }, for: .primaryActionTriggered)
 
         scroll.alwaysBounceVertical = true
         scroll.showsVerticalScrollIndicator = false
@@ -208,10 +178,64 @@ final class CallSheetViewController: UIViewController {
             ]
         }
         NSLayoutConstraint.activate(constraints)
-        if let subscribe {
+    }
+
+    override func offerChanged() {
+        if isViewLoaded { drawFooter() }
+    }
+
+    /// The subscription, what it gives and what it is for, its button and
+    /// Restore Purchases, then the free call under them; drawn again
+    /// whenever what is on offer changes.
+    private func drawFooter() {
+        let offer = offers.offer
+        let unconfirmed = offers.unconfirmed
+        if let drawn, drawn == (offer, unconfirmed) { return }
+        drawn = (offer, unconfirmed)
+        for view in footer.arrangedSubviews { view.removeFromSuperview() }
+        subscribe = nil
+        subscribeHeight = nil
+        if let price = offer.price {
+            let heading = StyledLabel(style: Self.offerStyle, color: Palette.startText, alignment: .center)
+            heading.string = Strings.Call.supportFor(price)
+            let support = StyledLabel(style: Self.detailStyle, color: Palette.startTextSecondary, alignment: .center)
+            support.decoration = StartGalleryView.noOrphan
+            support.string = Strings.Call.subscribeSupport
+            let allowance = StyledLabel(style: Self.detailStyle, color: Palette.startText, alignment: .center)
+            allowance.string = Strings.Call.subscribeAllowance
+            footer.addArrangedSubview(heading)
+            footer.setCustomSpacing(2, after: heading)
+            footer.addArrangedSubview(allowance)
+            footer.setCustomSpacing(6, after: allowance)
+            footer.addArrangedSubview(support)
+            footer.setCustomSpacing(20, after: support)
+            let subscribe = RoundButton(title: Strings.Call.subscribe)
+            subscribe.action = { [weak self] in
+                guard let self else { return }
+                await self.offers.subscribe(from: self)
+            }
+            subscribe.accessibilityIdentifier = "call-sheet-subscribe"
+            footer.addArrangedSubview(centred(subscribe, width: Metrics.button))
+            self.subscribe = subscribe
             subscribeHeight = subscribe.heightAnchor.constraint(equalToConstant: 50)
             subscribeHeight?.isActive = true
+        } else if offer == .subscribed {
+            let thanks = StyledLabel(style: Self.offerStyle, color: Palette.startText, alignment: .center)
+            thanks.string = Strings.SupportUs.thankYou
+            footer.addArrangedSubview(thanks)
         }
+        restore = offers.canRestore && offer != .subscribed ? OfferLink.restore(for: self) : nil
+        if let restore { footer.addArrangedSubview(restore) }
+        if screen != .required { footer.addArrangedSubview(centred(session, width: Metrics.button)) }
+        var notes: [String] = []
+        if unconfirmed { notes.append(Strings.Offer.unconfirmedNote) }
+        if case .preview = offer { notes.append(Strings.Call.upgradePreviewNote) }
+        if !notes.isEmpty {
+            let note = StyledLabel(style: Self.noteStyle, color: Palette.startTextSecondary, alignment: .center)
+            note.string = notes.joined(separator: "\n")
+            footer.addArrangedSubview(note)
+        }
+        view.setNeedsLayout()
     }
 
     override func viewSafeAreaInsetsDidChange() {
@@ -268,30 +292,6 @@ final class CallSheetViewController: UIViewController {
         return Strings.Call.on(date.formatted(.dateTime.month(.abbreviated).day()))
     }
 
-    private func start() {
-        let onStart = onStart
-        dismiss(animated: true) { onStart?() }
-    }
-
-    /// Debug builds' test preview: what subscribing would say, said plainly
-    /// as nothing. No product, charge, grant or change to the free time.
-    private func preview() {
-        let alert = UIAlertController(title: Strings.Call.upgradePreviewTitle, message: Strings.Call.upgradePreviewMessage, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: Strings.Call.ok, style: .default))
-        present(alert, animated: true)
-    }
-
-    /// In a full-height sheet of its own over whatever is on top.
-    @discardableResult
-    static func present(_ screen: Screen, over top: UIViewController, onStart: (() -> Void)? = nil) -> CallSheetViewController {
-        let sheet = CallSheetViewController(screen)
-        sheet.onStart = onStart
-        sheet.modalPresentationStyle = .pageSheet
-        sheet.sheetPresentationController?.detents = [.large()]
-        sheet.sheetPresentationController?.preferredCornerRadius = 28
-        top.present(sheet, animated: true)
-        return sheet
-    }
 }
 
 private extension NSLayoutConstraint {

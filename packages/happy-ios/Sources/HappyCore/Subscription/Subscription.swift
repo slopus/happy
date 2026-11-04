@@ -96,12 +96,14 @@ public final class Subscription {
     private let now: () -> Double
     private let cache: ProPassCache
     private let work = SerialWork()
-    private var generation = 0
+    /// Bumped by every customer change, at once.
+    public private(set) var generation = 0
     private var told = false
     private var relay: String?
     private var changing = false
     private var monthly: StoreProduct?
-    private var unconfirmed = false
+    /// Whether the store holds a purchase RevenueCat hasn't taken yet; nothing is sold meanwhile.
+    public private(set) var unconfirmed = false
     private var purchasing = false
     private var listening: Task<Void, Never>?
     private var observers: [UUID: @MainActor () -> Void] = [:]
