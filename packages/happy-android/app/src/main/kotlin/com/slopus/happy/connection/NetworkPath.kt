@@ -13,13 +13,29 @@ import kotlinx.coroutines.flow.distinctUntilChanged
  * network, now and on every change. Without one a header says "Waiting for
  * network…" ([LinkState.WaitingForNetwork]) rather than "Connecting…".
  */
-fun Context.networkPath(): Flow<Boolean> = callbackFlow {
-    val manager = getSystemService(ConnectivityManager::class.java)
-    if (manager == null) {
+fun Context.networkPath(): Flow<Boolean> {
+    val manager = getSystemService(ConnectivityManager::class.java) ?: return callbackFlow {
         trySend(true)
         awaitClose()
-        return@callbackFlow
     }
+    return networkPath(
+        hasDefault = { manager.activeNetwork != null },
+        register = manager::registerDefaultNetworkCallback,
+        unregister = manager::unregisterNetworkCallback,
+    )
+}
+
+/**
+ * [networkPath] over its system calls. The callback is registered before
+ * the network is read: a default network lost in between (airplane mode
+ * turned on as an activity is recreated) sends no callback to one
+ * registered after it, which then said "there is one" until the next change.
+ */
+internal fun networkPath(
+    hasDefault: () -> Boolean,
+    register: (ConnectivityManager.NetworkCallback) -> Unit,
+    unregister: (ConnectivityManager.NetworkCallback) -> Unit,
+): Flow<Boolean> = callbackFlow {
     val callback = object : ConnectivityManager.NetworkCallback() {
         override fun onAvailable(network: Network) {
             trySend(true)
@@ -30,7 +46,7 @@ fun Context.networkPath(): Flow<Boolean> = callbackFlow {
             trySend(false)
         }
     }
-    trySend(manager.activeNetwork != null)
-    manager.registerDefaultNetworkCallback(callback)
-    awaitClose { manager.unregisterNetworkCallback(callback) }
+    register(callback)
+    trySend(hasDefault())
+    awaitClose { unregister(callback) }
 }.distinctUntilChanged()
