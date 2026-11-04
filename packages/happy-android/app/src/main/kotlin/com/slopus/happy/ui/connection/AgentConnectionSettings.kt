@@ -117,6 +117,7 @@ fun agentSettingsIndex(): List<AgentSettingsRow> {
         row(AgentSettingsTags.APPEARANCE, stringResource(R.string.settings_appearance), Ionicon.ColorPaletteOutline),
         row(AgentPagesTags.HIDE_PROJECTS_ROW, stringResource(R.string.settings_hide_projects), Ionicon.FolderOutline, AgentSettingsPlace.Appearance),
         row(DataStorageTags.ROW, stringResource(R.string.data_storage_title), Ionicon.ServerOutline),
+        row(AgentSharingTags.ROW, stringResource(R.string.sharing_title), Ionicon.PeopleOutline),
         row(SettingsTags.SUPPORT, stringResource(R.string.settings_support_us), Ionicon.HeartOutline),
         row(SettingsTags.MANAGE_SUBSCRIPTIONS, stringResource(R.string.settings_manage_subscriptions), Ionicon.CardOutline),
         row(SettingsPageTags.ADD_AGENT, stringResource(R.string.settings_add_agent), Ionicon.Add),
@@ -165,6 +166,7 @@ class AgentSettingsActions(
     val onAppearance: () -> Unit = {},
     /** Data and Storage: the media kept on this phone; null where nothing is kept. */
     val onDataStorage: (() -> Unit)? = null,
+    val onSharing: (() -> Unit)? = null,
     /** Disconnects this connection; asked for only after the person confirmed. */
     val onRemove: () -> Unit = {},
     /** Opens this connection's Chief of Staff with [prefix] typed, unsent. */
@@ -240,6 +242,14 @@ fun AgentConnectionSettingsScreen(
                         id = DataStorageTags.ROW,
                         title = stringResource(R.string.data_storage_title),
                         icon = { SettingsTile(Ionicon.ServerOutline, SettingsTiles.green) },
+                        onClick = open,
+                    )
+                },
+                actions.onSharing?.let { open ->
+                    SettingsEntry(
+                        id = AgentSharingTags.ROW,
+                        title = stringResource(R.string.sharing_title),
+                        icon = { SettingsTile(Ionicon.PeopleOutline, SettingsTiles.blue) },
                         onClick = open,
                     )
                 },
@@ -399,6 +409,7 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
             onProfile = { nav.navigate(AgentProfileRoute(connectionId)) },
             onAppearance = { nav.navigate(AgentAppearanceRoute(connectionId)) },
             onDataStorage = { nav.navigate(AgentDataStorageRoute(connectionId)) },
+            onSharing = { nav.navigate(AgentSharingRoute(connectionId)) },
             onAskChief = { prefix -> nav.openChiefOfStaff(connectionId, prefix) },
             onRemove = {
                 if (switcher != null) switcher.removingFromSettings { removeAgentConnection(graph, connectionId) }

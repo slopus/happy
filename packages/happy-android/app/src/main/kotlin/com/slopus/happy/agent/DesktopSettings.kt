@@ -14,6 +14,11 @@ import kotlinx.serialization.json.put
  * change on the desktop shows here and one made here shows there.
  */
 object DesktopSettings {
+    /** Auto-join defaults on; enabling clears the override, as Happy Desktop does. */
+    fun autoJoin(values: Map<String, JsonElement>, kind: AutoJoinKind): Boolean = values[kind.key] != JsonPrimitive(false)
+
+    fun autoJoinValue(enabled: Boolean): JsonElement = if (enabled) JsonNull else JsonPrimitive(false)
+
     /** Whether the sidebar, and so home, lists the projects: `{"projectsHidden": true}` hides them. */
     const val PROJECTS_VISIBILITY = "happy-desktop.projectsVisibility"
 

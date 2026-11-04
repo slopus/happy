@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sharing_title">Общий доступ</string>
+    <string name="sharing_tasks">Присоединяться к задачам других людей</string>
+    <string name="sharing_surfaces">Присоединяться к документам, спискам и календарям других людей</string>
+    <string name="sharing_footer">Кроме тех, из которых вы вышли. При отключении уже добавленные останутся.</string>
+    <string name="sharing_update">Обновите Happy Agent этого подключения, чтобы изменить настройку.</string>
+    <string name="sharing_unsupported">Это подключение не поддерживает настройки пользователя.</string>
+</resources>

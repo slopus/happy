@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sharing_title">共有</string>
+    <string name="sharing_tasks">他の人のタスクに参加する</string>
+    <string name="sharing_surfaces">他の人のドキュメント、リスト、カレンダーに参加する</string>
+    <string name="sharing_footer">退出したものは除きます。オフにしても、すでに参加したものは保持されます。</string>
+    <string name="sharing_update">この接続の Happy Agent を更新すると、この設定を変更できます。</string>
+    <string name="sharing_unsupported">この接続はユーザー設定に対応していません。</string>
+</resources>

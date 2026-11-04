@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sharing_title">Partilha</string>
+    <string name="sharing_tasks">Aderir às tarefas de outras pessoas</string>
+    <string name="sharing_surfaces">Aderir aos documentos, listas e calendários de outras pessoas</string>
+    <string name="sharing_footer">Exceto os que abandonou. Ao desativar, mantém aqueles a que já aderiu.</string>
+    <string name="sharing_update">Atualize o Happy Agent desta ligação para alterar esta preferência.</string>
+    <string name="sharing_unsupported">Esta ligação não disponibiliza definições de utilizador.</string>
+</resources>

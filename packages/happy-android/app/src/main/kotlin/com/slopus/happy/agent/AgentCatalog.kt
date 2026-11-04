@@ -41,6 +41,8 @@ data class AgentCatalog(
     val cursor: String? = null,
     /** A snapshot has been read (or the cached one restored). */
     val loaded: Boolean = false,
+    /** Whether this daemon's bootstrap provides the person's user settings. */
+    val userSettingsSupported: Boolean = false,
 ) {
     /** A change to one setting made here: what it sets, its `mutationId`, and when the person made it. */
     @Serializable
@@ -109,6 +111,7 @@ data class AgentCatalog(
             pendingSettings = pendingSettings,
             cursor = bootstrap.cursor ?: cursor,
             loaded = true,
+            userSettingsSupported = bootstrap.userSettings != null,
         )
     }
 

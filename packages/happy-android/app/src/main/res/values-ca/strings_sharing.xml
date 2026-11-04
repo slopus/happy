@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sharing_title">Compartir</string>
+    <string name="sharing_tasks">Unir-se a les tasques d’altres persones</string>
+    <string name="sharing_surfaces">Unir-se als documents, llistes i calendaris d’altres persones</string>
+    <string name="sharing_footer">Excepte els que has abandonat. En desactivar-ho, conserves aquells als quals ja t’has unit.</string>
+    <string name="sharing_update">Actualitza el Happy Agent d’aquesta connexió per canviar aquesta preferència.</string>
+    <string name="sharing_unsupported">Aquesta connexió no ofereix configuració d’usuari.</string>
+</resources>

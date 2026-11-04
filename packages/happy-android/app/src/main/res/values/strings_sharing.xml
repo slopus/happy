@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sharing_title">Sharing</string>
+    <string name="sharing_tasks">Join other people’s tasks</string>
+    <string name="sharing_surfaces">Join other people’s docs, lists and calendars</string>
+    <string name="sharing_footer">Except ones you left. Turning this off keeps the ones you joined.</string>
+    <string name="sharing_update">Update this connection’s Happy Agent to change this preference.</string>
+    <string name="sharing_unsupported">This connection does not provide user settings.</string>
+</resources>

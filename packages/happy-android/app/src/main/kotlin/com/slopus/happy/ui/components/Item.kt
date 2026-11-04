@@ -91,6 +91,8 @@ fun Item(
     detailColor: Color = Color.Unspecified,
     /** `subtitleStyle`, e.g. the monospaced ids on the machine screen. */
     subtitleStyle: TextStyle? = null,
+    /** Zero lets a long preference title wrap in full, including at large font sizes. */
+    titleLines: Int = if (subtitle != null) 1 else 2,
 ) {
     val colors = HappyTheme.colors
     val interactive = onClick != null || onLongClick != null
@@ -135,7 +137,7 @@ fun Item(
                 text = title,
                 style = ItemSpec.title,
                 color = titleColor.takeOrElse { if (destructive) colors.textDestructive else colors.text },
-                maxLines = if (subtitle != null) 1 else 2,
+                maxLines = if (titleLines <= 0) Int.MAX_VALUE else titleLines,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.testTag(ItemTags.TITLE),
             )

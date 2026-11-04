@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sharing_title">共享</string>
+    <string name="sharing_tasks">加入其他人的任务</string>
+    <string name="sharing_surfaces">加入其他人的文档、列表和日历</string>
+    <string name="sharing_footer">已退出的除外。关闭后，已加入的内容会保留。</string>
+    <string name="sharing_update">请更新此连接的 Happy Agent 以更改此偏好设置。</string>
+    <string name="sharing_unsupported">此连接不提供用户设置。</string>
+</resources>

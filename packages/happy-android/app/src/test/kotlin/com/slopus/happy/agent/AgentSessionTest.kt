@@ -825,4 +825,53 @@ class AgentSessionTest {
         assertFalse(session.projectsHidden.value)
         assertEquals("v2", session.catalog.value.settings.getValue(DesktopSettings.PROJECTS_VISIBILITY)["version"].toString().trim('"'))
     }
+
+    @Test
+    fun bothSharingPreferencesQueueOfflineThenClearTheirOverrideWhenEnabled(): Unit = runBlocking {
+        agent.bootstrap = Wire.bootstrap(userSettings = emptyList())
+        val writes = java.util.concurrent.CopyOnWriteArrayList<Pair<String, kotlinx.serialization.json.JsonObject>>()
+        val transport: (AgentConnectionCredentials) -> Transport = {
+            object : Transport by agent {
+                override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
+                    if (path == "/v0/health") return TransportResponse(200, body = "{\"ready\":true,\"version\":{\"protocol\":31}}".toByteArray())
+                    if (method == "PUT" && path.startsWith("/v0/user-settings/")) {
+                        val key = path.substringAfterLast('/')
+                        val sent = AgentClient.json.decodeFromString<kotlinx.serialization.json.JsonObject>(body!!.decodeToString())
+                        writes += key to sent
+                        val setting = Wire.setting(key, sent.getValue("value"), if (sent["value"] == kotlinx.serialization.json.JsonNull) "02" else "01")
+                        return TransportResponse(200, body = buildJsonObject { put("setting", setting) }.toString().toByteArray())
+                    }
+                    return agent.request(method, path, credential, body, headers, category)
+                }
+            }
+        }
+        var session = sessions(transport = transport).session(id)!!
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ session.sharing.value }) { it == AgentSharingState.Ready(true, true) }
+        eventually({ File(cacheDir, "$id.json").exists() }) { it }
+        foreground.value = false
+        session.close()
+        agent.frames = Channel(Channel.UNLIMITED)
+        session = sessions(transport = transport).session(id)!!
+        eventually({ session.sharing.value }) { it == AgentSharingState.Ready(true, true) }
+        AutoJoinKind.entries.forEach { session.setAutoJoin(it, false) }
+        eventually({ session.sharing.value }) { it == AgentSharingState.Ready(false, false) }
+        assertTrue(writes.isEmpty())
+        assertEquals(AutoJoinKind.entries.map { it.key }.toSet(), session.catalog.value.pendingSettings.keys)
+        foreground.value = true
+        agent.frames.send(Wire.hello("c0"))
+        eventually({ session.catalog.value.pendingSettings }) { it.isEmpty() }
+        assertEquals(2, writes.size)
+        assertTrue(writes.all { it.second["value"] == kotlinx.serialization.json.JsonPrimitive(false) })
+        AutoJoinKind.entries.forEach { session.setAutoJoin(it, true) }
+        eventually({ session.sharing.value }) { it == AgentSharingState.Ready(true, true) }
+        eventually({ writes.size }) { it == 4 }
+        eventually({ session.catalog.value.pendingSettings }) { it.isEmpty() }
+        assertTrue(writes.takeLast(2).all { it.second["value"] == kotlinx.serialization.json.JsonNull })
+        assertTrue(writes.all { it.second["mutationId"] != null && it.second["updatedAt"] != null })
+        agent.frames.send(Wire.frame("c1", "user_settings.updated", buildJsonObject {
+            put("setting", Wire.setting(AutoJoinKind.Surfaces.key, kotlinx.serialization.json.JsonPrimitive(false), "03"))
+        }))
+        eventually({ session.sharing.value }) { it == AgentSharingState.Ready(true, false) }
+    }
 }

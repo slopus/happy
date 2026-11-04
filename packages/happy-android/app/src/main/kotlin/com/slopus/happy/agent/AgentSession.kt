@@ -225,6 +225,18 @@ class AgentSession internal constructor(
         scope.launch { setSetting(DesktopSettings.COMPLETION_SOUND, DesktopSettings.completionSoundValue(sound)) }
     }
 
+    /** Sharing preferences belong to this person on this connection, including pending offline edits. */
+    val sharing: StateFlow<AgentSharingState> = combine(catalogState, connections.accounts) { catalog, accounts ->
+        AgentSharingState.from(catalog, accounts.firstOrNull { it.id == connectionId }?.protocol)
+    }.distinctUntilChanged().stateIn(scope, SharingStarted.Eagerly,
+        AgentSharingState.from(catalogState.value, connections.accounts.value.firstOrNull { it.id == connectionId }?.protocol))
+
+    fun setAutoJoin(kind: AutoJoinKind, enabled: Boolean) {
+        val state = sharing.value as? AgentSharingState.Ready ?: return
+        if (kind == AutoJoinKind.Surfaces && state.surfaces == null) return
+        scope.launch { setSetting(kind.key, DesktopSettings.autoJoinValue(enabled)) }
+    }
+
     /**
      * Sets one of the person's user settings (API.md, `PUT /v0/user-settings/:key`):
      * shown at once, kept on this phone first, then sent with the time the
@@ -629,7 +641,7 @@ class AgentSession internal constructor(
         val info = AgentIdentity.refresh(client.requester, known?.name.orEmpty(), known?.avatarFile?.let { known.avatarETag }, oauth = client.isOAuth())
         client.noteHealth(info)
         if (known != null) {
-            connections.update(connectionId, info.avatar) { it.copy(name = info.name, thumbhash = info.thumbhash ?: it.thumbhash, revoked = false, instanceId = info.instanceId, daemonVersion = info.daemonVersion) }
+            connections.update(connectionId, info.avatar) { it.copy(name = info.name, thumbhash = info.thumbhash ?: it.thumbhash, revoked = false, instanceId = info.instanceId, daemonVersion = info.daemonVersion, protocol = info.protocol) }
         }
     }
 

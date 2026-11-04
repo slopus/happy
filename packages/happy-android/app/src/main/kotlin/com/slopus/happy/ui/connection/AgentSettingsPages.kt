@@ -113,6 +113,12 @@ internal fun NavGraphBuilder.agentSettingsPages(graph: AppGraph, nav: NavHostCon
         }
     }
     page<AgentDataStorageRoute> { entry -> AgentDataStorage(graph, nav, entry.toRoute<AgentDataStorageRoute>().connectionId) }
+    page<AgentSharingRoute> { entry ->
+        val id = entry.toRoute<AgentSharingRoute>().connectionId
+        val session = remember(id) { graph.agentSessions.session(id) }
+        val state = session?.sharing?.collectAsStateWithLifecycle()?.value ?: com.slopus.happy.agent.AgentSharingState.Loading
+        AgentSharingScreen(state, { kind, enabled -> session?.setAutoJoin(kind, enabled) }, { nav.popBackStack() })
+    }
     page<AgentProfileRoute> { entry ->
         val id = entry.toRoute<AgentProfileRoute>().connectionId
         val source = remember(id) { graph.agentSessions.session(id)?.profile } ?: return@page

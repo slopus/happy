@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="sharing_title">Condivisione</string>
+    <string name="sharing_tasks">Unisciti alle attività di altre persone</string>
+    <string name="sharing_surfaces">Unisciti ai documenti, agli elenchi e ai calendari di altre persone</string>
+    <string name="sharing_footer">Tranne quelli che hai abbandonato. Disattivando questa opzione conservi quelli a cui ti sei già unito.</string>
+    <string name="sharing_update">Aggiorna Happy Agent di questa connessione per modificare questa preferenza.</string>
+    <string name="sharing_unsupported">Questa connessione non offre impostazioni utente.</string>
+</resources>

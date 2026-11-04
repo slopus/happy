@@ -46,6 +46,7 @@ data class AgentConnection(
     val userId: String? = null,
     /** Last health response's daemon version, shown separately from this phone's build. */
     val daemonVersion: String? = null,
+    val protocol: Int? = null,
 )
 
 /**
@@ -171,6 +172,7 @@ class AgentConnections(
                     addedAt = previous?.addedAt ?: now(),
                     instanceId = agent?.instanceId ?: previous?.instanceId,
                     daemonVersion = agent?.daemonVersion ?: previous?.daemonVersion,
+                    protocol = agent?.protocol ?: previous?.protocol,
                 ),
                 agent?.avatar ?: NodeAvatar.Unchanged,
             )
@@ -250,6 +252,7 @@ class AgentConnections(
                             instanceId = agent?.instanceId ?: existing?.instanceId,
                             userId = userId,
                             daemonVersion = agent?.daemonVersion ?: existing?.daemonVersion,
+                            protocol = agent?.protocol ?: existing?.protocol,
                         ),
                         agent?.avatar ?: NodeAvatar.Unchanged,
                     )
