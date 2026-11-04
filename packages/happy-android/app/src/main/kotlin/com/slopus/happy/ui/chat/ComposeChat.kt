@@ -633,10 +633,11 @@ private fun HarnessRow(
     onClose: () -> Unit,
 ) {
     val uriHandler = LocalUriHandler.current
+    val draft by compose.newSession.draft.collectAsStateWithLifecycle()
     val help = options != null && !options.hasHarness && !awaits
     val title = when {
         help -> stringResource(R.string.home_dock_harness_help)
-        else -> options?.agent?.name ?: compose.newSession.draft.value.agentType.displayName
+        else -> options?.agent?.name ?: draft.agentType.displayName
     }
     val description = if (help) stringResource(R.string.home_dock_harness_help_label) else stringResource(R.string.home_dock_picker_harness) + ": " + title
     NewWorkMenuRow(

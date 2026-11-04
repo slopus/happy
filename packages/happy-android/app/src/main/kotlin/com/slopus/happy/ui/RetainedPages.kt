@@ -94,12 +94,12 @@ internal fun RetainedNavHost(
     val definition = remember(nav, start, builder) {
         RetainedGraphBuilder(nav.navigatorProvider, start).apply(builder).let { it.build() to it.pages }
     }
-    val entries by nav.currentBackStack.collectAsState()
+    val entries by nav.backStackEntries.collectAsState()
     val visible by nav.visibleEntries.collectAsState()
     val stack = entries.filter { it.destination !is NavGraph }
     val activeId = stack.lastOrNull()?.id
     // Popped pages remain alive until NavHost finishes their exit transition.
-    val alive = (stack + visible).distinctBy { it.id }.filter { it.lifecycle.currentState != Lifecycle.State.DESTROYED }
+    val alive = (stack + visible).distinctBy { it.id }.filter { it.lifecycle.currentStateAsState().value != Lifecycle.State.DESTROYED }
     val saved = rememberSaveableStateHolder()
     val savedEntries = remember { mutableSetOf<String>() }
     val context = LocalContext.current.applicationContext
@@ -113,7 +113,7 @@ internal fun RetainedNavHost(
         if (gesture == null) retention.finishGesture(activeId)
     }
     SideEffect {
-        val liveIds = (nav.currentBackStack.value + nav.visibleEntries.value).map { it.id }.toSet()
+        val liveIds = (nav.backStackEntries.value + nav.visibleEntries.value).map { it.id }.toSet()
         // An entry can be popped after memory pressure already disposed its view.
         // Its saveable state must not wait for a second onDispose that never runs.
         (savedEntries - liveIds).forEach { saved.removeState(it) }
@@ -121,7 +121,7 @@ internal fun RetainedNavHost(
         savedEntries.addAll(liveIds)
         retention.reconcile(
             liveIds,
-            nav.currentBackStack.value.lastOrNull { it.destination !is NavGraph }?.id,
+            nav.backStackEntries.value.lastOrNull { it.destination !is NavGraph }?.id,
         )
         motion.dims.initialPlacement = retention::initialPlacement
     }
@@ -164,7 +164,7 @@ internal fun RetainedNavHost(
                 DisposableEffect(entry.id) {
                     onDispose {
                         // Eviction/recreation saves the view state; a real pop discards it.
-                        if (nav.currentBackStack.value.none { it.id == entry.id }) saved.removeState(entry.id)
+                        if (nav.backStackEntries.value.none { it.id == entry.id }) saved.removeState(entry.id)
                     }
                 }
                 CompositionLocalProvider(
@@ -197,7 +197,7 @@ private fun RetainedBackHandler(nav: NavHostController, retention: RetainedPages
         object : NavigationEventHandler<NavBackStackEntryInfo>(NavBackStackEntryInfo(), isBackEnabled = false) {
             override fun onBackStarted(event: NavigationEvent) {
                 if (!animate) return
-                val entries = nav.currentBackStack.value.filter { it.destination !is NavGraph }.takeLast(2)
+                val entries = nav.backStackEntries.value.filter { it.destination !is NavGraph }.takeLast(2)
                 if (entries.size != 2) return
                 val navigator = nav.navigatorProvider[ComposeNavigator::class]
                 entries.forEach(navigator::prepareForTransition)
@@ -208,7 +208,7 @@ private fun RetainedBackHandler(nav: NavHostController, retention: RetainedPages
             }
             override fun onBackProgressed(event: NavigationEvent) {
                 if (!animate) return
-                retention.seekGesture(nav.currentBackStack.value.filter { it.destination !is NavGraph }.map { it.id }, event.progress, direction)
+                retention.seekGesture(nav.backStackEntries.value.filter { it.destination !is NavGraph }.map { it.id }, event.progress, direction)
             }
             override fun onBackCompleted() {
                 retention.beforePop()
@@ -217,7 +217,7 @@ private fun RetainedBackHandler(nav: NavHostController, retention: RetainedPages
         }
     }
     DisposableEffect(nav, dispatcher, lifecycle, handler) {
-        var history = nav.currentBackStack.value.filter { it.destination !is NavGraph }
+        var history = nav.backStackEntries.value.filter { it.destination !is NavGraph }
         fun update() {
             val current = nav.currentBackStackEntry
             if (current != null && history.lastOrNull()?.id != current.id) {

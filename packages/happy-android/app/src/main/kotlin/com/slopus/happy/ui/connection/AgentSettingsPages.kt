@@ -132,7 +132,7 @@ internal fun rememberPersonSeed(graph: AppGraph, connectionId: String): String {
     val session = remember(graph, connectionId) { graph.agentSessions.session(connectionId) }
     val user by remember(session) {
         session?.catalog?.map { it.userId }?.distinctUntilChanged() ?: flowOf(null)
-    }.collectAsStateWithLifecycle(initialValue = session?.catalog?.value?.userId)
+    }.collectAsStateWithLifecycle(initialValue = remember(session) { session?.catalog?.value?.userId })
     val computer by produceState<String?>(null, graph, connectionId) {
         value = graph.agentConnections.placeholderSeed(connectionId)
     }

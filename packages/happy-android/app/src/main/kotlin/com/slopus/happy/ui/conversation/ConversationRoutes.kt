@@ -1,5 +1,7 @@
 package com.slopus.happy.ui.conversation
 
+import com.slopus.happy.ui.backStackEntries
+
 import com.slopus.happy.connection.LinkState
 import com.slopus.happy.connection.networkPath
 import com.slopus.happy.ui.files.workspaceSource
@@ -157,7 +159,7 @@ fun NavHostController.composeConversation(connectionId: String, attach: Boolean 
  */
 internal fun NavHostController.heldConversation(agentId: String): Conversation? {
     val none = object : ViewModelProvider.Factory {}
-    return currentBackStack.value.asReversed().asSequence()
+    return backStackEntries.value.asReversed().asSequence()
         .filter { it.destination.hasRoute<ConversationRoute>() }
         .mapNotNull { entry ->
             try {
@@ -484,7 +486,7 @@ private fun ChiefOfStaffEntry(graph: AppGraph, nav: NavHostController, route: Ch
     }
     // Its name as the computer calls it, read live from the bot whose systemKey is chief_of_staff (desktop ca4c303f).
     val chief by remember(session) { session?.feed?.map { feed -> feed.chiefOfStaffName() } ?: flowOf(null) }
-        .collectAsStateWithLifecycle(initialValue = session?.feed?.value?.chiefOfStaffName())
+        .collectAsStateWithLifecycle(initialValue = remember(session) { session?.feed?.value?.chiefOfStaffName() })
     ChiefOfStaffScreen(problem, onRetry = { attempt++ }, onBack = { nav.popBackStack() }, name = chief)
 }
 

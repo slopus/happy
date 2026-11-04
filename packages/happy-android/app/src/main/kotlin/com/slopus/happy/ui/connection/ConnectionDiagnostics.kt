@@ -86,9 +86,10 @@ private fun ConnectionDiagnostics(graph: AppGraph, accountId: String, onBack: ()
         )
     }
     val clipboard = LocalClipboard.current
+    val copyTitle = stringResource(R.string.connection_title)
     ConnectionDiagnosticsScreen(state, "${BuildConfig.VERSION_NAME} (${BuildConfig.BUILD_TYPE})", onCopy = { text ->
         try {
-            clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(context.getString(R.string.connection_title), text)))
+            clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(copyTitle, text)))
             true
         } catch (error: CancellationException) { throw error }
         catch (_: Exception) { false }

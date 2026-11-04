@@ -3,6 +3,7 @@ package com.slopus.happy.ui.home
 import android.graphics.Bitmap
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.asAndroidBitmap
@@ -134,7 +135,7 @@ class HomeShots {
         assumeTrue(dir != null)
         dir!!.mkdirs()
         rule.setHappyContent {
-            var open by mutableStateOf(true)
+            var open by remember { mutableStateOf(true) }
             SettingsMenu(
                 listOf(MenuGroup("theme", "Theme", listOf(MenuOption("a", "Adaptive"), MenuOption("l", "Light"), MenuOption("d", "Dark")), "a") {}),
                 expanded = open,

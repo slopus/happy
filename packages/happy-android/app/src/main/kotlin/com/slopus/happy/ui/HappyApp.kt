@@ -219,7 +219,7 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
 
 /** Settings on top of home and nothing else in the stack: a switch made there keeps both. */
 internal fun NavHostController.isSettingsOverHome(): Boolean {
-    val screens = currentBackStack.value.filter { it.destination !is NavGraph }
+    val screens = backStackEntries.value.filter { it.destination !is NavGraph }
     return screens.size == 2 && screens[0].destination.hasRoute<HomeRoute>() && screens[1].destination.hasRoute<SettingsRoute>()
 }
 

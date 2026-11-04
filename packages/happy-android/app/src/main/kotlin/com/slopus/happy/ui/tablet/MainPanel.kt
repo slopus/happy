@@ -1,5 +1,7 @@
 package com.slopus.happy.ui.tablet
 
+import com.slopus.happy.ui.backStackEntries
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
@@ -164,7 +166,7 @@ class MainPanel internal constructor(internal val nav: NavHostController) {
     }
 }
 
-private fun NavHostController.screens() = currentBackStack.value.filter { it.destination !is NavGraph }
+private fun NavHostController.screens() = backStackEntries.value.filter { it.destination !is NavGraph }
 
 private val NavBackStackEntry.opened: Boolean get() = savedStateHandle.get<Boolean>(MainPanel.SIDEBAR_ROOT) == true
 
@@ -222,7 +224,7 @@ object MainPanelKey {
 fun rememberMainPanelRoot(): Boolean {
     val panel = LocalMainPanel.current ?: return false
     val entry = LocalViewModelStoreOwner.current as? NavBackStackEntry ?: return false
-    val stack by panel.nav.currentBackStack.collectAsState()
+    val stack by panel.nav.backStackEntries.collectAsState()
     return panel.split && MainPanel.root(stack.filter { it.destination !is NavGraph })?.id == entry.id && panel.opened(entry)
 }
 
@@ -260,7 +262,7 @@ fun MainPanelPlaceholder() {
     val colors = HappyTheme.colors
     val panel = LocalMainPanel.current
     val entry = LocalViewModelStoreOwner.current as? NavBackStackEntry
-    val stack = panel?.nav?.currentBackStack?.collectAsState()?.value
+    val stack = panel?.nav?.backStackEntries?.collectAsState()?.value
     val empty = stack?.lastOrNull { it.destination !is NavGraph }?.id == entry?.id
     // Plays asked for, and whether the panel was empty at the last look: kept through recreation, so a rotation doesn't replay it.
     var requested by rememberSaveable { mutableIntStateOf(0) }

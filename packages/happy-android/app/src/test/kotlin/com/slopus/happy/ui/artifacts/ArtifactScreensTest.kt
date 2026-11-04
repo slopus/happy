@@ -6,6 +6,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertCountEquals
@@ -119,7 +120,9 @@ class ArtifactScreensTest {
         // A plain loader: the app's shared one (its disk cache and crossfade) never lands a picture under Robolectric.
         val pictures = ImageLoader.Builder(ApplicationProvider.getApplicationContext()).build()
         rule.setHappyContent(dark) {
-            CompositionLocalProvider(LocalImageLoader provides pictures) { ArtifactScreen(loader.title.value, loader.state.value, loader.media, "Studio", actions) }
+            val title by loader.title.collectAsState()
+            val state by loader.state.collectAsState()
+            CompositionLocalProvider(LocalImageLoader provides pictures) { ArtifactScreen(title, state, loader.media, "Studio", actions) }
         }
     }
 

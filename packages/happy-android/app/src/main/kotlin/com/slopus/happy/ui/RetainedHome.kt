@@ -57,14 +57,14 @@ internal fun RetainedHome(
     home: @Composable () -> Unit,
     navigation: @Composable (RetainedHomePosition) -> Unit,
 ) {
-    val entries by nav.currentBackStack.collectAsState()
+    val entries by nav.backStackEntries.collectAsState()
     val entry = entries.firstOrNull { it.destination.hasRoute<HomeRoute>() }
     val active = entry != null && entries.lastOrNull { it.destination !is NavGraph } == entry
     val position = remember(nav) { RetainedHomePosition() }
     val saved = rememberSaveableStateHolder()
     DisposableEffect(entry?.id) {
         onDispose {
-            if (entry != null && nav.currentBackStack.value.none { it.id == entry.id }) saved.removeState(entry.id)
+            if (entry != null && nav.backStackEntries.value.none { it.id == entry.id }) saved.removeState(entry.id)
         }
     }
 

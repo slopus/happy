@@ -1,5 +1,7 @@
 package com.slopus.happy.ui.tablet
 
+import com.slopus.happy.ui.backStackEntries
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -116,7 +118,7 @@ fun TabletShell(
         Row(Modifier.fillMaxSize()) {
             if (shows && !hidden) {
                 val width = TabletShellSpec.sidebarWidth(window.width)
-                val stack by nav.currentBackStack.collectAsState()
+                val stack by nav.backStackEntries.collectAsState()
                 val root = MainPanel.root(stack.filter { it.destination !is NavGraph })
                 // The session a compose chat at the root has started, so its row shows selected.
                 val started by remember(root) {
