@@ -245,13 +245,18 @@ class SessionComposer(
 
     private fun reconcileAll() {
         load()
-        val sessions = store.sessions()
-        val ids = sessions.mapTo(HashSet()) { it.id }
+        // Versions first; a whole row (its metadata) only for a session whose metadata moved.
+        val versions = store.sessionMetadataVersions()
+        val ids = versions.keys
         // Deleted sessions: their stored rows went with them.
         entries.keys.retainAll(ids)
         seen.retainAll(ids)
         writers.keys.filter { it !in ids }.forEach { writers.remove(it)?.timer?.cancel() }
-        sessions.forEach(::reconcile)
+        for ((id, version) in versions) {
+            val entry = entries[id]
+            if (id in seen && entry != null && entry.appliedVersion >= version) continue
+            store.session(id)?.let(::reconcile)
+        }
         publish()
     }
 

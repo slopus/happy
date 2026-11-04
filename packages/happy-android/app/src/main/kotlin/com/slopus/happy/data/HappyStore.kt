@@ -264,6 +264,29 @@ class HappyStore(@Volatile private var helper: SQLiteOpenHelper) {
             buildSet { while (c.moveToNext()) add(c.getString(0)) }
         }
 
+    /**
+     * Each session's avatar descriptor as stored, by id. A watcher of every
+     * session reads only the columns it needs: a whole row carries the
+     * metadata, tens of KB a session, and hundreds of sessions read on
+     * every change ran a large account out of memory.
+     */
+    fun sessionAvatarJsons(): Map<String, String?> =
+        query("SELECT id, avatar FROM sessions", null) { c ->
+            buildMap { while (c.moveToNext()) put(c.getString(0), c.stringOrNull(1)) }
+        }
+
+    /** The projects the stored sessions link to, trimmed, without blanks. */
+    fun sessionProjectIds(): Set<String> =
+        query("SELECT DISTINCT project_id FROM sessions WHERE project_id IS NOT NULL", null) { c ->
+            buildSet { while (c.moveToNext()) c.getString(0).trim().ifEmpty { null }?.let(::add) }
+        }
+
+    /** Each session's metadata version, by id: what changed, without reading the metadata. */
+    fun sessionMetadataVersions(): Map<String, Long> =
+        query("SELECT id, metadata_version FROM sessions", null) { c ->
+            buildMap { while (c.moveToNext()) put(c.getString(0), c.getLong(1)) }
+        }
+
     /** Most recently updated first. */
     fun sessions(): List<SessionRecord> =
         query("SELECT $SESSION_COLUMNS FROM sessions ORDER BY updated_at DESC", null) { c ->

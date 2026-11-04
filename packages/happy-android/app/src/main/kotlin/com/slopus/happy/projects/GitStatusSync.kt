@@ -166,7 +166,7 @@ class GitStatusServices private constructor(graph: AppGraph) {
         launch {
             var known = emptySet<String>()
             store.versions.map { it.sessions }.distinctUntilChanged().collect {
-                val ids = store.sessions().mapTo(HashSet()) { it.id }
+                val ids = store.sessionIds()
                 (known - ids).forEach(sync::clearForSession)
                 known = ids
             }

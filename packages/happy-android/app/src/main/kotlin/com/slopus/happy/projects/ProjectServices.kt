@@ -70,8 +70,7 @@ class ProjectServices private constructor(graph: AppGraph) {
     }
 
     /** The project ids the stored sessions link to. */
-    private fun linkedProjectIds(store: HappyStore): Set<String> =
-        store.sessions().mapNotNullTo(HashSet()) { it.projectId?.trim()?.ifEmpty { null } }
+    private fun linkedProjectIds(store: HappyStore): Set<String> = store.sessionProjectIds()
 
     companion object {
         private val instances = WeakHashMap<AppGraph, ProjectServices>()

@@ -154,7 +154,7 @@ class SessionAvatarServices private constructor(graph: AppGraph) {
         launch { hydrator.avatars.collect { send(it) } }
         launch {
             store.versions.map { it.sessions }.distinctUntilChanged().collect {
-                hydrator.update(store.sessions().associate { it.id to SessionAvatarDescriptor.parse(it.avatarJson) })
+                hydrator.update(store.sessionAvatarJsons().mapValues { SessionAvatarDescriptor.parse(it.value) })
             }
         }
         awaitClose()
