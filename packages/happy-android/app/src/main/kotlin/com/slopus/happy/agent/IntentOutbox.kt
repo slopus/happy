@@ -137,6 +137,9 @@ class IntentOutbox(
         data object Waiting : Verdict
     }
 
+    /** The kept intent and the answer owned by the screen that asked for its first try. */
+    data class AttemptResult(val intent: Intent, val verdict: Verdict)
+
     private val lock = Mutex()
     private val kept = MutableStateFlow<List<Intent>?>(null)
     private val online = MutableStateFlow(false)
@@ -179,15 +182,34 @@ class IntentOutbox(
 
     /** Keeps an action and publishes it, replacing what its slot held; then sends it when it can. */
     suspend fun enqueue(kind: String, target: String, value: JsonObject = JsonObject(emptyMap())): Intent {
-        val intent = lock.withLock {
-            val before = loaded()
-            val intent = Intent(AgentClient.newId(), kind, target, value, maxOf(now(), (before.lastOrNull()?.createdAt ?: 0) + 1))
-            val replaced = before.firstOrNull { it.slot == intent.slot }
-            write(before.filter { it.slot != intent.slot } + intent)
-            replaced?.let { finish(it.id, Verdict.Taken) }
-            intent
+        val intent = lock.withLock { enqueueLocked(kind, target, value) }
+        kicks.trySend(Unit)
+        return intent
+    }
+
+    /**
+     * Keeps an action and claims its first try before the background drainer
+     * can see it. A refusal belongs to this caller, even if delivery is fast:
+     * enqueue followed by attempt leaves a gap where home can also be told.
+     */
+    suspend fun enqueueAndAttempt(kind: String, target: String, value: JsonObject = JsonObject(emptyMap())): AttemptResult {
+        val (intent, deliver) = lock.withLock {
+            val intent = enqueueLocked(kind, target, value)
+            val deliver = deliverers.value[kind]
+            if (deliver != null) check(claim(intent.id))
+            intent to deliver
         }
         kicks.trySend(Unit)
+        return AttemptResult(intent, if (deliver == null) Verdict.Waiting else send(intent, deliver, told = true))
+    }
+
+    /** Under [lock], including publication and replacement's completion. */
+    private suspend fun enqueueLocked(kind: String, target: String, value: JsonObject): Intent {
+        val before = loaded()
+        val intent = Intent(AgentClient.newId(), kind, target, value, maxOf(now(), (before.lastOrNull()?.createdAt ?: 0) + 1))
+        val replaced = before.firstOrNull { it.slot == intent.slot }
+        write(before.filter { it.slot != intent.slot } + intent)
+        replaced?.let { finish(it.id, Verdict.Taken) }
         return intent
     }
 
@@ -241,19 +263,31 @@ class IntentOutbox(
         return waiting.isNotEmpty()
     }
 
+    private data class Delivery(val intent: Intent, val deliver: suspend (Intent) -> Unit)
+
     private suspend fun run() {
         while (true) {
-            val list = lock.withLock { loaded() }
-            val time = now()
-            val handled = deliverers.value
-            val due = list.filter { it.kind in handled && synchronized(inFlight) { it.id !in inFlight } }
-            val next = due.firstOrNull { it.nextAttemptAt <= time }
+            var at: Long? = null
+            val next = lock.withLock {
+                val handled = deliverers.value
+                val due = loaded().filter { it.kind in handled && synchronized(inFlight) { it.id !in inFlight } }
+                val intent = due.firstOrNull { it.nextAttemptAt <= now() }
+                if (intent == null) {
+                    at = due.minOfOrNull { it.nextAttemptAt }
+                    null
+                } else {
+                    // Selection and claim share removal's lock: a foreground
+                    // completion cannot leave this runner sending a stale row.
+                    check(claim(intent.id))
+                    Delivery(intent, handled.getValue(intent.kind))
+                }
+            }
             if (next == null) {
-                val at = due.minOfOrNull { it.nextAttemptAt }
-                if (at == null) kicks.receive() else withTimeoutOrNull(maxOf(1, at - time)) { kicks.receive() }
+                val deadline = at
+                if (deadline == null) kicks.receive() else withTimeoutOrNull(maxOf(1, deadline - now())) { kicks.receive() }
                 continue
             }
-            if (claim(next.id)) send(next, handled.getValue(next.kind))
+            send(next.intent, next.deliver)
         }
     }
 

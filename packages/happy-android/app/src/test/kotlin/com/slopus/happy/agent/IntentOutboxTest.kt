@@ -8,6 +8,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import org.junit.After
@@ -126,6 +131,50 @@ class IntentOutboxTest {
 
         assertEquals(IntentOutbox.Verdict.Refused("No"), box.attempt(intent.id))
         assertEquals(IntentOutbox.Verdict.Refused("No"), box.verdict(intent.id))
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun anAtomicFirstAttemptOwnsItsRefusalBeforeTheReadyDrainerCanTakeIt(): Unit = runTest {
+        val immediate = CoroutineScope(backgroundScope.coroutineContext + UnconfinedTestDispatcher(testScheduler))
+        val box = IntentOutbox(immediate, MemoryIntentStorage())
+        val rejections = mutableListOf<IntentOutbox.Rejection>()
+        immediate.launch { box.rejections.collect { rejections += it } }
+        val sent = mutableListOf<String>()
+        box.handle(setOf(Intent.LEAVE)) { sent += it.id; throw IntentRefusal("No") }
+        box.setOnline(true)
+
+        val answer = box.enqueueAndAttempt(Intent.LEAVE, "task")
+        runCurrent()
+        assertEquals(IntentOutbox.Verdict.Refused("No"), answer.verdict)
+        assertEquals(listOf(answer.intent.id), sent)
+        assertEquals(listOf(IntentOutbox.Rejection(answer.intent, "No", heard = true)), rejections)
+        assertEquals(emptyList<Intent>(), box.pending.value)
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun aFirstAttemptThatCouldNotGoDoesNotHideALaterBackgroundRefusal(): Unit = runTest {
+        val box = IntentOutbox(backgroundScope, MemoryIntentStorage(), now = { testScheduler.currentTime })
+        val rejections = mutableListOf<IntentOutbox.Rejection>()
+        backgroundScope.launch { box.rejections.collect { rejections += it } }
+        var reachable = false
+        box.handle(setOf(Intent.LEAVE)) {
+            if (!reachable) throw java.io.IOException("offline")
+            throw IntentRefusal("No")
+        }
+        box.setOnline(true)
+        runCurrent()
+        assertEquals(IntentOutbox.Verdict.Waiting, box.enqueueAndAttempt(Intent.LEAVE, "task").verdict)
+        runCurrent()
+        assertEquals(emptyList<IntentOutbox.Rejection>(), rejections)
+
+        reachable = true
+        advanceTimeBy(1_000)
+        runCurrent()
+        assertEquals(1, rejections.size)
+        assertEquals(false, rejections.single().heard)
+        assertEquals("No", rejections.single().reason)
     }
 
     @Test

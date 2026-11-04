@@ -318,9 +318,11 @@ class AgentSession internal constructor(
      */
     suspend fun leaveSurface(surfaceId: String): String? {
         // A second ask while one is on its way sends nothing more and shares its answer.
-        val intent = intents.pending.value.firstOrNull { it.kind == Intent.LEAVE && it.target == surfaceId } ?: leave("surface", surfaceId)
+        val intent = intents.pending.value.firstOrNull { it.kind == Intent.LEAVE && it.target == surfaceId }
         // The person confirmed and waits on it: tried at once, link or not (iOS's `attempt`).
-        return (intents.attempt(intent.id) as? IntentOutbox.Verdict.Refused)?.reason
+        val verdict = if (intent != null) intents.attempt(intent.id)
+            else intents.enqueueAndAttempt(Intent.LEAVE, surfaceId, of("surface")).verdict
+        return (verdict as? IntentOutbox.Verdict.Refused)?.reason
     }
 
     private fun of(kind: String) = buildJsonObject { put("kind", kind) }

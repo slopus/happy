@@ -185,11 +185,11 @@ class SessionArchiver(private val actions: SessionActions) {
     /** Kept, shown, then tried once for whoever waits: [ArchiveResult.Archived] while it stands, taken or still on its way. */
     private suspend fun settle(kind: String, sessionId: String, of: String): ArchiveResult {
         val outbox = outbox
-        val intent = outbox.enqueue(kind, sessionId, buildJsonObject { put("kind", of) })
         if (kind == Intent.DELETE) deleted.update { it + sessionId } else state.update { it + sessionId }
-        val verdict = outbox.attempt(intent.id) as? IntentOutbox.Verdict.Refused ?: return ArchiveResult.Archived
-        putBack(intent)
-        return decode(intent, verdict.reason)
+        val result = outbox.enqueueAndAttempt(kind, sessionId, buildJsonObject { put("kind", of) })
+        val verdict = result.verdict as? IntentOutbox.Verdict.Refused ?: return ArchiveResult.Archived
+        putBack(result.intent)
+        return decode(result.intent, verdict.reason)
     }
 
     private fun putBack(intent: Intent) {

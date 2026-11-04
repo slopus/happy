@@ -14,6 +14,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -48,8 +52,12 @@ class SessionArchiverTest {
     }
 
     /** A launch: the account's store, its socket, and home's archiver bound to them. */
-    private fun launch(account: Account, storage: MemoryIntentStorage, online: MutableStateFlow<Boolean>): SessionArchiver {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default).also { scopes += it }
+    private fun launch(
+        account: Account,
+        storage: MemoryIntentStorage,
+        online: MutableStateFlow<Boolean>,
+        scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default).also { scopes += it },
+    ): SessionArchiver {
         return SessionArchiver(account).also { it.bind(scope, IntentOutbox(scope, storage), online) }
     }
 
@@ -107,12 +115,17 @@ class SessionArchiverTest {
     }
 
     @Test
-    fun aRefusalWhileTheAccountIsUpIsTheScreensToSay(): Unit = runBlocking {
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun aRefusalWhileTheAccountIsUpIsTheScreensToSay(): Unit = runTest {
         val account = Account().apply { up = true; refuseLeave = "No" }
-        val archiver = launch(account, MemoryIntentStorage(), MutableStateFlow(true))
+        // Run the ready background drainer as soon as enqueue wakes it:
+        // it can refuse before the screen gets from enqueue to attempt.
+        val scope = CoroutineScope(backgroundScope.coroutineContext + UnconfinedTestDispatcher(testScheduler))
+        val archiver = launch(account, MemoryIntentStorage(), MutableStateFlow(true), scope)
         assertEquals(ArchiveResult.TaskFailed(leave = true, TaskOpResult.Refused("No")), archiver.leave(session("t2")))
         assertEquals(emptySet<String>(), archiver.archiving.value)
-        delay(100)
+        runCurrent()
         assertNull("the screen said it already", archiver.refusal.value)
+        assertEquals("one delivery only", listOf("leaveTask:t2"), account.calls.toList())
     }
 }
