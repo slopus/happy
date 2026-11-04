@@ -564,14 +564,19 @@ Only production has entitlements (associated domains).
 
 ### Versioning
 
-Production continues the existing `com.ex3ndr.happy` listing with semver
-`2.0.0` (following the RN app's `1.x` releases). Development and preview
-retain the calendar version `2026.10.1` on their separate listings.
+All three variants (development, preview, production) carry the same semver
+version, `2.0.0`, continuing the RN app's `1.x` releases. Production
+continues the existing `com.ex3ndr.happy` listing; dev and preview ship the
+same number on their own listings.
 
-- Bump production in `App/Info-Production.plist`, the Happy target's Release
-  settings in `project.yml`, and `AppConfigurationTests`. The project-wide
-  defaults remain the development/preview version.
-- `CFBundleVersion` (`CURRENT_PROJECT_VERSION`) stays the build number.
+- Bump `MARKETING_VERSION` in `project.yml`'s base settings, the only one
+  there; the Mac app and the App Clip read it too. Because xtool doesn't
+  expand `$(VARIABLES)`, the three `App/Info-*.plist` files and
+  `AppClip/project.yml` repeat it, and `AppConfigurationTests` fails until
+  they all match.
+- `CFBundleVersion` (`CURRENT_PROJECT_VERSION`) stays the build number:
+  production's is set in `App/Info-Production.plist` and the Happy target's
+  Release settings; preview uploads let Xcode pick the next free one.
 - The version also goes out as `X-Happy-Client: ios/<version>`. The
   server uses it only for metrics labels.
 

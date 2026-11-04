@@ -43,8 +43,7 @@ final class AppConfigurationTests: XCTestCase {
         let variantKeys: Set<String> = [
             "HappyAppVariant", "CFBundleDisplayName", "NSCameraUsageDescription",
             "NSLocalNetworkUsageDescription", "NSAppTransportSecurity",
-            "HappyGuestPreviewInvites",
-            "CFBundleShortVersionString", "CFBundleVersion",
+            "HappyGuestPreviewInvites", "CFBundleVersion",
         ]
         func shared(_ info: [String: Any]) throws -> Data {
             let filtered = info.filter { !variantKeys.contains($0.key) }
@@ -54,18 +53,25 @@ final class AppConfigurationTests: XCTestCase {
         XCTAssertEqual(try shared(plist(.preview)), development)
         XCTAssertEqual(try shared(plist(.production)), development)
         let info = try plist(.development)
-        XCTAssertEqual(info["CFBundleShortVersionString"] as? String, "2026.10.1")
+        XCTAssertEqual(info["CFBundleShortVersionString"] as? String, "2.0.0")
         let schemes = (info["CFBundleURLTypes"] as? [[String: Any]])?.first?["CFBundleURLSchemes"] as? [String]
         // `happy` also carries the server sign-in's redirect (`OAuthRedirect`).
         XCTAssertEqual(schemes, ["happy"])
         XCTAssertEqual(schemes?.contains(OAuthRedirect.scheme), true)
     }
 
-    func testVersionsPreservePreviewAndContinueProduction() throws {
+    /// One semver for every variant: the plists' version (kept equal by
+    /// `testSharedKeysMatch`) is the projects' only `MARKETING_VERSION`.
+    func testEveryVariantSharesTheProjectVersion() throws {
+        let packageDirectory = appDirectory.deletingLastPathComponent()
+        let version = try XCTUnwrap(plist(.development)["CFBundleShortVersionString"] as? String)
+        for spec in ["project.yml", "AppClip/project.yml"] {
+            let yml = try String(contentsOf: packageDirectory.appendingPathComponent(spec), encoding: .utf8)
+            let settings = yml.components(separatedBy: "\n").filter { $0.contains("MARKETING_VERSION:") }
+            XCTAssertEqual(settings.map { $0.trimmingCharacters(in: .whitespaces) }, ["MARKETING_VERSION: \"\(version)\""], spec)
+        }
         for variant in AppVariant.allCases {
-            let info = try plist(variant)
-            XCTAssertEqual(info["CFBundleShortVersionString"] as? String, variant == .production ? "2.0.0" : "2026.10.1")
-            XCTAssertEqual(info["CFBundleVersion"] as? String, variant == .production ? "155" : "1")
+            XCTAssertEqual(try plist(variant)["CFBundleVersion"] as? String, variant == .production ? "155" : "1")
         }
     }
 

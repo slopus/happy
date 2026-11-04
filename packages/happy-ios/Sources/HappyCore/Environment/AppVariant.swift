@@ -40,7 +40,7 @@ public enum AppVariant: String, Sendable, CaseIterable {
     }
 }
 
-/// `X-Happy-Client`, e.g. `ios/2026.10.1`. The server uses it for metrics
+/// `X-Happy-Client`, e.g. `ios/2.0.0`. The server uses it for metrics
 /// and compatibility decisions.
 public enum HappyClientID {
     public static func make(version: String) -> String {
