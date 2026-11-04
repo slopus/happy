@@ -21,6 +21,7 @@ data class MediaAutoDownload(
     val videos: Rule = Rule(false, 10 * MEGABYTE),
     val files: Rule = Rule(true, 1 * MEGABYTE),
 ) {
+    @Serializable
     enum class Kind { Photos, Videos, Files }
 
     /** On or off, and in bytes the largest file read without a tap. */

@@ -116,6 +116,7 @@ fun agentSettingsIndex(): List<AgentSettingsRow> {
         row(AgentSettingsTags.ASK_AVATAR, stringResource(R.string.settings_change_avatar), Ionicon.ImageOutline, AgentSettingsPlace.Ask, stringResource(R.string.agent_settings_edit_avatar_prefix)),
         row(AgentSettingsTags.APPEARANCE, stringResource(R.string.settings_appearance), Ionicon.ColorPaletteOutline),
         row(AgentPagesTags.HIDE_PROJECTS_ROW, stringResource(R.string.settings_hide_projects), Ionicon.FolderOutline, AgentSettingsPlace.Appearance),
+        row(DataStorageTags.ROW, stringResource(R.string.data_storage_title), Ionicon.ServerOutline),
         row(SettingsTags.SUPPORT, stringResource(R.string.settings_support_us), Ionicon.HeartOutline),
         row(SettingsPageTags.ADD_AGENT, stringResource(R.string.settings_add_agent), Ionicon.Add),
         row(SettingsTags.WHATS_NEW, stringResource(R.string.settings_whats_new), Ionicon.SparklesOutline),
@@ -235,7 +236,7 @@ fun AgentConnectionSettingsScreen(
                     SettingsEntry(
                         id = DataStorageTags.ROW,
                         title = stringResource(R.string.data_storage_title),
-                        icon = { SettingsTile(Ionicon.FolderOutline, SettingsTiles.blue) },
+                        icon = { SettingsTile(Ionicon.ServerOutline, SettingsTiles.green) },
                         onClick = open,
                     )
                 },

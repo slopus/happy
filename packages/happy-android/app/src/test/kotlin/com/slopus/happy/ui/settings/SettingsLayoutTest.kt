@@ -26,6 +26,7 @@ import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.components.GlassSpec
 import com.slopus.happy.ui.components.ItemGroupTags
 import com.slopus.happy.ui.components.ItemTags
+import com.slopus.happy.ui.connection.DataStorageTags
 import com.slopus.happy.ui.home.AccountMenu
 import com.slopus.happy.ui.home.AccountMenuEntry
 import com.slopus.happy.ui.node
@@ -70,6 +71,7 @@ class SettingsLayoutTest {
         onLanguage = { opened += "language" },
         onVoice = { opened += "voice" },
         onAgents = { opened += "agents" },
+        onDataStorage = { opened += "storage" },
         onScanTerminal = { opened += "scan" },
         onEnterTerminal = { opened += "url" },
         onSignOut = { opened += "signOut" },
@@ -114,7 +116,7 @@ class SettingsLayoutTest {
         }
         assertEquals(0, cardOf(SettingsPageTags.ADD_AGENT))
         assertEquals(listOf(1, 1), listOf(SettingsTags.ACCOUNT, SettingsTags.BACKUP).map(::cardOf))
-        assertEquals(listOf(2, 2, 2, 2), listOf(SettingsTags.APPEARANCE, SettingsTags.LANGUAGE, SettingsTags.VOICE, SettingsTags.AGENTS).map(::cardOf))
+        assertEquals(listOf(2, 2, 2, 2, 2), listOf(SettingsTags.APPEARANCE, SettingsTags.LANGUAGE, SettingsTags.VOICE, SettingsTags.AGENTS, DataStorageTags.ROW).map(::cardOf))
         assertEquals(listOf(3, 3), listOf(SettingsTags.SCAN_TERMINAL, SettingsTags.ENTER_TERMINAL).map(::cardOf))
         assertEquals(4, cardOf(SettingsTags.SUPPORT))
         rule.node(SettingsTags.VERSION).performScrollTo()
@@ -129,10 +131,10 @@ class SettingsLayoutTest {
     @Test
     fun everyRowOpensItsPage() {
         show()
-        for (tag in listOf(SettingsTags.ACCOUNT, SettingsTags.BACKUP, SettingsTags.APPEARANCE, SettingsTags.LANGUAGE, SettingsTags.VOICE, SettingsTags.AGENTS, SettingsTags.SCAN_TERMINAL, SettingsTags.ENTER_TERMINAL)) {
+        for (tag in listOf(SettingsTags.ACCOUNT, SettingsTags.BACKUP, SettingsTags.APPEARANCE, SettingsTags.LANGUAGE, SettingsTags.VOICE, SettingsTags.AGENTS, DataStorageTags.ROW, SettingsTags.SCAN_TERMINAL, SettingsTags.ENTER_TERMINAL)) {
             rule.node(tag).performScrollTo().performClick()
         }
-        assertEquals(listOf("account", "backup", "appearance", "language", "voice", "agents", "scan", "url"), opened)
+        assertEquals(listOf("account", "backup", "appearance", "language", "voice", "agents", "storage", "scan", "url"), opened)
         for (title in listOf("What's New", "GitHub", "slopus/happy", "Report an Issue", "Privacy Policy", "Terms of Service", "1.8.0 (412)", "Commit 2026-10-16 03:12 UTC / abc1234")) {
             rule.onNodeWithText(title).performScrollTo().assertIsDisplayed()
         }

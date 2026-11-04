@@ -19,6 +19,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
@@ -90,7 +92,7 @@ fun SettingsRow(entry: SettingsEntry) {
     val colors = HappyTheme.colors
     Item(
         title = entry.title,
-        modifier = Modifier.revealRow(entry.id),
+        modifier = Modifier.revealRow(entry.id).then(if (entry.checked) Modifier.semantics { selected = true } else Modifier),
         subtitle = entry.subtitle,
         subtitleLines = entry.subtitleLines,
         detail = entry.detail,

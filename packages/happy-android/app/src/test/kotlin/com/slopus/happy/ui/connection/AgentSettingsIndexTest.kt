@@ -59,7 +59,7 @@ class AgentSettingsIndexTest {
         AgentConnectionSettingsScreen(
             profile = SettingsProfile("agent-connection-1", "Studio", "Connected"),
             accounts = SettingsFixtures.accounts,
-            actions = AgentSettingsActions(),
+            actions = AgentSettingsActions(onDataStorage = {}),
             about = AboutInfo("1.8.0 (412)"),
         )
     }
@@ -75,7 +75,7 @@ class AgentSettingsIndexTest {
         assertEquals(
             listOf(
                 AgentSettingsTags.PROFILE, AgentSettingsTags.ASK_NAME, AgentSettingsTags.ASK_AVATAR, AgentSettingsTags.APPEARANCE,
-                AgentPagesTags.HIDE_PROJECTS_ROW, SettingsTags.SUPPORT, com.slopus.happy.ui.settings.SettingsPageTags.ADD_AGENT,
+                AgentPagesTags.HIDE_PROJECTS_ROW, DataStorageTags.ROW, SettingsTags.SUPPORT, com.slopus.happy.ui.settings.SettingsPageTags.ADD_AGENT,
                 SettingsTags.WHATS_NEW, SettingsTags.GITHUB, SettingsTags.REPORT_ISSUE, SettingsTags.PRIVACY, SettingsTags.TERMS, SettingsTags.VERSION,
             ),
             index.map { it.id },

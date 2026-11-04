@@ -49,6 +49,8 @@ import com.slopus.happy.ui.LocalAccountSwitcher
 import com.slopus.happy.ui.AccountSwitcher
 import com.slopus.happy.ui.ProvideSettingsDissolve
 import com.slopus.happy.ui.connection.AgentConnectionSettings
+import com.slopus.happy.ui.connection.LegacyDataStorageRoute
+import com.slopus.happy.ui.connection.dataStorageRoutes
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
 import com.slopus.happy.accounts.accountId
@@ -81,6 +83,7 @@ import com.slopus.happy.ui.voice.VoiceSettingsRoute
 /** Settings' screens; [SettingsRoute] itself is HappyApp's ([AccountSettings]). */
 fun NavGraphBuilder.settingsRoutes(graph: AppGraph, nav: NavHostController) {
     voiceRoutes(graph, nav)
+    dataStorageRoutes(graph, nav)
     page<AccountRoute> { entry -> ProvideRowReveal(entry.toRoute<AccountRoute>().reveal) { Account(graph, nav) } }
     page<BackupRoute> { entry -> ProvideRowReveal(entry.toRoute<BackupRoute>().reveal) { Backup(graph, nav) } }
     page<AppearanceRoute> { Appearance(graph, nav) }
@@ -342,6 +345,7 @@ private fun SettingsIndex(graph: AppGraph, nav: NavHostController, scroll: Scrol
                 onLanguage = { nav.navigate(LanguageRoute()) },
                 onVoice = { nav.navigate(VoiceSettingsRoute()) },
                 onAgents = { nav.navigate(AgentsRoute) },
+                onDataStorage = { nav.navigate(LegacyDataStorageRoute) },
                 onScanTerminal = connect::scan,
                 onEnterTerminal = { enteringUrl = true },
                 onSignOut = { if (switcher != null) switcher.removingFromSettings { graph.logout().join() } else graph.logout() },

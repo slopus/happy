@@ -9,6 +9,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
+import com.slopus.happy.ui.connection.DataStorageTags
 import com.slopus.happy.model.Profile
 import com.slopus.happy.ui.components.Avatar
 import com.slopus.happy.ui.components.Icon
@@ -98,6 +99,7 @@ class HappySettingsActions(
     val onLanguage: () -> Unit = {},
     val onVoice: () -> Unit = {},
     val onAgents: () -> Unit = {},
+    val onDataStorage: () -> Unit = {},
     val onScanTerminal: () -> Unit = {},
     val onEnterTerminal: () -> Unit = {},
     /** Signs this account out, once confirmed. */
@@ -152,6 +154,12 @@ fun happySettingsSections(actions: HappySettingsActions, connectingTerminal: Boo
                 title = stringResource(R.string.settings_agents),
                 icon = { SettingsTile(Ionicon.OptionsOutline, SettingsTiles.teal) },
                 onClick = actions.onAgents,
+            ),
+            SettingsEntry(
+                id = DataStorageTags.ROW,
+                title = stringResource(R.string.data_storage_title),
+                icon = { SettingsTile(Ionicon.ServerOutline, SettingsTiles.green) },
+                onClick = actions.onDataStorage,
             ),
         ),
     ),

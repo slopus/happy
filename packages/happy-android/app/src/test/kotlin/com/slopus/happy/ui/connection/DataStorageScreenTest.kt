@@ -11,9 +11,19 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.height
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.media.MediaAutoDownload
 import com.slopus.happy.ui.PHONE
+import com.slopus.happy.ui.assertDp
+import com.slopus.happy.ui.bounds
+import com.slopus.happy.ui.node
+import com.slopus.happy.ui.components.ItemGroupTags
+import com.slopus.happy.ui.components.ItemTags
 import com.slopus.happy.ui.setHappyContent
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -38,8 +48,9 @@ class DataStorageScreenTest {
     fun itShowsTheSizeKeptClearsAfterAConfirmAndChangesTheRules() {
         var rules by mutableStateOf(MediaAutoDownload())
         var cleared = 0
+        var choosing: MediaAutoDownload.Kind? = null
         rule.setHappyContent {
-            DataStorageScreen(usage = 12L * 1024 * 1024, rules = rules, onRules = { rules = it }, onClear = { cleared++ }, onBack = {})
+            DataStorageScreen(usage = 12L * 1024 * 1024, rules = rules, onRules = { rules = it }, onClear = { cleared++ }, onBack = {}, onChooseLimit = { choosing = it })
         }
         rule.onNodeWithText("12 MB").assertExists()
         File("build/chat-screens").mkdirs()
@@ -54,7 +65,25 @@ class DataStorageScreenTest {
         rule.waitForIdle()
         assertEquals(true, rules.videos.enabled)
         rule.onNodeWithTag(DataStorageTags.limit(MediaAutoDownload.Kind.Photos), useUnmergedTree = true).performClick()
-        rule.onNodeWithText("25 MB").performClick()
-        assertEquals(25 * MediaAutoDownload.MEGABYTE, rules.photos.limit)
+        assertEquals(MediaAutoDownload.Kind.Photos, choosing)
+    }
+
+    @Test
+    fun limitChoicesShareOneCardCheckTheCurrentLimitAndReturnTheSelection() {
+        var selected: Long? = null
+        val current = 10 * MediaAutoDownload.MEGABYTE
+        rule.setHappyContent { MediaLimitScreen(current, { selected = it }, {}) }
+        rule.onAllNodesWithTag(ItemGroupTags.CARD, useUnmergedTree = true).assertCountEquals(1)
+        rule.node(DataStorageTags.choice(current)).assertIsSelected()
+        val rows = MediaAutoDownload.limits.map { rule.node(DataStorageTags.choice(it)).bounds }
+        for (row in rows) {
+            assertDp("row height", 56.dp, row.height)
+            assertDp("same left edge", rows.first().left, row.left)
+            assertDp("same right edge", rows.first().right, row.right)
+        }
+        for ((previous, next) in rows.zipWithNext()) assertDp("no gap between choices", previous.bottom, next.top)
+        rule.onAllNodesWithTag(ItemTags.CHEVRON, useUnmergedTree = true).assertCountEquals(0)
+        rule.node(DataStorageTags.choice(25 * MediaAutoDownload.MEGABYTE)).performClick()
+        assertEquals(25 * MediaAutoDownload.MEGABYTE, selected)
     }
 }
