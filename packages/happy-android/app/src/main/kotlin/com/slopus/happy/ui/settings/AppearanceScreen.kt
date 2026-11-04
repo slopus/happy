@@ -323,7 +323,7 @@ fun AppearanceScreen(
                 }
             }
 
-            ItemGroup(title = stringResource(R.string.settings_appearance_avatars), footer = stringResource(R.string.settings_appearance_avatars_description)) {
+            ItemGroup(title = stringResource(R.string.settings_appearance_avatars)) {
                 SwitchItem(
                     stringResource(R.string.settings_appearance_avatar_monochrome),
                     stringResource(R.string.settings_appearance_avatar_monochrome_description),
