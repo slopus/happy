@@ -74,7 +74,7 @@ final class CallController {
         if state.isLive, connectionID == account.accountID { return }
         if intro.due {
             guard !Self.showing(in: shell) else { return }
-            CallSheetViewController.present(.welcome, over: Self.top(of: shell)) { [weak self, weak controller] in
+            CallSheetViewController.present(.welcome(offer: Self.offer), over: Self.top(of: shell)) { [weak self, weak controller] in
                 guard let self, let controller else { return }
                 self.intro.started()
                 self.start(session: account, from: controller)
@@ -259,11 +259,13 @@ final class CallController {
         CallSheetViewController.present(.used(freeAgain: freeAgain, offer: Self.offer), over: Self.top(of: shell))
     }
 
-    /// Nothing is on sale. Debug builds draw the upgrade as if it were for
-    /// their test screens when asked (`HAPPY_CALL_OFFER=preview`).
+    /// Nothing is on sale. Debug builds draw the subscription as if it were
+    /// for their test screens when asked (`HAPPY_CALL_OFFER=preview`), with
+    /// the approved price, or the one the run gives (`HAPPY_CALL_OFFER_PRICE`).
     private static var offer: CallOffer {
         #if DEBUG
-        if ProcessInfo.processInfo.environment["HAPPY_CALL_OFFER"] == "preview" { return .preview }
+        let environment = ProcessInfo.processInfo.environment
+        if environment["HAPPY_CALL_OFFER"] == "preview" { return .preview(price: environment["HAPPY_CALL_OFFER_PRICE"] ?? CallOffer.price) }
         #endif
         return .unavailable
     }
@@ -306,14 +308,15 @@ final class CallController {
 
     #if DEBUG
     /// Test runs only, from the launch environment: `HAPPY_CALL_INTRO=due`
-    /// shows the welcome again, `HAPPY_CALL_USED=1` spends the free time
+    /// shows the welcome again (`started`: never), `HAPPY_CALL_USED=1` spends the free time
     /// (a 20-minute call that ended now), and `HAPPY_CALL_STEPS` presses
     /// what a person would, one step every 3 s: `tap` the voice button,
-    /// `primary` or `close` on voice's sheet on top, `dismiss` an alert. Each step logs what is
+    /// `subscribe`, `session` or `close` on voice's sheet on top, `dismiss` an alert. Each step logs what is
     /// on top and the call's state (`[call-steps]`).
     func applyTestEnvironment(tap: @escaping @MainActor () -> Void) {
         let environment = ProcessInfo.processInfo.environment
         if environment["HAPPY_CALL_INTRO"] == "due" { UserDefaults.standard.removeObject(forKey: CallIntro.key) }
+        if environment["HAPPY_CALL_INTRO"] == "started" { intro.started() }
         if environment["HAPPY_CALL_USED"] == "1" {
             let now = Date().timeIntervalSince1970
             allowance.record(call: "test-used", from: now - CallAllowance.freeSeconds, to: now)
@@ -326,7 +329,8 @@ final class CallController {
                 let sheet = UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow?.rootViewController }.first.map(Self.top(of:)) as? CallSheetViewController
                 switch step {
                 case "tap": tap()
-                case "primary": sheet?.primary.sendActions(for: .primaryActionTriggered)
+                case "subscribe": sheet?.subscribe?.onTap?()
+                case "session": if sheet?.session.isEnabled == true { sheet?.session.sendActions(for: .touchUpInside) }
                 case "close": sheet?.close.sendActions(for: .primaryActionTriggered)
                 case "dismiss": (UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow?.rootViewController }.first.map(Self.top(of:)) as? UIAlertController)?.dismiss(animated: true)
                 default: break

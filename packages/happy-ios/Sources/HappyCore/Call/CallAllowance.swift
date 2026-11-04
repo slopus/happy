@@ -118,9 +118,19 @@ public final class CallAllowance {
 public enum CallOffer: Equatable, Sendable {
     case unavailable
     /// Debug builds' test screens only (`HAPPY_CALL_OFFER=preview`): the
-    /// upgrade drawn as if it were on sale, its button saying it is a
-    /// preview that charges and grants nothing. Never in a release build.
-    case preview
+    /// subscription drawn as if it were on sale, its button a preview that
+    /// charges and grants nothing. Never in a release build. `price` is
+    /// what the sheet says: `CallOffer.price`, or what the run gives
+    /// (`HAPPY_CALL_OFFER_PRICE`).
+    case preview(price: String)
+
+    /// The monthly price as approved, until the store's own localised one
+    /// replaces it. It buys 5 hours of real-time voice a month.
+    public static let price = "$20"
+
+    public var onSale: Bool {
+        if case .preview = self { true } else { false }
+    }
 }
 
 /// Whether this device has been shown voice's welcome and started from it:

@@ -42,3 +42,14 @@ Three more files draw the first screen's slides and the screen after it
 | `llama.json`         | `ff16ee4b8a19a782b5e5b12dbe103d145410f16b8801af5723b6636c56a0a0ff` | happy-desktop's, as above (its welcome deck's "One harness. Every agent."), supplied by its owner; upstream unrecorded there |
 | `tv.json`            | `3aad5efeefedef3fcbb2020a12873a40866141ec898a05f7eb67f15482f765fe` | a 📺 animated sticker supplied by Kirill on 2 November 2026 (`AnimatedSticker.tgs`, a Telegram sticker: gzip of Lottie JSON), decompressed and otherwise unmodified; upstream and licence not recorded |
 
+
+## `podcast-mic.json`, voice's sheets
+
+Not desktop's, and not under `LICENSE` here. Supplied with the request for
+voice's welcome and paywall (`CallSheetViewController`) as a Telegram
+sticker file, `podcast mic.tgs` (SHA-256
+`eaa5af703130fe10ae3535e1d26f0a8b3fb85355d91d696f7359d55effb95ee9`), and
+committed as that file gunzipped, byte for byte (SHA-256
+`f90db7a207596916bc5c0b22db6e3ca40f2e24008b015bc654ee1aa5ff724284`). Its
+author and licence are **not verified**: confirm them before a release
+build ships it.
