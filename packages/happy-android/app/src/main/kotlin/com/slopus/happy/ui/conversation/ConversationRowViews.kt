@@ -7,6 +7,7 @@ import com.slopus.happy.ui.artifacts.artifactCardGlyph
 import com.slopus.happy.conversation.InlinePicture
 import com.slopus.happy.conversation.pictureSize
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.widthIn
 import com.slopus.happy.agent.AgentClient
 import com.slopus.happy.ui.components.avatar.PlaceholderAvatar
 import com.slopus.happy.ui.connection.AgentPicture
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -108,6 +110,7 @@ object ConversationRowSpec {
     val label = happyTextStyle(fontSize = 13, lineHeight = 18, weight = FontWeight.SemiBold)
     val body = happyTextStyle(fontSize = 14, lineHeight = 20)
     val storyLine = happyTextStyle(fontSize = 12, lineHeight = 16)
+    val storyAuthor = happyTextStyle(fontSize = 13, lineHeight = 20, weight = FontWeight.SemiBold)
     val notice = happyTextStyle(fontSize = 13, lineHeight = 18)
     val icon = 16.dp
 }
@@ -364,18 +367,19 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
 private fun StoryQuoteCard(story: ConversationRow.StoryQuote, messageId: String, title: String?) {
     val colors = HappyTheme.colors
     Row(
-        Modifier.padding(bottom = 4.dp).testTag(ConversationRowTags.STORY).widthIn(max = 280.dp).clip(RoundedCornerShape(10.dp)).background(colors.surfaceHighest).padding(6.dp),
+        Modifier.padding(bottom = 4.dp).testTag(ConversationRowTags.STORY).widthIn(max = 280.dp).clip(RoundedCornerShape(10.dp)).background(colors.surfaceHighest)
+            .border(1.dp, colors.divider, RoundedCornerShape(10.dp)).padding(start = 6.dp, top = 6.dp, end = 12.dp, bottom = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         val frame = "/v0/agents/${AgentClient.escape(story.agentId)}/messages/${AgentClient.escape(messageId)}/story-frame"
-        if (story.frame) AgentPicture(frame, story.thumbhash, 36.dp, radius = 6.dp, height = 64.dp) else Box(Modifier.size(36.dp, 64.dp).clip(RoundedCornerShape(6.dp)).background(colors.surfaceRipple))
+        if (story.frame) AgentPicture(frame, story.thumbhash, 36.dp, radius = 4.dp, height = 64.dp) else Box(Modifier.size(36.dp, 64.dp).clip(RoundedCornerShape(4.dp)).background(colors.surfaceRipple))
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(stringResource(R.string.conversation_story), style = ConversationRowSpec.storyLine, color = colors.textSecondary, maxLines = 1)
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                PlaceholderAvatar(story.seed, 16.dp)
+                PlaceholderAvatar(story.seed, 20.dp, shape = if (story.person) CircleShape else RoundedCornerShape(6.dp))
                 val untitled = if (story.person) "" else title ?: stringResource(R.string.reference_untitled_agent)
-                Text(story.author ?: untitled, style = ConversationRowSpec.label, color = colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(story.author ?: untitled, style = ConversationRowSpec.storyAuthor, color = colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             story.caption?.let { Text(it, style = ConversationRowSpec.storyLine, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis) }
         }
