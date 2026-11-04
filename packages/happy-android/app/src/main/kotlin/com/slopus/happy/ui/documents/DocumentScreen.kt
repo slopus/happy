@@ -258,17 +258,20 @@ internal fun DocumentEditorView(
             onController(null)
         }
     }
+    // Back on the main thread for the editor and the view, whatever the effect's context resumes on (a test's does on the builder's thread).
     LaunchedEffect(controller, editor, style) {
-        var lines: List<DocumentLine>
-        var built: CharSequence
-        do {
-            lines = editor.lines
-            val snapshot = lines
-            built = withContext(Dispatchers.Default) { style.document(snapshot) }
-        } while (editor.lines !== lines)
-        view.setTextColor(DocumentTokens.text.of(dark))
-        view.highlightColor = (DocumentTokens.link.of(dark) and 0x00FFFFFF) or (0x40 shl 24)
-        controller.install(editor, built, style)
+        withContext(Dispatchers.Main.immediate) {
+            var lines: List<DocumentLine>
+            var built: CharSequence
+            do {
+                lines = editor.lines
+                val snapshot = lines
+                built = withContext(Dispatchers.Default) { style.document(snapshot) }
+            } while (editor.lines !== lines)
+            view.setTextColor(DocumentTokens.text.of(dark))
+            view.highlightColor = (DocumentTokens.link.of(dark) and 0x00FFFFFF) or (0x40 shl 24)
+            controller.install(editor, built, style)
+        }
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val side = keyline(maxWidth)
