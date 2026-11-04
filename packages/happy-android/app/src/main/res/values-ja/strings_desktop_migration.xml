@@ -6,17 +6,7 @@
     <string name="desktop_migration_agent_connection_title">直接接続に移行</string>
     <string name="desktop_migration_agent_connection_body">現在、Happy サーバー経由で Happy Agent を使っています。直接接続すると、最小の遅延と最新の機能を利用できます。</string>
     <string name="desktop_migration_settings_step">Settings\u00A0›\u00A0Mobile\u00A0Access を開きます。</string>
+    <string name="desktop_migration_server_step">サーバーで Happy を使っていますか？</string>
+    <string name="desktop_migration_server_step_detail">Happy Desktop でそのサーバーを選択し、コードをスキャンします。\n新しいリモートサーバーを設定するには、Happy Desktop の Chief of Staff ボットに頼むだけです。</string>
     <string name="desktop_migration_learn_more">詳しく見る</string>
-    <string name="desktop_migration_server_title">サーバーで Happy を実行していますか？</string>
-    <string name="desktop_migration_server_scan">Happy Desktop でリモートサーバーを選択し、同じようにそのコードをスキャンします。</string>
-    <string name="desktop_migration_server_set_up">新しいサーバーを設定するには、Chief of Staff に依頼してください。</string>
-    <string name="desktop_migration_current">現在の接続</string>
-    <string name="desktop_migration_after">移行後</string>
-    <string name="desktop_migration_phone">スマートフォン</string>
-    <string name="desktop_migration_computer">コンピューター</string>
-    <string name="desktop_migration_server">Happy サーバー</string>
-    <string name="desktop_migration_server_detail">チャットを暗号化して保存</string>
-    <string name="desktop_migration_relay">リレー</string>
-    <string name="desktop_migration_relay_detail">通過するだけ、暗号化のまま</string>
-    <string name="desktop_migration_diagram_spoken">現在の接続：スマートフォンは Happy サーバーを経由してコンピューターにつながり、サーバーはチャットを暗号化して保存します。移行後：スマートフォンはリレーを経由してコンピューターにつながり、リレーはデータを暗号化したまま通過させるだけです。</string>
 </resources>

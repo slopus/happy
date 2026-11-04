@@ -190,7 +190,7 @@ class DesktopMigrationTest {
         rule.mainClock.advanceTimeBy(5_000)
     }
 
-    /** iOS MigrationScreenLayout, the Happy Desktop path. */
+    /** iOS MigrationScreenLayout (7c471796f), the Happy Desktop path: three steps, 22 from what each shows. */
     @Test
     fun theDesktopPathLaysOutAsIos() {
         screen(MigrationPath.Desktop)
@@ -202,10 +202,11 @@ class DesktopMigrationTest {
         val step0 = rule.node("${DesktopMigrationTags.STEP}.0").bounds
         val site = rule.node(DesktopMigrationTags.SITE).bounds
         val step1 = rule.node("${DesktopMigrationTags.STEP}.1").bounds
+        val number2 = rule.node("${DesktopMigrationTags.NUMBER}.2").bounds
+        val step2 = rule.node("${DesktopMigrationTags.STEP}.2").bounds
+        val detail = rule.node(DesktopMigrationTags.DETAIL).bounds
         val scan = rule.node(DesktopMigrationTags.SCAN).bounds
         val learn = rule.node(DesktopMigrationTags.LEARN_MORE).bounds
-        val server = rule.node(DesktopMigrationTags.SERVER).bounds
-        rule.node(DesktopMigrationTags.DIAGRAM).assertDoesNotExist()
 
         assertDp("art under the bar", 64, art.top)
         assertDp("art 72", 72, art.width)
@@ -219,30 +220,26 @@ class DesktopMigrationTest {
         assertDp("the site's words start on the step's edge", step0.left - 14.dp, site.left)
         assertDp("site under its step", step0.bottom, site.top)
         assertDp("site a 40 target", 40, site.height)
-        assertDp("next step 12 under", site.bottom + 12.dp, step1.top)
+        assertDp("next step 22 under the site's words", site.top + 30.dp + 22.dp, step1.top)
         rule.onNodeWithText("Choose Link\u00A0Mobile\u00A0App during onboarding.\nOr go to Settings\u00A0›\u00A0Mobile\u00A0Access.").assertExists()
-        assertTrue("scan at least 20 under the steps", scan.top >= step1.bottom + 20.dp - 0.34.dp)
+        assertDp("the server's step 22 under", step1.bottom + 22.dp, step2.top)
+        assertDp("its dot level with it", step2.top + 1.dp, number2.top)
+        rule.onNodeWithText("Using Happy on a server?").assertExists()
+        assertDp("its detail 10 under its words", step2.bottom + 10.dp, detail.top)
+        assertDp("the detail on the words' edge", step2.left, detail.left)
+        rule.onNodeWithText("Select it in Happy Desktop and scan its code.\nTo set up a new remote server, just ask the Chief of Staff bot in Happy Desktop.").assertExists()
+        assertTrue("scan at least 20 under the detail", scan.top >= detail.bottom + 20.dp - 0.34.dp)
         assertDp("learn more 4 under scan", scan.bottom + 4.dp, learn.top)
         assertDp("learn more a 40 target", 40, learn.height)
-        assertDp("server 8 under learn more", learn.bottom + 8.dp, server.top)
-        assertDp("the closed section's foot on the window's", PHONE_HEIGHT.dp, server.bottom)
-        for ((name, box) in listOf("art" to art, "title" to title, "scan" to scan, "learn more" to learn, "server" to server)) {
+        assertDp("learn more's foot on the window's", PHONE_HEIGHT.dp, learn.bottom)
+        for ((name, box) in listOf("art" to art, "title" to title, "scan" to scan, "learn more" to learn)) {
             assertDp("$name centred", (PHONE_WIDTH / 2f).dp, (box.left + box.right) / 2)
         }
+        // The diagram and the server's section that opened in place are gone (iOS e601c6dc1).
+        rule.onNodeWithText("Running Happy on a server?").assertDoesNotExist()
+        rule.onNodeWithText("Current connection", substring = true).assertDoesNotExist()
         rule.assertActionsLabelled()
-        shot("w1-screen-desktop-light")
-
-        // Opened, the paragraphs grow under it, centred, 4 down.
-        rule.node(DesktopMigrationTags.SERVER_PARAGRAPHS).assertDoesNotExist()
-        rule.node(DesktopMigrationTags.SERVER).performClick()
-        rule.mainClock.advanceTimeBy(1_000)
-        rule.onNodeWithText("To set up a new server, ask Chief of Staff.").performScrollTo().assertExists()
-        val opened = rule.node(DesktopMigrationTags.SERVER).bounds
-        assertDp("paragraphs 4 under the title", opened.bottom + 4.dp, rule.onNodeWithText("In Happy Desktop, select the remote server and scan its code the same way.").bounds.top)
-        shot("w1-screen-desktop-server-open-light")
-        rule.node(DesktopMigrationTags.SERVER).performClick()
-        rule.mainClock.advanceTimeBy(1_000)
-        rule.node(DesktopMigrationTags.SERVER_PARAGRAPHS).assertDoesNotExist()
+        shot("w25-screen-desktop-light")
 
         rule.node(DesktopMigrationTags.SCAN).performClick()
         rule.node(DesktopMigrationTags.LEARN_MORE).performClick()
@@ -251,23 +248,24 @@ class DesktopMigrationTest {
         assertEquals(listOf("scan", "learn", "site", "back"), taps)
     }
 
-    /** iOS ConnectionDiagramLayout, on the direct connection's path: before and after, then the settings step. */
+    /** The direct connection's path: open Happy Desktop, its settings, then the server's case. */
     @Test
-    fun theDirectPathShowsBeforeAndAfter() {
+    fun theDirectPathListsTheServerCaseThird() {
         screen(MigrationPath.AgentConnection, dark = true)
         val body = rule.node(DesktopMigrationTags.BODY).bounds
-        val diagram = rule.node(DesktopMigrationTags.DIAGRAM).bounds
         val step0 = rule.node("${DesktopMigrationTags.STEP}.0").bounds
         val step1 = rule.node("${DesktopMigrationTags.STEP}.1").bounds
-        assertDp("diagram 20 under the line", body.bottom + 20.dp, diagram.top)
-        assertDp("the column's width", PHONE_WIDTH.dp - 48.dp, diagram.width)
-        assertDp("steps 20 under the diagram", diagram.bottom + 20.dp, step0.top)
-        assertDp("no site on this path", step0.bottom + 12.dp, step1.top)
+        val step2 = rule.node("${DesktopMigrationTags.STEP}.2").bounds
+        val detail = rule.node(DesktopMigrationTags.DETAIL).bounds
+        assertDp("steps 20 under the line", body.bottom + 20.dp, step0.top)
+        assertDp("no site on this path, 22 between steps", step0.bottom + 22.dp, step1.top)
+        assertDp("22 to the server's step", step1.bottom + 22.dp, step2.top)
+        assertDp("its detail 10 under", step2.bottom + 10.dp, detail.top)
         rule.node(DesktopMigrationTags.SITE).assertDoesNotExist()
         rule.onNodeWithText("Go to Settings\u00A0›\u00A0Mobile\u00A0Access.").assertExists()
-        rule.onNodeWithContentDescription("Current connection: your phone reaches your computer through the Happy server", substring = true).assertExists()
+        rule.onNodeWithText("Using Happy on a server?").assertExists()
         rule.assertActionsLabelled()
-        shot("w1-screen-direct-dark")
+        shot("w25-screen-direct-dark")
     }
 
     /** On a tablet the column stays 440 and centred. */
@@ -275,9 +273,25 @@ class DesktopMigrationTest {
     @Config(qualifiers = "w1280dp-h800dp-xhdpi")
     fun onATabletTheColumnIsHeld() {
         screen(MigrationPath.AgentConnection)
-        val diagram = rule.node(DesktopMigrationTags.DIAGRAM).bounds
-        assertDp("440 wide", 440, diagram.width)
-        assertDp("centred", 640.dp, (diagram.left + diagram.right) / 2)
-        shot("w1-screen-direct-tablet-light")
+        val number = rule.node("${DesktopMigrationTags.NUMBER}.0").bounds
+        val detail = rule.node(DesktopMigrationTags.DETAIL).bounds
+        assertDp("440 wide, centred", 640.dp - 220.dp, number.left)
+        assertDp("the detail reaches the column's end", 640.dp + 220.dp, detail.right)
+        shot("w25-screen-direct-tablet-light")
+    }
+
+    /** Words taller than the window push the button 20 under the detail, and the page scrolls to Learn more. */
+    @Test
+    @Config(qualifiers = "w411dp-h500dp-xxhdpi")
+    fun tooTallItScrolls() {
+        screen(MigrationPath.Desktop)
+        val detail = rule.node(DesktopMigrationTags.DETAIL).bounds
+        rule.node(DesktopMigrationTags.LEARN_MORE).performScrollTo()
+        val scan = rule.node(DesktopMigrationTags.SCAN).bounds
+        val learn = rule.node(DesktopMigrationTags.LEARN_MORE).bounds
+        val after = rule.node(DesktopMigrationTags.DETAIL).bounds
+        assertDp("scan 20 under the detail", after.bottom + 20.dp, scan.top)
+        assertTrue("the page scrolled", after.top < detail.top)
+        assertTrue("learn more on the screen", learn.bottom <= 500.dp + 0.34.dp)
     }
 }

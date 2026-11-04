@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   The Happy CLI home's migration card and the screen it opens (iOS ea1a0902f,
-  Strings.DesktopMigration, Kirill's words; every language from happy-ios
+  e601c6dc1, 7c471796f; Strings.DesktopMigration, Kirill's words; every language from happy-ios
   NativeTranslations+DesktopMigration.swift). Not in happy-app's catalogs.
   Happy Desktop, Happy Agent, Chief of Staff and desktop's Settings › Mobile
   Access keep their names.
@@ -13,17 +13,7 @@
     <string name="desktop_migration_agent_connection_title">Migrate to direct connection</string>
     <string name="desktop_migration_agent_connection_body">You’re using Happy Agent through the Happy server. Connect directly for the lowest latency and newest features.</string>
     <string name="desktop_migration_settings_step">Go to Settings\u00A0›\u00A0Mobile\u00A0Access.</string>
+    <string name="desktop_migration_server_step">Using Happy on a server?</string>
+    <string name="desktop_migration_server_step_detail">Select it in Happy Desktop and scan its code.\nTo set up a new remote server, just ask the Chief of Staff bot in Happy Desktop.</string>
     <string name="desktop_migration_learn_more">Learn more</string>
-    <string name="desktop_migration_server_title">Running Happy on a server?</string>
-    <string name="desktop_migration_server_scan">In Happy Desktop, select the remote server and scan its code the same way.</string>
-    <string name="desktop_migration_server_set_up">To set up a new server, ask Chief of Staff.</string>
-    <string name="desktop_migration_current">Current connection</string>
-    <string name="desktop_migration_after">After migration</string>
-    <string name="desktop_migration_phone">Phone</string>
-    <string name="desktop_migration_computer">Computer</string>
-    <string name="desktop_migration_server">Happy server</string>
-    <string name="desktop_migration_server_detail">Stores your chats, encrypted</string>
-    <string name="desktop_migration_relay">Relay</string>
-    <string name="desktop_migration_relay_detail">Passes through, still encrypted</string>
-    <string name="desktop_migration_diagram_spoken">Current connection: your phone reaches your computer through the Happy server, which stores your chats, encrypted. After migration: your phone reaches your computer through a relay, which passes them through, still encrypted.</string>
 </resources>

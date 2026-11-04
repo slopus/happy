@@ -6,7 +6,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -24,10 +23,6 @@ enum class LineIcon {
     /** A direct connection. */
     Zap,
     Monitor,
-    Smartphone,
-    Cloud,
-    Database,
-    Router,
     ;
 
     /** The outline on the 24 grid, made once. */
@@ -41,7 +36,6 @@ private fun outline(icon: LineIcon): Path = Path().apply {
     }
     fun rect(x: Float, y: Float, width: Float, height: Float, radius: Float) =
         addRoundRect(RoundRect(x, y, x + width, y + height, CornerRadius(radius)))
-    fun circle(cx: Float, cy: Float, r: Float) = Rect(cx - r, cy - r, cx + r, cy + r)
     when (icon) {
         LineIcon.Zap -> {
             line(13f to 2f, 3f to 14f, 12f to 14f, 11f to 22f, 21f to 10f, 12f to 10f)
@@ -51,35 +45,6 @@ private fun outline(icon: LineIcon): Path = Path().apply {
             rect(2f, 3f, 20f, 14f, 2f)
             line(8f to 21f, 16f to 21f)
             line(12f to 17f, 12f to 21f)
-        }
-        LineIcon.Smartphone -> {
-            rect(5f, 2f, 14f, 20f, 2f)
-            line(12f to 18f, 12.01f to 18f)
-        }
-        LineIcon.Cloud -> {
-            moveTo(17.5f, 19f)
-            lineTo(9f, 19f)
-            // From the bottom round past the top to where the small arc begins.
-            arcTo(circle(9f, 12f, 7f), 90f, 253.4f, false)
-            lineTo(17.5f, 10f)
-            arcTo(circle(17.5f, 14.5f, 4.5f), -90f, 180f, false)
-            close()
-        }
-        LineIcon.Database -> {
-            // Three stacked ellipses, 9 by 3, joined at the sides.
-            addOval(Rect(3f, 2f, 21f, 8f))
-            line(3f to 5f, 3f to 19f)
-            line(21f to 5f, 21f to 19f)
-            arcTo(Rect(3f, 9f, 21f, 15f), 0f, 180f, true)
-            arcTo(Rect(3f, 16f, 21f, 22f), 0f, 180f, true)
-        }
-        LineIcon.Router -> {
-            rect(2f, 14f, 20f, 8f, 2f)
-            line(6.01f to 18f, 6f to 18f)
-            line(10.01f to 18f, 10f to 18f)
-            line(15f to 10f, 15f to 14f)
-            // Two waves about (15, 10), as Lucide's arcs draw them.
-            for (radius in listOf(4f, 8f)) arcTo(circle(15f, 10f, radius), -45f, -90f, true)
         }
     }
 }

@@ -6,17 +6,7 @@
     <string name="desktop_migration_agent_connection_title">迁移到直接连接</string>
     <string name="desktop_migration_agent_connection_body">你正在通过 Happy 服务器使用 Happy Agent。直接连接可获得最低延迟和最新功能。</string>
     <string name="desktop_migration_settings_step">前往 Settings\u00A0›\u00A0Mobile\u00A0Access。</string>
+    <string name="desktop_migration_server_step">在服务器上使用 Happy？</string>
+    <string name="desktop_migration_server_step_detail">在 Happy Desktop 中选择它并扫描它的代码。\n要设置新的远程服务器，只需在 Happy Desktop 中询问 Chief of Staff 机器人。</string>
     <string name="desktop_migration_learn_more">了解更多</string>
-    <string name="desktop_migration_server_title">在服务器上运行 Happy？</string>
-    <string name="desktop_migration_server_scan">在 Happy Desktop 中选择远程服务器，然后用同样的方式扫描它的代码。</string>
-    <string name="desktop_migration_server_set_up">要设置新服务器，请询问 Chief of Staff。</string>
-    <string name="desktop_migration_current">当前连接</string>
-    <string name="desktop_migration_after">迁移后</string>
-    <string name="desktop_migration_phone">手机</string>
-    <string name="desktop_migration_computer">电脑</string>
-    <string name="desktop_migration_server">Happy 服务器</string>
-    <string name="desktop_migration_server_detail">加密存储你的聊天</string>
-    <string name="desktop_migration_relay">中继</string>
-    <string name="desktop_migration_relay_detail">仅转发，仍然加密</string>
-    <string name="desktop_migration_diagram_spoken">当前连接：你的手机通过 Happy 服务器连接到电脑，服务器加密存储你的聊天。迁移后：你的手机通过中继连接到电脑，中继只转发，内容仍然加密。</string>
 </resources>
