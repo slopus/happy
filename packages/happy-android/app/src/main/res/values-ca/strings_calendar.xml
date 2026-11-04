@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="calendar_month">Mes</string>
+    <string name="calendar_view">Vista del calendari</string>
+    <string name="calendar_all_day">Tot el dia</string>
+    <string name="calendar_no_title">(Sense títol)</string>
+    <string name="calendar_no_events">No hi ha esdeveniments aquest dia</string>
+    <string name="calendar_previous">Període anterior</string>
+    <string name="calendar_next">Període següent</string>
+    <string name="calendar_loading">S’està carregant el calendari…</string>
+    <string name="calendar_missing">Aquest calendari ja no està disponible.</string>
+    <string name="calendar_unsupported">Aquest Happy Agent encara no admet calendaris.</string>
+    <string name="calendar_retrying">No s’ha pogut accedir al calendari. Es tornarà a intentar automàticament.</string>
+    <string name="calendar_truncated">Només es mostren les primeres 5.000 ocurrències. Tria un període més curt.</string>
+    <plurals name="calendar_more"><item quantity="one">+%1$d més</item><item quantity="many">+%1$d més</item><item quantity="other">+%1$d més</item></plurals>
+    <plurals name="calendar_event_count"><item quantity="one">%1$d esdeveniment</item><item quantity="many">%1$d esdeveniments</item><item quantity="other">%1$d esdeveniments</item></plurals>
+</resources>

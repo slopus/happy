@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="calendar_month">Месяц</string>
+    <string name="calendar_view">Вид календаря</string>
+    <string name="calendar_all_day">Весь день</string>
+    <string name="calendar_no_title">(Без названия)</string>
+    <string name="calendar_no_events">В этот день нет событий</string>
+    <string name="calendar_previous">Предыдущий период</string>
+    <string name="calendar_next">Следующий период</string>
+    <string name="calendar_loading">Загрузка календаря…</string>
+    <string name="calendar_missing">Этот календарь больше недоступен.</string>
+    <string name="calendar_unsupported">Этот Happy Agent пока не поддерживает календари.</string>
+    <string name="calendar_retrying">Не удалось загрузить календарь. Попытка повторится автоматически.</string>
+    <string name="calendar_truncated">Показаны только первые 5 000 вхождений. Выберите меньший период.</string>
+    <plurals name="calendar_more"><item quantity="one">Ещё %1$d</item><item quantity="few">Ещё %1$d</item><item quantity="many">Ещё %1$d</item><item quantity="other">Ещё %1$d</item></plurals>
+    <plurals name="calendar_event_count"><item quantity="one">%1$d событие</item><item quantity="few">%1$d события</item><item quantity="many">%1$d событий</item><item quantity="other">%1$d события</item></plurals>
+</resources>

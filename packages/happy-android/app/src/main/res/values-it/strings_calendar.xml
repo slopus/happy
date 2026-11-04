@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="calendar_month">Mese</string>
+    <string name="calendar_view">Vista calendario</string>
+    <string name="calendar_all_day">Tutto il giorno</string>
+    <string name="calendar_no_title">(Senza titolo)</string>
+    <string name="calendar_no_events">Nessun evento in questo giorno</string>
+    <string name="calendar_previous">Periodo precedente</string>
+    <string name="calendar_next">Periodo successivo</string>
+    <string name="calendar_loading">Caricamento del calendario…</string>
+    <string name="calendar_missing">Questo calendario non è più disponibile.</string>
+    <string name="calendar_unsupported">Questo Happy Agent non supporta ancora i calendari.</string>
+    <string name="calendar_retrying">Impossibile raggiungere il calendario. Il tentativo verrà ripetuto automaticamente.</string>
+    <string name="calendar_truncated">Sono mostrate solo le prime 5.000 occorrenze. Scegli un periodo più breve.</string>
+    <plurals name="calendar_more"><item quantity="one">+%1$d altro</item><item quantity="many">+%1$d altri</item><item quantity="other">+%1$d altri</item></plurals>
+    <plurals name="calendar_event_count"><item quantity="one">%1$d evento</item><item quantity="many">%1$d eventi</item><item quantity="other">%1$d eventi</item></plurals>
+</resources>

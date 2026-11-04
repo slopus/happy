@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="calendar_month">月</string>
+    <string name="calendar_view">日历视图</string>
+    <string name="calendar_all_day">全天</string>
+    <string name="calendar_no_title">（无标题）</string>
+    <string name="calendar_no_events">当天没有日程</string>
+    <string name="calendar_previous">上一时段</string>
+    <string name="calendar_next">下一时段</string>
+    <string name="calendar_loading">正在加载日历…</string>
+    <string name="calendar_missing">此日历已不可用。</string>
+    <string name="calendar_unsupported">此Happy Agent尚不支持日历。</string>
+    <string name="calendar_retrying">无法连接到日历。正在自动重试。</string>
+    <string name="calendar_truncated">仅显示前5,000次日程。请选择更短的时段。</string>
+    <plurals name="calendar_more"><item quantity="other">另有%1$d项</item></plurals>
+    <plurals name="calendar_event_count"><item quantity="other">%1$d项日程</item></plurals>
+</resources>

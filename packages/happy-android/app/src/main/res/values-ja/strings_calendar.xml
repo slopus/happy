@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="calendar_month">月</string>
+    <string name="calendar_view">カレンダー表示</string>
+    <string name="calendar_all_day">終日</string>
+    <string name="calendar_no_title">（タイトルなし）</string>
+    <string name="calendar_no_events">この日に予定はありません</string>
+    <string name="calendar_previous">前の期間</string>
+    <string name="calendar_next">次の期間</string>
+    <string name="calendar_loading">カレンダーを読み込み中…</string>
+    <string name="calendar_missing">このカレンダーは利用できなくなりました。</string>
+    <string name="calendar_unsupported">このHappy Agentはカレンダーにまだ対応していません。</string>
+    <string name="calendar_retrying">カレンダーに接続できませんでした。自動的に再試行します。</string>
+    <string name="calendar_truncated">最初の5,000件のみ表示されます。期間を短くしてください。</string>
+    <plurals name="calendar_more"><item quantity="other">他%1$d件</item></plurals>
+    <plurals name="calendar_event_count"><item quantity="other">%1$d件の予定</item></plurals>
+</resources>

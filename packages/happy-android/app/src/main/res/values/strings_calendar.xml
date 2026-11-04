@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="calendar_month">Month</string>
+    <string name="calendar_view">Calendar view</string>
+    <string name="calendar_all_day">All day</string>
+    <string name="calendar_no_title">(No title)</string>
+    <string name="calendar_no_events">No events on this day</string>
+    <string name="calendar_previous">Previous period</string>
+    <string name="calendar_next">Next period</string>
+    <string name="calendar_loading">Loading calendar…</string>
+    <string name="calendar_missing">This calendar is no longer available.</string>
+    <string name="calendar_unsupported">This Happy Agent does not support calendars yet.</string>
+    <string name="calendar_retrying">The calendar could not be reached. Retrying automatically.</string>
+    <string name="calendar_truncated">Only the first 5,000 occurrences are shown. Choose a shorter range.</string>
+    <plurals name="calendar_more"><item quantity="one">+%1$d more</item><item quantity="other">+%1$d more</item></plurals>
+    <plurals name="calendar_event_count"><item quantity="one">%1$d event</item><item quantity="other">%1$d events</item></plurals>
+</resources>

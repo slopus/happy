@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="calendar_month">月</string>
+    <string name="calendar_view">行事曆檢視</string>
+    <string name="calendar_all_day">全天</string>
+    <string name="calendar_no_title">（無標題）</string>
+    <string name="calendar_no_events">當天沒有行程</string>
+    <string name="calendar_previous">上一時段</string>
+    <string name="calendar_next">下一時段</string>
+    <string name="calendar_loading">正在載入行事曆…</string>
+    <string name="calendar_missing">此行事曆已無法使用。</string>
+    <string name="calendar_unsupported">此Happy Agent尚不支援行事曆。</string>
+    <string name="calendar_retrying">無法連線至行事曆。正在自動重試。</string>
+    <string name="calendar_truncated">僅顯示前5,000次行程。請選擇較短的時段。</string>
+    <plurals name="calendar_more"><item quantity="other">另有%1$d項</item></plurals>
+    <plurals name="calendar_event_count"><item quantity="other">%1$d項行程</item></plurals>
+</resources>
