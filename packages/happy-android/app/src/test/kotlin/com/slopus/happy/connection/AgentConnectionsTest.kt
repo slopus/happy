@@ -64,6 +64,7 @@ class AgentConnectionsTest {
         val account = accounts().add(credentials(), "Steve's Mac")
         assertEquals("Studio", account.name)
         assertEquals("abc", account.thumbhash)
+        assertEquals("0.4.109", account.daemonVersion)
         assertTrue(account.id.startsWith("agent-connection-"))
         assertEquals(1, daemon.closed)
 

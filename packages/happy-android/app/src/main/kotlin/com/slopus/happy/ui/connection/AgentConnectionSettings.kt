@@ -146,6 +146,7 @@ fun NavHostController.openAgentSettingsRow(connectionId: String, row: AgentSetti
 }
 
 object AgentSettingsTags {
+    const val DAEMON_VERSION = "agentSettings.daemonVersion"
     const val BAR = "agentSettings.bar"
     const val PROFILE = "agentSettings.profile"
     const val APPEARANCE = "agentSettings.appearance"
@@ -201,6 +202,7 @@ fun AgentConnectionSettingsScreen(
     appearance: List<SettingsEntry> = emptyList(),
     /** Where the page is scrolled; shared with the other kind's page, so a switch keeps it (AccountSettings). */
     scroll: ScrollState = rememberScrollState(),
+    daemonVersion: String? = null,
 ) {
     val namePrefix = stringResource(R.string.agent_settings_edit_name_prefix)
     val avatarPrefix = stringResource(R.string.agent_settings_edit_avatar_prefix)
@@ -242,9 +244,20 @@ fun AgentConnectionSettingsScreen(
                 },
             ),
         ),
+        SettingsSection(
+            listOfNotNull(daemonVersion?.takeIf(String::isNotBlank)?.let { version ->
+                SettingsEntry(
+                    id = AgentSettingsTags.DAEMON_VERSION,
+                    title = "${stringResource(R.string.account_kind_agent)} · ${stringResource(R.string.common_version)}",
+                    detail = version,
+                    icon = { SettingsTile(Ionicon.InformationCircleOutline, SettingsTiles.gray) },
+                    chevron = false,
+                )
+            }),
+        ),
         SettingsSection(listOf(supportEntry(about, aboutActions))),
         aboutSection(about, aboutActions),
-    )
+    ).filter { it.rows.isNotEmpty() }
     // The bar on the page's own grey (black in dark), the groups on it: one surface, as the chat's details.
     Screen(
         header = {
@@ -410,5 +423,6 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
         person = AgentPerson(personState.name, personPhoto, rememberPersonSeed(graph, connectionId)),
         appearance = agentAppearanceSections(theme, graph.localSettings::setThemePreference, projectsHidden, { session?.setProjectsHidden(it) }, sound, { session?.setCompletionSound(it) }).flatMap { it.rows },
         scroll = scroll,
+        daemonVersion = agent.daemonVersion,
     )
 }

@@ -44,6 +44,8 @@ data class AgentConnection(
      * gets one of their own, never this one's sessions, caches or cursor.
      */
     val userId: String? = null,
+    /** Last health response's daemon version, shown separately from this phone's build. */
+    val daemonVersion: String? = null,
 )
 
 /**
@@ -168,6 +170,7 @@ class AgentConnections(
                     avatarETag = previous?.avatarETag,
                     addedAt = previous?.addedAt ?: now(),
                     instanceId = agent?.instanceId ?: previous?.instanceId,
+                    daemonVersion = agent?.daemonVersion ?: previous?.daemonVersion,
                 ),
                 agent?.avatar ?: NodeAvatar.Unchanged,
             )
@@ -246,6 +249,7 @@ class AgentConnections(
                             server = origin.value,
                             instanceId = agent?.instanceId ?: existing?.instanceId,
                             userId = userId,
+                            daemonVersion = agent?.daemonVersion ?: existing?.daemonVersion,
                         ),
                         agent?.avatar ?: NodeAvatar.Unchanged,
                     )

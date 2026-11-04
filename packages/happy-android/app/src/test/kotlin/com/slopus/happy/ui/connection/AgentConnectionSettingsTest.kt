@@ -4,6 +4,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.captureToImage
@@ -18,6 +19,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.height
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.agent.AgentProfileState
 import com.slopus.happy.agent.CompletionSound
@@ -30,6 +32,7 @@ import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.components.GlassSpec
 import com.slopus.happy.ui.components.ItemGroupTags
+import com.slopus.happy.ui.components.ItemTags
 import com.slopus.happy.ui.home.AccountMenu
 import com.slopus.happy.ui.home.AccountMenuEntry
 import com.slopus.happy.ui.node
@@ -77,7 +80,7 @@ class AgentConnectionSettingsTest {
         onAskChief = { done += it },
     )
 
-    private fun show(dark: Boolean = false) = rule.setHappyContent(dark) {
+    private fun show(dark: Boolean = false, daemonVersion: String? = null) = rule.setHappyContent(dark) {
         page = HappyTheme.colors.grouped.background.toArgb()
         AgentConnectionSettingsScreen(
             profile = SettingsProfile("agent-connection-1", "Studio", "Connected"),
@@ -86,7 +89,19 @@ class AgentConnectionSettingsTest {
             about = AboutInfo("1.8.0 (412)"),
             accountActions = AccountsCardActions({ done += "switch:$it" }, { done += "add" }),
             person = AgentPerson("Steve"),
+            daemonVersion = daemonVersion,
         )
+    }
+
+    @Test
+    fun theComputersVersionIsReadOnlyAndDistinctFromThePhones() {
+        show(daemonVersion = "0.4.109")
+        val row = rule.node(AgentSettingsTags.DAEMON_VERSION)
+        row.performScrollTo().assertHasNoClickAction()
+        rule.onNodeWithText("Happy Agent · Version").assertIsDisplayed()
+        rule.onNodeWithText("0.4.109").assertIsDisplayed()
+        assertEquals(64.dp, row.bounds.height)
+        rule.onNode(hasTestTag(ItemTags.CHEVRON) and hasAnyAncestor(hasTestTag(AgentSettingsTags.DAEMON_VERSION)), useUnmergedTree = true).assertDoesNotExist()
     }
 
     @Test
