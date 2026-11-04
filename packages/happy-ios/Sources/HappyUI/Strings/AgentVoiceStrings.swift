@@ -8,12 +8,12 @@ extension Strings {
         static var supportTitle: String { "Support Happy open source by sending us boba every month" }
         static var supportSpoken: String { "Support Happy open source by sending us boba every month" }
 
-        // The sheet the row opens (`SupportSheetViewController`): about Happy, not voice.
+        // The sheet the row opens (`SupportSheetViewController`): about Happy; voice is what a pledge comes with.
         static var sheetTitle: String { "Support Happy open source" }
-        static var sheetBody: String { "Send us boba every month. It pays for Happy’s development, and Happy stays open source." }
-        static func sheetPrice(_ price: String) -> String { "Boba for \(price)/month" }
-        static var sheetNotYet: String { "Monthly boba isn’t on sale yet." }
-        static var sheetPreviewMessage: String { "Monthly boba isn’t on sale yet. Nothing was bought or charged." }
+        static var sheetBody: String { "Send us boba every month. It comes with 5 hours of voice a month, pays for Happy’s development, and keeps Happy open source." }
+        static func sheetPrice(_ price: String) -> String { "Pledge \(price)/month" }
+        static var sheetNotYet: String { "Pledges aren’t open yet." }
+        static var sheetPreviewMessage: String { "Pledges aren’t open yet. Nothing was bought or charged." }
 
         static var title: String { "Voice" }
         static func minutesLeft(_ minutes: Int) -> String { "\(minutes) min left" }
