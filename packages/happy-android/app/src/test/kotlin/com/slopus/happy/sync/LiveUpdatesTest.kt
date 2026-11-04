@@ -9,7 +9,9 @@ import com.slopus.happy.net.HappyHttp
 import com.slopus.happy.net.HappyJson
 import com.slopus.happy.testing.FakeHappyServer
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
@@ -36,7 +38,12 @@ fun eventually(timeoutMs: Long = 5_000, message: String = "condition", condition
 }
 
 /** A signed-in [AccountSync] against a [FakeHappyServer], with an in-memory store. */
-class AccountHarness(val server: FakeHappyServer = FakeHappyServer().start(), var now: Long = 1_000_000L) {
+class AccountHarness(
+    val server: FakeHappyServer = FakeHappyServer().start(),
+    var now: Long = 1_000_000L,
+    reconnectDelayMs: Long = 50,
+    network: Flow<Boolean> = flowOf(true),
+) {
     val database = HappyDatabase(ApplicationProvider.getApplicationContext(), name = null)
     val store = HappyStore(database)
     val foreground = MutableStateFlow(true)
@@ -52,7 +59,8 @@ class AccountHarness(val server: FakeHappyServer = FakeHappyServer().start(), va
         parent = parent,
         foreground = foreground,
         clock = { now },
-        reconnectDelayMs = { 50 },
+        reconnectDelayMs = { reconnectDelayMs },
+        network = network,
     )
 
     fun startAndSync(): AccountHarness {
@@ -89,6 +97,20 @@ class LiveUpdatesTest {
     private fun text(n: Int) = buildJsonObject {
         put("role", "user")
         put("content", buildJsonObject { put("type", "text"); put("text", "m$n") })
+    }
+
+    @Test
+    fun theNetworkBackTheSocketConnectsAtOnce() {
+        h.close()
+        val network = MutableStateFlow(false)
+        h = AccountHarness(reconnectDelayMs = 600_000, network = network)
+        // Airplane mode: the try made then failed, and the next is ten minutes away.
+        server.acceptSockets = false
+        h.account.start()
+        eventually(message = "socket refused") { h.account.connectionStatus.value == ConnectionStatus.ERROR }
+        server.acceptSockets = true
+        network.value = true
+        eventually(message = "socket connected") { h.account.connectionStatus.value == ConnectionStatus.CONNECTED }
     }
 
     @Test

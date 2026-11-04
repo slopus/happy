@@ -41,6 +41,7 @@ import com.slopus.happy.connection.PairingFlow
 import com.slopus.happy.connection.ServerAuthClient
 import com.slopus.happy.connection.ServerSignInFlow
 import com.slopus.happy.connection.TailcatTransport
+import com.slopus.happy.connection.networkPath
 import com.slopus.happy.sync.AccountSync
 import com.slopus.happy.sync.SessionFileCache
 import com.slopus.happy.ui.changelog.ChangelogReadMarker
@@ -503,6 +504,7 @@ class AppGraph(
         cacheDir = File(appContext.noBackupFilesDir, "agent-connections"),
         openId = openAgentId,
         foreground = isForeground,
+        network = appContext.networkPath(),
         chime = CompletionChime(appContext)::play,
     )
 
@@ -669,6 +671,7 @@ class AppGraph(
             store = store,
             parent = scope.coroutineContext[Job]!!,
             foreground = foreground,
+            network = appContext.networkPath(),
         )
         accountState.value = account
         account.start()

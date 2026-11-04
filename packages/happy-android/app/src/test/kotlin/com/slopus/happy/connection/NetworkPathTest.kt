@@ -3,7 +3,9 @@ package com.slopus.happy.connection
 import android.net.ConnectivityManager
 import android.net.Network
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import kotlinx.coroutines.flow.count
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.launch
@@ -48,5 +50,11 @@ class NetworkPathTest {
         callback!!.onAvailable(network)
         collecting.join()
         assertEquals(listOf(true, false, true), seen)
+    }
+
+    @Test fun `a return is a network after none, and the first reading is never one`() = runTest {
+        assertEquals(0, flowOf(true, true).returns().count())
+        assertEquals(2, flowOf(true, false, false, true, true, false, true).returns().count())
+        assertEquals(1, flowOf(false, true).returns().count())
     }
 }

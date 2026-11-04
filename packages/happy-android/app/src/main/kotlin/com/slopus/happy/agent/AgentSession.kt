@@ -127,6 +127,9 @@ class AgentSession internal constructor(
     val catalog: StateFlow<AgentCatalog> = catalogState.asStateFlow()
 
     private val statusState = MutableStateFlow(AgentLinkStatus.Connecting)
+    private val redials = MutableStateFlow(0)
+    /** Whether the live link runs now (the connection open, the app in front, signed in). */
+    @Volatile private var linking = false
     val status: StateFlow<AgentLinkStatus> = statusState.asStateFlow()
 
     private val reads = MutableStateFlow(0)
@@ -569,7 +572,9 @@ class AgentSession internal constructor(
             // A team server that wants signing in again (a refused refresh) stops the link at once,
             // even with its event stream still open, and it resumes from its cursor after.
             val signedIn = connections.accounts.map { list -> list.none { it.id == connectionId && it.signInRequired } }.distinctUntilChanged()
-            combine(active.distinctUntilChanged(), signedIn, ::Pair).collectLatest { (on, signedIn) ->
+            // A redial ([networkReturned]) starts the link over, as iOS's `SyncEngine.reconnect` pauses and starts it.
+            combine(active.distinctUntilChanged(), signedIn, redials, ::Triple).collectLatest { (on, signedIn) ->
+                linking = on && signedIn
                 when {
                     !signedIn -> statusState.value = AgentLinkStatus.SignInRequired
                     on -> coroutineScope {
@@ -589,6 +594,20 @@ class AgentSession internal constructor(
                 catalogState.cacheSnapshots().collect { writeCache(it) }
             }
         }
+    }
+
+    /**
+     * The phone has a network again (iOS's `SyncEngine.reconnect`): a link
+     * not live starts over now, not when its backoff says, and an attempt
+     * made without a network is dropped. What failed meanwhile says nothing
+     * of the computer, so the header says connecting until this try answers.
+     */
+    fun networkReturned() {
+        val status = statusState.value
+        if (!linking) return
+        if (status != AgentLinkStatus.Connecting && status != AgentLinkStatus.Offline) return
+        statusState.value = AgentLinkStatus.Connecting
+        redials.update { it + 1 }
     }
 
     /** Stops the link and lets go of the tunnel. */

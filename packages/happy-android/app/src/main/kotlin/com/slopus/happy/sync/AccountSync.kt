@@ -1,6 +1,7 @@
 package com.slopus.happy.sync
 
 import com.slopus.happy.chat.PlanModeFollower
+import com.slopus.happy.connection.returns
 import com.slopus.happy.crypto.AccountEncryption
 import com.slopus.happy.data.HappyStore
 import com.slopus.happy.net.ConnectionStatus
@@ -17,12 +18,14 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
@@ -56,6 +59,8 @@ class AccountSync(
     reconnectDelayMs: (Int) -> Long = { socketIoBackoff(it) },
     /** Where the file viewer keeps its reads across launches (made ready by the caller); null keeps them in memory only. */
     fileCacheDirectory: java.io.File? = null,
+    /** Whether the phone has a way out at all ([com.slopus.happy.connection.networkPath]). */
+    private val network: Flow<Boolean> = flowOf(true),
 ) {
     private val job = SupervisorJob(parent)
     private val scope = CoroutineScope(job + io)
@@ -179,6 +184,10 @@ class AccountSync(
                     refreshViewing()
                 }
             }
+        }
+        scope.launch {
+            // Back from airplane mode: connect now, and what waited goes, rather than at the end of the backoff.
+            network.returns().collect { socket.redial() }
         }
         composer.start()
         sender.setForeground(foreground.value)

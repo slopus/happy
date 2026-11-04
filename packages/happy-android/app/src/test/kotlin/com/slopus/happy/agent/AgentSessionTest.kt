@@ -284,7 +284,7 @@ class AgentSessionTest {
     @Test
     fun aClosedConnectionOrBackgroundAppHoldsNoLink() = runBlocking {
         foreground.value = false
-        val session = sessions().session(id)!!
+        val session = AgentSession(id, connections, null, foreground, scope, { agent })
         kotlinx.coroutines.delay(300)
         assertTrue(agent.calls.isEmpty())
         foreground.value = true
@@ -455,6 +455,42 @@ class AgentSessionTest {
             watching.cancel()
             session.close()
         }
+    }
+
+    @Test
+    fun theNetworkBackALinkNotLiveStartsOverAtOnce() = runBlocking {
+        // The first try went out with no network and hangs; the backoff after it would be seconds more.
+        val health = java.util.concurrent.atomic.AtomicInteger()
+        val session = AgentSession(id, connections, null, foreground, scope, { object : Transport by agent {
+            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
+                if (path == "/v0/health" && health.incrementAndGet() == 1) kotlinx.coroutines.awaitCancellation()
+                return agent.request(method, path, credential, body, headers)
+            }
+        } })
+        try {
+            eventually({ health.get() }) { it == 1 }
+            agent.frames.send(Wire.hello("c0"))
+            session.networkReturned()
+            eventually({ session.status.value }) { it == AgentLinkStatus.Connected }
+            // Live, a return changes nothing: the link isn't asked for again.
+            val asked = health.get()
+            session.networkReturned()
+            kotlinx.coroutines.delay(200)
+            assertEquals(AgentLinkStatus.Connected, session.status.value)
+            assertEquals(asked, health.get())
+        } finally { session.close() }
+    }
+
+    @Test
+    fun aLinkNotRunningIsLeftAloneByANetworkReturn() = runBlocking {
+        foreground.value = false
+        val session = AgentSession(id, connections, null, foreground, scope, { agent })
+        try {
+            kotlinx.coroutines.delay(200)
+            session.networkReturned()
+            kotlinx.coroutines.delay(200)
+            assertTrue(agent.calls.none { it.endsWith("/v0/health") })
+        } finally { session.close() }
     }
 
     @Test

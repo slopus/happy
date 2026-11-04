@@ -163,6 +163,17 @@ class SocketIoClient(
         statusState.value = ConnectionStatus.DISCONNECTED
     }
 
+    /**
+     * A fresh socket now, unless this one is up or none was asked for: the
+     * phone has a network again, and an attempt begun without one would
+     * wait out its own timeout (iOS's `AccountSession.networkReturned`).
+     */
+    suspend fun redial() {
+        if (loop == null || statusState.value == ConnectionStatus.CONNECTED) return
+        disconnect()
+        connect()
+    }
+
     /** Skips the remaining reconnect delay, e.g. when the app returns to the foreground. */
     fun reconnectNow() {
         wakeUp.trySend(Unit)
@@ -229,8 +240,13 @@ class SocketIoClient(
             // A socket that never completed the namespace handshake failed to connect.
             return failure ?: if (connection.connected) null else SocketIoException("Connection closed during handshake")
         } catch (e: CancellationException) {
-            connection.socket.send(EngineIoPacket.Message(SocketIoPacket.Disconnect.encode()).encode())
-            connection.socket.close(1000, null)
+            if (connection.connected) {
+                connection.socket.send(EngineIoPacket.Message(SocketIoPacket.Disconnect.encode()).encode())
+                connection.socket.close(1000, null)
+            } else {
+                // Still dialing (a redial): nothing to say goodbye to, and a close would wait out the handshake.
+                connection.socket.cancel()
+            }
             throw e
         } finally {
             watchdog.cancel()

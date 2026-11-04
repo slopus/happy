@@ -94,9 +94,9 @@ class SocketIoClientTest {
         server.close()
     }
 
-    private fun client(delay: Long = 50) = SocketIoClient(
+    private fun client(delay: Long = 50, url: () -> String = { server.url }) = SocketIoClient(
         client = OkHttpClient(),
-        url = { SocketIoUrl.create(server.url) },
+        url = { SocketIoUrl.create(url()) },
         scope = scope,
         headers = mapOf("X-Happy-Client" to "android/test"),
         reconnectDelayMs = { delay },
@@ -203,6 +203,56 @@ class SocketIoClientTest {
         withTimeout(5_000) { client.status.first { it == ConnectionStatus.CONNECTED } }
         // The fake never pings: after interval + timeout without a packet the client gives up on the link.
         withTimeout(5_000) { client.status.first { it != ConnectionStatus.CONNECTED } }
+        client.disconnect()
+    }
+
+    @Test
+    fun aRedialSkipsTheBackoff() = runBlocking {
+        token = "wrong"
+        val client = client(delay = 600_000)
+        client.connect()
+        withTimeout(5_000) { client.status.first { it == ConnectionStatus.ERROR } }
+        token = server.token
+        // The network back: connected now, not in ten minutes.
+        client.redial()
+        withTimeout(5_000) { client.status.first { it == ConnectionStatus.CONNECTED } }
+        client.disconnect()
+    }
+
+    @Test
+    fun aRedialDropsAnAttemptMadeWithoutANetwork() = runBlocking {
+        // A server that takes the connection and never answers: an attempt begun with no way out.
+        java.net.ServerSocket(0, 50, java.net.InetAddress.getLoopbackAddress()).use { hole ->
+            val held = java.util.concurrent.CopyOnWriteArrayList<java.net.Socket>()
+            val accepting = scope.async { runCatching { while (true) held += hole.accept() } }
+            val target = java.util.concurrent.atomic.AtomicReference("http://127.0.0.1:${hole.localPort}")
+            val client = client(delay = 600_000, url = { target.get() })
+            client.connect()
+            withTimeout(5_000) { while (held.isEmpty()) kotlinx.coroutines.delay(10) }
+            assertEquals(ConnectionStatus.CONNECTING, client.status.value)
+            target.set(server.url)
+            client.redial()
+            withTimeout(5_000) { client.status.first { it == ConnectionStatus.CONNECTED } }
+            assertEquals(1, server.socketAuths.size)
+            // The attempt let go of its connection rather than wait out the handshake.
+            val dropped = held.single().apply { soTimeout = 5_000 }.getInputStream()
+            while (dropped.read() != -1) Unit
+            client.disconnect()
+            accepting.cancel()
+            held.forEach { it.close() }
+        }
+    }
+
+    @Test
+    fun aRedialLeavesALiveSocketAlone() = runBlocking {
+        val client = client()
+        client.redial()
+        assertEquals("never asked to connect, it doesn't", ConnectionStatus.DISCONNECTED, client.status.value)
+        client.connect()
+        withTimeout(5_000) { client.status.first { it == ConnectionStatus.CONNECTED } }
+        client.redial()
+        assertEquals(ConnectionStatus.CONNECTED, client.status.value)
+        assertEquals(1, server.socketAuths.size)
         client.disconnect()
     }
 

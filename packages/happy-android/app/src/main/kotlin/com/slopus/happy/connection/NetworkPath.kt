@@ -7,6 +7,7 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flow
 
 /**
  * Whether the phone has a way out at all (iOS's `NetworkPath`): a default
@@ -50,3 +51,16 @@ internal fun networkPath(
     trySend(hasDefault())
     awaitClose { unregister(callback) }
 }.distinctUntilChanged()
+
+/**
+ * Each time [this] says there is a network after saying there was none
+ * (back from airplane mode): what waited for the backoff tries now
+ * instead (iOS's `networkReturned`). The first value is never a return.
+ */
+fun Flow<Boolean>.returns(): Flow<Unit> = flow {
+    var away = false
+    collect { up ->
+        if (up && away) emit(Unit)
+        away = !up
+    }
+}
