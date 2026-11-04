@@ -116,7 +116,7 @@ voice has a server gate.
 Voice in Happy (relay) sessions is switched off in both apps: a session's
 chat has no voice button and nothing reaches ElevenLabs from it (Android
 `VoiceEngine(enabled = false)`; iOS `LegacyVoice`, which debug runs can turn
-back on with `HAPPY_LEGACY_VOICE=1`). Voice is the agent connection's call.
+back on with `HAPPY_RELAY_VOICE=1`). Voice is the agent connection's call.
 
 ### The subscription
 

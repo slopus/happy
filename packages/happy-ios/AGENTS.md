@@ -154,7 +154,7 @@ nothing here is wired to the release skill or to EAS.
   microphone, grant or provider, and Settings' Voice Assistant says so with
   no usage request or Upgrade (`HostedLegacyVoiceGateTests`). Don't delete
   the engine, or turn it back on, without the user. DEBUG runs can
-  (`HAPPY_LEGACY_VOICE=1`) to look into it.
+  (`HAPPY_RELAY_VOICE=1`) to look into it.
 - **An agent connection's voice call** (`HappyCore/Call`, `HappyUI/Call`) is
   apart from that relay voice: home's three-bar button beside compose starts
   it, and Telegram's in-call bar (`CallBarLayout`, `CallWaves`, adapted with
