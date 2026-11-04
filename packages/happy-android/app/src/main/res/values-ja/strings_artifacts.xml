@@ -80,4 +80,42 @@
     <string name="artifact_delete_title">「%1$s」を削除しますか？</string>
     <string name="artifact_delete_message">このコンピュータのすべての人から削除されます。表示していたチャットには削除済みと表示されます。</string>
     <string name="artifact_delete_failed">このアーティファクトを削除できませんでした。</string>
+
+    <string name="feed_activity">アクティビティ</string>
+    <string name="feed_following">フォロー中</string>
+    <string name="feed_mark_all_read">すべて既読にする</string>
+    <string name="feed_empty">まだ何も起きていません。新しいタスク、ボット、ドキュメント、ToDoリスト、アーティファクトが、そのすべての変更とともにここに表示されます。</string>
+    <string name="feed_loading">フィードを読み込み中…</string>
+    <string name="feed_unavailable">フィードを読み込めませんでした。コンピュータの電源が入っているか確認してください。</string>
+    <string name="feed_unsupported">この Happy Agent にはフィードがありません。アップデートすると使えるようになります。</string>
+    <string name="feed_everywhere">すべて</string>
+    <string name="feed_places">個別</string>
+    <string name="feed_no_clusters">フォローできるものはまだありません。タスク、ボット、ドキュメント、ToDoリストは、何かが起きるとここに表示されます。</string>
+    <string name="feed_loading_clusters">読み込み中…</string>
+    <string name="feed_clusters_unavailable">読み込めませんでした。コンピュータの電源が入っているか確認してください。</string>
+    <string name="feed_unread_mark">未読</string>
+    <string name="feed_everything">全体</string>
+    <string name="feed_team">チーム</string>
+    <string name="feed_follow">%1$sをフォロー</string>
+    <string name="feed_mute">%1$sをミュート</string>
+    <string name="feed_muted">ミュート中</string>
+    <string name="feed_follow_failed">フォローを変更できませんでした。%1$s</string>
+    <string name="feed_created_with">作成 · %1$s</string>
+    <string name="feed_created">作成</string>
+    <string name="feed_changed">変更</string>
+    <plurals name="feed_unread">
+        <item quantity="other">未読 %1$d 件</item>
+    </plurals>
+    <plurals name="feed_new_todos">
+        <item quantity="other">新しいToDo %1$d 件</item>
+    </plurals>
+    <plurals name="feed_edits">
+        <item quantity="other">%1$d 回の編集</item>
+    </plurals>
+    <plurals name="feed_versions">
+        <item quantity="other">新しいバージョン %1$d 件</item>
+    </plurals>
+    <plurals name="feed_updates">
+        <item quantity="other">%1$d 件の更新</item>
+    </plurals>
 </resources>

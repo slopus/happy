@@ -134,6 +134,8 @@ class AgentHomeActions(
     val onOpenArtifacts: () -> Unit = {},
     val onOpenSurface: (AgentFeedRow.Surface) -> Unit = {},
     val onOpenArtifact: (ArtifactRef) -> Unit = {},
+    /** Opens the person's Feed on this computer. */
+    val onOpenFeed: () -> Unit = {},
     /**
      * Leaves a Surface ([com.slopus.happy.agent.AgentSession.leaveSurface]):
      * null once left, else the agent's words for its refusal, empty where
@@ -261,6 +263,7 @@ fun AgentHomeScreen(
     val searchEntries = rememberSearchEntries(actions, closeSearch)
     val untitled = stringResource(R.string.session_new_chat)
     val artifacts = stringResource(R.string.artifacts_title)
+    val feedTitle = stringResource(R.string.feed_title)
     val words = rememberAgentSearchWords()
     // Read as search opens, and again as home changes under it.
     val sources by produceState(AgentSearchSources.None, searching, feed) {
@@ -273,6 +276,7 @@ fun AgentHomeScreen(
                 is AgentFeedRow.Folder -> row.name
                 is AgentFeedRow.Surface -> row.name
                 AgentFeedRow.Artifacts -> artifacts
+                is AgentFeedRow.Feed -> feedTitle
                 is AgentFeedRow.Section -> null
             }
         }
@@ -285,8 +289,8 @@ fun AgentHomeScreen(
     val phase = when {
         !feed.loaded && status == AgentLinkStatus.Connecting -> HomePhase.Loading
         !feed.loaded -> HomePhase.Offline
-        // Artifacts alone is no home yet: the first chat is.
-        feed.rows.all { it is AgentFeedRow.Section || it == AgentFeedRow.Artifacts } -> HomePhase.Empty
+        // Artifacts and the Feed alone are no home yet: the first chat is.
+        feed.rows.all { it is AgentFeedRow.Section || it == AgentFeedRow.Artifacts || it is AgentFeedRow.Feed } -> HomePhase.Empty
         else -> HomePhase.List
     }
     val chatPreview = remember { ChatPreview() }
@@ -367,6 +371,7 @@ fun AgentHomeScreen(
                             selected = sidebar?.selected,
                             onOpen = actions.onOpenConversation,
                             onOpenArtifacts = actions.onOpenArtifacts,
+                            onOpenFeed = actions.onOpenFeed,
                             onOpenSurface = actions.onOpenSurface,
                             onLeaveSurface = actions.onLeaveSurface?.let { { surface: AgentFeedRow.Surface -> confirmingLeave = surface } },
                             onHold = preview?.let { { row, source -> chatPreview.open(row, source) } },
@@ -437,6 +442,10 @@ fun AgentHomeScreen(
                         onOpenArtifacts = {
                             focus.clearFocus()
                             actions.onOpenArtifacts()
+                        },
+                        onOpenFeed = {
+                            focus.clearFocus()
+                            actions.onOpenFeed()
                         },
                         onOpenSurface = { surface ->
                             focus.clearFocus()
@@ -677,6 +686,7 @@ fun AgentHome(
     onOpenArtifacts: () -> Unit = {},
     onOpenSurface: (AgentFeedRow.Surface) -> Unit = {},
     onOpenArtifact: (ArtifactRef) -> Unit = {},
+    onOpenFeed: () -> Unit = {},
     /** Signs the team server at [server] in again ([AgentConnection.server]). */
     onSignIn: (server: String) -> Unit = {},
 ) {
@@ -692,7 +702,7 @@ fun AgentHome(
     ReportDrawnWhen { feed.loaded || status != AgentLinkStatus.Connecting }
     val add = LocalAddFlow.current
     val switchAccount = rememberHomeAccountSwitch(graph)
-    val actions = remember(graph, session, onOpenConversation, onCompose, onComposeWithPicture, onSettings, onSettingsRow, onOpenArtifacts, onOpenSurface, onOpenArtifact, add, switchAccount, onSignIn) {
+    val actions = remember(graph, session, onOpenConversation, onCompose, onComposeWithPicture, onSettings, onSettingsRow, onOpenArtifacts, onOpenSurface, onOpenArtifact, onOpenFeed, add, switchAccount, onSignIn) {
         AgentHomeActions(
             onOpenConversation = onOpenConversation,
             onCompose = onCompose,
@@ -704,6 +714,7 @@ fun AgentHome(
             onOpenArtifacts = onOpenArtifacts,
             onOpenSurface = onOpenSurface,
             onOpenArtifact = onOpenArtifact,
+            onOpenFeed = onOpenFeed,
             onLeaveSurface = { session.leaveSurface(it.id) },
             onSignIn = { graph.agentConnections.accounts.value.firstOrNull { it.id == id }?.server?.let(onSignIn) },
         )

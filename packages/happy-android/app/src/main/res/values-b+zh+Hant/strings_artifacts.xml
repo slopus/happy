@@ -80,4 +80,42 @@
     <string name="artifact_delete_title">刪除「%1$s」？</string>
     <string name="artifact_delete_message">它將對這台電腦上的所有人刪除。顯示過它的聊天會註明它已被刪除。</string>
     <string name="artifact_delete_failed">無法刪除此工件。</string>
+
+    <string name="feed_activity">動態</string>
+    <string name="feed_following">追蹤</string>
+    <string name="feed_mark_all_read">全部標為已讀</string>
+    <string name="feed_empty">還沒有任何動態。新的任務、機器人、文件、待辦清單和成品會顯示在這裡，連同它們的每一次變更。</string>
+    <string name="feed_loading">正在載入動態…</string>
+    <string name="feed_unavailable">無法載入動態。請檢查你的電腦是否開機。</string>
+    <string name="feed_unsupported">這個 Happy Agent 沒有動態。更新後即可使用。</string>
+    <string name="feed_everywhere">全域</string>
+    <string name="feed_places">各個地方</string>
+    <string name="feed_no_clusters">還沒有可追蹤的內容。任務、機器人、文件和待辦清單有動靜後會顯示在這裡。</string>
+    <string name="feed_loading_clusters">正在載入…</string>
+    <string name="feed_clusters_unavailable">無法載入。請檢查你的電腦是否開機。</string>
+    <string name="feed_unread_mark">未讀</string>
+    <string name="feed_everything">全部</string>
+    <string name="feed_team">團隊</string>
+    <string name="feed_follow">追蹤%1$s</string>
+    <string name="feed_mute">靜音%1$s</string>
+    <string name="feed_muted">已靜音</string>
+    <string name="feed_follow_failed">無法變更追蹤設定。%1$s</string>
+    <string name="feed_created_with">已建立 · %1$s</string>
+    <string name="feed_created">已建立</string>
+    <string name="feed_changed">已變更</string>
+    <plurals name="feed_unread">
+        <item quantity="other">%1$d 則未讀</item>
+    </plurals>
+    <plurals name="feed_new_todos">
+        <item quantity="other">%1$d 個新待辦</item>
+    </plurals>
+    <plurals name="feed_edits">
+        <item quantity="other">%1$d 次編輯</item>
+    </plurals>
+    <plurals name="feed_versions">
+        <item quantity="other">%1$d 個新版本</item>
+    </plurals>
+    <plurals name="feed_updates">
+        <item quantity="other">%1$d 次更新</item>
+    </plurals>
 </resources>

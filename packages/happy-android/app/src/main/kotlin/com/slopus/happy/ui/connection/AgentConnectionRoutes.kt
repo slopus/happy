@@ -23,6 +23,7 @@ import com.slopus.happy.connection.ServerInvite
 import com.slopus.happy.connection.ServerSignInFlow
 import com.slopus.happy.connection.ServerSignInState
 import com.slopus.happy.ui.artifacts.artifactRoutes
+import com.slopus.happy.ui.feed.feedRoutes
 import kotlinx.serialization.Serializable
 
 /**
@@ -49,6 +50,7 @@ fun NavGraphBuilder.agentConnectionRoutes(graph: AppGraph, nav: NavHostControlle
     page<PairingRoute> { Pairing(graph, nav) }
     page<ServerSignInRoute> { ServerSignIn(graph, nav) }
     artifactRoutes(graph, nav)
+    feedRoutes(graph, nav)
     page<AgentSurfaceRoute> { entry -> AgentSurface(graph, nav, entry.toRoute()) }
 }
 

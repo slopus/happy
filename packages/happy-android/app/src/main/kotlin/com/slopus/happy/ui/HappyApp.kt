@@ -31,6 +31,7 @@ import androidx.navigation.toRoute
 import com.slopus.happy.push.PushRegistrationEffect
 import com.slopus.happy.payments.PaywallHost
 import com.slopus.happy.ui.artifacts.AgentArtifactsRoute
+import com.slopus.happy.ui.feed.AgentFeedRoute
 import com.slopus.happy.ui.artifacts.BrowserRoute
 import com.slopus.happy.ui.artifacts.computerName
 import com.slopus.happy.ui.artifacts.openArtifact
@@ -168,6 +169,7 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                                 onOpenArtifacts = { go.open(MainPanelKey.ARTIFACTS) { nav.navigate(AgentArtifactsRoute(account.id)) } },
                                 onOpenSurface = { go.open(MainPanelKey.surface(it.id)) { nav.navigate(AgentSurfaceRoute(account.id, it.id, it.type, it.name)) } },
                                 onOpenArtifact = { go.open(null) { nav.openArtifact(account.id, it) } },
+                                onOpenFeed = { go.open(MainPanelKey.FEED) { nav.navigate(AgentFeedRoute(account.id)) } },
                                 onSignIn = { server -> go.open(null) { nav.signInToServerAgain(graph, server, replacing = account.id) } },
                             )
                             is OpenAccount.Happy -> LegacyHome(graph, nav, onOpenSession = openSession, onTroubleshoot = troubleshoot, go = go)

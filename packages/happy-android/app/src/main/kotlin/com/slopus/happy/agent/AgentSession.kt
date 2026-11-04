@@ -1,5 +1,6 @@
 package com.slopus.happy.agent
 
+import com.slopus.happy.artifacts.ArtifactClient
 import com.slopus.happy.connection.AgentConnectionException
 import com.slopus.happy.connection.AgentConnections
 import com.slopus.happy.connection.AgentIdentity
@@ -10,6 +11,9 @@ import com.slopus.happy.conversation.ParkedConversations
 import com.slopus.happy.conversation.UnsentWork
 import com.slopus.happy.data.DiskThread
 import com.slopus.happy.diagnostics.traced
+import com.slopus.happy.feed.AgentFeedRoutes
+import com.slopus.happy.feed.FeedLibrary
+import com.slopus.happy.feed.FeedLookups
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -151,14 +155,37 @@ class AgentSession internal constructor(
         cacheFile?.let { FileIntentStorage(File(it.parentFile, it.nameWithoutExtension + ".intents.json")) } ?: MemoryIntentStorage(),
     )
 
+    /**
+     * The person's Feed on this computer (iOS `FeedLibrary`), followed for as
+     * long as the connection: kept beside the catalog, current to the
+     * `feed.*` events; none where the computer keeps none.
+     */
+    val feedLibrary = FeedLibrary(
+        scope,
+        AgentFeedRoutes(client),
+        intents,
+        kept = { withContext(Dispatchers.IO) { cachedResource(FeedLibrary.RESOURCE) } },
+        keep = { value -> withContext(Dispatchers.IO) { keepResource(FeedLibrary.RESOURCE, value) } },
+    )
+
+    /** What Feed entries name that the catalog doesn't hold: artifacts, and the todos they made. */
+    val feedLookups: FeedLookups by lazy {
+        FeedLookups.of(scope, client) { ArtifactClient(client).artifact(it) }.also { lookups ->
+            scope.launch { events.collect(lookups::receive) }
+        }
+    }
+
     private val noticeState = MutableStateFlow<String?>(null)
 
     /** A refusal the computer gave to something done here, for home's notice; it clears after [NOTICE_MILLIS]. */
     val notice: StateFlow<String?> = noticeState.asStateFlow()
 
     /** Home's rows, derived off the main thread; equal rows keep their instances. */
-    val feed: StateFlow<AgentFeed> = combine(catalogState, intents.pending, gitSnapshots) { catalog, pending, git ->
-        AgentFeed.derive(catalog, git = git, intents = IntentOverlay.of(pending))
+    val feed: StateFlow<AgentFeed> = combine(
+        catalogState, intents.pending, gitSnapshots,
+        feedLibrary.state.map { if (it.available == true) it.unread else null }.distinctUntilChanged(),
+    ) { catalog, pending, git, feedUnread ->
+        AgentFeed.derive(catalog, git = git, intents = IntentOverlay.of(pending), feedUnread = feedUnread)
     }
         .distinctUntilChanged()
         .scan(null as AgentFeed?) { previous, next -> AgentFeed.reuse(previous, next) }
@@ -221,7 +248,7 @@ class AgentSession internal constructor(
     val references: com.slopus.happy.references.ReferenceReader by lazy {
         com.slopus.happy.references.ReferenceReader(
             scope, catalog, events,
-            readArtifact = { com.slopus.happy.artifacts.ArtifactClient(client).artifact(it) },
+            readArtifact = { ArtifactClient(client).artifact(it) },
             readUsers = { com.slopus.happy.references.ReferenceReader.userNames(client, it) },
         )
     }
@@ -366,12 +393,13 @@ class AgentSession internal constructor(
 
     init {
         intents.handle(setOf(Intent.READ, Intent.ARCHIVE, Intent.LEAVE, Intent.RENAME), ::deliver)
+        feedLibrary.start()
         // Sent while the link is up; every connect sends what waits at once.
         scope.launch { statusState.collect { intents.setOnline(it == AgentLinkStatus.Connected) } }
         scope.launch {
             intents.rejections.collectLatest { rejection ->
-                // A refused read is nothing to tell; a screen that heard the refusal said it already.
-                if (rejection.intent.kind == Intent.READ || rejection.heard) return@collectLatest
+                // A refused read or seen entry is nothing to tell; a screen that heard the refusal said it already.
+                if (rejection.intent.kind == Intent.READ || rejection.intent.kind in FeedLibrary.KINDS || rejection.heard) return@collectLatest
                 noticeState.value = rejection.reason
                 delay(NOTICE_MILLIS)
                 if (noticeState.value == rejection.reason) noticeState.value = null
@@ -499,6 +527,7 @@ class AgentSession internal constructor(
         try {
             val bootstrap = client.decode<WireDesktopBootstrap>("GET", "/v0/bootstrap/desktop")
             catalogLock.withLock { catalogState.update { it.withBootstrap(bootstrap) } }
+            feedLibrary.bootstrap(bootstrap.feedUnread, bootstrap.cursor)
         } finally {
             reads.update { it - 1 }
         }
@@ -519,6 +548,8 @@ class AgentSession internal constructor(
                         val hello = AgentHello.of(event)
                         if (hello.gap) readSnapshot()
                         statusState.value = AgentLinkStatus.Connected
+                        // Reads the Feed's newest page each time, so a gap loses nothing.
+                        feedLibrary.connected()
                         gitRenewal.update { it + 1 }
                         onConnected()
                         // Every connect sends what was changed while offline.
@@ -530,6 +561,7 @@ class AgentSession internal constructor(
                             if (id != null && state != null && id in gitWorkspaceIds(feed.value)) receiveGit(mapOf(id to state))
                         }
                         apply(event)
+                        if (event.type.startsWith("feed.")) feedLibrary.receive(event)
                     }
                     val listed = { agentId: String -> feed.value.conversations.any { it.agentId == agentId } }
                     if (completions.finished(event, catalogState.value, listed, System.currentTimeMillis()) != null) chime()
@@ -537,6 +569,7 @@ class AgentSession internal constructor(
                 }
             }
         } finally {
+            feedLibrary.disconnected()
             stream.close()
         }
     }

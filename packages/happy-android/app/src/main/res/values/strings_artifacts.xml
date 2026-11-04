@@ -96,4 +96,49 @@
     <string name="artifact_delete_title">Delete “%1$s”?</string>
     <string name="artifact_delete_message">It’s deleted for everyone on this computer. Chats that showed it will say it was deleted.</string>
     <string name="artifact_delete_failed">This artifact couldn’t be deleted.</string>
+
+    <!-- The Feed (ui/feed), its words as iOS's FeedWords (NativeTranslations+Feed.swift) -->
+    <string name="feed_title" translatable="false">Feed</string>
+    <string name="feed_activity">Activity</string>
+    <string name="feed_following">Following</string>
+    <string name="feed_mark_all_read">Mark All Read</string>
+    <string name="feed_empty">Nothing has happened yet. New tasks, bots, documents, todo lists and artifacts show up here, with every change to them.</string>
+    <string name="feed_loading">Loading the feed…</string>
+    <string name="feed_unavailable">The feed couldn’t be loaded. Check that your computer is on.</string>
+    <string name="feed_unsupported">This Happy Agent doesn’t keep a feed. Updating it adds one.</string>
+    <string name="feed_everywhere">Everywhere</string>
+    <string name="feed_places">Places</string>
+    <string name="feed_no_clusters">Nothing to follow yet. Tasks, bots, documents and todo lists show up here once something happens in them.</string>
+    <string name="feed_loading_clusters">Loading…</string>
+    <string name="feed_clusters_unavailable">These couldn’t be loaded. Check that your computer is on.</string>
+    <string name="feed_unread_mark">Unread</string>
+    <string name="feed_everything">Everything</string>
+    <string name="feed_team">Team</string>
+    <string name="feed_follow">Follow %1$s</string>
+    <string name="feed_mute">Mute %1$s</string>
+    <string name="feed_muted">Muted</string>
+    <string name="feed_follow_failed">Couldn’t change what you follow. %1$s</string>
+    <string name="feed_created_with">Created · %1$s</string>
+    <string name="feed_created">Created</string>
+    <string name="feed_changed">Changed</string>
+    <plurals name="feed_unread">
+        <item quantity="one">%1$d unread</item>
+        <item quantity="other">%1$d unread</item>
+    </plurals>
+    <plurals name="feed_new_todos">
+        <item quantity="one">%1$d new todo</item>
+        <item quantity="other">%1$d new todos</item>
+    </plurals>
+    <plurals name="feed_edits">
+        <item quantity="one">%1$d edit</item>
+        <item quantity="other">%1$d edits</item>
+    </plurals>
+    <plurals name="feed_versions">
+        <item quantity="one">%1$d new version</item>
+        <item quantity="other">%1$d new versions</item>
+    </plurals>
+    <plurals name="feed_updates">
+        <item quantity="one">%1$d update</item>
+        <item quantity="other">%1$d updates</item>
+    </plurals>
 </resources>

@@ -27,6 +27,7 @@ import com.slopus.happy.artifacts.ArtifactClient
 import com.slopus.happy.artifacts.ArtifactRef
 import com.slopus.happy.browser.BrowserPolicy
 import com.slopus.happy.conversation.Problem
+import com.slopus.happy.feed.FeedSubject
 import com.slopus.happy.browser.BrowserProxy
 import com.slopus.happy.browser.browserWorkspace
 import com.slopus.happy.ui.browser.BrowserPage
@@ -137,6 +138,8 @@ private fun ArtifactEntry(graph: AppGraph, nav: NavHostController, route: Artifa
     val computer = computerName(graph, route.connectionId)
     val happyLinks = LocalHappyLinks.current
     val loader = holder.loader
+    // Opened: its Feed entry is seen (iOS `ArtifactViewController`).
+    LaunchedEffect(session, route.artifactId) { session?.feedLibrary?.seen(FeedSubject.artifact(route.artifactId)) }
     if (loader == null) {
         ArtifactScreen(route.title, ArtifactUi.Message(deleted = false), null, computer, ArtifactActions(onBack = { nav.popBackStack() }))
         return

@@ -58,6 +58,7 @@ import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
 import com.slopus.happy.conversation.Conversation
 import com.slopus.happy.conversation.Problem
+import com.slopus.happy.feed.FeedSubject
 import com.slopus.happy.conversation.ConversationApi
 import com.slopus.happy.conversation.Todo
 import com.slopus.happy.ui.artifacts.PlaceTags
@@ -233,6 +234,8 @@ internal fun AgentSurface(graph: AppGraph, nav: NavHostController, route: AgentS
             else kotlinx.coroutines.awaitCancellation()
         } finally { reader.pauseReads() }
     }
+    // Opened: its Feed entry is seen (iOS `SurfaceScreens`).
+    LaunchedEffect(session, route.surfaceId) { session?.feedLibrary?.seen(FeedSubject.surface(route.surfaceId)) }
     // The bar keeps up with a rename, as iOS's does.
     val feed = session?.feed?.collectAsStateWithLifecycle()?.value
     val name = feed?.rows?.firstNotNullOfOrNull { (it as? AgentFeedRow.Surface)?.takeIf { s -> s.id == route.surfaceId }?.name } ?: route.name

@@ -147,6 +147,8 @@ data class WireDesktopBootstrap(
      */
     val userSettings: List<JsonObject>? = null,
     val cursor: String? = null,
+    /** The person's open Feed entries; null from a daemon, or for a person, without a Feed. */
+    val feedUnread: Int? = null,
 )
 
 /** `x` of [o] when it is a JSON string. */

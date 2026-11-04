@@ -84,4 +84,52 @@
     <string name="artifact_delete_title">Vols suprimir «%1$s»?</string>
     <string name="artifact_delete_message">Se suprimeix per a tothom en aquest ordinador. Els xats que el mostraven diran que s’ha suprimit.</string>
     <string name="artifact_delete_failed">No s’ha pogut suprimir aquest artefacte.</string>
+
+    <string name="feed_activity">Activitat</string>
+    <string name="feed_following">Seguint</string>
+    <string name="feed_mark_all_read">Marca-ho tot com a llegit</string>
+    <string name="feed_empty">Encara no ha passat res. Aquí apareixen les noves tasques, bots, documents, llistes de tasques i artefactes, amb cada canvi que tinguin.</string>
+    <string name="feed_loading">S’estan carregant les novetats…</string>
+    <string name="feed_unavailable">No s’han pogut carregar les novetats. Comprova que l’ordinador estigui encès.</string>
+    <string name="feed_unsupported">Aquest Happy Agent no té novetats. Actualitza’l per tenir-ne.</string>
+    <string name="feed_everywhere">Arreu</string>
+    <string name="feed_places">Llocs</string>
+    <string name="feed_no_clusters">Encara no hi ha res per seguir. Les tasques, bots, documents i llistes de tasques apareixen aquí quan hi passa alguna cosa.</string>
+    <string name="feed_loading_clusters">S’està carregant…</string>
+    <string name="feed_clusters_unavailable">No s’han pogut carregar. Comprova que l’ordinador estigui encès.</string>
+    <string name="feed_unread_mark">No llegit</string>
+    <string name="feed_everything">Tot</string>
+    <string name="feed_team">Equip</string>
+    <string name="feed_follow">Segueix %1$s</string>
+    <string name="feed_mute">Silencia %1$s</string>
+    <string name="feed_muted">Silenciat</string>
+    <string name="feed_follow_failed">No s’ha pogut canviar el que segueixes. %1$s</string>
+    <string name="feed_created_with">Creat · %1$s</string>
+    <string name="feed_created">Creat</string>
+    <string name="feed_changed">Canviat</string>
+    <plurals name="feed_unread">
+        <item quantity="one">%1$d sense llegir</item>
+        <item quantity="many">%1$d sense llegir</item>
+        <item quantity="other">%1$d sense llegir</item>
+    </plurals>
+    <plurals name="feed_new_todos">
+        <item quantity="one">%1$d tasca nova</item>
+        <item quantity="many">%1$d tasques noves</item>
+        <item quantity="other">%1$d tasques noves</item>
+    </plurals>
+    <plurals name="feed_edits">
+        <item quantity="one">%1$d edició</item>
+        <item quantity="many">%1$d edicions</item>
+        <item quantity="other">%1$d edicions</item>
+    </plurals>
+    <plurals name="feed_versions">
+        <item quantity="one">%1$d versió nova</item>
+        <item quantity="many">%1$d versions noves</item>
+        <item quantity="other">%1$d versions noves</item>
+    </plurals>
+    <plurals name="feed_updates">
+        <item quantity="one">%1$d actualització</item>
+        <item quantity="many">%1$d actualitzacions</item>
+        <item quantity="other">%1$d actualitzacions</item>
+    </plurals>
 </resources>

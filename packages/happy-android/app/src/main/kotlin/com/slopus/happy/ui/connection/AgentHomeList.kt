@@ -43,6 +43,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -104,6 +105,8 @@ object AgentHomeTags {
     fun row(key: String) = "agentHome.row.$key"
     const val ROW_TITLE = "agentHome.rowTitle"
     const val ROW_MARK = "agentHome.rowMark"
+    /** The Feed row's unread count. */
+    const val ROW_COUNT = "agentHome.rowCount"
     const val ROW_DIVIDER = HomeCardTags.DIVIDER
     const val ROW_DOT = "agentHome.rowDot"
     const val ROW_CHANGES = "agentHome.rowChanges"
@@ -321,6 +324,7 @@ fun LazyListScope.agentHomeRows(
     onHold: ((AgentFeedRow.Conversation, Rect) -> Unit)? = null,
     /** The tablet sidebar's selection, what its main panel shows ([MainPanelKey]). */
     selected: String? = null,
+    onOpenFeed: () -> Unit = {},
 ) {
     items(items, key = { it.key }, contentType = { (it as? AgentHomeItem.Row)?.row?.let { row -> row::class } ?: it::class }) { item ->
         val motion = if (reduceMotion) Modifier else Modifier.animateItem(
@@ -337,7 +341,7 @@ fun LazyListScope.agentHomeRows(
             )
             is AgentHomeItem.Row -> AgentHomeCardRow(
                 item, motion, selected != null && selected == item.row.panelKey(), AgentHomeTags.row(item.key),
-                onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface, onHold,
+                onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface, onHold, onOpenFeed,
             )
         }
     }
@@ -359,6 +363,7 @@ internal fun AgentHomeCardRow(
     onOpenSurface: (AgentFeedRow.Surface) -> Unit,
     onLeaveSurface: ((AgentFeedRow.Surface) -> Unit)? = null,
     onHold: ((AgentFeedRow.Conversation, Rect) -> Unit)? = null,
+    onOpenFeed: () -> Unit = {},
 ) {
     HomeCardRow(
         place = HomeCardPlace(item.first, item.last),
@@ -372,6 +377,7 @@ internal fun AgentHomeCardRow(
             is AgentFeedRow.Conversation -> ConversationRow(row, onOpen, onHold)
             is AgentFeedRow.Folder -> FolderRow(row)
             AgentFeedRow.Artifacts -> PlaceRow(stringResource(R.string.artifacts_title), Ionicon.DocumentTextOutline, RowTile.Purple, onOpenArtifacts)
+            is AgentFeedRow.Feed -> FeedPlaceRow(row.unread, onOpenFeed)
             is AgentFeedRow.Surface -> SurfaceRow(row, { onOpenSurface(row) }, onLeaveSurface)
             is AgentFeedRow.Section -> Unit
         }
@@ -421,6 +427,7 @@ internal fun AgentFeedRow.panelKey(): String? = when (val row = this) {
     is AgentFeedRow.Conversation -> MainPanelKey.conversation(row.agentId)
     is AgentFeedRow.Surface -> MainPanelKey.surface(row.id)
     AgentFeedRow.Artifacts -> MainPanelKey.ARTIFACTS
+    is AgentFeedRow.Feed -> MainPanelKey.FEED
     else -> null
 }
 
@@ -429,7 +436,7 @@ private fun titleStart(row: AgentFeedRow): Dp {
     val (depth, marked) = when (row) {
         is AgentFeedRow.Conversation -> row.depth to AgentHomeSpec.hasMark(row.kind)
         is AgentFeedRow.Folder -> row.depth to (row.mark != null)
-        AgentFeedRow.Artifacts, is AgentFeedRow.Surface -> 0 to true
+        AgentFeedRow.Artifacts, is AgentFeedRow.Feed, is AgentFeedRow.Surface -> 0 to true
         is AgentFeedRow.Section -> return 0.dp
     }
     return AgentHomeSpec.markInset + AgentHomeSpec.indent * depth + if (marked) AgentHomeSpec.mark + AgentHomeSpec.markGap else 0.dp
@@ -519,9 +526,20 @@ private fun SurfaceRow(row: AgentFeedRow.Surface, onOpen: () -> Unit, onLeave: (
     }
 }
 
-/** Artifacts, or a Surface: its glyph on its tile, and its name. */
+/**
+ * Desktop's Feed row (iOS `SidebarRows`): the newspaper on its red tile,
+ * its name bold while something is unread, with how many beside it.
+ */
 @Composable
-private fun PlaceRow(name: String, glyph: Ionicon, tile: RowTile, onClick: () -> Unit, onLongClick: (() -> Unit)? = null) {
+private fun FeedPlaceRow(unread: Int, onClick: () -> Unit) {
+    val count = unread.takeIf { it > 0 }
+    val label = count?.let { pluralStringResource(R.plurals.feed_unread, it, it) }
+    PlaceRow(stringResource(R.string.feed_title), Ionicon.NewspaperOutline, RowTile.Red, onClick, count = count, countLabel = label)
+}
+
+/** Artifacts, the Feed, or a Surface: its glyph on its tile, and its name; bold with a [count] after it while something in it is unread. */
+@Composable
+private fun PlaceRow(name: String, glyph: Ionicon, tile: RowTile, onClick: () -> Unit, onLongClick: (() -> Unit)? = null, count: Int? = null, countLabel: String? = null) {
     Row(
         modifier = Modifier
             .fillMaxSize()
@@ -532,7 +550,7 @@ private fun PlaceRow(name: String, glyph: Ionicon, tile: RowTile, onClick: () ->
         Box(modifier = Modifier.size(AgentHomeSpec.mark).testTag(AgentHomeTags.ROW_MARK)) { TileMark(glyph, tile) }
         Text(
             name,
-            style = AgentHomeSpec.title,
+            style = if (count != null) AgentHomeSpec.title.copy(fontWeight = FontWeight.SemiBold) else AgentHomeSpec.title,
             color = HappyTheme.colors.text,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -543,6 +561,18 @@ private fun PlaceRow(name: String, glyph: Ionicon, tile: RowTile, onClick: () ->
                 .agentTitleBaseline()
                 .testTag(AgentHomeTags.ROW_TITLE),
         )
+        if (count != null) {
+            Text(
+                count.toString(),
+                style = AgentHomeSpec.title,
+                color = HappyTheme.colors.textSecondary,
+                maxLines = 1,
+                modifier = Modifier
+                    .padding(start = AgentHomeSpec.markGap)
+                    .semantics { countLabel?.let { contentDescription = it } }
+                    .testTag(AgentHomeTags.ROW_COUNT),
+            )
+        }
     }
 }
 
@@ -637,6 +667,7 @@ fun AgentHomeList(
     header: (LazyListScope.() -> Unit)? = null,
     bottom: @Composable () -> Unit = {},
     selected: String? = null,
+    onOpenFeed: () -> Unit = {},
 ) {
     val reduceMotion = rememberReduceMotion()
     LazyColumn(
@@ -645,7 +676,7 @@ fun AgentHomeList(
         contentPadding = contentPadding,
     ) {
         header?.invoke(this)
-        agentHomeRows(items, reduceMotion, onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface, onHold, selected)
+        agentHomeRows(items, reduceMotion, onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface, onHold, selected, onOpenFeed)
         item(key = "bottom", contentType = "bottom") { bottom() }
     }
 }

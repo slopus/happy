@@ -86,4 +86,57 @@
     <string name="artifact_delete_title">Удалить «%1$s»?</string>
     <string name="artifact_delete_message">Он будет удалён для всех на этом компьютере. В чатах, где он был показан, будет сказано, что он удалён.</string>
     <string name="artifact_delete_failed">Не удалось удалить этот артефакт.</string>
+
+    <string name="feed_activity">Активность</string>
+    <string name="feed_following">Подписки</string>
+    <string name="feed_mark_all_read">Прочитать всё</string>
+    <string name="feed_empty">Пока ничего не произошло. Здесь появятся новые задачи, боты, документы, списки дел и артефакты — со всеми их изменениями.</string>
+    <string name="feed_loading">Загрузка ленты…</string>
+    <string name="feed_unavailable">Не удалось загрузить ленту. Проверьте, что компьютер включён.</string>
+    <string name="feed_unsupported">Этот Happy Agent не ведёт ленту. Обновите его, чтобы она появилась.</string>
+    <string name="feed_everywhere">Везде</string>
+    <string name="feed_places">Места</string>
+    <string name="feed_no_clusters">Пока не на что подписаться. Задачи, боты, документы и списки дел появятся здесь, когда в них что-нибудь произойдёт.</string>
+    <string name="feed_loading_clusters">Загрузка…</string>
+    <string name="feed_clusters_unavailable">Не удалось загрузить. Проверьте, что компьютер включён.</string>
+    <string name="feed_unread_mark">Не прочитано</string>
+    <string name="feed_everything">Всё</string>
+    <string name="feed_team">Команда</string>
+    <string name="feed_follow">Подписаться на %1$s</string>
+    <string name="feed_mute">Заглушить %1$s</string>
+    <string name="feed_muted">Заглушено</string>
+    <string name="feed_follow_failed">Не удалось изменить подписку. %1$s</string>
+    <string name="feed_created_with">Создано · %1$s</string>
+    <string name="feed_created">Создано</string>
+    <string name="feed_changed">Изменено</string>
+    <plurals name="feed_unread">
+        <item quantity="one">%1$d непрочитанная</item>
+        <item quantity="few">%1$d непрочитанные</item>
+        <item quantity="many">%1$d непрочитанных</item>
+        <item quantity="other">%1$d непрочитанных</item>
+    </plurals>
+    <plurals name="feed_new_todos">
+        <item quantity="one">%1$d новое дело</item>
+        <item quantity="few">%1$d новых дела</item>
+        <item quantity="many">%1$d новых дел</item>
+        <item quantity="other">%1$d новых дел</item>
+    </plurals>
+    <plurals name="feed_edits">
+        <item quantity="one">%1$d правка</item>
+        <item quantity="few">%1$d правки</item>
+        <item quantity="many">%1$d правок</item>
+        <item quantity="other">%1$d правок</item>
+    </plurals>
+    <plurals name="feed_versions">
+        <item quantity="one">%1$d новая версия</item>
+        <item quantity="few">%1$d новые версии</item>
+        <item quantity="many">%1$d новых версий</item>
+        <item quantity="other">%1$d новых версий</item>
+    </plurals>
+    <plurals name="feed_updates">
+        <item quantity="one">%1$d обновление</item>
+        <item quantity="few">%1$d обновления</item>
+        <item quantity="many">%1$d обновлений</item>
+        <item quantity="other">%1$d обновлений</item>
+    </plurals>
 </resources>

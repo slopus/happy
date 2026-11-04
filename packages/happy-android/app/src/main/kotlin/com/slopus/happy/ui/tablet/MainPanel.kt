@@ -37,6 +37,7 @@ import com.slopus.happy.R
 import com.slopus.happy.ui.HomeRoute
 import com.slopus.happy.ui.SettingsRoute
 import com.slopus.happy.ui.artifacts.AgentArtifactsRoute
+import com.slopus.happy.ui.feed.AgentFeedRoute
 import com.slopus.happy.ui.chat.COMPOSE_STARTED
 import com.slopus.happy.ui.chat.SessionRoute
 import com.slopus.happy.ui.chat.isComposeChatId
@@ -179,6 +180,7 @@ val LocalMainPanel = compositionLocalOf<MainPanel?> { null }
 object MainPanelKey {
     const val SETTINGS = "settings"
     const val ARTIFACTS = "artifacts"
+    const val FEED = "feed"
     const val NEW_SESSION = "newSession"
     const val CHANGELOG = "changelog"
     const val TROUBLESHOOT = "troubleshoot"
@@ -201,6 +203,7 @@ object MainPanelKey {
             destination.hasRoute<ConversationRoute>() -> entry.toRoute<ConversationRoute>().agentId?.let(::conversation)
             destination.hasRoute<AgentSurfaceRoute>() -> surface(entry.toRoute<AgentSurfaceRoute>().surfaceId)
             destination.hasRoute<AgentArtifactsRoute>() -> ARTIFACTS
+            destination.hasRoute<AgentFeedRoute>() -> FEED
             destination.hasRoute<SettingsRoute>() -> SETTINGS
             destination.hasRoute<MachineRoute>() -> machine(entry.toRoute<MachineRoute>().id)
             destination.hasRoute<SessionInfoRoute>() -> info(entry.toRoute<SessionInfoRoute>().id)

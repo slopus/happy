@@ -43,6 +43,7 @@ enum class Ionicon(val codepoint: Int) {
     Checkmark(0xf21d), // checkmark
     CheckmarkCircle(0xf21e), // checkmark-circle
     CheckmarkCircleOutline(0xf21f), // checkmark-circle-outline
+    CheckmarkDoneOutline(0xf225), // checkmark-done-outline
     CheckmarkOutline(0xf227), // checkmark-outline
     ChevronBack(0xf229), // chevron-back
     ChevronDown(0xf232), // chevron-down
@@ -115,6 +116,7 @@ enum class Ionicon(val codepoint: Int) {
     HeartOutline(0xf377), // heart-outline
     SearchOutline(0xf563), // search-outline
     MoonOutline(0xf461), // moon-outline
+    NewspaperOutline(0xf473), // newspaper-outline
     NotificationsOutline(0xf47f), // notifications-outline
     OptionsOutline(0xf48b), // options-outline
     PauseOutline(0xf497), // pause-outline

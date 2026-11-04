@@ -19,6 +19,11 @@ sealed interface AgentFeedRow {
         override val key get() = "artifacts"
     }
 
+    /** Desktop's Feed row under Artifacts, while the computer keeps a feed for the person: how many entries they haven't seen. */
+    data class Feed(val unread: Int) : AgentFeedRow {
+        override val key get() = "feed"
+    }
+
     /**
      * A Surface the person joined: a todo list, a document, a calendar, a
      * system monitor or a chat ([type]). It opens on its own page.
@@ -149,6 +154,8 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
             leaving: Set<String> = emptySet(),
             git: Map<String, WorkspaceLineChanges> = emptyMap(),
             intents: IntentOverlay = IntentOverlay(),
+            /** The Feed's unread count; null where there is no Feed. */
+            feedUnread: Int? = null,
         ): AgentFeed {
             if (!catalog.loaded) return Empty
             val removed = intents.removed
@@ -230,6 +237,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
 
             section(AgentFeedSection.Places) {
                 rows += AgentFeedRow.Artifacts
+                feedUnread?.let { rows += AgentFeedRow.Feed(it) }
                 catalog.surfaces.values
                     .filter { it.string("status") != "archived" && it["archivedAt"].isNullish() }
                     .mapNotNull { surface ->

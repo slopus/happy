@@ -84,4 +84,52 @@
     <string name="artifact_delete_title">Excluir “%1$s”?</string>
     <string name="artifact_delete_message">Ele é excluído para todos neste computador. As conversas que o mostravam dirão que foi excluído.</string>
     <string name="artifact_delete_failed">Não foi possível excluir este artefato.</string>
+
+    <string name="feed_activity">Atividade</string>
+    <string name="feed_following">Seguindo</string>
+    <string name="feed_mark_all_read">Marcar tudo como lido</string>
+    <string name="feed_empty">Nada aconteceu ainda. Novas tarefas, bots, documentos, listas de tarefas e artefatos aparecem aqui, com cada mudança neles.</string>
+    <string name="feed_loading">Carregando as novidades…</string>
+    <string name="feed_unavailable">Não foi possível carregar as novidades. Verifique se o computador está ligado.</string>
+    <string name="feed_unsupported">Este Happy Agent não mantém novidades. Atualize-o para tê-las.</string>
+    <string name="feed_everywhere">Em todo lugar</string>
+    <string name="feed_places">Lugares</string>
+    <string name="feed_no_clusters">Ainda não há nada para seguir. Tarefas, bots, documentos e listas de tarefas aparecem aqui quando algo acontece neles.</string>
+    <string name="feed_loading_clusters">Carregando…</string>
+    <string name="feed_clusters_unavailable">Não foi possível carregá-los. Verifique se o computador está ligado.</string>
+    <string name="feed_unread_mark">Não lido</string>
+    <string name="feed_everything">Tudo</string>
+    <string name="feed_team">Equipe</string>
+    <string name="feed_follow">Seguir %1$s</string>
+    <string name="feed_mute">Silenciar %1$s</string>
+    <string name="feed_muted">Silenciado</string>
+    <string name="feed_follow_failed">Não foi possível mudar o que você segue. %1$s</string>
+    <string name="feed_created_with">Criado · %1$s</string>
+    <string name="feed_created">Criado</string>
+    <string name="feed_changed">Alterado</string>
+    <plurals name="feed_unread">
+        <item quantity="one">%1$d não lido</item>
+        <item quantity="many">%1$d não lidos</item>
+        <item quantity="other">%1$d não lidos</item>
+    </plurals>
+    <plurals name="feed_new_todos">
+        <item quantity="one">%1$d nova tarefa</item>
+        <item quantity="many">%1$d novas tarefas</item>
+        <item quantity="other">%1$d novas tarefas</item>
+    </plurals>
+    <plurals name="feed_edits">
+        <item quantity="one">%1$d edição</item>
+        <item quantity="many">%1$d edições</item>
+        <item quantity="other">%1$d edições</item>
+    </plurals>
+    <plurals name="feed_versions">
+        <item quantity="one">%1$d nova versão</item>
+        <item quantity="many">%1$d novas versões</item>
+        <item quantity="other">%1$d novas versões</item>
+    </plurals>
+    <plurals name="feed_updates">
+        <item quantity="one">%1$d atualização</item>
+        <item quantity="many">%1$d atualizações</item>
+        <item quantity="other">%1$d atualizações</item>
+    </plurals>
 </resources>
