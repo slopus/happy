@@ -50,4 +50,13 @@
     <string name="document_version">Versión %1$d</string>
     <string name="document_here_one">%1$s está aquí</string>
     <string name="document_here_many">%1$s están aquí</string>
+    <string name="surface_members_none">Nadie se ha unido</string>
+    <string name="surface_members_two">%1$s y %2$s</string>
+    <plurals name="surface_members_more">
+        <item quantity="one">%1$s, %2$s y %3$d más</item>
+        <item quantity="other">%1$s, %2$s y %3$d más</item>
+        <item quantity="many">%1$s, %2$s y %3$d más</item>
+    </plurals>
+    <string name="surface_created_by">Creado por %1$s</string>
+    <string name="surface_added_by">Añadido por %1$s</string>
 </resources>

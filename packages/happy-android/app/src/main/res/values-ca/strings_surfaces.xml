@@ -50,4 +50,13 @@
     <string name="document_version">Versió %1$d</string>
     <string name="document_here_one">%1$s és aquí</string>
     <string name="document_here_many">%1$s són aquí</string>
+    <string name="surface_members_none">No s\'hi ha unit ningú</string>
+    <string name="surface_members_two">%1$s i %2$s</string>
+    <plurals name="surface_members_more">
+        <item quantity="one">%1$s, %2$s i %3$d més</item>
+        <item quantity="other">%1$s, %2$s i %3$d més</item>
+        <item quantity="many">%1$s, %2$s i %3$d més</item>
+    </plurals>
+    <string name="surface_created_by">Creat per %1$s</string>
+    <string name="surface_added_by">Afegit per %1$s</string>
 </resources>

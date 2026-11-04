@@ -76,4 +76,16 @@
     <!-- Who else has the document open, read by TalkBack on their faces in the bar (iOS Strings.Documents.editing). -->
     <string name="document_here_one">%1$s is here</string>
     <string name="document_here_many">%1$s are here</string>
+
+
+
+    <!-- Who is in a Surface, atop its menu (desktop surfaceMembersText). -->
+    <string name="surface_members_none">Nobody has joined</string>
+    <string name="surface_members_two">%1$s and %2$s</string>
+    <plurals name="surface_members_more">
+        <item quantity="one">%1$s, %2$s and %3$d other</item>
+        <item quantity="other">%1$s, %2$s and %3$d others</item>
+    </plurals>
+    <string name="surface_created_by">Created by %1$s</string>
+    <string name="surface_added_by">Added by %1$s</string>
 </resources>

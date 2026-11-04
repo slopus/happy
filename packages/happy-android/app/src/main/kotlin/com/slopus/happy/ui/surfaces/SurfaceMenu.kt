@@ -7,16 +7,20 @@ import androidx.compose.material3.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slopus.happy.R
 import com.slopus.happy.agent.AgentSession
+import com.slopus.happy.agent.SurfaceType
+import com.slopus.happy.references.ReferenceReader
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
@@ -25,6 +29,7 @@ import com.slopus.happy.ui.components.HappyMenuItem
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.theme.HappyTheme
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /** A Surface's 48 dp More target, using the same confirmation and durable leave as home's menu. */
@@ -37,7 +42,39 @@ fun SurfaceMenu(
 ) {
     val catalog by session.surfaces.collectAsStateWithLifecycle()
     val surface = catalog[surfaceId] ?: return
-    SurfaceLeaveMenu(surface.name, onBack, extraItems) { session.leaveSurface(surfaceId) }
+    // Who is in it and who made it, by name once the computer says them (desktop's `HappyAgentSurfaceHeader`).
+    val ids = remember(surface.members, surface.creatorUserId) {
+        (surface.members.mapNotNull { it.userId } + listOfNotNull(surface.creatorUserId)).distinct()
+    }
+    val names by produceState(emptyMap<String, String>(), session, ids) {
+        value = try { ReferenceReader.userNames(session.client, ids) } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyMap() }
+    }
+    val people = SurfacePeople(
+        members = surface.members.map { member -> member.userId?.let { names[it] }?.takeIf { it.isNotEmpty() } },
+        creator = surface.creatorUserId?.let { names[it] }?.takeIf { it.isNotEmpty() },
+        added = surface.type == SurfaceType.ARTIFACT || surface.type == SurfaceType.BOT || surface.type == SurfaceType.TASK,
+    )
+    SurfaceLeaveMenu(surface.name, onBack, extraItems, people) { session.leaveSurface(surfaceId) }
+}
+
+/**
+ * Who is in a Surface, by name (null for someone not named yet), who made
+ * it, and whether they only added it here (an artifact, bot or task made
+ * elsewhere).
+ */
+data class SurfacePeople(val members: List<String?>, val creator: String?, val added: Boolean = false)
+
+/** Desktop's `surfaceMembersText`: "Ann", "Ann and Bo", "Ann, Bo and 3 others", "Nobody has joined". */
+@Composable
+internal fun surfaceMembersText(members: List<String?>): String {
+    val someone = stringResource(R.string.document_someone)
+    val names = members.map { it ?: someone }
+    return when (names.size) {
+        0 -> stringResource(R.string.surface_members_none)
+        1 -> names[0]
+        2 -> stringResource(R.string.surface_members_two, names[0], names[1])
+        else -> pluralStringResource(R.plurals.surface_members_more, names.size - 2, names[0], names[1], names.size - 2)
+    }
 }
 
 @Composable
@@ -45,6 +82,7 @@ internal fun SurfaceLeaveMenu(
     name: String,
     onBack: () -> Unit,
     extraItems: @Composable ColumnScope.(close: () -> Unit) -> Unit = {},
+    people: SurfacePeople? = null,
     leave: suspend () -> String?,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -57,6 +95,16 @@ internal fun SurfaceLeaveMenu(
             Icon(Ionicon.EllipsisVertical, 24.dp, HappyTheme.colors.text, contentDescription = stringResource(R.string.conversation_composer_more))
         }
         HappyDropdownMenu(expanded, onDismissRequest = { expanded = false }) {
+            if (people != null) {
+                val credit = people.creator?.let { stringResource(if (people.added) R.string.surface_added_by else R.string.surface_created_by, it) }
+                HappyMenuItem(
+                    surfaceMembersText(people.members),
+                    onClick = {},
+                    modifier = Modifier.testTag("surface.people"),
+                    supporting = credit,
+                    enabled = false,
+                )
+            }
             extraItems { expanded = false }
             HappyMenuItem(stringResource(R.string.surface_leave), onClick = { expanded = false; confirming = true })
         }

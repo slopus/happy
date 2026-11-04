@@ -50,4 +50,11 @@
     <string name="document_version">バージョン %1$d</string>
     <string name="document_here_one">%1$sがいます</string>
     <string name="document_here_many">%1$sがいます</string>
+    <string name="surface_members_none">まだ誰も参加していません</string>
+    <string name="surface_members_two">%1$sと%2$s</string>
+    <plurals name="surface_members_more">
+        <item quantity="other">%1$s、%2$s、ほか%3$d人</item>
+    </plurals>
+    <string name="surface_created_by">作成者: %1$s</string>
+    <string name="surface_added_by">追加した人: %1$s</string>
 </resources>

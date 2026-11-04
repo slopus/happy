@@ -50,4 +50,11 @@
     <string name="document_version">版本 %1$d</string>
     <string name="document_here_one">%1$s 在這裡</string>
     <string name="document_here_many">%1$s 在這裡</string>
+    <string name="surface_members_none">還沒有人加入</string>
+    <string name="surface_members_two">%1$s 和 %2$s</string>
+    <plurals name="surface_members_more">
+        <item quantity="other">%1$s、%2$s 和另外 %3$d 人</item>
+    </plurals>
+    <string name="surface_created_by">建立者：%1$s</string>
+    <string name="surface_added_by">新增者：%1$s</string>
 </resources>

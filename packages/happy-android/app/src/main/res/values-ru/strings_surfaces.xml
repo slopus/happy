@@ -50,4 +50,14 @@
     <string name="document_version">Версия %1$d</string>
     <string name="document_here_one">%1$s здесь</string>
     <string name="document_here_many">%1$s здесь</string>
+    <string name="surface_members_none">Пока никто не присоединился</string>
+    <string name="surface_members_two">%1$s и %2$s</string>
+    <plurals name="surface_members_more">
+        <item quantity="one">%1$s, %2$s и ещё %3$d</item>
+        <item quantity="few">%1$s, %2$s и ещё %3$d</item>
+        <item quantity="many">%1$s, %2$s и ещё %3$d</item>
+        <item quantity="other">%1$s, %2$s и ещё %3$d</item>
+    </plurals>
+    <string name="surface_created_by">Автор: %1$s</string>
+    <string name="surface_added_by">Добавлено: %1$s</string>
 </resources>

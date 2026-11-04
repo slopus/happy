@@ -54,4 +54,20 @@ class SurfaceMenuTest {
         rule.onNodeWithText("The owner must stay.").assertExists()
         assertEquals(0, backs)
     }
+
+    @Test
+    fun theMenuSaysWhoIsInItAndWhoMadeIt() {
+        rule.setHappyContent { Row { SurfaceLeaveMenu("Plan", {}, people = SurfacePeople(listOf("Ann", "Bo", null, "Di"), creator = "Ann")) { null } } }
+        rule.node("surface.more").performClick()
+        rule.onNodeWithText("Ann, Bo and 2 others").assertExists()
+        rule.onNodeWithText("Created by Ann").assertExists()
+    }
+
+    @Test
+    fun anAddedSurfaceSaysWhoAddedItAndTwoAreNamedBoth() {
+        rule.setHappyContent { Row { SurfaceLeaveMenu("Spec", {}, people = SurfacePeople(listOf("Ann", null), creator = "Bo", added = true)) { null } } }
+        rule.node("surface.more").performClick()
+        rule.onNodeWithText("Ann and Someone").assertExists()
+        rule.onNodeWithText("Added by Bo").assertExists()
+    }
 }
