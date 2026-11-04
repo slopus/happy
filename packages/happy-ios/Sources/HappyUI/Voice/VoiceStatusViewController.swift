@@ -10,7 +10,6 @@ import UIKit
 final class VoiceStatusViewController: UIViewController {
     private let coordinator: VoiceCoordinator
     private let list = GroupedListView()
-    private var shownDenial: VoiceDenial?
     init(coordinator: VoiceCoordinator) {
         self.coordinator = coordinator
         super.init(nibName: nil, bundle: nil)
@@ -23,16 +22,6 @@ final class VoiceStatusViewController: UIViewController {
         title = Strings.Voice.title
         navigationItem.rightBarButtonItem = UIBarButtonItem(title: Strings.Voice.done, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
         update(coordinator.state)
-    }
-
-    /// The app's offer sheet for the relay's refusal: bought or restored
-    /// there, the server is asked once more.
-    private func offerSubscription() {
-        guard viewIfLoaded?.window != nil, presentedViewController == nil else { return }
-        Task { [weak self] in
-            guard let self, await Offers.shared.ask(.required, over: self) == .pro else { return }
-            self.coordinator.retry()
-        }
     }
 
     func update(_ state: VoiceState) {
@@ -61,13 +50,8 @@ final class VoiceStatusViewController: UIViewController {
             }
             if denial.reason == .subscriptionRequired {
                 rows.append(ItemRowView(title: Strings.Voice.upgrade, icon: ItemIcon(.ionicons("heart-outline"), tint: Palette.iconRed)) { [weak self] in
-                    self?.offerSubscription()
+                    self?.navigationController?.pushViewController(SupportUsViewController(), animated: true)
                 })
-                // The refusal is the paywall's moment: voice's sheet, with no free way on.
-                if shownDenial != denial {
-                    shownDenial = denial
-                    DispatchQueue.main.async { [weak self] in self?.offerSubscription() }
-                }
             }
         case .failed(let failure):
             title = failure == .microphonePermission ? Strings.Voice.permissionDenied : failure == .authentication ? Strings.Voice.authentication : Strings.Voice.unavailable

@@ -632,7 +632,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             isSendDisabled: false,
             showAbortButton: SessionComposerRules.showsAbortButton(record),
             canAbort: SessionComposerRules.canAbort(record) && !stopRequested,
-            canVoice: record != nil && !environment.sessionId.hasPrefix("pending-chat:")
+            canVoice: LegacyVoice.isEnabled && record != nil && !environment.sessionId.hasPrefix("pending-chat:")
         )
         var configuration = card.configuration
         configuration.permission = chips.permission.map(Self.chip)

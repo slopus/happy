@@ -18,6 +18,7 @@ extension Strings {
         static var permissionDenied: String { "Allow microphone access in Settings to use voice." }
         static var openSettings: String { "Open Settings" }
         static var authentication: String { "Sign in again to use voice." }
+        static var legacyOff: String { "Voice isn’t available in Happy sessions in this version." }
         static var unavailable: String { localized("errors.voiceServiceUnavailable", "Voice service is temporarily unavailable") }
         static var subscriptionRequired: String { "Your free voice time has been used. More voice time requires an active subscription." }
         static var hardLimit: String { "You’ve reached the maximum voice time for the last 30 days." }

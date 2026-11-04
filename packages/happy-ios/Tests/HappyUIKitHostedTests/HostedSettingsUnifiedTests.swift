@@ -275,9 +275,9 @@ final class HostedSettingsUnifiedTests: XCTestCase {
         let opened = try await until { navigation.topViewController is VoiceSettingsViewController && navigation.transitionCoordinator == nil }
         XCTAssertTrue(opened, "Voice didn't open: \(navigation.viewControllers)")
         let voice = try XCTUnwrap(navigation.topViewController as? VoiceSettingsViewController)
-        _ = try await until { voice.shownRow("voice-usage-retry")?.action != nil }
-        XCTAssertEqual(voice.shownRowIDs, [["voice-usage-retry"], ["voice-upgrade"], ["voice-language"], ["voice-agent-id", "voice-direct"]])
-        XCTAssertEqual(voice.shownFooters.count, 4)
+        // Voice in a Happy account's sessions is off (`LegacyVoice`): said so, its settings kept.
+        XCTAssertEqual(voice.shownRowIDs, [["voice-off"], ["voice-language"], ["voice-agent-id", "voice-direct"]])
+        XCTAssertEqual(voice.shownFooters.count, 2)
 
         // A switch is kept.
         XCTAssertEqual(voice.shownRow("voice-direct")?.isOn, false)

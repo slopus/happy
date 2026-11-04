@@ -19,8 +19,6 @@ public final class VoiceCoordinator: NSObject {
     private var generation = 0
     private let lifetime = VoiceConnectionLifetime()
     private weak var screen: VoiceStatusViewController?
-    /// What the last start asked for: tried once more once the subscription came.
-    private var lastStart: (account: AccountSession, sessionId: String)?
     public private(set) var state: VoiceState = .idle
 
     private override init() {
@@ -32,6 +30,8 @@ public final class VoiceCoordinator: NSObject {
     }
 
     public func start(account: AccountSession, sessionId: String, presenting: UIViewController) {
+        // Off (`LegacyVoice`): said so, before any microphone, grant, context or provider.
+        guard LegacyVoice.isEnabled else { return Alerts.show(Strings.Voice.legacyOff, on: presenting) }
         if self.account === account, isRunning {
             focus(account: account, sessionId: sessionId)
             show(from: presenting)
@@ -39,7 +39,6 @@ public final class VoiceCoordinator: NSObject {
         }
         stop()
         self.account = account
-        lastStart = (account, sessionId)
         let current = generation
         let context = VoiceContext(account: account, sessionId: sessionId)
         self.context = context
@@ -86,14 +85,6 @@ public final class VoiceCoordinator: NSObject {
 
     private func isCurrent(_ voice: VoiceSession) -> Bool { session === voice }
 
-    /// The server refused for want of a subscription, which has come since:
-    /// the same call asked for again, once.
-    func retry() {
-        guard case .denied(let denial) = state, denial.reason == .subscriptionRequired,
-              let last = lastStart, let screen, let presenting = screen.navigationController?.presentingViewController else { return }
-        start(account: last.account, sessionId: last.sessionId, presenting: presenting)
-    }
-
     private var isRunning: Bool {
         switch state { case .connecting, .active: true; default: false }
     }
@@ -107,7 +98,6 @@ public final class VoiceCoordinator: NSObject {
 
     public func accountDidChange(to account: AccountSession?) {
         guard self.account != nil, self.account !== account else { return }
-        lastStart = nil
         stop()
         screen?.dismiss(animated: false)
     }

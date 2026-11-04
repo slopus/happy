@@ -38,7 +38,7 @@ final class VoiceSettingsViewController: SettingsPageViewController {
             self.settings = settings
             reload()
         }
-        if loadsUsage { loadUsage() }
+        if loadsUsage, LegacyVoice.isEnabled { loadUsage() }
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -76,11 +76,14 @@ final class VoiceSettingsViewController: SettingsPageViewController {
         }
         let language = VoiceLanguage.selection(settings.string("voiceAssistantLanguage"))
         let agentID = settings.string("voiceCustomAgentId")
-        return [
+        // Off: said so, with no usage asked for and nothing to upgrade; the synced settings stay.
+        let voice: [[Row]] = LegacyVoice.isEnabled ? [
             usageRows.withFooter("\(Text.usageTitle). \(Text.usageFooter)"),
             [Row(id: "voice-upgrade", title: Text.upgrade, icon: ("heart-outline", .red), action: { [weak self] in
                 self?.navigationController?.pushViewController(SupportUsViewController(), animated: true)
             }, footer: Text.upgradeSubtitle)],
+        ] : [[Row(id: "voice-off", title: Text.legacyOff, icon: ("mic-outline", .gray), accessory: .none)]]
+        return voice + [
             [Row(id: "voice-language", title: Text.preferredLanguage, icon: ("language-outline", .blue), value: language.name, action: { [weak self] in
                 guard let self else { return }
                 navigationController?.pushViewController(VoiceLanguageViewController(session: session), animated: true)
