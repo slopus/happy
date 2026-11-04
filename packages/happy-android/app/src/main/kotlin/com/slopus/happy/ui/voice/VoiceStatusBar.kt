@@ -84,7 +84,8 @@ fun VoiceStatusBarContent(state: VoiceState, duration: String?, sidebar: Boolean
     val text = when (state.status) {
         VoiceStatus.Connecting -> stringResource(R.string.voice_status_bar_connecting)
         VoiceStatus.Error -> stringResource(R.string.voice_status_bar_error)
-        else -> duration ?: if (sidebar) stringResource(R.string.voice_status_bar_active) else "0:00"
+        else -> if (state.muted) stringResource(R.string.feed_muted)
+            else duration ?: if (sidebar) stringResource(R.string.voice_status_bar_active) else "0:00"
     }
     val end = stringResource(R.string.voice_status_bar_tap_to_end)
     if (sidebar) {
