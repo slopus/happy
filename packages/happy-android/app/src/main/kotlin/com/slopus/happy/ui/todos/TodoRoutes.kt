@@ -4,7 +4,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
@@ -17,10 +16,7 @@ import com.slopus.happy.todos.TodoListState
 import com.slopus.happy.ui.artifacts.PlaceScaffold
 import com.slopus.happy.ui.cards.CardNote
 import com.slopus.happy.ui.page
-import com.slopus.happy.ui.chat.linkStatusWords
-import com.slopus.happy.ui.chat.rememberShownLinkState
-import com.slopus.happy.ui.connection.rememberNetworkPath
-import com.slopus.happy.ui.conversation.linkState
+import com.slopus.happy.ui.surfaces.surfaceTitle
 import androidx.compose.ui.res.stringResource
 import kotlinx.serialization.Serializable
 
@@ -66,19 +62,9 @@ private fun TodoDeletedScreen(session: AgentSession, surfaceId: String, onBack: 
     val state by states.collectAsStateWithLifecycle(TodoListState())
     val actions = rememberTodoActions(session, surfaceId, open)
     LaunchedEffect(session, surfaceId) { session.todos.showDeleted(surfaceId) }
-    PlaceScaffold(todoTitle(session, stringResource(R.string.files_deleted)), onBack, tag = "todo.deleted.screen") {
+    PlaceScaffold(surfaceTitle(session, stringResource(R.string.files_deleted)), onBack, tag = "todo.deleted.screen") {
         TodoListContent(state, actions, deleted = true)
     }
-}
-
-/** iOS 7aee3a9b8: brief link changes stay quiet; a longer one stands in the title's place. */
-@Composable
-internal fun todoTitle(session: AgentSession, name: String): String {
-    val status by session.status.collectAsStateWithLifecycle()
-    val syncing by session.isSyncing.collectAsStateWithLifecycle()
-    val link = rememberShownLinkState(status.linkState(syncing, rememberNetworkPath()))
-    val locale = LocalConfiguration.current.locales[0]
-    return linkStatusWords(link)?.replaceFirstChar { it.titlecase(locale) } ?: name
 }
 
 @Composable

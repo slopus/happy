@@ -18,6 +18,7 @@ import com.slopus.happy.R
 import com.slopus.happy.agent.AgentSession
 import com.slopus.happy.todos.TodoRevision
 import com.slopus.happy.ui.artifacts.PlaceScaffold
+import com.slopus.happy.ui.surfaces.surfaceTitle
 import com.slopus.happy.ui.cards.CardNote
 import com.slopus.happy.ui.cards.CardRow
 import com.slopus.happy.ui.components.HomeCardPlace
@@ -50,7 +51,7 @@ internal fun TodoHistoryScreen(session: AgentSession, surfaceId: String, todoId:
             }
         } catch (e: CancellationException) { throw e } catch (_: Exception) { HistoryRead.Failed }
     }
-    PlaceScaffold(todoTitle(session, stringResource(R.string.artifact_history)), onBack, tag = "todo.history", subtitle = text) {
+    PlaceScaffold(surfaceTitle(session, stringResource(R.string.artifact_history)), onBack, tag = "todo.history", subtitle = text) {
         Box(Modifier.fillMaxSize().navigationBarsPadding()) {
             when (val value = read) {
                 HistoryRead.Loading -> CardNote(stringResource(R.string.todo_history_loading))
