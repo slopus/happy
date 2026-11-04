@@ -48,7 +48,14 @@ class DocumentLineSpan(
 
     override fun getLeadingMargin(first: Boolean): Int = indent
 
+    companion object {
+        /** Lines of document paragraphs laid out so far, main thread: the work counts of the performance tests. */
+        @androidx.annotation.VisibleForTesting
+        var linesLaidOut = 0
+    }
+
     override fun chooseHeight(text: CharSequence, start: Int, end: Int, spanstartv: Int, lineHeight: Int, fm: Paint.FontMetricsInt) {
+        linesLaidOut++
         val spanned = text as? Spanned ?: return
         val spanStart = spanned.getSpanStart(this)
         val spanEnd = spanned.getSpanEnd(this)

@@ -259,14 +259,14 @@ class DocumentStyle(resources: Resources, val dark: Boolean, private val labels:
         val kind = kind(line)
         val lineSpan = DocumentLineSpan(line, kind, numberText(line), metrics, spacingBefore(line, previous), lineHeight(line))
         text.setSpan(lineSpan, start, end, Spanned.SPAN_PARAGRAPH)
-        // The paragraph's own type, on its "\n" too so an empty line has its height.
+        // The paragraph's own type, on its "\n" too so an empty line has its height. Body text is
+        // the view's own size and colour: every span is work on each keystroke after it (DocumentEditable).
         val size = textSize(line)
-        text.setSpan(DocumentLook.Size(size.roundToInt()), start, end, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
+        if (size != bodySize) text.setSpan(DocumentLook.Size(size.roundToInt()), start, end, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
         when (line.block.type) {
             "heading" -> text.setSpan(weight(if (line.block.level == 1) 700 else 600), start, end, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
             "codeBlock" -> text.setSpan(DocumentLook.Mono(), start, end, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
         }
-        text.setSpan(DocumentLook.Color(colors.text), start, end, Spanned.SPAN_INCLUSIVE_EXCLUSIVE)
         when (val content = line.block.content) {
             is DocumentBlock.Content.Inline -> {
                 var at = start

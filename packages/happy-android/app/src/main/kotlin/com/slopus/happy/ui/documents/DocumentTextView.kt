@@ -56,6 +56,9 @@ class DocumentTextView(context: Context) : EditText(context) {
         imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN
         setHorizontallyScrolling(false)
         filters = arrayOf(InputFilter { source, start, end, dest, dstart, dend -> filter(source, start, end, dest, dstart, dend) })
+        setEditableFactory(DocumentEditable.factory)
+        // Body text's size is the view's (its colour the screen's); the paragraphs only set what differs (DocumentStyle.style).
+        textSize = DocumentTokens.BODY_SIZE
     }
 
     private fun filter(source: CharSequence, start: Int, end: Int, dest: Spanned, dstart: Int, dend: Int): CharSequence? {
