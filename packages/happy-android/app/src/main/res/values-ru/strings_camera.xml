@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="camera_take_photo">Сделать фото</string>
+    <string name="camera_retake">Переснять</string>
+    <string name="camera_use_photo">Использовать фото</string>
+    <string name="camera_permission">Разрешите Happy использовать камеру в настройках, чтобы делать фотографии.</string>
+    <string name="camera_no_camera">На этом устройстве нет камеры.</string>
+    <string name="camera_unavailable">Не удалось запустить камеру. Попробуйте снова.</string>
+    <string name="camera_in_use">Камера используется другим приложением.</string>
+    <string name="camera_capture_failed">Не удалось сделать фото. Попробуйте снова.</string>
+    <string name="camera_viewfinder">Видоискатель</string>
+</resources>

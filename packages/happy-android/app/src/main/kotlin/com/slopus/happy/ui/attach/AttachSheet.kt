@@ -304,6 +304,7 @@ internal fun AttachSheetLayout(
     sending: Boolean = false,
     galleryState: LazyGridState = rememberLazyGridState(),
     filesState: LazyListState = rememberLazyListState(),
+    camera: AttachCameraState? = null,
 ) {
     val theme = HappyTheme.colors
     val colors = remember(theme.dark) { AttachColors.of(theme.dark) }
@@ -397,6 +398,7 @@ internal fun AttachSheetLayout(
         SideEffect {
             motion.height = height
             motion.top = ::sheetTop
+            camera?.viewportTop = { (statusBar + with(density) { AttachSpec.topBar.toPx() }) * topBar }
         }
 
         val connection = remember(dismissAt) {
@@ -516,6 +518,7 @@ internal fun AttachSheetLayout(
                         AttachTabKind.Gallery -> AttachGalleryPage(
                             gallery, selection, columns, listPadding, galleryState, sheetColor, colors,
                             onToggle = onToggleGallery, onOpen = onOpenGallery, onAllow = onAllow, onManage = onManage, modifier = pageModifier,
+                            camera = camera,
                         )
                         AttachTabKind.Files -> AttachFilesPage(
                             sources, recent, selection,

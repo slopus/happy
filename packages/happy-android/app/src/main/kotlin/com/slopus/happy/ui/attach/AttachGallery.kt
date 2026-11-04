@@ -29,6 +29,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -38,6 +39,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -60,6 +67,7 @@ import com.slopus.happy.ui.components.rememberReduceMotion
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 import com.slopus.happy.ui.conversation.viewerOrigin
+import com.slopus.happy.ui.camera.PhotoTags
 
 /** The gallery as the sheet shows it: how far the app may read, and what it read. */
 @Immutable
@@ -92,6 +100,7 @@ internal fun AttachGalleryPage(
     onAllow: () -> Unit,
     onManage: () -> Unit,
     modifier: Modifier = Modifier,
+    camera: AttachCameraState? = null,
 ) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(columns),
@@ -103,16 +112,22 @@ internal fun AttachGalleryPage(
     ) {
         when {
             content.access == GalleryAccess.None -> item(key = "access", span = { GridItemSpan(maxLineSpan) }) {
-                GalleryAsk(content.blocked, onAllow)
+                GalleryAsk(content.blocked, onAllow, camera?.let { { it.open() } })
             }
             else -> {
                 if (content.access == GalleryAccess.Partial) {
                     item(key = "partial", span = { GridItemSpan(maxLineSpan) }) { PartialAccess(onManage) }
                 }
-                if (content.loaded && content.items.isEmpty()) {
+                if (content.loaded && content.items.isEmpty() && camera == null) {
                     item(key = "empty", span = { GridItemSpan(maxLineSpan) }) { GalleryEmpty() }
                 }
-                items(content.items, key = { it.uri }, contentType = { "cell" }) { item ->
+                val first = if (camera == null) 0 else 2 * (columns - 1)
+                if (camera != null) {
+                    item(key = "camera", span = { GridItemSpan(maxLineSpan) }) {
+                        CameraRows(camera, columns, content.items.take(first), selection, sheet, colors, onToggle, onOpen)
+                    }
+                }
+                items(content.items.drop(first), key = { it.uri }, contentType = { "cell" }) { item ->
                     GalleryCell(item, selection.number(item.uri), sheet, colors, onToggle = { onToggle(item) }, onOpen = { onOpen(item) })
                 }
             }
@@ -213,7 +228,7 @@ private fun VideoBadge(durationMs: Long, colors: AttachColors, modifier: Modifie
 
 /** No access yet: why, and the button that asks (or opens Settings once refused for good). */
 @Composable
-private fun GalleryAsk(blocked: Boolean, onAllow: () -> Unit) {
+private fun GalleryAsk(blocked: Boolean, onAllow: () -> Unit, onCamera: (() -> Unit)? = null) {
     val colors = HappyTheme.colors
     Column(
         Modifier
@@ -246,6 +261,50 @@ private fun GalleryAsk(blocked: Boolean, onAllow: () -> Unit) {
                 style = happyTextStyle(15, weight = FontWeight.SemiBold),
                 color = AttachColors.of(colors.dark).accent,
             )
+        }
+        if (onCamera != null) TextButton(onClick = onCamera) {
+            Text(stringResource(R.string.components_empty_main_screen_open_camera), color = AttachColors.of(colors.dark).accent)
+        }
+    }
+}
+
+/** iOS AttachGridCollectionLayout: first column is a camera two photo cells tall. */
+@Composable
+private fun CameraRows(
+    camera: AttachCameraState,
+    columns: Int,
+    items: List<GalleryItem>,
+    selection: AttachSelection,
+    sheet: Color,
+    colors: AttachColors,
+    onToggle: (GalleryItem) -> Unit,
+    onOpen: (GalleryItem) -> Unit,
+) {
+    DisposableEffect(camera) { onDispose { camera.tile = null; camera.tilePosition = null } }
+    val label = stringResource(R.string.components_empty_main_screen_open_camera)
+    Layout(
+        content = {
+            Box(Modifier.fillMaxSize().background(Color.Black)
+                .clickable(role = Role.Button, onClickLabel = label) { camera.open() }
+                .semantics { contentDescription = label }
+                .onGloballyPositioned {
+                    camera.tile = it
+                    camera.tilePosition = Rect(it.positionInWindow(), Size(it.size.width.toFloat(), it.size.height.toFloat()))
+                }.testTag(PhotoTags.TILE))
+            items.forEach { item ->
+                GalleryCell(item, selection.number(item.uri), sheet, colors, { onToggle(item) }, { onOpen(item) })
+            }
+        },
+        modifier = Modifier.fillMaxWidth(),
+    ) { measurables, constraints ->
+        val gap = AttachSpec.gridGap.roundToPx()
+        val cell = (constraints.maxWidth - gap * (columns - 1)) / columns
+        val height = 2 * cell + gap
+        val tile = measurables.first().measure(Constraints.fixed(cell, height))
+        val photos = measurables.drop(1).map { it.measure(Constraints.fixed(cell, cell)) }
+        layout(constraints.maxWidth, height) {
+            tile.placeRelative(0, 0)
+            photos.forEachIndexed { index, placeable -> placeable.placeRelative((index % (columns - 1) + 1) * (cell + gap), (index / (columns - 1)) * (cell + gap)) }
         }
     }
 }

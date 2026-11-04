@@ -68,6 +68,7 @@ internal fun SheetUnderTest(
     startTab: AttachTabKind = AttachTabKind.Gallery,
     onClose: () -> Unit = {},
     motion: AttachSheetMotion = remember { AttachSheetMotion(settled = true) },
+    camera: AttachCameraState? = null,
 ) {
     var tab by remember { mutableStateOf(startTab) }
     var caption by remember { mutableStateOf("") }
@@ -92,6 +93,7 @@ internal fun SheetUnderTest(
         onBrowse = {},
         onFilesGallery = {},
         onPaste = {},
+        camera = camera,
     )
 }
 
@@ -120,6 +122,40 @@ class AttachSheetLayoutTest {
 
     private fun cells() = rule.onAllNodesWithTag(AttachTags.CELL, useUnmergedTree = true)
     private fun checks() = rule.onAllNodesWithTag(AttachTags.CHECK, useUnmergedTree = true)
+
+    @Test fun `camera spans two cells beside the first four photos and opens without selecting`() {
+        val camera = AttachCameraState()
+        var opened = 0
+        camera.open = { opened++ }
+        val selection = AttachSelection(20)
+        rule.setHappyContent { SheetUnderTest(camera = camera, selection = selection) }
+        val tile = rule.node(com.slopus.happy.ui.camera.PhotoTags.TILE).bounds
+        val first = cells()[0].bounds
+        val second = cells()[1].bounds
+        val third = cells()[2].bounds
+        assertDp("camera width", first.width, tile.width)
+        assertDp("two rows", first.height * 2 + 2.dp, tile.height)
+        assertDp("top", first.top, tile.top)
+        assertDp("first column", 2, tile.left)
+        assertDp("photos beside camera", 2, first.left - tile.right)
+        assertDp("photo gap", 2, second.left - first.right)
+        assertDp("second row", 2, third.top - first.bottom)
+        rule.node(com.slopus.happy.ui.camera.PhotoTags.TILE).performClick()
+        assertEquals(1, opened)
+        assertEquals(0, selection.count)
+        checks()[0].performClick()
+        assertEquals(1, selection.number(fakeGallery()[0].uri))
+    }
+
+    @Test fun `denied library access can still open the camera without a tile`() {
+        val camera = AttachCameraState()
+        var opened = 0
+        camera.open = { opened++ }
+        rule.setHappyContent { SheetUnderTest(content = GalleryContent(GalleryAccess.None), camera = camera) }
+        rule.node(com.slopus.happy.ui.camera.PhotoTags.TILE).assertDoesNotExist()
+        rule.onNodeWithText("Open Camera").performClick()
+        assertEquals(1, opened)
+    }
 
     @Test fun `the grid rests at two fifths, three columns 2 apart`() {
         rule.setHappyContent { SheetUnderTest() }

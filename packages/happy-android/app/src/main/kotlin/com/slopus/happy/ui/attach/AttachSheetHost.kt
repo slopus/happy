@@ -101,6 +101,7 @@ fun AttachSheet(
     button: AttachButton? = null,
     workspace: WorkspaceSource? = null,
     onSendPending: ((List<AttachmentPreview>, List<PendingPicture>) -> Unit)? = null,
+    onPhoto: ((AttachmentPreview) -> Unit)? = null,
 ) {
     if (!open) return
     val tabs = accepts.tabs
@@ -114,6 +115,7 @@ fun AttachSheet(
     val reduceMotion = rememberReduceMotion()
     val haptics = LocalHapticFeedback.current
     val motion = remember { AttachSheetMotion() }
+    val camera = remember { AttachCameraState() }.takeIf { accepts.photos && onPhoto != null }
     val selection = remember { AttachSelection(room.coerceAtLeast(0)) }
     val closed by rememberUpdatedState(onClosed)
     val send by rememberUpdatedState(onSend)
@@ -274,7 +276,7 @@ fun AttachSheet(
     }
 
     Dialog(
-        onDismissRequest = ::close,
+        onDismissRequest = { if (camera?.full == true) camera.back() else close() },
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
         // Our own 0.2 scrim fades with the sheet; the window's dim would sit still behind it.
@@ -287,7 +289,7 @@ fun AttachSheet(
         }
         LaunchedEffect(Unit) { motion.open(reduceMotion, button.takeIf { grows }) }
         val dismissAt = context.resources.displayMetrics.xdpi / 2.54f * AttachSpec.DISMISS_CM
-        PredictiveBackHandler(enabled = !motion.closing) { progress ->
+        PredictiveBackHandler(enabled = !motion.closing && camera?.full != true) { progress ->
             try {
                 progress.collect { motion.drag = it.progress * dismissAt * 2 }
                 close()
@@ -322,6 +324,19 @@ fun AttachSheet(
             onPaste = ::paste,
             onWorkspace = { naming = true },
             sending = sending,
+            camera = camera,
+        )
+        if (camera != null && onPhoto != null) AttachCamera(
+            state = camera, visible = tab == AttachTabKind.Gallery && viewing == null && !naming && !motion.closing,
+            maxBytes = accepts.maxFileBytes,
+            hasRoom = {
+                if (room > 0) true else {
+                    say(R.string.image_upload_limit_title, resources.getString(R.string.attach_limit_message, accepts.maxItems))
+                    false
+                }
+            },
+            onPhoto = onPhoto,
+            onFinished = { motion.giveBack(); closed() },
         )
         viewing?.let { index ->
             val shown = remember(items) { items.map { ViewerItem(it.uri, it.name, it.isVideo, it.width.toFloat().takeIf { w -> w > 0 }, it.height.toFloat().takeIf { h -> h > 0 }) } }

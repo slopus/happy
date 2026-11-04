@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="camera_take_photo">写真を撮る</string>
+    <string name="camera_retake">撮り直す</string>
+    <string name="camera_use_photo">写真を使用</string>
+    <string name="camera_permission">写真を撮るには、設定でHappyによるカメラの使用を許可してください。</string>
+    <string name="camera_no_camera">このデバイスにはカメラがありません。</string>
+    <string name="camera_unavailable">カメラを起動できませんでした。もう一度お試しください。</string>
+    <string name="camera_in_use">カメラは別のアプリで使用されています。</string>
+    <string name="camera_capture_failed">写真を撮影できませんでした。もう一度お試しください。</string>
+    <string name="camera_viewfinder">ファインダー</string>
+</resources>

@@ -17,6 +17,7 @@ import androidx.camera.core.CameraState
 import androidx.camera.core.Preview
 import androidx.camera.core.SurfaceRequest
 import androidx.camera.core.UseCase
+import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.lifecycle.awaitInstance
 import androidx.compose.runtime.Composable
@@ -51,6 +52,7 @@ internal fun CameraBinding(
     frameRate: Range<Int>? = null,
     onState: (CameraState?) -> Unit = {},
     onFirstFrame: () -> Unit = {},
+    previewResolution: ResolutionSelector? = null,
 ) {
     val context = LocalContext.current
     val owner = LocalLifecycleOwner.current
@@ -60,7 +62,7 @@ internal fun CameraBinding(
     val stateChanged by rememberUpdatedState(onState)
     val firstFrame by rememberUpdatedState(onFirstFrame)
     val rotated by rememberUpdatedState(onDisplayRotation)
-    LaunchedEffect(owner, useCases, front, frameRate) {
+    LaunchedEffect(owner, useCases, front, frameRate, previewResolution) {
         val provider = try {
             ProcessCameraProvider.awaitInstance(context)
         } catch (e: CancellationException) {
@@ -87,6 +89,7 @@ internal fun CameraBinding(
         rotated(display().rotation)
         val builder = Preview.Builder().setTargetRotation(display().rotation)
         frameRate?.let(builder::setTargetFrameRate)
+        previewResolution?.let(builder::setResolutionSelector)
         Camera2Interop.Extender(builder).setSessionCaptureCallback(object : CameraCaptureSession.CaptureCallback() {
             override fun onCaptureCompleted(session: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
                 // A sensor frame, not a claim about when a compositor displayed its picture.
