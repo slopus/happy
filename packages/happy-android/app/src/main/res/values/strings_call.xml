@@ -23,10 +23,21 @@
     <string name="call_connection">Call ended: connection lost</string>
     <string name="call_open_settings">Open Settings</string>
     <string name="call_paywall_title">Voice time</string>
-    <string name="call_paywall_used">Free voice time used</string>
-    <string name="call_paywall_free">More free time at %1$s</string>
-    <string name="call_paywall_footer">Each device gets 20 free minutes of voice in any 30 days. Time comes back as older calls pass 30 days.</string>
-    <string name="call_paywall_more">More voice time</string>
-    <string name="call_paywall_unavailable">Not available yet</string>
-    <string name="call_paywall_unavailable_footer">Voice subscriptions aren’t on sale yet. Nothing can be bought here for now.</string>
+    <string name="call_welcome_title">Talk to your agents</string>
+    <string name="call_welcome_ask">Ask how your work is going</string>
+    <string name="call_welcome_act">Open and send by voice</string>
+    <string name="call_welcome_free">20 free minutes</string>
+    <string name="call_start_session">Start Voice Session</string>
+    <string name="call_welcome_note">The microphone is on only during a call.</string>
+    <string name="call_used_today">Your free voice time is used. More comes back at %1$s.</string>
+    <string name="call_used_week">Your free voice time is used. More comes back on %1$s at %2$s.</string>
+    <string name="call_used_date">Your free voice time is used. More comes back on %1$s.</string>
+    <string name="call_used_later">Your free voice time is used. It comes back as older calls pass 30 days.</string>
+    <string name="call_support_for">Support Happy for %1$s/month</string>
+    <string name="call_subscribe_allowance">5 hours of real-time voice included</string>
+    <string name="call_subscribe_support">Happy is open source. Subscribing to voice pays for its development.</string>
+    <string name="call_subscribe">Subscribe</string>
+    <string name="call_preview_note">Test preview. Nothing is charged.</string>
+    <string name="call_preview_title">Preview only</string>
+    <string name="call_preview_message">Voice subscriptions aren’t on sale yet. Nothing was bought or charged, and your voice time hasn’t changed.</string>
 </resources>

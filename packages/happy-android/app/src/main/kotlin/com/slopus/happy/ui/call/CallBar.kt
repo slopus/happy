@@ -175,7 +175,7 @@ object CallBarTags {
 fun CallFrame(calls: CallController, content: @Composable () -> Unit) =
     CallFrame(calls.state, calls.level, calls::toggleMute, calls::close, calls::showPaywall) {
         content()
-        CallPaywall(calls)
+        CallSheet(calls)
     }
 
 /**

@@ -18,10 +18,21 @@
     <string name="call_connection">通話終了：接続が切れました</string>
     <string name="call_open_settings">設定を開く</string>
     <string name="call_paywall_title">音声の時間</string>
-    <string name="call_paywall_used">無料の音声時間を使い切りました</string>
-    <string name="call_paywall_free">%1$sに無料時間が戻ります</string>
-    <string name="call_paywall_footer">各デバイスで30日間ごとに20分の音声が無料です。古い通話が30日を過ぎると時間が戻ります。</string>
-    <string name="call_paywall_more">音声の時間を増やす</string>
-    <string name="call_paywall_unavailable">まだ利用できません</string>
-    <string name="call_paywall_unavailable_footer">音声のサブスクリプションはまだ販売されていません。現在ここで購入できるものはありません。</string>
+    <string name="call_welcome_title">エージェントと話そう</string>
+    <string name="call_welcome_ask">作業の進み具合を尋ねる</string>
+    <string name="call_welcome_act">音声で開いて送信</string>
+    <string name="call_welcome_free">20分無料</string>
+    <string name="call_start_session">音声セッションを開始</string>
+    <string name="call_welcome_note">マイクは通話中だけオンになります。</string>
+    <string name="call_used_today">無料の音声時間を使い切りました。%1$sに再び使えます。</string>
+    <string name="call_used_week">無料の音声時間を使い切りました。%1$s %2$sに再び使えます。</string>
+    <string name="call_used_date">無料の音声時間を使い切りました。%1$sに再び使えます。</string>
+    <string name="call_used_later">無料の音声時間を使い切りました。古い通話が30日を過ぎると戻ります。</string>
+    <string name="call_support_for">月額%1$sでHappyを支援</string>
+    <string name="call_subscribe_allowance">リアルタイム音声5時間込み</string>
+    <string name="call_subscribe_support">Happyはオープンソースです。音声のサブスクリプションが開発を支えます。</string>
+    <string name="call_subscribe">登録する</string>
+    <string name="call_preview_note">テストプレビューです。料金はかかりません。</string>
+    <string name="call_preview_title">プレビューのみ</string>
+    <string name="call_preview_message">音声のサブスクリプションはまだ販売していません。購入や請求は行われておらず、音声時間も変わっていません。</string>
 </resources>

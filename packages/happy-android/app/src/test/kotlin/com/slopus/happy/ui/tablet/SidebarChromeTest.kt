@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasTestTag
@@ -63,7 +64,7 @@ class SidebarChromeTest {
     private val accounts = AccountMenu(listOf(AccountMenuEntry("agent-connection-1", "Studio", agent = true, active = true)))
     private val feed get() = AgentFeed.derive(AgentHomeLayoutTest.catalog(AgentHomeLayoutTest.sample))
 
-    private fun show(feed: AgentFeed = this.feed, selected: String? = MainPanelKey.conversation("ab1")) = rule.setHappyContent {
+    private fun show(feed: AgentFeed = this.feed, selected: String? = MainPanelKey.conversation("ab1"), actions: AgentHomeActions = this.actions) = rule.setHappyContent {
         CompositionLocalProvider(
             LocalWindowLayout provides WindowLayout.of(360.dp, 800.dp),
             LocalSidebarHome provides SidebarHome(selected),
@@ -94,6 +95,29 @@ class SidebarChromeTest {
         rule.node(SidebarTags.SETTINGS).performClick()
         assertEquals(1, composed)
         assertEquals(1, settings)
+    }
+
+    /** An agent connection's voice button: a 48 circle 12 before the pill, its tap the call's; without one, the foot is as it was. */
+    @Test
+    fun theVoiceButtonSitsBeforeThePill() {
+        var voiced = 0
+        show(actions = AgentHomeActions({}, { composed++ }, { settings++ }, {}, {}, {}, onVoice = { voiced++ }))
+        val voice = rule.node(SidebarTags.VOICE).bounds
+        val compose = rule.node(SidebarTags.COMPOSE).bounds
+        assertDp("a 48 circle", 48, voice.width)
+        assertDp("as tall as the pill", 48, voice.height)
+        assertDp("on the pill's line", compose.bottom, voice.bottom)
+        assertDp("12 before the pill", compose.left - 12.dp, voice.right)
+        assertTrue("clear of settings: $voice", voice.left >= 16.dp + 48.dp + 12.dp)
+        rule.onNode(hasTestTag(SidebarTags.VOICE)).assertContentDescriptionEquals("Start voice call").performClick()
+        assertEquals(1, voiced)
+        assertEquals(0, composed)
+    }
+
+    @Test
+    fun withoutAVoiceButtonTheFootIsSettingsAndCompose() {
+        show()
+        assertEquals(0, rule.onAllNodesWithTagCount(SidebarTags.VOICE))
     }
 
     @Test

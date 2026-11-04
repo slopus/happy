@@ -32,10 +32,11 @@ architectures comparable (local store, delta sync, crypto layer).
   ignored `local.properties` into `BuildConfig.CALL_AGENT_ID`, and is never
   committed. Without it the tap says "Voice isn't set up for this
   connection yet". Each device gets 20 free connected minutes in any
-  rolling 30 days (`CallAllowance`, local, provisional); once they are used
-  the app's own sheet (`CallPaywall`, no vendor UI) says when time is back
-  and that nothing is on sale (`CallOffer.Unavailable`): never a price or a
-  buy button before real products exist. A `ModalBottomSheet` calls
+  rolling 30 days (`CallAllowance`, local, provisional). The app's own sheet
+  (`CallSheet`, no vendor UI) welcomes the first tap and, once the time is
+  used, says when it is back with Start greyed out; nothing is on sale
+  (`CallOffer.Unavailable`): never a price or a buy button before real
+  products exist (`Preview` is a debug-only test screen). A `ModalBottomSheet` calls
   `SheetStatusIcons()` so the bar under its scrim keeps light icons.
   `openSession` replaces a conversation on top and goes over anything else
   (`openConversationInPlace`). See

@@ -145,7 +145,6 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
             val nav = rememberNavController()
             shown[0] = nav
             SideEffect { onNavigationReady(nav) }
-            CallScreenEffect(graph.calls, nav, agent)
             val openSession = { id: String -> nav.navigate(SessionRoute(id)) }
             val troubleshoot = { nav.navigate(TroubleshootRoute) }
             val connectAgent = remember(nav) { { code: String -> nav.connectAgent(graph, code) } }
@@ -191,6 +190,8 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                 }
                 // The tablet shell (home in a sidebar beside the stack) or, on a phone, just the stack.
                 TabletShell(graph, nav, hasHome = open != OpenAccount.None, sidebar = home) {
+                    // Inside the shell: on the split, what the call opens is the main panel's new root.
+                    CallScreenEffect(graph.calls, nav, agent)
                     val start: Any = if (open == OpenAccount.None) StartRoute else HomeRoute
                     val motion = rememberNavMotion()
                     RetainedNavHost(nav, start, motion, modifier = Modifier.backdrop(nav)) {

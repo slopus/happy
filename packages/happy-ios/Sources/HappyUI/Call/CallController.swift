@@ -262,7 +262,8 @@ final class CallController {
     /// Nothing is on sale. Debug builds draw the subscription as if it were
     /// for their test screens when asked (`HAPPY_CALL_OFFER=preview`), with
     /// the approved price, or the one the run gives (`HAPPY_CALL_OFFER_PRICE`).
-    private static var offer: CallOffer {
+    /// Whatever else offers voice (Settings) asks here, so all say the same.
+    static var offer: CallOffer {
         #if DEBUG
         let environment = ProcessInfo.processInfo.environment
         if environment["HAPPY_CALL_OFFER"] == "preview" { return .preview(price: environment["HAPPY_CALL_OFFER_PRICE"] ?? CallOffer.price) }

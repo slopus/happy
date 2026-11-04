@@ -18,10 +18,21 @@
     <string name="call_connection">通話已結束：連線中斷</string>
     <string name="call_open_settings">打開設定</string>
     <string name="call_paywall_title">語音時長</string>
-    <string name="call_paywall_used">免費語音時長已用完</string>
-    <string name="call_paywall_free">%1$s 恢復免費時長</string>
-    <string name="call_paywall_footer">每台裝置在任意 30 天內有 20 分鐘免費語音。較早的通話滿 30 天後，時長會恢復。</string>
-    <string name="call_paywall_more">更多語音時長</string>
-    <string name="call_paywall_unavailable">尚未提供</string>
-    <string name="call_paywall_unavailable_footer">語音訂閱尚未開賣。目前這裡無法購買任何內容。</string>
+    <string name="call_welcome_title">和你的代理對話</string>
+    <string name="call_welcome_ask">詢問工作進度</string>
+    <string name="call_welcome_act">用語音開啟和傳送</string>
+    <string name="call_welcome_free">20 分鐘免費</string>
+    <string name="call_start_session">開始語音工作階段</string>
+    <string name="call_welcome_note">麥克風只在通話期間開啟。</string>
+    <string name="call_used_today">免費語音時數已用完。%1$s 恢復更多時數。</string>
+    <string name="call_used_week">免費語音時數已用完。%1$s %2$s 恢復更多時數。</string>
+    <string name="call_used_date">免費語音時數已用完。%1$s 恢復更多時數。</string>
+    <string name="call_used_later">免費語音時數已用完。較早的通話滿 30 天後，時數會恢復。</string>
+    <string name="call_support_for">以每月 %1$s 支持 Happy</string>
+    <string name="call_subscribe_allowance">包含 5 小時即時語音</string>
+    <string name="call_subscribe_support">Happy 是開源專案。訂閱語音可資助它的開發。</string>
+    <string name="call_subscribe">訂閱</string>
+    <string name="call_preview_note">測試預覽，不會收費。</string>
+    <string name="call_preview_title">僅預覽</string>
+    <string name="call_preview_message">語音訂閱尚未開賣。沒有購買或收取任何費用，你的語音時數也沒有變化。</string>
 </resources>

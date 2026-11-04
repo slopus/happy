@@ -44,7 +44,7 @@ import com.slopus.happy.call.CallState
 import com.slopus.happy.call.CallToolResult
 import com.slopus.happy.call.UnconfiguredCallGrants
 import com.slopus.happy.ui.call.CallFrame
-import com.slopus.happy.ui.call.CallPaywall
+import com.slopus.happy.ui.call.CallSheet
 import com.slopus.happy.ui.call.SheetStatusIcons
 import com.slopus.happy.call.CallOffer
 import com.slopus.happy.call.CallProblem
@@ -323,7 +323,7 @@ class CallBarDeviceShots {
         run(800)
     }
 
-    /** Free time used: the bar says so, a tap on it is the paywall, which sells nothing yet. */
+    /** Free time used: the bar says so, a tap on it is the used-up sheet, its start greyed out, which sells nothing yet. */
     @Test
     fun paywall() {
         val paywall = MutableStateFlow(false)
@@ -334,7 +334,7 @@ class CallBarDeviceShots {
                     val accounts = AccountMenu(listOf(AccountMenuEntry("fx-connection", "Studio Mac", agent = true, active = true)))
                     AgentHomeScreen("Studio Mac", feed(), AgentLinkStatus.Connected, accounts, AgentHomeActions({}, {}, {}, {}, {}, {}, onVoice = {}))
                     val shown by paywall.collectAsState()
-                    if (shown) CallPaywall(freeAgain = System.currentTimeMillis() + 26 * 3_600_000L, offer = CallOffer.Unavailable, onDismiss = { paywall.value = false })
+                    if (shown) CallSheet(com.slopus.happy.call.CallSheet.Used(System.currentTimeMillis() + 26 * 3_600_000L, CallOffer.Unavailable), onStart = {}, onDismiss = { paywall.value = false })
                 }
             }
         }
@@ -344,7 +344,7 @@ class CallBarDeviceShots {
         rule.onNode(hasContentDescription(app.getString(R.string.call_limit), substring = true)).performClick()
         rule.waitForIdle()
         Thread.sleep(800)
-        val offer = device.findObject(By.text(app.getString(R.string.call_paywall_unavailable)))
+        val offer = device.findObject(By.text(app.getString(R.string.call_start_session)))
         val bar = device.findObject(By.text(app.getString(R.string.call_limit)))
         android.util.Log.i("CallBarShots", "paywall: offer=${offer?.visibleBounds} bar=${bar?.visibleBounds}")
         assertTrue("the paywall is there", offer != null)

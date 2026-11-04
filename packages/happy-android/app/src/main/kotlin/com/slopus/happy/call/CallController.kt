@@ -40,9 +40,9 @@ class CallController(
     private val stopRelayVoice: suspend () -> Unit,
     /** The build's public hosted agent, if it has one ([CallAgent]). */
     private val grants: CallGrants = CallAgent.hostedAgentId?.let(::PublicAgentCallGrants) ?: UnconfiguredCallGrants,
-    private val allowance: CallAllowance = CallAllowance(
-        PreferencesCallUsageStore(appContext.getSharedPreferences(PreferencesCallUsageStore.PREFS_NAME, Context.MODE_PRIVATE)),
-    ),
+    private val preferences: android.content.SharedPreferences = appContext.getSharedPreferences(PreferencesCallUsageStore.PREFS_NAME, Context.MODE_PRIVATE),
+    private val allowance: CallAllowance = CallAllowance(PreferencesCallUsageStore(preferences)),
+    private val intro: CallIntro = CallIntro(preferences),
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val mutableState = MutableStateFlow<CallState>(CallState.Idle)
@@ -51,9 +51,17 @@ class CallController(
     private val mutableLevel = MutableStateFlow(0f)
     /** The waves' level. */
     val level: StateFlow<Float> = mutableLevel.asStateFlow()
-    private val mutablePaywall = MutableStateFlow(false)
-    /** The voice paywall is up (`ui/call/CallPaywall`): once the free time runs out, and on a tap on the bar saying so. */
-    val paywall: StateFlow<Boolean> = mutablePaywall.asStateFlow()
+    private val mutableSheet = MutableStateFlow<CallSheet?>(null)
+    /**
+     * Voice's sheet that is up (`ui/call/CallSheet`): the welcome, on a
+     * device's first tap of the voice button; the same screen used up, once
+     * the free time runs out.
+     */
+    val sheet: StateFlow<CallSheet?> = mutableSheet.asStateFlow()
+    /** What the welcome's "Start Voice Session" starts. */
+    private var welcomed: (() -> Unit)? = null
+    /** Debug builds' test screens only: the subscription drawn as if on sale ([offer]). */
+    var testOffer: CallOffer.Preview? = null
 
     private var session: CallSession? = null
     private var context: CallContext? = null
@@ -72,9 +80,28 @@ class CallController(
         relayVoiceActive.distinctUntilChanged().filter { it }.onEach { if (state.value.isLive) close() }.launchIn(scope)
     }
 
-    /** The voice button: a call on this connection, or the one already on. */
+    /**
+     * Nothing is on sale. Debug builds draw the subscription as if it were
+     * for their test screens when asked ([testOffer]); a release build never.
+     */
+    val offer: CallOffer get() = testOffer?.takeIf { BuildConfig.DEBUG } ?: CallOffer.Unavailable
+
+    /**
+     * The voice button: a call on this connection, or the one already on. A
+     * device's first one is voice's welcome, whose "Start Voice Session"
+     * calls; closed, nothing starts and the next tap shows it again.
+     */
     fun start(connection: String, microphone: suspend () -> Boolean) {
         if (state.value.isLive && connectionId == connection) return
+        if (intro.due) {
+            if (sheet.value != null) return
+            welcomed = {
+                intro.started()
+                start(connection, microphone)
+            }
+            mutableSheet.value = CallSheet.Welcome(offer)
+            return
+        }
         close()
         val account = sessions.session(connection) ?: return
         connectionId = connection
@@ -156,12 +183,27 @@ class CallController(
 
     fun toggleMute() { session?.toggleMute() }
 
-    /** The bar says the free time is used: the paywall, which then stays until it is put away. */
+    /** The bar says the free time is used: the used-up sheet, which then stays until it is put away. */
     fun showPaywall() {
-        if (state.value == CallState.Ended(CallProblem.LimitReached)) mutablePaywall.value = true
+        if (state.value == CallState.Ended(CallProblem.LimitReached)) showUsed()
     }
 
-    fun dismissPaywall() { mutablePaywall.value = false }
+    private fun showUsed() {
+        if (sheet.value == null) mutableSheet.value = CallSheet.Used(freeAgain(), offer)
+    }
+
+    /** The welcome's "Start Voice Session": its call, once the sheet has gone. */
+    fun startFromSheet() {
+        val start = welcomed.takeIf { sheet.value is CallSheet.Welcome }
+        dismissSheet()
+        start?.invoke()
+    }
+
+    /** Closed by its ✕, back or a swipe: nothing starts. */
+    fun dismissSheet() {
+        welcomed = null
+        mutableSheet.value = null
+    }
 
     /** When some free voice time is back on the wall clock; null if never, or if some is free now. */
     fun freeAgain(): Long? {
@@ -172,8 +214,8 @@ class CallController(
     private fun show(state: CallState) {
         val before = mutableState.value
         mutableState.value = state
-        // The free time is used, on a tap or mid-call: the paywall, once.
-        if (state == CallState.Ended(CallProblem.LimitReached) && before != state) mutablePaywall.value = true
+        // The free time is used, on a tap or mid-call: the used-up sheet, once.
+        if (state == CallState.Ended(CallProblem.LimitReached) && before != state) showUsed()
     }
 
     /** End: the call, or the bar of one that ended. */
@@ -198,6 +240,28 @@ class CallController(
     private fun hangUp() {
         if (state.value.isShown) close()
     }
+
+    /**
+     * Test runs only, in debug builds: the welcome due again ([intro]
+     * `due`) or never (`started`), the free time spent ([used]: a
+     * 20-minute call that ended now), the subscription drawn as if on sale
+     * at [offerPrice]. Nothing here charges or grants anything.
+     */
+    fun applyTestEnvironment(intro: String?, used: Boolean, offerPrice: String?) {
+        if (!BuildConfig.DEBUG) return
+        when (intro) {
+            "due" -> this.intro.reset()
+            "started" -> this.intro.started()
+        }
+        if (used) {
+            val now = System.currentTimeMillis()
+            allowance.record("test-used", now - CallAllowance.FREE_MILLIS, now)
+        }
+        testOffer = offerPrice?.let(CallOffer::Preview)
+    }
+
+    /** Test runs' log line: what is up after a step. */
+    val testSummary: String get() = "sheet ${sheet.value}, call ${state.value}, intro due ${intro.due}"
 
     /** Screenshots only, in debug builds: the bar in [state], with no microphone, provider or grant. Never a call. */
     fun showFixture(state: CallState, level: Float) {

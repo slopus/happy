@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
+import com.slopus.happy.ui.call.VoiceGlyph
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.hairline
 import com.slopus.happy.ui.components.Ionicon
@@ -46,6 +47,7 @@ object SidebarTags {
     const val SIDEBAR = "sidebar"
     const val SETTINGS = "sidebar.settings"
     const val COMPOSE = "sidebar.compose"
+    const val VOICE = "sidebar.voice"
     const val SEARCH = "sidebar.search"
     const val SEARCH_CANCEL = "sidebar.searchCancel"
 }
@@ -105,10 +107,13 @@ object SidebarSpec {
  * [composeTitle]. Both 16 off the sidebar's sides and 16 above its foot
  * and the navigation bar, 12 apart at least; the pill is held to what is
  * left. Without [composeTitle] (nothing can be started)
- * settings is alone. Put it last in a box over the list.
+ * settings is alone. With [onVoice], an agent connection's home has the
+ * voice call's button immediately before the pill, a 48 circle like
+ * settings wearing the three bars ([VoiceGlyph]), 12 apart, as the phone's
+ * voice button sits beside compose. Put it last in a box over the list.
  */
 @Composable
-fun BoxScope.SidebarFootBar(composeTitle: String?, onSettings: () -> Unit, onCompose: () -> Unit) {
+fun BoxScope.SidebarFootBar(composeTitle: String?, onSettings: () -> Unit, onCompose: () -> Unit, onVoice: (() -> Unit)? = null) {
     val colors = HappyTheme.colors
     val settingsLabel = stringResource(R.string.settings_title)
     Row(
@@ -119,22 +124,17 @@ fun BoxScope.SidebarFootBar(composeTitle: String?, onSettings: () -> Unit, onCom
         horizontalArrangement = Arrangement.spacedBy(SidebarSpec.spacing),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier = Modifier
-                .size(SidebarSpec.barHeight)
-                .shadow(SidebarSpec.shadow, CircleShape)
-                .clip(CircleShape)
-                .background(colors.surfaceHigh)
-                // Dark shades no shadow: a hairline keeps the circle's edge.
-                .border(hairline(), colors.divider, CircleShape)
-                .clickable(role = Role.Button, onClick = onSettings)
-                .semantics { contentDescription = settingsLabel }
-                .testTag(SidebarTags.SETTINGS),
-            contentAlignment = Alignment.Center,
-        ) {
+        FootCircle(settingsLabel, onSettings, SidebarTags.SETTINGS) {
             Icon(Ionicon.SettingsOutline, SidebarSpec.settingsIcon, colors.header.tint)
         }
-        if (composeTitle != null) Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+        if (composeTitle != null) Row(
+            Modifier.weight(1f),
+            horizontalArrangement = Arrangement.spacedBy(SidebarSpec.spacing, Alignment.End),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (onVoice != null) FootCircle(stringResource(R.string.call_start), onVoice, SidebarTags.VOICE) {
+                VoiceGlyph(SidebarSpec.settingsIcon, colors.header.tint)
+            }
             val fill = if (colors.dark) Color(0xFFF5F5F5) else colors.button.primaryBackground
             val text = if (colors.dark) Color(0xFF111111) else colors.button.primaryTint
             val pill = RoundedCornerShape(percent = 50)
@@ -154,6 +154,27 @@ fun BoxScope.SidebarFootBar(composeTitle: String?, onSettings: () -> Unit, onCom
                 Text(composeTitle, style = SidebarSpec.composeText, color = text, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
+    }
+}
+
+/** One of the foot's 48 circles: its glyph on the raised surface, shadowed, a hairline in dark. */
+@Composable
+private fun FootCircle(label: String, onClick: () -> Unit, tag: String, glyph: @Composable () -> Unit) {
+    val colors = HappyTheme.colors
+    Box(
+        modifier = Modifier
+            .size(SidebarSpec.barHeight)
+            .shadow(SidebarSpec.shadow, CircleShape)
+            .clip(CircleShape)
+            .background(colors.surfaceHigh)
+            // Dark shades no shadow: a hairline keeps the circle's edge.
+            .border(hairline(), colors.divider, CircleShape)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = label }
+            .testTag(tag),
+        contentAlignment = Alignment.Center,
+    ) {
+        glyph()
     }
 }
 

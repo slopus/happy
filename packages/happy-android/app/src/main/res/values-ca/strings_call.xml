@@ -18,10 +18,21 @@
     <string name="call_connection">Trucada finalitzada: s’ha perdut la connexió</string>
     <string name="call_open_settings">Obre la configuració</string>
     <string name="call_paywall_title">Temps de veu</string>
-    <string name="call_paywall_used">Temps de veu gratuït esgotat</string>
-    <string name="call_paywall_free">Més temps gratuït a les %1$s</string>
-    <string name="call_paywall_footer">Cada dispositiu té 20 minuts de veu gratuïts en qualsevol període de 30 dies. El temps torna quan les trucades antigues fan 30 dies.</string>
-    <string name="call_paywall_more">Més temps de veu</string>
-    <string name="call_paywall_unavailable">Encara no disponible</string>
-    <string name="call_paywall_unavailable_footer">Les subscripcions de veu encara no estan a la venda. De moment aquí no es pot comprar res.</string>
+    <string name="call_welcome_title">Parla amb els teus agents</string>
+    <string name="call_welcome_ask">Pregunta com va la feina</string>
+    <string name="call_welcome_act">Obre i envia amb la veu</string>
+    <string name="call_welcome_free">20 minuts gratuïts</string>
+    <string name="call_start_session">Inicia una sessió de veu</string>
+    <string name="call_welcome_note">El micròfon només està actiu durant una trucada.</string>
+    <string name="call_used_today">Has esgotat el temps de veu gratuït. Torna a les %1$s.</string>
+    <string name="call_used_week">Has esgotat el temps de veu gratuït. Torna el %1$s a les %2$s.</string>
+    <string name="call_used_date">Has esgotat el temps de veu gratuït. Torna el %1$s.</string>
+    <string name="call_used_later">Has esgotat el temps de veu gratuït. Torna a mesura que les trucades antigues superen els 30 dies.</string>
+    <string name="call_support_for">Dona suport a Happy per %1$s al mes</string>
+    <string name="call_subscribe_allowance">Inclou 5 hores de veu en temps real</string>
+    <string name="call_subscribe_support">Happy és de codi obert. La subscripció de veu en paga el desenvolupament.</string>
+    <string name="call_subscribe">Subscriu-te</string>
+    <string name="call_preview_note">Previsualització de prova. No es cobra res.</string>
+    <string name="call_preview_title">Només previsualització</string>
+    <string name="call_preview_message">Les subscripcions de veu encara no estan a la venda. No s’ha comprat ni cobrat res i el teu temps de veu no ha canviat.</string>
 </resources>

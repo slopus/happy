@@ -18,10 +18,21 @@
     <string name="call_connection">Chamada encerrada: conexão perdida</string>
     <string name="call_open_settings">Abrir Configurações</string>
     <string name="call_paywall_title">Tempo de voz</string>
-    <string name="call_paywall_used">Tempo de voz grátis esgotado</string>
-    <string name="call_paywall_free">Mais tempo grátis às %1$s</string>
-    <string name="call_paywall_footer">Cada dispositivo tem 20 minutos de voz grátis em quaisquer 30 dias. O tempo volta quando as chamadas mais antigas passam dos 30 dias.</string>
-    <string name="call_paywall_more">Mais tempo de voz</string>
-    <string name="call_paywall_unavailable">Ainda não disponível</string>
-    <string name="call_paywall_unavailable_footer">As assinaturas de voz ainda não estão à venda. Por enquanto, nada pode ser comprado aqui.</string>
+    <string name="call_welcome_title">Fale com seus agentes</string>
+    <string name="call_welcome_ask">Pergunte como está o trabalho</string>
+    <string name="call_welcome_act">Abra e envie por voz</string>
+    <string name="call_welcome_free">20 minutos grátis</string>
+    <string name="call_start_session">Iniciar sessão de voz</string>
+    <string name="call_welcome_note">O microfone fica ligado só durante uma chamada.</string>
+    <string name="call_used_today">Seu tempo de voz grátis acabou. Mais tempo volta às %1$s.</string>
+    <string name="call_used_week">Seu tempo de voz grátis acabou. Mais tempo volta %1$s às %2$s.</string>
+    <string name="call_used_date">Seu tempo de voz grátis acabou. Mais tempo volta em %1$s.</string>
+    <string name="call_used_later">Seu tempo de voz grátis acabou. Ele volta conforme as chamadas antigas passam de 30 dias.</string>
+    <string name="call_support_for">Apoie o Happy por %1$s/mês</string>
+    <string name="call_subscribe_allowance">5 horas de voz em tempo real incluídas</string>
+    <string name="call_subscribe_support">O Happy é de código aberto. A assinatura de voz paga o seu desenvolvimento.</string>
+    <string name="call_subscribe">Assinar</string>
+    <string name="call_preview_note">Prévia de teste. Nada é cobrado.</string>
+    <string name="call_preview_title">Apenas prévia</string>
+    <string name="call_preview_message">As assinaturas de voz ainda não estão à venda. Nada foi comprado nem cobrado, e seu tempo de voz não mudou.</string>
 </resources>

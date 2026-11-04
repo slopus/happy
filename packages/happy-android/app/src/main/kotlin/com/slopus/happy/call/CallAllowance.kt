@@ -105,9 +105,60 @@ class CallAllowance(
 }
 
 /**
- * What the voice paywall can offer once the free time is used (iOS
- * `CallOffer`). Nothing yet: the store's products, their prices and the
- * subscription's entitlement aren't chosen, so the paywall says so and sells
- * nothing. A purchase and a restore come with the products, never before.
+ * What voice's sheets can offer (iOS `CallOffer`). Nothing yet: the store's
+ * products, their prices and the subscription's entitlement aren't chosen,
+ * so the sheets sell nothing. A purchase and a restore come with the
+ * products, never before.
  */
-enum class CallOffer { Unavailable }
+sealed interface CallOffer {
+    data object Unavailable : CallOffer
+
+    /**
+     * Debug builds' test screens only (`happy.call.offer`): the subscription
+     * drawn as if it were on sale, its button a preview that charges and
+     * grants nothing. Never in a release build ([CallController.offer]).
+     */
+    data class Preview(val price: String) : CallOffer
+
+    val onSale: Boolean get() = this is Preview
+
+    companion object {
+        /** The monthly price as approved, until the store's own localised one replaces it. It buys 5 hours of real-time voice a month. */
+        const val PRICE = "$20"
+    }
+}
+
+/** Which of voice's sheets is up ([CallController.sheet]). */
+sealed interface CallSheet {
+    val offer: CallOffer
+
+    /** Before the first call. */
+    data class Welcome(override val offer: CallOffer) : CallSheet
+
+    /** The free time is used; when some is back on the wall clock, if that is known. */
+    data class Used(val freeAgain: Long?, override val offer: CallOffer) : CallSheet
+}
+
+/**
+ * Whether this device has been shown voice's welcome and started from it
+ * (iOS `CallIntro`): until then the voice button shows it instead of
+ * calling. Closing it without starting shows it again next time. Beside the
+ * device's free time ([PreferencesCallUsageStore]).
+ */
+class CallIntro(private val preferences: SharedPreferences) {
+    val due: Boolean get() = !preferences.getBoolean(KEY, false)
+
+    /** Started from the welcome: the voice button calls from now on. */
+    fun started() {
+        preferences.edit().putBoolean(KEY, true).apply()
+    }
+
+    /** Debug builds' test runs: the welcome is due again. */
+    fun reset() {
+        preferences.edit().remove(KEY).apply()
+    }
+
+    companion object {
+        const val KEY = "call.intro.started"
+    }
+}

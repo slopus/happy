@@ -52,4 +52,6 @@ sticker file, `podcast mic.tgs` (SHA-256
 committed as that file gunzipped, byte for byte (SHA-256
 `f90db7a207596916bc5c0b22db6e3ca40f2e24008b015bc654ee1aa5ff724284`). Its
 author and licence are **not verified**: confirm them before a release
-build ships it.
+build ships it. Android ships the same bytes as
+`packages/happy-android/app/src/main/res/raw/call_podcast_mic.json`
+(`CallSheetTest` checks the hash), under the same caveat.

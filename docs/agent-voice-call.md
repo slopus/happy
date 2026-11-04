@@ -155,15 +155,24 @@ back). What is on offer is `CallOffer`:
   or charged, and your voice time hasn't changed." No product, charge,
   entitlement or change to the free time.
 
-Android still has its earlier `CallPaywall` (a `ModalBottomSheet` of
-`ItemGroup`s, "Not available yet") and no welcome; its rework is on hold.
+Android draws the same sheet (`ui/call/CallSheet.kt`): a full-height
+`ModalBottomSheet` with the first screen's `GrainGradient`, the same
+podcast mic (`res/raw/call_podcast_mic.json`, the same bytes), rows, words,
+buttons and warning. `CallSheet` is `Welcome` or `Used`, `CallOffer` is
+`Unavailable` or `Preview(price)` (debug only), and `CallIntro` keeps
+`call.intro.started` in the `call-usage` preferences beside the free time.
+On a tablet the sidebar's foot has the voice button too, left of the
+compose pill, and a conversation a call opens shows in the main panel
+rather than over the shell.
 
 Test runs drive both without a call or a microphone (debug builds,
 `CallController.applyTestEnvironment`): `HAPPY_CALL_INTRO=due` shows the
 welcome again (`started`: never), `HAPPY_CALL_USED=1` spends the free time,
 and `HAPPY_CALL_STEPS=tap,subscribe,session,close,dismiss,…` presses the
 voice button, the sheet's buttons and an alert's one step every 3 s,
-logging each (`[call-steps]`).
+logging each (`[call-steps]`). Android takes the same as launch extras
+(`happy.call.intro`, `happy.call.used`, `happy.call.offer` with the price,
+`happy.call.steps` of `tap`, `session` and `close`; log tag `call-steps`).
 
 What a working offer needs and doesn't have yet:
 

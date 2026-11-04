@@ -488,7 +488,7 @@ fun AgentHomeScreen(
                 }
                 // The sidebar's foot stands over home and search's results alike.
                 if (sidebar != null) {
-                    SidebarFootBar(if (feed.loaded) stringResource(R.string.agent_search_new_task) else null, actions.onSettings, compose)
+                    SidebarFootBar(if (feed.loaded) stringResource(R.string.agent_search_new_task) else null, actions.onSettings, compose, onVoice = actions.onVoice)
                 }
             }
         }
@@ -839,9 +839,15 @@ internal fun rememberAgentHomeListState(graph: AppGraph, id: String): LazyListSt
 }
 
 /**
- * Debug builds only, for screenshots: an intent's `happy.call.fixture`
- * draws the call's bar in one state from a script (no microphone, provider
- * or grant), and `happy.call.tap` presses the voice button once, for real.
+ * Debug builds only, for screenshots and test runs: an intent's
+ * `happy.call.fixture` draws the call's bar in one state from a script (no
+ * microphone, provider or grant), `happy.call.tap` presses the voice button
+ * once, for real. `happy.call.intro` (`due`, `started`), `happy.call.used`
+ * and `happy.call.offer` (a price) set voice's sheets up
+ * ([CallController.applyTestEnvironment]); `happy.call.steps` then presses
+ * what a person would, one step every 3 s: `tap` the voice button,
+ * `session` or `close` on voice's sheet. Each step logs what is up
+ * (`call-steps`).
  */
 @Composable
 private fun CallLaunchHooks(graph: AppGraph, voice: () -> Unit) {
@@ -850,10 +856,23 @@ private fun CallLaunchHooks(graph: AppGraph, voice: () -> Unit) {
         val delayMillis = intent.getLongExtra("happy.call.delay", 0L)
         val fixture = intent.getStringExtra("happy.call.fixture")
         val tap = intent.getBooleanExtra("happy.call.tap", false)
-        if (fixture == null && !tap) return@LaunchedEffect
-        intent.removeExtra("happy.call.fixture")
-        intent.removeExtra("happy.call.tap")
+        val steps = intent.getStringExtra("happy.call.steps")?.split(",")
+        graph.calls.applyTestEnvironment(intent.getStringExtra("happy.call.intro"), intent.getBooleanExtra("happy.call.used", false), intent.getStringExtra("happy.call.offer"))
+        for (extra in listOf("happy.call.fixture", "happy.call.tap", "happy.call.steps", "happy.call.intro", "happy.call.used", "happy.call.offer")) intent.removeExtra(extra)
+        if (fixture == null && !tap && steps == null) return@LaunchedEffect
         kotlinx.coroutines.delay(delayMillis)
-        if (tap) voice() else CallFixtures.show(graph.calls, fixture!!)
+        if (fixture != null) CallFixtures.show(graph.calls, fixture)
+        if (tap) voice()
+        for (step in steps.orEmpty()) {
+            kotlinx.coroutines.delay(3_000)
+            when (step) {
+                "tap" -> voice()
+                "session" -> graph.calls.startFromSheet()
+                "close" -> graph.calls.dismissSheet()
+            }
+            kotlinx.coroutines.delay(1_000)
+            android.util.Log.i("call-steps", "$step -> ${graph.calls.testSummary}")
+        }
+        if (steps != null) android.util.Log.i("call-steps", "done")
     }
 }

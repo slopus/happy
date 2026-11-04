@@ -85,6 +85,7 @@ enum class Ionicon(val codepoint: Int) {
     Folder(0xf325), // folder
     FolderOpenOutline(0xf327), // folder-open-outline
     FolderOutline(0xf329), // folder-outline
+    GiftOutline(0xf338), // gift-outline
     GitBranchOutline(0xf33b), // git-branch-outline
     GitCommitOutline(0xf33e), // git-commit-outline
     GitCompareOutline(0xf341), // git-compare-outline
@@ -121,6 +122,7 @@ enum class Ionicon(val codepoint: Int) {
     NewspaperOutline(0xf473), // newspaper-outline
     NotificationsOutline(0xf47f), // notifications-outline
     OptionsOutline(0xf48b), // options-outline
+    PaperPlaneOutline(0xf48e), // paper-plane-outline
     PauseOutline(0xf497), // pause-outline
     Pencil(0xf49c), // pencil
     PeopleOutline(0xf4a3), // people-outline

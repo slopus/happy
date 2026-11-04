@@ -18,10 +18,21 @@
     <string name="call_connection">Rozmowa zakończona: utracono połączenie</string>
     <string name="call_open_settings">Otwórz ustawienia</string>
     <string name="call_paywall_title">Czas głosowy</string>
-    <string name="call_paywall_used">Wykorzystano darmowy czas głosowy</string>
-    <string name="call_paywall_free">Więcej darmowego czasu o %1$s</string>
-    <string name="call_paywall_footer">Każde urządzenie ma 20 darmowych minut głosu w dowolnych 30 dniach. Czas wraca, gdy starsze rozmowy przekroczą 30 dni.</string>
-    <string name="call_paywall_more">Więcej czasu głosowego</string>
-    <string name="call_paywall_unavailable">Jeszcze niedostępne</string>
-    <string name="call_paywall_unavailable_footer">Subskrypcje głosowe nie są jeszcze w sprzedaży. Na razie nic tu nie można kupić.</string>
+    <string name="call_welcome_title">Rozmawiaj ze swoimi agentami</string>
+    <string name="call_welcome_ask">Zapytaj, jak idzie praca</string>
+    <string name="call_welcome_act">Otwieraj i wysyłaj głosem</string>
+    <string name="call_welcome_free">20 darmowych minut</string>
+    <string name="call_start_session">Rozpocznij sesję głosową</string>
+    <string name="call_welcome_note">Mikrofon jest włączony tylko podczas rozmowy.</string>
+    <string name="call_used_today">Darmowy czas głosowy się skończył. Więcej wróci o %1$s.</string>
+    <string name="call_used_week">Darmowy czas głosowy się skończył. Więcej wróci: %1$s o %2$s.</string>
+    <string name="call_used_date">Darmowy czas głosowy się skończył. Więcej wróci %1$s.</string>
+    <string name="call_used_later">Darmowy czas głosowy się skończył. Wraca, gdy starsze rozmowy mają ponad 30 dni.</string>
+    <string name="call_support_for">Wesprzyj Happy za %1$s miesięcznie</string>
+    <string name="call_subscribe_allowance">5 godzin głosu w czasie rzeczywistym w cenie</string>
+    <string name="call_subscribe_support">Happy ma otwarty kod źródłowy. Subskrypcja głosu finansuje jego rozwój.</string>
+    <string name="call_subscribe">Subskrybuj</string>
+    <string name="call_preview_note">Podgląd testowy. Nic nie jest pobierane.</string>
+    <string name="call_preview_title">Tylko podgląd</string>
+    <string name="call_preview_message">Subskrypcje głosu nie są jeszcze w sprzedaży. Nic nie zostało kupione ani pobrane, a Twój czas głosowy się nie zmienił.</string>
 </resources>
