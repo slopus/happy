@@ -113,25 +113,29 @@ ledger. The ledger keeps calls for at least 62 days and never forgets one
 from inside the running paid month. Both limits are local: only the relay's
 voice has a server gate.
 
-Voice in Happy (relay) sessions is switched off on Android: a session's
-chat has no voice button and nothing reaches ElevenLabs from it
-(`VoiceEngine(enabled = false)`). Voice is the agent connection's call.
+Voice in Happy (relay) sessions is switched off in both apps: a session's
+chat has no voice button and nothing reaches ElevenLabs from it (Android
+`VoiceEngine(enabled = false)`; iOS `LegacyVoice`, which debug runs can turn
+back on with `HAPPY_LEGACY_VOICE=1`). Voice is the agent connection's call.
 
-### The subscription (Android)
+### The subscription
 
-Android sells it without RevenueCat's SDK: Play Billing for the purchase and
-RevenueCat's REST API (v1, the public Google key) for what is on sale and
-who has `pro` (`payments/Subscription.kt`). iOS follows the same rules with
-StoreKit 2; that work is in progress separately and not on this branch.
+Both apps sell it without RevenueCat's SDK, through RevenueCat's REST API
+(v1, the public Google or Apple key) for what is on sale and who has `pro`:
+Android with Play Billing (`payments/Subscription.kt`), iOS with StoreKit 2
+(`HappyCore/Subscription/Subscription.swift`). The rules below are both
+apps'.
 
 - **On sale** is the current offering's monthly package (`$rc_monthly`),
   only if the store says it is a one-month auto-renewing subscription. Its
   price is the store's. No key, no product or no answer: nothing is sold.
 - **Whose purchase.** The customer is the relay account's JWT subject when
   signed in, else a persistent anonymous id; login is never needed. A
-  purchase carries SHA-256 of its customer id (Play `obfuscatedAccountId`),
-  remembered for good, so a renewal or a purchase that completes late is
-  posted for whoever bought it, whoever is signed in by then. One with no
+  purchase carries an id for its customer, remembered for good (Play
+  `obfuscatedAccountId`, SHA-256 of the customer id; StoreKit's
+  `appAccountToken`, a UUID from SHA-256 of the customer id), so a renewal
+  or a purchase that completes late is posted for whoever bought it,
+  whoever is signed in by then. One with no
   id we know is left alone. Only a user's Restore moves a purchase to the
   restoring customer, from then on. Signing in after an anonymous purchase
   identifies the two with RevenueCat; it does not guarantee a merge.
@@ -139,7 +143,7 @@ StoreKit 2; that work is in progress separately and not on this branch.
   own clock, never read from the offering.
 - **The month.** Month n runs from the entitlement's latest purchase date
   plus n calendar months (UTC) to plus n+1: Jan 31, Feb 28, Mar 31. In
-  Play's grace period the month that was running carries on with no end,
+  the store's grace period the month that was running carries on with no end,
   adding no hours. Grace is read from the subscription
   (`grace_period_expires_date`), not the entitlement.
 
@@ -183,7 +187,7 @@ back). What is on offer (`CallOffer` on iOS, `Offer` on Android):
 - `unavailable`: no subscription, no price and no buy button, and no
   welcome. Only the used-up sheet shows: "Start Voice Session" is its main
   pill, greyed out, and the ✕ closes the sheet.
-- `onSale(price)` (Android): the store's price, Subscribe and "Restore
+- `onSale(price)`: the store's price, Subscribe and "Restore
   Purchases".
 - `subscribed`: no second Subscribe; the 5 hours a month, and once they are
   used, when the next month's begin.
