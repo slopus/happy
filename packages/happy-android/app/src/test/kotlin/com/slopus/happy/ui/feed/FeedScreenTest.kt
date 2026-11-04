@@ -166,6 +166,7 @@ class FeedScreenTest {
     @Test
     fun followingListsEverywhereThenEachPlaceWithItsSwitch() {
         val follows = mutableListOf<Pair<String, Boolean>>()
+        val peeked = mutableListOf<String>()
         var read = 0
         val following = FeedFollowingState(
             clusters = listOf(
@@ -180,7 +181,7 @@ class FeedScreenTest {
             pending = setOf("project:p1"),
             loaded = true,
         )
-        show(following = following, actions = FeedActions(onBack = {}, onReadFollowing = { read++ }, onFollow = { cluster, on -> follows += cluster to on }))
+        show(following = following, actions = FeedActions(onBack = {}, onReadFollowing = { read++ }, onFollow = { cluster, on -> follows += cluster to on }, onPeek = { peeked += it.cluster }))
         rule.onNodeWithTag(FeedTags.tab(following = true)).performClick()
         rule.waitForIdle()
         assertEquals(1, read)
@@ -194,11 +195,37 @@ class FeedScreenTest {
         rule.onNodeWithTag(FeedTags.follow("task:t1"), useUnmergedTree = true).assertIsOn()
         rule.onAllNodesWithTag(FeedTags.READ_ALL).assertCountEquals(0)
         shot("feed-following")
+        // The switch follows or mutes; the row peeks in.
         rule.onNodeWithTag(FeedTags.follow("bot:b1"), useUnmergedTree = true).performClick()
         rule.onNodeWithText("Groceries").performClick()
-        // A place on its way takes no second change.
-        rule.onNodeWithText("happy").performClick()
-        assertEquals(listOf("bot:b1" to true, "surface:s1" to false), follows)
+        assertEquals(listOf("bot:b1" to true), follows)
+        assertEquals(listOf("surface:s1"), peeked)
+    }
+
+    @Test
+    fun aPeekShowsAPlacesNewestEntriesWithoutTheDot() {
+        val opened = mutableListOf<String>()
+        val peek = FeedPeekState(items.take(2), loaded = true)
+        rule.setHappyContent {
+            ProvideWindowLayout {
+                FeedPeekScreen("Groceries", peek, FeedRows.make(peek.items, { false }, catalog, found, "conn"), catalog, FeedActions(onBack = {}, onOpen = { opened += it.title }), clock = { now })
+            }
+        }
+        rule.onNodeWithText("Oat milk").assertExists()
+        rule.onAllNodesWithTag(FeedTags.DOT, useUnmergedTree = true).assertCountEquals(0)
+        rule.onAllNodesWithTag(FeedTags.READ_ALL).assertCountEquals(0)
+        shot("feed-peek")
+        rule.onNodeWithText("Release plan").performClick()
+        assertEquals(listOf("Release plan"), opened)
+    }
+
+    @Test
+    fun aQuietPlaceSaysSo() {
+        rule.setHappyContent(dark = true) {
+            ProvideWindowLayout { FeedPeekScreen("Groceries", FeedPeekState(loaded = true), emptyList(), catalog, FeedActions(onBack = {}), clock = { now }) }
+        }
+        rule.onNodeWithText("Nothing has happened here in the last 30 days.").assertExists()
+        shot("feed-peek-empty-dark")
     }
 
     @Test

@@ -60,6 +60,7 @@ class FeedTest {
         }
         override suspend fun clusters() = emptyList<FeedCluster>()
         override suspend fun follow(cluster: String, follow: Boolean, mutationId: String) = FeedCluster(cluster, FeedCluster.kindOf(cluster), if (follow) "subscribed" else "muted")
+        override suspend fun peek(cluster: String, limit: Int) = emptyList<FeedItem>()
     }
 
     private suspend fun eventually(check: () -> Boolean) {

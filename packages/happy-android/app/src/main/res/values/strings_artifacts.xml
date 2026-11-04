@@ -121,6 +121,7 @@
     <string name="feed_created_with">Created · %1$s</string>
     <string name="feed_created">Created</string>
     <string name="feed_changed">Changed</string>
+    <string name="feed_peek_empty">Nothing has happened here in the last 30 days.</string>
     <plurals name="feed_unread">
         <item quantity="one">%1$d unread</item>
         <item quantity="other">%1$d unread</item>

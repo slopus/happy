@@ -107,6 +107,7 @@
     <string name="feed_created_with">Creat · %1$s</string>
     <string name="feed_created">Creat</string>
     <string name="feed_changed">Canviat</string>
+    <string name="feed_peek_empty">Aquí no ha passat res en els darrers 30 dies.</string>
     <plurals name="feed_unread">
         <item quantity="one">%1$d sense llegir</item>
         <item quantity="many">%1$d sense llegir</item>

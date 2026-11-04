@@ -103,6 +103,7 @@
     <string name="feed_created_with">已建立 · %1$s</string>
     <string name="feed_created">已建立</string>
     <string name="feed_changed">已變更</string>
+    <string name="feed_peek_empty">過去 30 天這裡沒有任何動態。</string>
     <plurals name="feed_unread">
         <item quantity="other">%1$d 則未讀</item>
     </plurals>

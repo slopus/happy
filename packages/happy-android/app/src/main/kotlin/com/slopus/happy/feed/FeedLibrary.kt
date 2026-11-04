@@ -375,6 +375,9 @@ class FeedLibrary(
     /** The places the feed gathers from, read whole each time. */
     suspend fun clusters(): List<FeedCluster> = routes.clusters()
 
+    /** [cluster]'s newest entries, read whole each time. */
+    suspend fun peek(cluster: String): List<FeedItem> = routes.peek(cluster, PEEK)
+
     /** Follows [cluster], or mutes it; what the computer says it is now. */
     suspend fun follow(cluster: String, following: Boolean): FeedCluster = routes.follow(cluster, following, AgentClient.newId())
 
@@ -428,6 +431,7 @@ class FeedLibrary(
         /** The checkpoint it is kept under, beside the connection's catalog. */
         const val RESOURCE = "feed"
         const val PAGE = 50
+        const val PEEK = 200
         /** The most entries kept on disk. */
         const val KEPT = 200
 

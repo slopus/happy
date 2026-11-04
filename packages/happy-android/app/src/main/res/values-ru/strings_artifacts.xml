@@ -109,6 +109,7 @@
     <string name="feed_created_with">Создано · %1$s</string>
     <string name="feed_created">Создано</string>
     <string name="feed_changed">Изменено</string>
+    <string name="feed_peek_empty">За последние 30 дней здесь ничего не произошло.</string>
     <plurals name="feed_unread">
         <item quantity="one">%1$d непрочитанная</item>
         <item quantity="few">%1$d непрочитанные</item>

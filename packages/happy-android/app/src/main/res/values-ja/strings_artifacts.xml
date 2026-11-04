@@ -103,6 +103,7 @@
     <string name="feed_created_with">作成 · %1$s</string>
     <string name="feed_created">作成</string>
     <string name="feed_changed">変更</string>
+    <string name="feed_peek_empty">過去30日間、ここでは何も起きていません。</string>
     <plurals name="feed_unread">
         <item quantity="other">未読 %1$d 件</item>
     </plurals>

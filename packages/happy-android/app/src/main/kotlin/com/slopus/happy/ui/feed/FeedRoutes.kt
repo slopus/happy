@@ -15,6 +15,7 @@ import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.agent.AgentCatalog
 import com.slopus.happy.agent.AgentSession
+import com.slopus.happy.feed.FeedCluster
 import com.slopus.happy.feed.FeedLibrary
 import com.slopus.happy.feed.FeedRow
 import com.slopus.happy.feed.FeedRows
@@ -38,9 +39,15 @@ import kotlinx.serialization.Serializable
 /** The person's Feed on one agent connection, home's Feed row. */
 @Serializable data class AgentFeedRoute(val connectionId: String)
 
+/** One place's newest entries, a place tapped in Following. */
+@Serializable data class AgentFeedPeekRoute(val connectionId: String, val cluster: String, val kind: String) {
+    val feedCluster: FeedCluster get() = FeedCluster(cluster, kind)
+}
+
 /** The Feed's screen. AgentConnectionRoutes registers it with the agent's other places. */
 fun NavGraphBuilder.feedRoutes(graph: AppGraph, nav: NavHostController) {
     page<AgentFeedRoute> { entry -> AgentFeed(graph, nav, entry.toRoute()) }
+    page<AgentFeedPeekRoute> { entry -> AgentFeedPeek(graph, nav, entry.toRoute()) }
 }
 
 /**
@@ -86,6 +93,29 @@ internal class FeedFollowing(private val scope: CoroutineScope, private val libr
     fun refusalSeen() = stateFlow.update { it.copy(refused = null) }
 }
 
+/** A peek at [cluster], read from the computer each time it is asked (iOS `FeedPeekViewController.read`). */
+internal class FeedPeeking(private val scope: CoroutineScope, private val library: FeedLibrary, private val cluster: String) {
+    private val stateFlow = MutableStateFlow(FeedPeekState())
+    val state: StateFlow<FeedPeekState> = stateFlow.asStateFlow()
+    private var reading: Job? = null
+
+    fun read() {
+        reading?.cancel()
+        stateFlow.update { it.copy(refreshing = true) }
+        reading = scope.launch {
+            try {
+                val items = library.peek(cluster)
+                stateFlow.value = FeedPeekState(items, loaded = true)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // What was read stays; with nothing read, it says why.
+                stateFlow.update { it.copy(loaded = true, failed = it.items.isEmpty(), refreshing = false) }
+            }
+        }
+    }
+}
+
 private class FeedHolder(session: AgentSession?) : ViewModel() {
     val following: FeedFollowing? = session?.let { FeedFollowing(viewModelScope, it.feedLibrary) }
 }
@@ -122,19 +152,69 @@ private fun AgentFeed(graph: AppGraph, nav: NavHostController, route: AgentFeedR
                 onBack = { nav.popBackStack() },
                 onOpen = { row ->
                     library.state.value.items.firstOrNull { it.id == row.id }?.let { scope.launch { library.open(it) } }
-                    when (val target = row.target) {
-                        is FeedTarget.Chat -> nav.openConversation(route.connectionId, target.agentId)
-                        is FeedTarget.Surface -> nav.navigate(AgentSurfaceRoute(route.connectionId, target.id, target.type, target.name))
-                        is FeedTarget.Artifact -> nav.openArtifact(route.connectionId, target.ref)
-                        null -> Unit
-                    }
+                    nav.openFeedTarget(route.connectionId, row.target)
                 },
                 onRefresh = library::refresh,
                 onLoadMore = library::loadMore,
                 onReadAll = { scope.launch { library.readAll() } },
                 onReadFollowing = following::read,
                 onFollow = following::follow,
+                onPeek = { cluster -> nav.navigate(AgentFeedPeekRoute(route.connectionId, cluster.cluster, cluster.kind)) },
                 onRefusalSeen = following::refusalSeen,
+            )
+        },
+    )
+}
+
+/**
+ * Where a Feed row goes (iOS `FeedOpening`): a task's or bot's chat, a
+ * Surface's screen, an artifact's viewer. Chats count themselves read;
+ * Surfaces and artifacts tell the Feed they were opened.
+ */
+private fun NavHostController.openFeedTarget(connectionId: String, target: FeedTarget?) {
+    when (target) {
+        is FeedTarget.Chat -> openConversation(connectionId, target.agentId)
+        is FeedTarget.Surface -> navigate(AgentSurfaceRoute(connectionId, target.id, target.type, target.name))
+        is FeedTarget.Artifact -> openArtifact(connectionId, target.ref)
+        null -> Unit
+    }
+}
+
+private class FeedPeekHolder(session: AgentSession?, cluster: String) : ViewModel() {
+    val peeking: FeedPeeking? = session?.let { FeedPeeking(viewModelScope, it.feedLibrary, cluster).also(FeedPeeking::read) }
+}
+
+@Composable
+private fun AgentFeedPeek(graph: AppGraph, nav: NavHostController, route: AgentFeedPeekRoute) {
+    val session = remember(route.connectionId) { graph.agentSessions.session(route.connectionId) }
+    val holder = viewModel { FeedPeekHolder(session, route.cluster) }
+    val peeking = holder.peeking
+    val words = rememberFeedWords()
+    if (session == null || peeking == null) {
+        FeedPeekScreen("", FeedPeekState(loaded = true, failed = true), emptyList(), AgentCatalog(loaded = true), FeedActions(onBack = { nav.popBackStack() }))
+        return
+    }
+    val lookups = session.feedLookups
+    val peek by peeking.state.collectAsStateWithLifecycle()
+    val catalog by session.catalog.collectAsStateWithLifecycle()
+    val found by lookups.found.collectAsStateWithLifecycle()
+    LaunchedEffect(peek.items) { lookups.want(peek.items) }
+    // None carries the dot: a peek reads nothing.
+    val rows by produceState(emptyList<FeedRow>(), peek, catalog, found) {
+        value = withContext(Dispatchers.Default) { FeedRows.make(peek.items, { false }, catalog, found, route.connectionId) }
+    }
+    // The place's own name, as it is now.
+    val title = remember(catalog, words) { FeedPlace.of(route.feedCluster, catalog, words)?.name.orEmpty() }
+    FeedPeekScreen(
+        title = title,
+        peek = peek,
+        rows = rows,
+        catalog = catalog,
+        actions = remember(peeking, nav) {
+            FeedActions(
+                onBack = { nav.popBackStack() },
+                onOpen = { row -> nav.openFeedTarget(route.connectionId, row.target) },
+                onRefresh = peeking::read,
             )
         },
     )

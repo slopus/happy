@@ -170,6 +170,8 @@ interface FeedRoutes {
     suspend fun clusters(): List<FeedCluster>
     /** Follows [cluster], or mutes it; what the computer says it is now. */
     suspend fun follow(cluster: String, follow: Boolean, mutationId: String): FeedCluster
+    /** A place's newest entries, as Following peeks at them (`GET /v0/feed/clusters/:cluster`). */
+    suspend fun peek(cluster: String, limit: Int): List<FeedItem>
 }
 
 /** The Feed's routes through [client]. */
@@ -209,4 +211,7 @@ class AgentFeedRoutes(private val client: AgentClient) : FeedRoutes {
         val answer = client.decode<JsonObject>(if (follow) "PUT" else "DELETE", "/v0/feed/subscriptions/${AgentClient.escape(cluster)}", buildJsonObject { put("mutationId", mutationId) })
         return FeedCluster.parse(answer["cluster"]) ?: FeedCluster(cluster, FeedCluster.kindOf(cluster), if (follow) "subscribed" else "muted")
     }
+
+    override suspend fun peek(cluster: String, limit: Int): List<FeedItem> =
+        FeedItem.list(client.decode<JsonObject>("GET", "/v0/feed/clusters/${AgentClient.escape(cluster)}?limit=${limit.coerceIn(1, 200)}")["entries"])
 }

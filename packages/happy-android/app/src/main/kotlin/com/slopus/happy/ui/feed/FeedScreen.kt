@@ -68,6 +68,7 @@ import com.slopus.happy.agent.string
 import com.slopus.happy.artifacts.DateBucket
 import com.slopus.happy.feed.FeedCluster
 import com.slopus.happy.feed.FeedFace
+import com.slopus.happy.feed.FeedItem
 import com.slopus.happy.feed.FeedLibrary
 import com.slopus.happy.feed.FeedRow
 import com.slopus.happy.feed.FeedRows
@@ -117,6 +118,7 @@ object FeedTags {
     const val READ_ALL = "feed.readAll"
     const val FOLLOWING = "feed.following"
     const val PLACE = "feed.place"
+    const val PEEK = "feed.peek"
 
     fun tab(following: Boolean) = if (following) "feed.tab.following" else "feed.tab.activity"
     fun row(id: String) = "feed.row:$id"
@@ -171,6 +173,7 @@ class FeedWords(private val resources: Resources) {
     val team: String = resources.getString(R.string.feed_team)
     val muted: String = resources.getString(R.string.feed_muted)
     val following: String = resources.getString(R.string.feed_following)
+    val peekEmpty: String = resources.getString(R.string.feed_peek_empty)
 
     fun follow(name: String): String = resources.getString(R.string.feed_follow, name)
     fun mute(name: String): String = resources.getString(R.string.feed_mute, name)
@@ -230,11 +233,13 @@ sealed interface FeedListItem {
  * bucket over a card of its entries, newest change first, as the artifacts
  * list groups them; or one note in their place. [rows] are the entries
  * joined with what the connection syncs ([FeedRows]); an entry it can't
- * show yet isn't one.
+ * show yet isn't one. A place's newest entries, as Following [peek]s at
+ * them, say so in their own words.
  */
-fun feedListItems(state: FeedLibrary.State, rows: List<FeedRow>, catalogLoaded: Boolean, words: FeedWords, dates: ArtifactListWords, now: Long): List<FeedListItem> {
+fun feedListItems(state: FeedLibrary.State, rows: List<FeedRow>, catalogLoaded: Boolean, words: FeedWords, dates: ArtifactListWords, now: Long, peek: Boolean = false): List<FeedListItem> {
     if (rows.isEmpty()) {
         val text = when {
+            peek -> if (state.failed) words.clustersUnavailable else if (state.loaded) words.peekEmpty else words.loadingClusters
             state.available == false -> words.unsupported
             state.failed -> words.unavailable
             !state.loaded || state.available == null || state.refreshing -> words.loading
@@ -360,6 +365,8 @@ data class FeedActions(
     /** Following showed, or was pulled: its places are read again. */
     val onReadFollowing: () -> Unit = {},
     val onFollow: (cluster: String, follows: Boolean) -> Unit = { _, _ -> },
+    /** A place in Following was tapped: its newest entries. */
+    val onPeek: (FeedCluster) -> Unit = {},
     val onRefusalSeen: () -> Unit = {},
 )
 
@@ -435,6 +442,42 @@ fun FeedScreen(
     }
     following.refused?.let { reason ->
         HappyAlert(Alert(words.followFailed(reason), null, listOf(AlertButton(stringResource(R.string.common_ok)))), onDismiss = actions.onRefusalSeen)
+    }
+}
+
+/** A peek at one place: its newest entries as the computer last gave them. */
+@Immutable
+data class FeedPeekState(val items: List<FeedItem> = emptyList(), val loaded: Boolean = false, val failed: Boolean = false, val refreshing: Boolean = false)
+
+/**
+ * A place's newest entries, as Following peeks at them (iOS
+ * `FeedPeekViewController`): the Feed's rows without the dot, read from
+ * the computer each time; [title] is the place's name as it is now. A pull
+ * reads them again.
+ */
+@Composable
+fun FeedPeekScreen(
+    title: String,
+    peek: FeedPeekState,
+    rows: List<FeedRow>,
+    catalog: AgentCatalog,
+    actions: FeedActions,
+    clock: () -> Long = System::currentTimeMillis,
+) {
+    val words = rememberFeedWords()
+    val dates = rememberArtifactListWords()
+    var day by remember { mutableIntStateOf(0) }
+    LifecycleResumeEffect(Unit) {
+        day++
+        onPauseOrDispose { }
+    }
+    val state = FeedLibrary.State(available = true, items = peek.items, loaded = peek.loaded, failed = peek.failed, refreshing = peek.refreshing)
+    val seed = remember { feedListItems(state, rows, catalog.loaded, words, dates, clock(), peek = true) }
+    val items by produceState(seed, state, rows, catalog.loaded, words, dates, day) {
+        value = withContext(Dispatchers.Default) { feedListItems(state, rows, catalog.loaded, words, dates, clock(), peek = true) }
+    }
+    PlaceScaffold(title = title, onBack = actions.onBack, tag = FeedTags.PEEK) {
+        FeedActivityList(items, state, actions)
     }
 }
 
@@ -673,13 +716,12 @@ private fun FeedFollowingList(items: List<FeedFollowingItem>, state: FeedFollowi
     }
 }
 
-/** A place: its 32 face, its name, and a switch to follow or mute it, which the whole row flips too. */
+/** A place: its 32 face, its name, and a switch to follow or mute it; a tap peeks at its newest entries. */
 @Composable
 private fun FeedPlaceRow(item: FeedFollowingItem.Place, words: FeedWords, actions: FeedActions) {
     val colors = HappyTheme.colors
     val place = item.place
-    val flip = { if (!item.pending) actions.onFollow(place.cluster.cluster, !item.following) }
-    FeedCard(item.row, FeedSpec.clusterRow, CardListSpec.inset + FeedSpec.clusterAvatar + CardListSpec.tileGap, FeedTags.PLACE, onClick = flip) {
+    FeedCard(item.row, FeedSpec.clusterRow, CardListSpec.inset + FeedSpec.clusterAvatar + CardListSpec.tileGap, FeedTags.PLACE, onClick = { actions.onPeek(place.cluster) }) {
         Row(
             Modifier
                 .fillMaxWidth()
