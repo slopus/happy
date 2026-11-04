@@ -106,8 +106,4 @@
     <string name="conversation_failure_internal">Alguna cosa ha anat malament: %1$s</string>
     <string name="conversation_editor_expand">Amplia</string>
     <string name="conversation_editor_collapse">Redueix</string>
-    <string name="conversation_story_you">Tu</string>
-    <string name="conversation_story_replied_yours">Resposta a la teva història</string>
-    <string name="conversation_story_replied">Resposta a la història de %1$s</string>
-    <string name="conversation_story_replied_self">has respost</string>
 </resources>

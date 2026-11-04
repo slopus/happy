@@ -106,8 +106,4 @@
     <string name="conversation_failure_internal">Что-то пошло не так: %1$s</string>
     <string name="conversation_editor_expand">Развернуть</string>
     <string name="conversation_editor_collapse">Свернуть</string>
-    <string name="conversation_story_you">Вы</string>
-    <string name="conversation_story_replied_yours">Ответ на вашу историю</string>
-    <string name="conversation_story_replied">Ответ на историю %1$s</string>
-    <string name="conversation_story_replied_self">ответили</string>
 </resources>

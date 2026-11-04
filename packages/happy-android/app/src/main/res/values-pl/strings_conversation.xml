@@ -106,8 +106,4 @@
     <string name="conversation_failure_internal">Coś poszło nie tak: %1$s</string>
     <string name="conversation_editor_expand">Rozwiń</string>
     <string name="conversation_editor_collapse">Zwiń</string>
-    <string name="conversation_story_you">Ty</string>
-    <string name="conversation_story_replied_yours">Odpowiedź na Twoją relację</string>
-    <string name="conversation_story_replied">Odpowiedź na relację %1$s</string>
-    <string name="conversation_story_replied_self">odpowiedziałeś(-aś)</string>
 </resources>

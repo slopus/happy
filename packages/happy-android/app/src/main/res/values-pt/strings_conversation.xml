@@ -106,8 +106,4 @@
     <string name="conversation_failure_internal">Algo deu errado: %1$s</string>
     <string name="conversation_editor_expand">Expandir</string>
     <string name="conversation_editor_collapse">Recolher</string>
-    <string name="conversation_story_you">Você</string>
-    <string name="conversation_story_replied_yours">Resposta ao seu story</string>
-    <string name="conversation_story_replied">Resposta ao story de %1$s</string>
-    <string name="conversation_story_replied_self">respondeu</string>
 </resources>

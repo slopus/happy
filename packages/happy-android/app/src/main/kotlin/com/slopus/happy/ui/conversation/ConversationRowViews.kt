@@ -7,7 +7,6 @@ import com.slopus.happy.ui.artifacts.artifactCardGlyph
 import com.slopus.happy.conversation.InlinePicture
 import com.slopus.happy.conversation.pictureSize
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,19 +14,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import com.slopus.happy.agent.AgentClient
-import com.slopus.happy.ui.chat.MessageTags
-import com.slopus.happy.ui.chat.MessageSpec
-import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.draw.drawBehind
-import com.slopus.happy.chat.SessionAuthor
-import com.slopus.happy.ui.components.avatar.PlaceholderAvatar
-import com.slopus.happy.ui.connection.AgentPicture
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -42,7 +28,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -104,7 +89,6 @@ object ConversationRowTags {
     const val NOTICE = "conversation.notice"
     /** A long message's Show full / Show less ([UserFold]). */
     const val USER_FOLD = "conversation.user.fold"
-    const val STORY = "conversation.story"
 }
 
 /** The rows' own measures; text and user bubbles are the legacy chat's (MessageSpec), a turn's own rows [TurnRowSpec]. */
@@ -117,7 +101,6 @@ object ConversationRowSpec {
     val photosGap = 4.dp
     val label = happyTextStyle(fontSize = 13, lineHeight = 18, weight = FontWeight.SemiBold)
     val body = happyTextStyle(fontSize = 14, lineHeight = 20)
-    val replier = happyTextStyle(fontSize = 14, lineHeight = 20)
     val notice = happyTextStyle(fontSize = 13, lineHeight = 18)
     val icon = 16.dp
 }
@@ -313,10 +296,8 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
         Delivery.Sent -> MessageDelivery.Accepted
         is Delivery.Failed -> MessageDelivery.Failed
     }
-    // Another person's message stands at the left under their name, in desktop's neutral bubble.
-    val sender = row.sender
     val message = remember(row) {
-        ChatMessage.UserText(id = row.key, localId = row.messageId, createdAt = row.createdAt, text = row.text, author = sender?.let { SessionAuthor(it.userId, it.name, owner = false) })
+        ChatMessage.UserText(id = row.key, localId = row.messageId, createdAt = row.createdAt, text = row.text)
     }
     // The photos go under the words, against the right edge as the bubble is; each still
     // going to the computer under its ring (iOS 5ac4296c2). Movable: a message of pictures
@@ -325,7 +306,7 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
         movableContentOf { row: ConversationRow.User, actions: ConversationRowActions ->
             val sending = row.delivery == Delivery.Sending
             InlinePictures(
-                row.key, row.pictures, actions, MediaFlow.message, alignEnd = row.sender == null, measure = MediaFlow::messageMeasure, limit = true,
+                row.key, row.pictures, actions, MediaFlow.message, alignEnd = true, measure = MediaFlow::messageMeasure, limit = true,
                 upload = { index -> if (sending) actions.uploads?.phase(UploadBoard.pictureKey(row.messageId, index)) ?: UploadPhase.Preparing else null },
                 onCancel = { index -> actions.onRemovePicture(row.messageId, index) },
             )
@@ -335,18 +316,10 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
     val prose = if (row.text.isNotEmpty()) rememberProse(ProseSource(row.key, ProseKind.User, row.text, row.blocks)) else null
     val cut = remember(prose) { prose?.cut(UserFold.FOLD_LINES) }
     val toggle = stringResource(if (row.opened) R.string.machine_launcher_show_less else R.string.conversation_show_full)
-    // "You replied" over the reader's own; over a teammate's, whose story it answers.
-    val note = row.story?.let { story ->
-        when {
-            row.sender == null -> stringResource(R.string.conversation_story_replied_self)
-            story.owner != null -> stringResource(R.string.conversation_story_replied, story.owner)
-            else -> stringResource(R.string.conversation_story_replied_yours)
-        }
-    }
     if (row.text.isNotEmpty() || failed) {
         UserMessage(
             ChatRow.User(message, UserDisplay.Text(row.text, row.blocks), delivery = delivery, time = row.createdAt),
-            if (sender == null) bubble else HappyTheme.colors.surfacePressed.let { BubblePalette(it, it, it) },
+            bubble,
             actions.legacy,
             modifier.fillMaxWidth(),
             statusLine = false,
@@ -358,14 +331,6 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
             onTap = if (cut != null) ({ actions.onToggleMessage(row.key) }) else null,
             tapLabel = toggle,
             body = if (prose != null) { _ -> UserProse(row, prose, cut, actions.legacy) } else null,
-            header = row.story?.let { story ->
-                {
-                    // Instagram's line: the reader's own reads "You", and a teammate's replaces their name over it.
-                    if (sender == null) ReplierLine(story.replier, stringResource(R.string.conversation_story_you), note)
-                    StoryQuote(story, row.messageId, alignEnd = sender == null)
-                }
-            },
-            author = sender?.let { { ReplierLine(it.userId, it.name, note) } },
         )
     } else if (row.pictures.isNotEmpty()) {
         Box(
@@ -373,55 +338,6 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
                 .fillMaxWidth()
                 .padding(horizontal = ConversationRowSpec.marginHorizontal, vertical = ConversationRowSpec.marginVertical),
         ) { photos(row, actions) }
-    }
-}
-
-/**
- * Who wrote a person's message, over it on its side: their 16 face 6 from
- * their name ([MessageSpec.author], 14/20 semibold) and, a story reply,
- * what they replied to after it in 14/20 textSecondary, 4 over the rest.
- */
-@Composable
-private fun ReplierLine(seed: String, name: String, note: String?) {
-    val colors = HappyTheme.colors
-    Row(Modifier.padding(bottom = MessageSpec.authorMarginBottom), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-        PlaceholderAvatar(seed, 16.dp)
-        val line = buildAnnotatedString {
-            withStyle(SpanStyle(fontWeight = FontWeight.SemiBold, color = colors.text)) { append(name) }
-            if (note != null) withStyle(SpanStyle(color = colors.textSecondary)) { append(" $note") }
-        }
-        Text(line, style = ConversationRowSpec.replier, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.testTag(MessageTags.USER_AUTHOR))
-    }
-}
-
-/** The bar beside a quoted story (iOS `Palette.quoteBar`): the divider is lost on the dark ground. */
-private val QuoteBarLight = Color(0xFFD4D4D8)
-private val QuoteBarDark = Color(0xFF48484C)
-
-/**
- * Instagram's story reply over the person's bubble, on its side: the
- * story's first frame, the size one 9:16 photo of a message is
- * ([MediaFlow.message]), in a photo's tile (corners 8, the divider
- * hairline; surfacePressed without a frame), a 3 bar the frame's
- * height 8 from it at the row's outer edge, 4 over the bubble. The frame is
- * a still, never played, and a tap does nothing: the phone has no viewer.
- */
-@Composable
-private fun StoryQuote(story: ConversationRow.StoryQuote, messageId: String, alignEnd: Boolean) {
-    val colors = HappyTheme.colors
-    val shape = RoundedCornerShape(ConversationMediaSpec.radius)
-    val inset = 3.dp + 8.dp
-    MediaFlowLayout(
-        listOf(MediaFlow.Item(false, MediaFlow.Image(hashedRatio = 9f / 16f))), limits = MediaFlow.message, measure = { MediaFlow.messageMeasure(it) - inset.value },
-        modifier = Modifier.padding(bottom = 4.dp).testTag(ConversationRowTags.STORY).drawBehind {
-            val bar = 3.dp.toPx()
-            drawRoundRect(if (colors.dark) QuoteBarDark else QuoteBarLight, Offset(if (alignEnd) size.width - bar else 0f, 0f), Size(bar, size.height), CornerRadius(bar / 2))
-        }.padding(start = if (alignEnd) 0.dp else inset, end = if (alignEnd) inset else 0.dp),
-    ) {
-        Box(Modifier.clip(shape).background(colors.surfacePressed).border(ConversationMediaSpec.outline, colors.divider, shape)) {
-            val frame = "/v0/agents/${AgentClient.escape(story.agentId)}/messages/${AgentClient.escape(messageId)}/story-frame"
-            if (story.frame) AgentPicture(frame, story.thumbhash, 360.dp, radius = ConversationMediaSpec.radius)
-        }
     }
 }
 

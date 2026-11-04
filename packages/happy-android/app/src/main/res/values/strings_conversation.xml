@@ -110,8 +110,4 @@
     <string name="conversation_failure_internal">Something went wrong: %1$s</string>
     <string name="conversation_editor_expand">Expand</string>
     <string name="conversation_editor_collapse">Collapse</string>
-    <string name="conversation_story_you">You</string>
-    <string name="conversation_story_replied_yours">Replied to your story</string>
-    <string name="conversation_story_replied">Replied to %1$s’s story</string>
-    <string name="conversation_story_replied_self">replied</string>
 </resources>

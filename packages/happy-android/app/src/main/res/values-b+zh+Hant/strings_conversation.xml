@@ -106,8 +106,4 @@
     <string name="conversation_failure_internal">發生了問題：%1$s</string>
     <string name="conversation_editor_expand">展開</string>
     <string name="conversation_editor_collapse">收合</string>
-    <string name="conversation_story_you">你</string>
-    <string name="conversation_story_replied_yours">回覆了你的限時動態</string>
-    <string name="conversation_story_replied">回覆了 %1$s 的限時動態</string>
-    <string name="conversation_story_replied_self">回覆了</string>
 </resources>

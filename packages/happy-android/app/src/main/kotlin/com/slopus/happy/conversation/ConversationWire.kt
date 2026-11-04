@@ -354,10 +354,6 @@ data class Message(
     val status: String? = null,
     val runId: String? = null,
     val senderAgentId: String? = null,
-    /** The person who wrote a person's message (`metadata.userId`). */
-    val userId: String? = null,
-    /** What a person's message quotes (`quote`, a story's of `kind` `story`), kept as sent. */
-    val quote: JsonObject? = null,
     /** An error service message's typed failure, kept as sent. */
     val failure: JsonObject? = null,
     val error: JsonObject? = null,
@@ -375,8 +371,6 @@ data class Message(
                 status = o["status"].str,
                 runId = o["runId"].str,
                 senderAgentId = o["metadata"].obj?.get("senderAgentId").str,
-                userId = o["metadata"].obj?.get("userId").str,
-                quote = o["quote"].obj,
                 failure = o["failure"].obj,
                 error = o["error"].obj,
             )
