@@ -47,9 +47,11 @@ import com.slopus.happy.attachments.GalleryAccess
 import com.slopus.happy.attachments.GalleryItem
 import com.slopus.happy.attachments.MediaGallery
 import com.slopus.happy.attachments.PickedKind
+import com.slopus.happy.attachments.PendingPicture
 import com.slopus.happy.attachments.PickedMedia
 import com.slopus.happy.attachments.RecentFile
 import com.slopus.happy.attachments.RecentFiles
+import com.slopus.happy.attachments.Staged
 import com.slopus.happy.attachments.StagingProblem
 import com.slopus.happy.conversation.ViewerItem
 import com.slopus.happy.ui.attachments.attachmentCacheDir
@@ -64,6 +66,8 @@ import com.slopus.happy.ui.files.WorkspaceSource
 import com.slopus.happy.ui.files.withWorkspacePath
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -81,7 +85,9 @@ import java.nio.ByteBuffer
  * sheet has gone, after its own close. On a phone held upright it grows
  * out of [button] and goes back into it ([AttachMorph]). With a [workspace]
  * the File tab can name one of its files instead: the picked path goes
- * into the caption as `./path` and nothing is uploaded.
+ * into the caption as `./path` and nothing is uploaded. With
+ * [onSendPending], gallery photos don't wait to be read: the sheet goes at
+ * once and each goes as its thumbnail, read after ([PendingPicture]).
  */
 @Composable
 fun AttachSheet(
@@ -94,6 +100,7 @@ fun AttachSheet(
     room: Int = accepts.maxItems,
     button: AttachButton? = null,
     workspace: WorkspaceSource? = null,
+    onSendPending: ((List<AttachmentPreview>, List<PendingPicture>) -> Unit)? = null,
 ) {
     if (!open) return
     val tabs = accepts.tabs
@@ -110,6 +117,7 @@ fun AttachSheet(
     val selection = remember { AttachSelection(room.coerceAtLeast(0)) }
     val closed by rememberUpdatedState(onClosed)
     val send by rememberUpdatedState(onSend)
+    val sendPending by rememberUpdatedState(onSendPending)
     var tab by remember { mutableStateOf(tabs.first()) }
     var alert by remember { mutableStateOf<Alert?>(null) }
     var sending by remember { mutableStateOf(false) }
@@ -228,23 +236,35 @@ fun AttachSheet(
         if (sending || selection.count == 0) return
         sending = true
         val picks = selection.items.toList()
+        val later = sendPending
+        val app = context.applicationContext
+        val staging = AttachmentStaging(attachmentCacheDir(app)) { pick ->
+            app.contentResolver.openInputStream(Uri.parse(pick.uri)) ?: throw IOException("Cannot open ${pick.name}")
+        }
         scope.launch {
             try {
-                val staged = withContext(Dispatchers.IO) {
-                    AttachmentStaging(attachmentCacheDir(context)) { pick ->
-                        context.contentResolver.openInputStream(Uri.parse(pick.uri)) ?: throw IOException("Cannot open ${pick.name}")
-                    }.stage(picks, accepts)
+                // A gallery photo goes as its thumbnail, read once the sheet has gone (iOS b03dd48cc).
+                val photos = if (later == null) emptyList() else picks.filter { it.kind == PickedKind.Photo }
+                val thumbnails = withContext(Dispatchers.IO) { photos.map { async { galleryThumbnail(app.contentResolver, it.uri) } }.awaitAll() }
+                val pending = photos.zip(thumbnails).mapNotNull { (pick, thumbnail) ->
+                    thumbnail?.let {
+                        pick to PendingPicture(it) {
+                            withContext(Dispatchers.IO) { staging.stage(listOf(pick), accepts) }.attachments.singleOrNull() ?: throw IOException("Cannot read ${pick.name}")
+                        }
+                    }
                 }
+                val now = picks.filter { pick -> pending.none { it.first == pick } }
+                val staged = if (now.isEmpty()) Staged(emptyList(), emptyList()) else withContext(Dispatchers.IO) { staging.stage(now, accepts) }
                 staged.problems.firstOrNull()?.let { problem ->
                     when (problem) {
                         is StagingProblem.TooLarge -> say(R.string.image_upload_file_too_large_title, resources.getString(R.string.image_upload_file_too_large_message, problem.name, problem.maxMb))
                         is StagingProblem.Unreadable -> say(R.string.image_upload_upload_failed_title, resources.getString(R.string.attach_unreadable_message, problem.name))
                     }
                 }
-                if (staged.attachments.isEmpty()) return@launch
+                if (staged.attachments.isEmpty() && pending.isEmpty()) return@launch
                 val files = picks.filter { it.kind == PickedKind.File && it.uri.startsWith("content:") }
                 if (files.isNotEmpty() && accepts.files) withContext(Dispatchers.IO) { RecentFiles(context).remember(files) }
-                send(staged.attachments)
+                if (later != null && pending.isNotEmpty()) later(staged.attachments, pending.map { it.second }) else send(staged.attachments)
                 if (staged.problems.isEmpty()) close()
                 else selection.clear()
             } finally {

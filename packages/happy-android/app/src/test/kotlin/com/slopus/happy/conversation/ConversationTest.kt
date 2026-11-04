@@ -864,6 +864,67 @@ class ConversationTest {
         assertEquals(Problem.PicturesUnreadable, chat.state.value.alert)
     }
 
+    @Test fun `a send waits for photos still being read, drawn from their thumbnails, and goes with them in order`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        val reads = "ABCD".associateWith { CompletableDeferred<Unit>() }
+        var reading = 0
+        var most = 0
+        fun pending(fill: Char) = com.slopus.happy.attachments.PendingPicture(byteArrayOf(fill.code.toByte())) {
+            reading++
+            most = maxOf(most, reading)
+            reads.getValue(fill).await()
+            reading--
+            preview("$fill.jpg", "image/jpeg", 10)
+        }
+        val ready = listOf(preview("R.jpg", "image/jpeg", 10))
+        assertTrue(chat.send("Look", ready, "ABCD".map(::pending)) { list -> list.map { Block.Image("image/jpeg", it.name) } })
+        chat.send("After")
+        advanceUntilIdle()
+        // Drawn at once: the picture already read, then each thumbnail, under its ring.
+        val drawn = chat.state.value.rows.filterIsInstance<ConversationRow.User>().first { it.text == "Look" }
+        assertEquals(listOf("R.jpg") + "ABCD".map { java.util.Base64.getEncoder().encodeToString(byteArrayOf(it.code.toByte())) }, drawn.pictures.map { it.data })
+        assertEquals(Delivery.Sending, drawn.delivery)
+        assertTrue("nothing goes before its photos are read, nor after it", agent.requests.none { it.second.endsWith("/send") })
+
+        // The second taken out meanwhile is left out; the last read first changes no order.
+        chat.removePicture(drawn.messageId, 2)
+        advanceUntilIdle()
+        assertEquals("at most three read at once", 3, reading)
+        reads.getValue('C').complete(Unit)
+        reads.getValue('B').complete(Unit)
+        reads.getValue('D').complete(Unit)
+        advanceUntilIdle()
+        assertTrue(agent.requests.none { it.second.endsWith("/send") })
+        reads.getValue('A').complete(Unit)
+        advanceUntilIdle()
+        val sends = agent.requests.filter { it.second.endsWith("/send") }.map { it.third!! }
+        assertEquals(listOf("Look", "After"), sends.map { it["text"]!!.toString().trim('"') })
+        val images = sends[0]["content"]!!.jsonArray.map { it.jsonObject }.filter { it["type"]?.jsonPrimitive?.content == "image" }.map { it["data"]!!.jsonPrimitive.content }
+        assertEquals(listOf("R.jpg", "A.jpg", "C.jpg", "D.jpg"), images)
+        assertEquals(3, most)
+        assertEquals(null, chat.state.value.alert)
+    }
+
+    @Test fun `a photo that can't be read is left out of its message and said`() = runTest {
+        val agent = FakeAgent()
+        val chat = conversation(agent)
+        advanceUntilIdle()
+        val gone = com.slopus.happy.attachments.PendingPicture(byteArrayOf(1)) { throw java.io.IOException("gone") }
+        assertTrue(chat.send("Look", emptyList(), listOf(gone)) { list -> list.map { Block.Image("image/jpeg", it.name) } })
+        advanceUntilIdle()
+        val sends = agent.requests.filter { it.second.endsWith("/send") }.map { it.third!! }
+        assertEquals(listOf("Look"), sends.map { it["text"]!!.toString().trim('"') })
+        assertEquals(Problem.PicturesUnreadable, chat.state.value.alert)
+        assertTrue(chat.state.value.rows.filterIsInstance<ConversationRow.User>().single().pictures.isEmpty())
+
+        // Pictures alone, none read: the message is taken back.
+        assertTrue(chat.send("", emptyList(), listOf(gone)))
+        advanceUntilIdle()
+        assertEquals(1, chat.state.value.rows.filterIsInstance<ConversationRow.User>().size)
+    }
+
     @Test fun `files go into the workspace first and the message names them`() = runTest {
         val agent = FakeAgent()
         val chat = conversation(agent)

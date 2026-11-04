@@ -31,8 +31,12 @@ object WorkspaceUploads {
     const val DIRECTORY = ".happy-uploads"
     private val inlineTypes = setOf("image/jpeg", "image/png", "image/gif", "image/webp")
 
-    /** [attachments] split into inline pictures and workspace files, in their order, for message [messageId]. */
-    fun split(messageId: String, attachments: List<AttachmentPreview>): Pair<List<AttachmentPreview>, List<OutgoingFile>> {
+    /**
+     * [attachments] split into inline pictures and workspace files, in their
+     * order, for message [messageId]; [first] numbers them after those the
+     * message already has.
+     */
+    fun split(messageId: String, attachments: List<AttachmentPreview>, first: Int = 0): Pair<List<AttachmentPreview>, List<OutgoingFile>> {
         val inline = ArrayList<AttachmentPreview>()
         val files = ArrayList<OutgoingFile>()
         var inlineBytes = 0L
@@ -43,7 +47,7 @@ object WorkspaceUploads {
                 inlineBytes += size
             } else {
                 val local = localFile(attachment.uri)
-                val name = "$index-${safeAttachmentName(attachment.name)}"
+                val name = "${first + index}-${safeAttachmentName(attachment.name)}"
                 files += OutgoingFile(local, attachment.name, attachment.mimeType, size, "$DIRECTORY/$messageId/$name")
             }
         }

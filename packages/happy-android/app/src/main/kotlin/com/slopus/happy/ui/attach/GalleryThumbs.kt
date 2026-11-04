@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.attach
 
+import android.content.ContentResolver
 import android.content.ContentUris
 import android.graphics.Bitmap
 import android.net.Uri
@@ -15,6 +16,7 @@ import coil3.fetch.ImageFetchResult
 import coil3.key.Keyer
 import coil3.request.Options
 import coil3.size.pxOrElse
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 
 /**
@@ -58,5 +60,29 @@ class GalleryThumbFetcher(private val thumb: GalleryThumb, private val options: 
 
     private companion object {
         const val DEFAULT_PX = 256
+    }
+}
+
+/** The longer side of the thumbnail a photo goes as while it is read ([galleryThumbnail]). */
+private const val PENDING_PX = 512
+
+/**
+ * A gallery photo's system thumbnail as a JPEG, upright and of the photo's
+ * shape, to stand in for it while it is read; null when the system has
+ * none (a pick from elsewhere), so it is read before it goes.
+ */
+fun galleryThumbnail(resolver: ContentResolver, uri: String): ByteArray? {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || !uri.startsWith("content://media/")) return null
+    val bitmap = try {
+        resolver.loadThumbnail(Uri.parse(uri), Size(PENDING_PX, PENDING_PX), null)
+    } catch (e: IOException) {
+        return null
+    } catch (e: SecurityException) {
+        return null
+    }
+    return try {
+        ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.JPEG, 85, it) }.toByteArray()
+    } finally {
+        bitmap.recycle()
     }
 }

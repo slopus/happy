@@ -76,6 +76,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.attachments.AttachmentPreview
+import com.slopus.happy.attachments.PendingPicture
 import com.slopus.happy.conversation.AccountUsage
 import com.slopus.happy.conversation.ContextGauge
 import com.slopus.happy.conversation.ConversationState
@@ -191,6 +192,8 @@ internal fun ConversationComposer(
     onStop: () -> Unit,
     onModeChange: (Mode) -> Unit,
     modifier: Modifier = Modifier,
+    /** [onSend] with gallery photos still being read; null reads them before they go. */
+    onSendPending: ((String, List<AttachmentPreview>, List<PendingPicture>) -> Boolean)? = null,
     backdrop: GlassSource? = null,
     pictures: ImagePicker? = rememberComposerImages(enabled = true),
     /** "+"'s sheet is up as the composer first shows. */
@@ -291,10 +294,11 @@ internal fun ConversationComposer(
     }
 
     // The draft and what waits go together; new work keeps them until it is made.
-    fun submit(extra: List<AttachmentPreview> = emptyList()) {
+    fun submit(extra: List<AttachmentPreview> = emptyList(), pending: List<PendingPicture> = emptyList()) {
         val sent = text
-        val alone = attached.isEmpty() && extra.isEmpty()
-        if (onSend(text, attached + extra)) {
+        val alone = attached.isEmpty() && extra.isEmpty() && pending.isEmpty()
+        val went = if (pending.isEmpty() || onSendPending == null) onSend(text, attached + extra) else onSendPending(text, attached + extra, pending)
+        if (went) {
             if (alone && !reduceMotion) fly(sent)
             pictures?.clear()
             onSent()
@@ -464,6 +468,7 @@ internal fun ConversationComposer(
             caption = text,
             onCaptionChange = onTextChange,
             onSend = { staged -> submit(staged) },
+            onSendPending = onSendPending?.let { { staged, pending -> submit(staged, pending) } },
             onClosed = { attaching = false },
             room = AttachAccepts.Agent.maxItems - attached.size,
             button = plus,
