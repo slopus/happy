@@ -5,9 +5,15 @@ import Foundation
 /// happy-app has no such rows, so nothing here is in en.ts.
 extension Strings {
     enum AgentVoice {
-        static var supportTitle: String { "Support by sending us boba every month" }
-        static var supportLine: String { "and get 5 hrs of voice" }
-        static var supportSpoken: String { "Support Happy: send us boba every month and get 5 hours of voice" }
+        static var supportTitle: String { "Support Happy open source by sending us boba every month" }
+        static var supportSpoken: String { "Support Happy open source by sending us boba every month" }
+
+        // The sheet the row opens (`SupportSheetViewController`): about Happy, not voice.
+        static var sheetTitle: String { "Support Happy open source" }
+        static var sheetBody: String { "Send us boba every month. It pays for Happy’s development, and Happy stays open source." }
+        static func sheetPrice(_ price: String) -> String { "Boba for \(price)/month" }
+        static var sheetNotYet: String { "Monthly boba isn’t on sale yet." }
+        static var sheetPreviewMessage: String { "Monthly boba isn’t on sale yet. Nothing was bought or charged." }
 
         static var title: String { "Voice" }
         static func minutesLeft(_ minutes: Int) -> String { "\(minutes) min left" }

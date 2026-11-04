@@ -508,14 +508,18 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         ]
     }
 
-    /// Support Happy, under Profile: the boba and what sending it brings.
-    /// It opens the Voice page, where the subscription is.
+    /// Support Happy, under Profile: the boba, still, and the ask. It opens
+    /// Support Happy's own sheet, where the boba moves.
     private func supportRow() -> SettingsRow {
-        var row = SettingsRow(id: SettingsIndex.supportBoba.id, title: Strings.AgentVoice.supportTitle, action: { [weak self] in self?.open(.agentVoice) })
-        row.subtitle = Strings.AgentVoice.supportLine
+        var row = SettingsRow(id: SettingsIndex.supportBoba.id, title: Strings.AgentVoice.supportTitle, action: { [weak self] in self?.openSupport() })
         row.art = boba
         row.spoken = Strings.AgentVoice.supportSpoken
         return row
+    }
+
+    private func openSupport() {
+        guard isTop else { return }
+        SupportSheetViewController.present(offer: voiceStatus().offer, over: self)
     }
 
     /// The Voice row's value: the free time left on this device.

@@ -122,9 +122,9 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
         return nil
     }
 
-    private func settings(_ rig: Rig, remaining: Double = 12 * 60 + 20) -> SettingsViewController {
+    private func settings(_ rig: Rig, remaining: Double = 12 * 60 + 20, offer: CallOffer = .unavailable) -> SettingsViewController {
         let settings = SettingsViewController(context: rig.context, computer: rig.computerID)
-        settings.voiceStatus = { Self.status(remaining) }
+        settings.voiceStatus = { Self.status(remaining, offer: offer) }
         return settings
     }
 
@@ -155,15 +155,31 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
             XCTAssertEqual(cards.firstIndex(of: ["profile"]), 1)
             XCTAssertEqual(cards.firstIndex(of: ["support-boba"]), 2, "Support Happy is not right under Profile: \(cards)")
             XCTAssertEqual(settings.shownRow("agent-voice")?.value, "12 min left")
-            XCTAssertEqual(settings.shownRow("support-boba")?.title, "Support by sending us boba every month")
-            XCTAssertEqual(settings.shownRow("support-boba")?.subtitle, "and get 5 hrs of voice")
+            XCTAssertEqual(settings.shownRow("support-boba")?.title, "Support Happy open source by sending us boba every month")
+            XCTAssertNil(settings.shownRow("support-boba")?.subtitle)
             window.layoutIfNeeded()
             try checkSupportRow(settings)
-            // Let the boba play out and hold.
-            try await Task.sleep(for: .seconds(3.2))
+            // The boba stays still on Settings.
+            let art = try XCTUnwrap(subview(SupportBobaArt.self, in: settings.view))
+            try await until { art.scene.isLoaded }
+            try await Task.sleep(for: .seconds(1))
+            XCTAssertFalse(art.scene.isAnimating, "the boba moves on Settings")
+            XCTAssertEqual(art.scene.progress, 1, accuracy: 0.001)
             capture(window, "settings")
 
+            // The row opens Support Happy's sheet: the boba moving, no voice session.
             settings.tapRow("support-boba")
+            try await until { settings.presentedViewController is SupportSheetViewController }
+            let sheet = try XCTUnwrap(settings.presentedViewController as? SupportSheetViewController)
+            try await Task.sleep(for: .seconds(1.2))
+            XCTAssertNil(subview(SessionButton.self, in: sheet.view), "the support sheet offers a voice session")
+            XCTAssertNil(sheet.subscribe, "something is on sale")
+            if !UIAccessibility.isReduceMotionEnabled { XCTAssertTrue(sheet.isAnimating, "the boba doesn't move in the sheet") }
+            capture(window, "support-sheet")
+            await withCheckedContinuation { done in sheet.dismiss(animated: false) { done.resume() } }
+            try await until { settings.presentedViewController == nil && navigation.transitionCoordinator == nil }
+
+            settings.tapRow("agent-voice")
             try await until { navigation.topViewController is AgentVoiceViewController && navigation.transitionCoordinator == nil }
             try await Task.sleep(for: .milliseconds(400))
             capture(window, "voice-page")
@@ -198,6 +214,23 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
             withExtendedLifetime(navigation) {}
             window.isHidden = true
         }
+    }
+
+    /// Support Happy's sheet with the debug preview of the subscription.
+    func testSupportSheetPreview() async throws {
+        let rig = try await rig()
+        let settings = settings(rig, offer: .preview(price: CallOffer.price))
+        let (navigation, window) = try await host(settings)
+        try await until { settings.shownRow("profile")?.value == "Alex Rivera" }
+        settings.tapRow("support-boba")
+        try await until { settings.presentedViewController is SupportSheetViewController }
+        let sheet = try XCTUnwrap(settings.presentedViewController as? SupportSheetViewController)
+        XCTAssertNotNil(sheet.subscribe)
+        XCTAssertNil(subview(SessionButton.self, in: sheet.view))
+        try await Task.sleep(for: .seconds(1.2))
+        capture(window, "support-sheet-preview")
+        sheet.dismiss(animated: false)
+        withExtendedLifetime(navigation) {}
     }
 
     /// The Voice page with the free time used, and with the debug preview
@@ -241,34 +274,33 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
         }
     }
 
-    /// The boba playing, frame by frame (about 12 a second) from its first
-    /// appearance to its held last frame, for the motion capture; and its
-    /// drawing never leaves its own square.
+    /// Support Happy's sheet with the boba playing, frame by frame (about
+    /// 8 a second), for the motion capture.
     func testBobaFrames() async throws {
         let rig = try await rig()
         for style in [UIUserInterfaceStyle.light, .dark] {
             let settings = settings(rig)
             let (navigation, window) = try await host(settings, style: style)
             try await until { settings.shownRow("profile")?.value == "Alex Rivera" }
-            let row = try XCTUnwrap(subview(SettingsCardView.RowView.self, in: settings.view) { $0.accessibilityIdentifier == "settings:support-boba" })
-            let art = try XCTUnwrap(subview(SupportBobaArt.self, in: row))
-            let card = try XCTUnwrap(row.superview)
-            let box = card.convert(card.bounds, to: window).insetBy(dx: -16, dy: -16)
+            settings.tapRow("support-boba")
+            try await until { settings.presentedViewController is SupportSheetViewController }
+            let sheet = try XCTUnwrap(settings.presentedViewController as? SupportSheetViewController)
+            try await Task.sleep(for: .milliseconds(600))
             let started = Date()
             var index = 0
-            while Date().timeIntervalSince(started) < 3.6 {
-                let image = UIGraphicsImageRenderer(bounds: box).image { _ in
+            while Date().timeIntervalSince(started) < 3.4 {
+                let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
                     window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
                 }
-                if let folder = Self.evidence, let data = image.pngData() {
+                if let folder = Self.evidence, let data = image.jpegData(compressionQuality: 0.85) {
                     let frames = folder.appendingPathComponent("frames-\(style == .dark ? "dark" : "light")")
                     try? FileManager.default.createDirectory(at: frames, withIntermediateDirectories: true)
-                    try? data.write(to: frames.appendingPathComponent(String(format: "%03d.png", index)))
+                    try? data.write(to: frames.appendingPathComponent(String(format: "%03d.jpg", index)))
                 }
                 index += 1
-                try await Task.sleep(for: .milliseconds(80))
+                try await Task.sleep(for: .milliseconds(60))
             }
-            XCTAssertEqual(art.frame.size, CGSize(width: 72, height: 72))
+            sheet.dismiss(animated: false)
             withExtendedLifetime(navigation) {}
             window.isHidden = true
         }

@@ -46,12 +46,12 @@ struct AgentVoiceStatus: Equatable {
 }
 
 /// Settings' Support Happy row: the boba, at its one size, leading the
-/// row as tall as two, and the words beside it. The boba plays once as it
-/// appears and holds its last frame (`StateSceneView`); with Reduce Motion
-/// it never moves. It takes no touches of its own: a tap anywhere on the
-/// row is the row's.
+/// row as tall as two, and the words beside it. It stays still here, the
+/// pose it was drawn to rest in (`StateSceneView`'s `onDemand`, never
+/// asked); it moves only in the sheet the row opens. It takes no touches
+/// of its own: a tap anywhere on the row is the row's.
 final class SupportBobaArt: UIView {
-    let scene = StateSceneView(scene: .boba, size: SettingsLayout.Metrics.art, replayLabel: Strings.AgentVoice.supportSpoken)
+    let scene = StateSceneView(scene: .boba, size: SettingsLayout.Metrics.art, play: .onDemand, replayLabel: Strings.AgentVoice.supportSpoken)
 
     override init(frame: CGRect) {
         super.init(frame: frame)
