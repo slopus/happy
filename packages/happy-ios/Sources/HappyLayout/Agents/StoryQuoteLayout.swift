@@ -6,12 +6,17 @@ import Foundation
 public struct StoryQuoteLayout: Equatable, Sendable {
     public enum Metrics {
         public static let frame = CGSize(width: 36, height: 64)
-        public static let frameRadius: CGFloat = 6
+        /// The card's 10 nested across its 1 border and 5 padding.
+        public static let frameRadius: CGFloat = 4
         public static let radius: CGFloat = 10
+        public static let border: CGFloat = 1
         public static let padding: CGFloat = 6
+        public static let endPadding: CGFloat = 12
         public static let gap: CGFloat = 8
         public static let rowGap: CGFloat = 2
-        public static let avatar: CGFloat = 16
+        public static let avatar: CGFloat = 20
+        /// An agent's rounded tile; a person's is a circle.
+        public static let agentRadius: CGFloat = 6
         public static let avatarGap: CGFloat = 6
         public static let maxWidth: CGFloat = 280
         public static let bubbleGap: CGFloat = 4
@@ -24,14 +29,14 @@ public struct StoryQuoteLayout: Equatable, Sendable {
     /// lines measure as wide as they are unwrapped, and a longer one is cut.
     public init(width: CGFloat, trailing: CGFloat, top: CGFloat, label: Measurable, name: Measurable, caption: Measurable?) {
         typealias M = Metrics
-        let room = max(0, min(width, M.maxWidth) - 2 * M.padding - M.frame.width - M.gap)
+        let room = max(0, min(width, M.maxWidth) - M.padding - M.endPadding - M.frame.width - M.gap)
         let label = label.size(fitting: room)
         let name = name.size(fitting: max(0, room - M.avatar - M.avatarGap))
         let caption = caption?.size(fitting: room)
         let row = max(M.avatar, name.height)
         let stack = label.height + M.rowGap + row + (caption.map { M.rowGap + $0.height } ?? 0)
         let column = max(label.width, M.avatar + M.avatarGap + name.width, caption?.width ?? 0)
-        let size = CGSize(width: 2 * M.padding + M.frame.width + M.gap + column, height: 2 * M.padding + max(M.frame.height, stack))
+        let size = CGSize(width: M.padding + M.frame.width + M.gap + column + M.endPadding, height: 2 * M.padding + max(M.frame.height, stack))
         card = CGRect(origin: CGPoint(x: trailing - size.width, y: top), size: size)
         frame = CGRect(origin: CGPoint(x: card.minX + M.padding, y: card.midY - M.frame.height / 2), size: M.frame)
         let x = frame.maxX + M.gap

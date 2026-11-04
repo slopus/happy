@@ -245,14 +245,14 @@ actor ChatPlanner {
             var items: [ChatDrawItem] = []
             var hits: [ChatHit] = []
             if let quote, let placed = layout.quote {
-                items.append(.box(ChatBox(frame: placed.card, fill: Palette.questionBox, radius: StoryQuoteLayout.Metrics.radius)))
+                items.append(.box(ChatBox(frame: placed.card, fill: Palette.questionBox, border: Palette.divider, borderWidth: StoryQuoteLayout.Metrics.border, radius: StoryQuoteLayout.Metrics.radius)))
                 // Without a frame, a quiet tile in its place.
                 if let frame = item.story?.frame {
                     items.append(.media(ChatMedia(key: MediaLoader.storyKey(item.id, avatar: false), isVideo: false, thumbhash: frame["thumbhash"]?.stringValue, label: Strings.story, cover: StoryQuoteLayout.Metrics.frameRadius), frame: placed.frame))
                 } else {
                     items.append(.box(ChatBox(frame: placed.frame, fill: Palette.rowPressed, radius: StoryQuoteLayout.Metrics.frameRadius)))
                 }
-                items.append(.media(ChatMedia(key: MediaLoader.storyKey(item.id, avatar: true), isVideo: false, thumbhash: nil, label: "", cover: placed.avatar.width / 2), frame: placed.avatar))
+                items.append(.media(ChatMedia(key: MediaLoader.storyKey(item.id, avatar: true), isVideo: false, thumbhash: nil, label: "", cover: item.story?.userId == nil ? StoryQuoteLayout.Metrics.agentRadius : placed.avatar.width / 2), frame: placed.avatar))
                 for (line, frame) in zip(quote, [placed.label, placed.name] + (placed.caption.map { [$0] } ?? [])) {
                     items.append(.text(ChatTextLayout(line, width: frame.width, maxLines: 1), frame))
                 }
