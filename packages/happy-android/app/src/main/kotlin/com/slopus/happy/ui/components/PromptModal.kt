@@ -64,6 +64,8 @@ data class Prompt(
     val cancelText: String? = null,
     val confirmText: String? = null,
     val inputType: PromptInputType = PromptInputType.Default,
+    /** Naming a new item requires a nonblank name; other prompts keep their existing behavior. */
+    val allowBlank: Boolean = true,
     val onResult: (String?) -> Unit,
 )
 
@@ -83,8 +85,10 @@ fun PromptModal(prompt: Prompt, onDismiss: () -> Unit) {
         prompt.onResult(null)
     }
     val confirm = {
-        onDismiss()
-        prompt.onResult(value)
+        if (prompt.allowBlank || value.isNotBlank()) {
+            onDismiss()
+            prompt.onResult(value)
+        }
     }
     // Laid out as Material 3's AlertDialog (28 corners, 24 padding, headline, body, actions
     // bottom right) on a plain Dialog: AlertDialog with a text field never settles under test.
@@ -137,7 +141,7 @@ fun PromptModal(prompt: Prompt, onDismiss: () -> Unit) {
                     TextButton(onClick = cancel, modifier = Modifier.testTag(PromptTags.CANCEL)) {
                         Text(prompt.cancelText ?: stringResource(R.string.common_cancel))
                     }
-                    TextButton(onClick = confirm, modifier = Modifier.testTag(PromptTags.CONFIRM)) {
+                    TextButton(onClick = confirm, enabled = prompt.allowBlank || value.isNotBlank(), modifier = Modifier.testTag(PromptTags.CONFIRM)) {
                         Text(prompt.confirmText ?: stringResource(R.string.common_ok))
                     }
                 }
