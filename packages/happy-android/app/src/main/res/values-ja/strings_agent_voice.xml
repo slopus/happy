@@ -21,6 +21,7 @@
     <string name="agent_voice_restore_unavailable">利用できません</string>
     <string name="agent_voice_restore_hint">音声サブスクリプションの販売開始まで、復元するものはありません。</string>
     <string name="agent_voice_sheet_title">オープンソースの Happy を応援</string>
-    <string name="agent_voice_sheet_body">毎月ボバを贈ってください。Happy の開発費になり、Happy はオープンソースのままです。</string>
-    <string name="agent_voice_sheet_not_yet">毎月のボバはまだ販売していません。</string>
+    <string name="agent_voice_sheet_body">毎月ボバを贈ってください。毎月 5 時間の音声が付き、Happy の開発費になり、Happy はオープンソースのままです。</string>
+    <string name="agent_voice_sheet_not_yet">支援はまだ受け付けていません。</string>
+    <string name="agent_voice_sheet_pledge">毎月 %1$s で支援</string>
 </resources>

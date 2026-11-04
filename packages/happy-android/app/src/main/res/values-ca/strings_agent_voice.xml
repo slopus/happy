@@ -21,6 +21,7 @@
     <string name="agent_voice_restore_unavailable">No disponible</string>
     <string name="agent_voice_restore_hint">No hi ha res a restaurar fins que les subscripcions de veu estiguin a la venda.</string>
     <string name="agent_voice_sheet_title">Dona suport a Happy de codi obert</string>
-    <string name="agent_voice_sheet_body">Convida\'ns a un boba cada mes. Paga el desenvolupament de Happy, i Happy continua sent de codi obert.</string>
-    <string name="agent_voice_sheet_not_yet">El boba mensual encara no està a la venda.</string>
+    <string name="agent_voice_sheet_body">Convida\'ns a un boba cada mes. Inclou 5 hores de veu al mes, paga el desenvolupament de Happy i manté Happy de codi obert.</string>
+    <string name="agent_voice_sheet_not_yet">Les aportacions encara no estan obertes.</string>
+    <string name="agent_voice_sheet_pledge">Aporta %1$s/mes</string>
 </resources>

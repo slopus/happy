@@ -21,6 +21,7 @@
     <string name="agent_voice_restore_unavailable">Недоступно</string>
     <string name="agent_voice_restore_hint">Восстанавливать нечего, пока подписка на голос не продаётся.</string>
     <string name="agent_voice_sheet_title">Поддержите открытый Happy</string>
-    <string name="agent_voice_sheet_body">Угощайте нас бобой каждый месяц. Это оплачивает разработку Happy, а Happy остаётся открытым.</string>
-    <string name="agent_voice_sheet_not_yet">Боба по подписке пока не продаётся.</string>
+    <string name="agent_voice_sheet_body">Угощайте нас бобой каждый месяц. Это 5 часов голоса в месяц, оплата разработки Happy и открытый код Happy.</string>
+    <string name="agent_voice_sheet_not_yet">Поддержка пока не открыта.</string>
+    <string name="agent_voice_sheet_pledge">Поддержать за %1$s в месяц</string>
 </resources>

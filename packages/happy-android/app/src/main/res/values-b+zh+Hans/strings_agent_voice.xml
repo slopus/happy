@@ -21,6 +21,7 @@
     <string name="agent_voice_restore_unavailable">不可用</string>
     <string name="agent_voice_restore_hint">语音订阅开售前没有可恢复的内容。</string>
     <string name="agent_voice_sheet_title">支持开源的 Happy</string>
-    <string name="agent_voice_sheet_body">每月请我们喝杯波霸。它为 Happy 的开发买单，Happy 也会一直开源。</string>
-    <string name="agent_voice_sheet_not_yet">每月波霸尚未开售。</string>
+    <string name="agent_voice_sheet_body">每月请我们喝杯波霸。每月附带 5 小时语音，为 Happy 的开发买单，也让 Happy 一直开源。</string>
+    <string name="agent_voice_sheet_not_yet">认捐尚未开放。</string>
+    <string name="agent_voice_sheet_pledge">每月认捐 %1$s</string>
 </resources>

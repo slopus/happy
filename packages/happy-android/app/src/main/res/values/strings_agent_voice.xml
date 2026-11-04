@@ -26,6 +26,7 @@
     <string name="agent_voice_restore_unavailable">Unavailable</string>
     <string name="agent_voice_restore_hint">Nothing to restore until voice subscriptions are on sale.</string>
     <string name="agent_voice_sheet_title">Support Happy open source</string>
-    <string name="agent_voice_sheet_body">Send us boba every month. It pays for Happy’s development, and Happy stays open source.</string>
-    <string name="agent_voice_sheet_not_yet">Monthly boba isn’t on sale yet.</string>
+    <string name="agent_voice_sheet_body">Send us boba every month. It comes with 5 hours of voice a month, pays for Happy’s development, and keeps Happy open source.</string>
+    <string name="agent_voice_sheet_not_yet">Pledges aren’t open yet.</string>
+    <string name="agent_voice_sheet_pledge">Pledge %1$s/month</string>
 </resources>

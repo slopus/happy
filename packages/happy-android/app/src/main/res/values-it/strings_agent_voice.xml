@@ -21,6 +21,7 @@
     <string name="agent_voice_restore_unavailable">Non disponibile</string>
     <string name="agent_voice_restore_hint">Niente da ripristinare finché gli abbonamenti voce non sono in vendita.</string>
     <string name="agent_voice_sheet_title">Sostieni Happy open source</string>
-    <string name="agent_voice_sheet_body">Offrici un boba ogni mese. Paga lo sviluppo di Happy, e Happy resta open source.</string>
-    <string name="agent_voice_sheet_not_yet">Il boba mensile non è ancora in vendita.</string>
+    <string name="agent_voice_sheet_body">Offrici un boba ogni mese. Include 5 ore di voce al mese, paga lo sviluppo di Happy e mantiene Happy open source.</string>
+    <string name="agent_voice_sheet_not_yet">I contributi non sono ancora aperti.</string>
+    <string name="agent_voice_sheet_pledge">Contribuisci con %1$s/mese</string>
 </resources>
