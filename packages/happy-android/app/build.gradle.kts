@@ -425,8 +425,6 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.lottie.compose)
     implementation(libs.coil.network.okhttp)
-    implementation(libs.revenuecat.purchases)
-    implementation(libs.revenuecat.ui)
     implementation(libs.play.billing)
 
     testImplementation(libs.junit)

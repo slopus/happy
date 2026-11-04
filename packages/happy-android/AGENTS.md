@@ -12,8 +12,8 @@ architectures comparable (local store, delta sync, crypto layer).
   `sources/auth`) are the source of truth. Do not port legacy protocol paths:
   sessions and machines without a `dataEncryptionKey` are skipped, not
   decrypted with the account secret.
-- **Voice** uses Happy's server-controlled allowance and RevenueCat paywalls,
-  with ElevenLabs over WebRTC. The pinned SDK source patch in
+- **Voice** uses Happy's server-controlled allowance and the app's own
+  offer sheets (`payments/`, see "Purchases"), with ElevenLabs over WebRTC. The pinned SDK source patch in
   `vendor/elevenlabs` fixes audio focus, teardown and call-local mute.
 - **An agent connection's voice call** (`call/`, `ui/call/`), iOS's
   `HappyCore/Call` ported: apart from the relay's voice above, its own new
@@ -32,12 +32,12 @@ architectures comparable (local store, delta sync, crypto layer).
   ignored `local.properties` into `BuildConfig.CALL_AGENT_ID`, and is never
   committed. Without it the tap says "Voice isn't set up for this
   connection yet". Each device gets 20 free connected minutes in any
-  rolling 30 days (`CallAllowance`, local, provisional). The app's own sheet
-  (`CallSheet`, no vendor UI) is the welcome, once, on the first tap while
-  a subscription is on sale, and, once the time is used, says when it is
-  back with Start greyed out; nothing is on sale
-  (`CallOffer.Unavailable`): never a price or a buy button before real
-  products exist (`Preview` is a debug-only test screen). A `ModalBottomSheet` calls
+  rolling 30 days, 5 hours a month with the subscription (`CallAllowance`,
+  local). The app's own sheet (`CallSheet`, no vendor UI) is the welcome,
+  once, on the first tap while the subscription is on sale, and, once the
+  time is used, says when it is back with Start greyed out. It sells only
+  what the store and RevenueCat say is on sale (`Offer.OnSale`), never a
+  made-up price (`Preview` is a debug-only test screen). A `ModalBottomSheet` calls
   `SheetStatusIcons()` so the bar under its scrim keeps light icons.
   `openSession` replaces a conversation on top and goes over anything else
   (`openConversationInPlace`). See
@@ -51,7 +51,7 @@ architectures comparable (local store, delta sync, crypto layer).
   chat/composer/tools, attachments, diffs/files, onboarding/connect, settings,
   push, tablet layouts, purchases and voice. Experimental and social surfaces
   remain excluded. Store validation needs the existing signing identity,
-  EAS build number and RevenueCat Google SDK key.
+  EAS build number and public RevenueCat Google key.
 - **Happy Protocol V2**: a Happy Agent connected straight to the phone
   over Tailcat, with no relay account. Each pairing is an **agent
   connection**, an account of its own beside relay Happy accounts, shown by
@@ -780,7 +780,7 @@ initializer runs before the first frame and fails `ColdStartTest` until it
 is listed there; prefer starting it where it is first needed (Firebase's
 provider and ProfileInstaller's initializer are removed for that). Work
 nothing on the first screen shows waits for `LocalAfterStart` (push
-registration, notification channels, the paywall host), and glass blurs
+registration, notification channels), and glass blurs
 from the window's second frame (`FirstFrame`). Keep
 `HappyApplication.onCreate` to the debug StrictMode it has. The Baseline and
 startup profiles (`app/src/main/generated/baselineProfiles`) come from
@@ -1085,30 +1085,45 @@ thread from registration (after the first frame) and in
 
 ## Purchases
 
-`AppGraph.purchases` owns RevenueCat's optional account lifecycle. The public
-Google SDK key is supplied by `EXPO_PUBLIC_REVENUE_CAT_GOOGLE` or
-`-Phappy.revenueCatGoogleKey`; an empty key leaves purchases unavailable.
-`purchases.purchases` is the flat `StateFlow<Purchases>` from purchases.ts,
-cached per server/account and wiped on logout. Configure with the token's
-server-issued subject as appUserID. Startup/foreground and successful paywalls
-sync purchases and fetch customer info. SDK operations serialize with paywalls;
-account generations reject stale results after logout, account or server changes.
+No RevenueCat SDK: Play Billing plus RevenueCat's REST API with the public
+Google key (`EXPO_PUBLIC_REVENUE_CAT_GOOGLE` or `-Phappy.revenueCatGoogleKey`;
+empty means nothing is sold and nothing calls RevenueCat). The legacy SDK and
+its paywall dialog are gone; their old caches (`purchases` preferences, the
+SDK's own) stay on disk, unread.
 
-`suspend purchases.presentPaywall(flow)` (also `Paywall.present`) uses the
-current offering and the `flow` custom variable, never an offering named after
-the flow. `PaywallHost` at app scope renders RevenueCat's native Compose dialog
-and dismisses on account changes. Purchased and Restored return
-`PaywallOutcome(success = true, purchased = true)` after refresh; closing returns
-success with purchased false. `hasPro()` reads the real entitlement for voice;
-Settings' Support us row additionally treats debug builds as Pro, as RN does.
-The row is inert for Pro and otherwise presents `voluntary_support`.
+- `AppGraph.subscription` (`Subscription`) is the one purchase-state owner:
+  the customer (the relay account's JWT subject, else a persistent anonymous
+  install id; login is never needed), `pro`, what is on sale (`offer`:
+  the current offering's monthly package only), buy, the launch/foreground
+  sweep of unfinished purchases and Restore. `pro` comes from the last
+  RevenueCat answer (`ProPass`, cached 24 h), never from the offering, and
+  honours any product granting `pro` (older annual or lifetime too).
+- A purchase belongs to whoever it was bought for: Play's
+  `obfuscatedAccountId` is SHA-256 of the customer id, kept for good in
+  `accounts`. Only a user's Restore moves one to another customer
+  (`restored`); nothing is posted for whoever happens to be signed in.
+  Signing in identifies an anonymous buyer with the account; RevenueCat does
+  not guarantee that merges.
+- `AppGraph.offers` (`Offers`) is the one offer presenter, drawn by the one
+  `OfferHost` in `HappyApp`: voice's welcome and used-up sheets, the relay
+  voice's Required sheet (`voice_must_pay`), and Support (Settings' Support us
+  row and the agent's boba row: "Pledge <price>/month", no Start). One sheet
+  at a time; `ask` answers Start (the welcome's only), Pro or Dismissed.
+- Grants are client-side. Only the relay's voice has a server gate; its
+  5-hour hard cap is never sold, only said.
+- Debug builds treat About's Support row as Pro, as RN does; that grants no
+  voice.
+
+See `docs/agent-voice-call.md` at the repository root for the month rule,
+grace and identity.
 
 ## Voice
 
 `AppGraph.voice` owns one `VoiceEngine`. It requests microphone permission
 before allocating a server conversation, applies server denial/paywall rules,
-and connects the ElevenLabs transport. `AppGraph.purchases` provides real Pro
-state and paywalls; debug-only Support us behavior does not grant voice Pro.
+and connects the ElevenLabs transport. `AppGraph.subscription` provides real Pro
+state and `AppGraph.offers` the sheets (`VoicePaywall`); debug-only Support us
+behavior does not grant voice Pro.
 Usage and credentials re-authenticate with the account secret when voice uses
 a different server. Voice language codes come from `VoiceLanguages`.
 

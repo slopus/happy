@@ -107,9 +107,37 @@ covers every connection on the device and survives sign-out.
   time runs out and shows the same words.
 - There is no cap on the number of calls and no other cap.
 
-Paid voice for agent connections is not decided yet. Until it is, nothing
-lifts the limit: no relay `pro` entitlement and no anonymous purchase
-identity.
+With the subscription (RevenueCat's `pro` entitlement, from any product
+that grants it) the limit is 5 hours a month instead, counted by the same
+ledger. The ledger keeps calls for at least 62 days and never forgets one
+from inside the running paid month. Both limits are local: only the relay's
+voice has a server gate.
+
+### The subscription (Android)
+
+Android sells it without RevenueCat's SDK: Play Billing for the purchase and
+RevenueCat's REST API (v1, the public Google key) for what is on sale and
+who has `pro` (`payments/Subscription.kt`). iOS follows the same rules with
+StoreKit 2; that work is in progress separately and not on this branch.
+
+- **On sale** is the current offering's monthly package (`$rc_monthly`),
+  only if the store says it is a one-month auto-renewing subscription. Its
+  price is the store's. No key, no product or no answer: nothing is sold.
+- **Whose purchase.** The customer is the relay account's JWT subject when
+  signed in, else a persistent anonymous id; login is never needed. A
+  purchase carries SHA-256 of its customer id (Play `obfuscatedAccountId`),
+  remembered for good, so a renewal or a purchase that completes late is
+  posted for whoever bought it, whoever is signed in by then. One with no
+  id we know is left alone. Only a user's Restore moves a purchase to the
+  restoring customer, from then on. Signing in after an anonymous purchase
+  identifies the two with RevenueCat; it does not guarantee a merge.
+- **Pro** is the last RevenueCat answer, cached for 24 hours by RevenueCat's
+  own clock, never read from the offering.
+- **The month.** Month n runs from the entitlement's latest purchase date
+  plus n calendar months (UTC) to plus n+1: Jan 31, Feb 28, Mar 31. In
+  Play's grace period the month that was running carries on with no end,
+  adding no hours. Grace is read from the subscription
+  (`grace_period_expires_date`), not the entitlement.
 
 ### Voice's welcome and paywall
 
@@ -133,7 +161,7 @@ voice button while a subscription is on sale. "Start Voice Session" closes
 it and starts the free call, which asks for the microphone then, never
 before. Shown, it is seen, however it was closed: from then on the button
 just calls (`CallIntro`, `call.intro.seen` in the device's defaults, beside
-its free time). With nothing on sale (every release build today) there is
+its free time). With nothing on sale (until the store products exist) there is
 no welcome and the first tap calls; a subscriber has nothing on sale
 either.
 
@@ -146,11 +174,15 @@ offline header's), "Your free voice time is used. More comes back on Dec
 3." (`CallAllowance.freeAgain`:
 "at 5:19 PM" today, "on Thu at 5:19 PM" this week, "on Dec 3" after; "as
 older calls pass 30 days" when no time ever comes back, as with a clock put
-back). What is on offer is `CallOffer`:
+back). What is on offer (`CallOffer` on iOS, `Offer` on Android):
 
-- `unavailable`, every release build: no subscription, no price and no buy
-  button, and no welcome. Only the used-up sheet shows: "Start Voice
-  Session" is its main pill, greyed out, and the ✕ closes the sheet.
+- `unavailable`: no subscription, no price and no buy button, and no
+  welcome. Only the used-up sheet shows: "Start Voice Session" is its main
+  pill, greyed out, and the ✕ closes the sheet.
+- `onSale(price)` (Android): the store's price, Subscribe and "Restore
+  Purchases".
+- `subscribed`: no second Subscribe; the 5 hours a month, and once they are
+  used, when the next month's begin.
 - `preview(price:)`, debug builds only and only when launched with
   `HAPPY_CALL_OFFER=preview` (test screens; `HAPPY_CALL_OFFER_PRICE`
   changes the price drawn): the subscription as above, noted "Test preview.
@@ -161,9 +193,15 @@ back). What is on offer is `CallOffer`:
 Android draws the same sheet (`ui/call/CallSheet.kt`): a full-height
 `ModalBottomSheet` with the first screen's `GrainGradient`, the same
 podcast mic (`res/raw/call_podcast_mic.json`, the same bytes), rows, words,
-buttons and warning. `CallSheet` is `Welcome` or `Used`, `CallOffer` is
-`Unavailable` or `Preview(price)` (debug only), and `CallIntro` keeps
-`call.intro.seen` in the `call-usage` preferences beside the free time.
+buttons and warning. One presenter (`payments/Offers.kt`, drawn by
+`OfferHost`) shows every sheet that sells the subscription, one at a time:
+voice's `Welcome` and `Used`, `Required` when the relay's voice says
+`voice_must_pay` (buying retries it once), and `Support` from Settings'
+Support us row and the agent's boba row ("Pledge <price>/month", 5 hours of
+voice a month, no Start). `CallIntro` keeps `call.intro.seen` in the
+`call-usage` preferences beside the free time. The relay's 5-hour hard cap
+is never sold: it only says so. The legacy RevenueCat SDK and its paywall
+are removed.
 On a tablet the sidebar's foot has the voice button too, left of the
 compose pill, and a conversation a call opens shows in the main panel
 rather than over the shell.
@@ -177,18 +215,12 @@ logging each (`[call-steps]`). Android takes the same as launch extras
 (`happy.call.intro`, `happy.call.used`, `happy.call.offer` with the price,
 `happy.call.steps` of `tap`, `session` and `close`; log tag `call-steps`).
 
-What a working offer needs and doesn't have yet:
+What it doesn't have yet:
 
-- Store products (App Store and Play subscription IDs) and their prices.
-- The RevenueCat project's public SDK keys, offering and entitlement for
-  voice. RevenueCat stays the subscription and entitlement backend; whether
-  the apps talk to it through its SDK or StoreKit 2 / Play Billing plus its
-  REST API is not decided, and no SDK is added here.
-- A purchase identity: whose subscription it is (the Happy account, the
-  device, or the agent connection), and how the phone proves it.
-- Who counts the paid allowance (5 hours of real-time voice a month): today
-  only the device counts its free 20 minutes, which a paying user could
-  reset.
+- The monthly store products and RevenueCat's current offering for them,
+  set up and checked with a real purchase (left to the user).
+- A server that counts the paid allowance: today only the device counts,
+  which a user could reset.
 
 The old relay endpoint's quota had two bugs: no rolling window and a
 100-conversation page cap. These were fixed in source on 2026-10-21 (commits

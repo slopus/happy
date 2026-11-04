@@ -31,16 +31,12 @@ import com.slopus.happy.model.settings.LanguageController
 import com.slopus.happy.model.settings.SettingsRepository
 import com.slopus.happy.net.ConnectionStatus
 import com.slopus.happy.net.HappyHttp
-import com.slopus.happy.payments.PreferencesPurchasesCache
-import com.slopus.happy.payments.PurchaseAccount
 import com.slopus.happy.payments.PlayBilling
-import com.slopus.happy.payments.PurchasesRepository
 import com.slopus.happy.payments.RevenueCatApi
 import com.slopus.happy.payments.CallIntro
 import com.slopus.happy.payments.Offers
 import com.slopus.happy.payments.Subscription
 import com.slopus.happy.call.PreferencesCallUsageStore
-import com.slopus.happy.payments.RevenueCatPurchases
 import com.slopus.happy.push.PushApi
 import com.slopus.happy.push.PushUnregisterQueue
 import com.slopus.happy.connection.AgentConnections
@@ -236,13 +232,6 @@ class AppGraph(
     val store = HappyStore(database(openAccountId()))
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-
-    val purchases = PurchasesRepository(
-        scope,
-        RevenueCatPurchases(appContext, BuildConfig.REVENUE_CAT_GOOGLE_KEY, BuildConfig.DEBUG),
-        PreferencesPurchasesCache(context.getSharedPreferences(PreferencesPurchasesCache.PREFS_NAME, Context.MODE_PRIVATE)),
-        currentAccount = { purchaseAccount() },
-    )
 
     /** The account's synced settings; a change is uploaded by the next sync. */
     val settings = SettingsRepository(store, scope, onChanged = ::requestSync)
@@ -494,12 +483,6 @@ class AppGraph(
 
     init {
         scope.launch {
-            combine(auth.state, serverConfig.url, accountStore.registry) { _, _, _ -> purchaseAccount() }.collect(purchases::setAccount)
-        }
-        scope.launch {
-            foreground.collect { if (it) purchases.refresh() }
-        }
-        scope.launch {
             var relay: String? = null
             combine(auth.state, openAccount, accountStore.registry) { _, _, _ -> voiceRelay(relay).also { relay = it } }
                 .distinctUntilChanged()
@@ -538,9 +521,6 @@ class AppGraph(
         }
         OpenAccount.None -> null
     }
-
-    private fun purchaseAccount(): PurchaseAccount? = (auth.state.value as? AuthState.SignedIn)?.publicId
-        ?.takeIf { it.isNotBlank() }?.let { PurchaseAccount(serverUrl, it) }
 
     /** Ask for a delta sync now (sign-in, app back in the foreground). No-op when signed out. */
     fun requestSync() {
@@ -664,7 +644,6 @@ class AppGraph(
                         logoutHooks.forEach { it(signedIn.credentials.token, server) }
                     }
                 }
-                purchases.setAccount(null)
                 stopAccount()
                 auth.logout()
                 store.use(database(openAccountId()))
