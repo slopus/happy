@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="session_info_branch">Ветка</string>
+    <string name="session_info_loading_delayed">Загрузка сведений о сессии занимает больше времени, чем ожидалось</string>
 </resources>

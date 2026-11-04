@@ -96,6 +96,8 @@ class HomeServices private constructor(private val graph: AppGraph) {
         LiveSessionContinuations({ account.value?.machineOps }, SessionResumer.of(graph)) { SessionResumer.ops(graph) }
 
     val infoControls: SessionInfoControls = object : SessionInfoControls {
+        override suspend fun retryLoad() { account.value?.syncNow() }
+
         override suspend fun archive(session: Session): ArchiveResult = archiver.archive(session)
 
         override suspend fun leave(session: Session): ArchiveResult = archiver.leave(session)

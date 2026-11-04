@@ -6,4 +6,5 @@
 -->
 <resources>
     <string name="session_info_branch">Branch</string>
+    <string name="session_info_loading_delayed">Session details are taking longer than expected</string>
 </resources>

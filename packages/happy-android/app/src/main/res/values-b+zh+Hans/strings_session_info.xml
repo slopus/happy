@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="session_info_branch">分支</string>
+    <string name="session_info_loading_delayed">加载会话详情所需的时间比预期长</string>
 </resources>

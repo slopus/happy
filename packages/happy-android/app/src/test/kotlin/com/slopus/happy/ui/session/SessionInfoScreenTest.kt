@@ -1,5 +1,13 @@
 package com.slopus.happy.ui.session
 
+import android.graphics.Bitmap
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
@@ -16,10 +24,16 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.width
 import androidx.compose.ui.unit.height
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.slopus.happy.model.GitFileStatus
 import com.slopus.happy.model.GitFileStatusKind
 import com.slopus.happy.model.GitStatus
@@ -40,6 +54,7 @@ import com.slopus.happy.sync.ForkSource
 import com.slopus.happy.sync.OpResult
 import com.slopus.happy.sync.RewindPoint
 import com.slopus.happy.sync.RewindPointsResult
+import com.slopus.happy.sync.rigMetadataJson
 import com.slopus.happy.sync.SpawnSessionResult
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.PHONE_WIDTH
@@ -71,6 +86,7 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.time.ZoneOffset
+import java.io.File
 
 /**
  * session/[id]/info.tsx: a centred title; loading and deleted states; quick
@@ -88,6 +104,7 @@ class SessionInfoScreenTest {
 
     private class Fakes : SessionInfoControls, SessionContinuations {
         val calls = mutableListOf<String>()
+        override suspend fun retryLoad() { calls += "retry" }
         var archive: ArchiveResult = ArchiveResult.Archived
         val points = listOf(
             RewindPoint("u1", "first   question", 1_000.0),
@@ -98,6 +115,7 @@ class SessionInfoScreenTest {
         var cleanupAnswer: Boolean? = null
 
         override suspend fun archive(session: Session): ArchiveResult = archive.also { calls += "archive:${session.id}" }
+        override suspend fun leave(session: Session): ArchiveResult = archive.also { calls += "leave:${session.id}" }
         override suspend fun cleanupWorktree(session: Session, confirm: suspend () -> Boolean) {
             if (cleanupAnswer != null) calls += "cleanup:${confirm()}"
         }
@@ -163,6 +181,147 @@ class SessionInfoScreenTest {
     fun loadingUntilTheFirstSync() {
         show(null, ready = false)
         rule.node(SessionInfoTags.LOADING).assertExists()
+    }
+
+    @Test
+    fun loadingKeepsTheSeededHeaderAndRetryRestartsTheWatchdogUntilDetailsArrive() {
+        val fakes = Fakes()
+        var ready by mutableStateOf(false)
+        rule.setHappyContent {
+            SessionInfoScreen(claudeSession(), ready, null, online, false, false, fakes, fakes, actions)
+        }
+        rule.mainClock.autoAdvance = false
+        rule.onNode(hasText("Fix the build") and hasAnyAncestor(hasTestTag(ProfileHeaderTags.NAME)), useUnmergedTree = true).assertExists()
+        assertDp("loading row", 56, rule.node(SessionInfoTags.LOADING).bounds.height)
+        rule.node(SessionInfoTags.RETRY).assertDoesNotExist()
+        rule.mainClock.advanceTimeBy(4_800)
+        rule.node(SessionInfoTags.RETRY).assertDoesNotExist()
+        rule.mainClock.advanceTimeBy(300)
+        rule.onNodeWithText("Session details are taking longer than expected").assertExists()
+        assertDp("retry row", 64, rule.node(SessionInfoTags.RETRY).bounds.height)
+        loadingShot("seeded-slow")
+        rule.node(SessionInfoTags.RETRY).performClick()
+        rule.mainClock.advanceTimeByFrame()
+        rule.node(SessionInfoTags.RETRY).assertDoesNotExist()
+        assertEquals(listOf("retry"), fakes.calls)
+        rule.mainClock.advanceTimeBy(5_100)
+        rule.node(SessionInfoTags.RETRY).assertExists()
+        rule.runOnIdle { ready = true }
+        rule.mainClock.autoAdvance = true
+        rule.waitForIdle()
+        rule.node(SessionInfoTags.LOADING).assertDoesNotExist()
+        rule.node(SessionInfoTags.CHANGES).assertExists()
+        rule.mainClock.advanceTimeBy(6_000)
+        rule.node(SessionInfoTags.RETRY).assertDoesNotExist()
+    }
+
+    @Test
+    fun timeInTheBackgroundDoesNotExpireTheFirstPaintWatchdog() {
+        val owner = object : LifecycleOwner {
+            val registry = LifecycleRegistry.createUnsafe(this).apply { currentState = Lifecycle.State.RESUMED }
+            override val lifecycle: Lifecycle get() = registry
+        }
+        val fakes = Fakes()
+        rule.setHappyContent {
+            CompositionLocalProvider(LocalLifecycleOwner provides owner) {
+                SessionInfoScreen(null, false, null, null, false, false, fakes, fakes, actions)
+            }
+        }
+        rule.mainClock.autoAdvance = false
+        rule.mainClock.advanceTimeBy(4_000)
+        rule.runOnIdle { owner.registry.currentState = Lifecycle.State.CREATED }
+        rule.mainClock.advanceTimeBy(10_000)
+        rule.node(SessionInfoTags.RETRY).assertDoesNotExist()
+        rule.runOnIdle { owner.registry.currentState = Lifecycle.State.RESUMED }
+        rule.mainClock.advanceTimeBy(4_800)
+        rule.node(SessionInfoTags.RETRY).assertDoesNotExist()
+        rule.mainClock.advanceTimeBy(300)
+        rule.node(SessionInfoTags.RETRY).assertExists()
+        loadingShot("slow-without-seed")
+    }
+
+    private fun loadingShot(name: String) {
+        val file = File("build/outputs/session-info-loading/$name.png")
+        file.parentFile?.mkdirs()
+        file.outputStream().use { rule.onRoot().captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    @Test
+    fun aLateSeedUpdatesTheHeaderWithoutPostponingRecovery() {
+        var seed by mutableStateOf<Session?>(null)
+        val fakes = Fakes()
+        rule.setHappyContent {
+            SessionInfoScreen(seed, false, null, null, false, false, fakes, fakes, actions)
+        }
+        rule.mainClock.autoAdvance = false
+        rule.mainClock.advanceTimeBy(4_000)
+        rule.runOnIdle { seed = claudeSession() }
+        rule.mainClock.advanceTimeBy(1_200)
+        rule.node(ProfileHeaderTags.AVATAR).assertExists()
+        rule.node(SessionInfoTags.RETRY).assertExists()
+    }
+
+    @Test
+    fun theDelayedCardUsesTheDarkThemeAndKeepsTheSeededProfile() {
+        val fakes = Fakes()
+        rule.setHappyContent(dark = true) {
+            SessionInfoScreen(claudeSession(), false, null, online, false, false, fakes, fakes, actions)
+        }
+        rule.mainClock.advanceTimeBy(5_100)
+        rule.node(ProfileHeaderTags.AVATAR).assertExists()
+        rule.node(SessionInfoTags.RETRY).assertExists()
+        loadingShot("seeded-slow-dark")
+    }
+
+    @Test
+    @Config(qualifiers = "w1280dp-h800dp-xhdpi")
+    fun theDelayedCardStaysInTheTabletsProfileColumn() {
+        val fakes = Fakes()
+        rule.setHappyContent {
+            ProvideWindowLayout(Modifier.fillMaxSize()) {
+                SessionInfoScreen(claudeSession(), false, null, online, false, false, fakes, fakes, actions)
+            }
+        }
+        rule.mainClock.advanceTimeBy(5_100)
+        val row = rule.node(SessionInfoTags.RETRY).bounds
+        val tiles = rule.onAllNodesWithTag(ProfileHeaderTags.TILE, useUnmergedTree = true)
+        assertEquals("card and tiles start together", tiles[0].bounds.left.value, row.left.value, 1f)
+        assertEquals("card and tiles end together", tiles[1].bounds.right.value, row.right.value, 1f)
+        assertTrue("card is capped", row.width < 800.dp)
+        loadingShot("seeded-slow-tablet-light")
+    }
+
+    private fun taskSession(canArchive: Boolean, canLeave: Boolean) = session(
+        "task-session",
+        metadata = SessionMetadata.parse(buildJsonObject {
+            rigMetadataJson(rpcMethods = if (canLeave) listOf("leaveTask") else emptyList()).forEach { (key, value) -> put(key, value) }
+            putJsonObject("task") { put("id", "task-1"); put("name", "Release notes"); put("canArchive", canArchive) }
+        })!!,
+    )
+
+    @Test
+    fun aTaskMemberCanLeaveWithoutDeletingOrCleaningUpItsConversation() {
+        val fakes = Fakes().apply { cleanupAnswer = true }
+        show(taskSession(canArchive = false, canLeave = true), fakes = fakes)
+        rule.node(SessionInfoTags.ARCHIVE).assertDoesNotExist()
+        rule.node(SessionInfoTags.DELETE).assertDoesNotExist()
+        rule.node(SessionInfoTags.DUPLICATE).assertDoesNotExist()
+        rule.node(SessionInfoTags.LEAVE_TASK).performScrollTo().performClick()
+        rule.waitForIdle()
+        assertEquals(listOf("leave:task-session"), fakes.calls)
+        assertEquals(1, left)
+    }
+
+    @Test
+    fun taskArchiveRequiresItsExplicitPermissionAndKeepsTheConversation() {
+        val fakes = Fakes().apply { cleanupAnswer = true }
+        show(taskSession(canArchive = true, canLeave = false), fakes = fakes)
+        rule.node(SessionInfoTags.LEAVE_TASK).assertDoesNotExist()
+        rule.node(SessionInfoTags.DELETE).assertDoesNotExist()
+        rule.node(SessionInfoTags.ARCHIVE).performScrollTo().performClick()
+        rule.waitForIdle()
+        assertEquals(listOf("archive:task-session"), fakes.calls)
+        assertEquals(1, left)
     }
 
     @Test

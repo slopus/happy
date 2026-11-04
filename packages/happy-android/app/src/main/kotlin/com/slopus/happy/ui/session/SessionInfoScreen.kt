@@ -48,6 +48,7 @@ import java.time.ZoneId
 
 object SessionInfoTags {
     const val LOADING = "sessionInfo.loading"
+    const val RETRY = "sessionInfo.retry"
     const val DELETED = "sessionInfo.deleted"
     const val PERMISSION_MODE = "sessionInfo.permissionMode"
     const val PERMISSION_MENU = "sessionInfo.permissionMode.menu"
@@ -115,6 +116,9 @@ class SessionInfoPermission(
 
 /** What info.tsx runs against the session; tests use a fake. */
 interface SessionInfoControls {
+    /** Ask the selected account to sync again when the first details have not arrived. */
+    suspend fun retryLoad() {}
+
     /** useSessionQuickActions' archive: kill, or retire on the server when the agent is gone. */
     suspend fun archive(session: Session): ArchiveResult
 
@@ -154,7 +158,8 @@ class SessionInfoActions(
 
 /**
  * session/[id]/info.tsx. The Material bar names the session, on glass. While the
- * first sync is out, an hourglass and "Loading"; a session that's gone says
+ * first sync is out, the seeded profile and a loading card with Retry after
+ * five foreground seconds; a session that's gone says
  * so. Otherwise: opened over its chat, the chat's permission mode
  * ([permission], iOS da5fda505); quick actions (changes with Happy Agent's counts, the
  * machine, resume, fork, duplicate, the parent, archive and delete), the
@@ -201,14 +206,7 @@ fun SessionInfoScreen(
         header = { StackHeader(title, actions.onBack) },
     ) {
         when {
-            !ready -> Placeholder(Ionicon.HourglassOutline, Modifier.testTag(SessionInfoTags.LOADING)) {
-                Text(
-                    stringResource(R.string.common_loading),
-                    style = happyTextStyle(fontSize = 17, weight = FontWeight.SemiBold),
-                    color = colors.textSecondary,
-                    modifier = Modifier.padding(top = 16.dp),
-                )
-            }
+            !ready -> SessionInfoLoading(session, live.avatar, controls)
             session == null -> Placeholder(Ionicon.TrashOutline, Modifier.testTag(SessionInfoTags.DELETED)) {
                 Text(
                     stringResource(R.string.errors_session_deleted),

@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="session_info_branch">ブランチ</string>
+    <string name="session_info_loading_delayed">セッションの詳細の読み込みに予想以上の時間がかかっています</string>
 </resources>
