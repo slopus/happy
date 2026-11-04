@@ -1,5 +1,19 @@
 package com.slopus.happy.ui.home
 
+import com.slopus.happy.ui.onboarding.DESKTOP_URL
+
+import androidx.compose.ui.platform.LocalUriHandler
+
+import com.slopus.happy.ui.connect.LocalAddFlow
+
+import com.slopus.happy.ui.migration.DesktopMigrationSpec
+
+import com.slopus.happy.ui.migration.DesktopMigrationScreen
+
+import com.slopus.happy.ui.migration.DesktopMigrationRoute
+
+import com.slopus.happy.ui.migration.MigrationPath
+
 import com.slopus.happy.ui.page
 import androidx.activity.compose.ReportDrawnWhen
 import androidx.compose.runtime.Composable
@@ -70,6 +84,8 @@ class HomeNavigation(
     val onDetails: (String) -> Unit,
     /** Compose: an empty chat whose first send starts the session, on the phone and in the tablet's detail pane. */
     val onCompose: () -> Unit = onNewSession,
+    /** The migration card's screen for its path (iOS ea1a0902f). */
+    val onMigration: (MigrationPath) -> Unit = {},
 ) {
     companion object {
         fun of(graph: AppGraph, nav: NavHostController, onOpenSession: (String) -> Unit, onTroubleshoot: () -> Unit) = HomeNavigation(
@@ -82,6 +98,7 @@ class HomeNavigation(
             onNewSession = { nav.navigate(NewSessionRoute) { launchSingleTop = true } },
             onDetails = { id -> nav.navigate(SessionInfoRoute(id)) },
             onCompose = { nav.composeChat() },
+            onMigration = { path -> nav.navigate(DesktopMigrationRoute(path.wire)) },
         )
     }
 }
@@ -106,6 +123,7 @@ fun HomeNavigation.through(go: MainPanelOpener): HomeNavigation = HomeNavigation
     onNewSession = { go.open(MainPanelKey.NEW_SESSION, onNewSession) },
     onDetails = { id -> go.open(MainPanelKey.info(id)) { onDetails(id) } },
     onCompose = { go.open(null, onCompose) },
+    onMigration = { path -> go.open(null) { onMigration(path) } },
 )
 
 /**
@@ -131,6 +149,7 @@ fun LegacyHome(
             callbacks = host.callbacks,
             actions = host.actions,
             update = host.update,
+            migration = host.migration,
             offlineContent = { computers, onShowArchived ->
                 LinkComputerChecklist(graph, computers = computers, onTroubleshoot = host.navigation.onTroubleshoot, onShowArchived = onShowArchived)
             },
@@ -150,6 +169,19 @@ fun NavGraphBuilder.homeRoutes(
     nav: NavHostController,
     onOpenSession: (sessionId: String) -> Unit = {},
 ) {
+    page<DesktopMigrationRoute> { entry ->
+        val path = MigrationPath.of(entry.toRoute<DesktopMigrationRoute>().path) ?: MigrationPath.Desktop
+        val add = LocalAddFlow.current
+        val uriHandler = LocalUriHandler.current
+        DesktopMigrationScreen(
+            path = path,
+            scanning = add?.isLoading == true,
+            onBack = { nav.popBackStack() },
+            onScan = { add?.scan() },
+            onOpenSite = { uriHandler.openUri(DESKTOP_URL) },
+            onLearnMore = { uriHandler.openUri(DesktopMigrationSpec.LEARN_MORE_URL) },
+        )
+    }
     page<NewSessionRoute> {
         val dock = rememberNewSessionDock(
             graph,

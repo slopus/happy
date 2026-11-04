@@ -243,6 +243,10 @@ class AppGraph(
 
     /** The newest What's New entry the user has seen (changelog/storage.ts). */
     val changelog = ChangelogReadMarker(context.getSharedPreferences(ChangelogReadMarker.PREFS_NAME, Context.MODE_PRIVATE))
+    /** The Happy CLI home's migration cards closed on this phone (iOS ea1a0902f). */
+    val desktopMigration = com.slopus.happy.ui.migration.DesktopMigrationCards(
+        context.getSharedPreferences(com.slopus.happy.ui.migration.DesktopMigrationCards.PREFS_NAME, Context.MODE_PRIVATE),
+    )
     private val accountLock = Mutex()
     /** Selection and removal publish atomically without waiting for another account's sync startup. */
     private val accountSelectionLock = Mutex()

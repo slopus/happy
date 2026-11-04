@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="desktop_migration_close">閉じる</string>
+    <string name="desktop_migration_desktop_title">Happy がデスクトップに登場</string>
+    <string name="desktop_migration_desktop_body">リモートサーバーでのマルチプレイヤー、低遅延、添付ファイルのサポート強化など、たくさんの改善があります。ぜひ移行してください！所要時間は約 5 分、複数のマシンがある場合はもう少しかかります。</string>
+    <string name="desktop_migration_agent_connection_title">直接接続に移行</string>
+    <string name="desktop_migration_agent_connection_body">現在、Happy サーバー経由で Happy Agent を使っています。直接接続すると、最小の遅延と最新の機能を利用できます。</string>
+    <string name="desktop_migration_settings_step">Settings\u00A0›\u00A0Mobile\u00A0Access を開きます。</string>
+    <string name="desktop_migration_learn_more">詳しく見る</string>
+    <string name="desktop_migration_server_title">サーバーで Happy を実行していますか？</string>
+    <string name="desktop_migration_server_scan">Happy Desktop でリモートサーバーを選択し、同じようにそのコードをスキャンします。</string>
+    <string name="desktop_migration_server_set_up">新しいサーバーを設定するには、Chief of Staff に依頼してください。</string>
+    <string name="desktop_migration_current">現在の接続</string>
+    <string name="desktop_migration_after">移行後</string>
+    <string name="desktop_migration_phone">スマートフォン</string>
+    <string name="desktop_migration_computer">コンピューター</string>
+    <string name="desktop_migration_server">Happy サーバー</string>
+    <string name="desktop_migration_server_detail">チャットを暗号化して保存</string>
+    <string name="desktop_migration_relay">リレー</string>
+    <string name="desktop_migration_relay_detail">通過するだけ、暗号化のまま</string>
+    <string name="desktop_migration_diagram_spoken">現在の接続：スマートフォンは Happy サーバーを経由してコンピューターにつながり、サーバーはチャットを暗号化して保存します。移行後：スマートフォンはリレーを経由してコンピューターにつながり、リレーはデータを暗号化したまま通過させるだけです。</string>
+</resources>

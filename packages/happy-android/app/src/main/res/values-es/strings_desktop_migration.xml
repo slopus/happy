@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="desktop_migration_close">Cerrar</string>
+    <string name="desktop_migration_desktop_title">Happy ahora en tu ordenador</string>
+    <string name="desktop_migration_desktop_body">Multijugador para servidores remotos, menos latencia, mejor soporte de archivos adjuntos y mucho más. ¡Migra, por favor! Tarda unos 5 minutos, algo más si tienes varias máquinas.</string>
+    <string name="desktop_migration_agent_connection_title">Migra a una conexión directa</string>
+    <string name="desktop_migration_agent_connection_body">Estás usando Happy Agent a través del servidor de Happy. Conéctate directamente para tener la latencia más baja y las funciones más nuevas.</string>
+    <string name="desktop_migration_settings_step">Ve a Settings\u00A0›\u00A0Mobile\u00A0Access.</string>
+    <string name="desktop_migration_learn_more">Más información</string>
+    <string name="desktop_migration_server_title">¿Usas Happy en un servidor?</string>
+    <string name="desktop_migration_server_scan">En Happy Desktop, selecciona el servidor remoto y escanea su código de la misma forma.</string>
+    <string name="desktop_migration_server_set_up">Para configurar un servidor nuevo, pídeselo a Chief of Staff.</string>
+    <string name="desktop_migration_current">Conexión actual</string>
+    <string name="desktop_migration_after">Después de migrar</string>
+    <string name="desktop_migration_phone">Teléfono</string>
+    <string name="desktop_migration_computer">Ordenador</string>
+    <string name="desktop_migration_server">Servidor de Happy</string>
+    <string name="desktop_migration_server_detail">Guarda tus chats, cifrados</string>
+    <string name="desktop_migration_relay">Relé</string>
+    <string name="desktop_migration_relay_detail">Solo los transmite, siguen cifrados</string>
+    <string name="desktop_migration_diagram_spoken">Conexión actual: tu teléfono llega a tu ordenador a través del servidor de Happy, que guarda tus chats cifrados. Después de migrar: tu teléfono llega a tu ordenador a través de un relé, que solo los transmite, todavía cifrados.</string>
+</resources>

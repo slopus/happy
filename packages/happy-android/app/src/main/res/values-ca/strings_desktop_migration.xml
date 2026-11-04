@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="desktop_migration_close">Tanca</string>
+    <string name="desktop_migration_desktop_title">Happy ara a l’ordinador</string>
+    <string name="desktop_migration_desktop_body">Multijugador per a servidors remots, menys latència, millor suport per als fitxers adjunts i molt més. Si us plau, migra! Triga uns 5 minuts, una mica més si tens diverses màquines.</string>
+    <string name="desktop_migration_agent_connection_title">Migra a una connexió directa</string>
+    <string name="desktop_migration_agent_connection_body">Fas servir Happy Agent a través del servidor de Happy. Connecta’t directament per tenir la latència més baixa i les funcions més noves.</string>
+    <string name="desktop_migration_settings_step">Ves a Settings\u00A0›\u00A0Mobile\u00A0Access.</string>
+    <string name="desktop_migration_learn_more">Més informació</string>
+    <string name="desktop_migration_server_title">Fas servir Happy en un servidor?</string>
+    <string name="desktop_migration_server_scan">A Happy Desktop, selecciona el servidor remot i escaneja’n el codi de la mateixa manera.</string>
+    <string name="desktop_migration_server_set_up">Per configurar un servidor nou, demana-ho a Chief of Staff.</string>
+    <string name="desktop_migration_current">Connexió actual</string>
+    <string name="desktop_migration_after">Després de migrar</string>
+    <string name="desktop_migration_phone">Telèfon</string>
+    <string name="desktop_migration_computer">Ordinador</string>
+    <string name="desktop_migration_server">Servidor de Happy</string>
+    <string name="desktop_migration_server_detail">Desa els teus xats, xifrats</string>
+    <string name="desktop_migration_relay">Repetidor</string>
+    <string name="desktop_migration_relay_detail">Només els transmet, encara xifrats</string>
+    <string name="desktop_migration_diagram_spoken">Connexió actual: el teu telèfon arriba a l’ordinador a través del servidor de Happy, que desa els teus xats xifrats. Després de migrar: el teu telèfon arriba a l’ordinador a través d’un repetidor, que només els transmet, encara xifrats.</string>
+</resources>

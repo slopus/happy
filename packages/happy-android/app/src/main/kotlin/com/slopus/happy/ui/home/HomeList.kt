@@ -18,6 +18,7 @@ import com.slopus.happy.model.collectMachineChoices
 import com.slopus.happy.model.hasArchivedSessions
 import com.slopus.happy.model.resolveHomeEmptyState
 import com.slopus.happy.model.settings.LocalSettingsValues
+import com.slopus.happy.model.isRigMachine
 import com.slopus.happy.model.shouldShowOfflineMachinesBanner
 import com.slopus.happy.model.toFlatSessionRow
 import com.slopus.happy.model.visibleSessionListItems
@@ -143,6 +144,8 @@ data class HomeListState(
     val computers: List<String> = emptyList(),
     /** Grouped by project: each chat's checkout, whose chats the session screen shows as tabs. */
     val worktrees: Map<String, ProjectWorktree> = emptyMap(),
+    /** A Happy Agent reaches this account through the Happy server ([isRigMachine]): the migration card's path. */
+    val hasServerAgent: Boolean = false,
 )
 
 /** Everything one derivation reads. */
@@ -188,6 +191,7 @@ fun deriveHomeList(inputs: HomeListInputs, zone: ZoneId, today: LocalDate): Home
         offlineBanner = if (shouldShowOfflineMachinesBanner(choices.size, online)) OfflineBanner(choices.singleOrNull()?.name) else null,
         computers = choices.map { it.name },
         worktrees = if (inputs.grouping == SessionListGrouping.Project) projectWorktreesBySession(all) else emptyMap(),
+        hasServerAgent = snapshot.machines.any { it.metadata.isRigMachine() },
     )
 }
 

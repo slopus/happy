@@ -1,5 +1,7 @@
 package com.slopus.happy.ui.home
 
+import com.slopus.happy.ui.migration.MigrationPath
+
 import com.slopus.happy.ui.tablet.LocalSidebarHome
 import com.slopus.happy.ui.tablet.MainPanelKey
 import com.slopus.happy.ui.tablet.SidebarFootBar
@@ -121,6 +123,9 @@ class HomeScreenActions(
     val onLinkComputer: () -> Unit = {},
     /** The phone's compose: an empty chat whose first send starts the session. */
     val onCompose: () -> Unit = onNewSession,
+    /** The migration card's screen, and its ×. */
+    val onMigration: (MigrationPath) -> Unit = {},
+    val onCloseMigration: (MigrationPath) -> Unit = {},
 )
 
 /**
@@ -147,6 +152,8 @@ fun HomeScreen(
     actions: HomeScreenActions,
     modifier: Modifier = Modifier,
     update: HomeUpdate? = null,
+    /** The migration card leading the list, if it shows ([MigrationPath.shown]). */
+    migration: MigrationPath? = null,
     offlineContent: @Composable (computers: List<String>, onShowArchived: (() -> Unit)?) -> Unit = { _, _ -> },
     accounts: AccountMenu = AccountMenu(),
     listState: LazyListState = rememberLazyListState(),
@@ -200,6 +207,7 @@ fun HomeScreen(
                     callbacks,
                     actions,
                     update,
+                    migration = migration,
                     contentTop = top + HomeCardSpec.contentTop,
                     listState = listState,
                     // Room for the last card to scroll clear of the compose button, or the sidebar's foot.
@@ -270,6 +278,7 @@ fun HomeList(
     selectedSessionId: String? = null,
     listState: LazyListState = rememberLazyListState(),
     carded: Boolean = false,
+    migration: MigrationPath? = null,
 ) {
     val colors = HappyTheme.colors
     val flat = state.grouping == SessionListGrouping.Flat
@@ -287,9 +296,9 @@ fun HomeList(
             .testTag(HomeTags.LIST),
         contentPadding = PaddingValues(top = contentTop),
     ) {
-        if (state.offlineBanner != null || update != null) {
+        if (state.offlineBanner != null || update != null || migration != null) {
             item(key = "banners", contentType = "banners") {
-                HomeBanners(state.offlineBanner, update, actions)
+                HomeBanners(state.offlineBanner, update, actions, migration)
             }
         }
         if (carded) {

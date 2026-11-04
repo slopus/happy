@@ -181,7 +181,8 @@ fun InstallDesktopScreen(
                             textAlign = TextAlign.Center,
                             modifier = Modifier.fillMaxWidth().testTag(InstallDesktopTags.DESCRIPTION),
                         )
-                        SiteLink(text, onOpenSite, Modifier.padding(top = 4.dp))
+                        val domain = stringResource(R.string.onboarding_install_body_link)
+                        SiteLink(stringResource(R.string.start_install_download, domain), domain, text, onOpenSite, Modifier.padding(top = 4.dp))
                     }
                 }
                 Spacer(Modifier.weight(1f))
@@ -221,32 +222,36 @@ fun InstallDesktopScreen(
 }
 
 /**
- * "Download from happy.engineering", the domain underlined, in the
- * gradient's text colour (the link colour is under AA on its light
- * tints): a 40 tall target read out as it reads.
+ * "Download from happy.engineering", [linked] (the domain) underlined in
+ * [site], in the gradient's text colour (the link colour is under AA on its
+ * light tints): a 40 tall target read out as it reads. The migration screen
+ * uses it too, for the site and for Learn more (all of it underlined).
  */
 @Composable
-private fun SiteLink(color: Color, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val domain = stringResource(R.string.onboarding_install_body_link)
-    val site = stringResource(R.string.start_install_download, domain)
-    val start = site.indexOf(domain)
+internal fun SiteLink(site: String, linked: String, color: Color, onClick: () -> Unit, modifier: Modifier = Modifier, tag: String = InstallDesktopTags.SITE) {
+    val start = site.indexOf(linked)
     Row(
         modifier = modifier
-            .testTag(InstallDesktopTags.SITE)
+            .testTag(tag)
             .heightIn(min = EmptyStateSpec.secondaryMinHeight)
             .clip(RoundedCornerShape(20.dp))
             .clickable(role = Role.Button, onClick = onClick)
             .clearAndSetSemantics { contentDescription = site; role = Role.Button }
-            .padding(horizontal = 14.dp),
+            .padding(horizontal = SiteLinkSpec.padding),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = buildAnnotatedString {
                 append(site)
-                if (start >= 0) addStyle(SpanStyle(textDecoration = TextDecoration.Underline), start, start + domain.length)
+                if (start >= 0) addStyle(SpanStyle(textDecoration = TextDecoration.Underline), start, start + linked.length)
             },
             style = EmptyStateSpec.secondaryAction,
             color = color,
         )
     }
+}
+
+/** A text action's target (iOS `TextActionLayout.Metrics`). */
+internal object SiteLinkSpec {
+    val padding = 14.dp
 }

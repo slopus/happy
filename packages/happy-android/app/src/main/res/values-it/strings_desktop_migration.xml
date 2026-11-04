@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="desktop_migration_close">Chiudi</string>
+    <string name="desktop_migration_desktop_title">Happy ora su desktop</string>
+    <string name="desktop_migration_desktop_body">Multigiocatore per server remoti, latenza più bassa, supporto migliore per gli allegati e molto altro. Ti preghiamo di migrare! Ci vogliono circa 5 minuti, un po’ di più se hai diverse macchine.</string>
+    <string name="desktop_migration_agent_connection_title">Passa alla connessione diretta</string>
+    <string name="desktop_migration_agent_connection_body">Stai usando Happy Agent tramite il server di Happy. Connettiti direttamente per avere la latenza più bassa e le funzioni più recenti.</string>
+    <string name="desktop_migration_settings_step">Vai in Settings\u00A0›\u00A0Mobile\u00A0Access.</string>
+    <string name="desktop_migration_learn_more">Scopri di più</string>
+    <string name="desktop_migration_server_title">Usi Happy su un server?</string>
+    <string name="desktop_migration_server_scan">In Happy Desktop, seleziona il server remoto e scansiona il suo codice allo stesso modo.</string>
+    <string name="desktop_migration_server_set_up">Per configurare un nuovo server, chiedi a Chief of Staff.</string>
+    <string name="desktop_migration_current">Connessione attuale</string>
+    <string name="desktop_migration_after">Dopo la migrazione</string>
+    <string name="desktop_migration_phone">Telefono</string>
+    <string name="desktop_migration_computer">Computer</string>
+    <string name="desktop_migration_server">Server di Happy</string>
+    <string name="desktop_migration_server_detail">Conserva le tue chat, cifrate</string>
+    <string name="desktop_migration_relay">Inoltro</string>
+    <string name="desktop_migration_relay_detail">Le inoltra soltanto, sempre cifrate</string>
+    <string name="desktop_migration_diagram_spoken">Connessione attuale: il telefono raggiunge il computer tramite il server di Happy, che conserva le tue chat cifrate. Dopo la migrazione: il telefono raggiunge il computer tramite un inoltro, che le passa soltanto, sempre cifrate.</string>
+</resources>

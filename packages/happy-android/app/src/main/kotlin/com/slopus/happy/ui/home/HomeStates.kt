@@ -1,5 +1,8 @@
 package com.slopus.happy.ui.home
 
+import com.slopus.happy.ui.migration.DesktopMigrationCard
+import com.slopus.happy.ui.migration.MigrationPath
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -132,14 +135,21 @@ sealed interface HomeUpdate {
     }
 }
 
-/** HomeListHeader: the offline plaque first (it's about right now), then the update. */
+/**
+ * HomeListHeader: the migration card (iOS ea1a0902f), the offline plaque
+ * (it's about right now), then the update. The card stands in for What's
+ * new: one announcement at a time.
+ */
 @Composable
-fun HomeBanners(offline: OfflineBanner?, update: HomeUpdate?, actions: HomeScreenActions) {
+fun HomeBanners(offline: OfflineBanner?, update: HomeUpdate?, actions: HomeScreenActions, migration: MigrationPath? = null) {
     Column(modifier = Modifier.fillMaxWidth()) {
+        migration?.let { path ->
+            BannerGroup(Modifier) { DesktopMigrationCard(path, { actions.onMigration(path) }, { actions.onCloseMigration(path) }) }
+        }
         offline?.let { OfflineMachinesBanner(it, actions.onTroubleshoot) }
         when (update) {
             is HomeUpdate.Native -> UpdateBanner(onClick = { actions.onOpenUrl(update.url) })
-            HomeUpdate.Changelog -> ChangelogBanner(onClick = actions.onWhatsNew)
+            HomeUpdate.Changelog -> if (migration == null) ChangelogBanner(onClick = actions.onWhatsNew)
             null -> Unit
         }
     }

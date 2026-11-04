@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="desktop_migration_close">Закрыть</string>
+    <string name="desktop_migration_desktop_title">Happy теперь на компьютере</string>
+    <string name="desktop_migration_desktop_body">Мультиплеер для удалённых серверов, меньше задержка, лучше поддержка вложений и многое другое. Пожалуйста, переходите! Это займёт около 5 минут, чуть дольше, если у вас несколько машин.</string>
+    <string name="desktop_migration_agent_connection_title">Перейдите на прямое подключение</string>
+    <string name="desktop_migration_agent_connection_body">Вы используете Happy Agent через сервер Happy. Подключитесь напрямую, чтобы получить минимальную задержку и новейшие функции.</string>
+    <string name="desktop_migration_settings_step">Откройте Settings\u00A0›\u00A0Mobile\u00A0Access.</string>
+    <string name="desktop_migration_learn_more">Подробнее</string>
+    <string name="desktop_migration_server_title">Happy работает на сервере?</string>
+    <string name="desktop_migration_server_scan">В Happy Desktop выберите удалённый сервер и отсканируйте его код так же.</string>
+    <string name="desktop_migration_server_set_up">Чтобы настроить новый сервер, попросите Chief of Staff.</string>
+    <string name="desktop_migration_current">Текущее подключение</string>
+    <string name="desktop_migration_after">После перехода</string>
+    <string name="desktop_migration_phone">Телефон</string>
+    <string name="desktop_migration_computer">Компьютер</string>
+    <string name="desktop_migration_server">Сервер Happy</string>
+    <string name="desktop_migration_server_detail">Хранит ваши чаты в зашифрованном виде</string>
+    <string name="desktop_migration_relay">Ретранслятор</string>
+    <string name="desktop_migration_relay_detail">Только передаёт, данные зашифрованы</string>
+    <string name="desktop_migration_diagram_spoken">Текущее подключение: телефон связывается с компьютером через сервер Happy, который хранит ваши чаты в зашифрованном виде. После перехода: телефон связывается с компьютером через ретранслятор, который только передаёт их, по-прежнему в зашифрованном виде.</string>
+</resources>
