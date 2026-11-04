@@ -20,23 +20,17 @@ import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.compose.CameraXViewfinder
 import android.hardware.camera2.CameraCharacteristics
-import android.hardware.display.DisplayManager
-import android.os.Handler
-import android.os.Looper
 import androidx.annotation.OptIn
 import androidx.camera.camera2.interop.Camera2CameraInfo
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.Camera
-import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.Preview
 import androidx.camera.core.SurfaceRequest
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.lifecycle.awaitInstance
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,14 +43,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LifecycleResumeEffect
-import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.slopus.happy.camera.CameraBinding
+import com.slopus.happy.camera.CameraFailure
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.ProvideWindowLayout
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.ThemePreference
 import java.util.concurrent.Executors
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.awaitCancellation
 
 /**
  * The QR scanner ([CameraQrScanner]): [QrScannerScreen] over the back
@@ -153,7 +146,7 @@ internal fun QrScannerRoute(scan: ScanRequest = ScanRequest(), onResult: (ScanRe
     var torchOn by remember { mutableStateOf(false) }
     if (access == CameraAccess.Granted) {
         val window = LocalWindowLayout.current
-        CameraBinding(
+        QrCameraBinding(
             fill = ScanFocus.fill(viewfinderSide(window.width, window.height).value, window.width.value, window.height.value),
             onSurfaceRequest = { surfaceRequest = it },
             onCamera = { camera = it },
@@ -186,8 +179,8 @@ internal fun QrScannerRoute(scan: ScanRequest = ScanRequest(), onResult: (ScanRe
 }
 
 /**
- * Binds a preview and a [QrAnalyzer] to the back camera (else the front)
- * for as long as it is composed, following the activity's lifecycle.
+ * QR's 720p latest-frame analysis and single analyzer executor, on the common
+ * [CameraBinding] provider/preview/lifecycle used by photo capture too.
  *
  * As iOS's scanner since ff88dfcd6: the picture turns with the device (the
  * activity handles rotation itself, so the preview's target rotation
@@ -196,36 +189,18 @@ internal fun QrScannerRoute(scan: ScanRequest = ScanRequest(), onResult: (ScanRe
  * filling the viewfinder ([fill]) is zoomed until it can ([ScanFocus]).
  */
 @Composable
-private fun CameraBinding(
+private fun QrCameraBinding(
     fill: Float,
-    onSurfaceRequest: (SurfaceRequest) -> Unit,
+    onSurfaceRequest: (SurfaceRequest?) -> Unit,
     onCamera: (Camera?) -> Unit,
     onDecoded: (String) -> Unit,
     onFailed: (ScanFailure) -> Unit,
 ) {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
     val currentOnDecoded by rememberUpdatedState(onDecoded)
     val currentOnFailed by rememberUpdatedState(onFailed)
-    LaunchedEffect(lifecycleOwner) {
-        val provider = try {
-            ProcessCameraProvider.awaitInstance(context)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.w(TAG, "Camera unavailable", e)
-            currentOnFailed(ScanFailure.CameraFailed)
-            return@LaunchedEffect
-        }
-        val selector = listOf(CameraSelector.DEFAULT_BACK_CAMERA, CameraSelector.DEFAULT_FRONT_CAMERA)
-            .firstOrNull { runCatching { provider.hasCamera(it) }.getOrDefault(false) }
-        if (selector == null) {
-            currentOnFailed(ScanFailure.NoCamera)
-            return@LaunchedEffect
-        }
-        val display = { ContextCompat.getDisplayOrDefault(context) }
-        val preview = Preview.Builder().setTargetRotation(display().rotation).build().apply { setSurfaceProvider(onSurfaceRequest) }
-        val analysis = ImageAnalysis.Builder()
+    val analysis = remember {
+        ImageAnalysis.Builder()
             .setResolutionSelector(
                 ResolutionSelector.Builder()
                     .setResolutionStrategy(
@@ -235,41 +210,26 @@ private fun CameraBinding(
             )
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .build()
-        val executor = Executors.newSingleThreadExecutor()
-        val main = ContextCompat.getMainExecutor(context)
+    }
+    val executor = remember { Executors.newSingleThreadExecutor() }
+    val main = remember(context) { ContextCompat.getMainExecutor(context) }
+    DisposableEffect(analysis) {
         analysis.setAnalyzer(executor, QrAnalyzer { text -> main.execute { currentOnDecoded(text) } })
-        val displays = context.getSystemService(DisplayManager::class.java)
-        val turned = object : DisplayManager.DisplayListener {
-            override fun onDisplayAdded(displayId: Int) = Unit
-            override fun onDisplayRemoved(displayId: Int) = Unit
-            override fun onDisplayChanged(displayId: Int) {
-                val rotation = display().rotation
-                preview.targetRotation = rotation
-                analysis.targetRotation = rotation
-            }
-        }
-        displays?.registerDisplayListener(turned, Handler(Looper.getMainLooper()))
-        try {
-            try {
-                val camera = provider.bindToLifecycle(lifecycleOwner, selector, preview, analysis)
-                onCamera(camera)
-                focusZoom(camera, fill)?.let { camera.cameraControl.setZoomRatio(it) }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                Log.w(TAG, "Camera failed to start", e)
-                currentOnFailed(ScanFailure.CameraFailed)
-                return@LaunchedEffect
-            }
-            awaitCancellation()
-        } finally {
-            displays?.unregisterDisplayListener(turned)
-            onCamera(null)
+        onDispose {
             analysis.clearAnalyzer()
-            provider.unbind(preview, analysis)
             executor.shutdown()
         }
     }
+    CameraBinding(
+        useCases = remember(analysis) { listOf(analysis) },
+        onSurface = onSurfaceRequest,
+        onCamera = { camera ->
+            onCamera(camera)
+            camera?.let { bound -> focusZoom(bound, fill)?.let { bound.cameraControl.setZoomRatio(it) } }
+        },
+        onDisplayRotation = { analysis.targetRotation = it },
+        onFailure = { currentOnFailed(if (it == CameraFailure.NoCamera) ScanFailure.NoCamera else ScanFailure.CameraFailed) },
+    )
 }
 
 /** The zoom [ScanFocus] asks of [camera] for a code filling [fill] of the picture, held to what it can do; null at 1. */
