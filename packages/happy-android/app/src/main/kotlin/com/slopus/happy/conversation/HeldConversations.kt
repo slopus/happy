@@ -9,8 +9,8 @@ import kotlinx.coroutines.launch
  * its screen, a voice call, home's preview. Each takes a [Hold]; the first
  * makes it, the rest share it, so a send made in one shows in all, goes
  * once, and is kept once ([ConversationKeeper]). It reads what comes while
- * any holder [observes][Hold.observe]; marking it read stays the screen's
- * alone ([Conversation.setVisible]).
+ * any holder [observes][Hold.observe], and marks it read while any
+ * [shows][Hold.show] it: only a screen does, never a call.
  *
  * The last holder gone, it is closed, unless a send is still in hand
  * (desktop 01659140, `composerSubmissions`): an upload or a send belongs to
@@ -22,10 +22,14 @@ class HeldConversations(private val scope: CoroutineScope) {
     /** One holder's claim on [conversation]; [release] it once, when the holder goes. */
     inner class Hold internal constructor(val conversation: Conversation) {
         internal var observing = true
+        internal var showing = false
         internal var released = false
 
         /** Whether this holder wants what comes read: a screen covered by another doesn't. Every hold starts wanting it. */
         fun observe(value: Boolean) = observe(this, value)
+
+        /** Whether this holder has it on screen, so what arrives is marked read ([Conversation.setVisible]). No hold starts so. */
+        fun show(value: Boolean) = show(this, value)
 
         fun release() = release(this)
     }
@@ -58,6 +62,16 @@ class HeldConversations(private val scope: CoroutineScope) {
         }
     }
 
+    private fun show(hold: Hold, value: Boolean) {
+        synchronized(this) {
+            if (hold.released) return
+            hold.showing = value
+            val entry = held[hold.conversation.agentId]?.takeIf { it.conversation === hold.conversation } ?: return
+            // Each screen's own say, as the screen gave it: shown again reads what came meanwhile.
+            entry.conversation.setVisible(entry.holds.any { it.showing })
+        }
+    }
+
     private fun follow(entry: Entry) {
         entry.conversation.setObserving(entry.holds.any { it.observing })
     }
@@ -69,6 +83,8 @@ class HeldConversations(private val scope: CoroutineScope) {
             hold.released = true
             val entry = held[conversation.agentId]?.takeIf { it.conversation === conversation } ?: return
             entry.holds.remove(hold)
+            // Its claim to be on screen goes with it; another's still stands.
+            if (hold.showing && entry.holds.none { it.showing }) conversation.setVisible(false)
             if (entry.holds.isNotEmpty()) return follow(entry)
             held.remove(conversation.agentId)
             conversation.state.value.holdsSends.also { keep ->

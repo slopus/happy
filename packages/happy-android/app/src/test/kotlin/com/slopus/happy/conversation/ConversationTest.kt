@@ -1085,6 +1085,7 @@ class ConversationTest {
         val call = held.hold("a1") { conversation(agent) }
         advanceUntilIdle()
         signals.emit(event("message.created", """{"agentId":"a1","runId":"r1","message":{"id":"m","role":"agent","createdAt":5,"content":[{"type":"text","text":"Done"}],"metadata":{}}}"""))
+        signals.emit(event("run.finished", """{"agentId":"a1","run":{"id":"r1","status":"completed","startedAt":1,"finishedAt":2}}"""))
         advanceUntilIdle()
         assertTrue(call.conversation.state.value.rows.isNotEmpty())
         assertTrue(agent.requests.none { it.second.endsWith("/read") })
@@ -1094,15 +1095,76 @@ class ConversationTest {
         advanceUntilIdle()
         assertTrue(agent.requests.none { it.second.endsWith("/read") })
         screen.observe(true)
-        screen.conversation.setVisible(true)
+        screen.show(true)
         advanceUntilIdle()
         assertEquals(1, agent.requests.count { it.second.endsWith("/read") })
-        screen.conversation.setVisible(false)
+        screen.show(false)
         screen.release()
-        signals.emit(event("message.created", """{"agentId":"a1","runId":"r1","message":{"id":"m2","role":"agent","createdAt":6,"content":[{"type":"text","text":"More"}],"metadata":{}}}"""))
+        signals.emit(event("run.finished", """{"agentId":"a1","run":{"id":"r2","status":"completed","startedAt":3,"finishedAt":4}}"""))
         advanceUntilIdle()
         assertEquals("the screen gone, the call's watch marks nothing", 1, agent.requests.count { it.second.endsWith("/read") })
         call.release()
+    }
+
+    /** Two screens of one agent: each says for itself whether it shows it, so one going leaves the other's say standing. */
+    @Test fun `a screen going leaves another screen of the same agent showing it`() = runTest {
+        val agent = FakeAgent()
+        val held = held()
+        val call = held.hold("a1") { conversation(agent) }
+        val first = held.hold("a1") { error("shared") }
+        val second = held.hold("a1") { error("shared") }
+        advanceUntilIdle()
+        fun reads() = agent.requests.count { it.second.endsWith("/read") }
+        var n = 0
+        suspend fun arrive() {
+            signals.emit(event("run.finished", """{"agentId":"a1","run":{"id":"r${n++}","status":"completed","startedAt":1,"finishedAt":2}}"""))
+            advanceUntilIdle()
+        }
+        first.show(true)
+        second.show(true)
+        advanceUntilIdle()
+        // The first covered, then gone: the second still shows it, so what arrives is read.
+        first.show(false)
+        advanceUntilIdle()
+        var before = reads()
+        arrive()
+        assertTrue("still shown by the second", reads() > before)
+        first.release()
+        before = reads()
+        arrive()
+        assertTrue("its going takes only its own say", reads() > before)
+        // Both gone, the call still holding it: shown by nobody, read by nobody.
+        second.release()
+        advanceUntilIdle()
+        before = reads()
+        arrive()
+        assertEquals(before, reads())
+        // A shown hold's release takes its say with it.
+        val third = held.hold("a1") { error("shared") }
+        third.show(true)
+        third.release()
+        advanceUntilIdle()
+        before = reads()
+        arrive()
+        assertEquals(before, reads())
+        call.release()
+    }
+
+    /** Home's preview takes its hold as it composes: forgotten or abandoned, the hold goes, once. */
+    @Test fun `a preview's hold goes however its composition ends`() = runTest {
+        val held = held()
+        for (end in listOf<(com.slopus.happy.ui.connection.PreviewHold) -> Unit>({ it.onForgotten() }, { it.onAbandoned() })) {
+            var made = 0
+            val preview = com.slopus.happy.ui.connection.PreviewHold(held.hold("a1") { made++; conversation(FakeAgent()) })
+            advanceUntilIdle()
+            assertEquals(1, signals.subscriptionCount.value)
+            end(preview)
+            preview.onForgotten()
+            advanceUntilIdle()
+            assertEquals(1, made)
+            assertNull(held.peek("a1"))
+            assertEquals(0, signals.subscriptionCount.value)
+        }
     }
 
     /** A call's send goes through the screen's conversation: shown there at once, sent once, failed once; the call letting go leaves the screen as it was. */

@@ -409,7 +409,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
     val status by session.status.collectAsStateWithLifecycle()
     val syncing by session.isSyncing.collectAsStateWithLifecycle()
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
-    DisposableEffect(conversation) { onDispose { conversation.setVisible(false) } }
+    DisposableEffect(holder) { onDispose { holder.hold.show(false) } }
     // A link in this chat browses through this chat's agent's workspace (iOS's openBrowser(session:agentID:)).
     val context = LocalContext.current
     val network by remember(context) { context.networkPath() }.collectAsStateWithLifecycle(initialValue = true)
@@ -469,7 +469,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
                         )
                     },
                     kept = kept,
-                    onVisible = conversation::setVisible,
+                    onVisible = holder.hold::show,
                     onChoiceChange = holder::setChoice,
                     onCommand = conversation::runCommand,
                     onToggleTurn = conversation::toggleTurn,

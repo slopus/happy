@@ -59,6 +59,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -79,6 +80,7 @@ import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
 import com.slopus.happy.R
 import com.slopus.happy.artifacts.ArtifactRef
+import com.slopus.happy.conversation.HeldConversations
 import com.slopus.happy.ui.conversation.makeConversation
 import com.slopus.happy.ui.conversation.Typesetter
 import com.slopus.happy.ui.conversation.ProsePalette
@@ -787,13 +789,24 @@ private fun ConversationPreview(session: AgentSession, row: AgentFeedRow.Convers
     val colors = HappyTheme.colors
     val typesetter = Typesetter.of(LocalContext.current)
     typesetter.reportPalette(ProsePalette.of(colors))
-    // The agent's one conversation, the one its screen or a call may hold too: never marked read from here.
-    val hold = remember(session, row.agentId) { session.conversations.hold(row.agentId) { session.makeConversation(row.agentId, typesetter) } }
-    DisposableEffect(hold) { onDispose { hold.release() } }
-    val conversation = hold.conversation
+    // The agent's one conversation, the one its screen or a call may hold too: never shown, so never marked read from here.
+    val conversation = remember(session, row.agentId) {
+        PreviewHold(session.conversations.hold(row.agentId) { session.makeConversation(row.agentId, typesetter) })
+    }.hold.conversation
     val state by conversation.state.collectAsStateWithLifecycle()
     val actions = remember(conversation) { ConversationRowActions(legacy = MessageCallbacks(), onRetryFailure = {}, loadMedia = conversation::media) }
     ChatPreviewTranscript(row.title ?: stringResource(R.string.session_new_chat), state, userMessageBubblePalette(bubbleColor, colors.dark), actions)
+}
+
+/**
+ * The preview's hold, taken as it composes and let go however that ends:
+ * forgotten when the preview goes, or abandoned by a composition that never
+ * applied, so it never outlives the preview.
+ */
+internal class PreviewHold(val hold: HeldConversations.Hold) : RememberObserver {
+    override fun onRemembered() {}
+    override fun onForgotten() = hold.release()
+    override fun onAbandoned() = hold.release()
 }
 
 /**
