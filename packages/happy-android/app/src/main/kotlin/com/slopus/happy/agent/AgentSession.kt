@@ -11,6 +11,8 @@ import com.slopus.happy.conversation.ParkedConversations
 import com.slopus.happy.conversation.UnsentWork
 import com.slopus.happy.data.DiskThread
 import com.slopus.happy.diagnostics.traced
+import com.slopus.happy.documents.DocumentLibrary
+import com.slopus.happy.documents.DocumentStreams
 import com.slopus.happy.feed.AgentFeedRoutes
 import com.slopus.happy.feed.FeedLibrary
 import com.slopus.happy.feed.FeedLookups
@@ -259,6 +261,13 @@ class AgentSession internal constructor(
     /** Chat media kept on this phone for good, beside the catalog (iOS `MediaLibrary.agent`); null where nothing is kept. */
     val media: com.slopus.happy.media.MediaLibrary? = cacheFile?.let { com.slopus.happy.media.MediaLibrary(File(it.parentFile, it.nameWithoutExtension + ".media")) }
 
+    /**
+     * The document Surfaces open here and those with changes still to send
+     * (iOS's `SyncEngine.documents`), kept beside the catalog in
+     * `<connection>.documents/`; their live frames come off this session's stream.
+     */
+    val documents = DocumentLibrary(client, cacheFile?.let { File(it.parentFile, it.nameWithoutExtension + ".documents") }, scope)
+
     val pictures = AgentPictures(connectionId, cacheFile?.let { File(it.parentFile, it.nameWithoutExtension + ".pictures") }) { path -> client.send("GET", path, category = RequestCategory.File).body }
 
     /** One conversation as the catalog knows it, live; null while unknown. */
@@ -504,6 +513,8 @@ class AgentSession internal constructor(
 
     /** Stops the link and lets go of the tunnel. */
     suspend fun close() {
+        // Open documents keep what they hold and say goodbye, briefly: a lost link must not hold the close up.
+        withContext(kotlinx.coroutines.NonCancellable) { kotlinx.coroutines.withTimeoutOrNull(2_000) { documents.stop() } }
         scope.cancel()
         withContext(kotlinx.coroutines.NonCancellable) {
             media?.stop()
@@ -611,8 +622,14 @@ class AgentSession internal constructor(
             while (true) {
                 val bytes = stream.read() ?: throw AgentConnectionException(AgentConnectionException.Reason.Unavailable)
                 for (frame in parser.append(bytes)) {
+                    // Live document frames go to their documents, never to the journal.
+                    if (DocumentStreams.isDocumentFrame(frame.event)) {
+                        documents.frame(frame.event, frame.data)
+                        continue
+                    }
                     val event = frame.toAgentEvent() ?: continue
                     if (event.type == AgentEvent.HELLO) {
+                        documents.opened(event.data)
                         val hello = AgentHello.of(event)
                         if (hello.gap) readSnapshot()
                         statusState.value = AgentLinkStatus.Connected
@@ -637,6 +654,7 @@ class AgentSession internal constructor(
                 }
             }
         } finally {
+            documents.closed()
             feedLibrary.disconnected()
             stream.close()
         }

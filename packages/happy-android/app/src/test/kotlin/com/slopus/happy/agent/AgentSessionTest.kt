@@ -10,6 +10,7 @@ import com.slopus.happy.connection.AgentConnections
 import com.slopus.happy.connection.RequestCategory
 import com.slopus.happy.connection.Transport
 import com.slopus.happy.connection.TransportResponse
+import com.slopus.happy.documents.DocumentStreamEvent
 import com.slopus.happy.testing.SoftwareKeys
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CompletableDeferred
@@ -21,6 +22,8 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.buildJsonObject
@@ -93,6 +96,25 @@ class AgentSessionTest {
         seen.clear()
         ArtifactClient(sessions.session(id)!!.client).file("r1", 2, "report.md")
         assertEquals(listOf(Triple("addr", "token", "/v0/artifacts/r1/versions/2/files/report.md")), seen)
+    }
+
+    @Test
+    fun liveDocumentFramesGoToTheirDocumentNeverTheJournal() = runBlocking {
+        val session = sessions().session(id)!!
+        val heard = async { withTimeout(10_000) { session.documents.streams.events("d1").take(2).toList() } }
+        val journal = mutableListOf<String>()
+        val listening = launch { session.events.collect { journal += it.type } }
+        agent.frames.send("event: hello\ndata: {\"cursor\":\"c0\",\"gap\":false,\"resumed\":true,\"daemonId\":\"d1\",\"streamId\":\"st1\"}\n\n")
+        eventually({ session.documents.streams.current }) { it == "st1" }
+        agent.frames.send("event: document.update\ndata: {\"surfaceId\":\"d1\",\"seq\":3,\"update\":\"AAA=\"}\n\n")
+        agent.frames.send(Wire.frame("c1", "agent.updated", Wire.updated("agentId", "at1", "01", "02", buildJsonObject { put("status", "thinking") })))
+        val events = heard.await()
+        assertEquals(DocumentStreamEvent.Connected("st1"), events[0])
+        assertEquals(3, (events[1] as DocumentStreamEvent.Update).frame.seq)
+        eventually({ journal.toList() }) { "agent.updated" in it }
+        listening.cancel()
+        assertFalse("A document frame never reaches the journal", "document.update" in journal)
+        assertEquals("c1", session.catalog.value.cursor)
     }
 
     @Test
