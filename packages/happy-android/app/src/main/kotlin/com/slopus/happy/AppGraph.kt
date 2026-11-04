@@ -19,6 +19,7 @@ import com.slopus.happy.auth.AuthState
 import com.slopus.happy.auth.ExpoSecureStore
 import com.slopus.happy.auth.SecureStoreCredentialStore
 import com.slopus.happy.auth.SecureStoreKeys
+import com.slopus.happy.auth.tokenSubject
 import com.slopus.happy.config.LiveAvatarsSetting
 import com.slopus.happy.config.LocalSettings
 import com.slopus.happy.config.ServerConfig
@@ -161,14 +162,16 @@ class AppGraph(
         val pending = removals.pending()
         if (pending.isEmpty()) return false
         for (id in pending) {
+            val publicId = accountStore.credentials(id)?.credentials?.token?.let(::tokenSubject)
             accountStore.remove(id)
             if (onDisk) {
                 appContext.deleteDatabase("account-$id.db")
                 SessionFileCache.directory(appContext.noBackupFilesDir, id).deleteRecursively()
+                if (!hasMediaOwner(publicId)) legacyMediaDirectory(publicId)?.deleteRecursively()
             }
             removals.finish(id)
         }
-        if (accountStore.registry.value.entries.isNotEmpty()) return false
+        if (accountStore.registry.value.entries.isNotEmpty() || accountStore.registry.value.activeId != null) return false
         localSettings.clear()
         for (name in WIPED_PREFS + ChangelogReadMarker.PREFS_NAME) appContext.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear().commit()
         LocalCaches.wipe(appContext)
@@ -241,6 +244,8 @@ class AppGraph(
     /** The newest What's New entry the user has seen (changelog/storage.ts). */
     val changelog = ChangelogReadMarker(context.getSharedPreferences(ChangelogReadMarker.PREFS_NAME, Context.MODE_PRIVATE))
     private val accountLock = Mutex()
+    /** Selection and removal publish atomically without waiting for another account's sync startup. */
+    private val accountSelectionLock = Mutex()
     private val foreground = MutableStateFlow(false)
     private val accountState = MutableStateFlow<AccountSync?>(null)
 
@@ -372,8 +377,12 @@ class AppGraph(
     fun open(id: String): Job = scope.launch {
         if (accountStore.registry.value.activeId == id && (openAgentId.value == id || openAccountId() == id)) return@launch
         whileSwitching {
-            withContext(Dispatchers.IO) { accountStore.select(id) }
-            auth.reload()
+            accountSelectionLock.withLock {
+                // A row tapped just before its removal must not reopen the forgotten account.
+                if (accountStore.registry.value.entry(id) == null && agentConnections.accounts.value.none { it.id == id }) return@withLock
+                withContext(Dispatchers.IO) { accountStore.select(id) }
+                auth.reload()
+            }
         }
     }
 
@@ -509,6 +518,7 @@ class AppGraph(
     }
 
     private val logoutHooks = CopyOnWriteArrayList<suspend (authToken: String, serverUrl: String) -> Unit>()
+    private val accountRemovalHooks = CopyOnWriteArrayList<suspend (authToken: String, serverUrl: String, open: Boolean) -> Unit>()
 
     /**
      * [hook] runs first on every logout, on IO, with the account's token and
@@ -517,6 +527,11 @@ class AppGraph(
      */
     fun beforeLogout(hook: suspend (authToken: String, serverUrl: String) -> Unit) {
         logoutHooks += hook
+    }
+
+    /** Every CLI account removal, including a row that isn't open; only an open one forgets this phone's current push registration. */
+    fun beforeAccountRemoval(hook: suspend (authToken: String, serverUrl: String, open: Boolean) -> Unit) {
+        accountRemovalHooks += hook
     }
 
     /** Signed-out accounts' push tokens, still to be dropped on their servers (iOS c7d74a4e8). */
@@ -539,45 +554,76 @@ class AppGraph(
      * on is finished at the next start. With the last account this phone's
      * preferences and caches go too; the server choice stays. Runs in the
      * app scope, since the screen that asked is gone as soon as the account is.
+     * [accountIdToRemove] targets an accounts-card row; an inactive row leaves
+     * the open account, its sync and this phone's preferences in place.
      */
-    fun logout(): Job = scope.launch {
-        accountLock.withLock {
-            val leaving = auth.state.value as? AuthState.SignedIn
-            val id = leaving?.let { accountId(it.credentials) }
-            val server = serverUrl
-            val last = accountStore.registry.value.entries.size <= 1
-            withContext(Dispatchers.IO) {
-                id?.let(removals::begin)
-                leaving?.let { signedIn -> logoutHooks.forEach { it(signedIn.credentials.token, server) } }
-            }
-            purchases.setAccount(null)
-            stopAccount()
-            auth.logout()
-            store.use(database(openAccountId()))
-            if (last) {
-                // After the store moved off the account, so nothing that follows it writes these again.
-                withContext(Dispatchers.IO) {
-                    // persistence.ts clearPersistence: with the last account, everything in the default MMKV goes.
-                    localSettings.clear()
-                    changelog.clear()
-                    for (name in WIPED_PREFS) appContext.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear().commit()
+    fun logout(accountIdToRemove: String? = null): Job = scope.launch {
+        accountSelectionLock.withLock {
+            accountLock.withLock accountRemoval@ {
+                val leaving = auth.state.value as? AuthState.SignedIn
+                val id = leaving?.let { accountId(it.credentials) }
+                if (accountIdToRemove != null && accountIdToRemove != id) {
+                    removeInactiveAccount(accountIdToRemove)
+                    return@accountRemoval
                 }
-                wipeHooks.forEach { it() }
-                // The language was the account's setting: back to the device's, as after happy-app's reload.
-                language.apply(null)
+                val server = serverUrl
+                val last = accountStore.registry.value.entries.size <= 1
+                withContext(Dispatchers.IO) {
+                    id?.let(removals::begin)
+                    leaving?.let { signedIn ->
+                        accountRemovalHooks.forEach { it(signedIn.credentials.token, server, true) }
+                        logoutHooks.forEach { it(signedIn.credentials.token, server) }
+                    }
+                }
+                purchases.setAccount(null)
+                stopAccount()
+                auth.logout()
+                store.use(database(openAccountId()))
+                if (last) {
+                    // After the store moved off the account, so nothing that follows it writes these again.
+                    withContext(Dispatchers.IO) {
+                        // persistence.ts clearPersistence: with the last account, everything in the default MMKV goes.
+                        localSettings.clear()
+                        changelog.clear()
+                        for (name in WIPED_PREFS) appContext.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear().commit()
+                    }
+                    wipeHooks.forEach { it() }
+                    // The language was the account's setting: back to the device's, as after happy-app's reload.
+                    language.apply(null)
+                }
+                if (id != null) forget(id, leaving.publicId, synchronized(databases) { databases.remove(id) }, wipeCaches = last)
             }
-            if (id != null) forget(id, leaving.publicId, synchronized(databases) { databases.remove(id) }, wipeCaches = last)
         }
     }
 
+    /** Under [accountLock], removes only [id]'s kept state: the selected account and its sync keep running. */
+    private suspend fun removeInactiveAccount(id: String) {
+        val entry = accountStore.registry.value.entry(id) ?: return
+        val publicId = withContext(Dispatchers.IO) {
+            val stored = accountStore.credentials(id)
+            removals.begin(id)
+            if (entry.serverConfirmed && stored != null) {
+                accountRemovalHooks.forEach { it(stored.credentials.token, stored.serverUrl, false) }
+            }
+            accountStore.remove(id)
+            stored?.credentials?.token?.let(::tokenSubject)
+        }
+        forget(id, publicId, synchronized(databases) { databases.remove(id) }, wipeCaches = false)
+    }
+
     private val removalJobs = CopyOnWriteArrayList<Job>()
+
+    /** The legacy media folder is keyed by the server's public id; another server can issue the same id. */
+    private fun hasMediaOwner(publicId: String?): Boolean = publicId != null && accountStore.registry.value.entries.any { entry ->
+        accountStore.credentials(entry.id)?.credentials?.token?.let(::tokenSubject) == publicId
+    }
 
     /** What is slow in a sign-out, once the store has moved off [database]: the file, its kept media and file reads, the caches with the last account. */
     private fun forget(id: String, publicId: String?, database: HappyDatabase?, wipeCaches: Boolean) {
         val job = scope.launch(Dispatchers.IO) {
             database?.let(store::retire)
             if (!inMemoryDatabases) appContext.deleteDatabase("account-$id.db")
-            legacyMediaDirectory(publicId)?.deleteRecursively()
+            if (!hasMediaOwner(publicId)) legacyMediaDirectory(publicId)?.deleteRecursively()
             // The file viewer's kept reads go with the account (its cache closed with its sync).
             SessionFileCache.directory(appContext.noBackupFilesDir, id).deleteRecursively()
             if (wipeCaches) LocalCaches.wipe(appContext)

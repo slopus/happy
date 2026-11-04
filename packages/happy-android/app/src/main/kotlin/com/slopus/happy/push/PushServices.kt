@@ -43,8 +43,8 @@ class PushServices(context: Context, graph: AppGraph) {
         @Volatile private var instance: PushServices? = null
 
         /** AuthContext.tsx logout: [graph]'s logout hands this device's push token to [PushUnregisterQueue]. */
-        fun unregisterOnLogout(context: Context, graph: AppGraph) = graph.beforeLogout { authToken, serverUrl ->
-            get(context).registrar.unregisterOnLogout(authToken, serverUrl)
+        fun unregisterOnLogout(context: Context, graph: AppGraph) = graph.beforeAccountRemoval { authToken, serverUrl, open ->
+            get(context).registrar.unregisterOnLogout(authToken, serverUrl, forgetCurrentToken = open)
         }
 
         fun get(context: Context): PushServices = instance ?: synchronized(this) {

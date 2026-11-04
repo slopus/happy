@@ -122,12 +122,13 @@ class PushRegistrar(
      * AuthContext.tsx logout: this device's token is dropped on [serverUrl]
      * with the account's token, so the account stops pushing here. The
      * sign-out doesn't wait for it ([PushUnregisterQueue], iOS c7d74a4e8);
-     * the registration is forgotten at once.
+     * the registration is forgotten at once for the open account. Removing
+     * an inactive account leaves the open account's token bookkeeping alone.
      */
-    fun unregisterOnLogout(authToken: String, serverUrl: String) {
+    fun unregisterOnLogout(authToken: String, serverUrl: String, forgetCurrentToken: Boolean = true) {
         val token = store.load() ?: return
         unregisters.add(PendingPushRemoval(serverUrl, authToken, token))
-        store.clear()
+        if (forgetCurrentToken) store.clear()
     }
 
     companion object {

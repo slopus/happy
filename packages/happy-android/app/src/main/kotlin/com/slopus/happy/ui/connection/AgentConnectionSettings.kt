@@ -348,9 +348,8 @@ internal suspend fun removeAgentConnection(graph: AppGraph, id: String) = graph.
 /**
  * The accounts card's actions, the same on both kinds of page: a tap opens
  * another account without leaving Settings ([AccountSwitcher.fromSettings]),
- * Add scans, holding an agent connection disconnects it and holding the open
- * Happy account signs it out (another Happy account isn't signed out from
- * here: its push token and data belong to its own session). Taking away the
+ * Add scans, holding an agent connection disconnects it and holding a Happy
+ * account signs that account out, even when another is open. Taking away the
  * open one keeps Settings, over the next account's home.
  */
 @Composable
@@ -366,12 +365,12 @@ internal fun rememberAccountsCardActions(graph: AppGraph): AccountsCardActions {
                 val remove: suspend () -> Unit = if (entry.agent) {
                     { removeAgentConnection(graph, entry.id) }
                 } else {
-                    { graph.logout().join() }
+                    { graph.logout(entry.id).join() }
                 }
                 val open = graph.openAccount.value.id == entry.id
                 if (switcher != null && open) switcher.removingFromSettings(remove) else scope.launch { remove() }
             },
-            canRemove = { it.agent || (it.active && graph.openAgentId.value == null) },
+            canRemove = { true },
         )
     }
 }

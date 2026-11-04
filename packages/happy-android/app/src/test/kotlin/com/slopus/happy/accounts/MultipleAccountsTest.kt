@@ -9,18 +9,22 @@ import com.slopus.happy.auth.AuthState
 import com.slopus.happy.auth.ExpoSecureStore
 import com.slopus.happy.auth.SecureStoreCredentialStore
 import com.slopus.happy.config.ServerConfig
+import com.slopus.happy.config.LocalSettings
 import com.slopus.happy.crypto.Base64Variant
 import com.slopus.happy.crypto.SecretKeyBackup
 import com.slopus.happy.crypto.encodeBase64
 import com.slopus.happy.sync.eventually
 import com.slopus.happy.testing.FakeHappyServer
 import com.slopus.happy.testing.SoftwareKeys
+import com.slopus.happy.sync.SessionFileCache
+import com.slopus.happy.ui.theme.ThemePreference
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertSame
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -41,7 +45,7 @@ class MultipleAccountsTest {
 
     @Before
     fun setUp() {
-        for (name in listOf(ExpoSecureStore.PREFS_NAME, AccountStore.PREFS_NAME, AccountStore.CREDENTIALS_PREFS_NAME, ServerConfig.PREFS_NAME)) {
+        for (name in listOf(ExpoSecureStore.PREFS_NAME, AccountStore.PREFS_NAME, AccountStore.CREDENTIALS_PREFS_NAME, ServerConfig.PREFS_NAME, AccountRemovals.PREFS_NAME, LocalSettings.PREFS_NAME)) {
             context.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear().commit()
         }
         File(context.filesDir, "mmkv").deleteRecursively()
@@ -52,7 +56,7 @@ class MultipleAccountsTest {
 
     @After
     fun tearDown() {
-        graphs.forEach { runBlocking { it.account.value?.stop() } }
+        graphs.forEach { runBlocking { it.account.value?.stop(); it.awaitRemovals() } }
         first.close()
         second.close()
     }
@@ -153,6 +157,70 @@ class MultipleAccountsTest {
         assertEquals(listOf(account), graph.accountStore.registry.value.entries.map { it.id })
         runBlocking { graph.open(account).join() }
         eventually(message = "account again") { openId(graph) == account }
+    }
+
+    @Test
+    fun removingAnInactiveAccountLeavesTheOpenAccountsSyncFilesAndPreferencesAlone() {
+        val graph = graph(defaultServer = first.url)
+        runBlocking { graph.auth.restore(backup(first)) }
+        syncedTo(graph, setOf("a1"))
+        val a = graph.accountStore.registry.value.activeId!!
+        // Add the second through the same path as Restore from an agent connection.
+        graph.accountStore.select("agent-connection-1")
+        runBlocking { graph.auth.reload() }
+        graph.serverConfig.set(second.url)
+        runBlocking { graph.auth.restore(backup(second)) }
+        syncedTo(graph, setOf("b1", "b2"))
+        val b = graph.accountStore.registry.value.activeId!!
+        val running = graph.account.value
+        val signedIn = graph.auth.state.value
+        graph.localSettings.setThemePreference(ThemePreference.Dark)
+        val removedFiles = SessionFileCache.directory(context.noBackupFilesDir, a).apply { mkdirs() }
+        File(removedFiles, "old").writeText("old")
+        val keptFiles = SessionFileCache.directory(context.noBackupFilesDir, b).apply { mkdirs() }
+        val kept = File(keptFiles, "current").apply { writeText("current") }
+        // These fake servers deliberately issue the same public id. Their
+        // shared legacy media folder must survive while either owner remains.
+        val sharedMedia = graph.legacyMediaDirectory("account-1")!!.apply { mkdirs() }
+        val media = File(sharedMedia, "current").apply { writeText("media") }
+        val removals = mutableListOf<Triple<String, String, Boolean>>()
+        graph.beforeAccountRemoval { token, server, open -> removals += Triple(token, server, open) }
+        graph.beforeLogout { _, _ -> error("the open account must not sign out") }
+
+        runBlocking { graph.logout(a).join(); graph.awaitRemovals() }
+        assertEquals(listOf(b), graph.accountStore.registry.value.entries.map { it.id })
+        assertEquals(b, graph.accountStore.registry.value.activeId)
+        assertEquals(signedIn, graph.auth.state.value)
+        assertSame(running, graph.account.value)
+        assertEquals(setOf("b1", "b2"), sessionIds(graph))
+        assertEquals(ThemePreference.Dark, graph.localSettings.themePreference.value)
+        assertEquals(listOf(Triple(first.token, first.url, false)), removals)
+        assertNull(graph.accountStore.credentials(a))
+        assertFalse(removedFiles.exists())
+        assertEquals("current", kept.readText())
+        assertEquals("media", media.readText())
+        // A stale row tap cannot select the account after it has gone.
+        runBlocking { graph.open(a).join() }
+        assertEquals(b, graph.accountStore.registry.value.activeId)
+        assertSame(running, graph.account.value)
+    }
+
+    @Test
+    fun removingTheLastInactiveCliAccountKeepsTheSelectedAgentAndItsPreferencesAfterARestart() {
+        val graph = graph(defaultServer = first.url)
+        runBlocking { graph.auth.restore(backup(first)) }
+        val id = graph.accountStore.registry.value.activeId!!
+        graph.accountStore.select("agent-connection-1")
+        runBlocking { graph.auth.reload() }
+        graph.localSettings.setThemePreference(ThemePreference.Dark)
+        // Killed after journalling an inactive removal, while the agent stays selected.
+        AccountRemovals(context.getSharedPreferences(AccountRemovals.PREFS_NAME, Context.MODE_PRIVATE)).begin(id)
+        val again = graph(defaultServer = first.url)
+        assertEquals("agent-connection-1", again.accountStore.registry.value.activeId)
+        assertEquals(ThemePreference.Dark, again.localSettings.themePreference.value)
+        assertTrue(again.accountStore.registry.value.entries.isEmpty())
+        assertNull(again.accountStore.credentials(id))
+        assertTrue(AccountRemovals(context.getSharedPreferences(AccountRemovals.PREFS_NAME, Context.MODE_PRIVATE)).pending().isEmpty())
     }
 
     @Test

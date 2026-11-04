@@ -111,6 +111,17 @@ class LogoutPushTest {
     }
 
     @Test
+    fun removingAnInactiveAccountDropsOnlyItsServerRegistrationAndKeepsTheCurrentToken() {
+        store.save("ExponentPushToken[a]")
+        registrar(queue()).unregisterOnLogout("inactive-token", serverUrl, forgetCurrentToken = false)
+        assertEquals("ExponentPushToken[a]", store.load())
+        eventually(message = "inactive account DELETE") { requests.isNotEmpty() }
+        assertEquals(listOf("DELETE /v1/push-tokens/ExponentPushToken%5Ba%5D Bearer inactive-token"), deletes())
+        assertEquals("ExponentPushToken[a]", store.load())
+        eventually(message = "inactive removal answered") { items().keys().isEmpty() }
+    }
+
+    @Test
     fun withNothingRegisteredNothingIsQueued() {
         registrar(queue()).unregisterOnLogout("token-1", serverUrl)
         assertTrue(items().keys().isEmpty())
