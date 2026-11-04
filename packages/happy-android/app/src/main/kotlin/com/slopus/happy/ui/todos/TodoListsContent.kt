@@ -34,8 +34,9 @@ internal fun TodoListsContent(
     unsupported: Boolean,
     onOpen: (String) -> Unit,
     onRefresh: () -> Unit,
+    refreshing: Boolean = false,
 ) {
-    PullToRefreshBox(isRefreshing = false, onRefresh = onRefresh, modifier = Modifier.fillMaxSize().navigationBarsPadding().testTag("todo.lists")) {
+    PullToRefreshBox(isRefreshing = refreshing, onRefresh = onRefresh, modifier = Modifier.fillMaxSize().navigationBarsPadding().testTag("todo.lists")) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp)) {
             if (entries.isEmpty()) item("note") {
                 CardNote(stringResource(when {

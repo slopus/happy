@@ -325,6 +325,7 @@ fun LazyListScope.agentHomeRows(
     /** The tablet sidebar's selection, what its main panel shows ([MainPanelKey]). */
     selected: String? = null,
     onOpenFeed: () -> Unit = {},
+    onOpenTodos: () -> Unit = {},
 ) {
     items(items, key = { it.key }, contentType = { (it as? AgentHomeItem.Row)?.row?.let { row -> row::class } ?: it::class }) { item ->
         val motion = if (reduceMotion) Modifier else Modifier.animateItem(
@@ -341,7 +342,7 @@ fun LazyListScope.agentHomeRows(
             )
             is AgentHomeItem.Row -> AgentHomeCardRow(
                 item, motion, selected != null && selected == item.row.panelKey(), AgentHomeTags.row(item.key),
-                onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface, onHold, onOpenFeed,
+                onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface, onHold, onOpenFeed, onOpenTodos,
             )
         }
     }
@@ -364,6 +365,7 @@ internal fun AgentHomeCardRow(
     onLeaveSurface: ((AgentFeedRow.Surface) -> Unit)? = null,
     onHold: ((AgentFeedRow.Conversation, Rect) -> Unit)? = null,
     onOpenFeed: () -> Unit = {},
+    onOpenTodos: () -> Unit = {},
 ) {
     HomeCardRow(
         place = HomeCardPlace(item.first, item.last),
@@ -378,6 +380,7 @@ internal fun AgentHomeCardRow(
             is AgentFeedRow.Folder -> FolderRow(row)
             AgentFeedRow.Artifacts -> PlaceRow(stringResource(R.string.artifacts_title), Ionicon.DocumentTextOutline, RowTile.Purple, onOpenArtifacts)
             is AgentFeedRow.Feed -> FeedPlaceRow(row.unread, onOpenFeed)
+            AgentFeedRow.Todos -> PlaceRow(stringResource(R.string.agent_search_todos), Ionicon.CheckboxOutline, RowTile.Green, onOpenTodos)
             is AgentFeedRow.Surface -> SurfaceRow(row, { onOpenSurface(row) }, onLeaveSurface)
             is AgentFeedRow.Section -> Unit
         }
@@ -428,6 +431,7 @@ internal fun AgentFeedRow.panelKey(): String? = when (val row = this) {
     is AgentFeedRow.Surface -> MainPanelKey.surface(row.id)
     AgentFeedRow.Artifacts -> MainPanelKey.ARTIFACTS
     is AgentFeedRow.Feed -> MainPanelKey.FEED
+    AgentFeedRow.Todos -> MainPanelKey.TODOS
     else -> null
 }
 
@@ -436,7 +440,7 @@ private fun titleStart(row: AgentFeedRow): Dp {
     val (depth, marked) = when (row) {
         is AgentFeedRow.Conversation -> row.depth to AgentHomeSpec.hasMark(row.kind)
         is AgentFeedRow.Folder -> row.depth to (row.mark != null)
-        AgentFeedRow.Artifacts, is AgentFeedRow.Feed, is AgentFeedRow.Surface -> 0 to true
+        AgentFeedRow.Artifacts, is AgentFeedRow.Feed, AgentFeedRow.Todos, is AgentFeedRow.Surface -> 0 to true
         is AgentFeedRow.Section -> return 0.dp
     }
     return AgentHomeSpec.markInset + AgentHomeSpec.indent * depth + if (marked) AgentHomeSpec.mark + AgentHomeSpec.markGap else 0.dp
@@ -668,6 +672,7 @@ fun AgentHomeList(
     bottom: @Composable () -> Unit = {},
     selected: String? = null,
     onOpenFeed: () -> Unit = {},
+    onOpenTodos: () -> Unit = {},
 ) {
     val reduceMotion = rememberReduceMotion()
     LazyColumn(
@@ -676,7 +681,7 @@ fun AgentHomeList(
         contentPadding = contentPadding,
     ) {
         header?.invoke(this)
-        agentHomeRows(items, reduceMotion, onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface, onHold, selected, onOpenFeed)
+        agentHomeRows(items, reduceMotion, onOpen, onOpenArtifacts, onOpenSurface, onLeaveSurface, onHold, selected, onOpenFeed, onOpenTodos)
         item(key = "bottom", contentType = "bottom") { bottom() }
     }
 }

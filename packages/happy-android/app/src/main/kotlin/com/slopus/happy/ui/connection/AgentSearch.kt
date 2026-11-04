@@ -464,6 +464,7 @@ fun AgentSearchResults(
     /** Room under the last result to scroll clear of what stands at the foot (the sidebar's settings and compose). */
     bottomClearance: Dp = 0.dp,
     onOpenFeed: () -> Unit = {},
+    onOpenTodos: () -> Unit = {},
 ) {
     val colors = HappyTheme.colors
     val density = LocalDensity.current
@@ -505,6 +506,7 @@ fun AgentSearchResults(
                         tag = AgentSearchTags.result(result.key),
                         onOpen = onOpenConversation,
                         onOpenArtifacts = onOpenArtifacts,
+                        onOpenTodos = onOpenTodos,
                         onOpenSurface = onOpenSurface,
                         onOpenFeed = onOpenFeed,
                     )

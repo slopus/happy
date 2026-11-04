@@ -56,7 +56,7 @@ class AgentFeedTest {
         val feed = AgentFeed.derive(catalog(sample))
         assertEquals(
             listOf(
-                "section-places", "artifacts",
+                "section-places", "artifacts", "todos",
                 "section-bots", "agent-ab1", "agent-as1", "agent-as2", "agent-ab2",
                 "section-tasks", "agent-at2", "agent-at1",
                 "section-projects", "folder-p1", "agent-ap1", "folder-w1", "agent-aw1",
@@ -87,7 +87,7 @@ class AgentFeedTest {
         val hidden = catalog(sample.with("userSettings", kotlinx.serialization.json.JsonArray(listOf(Wire.projectsHidden(true, "v2")))))
         assertTrue(hidden.projectsHidden)
         assertEquals(
-            listOf("section-places", "artifacts", "section-bots", "agent-ab1", "agent-as1", "agent-as2", "agent-ab2", "section-tasks", "agent-at2", "agent-at1"),
+            listOf("section-places", "artifacts", "todos", "section-bots", "agent-ab1", "agent-as1", "agent-as2", "agent-ab2", "section-tasks", "agent-at2", "agent-at1"),
             keys(hidden),
         )
 
@@ -301,8 +301,8 @@ class AgentFeedTest {
         assertFalse(AgentFeed.derive(AgentCatalog()).loaded)
         val empty = AgentFeed.derive(catalog(Wire.bootstrap()))
         assertTrue(empty.loaded)
-        // Artifacts is always there, as on desktop; nothing else is.
-        assertEquals(listOf("section-places", "artifacts"), empty.rows.map { it.key })
+        // The fixed Places rows remain even before anything is created.
+        assertEquals(listOf("section-places", "artifacts", "todos"), empty.rows.map { it.key })
     }
 
     @Test
@@ -319,10 +319,10 @@ class AgentFeedTest {
         )
         val rows = AgentFeed.derive(catalog(bootstrap)).rows
         assertEquals(
-            listOf("section-places", "artifacts", "surface-s2", "surface-s3", "surface-s1", "section-bots", "agent-ab1"),
+            listOf("section-places", "artifacts", "todos", "surface-s2", "surface-s3", "surface-s1", "section-bots", "agent-ab1"),
             rows.map { it.key },
         )
-        assertEquals(AgentFeedRow.Surface("s3", "Week", "calendar"), rows[3])
+        assertEquals(AgentFeedRow.Surface("s3", "Week", "calendar"), rows[4])
     }
 
     @Test
@@ -336,7 +336,7 @@ class AgentFeedTest {
                 ("profile" to buildJsonObject { put("userId", JsonNull) }),
         )
         assertEquals(
-            listOf("section-places", "artifacts", "surface-s2", "surface-s1"),
+            listOf("section-places", "artifacts", "todos", "surface-s2", "surface-s1"),
             AgentFeed.derive(catalog(bootstrap)).rows.map { it.key },
         )
     }

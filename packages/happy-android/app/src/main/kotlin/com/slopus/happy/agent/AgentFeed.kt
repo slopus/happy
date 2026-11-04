@@ -23,6 +23,8 @@ sealed interface AgentFeedRow {
     data class Feed(val unread: Int) : AgentFeedRow {
         override val key get() = "feed"
     }
+    /** iOS direct:todos: the computer's todo lists among the fixed places. */
+    data object Todos : AgentFeedRow { override val key get() = "todos" }
 
     /**
      * A Surface the person joined: a todo list, a document, a calendar, a
@@ -238,6 +240,7 @@ data class AgentFeed(val loaded: Boolean = false, val rows: List<AgentFeedRow> =
             section(AgentFeedSection.Places) {
                 rows += AgentFeedRow.Artifacts
                 feedUnread?.let { rows += AgentFeedRow.Feed(it) }
+                rows += AgentFeedRow.Todos
                 catalog.surfaces.values
                     .filter { it.string("status") != "archived" && it["archivedAt"].isNullish() }
                     .mapNotNull { surface ->

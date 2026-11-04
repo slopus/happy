@@ -17,6 +17,7 @@ import com.slopus.happy.ui.artifacts.PlaceScaffold
 import com.slopus.happy.ui.cards.CardNote
 import com.slopus.happy.ui.page
 import com.slopus.happy.ui.surfaces.surfaceTitle
+import com.slopus.happy.ui.surfaces.openSurface
 import androidx.compose.ui.res.stringResource
 import kotlinx.serialization.Serializable
 
@@ -26,6 +27,12 @@ import kotlinx.serialization.Serializable
 
 /** Child pages share the application's page motion and predictive back. */
 fun NavGraphBuilder.todoRoutes(graph: AppGraph, nav: NavHostController) {
+    page<TodoListsRoute> { entry ->
+        val route = entry.toRoute<TodoListsRoute>()
+        val session = remember(route.connectionId) { graph.agentSessions.session(route.connectionId) }
+        if (session == null) MissingTodoConnection { nav.popBackStack() }
+        else TodoListsScreen(session, onBack = { nav.popBackStack() }, onOpen = { nav.openSurface(graph, route.connectionId, it) })
+    }
     page<TodoDeletedRoute> { entry ->
         val route = entry.toRoute<TodoDeletedRoute>()
         val session = remember(route.connectionId) { graph.agentSessions.session(route.connectionId) }
@@ -62,7 +69,7 @@ private fun TodoDeletedScreen(session: AgentSession, surfaceId: String, onBack: 
     val state by states.collectAsStateWithLifecycle(TodoListState())
     val actions = rememberTodoActions(session, surfaceId, open)
     LaunchedEffect(session, surfaceId) { session.todos.showDeleted(surfaceId) }
-    PlaceScaffold(surfaceTitle(session, stringResource(R.string.files_deleted)), onBack, tag = "todo.deleted.screen") {
+    PlaceScaffold(surfaceTitle(session, stringResource(R.string.todo_deleted_todos)), onBack, tag = "todo.deleted.screen") {
         TodoListContent(state, actions, deleted = true)
     }
 }

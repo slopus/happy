@@ -1,5 +1,7 @@
 package com.slopus.happy.ui
 
+import com.slopus.happy.ui.todos.todoRoutes
+
 import com.slopus.happy.ui.connection.openAgentSettingsRow
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -168,6 +170,7 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                                 onSettingsRow = { row -> go.open(null) { nav.openAgentSettingsRow(account.id, row) } },
                                 onOpenArtifacts = { go.open(MainPanelKey.ARTIFACTS) { nav.navigate(AgentArtifactsRoute(account.id)) } },
                                 onOpenSurface = { go.open(MainPanelKey.surface(it.id)) { nav.openSurface(graph, account.id, it.id) } },
+                                onOpenTodos = { go.open(MainPanelKey.TODOS) { nav.navigate(com.slopus.happy.ui.todos.TodoListsRoute(account.id)) } },
                                 onOpenArtifact = { go.open(null) { nav.openArtifact(account.id, it) } },
                                 onOpenFeed = { go.open(MainPanelKey.FEED) { nav.navigate(AgentFeedRoute(account.id)) } },
                                 onSignIn = { server -> go.open(null) { nav.signInToServerAgain(graph, server, replacing = account.id) } },
@@ -198,6 +201,7 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
                         connectRoutes(graph, nav)
                         chatRoutes(graph, nav, onInfo = { id -> nav.navigate(SessionInfoRoute(id)) })
                         filesRoutes(graph, nav)
+                        todoRoutes(graph, nav)
                         agentConnectionRoutes(graph, nav)
                         agentHomeRoutes(graph, nav)
                         conversationRoutes(graph, nav)

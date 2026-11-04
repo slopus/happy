@@ -28,6 +28,7 @@ class AgentSearchTest {
             is AgentFeedRow.Surface -> row.name
             AgentFeedRow.Artifacts -> "Artifacts"
             is AgentFeedRow.Feed -> "Feed"
+            AgentFeedRow.Todos -> "Todos"
             is AgentFeedRow.Section -> null
         }
     }

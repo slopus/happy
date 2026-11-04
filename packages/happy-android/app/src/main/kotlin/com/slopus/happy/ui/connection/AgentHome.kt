@@ -146,6 +146,7 @@ class AgentHomeActions(
     val onSignIn: () -> Unit = {},
     /** Opens new work with "+"'s sheet up, for its first message's picture. */
     val onComposeWithPicture: () -> Unit = onCompose,
+    val onOpenTodos: () -> Unit = {},
 )
 
 /** The colours of every bar on an agent connection's screens: the page's own [container], scrolled or not. */
@@ -254,6 +255,15 @@ fun AgentHomeScreen(
     }
     BackHandler(enabled = searching, onBack = closeSearch)
 
+    val bannerText = noticeMessage(status, profileRequired, notice)
+    val atStart = listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0
+    LaunchedEffect(bannerText) {
+        // Inserting the notice above a full list otherwise preserves its first
+        // keyed row and puts the notice offscreen. Readers at the top see it;
+        // readers further down keep their current anchor.
+        if (atStart) listState.scrollToItem(0)
+    }
+
     val items = remember(feed) { agentHomeItems(feed) }
     // New work takes the screen, so the search gives it back first (iOS); everything else leaves it for coming back.
     val compose = {
@@ -264,6 +274,7 @@ fun AgentHomeScreen(
     val untitled = stringResource(R.string.session_new_chat)
     val artifacts = stringResource(R.string.artifacts_title)
     val feedTitle = stringResource(R.string.feed_title)
+    val todos = stringResource(R.string.agent_search_todos)
     val words = rememberAgentSearchWords()
     // Read as search opens, and again as home changes under it.
     val sources by produceState(AgentSearchSources.None, searching, feed) {
@@ -277,6 +288,7 @@ fun AgentHomeScreen(
                 is AgentFeedRow.Surface -> row.name
                 AgentFeedRow.Artifacts -> artifacts
                 is AgentFeedRow.Feed -> feedTitle
+                AgentFeedRow.Todos -> todos
                 is AgentFeedRow.Section -> null
             }
         }
@@ -289,8 +301,8 @@ fun AgentHomeScreen(
     val phase = when {
         !feed.loaded && status == AgentLinkStatus.Connecting -> HomePhase.Loading
         !feed.loaded -> HomePhase.Offline
-        // Artifacts and the Feed alone are no home yet: the first chat is.
-        feed.rows.all { it is AgentFeedRow.Section || it == AgentFeedRow.Artifacts || it is AgentFeedRow.Feed } -> HomePhase.Empty
+        // Fixed places alone are no home yet: the first chat is.
+        feed.rows.all { it is AgentFeedRow.Section || it == AgentFeedRow.Artifacts || it is AgentFeedRow.Feed || it == AgentFeedRow.Todos } -> HomePhase.Empty
         else -> HomePhase.List
     }
     val chatPreview = remember { ChatPreview() }
@@ -372,6 +384,7 @@ fun AgentHomeScreen(
                             onOpen = actions.onOpenConversation,
                             onOpenArtifacts = actions.onOpenArtifacts,
                             onOpenFeed = actions.onOpenFeed,
+                            onOpenTodos = actions.onOpenTodos,
                             onOpenSurface = actions.onOpenSurface,
                             onLeaveSurface = actions.onLeaveSurface?.let { { surface: AgentFeedRow.Surface -> confirmingLeave = surface } },
                             onHold = preview?.let { { row, source -> chatPreview.open(row, source) } },
@@ -380,7 +393,7 @@ fun AgentHomeScreen(
                             // The notice is the list's first row (iOS ba0d7da0e): it comes and goes as a row does, the rows it
                             // pushes sliding with it, and a reader further down keeps their place.
                             header = run {
-                                val banner = noticeMessage(status, profileRequired, notice)
+                                val banner = bannerText
                                 val action = signInAction(status, actions, profileRequired)
                                 val header: LazyListScope.() -> Unit = {
                                     // The sidebar's search at rest: the list's first row, scrolling with it under the bar.
@@ -446,6 +459,10 @@ fun AgentHomeScreen(
                         onOpenFeed = {
                             focus.clearFocus()
                             actions.onOpenFeed()
+                        },
+                        onOpenTodos = {
+                            focus.clearFocus()
+                            actions.onOpenTodos()
                         },
                         onOpenSurface = { surface ->
                             focus.clearFocus()
@@ -689,6 +706,7 @@ fun AgentHome(
     onOpenFeed: () -> Unit = {},
     /** Signs the team server at [server] in again ([AgentConnection.server]). */
     onSignIn: (server: String) -> Unit = {},
+    onOpenTodos: () -> Unit = {},
 ) {
     val session = remember(id) { graph.agentSessions.session(id) } ?: return
     val agents by graph.agentConnections.accounts.collectAsStateWithLifecycle()
@@ -702,7 +720,7 @@ fun AgentHome(
     ReportDrawnWhen { feed.loaded || status != AgentLinkStatus.Connecting }
     val add = LocalAddFlow.current
     val switchAccount = rememberHomeAccountSwitch(graph)
-    val actions = remember(graph, session, onOpenConversation, onCompose, onComposeWithPicture, onSettings, onSettingsRow, onOpenArtifacts, onOpenSurface, onOpenArtifact, onOpenFeed, add, switchAccount, onSignIn) {
+    val actions = remember(graph, session, onOpenConversation, onCompose, onComposeWithPicture, onSettings, onSettingsRow, onOpenArtifacts, onOpenSurface, onOpenArtifact, onOpenFeed, add, switchAccount, onSignIn, onOpenTodos) {
         AgentHomeActions(
             onOpenConversation = onOpenConversation,
             onCompose = onCompose,
@@ -712,6 +730,7 @@ fun AgentHome(
             onSwitchAccount = switchAccount,
             onAdd = { add?.scan() },
             onOpenArtifacts = onOpenArtifacts,
+            onOpenTodos = onOpenTodos,
             onOpenSurface = onOpenSurface,
             onOpenArtifact = onOpenArtifact,
             onOpenFeed = onOpenFeed,

@@ -76,6 +76,7 @@ class AgentHomeLayoutTest {
     private var settings = 0
     private val settingsRows = mutableListOf<AgentSettingsRow>()
     private var artifacts = 0
+    private var todos = 0
     private val surfaces = mutableListOf<AgentFeedRow.Surface>()
     private val actions = AgentHomeActions(
         onOpenConversation = { opened += it },
@@ -86,6 +87,7 @@ class AgentHomeLayoutTest {
         onSwitchAccount = {},
         onAdd = {},
         onOpenArtifacts = { artifacts++ },
+        onOpenTodos = { todos++ },
         onOpenSurface = { surfaces += it },
         onOpenArtifact = { openedArtifacts += it.id },
     )
@@ -226,15 +228,17 @@ class AgentHomeLayoutTest {
     @Test
     fun artifactsAndTheJoinedSurfacesOpenTheFirstCard() {
         show(feed())
-        val rows = listOf("artifacts", "surface-s1", "surface-s2").map { rule.node(AgentHomeTags.row(it)).bounds }
+        val rows = listOf("artifacts", "todos", "surface-s1", "surface-s2").map { rule.node(AgentHomeTags.row(it)).bounds }
         rows.zipWithNext().forEach { (a, b) -> assertDp("rows touch", a.bottom, b.top) }
         assertDp("the bots' card follows", rows.last().bottom, rule.node(AgentHomeTags.row("section-bots")).bounds.top)
         // Only the Surfaces the person joined, in their own order.
         rule.onAllNodesWithTag(AgentHomeTags.row("surface-s3"), useUnmergedTree = true).assertCountEquals(0)
         rule.onNodeWithText("Artifacts", useUnmergedTree = true).assertExists()
         rule.node(AgentHomeTags.row("artifacts")).performClick()
+        rule.node(AgentHomeTags.row("todos")).performClick()
         rule.node(AgentHomeTags.row("surface-s2")).performClick()
         assertEquals(1, artifacts)
+        assertEquals(1, todos)
         assertEquals(listOf(AgentFeedRow.Surface("s2", "Groceries", "todo")), surfaces)
         assertTrue(opened.isEmpty())
     }
@@ -282,10 +286,10 @@ class AgentHomeLayoutTest {
     @Test
     fun botsTasksAndProjectsWearAMarkAndSubtasksAndProjectConversationsNone() {
         show(feed())
-        // Artifacts, the two Surfaces, the two bots, the three tasks and the project.
-        rule.onAllNodesWithTag(AgentHomeTags.ROW_MARK, useUnmergedTree = true).assertCountEquals(9)
+        // Artifacts, Todos, the two Surfaces, the two bots, the three tasks and the project.
+        rule.onAllNodesWithTag(AgentHomeTags.ROW_MARK, useUnmergedTree = true).assertCountEquals(10)
         val bot = rule.node(AgentHomeTags.row("agent-ab1")).bounds
-        val mark = rule.onAllNodesWithTag(AgentHomeTags.ROW_MARK, useUnmergedTree = true)[3].bounds
+        val mark = rule.onAllNodesWithTag(AgentHomeTags.ROW_MARK, useUnmergedTree = true)[4].bounds
         // The card 16 in from the window, the mark 16 in from the card.
         assertBox("bot mark", mark, 32.dp, bot.top + 9.dp, 30.dp, 30.dp)
         fun titleStart(title: String) = rule.onNodeWithText(title, useUnmergedTree = true).bounds.left
@@ -343,8 +347,8 @@ class AgentHomeLayoutTest {
         }
         rule.waitForIdle()
         assertEquals(listOf("/v0/bots/b1/avatar"), read)
-        // Artifacts' and the two bots'.
-        rule.onAllNodesWithTag(AgentHomeTags.ROW_MARK, useUnmergedTree = true).assertCountEquals(3)
+        // Artifacts, Todos and the two bots.
+        rule.onAllNodesWithTag(AgentHomeTags.ROW_MARK, useUnmergedTree = true).assertCountEquals(4)
     }
 
     /** A bot without a picture, a task and a project without one wear the placeholder their own ids pick, as on happy-ios. */
@@ -620,7 +624,7 @@ class AgentHomeLayoutTest {
                 val notice = rule.node(AgentHomeTags.BANNER).bounds
                 rule.onNodeWithText("The computer did not answer.", useUnmergedTree = true).assertExists()
                 val pushed = rule.node(AgentHomeTags.row("section-places")).bounds
-                assertTrue("the notice above where the rows began", notice.top <= first.top)
+                assertDp("notice content at the top with its 8 outer and 16 inner padding", first.top + 24.dp, notice.top)
                 assertTrue("the rows pushed under it", pushed.top >= notice.bottom && pushed.top > first.top)
             } else {
                 rule.onAllNodesWithTag(AgentHomeTags.BANNER, useUnmergedTree = true).assertCountEquals(0)
