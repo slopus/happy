@@ -15,9 +15,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
 import com.slopus.happy.agent.AgentClient
+import com.slopus.happy.chat.SessionAuthor
 import com.slopus.happy.ui.components.avatar.PlaceholderAvatar
 import com.slopus.happy.ui.connection.AgentPicture
 import androidx.compose.foundation.shape.CircleShape
@@ -109,8 +108,7 @@ object ConversationRowSpec {
     val photosGap = 4.dp
     val label = happyTextStyle(fontSize = 13, lineHeight = 18, weight = FontWeight.SemiBold)
     val body = happyTextStyle(fontSize = 14, lineHeight = 20)
-    val storyLine = happyTextStyle(fontSize = 12, lineHeight = 16)
-    val storyAuthor = happyTextStyle(fontSize = 13, lineHeight = 20, weight = FontWeight.SemiBold)
+    val storyAuthor = happyTextStyle(fontSize = 12, lineHeight = 20, weight = FontWeight.SemiBold)
     val notice = happyTextStyle(fontSize = 13, lineHeight = 18)
     val icon = 16.dp
 }
@@ -308,8 +306,10 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
         Delivery.Sent -> MessageDelivery.Accepted
         is Delivery.Failed -> MessageDelivery.Failed
     }
+    // Another person's message stands at the left under their name, in desktop's neutral bubble.
+    val sender = row.sender
     val message = remember(row) {
-        ChatMessage.UserText(id = row.key, localId = row.messageId, createdAt = row.createdAt, text = row.text)
+        ChatMessage.UserText(id = row.key, localId = row.messageId, createdAt = row.createdAt, text = row.text, author = sender?.let { SessionAuthor(it.userId, it.name, owner = false) })
     }
     // The photos go under the words, against the right edge as the bubble is; each still
     // going to the computer under its ring (iOS 5ac4296c2). Movable: a message of pictures
@@ -318,7 +318,7 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
         movableContentOf { row: ConversationRow.User, actions: ConversationRowActions ->
             val sending = row.delivery == Delivery.Sending
             InlinePictures(
-                row.key, row.pictures, actions, MediaFlow.message, alignEnd = true, measure = MediaFlow::messageMeasure, limit = true,
+                row.key, row.pictures, actions, MediaFlow.message, alignEnd = row.sender == null, measure = MediaFlow::messageMeasure, limit = true,
                 upload = { index -> if (sending) actions.uploads?.phase(UploadBoard.pictureKey(row.messageId, index)) ?: UploadPhase.Preparing else null },
                 onCancel = { index -> actions.onRemovePicture(row.messageId, index) },
             )
@@ -331,7 +331,7 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
     if (row.text.isNotEmpty() || failed) {
         UserMessage(
             ChatRow.User(message, UserDisplay.Text(row.text, row.blocks), delivery = delivery, time = row.createdAt),
-            bubble,
+            if (sender == null) bubble else HappyTheme.colors.surfacePressed.let { BubblePalette(it, it, it) },
             actions.legacy,
             modifier.fillMaxWidth(),
             statusLine = false,
@@ -343,7 +343,8 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
             onTap = if (cut != null) ({ actions.onToggleMessage(row.key) }) else null,
             tapLabel = toggle,
             body = if (prose != null) { _ -> UserProse(row, prose, cut, actions.legacy) } else null,
-            header = row.story?.let { story -> { StoryQuoteCard(story, row.messageId, actions.title) } },
+            header = row.story?.let { story -> { StoryQuote(story, row.messageId, actions.title, alignEnd = sender == null) } },
+            authorAvatar = sender?.let { { PlaceholderAvatar(it.userId, 20.dp) } },
         )
     } else if (row.pictures.isNotEmpty()) {
         Box(
@@ -355,33 +356,33 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
 }
 
 /**
- * Desktop's story-reply quote, 4 over the person's bubble: a surfaceHighest
- * card (radius 10, padding 6, at most 280 wide) with the story's first frame
- * (36 × 64, radius 6, cropped to fill; surfaceRipple without one) and, 8
- * beside it and centred, 2 apart: "Story" (12/16 textSecondary), the
- * author's 16 avatar and name ([ConversationRowSpec.label]) 6 apart, and the
- * caption on one line (12/16 textSecondary). The frame never plays, and a
- * tap does nothing: the phone has no story viewer.
+ * Desktop's story-reply quote over the person's bubble, on its side, as an
+ * attached photo would be: the story's first frame, the size one 9:16 photo
+ * of a message is ([MediaFlow.message]), in a photo's tile (corners 8, the
+ * divider hairline; surfacePressed without a frame), then 6 under it the
+ * author's 20 avatar (an agent's tile rounded 6, a person's circle) and
+ * name 6 apart (12/20 semibold textSecondary), 8 over the bubble. The frame
+ * never plays, and a tap does nothing: the phone has no story viewer.
  */
 @Composable
-private fun StoryQuoteCard(story: ConversationRow.StoryQuote, messageId: String, title: String?) {
+private fun StoryQuote(story: ConversationRow.StoryQuote, messageId: String, title: String?, alignEnd: Boolean) {
     val colors = HappyTheme.colors
-    Row(
-        Modifier.padding(bottom = 4.dp).testTag(ConversationRowTags.STORY).widthIn(max = 280.dp).clip(RoundedCornerShape(10.dp)).background(colors.surfaceHighest)
-            .border(1.dp, colors.divider, RoundedCornerShape(10.dp)).padding(start = 6.dp, top = 6.dp, end = 12.dp, bottom = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    val shape = RoundedCornerShape(ConversationMediaSpec.radius)
+    Column(
+        Modifier.padding(bottom = 8.dp).testTag(ConversationRowTags.STORY),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start,
     ) {
-        val frame = "/v0/agents/${AgentClient.escape(story.agentId)}/messages/${AgentClient.escape(messageId)}/story-frame"
-        if (story.frame) AgentPicture(frame, story.thumbhash, 36.dp, radius = 4.dp, height = 64.dp) else Box(Modifier.size(36.dp, 64.dp).clip(RoundedCornerShape(4.dp)).background(colors.surfaceRipple))
-        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(stringResource(R.string.conversation_story), style = ConversationRowSpec.storyLine, color = colors.textSecondary, maxLines = 1)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
-                PlaceholderAvatar(story.seed, 20.dp, shape = if (story.person) CircleShape else RoundedCornerShape(6.dp))
-                val untitled = if (story.person) "" else title ?: stringResource(R.string.reference_untitled_agent)
-                Text(story.author ?: untitled, style = ConversationRowSpec.storyAuthor, color = colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        MediaFlowLayout(listOf(MediaFlow.Item(false, MediaFlow.Image(hashedRatio = 9f / 16f))), limits = MediaFlow.message, alignEnd = alignEnd, measure = MediaFlow::messageMeasure) {
+            Box(Modifier.clip(shape).background(colors.surfacePressed).border(ConversationMediaSpec.outline, colors.divider, shape)) {
+                val frame = "/v0/agents/${AgentClient.escape(story.agentId)}/messages/${AgentClient.escape(messageId)}/story-frame"
+                if (story.frame) AgentPicture(frame, story.thumbhash, 360.dp, radius = ConversationMediaSpec.radius)
             }
-            story.caption?.let { Text(it, style = ConversationRowSpec.storyLine, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            PlaceholderAvatar(story.seed, 20.dp, shape = if (story.person) CircleShape else RoundedCornerShape(6.dp))
+            val untitled = if (story.person) "" else title ?: stringResource(R.string.reference_untitled_agent)
+            Text(story.author ?: untitled, style = ConversationRowSpec.storyAuthor, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }

@@ -110,5 +110,4 @@
     <string name="conversation_failure_internal">Something went wrong: %1$s</string>
     <string name="conversation_editor_expand">Expand</string>
     <string name="conversation_editor_collapse">Collapse</string>
-    <string name="conversation_story">Story</string>
 </resources>

@@ -106,5 +106,4 @@
     <string name="conversation_failure_internal">出了点问题：%1$s</string>
     <string name="conversation_editor_expand">展开</string>
     <string name="conversation_editor_collapse">收起</string>
-    <string name="conversation_story">快拍</string>
 </resources>

@@ -207,6 +207,8 @@ fun UserMessage(
     tapLabel: String? = null,
     /** Above the bubble, against it: a story reply's quote. */
     header: (@Composable () -> Unit)? = null,
+    /** Beside another person's name, before it: their face, the name then against the edge. */
+    authorAvatar: (@Composable () -> Unit)? = null,
 ) {
     val message = row.message
     val colors = HappyTheme.colors
@@ -288,17 +290,19 @@ fun UserMessage(
         horizontalAlignment = alignment,
     ) {
         if (fromOther) {
-            Text(
-                text = message.author?.name.orEmpty(),
-                style = MessageSpec.author,
-                color = colors.text,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .padding(bottom = MessageSpec.authorMarginBottom)
-                    .testTag(MessageTags.USER_AUTHOR)
-                    .padding(horizontal = MessageSpec.authorPaddingHorizontal),
-            )
+            Row(Modifier.padding(bottom = MessageSpec.authorMarginBottom), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                authorAvatar?.invoke()
+                Text(
+                    text = message.author?.name.orEmpty(),
+                    style = MessageSpec.author,
+                    color = colors.text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .testTag(MessageTags.USER_AUTHOR)
+                        .padding(horizontal = if (authorAvatar == null) MessageSpec.authorPaddingHorizontal else 0.dp),
+                )
+            }
         }
         header?.invoke()
         val discardLabel = stringResource(R.string.common_discard)

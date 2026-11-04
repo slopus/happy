@@ -106,5 +106,4 @@
     <string name="conversation_failure_internal">問題が発生しました: %1$s</string>
     <string name="conversation_editor_expand">展開</string>
     <string name="conversation_editor_collapse">折りたたむ</string>
-    <string name="conversation_story">ストーリー</string>
 </resources>

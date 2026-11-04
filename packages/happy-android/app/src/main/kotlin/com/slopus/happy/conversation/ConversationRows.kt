@@ -72,14 +72,19 @@ sealed interface ConversationRow {
         val opened: Boolean = false,
         /** The story a reply answers, quoted above its words. */
         val story: StoryQuote? = null,
+        /** Written by another person than the reader: who, at the left under their name. */
+        val sender: Sender? = null,
     ) : ConversationRow
+
+    /** Another person who wrote a message, [name] as named now ("" while unnamed). */
+    data class Sender(val userId: String, val name: String)
 
     /**
      * A story reply's quote: who posted the story (a person who reposted it,
-     * else its agent; [author] as named now, null while unnamed) and its
-     * caption. Its first frame is the message's `story-frame` when [frame], over [thumbhash].
+     * else its agent; [author] as named now, null while unnamed). Its first
+     * frame is the message's `story-frame` when [frame], over [thumbhash].
      */
-    data class StoryQuote(val agentId: String, val seed: String, val person: Boolean, val author: String?, val caption: String?, val frame: Boolean, val thumbhash: String? = null)
+    data class StoryQuote(val agentId: String, val seed: String, val person: Boolean, val author: String?, val frame: Boolean, val thumbhash: String? = null)
 
     /**
      * An answer's text. While it streams, [live] carries its words as they
@@ -232,10 +237,10 @@ class ConversationRowBuilder(
         cache[message.id]?.let { if (!streaming && !it.streaming && it.message == message && (!it.names || it.references === references)) return it.rows }
         val rows = build(message, agentId, parentAgentId, streaming, if (streaming) ::live else null, references)
         val shown = message.content.mapNotNull { block -> (block as? Block.ToolCall)?.presentation?.let(::inlineCandidate) }
-        val names = shown.isNotEmpty() || message.quote != null || message.content.any { it is Block.Text && References.mayHold(it.text) }
+        val names = shown.isNotEmpty() || message.quote != null || message.userId != null || message.content.any { it is Block.Text && References.mayHold(it.text) }
         if (names) named?.let { tell -> message.content.forEach { if (it is Block.Text) tell(it.text) } }
-        // A story a person reposted names them.
-        message.quote?.get("userId").str?.let { named?.invoke("<happy-user id=\"$it\"/>") }
+        // A story a person reposted names them, as another person who wrote it.
+        listOfNotNull(message.quote?.get("userId").str, message.userId).forEach { named?.invoke("<happy-user id=\"$it\"/>") }
         if (references != null) shown.filter { references.artifacts[it] == null }.takeIf { it.isNotEmpty() }?.let { pages?.invoke(it) }
         // The pictures are read here, on the lane, so the rows find them read on the main thread.
         for (row in rows) when (row) {
@@ -326,7 +331,9 @@ class ConversationRowBuilder(
                 val pictures = message.content.filterIsInstance<Block.Image>()
                 if (text.isEmpty() && pictures.isEmpty()) return emptyList()
                 val delivery = if (message.status == "pending") Delivery.Pending else Delivery.Sent
-                return listOf(ConversationRow.User("$id:user", id, text, parseMarkdown(text), pictures, delivery, message.createdAt, story = story))
+                val me = references?.me
+                val sender = message.userId?.takeIf { message.role == "user" && me != null && it != me }?.let { ConversationRow.Sender(it, references?.users?.get(it).orEmpty()) }
+                return listOf(ConversationRow.User("$id:user", id, text, parseMarkdown(text), pictures, delivery, message.createdAt, story = story, sender = sender))
             }
             val rows = ArrayList<ConversationRow>()
             message.content.forEachIndexed { index, block ->
@@ -405,7 +412,7 @@ class ConversationRowBuilder(
             val agentId = quote["agentId"].str ?: return null
             val userId = quote["userId"].str
             val author = if (userId != null) references?.users?.get(userId) else references?.agents?.get(agentId)?.label
-            return ConversationRow.StoryQuote(agentId, userId ?: agentId, userId != null, author, quote["caption"].str, quote["frame"].obj != null, quote["frame"].obj?.get("thumbhash").str)
+            return ConversationRow.StoryQuote(agentId, userId ?: agentId, userId != null, author, quote["frame"].obj != null, quote["frame"].obj?.get("thumbhash").str)
         }
 
         fun inboundText(text: String, agentId: String): String {
