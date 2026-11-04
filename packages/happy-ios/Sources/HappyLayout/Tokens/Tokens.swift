@@ -285,4 +285,7 @@ extension ChatTextStyles {
     /// Show full / Show less under a long message: desktop's quiet mono
     /// meta line (`agent-trace-row.css`, `data-variant="meta"`), 11/16.
     public static let fold = ChatTextStyle(.plex(.mono), size: 11, lineHeight: 16)
+    /// A story reply's quote: "Story" and the caption, then its author.
+    public static let storyLine = ChatTextStyle(.figtree(.regular), size: 12, lineHeight: 16)
+    public static let storyAuthor = ChatTextStyle(.figtree(.semibold), size: 13, lineHeight: 18)
 }

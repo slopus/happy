@@ -657,6 +657,8 @@ extension AgentWire {
         public var status: String?
         public var runId: String?
         public var metadata: MessageMetadata?
+        /// What a person's message quotes (`quote`), kept as sent: a story's is a `StoryQuote`.
+        public var quote: JSONValue?
         /// An error service message's diagnostics (`error`) and typed
         /// failure (`failure`), kept as sent; `Failure` reads them.
         public var error: JSONValue?
@@ -686,6 +688,17 @@ extension AgentWire {
             self.senderAgentId = senderAgentId
             self.senderAgentExplanation = senderAgentExplanation
         }
+    }
+
+    /// A `quote` of `kind` `story`: who posted the story (a person who
+    /// reposted it, else its agent), its caption, and whether its first
+    /// frame is at `GET /v0/agents/:agentId/messages/:messageId/story-frame`.
+    public struct StoryQuote: Equatable, Sendable, Codable {
+        public var kind: String
+        public var agentId: String
+        public var userId: String?
+        public var caption: String?
+        public var frame: JSONValue?
     }
 
     public struct Run: Equatable, Sendable, Codable {

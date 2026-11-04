@@ -15,9 +15,11 @@ private struct AgentChatSockets: WebSocketConnector {
 
 /// One agent, `harness`, with forty turns of a question and a few lines of
 /// answer, and nothing streaming. With `slash`, it offers slash commands
-/// (one with a picture), and its last turn is a `/compact`.
+/// (one with a picture), and its last turn is a `/compact`. With `story`,
+/// it is Scout, and its last turn answers a reply to its story.
 private struct AgentChatComputer: AgentTransport {
     var slash = false
+    var story = false
 
     private static func text(_ text: String) -> JSONValue { .object(["type": .string("text"), "text": .string(text)]) }
 
@@ -34,6 +36,27 @@ private struct AgentChatComputer: AgentTransport {
                 message("m\(index)", role: "agent", [text(answer)]),
             ]),
         ])
+    }
+
+    /// A person's reply to Scout's story, quoted, and Scout's answer.
+    private static let storyReply: JSONValue = .object([
+        "id": .string("story-run"), "status": .string("completed"), "startedAt": .number(3_000), "endedAt": .number(4_000), "reason": .string("completed"),
+        "messages": .array([
+            .object(["id": .string("story"), "role": .string("user"), "createdAt": .number(1_762_000_000_000), "content": .array([text("This looks so much cleaner! Did the drop-off improve?")]),
+                     "quote": .object(["kind": .string("story"), "storyId": .string("s1"), "agentId": .string("harness"), "userId": .null, "caption": .string("Shipped the new onboarding today"), "expiresAt": .number(0), "frame": .object(["mimeType": .string("image/png")])])]),
+            message("story-answer", role: "agent", [text("It did: completion went from 61% to 78% in the first day.")]),
+        ]),
+    ])
+
+    /// The story's first frame: a 9:16 sunset over hills.
+    private static let frame: Data = UIGraphicsImageRenderer(size: CGSize(width: 180, height: 320)).pngData { context in
+        let colors = [UIColor.systemOrange.cgColor, UIColor.systemPink.cgColor, UIColor.systemPurple.cgColor] as CFArray
+        let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors, locations: [0, 0.5, 1])!
+        context.cgContext.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: 0, y: 320), options: [])
+        UIColor.systemYellow.setFill()
+        UIBezierPath(ovalIn: CGRect(x: 60, y: 120, width: 60, height: 60)).fill()
+        UIColor(white: 0.1, alpha: 0.85).setFill()
+        UIBezierPath(ovalIn: CGRect(x: -80, y: 200, width: 340, height: 260)).fill()
     }
 
     private static func command(_ name: String, _ description: String, kind: String?, arguments: Bool, thumbhash: String? = nil) -> JSONValue {
@@ -74,9 +97,11 @@ private struct AgentChatComputer: AgentTransport {
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         let value: JSONValue
         if path.contains("/agents/harness/messages?") {
-            value = .object(["hasMore": .bool(false), "runs": .array(Self.runs + (slash ? [Self.compaction] : []))])
+            value = .object(["hasMore": .bool(false), "runs": .array(Self.runs + (slash ? [Self.compaction] : []) + (story ? [Self.storyReply] : []))])
+        } else if story, path.hasSuffix("/agents/harness/messages/story/story-frame") {
+            return HTTP1Response(status: 200, body: Self.frame)
         } else if path.hasSuffix("/agents/harness/bootstrap") {
-            value = .object(["agent": .object(["id": .string("harness"), "workspaceId": .string("w"), "status": .string("idle")]), "pending": .array([]),
+            value = .object(["agent": .object(["id": .string("harness"), "workspaceId": .string("w"), "status": .string("idle"), "title": story ? .string("Scout") : .null]), "pending": .array([]),
                              "slashCommands": .array(slash ? Self.commands : [])])
         } else if slash, path.hasSuffix("/slash-commands/code-review/image") {
             return HTTP1Response(status: 200, body: Self.picture)
@@ -111,7 +136,7 @@ final class AgentChatHarness {
         let account = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/agent-chat",
             credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
-            agentConnectionCredentialStore: InMemoryAgentConnectionCredentialStore(), agentTransport: { _ in AgentChatComputer(slash: arguments.contains("-slash")) },
+            agentConnectionCredentialStore: InMemoryAgentConnectionCredentialStore(), agentTransport: { _ in AgentChatComputer(slash: arguments.contains("-slash"), story: arguments.contains("-story")) },
             rnServerImport: { .confirmed(ServerConfig.defaultServerURL) }, transport: AgentChatHTTP(), connector: AgentChatSockets()
         )
         self.account = account
@@ -125,7 +150,7 @@ final class AgentChatHarness {
             AppCoordinator.applyAppearance(to: navigation.navigationBar)
             window.rootViewController = navigation
             window.layoutIfNeeded()
-            let chat = ChatViewController(session: session, agentId: "harness", title: "Cache", spaceId: nil, intro: nil)
+            let chat = ChatViewController(session: session, agentId: "harness", title: arguments.contains("-story") ? "Scout" : "Cache", spaceId: nil, intro: nil)
             navigation.pushViewController(chat, animated: false)
             let probe = ChatScrollProbe(window: window, chat: chat)
             self.probe = probe
@@ -136,6 +161,12 @@ final class AgentChatHarness {
                 try? await Task.sleep(for: .seconds(1))
                 chat.card.setText(draft, selection: NSRange(location: (draft as NSString).length, length: 0))
                 chat.agentInputCardDidChangeText(chat.card)
+            }
+            // `-story`: the quoted reply as drawn, in Documents/story-reply.png.
+            if arguments.contains("-story") {
+                try? await Task.sleep(for: .seconds(4))
+                let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in _ = window.drawHierarchy(in: window.bounds, afterScreenUpdates: true) }
+                try? image.pngData()?.write(to: URL.documentsDirectory.appendingPathComponent("story-reply.png"))
             }
         } catch {
             print("AGENT_CHAT error: \(error)")

@@ -783,6 +783,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         }
         guard let spaceId, let row = snapshot.allRows.first(where: { $0.spaceId == spaceId }) else { return }
         rowName = (row.label, row.titled)
+        media.mark = row.mark
         applyTitle()
         let next: Intro? = switch row.mark {
         case .clay(let slug): .clay(slug)
@@ -982,7 +983,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     }
 
     private var planKey: ChatPlanner.Key {
-        var key = ChatPlanner.Key(width: transcriptWidth, maxContentWidth: ContentWidth.maxWidth, environment: traitCollection.textEnvironment, references: subagentReferences, subagentTitles: chat.subagentTitles, pageHeights: pageHeights)
+        var key = ChatPlanner.Key(width: transcriptWidth, maxContentWidth: ContentWidth.maxWidth, environment: traitCollection.textEnvironment, references: subagentReferences, subagentTitles: chat.subagentTitles, pageHeights: pageHeights, title: chat.title)
         // Only a failure card reads the composer's model; without one the
         // key stays the warm chat's, so its rows planned ahead are taken.
         if chat.items.contains(where: { if case .failure = $0.role { true } else { false } }) {
@@ -1124,7 +1125,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             Task { await store.readArtifacts(pages) }
         }
         // So are the names of the people they mention.
-        let people = fresh.flatMap { references.unknownUsers(in: $0.text) }
+        let people = fresh.flatMap { references.unknownUsers(in: $0.text) + ($0.story?.userId.map { references.users[$0] == nil ? [$0] : [] } ?? []) }
         if !people.isEmpty {
             let store = session.store
             Task { await store.readUsers(people) }

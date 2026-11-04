@@ -53,6 +53,8 @@ extension Strings {
     /// An agent this one spawned that has no title yet (`projectSubagents`).
     public static let subagent = "Subagent"
     public static let untitledAgent = "Untitled agent"
+    /// Over who posted the story a reply quotes.
+    public static let story = "Story"
     public static let agentMessageOpenHint = "Shows the message"
     public static let agentMessageCloseHint = "Hides the message"
     /// A section's "+", for VoiceOver.

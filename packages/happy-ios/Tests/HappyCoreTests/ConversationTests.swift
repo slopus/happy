@@ -56,6 +56,21 @@ final class ConversationTests: XCTestCase {
         XCTAssertEqual(Conversation.inboundText("Message from agent c2: Done.", agentId: "c1"), "Message from agent c2: Done.")
     }
 
+    /// A story reply quotes its story (`quote`); a quote of a kind this
+    /// build doesn't know, or one it can't read, quotes nothing.
+    func testAStoryReplyReadsItsQuote() throws {
+        let json = #"{"id":"m","role":"user","createdAt":1,"content":[{"type":"text","text":"Looks great!"}],"quote":{"kind":"story","storyId":"s1","agentId":"a1","userId":null,"caption":"Launch day","expiresAt":2,"frame":{"mimeType":"image/jpeg","thumbhash":"1QcSHQRnh493V4dIh4eXh1h4kJUI"}}}"#
+        let message = try JSONDecoder().decode(AgentWire.Message.self, from: Data(json.utf8))
+        let story = try JSONDecoder().decode(AgentWire.StoryQuote.self, from: JSONEncoder().encode(XCTUnwrap(message.quote)))
+        XCTAssertEqual(story.agentId, "a1")
+        XCTAssertNil(story.userId)
+        XCTAssertEqual(story.caption, "Launch day")
+        XCTAssertEqual(story.frame?["thumbhash"]?.stringValue, "1QcSHQRnh493V4dIh4eXh1h4kJUI")
+        // Another kind still reads as a message.
+        let other = #"{"id":"m","role":"user","createdAt":1,"content":[{"type":"text","text":"Hi"}],"quote":{"kind":"poll"}}"#
+        XCTAssertNoThrow(try JSONDecoder().decode(AgentWire.Message.self, from: Data(other.utf8)))
+    }
+
     /// The phone keeps a conversation's newest page of runs, as desktop keeps
     /// one nobody reads; what is pending stays whatever run it is in.
     func testThePhoneKeepsTheNewestRuns() {

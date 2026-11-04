@@ -224,6 +224,8 @@ struct ChatMedia: Equatable, Sendable {
     var label: String
     /// Still going to the computer: its ring.
     var upload: ChatUpload? = nil
+    /// Cropped to fill its tile, with these corners (a story quote's).
+    var cover: CGFloat? = nil
 }
 
 /// A picture or video of a message on its way: how far it is lives on

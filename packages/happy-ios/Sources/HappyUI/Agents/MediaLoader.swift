@@ -1,6 +1,7 @@
 #if canImport(UIKit)
 import AVFoundation
 import HappyCore
+import HappyLayout
 import os
 import UIKit
 import UniformTypeIdentifiers
@@ -25,6 +26,10 @@ final class MediaLoader: NSObject, ChatMediaSource {
     private var sent: [String: Data] = [:]
     /// Files still on their way, read from their copy on this phone.
     private var local: [String: ChatItem.SentFile] = [:]
+    /// Story replies by their frame's and author's keys, and the mark home
+    /// gives this conversation, which is the face of its own stories.
+    private var stories: [String: (messageId: String, story: AgentWire.StoryQuote)] = [:]
+    var mark: Row.Mark?
     private var streams: [String: MediaStream] = [:]
     private var durations: [String: Double] = [:]
     /// Files a person asked for, read whatever the automatic rules say.
@@ -72,6 +77,7 @@ final class MediaLoader: NSObject, ChatMediaSource {
     /// What the conversation shows now, by the keys its plans draw.
     func register(_ items: [ChatItem]) {
         for item in items {
+            if let story = item.story { for avatar in [false, true] { stories[Self.storyKey(item.id, avatar: avatar)] = (item.id, story) } }
             for piece in item.pieces {
                 switch piece {
                 case .picture(let id, _, let data): sent[Self.sentKey(id)] = data
@@ -86,6 +92,7 @@ final class MediaLoader: NSObject, ChatMediaSource {
     }
 
     nonisolated static func sentKey(_ id: String) -> String { "sent/\(id)" }
+    nonisolated static func storyKey(_ id: String, avatar: Bool) -> String { avatar ? "story/\(id)/avatar" : "story/\(id)" }
 
     func media(_ key: String) -> Media? { tools[key] }
 
@@ -165,6 +172,9 @@ final class MediaLoader: NSObject, ChatMediaSource {
             image = await Self.picture(file, pixels: pixels)
         } else if let media = tools[key] {
             image = media.isVideo ? await poster(media, pixels: pixels) : await picture(media, pixels: pixels)
+        } else if case let (messageId, story)? = stories[key] {
+            let frame = "/v0/agents/\(agentId)/messages/\(messageId)/story-frame"
+            image = key.hasSuffix("/avatar") ? await author(story, pixels: pixels) : await Self.read(client, frame, pixels: pixels)
         } else {
             image = nil
         }
@@ -173,6 +183,20 @@ final class MediaLoader: NSObject, ChatMediaSource {
             images.setObject(Decoded(pixels: pixels, image: image), forKey: key as NSString, cost: cost)
         }
         return image
+    }
+
+    /// Who posted a story: a person's placeholder, else this conversation's
+    /// face as home draws it (its picture, or its placeholder).
+    private func author(_ story: AgentWire.StoryQuote, pixels: Int) async -> UIImage? {
+        let own = story.userId == nil && story.agentId == agentId ? mark : nil
+        if case .image(let path, _)? = own { return await Self.read(client, path, pixels: pixels) }
+        let seed = if case .placeholder(let seed)? = own { seed } else { story.userId ?? story.agentId }
+        return await AvatarPlaceholderImages.image(seed: seed, side: StoryQuoteLayout.Metrics.avatar)
+    }
+
+    private nonisolated static func read(_ client: AgentClient, _ path: String, pixels: Int) async -> UIImage? {
+        guard let data = try? await client.image(path) else { return nil }
+        return await Task.detached(priority: .userInitiated) { Images.decode(data, maxPixels: pixels) }.value
     }
 
     /// A tool's picture from the library: read first where the rules or a

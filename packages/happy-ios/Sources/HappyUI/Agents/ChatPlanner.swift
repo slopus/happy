@@ -20,6 +20,8 @@ actor ChatPlanner {
         var subagentTitles: [String: String] = [:]
         /// Inline pages' heights as they measured themselves, by artifact ID.
         var pageHeights: [String: CGFloat] = [:]
+        /// The conversation's title: who posted its own stories, when the lists don't name it.
+        var title: String?
         /// The composer's model, which a failure card offers to continue on.
         var switchTarget: SwitchTarget?
         /// Models' names by ID, for what a failure was switched to.
@@ -223,16 +225,38 @@ actor ChatPlanner {
             let ink = onMedia ? Palette.deliveryOnMedia : Palette.deliveryInk
             let time = MessageTime.text(item.time, ink: ink, in: environment)
             let status = MessageTime.status(time, in: environment)
+            // A story reply: desktop's quote card, the story's first frame
+            // never playing, "Story" over who posted it, its caption.
+            let quote = item.story.map { story -> [NSAttributedString] in
+                let name = story.userId.map { key.references.users[$0] ?? "" } ?? key.references.agents[story.agentId]?.label ?? key.title ?? Strings.untitledAgent
+                let lines = [(Strings.story, ChatTextStyles.storyLine, Palette.textSecondary), (name, ChatTextStyles.storyAuthor, Palette.text)] + (story.caption.map { [($0, ChatTextStyles.storyLine, Palette.textSecondary)] } ?? [])
+                return lines.map { $0.1.string($0.0, color: $0.2, lineBreakMode: .byTruncatingTail, in: environment) }
+            }
+            let measured = quote?.map { line in Measurable { _ in ChatTextLayout(unwrapped: line).size } }
             let layout = MessageLayout.user(
                 width: width, maxContentWidth: key.maxContentWidth, text: body?.measurable,
                 fold: body.map { _ in .init(preview: preview.measurable, control: control.measurable, opened: opened, lineHeight: ChatTextStyles.text.lineHeight ?? 24) },
                 // A refusal is the red mark in the slot, as Telegram's: no
                 // line under the bubble, so the row never grows when a send fails.
                 pictures: pictures.map(\.image), showsStatus: false,
-                delivery: status, trailing: body?.trailing
+                delivery: status, trailing: body?.trailing,
+                quote: measured.map { ($0[0], $0[1], $0.count > 2 ? $0[2] : nil) }
             )
             var items: [ChatDrawItem] = []
             var hits: [ChatHit] = []
+            if let quote, let placed = layout.quote {
+                items.append(.box(ChatBox(frame: placed.card, fill: Palette.questionBox, radius: StoryQuoteLayout.Metrics.radius)))
+                // Without a frame, a quiet tile in its place.
+                if let frame = item.story?.frame {
+                    items.append(.media(ChatMedia(key: MediaLoader.storyKey(item.id, avatar: false), isVideo: false, thumbhash: frame["thumbhash"]?.stringValue, label: Strings.story, cover: StoryQuoteLayout.Metrics.frameRadius), frame: placed.frame))
+                } else {
+                    items.append(.box(ChatBox(frame: placed.frame, fill: Palette.rowPressed, radius: StoryQuoteLayout.Metrics.frameRadius)))
+                }
+                items.append(.media(ChatMedia(key: MediaLoader.storyKey(item.id, avatar: true), isVideo: false, thumbhash: nil, label: "", cover: placed.avatar.width / 2), frame: placed.avatar))
+                for (line, frame) in zip(quote, [placed.label, placed.name] + (placed.caption.map { [$0] } ?? [])) {
+                    items.append(.text(ChatTextLayout(line, width: frame.width, maxLines: 1), frame))
+                }
+            }
             if let bubble = layout.bubble {
                 items.append(.box(ChatBox(frame: bubble, fill: Palette.userBubble, radius: M.bubbleRadius)))
                 if layout.foldControl != nil { hits.append(ChatHit(frame: bubble, action: .toggleTool(item.id))) }
@@ -269,7 +293,7 @@ actor ChatPlanner {
                 items += placed.items
                 if failure { hits.insert(ChatHit(frame: placed.mark.insetBy(dx: -8, dy: -8), action: .retry(localId: item.id)), at: 0) }
             }
-            let label = [text, failure ? Strings.sendFailed : ""].filter { !$0.isEmpty }.joined(separator: ", ")
+            let label = ((quote ?? []).map(\.string) + [text, failure ? Strings.sendFailed : ""]).filter { !$0.isEmpty }.joined(separator: ", ")
             let shape = layout.bubble.map { ChatBox(frame: $0, fill: Palette.userBubble, radius: M.bubbleRadius) }
                 ?? ChatBox(frame: layout.pictures.reduce(CGRect.null) { $0.union($1) })
             let flight = ChatRowFlight(bubble: shape, text: layout.text, status: layout.delivery, media: !pictures.isEmpty)

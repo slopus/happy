@@ -86,6 +86,8 @@ public struct ChatItem: Equatable, Sendable, Identifiable {
     /// When a person's message was written, in ms: the computer's time for
     /// one it holds, this phone's for one still on its way.
     public var time: Double?
+    /// The story a person's reply answers, quoted above their words.
+    public var story: AgentWire.StoryQuote?
 
     public init(id: String, role: Role, pieces: [Piece], delivery: Delivery, turn: String? = nil, time: Double? = nil) {
         self.id = id
@@ -1811,9 +1813,11 @@ public actor Conversation {
         // of words after a call is named by the block it starts at.
         var segment = message.id
         var proposed: Set<String> = []
+        let story = message.role == "user" ? message.quote.flatMap { Self.decode(AgentWire.StoryQuote.self, $0) }.flatMap { $0.kind == "story" ? $0 : nil } : nil
         func flush(next: String) {
             if !pieces.isEmpty {
                 items.append(ChatItem(id: segment, role: role, pieces: pieces, delivery: role == .user && message.status == "pending" ? .pending : .sent, time: role == .user ? message.createdAt : nil))
+                if segment == message.id { items[items.count - 1].story = story }
             }
             pieces = []
             segment = next
