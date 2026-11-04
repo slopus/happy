@@ -182,7 +182,8 @@ final class SubscriptionTests: XCTestCase {
         clock += 120 * 86_400
         let approved = transaction("late", token: Subscription.token("a"))
         store.deliver(approved)
-        await waitFor { revenueCat.posted.count == 2 }
+        // Finished only once RevenueCat took it: after the post, so wait for the finish.
+        await waitFor { store.finished.contains("late") }
         XCTAssertEqual(revenueCat.posted.map(\.customer), ["b", "a"])
         XCTAssertTrue(store.finished.contains("late"))
         XCTAssertEqual(subscription.customer, "b")
