@@ -234,4 +234,51 @@ class DocumentTextControllerTest {
         idle()
         assertEquals("Kept, not asked for again", listOf(url), asked)
     }
+
+    /** A hardware key as a keyboard sends it: down, with its modifiers held. */
+    private fun press(code: Int, meta: Int = 0) {
+        view.dispatchKeyEvent(android.view.KeyEvent(0, 0, android.view.KeyEvent.ACTION_DOWN, code, 0, meta))
+        view.dispatchKeyEvent(android.view.KeyEvent(0, 0, android.view.KeyEvent.ACTION_UP, code, 0, meta))
+        idle()
+    }
+
+    @Test
+    fun hardwareKeysFormatAsDocumentEditorMdSays() {
+        val ctrl = android.view.KeyEvent.META_CTRL_ON or android.view.KeyEvent.META_CTRL_LEFT_ON
+        val shift = android.view.KeyEvent.META_SHIFT_ON or android.view.KeyEvent.META_SHIFT_LEFT_ON
+        val alt = android.view.KeyEvent.META_ALT_ON or android.view.KeyEvent.META_ALT_LEFT_ON
+        type("Hello there")
+        view.setSelection(0, 5)
+        press(android.view.KeyEvent.KEYCODE_B, ctrl)
+        assertTrue("Ctrl+B bolds", "bold" in editor.lines.single().block.runs[0].marks)
+        press(android.view.KeyEvent.KEYCODE_I, ctrl)
+        assertTrue("Ctrl+I slants", "italic" in editor.lines.single().block.runs[0].marks)
+        press(android.view.KeyEvent.KEYCODE_S, ctrl or shift)
+        assertTrue("Ctrl+Shift+S strikes", "strike" in editor.lines.single().block.runs[0].marks)
+        press(android.view.KeyEvent.KEYCODE_E, ctrl)
+        assertTrue("Ctrl+E is code", "code" in editor.lines.single().block.runs[0].marks)
+        press(android.view.KeyEvent.KEYCODE_2, ctrl or alt)
+        assertEquals("Ctrl+Alt+2 is a heading 2", "heading" to 2, editor.lines.single().block.type to editor.lines.single().block.level)
+        press(android.view.KeyEvent.KEYCODE_0, ctrl or alt)
+        assertEquals("Ctrl+Alt+0 is text again", "paragraph", editor.lines.single().block.type)
+        press(android.view.KeyEvent.KEYCODE_8, ctrl or shift)
+        assertEquals("Ctrl+Shift+8 bullets", "bulletListItem", editor.lines.single().block.type)
+        press(android.view.KeyEvent.KEYCODE_7, ctrl or shift)
+        assertEquals("Ctrl+Shift+7 numbers", "numberedListItem", editor.lines.single().block.type)
+        press(android.view.KeyEvent.KEYCODE_9, ctrl or shift)
+        assertEquals("Ctrl+Shift+9 is a checklist", "checkListItem", editor.lines.single().block.type)
+        // Shift+Enter breaks the line inside its paragraph.
+        view.setSelection(view.text.length - 1)
+        press(android.view.KeyEvent.KEYCODE_ENTER, shift)
+        assertEquals("Still one block", 1, editor.lines.size)
+        assertTrue("with a hard break", editor.lines.single().block.plainText.endsWith("\n"))
+        // Tab nests a second item under the first; Shift+Tab brings it back.
+        view.setSelection(view.text.length - 1)
+        type("\n")
+        type("Two")
+        press(android.view.KeyEvent.KEYCODE_TAB)
+        assertEquals("Tab nests it", listOf(0, 1), editor.lines.map { it.depth })
+        press(android.view.KeyEvent.KEYCODE_TAB, shift)
+        assertEquals("Shift+Tab brings it back", listOf(0, 0), editor.lines.map { it.depth })
+    }
 }
