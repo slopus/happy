@@ -39,7 +39,7 @@ private fun voiceControlEvidence(node: SemanticsNodeInteraction, name: String) {
     }
 }
 
-internal class FakeVoice : VoiceController {
+internal class FakeVoice(override val available: Boolean = true) : VoiceController {
     override val state = MutableStateFlow(VoiceState())
     var starts = 0
     var stops = 0
@@ -130,6 +130,20 @@ class VoiceUiTest {
         rule.waitForIdle()
         assertEquals(1, voice.stops)
         rule.node(ComposerTags.PRIMARY).assert(hasContentDescription("Voice")).assertIsEnabled()
+    }
+
+    @Test fun aSessionHasNoMicWhileTheRelaysVoiceIsOff() {
+        val voice = FakeVoice(available = false)
+        rule.setHappyContent {
+            CompositionLocalProvider(LocalVoiceController provides voice) {
+                ChatScreen(chat(), "", "gray", ChatScreenActions())
+            }
+        }
+        rule.node(ComposerTags.PRIMARY).assert(hasContentDescription("Send")).assertIsNotEnabled()
+        rule.onNodeWithContentDescription("Voice").assertDoesNotExist()
+        rule.waitForIdle()
+        assertEquals(0, voice.starts)
+        assertNull(voice.focused)
     }
 
     @Test fun offlineSessionHasNoMic() {

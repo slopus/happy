@@ -29,7 +29,12 @@ interface VoiceSessionContext {
     fun stop()
 }
 
-/** RealtimeSession.ts's gating and call lifecycle. All mutations run on [dispatcher]. */
+/**
+ * RealtimeSession.ts's gating and call lifecycle. All mutations run on
+ * [dispatcher]. Switched off ([enabled] false), [start] answers
+ * [VoiceStart.NotAvailable] before the microphone, the server's grant, the
+ * transport or a sheet.
+ */
 class VoiceEngine(
     private val scope: CoroutineScope,
     private val service: VoiceService,
@@ -43,7 +48,9 @@ class VoiceEngine(
     private val dispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
     private val clock: () -> Long = SystemClock::elapsedRealtime,
     private val foreground: StateFlow<Boolean>? = null,
+    private val enabled: Boolean = true,
 ) : VoiceController {
+    override val available: Boolean get() = enabled
     private val mutableState = MutableStateFlow(VoiceState())
     override val state = mutableState.asStateFlow()
     @Volatile private var generation = 0L
@@ -61,6 +68,7 @@ class VoiceEngine(
     }
 
     override suspend fun start(sessionId: String, microphone: MicrophonePermission): VoiceStart = withContext(dispatcher) {
+        if (!enabled) return@withContext VoiceStart.NotAvailable
         if (foreground?.value == false) return@withContext VoiceStart.Declined
         if (closing != null || state.value.status in listOf(VoiceStatus.Connecting, VoiceStatus.Connected)) return@withContext VoiceStart.Declined
         val epoch = ++generation

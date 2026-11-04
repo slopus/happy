@@ -12,7 +12,11 @@ architectures comparable (local store, delta sync, crypto layer).
   `sources/auth`) are the source of truth. Do not port legacy protocol paths:
   sessions and machines without a `dataEncryptionKey` are skipped, not
   decrypted with the account secret.
-- **Voice** uses Happy's server-controlled allowance and the app's own
+- **Voice** in Happy (relay) sessions is switched off: `AppGraph.voice` is
+  built with `enabled = false`, so a session's chat shows no voice button and
+  `start` answers `NotAvailable` before the microphone, the server's grant,
+  a sheet or ElevenLabs. The engine stays in the tree (removal not decided).
+  When on, it uses Happy's server-controlled allowance and the app's own
   offer sheets (`payments/`, see "Purchases"), with ElevenLabs over WebRTC. The pinned SDK source patch in
   `vendor/elevenlabs` fixes audio focus, teardown and call-local mute.
 - **An agent connection's voice call** (`call/`, `ui/call/`), iOS's
@@ -1106,7 +1110,8 @@ SDK's own) stay on disk, unread.
   not guarantee that merges.
 - `AppGraph.offers` (`Offers`) is the one offer presenter, drawn by the one
   `OfferHost` in `HappyApp`: voice's welcome and used-up sheets, the relay
-  voice's Required sheet (`voice_must_pay`), and Support (Settings' Support us
+  voice's Required sheet (`voice_must_pay`, unreachable while that voice is
+  off), and Support (Settings' Support us
   row and the agent's boba row: "Pledge <price>/month", no Start). One sheet
   at a time; `ask` answers Start (the welcome's only), Pro or Dismissed.
 - Grants are client-side. Only the relay's voice has a server gate; its
@@ -1119,7 +1124,8 @@ grace and identity.
 
 ## Voice
 
-`AppGraph.voice` owns one `VoiceEngine`. It requests microphone permission
+`AppGraph.voice` owns one `VoiceEngine`, switched off for now (see the top).
+When on, it requests microphone permission
 before allocating a server conversation, applies server denial/paywall rules,
 and connects the ElevenLabs transport. `AppGraph.subscription` provides real Pro
 state and `AppGraph.offers` the sheets (`VoicePaywall`); debug-only Support us

@@ -71,7 +71,7 @@ private tailrec fun Context.activity(): Activity? = when (this) {
     else -> null
 }
 
-/** SessionView.tsx: connected/connecting calls leave stopping to the pill; no mic when offline or embedded. */
+/** SessionView.tsx: connected/connecting calls leave stopping to the pill; no mic when offline, embedded or voice is off. */
 @Composable
 internal fun rememberVoiceAction(sessionId: String, enabled: Boolean): (() -> Unit)? {
     val controller = LocalVoiceController.current
@@ -82,10 +82,10 @@ internal fun rememberVoiceAction(sessionId: String, enabled: Boolean): (() -> Un
     var alert by remember { mutableStateOf<Alert?>(null) }
     val lifecycle by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     LaunchedEffect(controller, sessionId, state.status, lifecycle) {
-        if (lifecycle == Lifecycle.State.RESUMED) controller.focus(sessionId)
+        if (lifecycle == Lifecycle.State.RESUMED && controller.available) controller.focus(sessionId)
     }
     alert?.let { HappyAlert(it, onDismiss = { alert = null }) }
-    if (!enabled || controller === NoVoice || state.status == VoiceStatus.Connected || state.status == VoiceStatus.Connecting) return null
+    if (!enabled || controller === NoVoice || !controller.available || state.status == VoiceStatus.Connected || state.status == VoiceStatus.Connecting) return null
     return {
         scope.launch {
             alert = voiceStartAlert(controller.start(sessionId, microphone), resources, microphone::openSettings)
@@ -98,7 +98,8 @@ internal fun voiceStartAlert(result: VoiceStart, resources: android.content.res.
     fun message(id: Int, title: Int = R.string.common_error) = Alert(resources.getString(title), resources.getString(id),
         listOf(AlertButton(resources.getString(R.string.common_ok))))
     return when (result) {
-        is VoiceStart.Started, VoiceStart.Declined -> null
+        // NotAvailable: no button offers it.
+        is VoiceStart.Started, VoiceStart.Declined, VoiceStart.NotAvailable -> null
         VoiceStart.NotSignedIn -> message(R.string.errors_authentication_failed)
         VoiceStart.LimitReached -> message(R.string.errors_voice_conversation_limit_reached, R.string.errors_voice_limit_reached_title)
         is VoiceStart.HardLimitReached -> Alert(resources.getString(R.string.errors_voice_limit_reached_title),

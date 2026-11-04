@@ -24,7 +24,7 @@ import org.junit.runner.RunWith
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(AndroidJUnit4::class)
 class VoiceEngineTest {
-    private class Fixture(val test: TestScope) {
+    private class Fixture(val test: TestScope, enabled: Boolean = true) {
         val log = mutableListOf<String>()
         val prefs = VoicePreferences(ApplicationProvider.getApplicationContext<Context>()
             .getSharedPreferences("voice-test", Context.MODE_PRIVATE).also { it.edit().clear().commit() })
@@ -79,11 +79,21 @@ class VoiceEngineTest {
             toolsFactory = { current, sent -> VoiceTools({ _, _ -> }, { null }, { _, _, _ -> }, sent, current) },
             dispatcher = StandardTestDispatcher(test.testScheduler), clock = { 123L },
             foreground = foreground,
+            enabled = enabled,
         )
         fun microphone(granted: Boolean = true, canAsk: Boolean = false) = object : MicrophonePermission {
             override suspend fun request(): MicrophoneAccess { log += "mic"; return MicrophoneAccess(granted, canAsk) }
             override fun openSettings() {}
         }
+    }
+
+    @Test fun switchedOffItAsksAndOpensNothing() = runTest {
+        val f = Fixture(this, enabled = false)
+        assertFalse(f.engine.available)
+        assertEquals(VoiceStart.NotAvailable, f.engine.start("s", f.microphone()))
+        runCurrent()
+        assertEquals("no microphone, grant, sheet, context or transport", emptyList<String>(), f.log)
+        assertEquals(VoiceState(), f.engine.state.value)
     }
 
     @Test fun deniedMicrophoneAllocatesNoConversation() = runTest {

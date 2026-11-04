@@ -258,9 +258,15 @@ class AppGraph(
 
     val voicePreferences = VoicePreferences(context.getSharedPreferences(VoicePreferences.PREFS_NAME, Context.MODE_PRIVATE))
 
-    /** The SDK is allocated only inside connect(), never while constructing the app graph. */
+    /**
+     * The relay sessions' voice. Switched off: a Happy session's chat shows
+     * no voice button and nothing reaches ElevenLabs. Agent connections call
+     * through [calls]. The SDK is allocated only inside connect(), never
+     * while constructing the app graph.
+     */
     val voice: VoiceEngine = VoiceEngine(
         scope = scope,
+        enabled = false,
         foreground = foreground,
         service = VoiceApi(okHttp, clientId, { serverUrl }, { serverConfig.voiceUrl }, BuildConfig.ELEVENLABS_AGENT_ID),
         transport = ElevenLabsTransport(appContext),

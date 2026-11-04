@@ -113,6 +113,10 @@ ledger. The ledger keeps calls for at least 62 days and never forgets one
 from inside the running paid month. Both limits are local: only the relay's
 voice has a server gate.
 
+Voice in Happy (relay) sessions is switched off on Android: a session's
+chat has no voice button and nothing reaches ElevenLabs from it
+(`VoiceEngine(enabled = false)`). Voice is the agent connection's call.
+
 ### The subscription (Android)
 
 Android sells it without RevenueCat's SDK: Play Billing for the purchase and
@@ -196,7 +200,8 @@ podcast mic (`res/raw/call_podcast_mic.json`, the same bytes), rows, words,
 buttons and warning. One presenter (`payments/Offers.kt`, drawn by
 `OfferHost`) shows every sheet that sells the subscription, one at a time:
 voice's `Welcome` and `Used`, `Required` when the relay's voice says
-`voice_must_pay` (buying retries it once), and `Support` from Settings'
+`voice_must_pay` (buying retries it once; unreachable while the relay's
+voice is off), and `Support` from Settings'
 Support us row and the agent's boba row ("Pledge <price>/month", 5 hours of
 voice a month, no Start). `CallIntro` keeps `call.intro.seen` in the
 `call-usage` preferences beside the free time. The relay's 5-hour hard cap
