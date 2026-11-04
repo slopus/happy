@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="voice_call_mute">マイクをミュート</string>
+    <string name="voice_call_unmute">マイクのミュートを解除</string>
+</resources>

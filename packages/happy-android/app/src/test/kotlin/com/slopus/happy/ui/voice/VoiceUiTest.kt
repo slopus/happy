@@ -1,5 +1,7 @@
 package com.slopus.happy.ui.voice
 
+import android.graphics.Bitmap
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.CompositionLocalProvider
@@ -28,6 +30,14 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import java.io.File
+
+private fun voiceControlEvidence(node: SemanticsNodeInteraction, name: String) {
+    val directory = File("build/outputs/voice-controls").apply { mkdirs() }
+    File(directory, "$name.png").outputStream().use {
+        node.captureToImage().asAndroidBitmap().compress(Bitmap.CompressFormat.PNG, 100, it)
+    }
+}
 
 internal class FakeVoice : VoiceController {
     override val state = MutableStateFlow(VoiceState())
@@ -41,6 +51,7 @@ internal class FakeVoice : VoiceController {
         return outcome
     }
     override suspend fun stop() { stops++; state.value = VoiceState() }
+    override fun setMuted(muted: Boolean) { state.value = state.value.copy(muted = muted) }
     override fun focus(sessionId: String) { if (state.value.status != VoiceStatus.Connecting) focused = sessionId }
 }
 
@@ -70,6 +81,29 @@ class VoiceUiTest {
         assertEquals(3, ended)
         status.value = VoiceStatus.Disconnected
         rule.node("voice.full").assertDoesNotExist()
+    }
+
+    @Test fun microphoneTogglesMuteAndUnmuteWithoutEndingTheCall() {
+        val voice = FakeVoice().apply { state.value = VoiceState(VoiceStatus.Connected) }
+        rule.setHappyContent(dark = true) {
+            CompositionLocalProvider(LocalVoiceController provides voice) { VoiceStatusBar() }
+        }
+        val microphone = rule.node("voice.mute")
+        val pill = rule.node("voice.pill").bounds
+        assertBox("microphone slot", microphone.bounds, pill.left, pill.top, 44.dp, 44.dp)
+        voiceControlEvidence(rule.node("voice.full"), "v3-phone-dark")
+        microphone.assert(hasContentDescription("Mute microphone")).performClick()
+        rule.waitForIdle()
+        assertTrue(voice.state.value.muted)
+        assertEquals(0, voice.stops)
+        voiceControlEvidence(rule.node("voice.full"), "v3-phone-muted-dark")
+        microphone.assert(hasContentDescription("Unmute microphone")).performClick()
+        rule.waitForIdle()
+        assertFalse(voice.state.value.muted)
+        assertEquals(0, voice.stops)
+        rule.node("voice.pill").performClick()
+        rule.waitForIdle()
+        assertEquals(1, voice.stops)
     }
 
     private fun chat(online: Boolean = true, thinking: Boolean = false) = ChatState(
@@ -224,13 +258,20 @@ class VoiceTabletTest {
         var stopped = false
         rule.setHappyContent {
             ProvideWindowLayout {
-                Column(Modifier.fillMaxWidth()) { VoiceStatusBarContent(state.value, "2:01", true, { stopped = true }) }
+                Column(Modifier.fillMaxWidth()) {
+                    VoiceStatusBarContent(state.value, "2:01", true, { stopped = true }, onMuted = { state.value = state.value.copy(muted = it) })
+                }
             }
         }
         assertDp("sidebar height", 32, rule.node("voice.sidebar").bounds.height)
         assertDp("sidebar fills width", 1280, rule.node("voice.sidebar").bounds.width)
         assertDp("bars height", 12, rule.node("voice.bars").bounds.height)
         assertDp("bars width", 9, rule.node("voice.bars").bounds.width)
+        assertDp("mute slot width", 32, rule.node("voice.mute").bounds.width)
+        rule.node("voice.mute").performClick()
+        rule.node("voice.mute").assert(hasContentDescription("Unmute microphone"))
+        assertFalse(stopped)
+        voiceControlEvidence(rule.node("voice.sidebar"), "v3-sidebar-muted-tablet-light")
         rule.node("voice.sidebar").performClick()
         assertTrue(stopped)
         state.value = state.value.copy(status = VoiceStatus.Connecting, mode = VoiceMode.Idle)

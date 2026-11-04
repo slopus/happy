@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="voice_call_mute">Silenciar micrófono</string>
+    <string name="voice_call_unmute">Activar micrófono</string>
+</resources>

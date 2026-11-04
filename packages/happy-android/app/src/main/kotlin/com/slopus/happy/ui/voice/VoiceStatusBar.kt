@@ -21,6 +21,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -65,17 +67,18 @@ fun VoiceStatusBar(sidebar: Boolean = false) {
         }
     }
     val duration = state.connectedAtElapsed?.let { formatCallDuration((elapsed - it) / 1000) }
-    VoiceStatusBarContent(state, duration, sidebar, onEnd = { scope.launch { controller.stop() } })
+    VoiceStatusBarContent(state, duration, sidebar, onEnd = { scope.launch { controller.stop() } }, onMuted = controller::setMuted)
 }
 
 /**
  * VoiceAssistantStatusBar.tsx on Android. Full: 16 side inset, 6 above a 44-high pill,
  * radius 22, surfaceHighest, 24 mic in a 44 slot, centred 16/20 semibold duration,
  * 12pt end hint inset 16. Sidebar: 32 high, 12 side padding, 8 dot, 6 gap, 16 mic,
- * 6 gap, 12pt status, 14 close. The entire bar ends the call in any visible state.
+ * 6 gap, 12pt status, 14 close. The microphone toggles mute when connected;
+ * the rest of the bar ends the call in any visible state.
  */
 @Composable
-fun VoiceStatusBarContent(state: VoiceState, duration: String?, sidebar: Boolean, onEnd: () -> Unit) {
+fun VoiceStatusBarContent(state: VoiceState, duration: String?, sidebar: Boolean, onEnd: () -> Unit, onMuted: (Boolean) -> Unit = {}) {
     if (state.status == VoiceStatus.Disconnected) return
     val colors = HappyTheme.colors
     val text = when (state.status) {
@@ -98,7 +101,7 @@ fun VoiceStatusBarContent(state: VoiceState, duration: String?, sidebar: Boolean
             }
             StatusDot(dot, pulsing = state.status == VoiceStatus.Connecting, size = 8.dp)
             Spacer(Modifier.width(6.dp))
-            Icon(Ionicon.Mic, 16.dp, colors.text)
+            CallMicrophone(state, sidebar = true, onMuted)
             Spacer(Modifier.width(6.dp))
             Text(text, color = colors.text, style = happyTextStyle(12, weight = FontWeight.Medium), modifier = Modifier.weight(1f))
             val speaking = state.mode != VoiceMode.Idle
@@ -114,7 +117,7 @@ fun VoiceStatusBarContent(state: VoiceState, duration: String?, sidebar: Boolean
                     .background(colors.surfaceHighest, RoundedCornerShape(22.dp))
                     .clickable(role = Role.Button, onClickLabel = end, onClick = onEnd),
             ) {
-                Box(Modifier.align(Alignment.CenterStart).size(44.dp), contentAlignment = Alignment.Center) { ShimmerMic() }
+                Box(Modifier.align(Alignment.CenterStart)) { CallMicrophone(state, sidebar = false, onMuted) }
                 Text(text, color = colors.header.tint,
                     style = happyTextStyle(fontSize = 16, lineHeight = 20, weight = FontWeight.SemiBold).copy(fontFeatureSettings = "tnum"),
                     modifier = Modifier.align(Alignment.Center).testTag("voice.duration"))
@@ -122,6 +125,22 @@ fun VoiceStatusBarContent(state: VoiceState, duration: String?, sidebar: Boolean
                     modifier = Modifier.align(Alignment.CenterEnd).padding(horizontal = 16.dp, vertical = 12.dp))
             }
         }
+    }
+}
+
+/** The existing microphone slot is a separate action; its tap never ends the call. */
+@Composable
+private fun CallMicrophone(state: VoiceState, sidebar: Boolean, onMuted: (Boolean) -> Unit) {
+    val connected = state.status == VoiceStatus.Connected
+    val action = stringResource(if (state.muted) R.string.voice_call_unmute else R.string.voice_call_mute)
+    val modifier = Modifier.size(if (sidebar) 32.dp else 44.dp).then(
+        if (connected) Modifier.testTag("voice.mute").semantics { contentDescription = action }
+            .clickable(role = Role.Button, onClickLabel = action) { onMuted(!state.muted) }
+        else Modifier,
+    )
+    Box(modifier, contentAlignment = Alignment.Center) {
+        if (!sidebar && !state.muted) ShimmerMic()
+        else Icon(if (state.muted) Ionicon.MicOutline else Ionicon.Mic, if (sidebar) 16.dp else 24.dp, HappyTheme.colors.text)
     }
 }
 

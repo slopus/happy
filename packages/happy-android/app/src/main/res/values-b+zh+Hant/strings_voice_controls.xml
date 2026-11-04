@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="voice_call_mute">關閉麥克風</string>
+    <string name="voice_call_unmute">開啟麥克風</string>
+</resources>
