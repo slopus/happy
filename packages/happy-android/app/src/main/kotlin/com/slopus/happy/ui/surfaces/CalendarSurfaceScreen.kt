@@ -25,7 +25,7 @@ import com.slopus.happy.chat.obj
 import com.slopus.happy.ui.calendar.CalendarModel
 import com.slopus.happy.ui.calendar.CalendarScreen
 import com.slopus.happy.ui.calendar.CalendarEventEditor
-import com.slopus.happy.ui.calendar.calendarTimingWords
+import com.slopus.happy.ui.calendar.calendarEventDetails
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
@@ -72,8 +72,7 @@ fun CalendarSurfaceScreen(session: AgentSession, surfaceId: String, onBack: () -
     if (conflicted) {
         val locale = LocalConfiguration.current.locales[0]
         val words = LocalContext.current.resources
-        val details = current?.let { listOfNotNull(it.title.ifBlank { words.getString(R.string.calendar_no_title) },
-            calendarTimingWords(it.timing, zone, locale, words), it.location, it.notes).joinToString("\n") } ?: stringResource(R.string.calendar_deleted_elsewhere)
+        val details = current?.let { calendarEventDetails(it, zone, locale, words) } ?: stringResource(R.string.calendar_deleted_elsewhere)
         HappyAlert(Alert(stringResource(R.string.calendar_conflict), details, listOf(AlertButton(stringResource(R.string.common_ok)))), { conflicted = false; current = null })
     }
 }

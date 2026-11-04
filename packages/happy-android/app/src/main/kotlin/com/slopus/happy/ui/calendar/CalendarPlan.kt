@@ -4,6 +4,9 @@ import android.content.res.Resources
 import androidx.compose.runtime.Immutable
 import com.slopus.happy.R
 import com.slopus.happy.calendar.CalendarItem
+import com.slopus.happy.calendar.CalendarEvent
+import com.slopus.happy.calendar.CalendarRecurrence
+import com.slopus.happy.calendar.CalendarEnd
 import com.slopus.happy.calendar.CalendarTiming
 import com.slopus.happy.calendar.CalendarWindow
 import com.slopus.happy.calendar.calendarAgenda
@@ -77,10 +80,12 @@ internal fun calendarMonthPlan(items: List<CalendarItem>, window: CalendarWindow
     return CalendarMonthPlan(DayOfWeek.entries.map { it.getDisplayName(TextStyle.SHORT_STANDALONE, locale) }, weeks, chosen.format(dateLabel), agenda)
 }
 
-internal fun calendarTimingWords(timing: CalendarTiming, zone: ZoneId, locale: Locale, words: Resources): String = when (timing) {
+internal fun calendarTimingWords(timing: CalendarTiming, zone: ZoneId, locale: Locale, words: Resources, includeDates: Boolean = false): String = when (timing) {
     is CalendarTiming.AllDay -> {
         val allDay = words.getString(R.string.calendar_all_day)
-        if (timing.startDate.plusDays(1) == timing.endDate) allDay else {
+        if (timing.startDate.plusDays(1) == timing.endDate) {
+            if (includeDates) "$allDay · ${timing.startDate.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale))}" else allDay
+        } else {
             val format = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale)
             "$allDay · ${timing.startDate.format(format)} – ${timing.endDate.minusDays(1).format(format)}"
         }
@@ -88,8 +93,28 @@ internal fun calendarTimingWords(timing: CalendarTiming, zone: ZoneId, locale: L
     is CalendarTiming.Timed -> {
         val from = Instant.ofEpochMilli(timing.start).atZone(zone)
         val to = Instant.ofEpochMilli(timing.end).atZone(zone)
-        val format = (if (from.toLocalDate() == to.toLocalDate()) DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
+        val format = (if (!includeDates && from.toLocalDate() == to.toLocalDate()) DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT)
             else DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT)).withLocale(locale)
         "${from.format(format)} – ${to.format(format)}"
     }
+}
+
+/** A conflict has no selected-day context: show authoritative dates, zone and rule explicitly. */
+internal fun calendarEventDetails(event: CalendarEvent, viewerZone: ZoneId, locale: Locale, words: Resources): String {
+    val timing = event.timing
+    val zone = (timing as? CalendarTiming.Timed)?.let { ZoneId.of(it.timeZone) } ?: viewerZone
+    val whenText = calendarTimingWords(timing, zone, locale, words, includeDates = true) +
+        (if (timing is CalendarTiming.Timed) " · ${timing.timeZone}" else "")
+    val repeat = CalendarRecurrence.parse(event.recurrence)?.let { rule ->
+        val ending = when (val end = rule.end) {
+            CalendarEnd.Never -> "${words.getString(R.string.calendar_repeat_end)}: ${words.getString(R.string.calendar_repeat_forever)}"
+            is CalendarEnd.Until -> "${words.getString(R.string.calendar_repeat_until)}: ${end.date.format(DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).withLocale(locale))}"
+            is CalendarEnd.Count -> "${words.getString(R.string.calendar_repeat_count)}: ${end.count}"
+        }
+        "${words.getString(R.string.calendar_repeat)}: " + listOfNotNull(words.getString(frequencyWord(rule.frequency)),
+            "${words.getString(R.string.calendar_repeat_interval)} ${rule.interval}",
+            rule.weekdays?.sortedBy { it.value }?.joinToString(", ") { it.getDisplayName(TextStyle.SHORT, locale) }, ending).joinToString(" · ")
+    }
+    return listOfNotNull(event.title.takeIf { it.isNotBlank() } ?: words.getString(R.string.calendar_no_title), whenText,
+        event.location, event.notes, repeat).joinToString("\n")
 }

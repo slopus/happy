@@ -118,8 +118,7 @@ internal fun CalendarEventEditor(session: AgentSession, surfaceId: String, targe
     conflict?.let { current ->
         val locale = LocalConfiguration.current.locales[0]
         val words = LocalContext.current.resources
-        HappyAlert(Alert(stringResource(R.string.calendar_conflict), listOf(current.title.ifBlank { stringResource(R.string.calendar_no_title) },
-            calendarTimingWords(current.timing, zone, locale, words), current.location, current.notes).filterNotNull().joinToString("\n"),
+        HappyAlert(Alert(stringResource(R.string.calendar_conflict), calendarEventDetails(current, zone, locale, words),
             listOf(AlertButton(stringResource(R.string.common_cancel)), AlertButton(stringResource(R.string.calendar_use_updated)) {
                 event = current; occurrence = current.timing; draft = CalendarDraft.of(current, zone); conflict = null
             })), { conflict = null })
@@ -239,7 +238,7 @@ private fun CalendarChoice(label: String, value: String, busy: Boolean, tag: Str
     }
 }
 
-private fun frequencyWord(frequency: CalendarFrequency) = when (frequency) {
+internal fun frequencyWord(frequency: CalendarFrequency) = when (frequency) {
     CalendarFrequency.Daily -> R.string.calendar_repeat_daily
     CalendarFrequency.Weekly -> R.string.calendar_repeat_weekly
     CalendarFrequency.Monthly -> R.string.calendar_repeat_monthly
