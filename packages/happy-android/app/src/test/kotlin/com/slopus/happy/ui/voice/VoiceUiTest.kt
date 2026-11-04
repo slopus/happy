@@ -239,6 +239,13 @@ class VoiceUiTest {
         assertDp("usage inset from group", 16, rule.node("voice.usage").bounds.left)
     }
 
+    @Test fun switchedOffVoiceShowsNoUsageAndNoRetry() {
+        rule.setHappyContent { VoiceSettingsScreen(Settings(), {}, VoiceUsageReading.Off, false, {}, {}, {}) }
+        rule.node("voice.usage").assertDoesNotExist()
+        rule.node(VoiceTags.USAGE_RETRY).assertDoesNotExist()
+        rule.onNodeWithText("Voice service is temporarily unavailable").assertDoesNotExist()
+    }
+
     @Test fun unavailableUsageCanRetryAndThenShowTheLoadedMeter() {
         val reading = mutableStateOf<VoiceUsageReading>(VoiceUsageReading.Unavailable)
         var retries = 0

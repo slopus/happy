@@ -216,7 +216,7 @@ fun agentVoiceSections(summary: AgentVoiceSummary, onSubscribe: () -> Unit = {},
     val selling = price != null || subscribed
     val subscription = listOf(
         when {
-            subscribed -> SettingsEntry(AgentVoiceTags.SUBSCRIBE, stringResource(R.string.agent_voice_subscribe), icon = { SettingsTile(Ionicon.Heart, SettingsTiles.red) }, detail = stringResource(R.string.settings_support_us_subtitle_pro), chevron = false, enabled = false)
+            subscribed -> SettingsEntry(AgentVoiceTags.SUBSCRIBE, stringResource(R.string.settings_support_us_subtitle_pro), icon = { SettingsTile(Ionicon.Heart, SettingsTiles.red) }, chevron = false, enabled = false)
             price != null -> SettingsEntry(AgentVoiceTags.SUBSCRIBE, stringResource(R.string.agent_voice_subscribe), icon = { SettingsTile(Ionicon.Heart, SettingsTiles.red) }, detail = stringResource(R.string.agent_voice_sheet_pledge, price), onClick = onSubscribe)
             else -> SettingsEntry(AgentVoiceTags.SUBSCRIBE, stringResource(R.string.agent_voice_subscribe), icon = { SettingsTile(Ionicon.Heart, SettingsTiles.red) }, detail = stringResource(R.string.agent_voice_not_yet), chevron = false, enabled = false)
         },

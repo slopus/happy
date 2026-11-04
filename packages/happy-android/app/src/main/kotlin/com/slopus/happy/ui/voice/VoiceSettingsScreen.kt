@@ -39,6 +39,9 @@ sealed interface VoiceUsageReading {
     data object Loading : VoiceUsageReading
     data object Unavailable : VoiceUsageReading
     data class Loaded(val usage: VoiceUsage) : VoiceUsageReading
+
+    /** Voice is switched off ([com.slopus.happy.voice.VoiceController.available]): nothing asked, no usage shown. */
+    data object Off : VoiceUsageReading
 }
 
 /**
@@ -64,7 +67,9 @@ fun VoiceSettingsScreen(
     var editing by rememberSaveable { mutableStateOf(false) }
     Screen(header = { StackHeader(stringResource(R.string.settings_voice_assistant), onBack) }) {
         ItemList {
-            if (usageReading == VoiceUsageReading.Loading) {
+            if (usageReading == VoiceUsageReading.Off) {
+                // Nothing to count while voice can't start.
+            } else if (usageReading == VoiceUsageReading.Loading) {
                 Box(Modifier.fillMaxWidth().padding(vertical = 24.dp), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(Modifier.size(20.dp), color = colors.textSecondary, strokeWidth = 2.dp)
                 }

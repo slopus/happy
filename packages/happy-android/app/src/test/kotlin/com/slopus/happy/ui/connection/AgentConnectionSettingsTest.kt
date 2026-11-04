@@ -157,6 +157,16 @@ class AgentConnectionSettingsTest {
         assertEquals(listOf("support"), done)
     }
 
+    /** A subscriber's Voice page: the plan's hours, a thank-you instead of the pledge, no free row. */
+    @Test
+    fun aSubscribersVoicePageThanksAndOffersNothing() {
+        rule.setHappyContent { AgentVoiceScreen(AgentVoiceSummary(4 * 3_600_000L, offer = com.slopus.happy.payments.Offer.Subscribed)) {} }
+        rule.onNodeWithText("Thank you for your support!").assertIsDisplayed()
+        rule.onNodeWithText("Get 5 hrs of voice").assertDoesNotExist()
+        rule.node(AgentVoiceTags.FREE).assertDoesNotExist()
+        rule.node(AgentVoiceTags.SUBSCRIBE).assertHasNoClickAction()
+    }
+
     @Test
     fun disconnectingAsksAndCancelKeepsTheConnection() {
         show()

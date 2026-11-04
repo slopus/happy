@@ -31,6 +31,10 @@ fun NavGraphBuilder.voiceRoutes(graph: AppGraph, nav: NavHostController) {
         var usage by remember { mutableStateOf<VoiceUsageReading>(VoiceUsageReading.Loading) }
         var retry by remember { mutableIntStateOf(0) }
         LaunchedEffect(graph, retry) {
+            if (!graph.voice.available) {
+                usage = VoiceUsageReading.Off
+                return@LaunchedEffect
+            }
             usage = VoiceUsageReading.Loading
             usage = graph.voice.usage()?.let { VoiceUsageReading.Loaded(it) } ?: VoiceUsageReading.Unavailable
         }
