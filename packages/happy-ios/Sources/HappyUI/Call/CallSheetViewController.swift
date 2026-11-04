@@ -85,10 +85,16 @@ final class CallSheetViewController: UIViewController {
         title.decoration = StartGalleryView.noOrphan
         title.string = Strings.Call.welcomeTitle
         let offer = screen.offer
-        var rows = [("text.bubble", Strings.Call.welcomeAsk), ("paperplane", Strings.Call.welcomeAct)]
-        // Without a subscription on offer, what there is: the free time.
-        if !offer.onSale { rows.append(("gift", Strings.Call.welcomeFree)) }
-        let benefits = UIStackView(arrangedSubviews: rows.map { Benefit(symbol: $0.0, title: $0.1) })
+        // Once the free time is used, that under its line, in the app's warning colour.
+        let used: String? = switch screen {
+        case .welcome: nil
+        case .used(let freeAgain, _): freeAgain.map { Strings.Call.usedNote(Self.when($0, now: Date())) } ?? Strings.Call.usedNoteLater
+        }
+        let benefits = UIStackView(arrangedSubviews: [
+            Benefit(symbol: "text.bubble", title: Strings.Call.welcomeAsk),
+            Benefit(symbol: "paperplane", title: Strings.Call.welcomeAct),
+            Benefit(symbol: "gift", title: Strings.Call.welcomeFree, warning: used),
+        ])
         benefits.axis = .vertical
         benefits.alignment = .leading
         benefits.spacing = 16
@@ -103,7 +109,7 @@ final class CallSheetViewController: UIViewController {
         footer.spacing = 12
         if case .preview(let price) = offer, let subscribe {
             let heading = StyledLabel(style: Self.offerStyle, color: Palette.startText, alignment: .center)
-            heading.string = Strings.Call.subscribeFor(price)
+            heading.string = Strings.Call.supportFor(price)
             let support = StyledLabel(style: Self.detailStyle, color: Palette.startTextSecondary, alignment: .center)
             support.decoration = StartGalleryView.noOrphan
             support.string = Strings.Call.subscribeSupport
@@ -127,12 +133,12 @@ final class CallSheetViewController: UIViewController {
         case .welcome:
             session.addAction(UIAction { [weak self] _ in self?.start() }, for: .touchUpInside)
             if !offer.onSale { notes.append(Strings.Call.welcomeNote) }
-        case .used(let freeAgain, _):
+        case .used:
             session.isEnabled = false
-            notes.append(freeAgain.map { Strings.Call.usedNote(Self.when($0, now: Date())) } ?? Strings.Call.usedNoteLater)
         }
         if offer.onSale { notes.append(Strings.Call.upgradePreviewNote) }
         note.string = notes.joined(separator: "\n")
+        note.isHidden = notes.isEmpty
 
         var cross = UIButton.Configuration.filled()
         cross.image = UIImage(systemName: "xmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .bold))
@@ -296,18 +302,27 @@ private extension NSLayoutConstraint {
     }
 }
 
-/// One thing voice does, on the gradient: its symbol and a few words.
+/// One thing voice does, on the gradient: its symbol and a few words, and
+/// a warning under them if there is one.
 private final class Benefit: UIView {
-    init(symbol: String, title: String) {
+    init(symbol: String, title: String, warning: String? = nil) {
         super.init(frame: .zero)
         isAccessibilityElement = true
-        accessibilityLabel = title
+        accessibilityLabel = [title, warning].compactMap { $0 }.joined(separator: ". ")
         let icon = UIImageView(image: UIImage(systemName: symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 20, weight: .medium)))
         icon.tintColor = UIColor(Palette.startText)
         icon.contentMode = .center
         let words = StyledLabel(style: CallSheetViewController.rowStyle, color: Palette.startText)
         words.string = title
-        for view in [icon, words] {
+        let text = UIStackView(arrangedSubviews: [words])
+        text.axis = .vertical
+        text.spacing = 4
+        if let warning {
+            let line = StyledLabel(style: CallSheetViewController.detailStyle, color: Palette.warningText)
+            line.string = warning
+            text.addArrangedSubview(line)
+        }
+        for view in [icon, text] {
             view.translatesAutoresizingMaskIntoConstraints = false
             addSubview(view)
         }
@@ -316,10 +331,10 @@ private final class Benefit: UIView {
             icon.centerYAnchor.constraint(equalTo: words.centerYAnchor),
             icon.widthAnchor.constraint(equalToConstant: 28),
             icon.heightAnchor.constraint(equalToConstant: 24),
-            words.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 14),
-            words.trailingAnchor.constraint(equalTo: trailingAnchor),
-            words.topAnchor.constraint(equalTo: topAnchor),
-            words.bottomAnchor.constraint(equalTo: bottomAnchor),
+            text.leadingAnchor.constraint(equalTo: icon.trailingAnchor, constant: 14),
+            text.trailingAnchor.constraint(equalTo: trailingAnchor),
+            text.topAnchor.constraint(equalTo: topAnchor),
+            text.bottomAnchor.constraint(equalTo: bottomAnchor),
         ])
     }
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }

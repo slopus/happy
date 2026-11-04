@@ -119,10 +119,11 @@ its text colours and pill. The podcast mic plays on top (Lottie,
 `podcast-mic.json`; source and licence unverified, see
 `Animations/PROVENANCE.md`), then "Talk to your agents" and what voice
 does, one icon and a few words a line: "Ask how your work is going",
-"Open and send by voice". At the bottom, where a subscription is on offer:
-"Subscribe for $20/month" (`CallOffer.price`), "5 hours of real-time voice
-per month", "Happy is open source. Subscribing to voice pays for its
-development.", the "Subscribe" pill, then "Start Voice Session" with
+"Open and send by voice", "20 free minutes" (a gift). At the bottom, where
+a subscription is on offer: "Support Happy for $20/month"
+(`CallOffer.price`), "5 hours of real-time voice included", "Happy is open
+source. Subscribing to voice pays for its development.", the "Subscribe"
+pill, then "Start Voice Session" with
 voice's three bars, quieter, under it. A ✕ on top, or a swipe down, closes
 it and starts nothing. No RevenueCat or other vendor UI, and no navigation
 bar.
@@ -136,16 +137,17 @@ free time); closed, the next tap shows it again.
 **The paywall** is the same screen once the free time is used: a tap with
 none left (before the microphone is asked for), or a live call reaching the
 end of it. The red bar goes and the sheet takes its place; the voice button
-shows it again. "Start Voice Session" is greyed out, and under it "Your free
-voice time is used. More comes back on Dec 3." (`CallAllowance.freeAgain`:
+shows it again. "Start Voice Session" is greyed out, and under "20 free
+minutes", in the app's warning colour (`Palette.warningText`, as the
+offline header's), "Your free voice time is used. More comes back on Dec
+3." (`CallAllowance.freeAgain`:
 "at 5:19 PM" today, "on Thu at 5:19 PM" this week, "on Dec 3" after; "as
 older calls pass 30 days" when no time ever comes back, as with a clock put
 back). What is on offer is `CallOffer`:
 
 - `unavailable`, every release build: no subscription, no price and no buy
-  button. The welcome's "Start Voice Session" is the main pill, with "20
-  free minutes every 30 days" among the lines; once that is used, the
-  greyed-out pill and the ✕.
+  button. "Start Voice Session" is the main pill; once the free time is
+  used, it is greyed out and the ✕ closes the sheet.
 - `preview(price:)`, debug builds only and only when launched with
   `HAPPY_CALL_OFFER=preview` (test screens; `HAPPY_CALL_OFFER_PRICE`
   changes the price drawn): the subscription as above, noted "Test preview.

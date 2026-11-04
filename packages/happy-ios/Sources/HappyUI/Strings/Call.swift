@@ -26,15 +26,15 @@ extension Strings {
         static var welcomeTitle: String { "Talk to your agents" }
         static var welcomeAsk: String { "Ask how your work is going" }
         static var welcomeAct: String { "Open and send by voice" }
-        static var welcomeFree: String { "20 free minutes every 30 days" }
+        static var welcomeFree: String { "20 free minutes" }
         static var startSession: String { "Start Voice Session" }
         static var welcomeNote: String { "The microphone is on only during a call." }
         static func usedNote(_ when: String) -> String { "Your free voice time is used. More comes back \(when)." }
         static var usedNoteLater: String { "Your free voice time is used. It comes back as older calls pass 30 days." }
         static func at(_ time: String, day: String? = nil) -> String { day.map { "\($0) at \(time)" } ?? "at \(time)" }
         static func on(_ day: String) -> String { "on \(day)" }
-        static func subscribeFor(_ price: String) -> String { "Subscribe for \(price)/month" }
-        static var subscribeAllowance: String { "5 hours of real-time voice per month" }
+        static func supportFor(_ price: String) -> String { "Support Happy for \(price)/month" }
+        static var subscribeAllowance: String { "5 hours of real-time voice included" }
         static var subscribeSupport: String { "Happy is open source. Subscribing to voice pays for its development." }
         static var subscribe: String { "Subscribe" }
         static var upgradePreviewNote: String { "Test preview. Nothing is charged." }
