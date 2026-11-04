@@ -56,6 +56,7 @@ import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.components.HappyDropdownMenu
 import com.slopus.happy.ui.components.HappyMenuItem
+import com.slopus.happy.ui.components.TrackOverlay
 import com.slopus.happy.ui.layout.ContentTokens
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
@@ -108,6 +109,7 @@ internal fun CalendarEventEditor(session: AgentSession, surfaceId: String, targe
             finally { busy = false }
         }
     }
+    TrackOverlay(true) { if (!busy) onDismiss() }
     ModalBottomSheet(onDismissRequest = { if (!busy) onDismiss() }, sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         sheetMaxWidth = ContentTokens.sheetMaxWidth, containerColor = HappyTheme.colors.surface, modifier = Modifier.testTag("calendar.editor")) {
         CalendarEventForm(draft, { draft = it }, event != null, busy, failed, onSave = { mutate(false) },

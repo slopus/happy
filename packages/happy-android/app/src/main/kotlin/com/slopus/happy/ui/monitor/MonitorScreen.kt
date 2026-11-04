@@ -39,6 +39,7 @@ import com.slopus.happy.ui.artifacts.PlaceScaffold
 import com.slopus.happy.ui.cards.CardHeading
 import com.slopus.happy.ui.components.HomeCardPlace
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.components.TrackOverlay
 import com.slopus.happy.ui.components.rememberReduceMotion
 import com.slopus.happy.ui.connection.AgentSearchField
 import com.slopus.happy.ui.connection.AgentTopBar
@@ -110,6 +111,7 @@ private fun MonitorSortMenu(sort: ProcessTable.Sort, onSort: (ProcessTable.Sort)
     Box {
         val description = "${stringResource(R.string.monitor_sort)}: ${stringResource(monitorColumn(sort.column))} ${if (sort.descending) "↓" else "↑"}"
         BarIconButton(Ionicon.Filter, description, { choosing = true }, Modifier.testTag("monitor.sort"))
+        TrackOverlay(choosing) { choosing = false }
         DropdownMenu(choosing, { choosing = false }) {
             ProcessTable.Column.entries.forEach { item ->
                 val selected = sort.column == item

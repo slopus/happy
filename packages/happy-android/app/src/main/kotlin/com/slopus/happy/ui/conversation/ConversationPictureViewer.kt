@@ -101,6 +101,7 @@ import com.slopus.happy.conversation.ViewerItem
 import com.slopus.happy.conversation.MediaFiles
 import com.slopus.happy.ui.components.MaterialSymbols
 import com.slopus.happy.ui.components.RemoteImage
+import com.slopus.happy.ui.components.TrackOverlay
 import com.slopus.happy.ui.components.rememberMemoryImage
 import com.slopus.happy.ui.components.rememberThumbHash
 import kotlinx.coroutines.CancellationException
@@ -259,6 +260,7 @@ fun PictureViewer(items: List<ViewerItem>, index: Int, source: ViewerSource, onC
     }
     DisposableEffect(Unit) { onDispose { origins.hidden = null } }
 
+    TrackOverlay(true, close)
     Dialog(onDismissRequest = close, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         // Its own black fades; the window's dim would stay behind it. Light status icons over the black.
         val window = (LocalView.current.parent as? DialogWindowProvider)?.window

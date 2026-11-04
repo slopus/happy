@@ -33,11 +33,13 @@ fun PageBackHandler(enabled: Boolean = true, onBack: () -> Unit) {
 /** A covered page retains its dialog state, not a separate window over the foreground page. */
 @Composable
 fun PageDialog(onDismissRequest: () -> Unit, properties: DialogProperties = DialogProperties(), content: @Composable () -> Unit) {
+    TrackOverlay(true, onDismissRequest)
     if (LocalPageActive.current) Dialog(onDismissRequest, properties, content)
 }
 
 @Composable
 fun PagePopup(popupPositionProvider: PopupPositionProvider, onDismissRequest: (() -> Unit)? = null, properties: PopupProperties = PopupProperties(), content: @Composable () -> Unit) {
+    onDismissRequest?.let { TrackOverlay(true, it) }
     if (LocalPageActive.current) Popup(popupPositionProvider, onDismissRequest, properties, content)
 }
 

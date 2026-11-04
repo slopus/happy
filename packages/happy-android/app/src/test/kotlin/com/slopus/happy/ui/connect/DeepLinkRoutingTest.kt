@@ -1,6 +1,13 @@
 package com.slopus.happy.ui.connect
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.Text
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.navigation.NavHostController
 import androidx.navigation.NavDestination.Companion.hasRoute
@@ -15,6 +22,9 @@ import com.slopus.happy.agent.HappyReferenceKind
 import com.slopus.happy.connection.AgentConnection
 import com.slopus.happy.ui.HomeRoute
 import com.slopus.happy.ui.artifacts.ArtifactRoute
+import com.slopus.happy.ui.components.HappyDropdownMenu
+import com.slopus.happy.ui.components.LocalOverlays
+import com.slopus.happy.ui.components.Overlays
 import com.slopus.happy.ui.surfaces.SurfaceRoute
 import com.slopus.happy.ui.connection.HappyLinks
 import com.slopus.happy.ui.connection.openHappyLink
@@ -160,6 +170,65 @@ class DeepLinkRoutingTest {
         assertEquals("c3", HappyLinks.connectionFor(connections, INSTANCE, open = "c3"))
         assertNull(HappyLinks.connectionFor(connections, "zzzzzzzzzzzzzzzzzzzzzzzz", open = "c1"))
         assertNull(HappyLinks.connectionFor(emptyList(), INSTANCE, open = null))
+    }
+
+    /** iOS 78fa78cf9: a link from outside waits for an open menu to go, and the menu doesn't come back with its page. */
+    @Test
+    fun aLinkPutsAwayAnOpenMenuFirstAndBackDoesNotReopenIt() {
+        val overlays = Overlays()
+        rule.mainClock.autoAdvance = false
+        rule.setContent {
+            nav = rememberNavController()
+            CompositionLocalProvider(LocalOverlays provides overlays) {
+                NavHost(nav, startDestination = HomeRoute) {
+                    composable<HomeRoute> {
+                        var open by rememberSaveable { mutableStateOf(true) }
+                        Box {
+                            Text("home")
+                            HappyDropdownMenu(open, { open = false }) { Text("menu item") }
+                        }
+                    }
+                    composable<SessionInfoRoute> { Text("info") }
+                }
+                DeepLinkEffect(nav, signedIn = true, onOpenSession = { opened += it })
+            }
+        }
+        rule.mainClock.advanceTimeBy(1_000)
+        rule.onNodeWithText("menu item").assertExists()
+        assertTrue(!overlays.isEmpty)
+
+        DeepLinks.offer(parseDeepLink("happy://session/s1/info")!!)
+        rule.mainClock.advanceTimeBy(80)
+        // The menu is going, and the link waits for it.
+        assertTrue(overlays.isEmpty)
+        assertTrue("still home while the menu goes", nav.currentBackStackEntry?.destination?.hasRoute<HomeRoute>() == true)
+        rule.mainClock.advanceTimeBy(1_000)
+        rule.onNodeWithText("menu item").assertDoesNotExist()
+        assertTrue(nav.currentBackStackEntry?.destination?.hasRoute<SessionInfoRoute>() == true)
+
+        rule.runOnIdle { nav.popBackStack() }
+        rule.mainClock.advanceTimeBy(1_000)
+        rule.onNodeWithText("home").assertExists()
+        rule.onNodeWithText("menu item").assertDoesNotExist()
+    }
+
+    /** Nothing up: the link opens at once. */
+    @Test
+    fun withNothingUpALinkOpensAtOnce() {
+        val overlays = Overlays()
+        rule.setContent {
+            nav = rememberNavController()
+            CompositionLocalProvider(LocalOverlays provides overlays) {
+                NavHost(nav, startDestination = HomeRoute) {
+                    composable<HomeRoute> { Text("home") }
+                    composable<SessionInfoRoute> { Text("info") }
+                }
+                DeepLinkEffect(nav, signedIn = true)
+            }
+        }
+        rule.waitForIdle()
+        DeepLinks.offer(parseDeepLink("happy://session/s1/info")!!)
+        assertAt<SessionInfoRoute>()
     }
 
     private companion object {

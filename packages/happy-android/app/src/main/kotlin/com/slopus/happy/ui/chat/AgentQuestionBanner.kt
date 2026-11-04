@@ -1,6 +1,7 @@
 package com.slopus.happy.ui.chat
 
 import com.slopus.happy.ui.components.DialogWindowMotion
+import com.slopus.happy.ui.components.TrackOverlay
 import com.slopus.happy.ui.components.WindowMotion
 import com.slopus.happy.ui.components.PageBackHandler as BackHandler
 import androidx.compose.foundation.background
@@ -195,6 +196,7 @@ fun AgentQuestionModal(
     onDismiss: () -> Unit,
     onClose: () -> Unit,
 ) {
+    TrackOverlay(true, onDismiss)
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),

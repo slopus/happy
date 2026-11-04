@@ -39,6 +39,7 @@ import com.slopus.happy.ui.cards.CardListSpec
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.LoadingIndicator
+import com.slopus.happy.ui.components.TrackOverlay
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.CancellationException
@@ -143,6 +144,7 @@ internal fun ArtifactHistorySheet(history: ArtifactHistory, onDismiss: () -> Uni
         }
     }
     LaunchedEffect(history.read) { more() }
+    TrackOverlay(true, onDismiss)
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheet, containerColor = colors.surface, modifier = Modifier.testTag(ArtifactHistoryTags.SHEET)) {
         Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(bottom = 8.dp)) {
             Text(

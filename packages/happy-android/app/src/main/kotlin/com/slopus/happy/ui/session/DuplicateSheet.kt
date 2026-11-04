@@ -59,6 +59,7 @@ import com.slopus.happy.text.pluralResource
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
+import com.slopus.happy.ui.components.TrackOverlay
 import com.slopus.happy.ui.components.hairline
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
@@ -204,6 +205,7 @@ fun DuplicateSheet(
         }
     }
 
+    TrackOverlay(true, onDismiss)
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         DialogWindowMotion()
         BoxWithConstraints {

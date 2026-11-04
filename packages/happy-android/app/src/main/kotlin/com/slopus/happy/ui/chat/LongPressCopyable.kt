@@ -50,6 +50,7 @@ import androidx.compose.ui.window.PopupProperties
 import com.slopus.happy.R
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.components.TrackOverlay
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 
@@ -171,6 +172,7 @@ private fun CopyMenu(menu: MutableTransitionState<Boolean>, actions: List<CopyMe
         }
     }
     // Only the open menu takes focus and Back; a closing one just fades.
+    TrackOverlay(menu.targetState, onClose)
     Popup(popupPositionProvider = position, onDismissRequest = onClose, properties = PopupProperties(focusable = menu.targetState)) {
         AnimatedVisibility(
             visibleState = menu,

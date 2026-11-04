@@ -78,6 +78,8 @@ fun HappyDropdownMenu(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = HappyTheme.colors
+    // Tracked while open even on a covered page, so a link from outside closes it for good.
+    TrackOverlay(expanded, onDismissRequest)
     DropdownMenu(
         expanded = expanded && LocalPageActive.current,
         onDismissRequest = onDismissRequest,

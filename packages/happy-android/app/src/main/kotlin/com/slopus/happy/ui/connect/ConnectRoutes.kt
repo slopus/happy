@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.connect
 
+import com.slopus.happy.ui.components.LocalOverlays
 import com.slopus.happy.ui.guest.GuestChatEntry
 import com.slopus.happy.ui.guest.GuestChatRoute
 import com.slopus.happy.ui.page
@@ -52,7 +53,8 @@ fun NavGraphBuilder.connectRoutes(graph: AppGraph, nav: NavHostController) {
  * in or out, through [LocalAgentPairing]. Happy URLs (edge SSO §7) go to
  * [onHappyLink] ([com.slopus.happy.ui.connection.HappyLinks.take]), signed
  * in or out; one waiting for a connection to open is left for that
- * connection's stack ([openConnection] is this one's).
+ * connection's stack ([openConnection] is this one's). Any menu, sheet or
+ * dialog up ([LocalOverlays]) is put away before a link opens.
  */
 @Composable
 fun DeepLinkEffect(
@@ -64,9 +66,14 @@ fun DeepLinkEffect(
 ) {
     val pending by DeepLinks.pending.collectAsStateWithLifecycle()
     val connectAgent = LocalAgentPairing.current
+    val overlays = LocalOverlays.current
     LaunchedEffect(pending, signedIn) {
         val link = pending ?: return@LaunchedEffect
         if (link is DeepLink.OnConnection && link.connectionId != openConnection) return@LaunchedEffect
+        // Whatever is over the stack (a menu, a sheet, a dialog) goes first, animated, and the link
+        // opens once it has (iOS clearedForLink, 78fa78cf9): nothing stays over the screen it opens,
+        // nor comes back open when Back reveals the page under it. A newer link restarts this.
+        overlays?.clear()
         if (!DeepLinks.consume(link)) return@LaunchedEffect
         if (link is DeepLink.Instance || link is DeepLink.OnConnection) {
             onHappyLink?.invoke(link)

@@ -15,6 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.TransformOrigin
 import com.slopus.happy.ui.components.MenuSpec
+import com.slopus.happy.ui.components.TrackOverlay
 import com.slopus.happy.ui.components.hairline
 import com.slopus.happy.ui.components.onScreen
 import com.slopus.happy.ui.components.popupMotion
@@ -86,6 +87,7 @@ internal fun ConversationPopup(
     val availableWidth = with(density) { window.width.toDp() - 16.dp }
     val maxHeight = with(density) { (window.height - top - bottom).toDp() - 16.dp }.coerceIn(1.dp, 480.dp)
     val position = remember(margin, alignEnd, anchorCenterY, top, bottom, belowAnchor) { ConversationPopupPosition(margin, alignEnd, anchorCenterY, top, bottom, belowAnchor) }
+    TrackOverlay(true, onDismiss)
     Popup(
         popupPositionProvider = position,
         onDismissRequest = onDismiss,

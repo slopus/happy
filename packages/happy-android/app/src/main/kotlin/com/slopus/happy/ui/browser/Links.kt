@@ -60,6 +60,7 @@ import com.slopus.happy.R
 import com.slopus.happy.browser.BrowserPolicy
 import com.slopus.happy.references.HappyReferences
 import com.slopus.happy.ui.components.MaterialSymbols
+import com.slopus.happy.ui.components.TrackOverlay
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.launch
@@ -299,6 +300,7 @@ fun LinkMenu(opener: LinkOpener) {
             action()
         }
     }
+    TrackOverlay(true) { opener.menu = null }
     if (!com.slopus.happy.ui.components.LocalPageActive.current) return
     ModalBottomSheet(
         onDismissRequest = { opener.menu = null },

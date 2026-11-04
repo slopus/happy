@@ -45,6 +45,7 @@ import com.slopus.happy.ui.cards.CardNote
 import com.slopus.happy.ui.cards.CardRow
 import com.slopus.happy.ui.components.HomeCardPlace
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.components.TrackOverlay
 import com.slopus.happy.ui.connection.BarIconButton
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
@@ -138,6 +139,7 @@ private fun CalendarViewMenu(week: Boolean, onView: (Boolean) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         BarIconButton(Ionicon.CalendarOutline, stringResource(R.string.calendar_view), { expanded = true }, Modifier.testTag("calendar.view"))
+        TrackOverlay(expanded) { expanded = false }
         DropdownMenu(expanded, { expanded = false }) {
             listOf(false to R.string.calendar_month, true to R.string.agent_input_usage_popup_week).forEach { (value, label) ->
                 DropdownMenuItem(text = { Text(stringResource(label) + if (week == value) " ✓" else "") }, onClick = { onView(value); expanded = false }, modifier = Modifier.testTag(if (value) "calendar.view.week" else "calendar.view.month"))

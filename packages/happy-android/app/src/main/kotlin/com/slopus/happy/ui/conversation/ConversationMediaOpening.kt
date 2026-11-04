@@ -24,6 +24,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.slopus.happy.ui.components.TrackOverlay
 
 /** What a presented video or file is doing: nothing, being read, or why it couldn't open. */
 sealed interface MediaOpening {
@@ -131,6 +132,7 @@ class PresentedFile(val name: String, val bytes: ByteArray, val load: com.slopus
 internal fun MediaPreview(opener: MediaOpener) {
     val shown = opener.preview ?: return
     val save = com.slopus.happy.ui.files.rememberFileSave(shown.name) { shown.bytes }
+    TrackOverlay(true) { opener.preview = null }
     androidx.compose.ui.window.Dialog(
         onDismissRequest = { opener.preview = null },
         properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),

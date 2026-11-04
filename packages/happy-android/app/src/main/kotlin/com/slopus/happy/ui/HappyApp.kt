@@ -23,6 +23,8 @@ import androidx.navigation.compose.rememberNavController
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.OpenAccount
+import com.slopus.happy.ui.components.LocalOverlays
+import com.slopus.happy.ui.components.Overlays
 import com.slopus.happy.ui.components.ProvideRowReveal
 import com.slopus.happy.ui.home.LegacyHome
 import com.slopus.happy.ui.settings.AccountSettings
@@ -125,13 +127,15 @@ fun HappyApp(graph: AppGraph, onNavigationReady: (NavHostController) -> Unit = {
         val dissolve = remember { Dissolve() }
         val scope = rememberCoroutineScope()
         val switcher = remember(graph) { AccountSwitcher(graph, scope, dissolve) }
+        // Every menu, sheet and dialog up, so a link from outside can put them away first.
+        val overlays = remember { Overlays() }
         val shown = remember { arrayOfNulls<NavHostController>(1) }
         val stack = rememberStackGeneration(open) { switcher.keepsSettings && open != OpenAccount.None && shown[0]?.isSettingsOverHome() == true }
         // RevenueCat's paywall host, once the start is over: no paywall opens before a tap.
         val afterStart = LocalAfterStart.current
         val started by produceState(false) { afterStart.await(); value = true }
         if (started) PaywallHost(graph.purchases)
-        DissolveBox(dissolve) { CompositionLocalProvider(LocalAccountSwitcher provides switcher) {
+        DissolveBox(dissolve) { CompositionLocalProvider(LocalAccountSwitcher provides switcher, LocalOverlays provides overlays) {
         // Each account has its own back stack, replaced when another opens (but not from Settings).
         key(stack) {
             val nav = rememberNavController()

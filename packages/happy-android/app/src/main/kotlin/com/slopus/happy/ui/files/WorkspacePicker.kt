@@ -15,6 +15,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slopus.happy.R
+import com.slopus.happy.ui.components.TrackOverlay
 
 /** A workspace a file can be picked from: its [name] for the root's title, and how its folders read. */
 @Immutable
@@ -41,6 +42,7 @@ fun WorkspaceFilePicker(source: WorkspaceSource, onPick: (String) -> Unit, onClo
     fun back() {
         if (levels.size > 1) levels.removeAt(levels.lastIndex) else onClose()
     }
+    TrackOverlay(true, onClose)
     Dialog(onDismissRequest = ::back, properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
         Box(Modifier.testTag(WorkspacePickerTags.PICKER)) {
             WorkspaceFilesScreen(

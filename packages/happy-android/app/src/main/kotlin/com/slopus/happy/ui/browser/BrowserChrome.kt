@@ -65,6 +65,7 @@ import com.slopus.happy.browser.BrowserProgress
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.LocalPageActive
 import com.slopus.happy.ui.components.MaterialSymbols
+import com.slopus.happy.ui.components.TrackOverlay
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.delay
@@ -328,6 +329,7 @@ private fun HistoryButton(state: BrowserState, forward: Boolean) {
                 modifier = Modifier.alpha(if (enabled) 1f else 0.38f),
             )
         }
+        TrackOverlay(items != null) { items = null }
         DropdownMenu(expanded = items != null && LocalPageActive.current, onDismissRequest = { items = null }) {
             items.orEmpty().forEach { item ->
                 DropdownMenuItem(
@@ -367,6 +369,7 @@ private fun ShareButton(state: BrowserState) {
         IconButton(onClick = { open = true }, enabled = page != null && shareUrl != null, modifier = Modifier.testTag(BrowserTags.SHARE)) {
             Icon(MaterialSymbols.Share, stringResource(R.string.artifact_share))
         }
+        TrackOverlay(open) { open = false }
         DropdownMenu(expanded = open && LocalPageActive.current, onDismissRequest = { open = false }) {
             if (shareUrl != null) {
                 ShareItem(stringResource(R.string.browser_share_link), MaterialSymbols.Share) {
