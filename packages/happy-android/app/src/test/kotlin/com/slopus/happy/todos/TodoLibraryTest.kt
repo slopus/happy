@@ -346,6 +346,28 @@ class TodoLibraryTest {
     }
 
     @Test
+    fun indexCountsFollowOfflineChangesAndSurviveWithoutOpeningTheList() = runBlocking {
+        val server = FakeTodoServer(surfaceId)
+        server.seed(a1, "Milk")
+        server.seed(a2, "# Dairy")
+        val disk = Disk()
+        val account = launch(server, disk)
+        val watcher = watch(account)
+        eventually { !watcher.state.kept && disk.values.isNotEmpty() }
+        server.away = true
+        account.outbox.setOnline(false)
+        val counts = java.util.concurrent.atomic.AtomicReference<Map<String, Int>>(emptyMap())
+        account.scope.launch { account.library.outstandingStates(listOf(surfaceId)).collect(counts::set) }
+        eventually { counts.get() == mapOf(surfaceId to 1) }
+        account.library.setDone(surfaceId, a1, true)
+        eventually { counts.get() == mapOf(surfaceId to 0) && disk.intents.isNotEmpty() }
+        account.scope.cancel()
+        val restarted = launch(server, disk, online = false)
+        eventually { restarted.outbox.pending.value.isNotEmpty() }
+        assertEquals(mapOf(surfaceId to 0), restarted.library.outstanding(listOf(surfaceId)))
+    }
+
+    @Test
     fun anOlderReadCannotOverwriteAJournalChange() = runBlocking {
         val server = FakeTodoServer(surfaceId)
         val before = server.seed(a1, "Milk")

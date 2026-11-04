@@ -21,6 +21,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonArray
@@ -105,6 +107,7 @@ class TodoLibrary(
     private val names = HashMap<String, String>()
     private val asked = HashSet<String>()
     private var started = false
+    private val revision = MutableStateFlow(0L)
 
     init {
         outbox.handle(TodoOp.kinds) { intent -> withContext(confined) { deliver(intent) } }
@@ -133,6 +136,7 @@ class TodoLibrary(
                 val surfaces = (ops.map { it.second.surfaceId } + next.map { it.second.surfaceId }).toSet()
                 ops = next
                 surfaces.forEach(::publish)
+                revision.value++
             }
         }
         scope.launch(confined) {
@@ -284,17 +288,24 @@ class TodoLibrary(
 
     /** The unfinished todos of each kept list, headings left out; a list never opened here has none. */
     suspend fun outstanding(surfaceIds: List<String>): Map<String, Int> = withContext(confined) {
+        start()
         val counts = HashMap<String, Int>()
         for (id in surfaceIds) {
             if (lists[id]?.opened == true) {
                 counts[id] = state(id).active.count { it.heading == null }
             } else {
                 val value = kept(resource(id)) ?: continue
-                counts[id] = value["todos"].arr.orEmpty().mapNotNull(TodoItem::parse).count { it.status == TodoItem.Status.Active && it.heading == null }
+                val confirmed = value["todos"].arr.orEmpty().mapNotNull(TodoItem::parse).associateBy { it.id }
+                val pending = todoOps(outbox.pending.value).map { it.second }.filter { it.surfaceId == id }
+                counts[id] = TodoReducer.overlay(confirmed, pending).values.count { it.status == TodoItem.Status.Active && it.heading == null }
             }
         }
         counts
     }
+
+    /** The index follows kept counts without opening or downloading every list. */
+    fun outstandingStates(surfaceIds: List<String>): Flow<Map<String, Int>> = revision
+        .map { outstanding(surfaceIds) }.distinctUntilChanged()
 
     // State
 
@@ -323,6 +334,7 @@ class TodoLibrary(
     private fun publish(surfaceId: String) {
         val list = lists[surfaceId] ?: return
         list.flow.value = state(surfaceId)
+        revision.value++
     }
 
     /** Publishes and writes down list [surfaceId]. */
