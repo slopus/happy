@@ -200,9 +200,10 @@ class ChatJourneyTest {
         )
         journey.agentState("s1", buildJsonObject { putJsonObject("requests") {} })
         journey.agent("s1", toolEnd("c4", "Settings"), turn = "t3")
-        // The pending question also shows Stop. The empty online composer returns to Voice
-        // once it clears, so the Stop below belongs to the next turn.
-        rule.waitUntilAtLeastOneExists(hasTestTag(ComposerTags.PRIMARY) and hasContentDescription("Voice"), 10_000)
+        // The pending question also shows Stop. The empty online composer returns to its
+        // idle Send (no Voice: the relay's voice is off) once it clears, so the Stop below
+        // belongs to the next turn.
+        rule.waitUntilAtLeastOneExists(hasTestTag(ComposerTags.PRIMARY) and hasContentDescription("Send"), 10_000)
 
         // Thinking: the composer's button is Stop, and it aborts.
         val aborts = journey.rpc("s1", "abort") { JsonPrimitive(true) }
