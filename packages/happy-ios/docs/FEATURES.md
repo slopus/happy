@@ -24,7 +24,7 @@ accident.
 | Artifacts | No entry point in happy-app's UI (only the artifact screens link to each other) | `artifacts/*`, `apiArtifacts.ts` |
 | Recent sessions screen | No entry point on a phone | `session/recent.tsx` |
 | Web/desktop-only UI: command palette, keyboard shortcut hints, sidebar navigator, web tab bar | Not on iPhone | `CommandPalette/`, `ShortcutHints`, `SidebarNavigator`, `TabBar` |
-| Subscription purchases and restore | Support us is available in Settings and Voice, with project links and Apple subscription management. Subscribe/Restore remain unavailable until a purchase provider is configured; subscription status is unknown and backend authorization is unchanged. | `purchases.ts`, `SettingsView.tsx`, `settings/voice.tsx` |
+| Subscription purchases and restore | One monthly subscription (RevenueCat `pro`) through StoreKit 2 and RevenueCat's REST API, no SDK (`Subscription`, `Offers`): voice's sheets, Support Happy, Support us and an agent connection's Voice page buy it and restore it (a tap only), at the store's price. Nothing is on sale without the build's RevenueCat key and the current offering's monthly App Store product. Not yet verified against the real App Store or RevenueCat. | `purchases.ts`, `SettingsView.tsx`, `settings/voice.tsx` |
 | Over-the-air update banner | A native build has no over-the-air JavaScript bundle to update; the store-version check stays in scope | `UpdateBanner.tsx` (`useUpdates`) |
 | Analytics (PostHog) | Not ported yet; the `analyticsOptOut` setting is kept and synced. Only one feature flag is read, `direct-connection-migration-note`, by a plain `POST /flags?v=2` (`MigrationNoteFlag`), with the key from the `HAPPY_POSTHOG_API_KEY` build setting; nothing is captured | `track/` |
 
@@ -227,6 +227,7 @@ accident.
 
 ### Voice
 
+- **Off for now** (`LegacyVoice`, user request): no microphone in a session's composer, and nothing below runs; the code stays. An agent connection's call is apart and on.
 - Native microphone and speaker conversation uses the official ElevenLabs Swift SDK 3.4.0 through SwiftPM, with its LiveKit WebRTC transport. The authenticated account server grants a short-lived conversation token; no provider API key or RevenueCat SDK is embedded in the app.
 - Free allowance, subscription requirements, hard time limits and conversation limits remain server controlled. A valid backend grant connects without a purchase configuration. Backend denial shows the matching reason; subscription denial opens Support Us.
 - The empty iPhone composer starts voice. Its active status row reopens listening/speaking, microphone mute and stop controls. Dismissing controls keeps the foreground call active. Backgrounding, account switch/sign-out, audio interruption, audio reset and headphone removal stop capture and playback.

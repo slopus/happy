@@ -147,12 +147,14 @@ nothing here is wired to the release skill or to EAS.
   - artifacts and the recent-sessions screen, which have no entry point;
   - web and desktop-only UI (command palette, shortcut hints, sidebar
     navigator, web tab bar), purchases and analytics.
-- **Voice mode is included by the current product request.** The official
-  ElevenLabs Swift SDK provides WebRTC microphone and speaker transport.
-  Happy's authenticated backend alone grants its free or subscribed allowance;
-  a missing client RevenueCat configuration never prevents a valid grant.
-  Voice stops on background, account switch/sign-out, audio interruption or
-  headphone removal. Client tools use the existing outbox and permission RPCs.
+- **Voice in a Happy account's sessions is off** (`LegacyVoice`, user
+  request): the relay's ElevenLabs voice (`HappyUI/Voice`, `HappyCore/Voice`)
+  stays in the tree, out of reach. The session composer shows no microphone,
+  `VoiceCoordinator.start` says so before any context, status screen,
+  microphone, grant or provider, and Settings' Voice Assistant says so with
+  no usage request or Upgrade (`HostedLegacyVoiceGateTests`). Don't delete
+  the engine, or turn it back on, without the user. DEBUG runs can
+  (`HAPPY_LEGACY_VOICE=1`) to look into it.
 - **An agent connection's voice call** (`HappyCore/Call`, `HappyUI/Call`) is
   apart from that relay voice: home's three-bar button beside compose starts
   it, and Telegram's in-call bar (`CallBarLayout`, `CallWaves`, adapted with
@@ -186,9 +188,24 @@ nothing here is wired to the release skill or to EAS.
   free minute the same screen with "Start Voice Session" greyed out: one
   full-height sheet of the app's own in the first screen's style
   (`CallSheetViewController`, no vendor UI); closing it starts nothing.
-  Release builds sell nothing (`CallOffer.unavailable`: never a price or a
-  buy button before real products exist); only debug test runs draw the
-  subscription as on sale (`CallOffer.preview`, a no-charge preview). `openSession` replaces a conversation on top
+  The subscription is real where it can be (`Offers`, one presenter, over
+  `Subscription`, one owner, in `HappyCore/Subscription`): StoreKit 2 and
+  RevenueCat's REST API, no RevenueCat SDK, with the build's public key
+  (`HAPPY_REVENUE_CAT_APPLE_KEY` → `HappyRevenueCatAppleKey`). It is on sale
+  only when the current offering's `$rc_monthly` is a one-month
+  auto-renewable App Store product, at the store's price; anything else,
+  nothing is sold. RevenueCat's `pro`, from any product, gives 5 hours a
+  paid month in place of the free time. The rules (customer ids, store ids,
+  restore, grace, months, retention) are the frozen billing contract
+  shared with Android; read `Subscription.swift` and `ProPass.swift`
+  before changing them. One knowing divergence from RevenueCat's SDK: a
+  transaction is finished only after RevenueCat answers 2xx, never on a
+  4xx. Restore runs on a person's tap only, never at launch. Debug runs
+  can draw it from a fixture (`HAPPY_SUBSCRIPTION_FIXTURE`: `onsale`,
+  `subscribed`, `pending`, `unconfirmed`, `unconfigured`; no store, no
+  network, no charge) or as a no-charge preview (`HAPPY_CALL_OFFER=preview`).
+  Support Happy (Settings' boba row, Support us) is the same subscription
+  on its own sheet, without a voice session. `openSession` replaces a conversation on top
   and goes over anything else (`CallNavigation`). Contract, prompt, tool schemas and rationale:
   `docs/agent-voice-call.md` at the repository root. Harness hooks
   (`HAPPY_CALL_FIXTURE`, `HAPPY_CALL_TAP`, `-callLive`, `CallProbe`) are
