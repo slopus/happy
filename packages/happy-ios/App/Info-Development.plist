@@ -27,6 +27,8 @@
 	<string>$(HAPPY_CALL_AGENT_ID)</string>
 	<key>HappyPostHogKey</key>
 	<string>$(HAPPY_POSTHOG_API_KEY)</string>
+	<key>HappyRevenueCatAppleKey</key>
+	<string>$(HAPPY_REVENUE_CAT_APPLE_KEY)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSRequiresIPhoneOS</key>

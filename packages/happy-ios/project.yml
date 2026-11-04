@@ -18,7 +18,8 @@ configs:
   Debug: debug
   Preview: release
   Release: release
-# HAPPY_CALL_AGENT_ID, from an ignored Config/Call.local.xcconfig.
+# HAPPY_CALL_AGENT_ID and HAPPY_REVENUE_CAT_APPLE_KEY, from an ignored
+# Config/Call.local.xcconfig or the environment.
 configFiles:
   Debug: Config/Call.xcconfig
   Preview: Config/Call.xcconfig

@@ -6,6 +6,8 @@
 	<true/>
 	<key>HappyCallAgentID</key>
 	<string>$(HAPPY_CALL_AGENT_ID)</string>
+	<key>HappyRevenueCatAppleKey</key>
+	<string>$(HAPPY_REVENUE_CAT_APPLE_KEY)</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Allow Happy Chat Harness to show your photos and videos so you can share them in chats.</string>
 	<key>NSCameraUsageDescription</key>

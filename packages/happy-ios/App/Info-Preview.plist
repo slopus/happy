@@ -4,6 +4,8 @@
 <dict>
 	<key>HappyCallAgentID</key>
 	<string>$(HAPPY_CALL_AGENT_ID)</string>
+	<key>HappyRevenueCatAppleKey</key>
+	<string>$(HAPPY_REVENUE_CAT_APPLE_KEY)</string>
 	<key>HappyGuestPreviewInvites</key>
 	<true/>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
