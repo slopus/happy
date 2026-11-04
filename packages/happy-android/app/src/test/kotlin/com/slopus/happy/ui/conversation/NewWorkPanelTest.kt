@@ -18,7 +18,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import androidx.compose.ui.unit.width
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.slopus.happy.conversation.ComposerTaken
 import com.slopus.happy.conversation.ConversationState
 import com.slopus.happy.conversation.NewWork
 import com.slopus.happy.conversation.WorkChoice
@@ -111,20 +110,20 @@ class NewWorkPanelTest {
         rule.node(ConversationComposerTags.INPUT).assertIsFocused()
     }
 
-    @Test fun `while the work is made nothing changes it and Send waits`() {
-        state = state.copy(newWork = NewWork(WorkChoice(WorkKind.Bot, "B"), making = true))
+    @Test fun `once a first message is in nothing changes the work and Send still goes`() {
+        state = state.copy(newWork = NewWork(WorkChoice(WorkKind.Bot, "B"), locked = true))
         show()
         rule.node(NewWorkTags.kind(WorkKind.Task)).assertIsNotEnabled()
         rule.node(NewWorkTags.NAME).assertIsNotEnabled()
-        assertEquals(PrimaryAction.Idle, primaryActionOf(hasContent = true, state))
+        assertEquals(PrimaryAction.Send, primaryActionOf(hasContent = true, state))
     }
 
-    @Test fun `once made the panel fades and the composer gives up the first message`() {
+    @Test fun `once made the panel fades and the composer stays clear`() {
         state = state.copy(draft = "Ship it", draftArrivals = 1)
         show()
         rule.node(ConversationComposerTags.INPUT).assertTextEquals("Ship it")
         rule.mainClock.autoAdvance = false
-        state = state.copy(created = true, newWork = null, draft = "", taken = ComposerTaken(1, "Ship it"))
+        state = state.copy(created = true, newWork = null, draft = "", draftArrivals = 2)
         rule.mainClock.advanceTimeByFrame()
         rule.mainClock.advanceTimeBy(NewWorkSpec.FADE_MILLIS / 2L)
         // Still fading out.
@@ -134,8 +133,6 @@ class NewWorkPanelTest {
         rule.waitForIdle()
         rule.node(NewWorkTags.PANEL).assertDoesNotExist()
         rule.node(ConversationComposerTags.INPUT).assertTextEquals("")
-        // The chat about to have its first message says nothing in the meantime.
-        rule.node(ConversationScreenTags.EMPTY).assertDoesNotExist()
     }
 
     @Test

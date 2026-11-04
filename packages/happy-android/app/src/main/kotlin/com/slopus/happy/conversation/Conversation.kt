@@ -42,17 +42,9 @@ sealed interface ConversationSignal {
 @Immutable
 data class ComposerFocus(val serial: Int, val cursor: Int)
 
-/** A new chat before its first send has made it: what it will be, and whether it is being made now. */
+/** A new chat before its first send has made it: what it will be, and whether a first message has fixed it ([locked]). */
 @Immutable
-data class NewWork(val choice: WorkChoice, val making: Boolean = false)
-
-/** The composer's words and pictures went with the first message: [text] leaves the composer, unless edited since. */
-@Immutable
-data class ComposerTaken(val serial: Int, val text: String)
-
-/** New work that could not be made: nothing was sent, and the composer keeps everything. */
-@Immutable
-data class WorkFailure(val kind: WorkKind, val reason: Problem)
+data class NewWork(val choice: WorkChoice, val locked: Boolean = false)
 
 /** A run's status, when it began and ended, and why it ended (`run.*` metadata). */
 internal data class RunInfo(val status: String, val startedAt: Long?, val endedAt: Long? = null, val reason: String? = null) {
@@ -106,10 +98,6 @@ data class ConversationState(
     val knownTitle: String? = null,
     /** A new chat's Task or Bot and name; null once it is made. */
     val newWork: NewWork? = null,
-    /** The first message took the composer's words and pictures. */
-    val taken: ComposerTaken? = null,
-    /** Why new work could not be made, shown once. */
-    val workFailure: WorkFailure? = null,
     /** A send the agent hasn't taken yet: on its way (its files going up first) or failed. */
     val unsettledSends: Boolean = false,
 ) {
@@ -125,8 +113,9 @@ data class ConversationState(
  * the agent, and the open question. A new chat is [newTask]: nothing is read
  * until its first send makes it, a task or a bot as [setChoice] last said,
  * under the same [agentId], so the screen becomes the real chat in place.
- * That first send waits in the composer while the work is made; a refusal
- * leaves it there ([ConversationState.workFailure]).
+ * That first send is drawn at once and the composer cleared; the work is
+ * made behind it (iOS c344a0cb3), and a refusal leaves the message failed,
+ * its Retry asking for the same work again under the same ids.
  *
  * Offline first: with a [keeper], the newest runs are kept on the phone
  * ([KeptConversation]) and shown as soon as the disk read returns; the agent
@@ -243,8 +232,8 @@ class Conversation(
     val uploads = UploadBoard()
     private var creating: Deferred<Unit>? = null
     private var choice = initialChoice
-    /** The first send is making the new work: the choice is fixed and another send waits. */
-    private var making = false
+    /** A first message is in: the new work's choice is fixed. */
+    private var locked = false
     /** Events that came while history was read, applied after it. */
     private var held: MutableList<ConversationSignal.Event>? = null
 
@@ -743,19 +732,16 @@ class Conversation(
     // Sending
 
     /**
-     * Draws the message at once and delivers it. False when there is nothing
-     * to send, and on a new chat's first send, which waits in the composer
-     * while the task or bot is made ([startWork]).
+     * Draws the message at once and delivers it; false when there is nothing
+     * to send. A new chat's messages go once its task or bot is made
+     * ([ensureCreated], in [pump]); the first fixes what it will be.
      */
     fun send(text: String, images: List<Block.Image> = emptyList()): Boolean {
         val trimmed = text.trim()
         if (trimmed.isEmpty() && images.isEmpty()) return false
-        if (!created) {
-            startWork(ConversationApi.clientId(), trimmed, emptyList()) { images }
-            return false
-        }
         val id = ConversationApi.clientId()
         scope.launch(lane) {
+            if (!created) locked = true
             outgoing += Outgoing(id, trimmed, images, sentAt = now())
             setDraftNow("")
             publish()
@@ -781,10 +767,6 @@ class Conversation(
         val id = ConversationApi.clientId()
         val (inline, files) = WorkspaceUploads.split(id, attachments)
         val pictures = inline.map { WorkspaceUploads.localFile(it.uri) }
-        if (!created) {
-            startWork(id, trimmed, files) { if (pictures.isEmpty()) emptyList() else readPictures(pictures) }
-            return false
-        }
         scope.launch(lane) {
             val images = try {
                 if (pictures.isEmpty()) emptyList() else readPictures(pictures)
@@ -794,48 +776,13 @@ class Conversation(
                 publish { it.copy(draftArrivals = it.draftArrivals + if (restore) 1 else 0, alert = Problem.PicturesUnreadable) }
                 return@launch
             }
+            if (!created) locked = true
             outgoing += Outgoing(id, trimmed, images, files, sentAt = now())
             setDraftNow("")
             publish()
             pump()
         }
         return true
-    }
-
-    /**
-     * A new chat's first send (iOS's NewTask): the task or bot is made as
-     * chosen, once, and only then does the message go, the composer giving
-     * up its words and pictures ([ConversationState.taken]). Until then they
-     * stay in the composer, and a refusal leaves them there and says why. A
-     * send while it is being made is dropped, as the button can't send then.
-     */
-    private fun startWork(id: String, text: String, files: List<OutgoingFile>, pictures: () -> List<Block.Image>) {
-        scope.launch(lane) {
-            if (created || making) return@launch
-            val images = try {
-                pictures()
-            } catch (e: Exception) {
-                publish { it.copy(alert = Problem.PicturesUnreadable) }
-                return@launch
-            }
-            val kind = choice.kind
-            making = true
-            publish()
-            try {
-                ensureCreated()
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                making = false
-                publish { it.copy(workFailure = WorkFailure(kind, describe(e))) }
-                return@launch
-            }
-            making = false
-            outgoing += Outgoing(id, text, images, files, sentAt = now())
-            setDraftNow("")
-            publish { it.copy(taken = ComposerTaken((it.taken?.serial ?: 0) + 1, text)) }
-            pump()
-        }
     }
 
     /**
@@ -887,10 +834,10 @@ class Conversation(
         return true
     }
 
-    /** A new chat's Task or Bot and name, as picked; fixed once its first send is making it. */
+    /** A new chat's Task or Bot and name, as picked; fixed once its first message is in. */
     fun setChoice(next: WorkChoice) {
         scope.launch(lane) {
-            if (created || making || next == choice) return@launch
+            if (created || locked || next == choice) return@launch
             choice = next
             publish()
         }
@@ -1197,7 +1144,7 @@ class Conversation(
     }
 
     fun dismissAlert() {
-        scope.launch(lane) { publish { it.copy(alert = null, workFailure = null) } }
+        scope.launch(lane) { publish { it.copy(alert = null) } }
     }
 
     /** A tool's presented item, read whole. */
@@ -1406,7 +1353,7 @@ class Conversation(
         typesetter?.prepare(newestFirst)
         return base.copy(
             created = created,
-            newWork = if (created) null else NewWork(choice, making),
+            newWork = if (created) null else NewWork(choice, locked),
             rows = newestFirst,
             agent = agent,
             mode = mode,

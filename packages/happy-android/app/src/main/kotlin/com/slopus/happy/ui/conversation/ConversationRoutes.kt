@@ -243,8 +243,9 @@ internal class ConversationHolder(
         )
         unsent?.let { setChoiceSaved(it.choice) }
         val agentId = route.agentId ?: task!!.agentId
-        // A send still on its way when this chat was last left: the same conversation, so it shows and never goes twice.
-        conversation = route.agentId?.let(session.parkedConversations::adopt) ?: Conversation(
+        // A send still on its way when this chat was last left (new work's too, while it is made): the same
+        // conversation, so it shows and never goes twice.
+        conversation = (route.agentId ?: unsent?.task?.agentId)?.let(session.parkedConversations::adopt) ?: Conversation(
             api = ConversationApi(bytesRequest = session.conversationBytesRequest(), request = session.conversationRequest()),
             signals = session.events.signalsFor(agentId),
             scope = scope,
@@ -256,6 +257,8 @@ internal class ConversationHolder(
             initialChoice = choice,
             onTaskCreated = { answer ->
                 saved[CREATED] = true
+                // Made, it is home's to open now, not the next compose's.
+                if (session.unsentWork?.task?.agentId == agentId) session.unsentWork = null
                 answer["task"].obj?.let { session.upsertTask(it, answer["membership"].obj) }
                 answer["bot"].obj?.let(session::upsertBot)
             },
@@ -282,8 +285,8 @@ internal class ConversationHolder(
     override fun onCleared() {
         val state = conversation.state.value
         val work = state.newWork
-        // Left unmade and not on its way: the next compose opens it as it was.
-        if (task != null && work != null && !work.making && saved.get<Boolean>(CREATED) != true) {
+        // Left unmade, its first message on its way or not: the next compose opens it as it was.
+        if (task != null && work != null && saved.get<Boolean>(CREATED) != true) {
             session.unsentWork = UnsentWork(task, work.choice, state.draft)
         }
         // Closed unless a send is in hand: then it finishes in this conversation (desktop 01659140).
@@ -437,11 +440,7 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
             },
         )
     } }
-    // New work that could not be made says why; nothing was sent, and the composer keeps it all.
-    val message = state.alert?.let { problemText(it) } ?: state.workFailure?.let { failure ->
-        stringResource(if (failure.kind == WorkKind.Bot) R.string.new_work_bot_failed else R.string.new_work_task_failed, problemText(failure.reason))
-    }
-    message?.let {
+    state.alert?.let { problemText(it) }?.let {
         val title = stringResource(R.string.common_error)
         val ok = stringResource(R.string.common_ok)
         HappyAlert(Alert(title, it, listOf(AlertButton(ok))), onDismiss = conversation::dismissAlert)

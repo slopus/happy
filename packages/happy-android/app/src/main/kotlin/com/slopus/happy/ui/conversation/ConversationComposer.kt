@@ -303,17 +303,6 @@ internal fun ConversationComposer(
         }
     }
 
-    // New work's first message goes once the task or bot is made: only then does it take the
-    // words and pictures, the words unless edited since. Seen once, so a return never clears again.
-    var takenSeen by rememberSaveable { mutableIntStateOf(state.taken?.serial ?: 0) }
-    LaunchedEffect(state.taken?.serial) {
-        val taken = state.taken ?: return@LaunchedEffect
-        if (taken.serial <= takenSeen) return@LaunchedEffect
-        takenSeen = taken.serial
-        pictures?.clear()
-        if (text.trim() == taken.text) onSent()
-    }
-
     val open = focused || text.isNotEmpty() || attached.isNotEmpty()
     val corner by animateDpAsState(
         if (open) ConversationComposerSpec.openCorner else ConversationComposerSpec.restCorner,
@@ -433,7 +422,7 @@ internal fun ConversationComposer(
                     ) {
                         // Send and Stop are one button changing its glyph (iOS AgentInputPrimaryGlyphMotion).
                         val glyph = when {
-                            state.stopping || state.newWork?.making == true -> PrimaryGlyphKind.Busy
+                            state.stopping -> PrimaryGlyphKind.Busy
                             primary == PrimaryAction.Stop -> PrimaryGlyphKind.Stop
                             else -> PrimaryGlyphKind.Send
                         }

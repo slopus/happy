@@ -33,5 +33,5 @@ class ParkedConversations(private val scope: CoroutineScope) {
     fun adopt(agentId: String): Conversation? = parked.remove(agentId)
 }
 
-/** A send not yet taken by the agent (on its way or failed), or new work still being made for one. */
-val ConversationState.holdsSends: Boolean get() = unsettledSends || newWork?.making == true
+/** A send not yet taken by the agent (on its way or failed); new work's first message is one. */
+val ConversationState.holdsSends: Boolean get() = unsettledSends

@@ -500,7 +500,7 @@ fun ConversationScreen(
                                 modifier = Modifier.padding(top = barFoot).keyboardPadding(keyboard, dockHeight),
                             )
                             // New work is asked in the middle instead, and the chat it becomes is about to have its first message.
-                            TranscriptPhase.Empty -> if (state.created && state.taken == null) {
+                            TranscriptPhase.Empty -> if (state.created) {
                                 StatePage(
                                     title = null,
                                     body = stringResource(R.string.conversation_empty),
@@ -816,4 +816,4 @@ internal fun activityLabel(activity: Activity?): String? = activity?.let {
 
 /** The send/stop button the composer shows; kept beside the screen for its tests. */
 internal fun primaryActionOf(hasContent: Boolean, state: ConversationState): PrimaryAction =
-    resolvePrimaryAction(hasContent = hasContent, showAbort = state.working, canAbort = state.created, blocked = false, disabled = state.newWork?.making == true)
+    resolvePrimaryAction(hasContent = hasContent, showAbort = state.working, canAbort = state.created, blocked = false, disabled = false)

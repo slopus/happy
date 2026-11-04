@@ -146,12 +146,12 @@ fun NewWorkRoom(shown: Boolean, modifier: Modifier = Modifier, content: @Composa
  * "Name (optional)" until typed; 10 under it a line saying what the kind is
  * (13/18 secondary, centred, wrapping). Every change goes to [onChange] as
  * it is made, a kind change with a tick. Return in the name goes on to the
- * composer ([onReturn]). Fixed while the work is being made.
+ * composer ([onReturn]). Fixed once its first message is in.
  */
 @Composable
 fun NewWorkChoicePanel(work: NewWork, onChange: (WorkChoice) -> Unit, onReturn: () -> Unit) {
     val colors = HappyTheme.colors
-    val enabled = !work.making
+    val enabled = !work.locked
     // Typed here and handed on, so the field never waits on the chat to echo it.
     var name by rememberSaveable { mutableStateOf(work.choice.name) }
     Column(Modifier.fillMaxWidth().testTag(NewWorkTags.PANEL), horizontalAlignment = Alignment.CenterHorizontally) {

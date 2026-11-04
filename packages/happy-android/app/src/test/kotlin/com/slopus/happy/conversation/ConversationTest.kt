@@ -453,12 +453,9 @@ class ConversationTest {
         advanceUntilIdle()
         // Nothing is saved for an agent that doesn't exist yet.
         assertEquals(listOf("/v0/config"), agent.requests.map { it.second })
-        // The first send waits in the composer while the task is made, and a second meanwhile is dropped.
-        assertFalse(chat.send("First"))
-        assertFalse(chat.send("Dropped"))
-        advanceUntilIdle()
-        assertEquals("First", chat.state.value.taken?.text)
-        chat.send("Second")
+        // Both are drawn at once and go once the task is made (iOS c344a0cb3).
+        assertTrue(chat.send("First"))
+        assertTrue(chat.send("Second"))
         advanceUntilIdle()
         assertEquals(1, agent.requests.count { it.second == "/v0/tasks" })
         val createBody = agent.requests.first { it.second == "/v0/tasks" }.third!!
@@ -499,33 +496,35 @@ class ConversationTest {
         assertEquals(listOf("Ship it"), chat.state.value.rows.map { (it as ConversationRow.User).text })
     }
 
-    @Test fun `a refused new work sends nothing, keeps the words, says why, and tries again under the same ids`() = runTest {
+    @Test fun `a refused new work leaves its first message failed and Retry asks again under the same ids`() = runTest {
         val agent = FakeAgent()
         agent.refuseCreate = 409
         val chat = conversation(agent, NewTask("t1", "w1", "a9", "m1"), WorkChoice(WorkKind.Bot, "Taken"))
         advanceUntilIdle()
         chat.setDraft("Hello")
-        assertFalse(chat.send("Hello"))
+        assertTrue(chat.send("Hello"))
         advanceUntilIdle()
-        assertEquals(WorkFailure(WorkKind.Bot, Problem.Said("Name already taken.")), chat.state.value.workFailure)
+        // Drawn and the composer cleared; nothing goes back into it, and the choice stays fixed.
         assertFalse(chat.state.value.created)
-        assertTrue(chat.state.value.rows.isEmpty())
-        assertNull(chat.state.value.taken)
-        assertEquals("Hello", chat.state.value.draft)
-        // Unlocked again: the name can change, and the next send asks again with the same ids.
-        assertEquals(NewWork(WorkChoice(WorkKind.Bot, "Taken"), making = false), chat.state.value.newWork)
-        chat.dismissAlert()
+        assertEquals("", chat.state.value.draft)
+        val row = chat.state.value.rows.single() as ConversationRow.User
+        assertEquals("Hello", row.text)
+        assertEquals(Delivery.Failed(Problem.Said("Name already taken.")), row.delivery)
+        assertEquals(NewWork(WorkChoice(WorkKind.Bot, "Taken"), locked = true), chat.state.value.newWork)
         chat.setChoice(WorkChoice(WorkKind.Bot, "Free"))
-        agent.refuseCreate = null
-        chat.send("Hello")
         advanceUntilIdle()
-        assertNull(chat.state.value.workFailure)
+        assertEquals(WorkChoice(WorkKind.Bot, "Taken"), chat.state.value.newWork?.choice)
+        assertTrue(agent.paths("POST").none { it.endsWith("/send") })
+        agent.refuseCreate = null
+        chat.retrySend(row.messageId)
+        advanceUntilIdle()
         val bodies = agent.requests.filter { it.second == "/v0/bots" }.map { it.third!! }
         assertEquals(2, bodies.size)
         assertEquals(bodies[0]["mutationId"], bodies[1]["mutationId"])
-        assertEquals("\"Free\"", bodies[1]["name"].toString())
+        assertEquals(bodies[0]["id"], bodies[1]["id"])
         assertTrue(chat.state.value.created)
-        assertEquals("Hello", chat.state.value.taken?.text)
+        assertEquals(listOf("/v0/agents/a9/send"), agent.paths("POST").filter { it.endsWith("/send") })
+        assertEquals(listOf("Hello"), chat.state.value.rows.map { (it as ConversationRow.User).text })
     }
 
     @Test fun `while new work is being made its choice is fixed`() = runTest {
@@ -543,9 +542,14 @@ class ConversationTest {
             retryDelayMillis = 1,
         ).also { it.start() }
         advanceUntilIdle()
+        chat.setDraft("Go")
         chat.send("Go")
         advanceUntilIdle()
-        assertEquals(true, chat.state.value.newWork?.making)
+        // Drawn and the composer cleared while the task is still being made.
+        assertFalse(chat.state.value.created)
+        assertEquals("", chat.state.value.draft)
+        assertEquals(listOf("Go"), chat.state.value.rows.map { (it as ConversationRow.User).text })
+        assertEquals(true, chat.state.value.newWork?.locked)
         chat.setChoice(WorkChoice(WorkKind.Bot, "Late"))
         advanceUntilIdle()
         assertEquals(WorkChoice(), chat.state.value.newWork?.choice)
