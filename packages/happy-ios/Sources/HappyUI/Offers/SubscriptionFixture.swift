@@ -13,6 +13,8 @@ import HappyWire
 /// - `subscribed`: this customer has pro already.
 /// - `pending`: Subscribe waits on Ask to Buy.
 /// - `unconfirmed`: bought, but RevenueCat can't be reached to take it.
+/// - `owned`: no monthly package on offer, so nothing is sold, but the App
+///   Store account owns a yearly one that Restore brings back.
 /// - `unconfigured`: no key, nothing sold.
 struct SubscriptionFixture {
     let subscription: Subscription
@@ -25,9 +27,10 @@ struct SubscriptionFixture {
         switch name {
         case "unconfigured":
             subscription = Subscription(store: nil, revenueCat: nil, defaults: defaults)
-        case "onsale", "subscribed", "pending", "unconfirmed":
-            let revenueCat = FixtureRevenueCat(everyone: name == "subscribed", reachable: name != "unconfirmed")
-            subscription = Subscription(store: FixtureStore(price: price, pending: name == "pending"), revenueCat: revenueCat, defaults: defaults)
+        case "onsale", "subscribed", "pending", "unconfirmed", "owned":
+            let revenueCat = FixtureRevenueCat(everyone: name == "subscribed", reachable: name != "unconfirmed", monthly: name != "owned")
+            let owned = name == "owned" ? [StoreTransaction(id: "fixture-yearly", originalID: "fixture-yearly", productID: "happy_yearly", jws: "fixture", token: nil)] : []
+            subscription = Subscription(store: FixtureStore(price: price, pending: name == "pending", owned: owned), revenueCat: revenueCat, defaults: defaults)
         default:
             return nil
         }
@@ -39,10 +42,12 @@ private final class FixtureStore: SubscriptionStore, @unchecked Sendable {
     private let pending: Bool
     private let lock = NSLock()
     private var bought: [StoreTransaction] = []
+    private let owned: [StoreTransaction]
 
-    init(price: String, pending: Bool) {
+    init(price: String, pending: Bool, owned: [StoreTransaction] = []) {
         self.price = price
         self.pending = pending
+        self.owned = owned
     }
 
     func product(_ id: String) async -> StoreLookup { .found(StoreProduct(id: id, displayPrice: price)) }
@@ -56,7 +61,7 @@ private final class FixtureStore: SubscriptionStore, @unchecked Sendable {
     }
 
     func unfinished() async -> [StoreTransaction] { lock.withLock { bought } }
-    func entitlements() async -> [StoreTransaction] { lock.withLock { bought } }
+    func entitlements() async -> [StoreTransaction] { owned + lock.withLock { bought } }
     func sync() async -> Bool { true }
     func appTransaction() async -> String? { nil }
     func finish(_ transaction: StoreTransaction) async { lock.withLock { bought.removeAll { $0.id == transaction.id } } }
@@ -66,18 +71,20 @@ private final class FixtureStore: SubscriptionStore, @unchecked Sendable {
 private final class FixtureRevenueCat: RevenueCatAPI, @unchecked Sendable {
     private let everyone: Bool
     private let reachable: Bool
+    private let monthly: Bool
     private let lock = NSLock()
     private var granted: Set<String> = []
 
-    init(everyone: Bool, reachable: Bool) {
+    init(everyone: Bool, reachable: Bool, monthly: Bool) {
         self.everyone = everyone
         self.reachable = reachable
+        self.monthly = monthly
     }
 
     func offerings(customer: String) async -> RevenueCatAnswer {
         .ok(.object(["current_offering_id": .string("default"), "offerings": .array([.object([
             "identifier": .string("default"),
-            "packages": .array([.object(["identifier": .string("$rc_monthly"), "platform_product_identifier": .string("happy_monthly")])]),
+            "packages": .array(monthly ? [.object(["identifier": .string("$rc_monthly"), "platform_product_identifier": .string("happy_monthly")])] : []),
         ])])]))
     }
 

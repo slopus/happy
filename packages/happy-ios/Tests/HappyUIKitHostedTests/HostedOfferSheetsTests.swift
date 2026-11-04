@@ -279,6 +279,43 @@ final class HostedOfferSheetsTests: XCTestCase {
         XCTAssertEqual(result, .dismissed)
     }
 
+    /// Nothing on sale (no monthly package), but a yearly subscription
+    /// owned: Support Happy, voice's used sheet, Support us and the Voice
+    /// page still restore it, and none of them offers Subscribe.
+    func testRestoreWithNothingOnSale() async throws {
+        let offers = try await hostedOffers("owned", for: self)
+        XCTAssertEqual(offers.offer, .unavailable)
+        XCTAssertTrue(offers.canRestore)
+        XCTAssertFalse(offers.welcomes())
+
+        let page = AgentVoiceViewController()
+        let (_, window) = try await host(page)
+        XCTAssertNil(page.shownRow("voice-subscribe")?.action)
+        XCTAssertNotNil(page.shownRow("voice-restore")?.action)
+        let support = SupportUsViewController(openURL: { _ in false })
+        support.loadViewIfNeeded()
+        XCTAssertEqual(support.shownRow("subscribe")?.dimmed, true)
+        XCTAssertNotNil(support.shownRow("restore-purchases")?.action)
+
+        let (used, usedAnswer) = try await open(.used(freeAgain: nil), offers, over: page, as: CallSheetViewController.self)
+        XCTAssertNil(used.subscribe)
+        XCTAssertNotNil(used.restore)
+        used.close.sendActions(for: .primaryActionTriggered)
+        _ = await usedAnswer.value
+        try await closed(page)
+
+        let (sheet, answer) = try await open(.support, offers, over: page, as: SupportSheetViewController.self)
+        XCTAssertNil(sheet.subscribe)
+        let restore = try XCTUnwrap(sheet.restore)
+        try await Task.sleep(for: .seconds(1.2))
+        capture(window, "support-owned")
+        restore.sendActions(for: .touchUpInside)
+        let result = await answer.value
+        XCTAssertEqual(result, .pro, "restoring the owned yearly didn't give pro")
+        XCTAssertEqual(offers.offer, .subscribed)
+        try await until { page.shownRow("voice-plan")?.value == Strings.Offer.subscribed }
+    }
+
     /// No RevenueCat key: nothing on sale, no Restore, Support Happy still opens.
     func testUnconfiguredSellsNothing() async throws {
         let offers = try await hostedOffers("unconfigured", for: self)

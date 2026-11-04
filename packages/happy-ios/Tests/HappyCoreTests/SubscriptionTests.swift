@@ -249,6 +249,33 @@ final class SubscriptionTests: XCTestCase {
         XCTAssertTrue(store.finished.contains("unknown"))
     }
 
+    /// Restore needs the key and the store, never something on sale: an
+    /// owned product that is no longer offered (a yearly one, here) is
+    /// restored, and Subscribe stays off.
+    func testRestoreWithNoMonthlyPackage() async {
+        revenueCat.offerings = FakeRevenueCat.offerings(product: nil)
+        await restoresWithNothingOnSale()
+    }
+
+    func testRestoreWithTheMonthlyProductMissingFromTheStore() async {
+        store.productList = [:]
+        await restoresWithNothingOnSale()
+    }
+
+    private func restoresWithNothingOnSale(file: StaticString = #filePath, line: UInt = #line) async {
+        store.entitlementList = [StoreTransaction(id: "y1", originalID: "y0", productID: "happy_yearly", jws: "jws.y1", token: nil)]
+        let subscription = await ready("b")
+        XCTAssertEqual(subscription.offer, .unavailable, file: file, line: line)
+        XCTAssertEqual(subscription.problem, .noProduct, file: file, line: line)
+        assertEqual(await subscription.buy(), .unavailable, file: file, line: line)
+        XCTAssertTrue(store.purchases.isEmpty, file: file, line: line)
+        assertEqual(await subscription.restore(), .restored, file: file, line: line)
+        XCTAssertEqual(revenueCat.posted.map(\.productID), ["happy_yearly"], file: file, line: line)
+        XCTAssertTrue(revenueCat.posted.allSatisfy { $0.customer == "b" && $0.restore }, file: file, line: line)
+        XCTAssertTrue(subscription.hasPro, file: file, line: line)
+        XCTAssertEqual(subscription.offer, .subscribed, file: file, line: line)
+    }
+
     func testRestoreWhilePendingFindsNothing() async {
         let subscription = await ready("a")
         store.next = .pending
@@ -468,6 +495,7 @@ final class FakeStore: SubscriptionStore, @unchecked Sendable {
     var open: Bool { with { $0.open } }
     var unfinishedList: [StoreTransaction] { get { with { $0.unfinished } } set { with { $0.unfinished = newValue } } }
     var entitlementList: [StoreTransaction] { get { with { $0.entitlements } } set { with { $0.entitlements = newValue } } }
+    var productList: [String: StoreProduct] { get { with { $0.products } } set { with { $0.products = newValue } } }
 
     func product(_ id: String) async -> StoreLookup {
         with { $0.products[id] }.map(StoreLookup.found) ?? .missing
