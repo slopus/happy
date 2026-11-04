@@ -46,8 +46,21 @@ import kotlinx.serialization.Serializable
 
 /** The Feed's screen. AgentConnectionRoutes registers it with the agent's other places. */
 fun NavGraphBuilder.feedRoutes(graph: AppGraph, nav: NavHostController) {
-    page<AgentFeedRoute> { entry -> AgentFeed(graph, nav, entry.toRoute()) }
-    page<AgentFeedPeekRoute> { entry -> AgentFeedPeek(graph, nav, entry.toRoute()) }
+    page<AgentFeedRoute> { entry ->
+        val route = entry.toRoute<AgentFeedRoute>()
+        WithPictures(graph, route.connectionId) { AgentFeed(graph, nav, route) }
+    }
+    page<AgentFeedPeekRoute> { entry ->
+        val route = entry.toRoute<AgentFeedPeekRoute>()
+        WithPictures(graph, route.connectionId) { AgentFeedPeek(graph, nav, route) }
+    }
+}
+
+/** The connection's pictures for the faces drawn under [content] (a bot's avatar, a member's photo): without them only their ThumbHashes show. */
+@Composable
+internal fun WithPictures(graph: AppGraph, connectionId: String, content: @Composable () -> Unit) {
+    val session = remember(connectionId) { graph.agentSessions.session(connectionId) }
+    androidx.compose.runtime.CompositionLocalProvider(com.slopus.happy.ui.connection.LocalAgentPictures provides session?.pictures, content = content)
 }
 
 /**

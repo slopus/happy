@@ -4,6 +4,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -62,6 +64,19 @@ class DocumentHistoryLayoutTest {
         rule.onNodeWithText("Current version", substring = true).assertExists()
         rule.onNodeWithText("Steve").performClick()
         assertEquals(2 to "Steve", picked)
+    }
+
+    @Test
+    fun anAuthorWithAPhotoWearsItRoundInTheFacesPlace() {
+        show(DocumentHistoryState(changes, failed = false, names = mapOf("u1" to "Steve"), photos = mapOf("u1" to "1QcSHQRnh493V4dIh4eXh1h4kJUI")))
+        val faces = rule.onAllNodesWithTag(DocumentHistoryTags.FACE, useUnmergedTree = true)
+        // Both of u1's changes; the conversion keeps its initial.
+        faces.assertCountEquals(2)
+        val face = faces[0].bounds
+        val row = rule.node(DocumentHistoryTags.row(3)).bounds
+        assertDp("36 round", 36.dp, face.right - face.left)
+        assertDp("16 in", 16.dp, face.left - row.left)
+        assertDp("centred in its 62 row", 13.dp, face.top - row.top)
     }
 
     @Test

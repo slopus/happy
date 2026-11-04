@@ -44,14 +44,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.slopus.happy.R
 import com.slopus.happy.agent.AgentSession
+import com.slopus.happy.agent.TeamUser
 import com.slopus.happy.documents.DocumentChange
 import com.slopus.happy.documents.DocumentEditor
 import com.slopus.happy.documents.DocumentReader
 import com.slopus.happy.documents.DocumentRoutes
 import com.slopus.happy.documents.yjs.YDoc
-import com.slopus.happy.references.ReferenceReader
 import com.slopus.happy.ui.artifacts.PlaceScaffold
 import com.slopus.happy.ui.components.Icon
+import com.slopus.happy.ui.connection.AgentPicture
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
@@ -75,12 +76,19 @@ object DocumentHistorySpec {
 object DocumentHistoryTags {
     const val SCREEN = "document.history"
     const val STATUS = "document.history.status"
+    const val FACE = "document.history.face"
     const val VERSION = "document.version"
     fun row(seq: Int) = "document.history.$seq"
 }
 
 /** What the history knows: the changes newest first (null until read, empty when there are none), and whether reading failed. */
-internal class DocumentHistoryState(val changes: List<DocumentChange>?, val failed: Boolean, val names: Map<String, String>)
+internal class DocumentHistoryState(
+    val changes: List<DocumentChange>?,
+    val failed: Boolean,
+    val names: Map<String, String>,
+    /** Authors' photos' ThumbHashes by user ID ([TeamUser]); one without a photo wears their initial. */
+    val photos: Map<String, String> = emptyMap(),
+)
 
 /**
  * A document's permanent change log (iOS's `DocumentHistoryViewController`),
@@ -108,10 +116,12 @@ fun DocumentHistoryScreen(session: AgentSession, surfaceId: String, onBack: () -
             if (all.isEmpty()) null else all.reversed()
         }
         value = DocumentHistoryState(read.orEmpty(), read == null, emptyMap())
-        val ids = read.orEmpty().mapNotNull { it.actor.userId }.distinct()
+        val ids = read.orEmpty().mapNotNull { it.actor.userId }.toSet()
         if (ids.isNotEmpty()) {
-            val names = try { ReferenceReader.userNames(session.client, ids) } catch (e: CancellationException) { throw e } catch (_: Exception) { emptyMap() }
-            value = DocumentHistoryState(value.changes, value.failed, names)
+            // Through the team's members (iOS `loadAuthors`): names, then faces over their ThumbHashes.
+            val names = session.team.names(ids)
+            val photos = session.team.users.value.filterKeys(ids::contains).mapNotNull { (id, user) -> user.photo?.let { id to it } }.toMap()
+            value = DocumentHistoryState(value.changes, value.failed, names, photos)
         }
     }
     DocumentHistoryPage(state, onBack) { change, author -> onVersion(change.seq, author) }
@@ -140,7 +150,12 @@ internal fun DocumentHistoryPage(state: DocumentHistoryState, onBack: () -> Unit
                     val time = if (change.createdAt > 0) format.format(Date(change.createdAt.toLong())) else ""
                     val extra = if (change === changes.first()) words.current else Formatter.formatShortFileSize(context, change.size.toLong())
                     val detail = listOf(time, extra).filter { it.isNotEmpty() }.joinToString(" · ")
-                    HistoryRow(author, detail, change.actor.userId ?: change.actor.agentId ?: "agent", Modifier.testTag(DocumentHistoryTags.row(change.seq))) { onPick(change, author) }
+                    val userId = change.actor.userId
+                    HistoryRow(
+                        author, detail, userId ?: change.actor.agentId ?: "agent",
+                        photo = userId?.let { id -> state.photos[id]?.let { TeamUser.photoPath(id) to it } },
+                        modifier = Modifier.testTag(DocumentHistoryTags.row(change.seq)),
+                    ) { onPick(change, author) }
                 }
             }
         }
@@ -158,9 +173,9 @@ internal class HistoryWords(val conversion: String, val agent: String, val someo
     }
 }
 
-/** One change: the author's initial on their colour, their name over when and how big, and a chevron. */
+/** One change: the author's photo, else their initial on their colour, their name over when and how big, and a chevron. */
 @Composable
-private fun HistoryRow(title: String, detail: String, seed: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun HistoryRow(title: String, detail: String, seed: String, photo: Pair<String, String>?, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val colors = HappyTheme.colors
     Row(
         modifier
@@ -171,7 +186,11 @@ private fun HistoryRow(title: String, detail: String, seed: String, modifier: Mo
             .padding(horizontal = DocumentHistorySpec.padding, vertical = DocumentHistorySpec.vertical),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
+        if (photo != null) {
+            Box(Modifier.size(DocumentHistorySpec.avatar).testTag(DocumentHistoryTags.FACE)) {
+                AgentPicture(photo.first, photo.second, DocumentHistorySpec.avatar, DocumentHistorySpec.avatar / 2)
+            }
+        } else Box(
             Modifier.size(DocumentHistorySpec.avatar).clip(CircleShape).background(peerColor(seed)),
             contentAlignment = Alignment.Center,
         ) {

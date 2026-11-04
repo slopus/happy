@@ -36,8 +36,10 @@ fun NavGraphBuilder.surfaceRoutes(graph: AppGraph, nav: NavHostController) {
         val route = entry.toRoute<DocumentHistoryRoute>()
         val session = remember(route.connectionId) { graph.agentSessions.session(route.connectionId) }
         if (session == null) SurfaceElsewhere("", onBack = { nav.popBackStack() })
-        else DocumentHistoryScreen(session, route.surfaceId, onBack = { nav.popBackStack() }) { seq, title ->
-            nav.navigate(DocumentVersionRoute(route.connectionId, route.surfaceId, seq, title))
+        else com.slopus.happy.ui.feed.WithPictures(graph, route.connectionId) {
+            DocumentHistoryScreen(session, route.surfaceId, onBack = { nav.popBackStack() }) { seq, title ->
+                nav.navigate(DocumentVersionRoute(route.connectionId, route.surfaceId, seq, title))
+            }
         }
     }
     page<DocumentVersionRoute> { entry ->
