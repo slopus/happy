@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="monitor_title">Monitor do sistema</string>
+    <string name="monitor_overview">Visão geral do computador</string>
+    <string name="monitor_waiting_host">CPU, gráficos, memória e armazenamento em um só lugar</string>
+    <string name="monitor_unreachable">Não foi possível acessar o computador. A conexão será tentada novamente automaticamente.</string>
+    <string name="monitor_loading">Conectando a este computador…</string>
+    <string name="monitor_live">Ao vivo</string>
+    <string name="monitor_reconnecting">Reconectando · última amostra</string>
+    <string name="monitor_missing">Este monitor do sistema não está mais disponível.</string>
+    <string name="monitor_unsupported">Este Happy Agent ainda não oferece suporte ao monitor do sistema.</string>
+    <string name="monitor_short_loading">Conectando…</string>
+    <string name="monitor_short_reconnecting">Reconectando</string>
+    <string name="monitor_short_missing">Indisponível</string>
+    <string name="monitor_short_unsupported">Sem suporte</string>
+    <string name="monitor_cpu">CPU</string>
+    <string name="monitor_gpu">GPU</string>
+    <string name="monitor_memory">Memória</string>
+    <string name="monitor_disk">Disco</string>
+    <string name="monitor_processes">Processos</string>
+    <string name="monitor_waiting_cpu">Aguardando dados do processador</string>
+    <string name="monitor_waiting_gpu">Aguardando dados gráficos</string>
+    <string name="monitor_no_gpu">Nenhuma GPU detectada</string>
+    <string name="monitor_gpu_unavailable">As métricas gráficas não estão disponíveis neste computador.</string>
+    <string name="monitor_gpu_waiting">As métricas gráficas aparecerão aqui.</string>
+    <string name="monitor_waiting_memory">Aguardando dados de memória</string>
+    <string name="monitor_no_volumes">Nenhum volume disponível</string>
+    <string name="monitor_logical_cores">Núcleos lógicos</string>
+    <string name="monitor_frequency">Frequência</string>
+    <string name="monitor_temperature">Temperatura</string>
+    <string name="monitor_video_memory">Memória de vídeo</string>
+    <string name="monitor_power">Potência</string>
+    <string name="monitor_physical_used">Memória física usada</string>
+    <string name="monitor_available">Disponível</string>
+    <string name="monitor_cached">Em cache</string>
+    <string name="monitor_swap">Troca</string>
+    <string name="monitor_read_io">E/S de leitura</string>
+    <string name="monitor_write_io">E/S de gravação</string>
+    <string name="monitor_unknown_filesystem">Sistema de arquivos desconhecido</string>
+    <string name="monitor_memory_subtitle">de %1$s de memória física</string>
+    <string name="monitor_disk_subtitle">%1$s de %2$s usados</string>
+    <string name="monitor_free">%1$s livres</string>
+    <string name="monitor_host_meta">%1$s · %2$s · Tempo de atividade %3$s</string>
+    <string name="monitor_filter">Filtrar processos…</string>
+    <string name="monitor_sort">Ordenar</string>
+    <string name="monitor_waiting_processes">Aguardando processos</string>
+    <string name="monitor_processes_unavailable">Métricas de processos indisponíveis</string>
+    <string name="monitor_processes_unavailable_note">Este computador não está enviando sua lista de processos. As outras métricas de recursos continuam sendo atualizadas.</string>
+    <string name="monitor_no_matches">Nenhum processo correspondente</string>
+    <string name="monitor_no_processes">Nenhum processo informado</string>
+    <string name="monitor_last_sample">Última amostra</string>
+    <plurals name="monitor_process_count"><item quantity="one">%1$s processo</item><item quantity="many">%1$s processos</item><item quantity="other">%1$s processos</item></plurals>
+    <plurals name="monitor_thread_count"><item quantity="one">%1$s thread</item><item quantity="many">%1$s threads</item><item quantity="other">%1$s threads</item></plurals>
+    <string name="monitor_pid">PID</string>
+    <string name="monitor_user">Usuário</string>
+    <string name="monitor_state">Estado</string>
+    <string name="monitor_threads">Threads</string>
+    <string name="monitor_shown">%1$d de %2$d amostrados · Maiores consumidores de CPU e memória · CPU como proporção de todo o computador · Ordem atualizada a cada 5 s</string>
+    <plurals name="monitor_activity"><item quantity="one">%1$d segundo de atividade</item><item quantity="many">%1$d segundos de atividade</item><item quantity="other">%1$d segundos de atividade</item></plurals>
+    <string name="monitor_collecting">Coletando histórico de atividade</string>
+    <string name="monitor_sampled">Amostra às %1$s · A cada %2$s s</string>
+    <string name="monitor_waiting_sample">Aguardando a primeira amostra</string>
+</resources>

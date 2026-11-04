@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="monitor_title">系統監視器</string>
+    <string name="monitor_overview">機器概覽</string>
+    <string name="monitor_waiting_host">一覽CPU、圖形、記憶體和儲存空間</string>
+    <string name="monitor_unreachable">無法連線至機器。連線將自動重試。</string>
+    <string name="monitor_loading">正在連線至此機器…</string>
+    <string name="monitor_live">即時</string>
+    <string name="monitor_reconnecting">正在重新連線 · 顯示上次取樣</string>
+    <string name="monitor_missing">此系統監視器已無法使用。</string>
+    <string name="monitor_unsupported">此Happy Agent尚不支援系統監視器。</string>
+    <string name="monitor_short_loading">正在連線…</string>
+    <string name="monitor_short_reconnecting">正在重新連線</string>
+    <string name="monitor_short_missing">無法使用</string>
+    <string name="monitor_short_unsupported">不支援</string>
+    <string name="monitor_cpu">CPU</string>
+    <string name="monitor_gpu">GPU</string>
+    <string name="monitor_memory">記憶體</string>
+    <string name="monitor_disk">磁碟</string>
+    <string name="monitor_processes">處理程序</string>
+    <string name="monitor_waiting_cpu">等待處理器資料</string>
+    <string name="monitor_waiting_gpu">等待圖形資料</string>
+    <string name="monitor_no_gpu">未偵測到GPU</string>
+    <string name="monitor_gpu_unavailable">此機器的圖形指標無法使用。</string>
+    <string name="monitor_gpu_waiting">圖形指標將顯示在這裡。</string>
+    <string name="monitor_waiting_memory">等待記憶體資料</string>
+    <string name="monitor_no_volumes">沒有可用的卷宗</string>
+    <string name="monitor_logical_cores">邏輯核心</string>
+    <string name="monitor_frequency">頻率</string>
+    <string name="monitor_temperature">溫度</string>
+    <string name="monitor_video_memory">顯示記憶體</string>
+    <string name="monitor_power">耗電量</string>
+    <string name="monitor_physical_used">已用實體記憶體</string>
+    <string name="monitor_available">可用</string>
+    <string name="monitor_cached">已快取</string>
+    <string name="monitor_swap">交換空間</string>
+    <string name="monitor_read_io">讀取I/O</string>
+    <string name="monitor_write_io">寫入I/O</string>
+    <string name="monitor_unknown_filesystem">未知檔案系統</string>
+    <string name="monitor_memory_subtitle">實體記憶體總計%1$s</string>
+    <string name="monitor_disk_subtitle">已用%1$s，共%2$s</string>
+    <string name="monitor_free">可用%1$s</string>
+    <string name="monitor_host_meta">%1$s · %2$s · 運作時間%3$s</string>
+    <string name="monitor_filter">篩選處理程序…</string>
+    <string name="monitor_sort">排序</string>
+    <string name="monitor_waiting_processes">等待處理程序</string>
+    <string name="monitor_processes_unavailable">處理程序指標無法使用</string>
+    <string name="monitor_processes_unavailable_note">此機器未回報處理程序清單。其他資源指標仍在即時更新。</string>
+    <string name="monitor_no_matches">沒有相符的處理程序</string>
+    <string name="monitor_no_processes">未回報處理程序</string>
+    <string name="monitor_last_sample">上次取樣</string>
+    <plurals name="monitor_process_count"><item quantity="other">%1$s個處理程序</item></plurals>
+    <plurals name="monitor_thread_count"><item quantity="other">%1$s個執行緒</item></plurals>
+    <string name="monitor_pid">PID</string>
+    <string name="monitor_user">使用者</string>
+    <string name="monitor_state">狀態</string>
+    <string name="monitor_threads">執行緒</string>
+    <string name="monitor_shown">已取樣%1$d/%2$d · 主要CPU和記憶體使用者 · CPU按整台機器的占比計算 · 每5秒更新排序</string>
+    <plurals name="monitor_activity"><item quantity="other">%1$d秒的活動</item></plurals>
+    <string name="monitor_collecting">正在收集活動歷程</string>
+    <string name="monitor_sampled">取樣於%1$s · 每%2$s秒</string>
+    <string name="monitor_waiting_sample">等待首次取樣</string>
+</resources>

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="monitor_title">系统监视器</string>
+    <string name="monitor_overview">机器概览</string>
+    <string name="monitor_waiting_host">一览CPU、图形、内存和存储</string>
+    <string name="monitor_unreachable">无法连接到机器。连接将自动重试。</string>
+    <string name="monitor_loading">正在连接到此机器…</string>
+    <string name="monitor_live">实时</string>
+    <string name="monitor_reconnecting">正在重新连接 · 显示上次采样</string>
+    <string name="monitor_missing">此系统监视器已不可用。</string>
+    <string name="monitor_unsupported">此Happy Agent尚不支持系统监视器。</string>
+    <string name="monitor_short_loading">正在连接…</string>
+    <string name="monitor_short_reconnecting">正在重新连接</string>
+    <string name="monitor_short_missing">不可用</string>
+    <string name="monitor_short_unsupported">不支持</string>
+    <string name="monitor_cpu">CPU</string>
+    <string name="monitor_gpu">GPU</string>
+    <string name="monitor_memory">内存</string>
+    <string name="monitor_disk">磁盘</string>
+    <string name="monitor_processes">进程</string>
+    <string name="monitor_waiting_cpu">等待处理器数据</string>
+    <string name="monitor_waiting_gpu">等待图形数据</string>
+    <string name="monitor_no_gpu">未检测到GPU</string>
+    <string name="monitor_gpu_unavailable">此机器的图形指标不可用。</string>
+    <string name="monitor_gpu_waiting">图形指标将显示在这里。</string>
+    <string name="monitor_waiting_memory">等待内存数据</string>
+    <string name="monitor_no_volumes">没有可用的卷</string>
+    <string name="monitor_logical_cores">逻辑核心</string>
+    <string name="monitor_frequency">频率</string>
+    <string name="monitor_temperature">温度</string>
+    <string name="monitor_video_memory">显存</string>
+    <string name="monitor_power">功耗</string>
+    <string name="monitor_physical_used">已用物理内存</string>
+    <string name="monitor_available">可用</string>
+    <string name="monitor_cached">已缓存</string>
+    <string name="monitor_swap">交换空间</string>
+    <string name="monitor_read_io">读取I/O</string>
+    <string name="monitor_write_io">写入I/O</string>
+    <string name="monitor_unknown_filesystem">未知文件系统</string>
+    <string name="monitor_memory_subtitle">物理内存总计%1$s</string>
+    <string name="monitor_disk_subtitle">已用%1$s，共%2$s</string>
+    <string name="monitor_free">可用%1$s</string>
+    <string name="monitor_host_meta">%1$s · %2$s · 运行时间%3$s</string>
+    <string name="monitor_filter">筛选进程…</string>
+    <string name="monitor_sort">排序</string>
+    <string name="monitor_waiting_processes">等待进程</string>
+    <string name="monitor_processes_unavailable">进程指标不可用</string>
+    <string name="monitor_processes_unavailable_note">此机器未报告进程列表。其他资源指标仍在实时更新。</string>
+    <string name="monitor_no_matches">没有匹配的进程</string>
+    <string name="monitor_no_processes">未报告进程</string>
+    <string name="monitor_last_sample">上次采样</string>
+    <plurals name="monitor_process_count"><item quantity="other">%1$s个进程</item></plurals>
+    <plurals name="monitor_thread_count"><item quantity="other">%1$s个线程</item></plurals>
+    <string name="monitor_pid">PID</string>
+    <string name="monitor_user">用户</string>
+    <string name="monitor_state">状态</string>
+    <string name="monitor_threads">线程</string>
+    <string name="monitor_shown">已采样%1$d/%2$d · 主要CPU和内存使用者 · CPU按整台机器的占比计算 · 每5秒更新排序</string>
+    <plurals name="monitor_activity"><item quantity="other">%1$d秒的活动</item></plurals>
+    <string name="monitor_collecting">正在收集活动历史</string>
+    <string name="monitor_sampled">采样于%1$s · 每%2$s秒</string>
+    <string name="monitor_waiting_sample">等待首次采样</string>
+</resources>

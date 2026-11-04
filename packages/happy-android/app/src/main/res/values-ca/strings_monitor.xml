@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="monitor_title">Monitor del sistema</string>
+    <string name="monitor_overview">Resum de l’equip</string>
+    <string name="monitor_waiting_host">CPU, gràfics, memòria i emmagatzematge d’un cop d’ull</string>
+    <string name="monitor_unreachable">No s’ha pogut connectar amb l’equip. La connexió es tornarà a intentar automàticament.</string>
+    <string name="monitor_loading">S’està connectant amb aquest equip…</string>
+    <string name="monitor_live">En directe</string>
+    <string name="monitor_reconnecting">S’està reconnectant · última mostra</string>
+    <string name="monitor_missing">Aquest monitor del sistema ja no està disponible.</string>
+    <string name="monitor_unsupported">Aquest Happy Agent encara no admet el monitor del sistema.</string>
+    <string name="monitor_short_loading">S’està connectant…</string>
+    <string name="monitor_short_reconnecting">S’està reconnectant</string>
+    <string name="monitor_short_missing">No disponible</string>
+    <string name="monitor_short_unsupported">No compatible</string>
+    <string name="monitor_cpu">CPU</string>
+    <string name="monitor_gpu">GPU</string>
+    <string name="monitor_memory">Memòria</string>
+    <string name="monitor_disk">Disc</string>
+    <string name="monitor_processes">Processos</string>
+    <string name="monitor_waiting_cpu">S’esperen dades del processador</string>
+    <string name="monitor_waiting_gpu">S’esperen dades gràfiques</string>
+    <string name="monitor_no_gpu">No s’ha detectat cap GPU</string>
+    <string name="monitor_gpu_unavailable">Les mètriques gràfiques no estan disponibles en aquest equip.</string>
+    <string name="monitor_gpu_waiting">Les mètriques gràfiques apareixeran aquí.</string>
+    <string name="monitor_waiting_memory">S’esperen dades de memòria</string>
+    <string name="monitor_no_volumes">No hi ha volums disponibles</string>
+    <string name="monitor_logical_cores">Nuclis lògics</string>
+    <string name="monitor_frequency">Freqüència</string>
+    <string name="monitor_temperature">Temperatura</string>
+    <string name="monitor_video_memory">Memòria de vídeo</string>
+    <string name="monitor_power">Potència</string>
+    <string name="monitor_physical_used">Memòria física utilitzada</string>
+    <string name="monitor_available">Disponible</string>
+    <string name="monitor_cached">A la memòria cau</string>
+    <string name="monitor_swap">Intercanvi</string>
+    <string name="monitor_read_io">E/S de lectura</string>
+    <string name="monitor_write_io">E/S d’escriptura</string>
+    <string name="monitor_unknown_filesystem">Sistema de fitxers desconegut</string>
+    <string name="monitor_memory_subtitle">de %1$s de memòria física</string>
+    <string name="monitor_disk_subtitle">%1$s de %2$s utilitzats</string>
+    <string name="monitor_free">%1$s lliures</string>
+    <string name="monitor_host_meta">%1$s · %2$s · Temps d’activitat %3$s</string>
+    <string name="monitor_filter">Filtra processos…</string>
+    <string name="monitor_sort">Ordena</string>
+    <string name="monitor_waiting_processes">S’esperen processos</string>
+    <string name="monitor_processes_unavailable">Mètriques dels processos no disponibles</string>
+    <string name="monitor_processes_unavailable_note">Aquest equip no està enviant la llista de processos. Les altres mètriques de recursos es continuen actualitzant.</string>
+    <string name="monitor_no_matches">No hi ha processos coincidents</string>
+    <string name="monitor_no_processes">No s’han comunicat processos</string>
+    <string name="monitor_last_sample">Última mostra</string>
+    <plurals name="monitor_process_count"><item quantity="one">%1$s procés</item><item quantity="many">%1$s processos</item><item quantity="other">%1$s processos</item></plurals>
+    <plurals name="monitor_thread_count"><item quantity="one">%1$s fil</item><item quantity="many">%1$s fils</item><item quantity="other">%1$s fils</item></plurals>
+    <string name="monitor_pid">PID</string>
+    <string name="monitor_user">Usuari</string>
+    <string name="monitor_state">Estat</string>
+    <string name="monitor_threads">Fils</string>
+    <string name="monitor_shown">%1$d de %2$d mostrejats · Principals consumidors de CPU i memòria · CPU com a proporció de tot l’equip · Ordre actualitzat cada 5 s</string>
+    <plurals name="monitor_activity"><item quantity="one">%1$d segon d’activitat</item><item quantity="many">%1$d segons d’activitat</item><item quantity="other">%1$d segons d’activitat</item></plurals>
+    <string name="monitor_collecting">S’està recollint l’historial d’activitat</string>
+    <string name="monitor_sampled">Mostra a les %1$s · Cada %2$s s</string>
+    <string name="monitor_waiting_sample">S’espera la primera mostra</string>
+</resources>

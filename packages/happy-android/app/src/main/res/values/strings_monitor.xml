@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="monitor_title">System Monitor</string>
+    <string name="monitor_overview">Machine overview</string>
+    <string name="monitor_waiting_host">CPU, graphics, memory, and storage at a glance</string>
+    <string name="monitor_unreachable">The machine could not be reached. Connection retries automatically.</string>
+    <string name="monitor_loading">Connecting to this machine…</string>
+    <string name="monitor_live">Live</string>
+    <string name="monitor_reconnecting">Reconnecting · showing last sample</string>
+    <string name="monitor_missing">This System Monitor is no longer available.</string>
+    <string name="monitor_unsupported">This Happy Agent does not support System Monitor yet.</string>
+    <string name="monitor_short_loading">Connecting…</string>
+    <string name="monitor_short_reconnecting">Reconnecting</string>
+    <string name="monitor_short_missing">Unavailable</string>
+    <string name="monitor_short_unsupported">Unsupported</string>
+    <string name="monitor_cpu">CPU</string>
+    <string name="monitor_gpu">GPU</string>
+    <string name="monitor_memory">Memory</string>
+    <string name="monitor_disk">Disk</string>
+    <string name="monitor_processes">Processes</string>
+    <string name="monitor_waiting_cpu">Waiting for processor data</string>
+    <string name="monitor_waiting_gpu">Waiting for graphics data</string>
+    <string name="monitor_no_gpu">No GPU detected</string>
+    <string name="monitor_gpu_unavailable">Graphics metrics are unavailable on this machine.</string>
+    <string name="monitor_gpu_waiting">Graphics metrics will appear here.</string>
+    <string name="monitor_waiting_memory">Waiting for memory data</string>
+    <string name="monitor_no_volumes">No volumes available</string>
+    <string name="monitor_logical_cores">Logical cores</string>
+    <string name="monitor_frequency">Frequency</string>
+    <string name="monitor_temperature">Temperature</string>
+    <string name="monitor_video_memory">Video memory</string>
+    <string name="monitor_power">Power</string>
+    <string name="monitor_physical_used">Physical memory used</string>
+    <string name="monitor_available">Available</string>
+    <string name="monitor_cached">Cached</string>
+    <string name="monitor_swap">Swap</string>
+    <string name="monitor_read_io">Read I/O</string>
+    <string name="monitor_write_io">Write I/O</string>
+    <string name="monitor_unknown_filesystem">Unknown filesystem</string>
+    <string name="monitor_memory_subtitle">of %1$s physical memory</string>
+    <string name="monitor_disk_subtitle">%1$s of %2$s used</string>
+    <string name="monitor_free">%1$s free</string>
+    <string name="monitor_host_meta">%1$s · %2$s · Uptime %3$s</string>
+    <string name="monitor_filter">Filter processes…</string>
+    <string name="monitor_sort">Sort</string>
+    <string name="monitor_waiting_processes">Waiting for processes</string>
+    <string name="monitor_processes_unavailable">Process metrics unavailable</string>
+    <string name="monitor_processes_unavailable_note">This machine is not reporting its process list. Other resource metrics remain live.</string>
+    <string name="monitor_no_matches">No matching processes</string>
+    <string name="monitor_no_processes">No processes reported</string>
+    <string name="monitor_last_sample">Last sample</string>
+    <plurals name="monitor_process_count"><item quantity="one">%1$s process</item><item quantity="other">%1$s processes</item></plurals>
+    <plurals name="monitor_thread_count"><item quantity="one">%1$s thread</item><item quantity="other">%1$s threads</item></plurals>
+    <string name="monitor_pid">PID</string>
+    <string name="monitor_user">User</string>
+    <string name="monitor_state">State</string>
+    <string name="monitor_threads">Threads</string>
+    <string name="monitor_shown">%1$d of %2$d sampled · Top CPU and memory consumers · CPU is a share of the whole machine · Order updates every 5s</string>
+    <plurals name="monitor_activity"><item quantity="one">%1$d second of activity</item><item quantity="other">%1$d seconds of activity</item></plurals>
+    <string name="monitor_collecting">Collecting activity history</string>
+    <string name="monitor_sampled">Sampled %1$s · Every %2$ss</string>
+    <string name="monitor_waiting_sample">Waiting for the first sample</string>
+</resources>

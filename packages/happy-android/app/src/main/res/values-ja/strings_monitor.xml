@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="monitor_title">システムモニター</string>
+    <string name="monitor_overview">マシンの概要</string>
+    <string name="monitor_waiting_host">CPU、グラフィックス、メモリ、ストレージを一覧表示</string>
+    <string name="monitor_unreachable">マシンに接続できませんでした。接続は自動的に再試行されます。</string>
+    <string name="monitor_loading">このマシンに接続中…</string>
+    <string name="monitor_live">更新中</string>
+    <string name="monitor_reconnecting">再接続中 · 前回の測定値を表示</string>
+    <string name="monitor_missing">このシステムモニターは利用できなくなりました。</string>
+    <string name="monitor_unsupported">このHappy Agentはシステムモニターにまだ対応していません。</string>
+    <string name="monitor_short_loading">接続中…</string>
+    <string name="monitor_short_reconnecting">再接続中</string>
+    <string name="monitor_short_missing">利用不可</string>
+    <string name="monitor_short_unsupported">未対応</string>
+    <string name="monitor_cpu">CPU</string>
+    <string name="monitor_gpu">GPU</string>
+    <string name="monitor_memory">メモリ</string>
+    <string name="monitor_disk">ディスク</string>
+    <string name="monitor_processes">プロセス</string>
+    <string name="monitor_waiting_cpu">プロセッサーのデータを待機中</string>
+    <string name="monitor_waiting_gpu">グラフィックスのデータを待機中</string>
+    <string name="monitor_no_gpu">GPUが検出されませんでした</string>
+    <string name="monitor_gpu_unavailable">このマシンのグラフィックス測定値は利用できません。</string>
+    <string name="monitor_gpu_waiting">グラフィックスの測定値がここに表示されます。</string>
+    <string name="monitor_waiting_memory">メモリのデータを待機中</string>
+    <string name="monitor_no_volumes">利用できるボリュームはありません</string>
+    <string name="monitor_logical_cores">論理コア数</string>
+    <string name="monitor_frequency">周波数</string>
+    <string name="monitor_temperature">温度</string>
+    <string name="monitor_video_memory">ビデオメモリ</string>
+    <string name="monitor_power">消費電力</string>
+    <string name="monitor_physical_used">物理メモリ使用量</string>
+    <string name="monitor_available">利用可能</string>
+    <string name="monitor_cached">キャッシュ済み</string>
+    <string name="monitor_swap">スワップ</string>
+    <string name="monitor_read_io">読み込みI/O</string>
+    <string name="monitor_write_io">書き込みI/O</string>
+    <string name="monitor_unknown_filesystem">不明なファイルシステム</string>
+    <string name="monitor_memory_subtitle">物理メモリ合計 %1$s</string>
+    <string name="monitor_disk_subtitle">%2$s中%1$sを使用</string>
+    <string name="monitor_free">空き %1$s</string>
+    <string name="monitor_host_meta">%1$s · %2$s · 稼働時間 %3$s</string>
+    <string name="monitor_filter">プロセスを絞り込み…</string>
+    <string name="monitor_sort">並べ替え</string>
+    <string name="monitor_waiting_processes">プロセスを待機中</string>
+    <string name="monitor_processes_unavailable">プロセスの測定値は利用できません</string>
+    <string name="monitor_processes_unavailable_note">このマシンはプロセス一覧を報告していません。他のリソースの測定値は引き続き更新されます。</string>
+    <string name="monitor_no_matches">一致するプロセスはありません</string>
+    <string name="monitor_no_processes">報告されたプロセスはありません</string>
+    <string name="monitor_last_sample">前回の測定値</string>
+    <plurals name="monitor_process_count"><item quantity="other">%1$sプロセス</item></plurals>
+    <plurals name="monitor_thread_count"><item quantity="other">%1$sスレッド</item></plurals>
+    <string name="monitor_pid">PID</string>
+    <string name="monitor_user">ユーザー</string>
+    <string name="monitor_state">状態</string>
+    <string name="monitor_threads">スレッド</string>
+    <string name="monitor_shown">%2$d件中%1$d件を測定 · CPUとメモリの主な消費元 · CPUはマシン全体に対する割合 · 順序は5秒ごとに更新</string>
+    <plurals name="monitor_activity"><item quantity="other">%1$d秒間のアクティビティ</item></plurals>
+    <string name="monitor_collecting">アクティビティ履歴を収集中</string>
+    <string name="monitor_sampled">測定時刻 %1$s · %2$s秒ごと</string>
+    <string name="monitor_waiting_sample">最初の測定値を待機中</string>
+</resources>

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="monitor_title">Системный монитор</string>
+    <string name="monitor_overview">Обзор компьютера</string>
+    <string name="monitor_waiting_host">Процессор, графика, память и хранилище — всё на одном экране</string>
+    <string name="monitor_unreachable">Не удалось связаться с компьютером. Подключение повторится автоматически.</string>
+    <string name="monitor_loading">Подключение к этому компьютеру…</string>
+    <string name="monitor_live">В реальном времени</string>
+    <string name="monitor_reconnecting">Переподключение · показаны последние данные</string>
+    <string name="monitor_missing">Этот системный монитор больше недоступен.</string>
+    <string name="monitor_unsupported">Этот Happy Agent пока не поддерживает системный монитор.</string>
+    <string name="monitor_short_loading">Подключение…</string>
+    <string name="monitor_short_reconnecting">Переподключение</string>
+    <string name="monitor_short_missing">Недоступно</string>
+    <string name="monitor_short_unsupported">Не поддерживается</string>
+    <string name="monitor_cpu">Процессор</string>
+    <string name="monitor_gpu">Графика</string>
+    <string name="monitor_memory">Память</string>
+    <string name="monitor_disk">Диск</string>
+    <string name="monitor_processes">Процессы</string>
+    <string name="monitor_waiting_cpu">Ожидание данных процессора</string>
+    <string name="monitor_waiting_gpu">Ожидание данных графики</string>
+    <string name="monitor_no_gpu">Графический процессор не обнаружен</string>
+    <string name="monitor_gpu_unavailable">Графические показатели этого компьютера недоступны.</string>
+    <string name="monitor_gpu_waiting">Здесь появятся графические показатели.</string>
+    <string name="monitor_waiting_memory">Ожидание данных памяти</string>
+    <string name="monitor_no_volumes">Нет доступных томов</string>
+    <string name="monitor_logical_cores">Логические ядра</string>
+    <string name="monitor_frequency">Частота</string>
+    <string name="monitor_temperature">Температура</string>
+    <string name="monitor_video_memory">Видеопамять</string>
+    <string name="monitor_power">Энергопотребление</string>
+    <string name="monitor_physical_used">Использовано физической памяти</string>
+    <string name="monitor_available">Доступно</string>
+    <string name="monitor_cached">В кэше</string>
+    <string name="monitor_swap">Подкачка</string>
+    <string name="monitor_read_io">Чтение</string>
+    <string name="monitor_write_io">Запись</string>
+    <string name="monitor_unknown_filesystem">Неизвестная файловая система</string>
+    <string name="monitor_memory_subtitle">из %1$s физической памяти</string>
+    <string name="monitor_disk_subtitle">Занято %1$s из %2$s</string>
+    <string name="monitor_free">Свободно %1$s</string>
+    <string name="monitor_host_meta">%1$s · %2$s · Время работы %3$s</string>
+    <string name="monitor_filter">Фильтр процессов…</string>
+    <string name="monitor_sort">Сортировка</string>
+    <string name="monitor_waiting_processes">Ожидание процессов</string>
+    <string name="monitor_processes_unavailable">Показатели процессов недоступны</string>
+    <string name="monitor_processes_unavailable_note">Компьютер не передаёт список процессов. Остальные показатели ресурсов продолжают обновляться.</string>
+    <string name="monitor_no_matches">Нет подходящих процессов</string>
+    <string name="monitor_no_processes">Процессы не переданы</string>
+    <string name="monitor_last_sample">Последние данные</string>
+    <plurals name="monitor_process_count"><item quantity="one">%1$s процесс</item><item quantity="few">%1$s процесса</item><item quantity="many">%1$s процессов</item><item quantity="other">%1$s процесса</item></plurals>
+    <plurals name="monitor_thread_count"><item quantity="one">%1$s поток</item><item quantity="few">%1$s потока</item><item quantity="many">%1$s потоков</item><item quantity="other">%1$s потока</item></plurals>
+    <string name="monitor_pid">PID</string>
+    <string name="monitor_user">Пользователь</string>
+    <string name="monitor_state">Состояние</string>
+    <string name="monitor_threads">Потоки</string>
+    <string name="monitor_shown">Получено %1$d из %2$d · Основные потребители процессора и памяти · Загрузка процессора указана для всего компьютера · Порядок обновляется каждые 5 с</string>
+    <plurals name="monitor_activity"><item quantity="one">%1$d секунда активности</item><item quantity="few">%1$d секунды активности</item><item quantity="many">%1$d секунд активности</item><item quantity="other">%1$d секунды активности</item></plurals>
+    <string name="monitor_collecting">Сбор истории активности</string>
+    <string name="monitor_sampled">Измерено в %1$s · Каждые %2$s с</string>
+    <string name="monitor_waiting_sample">Ожидание первого измерения</string>
+</resources>
