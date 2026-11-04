@@ -41,4 +41,10 @@
     <string name="calendar_repeat_weekly">Co tydzień</string>
     <string name="calendar_repeat_monthly">Co miesiąc</string>
     <string name="calendar_repeat_yearly">Co rok</string>
+    <string name="calendar_move_earlier">Przesuń o 15 minut wcześniej</string>
+    <string name="calendar_move_later">Przesuń o 15 minut później</string>
+    <string name="calendar_move_previous_day">Przesuń na poprzedni dzień</string>
+    <string name="calendar_move_next_day">Przesuń na następny dzień</string>
+    <string name="calendar_shorten">Skróć o 15 minut</string>
+    <string name="calendar_extend">Wydłuż o 15 minut</string>
 </resources>

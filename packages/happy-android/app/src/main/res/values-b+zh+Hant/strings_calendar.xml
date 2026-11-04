@@ -41,4 +41,10 @@
     <string name="calendar_repeat_weekly">每週</string>
     <string name="calendar_repeat_monthly">每月</string>
     <string name="calendar_repeat_yearly">每年</string>
+    <string name="calendar_move_earlier">提前15分鐘</string>
+    <string name="calendar_move_later">延後15分鐘</string>
+    <string name="calendar_move_previous_day">移至前一天</string>
+    <string name="calendar_move_next_day">移至後一天</string>
+    <string name="calendar_shorten">縮短15分鐘</string>
+    <string name="calendar_extend">延長15分鐘</string>
 </resources>

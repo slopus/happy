@@ -41,4 +41,10 @@
     <string name="calendar_repeat_weekly">Еженедельно</string>
     <string name="calendar_repeat_monthly">Ежемесячно</string>
     <string name="calendar_repeat_yearly">Ежегодно</string>
+    <string name="calendar_move_earlier">Перенести на 15 минут раньше</string>
+    <string name="calendar_move_later">Перенести на 15 минут позже</string>
+    <string name="calendar_move_previous_day">Перенести на предыдущий день</string>
+    <string name="calendar_move_next_day">Перенести на следующий день</string>
+    <string name="calendar_shorten">Сократить на 15 минут</string>
+    <string name="calendar_extend">Продлить на 15 минут</string>
 </resources>

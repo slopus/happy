@@ -41,4 +41,10 @@
     <string name="calendar_repeat_weekly">Setmanalment</string>
     <string name="calendar_repeat_monthly">Mensualment</string>
     <string name="calendar_repeat_yearly">Anualment</string>
+    <string name="calendar_move_earlier">Mou 15 minuts abans</string>
+    <string name="calendar_move_later">Mou 15 minuts després</string>
+    <string name="calendar_move_previous_day">Mou al dia anterior</string>
+    <string name="calendar_move_next_day">Mou al dia següent</string>
+    <string name="calendar_shorten">Escurça 15 minuts</string>
+    <string name="calendar_extend">Allarga 15 minuts</string>
 </resources>

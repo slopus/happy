@@ -41,4 +41,10 @@
     <string name="calendar_repeat_weekly">Semanalmente</string>
     <string name="calendar_repeat_monthly">Mensalmente</string>
     <string name="calendar_repeat_yearly">Anualmente</string>
+    <string name="calendar_move_earlier">Mover 15 minutos antes</string>
+    <string name="calendar_move_later">Mover 15 minutos depois</string>
+    <string name="calendar_move_previous_day">Mover para o dia anterior</string>
+    <string name="calendar_move_next_day">Mover para o dia seguinte</string>
+    <string name="calendar_shorten">Encurtar em 15 minutos</string>
+    <string name="calendar_extend">Estender em 15 minutos</string>
 </resources>

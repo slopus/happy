@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.calendar.CalendarFeed
 import com.slopus.happy.calendar.CalendarItem
+import com.slopus.happy.calendar.CalendarTiming
 import com.slopus.happy.calendar.CalendarWindow
 import com.slopus.happy.ui.artifacts.PlaceScaffold
 import com.slopus.happy.ui.cards.CardBlock
@@ -59,7 +60,8 @@ import java.time.format.DateTimeFormatter
 /** Desktop calendar controls in the native grouped-card screen, with a chosen-day agenda on phones. */
 @Composable
 internal fun CalendarScreen(state: CalendarFeed.State, name: String, zone: ZoneId, onRange: (CalendarWindow) -> Unit,
-    onBack: () -> Unit, onEvent: (CalendarItem) -> Unit, onNewEvent: ((LocalDate) -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
+    onBack: () -> Unit, onEvent: (CalendarItem) -> Unit, onNewEvent: ((LocalDate) -> Unit)? = null,
+    onMove: ((CalendarItem, CalendarTiming) -> Unit)? = null, actions: @Composable RowScope.() -> Unit = {}) {
     var chosenDay by rememberSaveable { mutableStateOf(LocalDate.now(zone).toEpochDay()) }
     var week by rememberSaveable { mutableStateOf(false) }
     val chosen = LocalDate.ofEpochDay(chosenDay)
@@ -102,7 +104,7 @@ internal fun CalendarScreen(state: CalendarFeed.State, name: String, zone: ZoneI
             if (note != null) item("status") { CardNote(stringResource(note)) }
             if (state.status != CalendarFeed.Status.Missing && state.status != CalendarFeed.Status.Unsupported) {
                 item("grid") {
-                    if (week && weekPlan.days.size == 7) CalendarWeekGrid(weekPlan, now, { chosenDay = it.toEpochDay() }, onEvent)
+                    if (week && weekPlan.days.size == 7) CalendarWeekGrid(weekPlan, now, { chosenDay = it.toEpochDay() }, onEvent, onMove = onMove)
                     else if (!week && monthPlan.weeks.isNotEmpty()) CalendarMonthGrid(chosen.monthValue, monthPlan.weekdays, monthPlan.weeks, now.toLocalDate(), chosen) { chosenDay = it.toEpochDay() }
                 }
                 if (state.page?.truncated == true) item("truncated") { CardNote(stringResource(R.string.calendar_truncated)) }

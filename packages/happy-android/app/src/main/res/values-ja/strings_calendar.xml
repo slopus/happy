@@ -41,4 +41,10 @@
     <string name="calendar_repeat_weekly">毎週</string>
     <string name="calendar_repeat_monthly">毎月</string>
     <string name="calendar_repeat_yearly">毎年</string>
+    <string name="calendar_move_earlier">15分早める</string>
+    <string name="calendar_move_later">15分遅らせる</string>
+    <string name="calendar_move_previous_day">前日に移動</string>
+    <string name="calendar_move_next_day">翌日に移動</string>
+    <string name="calendar_shorten">15分短くする</string>
+    <string name="calendar_extend">15分長くする</string>
 </resources>

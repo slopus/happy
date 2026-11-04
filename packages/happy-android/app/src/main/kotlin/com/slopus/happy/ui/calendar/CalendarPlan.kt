@@ -30,7 +30,8 @@ internal data class CalendarMonthPlan(val weekdays: List<String> = emptyList(), 
 internal data class WeekEvent(val piece: CalendarTimedPiece, val title: String, val description: String)
 @Immutable
 internal data class CalendarWeekPlan(val days: List<MonthDay> = emptyList(), val bars: List<MonthLine> = emptyList(),
-    val hidden: List<Int> = List(7) { 0 }, val events: List<WeekEvent> = emptyList(), val hours: List<String> = emptyList())
+    val hidden: List<Int> = List(7) { 0 }, val events: List<WeekEvent> = emptyList(), val hours: List<String> = emptyList(),
+    val barItems: Map<String, CalendarItem> = emptyMap())
 
 internal fun calendarWeekPlan(items: List<CalendarItem>, window: CalendarWindow, zone: ZoneId, words: Resources): CalendarWeekPlan {
     val locale = words.configuration.locales[0]
@@ -46,7 +47,7 @@ internal fun calendarWeekPlan(items: List<CalendarItem>, window: CalendarWindow,
     }, bars.shown.map { bar -> MonthLine(bar.item.occurrence.key, bar.startColumn, bar.endColumn, bar.lane,
         title(bar.item), description(bar.item), true) }, bars.hidden,
         calendarTimedPieces(items, window.firstDate, 7, zone).map { WeekEvent(it, title(it.item), description(it.item)) },
-        List(24) { hour -> window.firstDate.atTime(hour, 0).format(timeFormat) })
+        List(24) { hour -> window.firstDate.atTime(hour, 0).format(timeFormat) }, bars.shown.associate { it.item.occurrence.key to it.item })
 }
 
 /** Desktop range/bar rules, prepared with locale strings and time formatting off Main. */
