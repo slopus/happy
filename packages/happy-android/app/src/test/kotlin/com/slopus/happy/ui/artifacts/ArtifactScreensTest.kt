@@ -297,6 +297,19 @@ class ArtifactScreensTest {
         rule.node(ArtifactTags.DELETE).assertDoesNotExist()
     }
 
+    @Test fun copyLinkPutsTheArtifactsHappyLinkOnTheClipboard() {
+        val doc = ArtifactUi.Document("index.md", com.slopus.happy.chat.markdown.parseMarkdown("# Plan"), emptyMap(), emptyList(), "# Plan")
+        rule.setHappyContent { ArtifactScreen("Plan", doc, null, "Studio", ArtifactActions(onBack = {}, shareLink = { "happy://inst/artifact/a1?version=2" })) }
+        rule.node(ArtifactTags.COPY_LINK).performClick()
+        val clipboard = ApplicationProvider.getApplicationContext<android.content.Context>().getSystemService(android.content.ClipboardManager::class.java)
+        assertEquals("happy://inst/artifact/a1?version=2", clipboard.primaryClip?.getItemAt(0)?.text?.toString())
+    }
+
+    @Test fun aServerWithoutAnInstanceOrAGoneArtifactHasNoCopyLink() {
+        rule.setHappyContent { ArtifactScreen("Plan", ArtifactUi.Message(deleted = true), null, "Studio", ArtifactActions(onBack = {}, shareLink = { "happy://inst/artifact/a1" })) }
+        rule.node(ArtifactTags.COPY_LINK).assertDoesNotExist()
+    }
+
     @Test fun theLatestVersionHasNoBannerAndOneVersionNoHistory() {
         rule.setHappyContent(dark = true) { ArtifactScreen("Plan", ArtifactUi.Loading, null, "Studio", ArtifactActions(onBack = {}), history = history(3, 3)) }
         rule.node(ArtifactHistoryTags.BANNER).assertDoesNotExist()

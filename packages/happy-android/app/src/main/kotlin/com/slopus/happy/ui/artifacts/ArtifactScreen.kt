@@ -1,5 +1,9 @@
 package com.slopus.happy.ui.artifacts
 
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import com.slopus.happy.ui.home.copyToClipboard
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
@@ -86,6 +90,7 @@ object ArtifactTags {
     const val DIFF_TAB = "artifact.diff.tab"
     const val LATEST_TAB = "artifact.diff.latest"
     const val DELETE = "artifact.delete"
+    const val COPY_LINK = "artifact.copyLink"
 }
 
 /** What the artifact screen does with a tap, outside itself. */
@@ -106,6 +111,12 @@ class ArtifactActions(
     val fileReader: suspend (ArtifactFile, progress: (done: Long, total: Long) -> Unit) -> ByteArray = { _, _ -> throw IllegalStateException("no reader") },
     /** Names this artifact's staged files apart from others'. */
     val artifactKey: String = "artifact",
+    /**
+     * The artifact's external Happy link, at the version it was pinned to
+     * (iOS `CopyLinkItem`), for the bar's Copy Link; null where it has none:
+     * a file a link opened, or a server with no instance id.
+     */
+    val shareLink: (() -> String?)? = null,
     /** Deletes the artifact for everyone (desktop's Delete); null where it can't be, such as one file of it a link opened. */
     val onDelete: (suspend () -> Unit)? = null,
 )
@@ -143,6 +154,18 @@ fun ArtifactScreen(
         ArtifactTags.SCREEN,
         actions = {
             if (ui is ArtifactUi.Page) BrowserControls(browser)
+            // A page shares its link from the browser's own menu.
+            val link = actions.shareLink?.takeIf { ui !is ArtifactUi.Page && ui !is ArtifactUi.Message }?.invoke()
+            if (link != null) {
+                val context = LocalContext.current
+                val haptics = LocalHapticFeedback.current
+                BarIconButton(
+                    Ionicon.LinkOutline,
+                    stringResource(R.string.link_menu_copy),
+                    { if (copyToClipboard(context, link)) haptics.performHapticFeedback(HapticFeedbackType.Confirm) },
+                    Modifier.testTag(ArtifactTags.COPY_LINK),
+                )
+            }
             if (history?.hasVersions == true) {
                 BarIconButton(Ionicon.TimeOutline, stringResource(R.string.artifact_history), { versions = true }, Modifier.testTag(ArtifactHistoryTags.ACTION))
             }
