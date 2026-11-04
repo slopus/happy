@@ -43,4 +43,5 @@
     <string name="settings_connect_claude_run">Uruchom to polecenie w terminalu:</string>
     <string name="settings_commit">Commit</string>
     <string name="settings_commit_at">Commit %1$s</string>
+    <string name="settings_manage_subscriptions">Zarządzaj subskrypcjami</string>
 </resources>

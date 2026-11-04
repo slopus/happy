@@ -43,4 +43,5 @@
     <string name="settings_connect_claude_run">ターミナルで次のコマンドを実行してください：</string>
     <string name="settings_commit">コミット</string>
     <string name="settings_commit_at">コミット %1$s</string>
+    <string name="settings_manage_subscriptions">サブスクリプションを管理</string>
 </resources>

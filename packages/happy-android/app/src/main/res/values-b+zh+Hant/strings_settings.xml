@@ -43,4 +43,5 @@
     <string name="settings_connect_claude_run">在終端機中執行以下指令：</string>
     <string name="settings_commit">提交</string>
     <string name="settings_commit_at">提交 %1$s</string>
+    <string name="settings_manage_subscriptions">管理訂閱</string>
 </resources>

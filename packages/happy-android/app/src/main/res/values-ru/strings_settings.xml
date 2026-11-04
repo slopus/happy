@@ -43,4 +43,5 @@
     <string name="settings_connect_claude_run">Выполните эту команду в терминале:</string>
     <string name="settings_commit">Коммит</string>
     <string name="settings_commit_at">Коммит %1$s</string>
+    <string name="settings_manage_subscriptions">Управление подписками</string>
 </resources>

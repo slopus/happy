@@ -22,6 +22,7 @@ import com.slopus.happy.ui.theme.RnLineHeightStyle
  * (@expo/vector-icons 15.0.x, glyphmaps/Ionicons.json; MIT). Add entries as screens need them.
  */
 enum class Ionicon(val codepoint: Int) {
+    CardOutline(0xf1e8), // card-outline
     Add(0xf103), // add
     AddOutline(0xf107), // add-outline
     AlbumsOutline(0xf110), // albums-outline

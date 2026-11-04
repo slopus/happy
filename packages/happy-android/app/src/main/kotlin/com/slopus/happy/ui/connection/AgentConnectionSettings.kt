@@ -67,7 +67,7 @@ import com.slopus.happy.ui.settings.addAgentEntry
 import com.slopus.happy.ui.settings.rememberSettingsSearch
 import com.slopus.happy.ui.settings.settingsProfileEntries
 import com.slopus.happy.ui.settings.settingsSearchResults
-import com.slopus.happy.ui.settings.supportEntry
+import com.slopus.happy.ui.settings.supportSection
 import com.slopus.happy.ui.settings.kindSubtitle
 import com.slopus.happy.ui.settings.SettingsTiles
 import com.slopus.happy.ui.settings.rememberAboutActions
@@ -118,6 +118,7 @@ fun agentSettingsIndex(): List<AgentSettingsRow> {
         row(AgentPagesTags.HIDE_PROJECTS_ROW, stringResource(R.string.settings_hide_projects), Ionicon.FolderOutline, AgentSettingsPlace.Appearance),
         row(DataStorageTags.ROW, stringResource(R.string.data_storage_title), Ionicon.ServerOutline),
         row(SettingsTags.SUPPORT, stringResource(R.string.settings_support_us), Ionicon.HeartOutline),
+        row(SettingsTags.MANAGE_SUBSCRIPTIONS, stringResource(R.string.settings_manage_subscriptions), Ionicon.CardOutline),
         row(SettingsPageTags.ADD_AGENT, stringResource(R.string.settings_add_agent), Ionicon.Add),
         row(SettingsTags.WHATS_NEW, stringResource(R.string.settings_whats_new), Ionicon.SparklesOutline),
         row(SettingsTags.GITHUB, stringResource(R.string.settings_github), Ionicon.LogoGithub),
@@ -255,7 +256,7 @@ fun AgentConnectionSettingsScreen(
                 )
             }),
         ),
-        SettingsSection(listOf(supportEntry(about, aboutActions))),
+        supportSection(about, aboutActions),
         aboutSection(about, aboutActions),
     ).filter { it.rows.isNotEmpty() }
     // The bar on the page's own grey (black in dark), the groups on it: one surface, as the chat's details.

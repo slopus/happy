@@ -43,7 +43,7 @@ class SupportUsTest {
         val card = rule.onAllNodesWithTag(ItemGroupTags.CARD, useUnmergedTree = true)[4].bounds
         val support = rule.node(SettingsTags.SUPPORT).bounds
         assertDp("16 under the terminal card", terminal.bottom + 16.dp, card.top)
-        assertBox("support card", card, 16.dp, card.top, (PHONE_WIDTH - 32).dp, (76 + 2f / 3).dp)
+        assertBox("support card", card, 16.dp, card.top, (PHONE_WIDTH - 32).dp, (76 + 64 + 2f / 3).dp)
         assertBox("support row", support, (16 + 1f / 3).dp, card.top + (1f / 3).dp, (PHONE_WIDTH - 32 - 2f / 3).dp, 76.dp)
         rule.node(SettingsTags.SUPPORT).assertHasNoClickAction()
         rule.onNodeWithText("Thank you for your support!").assertIsDisplayed()

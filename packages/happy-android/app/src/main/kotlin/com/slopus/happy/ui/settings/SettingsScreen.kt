@@ -36,6 +36,7 @@ object SettingsTags {
     const val ENTER_TERMINAL = "settings.row.enterTerminal"
     const val VERSION = "settings.version"
     const val SUPPORT = "settings.support"
+    const val MANAGE_SUBSCRIPTIONS = "settings.manageSubscriptions"
     const val WHATS_NEW = "settings.row.whatsNew"
     const val GITHUB = "settings.row.github"
     const val REPORT_ISSUE = "settings.row.reportIssue"
@@ -58,6 +59,7 @@ object SettingsSpec {
     const val ISSUES_URL = "https://github.com/slopus/happy/issues"
     const val PRIVACY_URL = "https://happy.engineering/privacy/"
     const val TERMS_URL = "https://happy.engineering/terms/"
+    const val SUBSCRIPTIONS_URL = "https://play.google.com/store/account/subscriptions"
 }
 
 /** A settings row icon: a 29 Ionicon in [color]. */
@@ -219,7 +221,7 @@ fun SettingsScreen(
 ) {
     val search = rememberSettingsSearch()
     val sections = happySettingsSections(actions, connectingTerminal) +
-        SettingsSection(listOf(supportEntry(about, aboutActions))) +
+        supportSection(about, aboutActions) +
         aboutSection(about, aboutActions)
     Screen(
         header = {

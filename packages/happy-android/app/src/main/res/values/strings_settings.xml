@@ -53,4 +53,5 @@
     <!-- formatBuildSubtitle: the build's commit under Version. -->
     <string name="settings_commit">Commit</string>
     <string name="settings_commit_at">Commit %1$s</string>
+    <string name="settings_manage_subscriptions">Manage subscriptions</string>
 </resources>

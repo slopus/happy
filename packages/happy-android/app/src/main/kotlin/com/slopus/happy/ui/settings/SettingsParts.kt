@@ -389,8 +389,22 @@ fun supportEntry(about: AboutInfo, actions: AboutActions) = SettingsEntry(
 
 @Composable
 fun SupportCard(about: AboutInfo, actions: AboutActions) {
-    SettingsCard(SettingsSection(listOf(supportEntry(about, actions))))
+    SettingsCard(supportSection(about, actions))
 }
+
+/** Store subscription management is available regardless of this account's entitlement. */
+@Composable
+fun supportSection(about: AboutInfo, actions: AboutActions) = SettingsSection(
+    listOf(
+        supportEntry(about, actions),
+        SettingsEntry(
+            id = SettingsTags.MANAGE_SUBSCRIPTIONS,
+            title = stringResource(R.string.settings_manage_subscriptions),
+            icon = { SettingsTile(Ionicon.CardOutline, SettingsTiles.blue) },
+            onClick = { actions.onOpenUrl(SettingsSpec.SUBSCRIPTIONS_URL) },
+        ),
+    ),
+)
 
 /**
  * About (iOS's `aboutRows`, SettingsView.tsx's About without its title):

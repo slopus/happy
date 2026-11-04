@@ -100,7 +100,7 @@ class AgentConnectionSettingsTest {
         row.performScrollTo().assertHasNoClickAction()
         rule.onNodeWithText("Happy Agent · Version").assertIsDisplayed()
         rule.onNodeWithText("0.4.109").assertIsDisplayed()
-        assertEquals(64.dp, row.bounds.height)
+        assertDp("version row height", 64, row.bounds.height)
         rule.onNode(hasTestTag(ItemTags.CHEVRON) and hasAnyAncestor(hasTestTag(AgentSettingsTags.DAEMON_VERSION)), useUnmergedTree = true).assertDoesNotExist()
     }
 
