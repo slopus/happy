@@ -52,6 +52,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.slopus.happy.HappyApplication
 import com.slopus.happy.ui.call.CallFrame
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.ProvideWindowLayout
