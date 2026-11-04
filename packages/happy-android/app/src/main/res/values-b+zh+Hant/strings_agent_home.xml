@@ -34,8 +34,8 @@
     <string name="agent_search_kind_image_series">圖片系列</string>
     <string name="agent_search_kind_video">影片</string>
     <string name="agent_search_kind_artifact">工件</string>
-    <string name="agent_settings_edit_name">編輯名稱</string>
-    <string name="agent_settings_edit_avatar">編輯頭像</string>
+    <string name="agent_settings_edit_name">變更代理程式名稱</string>
+    <string name="agent_settings_edit_avatar">變更代理程式頭像</string>
     <string name="agent_settings_edit_name_prefix">把你的名字改成</string>
     <string name="agent_settings_edit_avatar_prefix">把你的頭像改成</string>
     <string name="agent_settings_profile_footer">由你的 Chief of Staff 進行變更。你送出之前不會傳送任何內容。</string>

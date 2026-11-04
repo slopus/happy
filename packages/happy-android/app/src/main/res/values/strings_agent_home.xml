@@ -39,8 +39,8 @@
     <string name="agent_search_kind_video">Video</string>
     <string name="agent_search_kind_artifact">Artifact</string>
 
-    <string name="agent_settings_edit_name">Edit name</string>
-    <string name="agent_settings_edit_avatar">Edit avatar</string>
+    <string name="agent_settings_edit_name">Change agent name</string>
+    <string name="agent_settings_edit_avatar">Change agent avatar</string>
     <!-- Typed into the Chief of Staff's composer, unsent; the trailing space is deliberate. -->
     <string name="agent_settings_edit_name_prefix">"Change your name to "</string>
     <string name="agent_settings_edit_avatar_prefix">"Change your avatar to "</string>

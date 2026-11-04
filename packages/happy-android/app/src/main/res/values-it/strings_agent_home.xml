@@ -34,8 +34,8 @@
     <string name="agent_search_kind_image_series">Serie di immagini</string>
     <string name="agent_search_kind_video">Video</string>
     <string name="agent_search_kind_artifact">Artefatto</string>
-    <string name="agent_settings_edit_name">Modifica nome</string>
-    <string name="agent_settings_edit_avatar">Modifica avatar</string>
+    <string name="agent_settings_edit_name">Cambia nome dell\'agente</string>
+    <string name="agent_settings_edit_avatar">Cambia avatar dell\'agente</string>
     <string name="agent_settings_edit_name_prefix">"Cambia il tuo nome in "</string>
     <string name="agent_settings_edit_avatar_prefix">"Cambia il tuo avatar in "</string>
     <string name="agent_settings_profile_footer">La modifica la fa il tuo Chief of Staff. Non viene inviato nulla finché non lo invii tu.</string>

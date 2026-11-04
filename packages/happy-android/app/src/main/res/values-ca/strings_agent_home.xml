@@ -34,8 +34,8 @@
     <string name="agent_search_kind_image_series">Sèrie d\'imatges</string>
     <string name="agent_search_kind_video">Vídeo</string>
     <string name="agent_search_kind_artifact">Artefacte</string>
-    <string name="agent_settings_edit_name">Edita el nom</string>
-    <string name="agent_settings_edit_avatar">Edita l\'avatar</string>
+    <string name="agent_settings_edit_name">Canvia el nom de l\'agent</string>
+    <string name="agent_settings_edit_avatar">Canvia l\'avatar de l\'agent</string>
     <string name="agent_settings_edit_name_prefix">"Canvia el teu nom a "</string>
     <string name="agent_settings_edit_avatar_prefix">"Canvia el teu avatar a "</string>
     <string name="agent_settings_profile_footer">El canvi el fa el teu Chief of Staff. No s\'envia res fins que no ho enviïs.</string>

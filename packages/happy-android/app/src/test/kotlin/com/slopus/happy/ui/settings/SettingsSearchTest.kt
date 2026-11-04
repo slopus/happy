@@ -174,8 +174,8 @@ class SettingsSearchTest {
             )
         }
         search("name")
-        assertEquals(listOf("Edit name"), resultTitles())
-        rule.onNodeWithText("Edit name").performClick()
+        assertEquals(listOf("Change agent name"), resultTitles())
+        rule.onNodeWithText("Change agent name").performClick()
         assertEquals(listOf("Change your name to "), done)
         rule.node(SettingsPageTags.PICTURE).assertExists()
 

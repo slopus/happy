@@ -112,8 +112,8 @@ fun agentSettingsIndex(): List<AgentSettingsRow> {
         AgentSettingsRow(id, title, icon, place, ask)
     return listOf(
         row(AgentSettingsTags.PROFILE, stringResource(R.string.settings_account_profile), Ionicon.PersonCircleOutline),
-        row(AgentSettingsTags.ASK_NAME, stringResource(R.string.settings_edit_name), Ionicon.CreateOutline, AgentSettingsPlace.Ask, stringResource(R.string.agent_settings_edit_name_prefix)),
-        row(AgentSettingsTags.ASK_AVATAR, stringResource(R.string.settings_change_avatar), Ionicon.ImageOutline, AgentSettingsPlace.Ask, stringResource(R.string.agent_settings_edit_avatar_prefix)),
+        row(AgentSettingsTags.ASK_NAME, stringResource(R.string.agent_settings_edit_name), Ionicon.CreateOutline, AgentSettingsPlace.Ask, stringResource(R.string.agent_settings_edit_name_prefix)),
+        row(AgentSettingsTags.ASK_AVATAR, stringResource(R.string.agent_settings_edit_avatar), Ionicon.ImageOutline, AgentSettingsPlace.Ask, stringResource(R.string.agent_settings_edit_avatar_prefix)),
         row(AgentSettingsTags.APPEARANCE, stringResource(R.string.settings_appearance), Ionicon.ColorPaletteOutline),
         row(AgentPagesTags.HIDE_PROJECTS_ROW, stringResource(R.string.settings_hide_projects), Ionicon.FolderOutline, AgentSettingsPlace.Appearance),
         row(DataStorageTags.ROW, stringResource(R.string.data_storage_title), Ionicon.ServerOutline),
@@ -171,7 +171,7 @@ class AgentSettingsActions(
 
 /** The Profile row: the person's own name and picture on the agent. */
 @Immutable
-data class AgentPerson(val name: String = "", val photo: ImageBitmap? = null)
+data class AgentPerson(val name: String = "", val photo: ImageBitmap? = null, val seed: String? = null)
 
 /**
  * An agent connection's settings, as iOS's SettingsViewController lays out
@@ -217,7 +217,7 @@ fun AgentConnectionSettingsScreen(
                 SettingsEntry(
                     id = AgentSettingsTags.PROFILE,
                     title = stringResource(R.string.settings_account_profile),
-                    icon = { PersonPicture(person.photo, profile.id, SettingsPageSpec.tile) },
+                    icon = { PersonPicture(person.photo, person.seed ?: profile.id, SettingsPageSpec.tile) },
                     detail = person.name.takeIf { it.isNotEmpty() },
                     onClick = actions.onProfile,
                 ),
@@ -265,8 +265,8 @@ fun AgentConnectionSettingsScreen(
         if (search.searching) {
             // The picture's two asks, found here, run: the Chief of Staff's chat opens with the words typed in.
             val asks = listOf(
-                SettingsEntry(AgentSettingsTags.ASK_NAME, editName, icon = { SettingsTile(Ionicon.CreateOutline, SettingsTiles.blue) }, chevron = false, onClick = { actions.onAskChief(namePrefix) }, closesSearch = true),
-                SettingsEntry(AgentSettingsTags.ASK_AVATAR, changeAvatar, icon = { SettingsTile(Ionicon.ImageOutline, SettingsTiles.orange) }, chevron = false, onClick = { actions.onAskChief(avatarPrefix) }, closesSearch = true),
+                SettingsEntry(AgentSettingsTags.ASK_NAME, stringResource(R.string.agent_settings_edit_name), icon = { SettingsTile(Ionicon.CreateOutline, SettingsTiles.blue) }, chevron = false, onClick = { actions.onAskChief(namePrefix) }, closesSearch = true),
+                SettingsEntry(AgentSettingsTags.ASK_AVATAR, stringResource(R.string.agent_settings_edit_avatar), icon = { SettingsTile(Ionicon.ImageOutline, SettingsTiles.orange) }, chevron = false, onClick = { actions.onAskChief(avatarPrefix) }, closesSearch = true),
             )
             val profiles = settingsProfileEntries(accounts, accountActions.onSwitch)
             val rows = listOf(addAgentEntry(accountActions)) + sections.flatMap { it.rows } + appearance
@@ -407,7 +407,7 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
         about = rememberAboutInfo(graph),
         accountActions = rememberAccountsCardActions(graph),
         aboutActions = rememberAboutActions(graph, nav),
-        person = AgentPerson(personState.name, personPhoto),
+        person = AgentPerson(personState.name, personPhoto, rememberPersonSeed(graph, connectionId)),
         appearance = agentAppearanceSections(theme, graph.localSettings::setThemePreference, projectsHidden, { session?.setProjectsHidden(it) }, sound, { session?.setCompletionSound(it) }).flatMap { it.rows },
         scroll = scroll,
     )

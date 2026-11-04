@@ -34,8 +34,8 @@
     <string name="agent_search_kind_image_series">Серия изображений</string>
     <string name="agent_search_kind_video">Видео</string>
     <string name="agent_search_kind_artifact">Артефакт</string>
-    <string name="agent_settings_edit_name">Изменить имя</string>
-    <string name="agent_settings_edit_avatar">Изменить аватар</string>
+    <string name="agent_settings_edit_name">Изменить имя агента</string>
+    <string name="agent_settings_edit_avatar">Изменить аватар агента</string>
     <string name="agent_settings_edit_name_prefix">"Смени своё имя на "</string>
     <string name="agent_settings_edit_avatar_prefix">"Смени свой аватар на "</string>
     <string name="agent_settings_profile_footer">Изменение вносит ваш Chief of Staff. Ничего не отправляется, пока вы не отправите.</string>
