@@ -72,6 +72,7 @@ import com.slopus.happy.camera.CapturedPhoto
 import com.slopus.happy.camera.PhotoExecutor
 import com.slopus.happy.camera.PhotoFiles
 import com.slopus.happy.camera.capturePhoto
+import com.slopus.happy.camera.cameraPresent
 import com.slopus.happy.ui.camera.PhotoCameraLayout
 import com.slopus.happy.ui.camera.PhotoMotion
 import com.slopus.happy.ui.camera.PhotoProblem
@@ -131,6 +132,9 @@ internal fun AttachCamera(
     val blink = remember { Animatable(0f) }
     val files = remember { PhotoFiles(File(context.cacheDir, "attachments/camera")) }
     var allowed by remember { mutableStateOf(ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
+    var present by remember { mutableStateOf<Boolean?>(null) }
+    var checked by remember { mutableStateOf(false) }
+    LaunchedEffect(context) { present = cameraPresent(context); checked = true }
     var resumed by remember { mutableStateOf(owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
     var surface by remember { mutableStateOf<SurfaceRequest?>(null) }
     var camera by remember { mutableStateOf<Camera?>(null) }
@@ -154,9 +158,12 @@ internal fun AttachCamera(
         allowed = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
     }
     DisposableEffect(owner) {
-        val observer = LifecycleEventObserver { _, _ ->
+        val observer = LifecycleEventObserver { _, event ->
             resumed = owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
-            if (resumed) allowed = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+            if (event == Lifecycle.Event.ON_RESUME) {
+                allowed = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+                scope.launch { present = cameraPresent(context); checked = true }
+            }
         }
         owner.lifecycle.addObserver(observer)
         onDispose { owner.lifecycle.removeObserver(observer) }
@@ -215,11 +222,14 @@ internal fun AttachCamera(
         state.full = true
         transition?.cancel()
         transition = scope.launch { motion.open(state.frozen != null, reduce) }
-        if (!allowed) permission.launch(Manifest.permission.CAMERA)
+        if (!allowed) scope.launch {
+            if (!checked) { present = cameraPresent(context); checked = true }
+            if (state.full && present != false) permission.launch(Manifest.permission.CAMERA)
+        }
     }
     SideEffect { state.open = ::open; state.back = ::close }
     BackHandler(state.full) { close() }
-    val active = resumed && allowed && review == null && (state.full || visibleTile() != null)
+    val active = checked && resumed && allowed && present != false && review == null && (state.full || visibleTile() != null)
     if (active) {
         DisposableEffect(capture) {
             val orientation = object : OrientationEventListener(context) {
@@ -240,6 +250,7 @@ internal fun AttachCamera(
     }
     LaunchedEffect(active) { if (!active) firstFrame.snapTo(0f) else problem = null }
     val issue = when {
+        present == false -> PhotoProblem.NoCamera
         !allowed -> PhotoProblem.Permission
         problem != null -> problem
         cameraState?.error != null -> if (cameraState?.error?.code == CameraState.ERROR_CAMERA_IN_USE || cameraState?.error?.code == CameraState.ERROR_MAX_CAMERAS_IN_USE) PhotoProblem.InUse else PhotoProblem.Unavailable

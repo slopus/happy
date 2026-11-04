@@ -12,6 +12,7 @@ import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.CompletableDeferred
+import com.slopus.happy.camera.cameraPresent
 
 /** What one scan came back with. */
 sealed interface ScanResult {
@@ -68,7 +69,7 @@ class CameraQrScanner(private val context: Context) : QrScanner {
     private var pending: CompletableDeferred<ScanResult>? = null
 
     override suspend fun scan(request: ScanRequest): ScanResult {
-        if (!context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)) {
+        if (!context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY) || cameraPresent(context) == false) {
             return ScanResult.Failed(ScanFailure.NoCamera)
         }
         val launcher = launcher ?: return ScanResult.Failed(ScanFailure.Unavailable)

@@ -69,7 +69,7 @@ internal fun CameraBinding(
             throw e
         } catch (e: Exception) {
             Log.w(TAG, "Camera unavailable", e)
-            failed(CameraFailure.Unavailable)
+            failed(if (cameraPresent(context) == false) CameraFailure.NoCamera else CameraFailure.Unavailable)
             return@LaunchedEffect
         }
         val choices = if (front) {

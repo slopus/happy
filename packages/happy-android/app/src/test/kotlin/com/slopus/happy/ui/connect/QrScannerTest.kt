@@ -51,6 +51,15 @@ class QrScannerTest {
     }
 
     @Test
+    fun cameraFeaturesWithoutAnActualDeviceStillFailBeforeOpeningTheScanner() {
+        val context = ApplicationProvider.getApplicationContext<android.app.Application>()
+        shadowOf(context.packageManager).setSystemFeature(PackageManager.FEATURE_CAMERA_ANY, true)
+        // As on an emulator with its cameras disabled: the feature remains, the ID list is empty.
+        val result = runBlocking { CameraQrScanner(context).scan(ScanRequest()) }
+        assertEquals(ScanResult.Failed(ScanFailure.NoCamera), result)
+    }
+
+    @Test
     fun theActivityResultBecomesAScanResult() {
         val contract = QrScannerActivity.Contract
         assertEquals(
