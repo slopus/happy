@@ -35,7 +35,9 @@ import com.slopus.happy.artifacts.ArtifactCatalog
 import com.slopus.happy.artifacts.ArtifactCatalogFeed
 import com.slopus.happy.artifacts.ArtifactSummary
 import com.slopus.happy.artifacts.DateBucket
+import com.slopus.happy.connection.LinkState
 import com.slopus.happy.ui.cards.CardHeading
+import com.slopus.happy.ui.chat.linkStatusWords
 import com.slopus.happy.ui.cards.CardListSpec
 import com.slopus.happy.ui.cards.CardNote
 import com.slopus.happy.ui.cards.CardRow
@@ -269,6 +271,8 @@ fun ArtifactsScreen(
     onRefresh: () -> Unit,
     thumbnails: ArtifactThumbnails? = null,
     clock: () -> Long = System::currentTimeMillis,
+    /** The connection's link, debounced: its status stands in the title while it is on its way (iOS `watchHeader`). */
+    link: LinkState = LinkState.Online,
 ) {
     val words = rememberArtifactListWords()
     var searching by rememberSaveable { mutableStateOf(false) }
@@ -293,8 +297,9 @@ fun ArtifactsScreen(
     var pulled by remember { mutableStateOf(false) }
     LaunchedEffect(state.refreshing) { if (!state.refreshing) pulled = false }
     val searchLabel = stringResource(R.string.artifact_list_search)
+    val locale = LocalConfiguration.current.locales[0]
     PlaceScaffold(
-        title = stringResource(R.string.artifacts_title),
+        title = linkStatusWords(link)?.replaceFirstChar { it.titlecase(locale) } ?: stringResource(R.string.artifacts_title),
         onBack = onBack,
         tag = ArtifactsTags.LIST,
         actions = { BarIconButton(Ionicon.SearchOutline, searchLabel, { searching = true }, Modifier.testTag(ArtifactsTags.SEARCH)) },

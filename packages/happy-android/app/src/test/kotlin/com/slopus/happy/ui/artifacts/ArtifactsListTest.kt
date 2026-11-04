@@ -172,6 +172,17 @@ class ArtifactsListTest {
         rule.onAllNodesWithTag(ArtifactsTags.ROW, useUnmergedTree = true).assertCountEquals(0)
     }
 
+    @Test fun theTitleSaysWhereTheLinkIsWhileItIsOnItsWay() {
+        var link by mutableStateOf(com.slopus.happy.connection.LinkState.Connecting)
+        rule.setHappyContent { ArtifactsScreen(ArtifactCatalogFeed.State(loaded = true), {}, {}, {}, clock = { now }, link = link) }
+        rule.onNodeWithText("Connecting…").assertExists()
+        link = com.slopus.happy.connection.LinkState.Syncing
+        rule.onNodeWithText("Updating…").assertExists()
+        // Offline keeps the name: the note under it says why.
+        link = com.slopus.happy.connection.LinkState.Offline
+        rule.onNodeWithText("Artifacts").assertExists()
+    }
+
     @Test fun aNoteStandsInPlaceOfTheRows() {
         var state by mutableStateOf(ArtifactCatalogFeed.State())
         rule.setHappyContent { ArtifactsScreen(state, {}, {}, {}, clock = { now }) }

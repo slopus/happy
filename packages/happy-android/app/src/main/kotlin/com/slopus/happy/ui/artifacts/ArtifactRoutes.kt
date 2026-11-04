@@ -26,7 +26,11 @@ import com.slopus.happy.artifacts.ArtifactCatalogFeed
 import com.slopus.happy.artifacts.ArtifactClient
 import com.slopus.happy.artifacts.ArtifactRef
 import com.slopus.happy.browser.BrowserPolicy
+import com.slopus.happy.connection.LinkState
 import com.slopus.happy.conversation.Problem
+import com.slopus.happy.ui.chat.rememberShownLinkState
+import com.slopus.happy.ui.connection.rememberNetworkPath
+import com.slopus.happy.ui.conversation.linkState
 import com.slopus.happy.feed.FeedSubject
 import com.slopus.happy.browser.BrowserProxy
 import com.slopus.happy.browser.browserWorkspace
@@ -100,12 +104,16 @@ private fun AgentArtifacts(graph: AppGraph, nav: NavHostController, route: Agent
     val holder = viewModel { ArtifactsHolder(session) }
     val feed = holder.feed
     val state = feed?.state?.collectAsStateWithLifecycle()?.value ?: ArtifactCatalogFeed.State(loaded = true, error = Problem.Unknown)
+    val status = session?.status?.collectAsStateWithLifecycle()?.value
+    val syncing = session?.isSyncing?.collectAsStateWithLifecycle()?.value ?: false
+    val link = rememberShownLinkState(if (session == null) LinkState.Online else status.linkState(syncing, rememberNetworkPath()))
     ArtifactsScreen(
         state = state,
         onBack = { nav.popBackStack() },
         onOpen = { nav.openArtifact(route.connectionId, it.ref) },
         onRefresh = { feed?.refresh() },
         thumbnails = holder.thumbnails,
+        link = link,
     )
 }
 
