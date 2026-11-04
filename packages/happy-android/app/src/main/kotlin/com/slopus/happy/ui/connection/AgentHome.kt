@@ -79,16 +79,12 @@ import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
 import com.slopus.happy.R
 import com.slopus.happy.artifacts.ArtifactRef
-import com.slopus.happy.ui.conversation.signalsFor
-import com.slopus.happy.ui.conversation.conversationRequest
-import com.slopus.happy.ui.conversation.conversationKeeper
+import com.slopus.happy.ui.conversation.makeConversation
 import com.slopus.happy.ui.conversation.Typesetter
 import com.slopus.happy.ui.conversation.ProsePalette
 import com.slopus.happy.ui.conversation.ConversationRowActions
 import com.slopus.happy.ui.chat.userMessageBubblePalette
 import com.slopus.happy.ui.chat.MessageCallbacks
-import com.slopus.happy.conversation.ConversationApi
-import com.slopus.happy.conversation.Conversation
 import com.slopus.happy.agent.AgentSession
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -791,22 +787,10 @@ private fun ConversationPreview(session: AgentSession, row: AgentFeedRow.Convers
     val colors = HappyTheme.colors
     val typesetter = Typesetter.of(LocalContext.current)
     typesetter.reportPalette(ProsePalette.of(colors))
-    val scope = rememberCoroutineScope()
-    val conversation = remember(session, row.agentId) {
-        Conversation(
-            api = ConversationApi(session.conversationRequest()),
-            signals = session.events.signalsFor(row.agentId),
-            scope = scope,
-            agentId = row.agentId,
-            knownTitle = row.title,
-            keeper = session.conversationKeeper(row.agentId),
-            typesetter = typesetter,
-        )
-    }
-    DisposableEffect(conversation) {
-        conversation.start()
-        onDispose { conversation.close() }
-    }
+    // The agent's one conversation, the one its screen or a call may hold too: never marked read from here.
+    val hold = remember(session, row.agentId) { session.conversations.hold(row.agentId) { session.makeConversation(row.agentId, typesetter) } }
+    DisposableEffect(hold) { onDispose { hold.release() } }
+    val conversation = hold.conversation
     val state by conversation.state.collectAsStateWithLifecycle()
     val actions = remember(conversation) { ConversationRowActions(legacy = MessageCallbacks(), onRetryFailure = {}, loadMedia = conversation::media) }
     ChatPreviewTranscript(row.title ?: stringResource(R.string.session_new_chat), state, userMessageBubblePalette(bubbleColor, colors.dark), actions)

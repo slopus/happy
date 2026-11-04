@@ -44,6 +44,8 @@ import com.slopus.happy.conversation.ConversationApi
 import com.slopus.happy.conversation.ConversationApiException
 import com.slopus.happy.conversation.ConversationKeeper
 import com.slopus.happy.conversation.ConversationSignal
+import com.slopus.happy.conversation.HeldConversations
+import com.slopus.happy.conversation.RowTypesetter
 import com.slopus.happy.conversation.KeptMedia
 import com.slopus.happy.conversation.MediaItem
 import com.slopus.happy.conversation.NewTask
@@ -206,6 +208,41 @@ internal fun AgentSession.conversationBytesRequest(): com.slopus.happy.conversat
     }
 }
 
+/**
+ * [agentId]'s conversation as each of its holders has it
+ * ([AgentSession.conversations]): the connection's requests, keeper, read and
+ * references, laid out by the process's [typesetter]. Its [newTask] and the
+ * rest are a new chat's, when its screen makes it.
+ */
+internal fun AgentSession.makeConversation(
+    agentId: String,
+    typesetter: RowTypesetter?,
+    newTask: NewTask? = null,
+    initialDraft: String = "",
+    initialChoice: WorkChoice = WorkChoice(),
+    created: () -> Unit = {},
+): Conversation = Conversation(
+    api = ConversationApi(bytesRequest = conversationBytesRequest(), request = conversationRequest()),
+    signals = events.signalsFor(agentId),
+    // No screen's or call's: a send or draft save in flight finishes after they go.
+    scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    agentId = agentId,
+    newTask = newTask,
+    initialDraft = initialDraft,
+    // The row that was tapped already had a name: the bar has it from the first frame.
+    knownTitle = feed.value.title(agentId),
+    initialChoice = initialChoice,
+    onTaskCreated = { answer ->
+        created()
+        answer["task"].obj?.let { upsertTask(it, answer["membership"].obj) }
+        answer["bot"].obj?.let(::upsertBot)
+    },
+    keeper = conversationKeeper(agentId),
+    typesetter = typesetter,
+    read = ::markRead,
+    references = references,
+)
+
 /** Where [agentId]'s newest history is kept, beside the connection's catalog and gone with it. */
 internal fun AgentSession.conversationKeeper(agentId: String): ConversationKeeper = object : ConversationKeeper {
     private val key = "conversation$agentId"
@@ -239,10 +276,9 @@ internal class ConversationHolder(
     /** Lays the rows' text out on the conversation's lane. */
     typesetter: Typesetter? = null,
 ) : ViewModel() {
-    /** Not viewModelScope: a send or draft save in flight finishes after the screen goes. */
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-
-    val conversation: Conversation
+    /** This screen's claim on the connection's one conversation of its agent, which a call may share. */
+    val hold: HeldConversations.Hold
+    val conversation: Conversation get() = hold.conversation
     private val task: NewTask?
 
     init {
@@ -260,31 +296,22 @@ internal class ConversationHolder(
         )
         unsent?.let { setChoiceSaved(it.choice) }
         val agentId = route.agentId ?: task!!.agentId
-        // A send still on its way when this chat was last left (new work's too, while it is made): the same
-        // conversation, so it shows and never goes twice.
-        conversation = (route.agentId ?: unsent?.task?.agentId)?.let(session.parkedConversations::adopt) ?: Conversation(
-            api = ConversationApi(bytesRequest = session.conversationBytesRequest(), request = session.conversationRequest()),
-            signals = session.events.signalsFor(agentId),
-            scope = scope,
-            agentId = agentId,
-            newTask = task.takeIf { saved.get<Boolean>(CREATED) != true },
-            initialDraft = unsent?.draft.orEmpty(),
-            // The row that was tapped already had a name: the bar has it from the first frame.
-            knownTitle = route.agentId?.let(session.feed.value::title),
-            initialChoice = choice,
-            onTaskCreated = { answer ->
-                saved[CREATED] = true
-                // Made, it is home's to open now, not the next compose's.
-                if (session.unsentWork?.task?.agentId == agentId) session.unsentWork = null
-                answer["task"].obj?.let { session.upsertTask(it, answer["membership"].obj) }
-                answer["bot"].obj?.let(session::upsertBot)
-            },
-            keeper = session.conversationKeeper(agentId),
-            typesetter = typesetter,
-            read = session::markRead,
-            references = session.references,
-        )
-        conversation.start()
+        // The one a call holds, or a send still on its way when this chat was last left (new work's first message
+        // too): the same conversation, so it shows and never goes twice.
+        hold = session.conversations.hold(agentId) {
+            session.makeConversation(
+                agentId,
+                typesetter,
+                newTask = task.takeIf { saved.get<Boolean>(CREATED) != true },
+                initialDraft = unsent?.draft.orEmpty(),
+                initialChoice = choice,
+                created = {
+                    saved[CREATED] = true
+                    // Made, it is home's to open now, not the next compose's.
+                    if (session.unsentWork?.task?.agentId == agentId) session.unsentWork = null
+                },
+            )
+        }
         saved.takePrefill(route.prefill)?.let(conversation::prefill)
     }
 
@@ -306,8 +333,8 @@ internal class ConversationHolder(
         if (task != null && work != null && saved.get<Boolean>(CREATED) != true) {
             session.unsentWork = UnsentWork(task, work.choice, state.draft)
         }
-        // Closed unless a send is in hand: then it finishes in this conversation (desktop 01659140).
-        session.parkedConversations.park(conversation)
+        // Closed once nobody holds it, unless a send is in hand: then it finishes in this conversation (desktop 01659140).
+        hold.release()
     }
 
     private companion object {
@@ -369,8 +396,8 @@ private fun ConversationEntry(graph: AppGraph, nav: NavHostController, route: Co
     val holder = viewModel(key = "conversation") { ConversationHolder(session, route, createSavedStateHandle(), typesetter) }
     val conversation = holder.conversation
     com.slopus.happy.ui.components.StartedEffect(conversation) {
-        conversation.setObserving(true)
-        try { kotlinx.coroutines.awaitCancellation() } finally { conversation.setObserving(false) }
+        holder.hold.observe(true)
+        try { kotlinx.coroutines.awaitCancellation() } finally { holder.hold.observe(false) }
     }
     val state by conversation.state.collectAsStateWithLifecycle()
     // The model label warns as its account runs low, so the readings are followed while the chat shows.

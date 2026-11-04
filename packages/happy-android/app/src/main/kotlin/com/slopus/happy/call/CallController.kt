@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.SystemClock
 import com.slopus.happy.BuildConfig
 import com.slopus.happy.agent.AgentSessions
+import com.slopus.happy.ui.conversation.Typesetter
 import com.slopus.happy.ui.conversation.failureText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -77,7 +78,7 @@ class CallController(
         close()
         val account = sessions.session(connection) ?: return
         connectionId = connection
-        val targets = ConnectionCallTargets(account, appContext.resources::failureText) { screen }
+        val targets = ConnectionCallTargets(account, appContext.resources::failureText, Typesetter.of(appContext)) { screen }
         val context = CallContext(targets)
         val call = CallSession(scope, grants, permission = { stopRelayVoice(); microphone() }, now = SystemClock::elapsedRealtime, allowance = allowance) { grant, request, events ->
             ElevenLabsCallConnection.connect(appContext, scope, grant, request, events)

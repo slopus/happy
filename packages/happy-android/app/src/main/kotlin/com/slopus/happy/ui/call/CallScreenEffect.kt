@@ -8,9 +8,7 @@ import androidx.navigation.toRoute
 import androidx.navigation.NavDestination.Companion.hasRoute
 import com.slopus.happy.call.CallController
 import com.slopus.happy.call.CallScreen
-import com.slopus.happy.conversation.Conversation
 import com.slopus.happy.ui.conversation.ConversationRoute
-import com.slopus.happy.ui.conversation.heldConversation
 import com.slopus.happy.ui.conversation.openConversationInPlace
 
 /**
@@ -30,8 +28,6 @@ fun CallScreenEffect(calls: CallController, nav: NavHostController, connectionId
                     val route = top.toRoute<ConversationRoute>()
                     return route.agentId?.takeIf { route.connectionId == connectionId }
                 }
-
-            override fun shown(agentId: String): Conversation? = if (focused == agentId) nav.heldConversation(agentId) else null
 
             override fun open(agentId: String) {
                 connectionId?.let { nav.openConversationInPlace(it, agentId) }

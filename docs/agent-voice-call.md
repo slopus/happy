@@ -568,6 +568,15 @@ doesn't open it, and doesn't make the call hear from it. A send that got no
 answer in time is `uncertain`; the same words to the same conversation again
 go under the same message ID, so the conversation takes them once.
 
+On Android the call reads and sends through the connection's one
+conversation of each agent (`AgentSession.conversations`,
+`HeldConversations`), the same instance its screen and home's preview hold:
+made once by whichever comes first (`makeConversation`, with the
+connection's keeper, references and read, and the process's typesetter), it
+reads while any holder wants it, and is closed once the last lets go, after
+any send still in hand. A send by voice shows on the open screen at once.
+The call never marks a conversation read; only a screen that shows it does.
+
 ## Checking a real call
 
 iOS, on a simulator, against the harness's fixture computer: real provider

@@ -7,7 +7,7 @@ import com.slopus.happy.connection.AgentIdentity
 import com.slopus.happy.connection.RequestCategory
 import com.slopus.happy.connection.agentTransport
 import com.slopus.happy.connection.Transport
-import com.slopus.happy.conversation.ParkedConversations
+import com.slopus.happy.conversation.HeldConversations
 import com.slopus.happy.conversation.UnsentWork
 import com.slopus.happy.data.DiskThread
 import com.slopus.happy.diagnostics.traced
@@ -543,8 +543,8 @@ class AgentSession internal constructor(
      */
     @Volatile var unsentWork: UnsentWork? = null
 
-    /** Conversations left with a send in hand, for their next screen ([ParkedConversations]). */
-    val parkedConversations = ParkedConversations(scope)
+    /** Each agent's one conversation, for whoever shows or follows it ([HeldConversations]). */
+    val conversations = HeldConversations(scope)
 
     init {
         intents.handle(setOf(Intent.READ, Intent.ARCHIVE, Intent.LEAVE, Intent.RENAME, SURFACE_JOIN), ::deliver)

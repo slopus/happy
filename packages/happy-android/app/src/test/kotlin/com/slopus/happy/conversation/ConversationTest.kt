@@ -128,7 +128,7 @@ class ConversationTest {
 
     @After fun cancel() = jobs.forEach { it.cancel() }
 
-    private fun TestScope.conversation(agent: FakeAgent, newTask: NewTask? = null, choice: WorkChoice = WorkChoice(), keeper: ConversationKeeper? = null, created: (JsonObject) -> Unit = {}) = Conversation(
+    private fun TestScope.conversation(agent: FakeAgent, newTask: NewTask? = null, choice: WorkChoice = WorkChoice(), keeper: ConversationKeeper? = null, typesetter: RowTypesetter? = null, created: (JsonObject) -> Unit = {}) = Conversation(
         api = ConversationApi(agent.request),
         signals = signals,
         // Not backgroundScope: advanceUntilIdle leaves its work alone. Cancelled after each test.
@@ -143,6 +143,7 @@ class ConversationTest {
         retryDelayMillis = 1,
         keeper = keeper,
         disk = StandardTestDispatcher(testScheduler),
+        typesetter = typesetter,
     ).also { it.start() }
 
     private fun event(type: String, payload: String) = ConversationSignal.Event(type, Json.parseToJsonElement(payload).jsonObject)
@@ -954,26 +955,33 @@ class ConversationTest {
         assertTrue(row.text.contains("./.happy-uploads/$id/1-clip.mp4"))
     }
 
+    private fun TestScope.held() = HeldConversations(CoroutineScope(StandardTestDispatcher(testScheduler) + SupervisorJob().also { jobs += it }))
+
     /** desktop 01659140: a send in hand when the screen goes stays with its conversation, which the next screen takes back. */
     @Test fun `a conversation left mid-send is kept for its next screen and closed once its sends are taken`() = runTest {
         val agent = FakeAgent()
-        val chat = conversation(agent)
+        val held = held()
+        val screen = held.hold("a1") { conversation(agent) }
+        val chat = screen.conversation
         advanceUntilIdle()
         val gate = CompletableDeferred<Unit>()
         agent.gate = gate
         chat.send("Ship it")
         runCurrent()
         assertTrue(chat.state.value.unsettledSends)
-        val parked = ParkedConversations(CoroutineScope(StandardTestDispatcher(testScheduler) + SupervisorJob().also { jobs += it }))
-        parked.park(chat)
-        assertTrue("the next screen for the agent takes the same conversation", parked.adopt("a1") === chat)
-        assertNull(parked.adopt("a1"))
-        parked.park(chat)
+        screen.release()
+        assertNull("nobody holds it", held.peek("a1"))
+        val next = held.hold("a1") { error("the next screen for the agent takes the same conversation") }
+        assertTrue(next.conversation === chat)
+        next.release()
         agent.gate = null
         gate.complete(Unit)
         advanceUntilIdle()
         assertFalse(chat.state.value.unsettledSends)
-        assertNull("settled, it is closed and no longer kept", parked.adopt("a1"))
+        assertEquals("settled, it is closed", 0, signals.subscriptionCount.value)
+        var made = 0
+        held.hold("a1") { made++; conversation(agent) }.release()
+        assertEquals("and no longer kept", 1, made)
         assertEquals("sent once", 1, agent.requests.count { it.second.endsWith("/send") })
     }
 
@@ -981,35 +989,147 @@ class ConversationTest {
     @Test fun `a conversation left with a failed send comes back with it failed and retries it once`() = runTest {
         val agent = FakeAgent()
         agent.sendStatus = 400
-        val chat = conversation(agent)
+        val held = held()
+        val first = held.hold("a1") { conversation(agent) }
+        val chat = first.conversation
         advanceUntilIdle()
         chat.send("Hello")
         advanceUntilIdle()
         assertTrue(chat.state.value.holdsSends)
-        val parked = ParkedConversations(CoroutineScope(StandardTestDispatcher(testScheduler) + SupervisorJob().also { jobs += it }))
-        parked.park(chat)
+        first.release()
         advanceUntilIdle()
-        val back = parked.adopt("a1")
-        assertTrue("kept while failed", back === chat)
-        val row = back!!.state.value.rows.single() as ConversationRow.User
+        val again = held.hold("a1") { error("kept while failed") }
+        val back = again.conversation
+        assertTrue(back === chat)
+        val row = back.state.value.rows.single() as ConversationRow.User
         assertEquals(Delivery.Failed(Problem.Said("Unknown model.")), row.delivery)
-        parked.park(back)
+        again.release()
         agent.sendStatus = 202
         back.retrySend(row.messageId)
         advanceUntilIdle()
         assertFalse(back.state.value.holdsSends)
-        assertNull("taken, it is closed and no longer kept", parked.adopt("a1"))
+        assertNull(held.peek("a1"))
         val ids = agent.requests.filter { it.second.endsWith("/send") }.map { it.third!!["id"] }
         assertEquals(2, ids.size)
         assertEquals("the retry is the same send", ids[0], ids[1])
     }
 
     @Test fun `a conversation left with nothing in hand is closed at once`() = runTest {
-        val chat = conversation(FakeAgent())
+        val held = held()
+        val hold = held.hold("a1") { conversation(FakeAgent()) }
         advanceUntilIdle()
-        val parked = ParkedConversations(CoroutineScope(StandardTestDispatcher(testScheduler) + SupervisorJob().also { jobs += it }))
-        parked.park(chat)
-        assertNull(parked.adopt("a1"))
+        hold.release()
+        advanceUntilIdle()
+        assertEquals(0, signals.subscriptionCount.value)
+        assertNull(held.peek("a1"))
+    }
+
+    /** The screen and a call hold the agent's one conversation: made once, by whichever came first, with what it was made with. */
+    @Test fun `two holders share one conversation made once, laid out as the screen's`() = runTest {
+        val agent = FakeAgent().apply { page = """{"runs":[{"id":"r1","status":"completed","messages":[
+            {"id":"m1","role":"user","createdAt":1,"content":[{"type":"text","text":"Hi"}],"metadata":{}},
+            {"id":"m2","role":"agent","createdAt":2,"content":[{"type":"text","text":"Done"}],"metadata":{}}
+        ]}],"hasMore":false}""" }
+        val typeset = ArrayList<List<ConversationRow>>()
+        val typesetter = object : RowTypesetter {
+            override fun prepare(rows: List<ConversationRow>) { typeset += rows }
+            override fun live(key: String, content: LiveText.Content, markdown: Boolean) {}
+        }
+        val held = held()
+        var made = 0
+        // The call first, then the screen.
+        val call = held.hold("a1") { made++; conversation(agent, typesetter = typesetter) }
+        val screen = held.hold("a1") { made++; conversation(agent) }
+        advanceUntilIdle()
+        assertEquals(1, made)
+        assertTrue(call.conversation === screen.conversation)
+        assertTrue(held.peek("a1") === screen.conversation)
+        assertEquals(1, signals.subscriptionCount.value)
+        assertEquals(1, agent.paths("GET").count { it.endsWith("/bootstrap") })
+        // The rows the screen draws were laid out ahead.
+        assertTrue(screen.conversation.state.value.rows.isNotEmpty())
+        assertTrue(typeset.flatten().any { it.key == screen.conversation.state.value.rows.first().key })
+        call.release()
+        screen.release()
+    }
+
+    /** It reads while any holder wants it: a covered screen with a call still hears; the call gone, it stops until revealed. */
+    @Test fun `a covered screen leaves the call reading and the call gone leaves it covered`() = runTest {
+        val agent = FakeAgent()
+        val held = held()
+        val screen = held.hold("a1") { conversation(agent) }
+        advanceUntilIdle()
+        val call = held.hold("a1") { error("shared") }
+        screen.observe(false)
+        advanceUntilIdle()
+        assertEquals("the call still hears", 1, signals.subscriptionCount.value)
+        call.release()
+        advanceUntilIdle()
+        assertEquals("covered, and nobody else wants it", 0, signals.subscriptionCount.value)
+        screen.observe(true)
+        advanceUntilIdle()
+        assertEquals(1, signals.subscriptionCount.value)
+        // A release twice, or an observe after it, changes nothing.
+        call.release()
+        call.observe(true)
+        screen.observe(false)
+        advanceUntilIdle()
+        assertEquals(0, signals.subscriptionCount.value)
+        screen.release()
+    }
+
+    /** A call's watch reads, never marks read: only a screen that shows it does. */
+    @Test fun `a call watching a chat nobody shows never marks it read`() = runTest {
+        val agent = FakeAgent()
+        val held = held()
+        val call = held.hold("a1") { conversation(agent) }
+        advanceUntilIdle()
+        signals.emit(event("message.created", """{"agentId":"a1","runId":"r1","message":{"id":"m","role":"agent","createdAt":5,"content":[{"type":"text","text":"Done"}],"metadata":{}}}"""))
+        advanceUntilIdle()
+        assertTrue(call.conversation.state.value.rows.isNotEmpty())
+        assertTrue(agent.requests.none { it.second.endsWith("/read") })
+        // The screen opened over it, covered, then shown: read once shown.
+        val screen = held.hold("a1") { error("shared") }
+        screen.observe(false)
+        advanceUntilIdle()
+        assertTrue(agent.requests.none { it.second.endsWith("/read") })
+        screen.observe(true)
+        screen.conversation.setVisible(true)
+        advanceUntilIdle()
+        assertEquals(1, agent.requests.count { it.second.endsWith("/read") })
+        screen.conversation.setVisible(false)
+        screen.release()
+        signals.emit(event("message.created", """{"agentId":"a1","runId":"r1","message":{"id":"m2","role":"agent","createdAt":6,"content":[{"type":"text","text":"More"}],"metadata":{}}}"""))
+        advanceUntilIdle()
+        assertEquals("the screen gone, the call's watch marks nothing", 1, agent.requests.count { it.second.endsWith("/read") })
+        call.release()
+    }
+
+    /** A call's send goes through the screen's conversation: shown there at once, sent once, failed once; the call letting go leaves the screen as it was. */
+    @Test fun `a call's send shows on the open screen once and its release leaves the screen open`() = runTest {
+        val agent = FakeAgent()
+        val held = held()
+        val screen = held.hold("a1") { conversation(agent) }
+        advanceUntilIdle()
+        val call = held.hold("a1") { error("shared") }
+        assertTrue(call.conversation.sendAs("voice-1", "run the checks"))
+        assertFalse("the same id again is the same send", call.conversation.sendAs("voice-1", "run the checks"))
+        advanceUntilIdle()
+        val row = screen.conversation.state.value.rows.filterIsInstance<ConversationRow.User>().single()
+        assertEquals("run the checks", row.text)
+        assertEquals(1, agent.requests.count { it.second.endsWith("/send") })
+        // Refused: the one row shows it failed, on the screen as on the call's side.
+        agent.sendStatus = 400
+        assertTrue(call.conversation.sendAs("voice-2", "and deploy"))
+        advanceUntilIdle()
+        val failed = screen.conversation.state.value.rows.filterIsInstance<ConversationRow.User>().filter { it.delivery is Delivery.Failed }
+        assertEquals(listOf("and deploy"), failed.map { it.text })
+        assertTrue(call.conversation.has("voice-2"))
+        call.release()
+        advanceUntilIdle()
+        assertEquals("the screen still reads", 1, signals.subscriptionCount.value)
+        assertTrue(held.peek("a1") === screen.conversation)
+        screen.release()
     }
 
     @Test fun `a refused upload fails the send and a retry writes only what is missing`() = runTest {

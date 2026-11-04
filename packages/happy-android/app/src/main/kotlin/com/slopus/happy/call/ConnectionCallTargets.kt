@@ -2,10 +2,10 @@ package com.slopus.happy.call
 
 import com.slopus.happy.agent.AgentSession
 import com.slopus.happy.conversation.Conversation
-import com.slopus.happy.conversation.ConversationApi
 import com.slopus.happy.conversation.FailureReason
-import com.slopus.happy.ui.conversation.conversationRequest
-import com.slopus.happy.ui.conversation.signalsFor
+import com.slopus.happy.conversation.HeldConversations
+import com.slopus.happy.conversation.RowTypesetter
+import com.slopus.happy.ui.conversation.makeConversation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -15,30 +15,34 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
-/** What a call needs of the screen: which conversation is on top, that one's own state, and a way to open another. */
+/** What a call needs of the screen: which conversation is on top, and a way to open another. */
 interface CallScreen {
     /** The conversation on top of the stack, if one is. */
     val focused: String?
-    /** The conversation the screen on top shows, while it is [focused]: its sends show there at once. */
-    fun shown(agentId: String): Conversation?
     fun open(agentId: String)
 }
 
 /**
  * A call's tools and context over one agent connection (iOS's
- * `SessionCallTargets`): its home for the directory, and conversations of
- * the call's own for what the followed ones say, read from the computer and
- * kept nowhere on disk. A send goes through the conversation on screen when
- * it is the one, so it shows there at once; the composer's draft is never
- * touched ([Conversation.sendAs]). Runs on the main thread.
+ * `SessionCallTargets`): its home for the directory, and for what the
+ * followed ones say, the connection's one conversation of each
+ * ([AgentSession.conversations]), the same one its screen shows. A send
+ * made here shows there at once, goes once and is kept once; the
+ * composer's draft is never touched ([Conversation.sendAs]). A call reads
+ * what comes, but never marks it read: that is the screen's. Runs on the
+ * main thread.
  */
 class ConnectionCallTargets(
     private val session: AgentSession,
     /** A failed turn's reason, as its card words it. */
     private val failureText: (FailureReason) -> String,
+    /** The process's, as the screen's: the rows are laid out once, whoever made the conversation. */
+    private val typesetter: RowTypesetter?,
     private val screen: () -> CallScreen?,
 ) : CallTargets {
-    private class Held(val conversation: Conversation, var watch: Job? = null)
+    private class Held(val hold: HeldConversations.Hold, var watch: Job? = null) {
+        val conversation: Conversation get() = hold.conversation
+    }
 
     private val held = HashMap<String, Held>()
     private val watching = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -63,8 +67,8 @@ class ConnectionCallTargets(
 
     override suspend fun state(agentId: String): CallTargetState? = onMain {
         val target = target(agentId) ?: return@onMain null
-        held[agentId]?.conversation?.state?.value?.takeIf { it.loaded }?.let { return@onMain CallTargetState.from(it, target, failureText) }
-        screen()?.takeIf { it.focused == agentId }?.shown(agentId)?.state?.value?.takeIf { it.loaded }?.let { return@onMain CallTargetState.from(it, target, failureText) }
+        // Held by the call, its screen or anyone: as it is now.
+        session.conversations.peek(agentId)?.state?.value?.takeIf { it.loaded }?.let { return@onMain CallTargetState.from(it, target, failureText) }
         // One bounded read: about three seconds for its first page.
         val hold = make(agentId)
         try {
@@ -89,7 +93,7 @@ class ConnectionCallTargets(
         if (closed || target == null) return@onMain CallSendOutcome.Refused("The call has ended.")
         // A conversation the call doesn't hear from is read for the send alone, and let go after it.
         val own = held[agentId] ?: make(agentId)
-        val conversation = screen()?.takeIf { it.focused == agentId }?.shown(agentId) ?: own.conversation
+        val conversation = own.conversation
         val outcome = run {
             // Under an ID it already has, it went the first time.
             if (conversation.has(id)) return@run CallSendOutcome.Queued
@@ -128,23 +132,13 @@ class ConnectionCallTargets(
         }
     }
 
-    private fun make(agentId: String): Held {
-        val conversation = Conversation(
-            api = ConversationApi(session.conversationRequest()),
-            signals = session.events.signalsFor(agentId),
-            // Not the call's: a send in flight finishes after the call lets it go.
-            scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
-            agentId = agentId,
-            knownTitle = session.feed.value.title(agentId),
-        )
-        conversation.start()
-        return Held(conversation)
-    }
+    private fun make(agentId: String): Held =
+        Held(session.conversations.hold(agentId) { session.makeConversation(agentId, typesetter) })
 
-    /** Stops reading it. Its scope is left to finish what it still delivers, as a closed chat screen's is. */
+    /** Lets it go: closed once nobody holds it, after what it still sends ([HeldConversations]). */
     private fun release(hold: Held) {
         hold.watch?.cancel()
-        hold.conversation.close()
+        hold.hold.release()
     }
 
     private suspend fun <T> onMain(block: suspend () -> T): T = withContext(Dispatchers.Main.immediate) { block() }
