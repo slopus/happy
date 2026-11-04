@@ -2,8 +2,13 @@ package com.slopus.happy.push
 
 import android.util.Log
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import com.slopus.happy.AppGraph
 import com.slopus.happy.auth.AuthState
 import com.slopus.happy.model.settings.PushPermission
@@ -63,6 +68,18 @@ class AppPushRegistration(
     override suspend fun removeToken(token: String) {
         val auth = checkNotNull(authToken()) { "Not signed in" }
         registrar.remove(auth, token)
+    }
+}
+
+/** Account's permission row follows system Settings changes on every return (iOS viewWillAppear). */
+@Composable
+internal fun RefreshPushPermissionOnResume(registration: PushRegistration, onPermission: (PushPermission) -> Unit) {
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val update = rememberUpdatedState(onPermission)
+    LaunchedEffect(lifecycle, registration) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            update.value(registration.permission())
+        }
     }
 }
 

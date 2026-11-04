@@ -11,6 +11,7 @@ import androidx.compose.ui.platform.LocalResources
 import com.slopus.happy.model.settings.PushText
 import com.slopus.happy.model.settings.PushTokensApi
 import com.slopus.happy.push.rememberPushRegistration
+import com.slopus.happy.push.RefreshPushPermissionOnResume
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.Composable
@@ -426,6 +427,7 @@ private fun Account(graph: AppGraph, nav: NavHostController) {
         )
     }
     var push by remember { mutableStateOf(PushState(deviceLabel = deviceLabel, appLabel = appLabel)) }
+    RefreshPushPermissionOnResume(pushRegistration) { push = push.copy(permission = it) }
 
     suspend fun loadPush(showErrors: Boolean = false) {
         push = push.copy(loading = true)
