@@ -135,6 +135,54 @@ class OffersTest {
         assertNull(offers.sheet.value)
     }
 
+    /** The relay's voice refused without the subscription: on only when it is bought on the Required sheet. */
+    @Test
+    fun theRelaysVoiceGoesOnOnlyOnceBoughtWhenRequired() = runTest {
+        val (subscription, offers) = setUp()
+        val closed = async { offers.relayVoice("voice_must_pay") }
+        runCurrent()
+        assertTrue(offers.sheet.value is OfferSheet.Required)
+        offers.dismiss()
+        assertFalse(closed.await())
+        val bought = async { offers.relayVoice("voice_must_pay") }
+        runCurrent()
+        assertTrue(subscription.buy(activity)); runCurrent()
+        store.emit(store.bought("t1")); runCurrent()
+        assertTrue(bought.await())
+    }
+
+    /** Before a first relay call: the welcome once, where one is due; its start goes on, its close doesn't, and with none due it just goes on. */
+    @Test
+    fun theRelaysTrialWelcomeIsOnceAndOnlyItsStartGoesOn() = runTest {
+        val (_, offers) = setUp()
+        val closed = async { offers.relayVoice("voice_trial_eligible") }
+        runCurrent()
+        assertTrue(offers.sheet.value is OfferSheet.Welcome)
+        offers.dismiss()
+        assertFalse(closed.await())
+        // Seen: from now on, no welcome, straight on (the agent's welcome counts the same).
+        assertTrue(offers.relayVoice("voice_trial_eligible"))
+        assertNull(offers.sheet.value)
+        offers.intro.reset()
+        val started = async { offers.relayVoice("voice_trial_eligible") }
+        runCurrent()
+        offers.start()
+        assertTrue(started.await())
+    }
+
+    @Test
+    fun withNothingOnSaleTheRelaysTrialHasNoWelcomeAndRequiredStillSaysSo() = runTest {
+        store.monthly = null
+        val (_, offers) = setUp()
+        assertTrue(offers.relayVoice("voice_trial_eligible"))
+        assertTrue(offers.intro.due)
+        val asked = async { offers.relayVoice("voice_must_pay") }
+        runCurrent()
+        assertEquals(OfferSheet.Required(Offer.Unavailable), offers.sheet.value)
+        offers.dismiss()
+        assertFalse(asked.await())
+    }
+
     @Test
     fun theWelcomeIsDueOnceAndOnlyWhileSomethingIsOnSale() = runTest {
         store.monthly = null

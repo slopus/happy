@@ -66,4 +66,15 @@ class CallUsageTest {
         allowance.record("c", CallAllowance.KEEP_MILLIS + 20_000, CallAllowance.KEEP_MILLIS + 30_000)
         assertEquals(listOf("b", "c"), store.usage.spans.map { it.id })
     }
+
+    @Test
+    fun nothingFromInsideTheRunningPaidMonthIsForgotten() {
+        val store = MemoryUsageStore()
+        val start = 0L
+        val allowance = CallAllowance(store, free = 100_000, window = 1_000_000, period = { com.slopus.happy.payments.ProMonth(start, null) })
+        allowance.record("a", 10_000, 20_000)
+        val late = CallAllowance.KEEP_MILLIS * 2
+        allowance.record("b", late, late + 10_000)
+        assertEquals(listOf("a", "b"), store.usage.spans.map { it.id })
+    }
 }

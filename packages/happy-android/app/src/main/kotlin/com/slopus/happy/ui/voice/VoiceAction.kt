@@ -101,6 +101,8 @@ internal fun voiceStartAlert(result: VoiceStart, resources: android.content.res.
         is VoiceStart.Started, VoiceStart.Declined -> null
         VoiceStart.NotSignedIn -> message(R.string.errors_authentication_failed)
         VoiceStart.LimitReached -> message(R.string.errors_voice_conversation_limit_reached, R.string.errors_voice_limit_reached_title)
+        is VoiceStart.HardLimitReached -> Alert(resources.getString(R.string.errors_voice_limit_reached_title),
+            resources.getString(R.string.errors_voice_hard_limit_reached, result.hours.toInt()), listOf(AlertButton(resources.getString(R.string.common_ok))))
         VoiceStart.Unavailable -> message(R.string.errors_voice_service_unavailable)
         // microphonePermissions.ts's inline English, translated here.
         is VoiceStart.MicrophoneDenied -> Alert(

@@ -284,8 +284,8 @@ class AppGraph(
                 VoiceUpsell.resolve(override = local.voiceUpsellOverride, overrideEnabled = BuildConfig.DEBUG || local.devModeEnabled))
         },
         paywall = object : VoicePaywall {
-            override fun hasPro() = purchases.hasPro()
-            override suspend fun present(flow: String) = purchases.present(flow).purchased
+            override fun hasPro() = subscription.hasPro()
+            override suspend fun present(flow: String) = offers.relayVoice(flow)
         },
         preferences = voicePreferences,
         contextFactory = {

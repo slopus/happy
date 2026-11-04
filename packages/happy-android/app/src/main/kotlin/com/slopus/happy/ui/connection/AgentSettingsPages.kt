@@ -34,6 +34,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import com.slopus.happy.payments.OfferSheet
+import com.slopus.happy.payments.RestoreResult
+import com.slopus.happy.ui.call.RestoreAlert
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -113,9 +116,17 @@ internal fun NavGraphBuilder.agentSettingsPages(graph: AppGraph, nav: NavHostCon
         }
     }
     page<AgentVoiceRoute> { entry ->
+        val scope = rememberCoroutineScope()
+        var restored by remember { mutableStateOf<RestoreResult?>(null) }
         ProvideRowReveal(entry.toRoute<AgentVoiceRoute>().reveal) {
-            AgentVoiceScreen(rememberAgentVoiceSummary(), onBack = { nav.popBackStack() })
+            AgentVoiceScreen(
+                rememberAgentVoiceSummary(graph.offers, graph.subscription),
+                onSubscribe = { graph.offers.show(OfferSheet.Support(graph.offers.offer)) },
+                onRestore = { scope.launch { restored = graph.offers.restore() } },
+                onBack = { nav.popBackStack() },
+            )
         }
+        restored?.let { RestoreAlert(it) { restored = null } }
     }
     page<AgentDataStorageRoute> { entry -> AgentDataStorage(graph, nav, entry.toRoute<AgentDataStorageRoute>().connectionId) }
     page<AgentSharingRoute> { entry ->

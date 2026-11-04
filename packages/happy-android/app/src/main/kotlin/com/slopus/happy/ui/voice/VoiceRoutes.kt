@@ -15,9 +15,7 @@ import com.slopus.happy.ui.components.*
 import com.slopus.happy.ui.home.copyToClipboard
 import com.slopus.happy.ui.settings.ItemIcon
 import com.slopus.happy.ui.settings.SettingsSpec
-import com.slopus.happy.ui.settings.Alerts
-import com.slopus.happy.ui.settings.errorAlert
-import com.slopus.happy.ui.settings.rememberSupportAction
+import com.slopus.happy.ui.settings.supportAction
 import com.slopus.happy.voice.VoiceUpsell
 import kotlinx.serialization.Serializable
 
@@ -28,9 +26,8 @@ import kotlinx.serialization.Serializable
 fun NavGraphBuilder.voiceRoutes(graph: AppGraph, nav: NavHostController) {
     page<VoiceSettingsRoute> { entry ->
         val settings by graph.settings.settings.collectAsStateWithLifecycle()
-        val purchases by graph.purchases.purchases.collectAsStateWithLifecycle()
-        val alerts = remember { Alerts() }
-        val support = rememberSupportAction(graph.purchases, errorAlert(alerts))
+        val pro by graph.subscription.pro.collectAsStateWithLifecycle()
+        val support = remember(graph) { supportAction(graph.offers) }
         var usage by remember { mutableStateOf<VoiceUsageReading>(VoiceUsageReading.Loading) }
         var retry by remember { mutableIntStateOf(0) }
         LaunchedEffect(graph, retry) {
@@ -38,13 +35,12 @@ fun NavGraphBuilder.voiceRoutes(graph: AppGraph, nav: NavHostController) {
             usage = graph.voice.usage()?.let { VoiceUsageReading.Loaded(it) } ?: VoiceUsageReading.Unavailable
         }
         ProvideRowReveal(entry.toRoute<VoiceSettingsRoute>().reveal) {
-            VoiceSettingsScreen(settings, graph.settings::change, usage, purchases.entitlements["pro"] == true,
-                onSupport = support::run,
+            VoiceSettingsScreen(settings, graph.settings::change, usage, pro,
+                onSupport = support,
                 onLanguage = { nav.navigate(VoiceLanguageRoute) }, onBack = { nav.popBackStack() },
                 onUsageRetry = { retry++ },
                 developerContent = { VoiceDeveloperSettings(graph) })
         }
-        alerts.Host()
     }
     page<VoiceLanguageRoute> {
         val settings by graph.settings.settings.collectAsStateWithLifecycle()

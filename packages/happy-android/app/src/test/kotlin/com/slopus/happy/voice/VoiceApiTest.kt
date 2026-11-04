@@ -13,7 +13,7 @@ import org.junit.Test
 class VoiceApiTest {
     @Test fun happyWireRequiresCompleteGrantAndKnownDenialReason() {
         assertEquals(VoiceCredentials.Granted("jwt", "conv", "agent", "user"), VoiceApi.parseCredentials(GRANT))
-        assertEquals(VoiceCredentials.Denied("subscription_required"), VoiceApi.parseCredentials(DENIAL))
+        assertEquals(VoiceCredentials.Denied("subscription_required", 1200), VoiceApi.parseCredentials(DENIAL))
         for (bad in listOf("{}", """{"allowed":"true"}""", GRANT.replace(",\"elevenUserId\":\"user\"", ""), DENIAL.replace("subscription_required", "unknown"))) {
             try { VoiceApi.parseCredentials(bad); fail("accepted $bad") } catch (_: IllegalArgumentException) {}
         }

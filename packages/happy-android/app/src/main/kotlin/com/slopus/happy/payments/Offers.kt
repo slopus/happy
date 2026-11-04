@@ -198,6 +198,18 @@ class Offers(
         scope.launch { ask(sheet) }
     }
 
+    /**
+     * The relay's voice asking for the subscription (`VoicePaywall`): true
+     * to go on. Refused without it (`voice_must_pay`), only once it is
+     * bought or restored on the Required sheet; before a first call
+     * (`voice_trial_eligible`), voice's welcome where one is due, its start
+     * or a purchase going on and its close not.
+     */
+    suspend fun relayVoice(flow: String): Boolean = when (flow) {
+        "voice_must_pay" -> ask(OfferSheet.Required(offer)) == OfferResult.Pro
+        else -> !welcomes() || ask(OfferSheet.Welcome(offer)) != OfferResult.Dismissed
+    }
+
     /** Whether a voice button's tap now shows voice's welcome first, counted as seen ([CallIntro]). */
     fun welcomes(): Boolean = intro.welcomes(offer)
 

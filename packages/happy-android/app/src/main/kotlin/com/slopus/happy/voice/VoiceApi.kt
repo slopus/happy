@@ -11,7 +11,8 @@ import okhttp3.OkHttpClient
 
 sealed interface VoiceCredentials {
     data class Granted(val conversationToken: String, val conversationId: String, val agentId: String, val userId: String) : VoiceCredentials
-    data class Denied(val reason: String) : VoiceCredentials
+    /** [limitSeconds]: the limit the server counted against, where it said. */
+    data class Denied(val reason: String, val limitSeconds: Long? = null) : VoiceCredentials
 }
 
 interface VoiceService {
@@ -61,7 +62,7 @@ class VoiceApi(
             } else {
                 val value = strictJson.decodeFromJsonElement(Denial.serializer(), objectValue)
                 require(value.reason in setOf("voice_hard_limit_reached", "subscription_required", "voice_conversation_limit_reached"))
-                VoiceCredentials.Denied(value.reason)
+                VoiceCredentials.Denied(value.reason, value.limitSeconds.toLong())
             }
         }
     }

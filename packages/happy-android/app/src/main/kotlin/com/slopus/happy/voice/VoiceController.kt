@@ -20,6 +20,9 @@ sealed interface VoiceStart {
     data class MicrophoneDenied(val canAskAgain: Boolean) : VoiceStart
     data object NotSignedIn : VoiceStart
     data object LimitReached : VoiceStart
+
+    /** The server's hard cap on voice time, [hours] long: no purchase lifts it, so no sheet sells one. */
+    data class HardLimitReached(val hours: Long) : VoiceStart
     data object Declined : VoiceStart
     data object Unavailable : VoiceStart
 }
@@ -45,7 +48,12 @@ interface VoiceController {
     fun focus(sessionId: String) {}
 }
 
-/** Adapter to purchases; present returns true only when the paywall reports a purchase. */
+/**
+ * Adapter to the app's subscription and its offer sheets. [present] is true
+ * to go on: for `voice_must_pay`, only once `pro` came while its sheet was
+ * up; for `voice_trial_eligible`, when no welcome was due or its "Start Voice
+ * Session" (or a purchase) closed it. Closing a sheet never goes on.
+ */
 interface VoicePaywall {
     fun hasPro(): Boolean
     suspend fun present(flow: String): Boolean

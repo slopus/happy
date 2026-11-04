@@ -220,6 +220,29 @@ class SubscriptionTest {
         assertFalse(again.pro.value)
     }
 
+    /** Restored for B, a purchase bought as A is B's from then on: nothing the store says of it later goes back to A. */
+    @Test
+    fun aRestoredPurchaseIsTheRestoringCustomersFromThenOn() = runTest {
+        val subscription = subscription()
+        subscription.relay("account-a"); runCurrent()
+        subscription.refresh(); runCurrent()
+        rc.refusePosts = 400
+        val t1 = buys(subscription, "t1")
+        store.emit(t1); runCurrent()
+        store.owned += t1
+        rc.refusePosts = null
+        subscription.relay("account-b"); runCurrent()
+        assertTrue(subscription.restore())
+        assertEquals(listOf("post account-b t1 [happy] restore=true"), posts().filter { "restore=true" in it })
+        // Told again, swept, after a restart: never posted for A.
+        store.emit(t1); runCurrent()
+        val again = subscription()
+        again.relay("account-a"); runCurrent()
+        again.refresh(); runCurrent()
+        assertTrue(posts().none { it.startsWith("post account-a t1") && "restore=false" in it && posts().indexOf(it) > 1 })
+        assertEquals(1, posts().count { it == "post account-b t1 [happy] restore=true" })
+    }
+
     @Test
     fun aPurchasePendingForMonthsIsStillItsBuyers() = runTest {
         val subscription = subscription()

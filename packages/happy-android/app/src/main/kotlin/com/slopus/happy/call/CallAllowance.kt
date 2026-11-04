@@ -103,8 +103,9 @@ class CallAllowance(
     }
 
     fun record(id: String, start: Long, end: Long) {
-        // Kept long enough for a whole billing period, the longest month and then some.
-        usage = usage.record(id, start, end).forget(end - maxOf(window, KEEP_MILLIS))
+        // Kept for the longest paid month and a grace period after it, and never from inside the month now running.
+        val keep = minOf(end - maxOf(window, KEEP_MILLIS), period()?.start ?: Long.MAX_VALUE)
+        usage = usage.record(id, start, end).forget(keep)
         store.save(usage)
     }
 
@@ -112,6 +113,7 @@ class CallAllowance(
         const val FREE_MILLIS = 20 * 60 * 1000L
         const val WINDOW_MILLIS = 30 * 24 * 60 * 60 * 1000L
         const val PAID_MILLIS = 5 * 60 * 60 * 1000L
-        const val KEEP_MILLIS = 40 * 24 * 60 * 60 * 1000L
+        /** A 31-day month and the longest store grace period after it (Play's 30 days), and a day. */
+        const val KEEP_MILLIS = 62 * 24 * 60 * 60 * 1000L
     }
 }

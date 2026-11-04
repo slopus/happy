@@ -34,6 +34,10 @@ import com.slopus.happy.ui.start.StartGallerySpec
 import com.slopus.happy.ui.start.StartSpec
 import com.slopus.happy.ui.theme.happyTextStyle
 import com.slopus.happy.payments.Offer
+import com.slopus.happy.payments.Offers
+import com.slopus.happy.payments.ProMonth
+import com.slopus.happy.payments.Subscription
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slopus.happy.payments.OfferSheet
 import com.slopus.happy.payments.RestoreResult
 import com.slopus.happy.ui.call.OfferActions
@@ -98,29 +102,30 @@ object AgentVoiceTags {
 
 /**
  * What an agent connection's Settings say about voice (iOS's
- * `AgentVoiceStatus`), read and never changed: this phone's free time
- * ([CallAllowance], read from its store). There is no paid status, because
- * nothing can be bought yet ([com.slopus.happy.payments.Offer] is
- * `Unavailable`), so nothing claims one.
+ * `AgentVoiceStatus`), read and never changed: this phone's voice time
+ * ([CallAllowance], read from its store: the free time, or the
+ * subscription's month of hours) and what the subscription offers now
+ * ([offer]).
  */
 @Immutable
-data class AgentVoiceSummary(val remainingMillis: Long, val freeAgainMillis: Long? = null) {
+data class AgentVoiceSummary(val remainingMillis: Long, val freeAgainMillis: Long? = null, val offer: Offer = Offer.Unavailable) {
     val minutesLeft: Int get() = if (remainingMillis > 0) maxOf(1, (remainingMillis / 60_000).toInt()) else 0
 
     companion object {
-        fun read(context: Context, now: Long = System.currentTimeMillis()): AgentVoiceSummary {
-            val allowance = CallAllowance(PreferencesCallUsageStore(context.getSharedPreferences(PreferencesCallUsageStore.PREFS_NAME, Context.MODE_PRIVATE)))
+        fun read(context: Context, offer: Offer = Offer.Unavailable, period: () -> ProMonth? = { null }, now: Long = System.currentTimeMillis()): AgentVoiceSummary {
+            val allowance = CallAllowance(PreferencesCallUsageStore(context.getSharedPreferences(PreferencesCallUsageStore.PREFS_NAME, Context.MODE_PRIVATE)), period = period)
             val remaining = allowance.remaining(now)
-            return AgentVoiceSummary(remaining, if (remaining > 0) null else allowance.freeAgain(now)?.takeIf { it > now })
+            return AgentVoiceSummary(remaining, if (remaining > 0) null else allowance.freeAgain(now)?.takeIf { it > now }, offer)
         }
     }
 }
 
-/** This phone's voice summary, read as the page is composed. */
+/** This phone's voice summary, read as the page is composed and again as the offer changes. */
 @Composable
-fun rememberAgentVoiceSummary(): AgentVoiceSummary {
+fun rememberAgentVoiceSummary(offers: Offers, subscription: Subscription): AgentVoiceSummary {
     val context = LocalContext.current
-    return remember(context) { AgentVoiceSummary.read(context) }
+    val offer by offers.offers.collectAsStateWithLifecycle()
+    return remember(context, offer) { AgentVoiceSummary.read(context, offer, subscription::period) }
 }
 
 /** The boba's square and the row's insets: 16 from the card's edge, top and bottom, as a tile is from its edge, so the row is two rows tall. */
@@ -186,34 +191,51 @@ fun agentVoiceEntry(summary: AgentVoiceSummary, onClick: () -> Unit) = SettingsE
 
 /**
  * The Voice page's cards, which the page draws and Settings' search finds:
- * what voice is and the free time left, then the subscription and restore,
- * each saying why it can't be used yet. Nothing here changes voice.
+ * what voice is and the time left, then the subscription ([onSubscribe]
+ * opens its sheet) at the store's price and restore ([onRestore]), or why
+ * they can't be used. Nothing here changes voice.
  */
 @Composable
-fun agentVoiceSections(summary: AgentVoiceSummary): List<SettingsSection> {
+fun agentVoiceSections(summary: AgentVoiceSummary, onSubscribe: () -> Unit = {}, onRestore: () -> Unit = {}): List<SettingsSection> {
     val left = summary.minutesLeft
+    val offer = summary.offer
+    val subscribed = offer == Offer.Subscribed
+    val price = offer.price
     val allowance = listOfNotNull(
-        SettingsEntry(AgentVoiceTags.PLAN, stringResource(R.string.agent_voice_plan), icon = { SettingsTile(Ionicon.MicOutline, SettingsTiles.orange) }, detail = stringResource(R.string.agent_voice_free), chevron = false),
-        SettingsEntry(AgentVoiceTags.FREE, stringResource(R.string.agent_voice_free_time), icon = { SettingsTile(Ionicon.TimeOutline, SettingsTiles.blue) }, detail = stringResource(R.string.agent_voice_free_time_value), chevron = false),
+        if (subscribed) {
+            SettingsEntry(AgentVoiceTags.PLAN, stringResource(R.string.agent_voice_plan), icon = { SettingsTile(Ionicon.MicOutline, SettingsTiles.orange) }, subtitle = stringResource(R.string.call_subscribe_allowance), chevron = false)
+        } else {
+            SettingsEntry(AgentVoiceTags.PLAN, stringResource(R.string.agent_voice_plan), icon = { SettingsTile(Ionicon.MicOutline, SettingsTiles.orange) }, detail = stringResource(R.string.agent_voice_free), chevron = false)
+        },
+        if (subscribed) null else SettingsEntry(AgentVoiceTags.FREE, stringResource(R.string.agent_voice_free_time), icon = { SettingsTile(Ionicon.TimeOutline, SettingsTiles.blue) }, detail = stringResource(R.string.agent_voice_free_time_value), chevron = false),
         SettingsEntry(AgentVoiceTags.LEFT, stringResource(R.string.agent_voice_left), icon = { SettingsTile(Ionicon.HourglassOutline, SettingsTiles.green) }, detail = if (left > 0) stringResource(R.string.agent_voice_minutes, left) else stringResource(R.string.agent_voice_used_up), chevron = false),
         summary.freeAgainMillis?.takeIf { left == 0 }?.let { back ->
             SettingsEntry(AgentVoiceTags.BACK, stringResource(R.string.agent_voice_back), icon = { SettingsTile(Ionicon.CalendarOutline, SettingsTiles.gray) }, detail = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(back)), chevron = false)
         },
     )
-    val offer = listOf(
-        SettingsEntry(AgentVoiceTags.SUBSCRIBE, stringResource(R.string.agent_voice_subscribe), icon = { SettingsTile(Ionicon.Heart, SettingsTiles.red) }, detail = stringResource(R.string.agent_voice_not_yet), chevron = false, enabled = false),
-        SettingsEntry(AgentVoiceTags.RESTORE, stringResource(R.string.agent_voice_restore), icon = { SettingsTile(Ionicon.RefreshOutline, SettingsTiles.gray) }, detail = stringResource(R.string.agent_voice_restore_unavailable), chevron = false, enabled = false),
+    val selling = price != null || subscribed
+    val subscription = listOf(
+        when {
+            subscribed -> SettingsEntry(AgentVoiceTags.SUBSCRIBE, stringResource(R.string.agent_voice_subscribe), icon = { SettingsTile(Ionicon.Heart, SettingsTiles.red) }, detail = stringResource(R.string.settings_support_us_subtitle_pro), chevron = false, enabled = false)
+            price != null -> SettingsEntry(AgentVoiceTags.SUBSCRIBE, stringResource(R.string.agent_voice_subscribe), icon = { SettingsTile(Ionicon.Heart, SettingsTiles.red) }, detail = stringResource(R.string.agent_voice_sheet_pledge, price), onClick = onSubscribe)
+            else -> SettingsEntry(AgentVoiceTags.SUBSCRIBE, stringResource(R.string.agent_voice_subscribe), icon = { SettingsTile(Ionicon.Heart, SettingsTiles.red) }, detail = stringResource(R.string.agent_voice_not_yet), chevron = false, enabled = false)
+        },
+        if (selling) {
+            SettingsEntry(AgentVoiceTags.RESTORE, stringResource(R.string.agent_voice_restore), icon = { SettingsTile(Ionicon.RefreshOutline, SettingsTiles.gray) }, chevron = false, onClick = onRestore)
+        } else {
+            SettingsEntry(AgentVoiceTags.RESTORE, stringResource(R.string.agent_voice_restore), icon = { SettingsTile(Ionicon.RefreshOutline, SettingsTiles.gray) }, detail = stringResource(R.string.agent_voice_restore_unavailable), chevron = false, enabled = false)
+        },
     )
     return listOf(
         SettingsSection(allowance, footer = stringResource(R.string.agent_voice_about)),
-        SettingsSection(offer, footer = stringResource(R.string.agent_voice_coming_footer)),
+        SettingsSection(subscription, footer = if (selling) null else stringResource(R.string.agent_voice_coming_footer)),
     )
 }
 
 /** An agent connection's Voice page: [agentVoiceSections] under the bar. */
 @Composable
-fun AgentVoiceScreen(summary: AgentVoiceSummary, onBack: () -> Unit) {
-    val sections = agentVoiceSections(summary)
+fun AgentVoiceScreen(summary: AgentVoiceSummary, onSubscribe: () -> Unit = {}, onRestore: () -> Unit = {}, onBack: () -> Unit) {
+    val sections = agentVoiceSections(summary, onSubscribe, onRestore)
     AgentPage(stringResource(R.string.agent_voice_title), onBack) {
         for (section in sections) SettingsCard(section)
         Spacer(Modifier.height(16.dp))
@@ -224,11 +246,10 @@ fun AgentVoiceScreen(summary: AgentVoiceSummary, onBack: () -> Unit) {
  * Support us, the app's offer sheet opened from Settings
  * ([OfferSheet.Support]; iOS's `SupportSheetViewController`): over the first
  * screen's grain, the boba playing where voice's sheet has its mic, a
- * headline and what sending boba is for. Only about supporting Happy: no
- * voice session and nothing about voice. Then the subscription at the
- * store's price with Subscribe and Restore ([OfferActions]); a thank-you
- * once [offer] is [Offer.Subscribed]; that purchases are unavailable when
- * nothing is on sale. With animations removed the boba holds still. Closed
+ * headline and what sending boba is for and comes with (5 hours of voice
+ * a month). No voice session. Then "Pledge <the store's price>/month" with
+ * Subscribe and Restore ([OfferActions]); a thank-you once [offer] is
+ * [Offer.Subscribed]; that pledges aren't open when nothing is on sale. With animations removed the boba holds still. Closed
  * by its ✕ or back.
  */
 @Composable
@@ -274,10 +295,10 @@ fun SupportSheet(
                 Spacer(Modifier.weight(1f))
                 Spacer(Modifier.height(32.dp))
                 Column(Modifier.widthIn(max = 440.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    OfferActions(offer, onSubscribe, onRestore, unconfirmed, text) {
+                    OfferActions(offer, onSubscribe, onRestore, unconfirmed, text, headline = { stringResource(R.string.agent_voice_sheet_pledge, it) }) {
                         when {
                             offer == Offer.Subscribed -> Text(stringResource(R.string.settings_support_us_subtitle_pro), style = StartGallerySpec.body, color = text, textAlign = TextAlign.Center)
-                            offer.price == null -> Text(stringResource(R.string.settings_support_unavailable), style = happyTextStyle(fontSize = 13, lineHeight = 18), color = secondary, textAlign = TextAlign.Center)
+                            offer.price == null -> Text(stringResource(R.string.agent_voice_sheet_not_yet), style = happyTextStyle(fontSize = 13, lineHeight = 18), color = secondary, textAlign = TextAlign.Center)
                         }
                     }
                 }

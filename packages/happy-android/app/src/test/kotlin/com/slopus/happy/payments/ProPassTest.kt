@@ -213,6 +213,32 @@ class ProPassTest {
         assertEquals(0L, allowance.remaining(1_000_000L + 4 * 3_600_000L))
     }
 
+    /**
+     * The integrated chain: 5 hours spent on the first day of a 31-day
+     * month, then a failed renewal and 14 days of grace. On day 45 the month
+     * still runs and nothing is back: recording a call then forgets nothing
+     * of it.
+     */
+    @Test
+    fun hoursSpentOnAMonthsFirstDayStaySpentThroughItsGrace() {
+        val store = MemoryUsageStore()
+        val asked = ms("2026-10-01T08:00:00Z")
+        told("2026-10-01T08:00:00Z", pro("2026-10-01T08:00:00Z", "2026-11-01T08:00:00Z"))
+        var at = asked
+        val allowance = CallAllowance(store, period = { cache.period("a", at) })
+        allowance.record("day-1", ms("2026-10-01T09:00:00Z"), ms("2026-10-01T14:00:00Z"))
+        at = ms("2026-10-01T14:00:00Z")
+        assertEquals(0L, allowance.remaining(at))
+        // Day 45, in grace (RevenueCat answers anew, its time and the device's alike).
+        at = ms("2026-11-14T10:00:00Z")
+        cache.save("a", ProPass.from(subscriber("2026-11-14T10:00:00Z", pro("2026-10-01T08:00:00Z", "2026-11-29T08:00:00Z", renews = "2026-11-01T08:00:00Z", grace = "2026-11-29T08:00:00Z"))), at)
+        assertEquals(ProMonth(ms("2026-10-01T08:00:00Z"), null), cache.period("a", at))
+        allowance.record("day-45", at - 1_000, at)
+        assertEquals(listOf("day-1", "day-45"), store.usage.spans.map { it.id })
+        assertEquals(0L, allowance.remaining(at))
+        assertNull(allowance.freeAgain(at))
+    }
+
     companion object {
         /**
          * `pro` as a subscription grants it: the entitlement ([expires],

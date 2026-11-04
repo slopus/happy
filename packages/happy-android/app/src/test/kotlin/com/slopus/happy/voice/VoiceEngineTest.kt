@@ -33,6 +33,8 @@ class VoiceEngineTest {
         var response: VoiceCredentials = grant
         var pro = false
         var purchased = false
+        /** The welcome's answer: its "Start Voice Session" (true) or its close. */
+        var welcomeGoesOn = true
         var connect: suspend () -> Unit = {}
         var credentials: suspend () -> Unit = {}
         val foreground = MutableStateFlow(true)
@@ -61,6 +63,7 @@ class VoiceEngineTest {
                 override fun hasPro() = pro
                 override suspend fun present(flow: String): Boolean {
                     log += flow
+                    if (flow == "voice_trial_eligible") return welcomeGoesOn
                     if (purchased) { response = grant; pro = true }
                     return purchased
                 }
@@ -163,12 +166,25 @@ class VoiceEngineTest {
     }
 
     @Test fun cancelledHardPaywallDoesNotStartTransport() = runTest {
-        val f = Fixture(this); f.response = VoiceCredentials.Denied("voice_hard_limit_reached")
+        val f = Fixture(this); f.response = VoiceCredentials.Denied("subscription_required")
         assertEquals(VoiceStart.Declined, f.engine.start("s", f.microphone()))
         assertEquals(listOf("mic", "credentials", "voice_must_pay"), f.log)
     }
 
-    @Test fun softPaywallIsOnceAndDismissalContinues() = runTest {
+    /** The server's 5-hour cap: no purchase lifts it, so it is said and nothing is sold. */
+    @Test fun theHardCapIsSaidNeverSold() = runTest {
+        val f = Fixture(this); f.response = VoiceCredentials.Denied("voice_hard_limit_reached", 18_000)
+        assertEquals(VoiceStart.HardLimitReached(5), f.engine.start("s", f.microphone()))
+        assertEquals(listOf("mic", "credentials"), f.log)
+    }
+
+    @Test fun closingTheWelcomeStartsNothing() = runTest {
+        val f = Fixture(this); f.options = VoiceOptions(upsell = VoiceUpsell.SoftPaywall); f.welcomeGoesOn = false
+        assertEquals(VoiceStart.Declined, f.engine.start("s", f.microphone()))
+        assertEquals(listOf("mic", "credentials", "voice_trial_eligible"), f.log)
+    }
+
+    @Test fun softPaywallIsOnceAndItsStartGoesOn() = runTest {
         val f = Fixture(this); f.options = VoiceOptions(upsell = VoiceUpsell.SoftPaywall)
         assertTrue(f.engine.start("s", f.microphone()) is VoiceStart.Started)
         f.engine.stop()

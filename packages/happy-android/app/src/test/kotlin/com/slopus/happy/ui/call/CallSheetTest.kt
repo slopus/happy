@@ -123,14 +123,15 @@ class CallSheetTest {
         assertEquals(0, started)
     }
 
-    /** Support us: the boba's sheet sells the same subscription, says nothing about voice and has no voice session. */
+    /** Support us: the boba's sheet sells the same subscription as a pledge, with no voice session. */
     @Test
     fun supportSellsTheSameSubscriptionWithoutVoice() {
         var subscribed = 0
         rule.setHappyContent { SupportSheet(Offer.OnSale("9,99 €"), onDismiss = {}, onSubscribe = { subscribed++ }, onRestore = { com.slopus.happy.payments.RestoreResult.NothingFound }) }
         rule.waitForIdle()
         text("Support Happy open source").assertExists()
-        text("Support Happy for 9,99 €/month").assertExists()
+        text("Pledge 9,99 €/month").assertExists()
+        text("Support Happy for 9,99 €/month").assertDoesNotExist()
         text("Talk to your agents").assertDoesNotExist()
         text("5 hours of real-time voice included").assertDoesNotExist()
         rule.node(CallSheetTags.SESSION).assertDoesNotExist()
@@ -148,7 +149,7 @@ class CallSheetTest {
         var offer by androidx.compose.runtime.mutableStateOf<Offer>(Offer.Unavailable)
         rule.setHappyContent { SupportSheet(offer, onDismiss = {}) }
         rule.waitForIdle()
-        rule.onNodeWithText(context.getString(R.string.settings_support_unavailable)).assertExists()
+        rule.onNodeWithText(context.getString(R.string.agent_voice_sheet_not_yet)).assertExists()
         rule.node(CallSheetTags.SUBSCRIBE).assertDoesNotExist()
         offer = Offer.Subscribed
         rule.waitForIdle()

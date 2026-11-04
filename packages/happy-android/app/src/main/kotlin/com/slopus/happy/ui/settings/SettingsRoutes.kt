@@ -38,7 +38,8 @@ import com.slopus.happy.auth.AuthState
 import com.slopus.happy.model.Machine
 import com.slopus.happy.model.MachineChoice
 import com.slopus.happy.model.Profile
-import com.slopus.happy.payments.Paywall
+import com.slopus.happy.payments.OfferSheet
+import com.slopus.happy.payments.Offers
 import com.slopus.happy.model.collectMachineChoices
 import kotlinx.coroutines.flow.MutableStateFlow
 import com.slopus.happy.model.settings.ConnectApi
@@ -219,42 +220,34 @@ internal fun errorAlert(alerts: Alerts): (String?) -> Unit {
     return { message -> alerts.show(Alert(title, message ?: unknown, listOf(AlertButton(ok)))) }
 }
 
-/** Support us reports unavailable billing through the same localized alert as other settings actions. */
-@Composable
-internal fun rememberSupportAction(paywall: Paywall, onError: (String?) -> Unit): HappyAction {
-    val unavailable = stringResource(R.string.settings_support_unavailable)
-    return rememberHappyAction(onError) {
-        val result = paywall.present("voluntary_support")
-        if (!result.success) onError(unavailable)
-    }
-}
+/** Support us: the app's offer sheet for it, which says so itself when nothing is on sale. */
+internal fun supportAction(offers: Offers): () -> Unit = { offers.show(OfferSheet.Support(offers.offer)) }
 
 /** What About shows for this build, and Support us for this account's purchases. */
 @Composable
 internal fun rememberAboutInfo(graph: AppGraph): AboutInfo {
     val resources = LocalResources.current
-    val purchases by graph.purchases.purchases.collectAsStateWithLifecycle()
+    val pro by graph.subscription.pro.collectAsStateWithLifecycle()
     return AboutInfo(
         versionName = versionDetail(BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
         versionSubtitle = buildSubtitle(BuildConfig.BUILD_COMMIT_SHA, BuildConfig.BUILD_COMMIT_TIMESTAMP, resources.getString(R.string.settings_commit)) {
             resources.getString(R.string.settings_commit_at, it)
         },
-        isPro = BuildConfig.DEBUG || purchases.entitlements["pro"] == true,
+        isPro = BuildConfig.DEBUG || pro,
     )
 }
 
 /**
  * About's and Support us' actions, the same on both kinds of page: links
  * open outside, What's New, ten taps on Version toggle developer mode (with
- * its alert), Support us presents the paywall. Shows its own alerts.
+ * its alert), Support us opens its offer sheet. Shows its own alerts.
  */
 @Composable
 internal fun rememberAboutActions(graph: AppGraph, nav: NavHostController): AboutActions {
     val uriHandler = LocalUriHandler.current
     val linkOpener = LocalLinkOpener.current
     val alerts = remember { Alerts() }
-    val onError = errorAlert(alerts)
-    val support = rememberSupportAction(graph.purchases, onError)
+    val support = remember(graph) { supportAction(graph.offers) }
     val versionClicks = remember { MultiClick(required = 10) }
     val developerMode = stringResource(R.string.modals_developer_mode)
     val developerModeEnabled = stringResource(R.string.modals_developer_mode_enabled)
@@ -272,7 +265,7 @@ internal fun rememberAboutActions(graph: AppGraph, nav: NavHostController): Abou
                     alerts.show(Alert(developerMode, if (enabled) developerModeEnabled else developerModeDisabled, listOf(AlertButton(ok))))
                 }
             },
-            onSupport = support::run,
+            onSupport = support,
             onManageSubscriptions = {
                 if (linkOpener != null) linkOpener.openExternal(SettingsSpec.SUBSCRIPTIONS_URL)
                 else openExternalUrl(uriHandler, SettingsSpec.SUBSCRIPTIONS_URL)
@@ -375,7 +368,7 @@ private fun SettingsIndex(graph: AppGraph, nav: NavHostController, scroll: Scrol
 @Composable
 private fun rememberPageEntries(graph: AppGraph, nav: NavHostController, account: AuthState.SignedIn, profile: Profile): List<SettingsEntry> {
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
-    val purchases by graph.purchases.purchases.collectAsStateWithLifecycle()
+    val pro by graph.subscription.pro.collectAsStateWithLifecycle()
     return accountPageEntries(
         anonId = account.encryption.anonId,
         publicId = account.publicId,
@@ -384,7 +377,7 @@ private fun rememberPageEntries(graph: AppGraph, nav: NavHostController, account
         server = serverHost(graph),
     ) { nav.navigate(AccountRoute(reveal = it)) } +
         backupPageEntries { nav.navigate(BackupRoute(reveal = it)) } +
-        voicePageEntries(settings, purchases.entitlements["pro"] == true) { nav.navigate(VoiceSettingsRoute(reveal = it)) } +
+        voicePageEntries(settings, pro) { nav.navigate(VoiceSettingsRoute(reveal = it)) } +
         languagePageEntries(settings.preferredLanguage, Languages.detectedName(graph.language.deviceLocales())) { nav.navigate(LanguageRoute(reveal = it)) }
 }
 

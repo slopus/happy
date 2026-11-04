@@ -85,6 +85,10 @@ class VoiceEngine(
                         is VoiceCredentials.Granted -> { grant = response; break }
                         is VoiceCredentials.Denied -> {
                             if (response.reason == "voice_conversation_limit_reached") return@withContext fail(VoiceStart.LimitReached)
+                            // The hard cap: buying lifts nothing, so it is said, never sold.
+                            if (response.reason == "voice_hard_limit_reached") {
+                                return@withContext fail(VoiceStart.HardLimitReached((response.limitSeconds ?: HARD_LIMIT_SECONDS) / 3600))
+                            }
                             // Guard a server that still denies after a completed purchase, avoiding an endless paywall loop.
                             if (bought || !paywall.present("voice_must_pay")) return@withContext fail(VoiceStart.Declined)
                             bought = true
@@ -94,7 +98,8 @@ class VoiceEngine(
                 hasPro = paywall.hasPro()
                 if (!hasPro && selected.upsell == VoiceUpsell.SoftPaywall && preferences.softPaywalls < 1) {
                     preferences.incrementSoftPaywalls()
-                    paywall.present("voice_trial_eligible")
+                    // The welcome: its close ends the start, its "Start Voice Session" goes on.
+                    if (!paywall.present("voice_trial_eligible")) return@withContext fail(VoiceStart.Declined)
                 }
                 config = VoiceSessionConfig(sessionId, "", token = grant.conversationToken, agentId = grant.agentId,
                     userId = grant.userId, language = selected.language)
@@ -226,5 +231,10 @@ class VoiceEngine(
         if (state.value.status !in listOf(VoiceStatus.Connecting, VoiceStatus.Connected)) return
         mutableState.value = state.value.copy(mode = value)
         context?.mode(value)
+    }
+
+    private companion object {
+        /** happy-server's `VOICE_HARD_LIMIT_SECONDS`, should a denial not say. */
+        const val HARD_LIMIT_SECONDS = 5 * 60 * 60L
     }
 }

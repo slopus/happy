@@ -1,6 +1,5 @@
 package com.slopus.happy.ui.settings
 
-import androidx.compose.runtime.remember
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -9,8 +8,20 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.slopus.happy.payments.Paywall
-import com.slopus.happy.payments.PaywallOutcome
+import android.content.Context
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.test.core.app.ApplicationProvider
+import com.slopus.happy.R
+import com.slopus.happy.payments.CallIntro
+import com.slopus.happy.payments.FakeRevenueCat
+import com.slopus.happy.payments.FakeStore
+import com.slopus.happy.payments.OfferSheet
+import com.slopus.happy.payments.Offers
+import com.slopus.happy.payments.Subscription
+import com.slopus.happy.ui.call.OfferHost
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.cancel
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.PHONE_WIDTH
 import com.slopus.happy.ui.assertBox
@@ -20,7 +31,7 @@ import com.slopus.happy.ui.components.ItemGroupTags
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import androidx.compose.ui.test.onAllNodesWithTag
-import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -49,39 +60,23 @@ class SupportUsTest {
         rule.onNodeWithText("Thank you for your support!").assertIsDisplayed()
     }
 
-    @Test fun missingKeyShowsLocalizedFailureAndPassesVoluntarySupportFlow() {
-        var seenFlow: String? = null
-        val paywall = object : Paywall {
-            override fun hasPro() = false
-            override suspend fun present(flow: String?): PaywallOutcome {
-                seenFlow = flow
-                return PaywallOutcome(false, error = "RevenueCat not initialized")
+    @Test fun supportOpensTheSupportSheetWhichSaysPledgesArentOpenWhenNothingIsOnSale() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val scope = MainScope()
+        val subscription = Subscription(scope, FakeStore(), FakeRevenueCat(), context.getSharedPreferences("support-us-subscription", Context.MODE_PRIVATE))
+        val offers = Offers(scope, subscription, CallIntro(context.getSharedPreferences("support-us-intro", Context.MODE_PRIVATE)))
+        try {
+            rule.setHappyContent {
+                SettingsScreen(SettingsFixtures.profile, AboutInfo("1"), aboutActions = AboutActions(onSupport = supportAction(offers)))
+                OfferHost(offers)
             }
+            rule.onNodeWithText("Support us").performScrollTo().performClick()
+            rule.waitForIdle()
+            assertTrue(offers.sheet.value is OfferSheet.Support)
+            rule.onNodeWithText(context.getString(R.string.agent_voice_sheet_not_yet)).assertExists()
+            rule.onAllNodesWithText("Error").assertCountEquals(0)
+        } finally {
+            scope.cancel()
         }
-        rule.setHappyContent {
-            val alerts = remember { Alerts() }
-            val support = rememberSupportAction(paywall, errorAlert(alerts))
-            SettingsScreen(SettingsFixtures.profile, AboutInfo("1"), aboutActions = AboutActions(onSupport = support::run))
-            alerts.Host()
-        }
-        rule.onNodeWithText("Support us").performScrollTo().performClick()
-        rule.onNodeWithText("Purchases are unavailable right now. Please try again later.").assertIsDisplayed()
-        rule.onNodeWithText("Error").assertIsDisplayed()
-        assertEquals("voluntary_support", seenFlow)
-    }
-
-    @Test fun cancellationDoesNotShowError() {
-        val paywall = object : Paywall {
-            override fun hasPro() = false
-            override suspend fun present(flow: String?) = PaywallOutcome(success = true)
-        }
-        var errors = 0
-        rule.setHappyContent {
-            val support = rememberSupportAction(paywall) { errors++ }
-            SettingsScreen(SettingsFixtures.profile, AboutInfo("1"), aboutActions = AboutActions(onSupport = support::run))
-        }
-        rule.onNodeWithText("Support us").performScrollTo().performClick()
-        rule.waitForIdle()
-        assertEquals(0, errors)
     }
 }

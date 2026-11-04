@@ -447,7 +447,7 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
         person = AgentPerson(personState.name, personPhoto, rememberPersonSeed(graph, connectionId)),
         appearance = agentAppearanceSections(theme, graph.localSettings::setThemePreference, projectsHidden, { session?.setProjectsHidden(it) }, sound, { session?.setCompletionSound(it) }).flatMap { it.rows },
         scroll = scroll,
-        voice = rememberAgentVoiceSummary(),
+        voice = rememberAgentVoiceSummary(graph.offers, graph.subscription),
         daemonVersion = agent.daemonVersion,
     )
 }

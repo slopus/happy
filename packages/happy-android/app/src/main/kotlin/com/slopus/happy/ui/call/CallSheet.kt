@@ -46,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
@@ -91,7 +92,6 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
-import java.util.Locale
 
 object CallSheetTags {
     const val WELCOME = "call-welcome"
@@ -263,7 +263,7 @@ fun CallSheet(
 
 /**
  * What every offer sheet ends with: the subscription at the store's price
- * ([details] under it, what it gives), its Subscribe, then [content] (voice's
+ * ([headline] says it; [details] under it, what it gives), its Subscribe, then [content] (voice's
  * "Start Voice Session"), "Restore Purchases" wherever it could have been
  * bought, and the notes: the debug preview's, and a purchase RevenueCat
  * hasn't confirmed yet. With nothing on sale, only [content] and the notes.
@@ -275,6 +275,7 @@ internal fun OfferActions(
     onRestore: (suspend () -> RestoreResult)?,
     unconfirmed: Boolean,
     ink: Color,
+    headline: @Composable (price: String) -> String = { stringResource(R.string.call_support_for, it) },
     details: @Composable () -> Unit = {},
     content: @Composable () -> Unit = {},
 ) {
@@ -285,7 +286,7 @@ internal fun OfferActions(
     var restored by remember { mutableStateOf<RestoreResult?>(null) }
     val price = offer.price
     if (price != null) {
-        Text(stringResource(R.string.call_support_for, price), style = CallSheetSpec.offer, color = ink, textAlign = TextAlign.Center)
+        Text(headline(price), style = CallSheetSpec.offer, color = ink, textAlign = TextAlign.Center)
         Spacer(Modifier.height(2.dp))
         details()
         Spacer(Modifier.height(20.dp))
@@ -328,22 +329,7 @@ internal fun OfferActions(
             textAlign = TextAlign.Center,
         )
     }
-    restored?.let { outcome ->
-        HappyAlert(
-            Alert(
-                title = stringResource(R.string.call_restore),
-                message = stringResource(
-                    when (outcome) {
-                        RestoreResult.Restored -> R.string.call_restore_done
-                        RestoreResult.NothingFound -> R.string.call_restore_none
-                        RestoreResult.Failed -> R.string.call_restore_failed
-                    },
-                ),
-                buttons = listOf(AlertButton(stringResource(R.string.common_ok))),
-            ),
-            onDismiss = { restored = null },
-        )
-    }
+    restored?.let { RestoreAlert(it) { restored = null } }
     // Debug builds' test preview: what subscribing would say, said plainly as nothing. No product, charge, grant or change to the free time.
     if (preview) {
         HappyAlert(
@@ -355,6 +341,25 @@ internal fun OfferActions(
             onDismiss = { preview = false },
         )
     }
+}
+
+/** What "Restore Purchases" found, said in an alert. */
+@Composable
+fun RestoreAlert(outcome: RestoreResult, onDismiss: () -> Unit) {
+    HappyAlert(
+        Alert(
+            title = stringResource(R.string.call_restore),
+            message = stringResource(
+                when (outcome) {
+                    RestoreResult.Restored -> R.string.call_restore_done
+                    RestoreResult.NothingFound -> R.string.call_restore_none
+                    RestoreResult.Failed -> R.string.call_restore_failed
+                },
+            ),
+            buttons = listOf(AlertButton(stringResource(R.string.common_ok))),
+        ),
+        onDismiss = onDismiss,
+    )
 }
 
 /** The podcast mic, looping; still mid-way with animations removed. */
@@ -456,20 +461,22 @@ private fun Close(ink: Color, modifier: Modifier, onClick: () -> Unit) {
 @Composable
 private fun usedNote(context: Context, freeAgain: Long?): String {
     if (freeAgain == null) return stringResource(R.string.call_used_later)
+    val locale = LocalConfiguration.current.locales[0]
     val date = Date(freeAgain)
     val time = DateFormat.getTimeFormat(context).format(date)
     val days = CallSheetDays.between(System.currentTimeMillis(), freeAgain)
     return when {
         days == 0 -> stringResource(R.string.call_used_today, time)
-        days < 7 -> stringResource(R.string.call_used_week, SimpleDateFormat("EEE", Locale.getDefault()).format(date), time)
-        else -> stringResource(R.string.call_used_date, DateFormat.format(DateFormat.getBestDateTimePattern(Locale.getDefault(), "MMMd"), date).toString())
+        days < 7 -> stringResource(R.string.call_used_week, SimpleDateFormat("EEE", locale).format(date), time)
+        else -> stringResource(R.string.call_used_date, DateFormat.format(DateFormat.getBestDateTimePattern(locale, "MMMd"), date).toString())
     }
 }
 
 /** The subscriber's used-up line: this month's hours are used, and when the next month's begin. */
 @Composable
 private fun paidNote(next: Long?): String {
-    val date = next?.let { DateFormat.format(DateFormat.getBestDateTimePattern(Locale.getDefault(), "MMMd"), Date(it)).toString() }
+    val locale = LocalConfiguration.current.locales[0]
+    val date = next?.let { DateFormat.format(DateFormat.getBestDateTimePattern(locale, "MMMd"), Date(it)).toString() }
     return if (date != null) stringResource(R.string.call_paid_used, date) else stringResource(R.string.call_paid_used_later)
 }
 

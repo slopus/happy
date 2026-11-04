@@ -47,7 +47,9 @@ import java.util.concurrent.atomic.AtomicLong
  * acknowledged only once RevenueCat has taken it, and one left unfinished
  * is finished at the next launch or foreground, for its own customer; one
  * no id here names is left alone. Restore posts every subscription the
- * store account holds for the customer now, whatever is on sale.
+ * store account holds for the customer now, whatever is on sale; each one
+ * RevenueCat takes is that customer's from then on ([RESTORED]), whatever
+ * id it was bought under.
  */
 class Subscription(
     private val scope: CoroutineScope,
@@ -264,6 +266,8 @@ class Subscription(
             .putStringSet(POSTED, posted() + hash(purchase.token))
             .apply { if (owner == install && preferences.getString(CUSTOMER, null) == null) putBoolean(POSTED_BY_INSTALL, true) }
             .apply()
+        // Restored: the purchase is its new customer's, for whatever the store says of it next.
+        if (restore) preferences.edit().putString(RESTORED, Json.encodeToString(ACCOUNT_MAP, restored() + (hash(purchase.token) to owner))).commit()
         if (!purchase.acknowledged) store.acknowledge(purchase.token)
         if (owner == customer && asked == generation.get() && ProPass.answered(answer.body)) cache.save(customer, ProPass.from(answer.body), now())
         return true
@@ -335,8 +339,15 @@ class Subscription(
         return id
     }
 
-    /** Who bought [purchase]: the customer its store id is for; null for a purchase no id here names. */
-    private fun ownerOf(purchase: StorePurchase): String? = purchase.account?.let { accounts()[it] }
+    private fun restored(): Map<String, String> = preferences.getString(RESTORED, null)
+        ?.let { runCatching { Json.decodeFromString(ACCOUNT_MAP, it) }.getOrNull() }.orEmpty()
+
+    /**
+     * Whose [purchase] is: the customer it was last restored for, else the
+     * customer its store id is for; null for a purchase neither names.
+     */
+    private fun ownerOf(purchase: StorePurchase): String? =
+        restored()[hash(purchase.token)] ?: purchase.account?.let { accounts()[it] }
 
     /** A new anonymous install customer, as RevenueCat's SDK makes them. */
     private fun fresh(): String {
@@ -351,6 +362,7 @@ class Subscription(
         private const val INSTALL = "install"
         private const val CUSTOMER = "customer"
         private const val ACCOUNTS = "accounts"
+        private const val RESTORED = "restored"
         private const val POSTED = "posted"
         private const val POSTED_BY_INSTALL = "posted-by-install"
 
