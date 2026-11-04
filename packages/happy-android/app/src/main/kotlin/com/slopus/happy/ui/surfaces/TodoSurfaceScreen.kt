@@ -21,7 +21,7 @@ fun TodoSurfaceScreen(session: AgentSession, surfaceId: String, onBack: () -> Un
     val state by remember(session, surfaceId) { session.todos.states(surfaceId) }.collectAsStateWithLifecycle(TodoListState())
     val actions = rememberTodoActions(session, surfaceId, open)
     PlaceScaffold(surfaceTitle(session, surface?.name.orEmpty()), onBack, tag = "todo.screen", actions = {
-        SurfaceMenu(session, surfaceId, onBack) { close ->
+        SurfaceMenu(session, surfaceId, onBack, open = open) { close ->
             HappyMenuItem(stringResource(R.string.todo_deleted_todos), onClick = { close(); open(TodoDeletedRoute(session.connectionId, surfaceId)) })
         }
     }) { TodoListContent(state, actions) }

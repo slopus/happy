@@ -43,8 +43,8 @@ fun SurfaceScreens(graph: AppGraph, route: SurfaceRoute, onBack: () -> Unit, ope
         null -> SurfaceMissing(name, loading = !catalog.loaded, onBack)
         SurfaceType.DOCUMENT -> DocumentSurfaceScreen(session, route.surfaceId, onBack, open)
         SurfaceType.TODO -> TodoSurfaceScreen(session, route.surfaceId, onBack, open)
-        SurfaceType.SYSTEM_MONITOR -> SystemMonitorSurfaceScreen(session, route.surfaceId, onBack)
-        SurfaceType.CALENDAR -> CalendarSurfaceScreen(session, route.surfaceId, onBack)
+        SurfaceType.SYSTEM_MONITOR -> SystemMonitorSurfaceScreen(session, route.surfaceId, onBack, open)
+        SurfaceType.CALENDAR -> CalendarSurfaceScreen(session, route.surfaceId, onBack, open)
         SurfaceType.ARTIFACT, SurfaceType.BOT, SurfaceType.TASK -> {
             val agentCatalog by session.catalog.collectAsStateWithLifecycle()
             SurfaceReference(name, surface.type, surfaceTarget(session.connectionId, surface, agentCatalog), surface.target?.name, onBack, open) {

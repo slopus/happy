@@ -12,7 +12,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -50,7 +50,7 @@ fun SurfaceMenu(
     val scope = rememberCoroutineScope()
     var openingChat by remember { mutableStateOf(false) }
     var chatRefused by remember { mutableStateOf<String?>(null) }
-    val context = LocalContext.current
+    val resources = LocalResources.current
     val items: @Composable ColumnScope.(close: () -> Unit) -> Unit = { close ->
         if (open != null) {
             // Desktop b3204bde: the one chat everyone in the Surface shares, made the first time anyone opens it.
@@ -65,7 +65,7 @@ fun SurfaceMenu(
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: AgentConnectionException) {
-                            chatRefused = context.getString(e.reason.text)
+                            chatRefused = resources.getString(e.reason.text)
                         } catch (e: Exception) {
                             chatRefused = e.message.orEmpty()
                         } finally {

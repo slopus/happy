@@ -36,7 +36,7 @@ import java.time.ZoneId
 
 /** Desktop range reader on the app's shared Surface route; journal reads pause beneath another page. */
 @Composable
-fun CalendarSurfaceScreen(session: AgentSession, surfaceId: String, onBack: () -> Unit) {
+fun CalendarSurfaceScreen(session: AgentSession, surfaceId: String, onBack: () -> Unit, open: (Any) -> Unit = {}) {
     val surface by remember(session, surfaceId) { session.surface(surfaceId) }.collectAsStateWithLifecycle(null)
     val model = viewModel(key = "calendar:${session.connectionId}:$surfaceId") { CalendarModel(session) }
     val state by model.feed.state.collectAsStateWithLifecycle()
@@ -65,7 +65,7 @@ fun CalendarSurfaceScreen(session: AgentSession, surfaceId: String, onBack: () -
                 } catch (_: Exception) { failed = true }
                 finally { moving = false; model.feed.invalidate() }
             }
-        }) { SurfaceMenu(session, surfaceId, onBack) }
+        }) { SurfaceMenu(session, surfaceId, onBack, open = open) }
     date?.let { day -> CalendarEventEditor(session, surfaceId, selected, day, zone,
         onDismiss = { date = null; selected = null }, onChanged = { model.feed.invalidate() }) }
     if (failed) HappyAlert(Alert(stringResource(R.string.calendar_save_failed), buttons = listOf(AlertButton(stringResource(R.string.common_ok)))), { failed = false })

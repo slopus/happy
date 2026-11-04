@@ -12,10 +12,10 @@ import com.slopus.happy.ui.monitor.MonitorScreen
 
 /** Visible and foreground only: poll the host, keep its latest readings, and pause beneath another page. */
 @Composable
-fun SystemMonitorSurfaceScreen(session: AgentSession, surfaceId: String, onBack: () -> Unit) {
+fun SystemMonitorSurfaceScreen(session: AgentSession, surfaceId: String, onBack: () -> Unit, open: (Any) -> Unit = {}) {
     val surface by remember(session, surfaceId) { session.surface(surfaceId) }.collectAsStateWithLifecycle(null)
     val model = viewModel(key = "monitor:${session.connectionId}:$surfaceId") { MonitorModel(session, surfaceId) }
     val state by model.feed.state.collectAsStateWithLifecycle()
     LifecycleResumeEffect(model) { model.resume(); onPauseOrDispose { model.pause() } }
-    MonitorScreen(state, surfaceTitle(session, surface?.name.orEmpty()), onBack) { SurfaceMenu(session, surfaceId, onBack) }
+    MonitorScreen(state, surfaceTitle(session, surface?.name.orEmpty()), onBack) { SurfaceMenu(session, surfaceId, onBack, open = open) }
 }
