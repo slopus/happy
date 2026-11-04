@@ -117,4 +117,28 @@ public final class CallAllowance {
 /// A purchase and a restore come with the products, never before.
 public enum CallOffer: Equatable, Sendable {
     case unavailable
+    /// Debug builds' test screens only (`HAPPY_CALL_OFFER=preview`): the
+    /// upgrade drawn as if it were on sale, its button saying it is a
+    /// preview that charges and grants nothing. Never in a release build.
+    case preview
+}
+
+/// Whether this device has been shown voice's welcome and started from it:
+/// until then the voice button shows it instead of calling. Closing it
+/// without starting shows it again next time. In the device's defaults,
+/// beside its free time (`DefaultsCallUsageStore`).
+public struct CallIntro {
+    public static let key = "call.intro.started"
+    private let defaults: UserDefaults
+
+    public init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    public var due: Bool { !defaults.bool(forKey: Self.key) }
+
+    /// Started from the welcome: the voice button calls from now on.
+    public func started() {
+        defaults.set(true, forKey: Self.key)
+    }
 }

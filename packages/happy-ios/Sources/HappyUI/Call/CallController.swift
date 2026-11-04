@@ -35,6 +35,7 @@ final class CallController {
     }
 
     private let allowance = CallAllowance()
+    private let intro = CallIntro()
 
     private init() {
         let center = NotificationCenter.default
@@ -66,9 +67,20 @@ final class CallController {
     var isShowing: Bool { state.isShown }
 
     /// The voice button: a call on this connection, or the one already on.
+    /// A device's first one is voice's welcome, whose "Start talking"
+    /// calls; closed, nothing starts and the next tap shows it again.
     func start(session account: Session, from controller: UIViewController) {
         guard let shell = controller.view.window?.rootViewController as? ShellViewController else { return }
         if state.isLive, connectionID == account.accountID { return }
+        if intro.due {
+            guard !Self.showing(in: shell) else { return }
+            CallSheetViewController.present(.welcome, over: Self.top(of: shell)) { [weak self, weak controller] in
+                guard let self, let controller else { return }
+                self.intro.started()
+                self.start(session: account, from: controller)
+            }
+            return
+        }
         close()
         self.shell = shell
         connectionID = account.accountID
@@ -212,7 +224,6 @@ final class CallController {
     }
 
     private func show(_ state: CallState) {
-        let before = self.state
         self.state = state
         updateClock()
         guard let shell else { return }
@@ -223,28 +234,48 @@ final class CallController {
             switch self?.state {
             case .ended(.microphonePermission):
                 if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
-            case .ended(.limitReached):
-                self?.showPaywall()
             default: break
             }
         }
-        // The free time is used, on a tap or mid-call: the paywall, once.
-        if state == .ended(.limitReached), before != state { showPaywall() }
+        // The free time is used, on a tap or mid-call: the paywall, once,
+        // full height in place of the bar, which goes; the voice button
+        // shows it again.
+        if state == .ended(.limitReached) {
+            showPaywall()
+            return close()
+        }
         // A bar going away keeps what it last said while it slides out.
         if state.isShown { bar.apply(state, clock: clockText, animated: shell.callBarShown) }
         shell.setCallBarShown(state.isShown, animated: true)
         if !state.isShown { self.shell = nil }
     }
 
-    /// The voice paywall over whatever is on top, unless it already is.
+    /// The voice paywall over whatever is on top, unless one of voice's
+    /// sheets already is.
     private func showPaywall() {
-        guard let shell else { return }
-        var top: UIViewController = shell
-        while let next = top.presentedViewController { top = next }
-        if ((top as? UINavigationController)?.viewControllers.first is CallPaywallViewController) { return }
+        guard let shell, !Self.showing(in: shell) else { return }
         let now = Date().timeIntervalSince1970
         let freeAgain = allowance.freeAgain(after: now).flatMap { $0 > now ? Date(timeIntervalSince1970: $0) : nil }
-        CallPaywallViewController.present(freeAgain: freeAgain, offer: .unavailable, over: top)
+        CallSheetViewController.present(.used(freeAgain: freeAgain, offer: Self.offer), over: Self.top(of: shell))
+    }
+
+    /// Nothing is on sale. Debug builds draw the upgrade as if it were for
+    /// their test screens when asked (`HAPPY_CALL_OFFER=preview`).
+    private static var offer: CallOffer {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["HAPPY_CALL_OFFER"] == "preview" { return .preview }
+        #endif
+        return .unavailable
+    }
+
+    private static func top(of shell: UIViewController) -> UIViewController {
+        var top = shell
+        while let next = top.presentedViewController { top = next }
+        return top
+    }
+
+    private static func showing(in shell: UIViewController) -> Bool {
+        top(of: shell) is CallSheetViewController
     }
 
     private var clockText: String? {
@@ -274,6 +305,41 @@ final class CallController {
     }
 
     #if DEBUG
+    /// Test runs only, from the launch environment: `HAPPY_CALL_INTRO=due`
+    /// shows the welcome again, `HAPPY_CALL_USED=1` spends the free time
+    /// (a 20-minute call that ended now), and `HAPPY_CALL_STEPS` presses
+    /// what a person would, one step every 3 s: `tap` the voice button,
+    /// `primary` or `close` on voice's sheet on top, `dismiss` an alert. Each step logs what is
+    /// on top and the call's state (`[call-steps]`).
+    func applyTestEnvironment(tap: @escaping @MainActor () -> Void) {
+        let environment = ProcessInfo.processInfo.environment
+        if environment["HAPPY_CALL_INTRO"] == "due" { UserDefaults.standard.removeObject(forKey: CallIntro.key) }
+        if environment["HAPPY_CALL_USED"] == "1" {
+            let now = Date().timeIntervalSince1970
+            allowance.record(call: "test-used", from: now - CallAllowance.freeSeconds, to: now)
+        }
+        guard let steps = environment["HAPPY_CALL_STEPS"]?.split(separator: ",").map(String.init) else { return }
+        Task { [weak self] in
+            for step in steps {
+                try? await Task.sleep(for: .seconds(3))
+                guard let self else { return }
+                let sheet = UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow?.rootViewController }.first.map(Self.top(of:)) as? CallSheetViewController
+                switch step {
+                case "tap": tap()
+                case "primary": sheet?.primary.sendActions(for: .primaryActionTriggered)
+                case "close": sheet?.close.sendActions(for: .primaryActionTriggered)
+                case "dismiss": (UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow?.rootViewController }.first.map(Self.top(of:)) as? UIAlertController)?.dismiss(animated: true)
+                default: break
+                }
+                try? await Task.sleep(for: .seconds(1))
+                let top = UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow?.rootViewController }.first.map(Self.top(of:))
+                let shown = (top as? CallSheetViewController).map { "\($0.screen)" } ?? top.map { String(describing: type(of: $0)) } ?? "nothing"
+                print("[call-steps] \(step) -> top \(shown), call \(self.state), intro due \(self.intro.due), bar \(self.state.isShown)")
+            }
+            print("[call-steps] done")
+        }
+    }
+
     /// Screenshots only: draws the bar in one state from a script, with no
     /// microphone, provider or grant (`HAPPY_CALL_FIXTURE`), or `cycle`
     /// through them all and out again. Never a call.

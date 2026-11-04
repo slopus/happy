@@ -111,22 +111,49 @@ Paid voice for agent connections is not decided yet. Until it is, nothing
 lifts the limit: no relay `pro` entitlement and no anonymous purchase
 identity.
 
-### The voice paywall
+### Voice's welcome and paywall
 
-When the free time runs out (a tap with none left, or a live call reaching
-the end of it) the app shows its own sheet, once per time the bar starts
-saying so, and again on a tap on that bar: `CallPaywallViewController` on
-iOS (grouped rows, medium and large detents, Done), `CallPaywall` on
-Android (a `ModalBottomSheet` of `ItemGroup`s). No RevenueCat or other
-vendor UI.
+iOS draws both as one full-height sheet (`CallSheetViewController`): the
+call bar's indigo into violet with voice's three bars on top, a headline, a
+few lines with icons, and one button at the bottom. A ✕ on top, or a swipe
+down, closes it and starts nothing. No RevenueCat or other vendor UI, and
+no navigation bar.
 
-- "Free voice time used", with "More free time at …" when the oldest call
-  in the window passes out of it (`CallAllowance.freeAgain`, to the second;
-  left out when no time ever comes back, as with a clock put back).
-- What can be bought: `CallOffer`, which today has one case, `unavailable`.
-  The sheet says "More voice time: Not available yet" and "Voice
-  subscriptions aren't on sale yet." There is no price, no buy button and
-  no restore, and none is shown until real products exist.
+**The welcome** comes the first time a device taps the voice button: "Talk
+to your agents", what voice does (it reads a conversation's recent messages
+when asked, hears new replies in the ones opened, opens conversations and
+sends exactly what it is told; approvals stay in the app) and the 20 free
+minutes. "Start talking" closes it and starts the call, which asks for the
+microphone then, never before. It is shown until the person starts from it
+(`CallIntro`, `call.intro.started` in the device's defaults, beside its
+free time); closed, the next tap shows it again.
+
+**The paywall** comes when the free time is used: a tap with none left
+(before the microphone is asked for), or a live call reaching the end of
+it. The red bar goes and the sheet takes its place; the voice button shows
+it again. "You've used your free voice time", when more comes back
+(`CallAllowance.freeAgain`: "at 5:19 PM" today, "on Thu at 5:19 PM" this
+week, "on Dec 3" after; left out when no time ever comes back, as with a
+clock put back), then the upgrade: more voice time, and that a subscription
+helps pay for Happy's development. No price and no paid allowance: neither
+is decided. What its button does is `CallOffer`:
+
+- `unavailable`, every release build: "Got it" closes it, and "Voice
+  subscriptions are coming soon. Nothing is on sale yet." No buy button.
+- `preview`, debug builds only and only when launched with
+  `HAPPY_CALL_OFFER=preview` (test screens): "Get more voice time", noted
+  "Test preview. Nothing is charged." A tap says "Preview only: … Nothing
+  was bought or charged, and your voice time hasn't changed." No product,
+  charge, entitlement or change to the free time.
+
+Android still has its earlier `CallPaywall` (a `ModalBottomSheet` of
+`ItemGroup`s, "Not available yet") and no welcome; its rework is on hold.
+
+Test runs drive both without a call or a microphone (debug builds,
+`CallController.applyTestEnvironment`): `HAPPY_CALL_INTRO=due` shows the
+welcome again, `HAPPY_CALL_USED=1` spends the free time, and
+`HAPPY_CALL_STEPS=tap,primary,close,…` presses the voice button and the
+sheet's buttons one step every 3 s, logging each (`[call-steps]`).
 
 What a working offer needs and doesn't have yet:
 

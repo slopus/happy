@@ -175,21 +175,22 @@ final class AgentHomeViewController: UIViewController, ComposeHosting {
 
     #if DEBUG
     /// Screenshots: `HAPPY_CALL_FIXTURE` draws the bar from a script (no
-    /// call), `HAPPY_CALL_TAP` presses the voice button once, for real.
+    /// call), `HAPPY_CALL_TAP` presses the voice button once, for real;
+    /// `HAPPY_CALL_STEPS` and the rest, as `applyTestEnvironment` says.
     private static var launchedCall = false
     private func launchCall() {
         guard !Self.launchedCall else { return }
+        defer { Self.launchedCall = true }
         let environment = ProcessInfo.processInfo.environment
+        CallController.shared.applyTestEnvironment { [weak self] in self?.startCall() }
         let delay = environment["HAPPY_CALL_DELAY"].flatMap(Double.init) ?? 0
         if let fixture = environment["HAPPY_CALL_FIXTURE"] {
-            Self.launchedCall = true
             Task { [weak self] in
                 try? await Task.sleep(for: .seconds(delay))
                 guard let self else { return }
                 CallController.shared.showFixture(fixture, from: self)
             }
         } else if environment["HAPPY_CALL_TAP"] == "1" {
-            Self.launchedCall = true
             Task { [weak self] in
                 try? await Task.sleep(for: .seconds(delay))
                 self?.startCall()

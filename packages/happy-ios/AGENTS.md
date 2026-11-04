@@ -182,10 +182,13 @@ nothing here is wired to the release skill or to EAS.
   in code, docs or tests. Without it the tap ends at once as "Voice isn't
   set up for this connection yet"; never fake a live call. Each device gets
   20 free connected minutes in any rolling 30 days (`CallAllowance`, local,
-  provisional); once they are used the app's own sheet
-  (`CallPaywallViewController`, no vendor UI) says when time is back and that
-  nothing is on sale (`CallOffer.unavailable`): never a price or a buy button
-  before real products exist. `openSession` replaces a conversation on top
+  provisional). A device's first tap shows voice's welcome and its last
+  free minute the paywall, one full-height sheet of the app's own
+  (`CallSheetViewController`, no vendor UI); closing either starts
+  nothing. Release builds sell nothing (`CallOffer.unavailable`: "Got it",
+  never a price or a buy button before real products exist); only debug
+  test runs draw the upgrade as on sale (`CallOffer.preview`, a no-charge
+  preview). `openSession` replaces a conversation on top
   and goes over anything else (`CallNavigation`). Contract, prompt, tool schemas and rationale:
   `docs/agent-voice-call.md` at the repository root. Harness hooks
   (`HAPPY_CALL_FIXTURE`, `HAPPY_CALL_TAP`, `-callLive`, `CallProbe`) are

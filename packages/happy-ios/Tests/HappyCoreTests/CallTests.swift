@@ -1497,6 +1497,20 @@ final class CallUsageTests: XCTestCase {
         }
     }
 
+    /// The welcome is due until the person starts from it; closing it
+    /// leaves it due. Kept in the device's defaults, never an account's.
+    func testTheWelcomeIsDueUntilStartedFrom() throws {
+        let suite = "call-intro-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertTrue(CallIntro(defaults: defaults).due)
+        // Closed: nothing written, still due.
+        XCTAssertTrue(CallIntro(defaults: defaults).due)
+        CallIntro(defaults: defaults).started()
+        XCTAssertFalse(CallIntro(defaults: defaults).due)
+        XCTAssertEqual(defaults.bool(forKey: CallIntro.key), true)
+    }
+
     func testOldSpansAreForgotten() async {
         await MainActor.run {
             let store = MemoryUsageStore()
