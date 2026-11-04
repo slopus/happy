@@ -2,6 +2,7 @@ package com.slopus.happy.ui.connection
 
 import com.slopus.happy.ui.tablet.BackOrSidebarToggle
 import com.slopus.happy.ui.settings.SettingsTags
+import com.slopus.happy.call.CallAllowance
 import com.slopus.happy.ui.components.ProvideRowReveal
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
@@ -17,6 +18,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -114,8 +118,10 @@ fun agentSettingsIndex(): List<AgentSettingsRow> {
         row(AgentSettingsTags.PROFILE, stringResource(R.string.settings_account_profile), Ionicon.PersonCircleOutline),
         row(AgentSettingsTags.ASK_NAME, stringResource(R.string.agent_settings_edit_name), Ionicon.CreateOutline, AgentSettingsPlace.Ask, stringResource(R.string.agent_settings_edit_name_prefix)),
         row(AgentSettingsTags.ASK_AVATAR, stringResource(R.string.agent_settings_edit_avatar), Ionicon.ImageOutline, AgentSettingsPlace.Ask, stringResource(R.string.agent_settings_edit_avatar_prefix)),
+        row(AgentVoiceTags.SUPPORT, stringResource(R.string.agent_voice_support_title), Ionicon.Heart),
         row(AgentSettingsTags.APPEARANCE, stringResource(R.string.settings_appearance), Ionicon.ColorPaletteOutline),
         row(AgentPagesTags.HIDE_PROJECTS_ROW, stringResource(R.string.settings_hide_projects), Ionicon.FolderOutline, AgentSettingsPlace.Appearance),
+        row(AgentVoiceTags.ROW, stringResource(R.string.agent_voice_title), Ionicon.MicOutline),
         row(DataStorageTags.ROW, stringResource(R.string.data_storage_title), Ionicon.ServerOutline),
         row(AgentSharingTags.ROW, stringResource(R.string.sharing_title), Ionicon.PeopleOutline),
         row(SettingsTags.SUPPORT, stringResource(R.string.settings_support_us), Ionicon.HeartOutline),
@@ -164,6 +170,8 @@ class AgentSettingsActions(
     /** The person's own name and picture on this agent. */
     val onProfile: () -> Unit = {},
     val onAppearance: () -> Unit = {},
+    /** Voice: what it is and the free time left. */
+    val onVoice: () -> Unit = {},
     /** Data and Storage: the media kept on this phone; null where nothing is kept. */
     val onDataStorage: (() -> Unit)? = null,
     val onSharing: (() -> Unit)? = null,
@@ -206,6 +214,8 @@ fun AgentConnectionSettingsScreen(
     /** Where the page is scrolled; shared with the other kind's page, so a switch keeps it (AccountSettings). */
     scroll: ScrollState = rememberScrollState(),
     daemonVersion: String? = null,
+    /** This phone's free voice time, for the Voice row ([rememberAgentVoiceSummary]). */
+    voice: AgentVoiceSummary = AgentVoiceSummary(CallAllowance.FREE_MILLIS),
 ) {
     val namePrefix = stringResource(R.string.agent_settings_edit_name_prefix)
     val avatarPrefix = stringResource(R.string.agent_settings_edit_avatar_prefix)
@@ -216,6 +226,9 @@ fun AgentConnectionSettingsScreen(
         SettingsEditItem(editName, Ionicon.Pencil, SettingsPageTags.EDIT_NAME) { actions.onAskChief(namePrefix) },
     )
     val search = rememberSettingsSearch()
+    // Support Happy's sheet, from the boba row or search.
+    var supporting by rememberSaveable { mutableStateOf(false) }
+    if (supporting) SupportSheet { supporting = false }
     val sections = listOf(
         SettingsSection(
             listOf(
@@ -236,6 +249,7 @@ fun AgentConnectionSettingsScreen(
                     icon = { SettingsTile(Ionicon.ColorPaletteOutline, SettingsTiles.purple) },
                     onClick = actions.onAppearance,
                 ),
+                agentVoiceEntry(voice, actions.onVoice),
             ) + listOfNotNull(
                 actions.onDataStorage?.let { open ->
                     SettingsEntry(
@@ -293,14 +307,18 @@ fun AgentConnectionSettingsScreen(
                 SettingsEntry(AgentSettingsTags.ASK_AVATAR, stringResource(R.string.agent_settings_edit_avatar), icon = { SettingsTile(Ionicon.ImageOutline, SettingsTiles.orange) }, chevron = false, onClick = { actions.onAskChief(avatarPrefix) }, closesSearch = true),
             )
             val profiles = settingsProfileEntries(accounts, accountActions.onSwitch)
-            val rows = listOf(addAgentEntry(accountActions)) + sections.flatMap { it.rows } + appearance
+            val rows = listOf(addAgentEntry(accountActions), supportBobaEntry { supporting = true }) + sections.flatMap { it.rows } + appearance
             SettingsSearchResults(search, settingsSearchResults(search.query, profiles, asks, rows))
         } else {
             SettingsDissolveBox {
                 ItemList(scrollState = scroll) {
                     SettingsHeader(profile, edit)
                     AccountsCard(accounts, accountActions)
-                    for (section in sections) SettingsCard(section)
+                    // Support Happy right under Profile, the first card.
+                    for ((index, section) in sections.withIndex()) {
+                        SettingsCard(section)
+                        if (index == 0) SupportBobaCard { supporting = true }
+                    }
                     RemoveCard(agent = true, name = profile.name, onRemove = actions.onRemove)
                 }
             }
@@ -408,6 +426,7 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
             onBack = { nav.popBackStack() },
             onProfile = { nav.navigate(AgentProfileRoute(connectionId)) },
             onAppearance = { nav.navigate(AgentAppearanceRoute(connectionId)) },
+            onVoice = { nav.navigate(AgentVoiceRoute(connectionId)) },
             onDataStorage = { nav.navigate(AgentDataStorageRoute(connectionId)) },
             onSharing = { nav.navigate(AgentSharingRoute(connectionId)) },
             onAskChief = { prefix -> nav.openChiefOfStaff(connectionId, prefix) },
@@ -434,6 +453,7 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
         person = AgentPerson(personState.name, personPhoto, rememberPersonSeed(graph, connectionId)),
         appearance = agentAppearanceSections(theme, graph.localSettings::setThemePreference, projectsHidden, { session?.setProjectsHidden(it) }, sound, { session?.setCompletionSound(it) }).flatMap { it.rows },
         scroll = scroll,
+        voice = rememberAgentVoiceSummary(),
         daemonVersion = agent.daemonVersion,
     )
 }

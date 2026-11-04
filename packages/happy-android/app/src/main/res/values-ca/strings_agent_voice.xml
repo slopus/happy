@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="agent_voice_support_title">Dona suport a Happy de codi obert convidant-nos a un boba cada mes</string>
+    <string name="agent_voice_support_spoken">Dona suport a Happy de codi obert convidant-nos a un boba cada mes</string>
+    <string name="agent_voice_title">Veu</string>
+    <string name="agent_voice_minutes_left">Queden %1$d min</string>
+    <string name="agent_voice_used_up">Esgotat</string>
+    <string name="agent_voice_plan">Pla</string>
+    <string name="agent_voice_free">Gratuït</string>
+    <string name="agent_voice_free_time">Veu gratuïta</string>
+    <string name="agent_voice_free_time_value">20 min / 30 dies</string>
+    <string name="agent_voice_left">Queden</string>
+    <string name="agent_voice_minutes">%1$d min</string>
+    <string name="agent_voice_back">Més a partir de</string>
+    <string name="agent_voice_about">La veu fa servir ElevenLabs per ajudar-te a parlar amb els teus agents. El micròfon només s\'activa durant una trucada.</string>
+    <string name="agent_voice_subscribe">5 h de veu</string>
+    <string name="agent_voice_not_yet">Encara no està a la venda</string>
+    <string name="agent_voice_not_yet_hint">Les subscripcions de veu encara no estan a la venda.</string>
+    <string name="agent_voice_coming_footer">Un boba cada mes donarà suport a Happy i inclourà 5 hores de veu en temps real. Encara no està a la venda.</string>
+    <string name="agent_voice_restore">Restaura les compres</string>
+    <string name="agent_voice_restore_unavailable">No disponible</string>
+    <string name="agent_voice_restore_hint">No hi ha res a restaurar fins que les subscripcions de veu estiguin a la venda.</string>
+    <string name="agent_voice_sheet_title">Dona suport a Happy de codi obert</string>
+    <string name="agent_voice_sheet_body">Convida\'ns a un boba cada mes. Paga el desenvolupament de Happy, i Happy continua sent de codi obert.</string>
+    <string name="agent_voice_sheet_not_yet">El boba mensual encara no està a la venda.</string>
+</resources>

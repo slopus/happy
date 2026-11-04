@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="agent_voice_support_title">Apoya Happy de código abierto invitándonos a un boba cada mes</string>
+    <string name="agent_voice_support_spoken">Apoya Happy de código abierto invitándonos a un boba cada mes</string>
+    <string name="agent_voice_title">Voz</string>
+    <string name="agent_voice_minutes_left">Quedan %1$d min</string>
+    <string name="agent_voice_used_up">Agotado</string>
+    <string name="agent_voice_plan">Plan</string>
+    <string name="agent_voice_free">Gratis</string>
+    <string name="agent_voice_free_time">Voz gratis</string>
+    <string name="agent_voice_free_time_value">20 min / 30 días</string>
+    <string name="agent_voice_left">Quedan</string>
+    <string name="agent_voice_minutes">%1$d min</string>
+    <string name="agent_voice_back">Más desde</string>
+    <string name="agent_voice_about">La voz usa ElevenLabs para ayudarte a hablar con tus agentes. El micrófono solo se activa durante una llamada.</string>
+    <string name="agent_voice_subscribe">5 h de voz</string>
+    <string name="agent_voice_not_yet">Aún no está a la venta</string>
+    <string name="agent_voice_not_yet_hint">Las suscripciones de voz aún no están a la venta.</string>
+    <string name="agent_voice_coming_footer">Un boba cada mes apoyará a Happy e incluirá 5 horas de voz en tiempo real. Aún no está a la venta.</string>
+    <string name="agent_voice_restore">Restaurar compras</string>
+    <string name="agent_voice_restore_unavailable">No disponible</string>
+    <string name="agent_voice_restore_hint">No hay nada que restaurar hasta que las suscripciones de voz estén a la venta.</string>
+    <string name="agent_voice_sheet_title">Apoya Happy de código abierto</string>
+    <string name="agent_voice_sheet_body">Invítanos a un boba cada mes. Financia el desarrollo de Happy, y Happy sigue siendo de código abierto.</string>
+    <string name="agent_voice_sheet_not_yet">El boba mensual aún no está a la venta.</string>
+</resources>

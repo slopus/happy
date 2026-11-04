@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  An agent connection's Settings: the Support Happy row under Profile and the
+  Voice page (ui/connection/AgentVoiceSettings.kt). New with the native apps,
+  so no happy-app catalog key has these. Translated in values-*/ (AndroidStringsTranslatedTest).
+-->
+<resources>
+    <string name="agent_voice_support_title">Support Happy open source by sending us boba every month</string>
+    <string name="agent_voice_support_spoken">Support Happy open source by sending us boba every month</string>
+    <string name="agent_voice_title">Voice</string>
+    <string name="agent_voice_minutes_left">%1$d min left</string>
+    <string name="agent_voice_used_up">Used up</string>
+    <string name="agent_voice_plan">Plan</string>
+    <string name="agent_voice_free">Free</string>
+    <string name="agent_voice_free_time">Free voice</string>
+    <string name="agent_voice_free_time_value">20 min / 30 days</string>
+    <string name="agent_voice_left">Left</string>
+    <string name="agent_voice_minutes">%1$d min</string>
+    <string name="agent_voice_back">More from</string>
+    <string name="agent_voice_about">Voice uses ElevenLabs to help you talk to your agents. The microphone is on only during a call.</string>
+    <string name="agent_voice_subscribe">Get 5 hrs of voice</string>
+    <string name="agent_voice_not_yet">Not on sale yet</string>
+    <string name="agent_voice_not_yet_hint">Voice subscriptions aren’t on sale yet.</string>
+    <string name="agent_voice_coming_footer">Sending boba every month will support Happy and come with 5 hours of real-time voice. It isn’t on sale yet.</string>
+    <string name="agent_voice_restore">Restore purchases</string>
+    <string name="agent_voice_restore_unavailable">Unavailable</string>
+    <string name="agent_voice_restore_hint">Nothing to restore until voice subscriptions are on sale.</string>
+    <string name="agent_voice_sheet_title">Support Happy open source</string>
+    <string name="agent_voice_sheet_body">Send us boba every month. It pays for Happy’s development, and Happy stays open source.</string>
+    <string name="agent_voice_sheet_not_yet">Monthly boba isn’t on sale yet.</string>
+</resources>

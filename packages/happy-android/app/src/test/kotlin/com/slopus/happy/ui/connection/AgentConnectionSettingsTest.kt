@@ -46,6 +46,8 @@ import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.ThemePreference
 import org.junit.Assert.assertEquals
 import org.junit.Rule
+import org.junit.Assert.assertTrue
+import androidx.compose.ui.test.onNodeWithTag
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
@@ -129,7 +131,8 @@ class AgentConnectionSettingsTest {
     @Test
     fun cardsAndRows() {
         show()
-        rule.onAllNodesWithTag(ItemGroupTags.CARD, useUnmergedTree = true).assertCountEquals(6)
+        // Support Happy is a card of its own, right under Profile.
+        rule.onAllNodesWithTag(ItemGroupTags.CARD, useUnmergedTree = true).assertCountEquals(7)
         rule.onNode(hasText("Steve") and hasAnyAncestor(hasTestTag(SettingsPageTags.account("account-1"))), useUnmergedTree = true).assertExists()
         rule.node(SettingsPageTags.account("agent-connection-2")).performClick()
         rule.node(SettingsPageTags.ADD_AGENT).performScrollTo().performClick()
@@ -138,6 +141,23 @@ class AgentConnectionSettingsTest {
         assertEquals(listOf("switch:agent-connection-2", "add", "profile", "appearance"), done)
         rule.node(SettingsTags.SUPPORT).performScrollTo().assertIsDisplayed()
         rule.node(SettingsTags.VERSION).performScrollTo().assertIsDisplayed()
+        assertTrue(rule.node(AgentVoiceTags.SUPPORT).bounds.top > rule.node(AgentSettingsTags.PROFILE).bounds.bottom)
+        assertTrue(rule.node(AgentVoiceTags.SUPPORT).bounds.bottom < rule.node(AgentSettingsTags.APPEARANCE).bounds.top)
+        rule.node(AgentVoiceTags.ROW).performScrollTo().assertIsDisplayed()
+    }
+
+    /** The boba row opens Support Happy's sheet, which has no voice session. */
+    @Test
+    fun theBobaRowOpensTheSupportSheet() {
+        show()
+        rule.node(AgentVoiceTags.SUPPORT).performScrollTo().performClick()
+        rule.waitForIdle()
+        rule.onNodeWithTag(AgentVoiceTags.SHEET).assertExists()
+        rule.onNodeWithText("Support Happy open source").assertExists()
+        rule.onNodeWithText("Start Voice Session").assertDoesNotExist()
+        rule.onNodeWithTag(AgentVoiceTags.SHEET_CLOSE).performClick()
+        rule.waitForIdle()
+        rule.onNodeWithTag(AgentVoiceTags.SHEET).assertDoesNotExist()
     }
 
     @Test

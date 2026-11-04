@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="agent_voice_support_title">每月請我們喝杯波霸，支持開源的 Happy</string>
+    <string name="agent_voice_support_spoken">每月請我們喝杯波霸，支持開源的 Happy</string>
+    <string name="agent_voice_title">語音</string>
+    <string name="agent_voice_minutes_left">剩餘 %1$d 分鐘</string>
+    <string name="agent_voice_used_up">已用完</string>
+    <string name="agent_voice_plan">方案</string>
+    <string name="agent_voice_free">免費</string>
+    <string name="agent_voice_free_time">免費語音</string>
+    <string name="agent_voice_free_time_value">20 分鐘 / 30 天</string>
+    <string name="agent_voice_left">剩餘</string>
+    <string name="agent_voice_minutes">%1$d 分鐘</string>
+    <string name="agent_voice_back">恢復時間</string>
+    <string name="agent_voice_about">語音使用 ElevenLabs 協助你與代理對話。麥克風只在通話時開啟。</string>
+    <string name="agent_voice_subscribe">5 小時語音</string>
+    <string name="agent_voice_not_yet">尚未開賣</string>
+    <string name="agent_voice_not_yet_hint">語音訂閱尚未開賣。</string>
+    <string name="agent_voice_coming_footer">每月一杯波霸可以支持 Happy，並包含 5 小時即時語音。尚未開賣。</string>
+    <string name="agent_voice_restore">恢復購買</string>
+    <string name="agent_voice_restore_unavailable">無法使用</string>
+    <string name="agent_voice_restore_hint">語音訂閱開賣前沒有可恢復的內容。</string>
+    <string name="agent_voice_sheet_title">支持開源的 Happy</string>
+    <string name="agent_voice_sheet_body">每月請我們喝杯波霸。它為 Happy 的開發買單，Happy 也會一直開源。</string>
+    <string name="agent_voice_sheet_not_yet">每月波霸尚未開賣。</string>
+</resources>

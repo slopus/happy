@@ -112,6 +112,11 @@ internal fun NavGraphBuilder.agentSettingsPages(graph: AppGraph, nav: NavHostCon
             )
         }
     }
+    page<AgentVoiceRoute> { entry ->
+        ProvideRowReveal(entry.toRoute<AgentVoiceRoute>().reveal) {
+            AgentVoiceScreen(rememberAgentVoiceSummary(), onBack = { nav.popBackStack() })
+        }
+    }
     page<AgentDataStorageRoute> { entry -> AgentDataStorage(graph, nav, entry.toRoute<AgentDataStorageRoute>().connectionId) }
     page<AgentSharingRoute> { entry ->
         val id = entry.toRoute<AgentSharingRoute>().connectionId

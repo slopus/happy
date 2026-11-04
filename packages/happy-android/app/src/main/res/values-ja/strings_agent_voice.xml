@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="agent_voice_support_title">毎月ボバを贈って、オープンソースの Happy を応援</string>
+    <string name="agent_voice_support_spoken">毎月ボバを贈って、オープンソースの Happy を応援</string>
+    <string name="agent_voice_title">音声</string>
+    <string name="agent_voice_minutes_left">残り %1$d 分</string>
+    <string name="agent_voice_used_up">使い切りました</string>
+    <string name="agent_voice_plan">プラン</string>
+    <string name="agent_voice_free">無料</string>
+    <string name="agent_voice_free_time">無料の音声</string>
+    <string name="agent_voice_free_time_value">20分 / 30日</string>
+    <string name="agent_voice_left">残り</string>
+    <string name="agent_voice_minutes">%1$d 分</string>
+    <string name="agent_voice_back">再開</string>
+    <string name="agent_voice_about">音声は ElevenLabs を使って、エージェントと話せるようにします。マイクは通話中のみオンになります。</string>
+    <string name="agent_voice_subscribe">5時間の音声</string>
+    <string name="agent_voice_not_yet">まだ販売していません</string>
+    <string name="agent_voice_not_yet_hint">音声サブスクリプションはまだ販売していません。</string>
+    <string name="agent_voice_coming_footer">毎月ボバを贈ると Happy を応援でき、5時間のリアルタイム音声がつきます。まだ販売していません。</string>
+    <string name="agent_voice_restore">購入を復元</string>
+    <string name="agent_voice_restore_unavailable">利用できません</string>
+    <string name="agent_voice_restore_hint">音声サブスクリプションの販売開始まで、復元するものはありません。</string>
+    <string name="agent_voice_sheet_title">オープンソースの Happy を応援</string>
+    <string name="agent_voice_sheet_body">毎月ボバを贈ってください。Happy の開発費になり、Happy はオープンソースのままです。</string>
+    <string name="agent_voice_sheet_not_yet">毎月のボバはまだ販売していません。</string>
+</resources>

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="agent_voice_support_title">Wspieraj open source Happy, stawiając nam bobę co miesiąc</string>
+    <string name="agent_voice_support_spoken">Wspieraj open source Happy, stawiając nam bobę co miesiąc</string>
+    <string name="agent_voice_title">Głos</string>
+    <string name="agent_voice_minutes_left">Zostało %1$d min</string>
+    <string name="agent_voice_used_up">Wykorzystano</string>
+    <string name="agent_voice_plan">Plan</string>
+    <string name="agent_voice_free">Darmowy</string>
+    <string name="agent_voice_free_time">Darmowy głos</string>
+    <string name="agent_voice_free_time_value">20 min / 30 dni</string>
+    <string name="agent_voice_left">Zostało</string>
+    <string name="agent_voice_minutes">%1$d min</string>
+    <string name="agent_voice_back">Znów od</string>
+    <string name="agent_voice_about">Głos korzysta z ElevenLabs, aby pomóc Ci rozmawiać z agentami. Mikrofon działa tylko podczas rozmowy.</string>
+    <string name="agent_voice_subscribe">5 godz. głosu</string>
+    <string name="agent_voice_not_yet">Jeszcze niedostępne</string>
+    <string name="agent_voice_not_yet_hint">Subskrypcje głosu nie są jeszcze w sprzedaży.</string>
+    <string name="agent_voice_coming_footer">Boba co miesiąc wesprze Happy i da 5 godzin głosu w czasie rzeczywistym. Jeszcze nie jest w sprzedaży.</string>
+    <string name="agent_voice_restore">Przywróć zakupy</string>
+    <string name="agent_voice_restore_unavailable">Niedostępne</string>
+    <string name="agent_voice_restore_hint">Nie ma czego przywracać, dopóki subskrypcje głosu nie są w sprzedaży.</string>
+    <string name="agent_voice_sheet_title">Wspieraj open source Happy</string>
+    <string name="agent_voice_sheet_body">Stawiaj nam bobę co miesiąc. To opłaca rozwój Happy, a Happy pozostaje open source.</string>
+    <string name="agent_voice_sheet_not_yet">Comiesięczna boba nie jest jeszcze w sprzedaży.</string>
+</resources>
