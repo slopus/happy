@@ -27,6 +27,8 @@ extension Palette {
     public static let rowPressed = ColorToken(light: RGBA(red: 0, green: 0, blue: 0, alpha: 0.08), dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.08))
     /// A separator's hairline (`--divider`).
     public static let divider = ColorToken("#eaeaea", "#292929")
+    /// The bar beside a quoted story: the divider is lost on the dark ground.
+    public static let quoteBar = ColorToken("#d4d4d8", "#48484c")
     /// The composer's "+" sheet: its ground, and the fill of its rows'
     /// group and camera tile, as iOS's grouped lists draw them.
     public static let attachGround = ColorToken("#F2F2F7", "#1C1C1E")
@@ -285,8 +287,8 @@ extension ChatTextStyles {
     /// Show full / Show less under a long message: desktop's quiet mono
     /// meta line (`agent-trace-row.css`, `data-variant="meta"`), 11/16.
     public static let fold = ChatTextStyle(.plex(.mono), size: 11, lineHeight: 16)
-    /// Who posted the story a reply quotes, under its frame.
-    public static let storyAuthor = ChatTextStyle(.figtree(.semibold), size: 12, lineHeight: 20)
-    /// Who sent another person's message, over it: desktop's author line.
+    /// Who wrote a person's message, over it: desktop's author line; what
+    /// they replied to after it, quieter.
     public static let sender = ChatTextStyle(.figtree(.semibold), size: 14, lineHeight: 20)
+    public static let senderNote = ChatTextStyle(.figtree(.regular), size: 14, lineHeight: 20)
 }

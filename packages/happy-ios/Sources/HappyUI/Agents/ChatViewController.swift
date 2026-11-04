@@ -783,7 +783,6 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         }
         guard let spaceId, let row = snapshot.allRows.first(where: { $0.spaceId == spaceId }) else { return }
         rowName = (row.label, row.titled)
-        media.mark = row.mark
         applyTitle()
         let next: Intro? = switch row.mark {
         case .clay(let slug): .clay(slug)
@@ -983,7 +982,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     }
 
     private var planKey: ChatPlanner.Key {
-        var key = ChatPlanner.Key(width: transcriptWidth, maxContentWidth: ContentWidth.maxWidth, environment: traitCollection.textEnvironment, references: subagentReferences, subagentTitles: chat.subagentTitles, pageHeights: pageHeights, title: chat.title)
+        var key = ChatPlanner.Key(width: transcriptWidth, maxContentWidth: ContentWidth.maxWidth, environment: traitCollection.textEnvironment, references: subagentReferences, subagentTitles: chat.subagentTitles, pageHeights: pageHeights)
         // Only a failure card reads the composer's model; without one the
         // key stays the warm chat's, so its rows planned ahead are taken.
         if chat.items.contains(where: { if case .failure = $0.role { true } else { false } }) {

@@ -332,7 +332,7 @@ final class WarmChats {
         guard let layout, chat.snapshot.loaded, chat.watchers.isEmpty else { return }
         var references = references
         references.subagents = chat.snapshot.subagentTitles
-        let key = ChatPlanner.Key(width: layout.width, maxContentWidth: ContentWidth.maxWidth, environment: layout.environment, references: references, subagentTitles: chat.snapshot.subagentTitles, title: chat.snapshot.title)
+        let key = ChatPlanner.Key(width: layout.width, maxContentWidth: ContentWidth.maxWidth, environment: layout.environment, references: references, subagentTitles: chat.snapshot.subagentTitles)
         // As its screen opens it: every finished turn folded.
         let items = TurnFold.fold(chat.snapshot.items, expanded: [])
         if chat.plans?.items == items, chat.plans?.key == key { return }

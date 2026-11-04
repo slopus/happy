@@ -1,39 +1,38 @@
 import Foundation
 
-/// Desktop's story-reply quote above the person's bubble, as an attached
-/// photo would be: the story's first frame at 9:16, the size one photo of
-/// that shape is, and under it who posted it, on the bubble's side.
+/// Instagram's story reply, above the person's bubble on its side: the
+/// story's first frame the size one 9:16 photo of a message is, a thin bar
+/// beside it at the row's outer edge.
 public struct StoryQuoteLayout: Equatable, Sendable {
     public enum Metrics {
         /// The shape alone, as a thumbhash gives it: no stated size caps it.
         public static let shape = MediaFlow.Image(hashedRatio: 9.0 / 16.0)
-        public static let authorGap: CGFloat = 6
-        /// An agent's rounded tile; a person's is a circle.
-        public static let agentRadius: CGFloat = 6
-        public static let bubbleGap: CGFloat = 8
+        public static let bar: CGFloat = 3
+        public static let barGap: CGFloat = 8
+        public static let bubbleGap: CGFloat = 4
     }
 
     public var frame: CGRect
-    public var author: AuthorRowLayout
+    public var bar: CGRect
 
-    /// Its top at `top`, against `edge` (its end there with `alignEnd`), in
-    /// a message's measure no wider than `width`.
-    public init(width: CGFloat, edge: CGFloat, alignEnd: Bool, top: CGFloat, name: Measurable) {
+    /// Its top at `top`, its bar against `edge` (its end there with
+    /// `alignEnd`), in a message's measure no wider than `width`.
+    public init(width: CGFloat, edge: CGFloat, alignEnd: Bool, top: CGFloat) {
         typealias M = Metrics
-        let measure = min(width, MediaFlow.messageMaxWidth)
+        let inset = M.bar + M.barGap
+        let measure = max(0, min(width, MediaFlow.messageMaxWidth) - inset)
         let media = MediaLayout(width: measure, items: [.init(isVideo: false, image: M.shape)], columns: 0, limits: MediaFlow.message, alignEnd: alignEnd)
-        frame = (media.frames.first ?? .zero).offsetBy(dx: alignEnd ? edge - measure : edge, dy: top)
-        author = AuthorRowLayout(edge: edge, alignEnd: alignEnd, top: frame.maxY + M.authorGap, room: measure, name: name)
+        frame = (media.frames.first ?? .zero).offsetBy(dx: alignEnd ? edge - inset - measure : edge + inset, dy: top)
+        bar = CGRect(x: alignEnd ? edge - M.bar : edge, y: frame.minY, width: M.bar, height: frame.height)
     }
 }
 
-/// A 20 avatar and a name beside it on one line, from `edge` (or ending
-/// there, `alignEnd`): who posted a story, and who sent another person's
-/// message.
+/// A 16 avatar and a line beside it, from `edge` (or ending there,
+/// `alignEnd`): who wrote a person's message, and what they replied to.
 public struct AuthorRowLayout: Equatable, Sendable {
-    public static let avatar: CGFloat = 20
+    public static let avatar: CGFloat = 16
     public static let gap: CGFloat = 6
-    /// Between another person's name and what they sent.
+    /// Between the line and what comes under it.
     public static let below: CGFloat = 4
 
     public var avatar, name: CGRect
