@@ -34,12 +34,16 @@ public enum StateScene: String, CaseIterable, Sendable {
     /// Supporting Happy every month, which comes with voice time: Settings'
     /// Support Happy row (a 🧋 sticker; `PROVENANCE.md`).
     case boba
+    /// Voice: what voice does and what it costs, voice's welcome and paywall
+    /// sheets (a 🎙️ sticker; `PROVENANCE.md`).
+    case podcastMic = "podcast-mic"
 }
 
 /// One state picture in a fixed square, drawn the way desktop draws it
 /// (`LottieScene`).
 ///
-/// It never loops. The scene plays once when the state it illustrates
+/// It never loops; this is the rule for every animated emoji and sticker
+/// in the app, so any new one is a scene drawn here. The scene plays once when the state it illustrates
 /// appears and then holds its last frame, which for every animation is the
 /// pose it was drawn to return to, so the held picture is worth holding.
 /// After that it moves only when a reader asks: a tap, or the accessibility

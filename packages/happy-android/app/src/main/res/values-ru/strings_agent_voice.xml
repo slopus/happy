@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="agent_voice_support_title">Поддержите открытый Happy — угощайте нас бобой каждый месяц</string>
-    <string name="agent_voice_support_spoken">Поддержите открытый Happy — угощайте нас бобой каждый месяц</string>
+    <string name="agent_voice_support_title">Happy — открытый проект</string>
+    <string name="agent_voice_support_line">Поддержите проект: угощайте нас бобой каждый месяц.</string>
+    <string name="agent_voice_support_spoken">Happy — открытый проект. Поддержите проект: угощайте нас бобой каждый месяц.</string>
     <string name="agent_voice_title">Голос</string>
     <string name="agent_voice_minutes_left">Осталось %1$d мин</string>
     <string name="agent_voice_used_up">Израсходовано</string>

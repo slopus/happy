@@ -5,11 +5,13 @@ import Foundation
 /// happy-app has no such rows, so nothing here is in en.ts.
 extension Strings {
     enum AgentVoice {
-        static var supportTitle: String { "Support Happy open source by sending us boba every month" }
-        static var supportSpoken: String { "Support Happy open source by sending us boba every month" }
+        static var supportTitle: String { "Happy is open source" }
+        static var supportLine: String { "Support the project by sending us boba every month." }
+        static var supportSpoken: String { "Happy is open source. Support the project by sending us boba every month." }
 
         // The sheet the row opens (`SupportSheetViewController`): about Happy; voice is what a pledge comes with.
         static var sheetTitle: String { "Support Happy open source" }
+        static var sheetReplay: String { "Play the boba again" }
         static var sheetBody: String { "Send us boba every month. It comes with 5 hours of voice a month, pays for Happy’s development, and keeps Happy open source." }
         static func sheetPrice(_ price: String) -> String { "Pledge \(price)/month" }
         static var sheetNotYet: String { "Pledges aren’t open yet." }

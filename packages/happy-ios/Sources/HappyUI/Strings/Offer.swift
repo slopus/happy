@@ -6,6 +6,7 @@ import Foundation
 extension Strings {
     enum Offer {
         static var restore: String { "Restore Purchases" }
+        static var manage: String { "Manage Subscriptions" }
         static var subscribed: String { "Subscribed" }
         static var includedVoice: String { "Voice included" }
         static var includedValue: String { "5 hrs / month" }

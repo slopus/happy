@@ -493,7 +493,6 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                     Row(Index.agents, action: { [weak self] in self?.open(.agents) }),
                     Row(Index.dataStorage, action: { [weak self] in self?.open(.dataStorage) }),
                 ],
-                [Row(Index.supportUs, action: { [weak self] in self?.open(.supportUs) })],
                 aboutRows(),
             ] + removal
         }
@@ -520,10 +519,12 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         ]
     }
 
-    /// Support Happy, under Profile: the boba, still, and the ask. It opens
-    /// Support Happy's own sheet, where the boba moves.
+    /// Support Happy, under Profile: the boba, still, that Happy is open
+    /// source and, quieter under it, the ask. It pushes Support Happy's own
+    /// page, where the boba moves.
     private func supportRow() -> SettingsRow {
         var row = SettingsRow(id: SettingsIndex.supportBoba.id, title: Strings.AgentVoice.supportTitle, action: { [weak self] in self?.openSupport() })
+        row.subtitle = Strings.AgentVoice.supportLine
         row.art = boba
         row.spoken = Strings.AgentVoice.supportSpoken
         return row
@@ -531,8 +532,8 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
 
     private func openSupport() {
         guard isTop else { return }
-        // Always the support sheet, seen or not, on sale or not.
-        Offers.shared.show(.support, over: self)
+        // Always the support page, on sale or not.
+        navigationController?.pushViewController(SupportViewController(), animated: true)
     }
 
     /// The Voice row's value: the free time left on this device.
@@ -551,7 +552,8 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     private func has(_ page: Page, _ profile: Profile) -> Bool {
         switch page {
         case .appearance, .agents, .agentVoice: profile.isAgentConnection
-        case .supportUs: true
+        // An agent connection's is Support Happy, the boba row.
+        case .supportUs: !profile.isAgentConnection
         case .dataStorage: profile.isAgentConnection || activeSession != nil
         case .account, .backup, .voice, .language: !profile.isAgentConnection && activeSession != nil
         }

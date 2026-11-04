@@ -93,12 +93,23 @@ final class HostedOfferSheetsTests: XCTestCase {
         return (try XCTUnwrap(top.presentedViewController as? Sheet), answer)
     }
 
+    /// Pushes Support Happy's page over `top`, as Settings' boba row does, once it has landed.
+    private func pushSupport(_ offers: Offers, over top: UIViewController) async throws -> SupportViewController {
+        let page = SupportViewController(offers: offers)
+        let navigation = try XCTUnwrap(top.navigationController)
+        navigation.pushViewController(page, animated: false)
+        try await until { navigation.topViewController === page && navigation.transitionCoordinator == nil }
+        page.view.layoutIfNeeded()
+        return page
+    }
+
     private func closed(_ top: UIViewController) async throws {
         try await until { top.presentedViewController == nil && top.transitionCoordinator == nil }
     }
 
     /// On sale: the welcome, the used sheet, the relay's refusal and
-    /// Support Happy, each with the store's price, Subscribe and Restore.
+    /// Support Happy's page, each with the store's price, Subscribe and
+    /// Restore; the page has Manage Subscriptions too.
     /// Only the welcome's start starts; ✕ never does.
     func testEachSheetAndHowItCloses() async throws {
         let offers = try await hostedOffers("onsale", for: self)
@@ -114,7 +125,7 @@ final class HostedOfferSheetsTests: XCTestCase {
             try await Task.sleep(for: .seconds(1))
             capture(window, "welcome")
             // Another while one is up: not shown, nothing more.
-            let second = await offers.ask(.support, over: top)
+            let second = await offers.ask(.required, over: top)
             XCTAssertEqual(second, .dismissed)
             sheet.close.sendActions(for: .primaryActionTriggered)
             var result = await answer.value
@@ -149,16 +160,14 @@ final class HostedOfferSheetsTests: XCTestCase {
             XCTAssertEqual(result, .dismissed)
             try await closed(top)
 
-            let (support, supportAnswer) = try await open(.support, offers, over: top, as: SupportSheetViewController.self)
+            let support = try await pushSupport(offers, over: top)
             XCTAssertNil(subview(SessionButton.self, in: support.view), "Support Happy offers a voice session")
-            XCTAssertNotNil(support.subscribe)
-            XCTAssertNotNil(support.restore)
+            XCTAssertEqual(support.subscribe?.isEnabled, true)
+            XCTAssertEqual(support.restore?.isEnabled, true)
+            XCTAssertEqual(support.manage?.isEnabled, true)
             try await Task.sleep(for: .seconds(1.2))
             capture(window, "support")
-            support.close.sendActions(for: .primaryActionTriggered)
-            result = await supportAnswer.value
-            XCTAssertEqual(result, .dismissed)
-            try await closed(top)
+            top.navigationController?.popViewController(animated: false)
         }
     }
 
@@ -192,14 +201,13 @@ final class HostedOfferSheetsTests: XCTestCase {
         XCTAssertNotNil(offers.month())
         try await closed(top)
 
-        // Support Happy still opens, and thanks them.
-        let (support, supportAnswer) = try await open(.support, offers, over: top, as: SupportSheetViewController.self)
+        // Support Happy still opens, and thanks them; they can manage it.
+        let support = try await pushSupport(offers, over: top)
         XCTAssertNil(support.subscribe)
-        XCTAssertNil(support.restore)
+        XCTAssertEqual(support.restore?.isEnabled, false)
+        XCTAssertEqual(support.manage?.isEnabled, true)
         try await Task.sleep(for: .seconds(1.2))
         capture(window, "support-subscribed")
-        support.close.sendActions(for: .primaryActionTriggered)
-        _ = await supportAnswer.value
     }
 
     /// Pro from before (any product): no welcome, no Subscribe anywhere,
@@ -304,32 +312,32 @@ final class HostedOfferSheetsTests: XCTestCase {
         _ = await usedAnswer.value
         try await closed(page)
 
-        let (sheet, answer) = try await open(.support, offers, over: page, as: SupportSheetViewController.self)
-        XCTAssertNil(sheet.subscribe)
+        let sheet = try await pushSupport(offers, over: page)
+        XCTAssertEqual(sheet.subscribe?.isEnabled, false, "Subscribe is gone, or offered with nothing on sale")
         let restore = try XCTUnwrap(sheet.restore)
+        XCTAssertTrue(restore.isEnabled)
         try await Task.sleep(for: .seconds(1.2))
         capture(window, "support-owned")
         restore.sendActions(for: .touchUpInside)
-        let result = await answer.value
-        XCTAssertEqual(result, .pro, "restoring the owned yearly didn't give pro")
-        XCTAssertEqual(offers.offer, .subscribed)
+        try await until { offers.offer == .subscribed }
+        try await until { sheet.subscribe == nil }
         try await until { page.shownRow("voice-plan")?.value == Strings.Offer.subscribed }
     }
 
-    /// No RevenueCat key: nothing on sale, no Restore, Support Happy still opens.
+    /// No RevenueCat key: nothing on sale, Restore greyed out, Support
+    /// Happy still opens with Subscribe there and greyed out.
     func testUnconfiguredSellsNothing() async throws {
         let offers = try await hostedOffers("unconfigured", for: self)
         XCTAssertEqual(offers.offer, .unavailable)
         XCTAssertFalse(offers.canRestore)
         XCTAssertFalse(offers.welcomes())
         let (top, window) = try await host()
-        let (support, answer) = try await open(.support, offers, over: top, as: SupportSheetViewController.self)
-        XCTAssertNil(support.subscribe)
-        XCTAssertNil(support.restore)
+        let support = try await pushSupport(offers, over: top)
+        XCTAssertEqual(support.subscribe?.isEnabled, false)
+        XCTAssertEqual(support.restore?.isEnabled, false)
+        XCTAssertEqual(support.manage?.isEnabled, true)
         try await Task.sleep(for: .seconds(1.2))
         capture(window, "support-unconfigured")
-        support.close.sendActions(for: .primaryActionTriggered)
-        _ = await answer.value
     }
 }
 #endif

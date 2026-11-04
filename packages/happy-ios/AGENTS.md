@@ -210,8 +210,11 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
   can draw it from a fixture (`HAPPY_SUBSCRIPTION_FIXTURE`: `onsale`,
   `subscribed`, `pending`, `unconfirmed`, `unconfigured`; no store, no
   network, no charge) or as a no-charge preview (`HAPPY_CALL_OFFER=preview`).
-  Support Happy (Settings' boba row, Support us) is the same subscription
-  on its own sheet, without a voice session. `openSession` replaces a conversation on top
+  Support Happy (an agent connection's Settings boba row, a Happy
+  account's Support us) is the same subscription on its own pushed page
+  (`SupportViewController`), without a voice session: Subscribe always
+  there (greyed out while nothing is on sale), then Restore Purchases and
+  Manage Subscriptions as quiet links. `openSession` replaces a conversation on top
   and goes over anything else (`CallNavigation`). Contract, prompt, tool schemas and rationale:
   `docs/agent-voice-call.md` at the repository root. Harness hooks
   (`HAPPY_CALL_FIXTURE`, `HAPPY_CALL_TAP`, `-callLive`, `CallProbe`) are
@@ -487,6 +490,14 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
 - **Design tokens come from happy-app.** They are ported from `theme.ts`
   and the component stylesheets (iOS values) into
   `Sources/HappyLayout/DesignTokens.swift`.
+- **Animated emoji never loop** (Kirill, for both apps). An animated emoji
+  or sticker (the Lottie art: state scenes, the boba, voice's mic) plays
+  once when it appears, holds its last frame, and plays once more on a
+  tap; with Reduce Motion it holds still. Draw every one with
+  `StateSceneView` (a `StateScene` case per file), never a bare
+  `LottieAnimationView`, and never set `.loop`. A row icon that is an
+  emoji is a tile's size (30) where the tile goes, at the row's top when
+  the row grows (`SettingsLayout`'s art row).
 
 ## Record kinds: current vs retired
 

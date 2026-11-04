@@ -38,8 +38,6 @@ import com.slopus.happy.auth.AuthState
 import com.slopus.happy.model.Machine
 import com.slopus.happy.model.MachineChoice
 import com.slopus.happy.model.Profile
-import com.slopus.happy.payments.OfferSheet
-import com.slopus.happy.payments.Offers
 import com.slopus.happy.model.collectMachineChoices
 import kotlinx.coroutines.flow.MutableStateFlow
 import com.slopus.happy.model.settings.ConnectApi
@@ -53,6 +51,7 @@ import com.slopus.happy.ui.AccountSwitcher
 import com.slopus.happy.ui.ProvideSettingsDissolve
 import com.slopus.happy.ui.connection.AgentConnectionSettings
 import com.slopus.happy.ui.connection.LegacyDataStorageRoute
+import com.slopus.happy.ui.connection.SupportRoute
 import com.slopus.happy.ui.connection.dataStorageRoutes
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.rememberScrollState
@@ -220,8 +219,8 @@ internal fun errorAlert(alerts: Alerts): (String?) -> Unit {
     return { message -> alerts.show(Alert(title, message ?: unknown, listOf(AlertButton(ok)))) }
 }
 
-/** Support us: the app's offer sheet for it, which says so itself when nothing is on sale. */
-internal fun supportAction(offers: Offers): () -> Unit = { offers.show(OfferSheet.Support(offers.offer)) }
+/** Support us: Support Happy's page, pushed, which says so itself when nothing is on sale. */
+internal fun supportAction(nav: NavHostController): () -> Unit = { nav.navigate(SupportRoute) }
 
 /** What About shows for this build, and Support us for this account's purchases. */
 @Composable
@@ -240,14 +239,14 @@ internal fun rememberAboutInfo(graph: AppGraph): AboutInfo {
 /**
  * About's and Support us' actions, the same on both kinds of page: links
  * open outside, What's New, ten taps on Version toggle developer mode (with
- * its alert), Support us opens its offer sheet. Shows its own alerts.
+ * its alert), Support us pushes Support Happy's page. Shows its own alerts.
  */
 @Composable
 internal fun rememberAboutActions(graph: AppGraph, nav: NavHostController): AboutActions {
     val uriHandler = LocalUriHandler.current
     val linkOpener = LocalLinkOpener.current
     val alerts = remember { Alerts() }
-    val support = remember(graph) { supportAction(graph.offers) }
+    val support = remember(nav) { supportAction(nav) }
     val versionClicks = remember { MultiClick(required = 10) }
     val developerMode = stringResource(R.string.modals_developer_mode)
     val developerModeEnabled = stringResource(R.string.modals_developer_mode_enabled)

@@ -49,8 +49,8 @@ struct AgentVoiceStatus: Equatable {
     #endif
 }
 
-/// Settings' Support Happy row: the boba, at its one size, leading the
-/// row as tall as two, and the words beside it. It stays still here, the
+/// Settings' Support Happy row: the boba at a tile's size, where the
+/// other rows have their tiles, and the words beside it. It stays still here, the
 /// pose it was drawn to rest in (`StateSceneView`'s `onDemand`, never
 /// asked); it moves only in the sheet the row opens. It takes no touches
 /// of its own: a tap anywhere on the row is the row's.

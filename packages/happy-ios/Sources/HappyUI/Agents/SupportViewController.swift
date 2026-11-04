@@ -1,52 +1,65 @@
 #if canImport(UIKit)
 import HappyCore
 import HappyLayout
-import Lottie
+import StoreKit
 import UIKit
 
-/// Support Happy, from Settings' boba row: one full-height sheet in voice's
-/// sheet style (`CallSheetViewController`), the boba playing where its mic
-/// is, a headline and what sending boba is for, then the monthly pledge at
-/// the store's price, Subscribe and Restore Purchases (`Offers`). Only
-/// about supporting Happy: it has no voice session. Where nothing is on
-/// sale it says so and offers no button; a subscriber is thanked. Debug
-/// test runs can draw it as a no-charge preview. Closed by its ✕ or a
-/// swipe down.
+/// Support Happy, pushed from Settings' boba row (and Support us'
+/// Subscribe): one page in voice's sheet style (`CallSheetViewController`)
+/// under the standard bar, clear over the gradient. The boba where voice's
+/// mic is, played once as the page appears and again on a tap
+/// (`StateSceneView`), a headline and what sending boba is for, then the
+/// monthly pledge at the store's price and Subscribe, always there and
+/// greyed out while nothing is on sale, and under it Restore Purchases and
+/// Manage Subscriptions as quiet links (`Offers`). Only about supporting
+/// Happy: it has no voice session. A subscriber is thanked. Debug test runs
+/// can draw it as a no-charge preview.
 @MainActor
-final class SupportSheetViewController: OfferSheetViewController {
+final class SupportViewController: UIViewController {
     typealias Metrics = CallSheetViewController.Metrics
 
+    let offers: Offers
     private let gradient = GrainGradientView(palette: StartViewController.Colors.grain)
-    private let boba = LottieAnimationView(configuration: LottieConfiguration(renderingEngine: .coreAnimation))
+    private let boba = StateSceneView(scene: .boba, size: Metrics.mic, replayLabel: Strings.AgentVoice.sheetReplay)
     private let scroll = UIScrollView()
-    let close = UIButton(type: .system)
-    /// On offer only: the subscription.
+    /// Not while subscribed: the subscription, greyed out while nothing is on sale.
     private(set) var subscribe: RoundButton?
     private(set) var restore: OfferLink?
+    private(set) var manage: OfferLink?
     private let footer = UIStackView()
     private var subscribeHeight: NSLayoutConstraint?
     private var footerBottom: NSLayoutConstraint?
     private var drawn: (CallOffer, Bool)?
+    private var observation: SubscriptionObservation?
 
-    override init(offers: Offers = .shared) {
-        super.init(offers: offers)
+    init(offers: Offers = .shared) {
+        self.offers = offers
+        super.init(nibName: nil, bundle: nil)
         followsTextSize()
+        // Bought, restored, or another customer: the page says so at once.
+        observation = offers.observe { [weak self] in
+            guard let self, self.isViewLoaded else { return }
+            self.drawFooter()
+        }
     }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         typealias Text = Strings.AgentVoice
         view.backgroundColor = StartViewController.Colors.grain.back
-        view.accessibilityIdentifier = "support-sheet"
+        view.accessibilityIdentifier = "support-page"
         gradient.frame = view.bounds
         gradient.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(gradient)
-
-        boba.animation = StateSceneView.read(.boba)
-        boba.contentMode = .scaleAspectFit
-        boba.loopMode = .loop
-        boba.backgroundBehavior = .pauseAndRestore
-        boba.isAccessibilityElement = false
+        // The gradient shows through the bar.
+        let bar = UINavigationBarAppearance()
+        bar.configureWithTransparentBackground()
+        navigationItem.standardAppearance = bar
+        navigationItem.scrollEdgeAppearance = bar
+        navigationItem.compactAppearance = bar
+        minimalBackButton()
 
         let title = StyledLabel(style: CallSheetViewController.titleStyle, color: Palette.startText, alignment: .center)
         title.accessibilityTraits = .header
@@ -63,24 +76,11 @@ final class SupportSheetViewController: OfferSheetViewController {
         footer.spacing = 12
         drawFooter()
 
-        var cross = UIButton.Configuration.filled()
-        cross.image = UIImage(systemName: "xmark", withConfiguration: UIImage.SymbolConfiguration(pointSize: 14, weight: .bold))
-        cross.baseBackgroundColor = UIColor(Palette.startText).withAlphaComponent(0.1)
-        cross.baseForegroundColor = UIColor(Palette.startText)
-        cross.cornerStyle = .capsule
-        cross.background.backgroundInsets = NSDirectionalEdgeInsets(top: 6, leading: 6, bottom: 6, trailing: 6)
-        close.configuration = cross
-        close.accessibilityLabel = Strings.Call.close
-        close.accessibilityIdentifier = "support-sheet-close"
-        close.addAction(UIAction { [weak self] _ in self?.finish(.dismissed) }, for: .primaryActionTriggered)
-
         scroll.alwaysBounceVertical = true
         scroll.showsVerticalScrollIndicator = false
         scroll.contentInsetAdjustmentBehavior = .never
-        for view in [scroll, close] {
-            view.translatesAutoresizingMaskIntoConstraints = false
-            self.view.addSubview(view)
-        }
+        scroll.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(scroll)
         for view in [column, footer] {
             view.translatesAutoresizingMaskIntoConstraints = false
             scroll.addSubview(view)
@@ -100,7 +100,8 @@ final class SupportSheetViewController: OfferSheetViewController {
         let footerBottom = footer.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -16)
         self.footerBottom = footerBottom
         var constraints = [
-            scroll.topAnchor.constraint(equalTo: view.topAnchor),
+            // Under the bar, which the gradient runs behind.
+            scroll.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
             scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor),
             scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -109,15 +110,11 @@ final class SupportSheetViewController: OfferSheetViewController {
             fit,
             upper.topAnchor.constraint(equalTo: content.topAnchor),
             upper.bottomAnchor.constraint(equalTo: footer.topAnchor),
-            column.topAnchor.constraint(greaterThanOrEqualTo: upper.topAnchor, constant: 48),
+            column.topAnchor.constraint(greaterThanOrEqualTo: upper.topAnchor, constant: 16),
             column.bottomAnchor.constraint(lessThanOrEqualTo: upper.bottomAnchor, constant: -32),
             centre,
             tight,
             footerBottom,
-            close.topAnchor.constraint(equalTo: view.topAnchor, constant: 10),
-            close.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -10),
-            close.widthAnchor.constraint(equalToConstant: 44),
-            close.heightAnchor.constraint(equalToConstant: 44),
         ]
         for stack in [column, footer] {
             let fill = stack.widthAnchor.constraint(equalTo: frame.widthAnchor, constant: -2 * Metrics.side)
@@ -132,13 +129,10 @@ final class SupportSheetViewController: OfferSheetViewController {
         NSLayoutConstraint.activate(constraints)
     }
 
-    override func offerChanged() {
-        if isViewLoaded { drawFooter() }
-    }
-
-    /// The pledge at the store's price, Subscribe and Restore Purchases; a
-    /// thank-you once subscribed; that pledges aren't open where nothing is
-    /// on sale. Drawn again whenever what is on offer changes.
+    /// The pledge at the store's price and Subscribe, greyed out with why
+    /// while pledges aren't open; a thank-you once subscribed; then Restore
+    /// Purchases and Manage Subscriptions side by side. Drawn again
+    /// whenever what is on offer changes.
     private func drawFooter() {
         typealias Text = Strings.AgentVoice
         let offer = offers.offer
@@ -149,31 +143,46 @@ final class SupportSheetViewController: OfferSheetViewController {
         subscribe = nil
         subscribeHeight = nil
         var notes: [String] = []
-        if let price = offer.price {
-            let heading = StyledLabel(style: CallSheetViewController.offerStyle, color: Palette.startText, alignment: .center)
-            heading.string = Text.sheetPrice(price)
+        if offer == .subscribed {
+            let thanks = StyledLabel(style: CallSheetViewController.offerStyle, color: Palette.startText, alignment: .center)
+            thanks.string = Strings.SupportUs.thankYou
+            footer.addArrangedSubview(thanks)
+        } else {
+            let heading = StyledLabel(style: offer.price == nil ? CallSheetViewController.detailStyle : CallSheetViewController.offerStyle,
+                                      color: offer.price == nil ? Palette.startTextSecondary : Palette.startText, alignment: .center)
+            heading.string = offer.price.map(Text.sheetPrice) ?? Text.sheetNotYet
+            heading.accessibilityIdentifier = "support-page-heading"
+            // Said only while there is something to say: a purchase waiting on RevenueCat says that instead.
+            heading.isHidden = offer.price == nil && unconfirmed
             footer.addArrangedSubview(heading)
-            footer.setCustomSpacing(20, after: heading)
+            footer.setCustomSpacing(offer.price == nil ? 12 : 20, after: heading)
             let subscribe = RoundButton(title: Strings.Call.subscribe)
             subscribe.action = { [weak self] in
                 guard let self else { return }
                 await self.offers.subscribe(from: self)
             }
-            subscribe.accessibilityIdentifier = "support-sheet-subscribe"
+            subscribe.isEnabled = offer.price != nil
+            subscribe.accessibilityIdentifier = "support-page-subscribe"
             footer.addArrangedSubview(centred(subscribe, width: Metrics.button))
             self.subscribe = subscribe
             subscribeHeight = subscribe.heightAnchor.constraint(equalToConstant: 50)
             subscribeHeight?.isActive = true
             if case .preview = offer { notes.append(Strings.Call.upgradePreviewNote) }
-        } else if offer == .subscribed {
-            let thanks = StyledLabel(style: CallSheetViewController.offerStyle, color: Palette.startText, alignment: .center)
-            thanks.string = Strings.SupportUs.thankYou
-            footer.addArrangedSubview(thanks)
-        } else if !unconfirmed {
-            notes.append(Text.sheetNotYet)
         }
-        restore = offers.canRestore && offer != .subscribed ? OfferLink.restore(for: self) : nil
-        if let restore { footer.addArrangedSubview(restore) }
+        if let last = footer.arrangedSubviews.last { footer.setCustomSpacing(4, after: last) }
+        let restore = OfferLink.restore(offers: offers, from: self)
+        restore.isEnabled = offers.canRestore && offer != .subscribed
+        self.restore = restore
+        let manage = OfferLink(title: Strings.Offer.manage)
+        manage.accessibilityIdentifier = "offer-manage"
+        manage.addAction(UIAction { [weak self] _ in self?.manageSubscriptions() }, for: .touchUpInside)
+        self.manage = manage
+        let links = UIStackView(arrangedSubviews: [restore, manage])
+        links.axis = .horizontal
+        links.distribution = .fillEqually
+        links.alignment = .center
+        links.spacing = 8
+        footer.addArrangedSubview(links)
         if unconfirmed { notes.append(Strings.Offer.unconfirmedNote) }
         if !notes.isEmpty {
             let note = StyledLabel(style: CallSheetViewController.noteStyle, color: Palette.startTextSecondary, alignment: .center)
@@ -181,6 +190,18 @@ final class SupportSheetViewController: OfferSheetViewController {
             footer.addArrangedSubview(note)
         }
         view.setNeedsLayout()
+    }
+
+    /// The App Store's own subscriptions sheet, or its page where that can't be shown.
+    private func manageSubscriptions() {
+        guard let scene = view.window?.windowScene else { return }
+        Task {
+            do {
+                try await AppStore.showManageSubscriptions(in: scene)
+            } catch {
+                await UIApplication.shared.open(SupportUsViewController.manageSubscriptionsURL)
+            }
+        }
     }
 
     override func viewSafeAreaInsetsDidChange() {
@@ -195,14 +216,12 @@ final class SupportSheetViewController: OfferSheetViewController {
         if subscribeHeight?.constant != height { subscribeHeight?.constant = height }
     }
 
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        // Still with Reduce Motion: the boba as it was drawn to rest.
-        if UIAccessibility.isReduceMotionEnabled { boba.currentProgress = 1 } else { boba.play() }
-    }
-
     /// Whether the boba is moving: for the tests.
-    var isAnimating: Bool { boba.isAnimationPlaying }
+    var isAnimating: Bool { boba.isAnimating }
+    /// Where its one play has got to, 0…1: for the tests.
+    var bobaProgress: CGFloat { boba.progress }
+    /// Plays the boba once more, as a tap does: for the tests.
+    func replayBoba() { boba.replay() }
 
     /// `view` in the middle of the column, `width` or `height` fixed.
     private func centred(_ view: UIView, width: CGFloat? = nil, height: CGFloat? = nil) -> UIView {

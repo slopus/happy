@@ -17,6 +17,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.slopus.happy.ui.components.SceneAnimation
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -54,7 +57,6 @@ import androidx.compose.ui.window.DialogWindowProvider
 import androidx.core.view.WindowCompat
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
@@ -64,17 +66,11 @@ import androidx.compose.ui.text.style.LineBreak
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.airbnb.lottie.compose.LottieAnimation
-import com.airbnb.lottie.compose.LottieCompositionSpec
-import com.airbnb.lottie.compose.LottieConstants
-import com.airbnb.lottie.compose.animateLottieCompositionAsState
-import com.airbnb.lottie.compose.rememberLottieComposition
 import com.slopus.happy.R
 import com.slopus.happy.payments.Offer
 import com.slopus.happy.payments.Offers
 import com.slopus.happy.payments.RestoreResult
 import com.slopus.happy.payments.OfferSheet
-import com.slopus.happy.ui.connection.SupportSheet
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
@@ -82,7 +78,6 @@ import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.RoundButton
 import com.slopus.happy.ui.components.RoundButtonSize
-import com.slopus.happy.ui.components.rememberReduceMotion
 import com.slopus.happy.ui.start.GrainGradient
 import com.slopus.happy.ui.start.StartGallerySpec
 import com.slopus.happy.ui.start.StartSpec
@@ -121,8 +116,9 @@ object CallSheetSpec {
 
 /**
  * The app's one offer host ([Offers.sheet]), wherever the sheet was asked
- * for: voice's sheets ([CallSheet]) or Support us ([SupportSheet]), each
- * offering what is on offer now, bought and restored through [offers].
+ * for: voice's sheets ([CallSheet]), each offering what is on offer now,
+ * bought and restored through [offers]. Support Happy is a page of its own
+ * ([com.slopus.happy.ui.connection.SupportScreen]).
  */
 @Composable
 fun OfferHost(offers: Offers) {
@@ -134,7 +130,6 @@ fun OfferHost(offers: Offers) {
     val onSubscribe = { activity?.let { activity -> scope.launch { offers.subscribe(activity) } }; Unit }
     when (val shown = sheet?.offering(offer)) {
         null -> Unit
-        is OfferSheet.Support -> SupportSheet(shown.offer, onDismiss = offers::dismiss, onSubscribe = onSubscribe, onRestore = offers::restore, unconfirmed = unconfirmed)
         else -> CallSheet(shown, onStart = offers::start, onDismiss = offers::dismiss, onSubscribe = onSubscribe, onRestore = offers::restore, unconfirmed = unconfirmed)
     }
 }
@@ -362,15 +357,11 @@ fun RestoreAlert(outcome: RestoreResult, onDismiss: () -> Unit) {
     )
 }
 
-/** The podcast mic, looping; still mid-way with animations removed. */
+/** The podcast mic: played once as the sheet appears and again on a tap, never looped; still with animations removed. */
 @Composable
 private fun Mic() {
-    val reduceMotion = rememberReduceMotion()
-    val composition by rememberLottieComposition(LottieCompositionSpec.RawRes(R.raw.call_podcast_mic))
-    val progress by animateLottieCompositionAsState(composition, iterations = LottieConstants.IterateForever, isPlaying = !reduceMotion)
-    Box(Modifier.size(CallSheetSpec.mic).clearAndSetSemantics {}) {
-        if (composition != null) LottieAnimation(composition, { if (reduceMotion) 0.5f else progress }, Modifier.fillMaxSize())
-    }
+    var plays by rememberSaveable { mutableIntStateOf(1) }
+    SceneAnimation(R.raw.call_podcast_mic, plays, { plays = it + 1 }, size = CallSheetSpec.mic)
 }
 
 /** One thing voice does: its glyph and a few words, and a warning under them if there is one. */

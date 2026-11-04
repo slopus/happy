@@ -43,10 +43,16 @@ struct GrainPalette: Equatable {
 }
 
 /// Paper's Grain Gradient, "corners" shape, filling the view. It moves at
-/// Paper's default speed, about 30 frames a second (it moves slowly), while
-/// on screen and the app is active, and holds still with Reduce Motion (on
-/// Paper's frame 0). Without Metal a still gradient in the same colours
-/// stands in.
+/// Paper's default speed but only 15 frames a second (it moves slowly, and
+/// every frame is a full-screen shader the GPU shares with the screen's own
+/// animations), while on screen and the app is active, and holds still with
+/// Reduce Motion (on Paper's frame 0). Frames are encoded and presented off
+/// the main thread (`GrainRenderer.queue`), the first one too, so a swipe or
+/// a push is never waiting on a drawable; until the first arrives the view
+/// is the gradient's background colour. A frame still on its way when the
+/// next is due is skipped, not queued, and one asked for by a resize or a
+/// new palette is drawn once it lands. Without Metal a still gradient in
+/// the same colours stands in.
 final class GrainGradientView: UIView {
     var palette: GrainPalette {
         didSet { if palette != oldValue { paletteChanged() } }
@@ -58,6 +64,8 @@ final class GrainGradientView: UIView {
     private var last: CFTimeInterval?
     private var metalLayer: CAMetalLayer? { layer as? CAMetalLayer }
     private var fallback: CALayer?
+    /// The frame being drawn off the main thread, if one is.
+    private let inFlight = GrainInFlight()
 
     override class var layerClass: AnyClass { GrainRenderer.shared == nil ? CALayer.self : CAMetalLayer.self }
 
@@ -123,7 +131,7 @@ final class GrainGradientView: UIView {
         }
         guard link == nil else { return }
         let link = CADisplayLink(target: GrainTick(self), selector: #selector(GrainTick.tick(_:)))
-        link.preferredFrameRateRange = CAFrameRateRange(minimum: 24, maximum: 30, preferred: 30)
+        link.preferredFrameRateRange = CAFrameRateRange(minimum: 10, maximum: 15, preferred: 15)
         link.add(to: .main, forMode: .common)
         self.link = link
     }
@@ -132,12 +140,24 @@ final class GrainGradientView: UIView {
         // Time stands still while paused; it picks up where it stopped.
         if let last { time += link.timestamp - last }
         last = link.timestamp
-        render()
+        render(skippable: true)
     }
 
-    private func render() {
+    /// Draws the gradient as it stands. A tick's frame is `skippable`: the
+    /// next tick draws anyway.
+    private func render(skippable: Bool = false) {
         guard let renderer, let metalLayer, metalLayer.drawableSize.width > 0, metalLayer.drawableSize.height > 0 else { return }
-        renderer.draw(in: metalLayer, time: Float(time), palette: palette.resolved(for: traitCollection))
+        let palette = palette.resolved(for: traitCollection)
+        metalLayer.backgroundColor = palette.back.cgColor
+        let uniforms = GrainRenderer.uniforms(size: metalLayer.drawableSize, time: Float(time), palette: palette)
+        let target = GrainTarget(layer: metalLayer)
+        guard inFlight.begin(orAfter: !skippable) else { return }
+        let inFlight = inFlight
+        GrainRenderer.queue.async { [weak self] in
+            renderer.draw(in: target, uniforms: uniforms)
+            guard inFlight.end() else { return }
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.render() } }
+        }
     }
 
     private func paletteChanged() {
@@ -213,10 +233,46 @@ private struct GrainPipeline: @unchecked Sendable {
     }
 }
 
-/// The one pipeline every gradient draws with.
-@MainActor
-private final class GrainRenderer {
+/// Whether a view's frame is being drawn; touched from the main thread
+/// and the render queue.
+private final class GrainInFlight: @unchecked Sendable {
+    private let lock = NSLock()
+    private var busy = false
+    private var again = false
+
+    /// Takes the slot, unless a frame has it; then, `orAfter`, that frame
+    /// is asked to be followed by another.
+    func begin(orAfter: Bool) -> Bool {
+        lock.withLock {
+            if busy { again = again || orAfter; return false }
+            busy = true
+            return true
+        }
+    }
+
+    /// Frees the slot; true when a frame was asked for meanwhile.
+    func end() -> Bool {
+        lock.withLock {
+            busy = false
+            defer { again = false }
+            return again
+        }
+    }
+}
+
+/// A view's Metal layer, handed to the render queue. CAMetalLayer's
+/// `nextDrawable` may be called from any thread; its size is set only on
+/// the main thread.
+private struct GrainTarget: @unchecked Sendable {
+    let layer: CAMetalLayer
+}
+
+/// The one pipeline every gradient draws with. Its Metal objects are
+/// thread-safe and never change, so any thread may draw.
+private final class GrainRenderer: @unchecked Sendable {
     static let shared = GrainRenderer()
+    /// Where frames after the first are encoded and presented.
+    static let queue = DispatchQueue(label: "happy.grain-gradient", qos: .userInitiated)
 
     let device: MTLDevice
     private let queue: MTLCommandQueue
@@ -229,7 +285,7 @@ private final class GrainRenderer {
         pipeline = compiled.pipeline
     }
 
-    private struct Uniforms {
+    struct Uniforms {
         var resolution: SIMD2<Float>
         var time: Float
         var pad: Float = 0
@@ -240,25 +296,30 @@ private final class GrainRenderer {
         var color3: SIMD4<Float>
     }
 
-    func draw(in layer: CAMetalLayer, time: Float, palette: GrainPalette) {
-        guard let drawable = layer.nextDrawable(), let buffer = queue.makeCommandBuffer() else { return }
-        let pass = MTLRenderPassDescriptor()
-        pass.colorAttachments[0].texture = drawable.texture
-        pass.colorAttachments[0].loadAction = .dontCare
-        pass.colorAttachments[0].storeAction = .store
-        guard let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return }
+    /// What the shader is told, read on the main thread where the colours resolve.
+    @MainActor static func uniforms(size: CGSize, time: Float, palette: GrainPalette) -> Uniforms {
         func rgba(_ color: UIColor) -> SIMD4<Float> {
             var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
             color.getRed(&r, green: &g, blue: &b, alpha: &a)
             return SIMD4(Float(r), Float(g), Float(b), Float(a))
         }
-        var uniforms = Uniforms(
-            resolution: SIMD2(Float(layer.drawableSize.width), Float(layer.drawableSize.height)),
+        return Uniforms(
+            resolution: SIMD2(Float(size.width), Float(size.height)),
             time: time,
             back: rgba(palette.back),
             color0: rgba(palette.colors[0]), color1: rgba(palette.colors[1]),
             color2: rgba(palette.colors[2]), color3: rgba(palette.colors[3])
         )
+    }
+
+    func draw(in target: GrainTarget, uniforms: Uniforms) {
+        var uniforms = uniforms
+        guard let drawable = target.layer.nextDrawable(), let buffer = queue.makeCommandBuffer() else { return }
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = drawable.texture
+        pass.colorAttachments[0].loadAction = .dontCare
+        pass.colorAttachments[0].storeAction = .store
+        guard let encoder = buffer.makeRenderCommandEncoder(descriptor: pass) else { return }
         encoder.setRenderPipelineState(pipeline)
         encoder.setFragmentBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 0)
         encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)

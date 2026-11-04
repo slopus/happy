@@ -184,7 +184,6 @@ final class HostedSettingsUnifiedTests: XCTestCase {
             ["profile"],
             ["support-boba"],
             ["appearance", "agent-voice", "agents", "data-storage"],
-            ["support-us"],
             SettingsIndex.aboutRows.map(\.id),
             ["disconnect"],
         ])
@@ -193,21 +192,30 @@ final class HostedSettingsUnifiedTests: XCTestCase {
         XCTAssertNil(settings.shownRow("voice"))
         for gone in Self.removed { XCTAssertNil(settings.shownRow(gone), "\(gone) is still on the page") }
         XCTAssertEqual(settings.shownRow("account:\(computer)")?.menu.map(\.title), [Strings.disconnect])
-        XCTAssertTrue(SettingsIndex.computer.contains(SettingsIndex.supportUs))
+        // Support Happy's boba row is its Support us; no second one.
+        XCTAssertFalse(SettingsIndex.computer.contains(SettingsIndex.supportUs))
+        XCTAssertNil(settings.shownRow("support-us"))
 
         try await capture(window, "settings-computer")
         withExtendedLifetime((navigation, account)) {}
     }
 
-    func testSupportUsOpensFromBothKindsOfPage() async throws {
+    /// A Happy account's Support us pushes its page; a computer's Support
+    /// Happy row pushes Support Happy's.
+    func testSupportOpensFromBothKindsOfPage() async throws {
         let (account, context, computers) = try await rig(computers: 1)
-        for computer in [nil, computers.first] {
-            let settings = SettingsViewController(context: context, computer: computer)
+        let happy = try XCTUnwrap(account.session?.keys.anonID)
+        for (id, isComputer) in [(happy, false), (try XCTUnwrap(computers.first), true)] {
+            let settings = SettingsViewController(context: context, computer: id)
             let (navigation, window) = try await host(settings)
-            _ = try await until { settings.shownRow("support-us") != nil }
-            settings.tapRow("support-us")
-            let opened = try await until { navigation.topViewController is SupportUsViewController && navigation.transitionCoordinator == nil }
-            XCTAssertTrue(opened, "\(computer ?? "Happy account"): Support us didn't open")
+            let row = isComputer ? SettingsIndex.supportBoba.id : "support-us"
+            _ = try await until { settings.shownRow(row) != nil }
+            settings.tapRow(row)
+            let opened = try await until {
+                (isComputer ? navigation.topViewController is SupportViewController : navigation.topViewController is SupportUsViewController)
+                    && navigation.transitionCoordinator == nil
+            }
+            XCTAssertTrue(opened, "\(isComputer ? "computer" : "Happy account"): \(row) didn't open")
             window.isHidden = true
         }
         withExtendedLifetime(account) {}

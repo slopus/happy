@@ -68,7 +68,6 @@ import com.slopus.happy.ui.settings.addAgentEntry
 import com.slopus.happy.ui.settings.rememberSettingsSearch
 import com.slopus.happy.ui.settings.settingsProfileEntries
 import com.slopus.happy.ui.settings.settingsSearchResults
-import com.slopus.happy.ui.settings.supportSection
 import com.slopus.happy.ui.settings.kindSubtitle
 import com.slopus.happy.ui.settings.SettingsTiles
 import com.slopus.happy.ui.settings.rememberAboutActions
@@ -122,8 +121,6 @@ fun agentSettingsIndex(): List<AgentSettingsRow> {
         row(AgentAgentsTags.ROW, stringResource(R.string.settings_agents), Ionicon.OptionsOutline),
         row(DataStorageTags.ROW, stringResource(R.string.data_storage_title), Ionicon.ServerOutline),
         row(AgentSharingTags.ROW, stringResource(R.string.sharing_title), Ionicon.PeopleOutline),
-        row(SettingsTags.SUPPORT, stringResource(R.string.settings_support_us), Ionicon.HeartOutline),
-        row(SettingsTags.MANAGE_SUBSCRIPTIONS, stringResource(R.string.settings_manage_subscriptions), Ionicon.CardOutline),
         row(SettingsPageTags.ADD_AGENT, stringResource(R.string.settings_add_agent), Ionicon.Add),
         row(SettingsTags.WHATS_NEW, stringResource(R.string.settings_whats_new), Ionicon.SparklesOutline),
         row(SettingsTags.GITHUB, stringResource(R.string.settings_github), Ionicon.LogoGithub),
@@ -191,8 +188,9 @@ data class AgentPerson(val name: String = "", val photo: ImageBitmap? = null, va
  * pencil badge whose menu asks its Chief of Staff to change its picture or
  * name (nothing is sent until the person sends it), its name and link
  * status under it; every account on the phone with Add Agent; the person's
- * own Profile here; Appearance (the theme and the desktop's Hide projects);
- * Support us; About; Disconnect, after a confirm. A device token can't reach
+ * own Profile here, with Support Happy's boba row under it; Appearance
+ * (the theme and the desktop's Hide projects); About; Disconnect, after a
+ * confirm. A device token can't reach
  * the agent's device list (API.md, "Credentials on the connector's
  * socket"), so disconnecting forgets the agent on this phone only.
  *
@@ -286,7 +284,7 @@ fun AgentConnectionSettingsScreen(
                 )
             }),
         ),
-        supportSection(about, aboutActions),
+        // Support Happy's boba row is this page's Support us, and its page manages subscriptions.
         aboutSection(about, aboutActions),
     ).filter { it.rows.isNotEmpty() }
     // The bar on the page's own grey (black in dark), the groups on it: one surface, as the chat's details.

@@ -48,7 +48,7 @@ enum SettingsIndex {
     /// is Data and Storage's. Disconnect is left
     /// out: a search doesn't offer to take the computer away.
     static var computer: [Entry] {
-        [profile, changeAgentName, changeAgentAvatar, supportBoba, appearance, hideProjects, agentVoice, agents, dataStorage, connection, supportUs, connectAgent, addAccount] + aboutRows
+        [profile, changeAgentName, changeAgentAvatar, supportBoba, appearance, hideProjects, agentVoice, agents, dataStorage, connection, connectAgent, addAccount] + aboutRows
     }
 
     /// What a Happy account's settings show under its accounts card, in

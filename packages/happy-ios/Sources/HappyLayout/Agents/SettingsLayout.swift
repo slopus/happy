@@ -105,13 +105,10 @@ public struct SettingsLayout: Equatable, Sendable {
         public static let subtitledRow: CGFloat = 62
         public static let subtitledTitleTop: CGFloat = 10
         public static let subtitleHeight: CGFloat = 18
-        /// A row led by art (Support's boba): the art a fixed square, as
-        /// far from the row's edge, top and bottom as `artInset`, so the
-        /// row is two rows tall at least; its words beside it, wrapping.
-        public static let art: CGFloat = 72
-        public static let artInset: CGFloat = 16
-        public static let artGap: CGFloat = 14
-        public static let artTextX: CGFloat = artInset + art + artGap
+        /// A row led by art (Support's boba): the art a tile's square, where
+        /// a plain row's tile sits, and the words where its title starts,
+        /// wrapping; the row grows down for them, the art staying at the top.
+        public static let art: CGFloat = tile
         /// Between an art row's title and the line under it.
         public static let artLineGap: CGFloat = 2
     }
@@ -260,7 +257,7 @@ public struct SettingsLayout: Equatable, Sendable {
     /// The width an art row's words are measured at: beside the art, before
     /// the chevron.
     public static func artTextWidth(_ width: CGFloat) -> CGFloat {
-        max(0, width - 2 * Metrics.side - Metrics.artTextX - Metrics.trailing - Metrics.chevron.width - Metrics.valueGap)
+        max(0, width - 2 * Metrics.side - Metrics.textX - Metrics.trailing - Metrics.chevron.width - Metrics.valueGap)
     }
 
     /// The width a text row's text is measured at.
@@ -271,14 +268,17 @@ public struct SettingsLayout: Equatable, Sendable {
     static func row(_ spec: RowSpec, y: CGFloat, width: CGFloat, last: Bool) -> Row {
         typealias M = Metrics
         if let text = spec.art {
-            // The art at the row's edge, the words beside it, both centred
-            // in a row two rows tall, or as tall as the words need.
-            let words = text.title + (text.subtitle > 0 ? M.artLineGap + text.subtitle : 0)
-            let height = max(M.art, words) + 2 * M.artInset
+            // The art where a plain row's tile is and the title where its
+            // title is, both at the top; the line under the title, and the
+            // row as tall as the words need, as far below them as the title
+            // is from its top.
+            let pad = (M.row - M.titleHeight) / 2
+            let titleHeight = max(M.titleHeight, text.title)
+            let words = titleHeight + (text.subtitle > 0 ? M.artLineGap + text.subtitle : 0)
+            let height = max(M.row, words + 2 * pad)
             let chevron = CGRect(x: width - M.trailing - M.chevron.width, y: y + ((height - M.chevron.height) / 2).rounded(), width: M.chevron.width, height: M.chevron.height)
-            let textWidth = max(0, chevron.minX - M.valueGap - M.artTextX)
-            let top = y + ((height - words) / 2).rounded()
-            let title = CGRect(x: M.artTextX, y: top, width: textWidth, height: text.title)
+            let textWidth = max(0, chevron.minX - M.valueGap - M.textX)
+            let title = CGRect(x: M.textX, y: y + pad, width: textWidth, height: titleHeight)
             return Row(
                 box: CGRect(x: 0, y: y, width: width, height: height),
                 icon: nil,
@@ -286,9 +286,9 @@ public struct SettingsLayout: Equatable, Sendable {
                 value: nil,
                 chevron: chevron,
                 toggle: nil,
-                separator: last ? nil : CGRect(x: M.artTextX, y: y + height - M.separator, width: width - M.artTextX, height: M.separator),
-                subtitle: text.subtitle > 0 ? CGRect(x: M.artTextX, y: title.maxY + M.artLineGap, width: textWidth, height: text.subtitle) : nil,
-                art: CGRect(x: M.artInset, y: y + ((height - M.art) / 2).rounded(), width: M.art, height: M.art)
+                separator: last ? nil : CGRect(x: M.textX, y: y + height - M.separator, width: width - M.textX, height: M.separator),
+                subtitle: text.subtitle > 0 ? CGRect(x: M.textX, y: title.maxY + M.artLineGap, width: textWidth, height: text.subtitle) : nil,
+                art: CGRect(x: (M.textX - M.art) / 2, y: y + (M.row - M.art) / 2, width: M.art, height: M.art)
             )
         }
         if let height = spec.textHeight {

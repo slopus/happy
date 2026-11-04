@@ -12,8 +12,6 @@ enum OfferSheet: Equatable {
     case used(freeAgain: Date?)
     /// The relay's voice refused without the subscription: voice's sheet with no free way on.
     case required
-    /// Support Happy: the boba and what a pledge is for, no voice session.
-    case support
 }
 
 /// How an offer sheet was closed.
@@ -28,7 +26,8 @@ enum OfferResult: Equatable {
 
 /// The app's one subscription (`Subscription`) and its offer sheets, one
 /// at a time, for everything that sells it: the agent call's welcome and
-/// used-up sheet, the relay's voice, Support Happy, Settings. Built once,
+/// used-up sheet, the relay's voice; Support Happy's page and Settings buy
+/// and restore through it too. Built once,
 /// with the build's RevenueCat key; without one it sells nothing.
 @MainActor
 public final class Offers {
@@ -122,10 +121,7 @@ public final class Offers {
         let proBefore = subscription.hasPro
         let generation = subscription.generation
         return await withCheckedContinuation { continuation in
-            let controller: OfferSheetViewController = switch sheet {
-            case .support: SupportSheetViewController(offers: self)
-            default: CallSheetViewController(sheet, offers: self)
-            }
+            let controller: OfferSheetViewController = CallSheetViewController(sheet, offers: self)
             controller.onResult = { [weak self] result in
                 self?.shown = nil
                 self?.observation = nil
@@ -146,7 +142,7 @@ public final class Offers {
         }
     }
 
-    /// `ask`, answered to no one: Support Happy, which only offers.
+    /// `ask`, answered to no one: a sheet that only offers.
     func show(_ sheet: OfferSheet, over top: UIViewController) {
         Task { _ = await ask(sheet, over: top) }
     }
@@ -249,21 +245,26 @@ class OfferSheetViewController: UIViewController, UIAdaptivePresentationControll
 #endif
 
 #if canImport(UIKit)
-/// The sheets' quiet text action on the gradient, "Restore Purchases":
-/// restores on the tap, says what it found, and can't be tapped again
-/// until it has. 44 points tall to touch.
+/// The sheets' quiet text action on the gradient, "Restore Purchases" or
+/// "Manage Subscriptions": Restore restores on the tap, says what it
+/// found, and can't be tapped again until it has. 44 points tall to touch.
 @MainActor
 final class OfferLink: UIControl {
     private let label = StyledLabel(style: CallSheetViewController.detailStyle, color: Palette.startTextSecondary, lines: 0, alignment: .center)
 
     static func restore(for sheet: OfferSheetViewController) -> OfferLink {
+        restore(offers: sheet.offers, from: sheet)
+    }
+
+    /// Restore Purchases for `offers`, its answers said over `controller`.
+    static func restore(offers: Offers, from controller: UIViewController) -> OfferLink {
         let link = OfferLink(title: Strings.Offer.restore)
         link.accessibilityIdentifier = "offer-restore"
-        link.addAction(UIAction { [weak sheet, weak link] _ in
-            guard let sheet, let link else { return }
+        link.addAction(UIAction { [weak controller, weak link] _ in
+            guard let controller, let link else { return }
             link.isEnabled = false
             Task {
-                await sheet.offers.restore(from: sheet)
+                await offers.restore(from: controller)
                 link.isEnabled = true
             }
         }, for: .touchUpInside)

@@ -24,6 +24,7 @@ extension Strings {
         static var connection: String { "Call ended: connection lost" }
         // Voice's welcome and its paywall (`CallSheetViewController`).
         static var welcomeTitle: String { "Talk to your agents" }
+        static var micReplay: String { "Play the microphone again" }
         static var welcomeAsk: String { "Ask how your work is going" }
         static var welcomeAct: String { "Open and send by voice" }
         static var welcomeFree: String { "20 free minutes" }

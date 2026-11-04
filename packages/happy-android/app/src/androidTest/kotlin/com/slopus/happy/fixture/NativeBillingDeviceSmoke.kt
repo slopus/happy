@@ -27,6 +27,8 @@ import com.slopus.happy.chat.ChatSnapshot
 import com.slopus.happy.chat.ChatState
 import com.slopus.happy.data.SessionRecord
 import com.slopus.happy.payments.Offer
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import com.slopus.happy.payments.OfferSheet
 import com.slopus.happy.ui.call.CallSheet
 import com.slopus.happy.ui.call.CallSheetTags
@@ -39,14 +41,14 @@ import com.slopus.happy.ui.connection.AgentHomeScreen
 import com.slopus.happy.ui.connection.AgentHomeTags
 import com.slopus.happy.ui.connection.AgentVoiceScreen
 import com.slopus.happy.ui.connection.AgentVoiceSummary
-import com.slopus.happy.ui.connection.SupportSheet
+import com.slopus.happy.ui.connection.AgentVoiceTags
+import com.slopus.happy.ui.connection.SupportScreen
 import com.slopus.happy.ui.home.AccountMenu
 import com.slopus.happy.ui.home.AccountMenuEntry
 import com.slopus.happy.ui.settings.AboutActions
 import com.slopus.happy.ui.settings.AboutInfo
 import com.slopus.happy.ui.settings.SettingsProfile
 import com.slopus.happy.ui.settings.SettingsScreen
-import com.slopus.happy.ui.settings.supportAction
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.ThemePreference
 import com.slopus.happy.ui.voice.LocalVoiceController
@@ -156,21 +158,25 @@ class NativeBillingDeviceSmoke {
         capture("agent-after-close")
     }
 
-    @Test fun supportUsOpensTheSharedHostAndRestoreAnswers() {
+    @Test fun supportUsPushesTheSupportPageAndRestoreAnswers() {
         graph.offers.preview("$20")
+        val supporting = androidx.compose.runtime.mutableStateOf(false)
         show {
-            SettingsScreen(SettingsProfile("fx", "Kai", "Happy account"), AboutInfo("1.8.0 (412)"),
-                aboutActions = AboutActions(onSupport = supportAction(graph.offers)))
-            OfferHost(graph.offers)
+            val offer by graph.offers.offers.collectAsState()
+            if (supporting.value) {
+                SupportScreen(offer, onBack = { supporting.value = false }, onRestore = graph.offers::restore)
+            } else {
+                SettingsScreen(SettingsProfile("fx", "Kai", "Happy account"), AboutInfo("1.8.0 (412)"),
+                    aboutActions = AboutActions(onSupport = { supporting.value = true }))
+            }
         }
         rule.onNodeWithText("Support us").performScrollTo().performClick()
         rule.waitForIdle()
-        assertTrue(graph.offers.sheet.value is OfferSheet.Support)
         rule.onNodeWithText(app.getString(R.string.agent_voice_sheet_pledge, "$20")).assertExists()
         capture("support-pledge-preview", 2_000)
         // Without a key nothing reaches RevenueCat: Restore says it failed. With one, don't create a customer from a test.
         if (BuildConfig.REVENUE_CAT_GOOGLE_KEY.isBlank()) {
-            rule.onNodeWithTag(CallSheetTags.RESTORE).performClick()
+            rule.onNodeWithTag(AgentVoiceTags.PAGE_RESTORE).performClick()
             rule.waitForIdle()
             capture("support-restore-answer")
         }
@@ -182,7 +188,7 @@ class NativeBillingDeviceSmoke {
         val step = mutableIntStateOf(0)
         show {
             when (step.intValue) {
-                0 -> SupportSheet(Offer.Subscribed, onDismiss = {}, onSubscribe = {}, onRestore = null, unconfirmed = false)
+                0 -> SupportScreen(Offer.Subscribed, onBack = {})
                 1 -> AgentVoiceScreen(AgentVoiceSummary(4 * 3_600_000L + 12 * 60_000L, offer = Offer.Subscribed)) {}
                 else -> CallSheet(OfferSheet.Used(System.currentTimeMillis() + 9 * 86_400_000L, Offer.Subscribed), onStart = {}, onDismiss = {})
             }

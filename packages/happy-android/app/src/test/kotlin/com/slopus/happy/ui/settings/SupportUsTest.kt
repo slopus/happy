@@ -16,7 +16,6 @@ import com.slopus.happy.R
 import com.slopus.happy.payments.CallIntro
 import com.slopus.happy.payments.FakeRevenueCat
 import com.slopus.happy.payments.FakeStore
-import com.slopus.happy.payments.OfferSheet
 import com.slopus.happy.payments.Offers
 import com.slopus.happy.payments.Subscription
 import com.slopus.happy.ui.call.OfferHost
@@ -31,6 +30,8 @@ import com.slopus.happy.ui.components.ItemGroupTags
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import androidx.compose.ui.test.onAllNodesWithTag
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -60,20 +61,22 @@ class SupportUsTest {
         rule.onNodeWithText("Thank you for your support!").assertIsDisplayed()
     }
 
-    @Test fun supportOpensTheSupportSheetWhichSaysPledgesArentOpenWhenNothingIsOnSale() {
+    /** Support us pushes Support Happy's page ([com.slopus.happy.ui.connection.SupportRoute]); no offer sheet comes up. */
+    @Test fun supportPushesTheSupportPage() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val scope = MainScope()
         val subscription = Subscription(scope, FakeStore(), FakeRevenueCat(), context.getSharedPreferences("support-us-subscription", Context.MODE_PRIVATE))
         val offers = Offers(scope, subscription, CallIntro(context.getSharedPreferences("support-us-intro", Context.MODE_PRIVATE)))
+        var pushed = 0
         try {
             rule.setHappyContent {
-                SettingsScreen(SettingsFixtures.profile, AboutInfo("1"), aboutActions = AboutActions(onSupport = supportAction(offers)))
+                SettingsScreen(SettingsFixtures.profile, AboutInfo("1"), aboutActions = AboutActions(onSupport = { pushed++ }))
                 OfferHost(offers)
             }
             rule.onNodeWithText("Support us").performScrollTo().performClick()
             rule.waitForIdle()
-            assertTrue(offers.sheet.value is OfferSheet.Support)
-            rule.onNodeWithText(context.getString(R.string.agent_voice_sheet_not_yet)).assertExists()
+            assertEquals(1, pushed)
+            assertNull(offers.sheet.value)
             rule.onAllNodesWithText("Error").assertCountEquals(0)
         } finally {
             scope.cancel()

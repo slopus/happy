@@ -272,7 +272,7 @@ win:
   (`Screen(avoidKeyboard = true)`); the first screen never does. Palette: blue and violet
   over near-black (dark) or their tints over lavender white (light), no
   green or orange, text AA or better. The shader runs on Android 13+
-  (`RuntimeShader`), about 30 frames a second while resumed, still with
+  (`RuntimeShader`), about 15 frames a second while resumed, still with
   animations removed; older Android draws a still gradient in the same
   colours.
 - **Compose:** from home it opens an empty new chat; from a chat it
@@ -326,6 +326,14 @@ win:
   and neither home nor chat scrolls by itself while nothing changed.
 - **Settings cards** look the same everywhere and come from one component
   (`ItemGroup`).
+- **Animated emoji never loop** (Kirill, for both apps). An animated emoji
+  or sticker (the Lottie art in `res/raw`: state pictures, the boba,
+  voice's mic) plays once when it appears, holds its last frame, and plays
+  once more on a tap; with animations removed it holds still. Draw every one
+  with `SceneAnimation` (or `StateAnimation`), never
+  `LottieConstants.IterateForever`. A row icon that is an emoji is a tile's
+  size (30) in the row's 32 icon box, at the row's top when the row grows
+  (`SupportBobaCard`).
 - **Settings search** (iOS's, `ui/settings/SettingsSearch.kt`), on both
   kinds of Settings: the bar's search button turns the bar into a field
   and hides the picture, name and cards; what is typed finds accounts by
@@ -1123,11 +1131,14 @@ SDK's own) stay on disk, unread.
   Signing in identifies an anonymous buyer with the account; RevenueCat does
   not guarantee that merges.
 - `AppGraph.offers` (`Offers`) is the one offer presenter, drawn by the one
-  `OfferHost` in `HappyApp`: voice's welcome and used-up sheets, the relay
+  `OfferHost` in `HappyApp`: voice's welcome and used-up sheets and the relay
   voice's Required sheet (`voice_must_pay`, unreachable while that voice is
-  off), and Support (Settings' Support us
-  row and the agent's boba row: "Pledge <price>/month", no Start). One sheet
-  at a time; `ask` answers Start (the welcome's only), Pro or Dismissed.
+  off). One sheet at a time; `ask` answers Start (the welcome's only), Pro
+  or Dismissed. Support Happy is a pushed page, not a sheet (`SupportRoute`,
+  `SupportScreen`; a Happy account's Support us and an agent connection's
+  boba row, which is that page's only Support us): "Pledge <price>/month"
+  over Subscribe, always there and greyed out while nothing is on sale,
+  then Restore Purchases and Manage subscriptions as quiet links.
 - Grants are client-side. Only the relay's voice has a server gate; its
   5-hour hard cap is never sold, only said.
 - Debug builds treat About's Support row as Pro, as RN does; that grants no

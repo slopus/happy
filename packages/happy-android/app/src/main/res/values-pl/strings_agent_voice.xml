@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="agent_voice_support_title">Wspieraj open source Happy, stawiając nam bobę co miesiąc</string>
-    <string name="agent_voice_support_spoken">Wspieraj open source Happy, stawiając nam bobę co miesiąc</string>
+    <string name="agent_voice_support_title">Happy jest open source</string>
+    <string name="agent_voice_support_line">Wesprzyj projekt, stawiając nam bobę co miesiąc.</string>
+    <string name="agent_voice_support_spoken">Happy jest open source. Wesprzyj projekt, stawiając nam bobę co miesiąc.</string>
     <string name="agent_voice_title">Głos</string>
     <string name="agent_voice_minutes_left">Zostało %1$d min</string>
     <string name="agent_voice_used_up">Wykorzystano</string>

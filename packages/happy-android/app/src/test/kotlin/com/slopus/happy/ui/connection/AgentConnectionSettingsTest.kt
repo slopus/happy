@@ -133,22 +133,46 @@ class AgentConnectionSettingsTest {
     @Test
     fun cardsAndRows() {
         show()
-        // Support Happy is a card of its own, right under Profile.
-        rule.onAllNodesWithTag(ItemGroupTags.CARD, useUnmergedTree = true).assertCountEquals(7)
+        // Support Happy is a card of its own, right under Profile, and the page's only Support us.
+        rule.onAllNodesWithTag(ItemGroupTags.CARD, useUnmergedTree = true).assertCountEquals(6)
         rule.onNode(hasText("Steve") and hasAnyAncestor(hasTestTag(SettingsPageTags.account("account-1"))), useUnmergedTree = true).assertExists()
         rule.node(SettingsPageTags.account("agent-connection-2")).performClick()
         rule.node(SettingsPageTags.ADD_AGENT).performScrollTo().performClick()
         rule.node(AgentSettingsTags.PROFILE).performScrollTo().performClick()
         rule.node(AgentSettingsTags.APPEARANCE).performScrollTo().performClick()
         assertEquals(listOf("switch:agent-connection-2", "add", "profile", "appearance"), done)
-        rule.node(SettingsTags.SUPPORT).performScrollTo().assertIsDisplayed()
+        rule.node(SettingsTags.SUPPORT).assertDoesNotExist()
+        rule.node(SettingsTags.MANAGE_SUBSCRIPTIONS).assertDoesNotExist()
         rule.node(SettingsTags.VERSION).performScrollTo().assertIsDisplayed()
         assertTrue(rule.node(AgentVoiceTags.SUPPORT).bounds.top > rule.node(AgentSettingsTags.PROFILE).bounds.bottom)
         assertTrue(rule.node(AgentVoiceTags.SUPPORT).bounds.bottom < rule.node(AgentSettingsTags.APPEARANCE).bounds.top)
         rule.node(AgentVoiceTags.ROW).performScrollTo().assertIsDisplayed()
     }
 
-    /** The boba row opens Support us, the app's offer sheet ([com.slopus.happy.payments.OfferSheet.Support]; its content in CallSheetTest). */
+    /**
+     * The boba row: "Happy is open source" and, under it at the same size in
+     * the page's secondary grey, the ask. The boba is a tile's 30 in the 32
+     * icon box at the top-left, where a one-line row's tile is (its middle
+     * 28 from the top, 16 in), level with the title's first line; the row
+     * grows for the words, the boba stays.
+     */
+    @Test
+    fun theBobaRowIsATileAtTheTopWithTwoLines() {
+        show()
+        val row = rule.node(AgentVoiceTags.SUPPORT).performScrollTo().bounds
+        val art = rule.node(AgentVoiceTags.SUPPORT_ART).bounds
+        val title = rule.node(AgentVoiceTags.SUPPORT_TITLE).bounds
+        val line = rule.node(AgentVoiceTags.SUPPORT_LINE).bounds
+        assertBox("icon box", art, row.left + 16.dp, row.top + 12.dp, 32.dp, 32.dp)
+        assertDp("title's first line level with the boba", (art.top + art.bottom) / 2, title.top + 12.dp)
+        assertDp("title after the icon box", art.right + 12.dp, title.left)
+        assertDp("line under the title", title.bottom, line.top)
+        assertTrue("the row grows for both lines", row.height > 56.dp)
+        rule.onNodeWithText("Happy is open source").assertIsDisplayed()
+        rule.onNodeWithText("Support the project by sending us boba every month.").assertIsDisplayed()
+    }
+
+    /** The boba row pushes Support Happy's page ([SupportScreen]; its content in CallSheetTest). */
     @Test
     fun theBobaRowOpensSupport() {
         show()

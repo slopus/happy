@@ -1,7 +1,6 @@
 #if canImport(UIKit)
 import HappyCore
 import HappyLayout
-import Lottie
 import UIKit
 
 /// Voice's full-height sheets, in the first screen's style
@@ -33,7 +32,8 @@ final class CallSheetViewController: OfferSheetViewController {
     let screen: Screen
 
     private let gradient = GrainGradientView(palette: StartViewController.Colors.grain)
-    private let mic = LottieAnimationView(configuration: LottieConfiguration(renderingEngine: .coreAnimation))
+    /// Played once as the sheet appears and again on a tap, never looped.
+    private let mic = StateSceneView(scene: .podcastMic, size: Metrics.mic, replayLabel: Strings.Call.micReplay)
     private let scroll = UIScrollView()
     let close = UIButton(type: .system)
     /// On offer only: the subscription, the main action.
@@ -64,12 +64,6 @@ final class CallSheetViewController: OfferSheetViewController {
         gradient.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(gradient)
 
-        mic.animation = Self.micAnimation
-        mic.contentMode = .scaleAspectFit
-        mic.loopMode = .loop
-        mic.backgroundBehavior = .pauseAndRestore
-        mic.isAccessibilityElement = false
-
         // The mic, the headline and what voice does, in the middle of the space above the actions.
         let title = StyledLabel(style: Self.titleStyle, color: Palette.startText, alignment: .center)
         title.accessibilityTraits = .header
@@ -78,7 +72,7 @@ final class CallSheetViewController: OfferSheetViewController {
         // Once the time is used, that under its line, in the app's warning colour.
         let subscribed = offers.offer == .subscribed
         let used: String? = switch screen {
-        case .welcome, .support: nil
+        case .welcome: nil
         case .used(let freeAgain):
             subscribed
                 ? freeAgain.map { Strings.Offer.paidUsedNote(Self.when($0, now: Date())) } ?? Strings.Offer.paidUsedNote
@@ -104,7 +98,7 @@ final class CallSheetViewController: OfferSheetViewController {
         switch screen {
         case .welcome:
             session.addAction(UIAction { [weak self] _ in self?.finish(.start) }, for: .touchUpInside)
-        case .used, .required, .support:
+        case .used, .required:
             session.isEnabled = false
         }
         drawFooter()
@@ -250,12 +244,6 @@ final class CallSheetViewController: OfferSheetViewController {
         if subscribeHeight?.constant != height { subscribeHeight?.constant = height }
     }
 
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        // Still with Reduce Motion: the mic as it stands mid-way.
-        if UIAccessibility.isReduceMotionEnabled { mic.currentProgress = 0.5 } else { mic.play() }
-    }
-
     /// `view` in the middle of the column, `width` or `height` fixed.
     private func centred(_ view: UIView, width: CGFloat? = nil, height: CGFloat? = nil) -> UIView {
         let holder = UIView()
@@ -272,14 +260,6 @@ final class CallSheetViewController: OfferSheetViewController {
         NSLayoutConstraint.activate(constraints)
         return holder
     }
-
-    /// The mic, gunzipped from the `.tgs` it came as (`Animations/PROVENANCE.md`).
-    private static let micAnimation: LottieAnimation? = {
-        guard let url = Bundle.module.url(forResource: "podcast-mic", withExtension: "json")
-            ?? Bundle.module.url(forResource: "podcast-mic", withExtension: "json", subdirectory: "Animations"),
-            let data = try? Data(contentsOf: url) else { return nil }
-        return try? LottieAnimation.from(data: data)
-    }()
 
     /// When free time is back, as a sentence ends it: "at 5:19 PM" today,
     /// "on Thu at 5:19 PM" this week, "on Dec 3" after.

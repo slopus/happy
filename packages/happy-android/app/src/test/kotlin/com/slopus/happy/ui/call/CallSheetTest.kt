@@ -13,10 +13,12 @@ import com.slopus.happy.R
 import com.slopus.happy.payments.CallIntro
 import com.slopus.happy.payments.Offer
 import com.slopus.happy.payments.OfferSheet
-import com.slopus.happy.ui.connection.SupportSheet
+import com.slopus.happy.ui.connection.AgentVoiceTags
+import com.slopus.happy.ui.connection.SupportScreen
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import com.slopus.happy.ui.PHONE
+import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import org.junit.Assert.assertEquals
@@ -123,11 +125,12 @@ class CallSheetTest {
         assertEquals(0, started)
     }
 
-    /** Support us: the boba's sheet sells the same subscription as a pledge, with no voice session. */
+    /** Support Happy's page sells the same subscription as a pledge, with no voice session, and manages it in the store. */
     @Test
     fun supportSellsTheSameSubscriptionWithoutVoice() {
         var subscribed = 0
-        rule.setHappyContent { SupportSheet(Offer.OnSale("9,99 €"), onDismiss = {}, onSubscribe = { subscribed++ }, onRestore = { com.slopus.happy.payments.RestoreResult.NothingFound }) }
+        var managed = 0
+        rule.setHappyContent { SupportScreen(Offer.OnSale("9,99 €"), onBack = {}, onSubscribe = { subscribed++ }, onRestore = { com.slopus.happy.payments.RestoreResult.NothingFound }, onManage = { managed++ }) }
         rule.waitForIdle()
         text("Support Happy open source").assertExists()
         text("Pledge 9,99 €/month").assertExists()
@@ -135,27 +138,38 @@ class CallSheetTest {
         text("Talk to your agents").assertDoesNotExist()
         text("5 hours of real-time voice included").assertDoesNotExist()
         rule.node(CallSheetTags.SESSION).assertDoesNotExist()
-        rule.node(CallSheetTags.SUBSCRIBE).performClick()
+        rule.node(AgentVoiceTags.SUBSCRIBE_BUTTON).assertIsEnabled().performClick()
         rule.waitForIdle()
         assertEquals(1, subscribed)
-        rule.node(CallSheetTags.RESTORE).performClick()
+        rule.node(AgentVoiceTags.PAGE_MANAGE).performClick()
+        rule.waitForIdle()
+        assertEquals(1, managed)
+        rule.node(AgentVoiceTags.PAGE_RESTORE).performClick()
         rule.waitForIdle()
         rule.onNodeWithText(context.getString(R.string.call_restore_none)).assertExists()
     }
 
-    /** Nothing on sale, it still opens and says so; with pro, it thanks and sells nothing more. */
+    /**
+     * Nothing on sale, it still opens and says so over Subscribe, which
+     * stays and is greyed out, Restore and Manage under it; with pro, it
+     * thanks, sells nothing more and still manages.
+     */
     @Test
     fun supportSaysWhenNothingIsOnSaleAndThanksASubscriber() {
         var offer by androidx.compose.runtime.mutableStateOf<Offer>(Offer.Unavailable)
-        rule.setHappyContent { SupportSheet(offer, onDismiss = {}) }
+        rule.setHappyContent { SupportScreen(offer, onBack = {}, onRestore = { com.slopus.happy.payments.RestoreResult.NothingFound }) }
         rule.waitForIdle()
         rule.onNodeWithText(context.getString(R.string.agent_voice_sheet_not_yet)).assertExists()
-        rule.node(CallSheetTags.SUBSCRIBE).assertDoesNotExist()
+        rule.node(AgentVoiceTags.SUBSCRIBE_BUTTON).assertIsNotEnabled()
+        rule.node(AgentVoiceTags.PAGE_RESTORE).assertIsEnabled()
+        rule.node(AgentVoiceTags.PAGE_MANAGE).assertIsEnabled()
+        assertTrue(rule.node(AgentVoiceTags.PAGE_RESTORE).bounds.top > rule.node(AgentVoiceTags.SUBSCRIBE_BUTTON).bounds.bottom)
         offer = Offer.Subscribed
         rule.waitForIdle()
         rule.onNodeWithText(context.getString(R.string.settings_support_us_subtitle_pro)).assertExists()
-        rule.node(CallSheetTags.SUBSCRIBE).assertDoesNotExist()
-        rule.node(CallSheetTags.RESTORE).assertDoesNotExist()
+        rule.node(AgentVoiceTags.SUBSCRIBE_BUTTON).assertDoesNotExist()
+        rule.node(AgentVoiceTags.PAGE_RESTORE).assertIsNotEnabled()
+        rule.node(AgentVoiceTags.PAGE_MANAGE).assertIsEnabled()
     }
 
     @Test

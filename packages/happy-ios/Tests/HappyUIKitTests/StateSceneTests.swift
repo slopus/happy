@@ -23,6 +23,8 @@ final class StateSceneTests: XCTestCase {
         .tv: "3aad5efeefedef3fcbb2020a12873a40866141ec898a05f7eb67f15482f765fe",
         // The 🧋 sticker supplied for Settings' Support Happy row (PROVENANCE.md).
         .boba: "ce7d0449e69bb1e3eba1d06b158a945da94ccc07953cd9e5c477650341b48ae9",
+        // The 🎙️ sticker supplied for voice's sheets (PROVENANCE.md).
+        .podcastMic: "f90db7a207596916bc5c0b22db6e3ca40f2e24008b015bc654ee1aa5ff724284",
     ]
 
     private func url(_ scene: StateScene) throws -> URL {
@@ -55,7 +57,12 @@ final class StateSceneTests: XCTestCase {
     /// than substituting art, name what it would skip: all five are plain
     /// shape animations, so nothing here should have an expression, an
     /// effect, a matte or a text layer.
+    ///
+    /// The mic is the one with a track matte: voice's sheets drew it with
+    /// this same engine before it was a scene, and Lottie's Core Animation
+    /// engine draws mattes.
     func testNoSceneUsesSomethingLottieCannotDraw() throws {
+        let mattes: Set<StateScene> = [.podcastMic]
         for scene in StateScene.allCases {
             let object = try JSONSerialization.jsonObject(with: Data(contentsOf: url(scene)))
             let json = try XCTUnwrap(object as? [String: Any])
@@ -65,8 +72,10 @@ final class StateSceneTests: XCTestCase {
                 let name = (layer["nm"] as? String) ?? "?"
                 XCTAssertNil(layer["ef"], "\(scene.rawValue): layer \(name) has an effect")
                 XCTAssertNil(layer["tm"], "\(scene.rawValue): layer \(name) is time-remapped")
-                XCTAssertEqual(layer["td"] as? Int ?? 0, 0, "\(scene.rawValue): layer \(name) is a matte")
-                XCTAssertEqual(layer["tt"] as? Int ?? 0, 0, "\(scene.rawValue): layer \(name) is masked by a matte")
+                if !mattes.contains(scene) {
+                    XCTAssertEqual(layer["td"] as? Int ?? 0, 0, "\(scene.rawValue): layer \(name) is a matte")
+                    XCTAssertEqual(layer["tt"] as? Int ?? 0, 0, "\(scene.rawValue): layer \(name) is masked by a matte")
+                }
                 // 5 is a text layer, which needs fonts we do not ship.
                 XCTAssertNotEqual(layer["ty"] as? Int, 5, "\(scene.rawValue): layer \(name) is text")
             }

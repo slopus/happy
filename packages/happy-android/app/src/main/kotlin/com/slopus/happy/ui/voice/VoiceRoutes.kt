@@ -27,7 +27,7 @@ fun NavGraphBuilder.voiceRoutes(graph: AppGraph, nav: NavHostController) {
     page<VoiceSettingsRoute> { entry ->
         val settings by graph.settings.settings.collectAsStateWithLifecycle()
         val pro by graph.subscription.pro.collectAsStateWithLifecycle()
-        val support = remember(graph) { supportAction(graph.offers) }
+        val support = remember(nav) { supportAction(nav) }
         var usage by remember { mutableStateOf<VoiceUsageReading>(VoiceUsageReading.Loading) }
         var retry by remember { mutableIntStateOf(0) }
         LaunchedEffect(graph, retry) {

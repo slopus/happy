@@ -46,7 +46,8 @@ Three more files draw the first screen's slides and the screen after it
 ## `podcast-mic.json`, voice's sheets
 
 Not desktop's, and not under `LICENSE` here. Supplied with the request for
-voice's welcome and paywall (`CallSheetViewController`) as a Telegram
+voice's welcome and paywall (`CallSheetViewController`, the `podcastMic`
+scene, so `StateSceneTests` holds its hash too) as a Telegram
 sticker file, `podcast mic.tgs` (SHA-256
 `eaa5af703130fe10ae3535e1d26f0a8b3fb85355d91d696f7359d55effb95ee9`), and
 committed as that file gunzipped, byte for byte (SHA-256
@@ -60,7 +61,7 @@ build ships it. Android ships the same bytes as
 
 Not desktop's, and not under `LICENSE` here. Supplied with the request for
 the Support Happy row under Profile in an agent connection's Settings
-(`SupportBobaRow`) as a Telegram sticker file, `boba.tgs` (SHA-256
+(`SupportBobaArt`) and its page (`SupportViewController`) as a Telegram sticker file, `boba.tgs` (SHA-256
 `e7d7715c1fb01ab45ca9126653a755a2664d4fe2fb0d6fc5b95e2dbe0d77f638`), and
 committed as that file gunzipped, byte for byte (SHA-256
 `ce7d0449e69bb1e3eba1d06b158a945da94ccc07953cd9e5c477650341b48ae9`). Its

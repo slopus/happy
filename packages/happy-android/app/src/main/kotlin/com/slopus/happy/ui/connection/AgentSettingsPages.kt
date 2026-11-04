@@ -34,7 +34,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import com.slopus.happy.payments.OfferSheet
 import com.slopus.happy.payments.RestoreResult
 import com.slopus.happy.ui.call.RestoreAlert
 import androidx.compose.ui.Alignment
@@ -45,6 +44,11 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
+import com.slopus.happy.ui.browser.LocalLinkOpener
+import com.slopus.happy.ui.call.activity
+import com.slopus.happy.ui.settings.SettingsSpec
+import com.slopus.happy.ui.settings.openExternalUrl
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -122,12 +126,32 @@ internal fun NavGraphBuilder.agentSettingsPages(graph: AppGraph, nav: NavHostCon
         ProvideRowReveal(entry.toRoute<AgentVoiceRoute>().reveal) {
             AgentVoiceScreen(
                 rememberAgentVoiceSummary(graph.offers, graph.subscription),
-                onSubscribe = { graph.offers.show(OfferSheet.Support(graph.offers.offer)) },
+                onSubscribe = { nav.navigate(SupportRoute) },
                 onRestore = { scope.launch { restored = graph.offers.restore() } },
                 onBack = { nav.popBackStack() },
             )
         }
         restored?.let { RestoreAlert(it) { restored = null } }
+    }
+    page<SupportRoute> {
+        val offer by graph.offers.offers.collectAsStateWithLifecycle()
+        val unconfirmed by graph.offers.unconfirmed.collectAsStateWithLifecycle()
+        val activity = LocalContext.current.activity()
+        val scope = rememberCoroutineScope()
+        val uriHandler = LocalUriHandler.current
+        val linkOpener = LocalLinkOpener.current
+        SupportScreen(
+            offer = offer,
+            onBack = { nav.popBackStack() },
+            onSubscribe = { activity?.let { activity -> scope.launch { graph.offers.subscribe(activity) } } },
+            onRestore = graph.offers::restore,
+            // The phone's store, even with an agent's proxied browser open.
+            onManage = {
+                if (linkOpener != null) linkOpener.openExternal(SettingsSpec.SUBSCRIPTIONS_URL)
+                else openExternalUrl(uriHandler, SettingsSpec.SUBSCRIPTIONS_URL)
+            },
+            unconfirmed = unconfirmed,
+        )
     }
     page<AgentDataStorageRoute> { entry -> AgentDataStorage(graph, nav, entry.toRoute<AgentDataStorageRoute>().connectionId) }
     page<AgentSharingRoute> { entry ->

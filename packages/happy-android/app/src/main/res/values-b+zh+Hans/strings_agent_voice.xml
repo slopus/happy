@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="agent_voice_support_title">每月请我们喝杯波霸，支持开源的 Happy</string>
-    <string name="agent_voice_support_spoken">每月请我们喝杯波霸，支持开源的 Happy</string>
+    <string name="agent_voice_support_title">Happy 是开源的</string>
+    <string name="agent_voice_support_line">每月请我们喝杯波霸，支持这个项目。</string>
+    <string name="agent_voice_support_spoken">Happy 是开源的。每月请我们喝杯波霸，支持这个项目。</string>
     <string name="agent_voice_title">语音</string>
     <string name="agent_voice_minutes_left">剩余 %1$d 分钟</string>
     <string name="agent_voice_used_up">已用完</string>

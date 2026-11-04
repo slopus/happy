@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="agent_voice_support_title">毎月ボバを贈って、オープンソースの Happy を応援</string>
-    <string name="agent_voice_support_spoken">毎月ボバを贈って、オープンソースの Happy を応援</string>
+    <string name="agent_voice_support_title">Happy はオープンソースです</string>
+    <string name="agent_voice_support_line">毎月ボバを贈って、プロジェクトを応援してください。</string>
+    <string name="agent_voice_support_spoken">Happy はオープンソースです。毎月ボバを贈って、プロジェクトを応援してください。</string>
     <string name="agent_voice_title">音声</string>
     <string name="agent_voice_minutes_left">残り %1$d 分</string>
     <string name="agent_voice_used_up">使い切りました</string>

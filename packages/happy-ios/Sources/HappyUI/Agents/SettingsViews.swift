@@ -299,10 +299,11 @@ struct SettingsRow {
     /// What a hold on it offers (signing an account out), and VoiceOver's
     /// actions on it.
     var menu: [MenuItem] = []
-    /// Art that leads the row at its own fixed size (Support's boba), in
-    /// place of the icon: the row is two rows tall, its title and line
-    /// wrap beside it at the person's text size. The page keeps the view,
-    /// so it is the same one each time the row is shown.
+    /// Art that leads the row in place of the icon (Support's boba), at a
+    /// tile's size and place, held at the top while its title and line
+    /// wrap beside it at the person's text size and the row grows for
+    /// them. The page keeps the view, so it is the same one each time the
+    /// row is shown.
     var art: UIView?
     /// What VoiceOver reads for the row instead of its words, where they
     /// read better as one sentence.
@@ -410,14 +411,14 @@ final class SettingsCardView: UIView {
         private lazy var menuInteraction = UIContextMenuInteraction(delegate: self)
         static let subtitleFont = Fonts.ui(.regular, size: 13)
 
-        /// An art row's words: a row's title and a quieter line under it,
-        /// at the person's text size (to 1.6×, as the call sheet's are), since
-        /// they wrap and the row grows to hold them.
+        /// An art row's words: a row's title and a quieter line under it at
+        /// the same size, at the person's text size (to 1.6×, as the call
+        /// sheet's are), since they wrap and the row grows to hold them.
         static func artFonts(_ traits: UITraitCollection) -> (title: UIFont, subtitle: UIFont) {
             func scaled(_ font: UIFont, _ style: UIFont.TextStyle) -> UIFont {
                 UIFontMetrics(forTextStyle: style).scaledFont(for: font, maximumPointSize: (font.pointSize * 1.6).rounded(), compatibleWith: traits)
             }
-            return (scaled(Fonts.ui(.regular, size: 17), .body), scaled(Fonts.ui(.regular, size: 15), .subheadline))
+            return (scaled(titleFont, .body), scaled(titleFont, .body))
         }
         /// A fold's chevron, turned down while what it folds is open.
         var chevronTurned = false {

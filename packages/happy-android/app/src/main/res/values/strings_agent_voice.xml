@@ -5,8 +5,9 @@
   so no happy-app catalog key has these. Translated in values-*/ (AndroidStringsTranslatedTest).
 -->
 <resources>
-    <string name="agent_voice_support_title">Support Happy open source by sending us boba every month</string>
-    <string name="agent_voice_support_spoken">Support Happy open source by sending us boba every month</string>
+    <string name="agent_voice_support_title">Happy is open source</string>
+    <string name="agent_voice_support_line">Support the project by sending us boba every month.</string>
+    <string name="agent_voice_support_spoken">Happy is open source. Support the project by sending us boba every month.</string>
     <string name="agent_voice_title">Voice</string>
     <string name="agent_voice_minutes_left">%1$d min left</string>
     <string name="agent_voice_used_up">Used up</string>

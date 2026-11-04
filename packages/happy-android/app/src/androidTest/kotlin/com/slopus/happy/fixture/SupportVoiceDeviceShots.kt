@@ -13,6 +13,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
 import com.slopus.happy.call.CallAllowance
+import com.slopus.happy.payments.Offer
+import com.slopus.happy.payments.RestoreResult
 import com.slopus.happy.ui.connection.AgentConnectionSettingsScreen
 import com.slopus.happy.ui.connection.AgentPerson
 import com.slopus.happy.ui.connection.AgentSettingsActions
@@ -20,6 +22,7 @@ import com.slopus.happy.ui.connection.AgentSettingsTags
 import com.slopus.happy.ui.connection.AgentVoiceScreen
 import com.slopus.happy.ui.connection.AgentVoiceSummary
 import com.slopus.happy.ui.connection.AgentVoiceTags
+import com.slopus.happy.ui.connection.SupportScreen
 import com.slopus.happy.ui.home.AccountMenu
 import com.slopus.happy.ui.home.AccountMenuEntry
 import com.slopus.happy.ui.settings.AboutInfo
@@ -94,13 +97,20 @@ class SupportVoiceDeviceShots {
         capture("settings-$suffix-light")
     }
 
-    /** The row's tap: Support Happy's sheet, the boba playing; `-e hold true` keeps it up for a recording. */
+    /**
+     * The row's page: Support Happy with nothing on sale, the boba's one
+     * play over and held, Subscribe greyed out, Restore and Manage under it;
+     * `-e hold true` keeps it up for a recording.
+     */
     private fun supportSheet(dark: Boolean) {
-        show(dark) { settings() }
-        rule.onNodeWithTag(AgentVoiceTags.SUPPORT).performScrollTo().performClick()
+        show(dark) { SupportScreen(Offer.Unavailable, onBack = {}, onRestore = { RestoreResult.NothingFound }) }
+        rule.onNodeWithTag(AgentVoiceTags.PAGE).assertExists()
+        // The boba's one play runs on the test's clock, which only moves
+        // while the test waits for idle: once the composition has loaded,
+        // wait again so the play finishes and holds.
+        SystemClock.sleep(1_500)
         rule.waitForIdle()
-        rule.onNodeWithTag(AgentVoiceTags.SHEET).assertExists()
-        capture("support-sheet-${if (dark) "dark" else "light"}", 1_500)
+        capture("support-page-${if (dark) "dark" else "light"}", 1_000)
         if (InstrumentationRegistry.getArguments().getString("hold") == "true") SystemClock.sleep(6_000)
     }
 

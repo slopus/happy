@@ -118,8 +118,12 @@ private fun ShaderGrainGradient(shader: RuntimeShader, palette: GrainPalette, mo
     )
 }
 
-/** About 30 frames a second: Paper's default speed moves slowly enough. */
-private const val FRAME_NANOS = 33_000_000L
+/**
+ * About 15 frames a second: Paper's default speed moves slowly enough, and
+ * each frame is a full-screen shader the GPU shares with the screen's own
+ * motion (a push, a swipe back). Between frames nothing is drawn.
+ */
+private const val FRAME_NANOS = 66_000_000L
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @Composable

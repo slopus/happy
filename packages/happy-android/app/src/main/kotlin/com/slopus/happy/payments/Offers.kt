@@ -63,7 +63,6 @@ sealed interface OfferSheet {
         is Welcome -> copy(offer = offer)
         is Used -> copy(offer = offer)
         is Required -> copy(offer = offer)
-        is Support -> copy(offer = offer)
     }
 
     /** Voice's welcome, before a first call: its "Start Voice Session" goes on to the call, for free. */
@@ -74,9 +73,6 @@ sealed interface OfferSheet {
 
     /** The relay's voice is refused without the subscription: voice's sheet with no free way on. */
     data class Required(override val offer: Offer) : OfferSheet
-
-    /** Support us: the boba and what supporting Happy is for, nothing about voice and no voice session. */
-    data class Support(override val offer: Offer) : OfferSheet
 }
 
 /** How an offer sheet was closed. */
@@ -193,7 +189,7 @@ class Offers(
         }
     }
 
-    /** [ask] for [sheet], answered to no one: Support us, which only offers. */
+    /** [ask] for [sheet], answered to no one. */
     fun show(sheet: OfferSheet) {
         scope.launch { ask(sheet) }
     }

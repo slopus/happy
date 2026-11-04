@@ -3,10 +3,10 @@ import HappyCore
 import HappyLayout
 import UIKit
 
-/// Support us, in settings' cards, the same on a computer's page and a
-/// Happy account's. Subscribe opens the app's one Support sheet
-/// (`Offers`, always, on sale or not); Restore restores, on the tap only;
-/// a subscriber is thanked. Nothing restores or charges on opening it.
+/// Support us, in a Happy account's settings' cards (an agent connection's
+/// has Support Happy's boba row instead). Subscribe pushes Support Happy's
+/// page (`SupportViewController`, always, on sale or not); Restore
+/// restores, on the tap only; a subscriber is thanked. Nothing restores or charges on opening it.
 /// The relay's voice access remains the server's decision.
 ///
 /// happy-app's SettingsView opens its hosted voluntary_support paywall;
@@ -46,7 +46,7 @@ final class SupportUsViewController: SettingsPageViewController {
         var purchases: [Row] = []
         if offer != .subscribed {
             purchases.append(offer.price.map { price in
-                Row(id: "subscribe", title: Text.subscribe, value: Strings.AgentVoice.perMonth(price), action: { [weak self] in self.map { Offers.shared.show(.support, over: $0) } })
+                Row(id: "subscribe", title: Text.subscribe, value: Strings.AgentVoice.perMonth(price), action: { [weak self] in self?.navigationController?.pushViewController(SupportViewController(), animated: true) })
             } ?? unavailable("subscribe", Text.subscribe, hint: Text.unavailable))
         }
         purchases.append(offers.canRestore

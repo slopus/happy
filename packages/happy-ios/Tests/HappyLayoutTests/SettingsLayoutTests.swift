@@ -49,33 +49,40 @@ final class SettingsLayoutTests: XCTestCase {
         XCTAssertEqual(searching.cards[0].frame, CGRect(x: 16, y: 8, width: 358, height: 52))
     }
 
-    /// Support's row under Profile: the boba a fixed 72 square, 16 from the
-    /// card's edge, top and bottom, as a tile sits 16 from its edge, so the
-    /// row is two rows tall; its words wrap beside it, before the chevron.
-    /// Words taller than the art grow the row, never the art.
-    func testAnArtRowIsTwoRowsTallAndGrowsOnlyForItsWords() {
+    /// Support's row under Profile: the boba a tile's 30 square where a
+    /// plain row's tile sits, its title where a plain row's title sits, both
+    /// held at the top; the line under the title wraps before the chevron
+    /// and the row grows down for it, as far below the words as the title
+    /// is from the top. Words never move the art or change its size.
+    func testAnArtRowKeepsATilesArtAtTheTopAndGrowsForItsWords() {
         typealias L = SettingsLayout
-        XCTAssertEqual(L.artTextWidth(390), 224)
-        // Two lines of title (44) and one of the line under it (20).
-        let two = L(width: 390, nameHeight: 34, subtitleHeight: 22, cards: [[L.RowSpec(hasIcon: false, accessory: .chevron, art: L.ArtText(title: 44, subtitle: 20))]], showsStrip: false)
+        XCTAssertEqual(L.artTextWidth(390), 264)
+        // One line of title (21) and two of the line under it (41).
+        let two = L(width: 390, nameHeight: 34, subtitleHeight: 22, cards: [[L.RowSpec(hasIcon: false, accessory: .chevron, art: L.ArtText(title: 21, subtitle: 41))]], showsStrip: false)
         let row = two.cards[0].rows[0]
-        XCTAssertEqual(row.box, CGRect(x: 0, y: 0, width: 358, height: 104))
-        XCTAssertEqual(row.box.height, 2 * L.Metrics.row)
-        XCTAssertEqual(row.art, CGRect(x: 16, y: 16, width: 72, height: 72))
-        XCTAssertEqual(row.title, CGRect(x: 102, y: 19, width: 224, height: 44))
-        XCTAssertEqual(row.subtitle, CGRect(x: 102, y: 65, width: 224, height: 20))
-        XCTAssertEqual(row.chevron, CGRect(x: 334, y: 45, width: 8, height: 14))
+        XCTAssertEqual(row.box, CGRect(x: 0, y: 0, width: 358, height: 95))
+        XCTAssertEqual(row.art, CGRect(x: 16, y: 11, width: 30, height: 30))
+        XCTAssertEqual(row.title, CGRect(x: 62, y: 15, width: 264, height: 22))
+        XCTAssertEqual(row.subtitle, CGRect(x: 62, y: 39, width: 264, height: 41))
+        XCTAssertEqual(row.chevron, CGRect(x: 334, y: 41, width: 8, height: 14))
         XCTAssertNil(row.icon)
         XCTAssertNil(row.separator)
-        // At a large text size: six lines (172) make the row 204 tall; the
-        // art keeps its size, centred.
-        let tall = L(width: 390, nameHeight: 34, subtitleHeight: 22, cards: [[L.RowSpec(hasIcon: false, accessory: .chevron, art: L.ArtText(title: 120, subtitle: 50))]], showsStrip: false).cards[0].rows[0]
-        XCTAssertEqual(tall.box.height, 204)
-        XCTAssertEqual(tall.art, CGRect(x: 16, y: 66, width: 72, height: 72))
-        XCTAssertEqual(tall.title.minY, 16)
-        XCTAssertEqual(tall.subtitle?.maxY, 188)
-        // On a 320 phone the words get 154.
-        XCTAssertEqual(L.artTextWidth(320), 154)
+        // The art and title stand exactly where a plain row's tile and title do.
+        let plain = L(width: 390, nameHeight: 34, subtitleHeight: 22, cards: [[L.RowSpec(hasIcon: true, accessory: .chevron)]], showsStrip: false).cards[0].rows[0]
+        XCTAssertEqual(row.art, plain.icon)
+        XCTAssertEqual(row.title.origin, plain.title.origin)
+        // A title alone is a plain row's height.
+        let alone = L(width: 390, nameHeight: 34, subtitleHeight: 22, cards: [[L.RowSpec(hasIcon: false, accessory: .chevron, art: L.ArtText(title: 21, subtitle: 0))]], showsStrip: false).cards[0].rows[0]
+        XCTAssertEqual(alone.box.height, L.Metrics.row)
+        XCTAssertNil(alone.subtitle)
+        // At a large text size: the row grows to 212; the art stays put.
+        let tall = L(width: 390, nameHeight: 34, subtitleHeight: 22, cards: [[L.RowSpec(hasIcon: false, accessory: .chevron, art: L.ArtText(title: 60, subtitle: 120))]], showsStrip: false).cards[0].rows[0]
+        XCTAssertEqual(tall.box.height, 212)
+        XCTAssertEqual(tall.art, CGRect(x: 16, y: 11, width: 30, height: 30))
+        XCTAssertEqual(tall.title.minY, 15)
+        XCTAssertEqual(tall.subtitle?.maxY, 197)
+        // On a 320 phone the words get 194.
+        XCTAssertEqual(L.artTextWidth(320), 194)
     }
 
     /// Switching profiles keeps the page where it was, unless the new

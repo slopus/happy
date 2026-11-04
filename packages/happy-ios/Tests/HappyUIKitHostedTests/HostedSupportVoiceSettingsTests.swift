@@ -62,8 +62,8 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
         }
     }
 
-    private func until(_ condition: () -> Bool) async throws {
-        for _ in 0..<100 where !condition() { try await Task.sleep(for: .milliseconds(50)) }
+    private func until(seconds: Int = 5, _ condition: () -> Bool) async throws {
+        for _ in 0..<(seconds * 20) where !condition() { try await Task.sleep(for: .milliseconds(50)) }
         XCTAssertTrue(condition(), "never came")
     }
 
@@ -128,14 +128,14 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
         return settings
     }
 
-    /// The row the boba leads, as drawn: two rows tall at least, the boba
-    /// its one size, and every word inside the row.
+    /// The row the boba leads, as drawn: the boba a tile's size where a
+    /// tile sits, held at the top however tall the words make the row, and
+    /// every word inside the row.
     private func checkSupportRow(_ settings: SettingsViewController, file: StaticString = #filePath, line: UInt = #line) throws {
         let row = try XCTUnwrap(subview(SettingsCardView.RowView.self, in: settings.view) { $0.accessibilityIdentifier == "settings:support-boba" }, file: file, line: line)
         let art = try XCTUnwrap(subview(SupportBobaArt.self, in: row), file: file, line: line)
-        XCTAssertEqual(art.frame.size, CGSize(width: 72, height: 72), file: file, line: line)
-        XCTAssertGreaterThanOrEqual(row.bounds.height, 2 * SettingsLayout.Metrics.row, file: file, line: line)
-        XCTAssertEqual(art.frame.minX, 16, file: file, line: line)
+        XCTAssertEqual(art.frame, CGRect(x: 16, y: 11, width: 30, height: 30), file: file, line: line)
+        XCTAssertGreaterThan(row.bounds.height, SettingsLayout.Metrics.row, file: file, line: line)
         for label in row.subviews.compactMap({ $0 as? UILabel }) where !label.isHidden && !(label.text ?? "").isEmpty {
             let needed = label.sizeThatFits(CGSize(width: label.bounds.width, height: .greatestFiniteMagnitude)).height
             XCTAssertLessThanOrEqual(needed, label.bounds.height + 1, "\(label.text ?? "") is clipped", file: file, line: line)
@@ -156,8 +156,8 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
             XCTAssertEqual(cards.firstIndex(of: ["profile"]), 1)
             XCTAssertEqual(cards.firstIndex(of: ["support-boba"]), 2, "Support Happy is not right under Profile: \(cards)")
             XCTAssertEqual(settings.shownRow("agent-voice")?.value, "12 min left")
-            XCTAssertEqual(settings.shownRow("support-boba")?.title, "Support Happy open source by sending us boba every month")
-            XCTAssertNil(settings.shownRow("support-boba")?.subtitle)
+            XCTAssertEqual(settings.shownRow("support-boba")?.title, "Happy is open source")
+            XCTAssertEqual(settings.shownRow("support-boba")?.subtitle, "Support the project by sending us boba every month.")
             window.layoutIfNeeded()
             try checkSupportRow(settings)
             // The boba stays still on Settings.
@@ -168,17 +168,29 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
             XCTAssertEqual(art.scene.progress, 1, accuracy: 0.001)
             capture(window, "settings")
 
-            // The row opens Support Happy's sheet: the boba moving, no voice session.
+            // The row pushes Support Happy's page, no voice session:
+            // Subscribe greyed out with nothing on sale, the boba plays once
+            // and holds its last frame, and a tap plays it once more. It
+            // never loops.
             settings.tapRow("support-boba")
-            try await until { settings.presentedViewController is SupportSheetViewController }
-            let sheet = try XCTUnwrap(settings.presentedViewController as? SupportSheetViewController)
+            try await until { navigation.topViewController is SupportViewController && navigation.transitionCoordinator == nil }
+            let sheet = try XCTUnwrap(navigation.topViewController as? SupportViewController)
             try await Task.sleep(for: .seconds(1.2))
-            XCTAssertNil(subview(SessionButton.self, in: sheet.view), "the support sheet offers a voice session")
-            XCTAssertNil(sheet.subscribe, "something is on sale")
-            if !UIAccessibility.isReduceMotionEnabled { XCTAssertTrue(sheet.isAnimating, "the boba doesn't move in the sheet") }
+            XCTAssertNil(subview(SessionButton.self, in: sheet.view), "the support page offers a voice session")
+            XCTAssertEqual(sheet.subscribe?.isEnabled, false, "something is on sale")
+            XCTAssertNotNil(sheet.manage)
+            if !UIAccessibility.isReduceMotionEnabled {
+                XCTAssertTrue(sheet.isAnimating, "the boba doesn't play as the sheet appears")
+                try await until(seconds: 6) { !sheet.isAnimating && sheet.bobaProgress == 1 }
+                try await Task.sleep(for: .seconds(1))
+                XCTAssertFalse(sheet.isAnimating, "the boba loops")
+                sheet.replayBoba()
+                XCTAssertTrue(sheet.isAnimating, "a tap doesn't play the boba again")
+                try await until(seconds: 6) { !sheet.isAnimating && sheet.bobaProgress == 1 }
+            }
             capture(window, "support-sheet")
-            await withCheckedContinuation { done in sheet.dismiss(animated: false) { done.resume() } }
-            try await until { settings.presentedViewController == nil && navigation.transitionCoordinator == nil }
+            navigation.popViewController(animated: false)
+            try await until { navigation.topViewController === settings && navigation.transitionCoordinator == nil }
 
             settings.tapRow("agent-voice")
             try await until { navigation.topViewController is AgentVoiceViewController && navigation.transitionCoordinator == nil }
@@ -190,7 +202,7 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
     }
 
     /// A 320-wide phone and the largest text sizes: the words wrap, the row
-    /// grows, the boba stays 72 and nothing is cut.
+    /// grows, the boba stays a tile at the top and nothing is cut.
     func testNarrowAndLargeTextWrapWithoutClipping() async throws {
         _ = try await hostedOffers("unconfigured", for: self)
         let rig = try await rig()
@@ -218,7 +230,7 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
         }
     }
 
-    /// Support Happy's sheet with the debug preview of the subscription.
+    /// Support Happy's page with the debug preview of the subscription.
     func testSupportSheetPreview() async throws {
         _ = try await hostedOffers("unconfigured", preview: CallOffer.price, for: self)
         let rig = try await rig()
@@ -226,13 +238,12 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
         let (navigation, window) = try await host(settings)
         try await until { settings.shownRow("profile")?.value == "Alex Rivera" }
         settings.tapRow("support-boba")
-        try await until { settings.presentedViewController is SupportSheetViewController }
-        let sheet = try XCTUnwrap(settings.presentedViewController as? SupportSheetViewController)
-        XCTAssertNotNil(sheet.subscribe)
+        try await until { navigation.topViewController is SupportViewController && navigation.transitionCoordinator == nil }
+        let sheet = try XCTUnwrap(navigation.topViewController as? SupportViewController)
+        XCTAssertEqual(sheet.subscribe?.isEnabled, true)
         XCTAssertNil(subview(SessionButton.self, in: sheet.view))
         try await Task.sleep(for: .seconds(1.2))
         capture(window, "support-sheet-preview")
-        sheet.dismiss(animated: false)
         withExtendedLifetime(navigation) {}
     }
 
@@ -275,7 +286,7 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
         }
     }
 
-    /// Support Happy's sheet with the boba playing, frame by frame (about
+    /// Support Happy's page with the boba playing, frame by frame (about
     /// 8 a second), for the motion capture.
     func testBobaFrames() async throws {
         _ = try await hostedOffers("unconfigured", for: self)
@@ -288,8 +299,7 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
             try await until { navigation.transitionCoordinator == nil && settings.viewIfLoaded?.window != nil }
             try await Task.sleep(for: .milliseconds(300))
             settings.tapRow("support-boba")
-            try await until { settings.presentedViewController is SupportSheetViewController }
-            let sheet = try XCTUnwrap(settings.presentedViewController as? SupportSheetViewController)
+            try await until { navigation.topViewController is SupportViewController }
             try await Task.sleep(for: .milliseconds(600))
             let started = Date()
             var index = 0
@@ -305,7 +315,6 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
                 index += 1
                 try await Task.sleep(for: .milliseconds(60))
             }
-            sheet.dismiss(animated: false)
             withExtendedLifetime(navigation) {}
             window.isHidden = true
         }
