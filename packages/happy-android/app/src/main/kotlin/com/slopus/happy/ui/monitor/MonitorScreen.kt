@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
@@ -58,7 +59,7 @@ import kotlinx.coroutines.withContext
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @Composable
-internal fun MonitorScreen(state: SystemMonitorFeed.State, name: String, onBack: () -> Unit) {
+internal fun MonitorScreen(state: SystemMonitorFeed.State, name: String, onBack: () -> Unit, actions: @Composable RowScope.() -> Unit = {}) {
     var searching by rememberSaveable { mutableStateOf(false) }
     var filter by rememberSaveable { mutableStateOf("") }
     var column by rememberSaveable { mutableStateOf(ProcessTable.Column.Cpu) }
@@ -89,6 +90,7 @@ internal fun MonitorScreen(state: SystemMonitorFeed.State, name: String, onBack:
     PlaceScaffold(name, onBack, tag = "monitor.screen", actions = {
         BarIconButton(Ionicon.SearchOutline, searchLabel, { searching = true }, Modifier.testTag("monitor.search"))
         MonitorSortMenu(sort, chooseSort)
+        actions()
     }, bar = if (!searching) null else {
         {
             AgentTopBar(tag = "monitor.search.bar", container = HappyTheme.colors.surface,
