@@ -106,4 +106,5 @@
     <string name="conversation_failure_internal">Qualcosa è andato storto: %1$s</string>
     <string name="conversation_editor_expand">Espandi</string>
     <string name="conversation_editor_collapse">Comprimi</string>
+    <string name="conversation_story">Storia</string>
 </resources>

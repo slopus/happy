@@ -70,7 +70,16 @@ sealed interface ConversationRow {
         val createdAt: Long = 0,
         /** Shown whole: a long one is cut at its first lines until tapped open ([com.slopus.happy.ui.conversation.UserFold]). */
         val opened: Boolean = false,
+        /** The story a reply answers, quoted above its words. */
+        val story: StoryQuote? = null,
     ) : ConversationRow
+
+    /**
+     * A story reply's quote: who posted the story (a person who reposted it,
+     * else its agent; [author] as named now, null while unnamed) and its
+     * caption. Its first frame is the message's `story-frame` when [frame], over [thumbhash].
+     */
+    data class StoryQuote(val agentId: String, val seed: String, val person: Boolean, val author: String?, val caption: String?, val frame: Boolean, val thumbhash: String? = null)
 
     /**
      * An answer's text. While it streams, [live] carries its words as they
@@ -223,8 +232,10 @@ class ConversationRowBuilder(
         cache[message.id]?.let { if (!streaming && !it.streaming && it.message == message && (!it.names || it.references === references)) return it.rows }
         val rows = build(message, agentId, parentAgentId, streaming, if (streaming) ::live else null, references)
         val shown = message.content.mapNotNull { block -> (block as? Block.ToolCall)?.presentation?.let(::inlineCandidate) }
-        val names = shown.isNotEmpty() || message.content.any { it is Block.Text && References.mayHold(it.text) }
+        val names = shown.isNotEmpty() || message.quote != null || message.content.any { it is Block.Text && References.mayHold(it.text) }
         if (names) named?.let { tell -> message.content.forEach { if (it is Block.Text) tell(it.text) } }
+        // A story a person reposted names them.
+        message.quote?.get("userId").str?.let { named?.invoke("<happy-user id=\"$it\"/>") }
         if (references != null) shown.filter { references.artifacts[it] == null }.takeIf { it.isNotEmpty() }?.let { pages?.invoke(it) }
         // The pictures are read here, on the lane, so the rows find them read on the main thread.
         for (row in rows) when (row) {
@@ -308,13 +319,14 @@ class ConversationRowBuilder(
             // The agent that manages this one gives it its work: it reads as the person's lane.
             val fromManager = message.role == "agent" && sender != null && sender != agentId
             if (message.role == "user" || fromManager) {
+                val story = message.quote?.takeIf { message.role == "user" && it["kind"].str == "story" }?.let { storyQuote(it, references) }
                 val text = message.content.filterIsInstance<Block.Text>().joinToString("\n") { it.text }
                     .let { if (fromManager && sender != null) inboundText(it, sender) else it }.trim()
                     .let { plain(it, references) }
                 val pictures = message.content.filterIsInstance<Block.Image>()
                 if (text.isEmpty() && pictures.isEmpty()) return emptyList()
                 val delivery = if (message.status == "pending") Delivery.Pending else Delivery.Sent
-                return listOf(ConversationRow.User("$id:user", id, text, parseMarkdown(text), pictures, delivery, message.createdAt))
+                return listOf(ConversationRow.User("$id:user", id, text, parseMarkdown(text), pictures, delivery, message.createdAt, story = story))
             }
             val rows = ArrayList<ConversationRow>()
             message.content.forEachIndexed { index, block ->
@@ -389,6 +401,13 @@ class ConversationRowBuilder(
         fun askKey(questionId: String): String = "ask:$questionId"
 
         /** What another agent said, without the addressing line the daemon puts ahead of it. */
+        fun storyQuote(quote: JsonObject, references: References?): ConversationRow.StoryQuote? {
+            val agentId = quote["agentId"].str ?: return null
+            val userId = quote["userId"].str
+            val author = if (userId != null) references?.users?.get(userId) else references?.agents?.get(agentId)?.label
+            return ConversationRow.StoryQuote(agentId, userId ?: agentId, userId != null, author, quote["caption"].str, quote["frame"].obj != null, quote["frame"].obj?.get("thumbhash").str)
+        }
+
         fun inboundText(text: String, agentId: String): String {
             val lead = "Message from agent $agentId:"
             return if (text.startsWith(lead)) text.removePrefix(lead).trimStart() else text

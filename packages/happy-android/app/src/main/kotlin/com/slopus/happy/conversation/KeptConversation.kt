@@ -82,6 +82,7 @@ data class KeptConversation(
             message.status?.let { put("status", it) }
             message.runId?.let { put("runId", it) }
             putJsonObject("metadata") { message.senderAgentId?.let { put("senderAgentId", it) } }
+            message.quote?.let { put("quote", it) }
             message.failure?.let { put("failure", it) }
             message.error?.let { put("error", it) }
         }

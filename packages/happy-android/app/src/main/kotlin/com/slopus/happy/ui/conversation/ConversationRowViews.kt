@@ -14,6 +14,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import com.slopus.happy.agent.AgentClient
+import com.slopus.happy.ui.components.avatar.PlaceholderAvatar
+import com.slopus.happy.ui.connection.AgentPicture
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -89,6 +94,7 @@ object ConversationRowTags {
     const val NOTICE = "conversation.notice"
     /** A long message's Show full / Show less ([UserFold]). */
     const val USER_FOLD = "conversation.user.fold"
+    const val STORY = "conversation.story"
 }
 
 /** The rows' own measures; text and user bubbles are the legacy chat's (MessageSpec), a turn's own rows [TurnRowSpec]. */
@@ -101,6 +107,7 @@ object ConversationRowSpec {
     val photosGap = 4.dp
     val label = happyTextStyle(fontSize = 13, lineHeight = 18, weight = FontWeight.SemiBold)
     val body = happyTextStyle(fontSize = 14, lineHeight = 20)
+    val storyLine = happyTextStyle(fontSize = 12, lineHeight = 16)
     val notice = happyTextStyle(fontSize = 13, lineHeight = 18)
     val icon = 16.dp
 }
@@ -139,6 +146,8 @@ class ConversationRowActions(
     val videos: VideoOpening? = null,
     /** HTML artifacts shown inline under their cards; null where none are. */
     val pages: InlinePages? = null,
+    /** The conversation's title: who posted its own stories, where the lists don't name it. */
+    val title: String? = null,
 )
 
 /** Plays the recording [ref] whose tile is [key]: in the viewer, once it can ([VideoOpening]). */
@@ -331,6 +340,7 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
             onTap = if (cut != null) ({ actions.onToggleMessage(row.key) }) else null,
             tapLabel = toggle,
             body = if (prose != null) { _ -> UserProse(row, prose, cut, actions.legacy) } else null,
+            header = row.story?.let { story -> { StoryQuoteCard(story, row.messageId, actions.title) } },
         )
     } else if (row.pictures.isNotEmpty()) {
         Box(
@@ -338,6 +348,37 @@ private fun UserRow(row: ConversationRow.User, bubble: BubblePalette, actions: C
                 .fillMaxWidth()
                 .padding(horizontal = ConversationRowSpec.marginHorizontal, vertical = ConversationRowSpec.marginVertical),
         ) { photos(row, actions) }
+    }
+}
+
+/**
+ * Desktop's story-reply quote, 4 over the person's bubble: a surfaceHighest
+ * card (radius 10, padding 6, at most 280 wide) with the story's first frame
+ * (36 × 64, radius 6, cropped to fill; surfaceRipple without one) and, 8
+ * beside it and centred, 2 apart: "Story" (12/16 textSecondary), the
+ * author's 16 avatar and name ([ConversationRowSpec.label]) 6 apart, and the
+ * caption on one line (12/16 textSecondary). The frame never plays, and a
+ * tap does nothing: the phone has no story viewer.
+ */
+@Composable
+private fun StoryQuoteCard(story: ConversationRow.StoryQuote, messageId: String, title: String?) {
+    val colors = HappyTheme.colors
+    Row(
+        Modifier.padding(bottom = 4.dp).testTag(ConversationRowTags.STORY).widthIn(max = 280.dp).clip(RoundedCornerShape(10.dp)).background(colors.surfaceHighest).padding(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val frame = "/v0/agents/${AgentClient.escape(story.agentId)}/messages/${AgentClient.escape(messageId)}/story-frame"
+        if (story.frame) AgentPicture(frame, story.thumbhash, 36.dp, radius = 6.dp, height = 64.dp) else Box(Modifier.size(36.dp, 64.dp).clip(RoundedCornerShape(6.dp)).background(colors.surfaceRipple))
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(stringResource(R.string.conversation_story), style = ConversationRowSpec.storyLine, color = colors.textSecondary, maxLines = 1)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                PlaceholderAvatar(story.seed, 16.dp)
+                val untitled = if (story.person) "" else title ?: stringResource(R.string.reference_untitled_agent)
+                Text(story.author ?: untitled, style = ConversationRowSpec.label, color = colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            story.caption?.let { Text(it, style = ConversationRowSpec.storyLine, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        }
     }
 }
 

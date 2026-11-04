@@ -205,6 +205,8 @@ fun UserMessage(
     /** Tapping the bubble does this instead, said as [tapLabel]: a long message opens or is cut back. */
     onTap: (() -> Unit)? = null,
     tapLabel: String? = null,
+    /** Above the bubble, against it: a story reply's quote. */
+    header: (@Composable () -> Unit)? = null,
 ) {
     val message = row.message
     val colors = HappyTheme.colors
@@ -298,6 +300,7 @@ fun UserMessage(
                     .padding(horizontal = MessageSpec.authorPaddingHorizontal),
             )
         }
+        header?.invoke()
         val discardLabel = stringResource(R.string.common_discard)
         val liftBlocks = when (val display = row.display) {
             is UserDisplay.Text -> display.blocks

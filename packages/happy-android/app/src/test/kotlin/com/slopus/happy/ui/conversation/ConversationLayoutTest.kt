@@ -340,6 +340,26 @@ class ConversationLayoutTest {
         rule.onNodeWithText("And again").assertDoesNotExist()
     }
 
+    @Test fun `a story reply quotes the story in a card 4 over its bubble, against the right`() {
+        val reply = ConversationRow.User(
+            "r:user", "r", "Looks great!", parseMarkdown("Looks great!"), emptyList(), Delivery.Sent,
+            story = ConversationRow.StoryQuote("a1", "a1", person = false, author = "Scout", caption = "Shipped the new onboarding today", frame = false),
+        )
+        show(ConversationState(created = true, loaded = true, rows = listOf(reply), agent = agent))
+        val card = rule.node(ConversationRowTags.STORY).bounds
+        val bubble = rule.node(MessageTags.USER_BUBBLE).bounds
+        // The frame's 64 and 6 above and below; no wider than 280.
+        assertDp("card height", 76, card.height)
+        assertTrue("card at most 280", card.width <= 280.dp)
+        assertDp("against the bubble's right", bubble.right, card.right)
+        assertDp("4 over the bubble", bubble.top - 4.dp, card.bottom)
+        rule.onNodeWithText("Story").assertIsDisplayed()
+        rule.onNodeWithText("Scout").assertIsDisplayed()
+        rule.onNodeWithText("Shipped the new onboarding today").assertIsDisplayed()
+        rule.onNodeWithText("Replying to", substring = true).assertDoesNotExist()
+        shot("story-reply")
+    }
+
     @Test fun `a failed send offers retry and discard`() {
         val retries = ArrayList<String>()
         val failed = ConversationRow.User("x:user", "x", "Hello", parseMarkdown("Hello"), emptyList(), Delivery.Failed(Problem.Said("Unknown model.")))

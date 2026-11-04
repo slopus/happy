@@ -106,4 +106,5 @@
     <string name="conversation_failure_internal">發生了問題：%1$s</string>
     <string name="conversation_editor_expand">展開</string>
     <string name="conversation_editor_collapse">收合</string>
+    <string name="conversation_story">限時動態</string>
 </resources>
