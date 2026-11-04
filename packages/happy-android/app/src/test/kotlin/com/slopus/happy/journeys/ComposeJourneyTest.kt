@@ -114,6 +114,9 @@ class ComposeJourneyTest {
         rule.node(HomeTags.COMPOSE).performClick()
         rule.waitFor(NewWorkTags.FOLDER)
         rule.onNode(hasText("● Online") and hasAnyAncestor(hasTestTag(NewWorkTags.MACHINE_STATUS)), useUnmergedTree = true).assertExists()
+        // The folder can show from the first machine row before the rest of
+        // initial sync finishes. Kinds stay available until that is known.
+        rule.waitUntil(5_000) { newSession.options.value?.machinesSynced == true }
         rule.node(ComposeChatTags.kind(ComposeKind.Task)).assertIsNotEnabled()
         rule.node(ComposeChatTags.kind(ComposeKind.Bot)).assertIsNotEnabled()
         rule.waitUntil(5_000) { newSession.draft.value.selectedPath == "/h/repo" }
