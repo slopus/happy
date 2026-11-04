@@ -62,4 +62,6 @@
     <string name="surface_unavailable">「%1$s」は利用できません。</string>
     <string name="surface_gone_deleted">削除されたか、表示する権限がありません。戻ってきたときのためにここに残ります。</string>
     <string name="surface_gone_archived">アーカイブされたか、表示する権限がありません。戻ってきたときのためにここに残ります。</string>
+    <string name="surface_chat">チャット</string>
+    <string name="surface_chat_failed">チャットを開けませんでした</string>
 </resources>

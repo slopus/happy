@@ -552,6 +552,33 @@ class AgentSessionTest {
     }
 
     @Test
+    fun aSurfacesChatIsMadeOnceAskedAgainWhileUnreachableAndThenKnown() = runBlocking {
+        agent.bootstrap = Wire.bootstrap(surfaces = listOf(Wire.surface("s1", "Plan", "document").with("version", "01")))
+        val asked = mutableListOf<String>()
+        val session = sessions(transport = { object : Transport by agent {
+            override suspend fun request(method: String, path: String, credential: String, body: ByteArray?, headers: Map<String, String>, category: RequestCategory): TransportResponse {
+                if (path != "/v0/surfaces/s1/chat") return agent.request(method, path, credential, body, headers, category)
+                asked += body?.decodeToString().orEmpty()
+                // The first try never arrives; the second makes the chat.
+                if (asked.size == 1) return TransportResponse(503, body = "{}".toByteArray())
+                val answer = buildJsonObject {
+                    put("agent", buildJsonObject { put("id", "chat-agent"); put("workspaceId", "w-chat") })
+                    put("surface", Wire.surface("s1", "Plan", "document").with("chatAgentId", "chat-agent").with("version", "02"))
+                }
+                return TransportResponse(200, mapOf("content-type" to "application/json"), answer.toString().toByteArray())
+            }
+        } }).session(id)!!
+        eventually({ session.surfaces.value.loaded }) { it }
+        assertEquals("chat-agent", session.ensureSurfaceChat("s1"))
+        assertEquals("Asked twice", 2, asked.size)
+        assertEquals("under one mutationId", 1, asked.map { Regex("\"mutationId\":\"([^\"]+)\"").find(it)?.groupValues?.get(1) }.distinct().size)
+        assertEquals("chat-agent", session.surfaces.value["s1"]?.chatAgentId)
+        // Known now: opened without asking.
+        assertEquals("chat-agent", session.ensureSurfaceChat("s1"))
+        assertEquals(2, asked.size)
+    }
+
+    @Test
     fun unsupportedSurfaceRefreshLeavesTheKeptCatalogAvailable() = runBlocking {
         agent.bootstrap = Wire.bootstrap(surfaces = listOf(Wire.surface("s1", "Groceries", "todo")))
         val session = sessions().session(id)!!

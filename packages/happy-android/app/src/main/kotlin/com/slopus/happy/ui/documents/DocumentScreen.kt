@@ -81,12 +81,12 @@ object DocumentScreenTags {
  * phone kept the moment it opens, kept in step with the computer by its
  * sync, and with whoever else has it open. The bar says where saving
  * stands (Saved, Saving…, Waiting to sync), or for 4 s that a change was
- * refused; its menu renames the document, opens its history and leaves it. The formatting bar
+ * refused; its menu opens the document's shared chat, renames it, opens its history and leaves it. The formatting bar
  * rides the keyboard while the text has focus. A computer without shared
  * documents shows the Markdown, read-only.
  */
 @Composable
-fun DocumentScreen(session: AgentSession, surfaceId: String, onBack: () -> Unit, onHistory: () -> Unit = {}) {
+fun DocumentScreen(session: AgentSession, surfaceId: String, onBack: () -> Unit, onHistory: () -> Unit = {}, open: ((Any) -> Unit)? = null) {
     val holder = viewModel(key = "document:${session.connectionId}:$surfaceId") { DocumentHolder(session, surfaceId) }
     val surface by session.surface(surfaceId).collectAsStateWithLifecycle(null)
     val phase by holder.phase.collectAsStateWithLifecycle()
@@ -122,7 +122,7 @@ fun DocumentScreen(session: AgentSession, surfaceId: String, onBack: () -> Unit,
         onBack = onBack,
         actions = {
             DocumentPeers(peers)
-            SurfaceMenu(session, surfaceId, onBack) { close ->
+            SurfaceMenu(session, surfaceId, onBack, open) { close ->
                 HappyMenuItem(stringResource(R.string.common_rename), onClick = { close(); renaming = true })
                 HappyMenuItem(stringResource(R.string.document_history), onClick = { close(); onHistory() })
             }

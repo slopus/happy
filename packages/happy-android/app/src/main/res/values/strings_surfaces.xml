@@ -96,4 +96,8 @@
     <string name="surface_unavailable">%1$s isn’t available.</string>
     <string name="surface_gone_deleted">It was deleted, or you can’t see it. It stays here in case it comes back.</string>
     <string name="surface_gone_archived">It was archived, or you can’t see it. It stays here in case it comes back.</string>
+
+    <!-- A Surface's one shared chat, from its menu (desktop b3204bde). -->
+    <string name="surface_chat">Chat</string>
+    <string name="surface_chat_failed">The chat couldn’t be opened</string>
 </resources>

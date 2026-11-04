@@ -62,4 +62,6 @@
     <string name="surface_unavailable">“%1$s”不可用。</string>
     <string name="surface_gone_deleted">它已被删除，或你无权查看。它会留在这里，以防恢复。</string>
     <string name="surface_gone_archived">它已被归档，或你无权查看。它会留在这里，以防恢复。</string>
+    <string name="surface_chat">聊天</string>
+    <string name="surface_chat_failed">无法打开聊天</string>
 </resources>

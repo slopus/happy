@@ -64,4 +64,6 @@
     <string name="surface_unavailable">«%1$s» non è disponibile.</string>
     <string name="surface_gone_deleted">È stato eliminato oppure non puoi vederlo. Resta qui nel caso torni.</string>
     <string name="surface_gone_archived">È stato archiviato oppure non puoi vederlo. Resta qui nel caso torni.</string>
+    <string name="surface_chat">Chat</string>
+    <string name="surface_chat_failed">Impossibile aprire la chat</string>
 </resources>

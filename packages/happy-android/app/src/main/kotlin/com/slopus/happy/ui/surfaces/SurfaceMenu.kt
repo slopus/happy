@@ -12,6 +12,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -20,6 +21,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slopus.happy.R
 import com.slopus.happy.agent.AgentSession
 import com.slopus.happy.agent.SurfaceType
+import com.slopus.happy.connection.AgentConnectionException
 import com.slopus.happy.references.ReferenceReader
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
@@ -28,6 +30,7 @@ import com.slopus.happy.ui.components.HappyDropdownMenu
 import com.slopus.happy.ui.components.HappyMenuItem
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.conversation.ConversationRoute
 import com.slopus.happy.ui.theme.HappyTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -38,10 +41,53 @@ fun SurfaceMenu(
     session: AgentSession,
     surfaceId: String,
     onBack: () -> Unit,
+    /** Pushes a route; given, the menu offers the Surface's shared chat. */
+    open: ((Any) -> Unit)? = null,
     extraItems: @Composable ColumnScope.(close: () -> Unit) -> Unit = {},
 ) {
     val catalog by session.surfaces.collectAsStateWithLifecycle()
     val surface = catalog[surfaceId] ?: return
+    val scope = rememberCoroutineScope()
+    var openingChat by remember { mutableStateOf(false) }
+    var chatRefused by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    val items: @Composable ColumnScope.(close: () -> Unit) -> Unit = { close ->
+        if (open != null) {
+            // Desktop b3204bde: the one chat everyone in the Surface shares, made the first time anyone opens it.
+            HappyMenuItem(
+                stringResource(R.string.surface_chat),
+                onClick = {
+                    close()
+                    openingChat = true
+                    scope.launch {
+                        try {
+                            open(ConversationRoute(session.connectionId, session.ensureSurfaceChat(surfaceId)))
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: AgentConnectionException) {
+                            chatRefused = context.getString(e.reason.text)
+                        } catch (e: Exception) {
+                            chatRefused = e.message.orEmpty()
+                        } finally {
+                            openingChat = false
+                        }
+                    }
+                },
+                enabled = !openingChat,
+            )
+        }
+        extraItems(close)
+    }
+    chatRefused?.let { reason ->
+        HappyAlert(
+            Alert(
+                title = stringResource(R.string.surface_chat_failed),
+                message = reason.ifEmpty { null },
+                buttons = listOf(AlertButton(stringResource(R.string.common_ok))),
+            ),
+            onDismiss = { chatRefused = null },
+        )
+    }
     // Who is in it and who made it, by name once the computer says them (desktop's `HappyAgentSurfaceHeader`).
     val ids = remember(surface.members, surface.creatorUserId) {
         (surface.members.mapNotNull { it.userId } + listOfNotNull(surface.creatorUserId)).distinct()
@@ -54,7 +100,7 @@ fun SurfaceMenu(
         creator = surface.creatorUserId?.let { names[it] }?.takeIf { it.isNotEmpty() },
         added = surface.type == SurfaceType.ARTIFACT || surface.type == SurfaceType.BOT || surface.type == SurfaceType.TASK,
     )
-    SurfaceLeaveMenu(surface.name, onBack, extraItems, people) { session.leaveSurface(surfaceId) }
+    SurfaceLeaveMenu(surface.name, onBack, items, people) { session.leaveSurface(surfaceId) }
 }
 
 /**

@@ -471,6 +471,32 @@ class AgentSession internal constructor(
     }
 
     /**
+     * A Surface's one shared chat (desktop b3204bde, `ensureSurfaceChat`):
+     * the agent it already has, or the one the computer makes the first time
+     * anyone asks. A request that never arrived, or a computer still
+     * preparing the chat's folder, is asked again (1, 2, 4 s, under one
+     * mutationId); a refusal is thrown at once. Answers the chat's agent ID.
+     */
+    suspend fun ensureSurfaceChat(surfaceId: String): String {
+        surfaces.value[surfaceId]?.chatAgentId?.let { return it }
+        val mutationId = AgentClient.newId()
+        var wait = 1_000L
+        while (true) {
+            try {
+                val body = client.decode<JsonObject>("POST", "/v0/surfaces/${AgentClient.escape(surfaceId)}/chat", buildJsonObject { put("mutationId", mutationId) })
+                (body["surface"] as? JsonObject)?.let { surface -> catalogLock.withLock { catalogState.update { it.withSurface(surface) } } }
+                return (body["agent"] as? JsonObject)?.string("id") ?: throw AgentConnectionException(AgentConnectionException.Reason.InvalidResponse)
+            } catch (error: AgentApiException) {
+                if (error.status in 400..499 || wait > 4_000) throw error
+            } catch (error: AgentConnectionException) {
+                if (error.reason != AgentConnectionException.Reason.Unavailable || wait > 4_000) throw error
+            }
+            delay(wait)
+            wait *= 2
+        }
+    }
+
+    /**
      * Refresh the Surface catalog for the lists' pull gesture. A journal or
      * local Surface change during the read wins; its snapshot cannot roll
      * that change back. Merge by resource version and retain accessible

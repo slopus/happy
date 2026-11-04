@@ -65,4 +65,6 @@
     <string name="surface_unavailable">„%1$s” jest niedostępne.</string>
     <string name="surface_gone_deleted">Zostało usunięte albo nie masz do niego dostępu. Zostaje tutaj na wypadek, gdyby wróciło.</string>
     <string name="surface_gone_archived">Zostało zarchiwizowane albo nie masz do niego dostępu. Zostaje tutaj na wypadek, gdyby wróciło.</string>
+    <string name="surface_chat">Czat</string>
+    <string name="surface_chat_failed">Nie udało się otworzyć czatu</string>
 </resources>
