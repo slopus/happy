@@ -6,6 +6,7 @@ import io.elevenlabs.BuildConfig
 import io.elevenlabs.audio.LiveKitAudioManager
 import io.elevenlabs.audio.NoOpAudioManager
 import io.elevenlabs.audio.SoftwareMuteProcessor
+import io.elevenlabs.audio.ConversationAudioHandler
 import io.elevenlabs.network.TokenService
 import io.elevenlabs.network.WebRTCConnection
 import io.elevenlabs.network.WebSocketConnection
@@ -76,17 +77,16 @@ internal object ConversationClientImpl {
                 )
             }
 
+        // Observe the same AudioSwitchHandler that owns focus and routing.
+        val outputType = if (finalConfig.useMediaStream) AudioType.MediaAudioType() else AudioType.CallAudioType()
+        val audioHandler = finalConfig.onAudioInterruption?.let { ConversationAudioHandler(context, outputType, it) }
         // Create LiveKit room
         val room = LiveKit.create(
             appContext = context,
             overrides = LiveKitOverrides(
                 audioOptions = AudioOptions(
-                    // null lets LiveKit apply its own default (pre-existing behavior)
-                    audioOutputType = if (finalConfig.useMediaStream) {
-                        AudioType.MediaAudioType()
-                    } else {
-                        null
-                    },
+                    audioOutputType = outputType,
+                    audioHandler = audioHandler,
                     javaAudioDeviceModuleCustomizer = { builder ->
                         builder.setSampleRate(finalConfig.audioInputSampleRate)
                     },

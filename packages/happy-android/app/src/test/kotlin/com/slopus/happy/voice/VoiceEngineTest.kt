@@ -9,6 +9,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -34,6 +35,7 @@ class VoiceEngineTest {
         var purchased = false
         var connect: suspend () -> Unit = {}
         var credentials: suspend () -> Unit = {}
+        val foreground = MutableStateFlow(true)
         lateinit var events: VoiceEvents
         lateinit var config: VoiceSessionConfig
         val connection = object : VoiceConnection {
@@ -73,6 +75,7 @@ class VoiceEngineTest {
             } },
             toolsFactory = { current, sent -> VoiceTools({ _, _ -> }, { null }, { _, _, _ -> }, sent, current) },
             dispatcher = StandardTestDispatcher(test.testScheduler), clock = { 123L },
+            foreground = foreground,
         )
         fun microphone(granted: Boolean = true, canAsk: Boolean = false) = object : MicrophonePermission {
             override suspend fun request(): MicrophoneAccess { log += "mic"; return MicrophoneAccess(granted, canAsk) }
@@ -84,6 +87,40 @@ class VoiceEngineTest {
         val f = Fixture(this)
         assertEquals(VoiceStart.MicrophoneDenied(false), f.engine.start("s", f.microphone(false)))
         assertEquals(listOf("mic"), f.log)
+        assertEquals(VoiceState(), f.engine.state.value)
+    }
+
+    @Test fun backgroundingEndsAnActiveCallAndRejectsStartsUntilForeground() = runTest {
+        val f = Fixture(this)
+        f.engine.start("s", f.microphone())
+        f.foreground.value = false
+        runCurrent()
+        assertEquals(VoiceState(), f.engine.state.value)
+        assertEquals(1, f.log.count { it == "end" })
+        val before = f.log.toList()
+        assertEquals(VoiceStart.Declined, f.engine.start("s", f.microphone()))
+        assertEquals("no permission prompt or allocation in the background", before, f.log)
+        f.foreground.value = true
+        runCurrent()
+        assertTrue(f.engine.start("s", f.microphone()) is VoiceStart.Started)
+        f.engine.stop()
+    }
+
+    @Test fun backgroundingDuringConnectClosesALateConnectionBeforeAnotherCanStart() = runTest {
+        val f = Fixture(this)
+        val connected = CompletableDeferred<Unit>()
+        f.connect = { withContext(NonCancellable) { connected.await() } }
+        val start = async { f.engine.start("s", f.microphone()) }
+        runCurrent()
+        f.foreground.value = false
+        runCurrent()
+        assertEquals(VoiceState(), f.engine.state.value)
+        f.foreground.value = true
+        assertEquals(VoiceStart.Declined, f.engine.start("next", f.microphone()))
+        connected.complete(Unit)
+        runCurrent()
+        assertTrue(start.isCancelled)
+        assertEquals(1, f.log.count { it == "end" })
         assertEquals(VoiceState(), f.engine.state.value)
     }
 

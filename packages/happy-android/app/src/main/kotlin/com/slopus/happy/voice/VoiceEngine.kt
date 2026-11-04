@@ -14,6 +14,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -41,6 +42,7 @@ class VoiceEngine(
     private val toolsFactory: (isCurrent: () -> Boolean, onSent: () -> Unit) -> VoiceTools,
     private val dispatcher: CoroutineDispatcher = Dispatchers.Main.immediate,
     private val clock: () -> Long = SystemClock::elapsedRealtime,
+    private val foreground: StateFlow<Boolean>? = null,
 ) : VoiceController {
     private val mutableState = MutableStateFlow(VoiceState())
     override val state = mutableState.asStateFlow()
@@ -52,7 +54,14 @@ class VoiceEngine(
     private var silence: Job? = null
     private var agentSpeaking = false
 
+    init {
+        foreground?.let { visibility ->
+            scope.launch(dispatcher) { visibility.collect { if (!it) stop() } }
+        }
+    }
+
     override suspend fun start(sessionId: String, microphone: MicrophonePermission): VoiceStart = withContext(dispatcher) {
+        if (foreground?.value == false) return@withContext VoiceStart.Declined
         if (closing != null || state.value.status in listOf(VoiceStatus.Connecting, VoiceStatus.Connected)) return@withContext VoiceStart.Declined
         val epoch = ++generation
         starting = currentCoroutineContext()[Job]

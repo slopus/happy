@@ -81,6 +81,7 @@ class ElevenLabsTransport(private val context: Context) : VoiceTransport {
             }
         },
         onDisconnect = { events.disconnected() },
+        onAudioInterruption = events::disconnected,
         onError = { _, _ -> events.error() },
         onModeChange = { events.agentSpeaking(it == ConversationMode.SPEAKING) },
         onVadScore = events::vad,

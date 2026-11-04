@@ -45,8 +45,9 @@ class VoiceContextTest {
     }
 
     @Test fun officialSdkPayloadUsesJwtDynamicVariablesAndOverrides() {
+        var disconnected = 0
         val events = object : VoiceEvents {
-            override fun disconnected() {}; override fun error() {}; override fun agentSpeaking(speaking: Boolean) {}; override fun vad(score: Float) {}
+            override fun disconnected() { disconnected++ }; override fun error() {}; override fun agentSpeaking(speaking: Boolean) {}; override fun vad(score: Float) {}
         }
         val tools = VoiceTools({ _, _ -> }, { null }, { _, _, _ -> }, {})
         val config = ElevenLabsTransport(ApplicationProvider.getApplicationContext<Context>()).configuration(
@@ -60,6 +61,8 @@ class VoiceContextTest {
         val agent = payload.getJSONObject("conversation_config_override").getJSONObject("agent")
         assertEquals("pt-br", agent.getString("language")); assertEquals("hello", agent.getString("first_message"))
         assertEquals("prompt", agent.getJSONObject("prompt").getString("prompt"))
+        config.onAudioInterruption!!.invoke()
+        assertEquals("audio interrupts use the same generation-guarded disconnect path", 1, disconnected)
     }
 
     @Test fun promptsAndExperimentsUsePersistentCountersAndGateDeveloperOverride() {

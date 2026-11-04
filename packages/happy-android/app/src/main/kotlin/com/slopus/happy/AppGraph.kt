@@ -252,6 +252,7 @@ class AppGraph(
     /** The SDK is allocated only inside connect(), never while constructing the app graph. */
     val voice: VoiceEngine = VoiceEngine(
         scope = scope,
+        foreground = foreground,
         service = VoiceApi(okHttp, clientId, { serverUrl }, { serverConfig.voiceUrl }, BuildConfig.ELEVENLABS_AGENT_ID),
         transport = ElevenLabsTransport(appContext),
         credentials = { (auth.state.value as? AuthState.SignedIn)?.credentials },

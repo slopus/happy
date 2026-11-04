@@ -102,7 +102,9 @@ data class ConversationConfig(
     val onDisconnect: ((details: DisconnectionDetails) -> Unit)? = null,
     val onError: ((code: Int, message: String?) -> Unit)? = null,
     val audioConfiguration: AudioPipelineConfiguration? = null,
-    val useMediaStream: Boolean = false
+    val useMediaStream: Boolean = false,
+    /** Happy patch: focus loss or removal of the selected headset ends this call. */
+    val onAudioInterruption: (() -> Unit)? = null,
 ) {
     init {
         agentId?.let { require(it.isNotBlank()) { "agentId cannot be blank" } }
