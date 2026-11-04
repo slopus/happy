@@ -12,16 +12,27 @@ public struct CallUsage: Codable, Equatable, Sendable {
     }
 
     public var spans: [Span] = []
+    /// The start of the last paid month counted (`ProMonth`): spans from
+    /// it on are kept however long the month runs (grace has no end), even
+    /// while whether there is one isn't known.
+    public var paidSince: Double?
 
-    public init(spans: [Span] = []) { self.spans = spans }
+    public init(spans: [Span] = [], paidSince: Double? = nil) {
+        self.spans = spans
+        self.paidSince = paidSince
+    }
 
     /// Seconds spent since `window` seconds before `now`; a span across
     /// that edge counts only the part after it. A span after `now` (the
     /// clock was put back) counts whole: turning the clock back gives no
     /// time back.
     public func used(at now: Double, window: Double) -> Double {
-        let from = now - window
-        return spans.reduce(0) { $0 + max(0, $1.end - max($1.start, from)) }
+        used(since: now - window)
+    }
+
+    /// Seconds spent since `from`, counted as `used(at:window:)` counts them.
+    public func used(since from: Double) -> Double {
+        spans.reduce(0) { $0 + max(0, $1.end - max($1.start, from)) }
     }
 
     /// Counts a call up to `end`; the same call again only grows its span.
@@ -72,51 +83,64 @@ public struct DefaultsCallUsageStore: CallUsageStore {
     }
 }
 
-/// The free voice time a device has on agent calls: 20 minutes in any 30
-/// days, rolling, counted here. Provisional, like the public agent it goes
-/// with (`PublicAgentCallGrants`): there is no server to ask yet, and
-/// nothing to buy that would lift it. Not a number of calls, and no other
-/// cap.
+/// The voice time a device has on agent calls, counted here: 20 free
+/// minutes in any 30 days, rolling, or, while the subscription gives a
+/// month (`Subscription.month()`), 5 hours in that month instead, not on
+/// top. Provisional, like the public agent it goes with
+/// (`PublicAgentCallGrants`): nothing on a server counts or enforces it.
+/// Not a number of calls, and no other cap.
 @MainActor
 public final class CallAllowance {
     public static let freeSeconds: Double = 20 * 60
     public static let window: Double = 30 * 86_400
+    public static let paidSeconds: Double = 5 * 3600
 
     private let store: any CallUsageStore
     private let free: Double
     private let window: Double
+    private let period: @MainActor () -> ProMonth?
     private var usage: CallUsage
 
-    public init(store: any CallUsageStore = DefaultsCallUsageStore(), free: Double = CallAllowance.freeSeconds, window: Double = CallAllowance.window) {
+    public init(store: any CallUsageStore = DefaultsCallUsageStore(), free: Double = CallAllowance.freeSeconds, window: Double = CallAllowance.window,
+                period: @escaping @MainActor () -> ProMonth? = { nil }) {
         self.store = store
         self.free = free
         self.window = window
+        self.period = period
         usage = store.load()
     }
 
     public func remaining(at now: Double) -> Double {
-        max(0, free - usage.used(at: now, window: window))
+        if let month = period() { return max(0, Self.paidSeconds - usage.used(since: month.start)) }
+        return max(0, free - usage.used(at: now, window: window))
     }
 
-    /// When some free time is back, once it has all been used.
+    /// When some time is back, once it has all been used: as older calls
+    /// pass out of the 30 days, or the paid month's end (none in grace).
     public func freeAgain(after now: Double) -> Double? {
-        usage.freeAgain(after: now, free: free, window: window)
+        if let month = period() { return usage.used(since: month.start) < Self.paidSeconds ? now : month.end }
+        return usage.freeAgain(after: now, free: free, window: window)
     }
 
     public func record(call id: String, from start: Double, to end: Double) {
         usage.record(call: id, from: start, to: end)
-        usage.forget(before: end - window)
+        if let month = period() { usage.paidSince = month.start }
+        usage.forget(before: min(end - window, usage.paidSince ?? .infinity))
         store.save(usage)
     }
 }
 
 
-/// What the voice paywall can offer once the free time is used. Nothing
-/// yet: the store's products, their prices and the subscription's
-/// entitlement aren't chosen, so the paywall says so and sells nothing.
-/// A purchase and a restore come with the products, never before.
+/// What the app's offer sheets sell: the subscription, RevenueCat's
+/// `pro`, at the store's own price (`Subscription.offer`); nothing, where
+/// the build has no RevenueCat key or nothing is on sale; or nothing
+/// because this customer has `pro` already.
 public enum CallOffer: Equatable, Sendable {
     case unavailable
+    /// The monthly subscription, at the price as the store words it.
+    case onSale(price: String)
+    /// This customer has `pro`: 5 hours of voice a month, nothing to sell.
+    case subscribed
     /// Debug builds' test screens only (`HAPPY_CALL_OFFER=preview`): the
     /// subscription drawn as if it were on sale, its button a preview that
     /// charges and grants nothing. Never in a release build. `price` is
@@ -124,12 +148,22 @@ public enum CallOffer: Equatable, Sendable {
     /// (`HAPPY_CALL_OFFER_PRICE`).
     case preview(price: String)
 
-    /// The monthly price as approved, until the store's own localised one
-    /// replaces it. It buys 5 hours of real-time voice a month.
+    /// The debug preview's price, standing in for the store's own.
     public static let price = "$20"
 
     public var onSale: Bool {
-        if case .preview = self { true } else { false }
+        switch self {
+        case .onSale, .preview: true
+        case .unavailable, .subscribed: false
+        }
+    }
+
+    /// The price drawn, where something is on sale.
+    public var price: String? {
+        switch self {
+        case .onSale(let price), .preview(let price): price
+        case .unavailable, .subscribed: nil
+        }
     }
 }
 
