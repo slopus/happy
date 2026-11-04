@@ -122,7 +122,8 @@ internal fun monitorRows(state: SystemMonitorFeed.State, filter: String, sort: P
             }.joinToString(" · ")
             val cpu = F.percent(process.cpuPercent)
             val bytes = F.bytes(process.memoryBytes)
-            add(MonitorRow.Process(process.pid, process.name, cpu, bytes, meta, row.cpuHistory, MonitorLevel.of(process.cpuPercent),
+            val peak = maxOf(1.0, row.cpuHistory.filterNotNull().maxOrNull() ?: 0.0)
+            add(MonitorRow.Process(process.pid, process.name, cpu, bytes, meta, row.cpuHistory.map { it?.div(peak) }, MonitorLevel.of(process.cpuPercent),
                 "${s(R.string.monitor_cpu)} $cpu, ${s(R.string.monitor_memory)} $bytes, $meta", first = index == 0, last = index == rows.lastIndex))
         }
         add(MonitorRow.Note("processes:footer", s(R.string.monitor_shown, rows.size, maxOf(processes.total, processes.items.size))))

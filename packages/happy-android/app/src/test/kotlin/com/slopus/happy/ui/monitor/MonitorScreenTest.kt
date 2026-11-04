@@ -2,6 +2,7 @@ package com.slopus.happy.ui.monitor
 
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
@@ -33,9 +34,12 @@ class MonitorScreenTest {
         rule.waitUntilAtLeastOneExists(hasTestTag("monitor.host"), 5_000)
         assertTrue(rule.node("monitor.host").bounds.top >= rule.node("place.bar").bounds.bottom)
         rule.node("monitor.search").performClick()
+        rule.waitUntilAtLeastOneExists(hasTestTag("monitor.process.1234"), 5_000)
+        rule.onNodeWithContentDescription("Sort: CPU ↓").assertExists()
         rule.node("agentSearch.field").performTextReplacement("python")
         rule.node("monitor.sort").performClick()
         rule.node("monitor.sort.Memory").performClick()
+        rule.onNodeWithContentDescription("Sort: Memory ↓").assertExists()
         rule.node("monitor.rows").performScrollToNode(hasTestTag("monitor.processes:empty"))
         rule.node("monitor.processes:empty").assertExists()
         rule.node("monitor.search.clear").performClick()

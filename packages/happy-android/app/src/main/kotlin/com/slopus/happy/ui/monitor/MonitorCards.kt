@@ -186,8 +186,7 @@ internal fun MonitorProcess(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(name, style = happyTextStyle(15, 20), color = colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 Spacer(Modifier.width(8.dp))
-                val maximum = maxOf(1.0, history.filterNotNull().maxOrNull() ?: 0.0)
-                MonitorChart(listOf(MonitorChartLine(history.map { it?.div(maximum) }, level.ink(colors.dark))), description,
+                MonitorChart(listOf(MonitorChartLine(history, level.ink(colors.dark))), description,
                     Modifier.width(44.dp).height(16.dp).testTag("monitor.process.$id.spark"))
                 Spacer(Modifier.width(8.dp))
                 Box(contentAlignment = Alignment.CenterEnd) {

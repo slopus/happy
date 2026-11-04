@@ -10,11 +10,14 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -35,6 +38,7 @@ import com.slopus.happy.ui.artifacts.PlaceScaffold
 import com.slopus.happy.ui.cards.CardHeading
 import com.slopus.happy.ui.components.HomeCardPlace
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.components.rememberReduceMotion
 import com.slopus.happy.ui.connection.AgentSearchField
 import com.slopus.happy.ui.connection.AgentTopBar
 import com.slopus.happy.ui.connection.BarIconButton
@@ -72,6 +76,14 @@ internal fun MonitorScreen(state: SystemMonitorFeed.State, name: String, onBack:
     val rows by produceState(emptyList<MonitorRow>(), state, filter, sort, words, dark) {
         value = withContext(deriver) { monitorRows(state, filter, sort, table, words, dark) }
     }
+    val list = rememberLazyListState()
+    val reduced = rememberReduceMotion()
+    LaunchedEffect(searching) {
+        if (searching) {
+            val index = rows.indexOfFirst { it.key == "processes" }
+            if (index >= 0) { if (reduced) list.scrollToItem(index) else list.animateScrollToItem(index) }
+        }
+    }
     val searchLabel = stringResource(R.string.monitor_filter)
     val chooseSort = { next: ProcessTable.Sort -> column = next.column; descending = next.descending }
     PlaceScaffold(name, onBack, tag = "monitor.screen", actions = {
@@ -87,14 +99,15 @@ internal fun MonitorScreen(state: SystemMonitorFeed.State, name: String, onBack:
                     MonitorSortMenu(sort, chooseSort)
                 })
         }
-    }) { MonitorContent(rows) }
+    }) { MonitorContent(rows, list) }
 }
 
 @Composable
 private fun MonitorSortMenu(sort: ProcessTable.Sort, onSort: (ProcessTable.Sort) -> Unit) {
     var choosing by remember { mutableStateOf(false) }
     Box {
-        BarIconButton(Ionicon.Filter, stringResource(R.string.monitor_sort), { choosing = true }, Modifier.testTag("monitor.sort"))
+        val description = "${stringResource(R.string.monitor_sort)}: ${stringResource(monitorColumn(sort.column))} ${if (sort.descending) "↓" else "↑"}"
+        BarIconButton(Ionicon.Filter, description, { choosing = true }, Modifier.testTag("monitor.sort"))
         DropdownMenu(choosing, { choosing = false }) {
             ProcessTable.Column.entries.forEach { item ->
                 val selected = sort.column == item
@@ -116,8 +129,8 @@ internal fun monitorColumn(column: ProcessTable.Column): Int = when (column) {
 }
 
 @Composable
-internal fun MonitorContent(rows: List<MonitorRow>) {
-    LazyColumn(Modifier.fillMaxSize().imePadding().navigationBarsPadding().testTag("monitor.rows"), contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp)) {
+internal fun MonitorContent(rows: List<MonitorRow>, list: LazyListState = rememberLazyListState()) {
+    LazyColumn(Modifier.fillMaxSize().imePadding().navigationBarsPadding().testTag("monitor.rows"), state = list, contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp)) {
         items(rows, key = { it.key }, contentType = { it::class }) { row ->
             when (row) {
                 is MonitorRow.Heading -> CardHeading(row.text, afterCard = row.key != "overview", trailing = row.trailing)
