@@ -214,6 +214,7 @@ fun DocumentVersionScreen(session: AgentSession, surfaceId: String, seq: Int, ti
         picture = stringResource(R.string.document_picture),
         table = stringResource(R.string.document_table),
         unsupported = stringResource(R.string.document_unsupported),
+        divider = stringResource(R.string.document_divider),
     )
     var failed by remember { mutableStateOf(false) }
     var text by remember { mutableStateOf<CharSequence?>(null) }

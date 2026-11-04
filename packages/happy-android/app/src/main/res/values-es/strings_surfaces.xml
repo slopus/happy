@@ -48,4 +48,6 @@
     <string name="document_conversion">Creado a partir de Markdown</string>
     <string name="document_current">Versión actual</string>
     <string name="document_version">Versión %1$d</string>
+    <string name="document_here_one">%1$s está aquí</string>
+    <string name="document_here_many">%1$s están aquí</string>
 </resources>

@@ -109,7 +109,7 @@ object DocumentTokens {
  */
 class DocumentStyle(resources: Resources, val dark: Boolean, private val labels: Labels = Labels()) {
     /** Names for blocks without text, as the note in their place says them. */
-    class Labels(val picture: String = "Picture", val table: String = "Table", val unsupported: String = "Something Happy can't show here")
+    class Labels(val picture: String = "Picture", val table: String = "Table", val unsupported: String = "Something Happy can't show here", val divider: String = "Divider")
 
     class Colors(dark: Boolean) {
         val text = DocumentTokens.text.of(dark)
@@ -127,6 +127,7 @@ class DocumentStyle(resources: Resources, val dark: Boolean, private val labels:
     /** Every size in px, for the spans. */
     class Metrics(resources: Resources, val colors: Colors) {
         private val metrics = resources.displayMetrics
+        val density = metrics.density
         private fun dp(value: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, value, metrics).roundToInt()
         fun sp(value: Float) = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, value, metrics)
 
@@ -277,11 +278,19 @@ class DocumentStyle(resources: Resources, val dark: Boolean, private val labels:
             else -> {
                 val label = when (line.block.type) {
                     "divider" -> null
-                    "image" -> line.block.props["caption"]?.stringValue?.takeIf { it.isNotEmpty() }?.let { "${labels.picture}: $it" } ?: labels.picture
+                    "image" -> line.block.props["caption"]?.stringValue?.takeIf { it.isNotEmpty() }
+                        ?: line.block.props["name"]?.stringValue?.takeIf { it.isNotEmpty() } ?: labels.picture
                     "table" -> labels.table
                     else -> labels.unsupported
                 }
                 text.setSpan(DocumentObjectSpan(line, label, metrics) { textWidth - metrics.indent(DocumentLineKind.Object, 0) }, start, start + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+                // What TalkBack says for it (iOS's `accessibilityName`), not the placeholder character.
+                val spoken = when (line.block.type) {
+                    "divider" -> labels.divider
+                    "image" -> line.block.props["caption"]?.stringValue?.takeIf { it.isNotEmpty() }?.let { "${labels.picture}, $it" } ?: labels.picture
+                    else -> label.orEmpty()
+                }
+                text.setSpan(DocumentObjectSpeech(spoken), start, start + 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
         }
     }
@@ -289,7 +298,7 @@ class DocumentStyle(resources: Resources, val dark: Boolean, private val labels:
     /** Takes this style's spans off the text between [start] and [end]; a neighbour's, which only touches it, stays. */
     fun clear(text: Spannable, start: Int, end: Int) {
         for (span in text.getSpans(start, end, Any::class.java)) {
-            if (span !is DocumentLineSpan && span !is DocumentMarksSpan && span !is DocumentObjectSpan && span !is DocumentLook) continue
+            if (span !is DocumentLineSpan && span !is DocumentMarksSpan && span !is DocumentObjectSpan && span !is DocumentObjectSpeech && span !is DocumentLook) continue
             val s = text.getSpanStart(span)
             val e = text.getSpanEnd(span)
             // Only this paragraph's: a neighbour's ends at its start or starts at its end.

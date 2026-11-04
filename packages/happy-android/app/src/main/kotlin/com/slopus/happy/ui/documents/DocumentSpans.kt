@@ -4,6 +4,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
+import android.os.PersistableBundle
 import android.text.Layout
 import android.text.Spanned
 import android.text.TextPaint
@@ -11,6 +12,7 @@ import android.text.style.LeadingMarginSpan
 import android.text.style.LineBackgroundSpan
 import android.text.style.LineHeightSpan
 import android.text.style.ReplacementSpan
+import android.text.style.TtsSpan
 import com.slopus.happy.documents.DocumentLine
 import com.slopus.happy.documents.yjs.YAny
 import kotlin.math.roundToInt
@@ -188,7 +190,9 @@ class DocumentMarksSpan(val marks: Map<String, YAny>, val trailing: Boolean = fa
  * A block without text (a divider, a picture, a table, something this
  * editor can't show), drawn in its line's U+FFFC (iOS's
  * `DocumentObjectAttachment`): a divider's rule across the middle of one
- * line, the others a rounded note naming what is there.
+ * line; a picture once read at its own size (a pixel to a point, as iOS),
+ * no wider than the text, and until then a 16:9 note with its caption; the
+ * others a rounded note naming what is there.
  */
 class DocumentObjectSpan(
     private val line: DocumentLine,
@@ -198,27 +202,51 @@ class DocumentObjectSpan(
     private val width: () -> Int,
 ) : ReplacementSpan() {
     private val divider = line.block.type == "divider"
-    private val height get() = if (divider) metrics.bodyLineHeight else metrics.noteHeight
+    private val image = line.block.type == "image"
+    /** The picture, if it has been read (`DocumentPictures`). */
+    val picture: DocumentPicture? = if (image) line.block.props["url"]?.stringValue?.takeIf { it.isNotEmpty() }?.let(DocumentPictures::cached) else null
+
+    /** How wide the picture shows in [w]: its own width, no wider. */
+    private fun pictureWidth(w: Int): Int = picture?.let { minOf(w, (it.width * metrics.density).roundToInt()) } ?: w
+
+    private fun height(w: Int): Int = when {
+        divider -> metrics.bodyLineHeight
+        image -> picture?.takeIf { it.width > 0 }?.let { (pictureWidth(w).toFloat() * it.height / it.width).roundToInt() } ?: (w * 9f / 16).roundToInt()
+        else -> metrics.noteHeight
+    }
+
+    private fun textWidth() = maxOf(1, width() - metrics.level * line.depth.coerceAtLeast(0) - 1)
 
     override fun getSize(paint: Paint, text: CharSequence?, start: Int, end: Int, fm: Paint.FontMetricsInt?): Int {
+        val w = textWidth()
         if (fm != null) {
-            val h = height
+            val h = maxOf(1, height(w))
             fm.ascent = -h * 3 / 4
             fm.descent = h + fm.ascent
             fm.top = fm.ascent
             fm.bottom = fm.descent
         }
-        return maxOf(1, width() - metrics.level * line.depth.coerceAtLeast(0) - 1)
+        return w
     }
 
     override fun draw(canvas: Canvas, text: CharSequence?, start: Int, end: Int, x: Float, top: Int, y: Int, bottom: Int, paint: Paint) {
-        val w = maxOf(1, width() - metrics.level * line.depth.coerceAtLeast(0) - 1).toFloat()
+        val w = textWidth().toFloat()
         val saved = paint.color
         val style = paint.style
         paint.isAntiAlias = true
-        val h = height
+        val h = maxOf(1, height(w.toInt()))
         val boxTop = bottom - h.toFloat()
-        if (divider) {
+        val picture = picture
+        if (picture != null) {
+            val r = metrics.codeCorner.toFloat()
+            val box = RectF(x, boxTop, x + pictureWidth(w.toInt()), bottom.toFloat())
+            val clip = Path().apply { addRoundRect(box, r, r, Path.Direction.CW) }
+            canvas.save()
+            canvas.clipPath(clip)
+            paint.isFilterBitmap = true
+            canvas.drawBitmap(picture.bitmap, null, box, paint)
+            canvas.restore()
+        } else if (divider) {
             paint.color = metrics.colors.rule
             paint.style = Paint.Style.FILL
             val ruleY = (boxTop + h / 2f - metrics.hairline / 2f).roundToInt().toFloat()
@@ -235,10 +263,15 @@ class DocumentObjectSpan(
                 val fm = textPaint.fontMetrics
                 val baseline = boxTop + h / 2f - (fm.ascent + fm.descent) / 2f
                 val shown = android.text.TextUtils.ellipsize(label, textPaint, w - metrics.notePadding * 2, android.text.TextUtils.TruncateAt.END)
-                canvas.drawText(shown, 0, shown.length, x + metrics.notePadding, baseline, textPaint)
+                // A picture not read yet has its caption in the middle (iOS's `DocumentObjectLayout.centered`).
+                val left = if (image) x + (w - textPaint.measureText(shown, 0, shown.length)) / 2 else x + metrics.notePadding
+                canvas.drawText(shown, 0, shown.length, left, baseline, textPaint)
             }
         }
         paint.color = saved
         paint.style = style
     }
 }
+
+/** An object's name for TalkBack, over its placeholder character. */
+class DocumentObjectSpeech(val spoken: String) : TtsSpan(TYPE_TEXT, PersistableBundle().apply { putString(ARG_TEXT, spoken) })

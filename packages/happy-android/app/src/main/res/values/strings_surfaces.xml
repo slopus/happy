@@ -72,4 +72,8 @@
     <string name="document_conversion">Made from Markdown</string>
     <string name="document_current">Current version</string>
     <string name="document_version">Version %1$d</string>
+
+    <!-- Who else has the document open, read by TalkBack on their faces in the bar (iOS Strings.Documents.editing). -->
+    <string name="document_here_one">%1$s is here</string>
+    <string name="document_here_many">%1$s are here</string>
 </resources>

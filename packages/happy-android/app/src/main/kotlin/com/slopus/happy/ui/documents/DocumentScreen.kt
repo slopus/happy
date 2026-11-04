@@ -18,9 +18,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,6 +41,7 @@ import com.slopus.happy.R
 import com.slopus.happy.agent.AgentSession
 import com.slopus.happy.documents.DocumentEditor
 import com.slopus.happy.documents.DocumentLine
+import com.slopus.happy.documents.DocumentPeer
 import com.slopus.happy.documents.DocumentSaveState
 import com.slopus.happy.ui.artifacts.PlaceScaffold
 import com.slopus.happy.ui.components.HappyMenuItem
@@ -49,6 +52,7 @@ import com.slopus.happy.ui.surfaces.SurfaceMenu
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
@@ -88,6 +92,7 @@ fun DocumentScreen(session: AgentSession, surfaceId: String, onBack: () -> Unit,
     val phase by holder.phase.collectAsStateWithLifecycle()
     val save by holder.save.collectAsStateWithLifecycle()
     val notice by holder.notice.collectAsStateWithLifecycle()
+    val peers by holder.peers.collectAsStateWithLifecycle()
     val name = surface?.name.orEmpty()
     var renaming by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
@@ -116,6 +121,7 @@ fun DocumentScreen(session: AgentSession, surfaceId: String, onBack: () -> Unit,
         active = active,
         onBack = onBack,
         actions = {
+            DocumentPeers(peers)
             SurfaceMenu(session, surfaceId, onBack) { close ->
                 HappyMenuItem(stringResource(R.string.common_rename), onClick = { close(); renaming = true })
                 HappyMenuItem(stringResource(R.string.document_history), onClick = { close(); onHistory() })
@@ -135,6 +141,8 @@ fun DocumentScreen(session: AgentSession, surfaceId: String, onBack: () -> Unit,
             },
             onFocus = { focused = it },
             onLink = { current, done -> linking = current to done },
+            peers = peers,
+            loadPicture = { url, widest -> DocumentPictures.load(session.client, url, widest) },
         )
     }
 
@@ -231,6 +239,8 @@ internal fun DocumentEditorView(
     onSelection: (DocumentTextController, Boolean) -> Unit,
     onFocus: (Boolean) -> Unit,
     onLink: (String?, (String?) -> Unit) -> Unit,
+    peers: List<DocumentPeer> = emptyList(),
+    loadPicture: (suspend (url: String, widest: Int) -> DocumentPicture?)? = null,
 ) {
     val context = LocalContext.current
     val dark = HappyTheme.colors.dark
@@ -239,15 +249,20 @@ internal fun DocumentEditorView(
         picture = stringResource(R.string.document_picture),
         table = stringResource(R.string.document_table),
         unsupported = stringResource(R.string.document_unsupported),
+        divider = stringResource(R.string.document_divider),
     )
     val style = remember(dark, fontScale) { DocumentStyle(context.resources, dark, labels) }
     val view = remember { DocumentTextView(context) }
     val controller = remember(view) { DocumentTextController(view, editor, style) }
+    val scope = rememberCoroutineScope()
     DisposableEffect(controller) {
         onController(controller)
         var hasFocus = view.hasFocus()
         controller.onSelection = { onSelection(controller, hasFocus) }
         controller.onLink = onLink
+        controller.loadPicture = loadPicture?.let { load ->
+            { url, done -> scope.launch(Dispatchers.Main.immediate) { if (load(url, view.resources.displayMetrics.widthPixels) != null) done() } }
+        }
         view.setOnFocusChangeListener { _, focus ->
             hasFocus = focus
             onFocus(focus)
@@ -259,6 +274,7 @@ internal fun DocumentEditorView(
             onController(null)
         }
     }
+    SideEffect { controller.showPeers(peers) }
     // Back on the main thread for the editor and the view, whatever the effect's context resumes on (a test's does on the builder's thread).
     LaunchedEffect(controller, editor, style) {
         withContext(Dispatchers.Main.immediate) {

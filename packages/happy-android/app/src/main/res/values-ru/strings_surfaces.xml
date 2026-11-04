@@ -48,4 +48,6 @@
     <string name="document_conversion">Создано из Markdown</string>
     <string name="document_current">Текущая версия</string>
     <string name="document_version">Версия %1$d</string>
+    <string name="document_here_one">%1$s здесь</string>
+    <string name="document_here_many">%1$s здесь</string>
 </resources>

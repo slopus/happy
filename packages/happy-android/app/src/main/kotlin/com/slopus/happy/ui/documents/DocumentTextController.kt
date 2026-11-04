@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.documents
 
+import android.os.SystemClock
 import android.text.Editable
 import android.text.Selection
 import android.text.Spanned
@@ -13,6 +14,7 @@ import com.slopus.happy.documents.DocumentEditor
 import com.slopus.happy.documents.DocumentEdits
 import com.slopus.happy.documents.DocumentLine
 import com.slopus.happy.documents.DocumentLinesChange
+import com.slopus.happy.documents.DocumentPeer
 import com.slopus.happy.documents.DocumentRun
 import com.slopus.happy.documents.DocumentShortcuts
 import com.slopus.happy.documents.DocumentText
@@ -77,6 +79,11 @@ class DocumentTextController(
 
     private val text: Editable get() = textView.text
 
+    /** The other editors, and until when each one's name shows (3 s after they last moved). */
+    private var peers: List<DocumentPeer> = emptyList()
+    private val labelUntil = HashMap<String, Long>()
+    private val hideLabels = Runnable { drawCursors() }
+
     init {
         textView.addTextChangedListener(this)
         textView.onEnter = { enter(it) }
@@ -104,6 +111,8 @@ class DocumentTextController(
         mirror(editor.lines)
         if (text.isEmpty()) ensureALine()
         textView.setSelection(minOf(selection, maxOf(0, text.length - 1)))
+        drawCursors()
+        loadPictures(lines.indices)
     }
 
     fun restyle(style: DocumentStyle) {
@@ -133,6 +142,60 @@ class DocumentTextController(
     private fun ensureALine() {
         val line = DocumentLine(DocumentBlock(DocumentEditor.newID(), "paragraph", content = DocumentBlock.Content.Inline(emptyList())))
         editor.replaceLines(0 until lines.size, listOf(line))
+    }
+
+    // Others' carets
+
+    /** Who else is editing: their carets drawn where their relative positions are, a name for 3 s after its editor moves. */
+    fun showPeers(next: List<DocumentPeer>) {
+        if (next == peers) return
+        val now = SystemClock.uptimeMillis()
+        for (peer in next) if (peers.firstOrNull { it.key == peer.key } != peer) labelUntil[peer.key] = now + DocumentPeersSpec.LABEL_MILLIS
+        labelUntil.keys.retainAll(next.mapTo(HashSet()) { it.key })
+        peers = next
+        drawCursors()
+        textView.removeCallbacks(hideLabels)
+        textView.postDelayed(hideLabels, DocumentPeersSpec.LABEL_MILLIS + 100)
+    }
+
+    /** The carets again, for the text as it is now. */
+    private fun drawCursors() {
+        if (peers.isEmpty() && textView.cursors.isEmpty()) return
+        val now = SystemClock.uptimeMillis()
+        textView.cursors = peers.mapNotNull { peer ->
+            val at = peer.head?.let(editor::caret)?.let(::offset) ?: return@mapNotNull null
+            DocumentCursor(peer.key, at, peerColorInt(peer.color), peer.name, (labelUntil[peer.key] ?: 0L) > now)
+        }
+    }
+
+    // Pictures
+
+    /** Reads a picture's address into [DocumentPictures], then calls back on the main thread if it could. */
+    var loadPicture: ((url: String, done: () -> Unit) -> Unit)? = null
+    private val picturesLoading = HashSet<String>()
+
+    /** The pictures among [range] not read yet are asked for; each line showing one is built again once it is. */
+    private fun loadPictures(range: IntRange) {
+        val load = loadPicture ?: return
+        for (i in range) {
+            val line = lines.getOrNull(i) ?: continue
+            if (line.block.type != "image") continue
+            val url = line.block.props["url"]?.stringValue?.takeIf { it.isNotEmpty() } ?: continue
+            if (DocumentPictures.cached(url) != null || !picturesLoading.add(url)) continue
+            load(url) {
+                picturesLoading.remove(url)
+                for ((j, shown) in lines.withIndex()) if (shown.block.props["url"]?.stringValue == url) refresh(j)
+            }
+        }
+    }
+
+    /** One line's paragraph styled again in place: its characters stay. */
+    private fun refresh(i: Int) {
+        if (i !in lines.indices || starts[i + 1] > text.length) return
+        apply {
+            style.clear(text, starts[i], starts[i + 1])
+            style.style(text, starts[i], lines[i], lines.getOrNull(i - 1))
+        }
     }
 
     // Carets
@@ -209,6 +272,8 @@ class DocumentTextController(
         }
         if (readingBack && selection.first >= 0) Selection.setSelection(text, selection.first.coerceAtMost(text.length), selection.second.coerceAtMost(text.length))
         lastApply = System.nanoTime() - clock
+        drawCursors()
+        loadPictures(change.range.first until minOf(lines.size, change.range.first + change.lines.size))
         onSelection?.invoke()
     }
 
@@ -604,6 +669,7 @@ class DocumentTextController(
     }
 
     fun detach() {
+        textView.removeCallbacks(hideLabels)
         textView.removeTextChangedListener(this)
         editor.onLinesChange = null
     }

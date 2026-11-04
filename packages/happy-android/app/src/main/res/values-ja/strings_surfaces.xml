@@ -48,4 +48,6 @@
     <string name="document_conversion">Markdown から作成</string>
     <string name="document_current">現在のバージョン</string>
     <string name="document_version">バージョン %1$d</string>
+    <string name="document_here_one">%1$sがいます</string>
+    <string name="document_here_many">%1$sがいます</string>
 </resources>

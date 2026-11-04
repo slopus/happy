@@ -4,6 +4,7 @@ import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.documents.DocumentEditor
+import com.slopus.happy.documents.DocumentPeer
 import com.slopus.happy.documents.DocumentRun
 import com.slopus.happy.documents.yjs.YDoc
 import org.junit.Assert.assertEquals
@@ -170,5 +171,65 @@ class DocumentTextControllerTest {
         assertEquals(listOf("Hello, world"), texts)
         assertEquals("Hello, world\n", view.text.toString())
         assertEquals("Still between the same two letters", 10, view.selectionStart)
+    }
+
+    @Test
+    fun anotherEditorsCaretFollowsTheTextAndItsNameFades() {
+        type("world")
+        val other = DocumentEditor(YDoc(22))
+        other.doc.applyUpdate(editor.doc.encodeStateAsUpdate())
+        val line = other.lines.single().id
+        // Ann's caret after "wor".
+        val head = other.relativePosition(com.slopus.happy.documents.DocumentCaret(line, 3))
+        controller.showPeers(listOf(DocumentPeer("ann", 22, "Ann", "#958DF1", head, head)))
+        assertEquals(listOf(DocumentCursor("ann", 3, 0xFF958DF1.toInt(), "Ann", labelled = true)), view.cursors)
+        // Text typed before it here moves it with its letters.
+        view.setSelection(0)
+        type("Hi ")
+        assertEquals(listOf(6), view.cursors.map { it.offset })
+        // Three seconds after Ann last moved, only the bar stays.
+        shadowOf(Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(3_200))
+        assertEquals(listOf(false), view.cursors.map { it.labelled })
+        controller.showPeers(emptyList())
+        assertTrue(view.cursors.isEmpty())
+    }
+
+    @Test
+    fun talkBackSaysAnObjectsNameNotItsPlaceholder() {
+        type("Above")
+        controller.run(DocumentTool.Divider)
+        idle()
+        val spoken = view.text.getSpans(0, view.text.length, DocumentObjectSpeech::class.java)
+        assertEquals(listOf("Divider"), spoken.map { it.spoken })
+        val node = view.createAccessibilityNodeInfo()
+        val read = node.text as android.text.Spanned
+        assertEquals("The name rides into what TalkBack reads", listOf("Divider"), read.getSpans(0, read.length, android.text.style.TtsSpan::class.java).map { it.args.getString(android.text.style.TtsSpan.ARG_TEXT) })
+    }
+
+    @Test
+    fun aPictureIsReadOnceThenShownAtItsOwnShape() {
+        val asked = ArrayList<String>()
+        controller.loadPicture = { url, done ->
+            asked += url
+            DocumentPictures.keep(url, DocumentPicture(android.graphics.Bitmap.createBitmap(40, 20, android.graphics.Bitmap.Config.ARGB_8888), 40, 20))
+            done()
+        }
+        val url = "/v0/surfaces/doc/files/picture-${System.nanoTime()}.png"
+        val picture = com.slopus.happy.documents.DocumentLine(
+            com.slopus.happy.documents.DocumentBlock(DocumentEditor.newID(), "image", mapOf("url" to com.slopus.happy.documents.yjs.YAny.Str(url)), com.slopus.happy.documents.DocumentBlock.Content.None),
+        )
+        editor.replaceLines(0 until 1, listOf(picture, editor.lines.single()))
+        idle()
+        assertEquals("Asked for once", listOf(url), asked)
+        val span = view.text.getSpans(0, view.text.length, DocumentObjectSpan::class.java).single()
+        assertTrue("The line shows the picture once read", span.picture != null)
+        // 40 by 20, a pixel to a point: 40 dp across and 20 tall.
+        val density = view.resources.displayMetrics.density
+        val fm = android.graphics.Paint.FontMetricsInt()
+        span.getSize(view.paint, view.text, view.text.getSpanStart(span), view.text.getSpanEnd(span), fm)
+        assertEquals(20 * density, (fm.descent - fm.ascent).toFloat(), 1f)
+        editor.replaceLines(1 until 2, listOf(editor.lines[1]))
+        idle()
+        assertEquals("Kept, not asked for again", listOf(url), asked)
     }
 }

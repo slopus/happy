@@ -48,4 +48,6 @@
     <string name="document_conversion">由 Markdown 生成</string>
     <string name="document_current">当前版本</string>
     <string name="document_version">版本 %1$d</string>
+    <string name="document_here_one">%1$s 在这里</string>
+    <string name="document_here_many">%1$s 在这里</string>
 </resources>

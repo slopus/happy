@@ -2,6 +2,12 @@ package com.slopus.happy.ui.documents
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.Typeface
+import android.text.TextPaint
+import android.text.TextUtils
 import android.text.InputFilter
 import android.text.InputType
 import android.text.Spanned
@@ -24,7 +30,8 @@ import com.slopus.happy.documents.DocumentText
  * the controller: Enter ([onEnter]), Backspace at a line's start
  * ([onBackspaceAtStart]), a tap on a task's box ([onTask]) and the hardware
  * keys ([onKey]). A keyboard's Enter and Delete both arrive as edits of
- * the text, so they are caught as the text is about to change.
+ * the text, so they are caught as the text is about to change. The other
+ * editors' carets ([cursors]) are drawn over the text.
  */
 @SuppressLint("ViewConstructor", "AppCompatCustomView")
 class DocumentTextView(context: Context) : EditText(context) {
@@ -93,6 +100,61 @@ class DocumentTextView(context: Context) : EditText(context) {
         @Suppress("UNNECESSARY_SAFE_CALL") onSelectionChange?.invoke()
     }
 
+    /** The other editors' carets, at offsets in this text. */
+    var cursors: List<DocumentCursor> = emptyList()
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidate()
+        }
+    private val cursorPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val cursorLabelPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.BLACK
+        typeface = if (android.os.Build.VERSION.SDK_INT >= 28) Typeface.create(Typeface.DEFAULT, 600, false) else Typeface.DEFAULT_BOLD
+    }
+    private val cursorRect = RectF()
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        if (cursors.isNotEmpty()) drawCursors(canvas)
+    }
+
+    /**
+     * Each caret as a bar in its editor's colour, and their name on a tag
+     * above it while [DocumentCursor.labelled] (iOS's `DocumentCursorsView`,
+     * desktop's `showCursorLabels: "activity"`); the tag stays inside the view.
+     */
+    private fun drawCursors(canvas: Canvas) {
+        val layout = layout ?: return
+        val length = text?.length ?: return
+        val density = resources.displayMetrics.density
+        val bar = DocumentPeersSpec.bar.value * density
+        val tag = DocumentPeersSpec.label.value * density
+        val padding = DocumentPeersSpec.labelPadding.value * density
+        val corner = DocumentPeersSpec.labelCorner.value * density
+        cursorLabelPaint.textSize = DocumentPeersSpec.LABEL_SIZE * resources.displayMetrics.scaledDensity
+        for (cursor in cursors) {
+            if (cursor.offset !in 0..length) continue
+            val line = layout.getLineForOffset(cursor.offset)
+            val x = totalPaddingLeft + layout.getPrimaryHorizontal(cursor.offset)
+            val top = (totalPaddingTop + layout.getLineTop(line)).toFloat()
+            val bottom = (totalPaddingTop + layout.getLineBottom(line)).toFloat()
+            cursorPaint.color = cursor.color
+            cursorRect.set(x - bar / 2, top, x + bar / 2, bottom)
+            canvas.drawRoundRect(cursorRect, bar / 2, bar / 2, cursorPaint)
+            if (!cursor.labelled) continue
+            val most = DocumentPeersSpec.labelMost.value * density
+            val name = TextUtils.ellipsize(cursor.name, cursorLabelPaint, most, TextUtils.TruncateAt.END).toString()
+            val tagWidth = minOf(cursorLabelPaint.measureText(name) + padding * 2, width.toFloat())
+            val left = minOf(x - bar / 2, maxOf(0f, width - tagWidth))
+            cursorRect.set(left, top - tag, left + tagWidth, top)
+            canvas.drawRoundRect(cursorRect, corner, corner, cursorPaint)
+            val metrics = cursorLabelPaint.fontMetrics
+            val baseline = top - tag / 2 - (metrics.ascent + metrics.descent) / 2
+            canvas.drawText(name, left + padding, baseline, cursorLabelPaint)
+        }
+    }
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
@@ -132,3 +194,6 @@ class DocumentTextView(context: Context) : EditText(context) {
         return null
     }
 }
+
+/** Another editor's caret: where it is in the text, their colour and name, and whether the name shows. */
+data class DocumentCursor(val key: String, val offset: Int, val color: Int, val name: String, val labelled: Boolean)
