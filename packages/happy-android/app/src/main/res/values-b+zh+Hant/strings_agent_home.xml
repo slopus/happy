@@ -38,15 +38,10 @@
     <string name="agent_settings_edit_avatar">變更代理程式頭像</string>
     <string name="agent_settings_edit_name_prefix">把你的名字改成</string>
     <string name="agent_settings_edit_avatar_prefix">把你的頭像改成</string>
-    <string name="agent_settings_profile_footer">由你的 Chief of Staff 進行變更。你送出之前不會傳送任何內容。</string>
-    <string name="agent_settings_connect">連線代理程式</string>
     <string name="agent_settings_connected">已連線</string>
     <string name="agent_settings_connecting">正在連線</string>
     <string name="agent_settings_offline">離線</string>
     <string name="agent_settings_revoked">已從 Happy Agent 中移除</string>
     <string name="agent_settings_update">需要更新</string>
-    <string name="agent_settings_remove">移除連線</string>
-    <string name="agent_settings_remove_title">移除 %1$s？</string>
     <string name="agent_settings_remove_message">Happy 會在此手機上忘記此代理程式。在你也從 Happy Agent 中移除之前，它會繼續列出此手機。</string>
-    <string name="agent_settings_remove_footer">在你從 Happy Agent 中移除之前，它會繼續列出此手機。</string>
 </resources>

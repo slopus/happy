@@ -38,15 +38,10 @@
     <string name="agent_settings_edit_avatar">更改智能体头像</string>
     <string name="agent_settings_edit_name_prefix">把你的名字改成</string>
     <string name="agent_settings_edit_avatar_prefix">把你的头像改成</string>
-    <string name="agent_settings_profile_footer">由你的 Chief of Staff 进行更改。你发送之前不会发送任何内容。</string>
-    <string name="agent_settings_connect">连接智能体</string>
     <string name="agent_settings_connected">已连接</string>
     <string name="agent_settings_connecting">正在连接</string>
     <string name="agent_settings_offline">离线</string>
     <string name="agent_settings_revoked">已从 Happy Agent 中移除</string>
     <string name="agent_settings_update">需要更新</string>
-    <string name="agent_settings_remove">移除连接</string>
-    <string name="agent_settings_remove_title">移除 %1$s？</string>
     <string name="agent_settings_remove_message">Happy 会在此手机上忘记此智能体。在你也从 Happy Agent 中移除之前，它会继续列出此手机。</string>
-    <string name="agent_settings_remove_footer">在你从 Happy Agent 中移除之前，它会继续列出此手机。</string>
 </resources>

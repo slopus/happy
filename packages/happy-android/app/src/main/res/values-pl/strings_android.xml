@@ -14,7 +14,6 @@
     <string name="server_url_protocol">Adres URL serwera musi używać protokołu HTTP lub HTTPS</string>
     <string name="server_url_invalid">Nieprawidłowy format adresu URL</string>
     <string name="settings_agents">Agenci</string>
-    <string name="settings_agents_subtitle">Połączone komputery i domyślne ustawienia agentów</string>
     <string name="happy_action_unknown_error">Nieznany błąd</string>
     <string name="live_avatars_title">Animowane awatary</string>
     <string name="live_avatars_description">Awatary bez zdjęcia się poruszają. Zużywa więcej baterii.</string>

@@ -38,15 +38,10 @@
     <string name="agent_settings_edit_avatar">エージェントのアバターを変更</string>
     <string name="agent_settings_edit_name_prefix">"名前を次に変えて: "</string>
     <string name="agent_settings_edit_avatar_prefix">"アバターを次に変えて: "</string>
-    <string name="agent_settings_profile_footer">変更は Chief of Staff が行います。あなたが送信するまで何も送られません。</string>
-    <string name="agent_settings_connect">エージェントを接続</string>
     <string name="agent_settings_connected">接続済み</string>
     <string name="agent_settings_connecting">接続中</string>
     <string name="agent_settings_offline">オフライン</string>
     <string name="agent_settings_revoked">Happy Agent から削除されました</string>
     <string name="agent_settings_update">アップデートが必要です</string>
-    <string name="agent_settings_remove">接続を削除</string>
-    <string name="agent_settings_remove_title">%1$s を削除しますか？</string>
     <string name="agent_settings_remove_message">Happy はこのスマートフォン上でこのエージェントを忘れます。Happy Agent 側でも削除するまで、スマートフォンは一覧に残ります。</string>
-    <string name="agent_settings_remove_footer">Happy Agent で削除するまで、このスマートフォンは一覧に残ります。</string>
 </resources>

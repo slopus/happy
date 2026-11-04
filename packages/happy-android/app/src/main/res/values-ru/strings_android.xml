@@ -14,7 +14,6 @@
     <string name="server_url_protocol">URL сервера должен использовать протокол HTTP или HTTPS</string>
     <string name="server_url_invalid">Неверный формат URL</string>
     <string name="settings_agents">Агенты</string>
-    <string name="settings_agents_subtitle">Подключённые компьютеры и настройки агентов по умолчанию</string>
     <string name="happy_action_unknown_error">Неизвестная ошибка</string>
     <string name="live_avatars_title">Анимированные аватары</string>
     <string name="live_avatars_description">Аватары без фото двигаются. Расходует больше заряда.</string>

@@ -13,7 +13,6 @@
     <string name="server_url_protocol">L\'URL del servidor ha de fer servir el protocol HTTP o HTTPS</string>
     <string name="server_url_invalid">Format d\'URL no vàlid</string>
     <string name="settings_agents">Agents</string>
-    <string name="settings_agents_subtitle">Ordinadors connectats i valors predeterminats dels agents</string>
     <string name="happy_action_unknown_error">Error desconegut</string>
     <string name="live_avatars_title">Avatars animats</string>
     <string name="live_avatars_description">Els avatars sense foto es mouen. Consumeix més bateria.</string>

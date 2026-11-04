@@ -11,7 +11,6 @@
     <string name="server_url_protocol">伺服器 URL 必須使用 HTTP 或 HTTPS 通訊協定</string>
     <string name="server_url_invalid">URL 格式無效</string>
     <string name="settings_agents">代理程式</string>
-    <string name="settings_agents_subtitle">已連線的電腦和代理程式預設設定</string>
     <string name="happy_action_unknown_error">未知錯誤</string>
     <string name="live_avatars_title">動態頭像</string>
     <string name="live_avatars_description">沒有照片的頭像會動起來。耗電較多。</string>

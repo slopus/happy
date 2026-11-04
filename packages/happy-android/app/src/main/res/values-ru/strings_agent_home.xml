@@ -38,15 +38,10 @@
     <string name="agent_settings_edit_avatar">Изменить аватар агента</string>
     <string name="agent_settings_edit_name_prefix">"Смени своё имя на "</string>
     <string name="agent_settings_edit_avatar_prefix">"Смени свой аватар на "</string>
-    <string name="agent_settings_profile_footer">Изменение вносит ваш Chief of Staff. Ничего не отправляется, пока вы не отправите.</string>
-    <string name="agent_settings_connect">Подключить агента</string>
     <string name="agent_settings_connected">Подключено</string>
     <string name="agent_settings_connecting">Подключение</string>
     <string name="agent_settings_offline">Не в сети</string>
     <string name="agent_settings_revoked">Удалён из Happy Agent</string>
     <string name="agent_settings_update">Требуется обновление</string>
-    <string name="agent_settings_remove">Удалить подключение</string>
-    <string name="agent_settings_remove_title">Удалить %1$s?</string>
     <string name="agent_settings_remove_message">Happy забудет этого агента на этом телефоне. Happy Agent будет показывать телефон, пока вы не удалите его и там.</string>
-    <string name="agent_settings_remove_footer">Happy Agent будет показывать этот телефон, пока вы не удалите его там.</string>
 </resources>

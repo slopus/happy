@@ -11,7 +11,6 @@
     <string name="server_url_protocol">服务器 URL 必须使用 HTTP 或 HTTPS 协议</string>
     <string name="server_url_invalid">URL 格式无效</string>
     <string name="settings_agents">智能体</string>
-    <string name="settings_agents_subtitle">已连接的电脑和智能体默认设置</string>
     <string name="happy_action_unknown_error">未知错误</string>
     <string name="live_avatars_title">动态头像</string>
     <string name="live_avatars_description">没有照片的头像会动起来。耗电更多。</string>

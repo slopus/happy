@@ -13,7 +13,6 @@
     <string name="server_url_protocol">L\'URL del server deve usare il protocollo HTTP o HTTPS</string>
     <string name="server_url_invalid">Formato URL non valido</string>
     <string name="settings_agents">Agenti</string>
-    <string name="settings_agents_subtitle">Computer collegati e impostazioni predefinite degli agenti</string>
     <string name="happy_action_unknown_error">Errore sconosciuto</string>
     <string name="live_avatars_title">Avatar animati</string>
     <string name="live_avatars_description">Gli avatar senza foto si muovono. Consuma più batteria.</string>

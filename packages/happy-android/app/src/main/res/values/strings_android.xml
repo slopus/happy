@@ -16,7 +16,6 @@
 
     <!-- literals in happy-app: SettingsView.tsx, hooks/useHappyAction.ts -->
     <string name="settings_agents">Agents</string>
-    <string name="settings_agents_subtitle">Connected machines and agent defaults</string>
     <string name="happy_action_unknown_error">Unknown error</string>
 
     <!-- happy-ios Strings.LiveAvatars: Animated Avatars, with no equivalent in happy-app -->
