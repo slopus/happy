@@ -50,6 +50,22 @@ final class ScanRouteTests: XCTestCase {
         }
     }
 
+    /// The migration screen's scan: a Happy server code beside a Happy
+    /// account asks first, then links that account; with none here it
+    /// makes one, as Add account does. Other codes go as from Add account.
+    func testMigratingAsksBeforeLinkingAHappyServerCode() throws {
+        XCTAssertEqual(route("happy://terminal?" + keyText, .migrate, account: true), .confirmConnectComputer(publicKey: key))
+        XCTAssertEqual(route("happy://terminal?" + keyText, .migrate, account: false), .newAccountForComputer(publicKey: key))
+        XCTAssertEqual(route("happy:///account?" + keyText, .migrate, account: true), .linkDevice(publicKey: key))
+    }
+
+    /// A direct code from the migration screen pairs at once, nothing asked.
+    func testMigratingPairsADirectCodeWithoutAsking() throws {
+        for account in [true, false] {
+            guard case .connectAgent = route(try direct(), .migrate, account: account) else { return XCTFail("\(account)") }
+        }
+    }
+
     func testAnAgentPairingCodePairsFromAnywhere() throws {
         let text = try direct()
         for intent in [ScanIntent.connect, .addAccount] {

@@ -21,14 +21,15 @@ enum MigrationPath: String, Hashable, Sendable {
     var icon: LineIcon { self == .desktop ? .monitor : .zap }
 }
 
-/// Whether the Happy CLI home shows a migration card, and which: none once
-/// this phone has a direct Happy Agent connection (paired and not
+/// Whether the Happy CLI home shows a migration card, and which: none
+/// unless PostHog's flag is on for the account (`MigrationNoteFlag`), none
+/// once this phone has a direct Happy Agent connection (paired and not
 /// revoked), nor once that path's card was closed here, which holds for
 /// every account on this phone.
 @MainActor
 enum DesktopMigrationCard {
-    static func path(_ account: AccountController, serverAgent: Bool, defaults: UserDefaults = .standard) -> MigrationPath? {
-        guard !account.agentConnections.accounts.contains(where: { !$0.revoked }) else { return nil }
+    static func path(_ account: AccountController, serverAgent: Bool, flag: Bool, defaults: UserDefaults = .standard) -> MigrationPath? {
+        guard flag, !account.agentConnections.accounts.contains(where: { !$0.revoked }) else { return nil }
         let path: MigrationPath = serverAgent ? .agentConnection : .desktop
         return defaults.bool(forKey: closedKey(path)) ? nil : path
     }
@@ -161,10 +162,11 @@ final class DesktopMigrationViewController: UIViewController {
         learnMore.apply(layout.learnMore)
     }
 
-    /// The scanner; whatever it reads, `HappyScan` routes.
+    /// The scanner; whatever it reads, `HappyScan` routes. A Happy server
+    /// code beside the Happy account here asks first (`ScanIntent.migrate`).
     private func startScan() {
         guard !busy else { return }
-        AccountAdding.begin(context: context, from: self) { [weak self] in self?.busy = $0 }
+        AccountAdding.begin(context: context, from: self, intent: .migrate) { [weak self] in self?.busy = $0 }
     }
 }
 

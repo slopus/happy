@@ -18,7 +18,9 @@ import CoreGraphics
 ///     line                           centred
 ///     20
 ///     ① step                         the number's dot, then the words
-///        Download from happy.engineering   (a step's link, under it)
+///        Make sure Happy Desktop…    (a step's detail, under it)
+///        4
+///        Download from happy.engineering   (a step's link, under both)
 ///     22
 ///     ② step
 ///     22
@@ -57,6 +59,8 @@ public struct MigrationScreenLayout: Equatable, Sendable {
         /// Down from the step's words to its detail: where a link's one
         /// line (20) sits in its 40 tall target.
         public static let detailGap: CGFloat = 10
+        /// From a detail to a link under it.
+        public static let detailLineGap: CGFloat = 4
     }
 
     public struct Step {
@@ -127,8 +131,13 @@ public struct MigrationScreenLayout: Equatable, Sendable {
         for (index, step) in steps.enumerated() {
             if index > 0 { y += M.stepGap }
             let text = CGRect(x: textX, y: y, width: textWidth, height: step.text.height(fitting: textWidth))
-            let link = step.link.map { makeLink($0, x: textX, y: text.maxY, width: textWidth - M.linkPadding * 2) }
             let detail = step.detail.map { CGRect(x: textX, y: text.maxY + M.detailGap, width: textWidth, height: $0.height(fitting: textWidth)) }
+            // Under a detail, the link's words sit `detailLineGap` under it.
+            let link = step.link.map { label -> Link in
+                var link = makeLink(label, x: textX, y: text.maxY, width: textWidth - M.linkPadding * 2)
+                if let detail { link.target.origin.y = detail.maxY + M.detailLineGap - link.label.minY }
+                return link
+            }
             let label = step.number.size(fitting: M.number)
             frames.append(StepFrames(
                 number: CGRect(x: x, y: y + M.numberOffset, width: M.number, height: M.number),

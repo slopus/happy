@@ -20,7 +20,7 @@ extension Strings {
         /// ends both paths.
         public static var desktopSteps: [Step] {
             [
-                Step(text: Onboarding.offlineOpenStep, link: Start.installDownloadPrefix + Onboarding.installBodyLink),
+                Step(text: Onboarding.offlineOpenStep, link: Start.installDownloadPrefix + Onboarding.installBodyLink, detail: updateStep),
                 Step(text: "\(Start.installChoose)\n\(Start.installSettings)", link: nil),
                 Step(text: serverStep, link: nil, detail: serverStepDetail),
             ]
@@ -37,11 +37,15 @@ extension Strings {
         /// server's case.
         public static var agentConnectionSteps: [Step] {
             [
-                Step(text: Onboarding.offlineOpenStep, link: nil),
+                Step(text: Onboarding.offlineOpenStep, link: nil, detail: updateStep),
                 Step(text: localized("native.desktopMigration.settingsStep", "Go to Settings\u{00A0}›\u{00A0}Mobile\u{00A0}Access."), link: nil),
                 Step(text: serverStep, link: nil, detail: serverStepDetail),
             ]
         }
+
+        /// Under step 1 on both paths: an old Happy Desktop shows no direct
+        /// code.
+        public static var updateStep: String { localized("native.desktopMigration.updateStep", "Make sure Happy Desktop is up to date.") }
 
         /// A Happy Agent on a server is picked in Happy Desktop and scanned
         /// the same way; Chief of Staff sets up a new one.
@@ -62,5 +66,13 @@ extension Strings {
         public static var scan: String { Onboarding.scanButton }
         public static var learnMore: String { localized("native.desktopMigration.learnMore", "Learn more") }
         public static let learnMoreURL = URL(string: "https://happy.engineering/migrate")!
+
+        /// A Happy server code scanned here beside a Happy account: asked
+        /// before it links that account (`ScanRoute.confirmConnectComputer`).
+        public static var relayCodeTitle: String { localized("native.desktopMigration.relayCodeTitle", "This is a Happy server code") }
+        public static var relayCodeBody: String {
+            localized("native.desktopMigration.relayCodeBody", "This links your computer through the Happy server, not directly. If Happy Desktop shows a direct connection code, scan that instead. You may need to update Happy Desktop.")
+        }
+        public static var relayCodeLink: String { localized("native.desktopMigration.relayCodeLink", "Link anyway") }
     }
 }

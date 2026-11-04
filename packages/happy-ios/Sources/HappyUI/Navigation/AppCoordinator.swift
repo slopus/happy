@@ -249,7 +249,7 @@ public final class AppCoordinator {
         let route = ScanRoute.route(HappyCode(text), intent: .connect, hasAccount: context.account.session != nil, canShareAccount: context.account.sessionIsLegacy)
         Task { @MainActor in
             switch route {
-            case .connectComputer, .newAccountForComputer, .linkDevice:
+            case .connectComputer, .confirmConnectComputer, .newAccountForComputer, .linkDevice:
                 let terminal = if case .linkDevice = route { false } else { true }
                 guard await Alerts.confirm(
                     terminal ? Strings.Modals.authenticateTerminal : Strings.SettingsAccount.linkNewDevice,

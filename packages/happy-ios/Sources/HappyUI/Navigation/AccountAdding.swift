@@ -11,20 +11,21 @@ import UIKit
 @MainActor
 enum AccountAdding {
     /// The scanner, with the other ways in under its ⋯. `busy` brackets
-    /// the network work after a code is read.
-    static func begin(context: AppContext, from controller: UIViewController, busy: @escaping (Bool) -> Void = { _ in }) {
+    /// the network work after a code is read. The migration screen scans
+    /// with `.migrate`.
+    static func begin(context: AppContext, from controller: UIViewController, intent: ScanIntent = .addAccount, busy: @escaping (Bool) -> Void = { _ in }) {
         Task {
-            await HappyScan.scan(intent: .addAccount, context: context, on: controller, otherWays: otherWays(context: context, from: controller, busy: busy), busy: busy)
+            await HappyScan.scan(intent: intent, context: context, on: controller, otherWays: otherWays(context: context, from: controller, intent: intent, busy: busy), busy: busy)
         }
     }
 
     /// Entering a link, restoring an account, and the relay server. A team
     /// server is added by scanning the code Happy Desktop shows.
-    static func otherWays(context: AppContext, from controller: UIViewController, busy: @escaping (Bool) -> Void = { _ in }) -> [ScannerWay] {
+    static func otherWays(context: AppContext, from controller: UIViewController, intent: ScanIntent = .addAccount, busy: @escaping (Bool) -> Void = { _ in }) -> [ScannerWay] {
         [
             ScannerWay(title: Strings.Start.enterLink, symbol: "link") { [weak controller] in
                 guard let controller else { return }
-                enterLink(context: context, from: controller, busy: busy)
+                enterLink(context: context, from: controller, intent: intent, busy: busy)
             },
             // Restoring and the relay server are Happy CLI's alone; beside
             // Happy Agent's codes they say so.
@@ -52,11 +53,11 @@ enum AccountAdding {
     }
 
     /// A pasted link, routed as a scanned code is.
-    static func enterLink(context: AppContext, from controller: UIViewController, busy: @escaping (Bool) -> Void = { _ in }) {
+    static func enterLink(context: AppContext, from controller: UIViewController, intent: ScanIntent = .addAccount, busy: @escaping (Bool) -> Void = { _ in }) {
         Task {
             let text = await Alerts.prompt(Strings.Start.enterLinkTitle, Strings.Start.enterLinkMessage, placeholder: "happy://…", confirmTitle: Strings.Common.continueAction, on: controller)
             guard let text = text?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return }
-            await HappyScan.open(text, intent: .addAccount, context: context, on: controller, start: .pasteLink, busy: busy)
+            await HappyScan.open(text, intent: intent, context: context, on: controller, start: .pasteLink, busy: busy)
         }
     }
 

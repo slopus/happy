@@ -154,6 +154,8 @@ public struct SessionList: Equatable, Sendable {
     /// (`MachineChoice.isRigMachine`), so the account already uses Happy
     /// Agent, not through a direct connection.
     public var hasServerAgent = false
+    /// The person opted out of analytics, so no PostHog flag is asked for.
+    public var analyticsOptOut = false
     /// The list grouped by project, built only while that layout is chosen
     /// (SessionsListWrapper.tsx hands it to ProjectHomeList).
     public var projects: ProjectHomeData?
@@ -227,6 +229,7 @@ public struct SessionList: Equatable, Sendable {
         self.avatarMonochrome = settings.avatarMonochrome
         self.grouping = settings.sessionListGrouping
         self.hasServerAgent = snapshot.machines.machines.contains { MachineChoice.isRigMachine($0.metadata) }
+        self.analyticsOptOut = settings.analyticsOptOut
         self.projects = settings.sessionListGrouping == .project ? ProjectHomeData(snapshot, clock: clock, unknownMachine: unknownMachine) : nil
     }
 

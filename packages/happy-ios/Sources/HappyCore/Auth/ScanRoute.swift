@@ -9,6 +9,11 @@ public enum ScanIntent: Equatable, Sendable {
     /// Add an account beside the ones there are: a computer's code makes a
     /// new Happy account for it.
     case addAccount
+    /// Moving to a direct connection (the migration screen's Scan QR
+    /// code): a computer's Happy server code beside a Happy account here
+    /// links that account, once the person confirms they meant the Happy
+    /// server; otherwise as `addAccount`.
+    case migrate
 }
 
 /// What a scanned or pasted code leads to. Every code has a route, a
@@ -18,6 +23,9 @@ public enum ScanRoute: Equatable, Sendable {
     case connectAgent(PairingLink)
     /// Hand the computer the Happy account in use.
     case connectComputer(publicKey: Data)
+    /// Ask first, since a direct code was wanted, then hand the computer
+    /// the Happy account in use as `connectComputer` does.
+    case confirmConnectComputer(publicKey: Data)
     /// Make a Happy account, add it beside the others, and hand it to the
     /// computer: when adding an account, or when there is none here yet.
     case newAccountForComputer(publicKey: Data)
@@ -38,7 +46,12 @@ public enum ScanRoute: Equatable, Sendable {
         case .server(let link):
             return .signInToServer(link)
         case .terminal(let key):
-            return hasAccount && intent == .connect ? .connectComputer(publicKey: key) : .newAccountForComputer(publicKey: key)
+            guard hasAccount else { return .newAccountForComputer(publicKey: key) }
+            switch intent {
+            case .connect: return .connectComputer(publicKey: key)
+            case .migrate: return .confirmConnectComputer(publicKey: key)
+            case .addAccount: return .newAccountForComputer(publicKey: key)
+            }
         case .account(let key):
             guard hasAccount else { return .problem(.deviceNeedsAccount) }
             return canShareAccount ? .linkDevice(publicKey: key) : .problem(.accountNotShareable)

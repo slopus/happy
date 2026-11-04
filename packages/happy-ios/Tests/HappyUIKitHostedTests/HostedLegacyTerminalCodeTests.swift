@@ -238,6 +238,56 @@ final class HostedLegacyTerminalCodeTests: XCTestCase {
         await account.signOut()
     }
 
+    /// The migration screen's scan of a Happy server code beside a Happy
+    /// account: asked first; Cancel links nothing, Link anyway hands the
+    /// computer the account here, as Pair computer does, and adds none.
+    func testMigratingAsksBeforeLinkingTheAccountHere() async throws {
+        let computer = try terminal()
+        let relay = Relay(terminal: computer.publicKey)
+        let account = AccountController(
+            serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
+            credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
+            rnServerImport: { .confirmed(ServerConfig.defaultServerURL) },
+            transport: relay, connector: NoSockets())
+        try await account.signIn(Credentials(token: "existing", secret: Data(repeating: 7, count: 32)))
+        let session = try XCTUnwrap(account.session)
+        let context = AppContext(account: account, variant: .preview, version: "test")
+        let scene = try await hostedActiveScene()
+        let hostWindow = scene.keyWindow
+        let window = UIWindow(windowScene: scene)
+        let host = UIViewController()
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        let confirm = HappyScan.confirmRelay
+        addTeardownBlock { @MainActor in
+            HappyScan.confirmRelay = confirm
+            window.rootViewController?.presentedViewController?.dismiss(animated: false)
+            window.isHidden = true
+            hostWindow?.makeKey()
+        }
+        var asked = 0
+        var answer = false
+        HappyScan.confirmRelay = { _ in asked += 1; return answer }
+        let code = LegacyPairingLink.terminal(publicKey: computer.publicKey).urlString
+
+        let cancelled = await HappyScan.open(code, intent: .migrate, context: context, on: host, start: .scan)
+        XCTAssertEqual(cancelled, .ended)
+        XCTAssertEqual(asked, 1)
+        XCTAssertNil(relay.answer(for: computer.publicKey), "Cancel still linked")
+
+        answer = true
+        let linked = await HappyScan.open(code, intent: .migrate, context: context, on: host, start: .scan)
+        XCTAssertEqual(linked, .computerConnected)
+        XCTAssertEqual(asked, 2)
+        let response = try XCTUnwrap(relay.answer(for: computer.publicKey), "Link anyway never answered the computer")
+        let opened = try XCTUnwrap(Box.openAnonymous(response, recipientSecretKey: computer.secretKey))
+        XCTAssertEqual(Data(opened.dropFirst()), session.keys.contentKeyPair.publicKey)
+        XCTAssertEqual(account.accounts.count, 1)
+        XCTAssertTrue(account.session === session)
+
+        await account.signOut()
+    }
+
     func testWithNothingHere() async throws { try await run(.nothing) }
     func testBesideAHappyAccount() async throws { try await run(.happyAccount) }
     func testBesideAnAgentConnection() async throws { try await run(.agentConnection) }

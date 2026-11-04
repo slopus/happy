@@ -32,14 +32,14 @@ final class DesktopMigrationLayoutTests: XCTestCase {
     private let size = CGSize(width: 402, height: 874)
     private let safe = LayoutInsets(top: 116, left: 0, bottom: 34, right: 0)
 
-    private func screen(body: CGFloat = 72, link: Bool = false) -> MigrationScreenLayout {
+    private func screen(body: CGFloat = 72, link: Bool = false, update: Bool = false) -> MigrationScreenLayout {
         MigrationScreenLayout(
             size: size,
             safeArea: safe,
             title: .fixed(width: 300, height: 34),
             body: .fixed(width: 340, height: body),
             steps: [
-                .init(number: .fixed(width: 8, height: 16), text: .fixed(width: 200, height: 24), link: link ? .fixed(width: 210, height: 20) : nil),
+                .init(number: .fixed(width: 8, height: 16), text: .fixed(width: 200, height: 24), link: link ? .fixed(width: 210, height: 20) : nil, detail: update ? .fixed(width: 250, height: 20) : nil),
                 .init(number: .fixed(width: 8, height: 16), text: .fixed(width: 200, height: 24)),
                 .init(number: .fixed(width: 8, height: 16), text: .fixed(width: 220, height: 24), detail: .fixed(width: 300, height: 60)),
             ],
@@ -76,6 +76,17 @@ final class DesktopMigrationLayoutTests: XCTestCase {
         assertFrame(layout.steps[0].link?.target, rect(44, 362, 238, 40))
         assertFrame(layout.steps[0].link?.label, rect(14, 10, 210, 20))
         assertFrame(layout.steps[1].text, rect(58, 414, 320, 24))
+    }
+
+    /// Step 1 on the desktop path: "Make sure Happy Desktop is up to
+    /// date." where the site's words would be, the site 4 under it.
+    func testADetailAndASiteUnderOneStep() {
+        let layout = screen(link: true, update: true)
+        assertFrame(layout.steps[0].text, rect(58, 338, 320, 24))
+        assertFrame(layout.steps[0].detail, rect(58, 372, 320, 20))
+        assertFrame(layout.steps[0].link?.target, rect(44, 386, 238, 40))
+        assertFrame(layout.steps[0].link?.label, rect(14, 10, 210, 20))
+        assertFrame(layout.steps[1].text, rect(58, 438, 320, 24))
     }
 
     /// Words taller than the window push the button 20 under the last

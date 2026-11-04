@@ -28,6 +28,17 @@ enum HappyScan {
 
     static let log = Logger(subsystem: "engineering.happy", category: "scan")
 
+    /// Whether a Happy server code read while moving to a direct
+    /// connection should link anyway. Tests answer it themselves.
+    static var confirmRelay: @MainActor (UIViewController) async -> Bool = { controller in
+        await Alerts.confirm(
+            Strings.DesktopMigration.relayCodeTitle,
+            Strings.DesktopMigration.relayCodeBody,
+            confirmTitle: Strings.DesktopMigration.relayCodeLink,
+            on: controller
+        )
+    }
+
     /// The camera; the first code it reads, nil when closed. Over whatever
     /// `controller` already shows: UIKit drops a second presentation
     /// without a word, and the scan would never end.
@@ -75,6 +86,9 @@ enum HappyScan {
             return .pairing
         case .connectComputer(let key):
             guard let session = context.account.session else { return .ended }
+            return await approve(.terminal(publicKey: key), session: session, start: start, on: controller, busy: busy)
+        case .confirmConnectComputer(let key):
+            guard let session = context.account.session, await confirmRelay(controller) else { return .ended }
             return await approve(.terminal(publicKey: key), session: session, start: start, on: controller, busy: busy)
         case .linkDevice(let key):
             guard let session = context.account.session else { return .ended }

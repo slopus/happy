@@ -32,7 +32,9 @@ final class HomeRendererHarness {
         // drafts, whatever an earlier one left.
         let fresh = arguments.contains("-freshSettings")
         // The migration card shows only for `-desktopCard`, so the tests
-        // that drive home without it see home as it was.
+        // that drive home without it see home as it was; its PostHog flag
+        // is on then, unless `-migrationFlag off`.
+        MigrationNoteFlag.shared.fixedAnswer = option("-desktopCard") != nil && option("-migrationFlag") != "off"
         for path in [MigrationPath.desktop, .agentConnection] {
             if option("-desktopCard") == nil {
                 DesktopMigrationCard.close(path)
@@ -144,10 +146,11 @@ final class HomeRendererHarness {
     }
 }
 
-/// `-desktopCard show|open|bottom|scan|close`: shows the migration card and
-/// presses its own controls, as a finger would, once home has drawn it:
-/// none, the card, then Scan QR code on the screen it opens, or its foot
-/// scrolled to; or the card's ×.
+/// `-desktopCard show|open|bottom|scan|relay|close`: shows the migration
+/// card and presses its own controls, as a finger would, once home has
+/// drawn it: none, the card, then Scan QR code on the screen it opens, its
+/// foot scrolled to, or the question a Happy server code read there asks;
+/// or the card's ×.
 @MainActor
 enum DesktopCardScript {
     static func run(_ script: String, in window: UIWindow) {
@@ -162,6 +165,8 @@ enum DesktopCardScript {
                 list.setContentOffset(CGPoint(x: 0, y: max(0, list.contentSize.height - list.bounds.height)), animated: false)
             } else if script == "scan" {
                 list.subviews.compactMap { $0 as? RoundButton }.first?.sendActions(for: .touchUpInside)
+            } else if script == "relay", let screen = HappyScan.topmost(in: window) {
+                _ = await HappyScan.confirmRelay(screen)
             }
         }
     }

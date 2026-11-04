@@ -25,6 +25,25 @@ final class DesktopMigrationTests: XCTestCase {
         XCTAssertEqual(header.content.notices.map(\.title), [Strings.DesktopMigration.agentConnectionTitle, "App Update Available"])
     }
 
+    /// PostHog's `direct-connection-migration-note` decides whether the
+    /// card shows at all: off (or unknown) hides it, on shows the path's.
+    func testTheFlagGatesTheCard() throws {
+        let account = AccountController(
+            serverConfig: ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
+            credentialStore: InMemoryCredentialStore(), storeDirectory: nil,
+            rnServerImport: { .confirmed(ServerConfig.defaultServerURL) })
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "desktop-migration-flag-test"))
+        defaults.removePersistentDomain(forName: "desktop-migration-flag-test")
+        XCTAssertNil(DesktopMigrationCard.path(account, serverAgent: false, flag: false, defaults: defaults))
+        XCTAssertNil(DesktopMigrationCard.path(account, serverAgent: true, flag: false, defaults: defaults))
+        XCTAssertEqual(DesktopMigrationCard.path(account, serverAgent: false, flag: true, defaults: defaults), .desktop)
+        XCTAssertEqual(DesktopMigrationCard.path(account, serverAgent: true, flag: true, defaults: defaults), .agentConnection)
+        let settings = LocalSettings(storage: InMemoryKeyValueStore())
+        XCTAssertFalse(MigrationNoteFlag().isOn(settings, optedOut: false))
+        settings.migrationNoteFlag = true
+        XCTAssertTrue(MigrationNoteFlag().isOn(settings, optedOut: false))
+    }
+
     /// VoiceOver reads the card as one button that opens the screen, with
     /// Close among its actions.
     func testVoiceOverOpensAndClosesTheCard() throws {

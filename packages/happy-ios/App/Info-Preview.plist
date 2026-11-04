@@ -25,6 +25,8 @@
 	<string>1</string>
 	<key>HappyAppVariant</key>
 	<string>preview</string>
+	<key>HappyPostHogKey</key>
+	<string>$(HAPPY_POSTHOG_API_KEY)</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
