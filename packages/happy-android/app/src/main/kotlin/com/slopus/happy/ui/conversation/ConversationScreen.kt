@@ -502,8 +502,8 @@ fun ConversationScreen(
                                 tag = ConversationScreenTags.ERROR,
                                 modifier = Modifier.padding(top = barFoot).keyboardPadding(keyboard, dockHeight),
                             )
-                            // New work is asked in the middle instead, and the chat it becomes is about to have its first message.
-                            TranscriptPhase.Empty -> if (state.created) {
+                            // New work is asked in the middle instead. Read live: fading out under the first message, it says nothing.
+                            TranscriptPhase.Empty -> if (state.created && state.rows.isEmpty()) {
                                 StatePage(
                                     title = null,
                                     body = stringResource(R.string.conversation_empty),

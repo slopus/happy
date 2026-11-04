@@ -3,7 +3,8 @@ package com.slopus.happy.ui.conversation
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
@@ -18,7 +19,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import androidx.compose.ui.unit.width
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.slopus.happy.chat.markdown.parseMarkdown
+import com.slopus.happy.conversation.ConversationRow
 import com.slopus.happy.conversation.ConversationState
+import com.slopus.happy.conversation.Delivery
 import com.slopus.happy.conversation.NewWork
 import com.slopus.happy.conversation.WorkChoice
 import com.slopus.happy.conversation.WorkKind
@@ -133,6 +137,28 @@ class NewWorkPanelTest {
         rule.waitForIdle()
         rule.node(NewWorkTags.PANEL).assertDoesNotExist()
         rule.node(ConversationComposerTags.INPUT).assertTextEquals("")
+    }
+
+    @Test fun `new work's first message is drawn at once, and the chat it becomes never says it is empty`() {
+        show()
+        rule.mainClock.autoAdvance = false
+        val sent = ConversationRow.User("s:user", "s", "Plain first", parseMarkdown("Plain first"), emptyList(), Delivery.Sending)
+        state = state.copy(newWork = NewWork(WorkChoice(), locked = true), rows = listOf(sent))
+        Snapshot.sendApplyNotifications()
+        rule.mainClock.advanceTimeByFrame()
+        rule.mainClock.advanceTimeByFrame()
+        rule.onNodeWithText("Plain first").assertExists()
+        // Made while the transcript still fades in over the empty page.
+        state = state.copy(created = true, newWork = null)
+        Snapshot.sendApplyNotifications()
+        repeat(30) {
+            rule.mainClock.advanceTimeBy(16)
+            rule.node(ConversationScreenTags.EMPTY).assertDoesNotExist()
+        }
+        rule.mainClock.autoAdvance = true
+        rule.waitForIdle()
+        rule.onNodeWithText("Plain first").assertIsDisplayed()
+        rule.node(ConversationScreenTags.EMPTY).assertDoesNotExist()
     }
 
     @Test
