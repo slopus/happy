@@ -7,6 +7,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import com.slopus.happy.ui.tablet.SidebarFootBar
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -349,6 +352,54 @@ class CallBarDeviceShots {
         android.util.Log.i("CallBarShots", "paywall: offer=${offer?.visibleBounds} bar=${bar?.visibleBounds}")
         assertTrue("the paywall is there", offer != null)
         device.takeScreenshot(File(dir, "${if (dark) "dark" else "light"}-paywall.png"))
+    }
+
+    /** Voice's sheet as each state draws it, nothing on sale and the debug preview, then a tablet sidebar's foot. */
+    @Test
+    fun sheets() {
+        val later = System.currentTimeMillis() + 26 * 3_600_000L
+        val preview = CallOffer.Preview(CallOffer.PRICE)
+        val sheets = listOf(
+            "welcome" to com.slopus.happy.call.CallSheet.Welcome(CallOffer.Unavailable),
+            "welcome-preview" to com.slopus.happy.call.CallSheet.Welcome(preview),
+            "used" to com.slopus.happy.call.CallSheet.Used(later, CallOffer.Unavailable),
+            "used-preview" to com.slopus.happy.call.CallSheet.Used(later, preview),
+        )
+        val shown = MutableStateFlow<com.slopus.happy.call.CallSheet?>(null)
+        val foot = MutableStateFlow(false)
+        rule.runOnUiThread { rule.activity.enableEdgeToEdge() }
+        rule.setContent {
+            HappyTheme(if (dark) ThemePreference.Dark else ThemePreference.Light) {
+                val accounts = AccountMenu(listOf(AccountMenuEntry("fx-connection", "Studio Mac", agent = true, active = true)))
+                if (foot.collectAsState().value) {
+                    Box(Modifier.fillMaxSize().background(com.slopus.happy.ui.theme.HappyTheme.colors.grouped.background)) {
+                        Box(Modifier.width(360.dp).fillMaxHeight()) {
+                            SidebarFootBar(app.getString(R.string.sidebar_new_session), onSettings = {}, onCompose = {}, onVoice = {})
+                        }
+                    }
+                } else {
+                    AgentHomeScreen("Studio Mac", feed(), AgentLinkStatus.Connected, accounts, AgentHomeActions({}, {}, {}, {}, {}, {}, onVoice = {}))
+                }
+                shown.collectAsState().value?.let { CallSheet(it, onStart = {}, onDismiss = { shown.value = null }) }
+            }
+        }
+        rule.waitForIdle()
+        for ((name, sheet) in sheets) {
+            shown.value = sheet
+            rule.waitForIdle()
+            Thread.sleep(1500)
+            assertTrue("$name is there", device.findObject(By.text(app.getString(R.string.call_start_session))) != null)
+            device.takeScreenshot(File(dir, "${if (dark) "dark" else "light"}-sheet-$name.png"))
+            android.util.Log.i("CallBarShots", "captured sheet-$name")
+            shown.value = null
+            rule.waitForIdle()
+            Thread.sleep(800)
+        }
+        foot.value = true
+        rule.waitForIdle()
+        Thread.sleep(500)
+        device.takeScreenshot(File(dir, "${if (dark) "dark" else "light"}-sidebar-foot.png"))
+        android.util.Log.i("CallBarShots", "captured sidebar-foot")
     }
 
     /** The fixture states one after another, for `screenrecord`: about 20 s. */

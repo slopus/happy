@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -32,6 +33,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,7 +45,10 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -145,14 +150,14 @@ fun CallSheet(sheet: CallSheet, onStart: () -> Unit, onDismiss: () -> Unit) {
         contentWindowInsets = { WindowInsets(0) },
         modifier = Modifier.testTag(if (sheet is CallSheet.Welcome) CallSheetTags.WELCOME else CallSheetTags.PAYWALL),
     ) {
-        SheetStatusIcons()
+        SheetIcons(dark)
         Box(Modifier.fillMaxSize()) {
             GrainGradient(palette, Modifier.matchParentSize())
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 val viewport = maxHeight
                 Column(
                     Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).heightIn(min = viewport)
-                        .navigationBarsPadding().padding(horizontal = CallSheetSpec.side).padding(bottom = 16.dp),
+                        .statusBarsPadding().navigationBarsPadding().padding(horizontal = CallSheetSpec.side).padding(bottom = 16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     // The mic, the headline and what voice does, in the middle of the space above the actions.
@@ -222,7 +227,7 @@ fun CallSheet(sheet: CallSheet, onStart: () -> Unit, onDismiss: () -> Unit) {
                     }
                 }
             }
-            Close(ink, Modifier.align(Alignment.TopEnd).padding(10.dp)) {
+            Close(ink, Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(10.dp)) {
                 scope.launch { state.hide() }.invokeOnCompletion { onDismiss() }
             }
         }
@@ -297,6 +302,18 @@ private fun SessionButton(title: String, prominent: Boolean, enabled: Boolean, i
                 modifier = Modifier.weight(1f, fill = false),
             )
             VoiceGlyph(20.dp, text)
+        }
+    }
+}
+
+/** The sheet is under the status and navigation bars, so their icons are the sheet's, whatever the system's theme. */
+@Composable
+private fun SheetIcons(dark: Boolean) {
+    val window = (LocalView.current.parent as? DialogWindowProvider)?.window ?: return
+    SideEffect {
+        WindowCompat.getInsetsController(window, window.decorView).run {
+            isAppearanceLightStatusBars = !dark
+            isAppearanceLightNavigationBars = !dark
         }
     }
 }
