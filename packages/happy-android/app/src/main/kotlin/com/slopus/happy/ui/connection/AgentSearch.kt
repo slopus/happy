@@ -1,5 +1,11 @@
 package com.slopus.happy.ui.connection
 
+import com.slopus.happy.chat.arr
+import com.slopus.happy.agent.Intent
+import com.slopus.happy.todos.TodoItem
+import com.slopus.happy.todos.TodoLibrary
+import com.slopus.happy.todos.TodoOp
+import com.slopus.happy.todos.TodoReducer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -288,7 +294,7 @@ data class AgentSearchSources(
          * session's `cachedResource`, so off the main thread). A Surface
          * being left ([feed] no longer lists it) is out already.
          */
-        fun read(catalog: AgentCatalog, feed: AgentFeed, kept: (String) -> JsonObject?): AgentSearchSources {
+        fun read(catalog: AgentCatalog, feed: AgentFeed, kept: (String) -> JsonObject?, pending: List<Intent> = emptyList()): AgentSearchSources {
             val listed = feed.rows.mapNotNullTo(HashSet()) { (it as? AgentFeedRow.Surface)?.id }
             val surfaces = catalog.surfaces.values
                 .filter { it.string("status") != "archived" && it["archivedAt"].isNullish() && it.string("type") in KINDS }
@@ -302,9 +308,12 @@ data class AgentSearchSources(
                 }
                 .sortedByDescending { it.first }
                 .map { it.second }
+            val ops = pending.mapNotNull(TodoOp::of).groupBy { it.surfaceId }
             val todos = surfaces.filter { it.joined && it.row.type == SurfaceReader.TODO }.flatMap { list ->
-                val read = kept("surface" + list.row.id)?.let(SurfaceBody::parse) as? SurfaceBody.Todos
-                read?.todos.orEmpty().filter { !it.done }.map { Todo(it.id, it.text, list.row) }
+                val confirmed = kept(TodoLibrary.resource(list.row.id))?.get("todos").arr.orEmpty().mapNotNull(TodoItem::parse).associateBy { it.id }
+                TodoReducer.overlay(confirmed, ops[list.row.id].orEmpty()).values
+                    .filter { it.status == TodoItem.Status.Active && it.heading == null }
+                    .map { Todo(it.id, it.text, list.row) }
             }
             val artifacts = kept(ArtifactCatalogFeed.RESOURCE)?.let(ArtifactCatalog::fromKept).orEmpty().map { it.ref }
             return AgentSearchSources(surfaces, todos, artifacts)

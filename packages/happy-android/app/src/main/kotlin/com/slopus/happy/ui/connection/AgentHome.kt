@@ -732,7 +732,7 @@ fun AgentHome(
             preview = { row -> ConversationPreview(session, row, settings.userMessageBubbleColor) },
             listState = rememberAgentHomeListState(graph, id),
             searchSources = remember(session) {
-                { withContext(Dispatchers.IO) { AgentSearchSources.read(session.catalog.value, session.feed.value, session::cachedResource) } }
+                { withContext(Dispatchers.IO) { AgentSearchSources.read(session.catalog.value, session.feed.value, session::cachedResource, session.intents.pending.value) } }
             },
         )
     }

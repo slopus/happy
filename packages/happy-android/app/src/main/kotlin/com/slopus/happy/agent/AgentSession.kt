@@ -257,6 +257,13 @@ class AgentSession internal constructor(
             readUsers = { com.slopus.happy.references.ReferenceReader.userNames(client, it) },
         )
     }
+    /**
+     * The connection's todo lists, kept on the phone and changed offline
+     * first; made with the session so changes kept from an earlier run go
+     * out once the link is up, whether or not a list is opened.
+     */
+    val todos: com.slopus.happy.todos.TodoLibrary = com.slopus.happy.todos.connectionTodos(this, client, scope)
+
     /** Bots' pictures, as home's rows draw them. */
     /** Chat media kept on this phone for good, beside the catalog (iOS `MediaLibrary.agent`); null where nothing is kept. */
     val media: com.slopus.happy.media.MediaLibrary? = cacheFile?.let { com.slopus.happy.media.MediaLibrary(File(it.parentFile, it.nameWithoutExtension + ".media")) }
@@ -477,8 +484,8 @@ class AgentSession internal constructor(
                     joinRefusalState.update { it + (rejection.intent.target to rejection.reason) }
                     return@collectLatest
                 }
-                // A refused read or seen entry is nothing to tell; a screen that heard the refusal said it already.
-                if (rejection.intent.kind == Intent.READ || rejection.intent.kind in FeedLibrary.KINDS || rejection.heard) return@collectLatest
+                // Read/seen refusals stay quiet; todos and screens show their own refusals.
+                if (rejection.intent.kind == Intent.READ || rejection.intent.kind in FeedLibrary.KINDS || rejection.intent.kind.startsWith("todo.") || rejection.heard) return@collectLatest
                 noticeState.value = rejection.reason
                 delay(NOTICE_MILLIS)
                 if (noticeState.value == rejection.reason) noticeState.value = null

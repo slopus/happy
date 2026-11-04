@@ -173,7 +173,14 @@ class AgentSearchTest {
         )
         val current = catalog(bootstrap)
         val kept = mapOf(
-            "surfaces1" to SurfaceBody.Todos(listOf(com.slopus.happy.conversation.Todo("t1", "Milk", false), com.slopus.happy.conversation.Todo("t2", "Eggs", true))).json(),
+            com.slopus.happy.todos.TodoLibrary.resource("s1") to kotlinx.serialization.json.buildJsonObject {
+                put("todos", kotlinx.serialization.json.JsonArray(listOf(
+                    com.slopus.happy.todos.TodoItem("t1", "s1", "Milk"),
+                    com.slopus.happy.todos.TodoItem("t2", "s1", "Eggs", com.slopus.happy.todos.TodoItem.Status.Completed),
+                    com.slopus.happy.todos.TodoItem("t3", "s1", "# Dairy"),
+                    com.slopus.happy.todos.TodoItem("t4", "s1", "Cheese", com.slopus.happy.todos.TodoItem.Status.Deleted),
+                ).map { it.json() }))
+            },
             com.slopus.happy.artifacts.ArtifactCatalogFeed.RESOURCE to kotlinx.serialization.json.buildJsonObject {
                 put("artifacts", kotlinx.serialization.json.buildJsonArray {
                     add(kotlinx.serialization.json.buildJsonObject { put("id", kotlinx.serialization.json.JsonPrimitive("a1")); put("title", kotlinx.serialization.json.JsonPrimitive("Chart")); put("type", kotlinx.serialization.json.JsonPrimitive("image")) })
@@ -185,6 +192,11 @@ class AgentSearchTest {
         assertEquals(listOf("Milk"), read.todos.map { it.text })
         assertEquals("s1", read.todos.single().list.id)
         assertEquals(listOf("a1"), read.artifacts.map { it.id })
+        val create = com.slopus.happy.todos.TodoOp("s1", "local", com.slopus.happy.todos.TodoOp.Kind.Create("Bread", "1"), 5.0)
+        val complete = com.slopus.happy.todos.TodoOp("s1", "t1", com.slopus.happy.todos.TodoOp.Kind.Status(com.slopus.happy.todos.TodoItem.Status.Completed), 6.0)
+        val pending = listOf(create, complete).mapIndexed { i, op -> com.slopus.happy.agent.Intent("i$i", op.intentKind, op.todoId, op.value, i.toLong()) }
+        val offline = AgentSearchSources.read(current, AgentFeed.derive(current), kept::get, pending)
+        assertEquals("search sees the same optimistic list as the editor", listOf("Bread"), offline.todos.map { it.text })
     }
 
     @Test
