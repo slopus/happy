@@ -12,7 +12,8 @@ extension TranslationCatalog {
             "native.desktopMigration.agentConnectionTitle": "Migrate to direct connection",
             "native.desktopMigration.agentConnectionBody": "You’re using Happy Agent through the Happy server. Connect directly for the lowest latency and newest features.",
             "native.desktopMigration.settingsStep": "Go to Settings\u{00A0}›\u{00A0}Mobile\u{00A0}Access.",
-            "native.desktopMigration.serverStep": "On a server? Select it in Happy Desktop and scan its code. To set up a new one, ask Chief of Staff.",
+            "native.desktopMigration.serverStep": "Using Happy on a server?",
+            "native.desktopMigration.serverStepDetail": "Select it in Happy Desktop and scan its code.\nTo set up a new remote server, just ask the Chief of Staff bot in Happy Desktop.",
             "native.desktopMigration.learnMore": "Learn more",
         ],
         "ru": [
@@ -22,7 +23,8 @@ extension TranslationCatalog {
             "native.desktopMigration.agentConnectionTitle": "Перейдите на прямое подключение",
             "native.desktopMigration.agentConnectionBody": "Вы используете Happy Agent через сервер Happy. Подключитесь напрямую, чтобы получить минимальную задержку и новейшие функции.",
             "native.desktopMigration.settingsStep": "Откройте Settings\u{00A0}›\u{00A0}Mobile\u{00A0}Access.",
-            "native.desktopMigration.serverStep": "На сервере? Выберите его в Happy Desktop и отсканируйте его код. Чтобы настроить новый, попросите Chief of Staff.",
+            "native.desktopMigration.serverStep": "Happy работает на сервере?",
+            "native.desktopMigration.serverStepDetail": "Выберите его в Happy Desktop и отсканируйте его код.\nЧтобы настроить новый удалённый сервер, просто попросите бота Chief of Staff в Happy Desktop.",
             "native.desktopMigration.learnMore": "Подробнее",
         ],
         "pl": [
@@ -32,7 +34,8 @@ extension TranslationCatalog {
             "native.desktopMigration.agentConnectionTitle": "Przejdź na połączenie bezpośrednie",
             "native.desktopMigration.agentConnectionBody": "Używasz Happy Agent przez serwer Happy. Połącz się bezpośrednio, aby mieć najmniejsze opóźnienia i najnowsze funkcje.",
             "native.desktopMigration.settingsStep": "Przejdź do Settings\u{00A0}›\u{00A0}Mobile\u{00A0}Access.",
-            "native.desktopMigration.serverStep": "Na serwerze? Wybierz go w Happy Desktop i zeskanuj jego kod. Aby skonfigurować nowy, poproś Chief of Staff.",
+            "native.desktopMigration.serverStep": "Używasz Happy na serwerze?",
+            "native.desktopMigration.serverStepDetail": "Wybierz go w Happy Desktop i zeskanuj jego kod.\nAby skonfigurować nowy zdalny serwer, po prostu poproś bota Chief of Staff w Happy Desktop.",
             "native.desktopMigration.learnMore": "Dowiedz się więcej",
         ],
         "es": [
@@ -42,7 +45,8 @@ extension TranslationCatalog {
             "native.desktopMigration.agentConnectionTitle": "Migra a una conexión directa",
             "native.desktopMigration.agentConnectionBody": "Estás usando Happy Agent a través del servidor de Happy. Conéctate directamente para tener la latencia más baja y las funciones más nuevas.",
             "native.desktopMigration.settingsStep": "Ve a Settings\u{00A0}›\u{00A0}Mobile\u{00A0}Access.",
-            "native.desktopMigration.serverStep": "¿En un servidor? Selecciónalo en Happy Desktop y escanea su código. Para configurar uno nuevo, pídeselo a Chief of Staff.",
+            "native.desktopMigration.serverStep": "¿Usas Happy en un servidor?",
+            "native.desktopMigration.serverStepDetail": "Selecciónalo en Happy Desktop y escanea su código.\nPara configurar un servidor remoto nuevo, pídeselo al bot Chief of Staff en Happy Desktop.",
             "native.desktopMigration.learnMore": "Más información",
         ],
         "it": [
@@ -52,7 +56,8 @@ extension TranslationCatalog {
             "native.desktopMigration.agentConnectionTitle": "Passa alla connessione diretta",
             "native.desktopMigration.agentConnectionBody": "Stai usando Happy Agent tramite il server di Happy. Connettiti direttamente per avere la latenza più bassa e le funzioni più recenti.",
             "native.desktopMigration.settingsStep": "Vai in Settings\u{00A0}›\u{00A0}Mobile\u{00A0}Access.",
-            "native.desktopMigration.serverStep": "Su un server? Selezionalo in Happy Desktop e scansiona il suo codice. Per configurarne uno nuovo, chiedi a Chief of Staff.",
+            "native.desktopMigration.serverStep": "Usi Happy su un server?",
+            "native.desktopMigration.serverStepDetail": "Selezionalo in Happy Desktop e scansiona il suo codice.\nPer configurare un nuovo server remoto, chiedi al bot Chief of Staff in Happy Desktop.",
             "native.desktopMigration.learnMore": "Scopri di più",
         ],
         "pt": [
@@ -62,7 +67,8 @@ extension TranslationCatalog {
             "native.desktopMigration.agentConnectionTitle": "Migre para a conexão direta",
             "native.desktopMigration.agentConnectionBody": "Você está usando o Happy Agent pelo servidor do Happy. Conecte-se diretamente para ter a menor latência e os recursos mais novos.",
             "native.desktopMigration.settingsStep": "Vá para Settings\u{00A0}›\u{00A0}Mobile\u{00A0}Access.",
-            "native.desktopMigration.serverStep": "Em um servidor? Selecione-o no Happy Desktop e escaneie o código dele. Para configurar um novo, peça ao Chief of Staff.",
+            "native.desktopMigration.serverStep": "Usa o Happy em um servidor?",
+            "native.desktopMigration.serverStepDetail": "Selecione-o no Happy Desktop e escaneie o código dele.\nPara configurar um novo servidor remoto, é só pedir ao bot Chief of Staff no Happy Desktop.",
             "native.desktopMigration.learnMore": "Saiba mais",
         ],
         "ca": [
@@ -72,7 +78,8 @@ extension TranslationCatalog {
             "native.desktopMigration.agentConnectionTitle": "Migra a una connexió directa",
             "native.desktopMigration.agentConnectionBody": "Fas servir Happy Agent a través del servidor de Happy. Connecta’t directament per tenir la latència més baixa i les funcions més noves.",
             "native.desktopMigration.settingsStep": "Ves a Settings\u{00A0}›\u{00A0}Mobile\u{00A0}Access.",
-            "native.desktopMigration.serverStep": "En un servidor? Selecciona’l a Happy Desktop i escaneja’n el codi. Per configurar-ne un de nou, demana-ho a Chief of Staff.",
+            "native.desktopMigration.serverStep": "Fas servir Happy en un servidor?",
+            "native.desktopMigration.serverStepDetail": "Selecciona’l a Happy Desktop i escaneja’n el codi.\nPer configurar un servidor remot nou, només cal que ho demanis al bot Chief of Staff a Happy Desktop.",
             "native.desktopMigration.learnMore": "Més informació",
         ],
         "zh-Hans": [
@@ -82,7 +89,8 @@ extension TranslationCatalog {
             "native.desktopMigration.agentConnectionTitle": "迁移到直接连接",
             "native.desktopMigration.agentConnectionBody": "你正在通过 Happy 服务器使用 Happy Agent。直接连接可获得最低延迟和最新功能。",
             "native.desktopMigration.settingsStep": "前往 Settings\u{00A0}›\u{00A0}Mobile\u{00A0}Access。",
-            "native.desktopMigration.serverStep": "在服务器上？在 Happy Desktop 中选择它并扫描它的代码。要设置新服务器，请询问 Chief of Staff。",
+            "native.desktopMigration.serverStep": "在服务器上使用 Happy？",
+            "native.desktopMigration.serverStepDetail": "在 Happy Desktop 中选择它并扫描它的代码。\n要设置新的远程服务器，只需在 Happy Desktop 中询问 Chief of Staff 机器人。",
             "native.desktopMigration.learnMore": "了解更多",
         ],
         "zh-Hant": [
@@ -92,7 +100,8 @@ extension TranslationCatalog {
             "native.desktopMigration.agentConnectionTitle": "遷移到直接連線",
             "native.desktopMigration.agentConnectionBody": "你正在透過 Happy 伺服器使用 Happy Agent。直接連線可獲得最低延遲和最新功能。",
             "native.desktopMigration.settingsStep": "前往 Settings\u{00A0}›\u{00A0}Mobile\u{00A0}Access。",
-            "native.desktopMigration.serverStep": "在伺服器上？在 Happy Desktop 中選擇它並掃描它的代碼。要設定新伺服器，請詢問 Chief of Staff。",
+            "native.desktopMigration.serverStep": "在伺服器上使用 Happy？",
+            "native.desktopMigration.serverStepDetail": "在 Happy Desktop 中選擇它並掃描它的代碼。\n要設定新的遠端伺服器，只需在 Happy Desktop 中詢問 Chief of Staff 機器人。",
             "native.desktopMigration.learnMore": "了解更多",
         ],
         "ja": [
@@ -102,7 +111,8 @@ extension TranslationCatalog {
             "native.desktopMigration.agentConnectionTitle": "直接接続に移行",
             "native.desktopMigration.agentConnectionBody": "現在、Happy サーバー経由で Happy Agent を使っています。直接接続すると、最小の遅延と最新の機能を利用できます。",
             "native.desktopMigration.settingsStep": "Settings\u{00A0}›\u{00A0}Mobile\u{00A0}Access を開きます。",
-            "native.desktopMigration.serverStep": "サーバーで使っていますか？Happy Desktop でそのサーバーを選択し、コードをスキャンします。新しいサーバーの設定は Chief of Staff に依頼してください。",
+            "native.desktopMigration.serverStep": "サーバーで Happy を使っていますか？",
+            "native.desktopMigration.serverStepDetail": "Happy Desktop でそのサーバーを選択し、コードをスキャンします。\n新しいリモートサーバーを設定するには、Happy Desktop の Chief of Staff ボットに頼むだけです。",
             "native.desktopMigration.learnMore": "詳しく見る",
         ],
     ]

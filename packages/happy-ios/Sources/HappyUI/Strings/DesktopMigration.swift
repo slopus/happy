@@ -22,7 +22,7 @@ extension Strings {
             [
                 Step(text: Onboarding.offlineOpenStep, link: Start.installDownloadPrefix + Onboarding.installBodyLink),
                 Step(text: "\(Start.installChoose)\n\(Start.installSettings)", link: nil),
-                Step(text: serverStep, link: nil),
+                Step(text: serverStep, link: nil, detail: serverStepDetail),
             ]
         }
 
@@ -39,20 +39,23 @@ extension Strings {
             [
                 Step(text: Onboarding.offlineOpenStep, link: nil),
                 Step(text: localized("native.desktopMigration.settingsStep", "Go to Settings\u{00A0}›\u{00A0}Mobile\u{00A0}Access."), link: nil),
-                Step(text: serverStep, link: nil),
+                Step(text: serverStep, link: nil, detail: serverStepDetail),
             ]
         }
 
         /// A Happy Agent on a server is picked in Happy Desktop and scanned
         /// the same way; Chief of Staff sets up a new one.
-        public static var serverStep: String {
-            localized("native.desktopMigration.serverStep", "On a server? Select it in Happy Desktop and scan its code. To set up a new one, ask Chief of Staff.")
+        public static var serverStep: String { localized("native.desktopMigration.serverStep", "Using Happy on a server?") }
+        public static var serverStepDetail: String {
+            localized("native.desktopMigration.serverStepDetail", "Select it in Happy Desktop and scan its code.\nTo set up a new remote server, just ask the Chief of Staff bot in Happy Desktop.")
         }
 
         public struct Step {
             public var text: String
             /// The site, under the step, as the first-run screen offers it.
             public var link: String?
+            /// Words under the step, in the site's place and type.
+            public var detail: String? = nil
         }
 
         /// The first-run screen's button, which opens the scanner.

@@ -7,7 +7,7 @@ import CoreGraphics
 /// screens' look (`InstallDesktopLayout`): their column, 24 in from the safe
 /// area and at most 440 wide; the path's picture where their animated TV
 /// is; the title and its line centred in a slide's type; the numbered
-/// steps; Scan QR code centred, as wide as its label (at least 200), and
+/// steps, the same 22 between what each shows; Scan QR code centred, as wide as its label (at least 200), and
 /// Learn more under it, at the foot of the window while everything fits;
 /// and a site's 40 tall target.
 ///
@@ -19,10 +19,12 @@ import CoreGraphics
 ///     20
 ///     ① step                         the number's dot, then the words
 ///        Download from happy.engineering   (a step's link, under it)
-///     12
+///     22
 ///     ② step
-///     12
+///     22
 ///     ③ step
+///        Select it in Happy Desktop…   (a step's detail, where a link's
+///                                    words would be)
 ///     20 at least
 ///     Scan QR code                   centred
 ///     4
@@ -43,13 +45,18 @@ public struct MigrationScreenLayout: Equatable, Sendable {
         /// line (24 tall).
         public static let numberOffset: CGFloat = 1
         public static let numberGap: CGFloat = 12
-        public static let stepGap: CGFloat = 12
+        /// From what a step shows (its words, its link's words or its
+        /// detail) to the next step.
+        public static let stepGap: CGFloat = 22
         public static let buttonGap: CGFloat = 20
         public static let learnMoreGap: CGFloat = 4
         public static let buttonMinWidth: CGFloat = StartLayout.Metrics.buttonMinWidth
         /// A link's target, as a text action's (`TextActionLayout`).
         public static let linkMinHeight: CGFloat = TextActionLayout.Metrics.minHeight
         public static let linkPadding: CGFloat = TextActionLayout.Metrics.paddingHorizontal
+        /// Down from the step's words to its detail: where a link's one
+        /// line (20) sits in its 40 tall target.
+        public static let detailGap: CGFloat = 10
     }
 
     public struct Step {
@@ -57,11 +64,14 @@ public struct MigrationScreenLayout: Equatable, Sendable {
         public var number: Measurable
         public var text: Measurable
         public var link: Measurable?
+        /// Words under the step, in a link's place and type, not a link.
+        public var detail: Measurable?
 
-        public init(number: Measurable, text: Measurable, link: Measurable? = nil) {
+        public init(number: Measurable, text: Measurable, link: Measurable? = nil, detail: Measurable? = nil) {
             self.number = number
             self.text = text
             self.link = link
+            self.detail = detail
         }
     }
 
@@ -77,6 +87,7 @@ public struct MigrationScreenLayout: Equatable, Sendable {
         public var numberLabel: CGRect
         public var text: CGRect
         public var link: Link?
+        public var detail: CGRect?
     }
 
     public var art: CGRect
@@ -117,14 +128,16 @@ public struct MigrationScreenLayout: Equatable, Sendable {
             if index > 0 { y += M.stepGap }
             let text = CGRect(x: textX, y: y, width: textWidth, height: step.text.height(fitting: textWidth))
             let link = step.link.map { makeLink($0, x: textX, y: text.maxY, width: textWidth - M.linkPadding * 2) }
+            let detail = step.detail.map { CGRect(x: textX, y: text.maxY + M.detailGap, width: textWidth, height: $0.height(fitting: textWidth)) }
             let label = step.number.size(fitting: M.number)
             frames.append(StepFrames(
                 number: CGRect(x: x, y: y + M.numberOffset, width: M.number, height: M.number),
                 numberLabel: CGRect(x: (M.number - label.width) / 2, y: (M.number - label.height) / 2, width: label.width, height: label.height),
                 text: text,
-                link: link
+                link: link,
+                detail: detail
             ))
-            y = max(text.maxY, link?.target.maxY ?? 0)
+            y = max(text.maxY, link.map { $0.target.minY + $0.label.maxY } ?? 0, detail?.maxY ?? 0)
         }
         self.steps = frames
         let buttonWidth = min(column, max(M.buttonMinWidth, buttonSize.width))

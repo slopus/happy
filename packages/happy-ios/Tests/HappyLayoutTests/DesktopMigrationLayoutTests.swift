@@ -41,24 +41,26 @@ final class DesktopMigrationLayoutTests: XCTestCase {
             steps: [
                 .init(number: .fixed(width: 8, height: 16), text: .fixed(width: 200, height: 24), link: link ? .fixed(width: 210, height: 20) : nil),
                 .init(number: .fixed(width: 8, height: 16), text: .fixed(width: 200, height: 24)),
-                .init(number: .fixed(width: 8, height: 16), text: .fixed(width: 300, height: 48)),
+                .init(number: .fixed(width: 8, height: 16), text: .fixed(width: 220, height: 24), detail: .fixed(width: 300, height: 60)),
             ],
             button: CGSize(width: 150, height: 52),
             learnMore: .fixed(width: 80, height: 20)
         )
     }
 
-    /// The picture, the words and the three steps from the top; Scan QR
-    /// code (at least 200 wide) and Learn more at the foot.
+    /// The picture, the words and the three steps from the top, 22 apart,
+    /// the last one's detail where a link's words would be; Scan QR code
+    /// (at least 200 wide) and Learn more at the foot.
     func testItFitsAnIPhone() {
         let layout = screen()
         assertFrame(layout.art, rect(165, 116, 72, 72))
         assertFrame(layout.title, rect(51, 204, 300, 34))
         assertFrame(layout.body, rect(31, 246, 340, 72))
-        XCTAssertEqual(layout.steps.map(\.number), [rect(24, 339, 22, 22), rect(24, 375, 22, 22), rect(24, 411, 22, 22)])
+        XCTAssertEqual(layout.steps.map(\.number), [rect(24, 339, 22, 22), rect(24, 385, 22, 22), rect(24, 431, 22, 22)])
         XCTAssertEqual(layout.steps.map(\.numberLabel), [rect(7, 3, 8, 16), rect(7, 3, 8, 16), rect(7, 3, 8, 16)])
-        XCTAssertEqual(layout.steps.map(\.text), [rect(58, 338, 320, 24), rect(58, 374, 320, 24), rect(58, 410, 320, 48)])
+        XCTAssertEqual(layout.steps.map(\.text), [rect(58, 338, 320, 24), rect(58, 384, 320, 24), rect(58, 430, 320, 24)])
         XCTAssertEqual(layout.steps.map { $0.link == nil }, [true, true, true])
+        XCTAssertEqual(layout.steps.map(\.detail), [nil, nil, rect(58, 464, 320, 60)])
         assertFrame(layout.button, rect(101, 744, 200, 52))
         assertFrame(layout.learnMore.target, rect(147, 800, 108, 40))
         assertFrame(layout.learnMore.label, rect(14, 10, 80, 20))
@@ -67,7 +69,7 @@ final class DesktopMigrationLayoutTests: XCTestCase {
     }
 
     /// A step's site under its words, a 40 tall target whose words line up
-    /// with the step's.
+    /// with the step's; the next step 22 under the site's words.
     func testAStepsSite() {
         let layout = screen(link: true)
         assertFrame(layout.steps[0].text, rect(58, 338, 320, 24))
@@ -76,11 +78,11 @@ final class DesktopMigrationLayoutTests: XCTestCase {
         assertFrame(layout.steps[1].text, rect(58, 414, 320, 24))
     }
 
-    /// Words taller than the window push the button 20 under the last step,
-    /// and the screen scrolls to Learn more's foot.
-    func testTooTallItScrolls() {
+    /// Words taller than the window push the button 20 under the last
+    /// step's detail, and the screen scrolls to Learn more's foot.
+    func testTooTallItScrolls() throws {
         let layout = screen(body: 400)
-        let last = layout.steps[2].text
+        let last = try XCTUnwrap(layout.steps[2].detail)
         XCTAssertEqual(layout.button.minY, last.maxY + 20)
         XCTAssertEqual(layout.contentHeight, layout.learnMore.target.maxY + 34)
         XCTAssertGreaterThan(layout.contentHeight, 874)

@@ -65,6 +65,8 @@ final class DesktopMigrationViewController: UIViewController {
     private let numbers: [StepNumberView]
     private let steps: [StyledLabel]
     private let links: [SiteLink?]
+    /// A step's words under it, in the site's type (`SiteLink`).
+    private let details: [StyledLabel?]
     private let scan = RoundButton(title: S.scan)
     private let learnMore = SiteLink(prefix: "", linked: S.learnMore, identifier: "desktop-migration-learn-more")
     private var busy = false {
@@ -91,6 +93,13 @@ final class DesktopMigrationViewController: UIViewController {
             return label
         }
         links = path.steps.map { step in step.link.map { _ in SiteLink() } }
+        details = path.steps.map { step in
+            step.detail.map { detail in
+                let label = StyledLabel(style: TextStyles.secondaryAction, color: Palette.startText)
+                label.string = detail
+                return label
+            }
+        }
         super.init(nibName: nil, bundle: nil)
         followsTextSize()
     }
@@ -119,7 +128,7 @@ final class DesktopMigrationViewController: UIViewController {
         for link in links.compactMap({ $0 }) {
             link.onTap = { UIApplication.shared.open(Strings.Onboarding.desktopURL) }
         }
-        for subview in [art, titleLabel, bodyLabel] + numbers + steps + links.compactMap({ $0 }) + [scan, learnMore] as [UIView] {
+        for subview in [art, titleLabel, bodyLabel] + numbers + steps + links.compactMap({ $0 }) + details.compactMap({ $0 }) + [scan, learnMore] as [UIView] {
             scroll.addSubview(subview)
         }
     }
@@ -132,7 +141,7 @@ final class DesktopMigrationViewController: UIViewController {
             safeArea: LayoutInsets(view.safeAreaInsets),
             title: titleLabel.measurable,
             body: bodyLabel.measurable,
-            steps: zip(zip(numbers, steps), links).map { .init(number: $0.0.label.measurable, text: $0.1.measurable, link: $1?.label.measurable) },
+            steps: numbers.indices.map { .init(number: numbers[$0].label.measurable, text: steps[$0].measurable, link: links[$0]?.label.measurable, detail: details[$0]?.measurable) },
             button: button,
             learnMore: learnMore.label.measurable
         )
@@ -146,6 +155,7 @@ final class DesktopMigrationViewController: UIViewController {
             numbers[index].label.setLayoutFrame(frames.numberLabel)
             steps[index].setLayoutFrame(frames.text)
             if let link = frames.link { links[index]?.apply(link) }
+            if let detail = frames.detail { details[index]?.setLayoutFrame(detail) }
         }
         scan.setLayoutFrame(layout.button)
         learnMore.apply(layout.learnMore)
