@@ -588,7 +588,7 @@ class AgentHomeLayoutTest {
 
         rule.node(AgentSearchTags.FIELD).performTextReplacement("privacy")
         rule.node(AgentSearchTags.result("entry-${SettingsTags.PRIVACY}")).performClick()
-        rule.node(AgentSearchTags.FIELD).performTextReplacement("edit name")
+        rule.node(AgentSearchTags.FIELD).performTextReplacement("change agent name")
         rule.node(AgentSearchTags.result("entry-${AgentSettingsTags.ASK_NAME}")).performClick()
         rule.waitForIdle()
         assertEquals(
