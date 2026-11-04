@@ -40,12 +40,15 @@ internal class FakeRevenueCat : RevenueCat {
     var refusePosts: Int? = null
     var unreachable = false
     var identifyFails = false
+    /** No current offering set up in RevenueCat at all. */
+    var noOffering = false
     val hold = HashMap<String, CompletableDeferred<Unit>>()
     private suspend fun gate(name: String) { hold[name]?.await() }
     override suspend fun offerings(customer: String): Answer {
         calls += "offerings $customer"
         gate("offerings")
         if (unreachable) return Answer.Unreached(IOException("offline"))
+        if (noOffering) return Answer.Ok(HappyJson.parseToJsonElement("""{"current_offering_id":null,"offerings":[]}"""))
         return Answer.Ok(HappyJson.parseToJsonElement("""{"current_offering_id":"d","offerings":[{"identifier":"d","packages":[{"identifier":"${'$'}rc_monthly","platform_product_identifier":"happy","platform_product_plan_identifier":"monthly"}]}]}"""))
     }
     override suspend fun subscriber(customer: String): Answer {

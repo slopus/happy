@@ -307,6 +307,19 @@ class SubscriptionTest {
         assertEquals(2, posts().size)
     }
 
+    /** Restore needs the key, the customer and the store, never an offering: with none set up, an old purchase still comes back. */
+    @Test
+    fun restoreWorksWithNoCurrentOffering() = runTest {
+        rc.noOffering = true
+        store.owned += bought("t1", acknowledged = true, product = "happy_lifetime")
+        val subscription = subscription()
+        subscription.refresh(); runCurrent()
+        assertEquals(Offer.Unavailable, subscription.offer.value)
+        assertTrue(subscription.restore())
+        assertEquals(listOf("post ${subscription.customer} t1 [happy_lifetime] restore=true"), posts())
+        assertTrue(subscription.hasPro())
+    }
+
     @Test
     fun boughtButUnconfirmedOffersNothingAndGrantsNothing() = runTest {
         val subscription = subscription()
