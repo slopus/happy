@@ -1,0 +1,4175 @@
+{
+ "blocknote": "0.51.4",
+ "yjs": "13.6.31",
+ "documents": [
+  {
+   "name": "desktop-seed",
+   "update": "AS+u8oH8BQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcArvKB/AUAAw5ibG9ja0NvbnRhaW5lcgcArvKB/AUBAwdoZWFkaW5nBwCu8oH8BQIGBACu8oH8BQMQTGF1bmNoIGNoZWNrbGlzdCgArvKB/AUCD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAK7ygfwFAgl0ZXh0Q29sb3IBdwdkZWZhdWx0KACu8oH8BQINdGV4dEFsaWdubWVudAF3BGxlZnQoAK7ygfwFAgVsZXZlbAF9ASgArvKB/AUCDGlzVG9nZ2xlYWJsZQF5KACu8oH8BQECaWQBdyQ2NDAyYjNlOC0wZmYyLTQ1YTItOWJlZC02ZjlkNTE5YjAyNjCHrvKB/AUBAw5ibG9ja0NvbnRhaW5lcgcArvKB/AUaAwlwYXJhZ3JhcGgHAK7ygfwFGwYEAK7ygfwFHB5FdmVyeXRoaW5nIGluIHRoaXMgcGFnZSBzeW5jcyCGrvKB/AU6BGJvbGQCe32ErvKB/AU7BGxpdmWGrvKB/AU/BGJvbGQEbnVsbISu8oH8BUAgIHRvIGV2ZXJ5IG1lbWJlciBvZiB0aGUgY2hhbm5lbC4oAK7ygfwFGw9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KACu8oH8BRsJdGV4dENvbG9yAXcHZGVmYXVsdCgArvKB/AUbDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACu8oH8BRoCaWQBdyRjMTEzN2NhZS0wNjk4LTQwZDgtOGI4YS02NTgxMTQxZTMzMTGHrvKB/AUaAw5ibG9ja0NvbnRhaW5lcgcArvKB/AVlAw5idWxsZXRMaXN0SXRlbQcArvKB/AVmBgQArvKB/AVnFlNoaXAgdGhlIHNlcnZlciBtb2R1bGUoAK7ygfwFZg9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KACu8oH8BWYJdGV4dENvbG9yAXcHZGVmYXVsdCgArvKB/AVmDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACu8oH8BWUCaWQBdyQ5YWE3NmQyOC05NmI5LTRhNmItYmYyYS0wYWUwYTM3M2ViODOHrvKB/AVlAw5ibG9ja0NvbnRhaW5lcgcArvKB/AWCAQMOYnVsbGV0TGlzdEl0ZW0HAK7ygfwFgwEGBACu8oH8BYQBFldpcmUgdGhlIHN0YXRlIHNlc3Npb24oAK7ygfwFgwEPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgArvKB/AWDAQl0ZXh0Q29sb3IBdwdkZWZhdWx0KACu8oH8BYMBDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACu8oH8BYIBAmlkAXckZTEyMTc3ZDItMzJlNS00YjY3LWJmNzQtOWRjZDI0N2M2ZWExh67ygfwFggEDDmJsb2NrQ29udGFpbmVyBwCu8oH8BZ8BAw5idWxsZXRMaXN0SXRlbQcArvKB/AWgAQYEAK7ygfwFoQEYUmVuZGVyIGl0IHdpdGggQmxvY2tOb3RlKACu8oH8BaABD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAK7ygfwFoAEJdGV4dENvbG9yAXcHZGVmYXVsdCgArvKB/AWgAQ10ZXh0QWxpZ25tZW50AXcEbGVmdCgArvKB/AWfAQJpZAF3JDc4OTg5NzlhLTQ1ODktNGNhMC1hNTg0LTFmMzZhODE1MDIyZQA=",
+   "markdown": "# Launch checklist\n\nEverything in this page syncs **live** to every member of the channel.\n\n- Ship the server module\n- Wire the state session\n- Render it with BlockNote\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "6402b3e8-0ff2-45a2-9bed-6f9d519b0260",
+     "type": "heading",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left",
+      "level": 1,
+      "isToggleable": false
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Launch checklist",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "c1137cae-0698-40d8-8b8a-6581141e3311",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Everything in this page syncs ",
+       "styles": {}
+      },
+      {
+       "type": "text",
+       "text": "live",
+       "styles": {
+        "bold": true
+       }
+      },
+      {
+       "type": "text",
+       "text": " to every member of the channel.",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "9aa76d28-96b9-4a6b-bf2a-0ae0a373eb83",
+     "type": "bulletListItem",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Ship the server module",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "e12177d2-32e5-4b67-bf74-9dcd247c6ea1",
+     "type": "bulletListItem",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Wire the state session",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "7898979a-4589-4ca0-a584-1f36a815022e",
+     "type": "bulletListItem",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Render it with BlockNote",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"6402b3e8-0ff2-45a2-9bed-6f9d519b0260\"><heading backgroundColor=\"default\" isToggleable=\"false\" level=\"1\" textAlignment=\"left\" textColor=\"default\">Launch checklist</heading></blockcontainer><blockcontainer id=\"c1137cae-0698-40d8-8b8a-6581141e3311\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">Everything in this page syncs <bold>live</bold> to every member of the channel.</paragraph></blockcontainer><blockcontainer id=\"9aa76d28-96b9-4a6b-bf2a-0ae0a373eb83\"><bulletlistitem backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">Ship the server module</bulletlistitem></blockcontainer><blockcontainer id=\"e12177d2-32e5-4b67-bf74-9dcd247c6ea1\"><bulletlistitem backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">Wire the state session</bulletlistitem></blockcontainer><blockcontainer id=\"7898979a-4589-4ca0-a584-1f36a815022e\"><bulletlistitem backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">Render it with BlockNote</bulletlistitem></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "desktop-readme",
+   "source": "# Happy file viewer\n\nOpening a file shows the file. A Markdown document reads as a document — on a\nreading measure, in the document type ramp — rather than as a wall of source.\n\n## What renders\n\n- **Headings** open a section and take air above them\n- Lists, nested lists, and task lists\n- Tables, block quotes, and fenced code\n- Links: the web opens outside, [a file](master-plans/03-file-viewer.md) opens here\n\n### Task list\n\n- [x] Read the file\n- [ ] Write it back\n\n> A preview that crops has answered a different question than the one asked.\n\n| Kind     | Opens as        | Scrolls |\n| -------- | --------------- | ------- |\n| Markdown | Rendered prose  | Yes     |\n| Image    | Contained stage | No      |\n| Source   | Monospace text  | Yes     |\n\n```ts\nexport function filePreviewKind(path: string): FilePreviewKind {\n    return EXTENSION_KIND[extensionOf(path)] ?? \"binary\";\n}\n```\n\n```mermaid\nflowchart LR\n    Markdown --> Render[Beautiful Mermaid]\n    Render --> SVG[Validated themed SVG]\n```\n\nInline `code` keeps the mono face, and a rule closes the document.\n\n---\n\nLast read from the workspace, not the browser.\n",
+   "update": "Af4BzZ3jzAEABwEIZG9jdW1lbnQDCmJsb2NrR3JvdXAHAM2d48wBAAMOYmxvY2tDb250YWluZXIHAM2d48wBAQMHaGVhZGluZwcAzZ3jzAECBgQAzZ3jzAEDEUhhcHB5IGZpbGUgdmlld2VyKADNnePMAQIPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAzZ3jzAECCXRleHRDb2xvcgF3B2RlZmF1bHQoAM2d48wBAg10ZXh0QWxpZ25tZW50AXcEbGVmdCgAzZ3jzAECBWxldmVsAX0BKADNnePMAQIMaXNUb2dnbGVhYmxlAXkoAM2d48wBAQJpZAF3JDk5NTc3MWZmLTZjYzctNDI1MC04YTM2LWQ1N2U2ZmJiYWJhOIfNnePMAQEDDmJsb2NrQ29udGFpbmVyBwDNnePMARsDCXBhcmFncmFwaAcAzZ3jzAEcBgQAzZ3jzAEdnwFPcGVuaW5nIGEgZmlsZSBzaG93cyB0aGUgZmlsZS4gQSBNYXJrZG93biBkb2N1bWVudCByZWFkcyBhcyBhIGRvY3VtZW50IOKAlCBvbiBhIHJlYWRpbmcgbWVhc3VyZSwgaW4gdGhlIGRvY3VtZW50IHR5cGUgcmFtcCDigJQgcmF0aGVyIHRoYW4gYXMgYSB3YWxsIG9mIHNvdXJjZS4oAM2d48wBHA9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KADNnePMARwJdGV4dENvbG9yAXcHZGVmYXVsdCgAzZ3jzAEcDXRleHRBbGlnbm1lbnQBdwRsZWZ0KADNnePMARsCaWQBdyRiNDk4YzIwYy1hYjVjLTQ1NDYtODQ4Zi1jNTQ1ZmU0ZmMzMmSHzZ3jzAEbAw5ibG9ja0NvbnRhaW5lcgcAzZ3jzAG9AQMHaGVhZGluZwcAzZ3jzAG+AQYEAM2d48wBvwEMV2hhdCByZW5kZXJzKADNnePMAb4BD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAM2d48wBvgEJdGV4dENvbG9yAXcHZGVmYXVsdCgAzZ3jzAG+AQ10ZXh0QWxpZ25tZW50AXcEbGVmdCgAzZ3jzAG+AQVsZXZlbAF9AigAzZ3jzAG+AQxpc1RvZ2dsZWFibGUBeSgAzZ3jzAG9AQJpZAF3JDUyMGMxNmIwLTBhNTctNDAyOS05NTFkLTliMzVkNmQxZDZlM4fNnePMAb0BAw5ibG9ja0NvbnRhaW5lcgcAzZ3jzAHSAQMOYnVsbGV0TGlzdEl0ZW0HAM2d48wB0wEGBgDNnePMAdQBBGJvbGQCe32EzZ3jzAHVAQhIZWFkaW5nc4bNnePMAd0BBGJvbGQEbnVsbITNnePMAd4BJyBvcGVuIGEgc2VjdGlvbiBhbmQgdGFrZSBhaXIgYWJvdmUgdGhlbSgAzZ3jzAHTAQ9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KADNnePMAdMBCXRleHRDb2xvcgF3B2RlZmF1bHQoAM2d48wB0wENdGV4dEFsaWdubWVudAF3BGxlZnQoAM2d48wB0gECaWQBdyQ4MDUzNDY1OC0zYTA3LTRkNWEtYTVkNC1lN2FkZGQzMjFiYjOHzZ3jzAHSAQMOYmxvY2tDb250YWluZXIHAM2d48wBigIDDmJ1bGxldExpc3RJdGVtBwDNnePMAYsCBgQAzZ3jzAGMAiNMaXN0cywgbmVzdGVkIGxpc3RzLCBhbmQgdGFzayBsaXN0cygAzZ3jzAGLAg9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KADNnePMAYsCCXRleHRDb2xvcgF3B2RlZmF1bHQoAM2d48wBiwINdGV4dEFsaWdubWVudAF3BGxlZnQoAM2d48wBigICaWQBdyQ0YmZmMGMwNC02YzBmLTRiOGQtOWNhMy01MzA4MGE2ZThiMzmHzZ3jzAGKAgMOYmxvY2tDb250YWluZXIHAM2d48wBtAIDDmJ1bGxldExpc3RJdGVtBwDNnePMAbUCBgQAzZ3jzAG2AiVUYWJsZXMsIGJsb2NrIHF1b3RlcywgYW5kIGZlbmNlZCBjb2RlKADNnePMAbUCD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAM2d48wBtQIJdGV4dENvbG9yAXcHZGVmYXVsdCgAzZ3jzAG1Ag10ZXh0QWxpZ25tZW50AXcEbGVmdCgAzZ3jzAG0AgJpZAF3JGE1Y2JlYTZmLWM0ODktNGNhYy04MDlhLWNkYjYwMTA0M2UzMIfNnePMAbQCAw5ibG9ja0NvbnRhaW5lcgcAzZ3jzAHgAgMOYnVsbGV0TGlzdEl0ZW0HAM2d48wB4QIGBADNnePMAeICHkxpbmtzOiB0aGUgd2ViIG9wZW5zIG91dHNpZGUsIIbNnePMAYADBGxpbmspeyJocmVmIjoibWFzdGVyLXBsYW5zLzAzLWZpbGUtdmlld2VyLm1kIn2EzZ3jzAGBAwZhIGZpbGWGzZ3jzAGHAwRsaW5rBG51bGyEzZ3jzAGIAwsgb3BlbnMgaGVyZSgAzZ3jzAHhAg9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KADNnePMAeECCXRleHRDb2xvcgF3B2RlZmF1bHQoAM2d48wB4QINdGV4dEFsaWdubWVudAF3BGxlZnQoAM2d48wB4AICaWQBdyQxMGFmY2Q2YS0zZjhkLTQwNDMtYTg2OC1mOTg2ZjZhZDM1OTOHzZ3jzAHgAgMOYmxvY2tDb250YWluZXIHAM2d48wBmAMDB2hlYWRpbmcHAM2d48wBmQMGBADNnePMAZoDCVRhc2sgbGlzdCgAzZ3jzAGZAw9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KADNnePMAZkDCXRleHRDb2xvcgF3B2RlZmF1bHQoAM2d48wBmQMNdGV4dEFsaWdubWVudAF3BGxlZnQoAM2d48wBmQMFbGV2ZWwBfQMoAM2d48wBmQMMaXNUb2dnbGVhYmxlAXkoAM2d48wBmAMCaWQBdyRhYjA4MThiOC1mYWY0LTRhMGItOTFhZS04ZTlkYTg4M2U2YmSHzZ3jzAGYAwMOYmxvY2tDb250YWluZXIHAM2d48wBqgMDDWNoZWNrTGlzdEl0ZW0HAM2d48wBqwMGBADNnePMAawDDVJlYWQgdGhlIGZpbGUoAM2d48wBqwMPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAzZ3jzAGrAwl0ZXh0Q29sb3IBdwdkZWZhdWx0KADNnePMAasDDXRleHRBbGlnbm1lbnQBdwRsZWZ0KADNnePMAasDB2NoZWNrZWQBeCgAzZ3jzAGqAwJpZAF3JDRjM2M3ZTg4LTZiMTYtNDk1Ny1hODA2LTZkNGE4ODE3NGYwNofNnePMAaoDAw5ibG9ja0NvbnRhaW5lcgcAzZ3jzAG/AwMNY2hlY2tMaXN0SXRlbQcAzZ3jzAHAAwYEAM2d48wBwQMNV3JpdGUgaXQgYmFjaygAzZ3jzAHAAw9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KADNnePMAcADCXRleHRDb2xvcgF3B2RlZmF1bHQoAM2d48wBwAMNdGV4dEFsaWdubWVudAF3BGxlZnQoAM2d48wBwAMHY2hlY2tlZAF5KADNnePMAb8DAmlkAXckNWU1OWE0NGMtZmZmOS00MzQwLWJjZjMtMmU3MDNhYTc5ZWZih82d48wBvwMDDmJsb2NrQ29udGFpbmVyBwDNnePMAdQDAwVxdW90ZQcAzZ3jzAHVAwYEAM2d48wB1gNKQSBwcmV2aWV3IHRoYXQgY3JvcHMgaGFzIGFuc3dlcmVkIGEgZGlmZmVyZW50IHF1ZXN0aW9uIHRoYW4gdGhlIG9uZSBhc2tlZC4oAM2d48wB1QMPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAzZ3jzAHVAwl0ZXh0Q29sb3IBdwdkZWZhdWx0KADNnePMAdQDAmlkAXckZDA0MTczMTUtNTgzMi00NWJmLWE4MWItMjNhN2JlMjgwMjFlh82d48wB1AMDDmJsb2NrQ29udGFpbmVyBwDNnePMAaQEAwV0YWJsZQcAzZ3jzAGlBAMIdGFibGVSb3cHAM2d48wBpgQDC3RhYmxlSGVhZGVyBwDNnePMAacEAw50YWJsZVBhcmFncmFwaAcAzZ3jzAGoBAYEAM2d48wBqQQES2luZCgAzZ3jzAGnBAl0ZXh0Q29sb3IBdwdkZWZhdWx0KADNnePMAacED2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAM2d48wBpwQNdGV4dEFsaWdubWVudAF3BGxlZnQoAM2d48wBpwQHY29sc3BhbgF9ASgAzZ3jzAGnBAdyb3dzcGFuAX0Bh82d48wBpwQDC3RhYmxlSGVhZGVyBwDNnePMAbMEAw50YWJsZVBhcmFncmFwaAcAzZ3jzAG0BAYEAM2d48wBtQQIT3BlbnMgYXMoAM2d48wBswQJdGV4dENvbG9yAXcHZGVmYXVsdCgAzZ3jzAGzBA9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KADNnePMAbMEDXRleHRBbGlnbm1lbnQBdwRsZWZ0KADNnePMAbMEB2NvbHNwYW4BfQEoAM2d48wBswQHcm93c3BhbgF9AYfNnePMAbMEAwt0YWJsZUhlYWRlcgcAzZ3jzAHDBAMOdGFibGVQYXJhZ3JhcGgHAM2d48wBxAQGBADNnePMAcUEB1Njcm9sbHMoAM2d48wBwwQJdGV4dENvbG9yAXcHZGVmYXVsdCgAzZ3jzAHDBA9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KADNnePMAcMEDXRleHRBbGlnbm1lbnQBdwRsZWZ0KADNnePMAcMEB2NvbHNwYW4BfQEoAM2d48wBwwQHcm93c3BhbgF9AYfNnePMAaYEAwh0YWJsZVJvdwcAzZ3jzAHSBAMJdGFibGVDZWxsBwDNnePMAdMEAw50YWJsZVBhcmFncmFwaAcAzZ3jzAHUBAYEAM2d48wB1QQITWFya2Rvd24oAM2d48wB0wQJdGV4dENvbG9yAXcHZGVmYXVsdCgAzZ3jzAHTBA9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KADNnePMAdMEDXRleHRBbGlnbm1lbnQBdwRsZWZ0KADNnePMAdMEB2NvbHNwYW4BfQEoAM2d48wB0wQHcm93c3BhbgF9AYfNnePMAdMEAwl0YWJsZUNlbGwHAM2d48wB4wQDDnRhYmxlUGFyYWdyYXBoBwDNnePMAeQEBgQAzZ3jzAHlBA5SZW5kZXJlZCBwcm9zZSgAzZ3jzAHjBAl0ZXh0Q29sb3IBdwdkZWZhdWx0KADNnePMAeMED2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAM2d48wB4wQNdGV4dEFsaWdubWVudAF3BGxlZnQoAM2d48wB4wQHY29sc3BhbgF9ASgAzZ3jzAHjBAdyb3dzcGFuAX0Bh82d48wB4wQDCXRhYmxlQ2VsbAcAzZ3jzAH5BAMOdGFibGVQYXJhZ3JhcGgHAM2d48wB+gQGBADNnePMAfsEA1llcygAzZ3jzAH5BAl0ZXh0Q29sb3IBdwdkZWZhdWx0KADNnePMAfkED2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAM2d48wB+QQNdGV4dEFsaWdubWVudAF3BGxlZnQoAM2d48wB+QQHY29sc3BhbgF9ASgAzZ3jzAH5BAdyb3dzcGFuAX0Bh82d48wB0gQDCHRhYmxlUm93BwDNnePMAYQFAwl0YWJsZUNlbGwHAM2d48wBhQUDDnRhYmxlUGFyYWdyYXBoBwDNnePMAYYFBgQAzZ3jzAGHBQVJbWFnZSgAzZ3jzAGFBQl0ZXh0Q29sb3IBdwdkZWZhdWx0KADNnePMAYUFD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAM2d48wBhQUNdGV4dEFsaWdubWVudAF3BGxlZnQoAM2d48wBhQUHY29sc3BhbgF9ASgAzZ3jzAGFBQdyb3dzcGFuAX0Bh82d48wBhQUDCXRhYmxlQ2VsbAcAzZ3jzAGSBQMOdGFibGVQYXJhZ3JhcGgHAM2d48wBkwUGBADNnePMAZQFD0NvbnRhaW5lZCBzdGFnZSgAzZ3jzAGSBQl0ZXh0Q29sb3IBdwdkZWZhdWx0KADNnePMAZIFD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAM2d48wBkgUNdGV4dEFsaWdubWVudAF3BGxlZnQoAM2d48wBkgUHY29sc3BhbgF9ASgAzZ3jzAGSBQdyb3dzcGFuAX0Bh82d48wBkgUDCXRhYmxlQ2VsbAcAzZ3jzAGpBQMOdGFibGVQYXJhZ3JhcGgHAM2d48wBqgUGBADNnePMAasFAk5vKADNnePMAakFCXRleHRDb2xvcgF3B2RlZmF1bHQoAM2d48wBqQUPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAzZ3jzAGpBQ10ZXh0QWxpZ25tZW50AXcEbGVmdCgAzZ3jzAGpBQdjb2xzcGFuAX0BKADNnePMAakFB3Jvd3NwYW4BfQGHzZ3jzAGEBQMIdGFibGVSb3cHAM2d48wBswUDCXRhYmxlQ2VsbAcAzZ3jzAG0BQMOdGFibGVQYXJhZ3JhcGgHAM2d48wBtQUGBADNnePMAbYFBlNvdXJjZSgAzZ3jzAG0BQl0ZXh0Q29sb3IBdwdkZWZhdWx0KADNnePMAbQFD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAM2d48wBtAUNdGV4dEFsaWdubWVudAF3BGxlZnQoAM2d48wBtAUHY29sc3BhbgF9ASgAzZ3jzAG0BQdyb3dzcGFuAX0Bh82d48wBtAUDCXRhYmxlQ2VsbAcAzZ3jzAHCBQMOdGFibGVQYXJhZ3JhcGgHAM2d48wBwwUGBADNnePMAcQFDk1vbm9zcGFjZSB0ZXh0KADNnePMAcIFCXRleHRDb2xvcgF3B2RlZmF1bHQoAM2d48wBwgUPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAzZ3jzAHCBQ10ZXh0QWxpZ25tZW50AXcEbGVmdCgAzZ3jzAHCBQdjb2xzcGFuAX0BKADNnePMAcIFB3Jvd3NwYW4BfQGHzZ3jzAHCBQMJdGFibGVDZWxsBwDNnePMAdgFAw50YWJsZVBhcmFncmFwaAcAzZ3jzAHZBQYEAM2d48wB2gUDWWVzKADNnePMAdgFCXRleHRDb2xvcgF3B2RlZmF1bHQoAM2d48wB2AUPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAzZ3jzAHYBQ10ZXh0QWxpZ25tZW50AXcEbGVmdCgAzZ3jzAHYBQdjb2xzcGFuAX0BKADNnePMAdgFB3Jvd3NwYW4BfQEoAM2d48wBpQQJdGV4dENvbG9yAXcHZGVmYXVsdCgAzZ3jzAGkBAJpZAF3JDE3MzE5YzViLTIxM2EtNDA0MS1iNDdlLWY3M2ViYjA0ZmM1Y4fNnePMAaQEAw5ibG9ja0NvbnRhaW5lcgcAzZ3jzAHlBQMJY29kZUJsb2NrBwDNnePMAeYFBgQAzZ3jzAHnBXxleHBvcnQgZnVuY3Rpb24gZmlsZVByZXZpZXdLaW5kKHBhdGg6IHN0cmluZyk6IEZpbGVQcmV2aWV3S2luZCB7CiAgICByZXR1cm4gRVhURU5TSU9OX0tJTkRbZXh0ZW5zaW9uT2YocGF0aCldID8/ICJiaW5hcnkiOwp9KADNnePMAeYFCGxhbmd1YWdlAXcCdHMoAM2d48wB5QUCaWQBdyQyZTYxOWQ4NC0wMDNmLTQ5NGItYWYyNC03NzRjY2I3ZTA4ZTiHzZ3jzAHlBQMOYmxvY2tDb250YWluZXIHAM2d48wB5gYDCWNvZGVCbG9jawcAzZ3jzAHnBgYEAM2d48wB6AZgZmxvd2NoYXJ0IExSCiAgICBNYXJrZG93biAtLT4gUmVuZGVyW0JlYXV0aWZ1bCBNZXJtYWlkXQogICAgUmVuZGVyIC0tPiBTVkdbVmFsaWRhdGVkIHRoZW1lZCBTVkddKADNnePMAecGCGxhbmd1YWdlAXcHbWVybWFpZCgAzZ3jzAHmBgJpZAF3JDVjNWNhMWIzLTUzNmItNDExYy05MmRjLWNiYjEyOGMwOTY2N4fNnePMAeYGAw5ibG9ja0NvbnRhaW5lcgcAzZ3jzAHLBwMJcGFyYWdyYXBoBwDNnePMAcwHBgQAzZ3jzAHNBwdJbmxpbmUghs2d48wB1AcEY29kZQJ7fYTNnePMAdUHBGNvZGWGzZ3jzAHZBwRjb2RlBG51bGyEzZ3jzAHaBzUga2VlcHMgdGhlIG1vbm8gZmFjZSwgYW5kIGEgcnVsZSBjbG9zZXMgdGhlIGRvY3VtZW50LigAzZ3jzAHMBw9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KADNnePMAcwHCXRleHRDb2xvcgF3B2RlZmF1bHQoAM2d48wBzAcNdGV4dEFsaWdubWVudAF3BGxlZnQoAM2d48wBywcCaWQBdyRkYTE4OWIwYS0zN2I0LTRiNzItYTdkMC1kMjIwNjhjOTdhYmKHzZ3jzAHLBwMOYmxvY2tDb250YWluZXIHAM2d48wBlAgDB2RpdmlkZXIoAM2d48wBlAgCaWQBdyQ0MmVjNDQxNi03MDMyLTQxN2UtYWU2Yi0zNDRmMGE0NTRkMDOHzZ3jzAGUCAMOYmxvY2tDb250YWluZXIHAM2d48wBlwgDCXBhcmFncmFwaAcAzZ3jzAGYCAYEAM2d48wBmQguTGFzdCByZWFkIGZyb20gdGhlIHdvcmtzcGFjZSwgbm90IHRoZSBicm93c2VyLigAzZ3jzAGYCA9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KADNnePMAZgICXRleHRDb2xvcgF3B2RlZmF1bHQoAM2d48wBmAgNdGV4dEFsaWdubWVudAF3BGxlZnQoAM2d48wBlwgCaWQBdyQxMjI1ZTQ5ZC03MWEyLTQ1ZjItOGFjYS1kN2IwYmM5YWZmM2EA",
+   "markdown": "# Happy file viewer\n\nOpening a file shows the file. A Markdown document reads as a document — on a reading measure, in the document type ramp — rather than as a wall of source.\n\n## What renders\n\n- **Headings** open a section and take air above them\n- Lists, nested lists, and task lists\n- Tables, block quotes, and fenced code\n- Links: the web opens outside, [a file](master-plans/03-file-viewer.md) opens here\n\n### Task list\n\n- [x] Read the file\n- [ ] Write it back\n\n> A preview that crops has answered a different question than the one asked.\n\n| Kind | Opens as | Scrolls |\n| --- | --- | --- |\n| Markdown | Rendered prose | Yes |\n| Image | Contained stage | No |\n| Source | Monospace text | Yes |\n\n```ts\nexport function filePreviewKind(path: string): FilePreviewKind {\n    return EXTENSION_KIND[extensionOf(path)] ?? \"binary\";\n}\n```\n\n```mermaid\nflowchart LR\n    Markdown --> Render[Beautiful Mermaid]\n    Render --> SVG[Validated themed SVG]\n```\n\nInline `code` keeps the mono face, and a rule closes the document.\n\n---\n\nLast read from the workspace, not the browser.\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "995771ff-6cc7-4250-8a36-d57e6fbbaba8",
+     "type": "heading",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left",
+      "level": 1,
+      "isToggleable": false
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Happy file viewer",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "b498c20c-ab5c-4546-848f-c545fe4fc32d",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Opening a file shows the file. A Markdown document reads as a document — on a reading measure, in the document type ramp — rather than as a wall of source.",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "520c16b0-0a57-4029-951d-9b35d6d1d6e3",
+     "type": "heading",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left",
+      "level": 2,
+      "isToggleable": false
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "What renders",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "80534658-3a07-4d5a-a5d4-e7addd321bb3",
+     "type": "bulletListItem",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Headings",
+       "styles": {
+        "bold": true
+       }
+      },
+      {
+       "type": "text",
+       "text": " open a section and take air above them",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "4bff0c04-6c0f-4b8d-9ca3-53080a6e8b39",
+     "type": "bulletListItem",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Lists, nested lists, and task lists",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "a5cbea6f-c489-4cac-809a-cdb601043e30",
+     "type": "bulletListItem",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Tables, block quotes, and fenced code",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "10afcd6a-3f8d-4043-a868-f986f6ad3593",
+     "type": "bulletListItem",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Links: the web opens outside, ",
+       "styles": {}
+      },
+      {
+       "type": "link",
+       "href": "master-plans/03-file-viewer.md",
+       "content": [
+        {
+         "type": "text",
+         "text": "a file",
+         "styles": {}
+        }
+       ]
+      },
+      {
+       "type": "text",
+       "text": " opens here",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "ab0818b8-faf4-4a0b-91ae-8e9da883e6bd",
+     "type": "heading",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left",
+      "level": 3,
+      "isToggleable": false
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Task list",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "4c3c7e88-6b16-4957-a806-6d4a88174f06",
+     "type": "checkListItem",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left",
+      "checked": true
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Read the file",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "5e59a44c-fff9-4340-bcf3-2e703aa79efb",
+     "type": "checkListItem",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left",
+      "checked": false
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Write it back",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "d0417315-5832-45bf-a81b-23a7be28021e",
+     "type": "quote",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "A preview that crops has answered a different question than the one asked.",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "17319c5b-213a-4041-b47e-f73ebb04fc5c",
+     "type": "table",
+     "props": {
+      "textColor": "default"
+     },
+     "content": {
+      "type": "tableContent",
+      "columnWidths": [
+       null,
+       null,
+       null
+      ],
+      "headerRows": 1,
+      "rows": [
+       {
+        "cells": [
+         {
+          "type": "tableCell",
+          "content": [
+           {
+            "type": "text",
+            "text": "Kind",
+            "styles": {}
+           }
+          ],
+          "props": {
+           "colspan": 1,
+           "rowspan": 1,
+           "backgroundColor": "default",
+           "textColor": "default",
+           "textAlignment": "left"
+          }
+         },
+         {
+          "type": "tableCell",
+          "content": [
+           {
+            "type": "text",
+            "text": "Opens as",
+            "styles": {}
+           }
+          ],
+          "props": {
+           "colspan": 1,
+           "rowspan": 1,
+           "backgroundColor": "default",
+           "textColor": "default",
+           "textAlignment": "left"
+          }
+         },
+         {
+          "type": "tableCell",
+          "content": [
+           {
+            "type": "text",
+            "text": "Scrolls",
+            "styles": {}
+           }
+          ],
+          "props": {
+           "colspan": 1,
+           "rowspan": 1,
+           "backgroundColor": "default",
+           "textColor": "default",
+           "textAlignment": "left"
+          }
+         }
+        ]
+       },
+       {
+        "cells": [
+         {
+          "type": "tableCell",
+          "content": [
+           {
+            "type": "text",
+            "text": "Markdown",
+            "styles": {}
+           }
+          ],
+          "props": {
+           "colspan": 1,
+           "rowspan": 1,
+           "backgroundColor": "default",
+           "textColor": "default",
+           "textAlignment": "left"
+          }
+         },
+         {
+          "type": "tableCell",
+          "content": [
+           {
+            "type": "text",
+            "text": "Rendered prose",
+            "styles": {}
+           }
+          ],
+          "props": {
+           "colspan": 1,
+           "rowspan": 1,
+           "backgroundColor": "default",
+           "textColor": "default",
+           "textAlignment": "left"
+          }
+         },
+         {
+          "type": "tableCell",
+          "content": [
+           {
+            "type": "text",
+            "text": "Yes",
+            "styles": {}
+           }
+          ],
+          "props": {
+           "colspan": 1,
+           "rowspan": 1,
+           "backgroundColor": "default",
+           "textColor": "default",
+           "textAlignment": "left"
+          }
+         }
+        ]
+       },
+       {
+        "cells": [
+         {
+          "type": "tableCell",
+          "content": [
+           {
+            "type": "text",
+            "text": "Image",
+            "styles": {}
+           }
+          ],
+          "props": {
+           "colspan": 1,
+           "rowspan": 1,
+           "backgroundColor": "default",
+           "textColor": "default",
+           "textAlignment": "left"
+          }
+         },
+         {
+          "type": "tableCell",
+          "content": [
+           {
+            "type": "text",
+            "text": "Contained stage",
+            "styles": {}
+           }
+          ],
+          "props": {
+           "colspan": 1,
+           "rowspan": 1,
+           "backgroundColor": "default",
+           "textColor": "default",
+           "textAlignment": "left"
+          }
+         },
+         {
+          "type": "tableCell",
+          "content": [
+           {
+            "type": "text",
+            "text": "No",
+            "styles": {}
+           }
+          ],
+          "props": {
+           "colspan": 1,
+           "rowspan": 1,
+           "backgroundColor": "default",
+           "textColor": "default",
+           "textAlignment": "left"
+          }
+         }
+        ]
+       },
+       {
+        "cells": [
+         {
+          "type": "tableCell",
+          "content": [
+           {
+            "type": "text",
+            "text": "Source",
+            "styles": {}
+           }
+          ],
+          "props": {
+           "colspan": 1,
+           "rowspan": 1,
+           "backgroundColor": "default",
+           "textColor": "default",
+           "textAlignment": "left"
+          }
+         },
+         {
+          "type": "tableCell",
+          "content": [
+           {
+            "type": "text",
+            "text": "Monospace text",
+            "styles": {}
+           }
+          ],
+          "props": {
+           "colspan": 1,
+           "rowspan": 1,
+           "backgroundColor": "default",
+           "textColor": "default",
+           "textAlignment": "left"
+          }
+         },
+         {
+          "type": "tableCell",
+          "content": [
+           {
+            "type": "text",
+            "text": "Yes",
+            "styles": {}
+           }
+          ],
+          "props": {
+           "colspan": 1,
+           "rowspan": 1,
+           "backgroundColor": "default",
+           "textColor": "default",
+           "textAlignment": "left"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     "children": []
+    },
+    {
+     "id": "2e619d84-003f-494b-af24-774ccb7e08e8",
+     "type": "codeBlock",
+     "props": {
+      "language": "ts"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "export function filePreviewKind(path: string): FilePreviewKind {\n    return EXTENSION_KIND[extensionOf(path)] ?? \"binary\";\n}",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "5c5ca1b3-536b-411c-92dc-cbb128c09667",
+     "type": "codeBlock",
+     "props": {
+      "language": "mermaid"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "flowchart LR\n    Markdown --> Render[Beautiful Mermaid]\n    Render --> SVG[Validated themed SVG]",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "da189b0a-37b4-4b72-a7d0-d22068c97abb",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Inline ",
+       "styles": {}
+      },
+      {
+       "type": "text",
+       "text": "code",
+       "styles": {
+        "code": true
+       }
+      },
+      {
+       "type": "text",
+       "text": " keeps the mono face, and a rule closes the document.",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "42ec4416-7032-417e-ae6b-344f0a454d03",
+     "type": "divider",
+     "props": {},
+     "children": []
+    },
+    {
+     "id": "1225e49d-71a2-45f2-8aca-d7b0bc9aff3a",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Last read from the workspace, not the browser.",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"995771ff-6cc7-4250-8a36-d57e6fbbaba8\"><heading backgroundColor=\"default\" isToggleable=\"false\" level=\"1\" textAlignment=\"left\" textColor=\"default\">Happy file viewer</heading></blockcontainer><blockcontainer id=\"b498c20c-ab5c-4546-848f-c545fe4fc32d\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">Opening a file shows the file. A Markdown document reads as a document — on a reading measure, in the document type ramp — rather than as a wall of source.</paragraph></blockcontainer><blockcontainer id=\"520c16b0-0a57-4029-951d-9b35d6d1d6e3\"><heading backgroundColor=\"default\" isToggleable=\"false\" level=\"2\" textAlignment=\"left\" textColor=\"default\">What renders</heading></blockcontainer><blockcontainer id=\"80534658-3a07-4d5a-a5d4-e7addd321bb3\"><bulletlistitem backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\"><bold>Headings</bold> open a section and take air above them</bulletlistitem></blockcontainer><blockcontainer id=\"4bff0c04-6c0f-4b8d-9ca3-53080a6e8b39\"><bulletlistitem backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">Lists, nested lists, and task lists</bulletlistitem></blockcontainer><blockcontainer id=\"a5cbea6f-c489-4cac-809a-cdb601043e30\"><bulletlistitem backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">Tables, block quotes, and fenced code</bulletlistitem></blockcontainer><blockcontainer id=\"10afcd6a-3f8d-4043-a868-f986f6ad3593\"><bulletlistitem backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">Links: the web opens outside, <link href=\"master-plans/03-file-viewer.md\">a file</link> opens here</bulletlistitem></blockcontainer><blockcontainer id=\"ab0818b8-faf4-4a0b-91ae-8e9da883e6bd\"><heading backgroundColor=\"default\" isToggleable=\"false\" level=\"3\" textAlignment=\"left\" textColor=\"default\">Task list</heading></blockcontainer><blockcontainer id=\"4c3c7e88-6b16-4957-a806-6d4a88174f06\"><checklistitem backgroundColor=\"default\" checked=\"true\" textAlignment=\"left\" textColor=\"default\">Read the file</checklistitem></blockcontainer><blockcontainer id=\"5e59a44c-fff9-4340-bcf3-2e703aa79efb\"><checklistitem backgroundColor=\"default\" checked=\"false\" textAlignment=\"left\" textColor=\"default\">Write it back</checklistitem></blockcontainer><blockcontainer id=\"d0417315-5832-45bf-a81b-23a7be28021e\"><quote backgroundColor=\"default\" textColor=\"default\">A preview that crops has answered a different question than the one asked.</quote></blockcontainer><blockcontainer id=\"17319c5b-213a-4041-b47e-f73ebb04fc5c\"><table textColor=\"default\"><tablerow><tableheader backgroundColor=\"default\" colspan=\"1\" rowspan=\"1\" textAlignment=\"left\" textColor=\"default\"><tableparagraph>Kind</tableparagraph></tableheader><tableheader backgroundColor=\"default\" colspan=\"1\" rowspan=\"1\" textAlignment=\"left\" textColor=\"default\"><tableparagraph>Opens as</tableparagraph></tableheader><tableheader backgroundColor=\"default\" colspan=\"1\" rowspan=\"1\" textAlignment=\"left\" textColor=\"default\"><tableparagraph>Scrolls</tableparagraph></tableheader></tablerow><tablerow><tablecell backgroundColor=\"default\" colspan=\"1\" rowspan=\"1\" textAlignment=\"left\" textColor=\"default\"><tableparagraph>Markdown</tableparagraph></tablecell><tablecell backgroundColor=\"default\" colspan=\"1\" rowspan=\"1\" textAlignment=\"left\" textColor=\"default\"><tableparagraph>Rendered prose</tableparagraph></tablecell><tablecell backgroundColor=\"default\" colspan=\"1\" rowspan=\"1\" textAlignment=\"left\" textColor=\"default\"><tableparagraph>Yes</tableparagraph></tablecell></tablerow><tablerow><tablecell backgroundColor=\"default\" colspan=\"1\" rowspan=\"1\" textAlignment=\"left\" textColor=\"default\"><tableparagraph>Image</tableparagraph></tablecell><tablecell backgroundColor=\"default\" colspan=\"1\" rowspan=\"1\" textAlignment=\"left\" textColor=\"default\"><tableparagraph>Contained stage</tableparagraph></tablecell><tablecell backgroundColor=\"default\" colspan=\"1\" rowspan=\"1\" textAlignment=\"left\" textColor=\"default\"><tableparagraph>No</tableparagraph></tablecell></tablerow><tablerow><tablecell backgroundColor=\"default\" colspan=\"1\" rowspan=\"1\" textAlignment=\"left\" textColor=\"default\"><tableparagraph>Source</tableparagraph></tablecell><tablecell backgroundColor=\"default\" colspan=\"1\" rowspan=\"1\" textAlignment=\"left\" textColor=\"default\"><tableparagraph>Monospace text</tableparagraph></tablecell><tablecell backgroundColor=\"default\" colspan=\"1\" rowspan=\"1\" textAlignment=\"left\" textColor=\"default\"><tableparagraph>Yes</tableparagraph></tablecell></tablerow></table></blockcontainer><blockcontainer id=\"2e619d84-003f-494b-af24-774ccb7e08e8\"><codeblock language=\"ts\">export function filePreviewKind(path: string): FilePreviewKind {\n    return EXTENSION_KIND[extensionOf(path)] ?? \"binary\";\n}</codeblock></blockcontainer><blockcontainer id=\"5c5ca1b3-536b-411c-92dc-cbb128c09667\"><codeblock language=\"mermaid\">flowchart LR\n    Markdown --> Render[Beautiful Mermaid]\n    Render --> SVG[Validated themed SVG]</codeblock></blockcontainer><blockcontainer id=\"da189b0a-37b4-4b72-a7d0-d22068c97abb\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">Inline <code>code</code> keeps the mono face, and a rule closes the document.</paragraph></blockcontainer><blockcontainer id=\"42ec4416-7032-417e-ae6b-344f0a454d03\"><divider></divider></blockcontainer><blockcontainer id=\"1225e49d-71a2-45f2-8aca-d7b0bc9aff3a\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">Last read from the workspace, not the browser.</paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "desktop-short",
+   "source": "## Release notes\n\nTwo paragraphs and a list is the ordinary case, and it should look composed at\nany width the panel is dragged to.\n\n1. Files open inside Happy\n2. Markdown renders\n3. Chat links reuse the same viewer\n",
+   "update": "AS7ZsdTJDgAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcA2bHUyQ4AAw5ibG9ja0NvbnRhaW5lcgcA2bHUyQ4BAwdoZWFkaW5nBwDZsdTJDgIGBADZsdTJDgMNUmVsZWFzZSBub3RlcygA2bHUyQ4CD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoANmx1MkOAgl0ZXh0Q29sb3IBdwdkZWZhdWx0KADZsdTJDgINdGV4dEFsaWdubWVudAF3BGxlZnQoANmx1MkOAgVsZXZlbAF9AigA2bHUyQ4CDGlzVG9nZ2xlYWJsZQF5KADZsdTJDgECaWQBdyQ3ZmJlNWE1Yy1kNjYyLTQwYjUtODNkNi1lYjNhMTFkYjRkYzeH2bHUyQ4BAw5ibG9ja0NvbnRhaW5lcgcA2bHUyQ4XAwlwYXJhZ3JhcGgHANmx1MkOGAYEANmx1MkOGXFUd28gcGFyYWdyYXBocyBhbmQgYSBsaXN0IGlzIHRoZSBvcmRpbmFyeSBjYXNlLCBhbmQgaXQgc2hvdWxkIGxvb2sgY29tcG9zZWQgYXQgYW55IHdpZHRoIHRoZSBwYW5lbCBpcyBkcmFnZ2VkIHRvLigA2bHUyQ4YD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoANmx1MkOGAl0ZXh0Q29sb3IBdwdkZWZhdWx0KADZsdTJDhgNdGV4dEFsaWdubWVudAF3BGxlZnQoANmx1MkOFwJpZAF3JDNjMTMxZjQyLWU0YTItNDE3NS04YmJkLWEzM2Y5OWQ0YjdmZofZsdTJDhcDDmJsb2NrQ29udGFpbmVyBwDZsdTJDo8BAxBudW1iZXJlZExpc3RJdGVtBwDZsdTJDpABBgQA2bHUyQ6RARdGaWxlcyBvcGVuIGluc2lkZSBIYXBweSgA2bHUyQ6QAQ9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KADZsdTJDpABCXRleHRDb2xvcgF3B2RlZmF1bHQoANmx1MkOkAENdGV4dEFsaWdubWVudAF3BGxlZnQoANmx1MkOkAEFc3RhcnQBfygA2bHUyQ6PAQJpZAF3JDhkMTIzODg5LWVjYTYtNDhjOS1hYjkwLTA3MmE3OTBiMWJhOIfZsdTJDo8BAw5ibG9ja0NvbnRhaW5lcgcA2bHUyQ6uAQMQbnVtYmVyZWRMaXN0SXRlbQcA2bHUyQ6vAQYEANmx1MkOsAEQTWFya2Rvd24gcmVuZGVycygA2bHUyQ6vAQ9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KADZsdTJDq8BCXRleHRDb2xvcgF3B2RlZmF1bHQoANmx1MkOrwENdGV4dEFsaWdubWVudAF3BGxlZnQoANmx1MkOrwEFc3RhcnQBfygA2bHUyQ6uAQJpZAF3JDM3ZTBhZmIyLTI1ZTgtNDIwNy1iNjhiLTg2MDhmNTcwYTEyOIfZsdTJDq4BAw5ibG9ja0NvbnRhaW5lcgcA2bHUyQ7GAQMQbnVtYmVyZWRMaXN0SXRlbQcA2bHUyQ7HAQYEANmx1MkOyAEgQ2hhdCBsaW5rcyByZXVzZSB0aGUgc2FtZSB2aWV3ZXIoANmx1MkOxwEPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgA2bHUyQ7HAQl0ZXh0Q29sb3IBdwdkZWZhdWx0KADZsdTJDscBDXRleHRBbGlnbm1lbnQBdwRsZWZ0KADZsdTJDscBBXN0YXJ0AX8oANmx1MkOxgECaWQBdyRlZGVlYzhlZC0wZDJmLTQ5YzgtODRhYy1jZWQ5Y2UzMzM1ZjgA",
+   "markdown": "## Release notes\n\nTwo paragraphs and a list is the ordinary case, and it should look composed at any width the panel is dragged to.\n\n1. Files open inside Happy\n2. Markdown renders\n3. Chat links reuse the same viewer\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "7fbe5a5c-d662-40b5-83d6-eb3a11db4dc7",
+     "type": "heading",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left",
+      "level": 2,
+      "isToggleable": false
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Release notes",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "3c131f42-e4a2-4175-8bbd-a33f99d4b7ff",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Two paragraphs and a list is the ordinary case, and it should look composed at any width the panel is dragged to.",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "8d123889-eca6-48c9-ab90-072a790b1ba8",
+     "type": "numberedListItem",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Files open inside Happy",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "37e0afb2-25e8-4207-b68b-8608f570a128",
+     "type": "numberedListItem",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Markdown renders",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "edeec8ed-0d2f-49c8-84ac-ced9ce3335f8",
+     "type": "numberedListItem",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Chat links reuse the same viewer",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"7fbe5a5c-d662-40b5-83d6-eb3a11db4dc7\"><heading backgroundColor=\"default\" isToggleable=\"false\" level=\"2\" textAlignment=\"left\" textColor=\"default\">Release notes</heading></blockcontainer><blockcontainer id=\"3c131f42-e4a2-4175-8bbd-a33f99d4b7ff\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">Two paragraphs and a list is the ordinary case, and it should look composed at any width the panel is dragged to.</paragraph></blockcontainer><blockcontainer id=\"8d123889-eca6-48c9-ab90-072a790b1ba8\"><numberedlistitem backgroundColor=\"default\" start=\"undefined\" textAlignment=\"left\" textColor=\"default\">Files open inside Happy</numberedlistitem></blockcontainer><blockcontainer id=\"37e0afb2-25e8-4207-b68b-8608f570a128\"><numberedlistitem backgroundColor=\"default\" start=\"undefined\" textAlignment=\"left\" textColor=\"default\">Markdown renders</numberedlistitem></blockcontainer><blockcontainer id=\"edeec8ed-0d2f-49c8-84ac-ced9ce3335f8\"><numberedlistitem backgroundColor=\"default\" start=\"undefined\" textAlignment=\"left\" textColor=\"default\">Chat links reuse the same viewer</numberedlistitem></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "daemon-round-trip",
+   "source": "# Plan\n\nIntro with a hard  \nbreak and *emphasis*.\n\n## Steps\n\n1. First\n2. Second\n   - nested bullet\n     - deeper\n3. Third\n\n- [ ] open task\n- [x] done task\n- plain bullet\n\n> A quote\n\n```ts\nconst a_b = `x`;\n```\n\n---\n\n| Name | Value |\n| --- | --- |\n| a_b | 1 \\| 2 |\n\n![diagram](https://example.com/d.png)\n\n###### Deep heading",
+   "update": "AbkBv/SG/QsABwEIZG9jdW1lbnQDCmJsb2NrR3JvdXAHAL/0hv0LAAMOYmxvY2tDb250YWluZXIHAL/0hv0LAQMHaGVhZGluZwcAv/SG/QsCBgQAv/SG/QsDBFBsYW4oAL/0hv0LAg9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KAC/9Ib9CwIJdGV4dENvbG9yAXcHZGVmYXVsdCgAv/SG/QsCDXRleHRBbGlnbm1lbnQBdwRsZWZ0KAC/9Ib9CwIFbGV2ZWwBfQEoAL/0hv0LAgxpc1RvZ2dsZWFibGUBeSgAv/SG/QsBAmlkAXckMWQwNjdkYWEtMzM2Mi00ZTdlLWI3YWYtMzc5MzgxMmU0NzYyh7/0hv0LAQMOYmxvY2tDb250YWluZXIHAL/0hv0LDgMJcGFyYWdyYXBoBwC/9Ib9Cw8GBAC/9Ib9CxARSW50cm8gd2l0aCBhIGhhcmSHv/SG/QsQAwloYXJkQnJlYWuHv/SG/QsiBgQAv/SG/QsjCmJyZWFrIGFuZCCGv/SG/QstBml0YWxpYwJ7fYS/9Ib9Cy4IZW1waGFzaXOGv/SG/Qs2Bml0YWxpYwRudWxshL/0hv0LNwEuKAC/9Ib9Cw8PYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAv/SG/QsPCXRleHRDb2xvcgF3B2RlZmF1bHQoAL/0hv0LDw10ZXh0QWxpZ25tZW50AXcEbGVmdCgAv/SG/QsOAmlkAXckOTkyMmQ5N2YtNjA3Yi00MTAyLWJjNDMtYjMxNzU1YTZlZWU1h7/0hv0LDgMOYmxvY2tDb250YWluZXIHAL/0hv0LPQMHaGVhZGluZwcAv/SG/Qs+BgQAv/SG/Qs/BVN0ZXBzKAC/9Ib9Cz4PYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAv/SG/Qs+CXRleHRDb2xvcgF3B2RlZmF1bHQoAL/0hv0LPg10ZXh0QWxpZ25tZW50AXcEbGVmdCgAv/SG/Qs+BWxldmVsAX0CKAC/9Ib9Cz4MaXNUb2dnbGVhYmxlAXkoAL/0hv0LPQJpZAF3JGJiODUyYzg4LTliYTUtNDBmYy1hZjc2LTIyZTI1NzdiZDQyYYe/9Ib9Cz0DDmJsb2NrQ29udGFpbmVyBwC/9Ib9C0sDEG51bWJlcmVkTGlzdEl0ZW0HAL/0hv0LTAYEAL/0hv0LTQVGaXJzdCgAv/SG/QtMD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAL/0hv0LTAl0ZXh0Q29sb3IBdwdkZWZhdWx0KAC/9Ib9C0wNdGV4dEFsaWdubWVudAF3BGxlZnQoAL/0hv0LTAVzdGFydAF/KAC/9Ib9C0sCaWQBdyQ0Yzc1MDY4OS1lNjNjLTQ5NmUtOTI0OS1lNDlhOWY1MjU1YzKHv/SG/QtLAw5ibG9ja0NvbnRhaW5lcgcAv/SG/QtYAxBudW1iZXJlZExpc3RJdGVtBwC/9Ib9C1kGBAC/9Ib9C1oGU2Vjb25kKAC/9Ib9C1kPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAv/SG/QtZCXRleHRDb2xvcgF3B2RlZmF1bHQoAL/0hv0LWQ10ZXh0QWxpZ25tZW50AXcEbGVmdCgAv/SG/QtZBXN0YXJ0AX+Hv/SG/QtZAwpibG9ja0dyb3VwBwC/9Ib9C2UDDmJsb2NrQ29udGFpbmVyBwC/9Ib9C2YDDmJ1bGxldExpc3RJdGVtBwC/9Ib9C2cGBAC/9Ib9C2gNbmVzdGVkIGJ1bGxldCgAv/SG/QtnD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAL/0hv0LZwl0ZXh0Q29sb3IBdwdkZWZhdWx0KAC/9Ib9C2cNdGV4dEFsaWdubWVudAF3BGxlZnSHv/SG/QtnAwpibG9ja0dyb3VwBwC/9Ib9C3kDDmJsb2NrQ29udGFpbmVyBwC/9Ib9C3oDDmJ1bGxldExpc3RJdGVtBwC/9Ib9C3sGBAC/9Ib9C3wGZGVlcGVyKAC/9Ib9C3sPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAv/SG/Qt7CXRleHRDb2xvcgF3B2RlZmF1bHQoAL/0hv0Lew10ZXh0QWxpZ25tZW50AXcEbGVmdCgAv/SG/Qt6AmlkAXckNTc0NjIzODMtMDlkZC00OTQzLWJiZmUtZDdjNGE4ZTljNTI3KAC/9Ib9C2YCaWQBdyQzN2YyN2E0NC0yZWE4LTRiNDUtODcwMi05NzY4MTY4ZGRjOGMoAL/0hv0LWAJpZAF3JGQ0NDRhYmE2LWYzYjYtNDdmYi1hM2QzLTZmMDIzODA2YWZlNYe/9Ib9C1gDDmJsb2NrQ29udGFpbmVyBwC/9Ib9C4kBAxBudW1iZXJlZExpc3RJdGVtBwC/9Ib9C4oBBgQAv/SG/QuLAQVUaGlyZCgAv/SG/QuKAQ9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KAC/9Ib9C4oBCXRleHRDb2xvcgF3B2RlZmF1bHQoAL/0hv0LigENdGV4dEFsaWdubWVudAF3BGxlZnQoAL/0hv0LigEFc3RhcnQBfygAv/SG/QuJAQJpZAF3JGQxOGUxZTE3LTA5NWUtNDg0MC1iMTZiLTgyNjlkNmRlYTg1Yoe/9Ib9C4kBAw5ibG9ja0NvbnRhaW5lcgcAv/SG/QuWAQMNY2hlY2tMaXN0SXRlbQcAv/SG/QuXAQYEAL/0hv0LmAEJb3BlbiB0YXNrKAC/9Ib9C5cBD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAL/0hv0LlwEJdGV4dENvbG9yAXcHZGVmYXVsdCgAv/SG/QuXAQ10ZXh0QWxpZ25tZW50AXcEbGVmdCgAv/SG/QuXAQdjaGVja2VkAXkoAL/0hv0LlgECaWQBdyQyNWMwNmNkNi1mNDE0LTQzYTEtYThkMi02MThjNmNiNDY2ZTWHv/SG/QuWAQMOYmxvY2tDb250YWluZXIHAL/0hv0LpwEDDWNoZWNrTGlzdEl0ZW0HAL/0hv0LqAEGBAC/9Ib9C6kBCWRvbmUgdGFzaygAv/SG/QuoAQ9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KAC/9Ib9C6gBCXRleHRDb2xvcgF3B2RlZmF1bHQoAL/0hv0LqAENdGV4dEFsaWdubWVudAF3BGxlZnQoAL/0hv0LqAEHY2hlY2tlZAF4KAC/9Ib9C6cBAmlkAXckZjUyMzQxNTAtYTI5ZS00MTk0LWE0NjgtZTE3NTE0ZGNiZDQ5h7/0hv0LpwEDDmJsb2NrQ29udGFpbmVyBwC/9Ib9C7gBAw5idWxsZXRMaXN0SXRlbQcAv/SG/Qu5AQYEAL/0hv0LugEMcGxhaW4gYnVsbGV0KAC/9Ib9C7kBD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAL/0hv0LuQEJdGV4dENvbG9yAXcHZGVmYXVsdCgAv/SG/Qu5AQ10ZXh0QWxpZ25tZW50AXcEbGVmdCgAv/SG/Qu4AQJpZAF3JDY4ZjViZjNkLTM3ZWMtNGE2NC1hZWM5LWQzMDExYmFlNzAzN4e/9Ib9C7gBAw5ibG9ja0NvbnRhaW5lcgcAv/SG/QvLAQMFcXVvdGUHAL/0hv0LzAEGBAC/9Ib9C80BB0EgcXVvdGUoAL/0hv0LzAEPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAv/SG/QvMAQl0ZXh0Q29sb3IBdwdkZWZhdWx0KAC/9Ib9C8sBAmlkAXckNDA3MmQyYjAtNWMyNi00YTNiLWE1M2UtZDAxNDYyNWYwY2Qyh7/0hv0LywEDDmJsb2NrQ29udGFpbmVyBwC/9Ib9C9gBAwljb2RlQmxvY2sHAL/0hv0L2QEGBAC/9Ib9C9oBEGNvbnN0IGFfYiA9IGB4YDsoAL/0hv0L2QEIbGFuZ3VhZ2UBdwJ0cygAv/SG/QvYAQJpZAF3JDhlOTk0YTc5LWIzYWEtNGQ5My04MWIxLWFkM2ExNTU3MzU0Y4e/9Ib9C9gBAw5ibG9ja0NvbnRhaW5lcgcAv/SG/QvtAQMHZGl2aWRlcigAv/SG/QvtAQJpZAF3JDhlNDQ4N2I1LTdjYmEtNDY2Ny1hMTgzLTNkYTY2OTM1NmJmOYe/9Ib9C+0BAw5ibG9ja0NvbnRhaW5lcgcAv/SG/QvwAQMFdGFibGUHAL/0hv0L8QEDCHRhYmxlUm93BwC/9Ib9C/IBAwt0YWJsZUhlYWRlcgcAv/SG/QvzAQMOdGFibGVQYXJhZ3JhcGgHAL/0hv0L9AEGBAC/9Ib9C/UBBE5hbWUoAL/0hv0L8wEJdGV4dENvbG9yAXcHZGVmYXVsdCgAv/SG/QvzAQ9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KAC/9Ib9C/MBDXRleHRBbGlnbm1lbnQBdwRsZWZ0KAC/9Ib9C/MBB2NvbHNwYW4BfQEoAL/0hv0L8wEHcm93c3BhbgF9AYe/9Ib9C/MBAwt0YWJsZUhlYWRlcgcAv/SG/Qv/AQMOdGFibGVQYXJhZ3JhcGgHAL/0hv0LgAIGBAC/9Ib9C4ECBVZhbHVlKAC/9Ib9C/8BCXRleHRDb2xvcgF3B2RlZmF1bHQoAL/0hv0L/wEPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAv/SG/Qv/AQ10ZXh0QWxpZ25tZW50AXcEbGVmdCgAv/SG/Qv/AQdjb2xzcGFuAX0BKAC/9Ib9C/8BB3Jvd3NwYW4BfQGHv/SG/QvyAQMIdGFibGVSb3cHAL/0hv0LjAIDCXRhYmxlQ2VsbAcAv/SG/QuNAgMOdGFibGVQYXJhZ3JhcGgHAL/0hv0LjgIGBAC/9Ib9C48CA2FfYigAv/SG/QuNAgl0ZXh0Q29sb3IBdwdkZWZhdWx0KAC/9Ib9C40CD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAL/0hv0LjQINdGV4dEFsaWdubWVudAF3BGxlZnQoAL/0hv0LjQIHY29sc3BhbgF9ASgAv/SG/QuNAgdyb3dzcGFuAX0Bh7/0hv0LjQIDCXRhYmxlQ2VsbAcAv/SG/QuYAgMOdGFibGVQYXJhZ3JhcGgHAL/0hv0LmQIGBAC/9Ib9C5oCBTEgfCAyKAC/9Ib9C5gCCXRleHRDb2xvcgF3B2RlZmF1bHQoAL/0hv0LmAIPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAv/SG/QuYAg10ZXh0QWxpZ25tZW50AXcEbGVmdCgAv/SG/QuYAgdjb2xzcGFuAX0BKAC/9Ib9C5gCB3Jvd3NwYW4BfQEoAL/0hv0L8QEJdGV4dENvbG9yAXcHZGVmYXVsdCgAv/SG/QvwAQJpZAF3JDZhNmVhMDk3LTY3NjktNDhmZS1iZmQ5LTViYzc1ODE4ZWNmZYe/9Ib9C/ABAw5ibG9ja0NvbnRhaW5lcgcAv/SG/QunAgMFaW1hZ2UoAL/0hv0LqAINdGV4dEFsaWdubWVudAF3BGxlZnQoAL/0hv0LqAIPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAv/SG/QuoAgRuYW1lAXcHZGlhZ3JhbSgAv/SG/QuoAgN1cmwBdxlodHRwczovL2V4YW1wbGUuY29tL2QucG5nKAC/9Ib9C6gCB2NhcHRpb24BdwAoAL/0hv0LqAILc2hvd1ByZXZpZXcBeCgAv/SG/QuoAgxwcmV2aWV3V2lkdGgBfygAv/SG/QunAgJpZAF3JGY2MjlmZDcyLWZjYTAtNDA0Yi04ZGEwLTU2NTEyNDc5NDU5OYe/9Ib9C6cCAw5ibG9ja0NvbnRhaW5lcgcAv/SG/QuxAgMHaGVhZGluZwcAv/SG/QuyAgYEAL/0hv0LswIMRGVlcCBoZWFkaW5nKAC/9Ib9C7ICD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAL/0hv0LsgIJdGV4dENvbG9yAXcHZGVmYXVsdCgAv/SG/QuyAg10ZXh0QWxpZ25tZW50AXcEbGVmdCgAv/SG/QuyAgVsZXZlbAF9BigAv/SG/QuyAgxpc1RvZ2dsZWFibGUBeSgAv/SG/QuxAgJpZAF3JDc0OGU5ZTkyLWU3NzMtNDg3Mi1iOTE2LTRjOGU2YTVhYTFmZgA=",
+   "markdown": "# Plan\n\nIntro with a hard\\\nbreak and *emphasis*.\n\n## Steps\n\n1. First\n2. Second\n   - nested bullet\n     - deeper\n3. Third\n\n- [ ] open task\n- [x] done task\n- plain bullet\n\n> A quote\n\n```ts\nconst a_b = `x`;\n```\n\n---\n\n| Name | Value |\n| --- | --- |\n| a_b | 1 \\| 2 |\n\n![diagram](https://example.com/d.png)\n\n###### Deep heading\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "1d067daa-3362-4e7e-b7af-3793812e4762",
+     "type": "heading",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left",
+      "level": 1,
+      "isToggleable": false
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Plan",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "9922d97f-607b-4102-bc43-b31755a6eee5",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Intro with a hard\nbreak and ",
+       "styles": {}
+      },
+      {
+       "type": "text",
+       "text": "emphasis",
+       "styles": {
+        "italic": true
+       }
+      },
+      {
+       "type": "text",
+       "text": ".",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "bb852c88-9ba5-40fc-af76-22e2577bd42a",
+     "type": "heading",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left",
+      "level": 2,
+      "isToggleable": false
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Steps",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "4c750689-e63c-496e-9249-e49a9f5255c2",
+     "type": "numberedListItem",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "First",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "d444aba6-f3b6-47fb-a3d3-6f023806afe5",
+     "type": "numberedListItem",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Second",
+       "styles": {}
+      }
+     ],
+     "children": [
+      {
+       "id": "37f27a44-2ea8-4b45-8702-9768168ddc8c",
+       "type": "bulletListItem",
+       "props": {
+        "backgroundColor": "default",
+        "textColor": "default",
+        "textAlignment": "left"
+       },
+       "content": [
+        {
+         "type": "text",
+         "text": "nested bullet",
+         "styles": {}
+        }
+       ],
+       "children": [
+        {
+         "id": "57462383-09dd-4943-bbfe-d7c4a8e9c527",
+         "type": "bulletListItem",
+         "props": {
+          "backgroundColor": "default",
+          "textColor": "default",
+          "textAlignment": "left"
+         },
+         "content": [
+          {
+           "type": "text",
+           "text": "deeper",
+           "styles": {}
+          }
+         ],
+         "children": []
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "d18e1e17-095e-4840-b16b-8269d6dea85b",
+     "type": "numberedListItem",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Third",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "25c06cd6-f414-43a1-a8d2-618c6cb466e5",
+     "type": "checkListItem",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left",
+      "checked": false
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "open task",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "f5234150-a29e-4194-a468-e17514dcbd49",
+     "type": "checkListItem",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left",
+      "checked": true
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "done task",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "68f5bf3d-37ec-4a64-aec9-d3011bae7037",
+     "type": "bulletListItem",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "plain bullet",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "4072d2b0-5c26-4a3b-a53e-d014625f0cd2",
+     "type": "quote",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "A quote",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "8e994a79-b3aa-4d93-81b1-ad3a1557354c",
+     "type": "codeBlock",
+     "props": {
+      "language": "ts"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "const a_b = `x`;",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "8e4487b5-7cba-4667-a183-3da669356bf9",
+     "type": "divider",
+     "props": {},
+     "children": []
+    },
+    {
+     "id": "6a6ea097-6769-48fe-bfd9-5bc75818ecfe",
+     "type": "table",
+     "props": {
+      "textColor": "default"
+     },
+     "content": {
+      "type": "tableContent",
+      "columnWidths": [
+       null,
+       null
+      ],
+      "headerRows": 1,
+      "rows": [
+       {
+        "cells": [
+         {
+          "type": "tableCell",
+          "content": [
+           {
+            "type": "text",
+            "text": "Name",
+            "styles": {}
+           }
+          ],
+          "props": {
+           "colspan": 1,
+           "rowspan": 1,
+           "backgroundColor": "default",
+           "textColor": "default",
+           "textAlignment": "left"
+          }
+         },
+         {
+          "type": "tableCell",
+          "content": [
+           {
+            "type": "text",
+            "text": "Value",
+            "styles": {}
+           }
+          ],
+          "props": {
+           "colspan": 1,
+           "rowspan": 1,
+           "backgroundColor": "default",
+           "textColor": "default",
+           "textAlignment": "left"
+          }
+         }
+        ]
+       },
+       {
+        "cells": [
+         {
+          "type": "tableCell",
+          "content": [
+           {
+            "type": "text",
+            "text": "a_b",
+            "styles": {}
+           }
+          ],
+          "props": {
+           "colspan": 1,
+           "rowspan": 1,
+           "backgroundColor": "default",
+           "textColor": "default",
+           "textAlignment": "left"
+          }
+         },
+         {
+          "type": "tableCell",
+          "content": [
+           {
+            "type": "text",
+            "text": "1 | 2",
+            "styles": {}
+           }
+          ],
+          "props": {
+           "colspan": 1,
+           "rowspan": 1,
+           "backgroundColor": "default",
+           "textColor": "default",
+           "textAlignment": "left"
+          }
+         }
+        ]
+       }
+      ]
+     },
+     "children": []
+    },
+    {
+     "id": "f629fd72-fca0-404b-8da0-565124794599",
+     "type": "image",
+     "props": {
+      "textAlignment": "left",
+      "backgroundColor": "default",
+      "name": "diagram",
+      "url": "https://example.com/d.png",
+      "caption": "",
+      "showPreview": true
+     },
+     "children": []
+    },
+    {
+     "id": "748e9e92-e773-4872-b916-4c8e6a5aa1ff",
+     "type": "heading",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left",
+      "level": 6,
+      "isToggleable": false
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Deep heading",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"1d067daa-3362-4e7e-b7af-3793812e4762\"><heading backgroundColor=\"default\" isToggleable=\"false\" level=\"1\" textAlignment=\"left\" textColor=\"default\">Plan</heading></blockcontainer><blockcontainer id=\"9922d97f-607b-4102-bc43-b31755a6eee5\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">Intro with a hard<hardbreak></hardbreak>break and <italic>emphasis</italic>.</paragraph></blockcontainer><blockcontainer id=\"bb852c88-9ba5-40fc-af76-22e2577bd42a\"><heading backgroundColor=\"default\" isToggleable=\"false\" level=\"2\" textAlignment=\"left\" textColor=\"default\">Steps</heading></blockcontainer><blockcontainer id=\"4c750689-e63c-496e-9249-e49a9f5255c2\"><numberedlistitem backgroundColor=\"default\" start=\"undefined\" textAlignment=\"left\" textColor=\"default\">First</numberedlistitem></blockcontainer><blockcontainer id=\"d444aba6-f3b6-47fb-a3d3-6f023806afe5\"><numberedlistitem backgroundColor=\"default\" start=\"undefined\" textAlignment=\"left\" textColor=\"default\">Second</numberedlistitem><blockgroup><blockcontainer id=\"37f27a44-2ea8-4b45-8702-9768168ddc8c\"><bulletlistitem backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">nested bullet</bulletlistitem><blockgroup><blockcontainer id=\"57462383-09dd-4943-bbfe-d7c4a8e9c527\"><bulletlistitem backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">deeper</bulletlistitem></blockcontainer></blockgroup></blockcontainer></blockgroup></blockcontainer><blockcontainer id=\"d18e1e17-095e-4840-b16b-8269d6dea85b\"><numberedlistitem backgroundColor=\"default\" start=\"undefined\" textAlignment=\"left\" textColor=\"default\">Third</numberedlistitem></blockcontainer><blockcontainer id=\"25c06cd6-f414-43a1-a8d2-618c6cb466e5\"><checklistitem backgroundColor=\"default\" checked=\"false\" textAlignment=\"left\" textColor=\"default\">open task</checklistitem></blockcontainer><blockcontainer id=\"f5234150-a29e-4194-a468-e17514dcbd49\"><checklistitem backgroundColor=\"default\" checked=\"true\" textAlignment=\"left\" textColor=\"default\">done task</checklistitem></blockcontainer><blockcontainer id=\"68f5bf3d-37ec-4a64-aec9-d3011bae7037\"><bulletlistitem backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">plain bullet</bulletlistitem></blockcontainer><blockcontainer id=\"4072d2b0-5c26-4a3b-a53e-d014625f0cd2\"><quote backgroundColor=\"default\" textColor=\"default\">A quote</quote></blockcontainer><blockcontainer id=\"8e994a79-b3aa-4d93-81b1-ad3a1557354c\"><codeblock language=\"ts\">const a_b = `x`;</codeblock></blockcontainer><blockcontainer id=\"8e4487b5-7cba-4667-a183-3da669356bf9\"><divider></divider></blockcontainer><blockcontainer id=\"6a6ea097-6769-48fe-bfd9-5bc75818ecfe\"><table textColor=\"default\"><tablerow><tableheader backgroundColor=\"default\" colspan=\"1\" rowspan=\"1\" textAlignment=\"left\" textColor=\"default\"><tableparagraph>Name</tableparagraph></tableheader><tableheader backgroundColor=\"default\" colspan=\"1\" rowspan=\"1\" textAlignment=\"left\" textColor=\"default\"><tableparagraph>Value</tableparagraph></tableheader></tablerow><tablerow><tablecell backgroundColor=\"default\" colspan=\"1\" rowspan=\"1\" textAlignment=\"left\" textColor=\"default\"><tableparagraph>a_b</tableparagraph></tablecell><tablecell backgroundColor=\"default\" colspan=\"1\" rowspan=\"1\" textAlignment=\"left\" textColor=\"default\"><tableparagraph>1 | 2</tableparagraph></tablecell></tablerow></table></blockcontainer><blockcontainer id=\"f629fd72-fca0-404b-8da0-565124794599\"><image backgroundColor=\"default\" caption=\"\" name=\"diagram\" previewWidth=\"undefined\" showPreview=\"true\" textAlignment=\"left\" url=\"https://example.com/d.png\"></image></blockcontainer><blockcontainer id=\"748e9e92-e773-4872-b916-4c8e6a5aa1ff\"><heading backgroundColor=\"default\" isToggleable=\"false\" level=\"6\" textAlignment=\"left\" textColor=\"default\">Deep heading</heading></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "escape-0",
+   "update": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAyFhX3NuYWtlX25hbWUgYW5kIHNuYWtlX2Nhc2Vfd29yZHMoAJIhAg9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KACSIQIJdGV4dENvbG9yAXcHZGVmYXVsdCgAkiECDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACSIQECaWQBdyQ3NTM1NjBjYi05OTkzLTRhNGQtYjFiYi1lOTRkM2FiNjZjYmEA",
+   "markdown": "a_snake_name and snake_case_words\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "753560cb-9993-4a4d-b1bb-e94d3ab66cba",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "a_snake_name and snake_case_words",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"753560cb-9993-4a4d-b1bb-e94d3ab66cba\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">a_snake_name and snake_case_words</paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "escape-1",
+   "update": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAx41ICogMyA9IDE1IGFuZCBDOlxwYXRoXHRvXGZpbGUoAJIhAg9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KACSIQIJdGV4dENvbG9yAXcHZGVmYXVsdCgAkiECDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACSIQECaWQBdyQ4YTA1M2QzNi1hMGQ2LTQ2Y2ItYTUzYi03NWQ5YWNkN2YzMjUA",
+   "markdown": "5 * 3 = 15 and C:\\path\\to\\file\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "8a053d36-a0d6-46cb-a53b-75d9acd7f325",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "5 * 3 = 15 and C:\\path\\to\\file",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"8a053d36-a0d6-46cb-a53b-75d9acd7f325\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">5 * 3 = 15 and C:\\path\\to\\file</paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "escape-2",
+   "update": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAxhhIH4gYiwgMyA8IDQsIHggfCB5LCBSJkQoAJIhAg9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KACSIQIJdGV4dENvbG9yAXcHZGVmYXVsdCgAkiECDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACSIQECaWQBdyQ3ODA1YWI5My02YzNhLTQ2ZGEtOGZiZC1kMTA2ZmI4YWFlODMA",
+   "markdown": "a ~ b, 3 < 4, x | y, R&D\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "7805ab93-6c3a-46da-8fbd-d106fb8aae83",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "a ~ b, 3 < 4, x | y, R&D",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"7805ab93-6c3a-46da-8fbd-d106fb8aae83\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">a ~ b, 3 < 4, x | y, R&D</paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "escape-3",
+   "update": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAwUyKjMqNCgAkiECD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAJIhAgl0ZXh0Q29sb3IBdwdkZWZhdWx0KACSIQINdGV4dEFsaWdubWVudAF3BGxlZnQoAJIhAQJpZAF3JGNmMDc4NzVkLTk0NDgtNDdjZS1iYjYxLWU0MjYzNGMyMWNjOQA=",
+   "markdown": "2\\*3\\*4\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "cf07875d-9448-47ce-bb61-e42634c21cc9",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "2*3*4",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"cf07875d-9448-47ce-bb61-e42634c21cc9\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">2*3*4</paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "escape-4",
+   "update": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAxZfbGVhZGluZyBhbmQgdHJhaWxpbmdfKACSIQIPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAkiECCXRleHRDb2xvcgF3B2RlZmF1bHQoAJIhAg10ZXh0QWxpZ25tZW50AXcEbGVmdCgAkiEBAmlkAXckZGNlNDgzZWUtZWQyYS00MTI1LWJhZDYtNzY3Mjc1NDQ2OTM2AA==",
+   "markdown": "\\_leading and trailing\\_\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "dce483ee-ed2a-4125-bad6-767275446936",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "_leading and trailing_",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"dce483ee-ed2a-4125-bad6-767275446936\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">_leading and trailing_</paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "escape-5",
+   "update": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAytbbm90IGEgbGlua10oeCkgYHRpY2tgIH5+c3RydWNrfn4gPGI+ICZhbXA7KACSIQIPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAkiECCXRleHRDb2xvcgF3B2RlZmF1bHQoAJIhAg10ZXh0QWxpZ25tZW50AXcEbGVmdCgAkiEBAmlkAXckNjI3ZDlmMTctMzZhNC00YTk5LWE0MGQtYzdmZjcxZTViN2YzAA==",
+   "markdown": "\\[not a link](x) \\`tick\\` \\~\\~struck\\~\\~ \\<b> \\&amp;\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "627d9f17-36a4-4a99-a40d-c7ff71e5b7f3",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "[not a link](x) `tick` ~~struck~~ <b> &amp;",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"627d9f17-36a4-4a99-a40d-c7ff71e5b7f3\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">[not a link](x) `tick` ~~struck~~ <b> &amp;</paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "escape-6",
+   "update": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAwcjIFRpdGxlKACSIQIPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAkiECCXRleHRDb2xvcgF3B2RlZmF1bHQoAJIhAg10ZXh0QWxpZ25tZW50AXcEbGVmdCgAkiEBAmlkAXckNThkNTQ5ZmEtMDQ5Ny00ZDI1LTk2NjYtZTUzNGZhODY0MGE5AA==",
+   "markdown": "\\# Title\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "58d549fa-0497-4d25-9666-e534fa8640a9",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "# Title",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"58d549fa-0497-4d25-9666-e534fa8640a9\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\"># Title</paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "escape-7",
+   "update": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAwYtIGl0ZW0oAJIhAg9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KACSIQIJdGV4dENvbG9yAXcHZGVmYXVsdCgAkiECDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACSIQECaWQBdyQ2ZGFjM2I4Yi1hZjQzLTRmZjctODBhYS0zNWVjZWRjMzhkM2EA",
+   "markdown": "\\- item\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "6dac3b8b-af43-4ff7-80aa-35ecedc38d3a",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "- item",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"6dac3b8b-af43-4ff7-80aa-35ecedc38d3a\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">- item</paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "escape-8",
+   "update": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAwYrIGl0ZW0oAJIhAg9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KACSIQIJdGV4dENvbG9yAXcHZGVmYXVsdCgAkiECDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACSIQECaWQBdyQwYzJhYmM4MC00YzU0LTQ0ZmItYTcyNy01Njk1OTM3NGNkODYA",
+   "markdown": "\\+ item\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "0c2abc80-4c54-44fb-a727-56959374cd86",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "+ item",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"0c2abc80-4c54-44fb-a727-56959374cd86\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">+ item</paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "escape-9",
+   "update": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAwc+IHF1b3RlKACSIQIPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAkiECCXRleHRDb2xvcgF3B2RlZmF1bHQoAJIhAg10ZXh0QWxpZ25tZW50AXcEbGVmdCgAkiEBAmlkAXckNDNhNjljZGUtNjhhZi00ZWRhLWFiNzktNmU0MDE5ODY2NzA0AA==",
+   "markdown": "\\> quote\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "43a69cde-68af-4eda-ab79-6e4019866704",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "> quote",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"43a69cde-68af-4eda-ab79-6e4019866704\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">> quote</paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "escape-10",
+   "update": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAwYxLiBvbmUoAJIhAg9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KACSIQIJdGV4dENvbG9yAXcHZGVmYXVsdCgAkiECDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACSIQECaWQBdyQyOWIxN2NhMy1jNTQzLTRlMjQtOTc1Ny0wMTJiOGQxNjk5MzcA",
+   "markdown": "1\\. one\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "29b17ca3-c543-4e24-9757-012b8d169937",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "1. one",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"29b17ca3-c543-4e24-9757-012b8d169937\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">1. one</paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "escape-11",
+   "update": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAwYyKSB0d28oAJIhAg9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KACSIQIJdGV4dENvbG9yAXcHZGVmYXVsdCgAkiECDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACSIQECaWQBdyRkYWI5OTZmOC0xNWQzLTQ3NGQtODI5ZS02YWVjMjdlODQ3ODUA",
+   "markdown": "2\\) two\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "dab996f8-15d3-474d-829e-6aec27e84785",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "2) two",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"dab996f8-15d3-474d-829e-6aec27e84785\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">2) two</paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "escape-12",
+   "update": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAwMtLS0oAJIhAg9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KACSIQIJdGV4dENvbG9yAXcHZGVmYXVsdCgAkiECDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACSIQECaWQBdyQ3MTYxZGY2MC1lODY1LTQyMDQtYTM5MC03NWIyMGVlYWZhN2EA",
+   "markdown": "\\---\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "7161df60-e865-4204-a390-75b20eeafa7a",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "---",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"7161df60-e865-4204-a390-75b20eeafa7a\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">---</paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "escape-13",
+   "update": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAwM9PT0oAJIhAg9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KACSIQIJdGV4dENvbG9yAXcHZGVmYXVsdCgAkiECDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACSIQECaWQBdyRjNTU0OWMzOS0yMTQ3LTQxNDctYWU5ZC01MTc5YTU1YzViNDcA",
+   "markdown": "\\===\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "c5549c39-2147-4147-ae9d-5179a55c5b47",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "===",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"c5549c39-2147-4147-ae9d-5179a55c5b47\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">===</paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "escape-14",
+   "update": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAxNfeF8gKnkqIF9fel9fICoqdyoqKACSIQIPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAkiECCXRleHRDb2xvcgF3B2RlZmF1bHQoAJIhAg10ZXh0QWxpZ25tZW50AXcEbGVmdCgAkiEBAmlkAXckNDQyYTRiZjAtZGM5NC00NWUxLTk2ZmItMWUyYTEwYTYxNzEyAA==",
+   "markdown": "\\_x\\_ \\*y\\* \\_\\_z\\_\\_ \\*\\*w\\*\\*\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "442a4bf0-dc94-45e1-96fb-1e2a10a61712",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "_x_ *y* __z__ **w**",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"442a4bf0-dc94-45e1-96fb-1e2a10a61712\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">_x_ *y* __z__ **w**</paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "escape-15",
+   "update": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAxF+fiB0aWxkZSB+IHJ1biB+figAkiECD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAJIhAgl0ZXh0Q29sb3IBdwdkZWZhdWx0KACSIQINdGV4dEFsaWdubWVudAF3BGxlZnQoAJIhAQJpZAF3JDVhOTI4ZGFiLTY2ZmItNGUxMi1iMzI0LWJiMzQ5ZjdhODRiNQA=",
+   "markdown": "\\~\\~ tilde ~ run \\~\\~\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "5a928dab-66fb-4e12-b324-bb349f7a84b5",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "~~ tilde ~ run ~~",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"5a928dab-66fb-4e12-b324-bb349f7a84b5\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">~~ tilde ~ run ~~</paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "escape-16",
+   "update": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAxJiYWNrXHNsYXNoIFwqIFxfIFwoAJIhAg9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KACSIQIJdGV4dENvbG9yAXcHZGVmYXVsdCgAkiECDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACSIQECaWQBdyRmMDQzODg2My1jNjljLTRkNjAtYjE2Ni1lMWJiODJmMDZjN2IA",
+   "markdown": "back\\slash \\\\\\* \\\\\\_ \\\\\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "f0438863-c69c-4d60-b166-e1bb82f06c7b",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "back\\slash \\* \\_ \\",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"f0438863-c69c-4d60-b166-e1bb82f06c7b\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">back\\slash \\* \\_ \\</paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "escape-17",
+   "update": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAx5bYnJhY2tldHNdIF0ob2RkKVsgIVtpbWFnZV0oeCkoAJIhAg9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KACSIQIJdGV4dENvbG9yAXcHZGVmYXVsdCgAkiECDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACSIQECaWQBdyQzNTk0MGJiMy0zODk3LTQ3NDYtYTczNC0wMTAyNTQ2M2IzNDgA",
+   "markdown": "\\[brackets] ](odd)\\[ !\\[image](x)\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "35940bb3-3897-4746-a734-01025463b348",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "[brackets] ](odd)[ ![image](x)",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"35940bb3-3897-4746-a734-01025463b348\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">[brackets] ](odd)[ ![image](x)</paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "escape-18",
+   "update": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAxZgdGlja3NgIGFuZCBgYGRvdWJsZWBgKACSIQIPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAkiECCXRleHRDb2xvcgF3B2RlZmF1bHQoAJIhAg10ZXh0QWxpZ25tZW50AXcEbGVmdCgAkiEBAmlkAXckYzE1NmYxYTMtZWMyZS00MjcxLTg2YjgtZjk5ZDlmMWVlNTZiAA==",
+   "markdown": "\\`ticks\\` and \\`\\`double\\`\\`\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "c156f1a3-ec2e-4271-86b8-f99d9f1ee56b",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "`ticks` and ``double``",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"c156f1a3-ec2e-4271-86b8-f99d9f1ee56b\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">`ticks` and ``double``</paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "escape-19",
+   "update": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAx48aHR0cDovL2V4YW1wbGUuY29tPiA8dGFnPiBhPGIoAJIhAg9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KACSIQIJdGV4dENvbG9yAXcHZGVmYXVsdCgAkiECDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACSIQECaWQBdyRmZGNlNjQzOS01OTNiLTQ4NDctODViMC02NWM0YzU4MTljYzEA",
+   "markdown": "\\<http://example.com> \\<tag> a\\<b\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "fdce6439-593b-4847-85b0-65c4c5819cc1",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "<http://example.com> <tag> a<b",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"fdce6439-593b-4847-85b0-65c4c5819cc1\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\"><http://example.com> <tag> a<b</paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "escape-20",
+   "update": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAxwmY29weTsgJiMxNjk7ICYjeEE5OyAmIGFsb25lKACSIQIPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAkiECCXRleHRDb2xvcgF3B2RlZmF1bHQoAJIhAg10ZXh0QWxpZ25tZW50AXcEbGVmdCgAkiEBAmlkAXckODBmN2U2YjUtMzkwMS00MjEwLThlOTMtYjFkZTJkOGI2YjU1AA==",
+   "markdown": "\\&copy; \\&#169; \\&#xA9; & alone\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "80f7e6b5-3901-4210-8e93-b1de2d8b6b55",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "&copy; &#169; &#xA9; & alone",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"80f7e6b5-3901-4210-8e93-b1de2d8b6b55\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">&copy; &#169; &#xA9; & alone</paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "escape-21",
+   "update": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAxogICBsZWFkaW5nIGFuZCB0cmFpbGluZyAgICgAkiECD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAJIhAgl0ZXh0Q29sb3IBdwdkZWZhdWx0KACSIQINdGV4dEFsaWdubWVudAF3BGxlZnQoAJIhAQJpZAF3JGY5MjEyODMyLWFhM2YtNGZkMC04OGNkLWI3YTRiYWViNDRkOQA=",
+   "markdown": "&#32;  leading and trailing  &#32;\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "f9212832-aa3f-4fd0-88cd-b7a4baeb44d9",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "   leading and trailing   ",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"f9212832-aa3f-4fd0-88cd-b7a4baeb44d9\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">   leading and trailing   </paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "escape-22",
+   "update": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAwp0YWIJaW5zaWRlKACSIQIPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAkiECCXRleHRDb2xvcgF3B2RlZmF1bHQoAJIhAg10ZXh0QWxpZ25tZW50AXcEbGVmdCgAkiEBAmlkAXckZjc3NjFmYzgtMTYzMy00ODBkLWExODYtMzczZmY3NzlhMGY3AA==",
+   "markdown": "tab\tinside\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "f7761fc8-1633-480d-a186-373ff779a0f7",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "tab\tinside",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"f7761fc8-1633-480d-a186-373ff779a0f7\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">tab\tinside</paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "escape-23",
+   "update": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAwEjKACSIQIPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAkiECCXRleHRDb2xvcgF3B2RlZmF1bHQoAJIhAg10ZXh0QWxpZ25tZW50AXcEbGVmdCgAkiEBAmlkAXckZWY3NjJiZGMtNjdjOS00ZjNkLTljZjUtOGNkODk3NDc1MjA5AA==",
+   "markdown": "\\#\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "ef762bdc-67c9-4f3d-9cf5-8cd897475209",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "#",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"ef762bdc-67c9-4f3d-9cf5-8cd897475209\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">#</paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "escape-24",
+   "update": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAxVIZWFkaW5nIGVuZGluZyB3aXRoICMoAJIhAg9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KACSIQIJdGV4dENvbG9yAXcHZGVmYXVsdCgAkiECDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACSIQECaWQBdyQ4NzZjODg0YS1jZTQ2LTRjYTktYmYxYS1lMDQ1YWJhZjljMjQA",
+   "markdown": "Heading ending with #\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "876c884a-ce46-4ca9-bf1a-e045abaf9c24",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Heading ending with #",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"876c884a-ce46-4ca9-bf1a-e045abaf9c24\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">Heading ending with #</paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "escape-25",
+   "update": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAxplbW9qaSDwn5iAIGFuZCDDvG7Dr2PDtmTDqSgAkiECD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAJIhAgl0ZXh0Q29sb3IBdwdkZWZhdWx0KACSIQINdGV4dEFsaWdubWVudAF3BGxlZnQoAJIhAQJpZAF3JDFiMmQxMjQzLTFiYmQtNGI1MS05MDY2LTU1MzY1MTY0MDNiMQA=",
+   "markdown": "emoji 😀 and ünïcödé\n",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "1b2d1243-1bbd-4b51-9066-5536516403b1",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "emoji 😀 and ünïcödé",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"1b2d1243-1bbd-4b51-9066-5536516403b1\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">emoji 😀 and ünïcödé</paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "formatting",
+   "update": "ATCSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYGAJIhAwRib2xkAnt9hJIhBARib2xkhpIhCARib2xkBG51bGyEkiEJBSBhbmQghpIhDgRib2xkAnt9hpIhDwZpdGFsaWMCe32EkiEQBGJvdGiGkiEUBGJvbGQEbnVsbIaSIRUGaXRhbGljBG51bGyEkiEWASCGkiEXBGNvZGUCe32EkiEYBGNvZGWGkiEcBGNvZGUEbnVsbISSIR0BIIaSIR4Gc3RyaWtlAnt9hJIhHwZzdHJ1Y2uGkiElBnN0cmlrZQRudWxshJIhJgEghpIhJwl1bmRlcmxpbmUCe32EkiEoBXVuZGVyhpIhLQl1bmRlcmxpbmUEbnVsbISSIS4BIIaSIS8JdGV4dENvbG9yFXsic3RyaW5nVmFsdWUiOiJyZWQifYSSITADcmVkhpIhMwl0ZXh0Q29sb3IEbnVsbISSITQBIIaSITUPYmFja2dyb3VuZENvbG9yGHsic3RyaW5nVmFsdWUiOiJ5ZWxsb3cifYSSITYGbWFya2VkhpIhPA9iYWNrZ3JvdW5kQ29sb3IEbnVsbIaSIT0EbGluayV7ImhyZWYiOiJodHRwczovL2V4YW1wbGUuY29tL2EgYihjKSJ9hJIhPgRsaW5rhpIhQgRsaW5rBG51bGwoAJIhAg9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KACSIQIJdGV4dENvbG9yAXcHZGVmYXVsdCgAkiECDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACSIQECaWQBdyQwZDk1MjU0Mi1mYTc1LTQwZWEtODM5NC0wNGRhZmIzNzY0MjWHkiEBAw5ibG9ja0NvbnRhaW5lcgcAkiFIAwlwYXJhZ3JhcGgHAJIhSQYEAJIhSghDZW50ZXJlZCgAkiFJD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAJIhSQl0ZXh0Q29sb3IBdwdkZWZhdWx0KACSIUkNdGV4dEFsaWdubWVudAF3BmNlbnRlcigAkiFIAmlkAXckZWI3YThiOTktNzNkOS00YTExLTg1NTctMDgzZjJmN2M1MGNjAA==",
+   "markdown": "**bold** and ***both*** `code` ~~struck~~ under red marked[link](<https://example.com/a%20b(c)>)\n\nCentered\n",
+   "omitted": [
+    "underline",
+    "text colors",
+    "highlights",
+    "alignment"
+   ],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "0d952542-fa75-40ea-8394-04dafb376425",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "bold",
+       "styles": {
+        "bold": true
+       }
+      },
+      {
+       "type": "text",
+       "text": " and ",
+       "styles": {}
+      },
+      {
+       "type": "text",
+       "text": "both",
+       "styles": {
+        "bold": true,
+        "italic": true
+       }
+      },
+      {
+       "type": "text",
+       "text": " ",
+       "styles": {}
+      },
+      {
+       "type": "text",
+       "text": "code",
+       "styles": {
+        "code": true
+       }
+      },
+      {
+       "type": "text",
+       "text": " ",
+       "styles": {}
+      },
+      {
+       "type": "text",
+       "text": "struck",
+       "styles": {
+        "strike": true
+       }
+      },
+      {
+       "type": "text",
+       "text": " ",
+       "styles": {}
+      },
+      {
+       "type": "text",
+       "text": "under",
+       "styles": {
+        "underline": true
+       }
+      },
+      {
+       "type": "text",
+       "text": " ",
+       "styles": {}
+      },
+      {
+       "type": "text",
+       "text": "red",
+       "styles": {
+        "textColor": "red"
+       }
+      },
+      {
+       "type": "text",
+       "text": " ",
+       "styles": {}
+      },
+      {
+       "type": "text",
+       "text": "marked",
+       "styles": {
+        "backgroundColor": "yellow"
+       }
+      },
+      {
+       "type": "link",
+       "href": "https://example.com/a b(c)",
+       "content": [
+        {
+         "type": "text",
+         "text": "link",
+         "styles": {}
+        }
+       ]
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "eb7a8b99-73d9-4a11-8557-083f2f7c50cc",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "center"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Centered",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"0d952542-fa75-40ea-8394-04dafb376425\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\"><bold>bold</bold> and <bold><italic>both</italic></bold> <code>code</code> <strike>struck</strike> <underline>under</underline> <textColor stringValue=\"red\">red</textColor> <backgroundColor stringValue=\"yellow\">marked</backgroundColor><link href=\"https://example.com/a b(c)\">link</link></paragraph></blockcontainer><blockcontainer id=\"eb7a8b99-73d9-4a11-8557-083f2f7c50cc\"><paragraph backgroundColor=\"default\" textAlignment=\"center\" textColor=\"default\">Centered</paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "blocks",
+   "update": "AaABkiEABwEIZG9jdW1lbnQDCmJsb2NrR3JvdXAHAJIhAAMOYmxvY2tDb250YWluZXIHAJIhAQMHaGVhZGluZwcAkiECBgQAkiEDBVRpdGxlKACSIQIPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAkiECCXRleHRDb2xvcgF3B2RlZmF1bHQoAJIhAg10ZXh0QWxpZ25tZW50AXcEbGVmdCgAkiECBWxldmVsAX0BKACSIQIMaXNUb2dnbGVhYmxlAXkoAJIhAQJpZAF3JDQ4OGNmNGIwLTQ0ODAtNDFlZS1iYmJhLWZkNzI4Mjg2YzA4MIeSIQEDDmJsb2NrQ29udGFpbmVyBwCSIQ8DB2hlYWRpbmcHAJIhEAYEAJIhEQZTZWNvbmQoAJIhEA9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KACSIRAJdGV4dENvbG9yAXcHZGVmYXVsdCgAkiEQDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACSIRAFbGV2ZWwBfQIoAJIhEAxpc1RvZ2dsZWFibGUBeSgAkiEPAmlkAXckMThiMmU3ODAtY2U4ZC00ODRmLWE4NGMtMmJiOTMzMWNmY2Fmh5IhDwMOYmxvY2tDb250YWluZXIHAJIhHgMHaGVhZGluZwcAkiEfBgQAkiEgBVRoaXJkKACSIR8PYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAkiEfCXRleHRDb2xvcgF3B2RlZmF1bHQoAJIhHw10ZXh0QWxpZ25tZW50AXcEbGVmdCgAkiEfBWxldmVsAX0DKACSIR8MaXNUb2dnbGVhYmxlAXkoAJIhHgJpZAF3JDM4ZDUyNmIwLTRkNTItNDQ1Ny04MWFkLWUwODliNWZiNjE5MYeSIR4DDmJsb2NrQ29udGFpbmVyBwCSISwDCXBhcmFncmFwaAcAkiEtBgQAkiEuCExpbmUgb25lh5IhLgMJaGFyZEJyZWFrh5IhNwYEAJIhOAhsaW5lIHR3bygAkiEtD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAJIhLQl0ZXh0Q29sb3IBdwdkZWZhdWx0KACSIS0NdGV4dEFsaWdubWVudAF3BGxlZnQoAJIhLAJpZAF3JDcyY2U0N2M3LWUxMmItNDRjOS1iZmYzLWQwZjU3NmUxOWZhN4eSISwDDmJsb2NrQ29udGFpbmVyBwCSIUUDCXBhcmFncmFwaCgAkiFGD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAJIhRgl0ZXh0Q29sb3IBdwdkZWZhdWx0KACSIUYNdGV4dEFsaWdubWVudAF3BGxlZnQoAJIhRQJpZAF3JGVlOGY1MzY1LWI5MzgtNDkyYi1hNWFkLWNlNTk0MmQ5MTU5MoeSIUUDDmJsb2NrQ29udGFpbmVyBwCSIUsDDmJ1bGxldExpc3RJdGVtBwCSIUwGBACSIU0FT3V0ZXIoAJIhTA9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KACSIUwJdGV4dENvbG9yAXcHZGVmYXVsdCgAkiFMDXRleHRBbGlnbm1lbnQBdwRsZWZ0h5IhTAMKYmxvY2tHcm91cAcAkiFWAw5ibG9ja0NvbnRhaW5lcgcAkiFXAw5idWxsZXRMaXN0SXRlbQcAkiFYBgQAkiFZBUlubmVyKACSIVgPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAkiFYCXRleHRDb2xvcgF3B2RlZmF1bHQoAJIhWA10ZXh0QWxpZ25tZW50AXcEbGVmdIeSIVgDCmJsb2NrR3JvdXAHAJIhYgMOYmxvY2tDb250YWluZXIHAJIhYwMNY2hlY2tMaXN0SXRlbQcAkiFkBgQAkiFlCURlZXAgZG9uZSgAkiFkD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAJIhZAl0ZXh0Q29sb3IBdwdkZWZhdWx0KACSIWQNdGV4dEFsaWdubWVudAF3BGxlZnQoAJIhZAdjaGVja2VkAXgoAJIhYwJpZAF3JDQxMmZiYjMzLTk1OGYtNDVlYy05ZWIxLWYwZWQ5ZGM0YzIzOSgAkiFXAmlkAXckNjQxMWU0NjctMGRmNy00MTJjLTg2ZDQtMmNjZWU1NTYwYTg0KACSIUsCaWQBdyQ0ZThhN2RiNi1mN2Q0LTQwYjItYWJjOC1jMDE0NjA2YzllYzeHkiFLAw5ibG9ja0NvbnRhaW5lcgcAkiF2AxBudW1iZXJlZExpc3RJdGVtBwCSIXcGBACSIXgDT25lKACSIXcPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAkiF3CXRleHRDb2xvcgF3B2RlZmF1bHQoAJIhdw10ZXh0QWxpZ25tZW50AXcEbGVmdCgAkiF3BXN0YXJ0AX8oAJIhdgJpZAF3JGEwOGUzZWU5LTdjODgtNDNlZS05OGVmLWU4Y2RjNzRjOWU4MYeSIXYDDmJsb2NrQ29udGFpbmVyBwCSIYEBAxBudW1iZXJlZExpc3RJdGVtBwCSIYIBBgQAkiGDAQNUd28oAJIhggEPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAkiGCAQl0ZXh0Q29sb3IBdwdkZWZhdWx0KACSIYIBDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACSIYIBBXN0YXJ0AX8oAJIhgQECaWQBdyQ2NGYwZTNmYS03MGY3LTRiOGUtOGJjZi1mNzQ2OWJhYmZiZDCHkiGBAQMOYmxvY2tDb250YWluZXIHAJIhjAEDDWNoZWNrTGlzdEl0ZW0HAJIhjQEGBACSIY4BBE9wZW4oAJIhjQEPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAkiGNAQl0ZXh0Q29sb3IBdwdkZWZhdWx0KACSIY0BDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACSIY0BB2NoZWNrZWQBeSgAkiGMAQJpZAF3JGNlMGI4MDhmLTgxZDEtNDJlOS05YWZjLTEwNDU0ZWI1OWQ1ZIeSIYwBAw5ibG9ja0NvbnRhaW5lcgcAkiGYAQMFcXVvdGUHAJIhmQEGBACSIZoBB1F1b3RlZCCGkiGhAQRib2xkAnt9hJIhogEEYm9sZIaSIaYBBGJvbGQEbnVsbCgAkiGZAQ9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KACSIZkBCXRleHRDb2xvcgF3B2RlZmF1bHQoAJIhmAECaWQBdyQzYmJlMTcyZS1hNTdhLTRhYTktOTdiMC1iZWY0NTUwM2Y5MTKHkiGYAQMOYmxvY2tDb250YWluZXIHAJIhqwEDCWNvZGVCbG9jawcAkiGsAQYEAJIhrQESbGV0IHggPSAxCnByaW50KHgpKACSIawBCGxhbmd1YWdlAXcFc3dpZnQoAJIhqwECaWQBdyRjMDdjNmZiYi0wZjdkLTQ1MGUtODViMS01ZGIyMmFjZDc3MDOHkiGrAQMOYmxvY2tDb250YWluZXIHAJIhwgEDCWNvZGVCbG9jawcAkiHDAQYEAJIhxAEFcGxhaW4oAJIhwwEIbGFuZ3VhZ2UBdwR0ZXh0KACSIcIBAmlkAXckMzAzZDA4NzQtMTc1ZS00MzQwLWI5MjQtZTZkOGFjMDRmNDU5h5IhwgEDDmJsb2NrQ29udGFpbmVyBwCSIcwBAwdkaXZpZGVyKACSIcwBAmlkAXckYzVjYTM3OWUtNDFhZi00MGNmLThkMmMtZmZkYzEzMjgyNmI5h5IhzAEDDmJsb2NrQ29udGFpbmVyBwCSIc8BAwVpbWFnZSgAkiHQAQ10ZXh0QWxpZ25tZW50AXcEbGVmdCgAkiHQAQ9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KACSIdABBG5hbWUBdwNjYXQoAJIh0AEDdXJsAXcbaHR0cHM6Ly9leGFtcGxlLmNvbS9jYXQucG5nKACSIdABB2NhcHRpb24BdwVBIGNhdCgAkiHQAQtzaG93UHJldmlldwF4KACSIdABDHByZXZpZXdXaWR0aAF/KACSIc8BAmlkAXckZWQ4Mjk2MWEtNzhkYS00OWUxLWI0ZWMtMjcxYTAwNmRiZDVih5IhzwEDDmJsb2NrQ29udGFpbmVyBwCSIdkBAw50b2dnbGVMaXN0SXRlbQcAkiHaAQYEAJIh2wEGVG9nZ2xlKACSIdoBD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAJIh2gEJdGV4dENvbG9yAXcHZGVmYXVsdCgAkiHaAQ10ZXh0QWxpZ25tZW50AXcEbGVmdCgAkiHZAQJpZAF3JDY2OTljYjYwLWE3Y2EtNDQyZi1iMjIzLThlOTI4N2Q3MGNiY4eSIdkBAw5ibG9ja0NvbnRhaW5lcgcAkiHmAQMJcGFyYWdyYXBoBwCSIecBBgYAkiHoAQRsaW5rJHsiaHJlZiI6Imh0dHBzOi8vaGFwcHkuZW5naW5lZXJpbmcifYSSIekBBkhhcHB5IIaSIe8BBGxpbmsEbnVsbIaSIfABBGJvbGQCe32GkiHxAQRsaW5rJHsiaHJlZiI6Imh0dHBzOi8vaGFwcHkuZW5naW5lZXJpbmcifYSSIfIBBGJvbGSGkiH2AQRib2xkBG51bGyGkiH3AQRsaW5rBG51bGwoAJIh5wEPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAkiHnAQl0ZXh0Q29sb3IBdwdkZWZhdWx0KACSIecBDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACSIeYBAmlkAXckNmI1OWJlZWItMjI3ZC00YzhmLTk3ZjItNGQ5MTIyNDVjNzU1AA==",
+   "markdown": "# Title\n\n## Second\n\n### Third\n\nLine one\\\nline two\n\n\n\n- Outer\n  - Inner\n    - [x] Deep done\n\n1. One\n2. Two\n\n- [ ] Open\n\n> Quoted **bold**\n\n```swift\nlet x = 1\nprint(x)\n```\n\n```\nplain\n```\n\n---\n\n![cat](https://example.com/cat.png)\n\n- Toggle\n\n[Happy **bold**](https://happy.engineering)\n",
+   "omitted": [
+    "toggles"
+   ],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "488cf4b0-4480-41ee-bbba-fd728286c080",
+     "type": "heading",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left",
+      "level": 1,
+      "isToggleable": false
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Title",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "18b2e780-ce8d-484f-a84c-2bb9331cfcaf",
+     "type": "heading",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left",
+      "level": 2,
+      "isToggleable": false
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Second",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "38d526b0-4d52-4457-81ad-e089b5fb6191",
+     "type": "heading",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left",
+      "level": 3,
+      "isToggleable": false
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Third",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "72ce47c7-e12b-44c9-bff3-d0f576e19fa7",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Line one\nline two",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "ee8f5365-b938-492b-a5ad-ce5942d91592",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [],
+     "children": []
+    },
+    {
+     "id": "4e8a7db6-f7d4-40b2-abc8-c014606c9ec7",
+     "type": "bulletListItem",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Outer",
+       "styles": {}
+      }
+     ],
+     "children": [
+      {
+       "id": "6411e467-0df7-412c-86d4-2ccee5560a84",
+       "type": "bulletListItem",
+       "props": {
+        "backgroundColor": "default",
+        "textColor": "default",
+        "textAlignment": "left"
+       },
+       "content": [
+        {
+         "type": "text",
+         "text": "Inner",
+         "styles": {}
+        }
+       ],
+       "children": [
+        {
+         "id": "412fbb33-958f-45ec-9eb1-f0ed9dc4c239",
+         "type": "checkListItem",
+         "props": {
+          "backgroundColor": "default",
+          "textColor": "default",
+          "textAlignment": "left",
+          "checked": true
+         },
+         "content": [
+          {
+           "type": "text",
+           "text": "Deep done",
+           "styles": {}
+          }
+         ],
+         "children": []
+        }
+       ]
+      }
+     ]
+    },
+    {
+     "id": "a08e3ee9-7c88-43ee-98ef-e8cdc74c9e81",
+     "type": "numberedListItem",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "One",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "64f0e3fa-70f7-4b8e-8bcf-f7469babfbd0",
+     "type": "numberedListItem",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Two",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "ce0b808f-81d1-42e9-9afc-10454eb59d5d",
+     "type": "checkListItem",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left",
+      "checked": false
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Open",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "3bbe172e-a57a-4aa9-97b0-bef45503f912",
+     "type": "quote",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Quoted ",
+       "styles": {}
+      },
+      {
+       "type": "text",
+       "text": "bold",
+       "styles": {
+        "bold": true
+       }
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "c07c6fbb-0f7d-450e-85b1-5db22acd7703",
+     "type": "codeBlock",
+     "props": {
+      "language": "swift"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "let x = 1\nprint(x)",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "303d0874-175e-4340-b924-e6d8ac04f459",
+     "type": "codeBlock",
+     "props": {
+      "language": "text"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "plain",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "c5ca379e-41af-40cf-8d2c-ffdc132826b9",
+     "type": "divider",
+     "props": {},
+     "children": []
+    },
+    {
+     "id": "ed82961a-78da-49e1-b4ec-271a006dbd5b",
+     "type": "image",
+     "props": {
+      "textAlignment": "left",
+      "backgroundColor": "default",
+      "name": "cat",
+      "url": "https://example.com/cat.png",
+      "caption": "A cat",
+      "showPreview": true
+     },
+     "children": []
+    },
+    {
+     "id": "6699cb60-a7ca-442f-b223-8e9287d70cbc",
+     "type": "toggleListItem",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Toggle",
+       "styles": {}
+      }
+     ],
+     "children": []
+    },
+    {
+     "id": "6b59beeb-227d-4c8f-97f2-4d912245c755",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "link",
+       "href": "https://happy.engineering",
+       "content": [
+        {
+         "type": "text",
+         "text": "Happy ",
+         "styles": {}
+        },
+        {
+         "type": "text",
+         "text": "bold",
+         "styles": {
+          "bold": true
+         }
+        }
+       ]
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"488cf4b0-4480-41ee-bbba-fd728286c080\"><heading backgroundColor=\"default\" isToggleable=\"false\" level=\"1\" textAlignment=\"left\" textColor=\"default\">Title</heading></blockcontainer><blockcontainer id=\"18b2e780-ce8d-484f-a84c-2bb9331cfcaf\"><heading backgroundColor=\"default\" isToggleable=\"false\" level=\"2\" textAlignment=\"left\" textColor=\"default\">Second</heading></blockcontainer><blockcontainer id=\"38d526b0-4d52-4457-81ad-e089b5fb6191\"><heading backgroundColor=\"default\" isToggleable=\"false\" level=\"3\" textAlignment=\"left\" textColor=\"default\">Third</heading></blockcontainer><blockcontainer id=\"72ce47c7-e12b-44c9-bff3-d0f576e19fa7\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">Line one<hardbreak></hardbreak>line two</paragraph></blockcontainer><blockcontainer id=\"ee8f5365-b938-492b-a5ad-ce5942d91592\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\"></paragraph></blockcontainer><blockcontainer id=\"4e8a7db6-f7d4-40b2-abc8-c014606c9ec7\"><bulletlistitem backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">Outer</bulletlistitem><blockgroup><blockcontainer id=\"6411e467-0df7-412c-86d4-2ccee5560a84\"><bulletlistitem backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">Inner</bulletlistitem><blockgroup><blockcontainer id=\"412fbb33-958f-45ec-9eb1-f0ed9dc4c239\"><checklistitem backgroundColor=\"default\" checked=\"true\" textAlignment=\"left\" textColor=\"default\">Deep done</checklistitem></blockcontainer></blockgroup></blockcontainer></blockgroup></blockcontainer><blockcontainer id=\"a08e3ee9-7c88-43ee-98ef-e8cdc74c9e81\"><numberedlistitem backgroundColor=\"default\" start=\"undefined\" textAlignment=\"left\" textColor=\"default\">One</numberedlistitem></blockcontainer><blockcontainer id=\"64f0e3fa-70f7-4b8e-8bcf-f7469babfbd0\"><numberedlistitem backgroundColor=\"default\" start=\"undefined\" textAlignment=\"left\" textColor=\"default\">Two</numberedlistitem></blockcontainer><blockcontainer id=\"ce0b808f-81d1-42e9-9afc-10454eb59d5d\"><checklistitem backgroundColor=\"default\" checked=\"false\" textAlignment=\"left\" textColor=\"default\">Open</checklistitem></blockcontainer><blockcontainer id=\"3bbe172e-a57a-4aa9-97b0-bef45503f912\"><quote backgroundColor=\"default\" textColor=\"default\">Quoted <bold>bold</bold></quote></blockcontainer><blockcontainer id=\"c07c6fbb-0f7d-450e-85b1-5db22acd7703\"><codeblock language=\"swift\">let x = 1\nprint(x)</codeblock></blockcontainer><blockcontainer id=\"303d0874-175e-4340-b924-e6d8ac04f459\"><codeblock language=\"text\">plain</codeblock></blockcontainer><blockcontainer id=\"c5ca379e-41af-40cf-8d2c-ffdc132826b9\"><divider></divider></blockcontainer><blockcontainer id=\"ed82961a-78da-49e1-b4ec-271a006dbd5b\"><image backgroundColor=\"default\" caption=\"A cat\" name=\"cat\" previewWidth=\"undefined\" showPreview=\"true\" textAlignment=\"left\" url=\"https://example.com/cat.png\"></image></blockcontainer><blockcontainer id=\"6699cb60-a7ca-442f-b223-8e9287d70cbc\"><togglelistitem backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">Toggle</togglelistitem></blockcontainer><blockcontainer id=\"6b59beeb-227d-4c8f-97f2-4d912245c755\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\"><link href=\"https://happy.engineering\">Happy </link><bold><link href=\"https://happy.engineering\">bold</link></bold></paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "empty",
+   "update": "AQeSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgoAJIhAg9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KACSIQIJdGV4dENvbG9yAXcHZGVmYXVsdCgAkiECDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACSIQECaWQBdyRkMDE0ZjU3Zi1iOTM5LTQ5MGQtOTVkOC05OWIwMjIzNzYxMzgA",
+   "markdown": "",
+   "omitted": [],
+   "outsideModel": false,
+   "blocks": [
+    {
+     "id": "d014f57f-b939-490d-95d8-99b022376138",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"d014f57f-b939-490d-95d8-99b022376138\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\"></paragraph></blockcontainer></blockgroup>"
+  },
+  {
+   "name": "outside-model",
+   "update": "AgPC2sD4AgCHkiEBAw5ibG9ja0NvbnRhaW5lcgcAwtrA+AIAAwtmdXR1cmVCbG9jaygAwtrA+AIAAmlkAXcGZnV0dXJlCZIhAAcBCGRvY3VtZW50AwpibG9ja0dyb3VwBwCSIQADDmJsb2NrQ29udGFpbmVyBwCSIQEDCXBhcmFncmFwaAcAkiECBgQAkiEDBEtlcHQoAJIhAg9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KACSIQIJdGV4dENvbG9yAXcHZGVmYXVsdCgAkiECDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACSIQECaWQBdyQwZDY3NzE2Ny1lYTQwLTRiZGEtYjMwZi03MjEzOWI3MTQwNjEA",
+   "markdown": "Kept\n",
+   "omitted": [],
+   "outsideModel": true,
+   "blocks": [
+    {
+     "id": "0d677167-ea40-4bda-b30f-72139b714061",
+     "type": "paragraph",
+     "props": {
+      "backgroundColor": "default",
+      "textColor": "default",
+      "textAlignment": "left"
+     },
+     "content": [
+      {
+       "type": "text",
+       "text": "Kept",
+       "styles": {}
+      }
+     ],
+     "children": []
+    }
+   ],
+   "xml": "<blockgroup><blockcontainer id=\"0d677167-ea40-4bda-b30f-72139b714061\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">Kept</paragraph></blockcontainer></blockgroup>"
+  }
+ ],
+ "merges": [
+  {
+   "name": "typing-apart",
+   "base": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAwtIZWxsbyB3b3JsZCgAkiECD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAJIhAgl0ZXh0Q29sb3IBdwdkZWZhdWx0KACSIQINdGV4dEFsaWdubWVudAF3BGxlZnQoAJIhAQJpZAF3JGUyYzE0ZDM3LWFhMTgtNGYwZi04ZjI3LTA3OWQ4ODJkNmI5OQA=",
+   "a": "AQEBAMSSIQiSIQkGIHRoZXJlAA==",
+   "b": "AQECAISSIQ4BIQA=",
+   "merged": {
+    "markdown": "Hello there world!\n",
+    "omitted": [],
+    "outsideModel": false,
+    "blocks": [
+     {
+      "id": "e2c14d37-aa18-4f0f-8f27-079d882d6b99",
+      "type": "paragraph",
+      "props": {
+       "backgroundColor": "default",
+       "textColor": "default",
+       "textAlignment": "left"
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "Hello there world!",
+        "styles": {}
+       }
+      ],
+      "children": []
+     }
+    ],
+    "xml": "<blockgroup><blockcontainer id=\"e2c14d37-aa18-4f0f-8f27-079d882d6b99\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">Hello there world!</paragraph></blockcontainer></blockgroup>"
+   }
+  },
+  {
+   "name": "typing-same-spot",
+   "base": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAwJhYigAkiECD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAJIhAgl0ZXh0Q29sb3IBdwdkZWZhdWx0KACSIQINdGV4dEFsaWdubWVudAF3BGxlZnQoAJIhAQJpZAF3JDQ3NjRmMmIxLTQxMzUtNGI0YS1iMWE2LTVmOGIxMDFkMWZmZAA=",
+   "a": "AQEBAMSSIQSSIQUBWAA=",
+   "b": "AQECAMSSIQSSIQUBWQA=",
+   "merged": {
+    "markdown": "aXYb\n",
+    "omitted": [],
+    "outsideModel": false,
+    "blocks": [
+     {
+      "id": "4764f2b1-4135-4b4a-b1a6-5f8b101d1ffd",
+      "type": "paragraph",
+      "props": {
+       "backgroundColor": "default",
+       "textColor": "default",
+       "textAlignment": "left"
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "aXYb",
+        "styles": {}
+       }
+      ],
+      "children": []
+     }
+    ],
+    "xml": "<blockgroup><blockcontainer id=\"4764f2b1-4135-4b4a-b1a6-5f8b101d1ffd\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">aXYb</paragraph></blockcontainer></blockgroup>"
+   }
+  },
+  {
+   "name": "delete-over-insert",
+   "base": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAw1vbmUgdHdvIHRocmVlKACSIQIPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAkiECCXRleHRDb2xvcgF3B2RlZmF1bHQoAJIhAg10ZXh0QWxpZ25tZW50AXcEbGVmdCgAkiEBAmlkAXckNWNmOGNjM2MtZDQyYS00NTNiLWIxM2EtMmIzMzcxNGI1MTllAA==",
+   "a": "AAGSIQEIBA==",
+   "b": "AQECAMSSIQmSIQoDb29vAA==",
+   "merged": {
+    "markdown": "one ooothree\n",
+    "omitted": [],
+    "outsideModel": false,
+    "blocks": [
+     {
+      "id": "5cf8cc3c-d42a-453b-b13a-2b33714b519e",
+      "type": "paragraph",
+      "props": {
+       "backgroundColor": "default",
+       "textColor": "default",
+       "textAlignment": "left"
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "one ooothree",
+        "styles": {}
+       }
+      ],
+      "children": []
+     }
+    ],
+    "xml": "<blockgroup><blockcontainer id=\"5cf8cc3c-d42a-453b-b13a-2b33714b519e\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">one ooothree</paragraph></blockcontainer></blockgroup>"
+   }
+  },
+  {
+   "name": "bold-and-type",
+   "base": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAw5tYWtlIHRoaXMgYm9sZCgAkiECD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAJIhAgl0ZXh0Q29sb3IBdwdkZWZhdWx0KACSIQINdGV4dEFsaWdubWVudAF3BGxlZnQoAJIhAQJpZAF3JDU5ZmMyZWMxLTQyMjktNDI1Ni04NWMwLTdmOGRkMmQxNDE4NQA=",
+   "a": "AQIBAMaSIQiSIQkEYm9sZAJ7fcaSIQySIQ0EYm9sZARudWxsAA==",
+   "b": "AQECAMSSIQqSIQsCSVMA",
+   "merged": {
+    "markdown": "make **thISis** bold\n",
+    "omitted": [],
+    "outsideModel": false,
+    "blocks": [
+     {
+      "id": "59fc2ec1-4229-4256-85c0-7f8dd2d14185",
+      "type": "paragraph",
+      "props": {
+       "backgroundColor": "default",
+       "textColor": "default",
+       "textAlignment": "left"
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "make ",
+        "styles": {}
+       },
+       {
+        "type": "text",
+        "text": "thISis",
+        "styles": {
+         "bold": true
+        }
+       },
+       {
+        "type": "text",
+        "text": " bold",
+        "styles": {}
+       }
+      ],
+      "children": []
+     }
+    ],
+    "xml": "<blockgroup><blockcontainer id=\"59fc2ec1-4229-4256-85c0-7f8dd2d14185\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">make <bold>thISis</bold> bold</paragraph></blockcontainer></blockgroup>"
+   }
+  },
+  {
+   "name": "split-and-edit",
+   "base": "AQmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAxZmaXJzdCBoYWxmIHNlY29uZCBoYWxmKACSIQIPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAkiECCXRleHRDb2xvcgF3B2RlZmF1bHQoAJIhAg10ZXh0QWxpZ25tZW50AXcEbGVmdCgAkiEBAmlkAXckZjNkMmNiYWItOTY0Mi00MDQ5LWJjMjUtZjQ2Y2IwOTY2MGE2AA==",
+   "a": "AQUBAIeSIQEDDmJsb2NrQ29udGFpbmVyBwABAAMJcGFyYWdyYXBoBwABAQYEAAECC3NlY29uZCBoYWxmKAABAAJpZAF3C3NwbGl0LWJsb2NrAZIhAQ4M",
+   "b": "AQECAISSIRkHIGVkaXRlZAA=",
+   "merged": {
+    "markdown": "first half edited\n\nsecond half\n",
+    "omitted": [],
+    "outsideModel": false,
+    "blocks": [
+     {
+      "id": "f3d2cbab-9642-4049-bc25-f46cb09660a6",
+      "type": "paragraph",
+      "props": {
+       "backgroundColor": "default",
+       "textColor": "default",
+       "textAlignment": "left"
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "first half edited",
+        "styles": {}
+       }
+      ],
+      "children": []
+     },
+     {
+      "id": "split-block",
+      "type": "paragraph",
+      "props": {
+       "backgroundColor": "default",
+       "textColor": "default",
+       "textAlignment": "left"
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "second half",
+        "styles": {}
+       }
+      ],
+      "children": []
+     }
+    ],
+    "xml": "<blockgroup><blockcontainer id=\"f3d2cbab-9642-4049-bc25-f46cb09660a6\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">first half edited</paragraph></blockcontainer><blockcontainer id=\"split-block\"><paragraph>second half</paragraph></blockcontainer></blockgroup>"
+   }
+  },
+  {
+   "name": "check-and-type",
+   "base": "AQqSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAw1jaGVja0xpc3RJdGVtBwCSIQIGBACSIQMEVGFzaygAkiECD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAJIhAgl0ZXh0Q29sb3IBdwdkZWZhdWx0KACSIQINdGV4dEFsaWdubWVudAF3BGxlZnQoAJIhAgdjaGVja2VkAXkoAJIhAQJpZAF3JGZlMzY3ODI3LTc1OGUtNDFiNS04Y2E0LWI0OWM2MDZmMjg3ZAA=",
+   "a": "AQEBAKiSIQsBeAGSIQELAQ==",
+   "b": "AQECAISSIQcEIG9uZQA=",
+   "merged": {
+    "markdown": "- [x] Task one\n",
+    "omitted": [],
+    "outsideModel": false,
+    "blocks": [
+     {
+      "id": "fe367827-758e-41b5-8ca4-b49c606f287d",
+      "type": "checkListItem",
+      "props": {
+       "backgroundColor": "default",
+       "textColor": "default",
+       "textAlignment": "left",
+       "checked": true
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "Task one",
+        "styles": {}
+       }
+      ],
+      "children": []
+     }
+    ],
+    "xml": "<blockgroup><blockcontainer id=\"fe367827-758e-41b5-8ca4-b49c606f287d\"><checklistitem backgroundColor=\"default\" checked=\"true\" textAlignment=\"left\" textColor=\"default\">Task one</checklistitem></blockcontainer></blockgroup>"
+   }
+  },
+  {
+   "name": "delete-block-edit-block",
+   "base": "ARGSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAwRrZWVwKACSIQIPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAkiECCXRleHRDb2xvcgF3B2RlZmF1bHQoAJIhAg10ZXh0QWxpZ25tZW50AXcEbGVmdCgAkiEBAmlkAXckOGIyZjc0NzYtYzdkMC00N2NkLTg0ODgtNGY2MDRkZDM4ZjJkh5IhAQMOYmxvY2tDb250YWluZXIHAJIhDAMJcGFyYWdyYXBoBwCSIQ0GBACSIQ4EZ29uZSgAkiEND2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAJIhDQl0ZXh0Q29sb3IBdwdkZWZhdWx0KACSIQ0NdGV4dEFsaWdubWVudAF3BGxlZnQoAJIhDAJpZAF3JDIzNDQzM2ZkLWIxY2QtNDY3OC1hZGQ5LTYzMDJiZWQ1ZTM3ZgA=",
+   "a": "AAGSIQEMCw==",
+   "b": "AQECAISSIRIGIHR5cGVkAA==",
+   "merged": {
+    "markdown": "keep\n",
+    "omitted": [],
+    "outsideModel": false,
+    "blocks": [
+     {
+      "id": "8b2f7476-c7d0-47cd-8488-4f604dd38f2d",
+      "type": "paragraph",
+      "props": {
+       "backgroundColor": "default",
+       "textColor": "default",
+       "textAlignment": "left"
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "keep",
+        "styles": {}
+       }
+      ],
+      "children": []
+     }
+    ],
+    "xml": "<blockgroup><blockcontainer id=\"8b2f7476-c7d0-47cd-8488-4f604dd38f2d\"><paragraph backgroundColor=\"default\" textAlignment=\"left\" textColor=\"default\">keep</paragraph></blockcontainer></blockgroup>"
+   }
+  },
+  {
+   "name": "heading-levels",
+   "base": "AQuSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwdoZWFkaW5nBwCSIQIGBACSIQMFVGl0bGUoAJIhAg9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KACSIQIJdGV4dENvbG9yAXcHZGVmYXVsdCgAkiECDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACSIQIFbGV2ZWwBfQEoAJIhAgxpc1RvZ2dsZWFibGUBeSgAkiEBAmlkAXckYzA1NGRhNWItZWI2OS00NDc2LWJiYWMtYmQ5MDdhMzEzNTE5AA==",
+   "a": "AQEBAKiSIQwBfQIBkiEBDAE=",
+   "b": "AQECAKiSIQwBfQMBkiEBDAE=",
+   "merged": {
+    "markdown": "### Title\n",
+    "omitted": [],
+    "outsideModel": false,
+    "blocks": [
+     {
+      "id": "c054da5b-eb69-4476-bbac-bd907a313519",
+      "type": "heading",
+      "props": {
+       "backgroundColor": "default",
+       "textColor": "default",
+       "textAlignment": "left",
+       "level": 3,
+       "isToggleable": false
+      },
+      "content": [
+       {
+        "type": "text",
+        "text": "Title",
+        "styles": {}
+       }
+      ],
+      "children": []
+     }
+    ],
+    "xml": "<blockgroup><blockcontainer id=\"c054da5b-eb69-4476-bbac-bd907a313519\"><heading backgroundColor=\"default\" isToggleable=\"false\" level=\"3\" textAlignment=\"left\" textColor=\"default\">Title</heading></blockcontainer></blockgroup>"
+   }
+  }
+ ],
+ "cursors": [
+  {
+   "name": "typing-before",
+   "base": "ARGSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAwVIZWxsbygAkiECD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAJIhAgl0ZXh0Q29sb3IBdwdkZWZhdWx0KACSIQINdGV4dEFsaWdubWVudAF3BGxlZnQoAJIhAQJpZAF3JGYzZDE2OTQzLWY1OGItNGRjMy1iM2NkLWI0YmY4NWE5YzBhY4eSIQEDDmJsb2NrQ29udGFpbmVyBwCSIQ0DCXBhcmFncmFwaAcAkiEOBgQAkiEPBXdvcmxkKACSIQ4PYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAkiEOCXRleHRDb2xvcgF3B2RlZmF1bHQoAJIhDg10ZXh0QWxpZ25tZW50AXcEbGVmdCgAkiENAmlkAXckZmM0NGUzYjMtMmZhOC00NjMxLTgwMTEtODdiN2EzYzYzMDc5AA==",
+   "edit": "AQEHAESSIQQET2gsIAA=",
+   "positions": [
+    {
+     "id": "f3d16943-f58b-4dc3-b3cd-b4bf85a9c0ac",
+     "offset": 0,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 4
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "f3d16943-f58b-4dc3-b3cd-b4bf85a9c0ac",
+      "offset": 4
+     }
+    },
+    {
+     "id": "f3d16943-f58b-4dc3-b3cd-b4bf85a9c0ac",
+     "offset": 1,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 5
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "f3d16943-f58b-4dc3-b3cd-b4bf85a9c0ac",
+      "offset": 5
+     }
+    },
+    {
+     "id": "f3d16943-f58b-4dc3-b3cd-b4bf85a9c0ac",
+     "offset": 2,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 6
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "f3d16943-f58b-4dc3-b3cd-b4bf85a9c0ac",
+      "offset": 6
+     }
+    },
+    {
+     "id": "f3d16943-f58b-4dc3-b3cd-b4bf85a9c0ac",
+     "offset": 3,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 7
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "f3d16943-f58b-4dc3-b3cd-b4bf85a9c0ac",
+      "offset": 7
+     }
+    },
+    {
+     "id": "f3d16943-f58b-4dc3-b3cd-b4bf85a9c0ac",
+     "offset": 4,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 8
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "f3d16943-f58b-4dc3-b3cd-b4bf85a9c0ac",
+      "offset": 8
+     }
+    },
+    {
+     "id": "f3d16943-f58b-4dc3-b3cd-b4bf85a9c0ac",
+     "offset": 5,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": null,
+      "assoc": 0
+     },
+     "after": {
+      "id": "f3d16943-f58b-4dc3-b3cd-b4bf85a9c0ac",
+      "offset": 9
+     }
+    },
+    {
+     "id": "fc44e3b3-2fa8-4631-8011-87b7a3c63079",
+     "offset": 0,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 15
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 16
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "fc44e3b3-2fa8-4631-8011-87b7a3c63079",
+      "offset": 0
+     }
+    },
+    {
+     "id": "fc44e3b3-2fa8-4631-8011-87b7a3c63079",
+     "offset": 1,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 15
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 17
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "fc44e3b3-2fa8-4631-8011-87b7a3c63079",
+      "offset": 1
+     }
+    },
+    {
+     "id": "fc44e3b3-2fa8-4631-8011-87b7a3c63079",
+     "offset": 2,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 15
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 18
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "fc44e3b3-2fa8-4631-8011-87b7a3c63079",
+      "offset": 2
+     }
+    },
+    {
+     "id": "fc44e3b3-2fa8-4631-8011-87b7a3c63079",
+     "offset": 3,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 15
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 19
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "fc44e3b3-2fa8-4631-8011-87b7a3c63079",
+      "offset": 3
+     }
+    },
+    {
+     "id": "fc44e3b3-2fa8-4631-8011-87b7a3c63079",
+     "offset": 4,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 15
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 20
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "fc44e3b3-2fa8-4631-8011-87b7a3c63079",
+      "offset": 4
+     }
+    },
+    {
+     "id": "fc44e3b3-2fa8-4631-8011-87b7a3c63079",
+     "offset": 5,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 15
+      },
+      "tname": null,
+      "item": null,
+      "assoc": 0
+     },
+     "after": {
+      "id": "fc44e3b3-2fa8-4631-8011-87b7a3c63079",
+      "offset": 5
+     }
+    }
+   ]
+  },
+  {
+   "name": "empty-blocks",
+   "base": "ARWSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgoAJIhAg9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KACSIQIJdGV4dENvbG9yAXcHZGVmYXVsdCgAkiECDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACSIQECaWQBdyRmNWY5NWU5Ny1jMGZlLTRkNmYtYjY1OS0xMmMxY2RhZDk5OWSHkiEBAw5ibG9ja0NvbnRhaW5lcgcAkiEHAwlwYXJhZ3JhcGgHAJIhCAYEAJIhCQN0d28oAJIhCA9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KACSIQgJdGV4dENvbG9yAXcHZGVmYXVsdCgAkiEIDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACSIQcCaWQBdyQyYWZmNzdjYy1kOTA4LTRlMDQtODkzNC1mNTk3MmI2NGY0NjSHkiEHAw5ibG9ja0NvbnRhaW5lcgcAkiERAwlwYXJhZ3JhcGgoAJIhEg9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KACSIRIJdGV4dENvbG9yAXcHZGVmYXVsdCgAkiESDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACSIRECaWQBdyQzN2Q3NWViMy00ZTYwLTRhMDMtYTBlZC1hNGE4MzE2ZjljZDAA",
+   "edit": "AQEHAISSIQwBIQA=",
+   "positions": [
+    {
+     "id": "f5f95e97-c0fe-4d6f-b659-12c1cdad999d",
+     "offset": 0,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 2
+      },
+      "tname": null,
+      "item": null,
+      "assoc": 0
+     },
+     "after": {
+      "id": "f5f95e97-c0fe-4d6f-b659-12c1cdad999d",
+      "offset": 0
+     }
+    },
+    {
+     "id": "2aff77cc-d908-4e04-8934-f5972b64f464",
+     "offset": 0,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 9
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 10
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "2aff77cc-d908-4e04-8934-f5972b64f464",
+      "offset": 0
+     }
+    },
+    {
+     "id": "2aff77cc-d908-4e04-8934-f5972b64f464",
+     "offset": 1,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 9
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 11
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "2aff77cc-d908-4e04-8934-f5972b64f464",
+      "offset": 1
+     }
+    },
+    {
+     "id": "2aff77cc-d908-4e04-8934-f5972b64f464",
+     "offset": 2,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 9
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 12
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "2aff77cc-d908-4e04-8934-f5972b64f464",
+      "offset": 2
+     }
+    },
+    {
+     "id": "2aff77cc-d908-4e04-8934-f5972b64f464",
+     "offset": 3,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 9
+      },
+      "tname": null,
+      "item": null,
+      "assoc": 0
+     },
+     "after": {
+      "id": "2aff77cc-d908-4e04-8934-f5972b64f464",
+      "offset": 4
+     }
+    },
+    {
+     "id": "37d75eb3-4e60-4a03-a0ed-a4a8316f9cd0",
+     "offset": 0,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 18
+      },
+      "tname": null,
+      "item": null,
+      "assoc": 0
+     },
+     "after": {
+      "id": "37d75eb3-4e60-4a03-a0ed-a4a8316f9cd0",
+      "offset": 0
+     }
+    }
+   ]
+  },
+  {
+   "name": "formatted",
+   "base": "AQ2SIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAwZwbGFpbiCGkiEJBGJvbGQCe32EkiEKBGJvbGSGkiEOBGJvbGQEbnVsbISSIQ8EIGVuZCgAkiECD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAJIhAgl0ZXh0Q29sb3IBdwdkZWZhdWx0KACSIQINdGV4dEFsaWdubWVudAF3BGxlZnQoAJIhAQJpZAF3JDhlMDNjZDU0LWMxMGUtNGNhMC05ZGE3LTQwNWJmZGZkZjA1MAA=",
+   "edit": "AAGSIQIGBAsC",
+   "positions": [
+    {
+     "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+     "offset": 0,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 4
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+      "offset": 0
+     }
+    },
+    {
+     "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+     "offset": 1,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 5
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+      "offset": 1
+     }
+    },
+    {
+     "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+     "offset": 2,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 6
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+      "offset": 2
+     }
+    },
+    {
+     "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+     "offset": 3,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 7
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+      "offset": 2
+     }
+    },
+    {
+     "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+     "offset": 4,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 8
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+      "offset": 2
+     }
+    },
+    {
+     "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+     "offset": 5,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 9
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+      "offset": 2
+     }
+    },
+    {
+     "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+     "offset": 6,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 11
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+      "offset": 2
+     }
+    },
+    {
+     "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+     "offset": 7,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 12
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+      "offset": 2
+     }
+    },
+    {
+     "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+     "offset": 8,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 13
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+      "offset": 2
+     }
+    },
+    {
+     "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+     "offset": 9,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 14
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+      "offset": 3
+     }
+    },
+    {
+     "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+     "offset": 10,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 16
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+      "offset": 4
+     }
+    },
+    {
+     "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+     "offset": 11,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 17
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+      "offset": 5
+     }
+    },
+    {
+     "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+     "offset": 12,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 18
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+      "offset": 6
+     }
+    },
+    {
+     "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+     "offset": 13,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 19
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+      "offset": 7
+     }
+    },
+    {
+     "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+     "offset": 14,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": null,
+      "assoc": 0
+     },
+     "after": {
+      "id": "8e03cd54-c10e-4ca0-9da7-405bfdfdf050",
+      "offset": 8
+     }
+    }
+   ]
+  },
+  {
+   "name": "hard-break",
+   "base": "ARSSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAwNvbmWHkiEDAwloYXJkQnJlYWuHkiEHBgQAkiEIA3R3bygAkiECD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAJIhAgl0ZXh0Q29sb3IBdwdkZWZhdWx0KACSIQINdGV4dEFsaWdubWVudAF3BGxlZnQoAJIhAQJpZAF3JDU2MmFkYTEzLTJkMTgtNDA4My04ZTdkLTZlN2MxYTRiZGZkMIeSIQEDDmJsb2NrQ29udGFpbmVyBwCSIRADCXBhcmFncmFwaAcAkiERBgQAkiESBXRocmVlKACSIREPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAkiERCXRleHRDb2xvcgF3B2RlZmF1bHQoAJIhEQ10ZXh0QWxpZ25tZW50AXcEbGVmdCgAkiEQAmlkAXckNzVjYTE4ZWUtZmQ5ZC00OWVkLTliOTMtYTlkY2ZiZDc0YWE4AA==",
+   "edit": "AQEHAESSIRMBPgA=",
+   "positions": [
+    {
+     "id": "562ada13-2d18-4083-8e7d-6e7c1a4bdfd0",
+     "offset": 0,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 4
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "562ada13-2d18-4083-8e7d-6e7c1a4bdfd0",
+      "offset": 0
+     }
+    },
+    {
+     "id": "562ada13-2d18-4083-8e7d-6e7c1a4bdfd0",
+     "offset": 1,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 5
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "562ada13-2d18-4083-8e7d-6e7c1a4bdfd0",
+      "offset": 1
+     }
+    },
+    {
+     "id": "562ada13-2d18-4083-8e7d-6e7c1a4bdfd0",
+     "offset": 2,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 6
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "562ada13-2d18-4083-8e7d-6e7c1a4bdfd0",
+      "offset": 2
+     }
+    },
+    {
+     "id": "562ada13-2d18-4083-8e7d-6e7c1a4bdfd0",
+     "offset": 3,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": null,
+      "assoc": 0
+     },
+     "after": {
+      "id": "562ada13-2d18-4083-8e7d-6e7c1a4bdfd0",
+      "offset": 3
+     }
+    },
+    {
+     "id": "562ada13-2d18-4083-8e7d-6e7c1a4bdfd0",
+     "offset": 4,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 8
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 9
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "562ada13-2d18-4083-8e7d-6e7c1a4bdfd0",
+      "offset": 4
+     }
+    },
+    {
+     "id": "562ada13-2d18-4083-8e7d-6e7c1a4bdfd0",
+     "offset": 5,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 8
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 10
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "562ada13-2d18-4083-8e7d-6e7c1a4bdfd0",
+      "offset": 5
+     }
+    },
+    {
+     "id": "562ada13-2d18-4083-8e7d-6e7c1a4bdfd0",
+     "offset": 6,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 8
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 11
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "562ada13-2d18-4083-8e7d-6e7c1a4bdfd0",
+      "offset": 6
+     }
+    },
+    {
+     "id": "562ada13-2d18-4083-8e7d-6e7c1a4bdfd0",
+     "offset": 7,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 8
+      },
+      "tname": null,
+      "item": null,
+      "assoc": 0
+     },
+     "after": {
+      "id": "562ada13-2d18-4083-8e7d-6e7c1a4bdfd0",
+      "offset": 7
+     }
+    },
+    {
+     "id": "75ca18ee-fd9d-49ed-9b93-a9dcfbd74aa8",
+     "offset": 0,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 18
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 19
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "75ca18ee-fd9d-49ed-9b93-a9dcfbd74aa8",
+      "offset": 1
+     }
+    },
+    {
+     "id": "75ca18ee-fd9d-49ed-9b93-a9dcfbd74aa8",
+     "offset": 1,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 18
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 20
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "75ca18ee-fd9d-49ed-9b93-a9dcfbd74aa8",
+      "offset": 2
+     }
+    },
+    {
+     "id": "75ca18ee-fd9d-49ed-9b93-a9dcfbd74aa8",
+     "offset": 2,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 18
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 21
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "75ca18ee-fd9d-49ed-9b93-a9dcfbd74aa8",
+      "offset": 3
+     }
+    },
+    {
+     "id": "75ca18ee-fd9d-49ed-9b93-a9dcfbd74aa8",
+     "offset": 3,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 18
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 22
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "75ca18ee-fd9d-49ed-9b93-a9dcfbd74aa8",
+      "offset": 4
+     }
+    },
+    {
+     "id": "75ca18ee-fd9d-49ed-9b93-a9dcfbd74aa8",
+     "offset": 4,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 18
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 23
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "75ca18ee-fd9d-49ed-9b93-a9dcfbd74aa8",
+      "offset": 5
+     }
+    },
+    {
+     "id": "75ca18ee-fd9d-49ed-9b93-a9dcfbd74aa8",
+     "offset": 5,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 18
+      },
+      "tname": null,
+      "item": null,
+      "assoc": 0
+     },
+     "after": {
+      "id": "75ca18ee-fd9d-49ed-9b93-a9dcfbd74aa8",
+      "offset": 6
+     }
+    }
+   ]
+  },
+  {
+   "name": "nested",
+   "base": "ARKSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAw5idWxsZXRMaXN0SXRlbQcAkiECBgQAkiEDBnBhcmVudCgAkiECD2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAJIhAgl0ZXh0Q29sb3IBdwdkZWZhdWx0KACSIQINdGV4dEFsaWdubWVudAF3BGxlZnSHkiECAwpibG9ja0dyb3VwBwCSIQ0DDmJsb2NrQ29udGFpbmVyBwCSIQ4DDmJ1bGxldExpc3RJdGVtBwCSIQ8GBACSIRAFY2hpbGQoAJIhDw9iYWNrZ3JvdW5kQ29sb3IBdwdkZWZhdWx0KACSIQ8JdGV4dENvbG9yAXcHZGVmYXVsdCgAkiEPDXRleHRBbGlnbm1lbnQBdwRsZWZ0KACSIQ4CaWQBdyRmNjgwYWIwMi02ZTM2LTRiN2EtOGU0ZC0yYTk4MDdjMWUwYjcoAJIhAQJpZAF3JDU4YTc3M2U1LWY5ZDYtNDIxMC1hMGU0LTY1MDJjNjExZGJiYQA=",
+   "edit": "AQEHAISSIQkBcwA=",
+   "positions": [
+    {
+     "id": "58a773e5-f9d6-4210-a0e4-6502c611dbba",
+     "offset": 0,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 4
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "58a773e5-f9d6-4210-a0e4-6502c611dbba",
+      "offset": 0
+     }
+    },
+    {
+     "id": "58a773e5-f9d6-4210-a0e4-6502c611dbba",
+     "offset": 1,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 5
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "58a773e5-f9d6-4210-a0e4-6502c611dbba",
+      "offset": 1
+     }
+    },
+    {
+     "id": "58a773e5-f9d6-4210-a0e4-6502c611dbba",
+     "offset": 2,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 6
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "58a773e5-f9d6-4210-a0e4-6502c611dbba",
+      "offset": 2
+     }
+    },
+    {
+     "id": "58a773e5-f9d6-4210-a0e4-6502c611dbba",
+     "offset": 3,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 7
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "58a773e5-f9d6-4210-a0e4-6502c611dbba",
+      "offset": 3
+     }
+    },
+    {
+     "id": "58a773e5-f9d6-4210-a0e4-6502c611dbba",
+     "offset": 4,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 8
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "58a773e5-f9d6-4210-a0e4-6502c611dbba",
+      "offset": 4
+     }
+    },
+    {
+     "id": "58a773e5-f9d6-4210-a0e4-6502c611dbba",
+     "offset": 5,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 9
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "58a773e5-f9d6-4210-a0e4-6502c611dbba",
+      "offset": 5
+     }
+    },
+    {
+     "id": "58a773e5-f9d6-4210-a0e4-6502c611dbba",
+     "offset": 6,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": null,
+      "assoc": 0
+     },
+     "after": {
+      "id": "58a773e5-f9d6-4210-a0e4-6502c611dbba",
+      "offset": 7
+     }
+    },
+    {
+     "id": "f680ab02-6e36-4b7a-8e4d-2a9807c1e0b7",
+     "offset": 0,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 16
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 17
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "f680ab02-6e36-4b7a-8e4d-2a9807c1e0b7",
+      "offset": 0
+     }
+    },
+    {
+     "id": "f680ab02-6e36-4b7a-8e4d-2a9807c1e0b7",
+     "offset": 1,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 16
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 18
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "f680ab02-6e36-4b7a-8e4d-2a9807c1e0b7",
+      "offset": 1
+     }
+    },
+    {
+     "id": "f680ab02-6e36-4b7a-8e4d-2a9807c1e0b7",
+     "offset": 2,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 16
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 19
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "f680ab02-6e36-4b7a-8e4d-2a9807c1e0b7",
+      "offset": 2
+     }
+    },
+    {
+     "id": "f680ab02-6e36-4b7a-8e4d-2a9807c1e0b7",
+     "offset": 3,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 16
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 20
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "f680ab02-6e36-4b7a-8e4d-2a9807c1e0b7",
+      "offset": 3
+     }
+    },
+    {
+     "id": "f680ab02-6e36-4b7a-8e4d-2a9807c1e0b7",
+     "offset": 4,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 16
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 21
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "f680ab02-6e36-4b7a-8e4d-2a9807c1e0b7",
+      "offset": 4
+     }
+    },
+    {
+     "id": "f680ab02-6e36-4b7a-8e4d-2a9807c1e0b7",
+     "offset": 5,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 16
+      },
+      "tname": null,
+      "item": null,
+      "assoc": 0
+     },
+     "after": {
+      "id": "f680ab02-6e36-4b7a-8e4d-2a9807c1e0b7",
+      "offset": 5
+     }
+    }
+   ]
+  },
+  {
+   "name": "block-deleted",
+   "base": "ARmSIQAHAQhkb2N1bWVudAMKYmxvY2tHcm91cAcAkiEAAw5ibG9ja0NvbnRhaW5lcgcAkiEBAwlwYXJhZ3JhcGgHAJIhAgYEAJIhAwRrZWVwKACSIQIPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAkiECCXRleHRDb2xvcgF3B2RlZmF1bHQoAJIhAg10ZXh0QWxpZ25tZW50AXcEbGVmdCgAkiEBAmlkAXckOTk0YTgxNjgtZGJhYS00MjUyLWEwNTMtZjQ4ZjNiYWY1NGM2h5IhAQMOYmxvY2tDb250YWluZXIHAJIhDAMJcGFyYWdyYXBoBwCSIQ0GBACSIQ4EZ29uZSgAkiEND2JhY2tncm91bmRDb2xvcgF3B2RlZmF1bHQoAJIhDQl0ZXh0Q29sb3IBdwdkZWZhdWx0KACSIQ0NdGV4dEFsaWdubWVudAF3BGxlZnQoAJIhDAJpZAF3JDBhMjQ1ZGQ3LWQ4NWEtNGMzNS04OGI4LWUwNDVmN2IwODM0YYeSIQwDDmJsb2NrQ29udGFpbmVyBwCSIRcDCXBhcmFncmFwaAcAkiEYBgQAkiEZBWFmdGVyKACSIRgPYmFja2dyb3VuZENvbG9yAXcHZGVmYXVsdCgAkiEYCXRleHRDb2xvcgF3B2RlZmF1bHQoAJIhGA10ZXh0QWxpZ25tZW50AXcEbGVmdCgAkiEXAmlkAXckYzViOGUyOGMtYzNlMC00OWM2LWEzZGUtYTY5OGM3NDU2ODU1AA==",
+   "edit": "AAGSIQEMCw==",
+   "positions": [
+    {
+     "id": "994a8168-dbaa-4252-a053-f48f3baf54c6",
+     "offset": 0,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 4
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "994a8168-dbaa-4252-a053-f48f3baf54c6",
+      "offset": 0
+     }
+    },
+    {
+     "id": "994a8168-dbaa-4252-a053-f48f3baf54c6",
+     "offset": 1,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 5
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "994a8168-dbaa-4252-a053-f48f3baf54c6",
+      "offset": 1
+     }
+    },
+    {
+     "id": "994a8168-dbaa-4252-a053-f48f3baf54c6",
+     "offset": 2,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 6
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "994a8168-dbaa-4252-a053-f48f3baf54c6",
+      "offset": 2
+     }
+    },
+    {
+     "id": "994a8168-dbaa-4252-a053-f48f3baf54c6",
+     "offset": 3,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 7
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "994a8168-dbaa-4252-a053-f48f3baf54c6",
+      "offset": 3
+     }
+    },
+    {
+     "id": "994a8168-dbaa-4252-a053-f48f3baf54c6",
+     "offset": 4,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 3
+      },
+      "tname": null,
+      "item": null,
+      "assoc": 0
+     },
+     "after": {
+      "id": "994a8168-dbaa-4252-a053-f48f3baf54c6",
+      "offset": 4
+     }
+    },
+    {
+     "id": "0a245dd7-d85a-4c35-88b8-e045f7b0834a",
+     "offset": 0,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 14
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 15
+      },
+      "assoc": 0
+     },
+     "after": null
+    },
+    {
+     "id": "0a245dd7-d85a-4c35-88b8-e045f7b0834a",
+     "offset": 1,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 14
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 16
+      },
+      "assoc": 0
+     },
+     "after": null
+    },
+    {
+     "id": "0a245dd7-d85a-4c35-88b8-e045f7b0834a",
+     "offset": 2,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 14
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 17
+      },
+      "assoc": 0
+     },
+     "after": null
+    },
+    {
+     "id": "0a245dd7-d85a-4c35-88b8-e045f7b0834a",
+     "offset": 3,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 14
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 18
+      },
+      "assoc": 0
+     },
+     "after": null
+    },
+    {
+     "id": "0a245dd7-d85a-4c35-88b8-e045f7b0834a",
+     "offset": 4,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 14
+      },
+      "tname": null,
+      "item": null,
+      "assoc": 0
+     },
+     "after": null
+    },
+    {
+     "id": "c5b8e28c-c3e0-49c6-a3de-a698c7456855",
+     "offset": 0,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 25
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 26
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "c5b8e28c-c3e0-49c6-a3de-a698c7456855",
+      "offset": 0
+     }
+    },
+    {
+     "id": "c5b8e28c-c3e0-49c6-a3de-a698c7456855",
+     "offset": 1,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 25
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 27
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "c5b8e28c-c3e0-49c6-a3de-a698c7456855",
+      "offset": 1
+     }
+    },
+    {
+     "id": "c5b8e28c-c3e0-49c6-a3de-a698c7456855",
+     "offset": 2,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 25
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 28
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "c5b8e28c-c3e0-49c6-a3de-a698c7456855",
+      "offset": 2
+     }
+    },
+    {
+     "id": "c5b8e28c-c3e0-49c6-a3de-a698c7456855",
+     "offset": 3,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 25
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 29
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "c5b8e28c-c3e0-49c6-a3de-a698c7456855",
+      "offset": 3
+     }
+    },
+    {
+     "id": "c5b8e28c-c3e0-49c6-a3de-a698c7456855",
+     "offset": 4,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 25
+      },
+      "tname": null,
+      "item": {
+       "client": 4242,
+       "clock": 30
+      },
+      "assoc": 0
+     },
+     "after": {
+      "id": "c5b8e28c-c3e0-49c6-a3de-a698c7456855",
+      "offset": 4
+     }
+    },
+    {
+     "id": "c5b8e28c-c3e0-49c6-a3de-a698c7456855",
+     "offset": 5,
+     "relative": {
+      "type": {
+       "client": 4242,
+       "clock": 25
+      },
+      "tname": null,
+      "item": null,
+      "assoc": 0
+     },
+     "after": {
+      "id": "c5b8e28c-c3e0-49c6-a3de-a698c7456855",
+      "offset": 5
+     }
+    }
+   ]
+  }
+ ],
+ "presence": {
+  "clientID": 31337,
+  "update": "Aen0AQL8AXsidXNlciI6eyJuYW1lIjoiU3RldmUiLCJjb2xvciI6IiNmZjZiNmIifSwiY3Vyc29yIjp7ImFuY2hvciI6eyJ0eXBlIjp7ImNsaWVudCI6NDI0MiwiY2xvY2siOjN9LCJ0bmFtZSI6bnVsbCwiaXRlbSI6eyJjbGllbnQiOjQyNDIsImNsb2NrIjo2fSwiYXNzb2MiOjB9LCJoZWFkIjp7InR5cGUiOnsiY2xpZW50Ijo0MjQyLCJjbG9jayI6M30sInRuYW1lIjpudWxsLCJpdGVtIjp7ImNsaWVudCI6NDI0MiwiY2xvY2siOjZ9LCJhc3NvYyI6MH19fQ==",
+  "state": {
+   "user": {
+    "name": "Steve",
+    "color": "#ff6b6b"
+   },
+   "cursor": {
+    "anchor": {
+     "type": {
+      "client": 4242,
+      "clock": 3
+     },
+     "tname": null,
+     "item": {
+      "client": 4242,
+      "clock": 6
+     },
+     "assoc": 0
+    },
+    "head": {
+     "type": {
+      "client": 4242,
+      "clock": 3
+     },
+     "tname": null,
+     "item": {
+      "client": 4242,
+      "clock": 6
+     },
+     "assoc": 0
+    }
+   }
+  }
+ }
+}
