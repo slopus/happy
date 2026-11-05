@@ -27,9 +27,12 @@ final class ArtifactMedia: NSObject, ChatMediaSource, ChatMediaPlaying, ChatMedi
         /// Names the version where the media library keeps its files.
         let resource: String
         let read: @Sendable (_ path: String, _ range: String?) async throws -> HTTP1Response
+        /// The still the daemon made of a file (its `preview`), where it serves them.
+        var preview: (@Sendable (_ path: String) async throws -> Data)?
 
         static func artifact(_ client: AgentClient, id: String, version: Int) -> Files {
-            Files(resource: "artifact/\(id)/\(version)") { path, range in try await client.artifactFile(id, version: version, path: path, range: range) }
+            Files(resource: "artifact/\(id)/\(version)", read: { path, range in try await client.artifactFile(id, version: version, path: path, range: range) },
+                  preview: { path in try await client.image(ArtifactSummary.served(id: id, version: version, route: "previews", file: path)) })
         }
     }
 
@@ -230,9 +233,7 @@ final class ArtifactMedia: NSObject, ChatMediaSource, ChatMediaPlaying, ChatMedi
     /// The poster the daemon made of a recording (its `preview`), so the
     /// viewer shows it before playback reads a byte of the recording.
     private func preview(_ file: AgentWire.ArtifactVersion.File, pixels: Int) async -> UIImage? {
-        guard file.preview != nil else { return nil }
-        let path = ArtifactSummary.served(id: artifactId, version: version, route: "previews", file: file.path)
-        guard let data = try? await client.image(path) else { return nil }
+        guard file.preview != nil, let read = files.preview, let data = try? await read(file.path) else { return nil }
         return await Task.detached(priority: .userInitiated) { Images.decode(data, maxPixels: pixels) }.value
     }
 
