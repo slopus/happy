@@ -15,6 +15,8 @@ final class AnalyticsBridge {
     private var accounts: AccountsObservation?
     private var settings: StoreObservation?
     private var settingsSession: ObjectIdentifier?
+    /// The open Happy account's Experiments switch; nil without one.
+    private var experiments: Bool?
 
     init(context: AppContext) {
         self.context = context
@@ -26,8 +28,10 @@ final class AnalyticsBridge {
             case .signedOut?, nil: nil
             }
         }
-        Analytics.shared.dailyConfig = { [weak account] in
-            await Self.dailyConfig(account)
+        Analytics.shared.dailyConfig = { [weak self, weak account] in
+            var config = await Self.dailyConfig(account)
+            config.experimentsOn = self?.experiments
+            return config
         }
         accounts = account.observeAccounts { [weak self] summaries in self?.accountsChanged(summaries) }
     }
@@ -54,10 +58,13 @@ final class AnalyticsBridge {
         guard id != settingsSession else { return }
         settingsSession = id
         settings = nil
+        experiments = nil
         guard let session else { return }
         let accountID = session.keys.anonID
-        settings = session.store.observeSettings { snapshot in
-            Analytics.shared.consent.setAccount(accountID, optedOut: AccountSettings(snapshot).analyticsOptOut)
+        settings = session.store.observeSettings { [weak self] snapshot in
+            let settings = AccountSettings(snapshot)
+            Analytics.shared.consent.setAccount(accountID, optedOut: settings.analyticsOptOut)
+            self?.experiments = settings.experiments
         }
     }
 
@@ -75,13 +82,24 @@ final class AnalyticsBridge {
         @unknown default: .notAsked
         }
         let summaries = account.accounts
+        let providers = Session.enabledProviders
         return .init(
             theme: theme,
             appLanguage: .init(code: AppLocalization.language),
             notifications: notifications,
             agentsConnected: .init(account.agentConnections.accounts.filter { !$0.revoked }.count),
-            accounts: .init(summaries.filter { !$0.isAgentConnection }.count)
+            accounts: .init(summaries.filter { !$0.isAgentConnection }.count),
+            providerKinds: providers.isEmpty ? nil : Set(providers.map { AnalyticsEvent.ProviderKind(type: $0.type) }).sorted { $0.rawValue < $1.rawValue },
+            providerAccounts: providers.isEmpty ? nil : .init(providers.count)
         )
+    }
+}
+
+extension UIViewController {
+    /// In `viewDidAppear`: whether the screen was just opened, pushed or
+    /// presented, rather than uncovered when what was over it went.
+    var isOpening: Bool {
+        isMovingToParent || isBeingPresented || navigationController?.isBeingPresented == true
     }
 }
 #endif

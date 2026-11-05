@@ -181,6 +181,7 @@ final class HomeDockController: NSObject {
             let bot = drafts.bot
             let composer = composer
             guard let sessionId = await start({ await composer.launchBotPrepared() }) else { return false }
+            Analytics.shared.count(.botsCreated)
             // The next bot starts from a clean name and fresh faces; the
             // composer goes back to offering a session, the ordinary case.
             if drafts.botName == bot.botName { drafts.setBotName("") }

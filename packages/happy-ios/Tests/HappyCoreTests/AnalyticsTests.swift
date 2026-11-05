@@ -243,4 +243,16 @@ final class AnalyticsTests: XCTestCase {
         XCTAssertEqual(Subscription.RestoreResult.restored.event, .purchaseResult(product: .pro, result: .restored, errorCode: nil))
         XCTAssertEqual(Subscription.RestoreResult.nothingFound.event, .purchaseResult(product: .pro, result: .failed, errorCode: .unknown))
     }
+
+    func testAModelPickCountsEachThingItChanged() async {
+        let mode = AgentWire.Mode(providerId: "p", modelId: "m", effort: "high", serviceTier: nil, permissionMode: "default")
+        var effort = mode
+        effort.effort = "low"
+        var both = mode
+        both.modelId = "n"
+        both.permissionMode = "plan"
+        XCTAssertEqual(AnalyticsEvent.DailyCount.changes(from: mode, to: mode), [])
+        XCTAssertEqual(AnalyticsEvent.DailyCount.changes(from: mode, to: effort), [.effortChanged])
+        XCTAssertEqual(AnalyticsEvent.DailyCount.changes(from: mode, to: both), [.modelChanged, .permissionModeChanged])
+    }
 }

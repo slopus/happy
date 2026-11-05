@@ -742,6 +742,7 @@ final class CameraViewController: UIViewController, UIGestureRecognizerDelegate 
                 previewClip.alpha = 0
                 UIView.animate(withDuration: 0.25) { self.previewClip.alpha = 1 }
             case .finished(let photo):
+                Analytics.shared.count(.photosTaken)
                 showReview(photo)
             case .failed:
                 phase = .live

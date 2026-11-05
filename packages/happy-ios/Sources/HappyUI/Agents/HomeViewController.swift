@@ -40,6 +40,8 @@ final class HomeViewController: UIViewController {
 
     private struct Search {
         var query = ""
+        /// Something was typed: `daily_summary` counts the search once.
+        var used = false
         /// What each quick action, setting or found thing does, by its row's id.
         var results: [String: () -> Void] = [:]
         /// What the computer found, and for which query.
@@ -251,6 +253,10 @@ final class HomeViewController: UIViewController {
     func search(_ query: String) {
         guard search != nil, search?.query != query else { return }
         search?.query = query
+        if search?.used == false, !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            search?.used = true
+            Analytics.shared.count(.searchUsed)
+        }
         showResults()
         ask(query)
     }
@@ -693,6 +699,7 @@ final class HomeViewController: UIViewController {
             show(TodoListsViewController(session: session), for: row, animated: animated)
         case .space where row.targetKind == "feed":
             sidebar.selectedRowId = row.id
+            Analytics.shared.count(.feedOpened)
             show(FeedViewController(session: session), for: row, animated: animated)
         case .search:
             beginSearch()

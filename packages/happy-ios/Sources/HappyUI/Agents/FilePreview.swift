@@ -40,6 +40,7 @@ final class FilePreview: NSObject, QLPreviewControllerDataSource, QLPreviewContr
         let url = folder.appendingPathComponent(name.isEmpty ? "file" : name)
         guard await loader.download(media, to: url) else { return nil }
         self.url = url
+        Analytics.shared.count(.filesOpened)
         let controller = QLPreviewController()
         controller.dataSource = self
         controller.delegate = self

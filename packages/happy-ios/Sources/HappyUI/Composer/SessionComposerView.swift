@@ -554,8 +554,14 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     }
 
     func agentInputCard(_ card: AgentInputCardView, didSelect key: String, in chip: AgentInputChip) {
+        let counted: AnalyticsEvent.DailyCount = switch chip {
+        case .permission: .permissionModeChanged
+        case .model: .modelChanged
+        case .effort: .effortChanged
+        }
         if let creation = environment.newSession {
             guard !card.configuration.refusesControls else { return }
+            Analytics.shared.count(counted)
             switch chip {
             case .permission: creation.selectPermission(key)
             case .model: creation.selectModel(key)
@@ -583,6 +589,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             patch = ComposerModes.patch(selectingEffort: level)
         }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        Analytics.shared.count(counted)
         // Shown at once; the op writes the composer state, then the metadata.
         picks = picks.applying(patch)
         recomputeModes()
@@ -881,6 +888,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         UINotificationFeedbackGenerator().notificationOccurred(.error)
         stopRequested = true
         isAborting = true
+        Analytics.shared.count(.runsStopped)
         applyConfiguration()
         let controls = environment.controls
         let sessionId = environment.sessionId

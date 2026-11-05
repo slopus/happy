@@ -115,6 +115,7 @@ final class SessionFileViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        Analytics.shared.count(.filesOpened)
         registerForTraitChanges([UITraitHorizontalSizeClass.self] + UIView.textSizeTraits) { (self: Self, _) in
             self.view.setNeedsLayout()
         }

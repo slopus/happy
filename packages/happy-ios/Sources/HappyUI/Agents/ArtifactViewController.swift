@@ -97,6 +97,7 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
         super.viewDidLoad()
         view.backgroundColor = UIColor(Palette.surface)
         view.accessibilityIdentifier = "artifact"
+        Analytics.shared.count(vault == nil ? .artifactsOpened : .filesOpened)
         // Opened: the Feed counts the artifact seen.
         if vault == nil {
             let subject = FeedSubject(type: "artifact", id: artifact.id)

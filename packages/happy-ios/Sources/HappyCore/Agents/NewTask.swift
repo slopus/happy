@@ -85,6 +85,9 @@ public actor NewTask {
         making = attempt
         do {
             let agentId = try await attempt.value
+            // Only the first answer gets here; later sends read `madeAgentId`.
+            let counted: AnalyticsEvent.DailyCount = choice.kind == .bot ? .botsCreated : .tasksCreated
+            Task { @MainActor in Analytics.shared.count(counted) }
             made(agentId)
             return agentId
         } catch {

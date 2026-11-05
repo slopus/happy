@@ -274,6 +274,7 @@ public final class AccountController {
         defer { finishOperation() }
         if showsAgentConnections, agentConnections.accounts.contains(where: { $0.id == id }) {
             try await activateAgentConnection(id)
+            Analytics.shared.count(.accountSwitched)
             return
         }
         let values = try await reconcile()
@@ -290,6 +291,7 @@ public final class AccountController {
         } else {
             try await selectUnconfirmed(registry: updated)
         }
+        Analytics.shared.count(.accountSwitched)
     }
 
     /// Settles a pending imported server without probing or sending a token

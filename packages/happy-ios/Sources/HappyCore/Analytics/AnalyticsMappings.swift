@@ -167,3 +167,14 @@ extension Subscription.RestoreResult {
         }
     }
 }
+
+extension AnalyticsEvent.DailyCount {
+    /// What a pick in the model control changed, each counted once.
+    public static func changes(from old: AgentWire.Mode?, to new: AgentWire.Mode) -> [Self] {
+        var changed: [Self] = []
+        if old?.providerId != new.providerId || old?.modelId != new.modelId { changed.append(.modelChanged) }
+        if old?.effort != new.effort { changed.append(.effortChanged) }
+        if old?.permissionMode != new.permissionMode { changed.append(.permissionModeChanged) }
+        return changed
+    }
+}

@@ -82,6 +82,12 @@ final class Session {
 
     private static var sessions: [String: Session] = [:]
 
+    /// The providers the paired computers have switched on, as far as
+    /// their catalogs have been read this run.
+    static var enabledProviders: [ModelCatalog.Provider] {
+        sessions.values.flatMap { $0.models.catalog?.providers.filter { !$0.isDisabled } ?? [] }
+    }
+
     /// The session for a paired computer, made once and kept while the app runs.
     static func session(for accountID: String, context: AppContext) -> Session? {
         guard let engine = context.account.agentConnections.syncEngine(for: accountID) else { return nil }

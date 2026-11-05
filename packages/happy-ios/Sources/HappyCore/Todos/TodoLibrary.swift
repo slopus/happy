@@ -377,7 +377,10 @@ public actor TodoLibrary {
 
     // MARK: Changes
 
-    private func enqueue(_ op: TodoOp) async {
+    /// `counted`: one change the person made, for `daily_summary`; a
+    /// restore's second step is the same change.
+    private func enqueue(_ op: TodoOp, counted: Bool = true) async {
+        if counted { Task { @MainActor in Analytics.shared.count(.todosChanged) } }
         await start()
         await open(op.surfaceId)
         lists[op.surfaceId]?.failure = nil
@@ -449,7 +452,7 @@ public actor TodoLibrary {
         }
         await enqueue(TodoOp(surfaceId: surfaceId, todoId: todoId, kind: .status(status, orderKey: key), at: now()))
         // The computer puts it back at the end; then where it was.
-        if moves, let key { await enqueue(TodoOp(surfaceId: surfaceId, todoId: todoId, kind: .move(orderKey: key), at: now())) }
+        if moves, let key { await enqueue(TodoOp(surfaceId: surfaceId, todoId: todoId, kind: .move(orderKey: key), at: now()), counted: false) }
     }
 
     /// Moves an active todo to `index` of the active list.
