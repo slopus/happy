@@ -91,9 +91,8 @@ final class PushNotifications: NSObject {
     }
 
     private func route(_ tap: Tap) {
-        guard filter.shouldRoute(requestIdentifier: tap.identifier, isDefaultAction: tap.isDefaultAction) else { return }
-        Analytics.shared.log(.featureUsed(.pushOpened))
-        guard let sessionId = tap.sessionId else { return }
+        guard filter.shouldRoute(requestIdentifier: tap.identifier, isDefaultAction: tap.isDefaultAction),
+              let sessionId = tap.sessionId else { return }
         if let coordinator {
             coordinator.openSession(fromNotification: sessionId)
         } else {

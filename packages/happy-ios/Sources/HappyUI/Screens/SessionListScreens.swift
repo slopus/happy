@@ -251,7 +251,7 @@ final class SessionListViewController: UIViewController {
     /// someone who opted out of analytics, here or on this device.
     @objc private func refreshMigrationFlag() {
         guard hasModel, context.account.session === session,
-              let optedOut = MigrationNoteFlag.optedOut(account: model.analyticsOptOut, consent: Analytics.shared.consent) else { return }
+              let optedOut = MigrationNoteFlag.shared.optedOut(account: model.analyticsOptOut) else { return }
         MigrationNoteFlag.shared.refresh(session, settings: context.account.localSettings, optedOut: optedOut)
     }
 
@@ -273,7 +273,7 @@ final class SessionListViewController: UIViewController {
                 context.account,
                 serverAgent: model.hasServerAgent,
                 flag: MigrationNoteFlag.shared.isOn(context.account.localSettings,
-                                                    optedOut: MigrationNoteFlag.optedOut(account: model.analyticsOptOut, consent: Analytics.shared.consent) ?? model.analyticsOptOut)
+                                                    optedOut: MigrationNoteFlag.shared.optedOut(account: model.analyticsOptOut) ?? model.analyticsOptOut)
             )
         )
         guard state != bannerState else { return }

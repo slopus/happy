@@ -1,4 +1,5 @@
 import Foundation
+import HappyCore
 import HappyWire
 
 /// The app's one way to send an analytics event (docs/analytics-catalog.json).
@@ -46,7 +47,7 @@ public final class Analytics {
     public private(set) var consent = AnalyticsConsent(storage: InMemoryKeyValueStore())
     /// The agent being looked at, read as each event is made.
     public var agent: () -> Agent? = { nil }
-    /// The configuration snapshot, read as `app_opened` is made.
+    /// What `app_opened` carries, read as it is made.
     public var appConfig: @MainActor @Sendable () async -> AnalyticsEvent.AppConfig = { .init() }
     public var now: () -> Date = Date.init
 
@@ -73,13 +74,35 @@ public final class Analytics {
         fixed = [
             "client": .word(AnalyticsEvent.AnalyticsClient.ios),
             "app_version": AnalyticsSchema.version(setup.appVersion).map(JSONValue.string) ?? .string("0.0.0"),
-            "channel": .word(AnalyticsEvent.AnalyticsChannel(setup.variant)),
+            "flavor": .word(AnalyticsEvent.AnalyticsFlavor(setup.variant)),
             "os": .word(AnalyticsEvent.AnalyticsOS.ios),
             "os_version": .string(AnalyticsSchema.osVersion(major: setup.osVersion.majorVersion, minor: setup.osVersion.minorVersion)),
             "device_class": .word(setup.deviceClass),
         ]
         consent.onChange = { [weak self] in self?.consentChanged() }
         consentChanged()
+        Happenings.observe { [weak self] happening in
+            Task { @MainActor in self?.receive(happening) }
+        }
+    }
+
+    /// The app's launch: the switch Settings shows, always; sending, and
+    /// PostHog's `/flags` for the migration card, only from a build that
+    /// may (`destination`). `debug` is the build's.
+    public func launch(apiKey: String?, debug: Bool, variant: AppVariant, appVersion: String,
+                       file: URL?, deviceClass: AnalyticsEvent.DeviceClass) {
+        let automated = Self.isAutomated()
+        let consent = AnalyticsConsent(storage: UserDefaultsStore(suiteName: "happy-analytics"))
+        let flag = MigrationNoteFlag.shared
+        flag.permitted = !debug && !automated
+        flag.othersOptedOut = { consent.othersOptedOut }
+        let destination = Self.destination(apiKey: apiKey, debug: debug, automated: automated,
+                                           environment: ProcessInfo.processInfo.environment)
+        let setup = destination.map {
+            Setup(destination: $0, file: file, transport: URLSessionTransport(), variant: variant, appVersion: appVersion,
+                  osVersion: ProcessInfo.processInfo.operatingSystemVersion, deviceClass: deviceClass)
+        }
+        start(setup, consent: consent)
     }
 
     /// Whether an event made now would be kept.
@@ -108,7 +131,7 @@ public final class Analytics {
     // MARK: Lifecycle
 
     /// `app_opened` on the first foreground, and again after half an hour
-    /// away, with the configuration snapshot. Then a flush every 30 s.
+    /// away. Then a flush every 30 s.
     public func appBecameActive() {
         let at = now()
         let cold = !opened
@@ -116,6 +139,7 @@ public final class Analytics {
         opened = true
         foreground = true
         backgroundedAt = nil
+        ConnectionWatch.shared.setForeground(true)
         guard recording != nil else { return }
         if cold || reopened {
             let common = common(), config = appConfig
@@ -141,6 +165,7 @@ public final class Analytics {
     public func appEnteredBackground(finish: @escaping @MainActor () -> Void = {}) {
         backgroundedAt = now()
         foreground = false
+        ConnectionWatch.shared.setForeground(false)
         ticker?.cancel()
         ticker = nil
         guard recording != nil else { return finish() }
@@ -255,6 +280,9 @@ public final class AnalyticsConsent {
     }
 
     public var isOptedOut: Bool { deviceOptOut || !accounts.isEmpty }
+    /// What the migration card's flag reads: opted out here, nil while the
+    /// accounts haven't been read.
+    public var othersOptedOut: Bool? { isOptedOut ? true : isSettled ? false : nil }
     /// Every signed-in account's stored setting has been read this launch.
     /// Until then nothing is sent.
     public private(set) var isSettled = false

@@ -1,22 +1,21 @@
 #if canImport(UIKit)
+import HappyAnalytics
 import HappyCore
 import HappyStore
 import UIKit
 import UserNotifications
 
 /// What analytics reads of the app's accounts. It reads which agent is
-/// shown (the common properties, and which link `connection_issue` follows),
+/// shown (the common properties, and which link `agent_connection_lost` follows),
 /// each Happy account's `analyticsOptOut` as its settings arrive, and the
-/// configuration snapshot `app_opened` carries. It reads only the
-/// accounts' kinds and counts, never a name or an id that would be sent.
+/// little `app_opened` carries. It reads only the accounts' kinds and
+/// counts, never a name or an id that would be sent.
 @MainActor
 final class AnalyticsBridge {
     private let context: AppContext
     private var accounts: AccountsObservation?
     private var settings: StoreObservation?
     private var settingsSession: ObjectIdentifier?
-    /// The open Happy account's Experiments switch; nil without one.
-    private var experiments: Bool?
 
     init(context: AppContext) {
         self.context = context
@@ -28,11 +27,7 @@ final class AnalyticsBridge {
             case .signedOut?, nil: nil
             }
         }
-        Analytics.shared.appConfig = { [weak self, weak account] in
-            var config = await Self.appConfig(account)
-            config.experimentsOn = self?.experiments
-            return config
-        }
+        Analytics.shared.appConfig = { [weak account] in await Self.appConfig(account) }
         accounts = account.observeAccounts { [weak self] summaries in self?.accountsChanged(summaries) }
     }
 
@@ -65,40 +60,26 @@ final class AnalyticsBridge {
         guard id != settingsSession else { return }
         settingsSession = id
         settings = nil
-        experiments = nil
         guard let session else { return }
         let accountID = session.keys.anonID
-        settings = session.store.observeSettings { [weak self] snapshot in
-            let settings = AccountSettings(snapshot)
-            Analytics.shared.consent.setAccount(accountID, optedOut: settings.analyticsOptOut)
-            self?.experiments = settings.experiments
+        settings = session.store.observeSettings { snapshot in
+            Analytics.shared.consent.setAccount(accountID, optedOut: AccountSettings(snapshot).analyticsOptOut)
         }
     }
 
     private static func appConfig(_ account: AccountController?) async -> AnalyticsEvent.AppConfig {
         guard let account else { return .init() }
-        let theme: AnalyticsEvent.ThemeChoice = switch account.localSettings.themePreference {
-        case .adaptive: .system
-        case .light: .light
-        case .dark: .dark
-        }
         let notifications: AnalyticsEvent.NotificationsState = switch await UNUserNotificationCenter.current().notificationSettings().authorizationStatus {
         case .authorized, .provisional, .ephemeral: .granted
         case .denied: .denied
         case .notDetermined: .notAsked
         @unknown default: .notAsked
         }
-        let summaries = account.accounts
-        var config = AnalyticsEvent.AppConfig(
-            theme: theme,
+        return AnalyticsEvent.AppConfig(
             appLanguage: .init(code: AppLocalization.language),
             notifications: notifications,
-            agentsConnected: .init(account.agentConnections.accounts.filter { !$0.revoked }.count),
-            relayAccounts: .init(summaries.filter { !$0.isAgentConnection }.count)
+            agentsConnected: .init(account.agentConnections.accounts.filter { !$0.revoked }.count)
         )
-        // The agent in front only; a Happy CLI account in front has none.
-        if case .agentConnection(let connection) = account.state { config.setProviders(Session.catalog(for: connection.id)) }
-        return config
     }
 }
 #endif

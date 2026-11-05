@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import HappyAnalytics
 import HappyCore
 import HappyLayout
 import HappyWire
@@ -48,14 +49,14 @@ final class PairingEmojiLabel: UILabel {
 enum PairingFlow {
     @discardableResult
     /// `start`: how the link came, for the pairing's events.
-    static func openIfAgentPairing(_ text: String, context: AppContext, on controller: UIViewController, start: AnalyticsEvent.PairingStart = .openedLink) -> Bool {
+    static func openIfAgentPairing(_ text: String, context: AppContext, on controller: UIViewController, start: PairingStart = .openedLink) -> Bool {
         guard PairingLink.isAgentConnection(text) else { return false }
         do {
             let link = try PairingLink(text)
             let pairing = AgentPairingViewController(context: context, link: link, start: start)
             controller.navigationController?.pushViewController(pairing, animated: true)
         } catch {
-            Analytics.shared.log(.pairingResult(method: .direct, start: start, result: .failed, errorCode: .init(error)))
+            Analytics.shared.log(.mobilePairingFailed(method: .direct, start: .init(start), errorCode: .init(error)))
             Alerts.show("Could not pair", error.localizedDescription, on: controller)
         }
         return true
@@ -73,11 +74,11 @@ final class AgentPairingViewController: UIViewController {
     private var expiry: Task<Void, Never>?
     private var ready = false
     private var finished = false
-    private let start: AnalyticsEvent.PairingStart
+    private let start: PairingStart
     /// Its ending, once logged.
     private var reported = false
 
-    init(context: AppContext, link: PairingLink, start: AnalyticsEvent.PairingStart = .openedLink) {
+    init(context: AppContext, link: PairingLink, start: PairingStart = .openedLink) {
         self.context = context; self.link = link; self.start = start; service = PairingService(link: link)
         super.init(nibName: nil, bundle: nil)
         followsTextSize()
@@ -133,20 +134,20 @@ final class AgentPairingViewController: UIViewController {
             screen.primary.title = "Loading computer…"
             try await context.account.addAgentConnection(credentials, name: link.name)
             finished = true
-            report(.ok)
+            report(.mobilePairingCompleted(method: .direct, start: .init(start)))
         } catch {
             finished = false
             fail(error)
         }
     }
-    private func report(_ result: AnalyticsEvent.FlowResult, _ error: AnalyticsEvent.PairingErrorCode? = nil) {
+    private func report(_ event: AnalyticsEvent) {
         guard !reported else { return }
         reported = true
-        Analytics.shared.log(.pairingResult(method: .direct, start: start, result: result, errorCode: error))
+        Analytics.shared.log(event)
     }
     private func fail(_ error: Error) {
         guard !finished else { return }
-        report(.failed, .init(error))
+        report(.mobilePairingFailed(method: .direct, start: .init(start), errorCode: .init(error)))
         finished = true; job?.cancel(); expiry?.cancel()
         let service = service; Task { await service.cancel() }
         screen.primary.isLoading = false; screen.primary.isEnabled = false; screen.primary.title = "Pairing ended"
@@ -156,7 +157,10 @@ final class AgentPairingViewController: UIViewController {
     }
     private func cancel() {
         // "They don't match" once the emoji are up.
-        if !finished { ready ? report(.failed, .emojiMismatch) : report(.cancelled) }
+        if !finished {
+            report(ready ? .mobilePairingFailed(method: .direct, start: .init(start), errorCode: .emojiMismatch)
+                         : .mobilePairingCancelled(method: .direct, start: .init(start)))
+        }
         job?.cancel(); expiry?.cancel(); finished = true
         let service = service; Task { await service.cancel() }
         navigationController?.popViewController(animated: true)
@@ -166,7 +170,7 @@ final class AgentPairingViewController: UIViewController {
         super.viewDidDisappear(animated)
         if isMovingFromParent || navigationController == nil || navigationController?.isBeingDismissed == true {
             // Left before it ended: back, or the sheet swiped away.
-            if !finished { report(.cancelled) }
+            if !finished { report(.mobilePairingCancelled(method: .direct, start: .init(start))) }
             job?.cancel(); expiry?.cancel()
             let service = service; Task { await service.cancel() }
         }

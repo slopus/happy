@@ -102,19 +102,15 @@ public actor TodoLibrary {
     private var asked: Set<String> = []
     private var following: [Task<Void, Never>] = []
     private var started = false
-    /// A change the person made is kept: `feature_used`.
-    private let changed: @Sendable () async -> Void
 
     public init(routes: TodoRoutes, outbox: IntentOutbox, keep: TodoKeep,
                 events: @escaping @Sendable () async -> AsyncStream<Store.ConversationEvent>,
-                now: @escaping @Sendable () -> Double = { (Date().timeIntervalSince1970 * 1000).rounded(.down) },
-                changed: @escaping @Sendable () async -> Void = { await Analytics.shared.log(.featureUsed(.todoChanged)) }) {
+                now: @escaping @Sendable () -> Double = { (Date().timeIntervalSince1970 * 1000).rounded(.down) }) {
         self.routes = routes
         self.outbox = outbox
         self.keep = keep
         self.events = events
         self.now = now
-        self.changed = changed
     }
 
     // MARK: Following
@@ -381,17 +377,14 @@ public actor TodoLibrary {
 
     // MARK: Changes
 
-    /// `reported`: one change the person made, `feature_used` once it is
-    /// kept in the outbox; a restore's second step is the same change.
-    private func enqueue(_ op: TodoOp, reported: Bool = true) async {
+    private func enqueue(_ op: TodoOp) async {
         await start()
         await open(op.surfaceId)
         lists[op.surfaceId]?.failure = nil
-        let kept = (try? await outbox.enqueue(op.intentKind, target: op.todoId, value: op.value)) != nil
+        _ = try? await outbox.enqueue(op.intentKind, target: op.todoId, value: op.value)
         // The outbox publishes the change; this shows it without waiting.
         ops = Self.todoOps(await outbox.pending())
         publish(op.surfaceId)
-        if kept, reported { await changed() }
     }
 
     /// A new todo at the top; its ID, or nil when `text` is nothing.
@@ -456,7 +449,7 @@ public actor TodoLibrary {
         }
         await enqueue(TodoOp(surfaceId: surfaceId, todoId: todoId, kind: .status(status, orderKey: key), at: now()))
         // The computer puts it back at the end; then where it was.
-        if moves, let key { await enqueue(TodoOp(surfaceId: surfaceId, todoId: todoId, kind: .move(orderKey: key), at: now()), reported: false) }
+        if moves, let key { await enqueue(TodoOp(surfaceId: surfaceId, todoId: todoId, kind: .move(orderKey: key), at: now())) }
     }
 
     /// Moves an active todo to `index` of the active list.

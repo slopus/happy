@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import HappyAnalytics
 import HappyCore
 import HappyWire
 import OSLog
@@ -75,7 +76,7 @@ enum HappyScan {
         intent: ScanIntent,
         context: AppContext,
         on controller: UIViewController,
-        start: AnalyticsEvent.PairingStart,
+        start: PairingStart,
         busy: (Bool) -> Void = { _ in }
     ) async -> Result {
         let route = ScanRoute.route(HappyCode(text), intent: intent, hasAccount: context.account.session != nil, canShareAccount: context.account.sessionIsLegacy)
@@ -107,7 +108,7 @@ enum HappyScan {
     private static func approve(
         _ link: LegacyPairingLink,
         session: AccountSession,
-        start: AnalyticsEvent.PairingStart,
+        start: PairingStart,
         on controller: UIViewController,
         busy: (Bool) -> Void
     ) async -> Result {
@@ -135,7 +136,7 @@ enum HappyScan {
     private static func newAccount(
         for key: Data,
         context: AppContext,
-        start: AnalyticsEvent.PairingStart,
+        start: PairingStart,
         on controller: UIViewController,
         busy: (Bool) -> Void
     ) async -> Result {
@@ -154,14 +155,7 @@ enum HappyScan {
         }
         busy(false)
         Analytics.shared.log(outcome.event(start: start))
-        // The computer's code made a Happy account: its creation ends with the pairing.
-        let createError: AnalyticsEvent.SignInErrorCode? = switch outcome {
-        case .approved: nil
-        case .alreadyHandled: .expired
-        case .failed: .unknown
-        case .invalidLink, .terminalNeedsUpdate: .rejected
-        }
-        Analytics.shared.log(.signInResult(method: .relayCreate, result: createError == nil ? .ok : .failed, errorCode: createError))
+        Analytics.shared.log(outcome.accountCreatedEvent)
         guard outcome == .approved else {
             LegacyPairingFlow.report(outcome, kind: .terminal, on: window.flatMap(topmost) ?? controller)
             return .ended
@@ -207,7 +201,7 @@ enum HappyScan {
     /// one opened as a link, pasted or tapped in a conversation adds
     /// nothing. A server already here is shown instead of added again; one
     /// under a path prefix can't be reached yet, so nothing starts.
-    private static func signIn(to link: ServerLink, context: AppContext, start: AnalyticsEvent.PairingStart, on controller: UIViewController) async -> Result {
+    private static func signIn(to link: ServerLink, context: AppContext, start: PairingStart, on controller: UIViewController) async -> Result {
         guard start == .scan else {
             Alerts.show(Strings.ServerSignIn.scanOnlyTitle, Strings.ServerSignIn.scanOnly, on: controller)
             return .ended
@@ -264,33 +258,6 @@ enum HappyScan {
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let head = text.firstIndex(of: "?").map { String(text[..<$0]) } ?? String(text.prefix(24))
         return "\(head) (\(text.utf8.count) bytes)"
-    }
-}
-
-private extension ScanProblem {
-    /// A code that couldn't be used: a pairing that failed, or for a team
-    /// server's code, a sign-in.
-    func event(start: AnalyticsEvent.PairingStart) -> AnalyticsEvent {
-        switch self {
-        case .agentConnection(let error): .pairingResult(method: .direct, start: start, result: .failed, errorCode: .init(error))
-        case .invalidServer: .signInResult(method: .teamServer, result: .failed, errorCode: .invalidAddress)
-        case .notHappy, .invalidTerminal, .invalidAccount: .pairingResult(method: .relay, start: start, result: .failed, errorCode: .invalidCode)
-        case .deviceNeedsAccount: .pairingResult(method: .relay, start: start, result: .failed, errorCode: .signInRequired)
-        case .accountNotShareable: .pairingResult(method: .relay, start: start, result: .failed, errorCode: .rejected)
-        }
-    }
-}
-
-private extension LegacyPairingFlow.Outcome {
-    func event(start: AnalyticsEvent.PairingStart) -> AnalyticsEvent {
-        let error: AnalyticsEvent.PairingErrorCode? = switch self {
-        case .approved: nil
-        case .alreadyHandled: .expired
-        case .invalidLink: .invalidCode
-        case .terminalNeedsUpdate: .updateRequired
-        case .failed: .unknown
-        }
-        return .pairingResult(method: .relay, start: start, result: error == nil ? .ok : .failed, errorCode: error)
     }
 }
 #endif

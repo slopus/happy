@@ -1,4 +1,5 @@
 import Foundation
+import HappyCore
 import HappyWire
 
 /// Everything analytics keeps on this phone, in one file it alone writes
@@ -85,7 +86,7 @@ public actor AnalyticsEngine {
     public func appOpened(cold: Bool, common: [String: JSONValue], config: AnalyticsEvent.AppConfig, at now: Date) {
         load()
         if cold { state.launchCount += 1 }
-        enqueue(.appOpened(launchCount: state.launchCount, cold: cold, config: config), common: common, at: now)
+        enqueue(.appOpened(launchCount: state.launchCount, isColdStart: cold, config: config), common: common, at: now)
     }
 
     /// Analytics turned off: what was waiting goes. The install id stays.

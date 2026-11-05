@@ -1739,7 +1739,6 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
             pending: pending,
             submit: { answers in
                 try await controls.answerQuestion(sessionId: sessionId, id: pending.id, answers: answers, kind: pending.rawKind)
-                Analytics.shared.log(.featureUsed(.questionAnswered))
             },
             cancel: {
                 // The agent asks again if the dismissal never lands.
@@ -2039,7 +2038,6 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
                 } else {
                     try await controls.deny(sessionId: sessionId, permissionId: tap.permissionId, mode: reply.mode, allowedTools: reply.allowedTools, decision: reply.decision)
                 }
-                Analytics.shared.log(.featureUsed(.approvalAnswered))
                 if let mode = reply.permissionMode { await setPermissionMode(mode) }
             } catch {
                 // The buttons stay as they were, so the reader can try again.
@@ -2075,7 +2073,6 @@ final class LegacyChatViewController: UIViewController, ChatListViewDelegate, Ch
                 case .communication(let id, let kind):
                     try await controls.answerQuestion(sessionId: sessionId, id: id, answers: InlineQuestionForm.communicationAnswers(form.questions, answers: answers), kind: kind)
                 }
-                Analytics.shared.log(.featureUsed(.questionAnswered))
             } catch {
                 failed = true
             }

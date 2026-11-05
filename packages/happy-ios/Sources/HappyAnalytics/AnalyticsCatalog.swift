@@ -1,4 +1,5 @@
 import Foundation
+import HappyCore
 import HappyWire
 
 /// The events happy-ios may send, as `docs/analytics-catalog.json` lists
@@ -7,81 +8,122 @@ import HappyWire
 /// can carry text, an id, a name or an address. `AnalyticsCatalogContractTests`
 /// holds these enums to the JSON.
 public enum AnalyticsEvent: Equatable, Sendable {
-    case chatFailureShown(kind: FailureKind, providerKind: ProviderKind?, pool: Bool, target: ChatTarget, sessionClient: SessionClient)
-    case chatFailureAction(kind: FailureKind, action: FailureAction)
-    case connectionIssue(transport: ConnectionTransport, code: ConnectionCode, outcome: ConnectionOutcome, duration: DurationBucket)
+    // MARK: Errors
+    case chatFailureShown(kind: FailureKind, providerKind: ProviderKind?, isPool: Bool, target: ChatTarget, sessionClient: SessionClient)
+    case chatFailureActionClicked(kind: FailureKind, action: FailureAction)
+    case agentConnectionLost(transport: ConnectionTransport, code: ConnectionCode, outcome: ConnectionOutcome, duration: DurationBucket)
     /// `repeatCount` is filled in by the throttle (`ErrorThrottle`).
     case errorShown(area: ErrorArea, code: ErrorCode, repeatCount: Int = 0)
-    case appCrash(process: CrashProcess, reason: CrashReason, crashedVersion: String?)
-    case pairingResult(method: PairingMethod, start: PairingStart, result: FlowResult, errorCode: PairingErrorCode?)
-    case signInResult(method: SignInMethod, result: FlowResult, errorCode: SignInErrorCode?)
-    case voiceSessionEnded(result: VoiceResult, errorCode: VoiceErrorCode?, duration: DurationBucket)
-    case purchaseResult(product: PurchaseProduct, result: PurchaseResult, errorCode: PurchaseErrorCode?)
-    case appOpened(launchCount: Int, cold: Bool, config: AppConfig)
+    case appCrashed(process: CrashProcess, reason: CrashReason, crashedVersion: String?)
+    case mobilePairingFailed(method: PairingMethod, start: PairingStart?, errorCode: PairingErrorCode)
+    case signInFailed(method: SignInMethod, errorCode: SignInErrorCode)
+    case voiceSessionError(errorCode: VoiceErrorCode, duration: DurationBucket?)
+    case paywallError(product: Product, errorCode: PaywallErrorCode)
+
+    // MARK: Usage
+    case appOpened(launchCount: Int, isColdStart: Bool, config: AppConfig)
     case messageSent(MessageSent)
-    case featureUsed(Feature)
-    case onboardingStepViewed(step: OnboardingStep)
-    case onboardingCompleted
-    case pairingOptionsShown(defaultMethod: PairingMethod, surface: PairingSurface)
-    case pairingOptionSelected(from: PairingMethod, to: PairingMethod, surface: PairingSurface)
+    case conversationCreated(source: ConversationSource, model: String?, modelProviderKind: ProviderKind?, effort: Effort?)
+    case botCreated(source: BotSource, result: CreateResult, errorCode: CreateErrorCode?)
+    case taskCreated(result: CreateResult, errorCode: CreateErrorCode?)
+    case mobilePairingCompleted(method: PairingMethod, start: PairingStart?)
+    case mobilePairingCancelled(method: PairingMethod, start: PairingStart?)
+    case accountCreated
+    case accountRestored
+    case teamServerSignedIn
+    case voiceSessionStopped(duration: DurationBucket)
+    case paywallPresented(product: Product)
+    case paywallPurchased(product: Product)
+    case paywallRestored(product: Product)
+    case paywallCancelled(product: Product)
 
     public var name: String {
         switch self {
         case .chatFailureShown: "chat_failure_shown"
-        case .chatFailureAction: "chat_failure_action"
-        case .connectionIssue: "connection_issue"
+        case .chatFailureActionClicked: "chat_failure_action_clicked"
+        case .agentConnectionLost: "agent_connection_lost"
         case .errorShown: "error_shown"
-        case .appCrash: "app_crash"
-        case .pairingResult: "pairing_result"
-        case .signInResult: "sign_in_result"
-        case .voiceSessionEnded: "voice_session_ended"
-        case .purchaseResult: "purchase_result"
+        case .appCrashed: "app_crashed"
+        case .mobilePairingFailed: "mobile_pairing_failed"
+        case .signInFailed: "sign_in_failed"
+        case .voiceSessionError: "voice_session_error"
+        case .paywallError: "paywall_error"
         case .appOpened: "app_opened"
         case .messageSent: "message_sent"
-        case .featureUsed: "feature_used"
-        case .onboardingStepViewed: "onboarding_step_viewed"
-        case .onboardingCompleted: "onboarding_completed"
-        case .pairingOptionsShown: "pairing_options_shown"
-        case .pairingOptionSelected: "pairing_option_selected"
+        case .conversationCreated: "conversation_created"
+        case .botCreated: "bot_created"
+        case .taskCreated: "task_created"
+        case .mobilePairingCompleted: "mobile_pairing_completed"
+        case .mobilePairingCancelled: "mobile_pairing_cancelled"
+        case .accountCreated: "account_created"
+        case .accountRestored: "account_restored"
+        case .teamServerSignedIn: "team_server_signed_in"
+        case .voiceSessionStopped: "voice_session_stopped"
+        case .paywallPresented: "paywall_presented"
+        case .paywallPurchased: "paywall_purchased"
+        case .paywallRestored: "paywall_restored"
+        case .paywallCancelled: "paywall_cancelled"
         }
     }
 
     public var properties: [String: JSONValue] {
         switch self {
-        case .chatFailureShown(let kind, let providerKind, let pool, let target, let sessionClient):
-            ["kind": .word(kind), "provider_kind": .word(providerKind), "pool": .bool(pool), "target": .word(target), "session_client": .word(sessionClient)]
-        case .chatFailureAction(let kind, let action):
+        case .chatFailureShown(let kind, let providerKind, let isPool, let target, let sessionClient):
+            ["kind": .word(kind), "provider_kind": .word(providerKind), "is_pool": .bool(isPool), "target": .word(target), "session_client": .word(sessionClient)]
+        case .chatFailureActionClicked(let kind, let action):
             ["kind": .word(kind), "action": .word(action)]
-        case .connectionIssue(let transport, let code, let outcome, let duration):
+        case .agentConnectionLost(let transport, let code, let outcome, let duration):
             // The full-window recovery screen is desktop's; a phone has none.
-            ["transport": .word(transport), "code": .word(code), "outcome": .word(outcome), "duration": .word(duration), "recovery_screen": .bool(false)]
+            ["transport": .word(transport), "code": .word(code), "outcome": .word(outcome), "duration": .word(duration), "is_recovery_screen_shown": .bool(false)]
         case .errorShown(let area, let code, let repeatCount):
             ["area": .word(area), "code": .word(code), "repeat_count": .count(repeatCount)]
-        case .appCrash(let process, let reason, let crashedVersion):
+        case .appCrashed(let process, let reason, let crashedVersion):
             ["process": .word(process), "reason": .word(reason), "crashed_version": crashedVersion.map(JSONValue.string) ?? .null]
-        case .pairingResult(let method, let start, let result, let errorCode):
-            ["side": .string("phone"), "method": .word(method), "start": .word(start), "result": .word(result), "error_code": .word(errorCode)]
-        case .signInResult(let method, let result, let errorCode):
-            ["method": .word(method), "result": .word(result), "error_code": .word(errorCode)]
-        case .voiceSessionEnded(let result, let errorCode, let duration):
-            ["result": .word(result), "error_code": .word(errorCode), "duration": .word(duration)]
-        case .purchaseResult(let product, let result, let errorCode):
-            ["product": .word(product), "result": .word(result), "error_code": .word(errorCode)]
-        case .appOpened(let launchCount, let cold, let config):
-            config.properties.merging(["launch_count": .count(launchCount), "cold": .bool(cold)]) { $1 }
+        case .mobilePairingFailed(let method, let start, let errorCode):
+            Self.pairing(method, start).merging(["error_code": .word(errorCode)]) { $1 }
+        case .signInFailed(let method, let errorCode):
+            ["method": .word(method), "error_code": .word(errorCode)]
+        case .voiceSessionError(let errorCode, let duration):
+            ["error_code": .word(errorCode), "duration": .word(duration)]
+        case .paywallError(let product, let errorCode):
+            ["product": .word(product), "error_code": .word(errorCode)]
+        case .appOpened(let launchCount, let isColdStart, let config):
+            config.properties.merging(["launch_count": .count(launchCount), "is_cold_start": .bool(isColdStart)]) { $1 }
         case .messageSent(let message):
             message.properties
-        case .featureUsed(let feature):
-            ["feature": .word(feature)]
-        case .onboardingStepViewed(let step):
-            ["step": .word(step)]
-        case .onboardingCompleted:
+        case .conversationCreated(let source, let model, let modelProviderKind, let effort):
+            ["source": .word(source), "model": Self.model(model), "model_provider_kind": .word(modelProviderKind), "effort": .word(effort)]
+        case .botCreated(let source, let result, let errorCode):
+            Self.created(result, errorCode).merging(["source": .word(source)]) { $1 }
+        case .taskCreated(let result, let errorCode):
+            Self.created(result, errorCode)
+        case .mobilePairingCompleted(let method, let start), .mobilePairingCancelled(let method, let start):
+            Self.pairing(method, start)
+        case .voiceSessionStopped(let duration):
+            ["duration": .word(duration)]
+        case .paywallPresented(let product), .paywallPurchased(let product), .paywallRestored(let product), .paywallCancelled(let product):
+            ["product": .word(product)]
+        case .accountCreated, .accountRestored, .teamServerSignedIn:
             [:]
-        case .pairingOptionsShown(let defaultMethod, let surface):
-            ["default_method": .word(defaultMethod), "surface": .word(surface)]
-        case .pairingOptionSelected(let from, let to, let surface):
-            ["from": .word(from), "to": .word(to), "surface": .word(surface)]
         }
+    }
+
+    /// `start` is the phone's own and is left out when unknown.
+    private static func pairing(_ method: PairingMethod, _ start: PairingStart?) -> [String: JSONValue] {
+        var out: [String: JSONValue] = ["method": .word(method)]
+        if let start { out["start"] = .word(start) }
+        return out
+    }
+
+    /// A create's outcome; `error_code` only for a failed one.
+    private static func created(_ result: CreateResult, _ errorCode: CreateErrorCode?) -> [String: JSONValue] {
+        var out: [String: JSONValue] = ["result": .word(result)]
+        if result == .failed { out["error_code"] = .word(errorCode ?? .unknown) }
+        return out
+    }
+
+    static func model(_ id: String?) -> JSONValue {
+        id.map { .string(AnalyticsSchema.model($0)) } ?? .null
     }
 }
 
@@ -161,12 +203,13 @@ extension AnalyticsEvent {
         case relay, direct
     }
 
-    public enum PairingSurface: String, AnalyticsWord {
-        case onboarding, settings, connectAgent = "connect_agent"
+    /// How a create ended; leaving one sends nothing.
+    public enum CreateResult: String, AnalyticsWord {
+        case ok, failed
     }
 
-    public enum FlowResult: String, AnalyticsWord {
-        case ok, failed, cancelled
+    public enum CreateErrorCode: String, AnalyticsWord {
+        case refused, offline, unknown
     }
 
     public enum Effort: String, AnalyticsWord {
@@ -190,14 +233,14 @@ extension AnalyticsEvent {
     // MARK: Common properties
 
     public enum AnalyticsClient: String, AnalyticsWord { case desktop, ios, android }
-    public enum AnalyticsChannel: String, AnalyticsWord {
-        case stable, preview, nightly, development
+    public enum AnalyticsFlavor: String, AnalyticsWord {
+        case standard, nightly, preview, development
 
         public init(_ variant: AppVariant) {
             self = switch variant {
             case .development: .development
             case .preview: .preview
-            case .production: .stable
+            case .production: .standard
             }
         }
     }
@@ -239,8 +282,7 @@ extension AnalyticsEvent {
     public enum ErrorArea: String, AnalyticsWord {
         case conversationLoad = "conversation_load", messageSend = "message_send", attachmentUpload = "attachment_upload"
         case fileLoad = "file_load", diffLoad = "diff_load", artifactLoad = "artifact_load", browserLoad = "browser_load"
-        case terminal, voice, modelList = "model_list", settingsSave = "settings_save", projectAdd = "project_add"
-        case workspaceCreate = "workspace_create", botCreate = "bot_create", taskCreate = "task_create"
+        case terminal, voice, modelList = "model_list", settingsSave = "settings_save"
         case pushSetup = "push_setup", update, uiRender = "ui_render"
     }
 
@@ -250,7 +292,7 @@ extension AnalyticsEvent {
     }
 
     public enum PairingStart: String, AnalyticsWord {
-        case codeShown = "code_shown", scan, pasteLink = "paste_link", openedLink = "opened_link"
+        case scan, pasteLink = "paste_link", openedLink = "opened_link"
     }
     public enum PairingErrorCode: String, AnalyticsWord {
         case invalidCode = "invalid_code", expired, rejected, emojiMismatch = "emoji_mismatch", invalidProof = "invalid_proof"
@@ -279,16 +321,14 @@ extension AnalyticsEvent {
         case expired, invalidToken = "invalid_token", rejected, profileRequired = "profile_required", wrongServer = "wrong_server", unknown
     }
 
-    public enum VoiceResult: String, AnalyticsWord { case ok, failed }
     public enum VoiceErrorCode: String, AnalyticsWord {
         case micDenied = "mic_denied", connectFailed = "connect_failed", dropped, quotaExhausted = "quota_exhausted", unknown
     }
 
-    public enum PurchaseProduct: String, AnalyticsWord { case pro, support, voice, other }
-    public enum PurchaseResult: String, AnalyticsWord { case ok, failed, cancelled, restored, pending, nothingToRestore = "nothing_to_restore" }
-    public enum PurchaseErrorCode: String, AnalyticsWord {
+    public enum Product: String, AnalyticsWord { case pro, support, voice, other }
+    public enum PaywallErrorCode: String, AnalyticsWord {
         case storeUnavailable = "store_unavailable", paymentInvalid = "payment_invalid", notAllowed = "not_allowed"
-        case network, verificationFailed = "verification_failed", unknown
+        case network, verificationFailed = "verification_failed", nothingToRestore = "nothing_to_restore", pending, unknown
     }
 
     // MARK: Usage
@@ -310,41 +350,34 @@ extension AnalyticsEvent {
         public var botSystemKey: BotSystemKey?
         public var taskDepth: Int?
         public var hasAttachment: Bool
+        /// Sent while the agent was still working.
+        public var isSteering: Bool
 
         public init(source: MessageSource, target: ChatTarget? = nil, sessionClient: SessionClient? = nil, model: String? = nil,
                     modelProviderKind: ProviderKind? = nil, effort: Effort? = nil, botSystemKey: BotSystemKey? = nil,
-                    taskDepth: Int? = nil, hasAttachment: Bool) {
+                    taskDepth: Int? = nil, hasAttachment: Bool, isSteering: Bool = false) {
             self.source = source; self.target = target; self.sessionClient = sessionClient; self.model = model
             self.modelProviderKind = modelProviderKind; self.effort = effort; self.botSystemKey = botSystemKey
-            self.taskDepth = taskDepth; self.hasAttachment = hasAttachment
+            self.taskDepth = taskDepth; self.hasAttachment = hasAttachment; self.isSteering = isSteering
         }
 
         var properties: [String: JSONValue] {
             [
                 "source": .word(source), "target": .word(target), "session_client": .word(sessionClient),
-                "model": model.map { .string(AnalyticsSchema.model($0)) } ?? .null,
+                "model": AnalyticsEvent.model(model),
                 "model_provider_kind": .word(modelProviderKind), "effort": .word(effort), "bot_system_key": .word(botSystemKey),
                 "task_depth": taskDepth.map(JSONValue.count) ?? .null, "has_attachment": .bool(hasAttachment),
+                "is_steering": .bool(isSteering),
             ]
         }
     }
 
-    public enum OnboardingStep: String, AnalyticsWord {
-        case setup, subscriptions, getApp = "get_app", connectPhone = "connect_phone", welcome, pair, signIn = "sign_in", notifications, done
+    /// Where a new conversation was started; a phone starts them from Home.
+    public enum ConversationSource: String, AnalyticsWord {
+        case workspace, commandPalette = "command_palette", shortcut, voice, home
     }
+    public enum BotSource: String, AnalyticsWord { case sidebar, voice, home }
 
-    /// A deliberate action, sent when it succeeds; never an impression.
-    public enum Feature: String, AnalyticsWord {
-        case projectAdded = "project_added", workspaceCreated = "workspace_created", botCreated = "bot_created"
-        case taskCreated = "task_created", subtaskAppeared = "subtask_appeared", approvalAnswered = "approval_answered"
-        case questionAnswered = "question_answered", runStopped = "run_stopped", messageSteered = "message_steered"
-        case modelChanged = "model_changed", effortChanged = "effort_changed", permissionModeChanged = "permission_mode_changed"
-        case photoTaken = "photo_taken", terminalStarted = "terminal_started", searchUsed = "search_used"
-        case commandPaletteUsed = "command_palette_used", todoChanged = "todo_changed", accountSwitched = "account_switched"
-        case pushOpened = "push_opened"
-    }
-
-    public enum ThemeChoice: String, AnalyticsWord { case light, dark, system }
     public enum AppLanguage: String, AnalyticsWord {
         case en, ru, pl, es, it, pt, ca, zhHans = "zh-Hans", zhHant = "zh-Hant", ja, other
 
@@ -354,35 +387,21 @@ extension AnalyticsEvent {
     }
     public enum NotificationsState: String, AnalyticsWord { case granted, denied, notAsked = "not_asked" }
 
-    /// The configuration snapshot `app_opened` carries; nil leaves a field out.
+    /// The little `app_opened` carries; nil leaves a field out.
     public struct AppConfig: Equatable, Sendable {
-        public var theme: ThemeChoice?
         public var appLanguage: AppLanguage?
         public var notifications: NotificationsState?
         public var agentsConnected: Bucket123?
-        public var relayAccounts: Bucket123?
-        public var providerKinds: [ProviderKind]?
-        public var providerAccounts: Bucket123?
-        public var experimentsOn: Bool?
 
-        public init(theme: ThemeChoice? = nil, appLanguage: AppLanguage? = nil, notifications: NotificationsState? = nil,
-                    agentsConnected: Bucket123? = nil, relayAccounts: Bucket123? = nil, providerKinds: [ProviderKind]? = nil,
-                    providerAccounts: Bucket123? = nil, experimentsOn: Bool? = nil) {
-            self.theme = theme; self.appLanguage = appLanguage; self.notifications = notifications
-            self.agentsConnected = agentsConnected; self.relayAccounts = relayAccounts; self.providerKinds = providerKinds
-            self.providerAccounts = providerAccounts; self.experimentsOn = experimentsOn
+        public init(appLanguage: AppLanguage? = nil, notifications: NotificationsState? = nil, agentsConnected: Bucket123? = nil) {
+            self.appLanguage = appLanguage; self.notifications = notifications; self.agentsConnected = agentsConnected
         }
 
         var properties: [String: JSONValue] {
             var out: [String: JSONValue] = [:]
-            if let theme { out["theme"] = .word(theme) }
             if let appLanguage { out["app_language"] = .word(appLanguage) }
             if let notifications { out["notifications"] = .word(notifications) }
             if let agentsConnected { out["agents_connected"] = .word(agentsConnected) }
-            if let relayAccounts { out["relay_accounts"] = .word(relayAccounts) }
-            if let providerKinds { out["provider_kinds"] = .array(Array(Set(providerKinds)).map(\.rawValue).sorted().map(JSONValue.string)) }
-            if let providerAccounts { out["provider_accounts"] = .word(providerAccounts) }
-            if let experimentsOn { out["experiments_on"] = .bool(experimentsOn) }
             return out
         }
     }

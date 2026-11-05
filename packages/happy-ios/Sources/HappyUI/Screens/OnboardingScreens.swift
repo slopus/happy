@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import HappyAnalytics
 import HappyCore
 import HappyLayout
 import UIKit
@@ -103,12 +104,12 @@ public final class RestoreQRViewController: UIViewController {
                 self?.showsCode = true
                 let credentials = try await login.waitForApproval()
                 try await account.signIn(credentials)
-                Analytics.shared.log(.signInResult(method: .relayRestore, result: .ok, errorCode: nil))
+                Analytics.shared.log(.accountRestored)
             } catch is CancellationError {
                 return
             } catch {
                 guard let self, !Task.isCancelled else { return }
-                Analytics.shared.log(.signInResult(method: .relayRestore, result: .failed, errorCode: error is URLError ? .unreachable : .unknown))
+                Analytics.shared.log(.signInFailed(method: .relayRestore, errorCode: error is URLError ? .unreachable : .unknown))
                 Alerts.show(Strings.Common.error, Strings.Errors.authenticationFailed, on: self)
             }
         }
@@ -246,9 +247,9 @@ public final class RestoreSecretKeyViewController: UIViewController, UITextViewD
         do {
             let credentials = try await context.account.authService.restore(secretKey: key)
             try await context.account.signIn(credentials)
-            Analytics.shared.log(.signInResult(method: .relayRestore, result: .ok, errorCode: nil))
+            Analytics.shared.log(.accountRestored)
         } catch {
-            Analytics.shared.log(.signInResult(method: .relayRestore, result: .failed, errorCode: error is URLError ? .unreachable : .invalidToken))
+            Analytics.shared.log(.signInFailed(method: .relayRestore, errorCode: error is URLError ? .unreachable : .invalidToken))
             Alerts.show(Strings.Common.error, Strings.Connect.invalidSecretKey, on: self)
         }
     }

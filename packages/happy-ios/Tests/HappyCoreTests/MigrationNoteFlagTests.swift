@@ -116,19 +116,18 @@ final class MigrationNoteFlagTests: XCTestCase {
         XCTAssertEqual(settings.migrationNoteFlag, true)
     }
 
-    /// Analytics' consent gates the ask: the device switch or any account
-    /// that opted out stops it, and before the accounts are read nothing is
-    /// asked at all.
-    func testTheAskFollowsAnalyticsConsent() async {
-        let consent = AnalyticsConsent(storage: InMemoryKeyValueStore())
-        XCTAssertNil(MigrationNoteFlag.optedOut(account: false, consent: consent), "accounts not read yet")
-        consent.settle(["a": false, "b": false])
-        XCTAssertEqual(MigrationNoteFlag.optedOut(account: false, consent: consent), false)
-        XCTAssertEqual(MigrationNoteFlag.optedOut(account: true, consent: consent), true)
-        consent.setAccount("b", optedOut: true)
-        XCTAssertEqual(MigrationNoteFlag.optedOut(account: false, consent: consent), true, "another account opted out")
-        consent.setAccount("b", optedOut: false)
-        consent.setDeviceOptOut(true)
-        XCTAssertEqual(MigrationNoteFlag.optedOut(account: false, consent: consent), true, "the device switch")
+    /// What the app says of everyone else gates the ask: unknown asks
+    /// nothing, opted out anywhere asks nothing, and the account's own
+    /// setting needs no one else.
+    func testTheAskFollowsWhatTheAppSays() async {
+        let flag = MigrationNoteFlag()
+        var others: Bool?
+        flag.othersOptedOut = { others }
+        XCTAssertNil(flag.optedOut(account: false), "not known yet")
+        XCTAssertEqual(flag.optedOut(account: true), true)
+        others = false
+        XCTAssertEqual(flag.optedOut(account: false), false)
+        others = true
+        XCTAssertEqual(flag.optedOut(account: false), true)
     }
 }

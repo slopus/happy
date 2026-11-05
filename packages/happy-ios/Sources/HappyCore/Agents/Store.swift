@@ -25,8 +25,7 @@ public struct Snapshot: Equatable, Sendable {
     /// (`ChatPrefill`); nil until the bots have been read, or where the
     /// account has no Chief of Staff running.
     public var happyAgentId: String?
-    /// The bots' own conversations, by agent id, for what analytics calls
-    /// a conversation's target.
+    /// The bots' own conversations, by agent id.
     public var botAgentIds: Set<String> = []
     /// The person's V2 setting, which runs Prioritizing; nil until read.
     public var prioritizing: Bool?

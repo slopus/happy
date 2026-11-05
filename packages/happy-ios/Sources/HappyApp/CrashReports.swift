@@ -1,9 +1,10 @@
 #if canImport(UIKit) && canImport(MetricKit)
 import Foundation
+import HappyAnalytics
 import HappyCore
 import MetricKit
 
-/// `app_crash` from MetricKit: the crashes and hangs iOS reports for this
+/// `app_crashed` from MetricKit: the crashes and hangs iOS reports for this
 /// app, delivered at a later launch. Only each one's exception type and
 /// signal are read, mapped to the catalog's reason; no stack, message or
 /// symbol leaves the phone.
@@ -26,10 +27,10 @@ final class CrashReports: NSObject, MXMetricManagerSubscriber, @unchecked Sendab
             for crash in payload.crashDiagnostics ?? [] {
                 let reason = AnalyticsEvent.CrashReason(exceptionType: crash.exceptionType?.intValue, signal: crash.signal?.intValue,
                                                         termination: crash.terminationReason)
-                events.append(.appCrash(process: .app, reason: reason, crashedVersion: version(crash)))
+                events.append(.appCrashed(process: .app, reason: reason, crashedVersion: version(crash)))
             }
             for hang in payload.hangDiagnostics ?? [] {
-                events.append(.appCrash(process: .app, reason: .hang, crashedVersion: version(hang)))
+                events.append(.appCrashed(process: .app, reason: .hang, crashedVersion: version(hang)))
             }
         }
         guard !events.isEmpty else { return }

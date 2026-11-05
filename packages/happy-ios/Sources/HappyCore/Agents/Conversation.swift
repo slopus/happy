@@ -548,7 +548,7 @@ public actor Conversation {
                     case .accepted(let id): sent(id)
                     case .failed(let id, let reason):
                         failed(id, reason)
-                        Task { @MainActor in Analytics.shared.errorShown(.messageSend, .unknown) }
+                        Happenings.post(.errorShown(.messageSend, nil))
                     }
                 }
             }
@@ -617,7 +617,7 @@ public actor Conversation {
             } catch {
                 if Task.isCancelled { return }
                 snapshot.error = Store.describe(error)
-                Self.report(.conversationLoad, error)
+                Happenings.post(.errorShown(.conversationLoad, error))
                 snapshot.loaded = true
                 let held = heldEvents ?? []
                 heldEvents = nil
@@ -913,7 +913,7 @@ public actor Conversation {
             try stage(attachments, id: id, inline: &inline, files: &files)
         } catch {
             snapshot.error = Store.describe(error)
-            Self.report(.attachmentUpload, error)
+            Happenings.post(.errorShown(.attachmentUpload, error))
             publish()
             return false
         }
@@ -1089,7 +1089,6 @@ public actor Conversation {
                     do { agentId = try await creation.make() }
                     catch {
                         failed(id, Store.describe(error))
-                        Self.report(creation.choice.kind == .bot ? .botCreate : .taskCreate, error)
                         return
                     }
                     // What it started on is what the person's next session
@@ -1145,7 +1144,7 @@ public actor Conversation {
                     publish()
                 } else {
                     failed(id, Store.describe(error))
-                    Self.report(.messageSend, error)
+                    Happenings.post(.errorShown(.messageSend, error))
                 }
             }
         }
@@ -1360,12 +1359,6 @@ public actor Conversation {
         publish()
     }
 
-    /// `error_shown` for an error this conversation puts on screen.
-    private static func report(_ area: AnalyticsEvent.ErrorArea, _ error: Error) {
-        guard let code = AnalyticsEvent.ErrorCode(error) else { return }
-        Task { @MainActor in Analytics.shared.errorShown(area, code) }
-    }
-
     private func failed(_ id: String, _ reason: String) {
         guard let index = outgoing.firstIndex(where: { $0.id == id }) else { return }
         outgoing[index].failure = reason
@@ -1489,10 +1482,8 @@ public actor Conversation {
         if publishes { publish() }
     }
 
-    /// Whether the computer took the stop.
-    @discardableResult
-    public func abort() async -> Bool {
-        (try? await client.abort(agentId)) != nil
+    public func abort() async {
+        try? await client.abort(agentId)
     }
 
     /// Desktop's failure card actions: the failed turn run again, or with
@@ -1541,16 +1532,16 @@ public actor Conversation {
                   self.asking?.question.id == question.id, self.asking?.phase == .pending else { return }
             self.asking?.phase = .submitting
             publish()
-            _ = await settleAnswer(kept, question: question, answers: answers, persistence: persistence)
+            await settleAnswer(kept, question: question, answers: answers, persistence: persistence)
         }
     }
 
     /// Waits for the computer to take or refuse an answer on its way.
-    private func settleAnswer(_ kept: Intent, question: AgentWire.Question, answers: [String: [String]], persistence: SyncEngine) async -> Bool {
+    private func settleAnswer(_ kept: Intent, question: AgentWire.Question, answers: [String: [String]], persistence: SyncEngine) async {
         // The person waits on it: tried at once, then kept until it goes.
         Task { await persistence.intents.attempt(kept.id) }
         let taken = await persistence.intents.outcome(kept.id)
-        guard self.asking?.question.id == question.id else { return taken }
+        guard self.asking?.question.id == question.id else { return }
         if taken {
             var question = question
             question.status = "answered"
@@ -1560,7 +1551,6 @@ public actor Conversation {
             self.asking?.phase = .failed("")
             publish()
         }
-        return taken
     }
 
     /// Someone answered it, here or elsewhere, or the run stopped needing it.
@@ -1591,11 +1581,9 @@ public actor Conversation {
     /// Answers the question the agent waits on, each prompt by its ID
     /// (desktop's `answerInputRun`): shown as sending at once, settled when
     /// the computer takes it. A refusal says why, and the answer may go
-    /// again; one that lost to another answer shows that one. True once the
-    /// computer took it.
-    @discardableResult
-    public func answer(_ answers: [String: [String]]) async -> Bool {
-        guard var asking, asking.phase != .submitting, asking.phase != .answered else { return false }
+    /// again; one that lost to another answer shows that one.
+    public func answer(_ answers: [String: [String]]) async {
+        guard var asking, asking.phase != .submitting, asking.phase != .answered else { return }
         asking.phase = .submitting
         self.asking = asking
         publish()
@@ -1604,9 +1592,10 @@ public actor Conversation {
             // the computer takes it, and through a relaunch.
             guard let kept = await persistence.answer(asking.question.id, agentId: agentId, answers: answers) else {
                 if self.asking?.question.id == asking.question.id { self.asking?.phase = .failed(""); publish() }
-                return false
+                return
             }
-            return await settleAnswer(kept, question: asking.question, answers: answers, persistence: persistence)
+            await settleAnswer(kept, question: asking.question, answers: answers, persistence: persistence)
+            return
         }
         do {
             let returned = try await client.answerQuestion(agentId, questionId: asking.question.id, answers: answers, mutationId: ClientID.make())
@@ -1615,19 +1604,17 @@ public actor Conversation {
             question.status = returned.status
             question.answers = returned.answers ?? answers
             settle(question: question)
-            return true
         } catch {
             if case .status(409, _, _)? = error as? AgentClientError {
                 // Answered or abandoned already: what stands now is read again.
                 let current = try? await client.question(agentId)
                 if current?.id == asking.question.id { self.asking?.phase = .pending; publish() }
                 else { self.asking = nil; publish() }
-                return false
+                return
             }
-            guard self.asking?.question.id == asking.question.id else { return false }
+            guard self.asking?.question.id == asking.question.id else { return }
             self.asking?.phase = .failed(Store.describe(error))
             publish()
-            return false
         }
     }
 

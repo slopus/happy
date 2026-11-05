@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import AVKit
+import HappyAnalytics
 import HappyCore
 import HappyLayout
 import QuickLook
@@ -104,12 +105,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     /// what rides it follow. None in a preview.
     private(set) var ultraKeyboard: ChatUltraKeyboard?
 
-    private var chat = ChatSnapshot() {
-        didSet { failuresByID = nil }
-    }
-    /// The failure cards by item ID, made again only when a row comes on
-    /// screen after the conversation changed.
-    private var failuresByID: [String: Failure]?
+    private var chat = ChatSnapshot()
     /// The tool calls opened from here (`AgentToolViewController`).
     private let toolScreens = NSHashTable<AgentToolViewController>.weakObjects()
     private var following: Task<Void, Never>?
@@ -789,7 +785,6 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             sidebarRows = snapshot.allRows
             proposals.spacesChanged()
         }
-        target = .init(media.agentId, in: snapshot)
         guard let spaceId, let row = snapshot.allRows.first(where: { $0.spaceId == spaceId }) else { return }
         rowName = (row.label, row.titled)
         applyTitle()
@@ -805,25 +800,18 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
 
     /// The row's name as the sidebar has it, and whether it is one of its own.
     private var rowName: (label: String, titled: Bool)?
-    /// What analytics calls this conversation.
-    private var target: AnalyticsEvent.ChatTarget = .session
     /// Each failure card on screen in the conversation the person is
     /// looking at: the rows the transcript reports visible, as one comes on
-    /// and as the screen comes to the front. The engine keeps the
-    /// five-minute rule and the dedupe across screens and launches.
+    /// and as the screen comes to the front.
     @objc private func reportFailures() {
         for id in ultra.onScreen.ids { reportFailure(id) }
     }
 
     private func reportFailure(_ id: String) {
         guard !previewing, viewIfLoaded?.window != nil, UIApplication.shared.applicationState == .active,
-              navigationController?.topViewController === self else { return }
-        let failures = failuresByID ?? chat.failuresByID
-        failuresByID = failures
-        guard let failure = failures[id] else { return }
-        Analytics.shared.failureShown(messageID: failure.messageId, createdAt: Date(timeIntervalSince1970: failure.createdAt / 1000),
-                                      .chatFailureShown(kind: failure.kind, providerKind: failure.pool ? nil : failure.providerKind,
-                                                        pool: failure.pool, target: target, sessionClient: .happyAgent))
+              navigationController?.topViewController === self,
+              case .failure(let failure)? = chat.items.first(where: { $0.id == id })?.role else { return }
+        Analytics.shared.failureCardShown(failure, agentId: media.agentId, in: session.snapshot)
     }
 
     /// The row's name, or, while it has none ("New"), the conversation's
@@ -995,7 +983,6 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     private func choose(_ key: String) {
         let conversation = conversation
         ModelPickers.choose(key, state: session.models, mode: mode) { [weak self] next in
-            for change in AnalyticsEvent.Feature.changes(from: self?.mode, to: next) { Analytics.shared.log(.featureUsed(change)) }
             // Held here at once, so the chips read it before the conversation says so.
             self?.picked = next
             self?.updateChips()
@@ -1034,7 +1021,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         guard let action = ChatPlanner.action(failure, target: switchTarget) else { return }
         let conversation = conversation
         let mode: AgentWire.Mode? = if case .switchTo(let target) = action { target.mode } else { nil }
-        Analytics.shared.log(.chatFailureAction(kind: failure.kind, action: mode == nil ? .retry : .switchModel))
+        Analytics.shared.failureActionClicked(failure, switchingModel: mode != nil)
         Task { [weak self] in
             do { try await conversation.resolveFailure(failure.messageId, switchTo: mode) }
             catch {
@@ -1093,9 +1080,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     private func submit(questionId: String) {
         guard let ask = waitingQuestion, ask.question.id == questionId, ask.complete else { return }
         let conversation = conversation
-        Task {
-            if await conversation.answer(ask.picked) { Analytics.shared.log(.featureUsed(.questionAnswered)) }
-        }
+        Task { await conversation.answer(ask.picked) }
     }
 
     /// The width changed (a rotation, the sidebar, a window drag): the rows
@@ -1551,9 +1536,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         if let ask = waitingQuestion, ask.phase != .submitting, !text.isEmpty {
             let (answers, textUsed) = ask.answers(typed: text)
             let conversation = conversation
-            Task {
-                if await conversation.answer(answers) { Analytics.shared.log(.featureUsed(.questionAnswered)) }
-            }
+            Task { await conversation.answer(answers) }
             if textUsed {
                 Haptics.play(.send)
                 card.setText("", selection: NSRange(location: 0, length: 0))
@@ -1574,7 +1557,9 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         let conversation = conversation
         let store = session.store
         let staged = pictures
-        let sent = sentEvent(attachments: picked.count + previews.count)
+        let sent = Analytics.shared.agentSend(to: media.agentId, in: session.snapshot, mode: mode, catalog: session.models.catalog,
+                                              opensConversation: newTask != nil && chat.items.isEmpty,
+                                              attachments: picked.count + previews.count, steering: chat.working)
         #if DEBUG
         composeTrace?.event("send choice=\(String(describing: newTask?.choice))")
         #endif
@@ -1611,25 +1596,6 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
                 alert.addAction(UIAlertAction(title: Strings.Common.ok, style: .default))
                 present(alert, animated: true)
             }
-        }
-    }
-
-    /// `message_sent`, and `feature_used` for a steer, for a send now: made
-    /// before the send changes what the screen knows, called once it is
-    /// accepted.
-    private func sentEvent(attachments: Int) -> () -> Void {
-        let mode = mode
-        // New work's first message makes the conversation; later ones are chat.
-        let created = newTask != nil && chat.items.isEmpty
-        let provider = mode.flatMap { session.models.catalog?.provider($0.providerId)?.type }
-        let event = AnalyticsEvent.MessageSent(
-            source: created ? .newSession : .chat, target: target, sessionClient: .happyAgent, model: mode?.modelId,
-            modelProviderKind: mode == nil ? nil : .init(type: provider), effort: mode.flatMap { .init(rawValue: $0.effort) },
-            botSystemKey: target == .chiefOfStaff ? .chiefOfStaff : nil, hasAttachment: attachments > 0)
-        let steered = chat.working
-        return {
-            Analytics.shared.log(.messageSent(event))
-            if steered { Analytics.shared.log(.featureUsed(.messageSteered)) }
         }
     }
 
@@ -1962,9 +1928,7 @@ extension ChatViewController: AgentInputCardDelegate {
         if card.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, pictures.images.isEmpty {
             guard chat.working else { return }
             let conversation = conversation
-            Task {
-                if await conversation.abort() { Analytics.shared.log(.featureUsed(.runStopped)) }
-            }
+            Task { await conversation.abort() }
         } else {
             send()
         }
@@ -2010,9 +1974,7 @@ extension ChatViewController: AgentInputCardDelegate {
 
     func agentInputCardDidPressStop(_ card: AgentInputCardView) {
         let conversation = conversation
-        Task {
-            if await conversation.abort() { Analytics.shared.log(.featureUsed(.runStopped)) }
-        }
+        Task { await conversation.abort() }
     }
 }
 

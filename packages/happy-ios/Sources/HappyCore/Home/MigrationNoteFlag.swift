@@ -47,13 +47,15 @@ public final class MigrationNoteFlag {
         return key.isEmpty || key.hasPrefix("$(") ? nil : key
     }
 
-    /// Whether the account that is open counts as opted out, by its own
-    /// setting and by analytics' consent: the device switch, or any
-    /// signed-in account that opted out. Nil until every account's setting
-    /// has been read: nothing is asked and nothing stored is dropped yet.
-    public static func optedOut(account: Bool, consent: AnalyticsConsent) -> Bool? {
-        guard consent.isSettled || consent.isOptedOut else { return nil }
-        return account || consent.isOptedOut
+    /// Opted out beyond the open account's own setting: by product
+    /// analytics' device switch, or another signed-in account. Nil until
+    /// that is known. The app sets it; unset, only the account counts.
+    public var othersOptedOut: @MainActor () -> Bool? = { false }
+
+    /// Whether the account that is open counts as opted out; nil while it
+    /// isn't known yet, when nothing is asked and nothing stored is dropped.
+    public func optedOut(account: Bool) -> Bool? {
+        account ? true : othersOptedOut()
     }
 
     /// Whether the card may show for the account `settings` belong to.

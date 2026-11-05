@@ -1,4 +1,5 @@
 import Foundation
+import HappyCore
 import HappyWire
 
 // What the app's own types say, reduced to the catalog's words. Only a
@@ -116,31 +117,40 @@ extension AnalyticsEvent.SignInErrorCode {
 }
 
 extension CallState {
-    /// `voice_session_ended` for a call going from `old` to `self`: a live
-    /// call hung up is `ok`; one that dropped or never connected is
-    /// `failed`; one stopped while it was still connecting is no session.
-    /// `seconds` is how long it was live.
-    public func ended(from old: CallState, at now: Double) -> (event: AnalyticsEvent, seconds: Int)? {
+    /// The voice event for a call going from `old` to `self`:
+    /// `voice_session_stopped` when a live call is hung up,
+    /// `voice_session_error` when it dropped or never connected. One stopped
+    /// while it was still connecting is no session. The duration is how
+    /// long it was live.
+    public func event(from old: CallState, at now: Double) -> AnalyticsEvent? {
         var since: Double?
         if case .active(_, _, let start) = old { since = start }
-        let seconds = since.map { max(0, now - $0) } ?? 0
-        let code: AnalyticsEvent.VoiceErrorCode?
+        let duration = since.map { AnalyticsEvent.DurationBucket(seconds: max(0, now - $0)) }
         switch self {
         case .idle:
-            guard since != nil else { return nil }
-            code = nil
+            return duration.map { .voiceSessionStopped(duration: $0) }
         case .ended(let problem):
             guard old != self else { return nil }
-            code = switch problem {
+            let code: AnalyticsEvent.VoiceErrorCode = switch problem {
             case .microphonePermission: .micDenied
             case .limitReached, .subscriptionRequired: .quotaExhausted
             case .connection: since == nil ? .connectFailed : .dropped
             case .authentication, .notSetUp: .connectFailed
             }
+            return .voiceSessionError(errorCode: code, duration: duration)
         case .connecting, .active:
             return nil
         }
-        return (.voiceSessionEnded(result: code == nil ? .ok : .failed, errorCode: code, duration: .init(seconds: seconds)), Int(seconds.rounded()))
+    }
+}
+
+extension AnalyticsEvent.PairingStart {
+    public init(_ start: PairingStart) {
+        self = switch start {
+        case .scan: .scan
+        case .pasteLink: .pasteLink
+        case .openedLink: .openedLink
+        }
     }
 }
 
@@ -163,39 +173,43 @@ extension AnalyticsEvent.MessageSent {
 }
 
 extension Subscription.PurchaseResult {
-    /// `purchase_result` for a Subscribe that ended. The app sells one
+    /// The paywall event for a Subscribe that ended. The app sells one
     /// product, the monthly subscription that grants `pro`.
     public var event: AnalyticsEvent {
         switch self {
-        case .purchased: .purchaseResult(product: .pro, result: .ok, errorCode: nil)
-        case .pending: .purchaseResult(product: .pro, result: .pending, errorCode: nil)
-        case .cancelled: .purchaseResult(product: .pro, result: .cancelled, errorCode: nil)
-        case .failed: .purchaseResult(product: .pro, result: .failed, errorCode: .unknown)
-        case .unconfirmed: .purchaseResult(product: .pro, result: .failed, errorCode: .verificationFailed)
-        case .unavailable: .purchaseResult(product: .pro, result: .failed, errorCode: .storeUnavailable)
+        case .purchased: .paywallPurchased(product: .pro)
+        case .pending: .paywallError(product: .pro, errorCode: .pending)
+        case .cancelled: .paywallCancelled(product: .pro)
+        case .failed: .paywallError(product: .pro, errorCode: .unknown)
+        case .unconfirmed: .paywallError(product: .pro, errorCode: .verificationFailed)
+        case .unavailable: .paywallError(product: .pro, errorCode: .storeUnavailable)
         }
     }
 }
 
 extension Subscription.RestoreResult {
-    /// `purchase_result` for a Restore Purchases that ended.
+    /// The paywall event for a Restore Purchases that ended.
     public var event: AnalyticsEvent {
         switch self {
-        case .restored: .purchaseResult(product: .pro, result: .restored, errorCode: nil)
-        case .nothingFound: .purchaseResult(product: .pro, result: .nothingToRestore, errorCode: nil)
-        case .failed: .purchaseResult(product: .pro, result: .failed, errorCode: .unknown)
+        case .restored: .paywallRestored(product: .pro)
+        case .nothingFound: .paywallError(product: .pro, errorCode: .nothingToRestore)
+        case .failed: .paywallError(product: .pro, errorCode: .unknown)
         }
     }
 }
 
-extension AnalyticsEvent.Feature {
-    /// What a pick in the model control changed, each one `feature_used`.
-    public static func changes(from old: AgentWire.Mode?, to new: AgentWire.Mode) -> [Self] {
-        var changed: [Self] = []
-        if old?.providerId != new.providerId || old?.modelId != new.modelId { changed.append(.modelChanged) }
-        if old?.effort != new.effort { changed.append(.effortChanged) }
-        if old?.permissionMode != new.permissionMode { changed.append(.permissionModeChanged) }
-        return changed
+extension AnalyticsEvent {
+    /// A create that ended in `error`: the computer or server said no, it
+    /// couldn't be reached, or something else.
+    public static func createErrorCode(_ error: Error) -> CreateErrorCode {
+        switch error {
+        case is URLError, is POSIXError: .offline
+        case AgentClientError.status(let status, _, _) where status < 500: .refused
+        case AgentClientError.revoked: .refused
+        case APIError.unauthenticated, APIError.unauthorized: .refused
+        case APIError.http(let status, _) where status < 500: .refused
+        default: .unknown
+        }
     }
 }
 
@@ -211,20 +225,5 @@ extension AnalyticsEvent.ErrorCode {
         case .http(let status): .init(status: status)
         case .insecure, .crashed, .other: .unknown
         }
-    }
-}
-
-extension AnalyticsEvent.AppConfig {
-    /// `provider_kinds` and `provider_accounts` from the active agent's
-    /// catalog: its switched-on providers. Nil, when it isn't known or a
-    /// Happy CLI account is in front, leaves both out.
-    public mutating func setProviders(_ catalog: ModelCatalog?) {
-        guard let providers = catalog?.providers.filter({ !$0.isDisabled }) else {
-            providerKinds = nil
-            providerAccounts = nil
-            return
-        }
-        providerKinds = Set(providers.map { AnalyticsEvent.ProviderKind(type: $0.type) }).sorted { $0.rawValue < $1.rawValue }
-        providerAccounts = .init(providers.count)
     }
 }

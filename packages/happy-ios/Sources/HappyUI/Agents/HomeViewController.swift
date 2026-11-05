@@ -40,8 +40,6 @@ final class HomeViewController: UIViewController {
 
     private struct Search {
         var query = ""
-        /// Something was typed: the search was run, `feature_used` once.
-        var used = false
         /// What each quick action, setting or found thing does, by its row's id.
         var results: [String: () -> Void] = [:]
         /// What the computer found, and for which query.
@@ -253,10 +251,6 @@ final class HomeViewController: UIViewController {
     func search(_ query: String) {
         guard search != nil, search?.query != query else { return }
         search?.query = query
-        if search?.used == false, !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            search?.used = true
-            Analytics.shared.log(.featureUsed(.searchUsed))
-        }
         showResults()
         ask(query)
     }

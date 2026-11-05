@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import HappyAnalytics
 import HappyCore
 import HappyLayout
 import HappyWire
@@ -163,7 +164,6 @@ public final class AppCoordinator {
 
     /// Foreground/background, for the server's push suppression.
     public func appStateChanged(active: Bool) {
-        ConnectionWatch.shared.setForeground(active)
         Task { await context.account.agentConnections.setForeground(active) }
         // Back from the background: what the store and RevenueCat say now (launch asks on its own).
         if active, backgrounded { Offers.shared.foreground() }

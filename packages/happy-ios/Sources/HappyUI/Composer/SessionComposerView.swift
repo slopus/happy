@@ -554,14 +554,8 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     }
 
     func agentInputCard(_ card: AgentInputCardView, didSelect key: String, in chip: AgentInputChip) {
-        let feature: AnalyticsEvent.Feature = switch chip {
-        case .permission: .permissionModeChanged
-        case .model: .modelChanged
-        case .effort: .effortChanged
-        }
         if let creation = environment.newSession {
             guard !card.configuration.refusesControls else { return }
-            Analytics.shared.log(.featureUsed(feature))
             switch chip {
             case .permission: creation.selectPermission(key)
             case .model: creation.selectModel(key)
@@ -599,7 +593,6 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         Task.detached(priority: .userInitiated) { [weak self] in
             do {
                 try await account.actions.sessionSetAgentModes(sessionId: sessionId, patch: patch, transport: account.realtime)
-                await Analytics.shared.log(.featureUsed(feature))
             } catch {
                 logger.error("sessionSetAgentModes failed: \(String(describing: error), privacy: .public)")
                 await self?.restoreStoredPicks()
@@ -895,7 +888,6 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         Task { [weak self] in
             do {
                 try await controls.abort(sessionId: sessionId)
-                Analytics.shared.log(.featureUsed(.runStopped))
                 // At least 300ms of spinner.
                 let elapsed = ContinuousClock.now - start
                 if elapsed < .milliseconds(300) {

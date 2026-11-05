@@ -54,7 +54,7 @@ public final class CallSession {
     public private(set) var state: CallState = .idle {
         didSet {
             guard state != oldValue else { return }
-            if let ended = state.ended(from: oldValue, at: now()) { Analytics.shared.log(ended.event) }
+            Happenings.post(.callChanged(from: oldValue, to: state, at: now()))
             onState?(state)
         }
     }

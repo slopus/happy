@@ -82,11 +82,6 @@ final class Session {
 
     private static var sessions: [String: Session] = [:]
 
-    /// The model catalog of the paired computer `accountID`, if it was read this run.
-    static func catalog(for accountID: String) -> ModelCatalog? {
-        sessions[accountID]?.models.catalog
-    }
-
     /// The session for a paired computer, made once and kept while the app runs.
     static func session(for accountID: String, context: AppContext) -> Session? {
         guard let engine = context.account.agentConnections.syncEngine(for: accountID) else { return nil }

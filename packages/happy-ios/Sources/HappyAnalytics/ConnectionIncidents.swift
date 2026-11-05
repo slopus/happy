@@ -1,7 +1,8 @@
 import Foundation
+import HappyCore
 import HappyWire
 
-/// `connection_issue`: one event per incident, when it ends, and only for
+/// `agent_connection_lost`: one event per incident, when it ends, and only for
 /// one that lasted ten seconds or more in the foreground. An incident is
 /// the agent being looked at (`Link`) staying down; it ends when that link
 /// is back (`recovered`), when the person moves to another agent or none
@@ -67,7 +68,7 @@ public struct ConnectionIncidents: Equatable, Sendable {
         self.incident = nil
         let lasted = now.timeIntervalSince(incident.since)
         guard lasted >= Self.threshold else { return nil }
-        return .connectionIssue(transport: incident.transport, code: incident.code, outcome: outcome, duration: .init(seconds: lasted))
+        return .agentConnectionLost(transport: incident.transport, code: incident.code, outcome: outcome, duration: .init(seconds: lasted))
     }
 }
 

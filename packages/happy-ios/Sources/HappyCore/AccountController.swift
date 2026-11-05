@@ -242,11 +242,8 @@ public final class AccountController {
         }.value
     }
 
-    /// Read-only connections can meet the previous pool's final checkpoint
-    /// while it removes WAL sidecars. Busy handling covers SQL locks; one
-    /// bounded reopen also covers the sidecar-open race.
-    /// Each signed-in Happy account's stored `analyticsOptOut`, the open one
-    /// from its store and the rest from their files. One whose settings
+    /// Each signed-in Happy account's stored `analyticsOptOut` setting, the
+    /// open one from its store and the rest from their files. One whose settings
     /// can't be read counts as opted out; one with no store yet has none.
     public func analyticsOptOuts() async -> [AccountSummary.ID: Bool] {
         let activeStore = session?.store
@@ -274,6 +271,9 @@ public final class AccountController {
         }.value
     }
 
+    /// Read-only connections can meet the previous pool's final checkpoint
+    /// while it removes WAL sidecars. Busy handling covers SQL locks; one
+    /// bounded reopen also covers the sidecar-open race.
     private nonisolated static func readSession(id: String, at url: URL) async throws -> Bool {
         var configuration = Configuration()
         configuration.readonly = true
@@ -303,7 +303,6 @@ public final class AccountController {
         defer { finishOperation() }
         if showsAgentConnections, agentConnections.accounts.contains(where: { $0.id == id }) {
             try await activateAgentConnection(id)
-            Analytics.shared.log(.featureUsed(.accountSwitched))
             return
         }
         let values = try await reconcile()
@@ -320,7 +319,6 @@ public final class AccountController {
         } else {
             try await selectUnconfirmed(registry: updated)
         }
-        Analytics.shared.log(.featureUsed(.accountSwitched))
     }
 
     /// Settles a pending imported server without probing or sending a token

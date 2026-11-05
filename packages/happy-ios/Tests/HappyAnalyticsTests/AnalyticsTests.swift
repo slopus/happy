@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+@testable import HappyAnalytics
 @testable import HappyCore
 import HappyWire
 
@@ -54,7 +55,7 @@ final class AnalyticsTests: XCTestCase {
     func testNothingIsRecordedBeforeTheAppStartsIt() async {
         let analytics = Analytics()
         XCTAssertFalse(analytics.isRecording)
-        analytics.log(.onboardingCompleted)
+        analytics.log(.accountCreated)
         await analytics.settle()
     }
 
@@ -62,11 +63,11 @@ final class AnalyticsTests: XCTestCase {
         let http = http()
         let analytics = started(http)
         analytics.agent = { .init(location: .remote, os: .mac, version: "0.14.2") }
-        analytics.log(.onboardingCompleted)
+        analytics.log(.accountCreated)
         let events = try await sent(analytics, http)
         let properties = try XCTUnwrap(events.first?["properties"]?.objectValue)
         XCTAssertEqual(properties.filter { !$0.key.hasPrefix("$") && $0.key != "distinct_id" }, [
-            "client": .string("ios"), "app_version": .string("2.0.0"), "channel": .string("stable"), "os": .string("ios"),
+            "client": .string("ios"), "app_version": .string("2.0.0"), "flavor": .string("standard"), "os": .string("ios"),
             "os_version": .string("26.1"), "device_class": .string("phone"), "agent_location": .string("remote"),
             "agent_os": .string("mac"), "happy_agent_version": .string("0.14.2"),
         ])
@@ -82,7 +83,7 @@ final class AnalyticsTests: XCTestCase {
         analytics.appEnteredBackground()
         clock += 30 * 60
         analytics.appBecameActive()
-        let opened = try await sent(analytics, http).filter { $0["event"] == .string("app_opened") }.map { $0["properties"]?["cold"] }
+        let opened = try await sent(analytics, http).filter { $0["event"] == .string("app_opened") }.map { $0["properties"]?["is_cold_start"] }
         XCTAssertEqual(opened, [.bool(true), .bool(false)])
     }
 
@@ -92,14 +93,14 @@ final class AnalyticsTests: XCTestCase {
         let storage = InMemoryKeyValueStore()
         let consent = AnalyticsConsent(storage: storage)
         let analytics = started(failing, consent: consent)
-        analytics.log(.onboardingCompleted)
+        analytics.log(.accountCreated)
         consent.setDeviceOptOut(true)
-        analytics.log(.onboardingStepViewed(step: .done))
+        analytics.log(.accountRestored)
         consent.setDeviceOptOut(false)
         failing.on("POST /batch") { _ in (200, Data()) }
-        analytics.log(.onboardingStepViewed(step: .pair))
+        analytics.log(.teamServerSignedIn)
         let events = try await sent(analytics, failing).map { $0["event"]?.stringValue }
-        XCTAssertEqual(events, ["onboarding_step_viewed"], "only what came after opting back in")
+        XCTAssertEqual(events, ["team_server_signed_in"], "only what came after opting back in")
         XCTAssertFalse(AnalyticsConsent(storage: storage).isOptedOut)
     }
 
@@ -124,7 +125,7 @@ final class AnalyticsTests: XCTestCase {
         // First launch: A opted out, B is the account in front.
         let first = started(http, consent: AnalyticsConsent(storage: storage), accounts: ["a": true, "b": false])
         first.appBecameActive()
-        first.log(.onboardingCompleted)
+        first.log(.accountCreated)
         _ = try await sent(first, http)
 
         // Relaunch: B's store opens first; A's is read with the rest.
@@ -133,7 +134,7 @@ final class AnalyticsTests: XCTestCase {
         consent.keepAccounts([])
         consent.setAccount("b", optedOut: false)
         second.appBecameActive()
-        second.log(.onboardingStepViewed(step: .pair))
+        second.log(.teamServerSignedIn)
         second.errorShown(.messageSend, .offline)
         consent.settle(["a": true, "b": false])
         let events = try await sent(second, http)
@@ -146,13 +147,13 @@ final class AnalyticsTests: XCTestCase {
         let consent = AnalyticsConsent(storage: InMemoryKeyValueStore())
         let analytics = started(http, consent: consent, accounts: nil)
         analytics.appBecameActive()
-        analytics.log(.onboardingCompleted)
+        analytics.log(.accountCreated)
         analytics.appEnteredBackground()
         await analytics.settle()
         XCTAssertTrue(http.requests.isEmpty, "the accounts aren't read yet")
         consent.settle(["a": false])
         let events = try await sent(analytics, http).map { $0["event"]?.stringValue }
-        XCTAssertEqual(events, ["app_opened", "onboarding_completed"])
+        XCTAssertEqual(events, ["app_opened", "account_created"])
     }
 
     /// Opting back in while the app is in front starts the flushes again.
@@ -164,7 +165,7 @@ final class AnalyticsTests: XCTestCase {
         analytics.appBecameActive()
         consent.setDeviceOptOut(true)
         consent.setDeviceOptOut(false)
-        analytics.log(.onboardingCompleted)
+        analytics.log(.accountCreated)
         let deadline = ContinuousClock.now + .seconds(3)
         while http.requests("POST /batch").isEmpty, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
         XCTAssertFalse(http.requests("POST /batch").isEmpty, "flushed without going to the background")
@@ -183,14 +184,14 @@ final class AnalyticsTests: XCTestCase {
         var timedOut = down
         timedOut.code = .timeout
         XCTAssertNil(incidents.update(timedOut, at: clock + 25))
-        XCTAssertEqual(incidents.update(link, at: clock + 45), .connectionIssue(transport: .direct, code: .timeout, outcome: .recovered, duration: .from10sTo30s))
+        XCTAssertEqual(incidents.update(link, at: clock + 45), .agentConnectionLost(transport: .direct, code: .timeout, outcome: .recovered, duration: .from10sTo30s))
 
         XCTAssertNil(incidents.update(down, at: clock + 100))
-        XCTAssertEqual(incidents.setForeground(false, at: clock + 400), .connectionIssue(transport: .direct, code: .unknown, outcome: .backgrounded, duration: .from5mTo15m))
+        XCTAssertEqual(incidents.setForeground(false, at: clock + 400), .agentConnectionLost(transport: .direct, code: .unknown, outcome: .backgrounded, duration: .from5mTo15m))
         XCTAssertNil(incidents.update(down, at: clock + 500), "not while in the background")
         XCTAssertNil(incidents.setForeground(true, at: clock + 600))
         let relay = ConnectionIncidents.Link(id: "account-1", transport: .relay, down: false)
-        XCTAssertEqual(incidents.update(relay, at: clock + 2000), .connectionIssue(transport: .direct, code: .unknown, outcome: .gaveUp, duration: .from15mTo1h))
+        XCTAssertEqual(incidents.update(relay, at: clock + 2000), .agentConnectionLost(transport: .direct, code: .unknown, outcome: .gaveUp, duration: .from15mTo1h))
     }
 
     func testTheWatchFollowsOnlyTheLinkTheAppShows() async {
@@ -205,7 +206,7 @@ final class AnalyticsTests: XCTestCase {
         watch.report(.init(id: "relay:x", transport: .relay, down: false))
         XCTAssertEqual(logged, [], "another account's link")
         watch.report(.init(id: "agent:a", transport: .direct, down: false))
-        XCTAssertEqual(logged, [.connectionIssue(transport: .direct, code: .unreachable, outcome: .recovered, duration: .from10sTo30s)])
+        XCTAssertEqual(logged, [.agentConnectionLost(transport: .direct, code: .unreachable, outcome: .recovered, duration: .from10sTo30s)])
     }
 
     func testAConnectionsErrorIsReadByItsTypeAlone() async {
@@ -222,16 +223,18 @@ final class AnalyticsTests: XCTestCase {
                                       failure: .object(["kind": .string("usage_limit"), "message": .string("limit"),
                                                         "provider": .object(["id": .string("claude_work"), "label": .string("Work"), "type": .string("claude")])]))
         let failure = try XCTUnwrap(Failure.of(typed))
-        XCTAssertEqual([failure.kind.rawValue, failure.providerKind?.rawValue], ["usage_limit", "claude"])
+        XCTAssertEqual([failure.kind, failure.providerType], ["usage_limit", "claude"])
         XCTAssertFalse(failure.pool)
         XCTAssertEqual(failure.createdAt, 1_762_344_000_000)
 
         let pool = AgentWire.Message(id: "m2", role: "service", createdAt: 0, content: [],
                                      failure: .object(["kind": .string("no_account_available"), "poolName": .string("Team")]))
-        XCTAssertEqual(Failure.of(pool).map { [$0.kind.rawValue, String($0.pool)] }, ["no_account_available", "true"])
+        XCTAssertEqual(Failure.of(pool).map { [$0.kind ?? "", String($0.pool)] }, ["no_account_available", "true"])
 
         let words = AgentWire.Message(id: "m3", role: "service", createdAt: 0, content: [.text("Something broke")], error: .object([:]))
-        XCTAssertEqual(Failure.of(words)?.kind, .untyped)
+        let untyped = try XCTUnwrap(Failure.of(words))
+        XCTAssertNil(untyped.kind)
+        XCTAssertEqual(AnalyticsEvent.FailureKind(wire: untyped.kind), .untyped)
     }
 
     func testCrashesAreReducedToTheCatalogsReasons() async {
@@ -288,61 +291,91 @@ final class AnalyticsTests: XCTestCase {
         XCTAssertEqual(Code(NSError(domain: "x", code: 1)), .unknown)
     }
 
+    /// A call's end says how it ended and how long it was live; there is no
+    /// start event.
     func testAVoiceSessionEndsOnceWithHowItEndedAndHowLongItWasLive() async {
         let live = CallState.active(.listening, muted: false, since: 100)
-        XCTAssertNil(CallState.connecting.ended(from: .idle, at: 0))
-        XCTAssertNil(CallState.idle.ended(from: .connecting, at: 5))
-        let hungUp = CallState.idle.ended(from: live, at: 190)
-        XCTAssertEqual(hungUp?.event, .voiceSessionEnded(result: .ok, errorCode: nil, duration: .init(seconds: 90)))
-        XCTAssertEqual(hungUp?.seconds, 90)
-        XCTAssertEqual(CallState.ended(.connection).ended(from: live, at: 110)?.event,
-                       .voiceSessionEnded(result: .failed, errorCode: .dropped, duration: .init(seconds: 10)))
-        XCTAssertEqual(CallState.ended(.connection).ended(from: .connecting, at: 3)?.event,
-                       .voiceSessionEnded(result: .failed, errorCode: .connectFailed, duration: .init(seconds: 0)))
-        XCTAssertEqual(CallState.ended(.microphonePermission).ended(from: .connecting, at: 1)?.event.properties["error_code"], .string("mic_denied"))
-        XCTAssertNil(CallState.ended(.connection).ended(from: .ended(.connection), at: 4))
+        XCTAssertNil(CallState.connecting.event(from: .idle, at: 0))
+        XCTAssertNil(live.event(from: .connecting, at: 100), "no start event")
+        XCTAssertNil(CallState.idle.event(from: .connecting, at: 5))
+        XCTAssertEqual(CallState.idle.event(from: live, at: 190), .voiceSessionStopped(duration: .init(seconds: 90)))
+        XCTAssertEqual(CallState.ended(.connection).event(from: live, at: 110), .voiceSessionError(errorCode: .dropped, duration: .init(seconds: 10)))
+        XCTAssertEqual(CallState.ended(.connection).event(from: .connecting, at: 3), .voiceSessionError(errorCode: .connectFailed, duration: nil))
+        XCTAssertEqual(CallState.ended(.microphonePermission).event(from: .connecting, at: 1)?.properties["error_code"], .string("mic_denied"))
+        XCTAssertNil(CallState.ended(.connection).event(from: .ended(.connection), at: 4))
     }
 
     func testPurchasesAndRestoresSayOnlyHowTheyEnded() async {
-        XCTAssertEqual(Subscription.PurchaseResult.purchased.event, .purchaseResult(product: .pro, result: .ok, errorCode: nil))
-        XCTAssertEqual(Subscription.PurchaseResult.cancelled.event, .purchaseResult(product: .pro, result: .cancelled, errorCode: nil))
-        XCTAssertEqual(Subscription.PurchaseResult.unconfirmed.event, .purchaseResult(product: .pro, result: .failed, errorCode: .verificationFailed))
-        XCTAssertEqual(Subscription.PurchaseResult.unavailable.event, .purchaseResult(product: .pro, result: .failed, errorCode: .storeUnavailable))
-        XCTAssertEqual(Subscription.RestoreResult.restored.event, .purchaseResult(product: .pro, result: .restored, errorCode: nil))
-        XCTAssertEqual(Subscription.RestoreResult.nothingFound.event, .purchaseResult(product: .pro, result: .nothingToRestore, errorCode: nil))
+        XCTAssertEqual(Subscription.PurchaseResult.purchased.event, .paywallPurchased(product: .pro))
+        XCTAssertEqual(Subscription.PurchaseResult.cancelled.event, .paywallCancelled(product: .pro))
+        XCTAssertEqual(Subscription.PurchaseResult.pending.event, .paywallError(product: .pro, errorCode: .pending))
+        XCTAssertEqual(Subscription.PurchaseResult.unconfirmed.event, .paywallError(product: .pro, errorCode: .verificationFailed))
+        XCTAssertEqual(Subscription.PurchaseResult.unavailable.event, .paywallError(product: .pro, errorCode: .storeUnavailable))
+        XCTAssertEqual(Subscription.RestoreResult.restored.event, .paywallRestored(product: .pro))
+        XCTAssertEqual(Subscription.RestoreResult.nothingFound.event, .paywallError(product: .pro, errorCode: .nothingToRestore))
     }
 
-    func testAModelPickCountsEachThingItChanged() async {
-        let mode = AgentWire.Mode(providerId: "p", modelId: "m", effort: "high", serviceTier: nil, permissionMode: "default")
-        var effort = mode
-        effort.effort = "low"
-        var both = mode
-        both.modelId = "n"
-        both.permissionMode = "plan"
-        XCTAssertEqual(AnalyticsEvent.Feature.changes(from: mode, to: mode), [])
-        XCTAssertEqual(AnalyticsEvent.Feature.changes(from: mode, to: effort), [.effortChanged])
-        XCTAssertEqual(AnalyticsEvent.Feature.changes(from: mode, to: both), [.modelChanged, .permissionModeChanged])
+    /// What the core posts becomes the catalog's events: a start by what it
+    /// made, a failed create with only why, a new conversation only once it
+    /// starts, and a shown error by its type alone.
+    func testWhatTheCorePostsBecomesTheCatalogsEvents() async throws {
+        func launch(target: HappyAgentSpawnTarget? = nil, bot: NewSessionLaunch.Bot? = nil, agent: NewSessionDraft.Agent = .claude) -> NewSessionLaunch {
+            NewSessionLaunch(machineId: "m", agent: agent, rigMetadata: nil, absolutePath: "/Users/kirill/secret", worktreeSelection: "__none__",
+                             worktreeCreationMachineId: nil, target: target, permissionMode: "default", modelMode: "opus",
+                             effortLevel: "high", prompt: "private words", attachments: [], signature: .init(machineId: "m", agent: "claude", place: "/x", worktree: nil, modelKey: nil, permissionMode: nil, effort: nil), bot: bot)
+        }
+        let opened = AnalyticsEvent.conversationCreated(source: .home, model: "opus", modelProviderKind: .claude, effort: .high)
+        XCTAssertEqual(Analytics.started(launch(), .made), [opened])
+        XCTAssertEqual(Analytics.started(launch(), .failed(URLError(.timedOut))), [], "a conversation that never started")
+        XCTAssertEqual(Analytics.started(launch(target: .task(name: "Secret")), .refused), [.taskCreated(result: .failed, errorCode: .refused)])
+        XCTAssertEqual(Analytics.started(launch(bot: .init(name: "Ada", faceSeed: "s")), .failed(URLError(.notConnectedToInternet))),
+                       [.botCreated(source: .home, result: .failed, errorCode: .offline)])
+        XCTAssertEqual(Analytics.started(launch(target: .bot(name: "Ada")), .made), [.botCreated(source: .home, result: .ok, errorCode: nil), opened])
+        XCTAssertEqual(AnalyticsEvent.conversationCreated(source: .home, model: "opus", modelProviderKind: .claude, effort: .high).properties["model"],
+                       .string("other"), "a Happy CLI model key is not a vendor id")
+        XCTAssertEqual(AnalyticsEvent.taskCreated(result: .failed, errorCode: nil).properties["error_code"], .string("unknown"))
+        XCTAssertNil(AnalyticsEvent.taskCreated(result: .ok, errorCode: nil).properties["error_code"])
+
+        let http = http()
+        let analytics = started(http)
+        analytics.receive(.relayMessageQueued(source: .voice, attachments: 2))
+        analytics.receive(.newWorkMade(.task, .made))
+        analytics.receive(.errorShown(.attachmentUpload, URLError(.notConnectedToInternet)))
+        analytics.receive(.errorShown(.messageSend, CancellationError()))
+        analytics.receive(.callChanged(from: .active(.listening, muted: false, since: 0), to: .idle, at: 40))
+        let events = try await sent(analytics, http)
+        XCTAssertEqual(events.map { $0["event"]?.stringValue }, ["message_sent", "task_created", "error_shown", "voice_session_stopped"])
+        XCTAssertEqual(events[0]["properties"]?["source"], .string("voice"))
+        XCTAssertEqual(events[0]["properties"]?["session_client"], .string("cli"))
+        XCTAssertEqual(events[0]["properties"]?["has_attachment"], .bool(true))
+        XCTAssertEqual(events[0]["properties"]?["is_steering"], .bool(false))
+        XCTAssertEqual(events[2]["properties"]?["area"], .string("attachment_upload"))
+        XCTAssertEqual(events[2]["properties"]?["code"], .string("offline"))
     }
 
-    /// `provider_kinds` and `provider_accounts` are the active agent's
-    /// switched-on providers, and nothing when that isn't known.
-    func testTheProviderSnapshotIsTheActiveAgentsOnly() async {
-        var config = AnalyticsEvent.AppConfig(theme: .dark)
-        config.setProviders(nil)
-        XCTAssertNil(config.providerKinds)
-        XCTAssertNil(config.providerAccounts)
-        let model = ModelCatalog.Model(id: "anthropic/opus-5", name: "Opus", efforts: ["high"], defaultEffort: "high")
-        let catalog = ModelCatalog(defaultProviderId: "work", defaultModelId: "anthropic/opus-5", models: [], providers: [
-            .init(id: "work", name: "Work", type: "claude", enabled: true, hidden: false, models: [model]),
-            .init(id: "home", name: "Home", type: "claude", enabled: true, hidden: false, models: [model]),
-            .init(id: "off", name: nil, type: "codex", enabled: false, hidden: false, models: [model]),
-            .init(id: "mine", name: nil, type: "acme", enabled: true, hidden: false, models: [model]),
+    /// The chat screen's send: `message_sent` once it is accepted, a steer
+    /// when the agent was working, and new work's first message opens a
+    /// conversation too. Nothing goes for a send never accepted.
+    func testAChatSendIsSentOnceAcceptedAndNewWorkOpensAConversation() async throws {
+        let http = http()
+        let analytics = started(http)
+        var spaces = Snapshot()
+        spaces.botAgentIds = ["bot"]
+        let mode = AgentWire.Mode(providerId: "work", modelId: "anthropic/opus-5-5", effort: "high", serviceTier: nil, permissionMode: "auto")
+        let catalog = ModelCatalog(defaultProviderId: "work", defaultModelId: "anthropic/opus-5-5", models: [], providers: [
+            .init(id: "work", name: "Work", type: "claude", enabled: true, hidden: false, models: []),
         ])
-        config.setProviders(catalog)
-        XCTAssertEqual(config.providerKinds, [.claude, .other])
-        XCTAssertEqual(config.providerAccounts, .threeOrMore)
-        config.setProviders(nil)
-        XCTAssertNil(config.providerKinds, "a Happy CLI account in front")
+        _ = analytics.agentSend(to: "bot", in: spaces, mode: mode, catalog: catalog, opensConversation: false, attachments: 0, steering: false)
+        analytics.agentSend(to: "bot", in: spaces, mode: mode, catalog: catalog, opensConversation: false, attachments: 0, steering: true)()
+        analytics.agentSend(to: "new", in: spaces, mode: mode, catalog: catalog, opensConversation: true, attachments: 1, steering: false)()
+        let events = try await sent(analytics, http)
+        XCTAssertEqual(events.map { $0["event"]?.stringValue }, ["message_sent", "conversation_created", "message_sent"])
+        XCTAssertEqual(events[0]["properties"]?["target"], .string("bot"))
+        XCTAssertEqual(events[0]["properties"]?["is_steering"], .bool(true))
+        XCTAssertEqual(events[1]["properties"]?["model"], .string("anthropic/opus-5-5"))
+        XCTAssertEqual(events[1]["properties"]?["model_provider_kind"], .string("claude"))
+        XCTAssertEqual(events[2]["properties"]?["source"], .string("new_session"))
+        XCTAssertEqual(events[2]["properties"]?["has_attachment"], .bool(true))
     }
 
     /// `chat_failure_shown` reads the rows the transcript reports on
@@ -361,7 +394,9 @@ final class AnalyticsTests: XCTestCase {
         XCTAssertTrue(rows.update("reply", shown: true))
         XCTAssertTrue(rows.update("new-failure", shown: true))
         XCTAssertFalse(rows.update("new-failure", shown: true), "still on screen: not again")
-        let reported = rows.ids.compactMap { snapshot.failuresByID[$0] != nil ? $0 : nil }
+        let reported = rows.ids.filter { id in
+            if case .failure? = snapshot.items.first(where: { $0.id == id })?.role { true } else { false }
+        }
         XCTAssertEqual(reported, ["new-failure"])
         XCTAssertFalse(rows.update("new-failure", shown: false))
         XCTAssertEqual(rows.ids, ["reply"])
@@ -378,7 +413,7 @@ final class AnalyticsTests: XCTestCase {
         XCTAssertEqual(AnalyticsEvent.MessageSent.voice(to: "task", in: snapshot).target, .session)
         let event = AnalyticsEvent.messageSent(.voice(to: "task", in: snapshot))
         let admitted = try XCTUnwrap(AnalyticsSchema.admit(event.name, event.properties, common: [
-            "client": .string("ios"), "app_version": .string("2.0.0"), "channel": .string("stable"), "os": .string("ios"),
+            "client": .string("ios"), "app_version": .string("2.0.0"), "flavor": .string("standard"), "os": .string("ios"),
             "os_version": .string("26.1"), "device_class": .string("phone"), "agent_location": .null, "agent_os": .null,
             "happy_agent_version": .null,
         ]))

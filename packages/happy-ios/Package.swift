@@ -34,7 +34,7 @@ let package = Package(
         // The app itself. xtool expects this to be the product it packages.
         .library(name: "HappyApp", targets: ["HappyApp"]),
         // Everything the app is built from, for the XcodeGen app target.
-        .library(name: "HappyKit", targets: ["HappyCrypto", "HappyWire", "HappyStore", "HappyCore", "HappyLayout", "HappyIcons", "HappyUI"]),
+        .library(name: "HappyKit", targets: ["HappyCrypto", "HappyWire", "HappyStore", "HappyCore", "HappyAnalytics", "HappyLayout", "HappyIcons", "HappyUI"]),
         .library(name: "HappyGuestKit", targets: ["HappyGuest", "HappyGuestUI"]),
         // Native platform shells share services/models, never UI frameworks.
         .library(name: "HappyClientKit", targets: ["HappyCrypto", "HappyWire", "HappyStore", "HappyCore", "HappyLayout", "HappyIcons"]),
@@ -82,6 +82,13 @@ let package = Package(
             ]
         ),
         .target(
+            // Product analytics (docs/analytics-catalog.json), on its own:
+            // HappyCore never imports it. Deleting this target and the
+            // facade's call sites in HappyUI and HappyApp removes it all.
+            name: "HappyAnalytics",
+            dependencies: ["HappyCore", "HappyWire", "HappyStore"]
+        ),
+        .target(
             // Foundation only, no UIKit: sizes in, frames out.
             name: "HappyLayout"
         ),
@@ -95,7 +102,7 @@ let package = Package(
         .target(
             name: "HappyUI",
             dependencies: [
-                "HappyCore", "HappyCrypto", "HappyWire", "HappyStore", "HappyLayout", "HappyIcons",
+                "HappyCore", "HappyAnalytics", "HappyCrypto", "HappyWire", "HappyStore", "HappyLayout", "HappyIcons",
                 .product(name: "ElevenLabs", package: "elevenlabs-swift-sdk", condition: .when(platforms: [.iOS])),
                 .product(name: "UltraView", package: "ultraview", condition: .when(platforms: [.iOS])),
                 .product(name: "Lottie", package: "lottie-spm", condition: .when(platforms: [.iOS])),
@@ -106,7 +113,7 @@ let package = Package(
         ),
         .target(
             name: "HappyApp",
-            dependencies: ["HappyCore", "HappyStore", "HappyUI", "HappyGuestUI", "HappyGuest"]
+            dependencies: ["HappyCore", "HappyAnalytics", "HappyStore", "HappyUI", "HappyGuestUI", "HappyGuest"]
         ),
         .testTarget(
             name: "HappyCryptoTests",
@@ -125,6 +132,10 @@ let package = Package(
             name: "HappyCoreTests",
             dependencies: ["HappyCore", "HappyCrypto"],
             resources: [.copy("Fixtures")]
+        ),
+        .testTarget(
+            name: "HappyAnalyticsTests",
+            dependencies: ["HappyAnalytics", "HappyCore", "HappyStore"]
         ),
         .testTarget(
             name: "HappyLayoutTests",

@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import HappyAnalytics
 import HappyCore
 import UIKit
 
@@ -23,7 +24,7 @@ final class LegacyLink {
     }
 
     private weak var session: AccountSession?
-    /// `connection_issue`'s name for this account's link.
+    /// `agent_connection_lost`'s name for this account's link.
     private let watchID: String
     let indicator: LinkIndicator
     private var networkWatch: NetworkPathWatch?

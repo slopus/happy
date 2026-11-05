@@ -334,7 +334,7 @@ public final class AgentConnections {
             jobs[account.id] = Task.detached { [weak self] in
                 var current = account
                 var attempt = 0
-                var issue = AnalyticsEvent.ConnectionCode.unknown
+                var issue: (any Error)?
                 while !Task.isCancelled {
                     let transport = AgentEndpointTransport(endpoint: endpoint, metrics: meter, make: make)
                     do {
@@ -349,11 +349,11 @@ public final class AgentConnections {
                         }
                     } catch PairingError.revoked {
                         current.revoked = true; current.status = .revoked
-                        if !Task.isCancelled { await self?.apply(current, generation: generation, issue: current.server == nil ? .revoked : .authExpired) }
+                        if !Task.isCancelled { await self?.apply(current, generation: generation, issue: PairingError.revoked) }
                         await transport.close()
                         return
                     } catch {
-                        issue = AnalyticsEvent.ConnectionCode(error)
+                        issue = error
                     }
                     await transport.close()
                     if Task.isCancelled { return }
@@ -367,19 +367,12 @@ public final class AgentConnections {
         }
     }
 
-    /// What `connection_issue` reads of an agent's connection: down while
-    /// it retries or is revoked, up once connected or paused.
-    nonisolated static func link(_ account: AgentConnection, issue: AnalyticsEvent.ConnectionCode) -> ConnectionIncidents.Link {
-        let down = account.status == .retrying || account.status == .revoked
-        return ConnectionIncidents.Link(id: "agent:\(account.id)", transport: account.server == nil ? .direct : .remote, down: down, code: down ? issue : .unknown)
-    }
-
     nonisolated static func retryDelay(_ attempt: Int) -> Int { min(30, 1 << max(0, min(5, attempt))) }
 
-    private func apply(_ account: AgentConnection, generation: UInt64, issue: AnalyticsEvent.ConnectionCode = .unknown) async {
+    private func apply(_ account: AgentConnection, generation: UInt64, issue: (any Error)? = nil) async {
         guard !Task.isCancelled, self.generation == generation,
               let index = accounts.firstIndex(where: { $0.id == account.id }) else { return }
-        ConnectionWatch.shared.report(Self.link(account, issue: issue))
+        Happenings.post(.agentConnectionChanged(account, problem: issue))
         let previous = accounts[index]
         guard previous != account else { return }
         accounts[index] = account

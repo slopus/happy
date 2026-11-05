@@ -1,5 +1,6 @@
 #if canImport(UIKit)
 import Foundation
+import HappyAnalytics
 import HappyCore
 import HappyUI
 import UIKit
@@ -32,27 +33,15 @@ enum CompositionRoot {
         return AppContext(account: account, variant: variant, version: version)
     }
 
-    /// The switch Settings shows, always; sending only from a build that may
-    /// (`Analytics.destination`).
     private static func startAnalytics(bundle: Bundle, variant: AppVariant, version: String) {
         #if DEBUG
         let debug = true
         #else
         let debug = false
         #endif
-        let environment = ProcessInfo.processInfo.environment
-        let automated = Analytics.isAutomated()
-        // PostHog's /flags is asked only where analytics may send.
-        MigrationNoteFlag.shared.permitted = !debug && !automated
-        let destination = Analytics.destination(apiKey: MigrationNoteFlag.apiKey(bundle: bundle), debug: debug,
-                                                automated: automated, environment: environment)
-        let setup = destination.map {
-            Analytics.Setup(destination: $0, file: storeDirectory()?.appendingPathComponent("analytics.json"),
-                            transport: URLSessionTransport(), variant: variant, appVersion: version,
-                            osVersion: ProcessInfo.processInfo.operatingSystemVersion,
-                            deviceClass: UIDevice.current.userInterfaceIdiom == .pad ? .tablet : .phone)
-        }
-        Analytics.shared.start(setup, consent: AnalyticsConsent(storage: UserDefaultsStore(suiteName: "happy-analytics")))
+        Analytics.shared.launch(apiKey: MigrationNoteFlag.apiKey(bundle: bundle), debug: debug, variant: variant, appVersion: version,
+                                file: storeDirectory()?.appendingPathComponent("analytics.json"),
+                                deviceClass: UIDevice.current.userInterfaceIdiom == .pad ? .tablet : .phone)
     }
 
     /// Application Support/Happy, as a path only: nothing touches the disk

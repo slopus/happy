@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 4,
   "about": "Happy product analytics catalog shared by Happy Desktop, happy-ios and happy-android. Every event and property a client may send. Values are closed enums, counts, booleans, versions, or the model rule; nothing else may leave a client. Clients send only the events listed for them. Optional properties may be omitted; nullable properties may be null.",
   "types": {
     "count": "integer 0..1000000",
@@ -64,6 +64,7 @@
     ],
     "pairing_surface": [
       "onboarding",
+      "mobile_access",
       "settings",
       "connect_agent"
     ],
@@ -88,6 +89,17 @@
       "1",
       "2",
       "3+"
+    ],
+    "permission_mode": [
+      "auto",
+      "workspace_write",
+      "read_only",
+      "full_access"
+    ],
+    "create_error_code": [
+      "refused",
+      "offline",
+      "unknown"
     ]
   },
   "common": {
@@ -100,14 +112,6 @@
     },
     "app_version": {
       "type": "version"
-    },
-    "channel": {
-      "enum": [
-        "stable",
-        "preview",
-        "nightly",
-        "development"
-      ]
     },
     "os": {
       "enum": [
@@ -160,6 +164,14 @@
     "happy_agent_version": {
       "type": "version",
       "nullable": true
+    },
+    "flavor": {
+      "enum": [
+        "standard",
+        "nightly",
+        "preview",
+        "development"
+      ]
     }
   },
   "events": {
@@ -179,9 +191,6 @@
           "enum": "provider_kind",
           "nullable": true
         },
-        "pool": {
-          "type": "bool"
-        },
         "target": {
           "enum": [
             "chief_of_staff",
@@ -194,17 +203,20 @@
             "happy_agent",
             "cli"
           ]
+        },
+        "is_pool": {
+          "type": "bool"
         }
       }
     },
-    "chat_failure_action": {
+    "chat_failure_action_clicked": {
       "tier": "error",
       "clients": [
         "desktop",
         "ios",
         "android"
       ],
-      "fires": "The person acts on a failure card, on the device where they tapped.",
+      "fires": "The person taps an action on a failure card, on the device where they tapped.",
       "properties": {
         "kind": {
           "enum": "failure_kind"
@@ -222,14 +234,14 @@
         }
       }
     },
-    "connection_issue": {
+    "agent_connection_lost": {
       "tier": "error",
       "clients": [
         "desktop",
         "ios",
         "android"
       ],
-      "fires": "Once per incident, when it ends, only if the connection to the agent (or relay) was down for 10 seconds or more while the app was in the foreground. Reconnects under 10 s send nothing.",
+      "fires": "Once per outage, when it ends, only if the connection to the agent (or relay) was down for 10 seconds or more while the app was in the foreground. Reconnects under 10 s send nothing.",
       "properties": {
         "transport": {
           "enum": [
@@ -263,7 +275,7 @@
         "duration": {
           "enum": "duration"
         },
-        "recovery_screen": {
+        "is_recovery_screen_shown": {
           "type": "bool"
         }
       }
@@ -275,7 +287,7 @@
         "ios",
         "android"
       ],
-      "fires": "Any other error state a person saw. At most one per (area, code) per 10 minutes per device; suppressed occurrences are added to repeat_count of the next one sent.",
+      "fires": "Any other error state a person saw. At most one per (area, code) per 10 minutes per device; suppressed occurrences are added to repeat_count of the next one sent. Failed creates are not error_shown: they are the *_created / project_added events with result failed.",
       "properties": {
         "area": {
           "enum": [
@@ -290,10 +302,6 @@
             "voice",
             "model_list",
             "settings_save",
-            "project_add",
-            "workspace_create",
-            "bot_create",
-            "task_create",
             "push_setup",
             "update",
             "ui_render"
@@ -307,7 +315,7 @@
         }
       }
     },
-    "app_crash": {
+    "app_crashed": {
       "tier": "error",
       "clients": [
         "desktop",
@@ -338,160 +346,6 @@
         },
         "crashed_version": {
           "type": "version",
-          "nullable": true
-        }
-      }
-    },
-    "pairing_result": {
-      "tier": "error",
-      "clients": [
-        "desktop",
-        "ios",
-        "android"
-      ],
-      "fires": "A phone pairing ends: linked, failed, or abandoned. Replaces desktop mobile_pairing_completed/failed/cancelled and iOS pairing_completed/failed/cancelled.",
-      "properties": {
-        "side": {
-          "enum": [
-            "desktop",
-            "phone"
-          ]
-        },
-        "method": {
-          "enum": "pairing_method"
-        },
-        "start": {
-          "enum": [
-            "code_shown",
-            "scan",
-            "paste_link",
-            "opened_link"
-          ]
-        },
-        "result": {
-          "enum": "result"
-        },
-        "error_code": {
-          "enum": [
-            "invalid_code",
-            "expired",
-            "rejected",
-            "emoji_mismatch",
-            "invalid_proof",
-            "invalid_response",
-            "unavailable",
-            "revoked",
-            "disabled",
-            "update_required",
-            "profile_required",
-            "sign_in_required",
-            "unknown"
-          ],
-          "nullable": true
-        }
-      }
-    },
-    "sign_in_result": {
-      "tier": "error",
-      "clients": [
-        "ios",
-        "android"
-      ],
-      "fires": "Creating, restoring, or signing in to an account ends.",
-      "properties": {
-        "method": {
-          "enum": [
-            "relay_create",
-            "relay_restore",
-            "team_server"
-          ]
-        },
-        "result": {
-          "enum": "result"
-        },
-        "error_code": {
-          "enum": [
-            "invalid_address",
-            "no_sign_in",
-            "edge_blocked",
-            "unreachable",
-            "denied",
-            "expired",
-            "invalid_token",
-            "rejected",
-            "profile_required",
-            "wrong_server",
-            "unknown"
-          ],
-          "nullable": true
-        }
-      }
-    },
-    "voice_session_ended": {
-      "tier": "error",
-      "clients": [
-        "desktop",
-        "ios",
-        "android"
-      ],
-      "fires": "A voice session ends, whether it worked or not. One event per session; there is no start event.",
-      "properties": {
-        "result": {
-          "enum": [
-            "ok",
-            "failed"
-          ]
-        },
-        "error_code": {
-          "enum": [
-            "mic_denied",
-            "connect_failed",
-            "dropped",
-            "quota_exhausted",
-            "unknown"
-          ],
-          "nullable": true
-        },
-        "duration": {
-          "enum": "duration"
-        }
-      }
-    },
-    "purchase_result": {
-      "tier": "error",
-      "clients": [
-        "ios",
-        "android"
-      ],
-      "fires": "A store purchase or restore ends. product is the entitlement granted (Android's 'Support Happy' subscription grants pro).",
-      "properties": {
-        "product": {
-          "enum": [
-            "pro",
-            "support",
-            "voice",
-            "other"
-          ]
-        },
-        "result": {
-          "enum": [
-            "ok",
-            "failed",
-            "cancelled",
-            "restored",
-            "nothing_to_restore",
-            "pending"
-          ]
-        },
-        "error_code": {
-          "enum": [
-            "store_unavailable",
-            "payment_invalid",
-            "not_allowed",
-            "network",
-            "verification_failed",
-            "unknown"
-          ],
           "nullable": true
         }
       }
@@ -558,6 +412,178 @@
         }
       }
     },
+    "mobile_pairing_completed": {
+      "tier": "error",
+      "clients": [
+        "desktop",
+        "ios",
+        "android"
+      ],
+      "fires": "A phone pairing linked. Existing desktop event; the phones send the same name.",
+      "properties": {
+        "method": {
+          "enum": "pairing_method"
+        },
+        "start": {
+          "enum": [
+            "scan",
+            "paste_link",
+            "opened_link"
+          ],
+          "optional": true,
+          "note": "phone only"
+        }
+      }
+    },
+    "mobile_pairing_failed": {
+      "tier": "error",
+      "clients": [
+        "desktop",
+        "ios",
+        "android"
+      ],
+      "fires": "A phone pairing ended unlinked by an error or a refusal. Existing desktop event, now with error_code.",
+      "properties": {
+        "method": {
+          "enum": "pairing_method"
+        },
+        "start": {
+          "enum": [
+            "scan",
+            "paste_link",
+            "opened_link"
+          ],
+          "optional": true,
+          "note": "phone only"
+        },
+        "error_code": {
+          "enum": [
+            "invalid_code",
+            "expired",
+            "rejected",
+            "emoji_mismatch",
+            "invalid_proof",
+            "invalid_response",
+            "unavailable",
+            "revoked",
+            "disabled",
+            "update_required",
+            "profile_required",
+            "sign_in_required",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "mobile_pairing_cancelled": {
+      "tier": "error",
+      "clients": [
+        "desktop",
+        "ios",
+        "android"
+      ],
+      "fires": "A pairing in progress was left. Existing desktop event.",
+      "properties": {
+        "method": {
+          "enum": "pairing_method"
+        },
+        "start": {
+          "enum": [
+            "scan",
+            "paste_link",
+            "opened_link"
+          ],
+          "optional": true,
+          "note": "phone only"
+        }
+      }
+    },
+    "sign_in_failed": {
+      "tier": "error",
+      "clients": [
+        "ios",
+        "android"
+      ],
+      "fires": "Creating, restoring, or signing in to an account failed. Leaving the flow sends nothing.",
+      "properties": {
+        "method": {
+          "enum": [
+            "relay_create",
+            "relay_restore",
+            "team_server"
+          ]
+        },
+        "error_code": {
+          "enum": [
+            "invalid_address",
+            "no_sign_in",
+            "edge_blocked",
+            "unreachable",
+            "denied",
+            "expired",
+            "invalid_token",
+            "rejected",
+            "profile_required",
+            "wrong_server",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "voice_session_error": {
+      "tier": "error",
+      "clients": [
+        "desktop",
+        "ios",
+        "android"
+      ],
+      "fires": "A voice session failed to start or dropped.",
+      "properties": {
+        "error_code": {
+          "enum": [
+            "mic_denied",
+            "connect_failed",
+            "dropped",
+            "quota_exhausted",
+            "unknown"
+          ]
+        },
+        "duration": {
+          "enum": "duration",
+          "nullable": true
+        }
+      }
+    },
+    "paywall_error": {
+      "tier": "error",
+      "clients": [
+        "ios",
+        "android"
+      ],
+      "fires": "A purchase or restore failed.",
+      "properties": {
+        "product": {
+          "enum": [
+            "pro",
+            "support",
+            "voice",
+            "other"
+          ]
+        },
+        "error_code": {
+          "enum": [
+            "store_unavailable",
+            "payment_invalid",
+            "not_allowed",
+            "network",
+            "verification_failed",
+            "nothing_to_restore",
+            "pending",
+            "unknown"
+          ]
+        }
+      }
+    },
     "app_opened": {
       "tier": "usage",
       "clients": [
@@ -565,21 +591,10 @@
         "ios",
         "android"
       ],
-      "fires": "Desktop: once per launch. Mobile: a cold start, or returning to the foreground after 30 minutes or more in the background. Carries a small configuration snapshot so settings and setup can be measured without any other event.",
+      "fires": "Desktop: once per launch. Mobile: a cold start, or returning to the foreground after 30 minutes or more in the background. Carries only notifications permission, app language, and how many agents are connected.",
       "properties": {
         "launch_count": {
           "type": "count"
-        },
-        "cold": {
-          "type": "bool"
-        },
-        "theme": {
-          "enum": [
-            "light",
-            "dark",
-            "system"
-          ],
-          "optional": true
         },
         "app_language": {
           "enum": [
@@ -609,21 +624,8 @@
           "enum": "bucket_123",
           "optional": true
         },
-        "relay_accounts": {
-          "enum": "bucket_123",
-          "optional": true
-        },
-        "provider_kinds": {
-          "enum[]": "provider_kind",
-          "optional": true
-        },
-        "provider_accounts": {
-          "enum": "bucket_123",
-          "optional": true
-        },
-        "experiments_on": {
-          "type": "bool",
-          "optional": true
+        "is_cold_start": {
+          "type": "bool"
         }
       }
     },
@@ -684,15 +686,255 @@
         },
         "has_attachment": {
           "type": "bool"
+        },
+        "is_steering": {
+          "type": "bool",
+          "note": "sent while the agent was still working"
+        }
+      }
+    },
+    "conversation_created": {
+      "tier": "usage",
+      "clients": [
+        "desktop",
+        "ios",
+        "android"
+      ],
+      "fires": "A new conversation starts. Existing desktop event, kept.",
+      "properties": {
+        "source": {
+          "enum": [
+            "workspace",
+            "command_palette",
+            "shortcut",
+            "voice",
+            "home"
+          ]
+        },
+        "model": {
+          "type": "model",
+          "nullable": true
+        },
+        "model_provider_kind": {
+          "enum": "provider_kind",
+          "nullable": true
+        },
+        "effort": {
+          "enum": "effort",
+          "nullable": true
+        }
+      }
+    },
+    "project_added": {
+      "tier": "usage",
+      "clients": [
+        "desktop"
+      ],
+      "fires": "Existing desktop event, kept: fires when the attempt ends, ok or failed.",
+      "properties": {
+        "source": {
+          "enum": [
+            "open_folder",
+            "clone_github"
+          ]
+        },
+        "result": {
+          "enum": [
+            "ok",
+            "failed"
+          ]
+        },
+        "error_code": {
+          "enum": "create_error_code",
+          "optional": true
+        }
+      }
+    },
+    "workspace_created": {
+      "tier": "usage",
+      "clients": [
+        "desktop"
+      ],
+      "fires": "Existing desktop event, kept: fires when the attempt ends.",
+      "properties": {
+        "result": {
+          "enum": [
+            "ok",
+            "failed"
+          ]
+        },
+        "error_code": {
+          "enum": "create_error_code",
+          "optional": true
+        }
+      }
+    },
+    "bot_created": {
+      "tier": "usage",
+      "clients": [
+        "desktop",
+        "ios",
+        "android"
+      ],
+      "fires": "Existing desktop event, kept: fires when the attempt ends.",
+      "properties": {
+        "source": {
+          "enum": [
+            "sidebar",
+            "voice",
+            "home"
+          ]
+        },
+        "result": {
+          "enum": [
+            "ok",
+            "failed"
+          ]
+        },
+        "error_code": {
+          "enum": "create_error_code",
+          "optional": true
+        }
+      }
+    },
+    "task_created": {
+      "tier": "usage",
+      "clients": [
+        "desktop",
+        "ios",
+        "android"
+      ],
+      "fires": "A task was created, when the attempt ends.",
+      "properties": {
+        "result": {
+          "enum": [
+            "ok",
+            "failed"
+          ]
+        },
+        "error_code": {
+          "enum": "create_error_code",
+          "optional": true
+        }
+      }
+    },
+    "account_created": {
+      "tier": "usage",
+      "clients": [
+        "ios",
+        "android"
+      ],
+      "fires": "A new Happy (relay) account was created on the phone. Name kept from the earlier app.",
+      "properties": {}
+    },
+    "account_restored": {
+      "tier": "usage",
+      "clients": [
+        "ios",
+        "android"
+      ],
+      "fires": "An existing Happy account was restored on the phone (on success; the earlier app sent it at restore start).",
+      "properties": {}
+    },
+    "team_server_signed_in": {
+      "tier": "usage",
+      "clients": [
+        "ios",
+        "android"
+      ],
+      "fires": "Sign-in to a team server succeeded.",
+      "properties": {}
+    },
+    "voice_session_stopped": {
+      "tier": "usage",
+      "clients": [
+        "desktop",
+        "ios",
+        "android"
+      ],
+      "fires": "A connected voice session ended normally. Also the voice usage event: there is no start event.",
+      "properties": {
+        "duration": {
+          "enum": "duration"
+        }
+      }
+    },
+    "paywall_presented": {
+      "tier": "usage",
+      "clients": [
+        "ios",
+        "android"
+      ],
+      "fires": "A purchase screen was presented. Name kept from the earlier app.",
+      "properties": {
+        "product": {
+          "enum": [
+            "pro",
+            "support",
+            "voice",
+            "other"
+          ]
+        }
+      }
+    },
+    "paywall_purchased": {
+      "tier": "usage",
+      "clients": [
+        "ios",
+        "android"
+      ],
+      "fires": "A purchase completed.",
+      "properties": {
+        "product": {
+          "enum": [
+            "pro",
+            "support",
+            "voice",
+            "other"
+          ]
+        }
+      }
+    },
+    "paywall_restored": {
+      "tier": "usage",
+      "clients": [
+        "ios",
+        "android"
+      ],
+      "fires": "A restore found and restored a purchase.",
+      "properties": {
+        "product": {
+          "enum": [
+            "pro",
+            "support",
+            "voice",
+            "other"
+          ]
+        }
+      }
+    },
+    "paywall_cancelled": {
+      "tier": "usage",
+      "clients": [
+        "ios",
+        "android"
+      ],
+      "fires": "The person cancelled the store sheet.",
+      "properties": {
+        "product": {
+          "enum": [
+            "pro",
+            "support",
+            "voice",
+            "other"
+          ]
         }
       }
     },
     "onboarding_step_viewed": {
       "tier": "usage",
       "clients": [
-        "desktop",
-        "ios",
-        "android"
+        "desktop"
       ],
       "fires": "The onboarding step changes.",
       "properties": {
@@ -714,9 +956,7 @@
     "onboarding_completed": {
       "tier": "usage",
       "clients": [
-        "desktop",
-        "ios",
-        "android"
+        "desktop"
       ],
       "fires": "Onboarding reaches its end.",
       "properties": {}
@@ -864,15 +1104,18 @@
         }
       }
     },
-    "pairing_options_shown": {
+    "mobile_pairing_options_shown": {
       "tier": "experiment",
       "clients": [
-        "desktop",
-        "ios",
-        "android"
+        "desktop"
       ],
-      "fires": "A pairing page shows its Relay | Direct choice. Temporary: delete when the direct-connection rollout ends.",
+      "fires": "Existing desktop event, unchanged. Temporary: delete when the direct-connection rollout ends.",
       "properties": {
+        "options": {
+          "enum": [
+            "relay_direct"
+          ]
+        },
         "default_method": {
           "enum": "pairing_method"
         },
@@ -881,14 +1124,12 @@
         }
       }
     },
-    "pairing_option_selected": {
+    "mobile_pairing_option_selected": {
       "tier": "experiment",
       "clients": [
-        "desktop",
-        "ios",
-        "android"
+        "desktop"
       ],
-      "fires": "The person changes the pairing method. Temporary, as above.",
+      "fires": "Existing desktop event, unchanged. Temporary, as above.",
       "properties": {
         "from": {
           "enum": "pairing_method"
@@ -900,47 +1141,50 @@
           "enum": "pairing_surface"
         }
       }
-    },
-    "feature_used": {
-      "tier": "usage",
-      "clients": [
-        "desktop",
-        "ios",
-        "android"
-      ],
-      "fires": "Once per deliberate action the person takes, at the moment it succeeds. Never for opening a screen, viewing something, or navigating. Nothing is counted or batched locally. Each client sends only the features its UI has. Conversations created are message_sent with source new_session, so there is no separate value for them.",
-      "properties": {
-        "feature": {
-          "enum": [
-            "project_added",
-            "workspace_created",
-            "bot_created",
-            "task_created",
-            "subtask_appeared",
-            "approval_answered",
-            "question_answered",
-            "run_stopped",
-            "message_steered",
-            "model_changed",
-            "effort_changed",
-            "permission_mode_changed",
-            "photo_taken",
-            "terminal_started",
-            "search_used",
-            "command_palette_used",
-            "todo_changed",
-            "account_switched",
-            "push_opened"
-          ]
-        }
-      }
     }
   },
   "definitions": {
     "launch_count": "Launches on this install: desktop renderer launches, mobile cold starts.",
     "agents_connected": "Happy Agent connections the client has (paired agents on a phone, configured agents on desktop).",
-    "relay_accounts": "Happy CLI (relay) accounts signed in on the phone. Mobile only.",
-    "provider_kinds / provider_accounts": "Configured model providers on the active Happy Agent, when the client knows them. Omitted otherwise.",
-    "message_sent": "Fires when the person presses send, including when an offline-first client only queues it locally."
+    "message_sent": "Fires when the person presses send, including when an offline-first client only queues it locally. Conversation creation also sends conversation_created; steering is message_sent with is_steering.",
+    "model use": "Which model, provider kind and effort people use comes from message_sent, which carries all three on every send. There are no picker events."
+  },
+  "naming": {
+    "events": "snake_case `<object>_<past-tense verb>`, as PostHog's capture docs recommend ('project created', 'user signed up', 'invite sent') and as the existing events already are (message_sent, bot_created, app_opened). One event per step in how a person uses Happy. Static names; variable parts go in properties. No category: prefix.",
+    "verbs": [
+      "opened",
+      "created",
+      "added",
+      "sent",
+      "answered",
+      "stopped",
+      "changed",
+      "switched",
+      "completed",
+      "failed",
+      "cancelled",
+      "shown",
+      "selected",
+      "clicked",
+      "copied",
+      "crashed",
+      "lost",
+      "started",
+      "presented",
+      "purchased",
+      "restored",
+      "signed_in",
+      "viewed"
+    ],
+    "properties": "snake_case `<object>_<adjective>`; new booleans start with is_ or has_. Existing property names are never renamed.",
+    "continuity": "Event and property names already in PostHog (desktop since 2026-10-08, the earlier Expo app before that) are kept. Only privacy fixes change existing events."
+  },
+  "principle": "Err on the side of fewer events and more privacy. An event earns its place only if it answers a question no existing event answers. Anything derivable from message_sent is not its own event.",
+  "packaging": {
+    "rule": "Analytics lives in its own package or module on every platform, with one small facade the app calls. Deleting the module plus its one-line call sites removes analytics entirely. A build without a PostHog key compiles the module but sends nothing.",
+    "desktop": "packages/happy-desktop-analytics (exists)",
+    "ios": "a separate SwiftPM target HappyAnalytics, depended on by HappyApp and HappyUI only for the facade",
+    "android": "a separate Gradle module :analytics",
+    "settings": "Every client has an Analytics switch in Settings that stops sending and deletes the queue. Mobile also honours each account's synced analyticsOptOut."
   }
 }

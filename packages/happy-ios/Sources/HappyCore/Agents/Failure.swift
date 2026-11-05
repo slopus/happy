@@ -26,11 +26,11 @@ public struct Failure: Equatable, Sendable {
     /// Running it again can help: everything but a conversation too long
     /// even after a reset, which desktop answers with "New chat".
     public var retryable: Bool
-    /// What analytics may say of it: the typed kind (`untyped` for words
-    /// alone), the failed account's provider type, whether the turn ran on a
-    /// routing pool, and when it happened (Unix milliseconds).
-    public var kind: AnalyticsEvent.FailureKind = .untyped
-    public var providerKind: AnalyticsEvent.ProviderKind?
+    /// The daemon's typed kind (nil for words alone), the failed account's
+    /// provider type, whether the turn ran on a routing pool, and when it
+    /// happened (Unix milliseconds).
+    public var kind: String?
+    public var providerType: String?
     public var pool = false
     public var createdAt: Double = 0
 
@@ -72,8 +72,8 @@ public struct Failure: Equatable, Sendable {
             resolution: resolution,
             retryable: failure?["kind"]?.stringValue != "context_too_long"
         )
-        result.kind = failure == nil ? .untyped : .init(wire: failure?["kind"]?.stringValue ?? "")
-        result.providerKind = failure?["provider"]?["type"]?.stringValue.map(AnalyticsEvent.ProviderKind.init(type:))
+        result.kind = failure == nil ? nil : failure?["kind"]?.stringValue ?? ""
+        result.providerType = failure?["provider"]?["type"]?.stringValue
         result.pool = failure?["poolName"] != nil
         result.createdAt = message.createdAt
         return result

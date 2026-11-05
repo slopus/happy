@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import HappyAnalytics
 import HappyCore
 import HappyLayout
 import UIKit
@@ -125,6 +126,7 @@ public final class Offers {
             controller.sheetPresentationController?.detents = [.large()]
             controller.sheetPresentationController?.preferredCornerRadius = 28
             top.present(controller, animated: true)
+            if sheet != .welcome { Analytics.shared.log(.paywallPresented(product: .pro)) }
         }
     }
 

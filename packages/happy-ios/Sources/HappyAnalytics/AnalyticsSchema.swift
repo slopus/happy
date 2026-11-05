@@ -1,4 +1,5 @@
 import Foundation
+import HappyCore
 import HappyWire
 
 /// The allowlist at the send boundary: every event and property happy-ios
@@ -31,7 +32,7 @@ public enum AnalyticsSchema {
     public static let common: [String: Property] = [
         "client": .words(E.AnalyticsClient.self),
         "app_version": Property(kind: .version),
-        "channel": .words(E.AnalyticsChannel.self),
+        "flavor": .words(E.AnalyticsFlavor.self),
         "os": .words(E.AnalyticsOS.self),
         "os_version": Property(kind: .osVersion, nullable: true),
         "device_class": .words(E.DeviceClass.self),
@@ -43,60 +44,59 @@ public enum AnalyticsSchema {
     /// The catalog's events whose clients include `ios`, by name.
     public static let events: [String: [String: Property]] = {
         let bool = Property(kind: .bool)
+        let product: [String: Property] = ["product": .words(E.Product.self)]
+        let start = Property.words(E.PairingStart.self, optional: true)
+        let created: [String: Property] = ["result": .words(E.CreateResult.self), "error_code": .words(E.CreateErrorCode.self, optional: true)]
         return [
+            // Errors
             "chat_failure_shown": [
-                "kind": .words(E.FailureKind.self), "provider_kind": .words(E.ProviderKind.self, nullable: true), "pool": bool,
+                "kind": .words(E.FailureKind.self), "provider_kind": .words(E.ProviderKind.self, nullable: true), "is_pool": bool,
                 "target": .words(E.ChatTarget.self), "session_client": .words(E.SessionClient.self),
             ],
-            "chat_failure_action": ["kind": .words(E.FailureKind.self), "action": .words(E.FailureAction.self)],
-            "connection_issue": [
+            "chat_failure_action_clicked": ["kind": .words(E.FailureKind.self), "action": .words(E.FailureAction.self)],
+            "agent_connection_lost": [
                 "transport": .words(E.ConnectionTransport.self), "code": .words(E.ConnectionCode.self),
-                "outcome": .words(E.ConnectionOutcome.self), "duration": .words(E.DurationBucket.self), "recovery_screen": bool,
+                "outcome": .words(E.ConnectionOutcome.self), "duration": .words(E.DurationBucket.self), "is_recovery_screen_shown": bool,
             ],
             "error_shown": ["area": .words(E.ErrorArea.self), "code": .words(E.ErrorCode.self), "repeat_count": Property(kind: .count)],
-            "app_crash": [
+            "app_crashed": [
                 "process": .words(E.CrashProcess.self), "reason": .words(E.CrashReason.self),
                 "crashed_version": Property(kind: .version, nullable: true),
             ],
-            "pairing_result": [
-                "side": Property(kind: .words(["desktop", "phone"])), "method": .words(E.PairingMethod.self),
-                "start": .words(E.PairingStart.self), "result": .words(E.FlowResult.self),
-                "error_code": .words(E.PairingErrorCode.self, nullable: true),
-            ],
-            "sign_in_result": [
-                "method": .words(E.SignInMethod.self), "result": .words(E.FlowResult.self),
-                "error_code": .words(E.SignInErrorCode.self, nullable: true),
-            ],
-            "voice_session_ended": [
-                "result": .words(E.VoiceResult.self), "error_code": .words(E.VoiceErrorCode.self, nullable: true),
-                "duration": .words(E.DurationBucket.self),
-            ],
-            "purchase_result": [
-                "product": .words(E.PurchaseProduct.self), "result": .words(E.PurchaseResult.self),
-                "error_code": .words(E.PurchaseErrorCode.self, nullable: true),
-            ],
+            "mobile_pairing_failed": ["method": .words(E.PairingMethod.self), "start": start, "error_code": .words(E.PairingErrorCode.self)],
+            "sign_in_failed": ["method": .words(E.SignInMethod.self), "error_code": .words(E.SignInErrorCode.self)],
+            "voice_session_error": ["error_code": .words(E.VoiceErrorCode.self), "duration": .words(E.DurationBucket.self, nullable: true)],
+            "paywall_error": product.merging(["error_code": .words(E.PaywallErrorCode.self)]) { $1 },
+            // Usage
             "app_opened": [
-                "launch_count": Property(kind: .count), "cold": bool,
-                "theme": .words(E.ThemeChoice.self, optional: true), "app_language": .words(E.AppLanguage.self, optional: true),
+                "launch_count": Property(kind: .count), "is_cold_start": bool,
+                "app_language": .words(E.AppLanguage.self, optional: true),
                 "notifications": .words(E.NotificationsState.self, optional: true),
-                "agents_connected": .words(E.Bucket123.self, optional: true), "relay_accounts": .words(E.Bucket123.self, optional: true),
-                "provider_kinds": Property(kind: .wordList(E.ProviderKind.allCases.map(\.rawValue)), optional: true),
-                "provider_accounts": .words(E.Bucket123.self, optional: true), "experiments_on": Property(kind: .bool, optional: true),
+                "agents_connected": .words(E.Bucket123.self, optional: true),
             ],
             "message_sent": [
                 "source": .words(E.MessageSource.self), "target": .words(E.ChatTarget.self, nullable: true),
                 "session_client": .words(E.SessionClient.self, nullable: true), "model": Property(kind: .model, nullable: true),
                 "model_provider_kind": .words(E.ProviderKind.self, nullable: true), "effort": .words(E.Effort.self, nullable: true),
                 "bot_system_key": .words(E.BotSystemKey.self, nullable: true), "task_depth": Property(kind: .count, nullable: true),
-                "has_attachment": bool,
+                "has_attachment": bool, "is_steering": bool,
             ],
-            "feature_used": ["feature": .words(E.Feature.self)],
-            "onboarding_step_viewed": ["step": .words(E.OnboardingStep.self)],
-            "onboarding_completed": [:],
-            "pairing_options_shown": ["default_method": .words(E.PairingMethod.self), "surface": .words(E.PairingSurface.self)],
-            "pairing_option_selected": [
-                "from": .words(E.PairingMethod.self), "to": .words(E.PairingMethod.self), "surface": .words(E.PairingSurface.self),
+            "conversation_created": [
+                "source": .words(E.ConversationSource.self), "model": Property(kind: .model, nullable: true),
+                "model_provider_kind": .words(E.ProviderKind.self, nullable: true), "effort": .words(E.Effort.self, nullable: true),
             ],
+            "bot_created": created.merging(["source": .words(E.BotSource.self)]) { $1 },
+            "task_created": created,
+            "mobile_pairing_completed": ["method": .words(E.PairingMethod.self), "start": start],
+            "mobile_pairing_cancelled": ["method": .words(E.PairingMethod.self), "start": start],
+            "account_created": [:],
+            "account_restored": [:],
+            "team_server_signed_in": [:],
+            "voice_session_stopped": ["duration": .words(E.DurationBucket.self)],
+            "paywall_presented": product,
+            "paywall_purchased": product,
+            "paywall_restored": product,
+            "paywall_cancelled": product,
         ]
     }()
 

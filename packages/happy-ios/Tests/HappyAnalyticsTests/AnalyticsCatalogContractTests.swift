@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+@testable import HappyAnalytics
 @testable import HappyCore
 import HappyWire
 
@@ -86,27 +87,36 @@ final class AnalyticsCatalogContractTests: XCTestCase {
     /// and the allowlist say the same thing.
     func testEveryTypedEventPassesTheAllowlistUnchanged() throws {
         let samples: [AnalyticsEvent] = [
-            .chatFailureShown(kind: .usageLimit, providerKind: .claude, pool: false, target: .session, sessionClient: .happyAgent),
-            .chatFailureAction(kind: .rateLimited, action: .switchModel),
-            .connectionIssue(transport: .direct, code: .unreachable, outcome: .recovered, duration: .from10sTo30s),
+            .chatFailureShown(kind: .usageLimit, providerKind: .claude, isPool: false, target: .session, sessionClient: .happyAgent),
+            .chatFailureActionClicked(kind: .rateLimited, action: .switchModel),
+            .agentConnectionLost(transport: .direct, code: .unreachable, outcome: .recovered, duration: .from10sTo30s),
             .errorShown(area: .messageSend, code: .offline, repeatCount: 2),
-            .appCrash(process: .app, reason: .hang, crashedVersion: "2.0.0"),
-            .pairingResult(method: .direct, start: .scan, result: .failed, errorCode: .emojiMismatch),
-            .signInResult(method: .teamServer, result: .ok, errorCode: nil),
-            .voiceSessionEnded(result: .ok, errorCode: nil, duration: .from2mTo5m),
-            .purchaseResult(product: .pro, result: .cancelled, errorCode: nil),
-            .appOpened(launchCount: 3, cold: true, config: .init(theme: .dark, relayAccounts: .one, providerKinds: [.codex, .claude], experimentsOn: false)),
+            .appCrashed(process: .app, reason: .hang, crashedVersion: "2.0.0"),
+            .mobilePairingFailed(method: .direct, start: .scan, errorCode: .emojiMismatch),
+            .signInFailed(method: .teamServer, errorCode: .wrongServer),
+            .voiceSessionError(errorCode: .connectFailed, duration: nil),
+            .paywallError(product: .pro, errorCode: .nothingToRestore),
+            .appOpened(launchCount: 3, isColdStart: true, config: .init(appLanguage: .en, notifications: .granted, agentsConnected: .one)),
             .messageSent(.init(source: .chat, target: .bot, sessionClient: .happyAgent, model: "anthropic/claude-opus-4-5",
-                               modelProviderKind: .claude, effort: .high, botSystemKey: .chiefOfStaff, taskDepth: 1, hasAttachment: true)),
-            .featureUsed(.runStopped),
-            .onboardingStepViewed(step: .pair),
-            .onboardingCompleted,
-            .pairingOptionsShown(defaultMethod: .relay, surface: .connectAgent),
-            .pairingOptionSelected(from: .relay, to: .direct, surface: .connectAgent),
+                               modelProviderKind: .claude, effort: .high, botSystemKey: .chiefOfStaff, taskDepth: 1, hasAttachment: true,
+                               isSteering: true)),
+            .conversationCreated(source: .home, model: "openai/gpt-5", modelProviderKind: .codex, effort: .medium),
+            .botCreated(source: .home, result: .failed, errorCode: .offline),
+            .taskCreated(result: .ok, errorCode: nil),
+            .mobilePairingCompleted(method: .relay, start: nil),
+            .mobilePairingCancelled(method: .direct, start: .openedLink),
+            .accountCreated,
+            .accountRestored,
+            .teamServerSignedIn,
+            .voiceSessionStopped(duration: .from2mTo5m),
+            .paywallPresented(product: .pro),
+            .paywallPurchased(product: .pro),
+            .paywallRestored(product: .pro),
+            .paywallCancelled(product: .pro),
         ]
         XCTAssertEqual(Set(samples.map(\.name)), Set(AnalyticsSchema.events.keys), "one sample per event")
         let common: [String: JSONValue] = [
-            "client": .string("ios"), "app_version": .string("2.0.0"), "channel": .string("preview"), "os": .string("ios"),
+            "client": .string("ios"), "app_version": .string("2.0.0"), "flavor": .string("preview"), "os": .string("ios"),
             "os_version": .string("26.1"), "device_class": .string("phone"), "agent_location": .string("remote"),
             "agent_os": .string("mac"), "happy_agent_version": .string("1.4.2"),
         ]

@@ -225,8 +225,15 @@ public final class SessionStarter {
     /// asks for this session.
     public func start(_ launch: NewSessionLaunch, isCurrentTarget: @escaping () -> Bool) async -> String? {
         guard activeRun == nil else { return nil }
-        let requests = environment.spawnRequests
         let run = Run()
+        let sessionId = await start(launch, run: run, isCurrentTarget: isCurrentTarget)
+        if sessionId != nil { Happenings.post(.sessionStartEnded(launch, .made)) }
+        else if let failure = run.failure { Happenings.post(.sessionStartEnded(launch, failure)) }
+        return sessionId
+    }
+
+    private func start(_ launch: NewSessionLaunch, run: Run, isCurrentTarget: @escaping () -> Bool) async -> String? {
+        let requests = environment.spawnRequests
         guard let attempt = requests.registerAttempt({ run.cancel() }) else { return nil }
         defer { requests.removeAttempt(attempt) }
         let clientRequestId = requests.requestId(for: launch.signature)
@@ -262,6 +269,7 @@ public final class SessionStarter {
                 case .success(let worktree):
                     directory = worktree.path
                 case .failure(let failure):
+                    run.failure = .failed(failure)
                     presenter?.showStartError(failure.errorDescription ?? Message.worktreeFailed)
                     return nil
                 }
@@ -403,6 +411,7 @@ public final class SessionStarter {
                 case .success:
                     run.accepted = true
                 case .failure(let error):
+                    run.failure = .failed(error)
                     presenter?.showStartError(Self.describe(error))
                     if !isCurrent() {
                         requests.complete(clientRequestId)
@@ -416,6 +425,7 @@ public final class SessionStarter {
         } catch {
             // A failure the person already walked away from is not news.
             if !run.canceled {
+                run.failure = .failed(error)
                 presenter?.showStartError(Self.describe(error))
             }
             return nil
@@ -439,7 +449,10 @@ public final class SessionStarter {
                     effort: launch.effortLevel
                 ).options(machineId: launch.machineId, target: launch.target)
             } catch {
-                if !run.canceled { presenter?.showStartError(Self.describe(error)) }
+                if !run.canceled {
+                    run.failure = .failed(error)
+                    presenter?.showStartError(Self.describe(error))
+                }
                 return nil
             }
         } else {
@@ -471,6 +484,7 @@ public final class SessionStarter {
         case _ where run.canceled:
             return nil
         case .error(let message):
+            run.failure = .refused
             presenter?.showStartError(message)
             return nil
         case .pending:
@@ -583,6 +597,8 @@ public final class SessionStarter {
         var accepted = false
         /// Cleared once the session is opened elsewhere or put down.
         var ownsCreatedSession = true
+        /// Why it failed, once it said so.
+        var failure: Happening.Outcome?
         private var cancelHandlers: [() -> Void] = []
 
         func cancel() {

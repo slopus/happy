@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+@testable import HappyAnalytics
 @testable import HappyCore
 import HappyStore
 import HappyWire
@@ -9,7 +10,7 @@ import HappyWire
 /// snapshot, and opting out.
 final class AnalyticsEngineTests: XCTestCase {
     private let common: [String: JSONValue] = [
-        "client": .string("ios"), "app_version": .string("2.0.0"), "channel": .string("stable"), "os": .string("ios"),
+        "client": .string("ios"), "app_version": .string("2.0.0"), "flavor": .string("standard"), "os": .string("ios"),
         "os_version": .string("26.1"), "device_class": .string("phone"), "agent_location": .null, "agent_os": .null,
         "happy_agent_version": .null,
     ]
@@ -37,7 +38,7 @@ final class AnalyticsEngineTests: XCTestCase {
     func testABatchCarriesExactlyTheCatalogsPropertiesAndPostHogsPrivacyFields() async throws {
         let http = http()
         let engine = engine(http)
-        await engine.record(.chatFailureShown(kind: .usageLimit, providerKind: .claude, pool: false, target: .session, sessionClient: .happyAgent), common: common, at: start)
+        await engine.record(.chatFailureShown(kind: .usageLimit, providerKind: .claude, isPool: false, target: .session, sessionClient: .happyAgent), common: common, at: start)
         await engine.flush(now: start)
 
         let request = try XCTUnwrap(http.requests.first)
@@ -55,7 +56,7 @@ final class AnalyticsEngineTests: XCTestCase {
         XCTAssertNotNil(UUID(uuidString: insert))
         XCTAssertNotEqual(distinct, insert)
         XCTAssertEqual(properties, common.merging([
-            "kind": .string("usage_limit"), "provider_kind": .string("claude"), "pool": .bool(false),
+            "kind": .string("usage_limit"), "provider_kind": .string("claude"), "is_pool": .bool(false),
             "target": .string("session"), "session_client": .string("happy_agent"),
             "$lib": .string("happy-ios"), "$process_person_profile": .bool(false), "$ip": .null, "$geoip_disable": .bool(true),
         ]) { _, new in new })
@@ -64,8 +65,8 @@ final class AnalyticsEngineTests: XCTestCase {
     func testTheInstallIdIsTheSameOnEveryEventAndNothingElseIdentifies() async throws {
         let http = http()
         let engine = engine(http)
-        await engine.record(.onboardingCompleted, common: common, at: start)
-        await engine.record(.onboardingStepViewed(step: .pair), common: common, at: start)
+        await engine.record(.accountCreated, common: common, at: start)
+        await engine.record(.paywallPresented(product: .pro), common: common, at: start)
         await engine.flush(now: start)
         let ids = try events(http).map { $0["properties"]?["distinct_id"] }
         XCTAssertEqual(ids.count, 2)
@@ -73,12 +74,15 @@ final class AnalyticsEngineTests: XCTestCase {
     }
 
     func testAnUnknownPropertyIsDroppedAndAValueOutsideTheCatalogDropsTheEvent() {
-        XCTAssertEqual(AnalyticsSchema.admit("onboarding_step_viewed", ["step": .string("pair"), "path": .string("/Users/kirill")], common: common)?["path"], nil)
-        XCTAssertNil(AnalyticsSchema.admit("onboarding_step_viewed", ["step": .string("Kirill's Mac")], common: common))
-        XCTAssertNil(AnalyticsSchema.admit("mobile_pairing_failed", [:], common: common), "not an iOS event")
-        XCTAssertNil(AnalyticsSchema.admit("onboarding_completed", [:], common: common.merging(["os_version": .string("26.1.2")]) { _, new in new }), "major.minor only")
-        XCTAssertNil(AnalyticsSchema.admit("app_opened", ["launch_count": .number(-1), "cold": .bool(true)], common: common))
-        XCTAssertNil(AnalyticsSchema.admit("onboarding_completed", [:], common: common.merging(["arch": .string("arm64")]) { _, new in new })?["arch"], "desktop's alone")
+        XCTAssertEqual(AnalyticsSchema.admit("paywall_presented", ["product": .string("pro"), "path": .string("/Users/kirill")], common: common)?["path"], nil)
+        XCTAssertNil(AnalyticsSchema.admit("paywall_presented", ["product": .string("Kirill's Mac")], common: common))
+        XCTAssertNil(AnalyticsSchema.admit("onboarding_completed", [:], common: common), "desktop's alone now")
+        XCTAssertNil(AnalyticsSchema.admit("run_stopped", [:], common: common), "dropped in v4")
+        XCTAssertNil(AnalyticsSchema.admit("account_created", [:], common: common.merging(["os_version": .string("26.1.2")]) { _, new in new }), "major.minor only")
+        XCTAssertNil(AnalyticsSchema.admit("app_opened", ["launch_count": .number(-1), "is_cold_start": .bool(true)], common: common))
+        XCTAssertNil(AnalyticsSchema.admit("app_opened", ["launch_count": .number(1), "is_cold_start": .bool(true), "theme": .string("dark")], common: common)?["theme"],
+                     "the theme is no longer sent")
+        XCTAssertNil(AnalyticsSchema.admit("account_created", [:], common: common.merging(["arch": .string("arm64")]) { _, new in new })?["arch"], "desktop's alone")
     }
 
     func testModelsAreFirstPartyVendorIdsOrOther() {
@@ -92,23 +96,23 @@ final class AnalyticsEngineTests: XCTestCase {
     func testTheQueueKeepsTheNewest500AndNothingOlderThanAWeek() async throws {
         let http = http()
         let engine = engine(http)
-        await engine.record(.onboardingCompleted, common: common, at: start.addingTimeInterval(-8 * 86_400))
+        await engine.record(.accountCreated, common: common, at: start.addingTimeInterval(-8 * 86_400))
         for index in 0..<501 {
-            await engine.record(.appOpened(launchCount: index, cold: true, config: .init()), common: common, at: start)
+            await engine.record(.appOpened(launchCount: index, isColdStart: true, config: .init()), common: common, at: start)
         }
         await engine.flush(now: start)
         let sent = try events(http)
         XCTAssertEqual(sent.count, 500)
         XCTAssertEqual(sent.first?["properties"]?["launch_count"], .number(1))
         XCTAssertEqual(sent.last?["properties"]?["launch_count"], .number(500))
-        XCTAssertFalse(sent.contains { $0["event"] == .string("onboarding_completed") })
+        XCTAssertFalse(sent.contains { $0["event"] == .string("account_created") })
     }
 
     func testAFailedBatchIsSentAgainAsTheSameEvents() async throws {
         let http = FakeHTTP()
         http.on("POST /batch") { _ in throw URLError(.notConnectedToInternet) }
         let engine = engine(http)
-        await engine.record(.onboardingCompleted, common: common, at: start)
+        await engine.record(.accountCreated, common: common, at: start)
         await engine.flush(now: start)
         http.on("POST /batch") { _ in (503, Data()) }
         await engine.flush(now: start)
@@ -124,7 +128,7 @@ final class AnalyticsEngineTests: XCTestCase {
     func testARefusedBatchIsDroppedNotRetriedForever() async throws {
         let http = http(400)
         let engine = engine(http)
-        await engine.record(.onboardingCompleted, common: common, at: start)
+        await engine.record(.accountCreated, common: common, at: start)
         await engine.flush(now: start)
         await engine.flush(now: start)
         XCTAssertEqual(http.requests.count, 1)
@@ -150,7 +154,7 @@ final class AnalyticsEngineTests: XCTestCase {
     func testAFailureCardCountsOnceAndOnlyWhileItIsNews() async throws {
         let http = http()
         let engine = engine(http)
-        let failure = AnalyticsEvent.chatFailureShown(kind: .network, providerKind: nil, pool: true, target: .bot, sessionClient: .happyAgent)
+        let failure = AnalyticsEvent.chatFailureShown(kind: .network, providerKind: nil, isPool: true, target: .bot, sessionClient: .happyAgent)
         await engine.recordFailureShown(messageID: "m1", createdAt: start.addingTimeInterval(-60), failure, common: common, at: start)
         await engine.recordFailureShown(messageID: "m1", createdAt: start.addingTimeInterval(-60), failure, common: common, at: start.addingTimeInterval(5))
         await engine.recordFailureShown(messageID: "old", createdAt: start.addingTimeInterval(-301), failure, common: common, at: start)
@@ -162,7 +166,7 @@ final class AnalyticsEngineTests: XCTestCase {
 
     func testTheSeenFailuresAreBounded() async {
         let engine = engine(http())
-        let failure = AnalyticsEvent.chatFailureShown(kind: .other, providerKind: nil, pool: false, target: .session, sessionClient: .cli)
+        let failure = AnalyticsEvent.chatFailureShown(kind: .other, providerKind: nil, isPool: false, target: .session, sessionClient: .cli)
         for index in 0...AnalyticsEngine.seenFailureLimit {
             await engine.recordFailureShown(messageID: "m\(index)", createdAt: start, failure, common: common, at: start)
         }
@@ -174,24 +178,24 @@ final class AnalyticsEngineTests: XCTestCase {
     func testAppOpenedCarriesTheSnapshotAndCountsColdStarts() async throws {
         let http = http()
         let engine = engine(http)
-        let config = AnalyticsEvent.AppConfig(theme: .system, appLanguage: .en, agentsConnected: .one, relayAccounts: .two)
+        let config = AnalyticsEvent.AppConfig(appLanguage: .en, notifications: .denied, agentsConnected: .one)
         await engine.appOpened(cold: true, common: common, config: config, at: start)
         await engine.appOpened(cold: false, common: common, config: .init(), at: start.addingTimeInterval(3_600))
         await engine.appOpened(cold: true, common: common, config: .init(), at: start.addingTimeInterval(7_200))
         await engine.flush(now: start.addingTimeInterval(7_200))
         let sent = try events(http).map { try XCTUnwrap($0["properties"]?.objectValue).filter { common[$0.key] == nil && !$0.key.hasPrefix("$") && $0.key != "distinct_id" } }
         XCTAssertEqual(sent, [
-            ["launch_count": .number(1), "cold": .bool(true), "theme": .string("system"), "app_language": .string("en"),
-             "agents_connected": .string("1"), "relay_accounts": .string("2")],
-            ["launch_count": .number(1), "cold": .bool(false)],
-            ["launch_count": .number(2), "cold": .bool(true)],
+            ["launch_count": .number(1), "is_cold_start": .bool(true), "app_language": .string("en"),
+             "notifications": .string("denied"), "agents_connected": .string("1")],
+            ["launch_count": .number(1), "is_cold_start": .bool(false)],
+            ["launch_count": .number(2), "is_cold_start": .bool(true)],
         ])
     }
 
     func testOptingOutDeletesWhatWasWaitingButKeepsTheInstall() async throws {
         let http = http()
         let engine = engine(http)
-        await engine.record(.onboardingCompleted, common: common, at: start)
+        await engine.record(.accountCreated, common: common, at: start)
         let id = await engine.snapshot.installID
         await engine.clear()
         let state = await engine.snapshot
@@ -202,7 +206,7 @@ final class AnalyticsEngineTests: XCTestCase {
     }
 
     /// A queue file from an older build goes through today's allowlist
-    /// before it is sent: an event the catalog dropped goes, a property it
+    /// before it is sent: an event the catalog dropped (v3's `run_stopped`) goes, a property it
     /// doesn't know is left out, a malformed `$insert_id` drops its event,
     /// and the privacy envelope is made again.
     func testAReplayedQueueIsCheckedAgainstTodaysCatalog() async throws {
@@ -211,7 +215,7 @@ final class AnalyticsEngineTests: XCTestCase {
         let failing = FakeHTTP()
         failing.on("POST /batch") { _ in throw URLError(.timedOut) }
         let first = engine(failing, file: file)
-        await first.record(.onboardingCompleted, common: common, at: start)
+        await first.record(.accountCreated, common: common, at: start)
         await first.flush(now: start)
         await first.saveNow()
 
@@ -224,7 +228,7 @@ final class AnalyticsEngineTests: XCTestCase {
         properties["$process_person_profile"] = .bool(true)
         kept["properties"] = .object(properties)
         var summary = kept
-        summary["event"] = .string("daily_summary")
+        summary["event"] = .string("run_stopped")
         var summaryProperties = properties
         summaryProperties["day"] = .number(20_397)
         summaryProperties["$insert_id"] = .string(UUID().uuidString.lowercased())
@@ -243,7 +247,7 @@ final class AnalyticsEngineTests: XCTestCase {
         let second = engine(http, file: file)
         await second.flush(now: start)
         let sent = try events(http)
-        XCTAssertEqual(sent.map { $0["event"]?.stringValue }, ["onboarding_completed"])
+        XCTAssertEqual(sent.map { $0["event"]?.stringValue }, ["account_created"])
         let sentProperties = try XCTUnwrap(sent.first?["properties"]?.objectValue)
         XCTAssertNil(sentProperties["note"])
         XCTAssertEqual(sentProperties["$ip"], .null)
@@ -270,7 +274,7 @@ final class AnalyticsEngineTests: XCTestCase {
         let failing = FakeHTTP()
         failing.on("POST /batch") { _ in throw URLError(.timedOut) }
         let first = engine(failing, file: file)
-        await first.record(.onboardingCompleted, common: common, at: start)
+        await first.record(.accountCreated, common: common, at: start)
         await first.flush(now: start)
         await first.saveNow()
         let queued = await first.snapshot.queue

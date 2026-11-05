@@ -1,7 +1,7 @@
 import Foundation
 
 /// The rows a list has on screen, by ID, as it reports each row's visible
-/// part: what an event that fires on what a person saw is read from.
+/// part.
 public struct ShownRows: Equatable, Sendable {
     public private(set) var ids: Set<String> = []
 
@@ -14,14 +14,5 @@ public struct ShownRows: Equatable, Sendable {
             return false
         }
         return ids.insert(id).inserted
-    }
-}
-
-extension ChatSnapshot {
-    /// The failure cards among the items, by item ID.
-    public var failuresByID: [String: Failure] {
-        Dictionary(items.compactMap { item in
-            if case .failure(let failure) = item.role { (item.id, failure) } else { nil }
-        }, uniquingKeysWith: { $1 })
     }
 }

@@ -86,12 +86,12 @@ public actor NewTask {
         do {
             let agentId = try await attempt.value
             // Only the first answer gets here; later sends read `madeAgentId`.
-            let feature: AnalyticsEvent.Feature = choice.kind == .bot ? .botCreated : .taskCreated
-            Task { @MainActor in Analytics.shared.log(.featureUsed(feature)) }
+            Happenings.post(.newWorkMade(choice.kind, .made))
             made(agentId)
             return agentId
         } catch {
             making = nil
+            if !(error is CancellationError) { Happenings.post(.newWorkMade(choice.kind, .failed(error))) }
             throw error
         }
     }
