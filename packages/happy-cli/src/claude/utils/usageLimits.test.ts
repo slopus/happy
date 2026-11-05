@@ -33,6 +33,31 @@ describe('windowsFromGetUsage', () => {
         expect(windows[0].utilization).toBeNull();
         expect(windows[0].status).toBeUndefined();
     });
+
+    it('maps model-scoped limits[] entries into windows and skips unscoped kinds', () => {
+        const windows = windowsFromGetUsage({
+            five_hour: { utilization: 52, resets_at: '2026-07-31T04:50:00Z' },
+            seven_day_opus: null,
+            limits: [
+                { kind: 'session', group: 'session', percent: 52, severity: 'normal', resets_at: '2026-07-31T04:50:00Z', scope: null, is_active: true },
+                { kind: 'weekly_all', group: 'weekly', percent: 10, severity: 'normal', resets_at: '2026-08-07T01:00:00Z', scope: null, is_active: false },
+                { kind: 'weekly_scoped', group: 'weekly', percent: 17, severity: 'normal', resets_at: '2026-08-07T01:00:00Z', scope: { model: { id: null, display_name: 'Fable' }, surface: null }, is_active: false },
+            ],
+        });
+        expect(windows.map(w => w.id)).toEqual(['five_hour', 'weekly_fable']);
+        const fable = windows.find(w => w.id === 'weekly_fable')!;
+        expect(fable.label).toBe('Fable');
+        expect(fable.utilization).toBe(17);
+        expect(fable.status).toBe('allowed');
+        expect(fable.resetsAt).toBe(Date.parse('2026-08-07T01:00:00Z'));
+    });
+
+    it('tolerates malformed or scope-less limits entries', () => {
+        expect(windowsFromGetUsage({ limits: {} })).toEqual([]);
+        expect(windowsFromGetUsage({
+            limits: [null, 'x', {}, { kind: 'weekly_scoped', group: 'weekly', percent: 5, scope: { model: { display_name: '  ' } } }],
+        })).toEqual([]);
+    });
 });
 
 describe('fromRateLimitEvent', () => {
