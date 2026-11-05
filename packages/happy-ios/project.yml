@@ -2,9 +2,9 @@
 # directory; the .xcodeproj is not committed.
 #
 # Independent UIKit iOS and AppKit macOS targets, three configurations:
-#   Debug   -> com.slopus.happy.dev      "Happy v2 (dev)"
-#   Preview -> com.slopus.happy.preview  "Happy v2 (preview)"
-#   Release -> com.ex3ndr.happy          "Happy v2"
+#   Debug   -> com.slopus.happy.dev      "Happy (dev)"
+#   Preview -> com.slopus.happy.preview  "Happy (preview)"
+#   Release -> com.ex3ndr.happy          "Happy"
 # The app target compiles Sources/HappyApp itself and links the package's
 # HappyKit product, which holds everything else.
 name: Happy

@@ -633,9 +633,9 @@ Linux test targets also run from Xcode: open `Package.swift` and use the
 
 | Variant | Configuration | Bundle id | Name |
 | --- | --- | --- | --- |
-| development | Debug | `com.slopus.happy.dev` | Happy v2 (dev) |
-| preview | Preview | `com.slopus.happy.preview` | Happy v2 (preview) |
-| production | Release | `com.ex3ndr.happy` | Happy v2 |
+| development | Debug | `com.slopus.happy.dev` | Happy (dev) |
+| preview | Preview | `com.slopus.happy.preview` | Happy (preview) |
+| production | Release | `com.ex3ndr.happy` | Happy |
 
 The bundle ids are the RN app's. Each variant has its own
 `App/Info-*.plist`. Those files are plain plists, because xtool doesn't

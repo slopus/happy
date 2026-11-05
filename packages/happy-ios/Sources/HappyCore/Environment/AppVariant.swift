@@ -21,9 +21,9 @@ public enum AppVariant: String, Sendable, CaseIterable {
 
     public var displayName: String {
         switch self {
-        case .development: return "Happy v2 (dev)"
-        case .preview: return "Happy v2 (preview)"
-        case .production: return "Happy v2"
+        case .development: return "Happy (dev)"
+        case .preview: return "Happy (preview)"
+        case .production: return "Happy"
         }
     }
 
