@@ -54,6 +54,7 @@
     <string name="vaults_move_title">Przenoszenie „%1$s”</string>
     <string name="vaults_move_to_trash">Przenieś do kosza</string>
     <string name="vaults_name">Nazwa</string>
+    <string name="vaults_name_refused">Nie można użyć tej nazwy</string>
     <string name="vaults_name_reserved">Nazwa nie może kończyć się na „.artifact”.</string>
     <string name="vaults_name_taken">W tym folderze jest już „%1$s”.</string>
     <string name="vaults_name_taken_message">Zastąpić go przesyłanym plikiem? Wcześniejsze wersje zostaną w historii.</string>

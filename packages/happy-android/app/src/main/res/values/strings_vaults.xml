@@ -60,6 +60,7 @@
     <string name="vaults_move_title">Moving “%1$s”</string>
     <string name="vaults_move_to_trash">Move to Trash</string>
     <string name="vaults_name">Name</string>
+    <string name="vaults_name_refused">Can’t use this name</string>
     <string name="vaults_name_reserved">Names can’t end in “.artifact”.</string>
     <string name="vaults_name_taken">There’s already something called “%1$s” in that folder.</string>
     <string name="vaults_name_taken_message">Replace it with the one you’re uploading? Its earlier versions stay in its history.</string>

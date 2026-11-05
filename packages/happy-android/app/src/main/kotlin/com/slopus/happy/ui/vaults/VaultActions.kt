@@ -1,6 +1,7 @@
 package com.slopus.happy.ui.vaults
 
 import android.content.ActivityNotFoundException
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.content.res.Resources
@@ -10,6 +11,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContract
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -89,7 +91,10 @@ class VaultActions internal constructor(
     internal var moving by mutableStateOf<VaultItem?>(null)
     internal var deleting by mutableStateOf<VaultItem?>(null)
     internal var creating by mutableStateOf<Folder?>(null)
-    internal var failure by mutableStateOf<String?>(null)
+    /** A failure's dialog: [title] over [message]. A name the vault keeps for apps is a rule, not something broken. */
+    internal class Failure(val message: String, @StringRes val title: Int = R.string.vaults_failed)
+
+    internal var failure by mutableStateOf<Failure?>(null)
     internal var transfer by mutableStateOf<Transfer?>(null)
     internal var pickFiles: (String?) -> Unit = {}
     internal var pickMedia: (String?) -> Unit = {}
@@ -117,7 +122,7 @@ class VaultActions internal constructor(
 
     internal fun created(parentId: String?, name: String) {
         if (VaultNames.isArtifact(name.trim())) {
-            failure = resources.getString(R.string.vaults_name_reserved)
+            failure = Failure(resources.getString(R.string.vaults_name_reserved), R.string.vaults_name_refused)
             return
         }
         scope.launch {
@@ -126,14 +131,14 @@ class VaultActions internal constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                failure = describe(e, name.trim())
+                failure = Failure(describe(e, name.trim()))
             }
         }
     }
 
     internal fun renamed(entry: VaultItem, name: String) {
         val next = newName(entry, name) ?: run {
-            failure = resources.getString(R.string.vaults_name_reserved)
+            failure = Failure(resources.getString(R.string.vaults_name_reserved), R.string.vaults_name_refused)
             return
         }
         if (next == entry.name) return
@@ -164,7 +169,7 @@ class VaultActions internal constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                failure = describe(e, name)
+                failure = Failure(describe(e, name))
             }
         }
     }
@@ -194,16 +199,12 @@ class VaultActions internal constructor(
                     target
                 }
                 val uri = FileProvider.getUriForFile(context, "${context.packageName}.conversation.media", file)
-                val send = Intent(Intent.ACTION_SEND)
-                    .setType(VaultDownloads.mediaType(entry))
-                    .putExtra(Intent.EXTRA_STREAM, uri)
-                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 transfer = null
-                context.startActivity(Intent.createChooser(send, VaultNames.shown(name)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                context.startActivity(Intent.createChooser(vaultShare(uri, entry), entry.shownName).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                failure = describe(e, name)
+                failure = Failure(describe(e, name))
             } finally {
                 transfer = null
             }
@@ -235,12 +236,12 @@ class VaultActions internal constructor(
                             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK),
                     )
                 } catch (_: ActivityNotFoundException) {
-                    failure = resources.getString(R.string.vaults_no_app)
+                    failure = Failure(resources.getString(R.string.vaults_no_app))
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                failure = describe(e, name)
+                failure = Failure(describe(e, name))
             } finally {
                 transfer = null
             }
@@ -264,7 +265,7 @@ class VaultActions internal constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                failure = describe(e, name)
+                failure = Failure(describe(e, name))
             } finally {
                 transfer = null
             }
@@ -284,7 +285,7 @@ class VaultActions internal constructor(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    failure = describe(e, "")
+                    failure = Failure(describe(e, ""))
                     continue
                 }
                 session.vaults.uploads.add(surfaceId, parentId, source)
@@ -300,11 +301,23 @@ class VaultActions internal constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                failure = describe(e, entry.name)
+                failure = Failure(describe(e, entry.name))
             }
         }
     }
 }
+
+/**
+ * [entry]'s file at [uri] for the share sheet. The file keeps its own name
+ * (an app's `.artifact`), while the title the sheet and the receiving app
+ * show is the name as people know it, as iOS's link metadata does.
+ */
+internal fun vaultShare(uri: Uri, entry: VaultItem): Intent = Intent(Intent.ACTION_SEND)
+    .setType(VaultDownloads.mediaType(entry))
+    .putExtra(Intent.EXTRA_STREAM, uri)
+    .putExtra(Intent.EXTRA_TITLE, entry.shownName)
+    .apply { clipData = ClipData(entry.shownName, arrayOf(VaultDownloads.mediaType(entry)), ClipData.Item(uri)) }
+    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
 
 /**
  * [typed] as [entry]'s new name. An app's is typed without its ".artifact",
@@ -388,7 +401,7 @@ fun rememberVaultActions(session: AgentSession, surfaceId: String, open: (Any) -
     fun launching(block: () -> Unit) = try {
         block()
     } catch (_: ActivityNotFoundException) {
-        actions.failure = unavailable
+        actions.failure = VaultActions.Failure(unavailable)
     }
     actions.pickFiles = { parentId -> uploadInto = VaultActions.Folder(parentId); launching { files.launch(arrayOf("*/*")) } }
     actions.pickMedia = { parentId ->
@@ -470,9 +483,9 @@ fun VaultActionsHost(actions: VaultActions) {
             },
         )
     }
-    actions.failure?.let { reason ->
+    actions.failure?.let { failure ->
         HappyAlert(
-            Alert(stringResource(R.string.vaults_failed), reason.ifEmpty { null }, listOf(AlertButton(stringResource(R.string.common_ok)))),
+            Alert(stringResource(failure.title), failure.message.ifEmpty { null }, listOf(AlertButton(stringResource(R.string.common_ok)))),
             onDismiss = { actions.failure = null },
         )
     }

@@ -54,6 +54,7 @@
     <string name="vaults_move_title">「%1$s」を移動</string>
     <string name="vaults_move_to_trash">ゴミ箱に移動</string>
     <string name="vaults_name">名前</string>
+    <string name="vaults_name_refused">この名前は使えません</string>
     <string name="vaults_name_reserved">名前の末尾を「.artifact」にすることはできません。</string>
     <string name="vaults_name_taken">そのフォルダには「%1$s」という項目がすでにあります。</string>
     <string name="vaults_name_taken_message">アップロード中のファイルで置き換えますか？以前のバージョンは履歴に残ります。</string>

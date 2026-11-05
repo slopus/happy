@@ -54,6 +54,7 @@
     <string name="vaults_move_title">S’està movent «%1$s»</string>
     <string name="vaults_move_to_trash">Mou a la paperera</string>
     <string name="vaults_name">Nom</string>
+    <string name="vaults_name_refused">No es pot fer servir aquest nom</string>
     <string name="vaults_name_reserved">Els noms no poden acabar en «.artifact».</string>
     <string name="vaults_name_taken">Ja hi ha alguna cosa anomenada «%1$s» en aquesta carpeta.</string>
     <string name="vaults_name_taken_message">Vols substituir-lo pel que estàs pujant? Les versions anteriors es queden a l’historial.</string>

@@ -1764,7 +1764,9 @@ every locale, not happy-i18n.
   a name or path is drawn. An app is told apart by its one icon
   (`AppsOutline`) and its live preview. Rename edits the name without the
   suffix and adds it back (`newName`), and a folder or plain file can't be
-  named "*.artifact" (`vaults_name_reserved`).
+  named "*.artifact" (`vaults_name_reserved`, under its own title,
+  `vaults_name_refused`). A share (`vaultShare`) sends the `.artifact` file
+  titled with the bare name (`EXTRA_TITLE` and the `ClipData` label).
 - **Previews** (`VaultPreview.kind`): pictures and video go to
   `PictureViewer`, with video over a `RangedSource`. PDFs go to
   `PdfRenderer`. Text up to 2 MB, and Markdown, go to `FileScreen`.

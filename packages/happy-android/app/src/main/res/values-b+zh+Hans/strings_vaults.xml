@@ -54,6 +54,7 @@
     <string name="vaults_move_title">正在移动“%1$s”</string>
     <string name="vaults_move_to_trash">移到废纸篓</string>
     <string name="vaults_name">名称</string>
+    <string name="vaults_name_refused">无法使用此名称</string>
     <string name="vaults_name_reserved">名称不能以“.artifact”结尾。</string>
     <string name="vaults_name_taken">该文件夹中已有名为“%1$s”的项目。</string>
     <string name="vaults_name_taken_message">用你正在上传的文件替换它？它之前的版本会保留在历史记录中。</string>

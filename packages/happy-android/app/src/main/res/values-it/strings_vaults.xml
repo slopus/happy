@@ -54,6 +54,7 @@
     <string name="vaults_move_title">Spostamento di «%1$s»</string>
     <string name="vaults_move_to_trash">Sposta nel cestino</string>
     <string name="vaults_name">Nome</string>
+    <string name="vaults_name_refused">Impossibile usare questo nome</string>
     <string name="vaults_name_reserved">I nomi non possono finire con «.artifact».</string>
     <string name="vaults_name_taken">In quella cartella c’è già qualcosa chiamato «%1$s».</string>
     <string name="vaults_name_taken_message">Sostituirlo con quello che stai caricando? Le versioni precedenti restano nella sua cronologia.</string>

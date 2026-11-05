@@ -54,6 +54,7 @@
     <string name="vaults_move_title">Перемещение «%1$s»</string>
     <string name="vaults_move_to_trash">В корзину</string>
     <string name="vaults_name">Название</string>
+    <string name="vaults_name_refused">Это имя нельзя использовать</string>
     <string name="vaults_name_reserved">Имя не может заканчиваться на «.artifact».</string>
     <string name="vaults_name_taken">В этой папке уже есть «%1$s».</string>
     <string name="vaults_name_taken_message">Заменить его загружаемым? Прежние версии останутся в истории.</string>

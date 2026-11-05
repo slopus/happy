@@ -54,6 +54,7 @@
     <string name="vaults_move_title">Moviendo «%1$s»</string>
     <string name="vaults_move_to_trash">Mover a la papelera</string>
     <string name="vaults_name">Nombre</string>
+    <string name="vaults_name_refused">No se puede usar este nombre</string>
     <string name="vaults_name_reserved">Los nombres no pueden terminar en «.artifact».</string>
     <string name="vaults_name_taken">Ya hay algo llamado «%1$s» en esa carpeta.</string>
     <string name="vaults_name_taken_message">¿Reemplazarlo por el que estás subiendo? Sus versiones anteriores se quedan en su historial.</string>
