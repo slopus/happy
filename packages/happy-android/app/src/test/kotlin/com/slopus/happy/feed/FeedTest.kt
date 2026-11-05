@@ -16,6 +16,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonObject
@@ -227,6 +229,10 @@ class FeedTest {
         val routes = Routes().apply(::mixed)
         val written = CopyOnWriteArrayList<JsonObject>()
         val feed = library(routes, IntentOutbox(scope, MemoryIntentStorage()), written = written)
+        val published = CopyOnWriteArrayList<FeedLibrary.State>()
+        // Observe each publication immediately: a normal collector can conflate
+        // a new filter with old rows away before the assertion sees it.
+        val observation = scope.launch(Dispatchers.Unconfined) { feed.state.collect { published += it } }
         feed.start()
         feed.bootstrap(5, "e1")
         feed.connected()
@@ -256,6 +262,8 @@ class FeedTest {
         eventually { feed.state.value.filter == FeedFilter.All }
         assertEquals(listOf("t", "s", "a", "b", "a2"), feed.state.value.items.map { it.id })
         eventually { written.last()["filter"] == null }
+        observation.cancel()
+        assertTrue("every published filter has its own rows", published.all { snapshot -> snapshot.items.all(snapshot.filter::admits) })
     }
 
     @Test

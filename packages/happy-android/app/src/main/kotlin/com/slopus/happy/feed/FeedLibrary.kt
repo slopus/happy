@@ -129,19 +129,20 @@ class FeedLibrary(
         scope.launch {
             val kept = kept()
             lock.withLock {
+                var restored = stateFlow.value
                 if (kept != null) {
                     lastKept = kept
                     everything.held = FeedItem.list(kept["items"])
                     everything.hasMore = (kept["hasMore"] as? JsonPrimitive)?.booleanOrNull ?: false
                     serverUnread = (kept["unread"].num?.toInt() ?: 0).coerceAtLeast(0)
                     unreadCursor = kept["unreadCursor"].str
-                    stateFlow.value = stateFlow.value.copy(
+                    restored = restored.copy(
                         available = (kept["available"] as? JsonPrimitive)?.booleanOrNull,
                         loaded = true,
                         filter = FeedFilter.of(kept["filter"].str),
                     )
                 }
-                commit()
+                commit(restored)
             }
             outbox.pending.collect { list ->
                 val next = list.filter { it.kind in KINDS }
@@ -232,8 +233,7 @@ class FeedLibrary(
         scope.launch {
             lock.withLock {
                 if (stateFlow.value.filter == filter) return@launch
-                stateFlow.value = stateFlow.value.copy(filter = filter)
-                commit()
+                commit(stateFlow.value.copy(filter = filter))
             }
             if (live && filter == FeedFilter.Highlights && filtering == true) refresh()
         }
@@ -495,13 +495,13 @@ class FeedLibrary(
         else -> everything.held.filter(filter::admits) to everything.hasMore
     }
 
-    /** Lays this phone's seeing over what is held, shows it, and writes it down when what is kept changed. Under [lock]. */
-    private suspend fun commit() {
-        val available = stateFlow.value.available == true
-        val filter = stateFlow.value.filter
+    /** Lays this phone's seeing over what is held, publishes [next] with its matching rows, and keeps it. Under [lock]. */
+    private suspend fun commit(next: State = stateFlow.value) {
+        val available = next.available == true
+        val filter = next.filter
         val (items, hasMore) = if (available) shown(filter) else emptyList<FeedItem>() to false
         val seen = if (available) (everything.held.asSequence() + highlights.held).filter(::covered).mapTo(HashSet()) { it.id } else emptySet()
-        stateFlow.value = stateFlow.value.copy(
+        stateFlow.value = next.copy(
             items = items,
             seenHere = seen,
             unread = if (available) (serverUnread - seen.size).coerceAtLeast(0) else 0,
