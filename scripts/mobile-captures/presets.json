@@ -1,0 +1,9 @@
+{
+  "iphone": { "size": [1320, 2868], "template": "phone", "row": "iphone", "offset": 0, "inputs": "iphone", "extension": "jpg", "heroTime": 22.2 },
+  "android": { "size": [1080, 1920], "template": "phone", "row": "android", "offset": 5, "inputs": "android", "extension": "png", "fitPixel": true },
+  "android-7": { "size": [1200, 1920], "template": "phone", "row": "android", "offset": 5, "inputs": "android-7", "extension": "png", "tabletWidth": 60 },
+  "android-10": { "size": [1600, 2560], "template": "phone", "row": "android", "offset": 5, "inputs": "android-10", "extension": "png", "tabletWidth": 66 },
+  "ipad": { "size": [2752, 2064], "template": "tablet", "row": "ipad", "offset": 0, "inputs": "ipad", "extension": "png" },
+  "duo-inner": { "size": [2853, 2007], "template": "tablet", "row": "duo-inner", "offset": 0, "inputs": "duo-inner", "extension": "png" },
+  "duo-outer": { "size": [1398, 2034], "template": "tablet", "row": "duo-outer", "offset": 0, "inputs": "duo-outer", "extension": "png" }
+}

@@ -1,0 +1,17 @@
+{
+  "back.webp": {
+    "source": "https://android.googlesource.com/platform/tools/adt/idea/+/refs/heads/mirror-goog-studio-main/artwork/resources/device-art-resources/pixel_9/back.webp",
+    "sha256": "d8ed1bcf314de2c293ee7ba7744349fa9233d24d47798189f9660369cae16f2d",
+    "gitBlobId": "5a2fff3cf2ac19c31dabe4a024e79c8dffe029b9"
+  },
+  "mask.webp": {
+    "source": "https://android.googlesource.com/platform/tools/adt/idea/+/refs/heads/mirror-goog-studio-main/artwork/resources/device-art-resources/pixel_9/mask.webp",
+    "sha256": "6f4fb00c5147da694c4d0b3c45c0b580db94b81b77528985b6f30e4c944f1ac4",
+    "gitBlobId": "02958adbab4f894aa820856bdbdc9844dea06a9d"
+  },
+  "layout": {
+    "source": "https://android.googlesource.com/platform/tools/adt/idea/+/refs/heads/mirror-goog-studio-main/artwork/resources/device-art-resources/pixel_9/layout",
+    "sha256": "fd024b14e9d7c38042be3d2bd4dad0e93fb3d6cfe0e1884a1d15d23063103e4a",
+    "gitBlobId": "7cb20daf596e4528cd1b51b6b01a1146442c4eda"
+  }
+}

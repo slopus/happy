@@ -1,0 +1,7 @@
+{
+  "iphone": { "renderSize": [886, 1925], "outputSize": [886, 1920], "backgroundSize": [120, 261], "level": "4.0", "trim": 0 },
+  "android": { "renderSize": [1080, 1920], "outputSize": [1080, 1920], "backgroundSize": [120, 214], "level": "4.0", "trim": 3.021108 },
+  "ipad": { "renderSize": [2752, 2064], "outputSize": [2752, 2064], "backgroundSize": [1376, 1032], "level": "5.1", "trim": 0 },
+  "duo-inner": { "renderSize": [2853, 2007], "outputSize": [2852, 2006], "backgroundSize": [240, 169], "level": "5.1", "trim": 0 },
+  "duo-outer": { "renderSize": [1398, 2034], "outputSize": [1398, 2034], "backgroundSize": [120, 175], "level": "5.0", "trim": 0 }
+}

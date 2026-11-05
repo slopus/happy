@@ -1,0 +1,146 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"><base href="{{BASE}}">
+<style>
+  @font-face { font-family: "Plex"; src: url("../../packages/happy-ios/Sources/HappyUI/Resources/Fonts/IBMPlexSans-SemiBold.ttf") format("truetype"); font-weight: 600; }
+  @font-face { font-family: "Plex"; src: url("../../packages/happy-ios/Sources/HappyUI/Resources/Fonts/IBMPlexSans-Regular.ttf") format("truetype"); font-weight: 400; }
+  @font-face { font-family: "PlexMono"; src: url("../../packages/happy-ios/Sources/HappyUI/Resources/Fonts/IBMPlexMono-Regular.ttf") format("truetype"); font-weight: 400; }
+  body { margin: 0; background: #111; }
+  .row { display: flex; gap: 14px; padding: 14px; flex-wrap: wrap; }
+  .card {
+    position: relative; flex: none; width: 640px; overflow: hidden; border-radius: 18px;
+    container-type: inline-size; background: #1b0b3a;
+    font-family: "Plex", "IBM Plex Sans", system-ui, sans-serif; color: #fff;
+  }
+  .card.ipad { aspect-ratio: 2752 / 2064; }
+  .card.duo-inner { aspect-ratio: 2853 / 2007; }
+  .card.duo-outer { aspect-ratio: 1398 / 2034; width: 320px; }
+  .card canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  /* Same type as the iPhone cards: SemiBold title with a soft shadow, Regular subtitle. */
+  .copy { position: absolute; left: 5cqw; right: 5cqw; top: var(--copy-top, 4cqw); text-align: center; }
+  .copy h2, .copy p { white-space: nowrap; }
+  .copy h2 {
+    margin: 0; font-weight: 600; font-size: var(--title, 5cqw); line-height: 1.08; letter-spacing: -0.02em;
+    text-shadow: 0 0.25cqw 2cqw rgba(20, 0, 50, .35);
+  }
+  .copy p {
+    margin: calc(var(--title, 5cqw) * .33) 0 0; font-weight: 400; font-size: calc(var(--title, 5cqw) * .525); line-height: 1.3;
+    opacity: .92; text-shadow: 0 0.2cqw 1.4cqw rgba(20, 0, 50, .4);
+  }
+  .card.hero .copy h2 { font-size: calc(var(--title, 5cqw) * var(--hero, 2.16)); line-height: 1; letter-spacing: -0.035em; }
+  .stars {
+    display: inline-flex; align-items: center; gap: .4em; margin-top: calc(var(--title, 5cqw) * .3);
+    font-size: calc(var(--title, 5cqw) * .475); opacity: .85; text-shadow: 0 0.2cqw 1.4cqw rgba(20, 0, 50, .4);
+  }
+  .stars i { font-style: normal; display: inline-flex; align-items: center; gap: .26em; margin-left: .26em; }
+  .stars svg { width: 1em; height: 1em; fill: currentColor; }
+  .stars b { font: 400 .95em "PlexMono", monospace; }
+  .device { position: absolute; left: 50%; top: var(--device-top, 30cqw); width: var(--device-w, 60cqw); transform: translateX(-50%);
+    filter: drop-shadow(0 2.5cqw 4cqw rgba(16, 0, 48, .5)); }
+  .device > img { position: absolute; display: block; }
+  /* iPad: frameless native screen (no iPad bezel is used), rounded like the display. */
+  .ipad .device { aspect-ratio: 2752 / 2064; }
+  .ipad .screen { inset: 0; width: 100%; height: 100%; border-radius: 2.6% / 3.47%; }
+  /* iPhone Duo: Apple Design Resources bezels; the capture sits in the measured screen
+     hole and is masked by the hole's own flood-filled interior. */
+  .duo-inner .device { aspect-ratio: 3093 / 2247; }
+  .duo-inner .screen { left: 3.879728%; top: 5.340454%; width: 92.240543%; height: 89.319092%;
+    mask-image: url("frames/inner-screen-mask.png"); mask-mode: luminance; mask-size: 100% 100%; }
+  .duo-outer .device { aspect-ratio: 1574 / 2194; }
+  .duo-outer .screen { left: 5.590851%; top: 3.646308%; width: 88.818297%; height: 92.707384%;
+    mask-image: url("frames/outer-screen-mask.png"); mask-mode: luminance; mask-size: 100% 100%; }
+  .device > .frame { inset: 0; width: 100%; height: 100%; }
+  html.export body { margin: 0; background: none; }
+  html.export .row { display: block; padding: 0; }
+  html.export .card { border-radius: 0; width: 100vw; }
+  html.export .card.away { position: absolute; left: -20000px; top: 0; }
+  html.export .row:not(.on) { position: absolute; left: -20000px; }
+</style>
+</head>
+<body>
+<div class="row on" data-row="ipad"></div>
+<div class="row" data-row="duo-inner"></div>
+<div class="row" data-row="duo-outer"></div>
+<script>
+{{SHARED}}
+// Per-device layout. `wide` cards put each title and subtitle on one line; the portrait
+// Duo cover keeps the iPhone line breaks. `gap` and `bottom` are in cqw.
+const DEVICES = {
+  "ipad":      { wide: true,  max: 4.0, gap: 2.0, bottom: 2.0, copyTop: 3.0, hero: 1.8, aspect: 2752 / 2064, frame: null },
+  "duo-inner": { wide: true,  max: 3.8, gap: 1.8, bottom: 1.5, copyTop: 2.6, hero: 1.8, aspect: 3093 / 2247, frame: "frames/duo-inner-marketing.png" },
+  "duo-outer": { wide: false, max: 9,   gap: 5,   bottom: 5,   aspect: 1574 / 2194, frame: "frames/duo-outer-marketing.png" },
+};
+const params = new URLSearchParams(location.search);
+const exportSlot = params.get("export");
+const onlyDevice = params.get("device") || "ipad";
+if (exportSlot) document.documentElement.classList.add("export");
+document.querySelectorAll(".row").forEach(r => r.classList.toggle("on", !exportSlot || r.dataset.row === onlyDevice));
+
+function build(device) {
+  const d = DEVICES[device];
+  const row = document.querySelector(`.row[data-row="${device}"]`);
+  return CARDS.map((c, n) => {
+    const el = document.createElement("div");
+    el.className = `card ${device}${c.hero ? " hero" : ""}`;
+    const title = d.wide && !c.hero ? [c.title.join(" ")] : c.title;
+    const lines = d.wide ? [c.lines.join(" ")] : c.lines;
+    el.innerHTML = `<canvas></canvas>
+      <div class="copy"><h2>${title.join("<br>")}</h2><p>${lines.join("<br>")}</p>${c.hero
+        ? `<div class="stars">Free and open source<i>${GITHUB}<b>${STARS}</b></i></div>` : ""}</div>
+      <div class="device"><img class="screen" alt="" src="${screenSource(device, c.file)}">${d.frame
+        ? `<img class="frame" alt="" src="${d.frame}">` : ""}</div>`;
+    row.appendChild(el);
+    return { el, canvas: el.querySelector("canvas"), card: c, device, visible: true, moving: false };
+  });
+}
+const items = Object.keys(DEVICES).flatMap(build);
+if (exportSlot) items.forEach(it => it.el.classList.toggle("away", !(it.device === onlyDevice && CARDS.indexOf(it.card) === Number(exportSlot) - 1)));
+
+// As on iPhone: one title size per device (the largest at which every line fits), and one
+// device line under the tallest copy block, so swiping the set nothing jumps.
+function fit() {
+  for (const device of Object.keys(DEVICES)) {
+    const d = DEVICES[device];
+    const row = items.filter(i => i.device === device);
+    const cqw = row[0].el.clientWidth / 100;
+    if (!cqw) continue;
+    let size = d.max;
+    for (const { el } of row) {
+      if (el.classList.contains("hero")) continue;
+      const h = el.querySelector("h2"), p = el.querySelector("p"), w = el.querySelector(".copy").clientWidth;
+      el.style.setProperty("--title", "10cqw");
+      size = Math.min(size, 10 * w / h.scrollWidth, 10 * w / p.scrollWidth);
+      el.style.removeProperty("--title");
+    }
+    size = Math.floor(size * 10) / 10;
+    for (const { el } of row) {
+      el.style.setProperty("--title", size + "cqw");
+      if (d.copyTop) el.style.setProperty("--copy-top", d.copyTop + "cqw");
+      if (d.hero) el.style.setProperty("--hero", d.hero);
+    }
+    let bottom = 0;
+    for (const { el } of row) {
+      const copy = el.querySelector(".copy");
+      bottom = Math.max(bottom, (copy.offsetTop + copy.offsetHeight) / cqw);
+    }
+    const height = row[0].el.clientHeight / cqw;
+    const top = bottom + d.gap;
+    const width = Math.min(90, (height - top - d.bottom) * d.aspect);
+    for (const { el } of row) {
+      el.style.setProperty("--device-top", top.toFixed(2) + "cqw");
+      el.style.setProperty("--device-w", width.toFixed(2) + "cqw");
+    }
+  }
+}
+// Fit once fonts and every image are in (the device boxes take their size from CSS, so
+// images only matter for the final paint).
+addEventListener("load", () => document.fonts.ready.then(() => {
+  try { fit(); document.title = "ready"; } catch (e) { document.title = "error " + e; }
+}));
+addEventListener("resize", fit);
+
+{{PAINT}}
+</script>
+</body>
+</html>

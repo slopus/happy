@@ -1,0 +1,31 @@
+diff --git a/packages/happy-android/app/src/main/kotlin/com/slopus/happy/ui/components/OptionMenus.kt b/packages/happy-android/app/src/main/kotlin/com/slopus/happy/ui/components/OptionMenus.kt
+--- a/packages/happy-android/app/src/main/kotlin/com/slopus/happy/ui/components/OptionMenus.kt
++++ b/packages/happy-android/app/src/main/kotlin/com/slopus/happy/ui/components/OptionMenus.kt
+@@ -110,6 +110,7 @@
+     selected: Boolean = false,
+     enabled: Boolean = true,
+     destructive: Boolean = false,
++    labelMaxLines: Int = 1,
+ ) {
+     val colors = HappyTheme.colors
+     val ink = when {
+@@ -120,7 +121,7 @@
+     DropdownMenuItem(
+         text = {
+             Column {
+-                Text(label, style = MenuSpec.label, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
++                Text(label, style = MenuSpec.label, color = ink, maxLines = labelMaxLines, overflow = TextOverflow.Ellipsis)
+                 if (supporting != null) {
+                     Text(supporting, style = MenuSpec.supporting, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
+                 }
+diff --git a/packages/happy-android/app/src/main/kotlin/com/slopus/happy/ui/home/AccountMenu.kt b/packages/happy-android/app/src/main/kotlin/com/slopus/happy/ui/home/AccountMenu.kt
+--- a/packages/happy-android/app/src/main/kotlin/com/slopus/happy/ui/home/AccountMenu.kt
++++ b/packages/happy-android/app/src/main/kotlin/com/slopus/happy/ui/home/AccountMenu.kt
+@@ -188,6 +188,7 @@
+                 val name = entry.name ?: kind
+                 HappyMenuItem(
+                     label = name,
++                    labelMaxLines = 2,
+                     supporting = entry.detail,
+                     leading = { Avatar(entry.seed, AccountMenuSpec.rowAvatar, imageUri = entry.imageUrl, thumbhash = entry.thumbhash, animated = false) },
+                     trailing = if (entry.attention && !entry.active) {

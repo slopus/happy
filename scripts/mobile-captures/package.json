@@ -1,0 +1,14 @@
+{
+  "name": "happy-mobile-captures",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "render": "node render.mjs",
+    "verify": "node verify.mjs"
+  },
+  "dependencies": {
+    "playwright": "1.61.1",
+    "sharp": "0.35.3"
+  },
+  "pnpm": { "onlyBuiltDependencies": ["sharp"] }
+}

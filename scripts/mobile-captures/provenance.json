@@ -1,0 +1,27 @@
+{
+  "story": "Fictional v8 marketing story; neutral abstract Steve avatar; approved Kirill photo and generated task icons",
+  "ios": {
+    "sourceCommit": "76ed3d0abaf5586b1929df77797af8783b38d21c",
+    "productFix": "c1fe74714 (account switcher label)",
+    "fixture": "fixtures/StoryData.swift; --wide-chart only for Duo inner chart capture",
+    "iphone": "approved neutral2 still inputs, converted to the approved JPEG composition sources",
+    "ipad": "neutral2 landscape native captures, lossless 90-degree rotation",
+    "duo-inner": "neutral2 display 3; card 05 from neutral5 callfirst with responsive 300px chart",
+    "duo-outer": "neutral2 display 1, including callfirst for card 05",
+    "runtimes": "iPhone/iPad iOS 26.3; Duo iOS 27.1 with Xcode 27.2 and hinge 06cb7202"
+  },
+  "android": {
+    "sourceCommit": "4c15ae3ad7a58f6219cd2ff07d0047e9503fcde6",
+    "productFix": "7e32e09454c26aa78e86df0d378b1e49375b743d",
+    "emulator": "Pixel 9 API 35, native SystemUI demo mode",
+    "phone": { "pixels": [1080, 2424], "densityDpi": 420 },
+    "tablet-7": { "pixels": [1200, 1920], "densityDpi": 320 },
+    "tablet-10": { "pixels": [1600, 2560], "densityDpi": 320 },
+    "motion": { "pixels": [540, 1212], "densityDpi": 210, "nativeStartSeconds": 3.021108 }
+  },
+  "verification": {
+    "stills": "All 35 committed inputs and all seven five-card layouts rendered and verified",
+    "video": "One-second native iPhone composition: 30 decoded frames at 886x1920, no motion stalls; other four framed formats and app-only export passed three-frame smoke tests",
+    "nativeDrivers": "Static/syntax checks only; no fresh native build during pipeline promotion"
+  }
+}

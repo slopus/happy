@@ -1,0 +1,42 @@
+{
+  "url": "https://devimages-cdn.apple.com/design/resources/download/Bezel-iPhone-Duo.dmg",
+  "index": "https://developer.apple.com/design/resources/#product-bezels",
+  "dmgSha256": "6d623163830ea86c9298f37f1f32d4fe29810be05c9155b7dcd3ca3805d76cc2",
+  "license": "Apple Design Resources License LYL142 06/21/2023. Apple copyright; for iOS mock-ups only. Standalone bezel assets must not be redistributed.",
+  "frames": {
+    "inner": {
+      "file": "duo-inner-marketing.png",
+      "appleFilename": "iPhone Duo - Night Sky - Inner Open Landscape.png",
+      "width": 3093,
+      "height": 2247,
+      "screen": {
+        "x": 120,
+        "y": 120,
+        "width": 2853,
+        "height": 2007
+      },
+      "sha256": "bd684d4cd2b68756ca008c158b9c0cbfeeb134bf3b5e481b3d0dd02d783211f1",
+      "maskSha256": "59e92c75005f62c27433b0c51d27b21e120b5c26826427802887b32c7dd8ebf6",
+      "maskMethod": "Flood-fill alpha<250 from screen centre, exclude the exterior component; inverse alpha restricted to this enclosed interior preserves antialiasing.",
+      "interiorPixels": 5703059,
+      "measurement": "Transparent aperture measured from the original alpha channel; exact native capture dimensions, no aspect conversion."
+    },
+    "outer": {
+      "file": "duo-outer-marketing.png",
+      "appleFilename": "iPhone Duo - Night Sky - Outer Closed Portrait.png",
+      "width": 1574,
+      "height": 2194,
+      "screen": {
+        "x": 88,
+        "y": 80,
+        "width": 1398,
+        "height": 2034
+      },
+      "sha256": "f972a6062a0ca2bef2186d61366beaf746a7725a34a4bfa1dabc4410d7c0dbdf",
+      "maskSha256": "9a62cf0e06f97f17039bc5e7ddbcf3713cc8d9752f4c83c32b7dc19564b2023f",
+      "maskMethod": "Flood-fill alpha<250 from screen centre, exclude the exterior component; inverse alpha restricted to this enclosed interior preserves antialiasing.",
+      "interiorPixels": 2820750,
+      "measurement": "Transparent aperture measured from the original alpha channel; exact native capture dimensions, no aspect conversion."
+    }
+  }
+}

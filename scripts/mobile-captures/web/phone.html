@@ -1,0 +1,217 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8"><base href="{{BASE}}">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<style>
+  @font-face { font-family: "Plex"; src: url("../../packages/happy-ios/Sources/HappyUI/Resources/Fonts/IBMPlexSans-SemiBold.ttf") format("truetype"); font-weight: 600; }
+  @font-face { font-family: "Plex"; src: url("../../packages/happy-ios/Sources/HappyUI/Resources/Fonts/IBMPlexSans-Regular.ttf") format("truetype"); font-weight: 400; }
+  @font-face { font-family: "PlexMono"; src: url("../../packages/happy-ios/Sources/HappyUI/Resources/Fonts/IBMPlexMono-Regular.ttf") format("truetype"); font-weight: 400; }
+
+  .bar { display: flex; align-items: baseline; gap: 18px; margin: 0 0 14px; }
+  .tabs { display: flex; gap: 4px; }
+  .tabs button {
+    font: 500 13px var(--happy-font); color: var(--happy-muted);
+    background: none; border: 0; padding: 4px 10px; border-radius: 999px; cursor: pointer;
+  }
+  .tabs button[aria-selected="true"] { color: var(--happy-text); background: var(--happy-surface); }
+  .note { font: 12px var(--happy-font); color: var(--happy-faint); }
+
+  .stack { display: grid; }
+  .stack > .row { grid-area: 1 / 1; visibility: hidden; }
+  .stack > .row.on { visibility: visible; }
+
+  .row {
+    display: flex; gap: 14px; align-items: flex-start; overflow-x: auto; padding-bottom: 10px;
+    scroll-snap-type: x mandatory;
+  }
+
+  .card {
+    position: relative; flex: none; height: 540px; overflow: hidden;
+    border-radius: 18px; scroll-snap-align: start;
+    container-type: inline-size; background: #1b0b3a;
+    font-family: "Plex", "IBM Plex Sans", system-ui, sans-serif; color: #fff;
+  }
+  .card.iphone { aspect-ratio: 1320 / 2868; }
+  .card.android { aspect-ratio: 1080 / 1920; }
+  .card canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .copy { position: absolute; left: 5cqw; right: 5cqw; top: 9cqw; text-align: center; }
+  .copy h2, .copy p { white-space: nowrap; }
+  .copy h2 {
+    margin: 0; font-weight: 600; font-size: var(--title, 8cqw); line-height: 1.08; letter-spacing: -0.02em;
+    text-shadow: 0 0.4cqw 3cqw rgba(20, 0, 50, .35);
+  }
+  .copy p {
+    margin: 2.6cqw 0 0; font-weight: 400; font-size: 4.2cqw; line-height: 1.3;
+    opacity: .92; text-shadow: 0 0.3cqw 2cqw rgba(20, 0, 50, .4);
+  }
+  .card.hero .copy h2 { font-size: calc(var(--title, 8cqw) * 2.16); line-height: 1; letter-spacing: -0.035em; }
+  .stars {
+    display: inline-flex; align-items: center; gap: 1.6cqw; margin-top: 2.4cqw;
+    font-size: 3.8cqw; opacity: .85; text-shadow: 0 0.3cqw 2cqw rgba(20, 0, 50, .4);
+  }
+  .stars i { font-style: normal; display: inline-flex; align-items: center; gap: 1cqw; margin-left: 1cqw; }
+  .stars svg { width: 1em; height: 1em; fill: currentColor; }
+  .stars b { font: 400 .95em "PlexMono", monospace; }
+
+  .phone { position: absolute; left: 50%; transform: translateX(-50%); filter: drop-shadow(0 4cqw 6cqw rgba(16, 0, 48, .5)); }
+  .phone > img, .phone > .screen { position: absolute; display: block; }
+  .iphone .phone { width: 80cqw; top: var(--phone-top, 50cqw); aspect-ratio: 1406 / 2822; }
+  .iphone .frame { inset: 0; width: 100%; height: 100%; }
+  .iphone .screen {
+    left: 7.25462%; top: 3.543586%; width: 85.775249%; height: 92.912828%; object-fit: contain; background: #000;
+    mask-image: url("frames/screen-alpha.png"); mask-mode: luminance; mask-size: 100% 100%;
+    -webkit-mask-image: url("frames/screen-alpha.png"); -webkit-mask-size: 100% 100%;
+  }
+  .android .phone { width: 60cqw; top: var(--phone-top, 46cqw); aspect-ratio: 1198 / 2531; }
+  .android .back { inset: 0; width: 100%; height: 100%; }
+  .android .screen, .android .mask {
+    left: 4.590985%; top: 2.291584%; width: 90.15025%; height: 95.772422%; border-radius: 8.055556% / 3.589109%;
+  }
+  .slot { flex: none; width: 260px; scroll-snap-align: start; }
+  .slot .card { width: 100%; height: auto; }
+  .card.android { aspect-ratio: 1080 / 1920; }
+  .phone > .screen.ph { display: grid; place-items: center; background: #f4f4f6 !important; color: #8a8a94; text-align: center;
+    font: 500 3.4cqw/1.5 "Plex", system-ui, sans-serif; }
+  .live { position: absolute; left: 3cqw; top: 3cqw; padding: .6cqw 2cqw; border-radius: 99px;
+    background: rgba(0,0,0,.35); font: 600 3cqw "Plex", system-ui, sans-serif; letter-spacing: .06em; }
+  .spec { margin-top: 10px; font: 12px/1.4 var(--happy-font, system-ui); color: var(--happy-text, #222); }
+  .slot-n { font-weight: 600; margin-bottom: 6px; }
+  .kind { font-weight: 500; color: var(--happy-muted, #777); }
+  .kind.video { color: #e0368a; }
+  .spec dl { display: grid; grid-template-columns: 70px 1fr; gap: 3px 8px; margin: 0; }
+  .spec dt { color: var(--happy-faint, #999); }
+  .spec dd { margin: 0; }
+  .beats { margin: 8px 0 0; padding: 8px 0 0; list-style: none; border-top: 1px solid var(--happy-border, #ddd); }
+  .beats li { display: grid; grid-template-columns: 52px 1fr; gap: 6px; margin-bottom: 3px; }
+  .beats span { color: var(--happy-faint, #999); font-variant-numeric: tabular-nums; }
+  html.export body { margin: 0; }
+  html.export .bar, html.export .spec, html.export .live { display: none; }
+  html.export .row { display: block; overflow: visible; padding: 0; }
+  html.export .slot { width: 100vw; }
+  html.export .slot.away { position: absolute; left: -20000px; top: 0; }
+  html.export .row:not(.on) { position: absolute; left: -20000px; }
+  html.export .card { border-radius: 0; }
+  html.layer-overlay .card { background: transparent; }
+  html.layer-overlay .card canvas, html.layer-overlay .phone .screen { visibility: hidden; }
+  html.layer-overlay .phone { filter: none; }
+</style>
+</head>
+<body>
+<div class="bar">
+  <div class="tabs" role="tablist">
+    <button role="tab" aria-selected="true" data-row="iphone">iPhone</button>
+    <button role="tab" aria-selected="false" data-row="android">Pixel 9</button>
+  </div>
+  <span class="note">Native mobile marketing captures</span>
+</div>
+<div class="stack">
+  <div class="row on" data-row="iphone"></div>
+  <div class="row" data-row="android"></div>
+</div>
+
+<script>
+// One entry per listing slot. `video` is the only moving card; every other card is
+// one frozen frame of its shader. `screen` says what the phone shows and whether that
+// capture exists yet.
+{{SHARED}}
+const SIZE = { iphone: "1320×2868 PNG", android: "1080×1920 PNG" };
+function spec(c, device, n) {
+  const video = c.video && device === "iphone";
+  const kind = video ? "Video · App Store preview" : c.video ? "Still · Play has no gallery video" : "Still";
+  const rows = [
+    ["Format", video ? "886×1920 H.264, ~20 s loop, muted autoplay; poster = this frame" : SIZE[device]],
+    ["Background", video ? `Shader, moving very slowly (~⅓ of the earlier preview) · ${c.palName}` : `Shader, frozen single frame · ${c.palName}`],
+    ["Title", c.title.join(" / ") + (c.hero ? "  (large)" : "  (2 lines)")],
+    ["Subtitle", c.lines.join(" / ") + (c.hero ? " · Free and open source + GitHub ★ count" : "")],
+    ["Phone", c.screen],
+    ["Capture", c.status],
+  ];
+  return `<div class="spec"><div class="slot-n">${n} · <span class="${video ? "kind video" : "kind"}">${kind}</span></div>
+    <dl>${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>
+    ${video ? `<ol class="beats">${c.beats.map(([t, b]) => `<li><span>${t}</span>${b}</li>`).join("")}</ol>` : ""}</div>`;
+}
+
+function build(device) {
+  const row = document.querySelector(`.row[data-row="${device}"]`);
+  return CARDS.map((c, n) => {
+    const slot = document.createElement("div");
+    slot.className = "slot";
+    const el = document.createElement("div");
+    el.className = `card ${device}${c.hero ? " hero" : ""}`;
+    const screen = c.placeholder
+      ? `<div class="screen ph"><span>New capture<br>Opus 5.5 chat<br>2 image attachments<br>3-line code fix</span></div>`
+      : `<img class="screen" alt="" src="${screenSource(device, c.file)}">`;
+    el.innerHTML = `<canvas></canvas>
+      <div class="copy"><h2>${c.title.join("<br>")}</h2><p>${c.lines.join("<br>")}</p>${c.hero
+        ? `<div class="stars">Free and open source<i>${GITHUB}<b>${STARS}</b></i></div>` : ""}</div>
+      <div class="phone">${device === "iphone"
+        ? `${screen}<img class="frame" alt="" src="frames/iphone-16-pro-black.png">`
+        : `<img class="back" alt="" src="frames/pixel9-back.webp">${screen}<img class="mask" alt="" src="frames/pixel9-mask.webp">`}</div>
+      ${c.video && device === "iphone" ? `<span class="live">▶ VIDEO</span>` : ""}`;
+    slot.appendChild(el);
+    slot.insertAdjacentHTML("beforeend", spec(c, device, n + 1));
+    row.appendChild(slot);
+    return { el, canvas: el.querySelector("canvas"), card: c, visible: false, moving: c.video && device === "iphone" };
+  });
+}
+
+const exportSlot = new URLSearchParams(location.search).get("export");
+if (exportSlot) document.documentElement.classList.add("export");
+// layer=overlay: only the words and the phone's frame, on transparent, for the hero video.
+const layer = new URLSearchParams(location.search).get("layer");
+if (layer) document.documentElement.classList.add("layer-" + layer);
+const items = [...build("iphone"), ...build("android")];
+// Export keeps every card laid out (so the shared title size and phone line
+// are measured across the whole set) but shows only the one asked for.
+if (exportSlot) items.forEach((it, n) => it.el.closest(".slot").classList.toggle("away", n !== Number(exportSlot) - 1));
+
+// One title size per device: the largest at which every title line fits, so swiping
+// through the set the titles, subtitles and phones stay in the same place.
+function fit() {
+  for (const device of ["iphone", "android"]) {
+    const row = items.filter(i => i.el.classList.contains(device));
+    const cqw = row[0].el.clientWidth / 100;
+    if (!cqw) continue;
+    let size = 9;
+    for (const { el } of row) {
+      const h = el.querySelector("h2");
+      if (el.classList.contains("hero")) continue;
+      h.style.setProperty("--title", "10cqw");
+      size = Math.min(size, 10 * (el.querySelector(".copy").clientWidth / h.scrollWidth));
+      h.style.removeProperty("--title");
+    }
+    size = Math.floor(size * 10) / 10;
+    let top = 0;
+    for (const { el } of row) el.style.setProperty("--title", size + "cqw");
+    for (const { el } of row) {
+      const copy = el.querySelector(".copy");
+      top = Math.max(top, (copy.offsetTop + copy.offsetHeight) / cqw);
+    }
+    for (const { el } of row) el.style.setProperty("--phone-top", (top + 5).toFixed(2) + "cqw");
+  }
+}
+document.fonts.ready.then(() => {
+  fit();
+  if (layer) {
+    const it = items.find(i => !i.el.closest(".slot").classList.contains("away") && i.el.closest(".row").classList.contains("on"));
+    const r = it.el.querySelector(".screen").getBoundingClientRect();
+    document.title = JSON.stringify({ x: r.x, y: r.y, w: r.width, h: r.height });
+  }
+});
+addEventListener("resize", fit);
+
+function show(name) {
+  document.querySelectorAll(".tabs button").forEach(x => x.setAttribute("aria-selected", String(x.dataset.row === name)));
+  document.querySelectorAll(".row").forEach(r => r.classList.toggle("on", r.dataset.row === name));
+}
+document.querySelectorAll(".tabs button").forEach(b => b.addEventListener("click", () => show(b.dataset.row)));
+if (location.hash === "#android") show("android");
+
+// One offscreen WebGL context renders every card in turn and is copied into each card's 2D canvas.
+{{PAINT}}
+</script>
+</body>
+</html>
