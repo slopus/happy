@@ -522,8 +522,11 @@ reinstall loses the Keystore key. Release and preview builds must be signed
 with the existing EAS/Play signing key; no signing config is checked in
 (see "Versions and signing").
 
-The custom server URL is not carried over: happy-app keeps it in MMKV
-(`server-config`), which this app does not read.
+The custom server URL is carried over, read-only: `RnServerConfigImporter`
+reads `custom-server-url` from happy-app's unencrypted MMKV `server-config`
+instance (`files/mmkv`) and never writes the React Native files. No file is
+the default server; a value it can't trust (torn, checksum mismatch, not a
+URL) asks the person to confirm rather than sending the token to a wrong host.
 
 ## Sync
 
