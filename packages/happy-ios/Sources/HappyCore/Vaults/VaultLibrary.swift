@@ -133,6 +133,9 @@ public actor VaultLibrary {
     /// The file each upload makes, named once, so a retry after a lost
     /// answer finds the file it made instead of making another.
     private var placements: [String: (id: String, mutationId: String)] = [:]
+    /// Each new-version upload's operation, kept across its retries so a
+    /// lost answer is replayed rather than made twice.
+    private var operations: [String: String] = [:]
     private var names: [String: String] = [:]
     private var following: Task<Void, Never>?
 
@@ -518,8 +521,10 @@ public actor VaultLibrary {
     public func restoreVersion(_ surfaceId: String, _ entryId: String, number: Int) async throws -> VaultVersion? {
         let routes = routes
         let box = VersionBox()
+        // One operation for the person's one restore, whatever it takes to land.
+        let operationId = UUID().uuidString
         try await change(surfaceId, entryId, shown: { $0 }) { ifMatch, mutationId, _ in
-            let answer = try await routes.createVaultVersion(surfaceId, entryId, uploadId: nil, fromVersion: number, ifMatch: ifMatch, mutationId: mutationId)
+            let answer = try await routes.createVaultVersion(surfaceId, entryId, uploadId: nil, fromVersion: number, operationId: operationId, ifMatch: ifMatch, mutationId: mutationId)
             box.set(answer.version)
             return answer.entry
         }
@@ -754,6 +759,7 @@ public actor VaultLibrary {
 
     public func cancelUpload(_ surfaceId: String, _ id: String) {
         placements[id] = nil
+        operations[id] = nil
         uploadTasks[id]?.cancel()
         uploadTasks[id] = nil
         vaults[surfaceId]?.uploads.removeAll { $0.id == id }
@@ -778,8 +784,10 @@ public actor VaultLibrary {
             setUpload(surfaceId, id) { $0.phase = .placing; $0.sent = $0.total }
             if let replacing = item.replacing {
                 let routes = routes
+                let operationId = operations[id] ?? UUID().uuidString
+                operations[id] = operationId
                 try await change(surfaceId, replacing, shown: { $0 }) { ifMatch, mutationId, _ in
-                    try await routes.createVaultVersion(surfaceId, replacing, uploadId: upload.id, fromVersion: nil, ifMatch: ifMatch, mutationId: mutationId).entry
+                    try await routes.createVaultVersion(surfaceId, replacing, uploadId: upload.id, fromVersion: nil, operationId: operationId, ifMatch: ifMatch, mutationId: mutationId).entry
                 }
             } else {
                 let placement = placements[id] ?? (TodoID.make(), ClientID.make())
@@ -789,6 +797,7 @@ public actor VaultLibrary {
             }
             staged[id] = nil
             placements[id] = nil
+            operations[id] = nil
             vaults[surfaceId]?.uploads.removeAll { $0.id == id }
             if let file = uploadFiles.removeValue(forKey: id) { try? FileManager.default.removeItem(at: file) }
             changed(surfaceId)

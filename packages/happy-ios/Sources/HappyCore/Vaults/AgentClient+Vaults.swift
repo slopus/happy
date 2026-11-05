@@ -42,7 +42,9 @@ public protocol VaultRoutes: Sendable {
     func updateVaultEntry(_ surfaceId: String, _ entryId: String, folder: Bool, name: String?, parent: VaultParent?, ifMatch: String, mutationId: String) async throws -> VaultEntry
     func deleteVaultEntry(_ surfaceId: String, _ entryId: String, folder: Bool, ifMatch: String, mutationId: String) async throws -> VaultEntry
     func restoreVaultEntry(_ surfaceId: String, _ entryId: String, folder: Bool, parent: VaultParent?, name: String?, ifMatch: String, mutationId: String) async throws -> VaultEntry
-    func createVaultVersion(_ surfaceId: String, _ fileId: String, uploadId: String?, fromVersion: Int?, ifMatch: String, mutationId: String) async throws -> (entry: VaultEntry, version: VaultVersion?)
+    /// `operationId` names the person's one action: asked again, the computer
+    /// answers as it did the first time instead of making another version.
+    func createVaultVersion(_ surfaceId: String, _ fileId: String, uploadId: String?, fromVersion: Int?, operationId: String, ifMatch: String, mutationId: String) async throws -> (entry: VaultEntry, version: VaultVersion?)
     func pinVaultVersion(_ surfaceId: String, _ fileId: String, number: Int, pinned: Bool, mutationId: String) async throws -> VaultVersion
     func vaultSettings(_ surfaceId: String) async throws -> VaultSettings
     func updateVaultSettings(_ surfaceId: String, retention: VaultRetention, mutationId: String) async throws -> VaultSettings
@@ -166,9 +168,10 @@ extension AgentClient: VaultRoutes {
         return try Self.decode(VaultEntry.self, answer[Self.key(folder: folder)])
     }
 
-    public func createVaultVersion(_ surfaceId: String, _ fileId: String, uploadId: String?, fromVersion: Int?, ifMatch: String, mutationId: String) async throws -> (entry: VaultEntry, version: VaultVersion?) {
+    public func createVaultVersion(_ surfaceId: String, _ fileId: String, uploadId: String?, fromVersion: Int?, operationId: String, ifMatch: String, mutationId: String) async throws -> (entry: VaultEntry, version: VaultVersion?) {
         let body = Self.body([
-            "uploadId": uploadId.map(JSONValue.string), "fromVersion": fromVersion.map { .number(Double($0)) }, "mutationId": .string(mutationId),
+            "uploadId": uploadId.map(JSONValue.string), "fromVersion": fromVersion.map { .number(Double($0)) },
+            "operationId": .string(operationId), "mutationId": .string(mutationId),
         ])
         let answer = try await json("POST", Self.filePath(surfaceId, fileId, "/versions"), body: body, headers: ["If-Match": ifMatch])
         let version: VaultVersion? = answer["version"] == .null || answer["version"] == nil ? nil : try Self.decode(VaultVersion.self, answer["version"])

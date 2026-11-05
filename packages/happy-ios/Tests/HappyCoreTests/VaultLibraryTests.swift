@@ -176,9 +176,22 @@ actor FakeVaultServer: VaultRoutes {
         return entry
     }
 
-    func createVaultVersion(_ surfaceId: String, _ entryId: String, uploadId: String?, fromVersion: Int?, ifMatch: String, mutationId: String) async throws -> (entry: VaultEntry, version: VaultVersion?) {
+    /// Answers made, by operation, replayed as the contract says.
+    var operations: [String: (entry: VaultEntry, version: VaultVersion?)] = [:]
+    /// The next new version is made but its answer never arrives.
+    var losingAnswers = 0
+
+    func losing(_ count: Int) { losingAnswers = count }
+    /// Every new version holds what the newest already does, so none is made.
+    var identical = false
+
+    func unchanged() { identical = true }
+
+    func createVaultVersion(_ surfaceId: String, _ entryId: String, uploadId: String?, fromVersion: Int?, operationId: String, ifMatch: String, mutationId: String) async throws -> (entry: VaultEntry, version: VaultVersion?) {
         writes.append("version \(entryId)")
+        if let held = operations["\(entryId)/\(operationId)"], let entry = entries[entryId] { return (entry, held.version) }
         var entry = try check(entryId, ifMatch)
+        if identical { return (entry, nil) }
         var size = entry.size ?? 0
         if let uploadId {
             guard let staged = uploads.removeValue(forKey: uploadId) else { throw AgentClientError.status(404, code: "not_found", message: nil) }
@@ -191,6 +204,11 @@ actor FakeVaultServer: VaultRoutes {
         entry.size = size
         entry.version = version()
         entries[entryId] = entry
+        operations["\(entryId)/\(operationId)"] = (entry, made)
+        if losingAnswers > 0 {
+            losingAnswers -= 1
+            throw URLError(.networkConnectionLost)
+        }
         return (entry, made)
     }
 
@@ -436,6 +454,36 @@ final class VaultLibraryTests: XCTestCase {
         XCTAssertEqual(root.names, ["notes.txt"])
         let writes = await server.writes
         XCTAssertEqual(writes, ["version e1"])
+    }
+
+    func testAVersionWhoseAnswerWasLostIsAskedForAgainAndMadeOnce() async throws {
+        let server = FakeVaultServer(surfaceId: surfaceId)
+        await server.seed("e1", "notes.txt")
+        await server.losing(1)
+        let library = library(server)
+        let root = await watch(library)
+        try await eventually { root.names == ["notes.txt"] && !root.state.kept }
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("vault-upload-\(UUID().uuidString)")
+        try Data("new words".utf8).write(to: file)
+        let id = await library.upload(surfaceId, parentId: nil, file: file, name: "notes.txt", replacing: "e1")
+        try await eventually { if case .failed = root.state.uploads.first?.phase { true } else { false } }
+        await library.retryUpload(surfaceId, id)
+        try await eventually { root.state.uploads.isEmpty && root.state.entries.first?.latestVersion == 2 }
+        let (writes, made, operations) = (await server.writes, await server.versions["e1"]?.count, await server.operations.count)
+        XCTAssertEqual(writes, ["version e1", "version e1"])
+        XCTAssertEqual(made, 1, "the retry is the same operation, so no second version")
+        XCTAssertEqual(operations, 1)
+    }
+
+    func testARestoreThatMakesNoVersionStillSucceeds() async throws {
+        let server = FakeVaultServer(surfaceId: surfaceId)
+        await server.seed("e1", "notes.txt")
+        await server.unchanged()
+        let library = library(server)
+        let root = await watch(library)
+        try await eventually { root.names == ["notes.txt"] && !root.state.kept }
+        let made = try await library.restoreVersion(surfaceId, "e1", number: 1)
+        XCTAssertNil(made)
     }
 
     func testTheTrashListsItsItemsAndARestoreBringsOneBack() async throws {
