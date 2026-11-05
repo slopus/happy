@@ -14,7 +14,7 @@ import {
     type ForkSource,
 } from '@/sync/ops';
 import { getSessionForkSource } from '@/utils/sessionFork';
-import { replaceToSession } from '@/hooks/useNavigateToSession';
+import { navigateToSession } from '@/hooks/useNavigateToSession';
 import { MobileGlassSurface } from './MobileGlass';
 
 export interface DuplicateSheetProps {
@@ -155,7 +155,12 @@ export const DuplicateSheet = React.memo(function DuplicateSheet(props: Duplicat
 
         if (result.type === 'success') {
             onClose?.();
-            replaceToSession(router, result.sessionId);
+            // Push, not replace, so the source screen stays on the back stack —
+            // replace leaves an empty stack, so on Android hardware-back exits
+            // the app instead of returning to where the fork started.
+            // navigateToSession is the push that also keeps the web stack
+            // singular, the reason replaceToSession existed here.
+            navigateToSession(router, result.sessionId);
             return;
         }
 
