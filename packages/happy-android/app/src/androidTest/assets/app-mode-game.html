@@ -1,0 +1,65 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="happy-page-mode" content="app">
+<title>Paddle</title>
+<script>window.__errors = []; addEventListener("error", e => __errors.push(e.message));</script>
+<style>
+  body { background: #101820; color: #e8f0ff; font: 13px/1.35 system-ui, sans-serif; }
+  canvas { position: fixed; inset: 0; width: 100vw; height: 100dvh; display: block; touch-action: none; }
+  /* Taller than the screen on purpose: the host must keep it from scrolling. */
+  #tall { height: 300vh; }
+  #probe { position: fixed; visibility: hidden; padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+</style>
+</head>
+<body>
+<div id="tall"></div>
+<div id="probe"></div>
+<canvas id="c"></canvas>
+<script>
+const c = document.getElementById('c'), g = c.getContext('2d');
+let w = 0, h = 0, dpr = 1, touches = 0, paddle = 0.5, ball = { x: 0.5, y: 0.3, vx: 0.004, vy: 0.006 }, hits = 0;
+const dots = [];
+function size() { dpr = devicePixelRatio || 1; w = innerWidth; h = innerHeight; c.width = w * dpr; c.height = h * dpr; }
+addEventListener('resize', size); size();
+function inset(name) { return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--happy-app-inset-' + name)) || 0; }
+function env() { const s = getComputedStyle(document.getElementById('probe')); return [s.paddingTop, s.paddingRight, s.paddingBottom, s.paddingLeft].map(v => Math.round(parseFloat(v))).join(' '); }
+function point(x, y) { paddle = x / w; dots.push({ x, y, t: performance.now() }); }
+c.addEventListener('pointerdown', e => { touches++; point(e.clientX, e.clientY); });
+c.addEventListener('pointermove', e => { if (e.buttons) point(e.clientX, e.clientY); });
+addEventListener('keydown', e => { if (e.key === 'ArrowLeft') paddle -= 0.05; if (e.key === 'ArrowRight') paddle += 0.05; });
+function frame(now) {
+  const top = inset('top'), right = inset('right'), bottom = inset('bottom'), left = inset('left');
+  ball.x += ball.vx; ball.y += ball.vy;
+  if (ball.x < 0 || ball.x > 1) ball.vx *= -1;
+  if (ball.y < 0) ball.vy *= -1;
+  if (ball.y > 0.92 && Math.abs(ball.x - paddle) < 0.12) { ball.vy = -Math.abs(ball.vy); hits++; }
+  if (ball.y > 1) { ball.y = 0.2; }
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.fillStyle = '#101820'; g.fillRect(0, 0, w, h);
+  // The whole page, edge to edge, in orange; the room the host asks to keep clear, dashed green.
+  g.strokeStyle = '#ff9a3c'; g.lineWidth = 4; g.strokeRect(2, 2, w - 4, h - 4);
+  g.setLineDash([8, 6]); g.strokeStyle = '#4ade80'; g.lineWidth = 2;
+  g.strokeRect(left, top, w - left - right, h - top - bottom); g.setLineDash([]);
+  for (const d of dots) { const a = 1 - (now - d.t) / 1500; if (a > 0) { g.fillStyle = `rgba(96,165,250,${a})`; g.beginPath(); g.arc(d.x, d.y, 14, 0, 7); g.fill(); } }
+  g.fillStyle = '#facc15'; g.beginPath(); g.arc(left + ball.x * (w - left - right), top + ball.y * (h - top - bottom - 40), 10, 0, 7); g.fill();
+  g.fillStyle = '#e8f0ff'; g.fillRect(left + paddle * (w - left - right) - 50, h - bottom - 24, 100, 10);
+  const lines = [
+    'Paddle (app mode test)',
+    'mode=' + document.documentElement.getAttribute('data-happy-page-mode') + '  viewport=' + w + 'x' + h + '  dpr=' + dpr.toFixed(2),
+    'scrollY=' + scrollY + '  scrollHeight=' + document.documentElement.scrollHeight + '  zoom=' + (visualViewport ? visualViewport.scale.toFixed(2) : '?'),
+    '--happy-app-inset t/r/b/l=' + [top, right, bottom, left].map(Math.round).join(' '),
+    'env(safe-area-inset) t/r/b/l=' + env(),
+    'touches=' + touches + '  hits=' + hits,
+  ];
+  g.font = '13px system-ui, sans-serif';
+  lines.forEach((l, i) => { g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(left + 8, top + 8 + i * 18, g.measureText(l).width + 8, 18); g.fillStyle = '#e8f0ff'; g.fillText(l, left + 12, top + 22 + i * 18); });
+  document.title = 'scrollY=' + scrollY + ';zoom=' + (visualViewport ? visualViewport.scale.toFixed(2) : '?') + ';touches=' + touches;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

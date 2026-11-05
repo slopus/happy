@@ -43,6 +43,8 @@ import com.slopus.happy.browser.BrowserProxy
 import com.slopus.happy.browser.browserWorkspace
 import com.slopus.happy.agent.HappyUrls
 import com.slopus.happy.references.References
+import com.slopus.happy.artifacts.ArtifactClient
+import com.slopus.happy.artifacts.ArtifactPageMode
 import com.slopus.happy.ui.browser.BrowserPage
 import com.slopus.happy.ui.browser.WebViewProfiles
 import com.slopus.happy.ui.browser.WebViewProxyOverride
@@ -75,8 +77,26 @@ class InlinePages(
     val prepare: suspend (artifactId: String, page: References.Page) -> BrowserPage,
     /** A link tapped in a page to anywhere but its own files: a Happy URL opens in the app, anything else a browser of its own. */
     val onOpen: (String) -> Unit,
+    /** Whether [artifactId]'s [page] asks to run as an app ([ArtifactPageMode]). */
+    val mode: suspend (artifactId: String, page: References.Page) -> Boolean = { _, _ -> false },
 ) {
     private val heights = mutableStateMapOf<String, Float>()
+    private val apps = mutableStateMapOf<String, Boolean>()
+
+    /**
+     * Whether [artifactId]'s [page] runs as an app, once read: then it is
+     * never run inline, and its card says App and opens it.
+     */
+    fun isApp(artifactId: String, page: References.Page): Boolean = apps[key(artifactId, page)] == true
+
+    /** Reads whether [page] runs as an app, once per version and entry; true when it does. */
+    suspend fun readMode(artifactId: String, page: References.Page): Boolean {
+        val key = key(artifactId, page)
+        apps[key]?.let { return it }
+        return mode(artifactId, page).also { apps[key] = it }
+    }
+
+    private fun key(artifactId: String, page: References.Page) = "$artifactId/${page.version}/${page.entry}"
 
     /** [artifactId]'s page's height: as it measured itself, [DEFAULT_HEIGHT] until it has. */
     fun height(artifactId: String): Dp = heights[artifactId]?.dp ?: DEFAULT_HEIGHT
@@ -95,6 +115,7 @@ class InlinePages(
 
         /** Pages of artifacts read through [client]'s computer. */
         fun of(client: com.slopus.happy.agent.AgentClient, onOpen: (String) -> Unit) = InlinePages(
+            mode = { id, page -> ArtifactPageMode.of(ArtifactClient(client), id, page.version, page.entry) },
             prepare = { id, page ->
                 BrowserPage.artifact(
                     { authority -> BrowserProxy.Scope.Artifact(client, id, page.version, authority) { client.browserWorkspace(artifactId = id) } },
@@ -116,6 +137,8 @@ class InlinePages(
  * It never scrolls inside: it measures its content and grows to fit, 120
  * until it has. A new version, entry or artifact loads again in the same
  * WebView, which lives as long as the row; nothing else loads anything.
+ * A page that asks to run as an app is never loaded here: once its head is
+ * read ([InlinePages.readMode]) the row drops it and its card opens it.
  */
 @SuppressLint("SetJavaScriptEnabled", "JavascriptInterface")
 @Composable
@@ -129,6 +152,8 @@ fun ArtifactInlinePage(artifactId: String, title: String, page: References.Page,
     val loaded by rememberUpdatedState { state = ArtifactInlinePageTags.LOADED }
     LaunchedEffect(artifactId, page.version, page.entry) {
         prepared = try {
+            // An app runs full screen, never in a chat row: the row takes this page away.
+            if (pages.readMode(artifactId, page)) return@LaunchedEffect
             pages.prepare(artifactId, page)
         } catch (e: CancellationException) {
             throw e

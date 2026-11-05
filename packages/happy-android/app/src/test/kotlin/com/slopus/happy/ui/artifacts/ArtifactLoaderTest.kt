@@ -205,6 +205,19 @@ class ArtifactLoaderTest {
         assertEquals(ArtifactUi.Message(deleted = false), settled(load(files(mapOf(1 to version(1, "index.html"))))))
     }
 
+    // task_206's fullscreen-spec.md: the entry's head says whether it runs as an app, read before any WebView is made.
+    @Test fun aPageThatDeclaresAppModeRunsAsAnApp() {
+        val versions = mapOf(1 to version(1, "index.html", "index.html" to "text/html"))
+        val game = """<!doctype html><html><head><meta name="viewport" content="width=device-width"><meta name="happy-page-mode" content="app"></head><body><canvas></canvas></body></html>"""
+        val app = settled(load(files(versions, mapOf("index.html" to game.toByteArray())))) as ArtifactUi.Page
+        assertTrue(app.app)
+        assertTrue(asked.last().endsWith("/versions/1/files/index.html"))
+        val page = settled(load(files(versions, mapOf("index.html" to "<html><head><title>Report</title></head></html>".toByteArray())))) as ArtifactUi.Page
+        assertFalse(page.app)
+        // An entry that can't be read is a page; the page itself says why.
+        assertFalse((settled(load(files(versions))) as ArtifactUi.Page).app)
+    }
+
     @Test fun aDeletedArtifactSaysSo() {
         assertEquals(ArtifactUi.Message(deleted = true), settled(load(files(emptyMap(), status = 404))))
         assertEquals(ArtifactUi.Message(deleted = false), settled(load(files(emptyMap(), status = 500))))

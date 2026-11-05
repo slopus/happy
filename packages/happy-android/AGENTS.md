@@ -1654,6 +1654,24 @@ iOS's `docs/browser-proxy.md` is the contract; `browser/` ports it
   (androidTest, an emulator) does the same with real WebViews: two artifact
   pages in their own profiles at once, the computer's localhost, and the
   cleartext refusal.
+- **App mode** (`<meta name="happy-page-mode" content="app">`, the
+  contract shared with desktop and iOS: Happy/Tasks/task_206's
+  fullscreen-spec.md). `artifacts/ArtifactPageMode` reads the entry's first
+  64 KB before any WebView is made (`ArtifactUi.Page.app`,
+  `InlinePages.readMode`), so nothing jumps. Inline, such a page is never
+  run: its card reads "App" and "Open". Opened, `ArtifactAppPage` is a
+  `PageDialog` edge to edge into the cutout, the bars hidden with
+  `BEHAVIOR_DEFAULT` (SHOW_TRANSIENT_BARS_BY_SWIPE turns the edge back
+  gesture off while they are hidden) and shown again on close; back always
+  closes it, as does the × (`AppCloseButton`: 32 at 8 in from the safe
+  top-start, 35% after 3 s, woken by a touch within 64). `BrowserAppMode`
+  is the page's side: no zoom, scroll, pull to reload, selection or long
+  press, `data-happy-page-mode="app"`, the host sheet at document start, and
+  `--happy-app-inset-*` (the safe area; the top plus 48 for the ×).
+  Android centres no page, so app implies full width with nothing to do.
+  `ArtifactAppDeviceTest` runs a canvas game through the real proxy on an
+  emulator. The WebView matches its `SwipeRefreshLayout`: wrapping its
+  content, it gave every page `100vh`/`dvh` of 0.
 
 ## Autocomplete
 

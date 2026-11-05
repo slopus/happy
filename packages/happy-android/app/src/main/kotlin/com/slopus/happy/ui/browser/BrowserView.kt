@@ -13,6 +13,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Message
 import android.view.View
+import android.view.ViewGroup
 import android.webkit.HttpAuthHandler
 import android.webkit.PermissionRequest
 import android.webkit.ValueCallback
@@ -226,6 +227,11 @@ fun BrowserView(
      * where its server has no instance id, and then it isn't offered.
      */
     artifactLink: (artifactId: String) -> String? = { null },
+    /**
+     * The page runs as an app ([BrowserAppMode]): edge to edge, never
+     * pulled to reload, and back is its host's, never the page's history.
+     */
+    app: BrowserAppMode? = null,
 ) {
     state.artifactLink = artifactLink
     val colors = HappyTheme.colors
@@ -312,7 +318,7 @@ fun BrowserView(
         onDispose { view?.onPause() }
     }
 
-    PageBackHandler(enabled = state.takesBack && started) { state.goBack() }
+    PageBackHandler(enabled = app == null && state.takesBack && started) { state.goBack() }
 
     // The WebView is see-through: WebView takes its background only once, so what is under the page is drawn here.
     Box(modifier.fillMaxSize().background(if (state.bare) Color.White else colors.surface).testTag(BrowserTags.BROWSER)) {
@@ -335,16 +341,20 @@ fun BrowserView(
                                 state = state,
                                 credentials = if (session.isolated) session.username to session.password else Browser.proxy.webUsername to Browser.proxy.webPassword,
                                 onElsewhere = { elsewhere(it) },
+                                app = app,
                             )
+                            app?.prepare(this, shown.url)
                         }
                         SwipeRefreshLayout(ctx).apply {
                             setColorSchemeColors(colors.text.toArgb())
                             setProgressBackgroundColorSchemeColor(colors.surfaceHigh.toArgb())
+                            isEnabled = app == null
                             setOnRefreshListener {
                                 state.refreshing = true
                                 state.pulled()
                             }
-                            addView(web)
+                            // Matching its parent, never wrapping its content: WebView gives a page whose height wraps no viewport, so vh, svh and dvh are 0.
+                            addView(web, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
                             state.web = web
                             state.load(state.opening() ?: shown.url, web)
                         }
@@ -356,11 +366,12 @@ fun BrowserView(
                             view.stopLoading()
                             val profile = WebViewProfiles.of(view)
                             if (state.web === view) state.web = null
+                            app?.released(view)
                             view.destroy()
                             profile?.let(WebViewProfiles::delete)
                         }
                     },
-                    modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.navigationBars).testTag(BrowserTags.WEB),
+                    modifier = Modifier.fillMaxSize().then(if (app == null) Modifier.windowInsetsPadding(WindowInsets.navigationBars) else Modifier).testTag(BrowserTags.WEB),
                 )
             }
         }
@@ -447,6 +458,7 @@ private class BrowserClient(
     private val state: BrowserState,
     private val credentials: Pair<String, String>,
     private val onElsewhere: (String) -> Unit,
+    private val app: BrowserAppMode? = null,
 ) : WebViewClient() {
     private var answered = 0
 
@@ -491,6 +503,7 @@ private class BrowserClient(
 
     /** Once the page's first frame is up: what shows under it ([ground]). */
     override fun onPageCommitVisible(view: WebView, url: String?) {
+        app?.loaded(view)
         if (WebViewFeature.isFeatureSupported(WebViewFeature.VISUAL_STATE_CALLBACK)) {
             WebViewCompat.postVisualStateCallback(view, 0) { ground(view) }
         } else {
@@ -501,6 +514,7 @@ private class BrowserClient(
     override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) = state.navigation()
 
     override fun onPageFinished(view: WebView, url: String?) {
+        app?.loaded(view)
         state.finished()
         ground(view)
     }

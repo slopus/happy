@@ -52,6 +52,7 @@
     <string name="artifact_kind_video">影片</string>
     <string name="artifact_kind_document">檔案</string>
     <string name="artifact_kind_unknown">工件</string>
+    <string name="artifact_kind_app">應用程式</string>
 
     <string name="artifact_card_kind_image_series">圖片系列</string>
     <string name="artifact_card_kind_document">文件</string>

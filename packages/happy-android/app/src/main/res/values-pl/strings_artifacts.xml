@@ -58,6 +58,7 @@
     <string name="artifact_kind_video">Wideo</string>
     <string name="artifact_kind_document">Plik</string>
     <string name="artifact_kind_unknown">Artefakt</string>
+    <string name="artifact_kind_app">Aplikacja</string>
 
     <string name="artifact_card_kind_image_series">Seria obrazów</string>
     <string name="artifact_card_kind_document">Dokument</string>

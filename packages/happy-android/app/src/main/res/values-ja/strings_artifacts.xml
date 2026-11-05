@@ -52,6 +52,7 @@
     <string name="artifact_kind_video">動画</string>
     <string name="artifact_kind_document">ファイル</string>
     <string name="artifact_kind_unknown">アーティファクト</string>
+    <string name="artifact_kind_app">アプリ</string>
 
     <string name="artifact_card_kind_image_series">画像シリーズ</string>
     <string name="artifact_card_kind_document">ドキュメント</string>
