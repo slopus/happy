@@ -33,6 +33,17 @@ final class BrowserPage {
         catch { await proxy.stop(); throw error }
     }
 
+    /// A vault's artifact entry at one version, on an origin of its own
+    /// that serves its files and nothing else.
+    static func vault(client: AgentClient, surfaceId: String, entryId: String, version: Int, entry: String) async throws -> BrowserPage {
+        let host = "v\(UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()).happy-artifact.invalid"
+        let path = entry.split(separator: "/").map { String($0).addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(CharacterSet(charactersIn: "-._~"))) ?? String($0) }.joined(separator: "/")
+        guard let url = URL(string: "http://\(host)/\(path)"), let authority = BrowserPolicy.Authority(url: url) else { throw BrowserError.malformed }
+        let proxy = BrowserProxy(client: client, scope: .vaultArtifact(surfaceId: surfaceId, entryId: entryId, version: version, authority: authority))
+        do { return BrowserPage(url: url, proxy: proxy, port: try await proxy.start()) }
+        catch { await proxy.stop(); throw error }
+    }
+
     static func workspace(client: AgentClient, url: URL, workspaceID: String, artifactID: String? = nil) async throws -> BrowserPage {
         guard let authority = BrowserPolicy.Authority(url: url) else { throw BrowserError.malformed }
         let scope: BrowserProxy.Scope

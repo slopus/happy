@@ -19,6 +19,8 @@ enum SurfaceScreens {
             return MonitorViewController(session: session, surface: surface)
         case "todo":
             return TodoListViewController(session: session, surface: surface)
+        case "vault":
+            return VaultViewController(session: session, surfaceId: surface.id, vaultName: surface.name.isEmpty ? Strings.Vaults.title : surface.name)
         default:
             return SurfaceElsewhereViewController(surface: surface)
         }

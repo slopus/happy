@@ -783,6 +783,15 @@ extension AgentWire {
         public var entry: File?
         public var files: [File]
         public var live: Live?
+
+        public init(artifactId: String, number: Int, title: String, entry: File?, files: [File], live: Live? = nil) {
+            self.artifactId = artifactId
+            self.number = number
+            self.title = title
+            self.entry = entry
+            self.files = files
+            self.live = live
+        }
     }
 
     /// The composer's draft on the computer (`GET/PUT /v0/agents/:id/draft`):

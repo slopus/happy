@@ -502,10 +502,34 @@ final class VaultRulesTests: XCTestCase {
         XCTAssertEqual(request.value("Authorization"), "Bearer device")
     }
 
+    func testAFileIsPreviewedByWhatItHolds() {
+        XCTAssertEqual(VaultPreviewKind(mediaType: "image/png", name: "a.png", size: 9), .image)
+        XCTAssertEqual(VaultPreviewKind(mediaType: "image/svg+xml", name: "a.svg", size: 9), .text(language: "xml"))
+        XCTAssertEqual(VaultPreviewKind(mediaType: "video/mp4", name: "a.mp4", size: 9), .video)
+        XCTAssertEqual(VaultPreviewKind(mediaType: "application/pdf", name: "a.pdf", size: 9), .pdf)
+        XCTAssertEqual(VaultPreviewKind(mediaType: "text/markdown", name: "README.md", size: 9), .markdown)
+        XCTAssertEqual(VaultPreviewKind(mediaType: "application/octet-stream", name: "main.swift", size: 9), .text(language: "swift"))
+        XCTAssertEqual(VaultPreviewKind(mediaType: "text/plain", name: "notes.txt", size: 9), .text(language: "plaintext"))
+        XCTAssertEqual(VaultPreviewKind(mediaType: "text/plain", name: "huge.log", size: VaultPreviewKind.textLimit + 1), .other)
+        XCTAssertEqual(VaultPreviewKind(mediaType: "application/zip", name: "a.zip", size: 9), .other)
+        XCTAssertEqual(VaultPreviewKind(VaultEntry(id: "e", surfaceId: "s", parentId: nil, name: "site", kind: .artifact)), .site)
+    }
+
     func testAFreeNameNumbersBeforeTheExtension() {
         XCTAssertEqual(VaultReducer.free("Report.pdf", among: ["report.PDF", "Report 2.pdf"]), "Report 3.pdf")
         XCTAssertEqual(VaultReducer.free("Notes", among: ["Other"]), "Notes")
         XCTAssertEqual(VaultReducer.free("Notes", among: ["notes"]), "Notes 2")
+    }
+
+    func testAFileNamedArtifactUploadsAsASite() {
+        XCTAssertEqual(VaultEntry.kind(named: "launch.artifact"), .artifact)
+        XCTAssertEqual(VaultEntry.kind(named: "Launch.ARTIFACT"), .artifact)
+        XCTAssertEqual(VaultEntry.kind(named: "launch.zip"), .file)
+        XCTAssertEqual(VaultEntry.kind(named: ".artifact"), .file)
+    }
+
+    func testAVaultSurfaceWearsItsOwnGlyph() {
+        XCTAssertEqual(Rows.surfaceGlyph("vault"), "vault")
     }
 
     func testAnEntryDecodesFromTheContractsExample() throws {

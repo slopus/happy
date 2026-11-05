@@ -133,6 +133,15 @@ public struct VaultEntry: Codable, Equatable, Hashable, Sendable, Identifiable {
     }
 
     public var isFolder: Bool { kind == .folder }
+
+    /// Every site's name ends in this, and nothing else's.
+    public static let artifactSuffix = ".artifact"
+
+    /// What an upload named `name` becomes: a site when it ends in
+    /// `.artifact`, whatever the case, else a file.
+    public static func kind(named name: String) -> Kind {
+        name.lowercased().hasSuffix(artifactSuffix) && name.count > artifactSuffix.count ? .artifact : .file
+    }
 }
 
 /// Where an entry is: its path, the folders from the root down, and

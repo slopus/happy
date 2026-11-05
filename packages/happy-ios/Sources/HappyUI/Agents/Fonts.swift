@@ -81,6 +81,7 @@ enum Glyphs {
         case "calendar": .ionicons("calendar-outline")
         case "pulse": .ionicons("pulse-outline")
         case "users": .ionicons("people-outline")
+        case "vault": .ionicons("folder-open-outline")
         case "chevron-right": .ionicons("chevron-forward")
         case "chevron-down": .ionicons("chevron-down")
         case "open": .ionicons("chevron-forward")

@@ -737,10 +737,11 @@ public actor VaultLibrary {
         }
     }
 
-    /// What a failed upload says: the computer's words, or the code.
+    /// What a failed upload says: the computer's words, else its code;
+    /// empty when it couldn't be reached.
     static func reason(_ error: Error) -> String {
-        if case AgentClientError.status(_, let code, let message) = error { return message ?? code ?? Store.describe(error) }
-        return Store.describe(error)
+        if case AgentClientError.status(_, let code, let message) = error { return message ?? code ?? "" }
+        return ""
     }
 
     private func setUpload(_ surfaceId: String, _ id: String, _ change: (inout VaultUploadState) -> Void) {

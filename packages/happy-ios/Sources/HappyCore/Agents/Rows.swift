@@ -359,6 +359,7 @@ public enum Rows {
         case "calendar": "calendar"
         case "system_monitor": "pulse"
         case "chat": "users"
+        case "vault": "vault"
         default: "doc"
         }
     }

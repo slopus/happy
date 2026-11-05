@@ -217,6 +217,7 @@ final class RowView: UIView {
             case "todo": return (Palette.tileGreen, Palette.tileGreenFill)
             case "calendar": return (Palette.tileRed, Palette.tileRedFill)
             case "system_monitor", "chat": return (Palette.tileTeal, Palette.tileTealFill)
+            case "vault": return (Palette.tileIndigo, Palette.tileIndigoFill)
             default: return (Palette.tileBlue, Palette.tileBlueFill)
             }
         default: return (Palette.tileBlue, Palette.tileBlueFill)
