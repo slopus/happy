@@ -161,6 +161,18 @@ final class FeedCoverTests: XCTestCase {
         XCTAssertNil(older.entryPreviewPath, "no still: the phone makes its own")
         XCTAssertNotNil(older.coverPath)
 
+        // `artifact.updated` brings a new cover with its still, or one without.
+        guard case .changed(let stilled) = ArtifactCatalog.apply(json(#"""
+        {"type":"artifact.updated","payload":{"artifactId":"old","changes":{"latestVersion":2,
+         "cover":{"path":"b.png","mimeType":"image/png","width":1600,"height":900,"aspect":"wide","preview":{"width":640,"height":360}}}}}
+        """#), to: [older]) else { return XCTFail() }
+        XCTAssertEqual(stilled[0].coverPreviewPath, "/v0/artifacts/old/versions/2/previews/b.png")
+        guard case .changed(let plain) = ArtifactCatalog.apply(json(#"""
+        {"type":"artifact.updated","payload":{"artifactId":"old","changes":{"cover":{"path":"b.png","mimeType":"image/png","width":1600,"height":900,"aspect":"wide"}}}}
+        """#), to: stilled) else { return XCTFail() }
+        XCTAssertNil(plain[0].coverPreviewPath, "a cover without a still: the list reads the cover")
+        XCTAssertEqual(plain[0].coverPath, "/v0/artifacts/old/versions/2/files/b.png")
+
         // A version's files carry the same.
         let version = try JSONDecoder().decode(AgentWire.ArtifactVersion.self, from: Data(#"""
         {"artifactId":"clip","number":3,"title":"Walkthrough","entry":null,"live":null,

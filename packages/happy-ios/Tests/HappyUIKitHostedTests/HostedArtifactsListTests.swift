@@ -20,6 +20,8 @@ actor ArtifactCatalogDaemon: AgentTransport {
         /// `wide` or `square`: the picture is the cover, of that shape.
         var aspect: String? = nil
         var deleted = false
+        /// The daemon made a still of the cover (`cover.preview`).
+        var preview = false
     }
 
     var items: [Item]
@@ -39,7 +41,7 @@ actor ArtifactCatalogDaemon: AgentTransport {
             let list = items.map(object).joined(separator: ",")
             return HTTP1Response(status: 200, body: Data(#"{"artifacts":[\#(list)],"nextPageCursor":null,"cursor":"c1"}"#.utf8))
         }
-        if path.hasPrefix("/v0/artifacts/"), path.contains("/files/") {
+        if path.hasPrefix("/v0/artifacts/"), path.contains("/files/") || path.contains("/previews/") {
             fileReads.append(path)
             guard let item = items.first(where: { path.hasPrefix("/v0/artifacts/\($0.id)/") }), let data = item.picture else { return HTTP1Response(status: 404, body: Data("{}".utf8)) }
             return ArtifactDaemon.serve(.init(path: "picture.png", mimeType: "image/png", data: data), range: headers["Range"])
@@ -57,7 +59,8 @@ actor ArtifactCatalogDaemon: AgentTransport {
         let size = item.type == "html" ? 100 : item.picture?.count ?? 100
         let cover = item.aspect.map { aspect in
             let side = aspect == "wide" ? #""width":1600,"height":900"# : #""width":1200,"height":1200"#
-            return ##","cover":{"path":"picture.png","mimeType":"image/png",\##(side),"aspect":"\##(aspect)"},"background":"#0b1f33""##
+            let preview = item.preview ? #","preview":{"width":320,"height":180}"# : ""
+            return ##","cover":{"path":"picture.png","mimeType":"image/png",\##(side),"aspect":"\##(aspect)"\##(preview)},"background":"#0b1f33""##
         } ?? ""
         return #"{"id":"\#(item.id)","type":"\#(item.type)","title":"\#(item.title)","status":"\#(item.deleted ? "deleted" : "active")","latestVersion":2,"entry":{"path":"\#(path)","mimeType":"\#(mime)","size":\#(size),"sha256":"0"},"fileCount":1,"live":null,"createdAt":\#(ms),"updatedAt":\#(ms)\#(cover)}"#
     }
@@ -130,7 +133,7 @@ final class HostedArtifactsListTests: XCTestCase {
         let today = min(Date(), days(0, hours: 9))
         return [
             .init(id: "a1", type: "markdown", title: "Q3 roadmap", updatedAt: today, picture: nil),
-            .init(id: "a2", type: "image", title: "Team offsite photo", updatedAt: today.addingTimeInterval(-60), picture: picture, aspect: "wide"),
+            .init(id: "a2", type: "image", title: "Team offsite photo", updatedAt: today.addingTimeInterval(-60), picture: picture, aspect: "wide", preview: true),
             .init(id: "a3", type: "html", title: "Pricing page prototype", updatedAt: days(1, hours: 16), picture: square, aspect: "square"),
             .init(id: "a4", type: "markdown", title: "Interview notes with the design partner, the longer write-up that wraps", updatedAt: days(3, hours: 11), picture: nil),
             .init(id: "gone", type: "image", title: "Old mockup", updatedAt: days(2, hours: 9), picture: sketch, deleted: true),
@@ -236,6 +239,9 @@ final class HostedArtifactsListTests: XCTestCase {
         let files = await daemon.fileReads
         XCTAssertEqual(files.count, 3, "each read once, the tombstone's never: \(files)")
         XCTAssertFalse(files.contains { $0.contains("/gone/") })
+        XCTAssertTrue(files.contains("/v0/artifacts/a2/versions/2/previews/picture.png"), "a cover with a still loads the still: \(files)")
+        XCTAssertFalse(files.contains("/v0/artifacts/a2/versions/2/files/picture.png"), "never the whole cover")
+        XCTAssertTrue(files.contains("/v0/artifacts/a3/versions/2/files/picture.png"), "one without a still loads the cover")
         XCTAssertNil(cover("a1"), "a document shows its kind's glyph")
         XCTAssertTrue(overlays("a1").isEmpty)
         XCTAssertTrue(overlays("a3").allSatisfy { $0.kind == ArtifactListItems.coverKind })
