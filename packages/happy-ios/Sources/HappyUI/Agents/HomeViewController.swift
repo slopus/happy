@@ -34,7 +34,7 @@ final class HomeViewController: UIViewController {
     /// Search, in the bar, while it is open.
     private var search: Search?
     /// What search finds, over home.
-    private let resultsView = HomeSearchResultsView()
+    let resultsView = HomeSearchResultsView()
     /// The keyboard's top in this screen; nil while it has never shown.
     private var keyboardTop: CGFloat?
 
@@ -384,31 +384,48 @@ final class HomeViewController: UIViewController {
         var runs: [String: () -> Void] = [:]
         for one in fused {
             let id = "found:\(one.key)"
+            // What the computer found in the content, under the title, wherever the row came from.
+            let detail = one.remote.flatMap { Self.detail(remote[$0]) }
             if let index = one.local {
+                var row: Row
                 switch local[index].found {
-                case .row(let row):
-                    rows.append(row)
+                case .row(let found):
+                    row = found
                 case .surface(let surface):
-                    rows.append(Row(id: id, nodeId: id, kind: .result, label: surface.name, mark: .glyph(Rows.surfaceGlyph(surface.type))))
+                    row = Row(id: id, nodeId: id, kind: .result, label: surface.name, mark: .glyph(Rows.surfaceGlyph(surface.type)))
                     runs[id] = { [weak self] in self?.openSurface(AgentWire.Surface(id: surface.id, type: surface.type, name: surface.name), row: id) }
                 case .artifact(let artifact):
-                    rows.append(Row(id: id, nodeId: id, kind: .result, label: artifact.title, mark: .glyph(artifact.live || artifact.type == "html" ? "globe-outline" : "doc")))
+                    row = Row(id: id, nodeId: id, kind: .result, label: artifact.title, mark: .glyph(artifact.live || artifact.type == "html" ? "globe-outline" : "doc"))
                     runs[id] = { [weak self] in self?.openArtifact(id: artifact.id, type: artifact.type, title: artifact.title, row: id) }
                 }
+                row.detail = detail
+                rows.append(row)
             } else if let index = one.remote {
                 let result = remote[index]
-                rows.append(Row(id: id, nodeId: id, kind: .result, label: label(result), mark: .glyph(Self.glyph(result))))
+                var row = Row(id: id, nodeId: id, kind: .result, label: label(result), mark: .glyph(Self.glyph(result)))
+                row.detail = detail
+                rows.append(row)
                 runs[id] = { [weak self] in self?.open(result, row: id) }
             }
         }
         return (rows, runs)
     }
 
+    /// The line under a result's title: the words it matched in the
+    /// content, or a message's; for a vault item, the folders it is in,
+    /// which say why a match only in them found it.
+    private static func detail(_ result: HappyCore.Search.Result) -> String? {
+        if result.match == "content" || result.type == "message", let snippet = result.snippet?.trimmingCharacters(in: .whitespacesAndNewlines), !snippet.isEmpty { return snippet }
+        guard result.type == "vault_file" || result.type == "vault_folder", let path = result.path else { return nil }
+        let folders = path.split(separator: "/").dropLast()
+        return folders.isEmpty ? nil : folders.joined(separator: " › ")
+    }
+
     private func label(_ result: HappyCore.Search.Result) -> String {
         switch result.type {
         // A vault app shows without its `.artifact`, as the vault shows it.
         case "vault_file": VaultEntry.shownName(result.label)
-        // A message is titled by its conversation.
+        // A message is titled by its conversation; what it says is under it.
         case "message": result.agentId.flatMap(conversationTitle) ?? Strings.untitledSession
         default: result.label
         }

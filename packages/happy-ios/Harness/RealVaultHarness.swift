@@ -52,7 +52,8 @@ final class RealVaultHarness {
             AppCoordinator.applyAppearance(to: navigation.navigationBar)
             window.rootViewController = navigation
             if arguments.contains("-dark") { window.overrideUserInterfaceStyle = .dark }
-            await script.run(session: session, navigation: navigation, surfaceId: vault, name: Self.value("-name", arguments) ?? "Demo vault")
+            await script.run(session: session, navigation: navigation, surfaceId: vault, name: Self.value("-name", arguments) ?? "Demo vault",
+                             searchOnly: arguments.contains("-searchOnly"))
         } catch {
             script.fail("\(error)")
         }
@@ -216,13 +217,15 @@ private final class RealVaultScript {
 
     // MARK: The walk
 
-    func run(session: Session, navigation: UINavigationController, surfaceId: String, name: String) async {
+    func run(session: Session, navigation: UINavigationController, surfaceId: String, name: String, searchOnly: Bool = false) async {
         self.session = session
         self.navigation = navigation
         self.surfaceId = surfaceId
         self.name = name
         await sleep(6)
         await shoot("01-home")
+        await homeSearch()
+        if searchOnly { return note("DONE") }
 
         // The Surface list's row opens the vault's browser.
         navigation.pushViewController(SurfaceScreens.make(session: session, surface: AgentWire.Surface(id: surfaceId, type: "vault", name: name)), animated: true)
@@ -241,6 +244,53 @@ private final class RealVaultScript {
         await live(root)
         await tidy(root)
         note("DONE")
+    }
+
+    /// Home's search: the phone's own results at once, the computer's
+    /// fused in (`POST /v0/search`), a file's matched words under its
+    /// name, a found file opening in its vault, and a found message in its
+    /// conversation.
+    private func homeSearch() async {
+        guard let home = navigation.viewControllers.first?.children.compactMap({ $0 as? HomeViewController }).first else {
+            check("home search", false, "no home")
+            return
+        }
+        let rows = { home.resultsView.list.rows }
+        let labels = { rows().map { $0.label + ($0.detail.map { " [\($0)]" } ?? "") }.joined(separator: " | ") }
+        home.beginSearch()
+        home.search("launch")
+        check("home search shows what the phone holds at once", await until(2) { rows().contains { $0.label.lowercased().contains("launch") } }, labels())
+        await shoot("00a-search-local")
+        check("and the computer's, fused in, with the words a file matched under its name",
+              await until(15) { rows().contains { $0.id.hasPrefix("found:vault_file:") && $0.detail != nil } }, labels())
+        await shoot("00b-search-fused")
+        check("a vault app shows without .artifact", !rows().contains { $0.label.hasSuffix(".artifact") }, labels())
+        home.search("revenue")
+        check("a word only in a file's content finds it, with its line", await until(15) { rows().contains { $0.id.hasPrefix("found:vault_file:") && $0.detail?.lowercased().contains("revenue") == true } },
+              labels())
+        await shoot("00c-search-content")
+        if let row = rows().first(where: { $0.id.hasPrefix("found:vault_file:") }) {
+            home.resultsView.list.onSelect?(row)
+            check("a found file opens in its vault", await until(15) { top is VaultPreviewViewController }, String(describing: top))
+            await sleep(2)
+            await shoot("00d-search-opened")
+            navigation.popToRootViewController(animated: false)
+            await sleep(0.5)
+        }
+        home.search("launch")
+        if await until(15, { rows().contains { $0.id.hasPrefix("found:message:") } }), let row = rows().first(where: { $0.id.hasPrefix("found:message:") }) {
+            await shoot("00e-search-message")
+            home.resultsView.list.onSelect?(row)
+            check("a found message opens its conversation", await until(15) { top is ChatViewController }, String(describing: top))
+            await sleep(2)
+            await shoot("00f-search-message-opened")
+            navigation.popToRootViewController(animated: false)
+            await sleep(0.5)
+        } else {
+            note("no message says launch: \(labels())")
+        }
+        home.endSearch(animated: false)
+        await sleep(0.5)
     }
 
     private func browse(_ root: VaultViewController?) async {

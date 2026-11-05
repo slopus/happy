@@ -23,6 +23,25 @@ final class GroupedSidebarLayoutTests: XCTestCase {
         XCTAssertEqual([G.contentTop, G.contentBottom], [8, 24])
     }
 
+    /// A search result with a snippet is a taller row: its title over the
+    /// snippet, the mark on the row's middle, the rows under it moved down.
+    func testARowWithADetailIsTallerWithItsLineUnderTheTitle() {
+        typealias G = GroupedSidebarMetrics
+        let result = grouped([.init(kind: .row, hasDetail: true), .init(kind: .row)])
+        let first = result.frames[0], second = result.frames[1]
+        XCTAssertEqual(first.box.height, G.detailRowHeight)
+        XCTAssertEqual(second.box.minY, first.box.maxY)
+        XCTAssertEqual(second.box.height, Metrics.rowHeight)
+        let detail = try? XCTUnwrap(first.detail)
+        XCTAssertEqual(first.label.minY, first.box.minY + G.detailTitleTop)
+        XCTAssertEqual(detail?.minY, first.label.maxY + G.detailGap)
+        XCTAssertEqual(detail?.minX, first.label.minX)
+        XCTAssertLessThanOrEqual(detail?.maxY ?? .infinity, first.box.maxY)
+        XCTAssertEqual(first.mark?.midY, first.box.midY)
+        XCTAssertNil(second.detail)
+        XCTAssertEqual(result.groups.first?.frame.height, G.detailRowHeight + Metrics.rowHeight)
+    }
+
     /// Rows before the first heading are a card of their own; each heading
     /// stands over its card; a separator only parts two cards; a folded
     /// section is its heading alone.

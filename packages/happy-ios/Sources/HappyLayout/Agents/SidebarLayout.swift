@@ -28,8 +28,11 @@ public enum SidebarLayout {
         public var foldClosed: Bool
         public var lineChangesWidth: CGFloat
         public var trailingInk: CGRect?
+        /// A line under the title, as a search result's snippet: in a
+        /// grouped list, the row is `detailRowHeight` tall.
+        public var hasDetail: Bool
 
-        public init(kind: Kind, depth: Int = 0, hasMark: Bool = true, hasTrailing: Bool = false, hasWorkingSignal: Bool = false, hasFold: Bool = false, foldClosed: Bool = false, lineChangesWidth: CGFloat = 0, trailingInk: CGRect? = nil) {
+        public init(kind: Kind, depth: Int = 0, hasMark: Bool = true, hasTrailing: Bool = false, hasWorkingSignal: Bool = false, hasFold: Bool = false, foldClosed: Bool = false, lineChangesWidth: CGFloat = 0, trailingInk: CGRect? = nil, hasDetail: Bool = false) {
             self.kind = kind
             self.depth = depth
             self.hasMark = hasMark
@@ -39,6 +42,7 @@ public enum SidebarLayout {
             self.foldClosed = foldClosed
             self.lineChangesWidth = lineChangesWidth
             self.trailingInk = trailingInk
+            self.hasDetail = hasDetail
         }
     }
 
@@ -66,6 +70,8 @@ public enum SidebarLayout {
         /// list, and for a heading or a separator.
         public var cell: Cell?
         public var lineChanges: CGRect?
+        /// The line under the title, for a row that has one.
+        public var detail: CGRect?
 
         public init(box: CGRect, mark: CGRect? = nil, label: CGRect = .zero, trailing: CGRect? = nil, chevron: CGRect? = nil, chevronGlyph: CGRect? = nil, rule: CGRect? = nil, corner: CGRect? = nil, cell: Cell? = nil) {
             self.box = box

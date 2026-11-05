@@ -135,6 +135,8 @@ public struct Row: Equatable, Sendable, Identifiable {
     /// A count at the row's end, as iOS's lists show one (the Feed's unread
     /// entries); nil for none.
     public var count: Int?
+    /// A line under the title: what a search found in the content.
+    public var detail: String?
 
     public init(id: String, nodeId: String, kind: Kind, depth: Int = 0, label: String, mark: Mark = .none, status: Status = .none, unread: Bool = false, collapsed: Bool? = nil, isHappy: Bool = false, agentId: String? = nil, workspaceId: String? = nil, spaceId: String? = nil, targetKind: String? = nil, isUntouchedSeedling: Bool = false) {
         self.id = id

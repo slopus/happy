@@ -309,7 +309,7 @@ final class SidebarView: UIScrollView {
             case .widget: .widget
             default: .row
             }
-            return SidebarLayout.Row(kind: kind, depth: row.depth, hasMark: row.mark != .none, hasTrailing: row.hasTrailingMark, hasWorkingSignal: row.status == .working, hasFold: (row.kind == .space || row.kind == .session) && row.collapsed != nil, foldClosed: row.collapsed == true || row.hasHiddenSessions, lineChangesWidth: row.count.map(SidebarLineChanges.width(count:)) ?? SidebarLineChanges.width(row.lineChanges), trailingInk: SidebarTypography.trailingInk(row, scale: scale))
+            return SidebarLayout.Row(kind: kind, depth: row.depth, hasMark: row.mark != .none, hasTrailing: row.hasTrailingMark, hasWorkingSignal: row.status == .working, hasFold: (row.kind == .space || row.kind == .session) && row.collapsed != nil, foldClosed: row.collapsed == true || row.hasHiddenSessions, lineChangesWidth: row.count.map(SidebarLineChanges.width(count:)) ?? SidebarLineChanges.width(row.lineChanges), trailingInk: SidebarTypography.trailingInk(row, scale: scale), hasDetail: row.detail != nil)
         }
     }
 

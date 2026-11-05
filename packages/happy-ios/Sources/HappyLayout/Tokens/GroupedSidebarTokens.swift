@@ -69,6 +69,14 @@ public enum GroupedSidebarMetrics {
     public static let contentBottom: CGFloat = 24
     /// A glyph's tile: the mark's square, rounded as Settings' tiles are
     /// for their size, the glyph smaller inside it; a picture's rounding.
+    /// A row with a line under its title (a search result's snippet): the
+    /// title's box from the row's top, the gap, and the line's box.
+    public static let detailRowHeight: CGFloat = 64
+    public static let detailTitleTop: CGFloat = 6
+    public static let detailTitleHeight: CGFloat = 30
+    public static let detailGap: CGFloat = 0
+    public static let detailLine: CGFloat = 20
+    public static let detailSize: CGFloat = 14
     public static let tileRadius: CGFloat = 8
     public static let tileGlyph: CGFloat = 18
 }

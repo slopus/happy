@@ -33,7 +33,7 @@ struct SidebarItemDrawing: Drawing, Equatable {
             && a.row.kind == b.row.kind && a.row.label == b.row.label && a.row.unread == b.row.unread
             && a.row.isNew == b.row.isNew && a.row.status == b.row.status && a.row.collapsed == b.row.collapsed
             && a.row.hasHiddenSessions == b.row.hasHiddenSessions && a.row.lineChanges == b.row.lineChanges
-            && a.row.targetKind == b.row.targetKind && a.row.count == b.row.count
+            && a.row.targetKind == b.row.targetKind && a.row.count == b.row.count && a.row.detail == b.row.detail
     }
 
     #if DEBUG
@@ -79,6 +79,12 @@ struct SidebarItemDrawing: Drawing, Equatable {
             break
         }
         SidebarTypography.draw(title, in: frame.label, scale: displayScale)
+        if let detail = row.detail, let box = frame.detail {
+            let line = NSAttributedString(string: detail, attributes: [
+                .font: Fonts.ui(.regular, size: GroupedSidebarMetrics.detailSize), .foregroundColor: UIColor(Palette.settingsSecondary),
+            ])
+            Self.drawLine(line, in: box, scale: displayScale)
+        }
         if let box = frame.lineChanges {
             if let count = row.count { SidebarLineChanges.draw(count: count, in: box, scale: displayScale) }
             else { SidebarLineChanges.draw(row.lineChanges, in: box, scale: displayScale) }

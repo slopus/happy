@@ -81,7 +81,7 @@ extension SidebarLayout {
                 y += height
             case .row, .widget:
                 if card == nil { card = (index, y) }
-                let box = CGRect(x: cardX, y: y, width: cardWidth, height: height(row.kind))
+                let box = CGRect(x: cardX, y: y, width: cardWidth, height: row.kind == .row && row.hasDetail ? G.detailRowHeight : height(row.kind))
                 var frame = cellRow(row, box: box, cardRight: cardRight, scale: scale)
                 let last = index + 1 == rows.count || !inCard(rows[index + 1])
                 let start = frame.label.minX
@@ -134,6 +134,12 @@ extension SidebarLayout {
             frame.label.size.width = max(0, slot.minX - M.trailingGap - x)
         }
         reserveLineChanges(row, frame: &frame, activityRight: cardRight - G.markInset, scale: scale)
+        if row.hasDetail, row.kind == .row {
+            // The title over its detail, the two centred on the row as one.
+            let label = frame.label
+            frame.label = CGRect(x: label.minX, y: box.minY + G.detailTitleTop, width: label.width, height: G.detailTitleHeight)
+            frame.detail = CGRect(x: label.minX, y: frame.label.maxY + G.detailGap, width: max(0, trailingRect.maxX - label.minX), height: G.detailLine)
+        }
         return frame
     }
 
