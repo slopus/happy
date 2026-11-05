@@ -1158,8 +1158,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     //     }, null, 2));
     // }, [props.value, inputState, activeWord, suggestions.length, selected]);
 
-    // Handle suggestion selection
-    const handleSuggestionSelect = React.useCallback((index: number) => {
+    // Handle suggestion selection. The space after it leaves room to keep
+    // typing; a command about to be sent as it is goes without one.
+    const handleSuggestionSelect = React.useCallback((index: number, addSpace: boolean = true) => {
         if (!suggestions[index] || !inputRef.current) return;
 
         const suggestion = suggestions[index];
@@ -1170,7 +1171,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             inputState.selection,
             suggestion.text,
             props.autocompletePrefixes,
-            true // add space after
+            addSpace
         );
 
         // Use imperative API to set text and selection
@@ -1430,6 +1431,23 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
     // Handle keyboard navigation
     const handleKeyPress = React.useCallback((event: KeyPressEvent): boolean => {
+        // On mobile web (touch devices), Enter should insert a newline since
+        // there's no Shift key available. Users send via the send button instead.
+        // Use pointer:coarse media query instead of ontouchstart/maxTouchPoints
+        // to avoid false positives on Windows touch-screen laptops with keyboards.
+        const enterSends = Platform.OS === 'web'
+            && agentInputEnterToSend
+            && event.key === 'Enter'
+            && !event.shiftKey
+            && !(typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches);
+        const send = () => {
+            if (isSendBlocked) {
+                handleBlockedSendAttempt();
+            } else if (!props.isSendDisabled) {
+                props.onSend();
+            }
+        };
+
         // Handle autocomplete navigation first
         if (suggestions.length > 0) {
             if (event.key === 'ArrowUp') {
@@ -1442,6 +1460,14 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 // Both Enter and Tab select the current suggestion
                 // If none selected (selected === -1), select the first one
                 const indexToSelect = selected >= 0 ? selected : 0;
+                // Where Enter sends, it runs the highlighted slash command at
+                // once, as Claude Code does. Tab only completes it, so
+                // arguments can follow.
+                if (enterSends && activeWord?.startsWith('/')) {
+                    handleSuggestionSelect(indexToSelect, false);
+                    send();
+                    return true;
+                }
                 handleSuggestionSelect(indexToSelect);
                 return true;
             } else if (event.key === 'Escape') {
@@ -1465,21 +1491,12 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
         // Original key handling
         if (Platform.OS === 'web') {
-            // On mobile web (touch devices), Enter should insert a newline since
-            // there's no Shift key available. Users send via the send button instead.
-            // Use pointer:coarse media query instead of ontouchstart/maxTouchPoints
-            // to avoid false positives on Windows touch-screen laptops with keyboards.
-            const isTouchDevice = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
-            if (agentInputEnterToSend && event.key === 'Enter' && !event.shiftKey && !isTouchDevice) {
+            if (enterSends) {
                 // Read live text from the textarea — `hasText` is debounced via
                 // startTransition and would lag behind a quick type-then-Enter.
                 const liveText = inputRef.current?.getText() ?? '';
                 if (liveText.trim()) {
-                    if (isSendBlocked) {
-                        handleBlockedSendAttempt();
-                    } else if (!props.isSendDisabled) {
-                        props.onSend();
-                    }
+                    send();
                     return true; // Key was handled
                 }
             }
@@ -1494,7 +1511,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
         }
         return false; // Key was not handled
-    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.onSend, props.onPermissionModeChange, availableModes, permissionModeKey, isSendBlocked, handleBlockedSendAttempt, props.isSendDisabled]);
+    }, [suggestions, moveUp, moveDown, selected, activeWord, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.onSend, props.onPermissionModeChange, availableModes, permissionModeKey, isSendBlocked, handleBlockedSendAttempt, props.isSendDisabled]);
 
     const desktopActionControls = (
         <View style={styles.actionButtonsContainer}>
