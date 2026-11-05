@@ -21,6 +21,12 @@ public enum ArtifactPageMode: Equatable, Sendable {
     }
 
     public static func declared(in html: String) -> ArtifactPageMode {
+        meta("happy-page-mode", in: html) == "app" ? .app : .page
+    }
+
+    /// The content of the first `name` meta before `<body>`, outside
+    /// comments, trimmed and lowercased; nil when there is none.
+    static func meta(_ name: String, in html: String) -> String? {
         var text = html.replacingOccurrences(of: "<!--[\\s\\S]*?(-->|$)", with: "", options: .regularExpression)
         if let body = text.range(of: "<body[\\s>/]", options: [.regularExpression, .caseInsensitive]) {
             text = String(text[..<body.lowerBound])
@@ -29,10 +35,10 @@ public enum ArtifactPageMode: Equatable, Sendable {
         while let tag = text.range(of: "<meta\\b[^>]*>", options: [.regularExpression, .caseInsensitive], range: start..<text.endIndex) {
             start = tag.upperBound
             let attributes = Self.attributes(String(text[tag]))
-            guard attributes["name"]?.lowercased() == "happy-page-mode" else { continue }
-            return attributes["content"]?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "app" ? .app : .page
+            guard attributes["name"]?.lowercased() == name else { continue }
+            return (attributes["content"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         }
-        return .page
+        return nil
     }
 
     /// A tag's attributes, names lowercased: quoted either way or bare.
@@ -56,6 +62,50 @@ public enum ArtifactPageMode: Equatable, Sendable {
     }
 }
 
+/// Where an app's close button sits, declared beside its mode:
+///
+///     <meta name="happy-app-close" content="top-end">
+///
+/// A corner, logical (start is the leading side), or `none`: no button,
+/// for a game that draws its own exit and calls `happyApp.close()`; a
+/// swipe down from the top edge still shows it for a moment. Anything
+/// else, or no tag, is `top-start`.
+public enum ArtifactAppClose: String, Equatable, Sendable, CaseIterable {
+    case topStart = "top-start"
+    case topEnd = "top-end"
+    case bottomStart = "bottom-start"
+    case bottomEnd = "bottom-end"
+    case none
+
+    public static func declared(in head: Data) -> ArtifactAppClose {
+        declared(in: String(decoding: head, as: UTF8.self))
+    }
+
+    public static func declared(in html: String) -> ArtifactAppClose {
+        ArtifactPageMode.meta("happy-app-close", in: html).flatMap(ArtifactAppClose.init(rawValue:)) ?? .topStart
+    }
+
+    public var isTop: Bool { self == .topStart || self == .topEnd }
+    public var isBottom: Bool { self == .bottomStart || self == .bottomEnd }
+    public var isEnd: Bool { self == .topEnd || self == .bottomEnd }
+}
+
+/// What the start of a page declares: its mode, and an app's close button.
+public struct ArtifactPageDeclaration: Equatable, Sendable {
+    public var mode: ArtifactPageMode
+    public var close: ArtifactAppClose
+
+    public init(mode: ArtifactPageMode, close: ArtifactAppClose = .topStart) {
+        self.mode = mode
+        self.close = close
+    }
+
+    public static func declared(in head: Data) -> ArtifactPageDeclaration {
+        let html = String(decoding: head, as: UTF8.self)
+        return ArtifactPageDeclaration(mode: .declared(in: html), close: .declared(in: html))
+    }
+}
+
 /// The page modes read so far through one client. A version's files never
 /// change, so a read holds for good; the newest version read of each
 /// artifact is kept too, for what opens an artifact at its latest.
@@ -64,6 +114,7 @@ public final class ArtifactPageModes: @unchecked Sendable {
         public var version: Int
         public var entry: String
         public var mode: ArtifactPageMode
+        public var close: ArtifactAppClose = .topStart
     }
 
     private struct File: Hashable {
@@ -78,13 +129,13 @@ public final class ArtifactPageModes: @unchecked Sendable {
     }
 
     private let lock = NSLock()
-    private var files: [File: ArtifactPageMode] = [:]
+    private var files: [File: ArtifactPageDeclaration] = [:]
     private var entries: [Version: Read] = [:]
     private var newest: [String: Read] = [:]
 
     public init() {}
 
-    public func known(_ artifactId: String, version: Int, path: String) -> ArtifactPageMode? {
+    public func known(_ artifactId: String, version: Int, path: String) -> ArtifactPageDeclaration? {
         lock.withLock { files[File(artifactId: artifactId, version: version, path: path)] }
     }
 
@@ -98,11 +149,11 @@ public final class ArtifactPageModes: @unchecked Sendable {
     }
 
     /// `isEntry`: `path` is the version's entry, what opening it opens.
-    public func remember(_ artifactId: String, version: Int, path: String, mode: ArtifactPageMode, isEntry: Bool) {
+    public func remember(_ artifactId: String, version: Int, path: String, declared: ArtifactPageDeclaration, isEntry: Bool) {
         lock.withLock {
-            files[File(artifactId: artifactId, version: version, path: path)] = mode
+            files[File(artifactId: artifactId, version: version, path: path)] = declared
             guard isEntry else { return }
-            let read = Read(version: version, entry: path, mode: mode)
+            let read = Read(version: version, entry: path, mode: declared.mode, close: declared.close)
             entries[Version(artifactId: artifactId, version: version)] = read
             if (newest[artifactId]?.version ?? .min) <= version { newest[artifactId] = read }
         }
@@ -113,9 +164,9 @@ extension AgentClient {
     /// How a version's HTML file asks to be shown, from the start of the
     /// file; read once (`pageModes`). `isEntry`: the version's entry, so
     /// opening the artifact at that version opens it.
-    public func artifactPageMode(_ artifactId: String, version: Int, path: String, isEntry: Bool = true) async throws -> ArtifactPageMode {
+    public func artifactPage(_ artifactId: String, version: Int, path: String, isEntry: Bool = true) async throws -> ArtifactPageDeclaration {
         if let known = pageModes.known(artifactId, version: version, path: path) {
-            if isEntry { pageModes.remember(artifactId, version: version, path: path, mode: known, isEntry: true) }
+            if isEntry { pageModes.remember(artifactId, version: version, path: path, declared: known, isEntry: true) }
             return known
         }
         let head: Data
@@ -125,8 +176,8 @@ extension AgentClient {
             // An empty file.
             head = Data()
         }
-        let mode = ArtifactPageMode.declared(in: head)
-        pageModes.remember(artifactId, version: version, path: path, mode: mode, isEntry: isEntry)
-        return mode
+        let declared = ArtifactPageDeclaration.declared(in: head)
+        pageModes.remember(artifactId, version: version, path: path, declared: declared, isEntry: isEntry)
+        return declared
     }
 }

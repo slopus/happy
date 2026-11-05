@@ -35,7 +35,7 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
     private var gallery: ArtifactGalleryView?
     private var browser: BrowserViewController?
     /// An app's version and file, and the button that opens it again.
-    private var app: (version: Int, entry: String)?
+    private var app: (version: Int, entry: String, close: ArtifactAppClose)?
     private var openButton: UIButton?
     private var loading: Task<Void, Never>?
     /// How long the first drawing waits for the pictures' sizes, so it
@@ -380,9 +380,9 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
     // MARK: Pages
 
     private func showWeb(version: Int, entry: String) async throws {
-        let mode = try? await session.client.artifactPageMode(artifact.id, version: version, path: entry, isEntry: opened == nil)
+        let declared = try? await session.client.artifactPage(artifact.id, version: version, path: entry, isEntry: opened == nil)
         try Task.checkCancellation()
-        if mode == .app { return showApp(version: version, entry: entry) }
+        if let declared, declared.mode == .app { return showApp(version: version, entry: entry, close: declared.close) }
         let page = try await BrowserPage.artifact(client: session.client, id: artifact.id, version: version, entry: entry)
         try Task.checkCancellation()
         showBrowser(BrowserViewController(url: page.url, session: session, artifactID: artifact.id, page: page))
@@ -391,10 +391,10 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
     /// An app opens full screen over everything, and this viewer steps out
     /// from under it, so closing it goes back to where it was opened from.
     /// As a stack's root it stays, offering to open it again.
-    private func showApp(version: Int, entry: String) {
+    private func showApp(version: Int, entry: String, close: ArtifactAppClose) {
         spinner.stopAnimating()
         scrollView.isHidden = true
-        app = (version, entry)
+        app = (version, entry, close)
         presentApp()
     }
 
@@ -408,7 +408,7 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
             }
             return
         }
-        let controller = AppPageViewController(session: session, artifactID: artifact.id, version: app.version, entry: app.entry, title: title ?? "")
+        let controller = AppPageViewController(session: session, artifactID: artifact.id, version: app.version, entry: app.entry, close: app.close, title: title ?? "")
         let navigation = navigationController
         guard let navigation, navigation.viewControllers.first !== self, navigation.topViewController === self else {
             showOpenButton()

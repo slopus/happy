@@ -47,11 +47,12 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
     private var link: LinkState?
     private var linkWatch: Watch?
     private let isApp: Bool
-    /// What an app's `--happy-app-inset-top` adds to the safe area: the
-    /// close button's band.
-    var appCloseBand: CGFloat = 0
+    /// Where an app's close button is, as its page is told.
+    var appClose = AppPageScripts.Close(corner: .topStart, box: 0, rightToLeft: false)
     /// An app's page finished loading.
     var appLoaded: (() -> Void)?
+    /// An app's page asked to close (`happyApp.close()`).
+    var appClosed: (() -> Void)?
     /// Every value the loading bar takes, in order (tests).
     var progressChanged: ((BrowserProgress) -> Void)?
 
@@ -188,7 +189,9 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
         let content = web.configuration.userContentController
         content.removeScriptMessageHandler(forName: AppPageScripts.modeMessage)
         content.add(AppPageScripts.Modes { [weak self] app in self?.appDeclared(app) }, name: AppPageScripts.modeMessage)
-        AppPageScripts.install(in: content, closeBand: appCloseBand)
+        content.removeScriptMessageHandler(forName: AppPageScripts.appMessage)
+        content.add(AppPageScripts.Requests { [weak self] in self?.appClosed?() }, name: AppPageScripts.appMessage)
+        AppPageScripts.install(in: content, close: appClose)
         web.allowsBackForwardNavigationGestures = false
         web.allowsLinkPreview = false
         web.isOpaque = false
