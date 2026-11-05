@@ -221,6 +221,8 @@ export const ja: TranslationStructure = {
         groupByProject: 'プロジェクト別にグループ化',
         appearanceSettings: '外観設定',
         worktreeTabs: ({ count }: { count: number }) => `${count} 個のタブ`,
+        searchPlaceholder: 'セッションを検索…',
+        noResultsPlaceholder: 'セッションが見つかりません',
     },
 
     settingsFeatures: {

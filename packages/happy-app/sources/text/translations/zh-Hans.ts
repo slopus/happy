@@ -221,6 +221,8 @@ export const zhHans: TranslationStructure = {
         groupByProject: '按项目分组',
         appearanceSettings: '外观设置',
         worktreeTabs: ({ count }: { count: number }) => `${count} 个标签页`,
+        searchPlaceholder: '搜索会话…',
+        noResultsPlaceholder: '未找到会话',
     },
 
     settingsFeatures: {

@@ -218,6 +218,8 @@ export const it: TranslationStructure = {
         groupByProject: 'Raggruppa per progetto',
         appearanceSettings: 'Impostazioni aspetto',
         worktreeTabs: ({ count }: { count: number }) => count === 1 ? '1 scheda' : `${count} schede`,
+        searchPlaceholder: 'Cerca sessioni…',
+        noResultsPlaceholder: 'Nessuna sessione trovata',
     },
 
     settingsFeatures: {

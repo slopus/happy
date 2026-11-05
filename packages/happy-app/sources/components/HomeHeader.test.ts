@@ -53,6 +53,7 @@ vi.mock('@/hooks/useVisibleSessionListViewData', () => ({ useVisibleSessionListV
 vi.mock('@/hooks/useNewSessionDraft', () => ({ useNewSessionDraft: {} }));
 vi.mock('@/hooks/useStartSessionFromDraft', () => ({ useStartSessionFromDraft: () => ({ isStarting: false }) }));
 vi.mock('@/track', () => ({ trackFriendsSearch: vi.fn() }));
+vi.mock('./sessionSearchStore', () => ({ toggleSessionSearch: vi.fn(), useSessionSearchStore: () => false }));
 vi.mock('./NativeSettingsMenu', () => ({ NativeSettingsMenu: () => null }));
 vi.mock('./EmptySessionsTablet', () => ({ EmptySessionsTablet: () => null }));
 vi.mock('./SessionsList', () => ({ SessionsList: () => null }));

@@ -219,6 +219,8 @@ export const pt: TranslationStructure = {
         groupByProject: 'Agrupar por projeto',
         appearanceSettings: 'Configurações de aparência',
         worktreeTabs: ({ count }: { count: number }) => count === 1 ? '1 aba' : `${count} abas`,
+        searchPlaceholder: 'Pesquisar sessões…',
+        noResultsPlaceholder: 'Nenhuma sessão encontrada',
     },
 
     settingsFeatures: {

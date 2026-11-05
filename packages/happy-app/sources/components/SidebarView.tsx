@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { ShortcutHintBadge, useShortcutHints } from './ShortcutHints';
 import { useHasArchivedSessions } from '@/hooks/useVisibleSessionListViewData';
+import { toggleSessionSearch, useSessionSearchStore } from './sessionSearchStore';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -97,6 +98,7 @@ export const SidebarView = React.memo(() => {
     // have no rename migration — but it hides archived sessions only.
     const [hideArchivedSessions, setHideArchivedSessions] = useSettingMutable('hideInactiveSessions');
     const { visible: shortcutHintsVisible } = useShortcutHints();
+    const searchOpen = useSessionSearchStore((state) => state.open);
 
     const handleNewSession = React.useCallback(() => {
         router.navigate('/new');
@@ -118,6 +120,23 @@ export const SidebarView = React.memo(() => {
                     <Ionicons name="create-outline" size={16} color={stylesheet.newSessionText.color} />
                     <Text style={styles.newSessionText}>{t('sidebar.newSession')}</Text>
                     <ShortcutHintBadge shortcutKey="N" style={styles.shortcutBadgeInline} />
+                </Pressable>
+                <Pressable
+                    onPress={toggleSessionSearch}
+                    accessibilityLabel={t('sessionsFilter.searchPlaceholder')}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: searchOpen }}
+                    style={({ pressed }) => [
+                        styles.archiveButton,
+                        searchOpen && styles.archiveButtonActive,
+                        pressed && styles.newSessionButtonPressed,
+                    ]}
+                >
+                    <Ionicons
+                        name={searchOpen ? 'search' : 'search-outline'}
+                        size={18}
+                        color={stylesheet.newSessionText.color}
+                    />
                 </Pressable>
                 {hasArchivedSessions && (
                     <Pressable
