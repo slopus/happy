@@ -1,5 +1,6 @@
 import * as privacyKit from "privacy-kit";
 import { debug, log } from "@/utils/log";
+import { getMasterSecret } from "@/modules/masterSecret";
 
 /** Cache entries expire after 24 hours */
 const TOKEN_CACHE_TTL = 24 * 60 * 60 * 1000;
@@ -33,9 +34,10 @@ class AuthModule {
 
         log({ module: 'auth' }, 'Initializing auth module...');
 
+        const masterSecret = getMasterSecret();
         const generator = await privacyKit.createPersistentTokenGenerator({
             service: 'handy',
-            seed: process.env.HANDY_MASTER_SECRET!
+            seed: masterSecret
         });
 
 
@@ -46,7 +48,7 @@ class AuthModule {
 
         const githubGenerator = await privacyKit.createEphemeralTokenGenerator({
             service: 'github-happy',
-            seed: process.env.HANDY_MASTER_SECRET!,
+            seed: masterSecret,
             ttl: 5 * 60 * 1000 // 5 minutes
         });
 

@@ -140,7 +140,9 @@ function writeEnvironmentConfig(config: EnvironmentConfig) {
     fs.writeFileSync(
         path.join(envDir, "env.sh"),
         buildEnvSh(config.name, envDir, config.serverPort, config.expoPort),
+        { mode: 0o600 },
     );
+    fs.chmodSync(path.join(envDir, "env.sh"), 0o600);
     writeEnvCommands(envDir);
 }
 
@@ -797,10 +799,29 @@ function buildEnvVars(
 ): Record<string, string> {
     const devAuth = readDevAuth(envDir);
     const projectDir = path.join(envDir, "project");
+    let masterSecret = options.masterSecret;
+    if (masterSecret === undefined) {
+        const secretFile = path.join(envDir, "master-secret");
+        try {
+            masterSecret = fs.readFileSync(secretFile, "utf-8").trim();
+        } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+            const pgliteDir = path.join(envDir, "server", "pglite");
+            if (fs.existsSync(path.join(envDir, "env.sh")) ||
+                (fs.existsSync(pgliteDir) && fs.readdirSync(pgliteDir).length > 0)) {
+                throw new Error(
+                    `Existing environment is missing ${secretFile}. Restore its original master secret; ` +
+                    "do not generate a replacement without migrating encrypted data."
+                );
+            }
+            masterSecret = crypto.randomBytes(32).toString("hex");
+            fs.writeFileSync(secretFile, masterSecret, { mode: 0o600, flag: "wx" });
+        }
+    }
 
     return {
         // Server
-        HANDY_MASTER_SECRET: options.masterSecret || "happy-dev-secret",
+        HANDY_MASTER_SECRET: masterSecret,
         PORT: String(serverPort),
         NODE_ENV: "development",
         DATA_DIR: path.join(envDir, "server"),
