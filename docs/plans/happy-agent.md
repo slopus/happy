@@ -1,5 +1,9 @@
 # happy-agent CLI Tool
 
+Historical plan: the remote-control CLI in `packages/happy-agent` has been
+removed. This is not the separate [Happy Agent runtime](https://github.com/slopus/happy-agent)
+used by the native clients.
+
 ## Overview
 A new standalone CLI tool (`happy-agent`) in `packages/happy-agent` that acts as a dedicated client for controlling Happy Coder agents remotely. Unlike `happy-cli` which both runs and controls agents, `happy-agent` only controls them — listing machines, spawning sessions on a machine, creating sessions, sending messages, reading history, monitoring state, and stopping sessions.
 

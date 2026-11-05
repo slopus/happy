@@ -53,22 +53,17 @@ Current session wire payload shape (decrypted message body):
 - `src/sessionProtocol/types.ts` now re-exports from `@slopus/happy-wire` as compatibility shim.
 - API wire schemas in `src/api/types.ts` now source shared message/update schemas from `@slopus/happy-wire`.
 
-### App (`packages/happy-app`)
+### Native clients
 
-- Shared API message/update schemas in `sources/sync/apiTypes.ts` now import these from `@slopus/happy-wire`:
-  - `ApiMessageSchema`
-  - `ApiUpdateNewMessageSchema`
-  - `ApiUpdateSessionStateSchema`
-  - `ApiUpdateMachineStateSchema`
+The iOS and Android clients implement these contracts in their native wire
+layers. The React Native app has been removed. Its machine-creation contract
+is preserved as `NewMachineBodySchema` and `NewMachineUpdateContainerSchema`
+in `messages.ts`, used directly by the server's contract tests.
 
 ### Server (`packages/happy-server`)
 
 - Prisma JSON message content type now references `SessionMessageContent` from `@slopus/happy-wire`.
 - Event router uses shared `SessionMessageContent` type for `new-message` payload typing.
-
-### Agent (`packages/happy-agent`)
-
-- `RawMessage` now aliases `SessionMessage` from `@slopus/happy-wire`.
 
 ## Versioning model
 

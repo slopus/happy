@@ -2,10 +2,10 @@ name: happy-android
 
 on:
   pull_request:
-    paths: ['packages/happy-android/**', 'packages/happy-app/app.config.js', '.github/workflows/happy-android.yml']
+    paths: ['packages/happy-android/**', 'packages/happy-i18n/**', '.github/workflows/happy-android.yml']
   push:
     branches: [main]
-    paths: ['packages/happy-android/**', 'packages/happy-app/app.config.js', '.github/workflows/happy-android.yml']
+    paths: ['packages/happy-android/**', 'packages/happy-i18n/**', '.github/workflows/happy-android.yml']
   workflow_dispatch:
 
 permissions:

@@ -37,7 +37,7 @@
     ],
     "vars": {
         // Comma-separated bundle ids / Android packages allowed to register.
-        // Empty allows any app id. Mobile (happy-app/happy-ios) production,
+        // Empty allows any app id. Native iOS/Android production,
         // preview, dev; then the native macOS app (happy-ios HappyMac target).
         "ALLOWED_APP_IDS": "com.ex3ndr.happy,com.slopus.happy.preview,com.slopus.happy.dev,com.slopus.happy.native.mac,com.slopus.happy.native.mac.preview,com.slopus.happy.native.mac.dev"
     }

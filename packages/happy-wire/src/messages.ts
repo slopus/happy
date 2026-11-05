@@ -78,6 +78,30 @@ export const UpdateMachineBodySchema = z.object({
 });
 export type UpdateMachineBody = z.infer<typeof UpdateMachineBodySchema>;
 
+// Machine creation carries the data key needed to decrypt the new machine.
+// Shared by server contract tests and clients, independent of any UI package.
+export const NewMachineBodySchema = z.object({
+  t: z.literal('new-machine'),
+  machineId: z.string(),
+  seq: z.number(),
+  metadata: z.string(),
+  metadataVersion: z.number(),
+  daemonState: z.string().nullish(),
+  daemonStateVersion: z.number(),
+  dataEncryptionKey: z.string().nullish(),
+  active: z.boolean(),
+  activeAt: z.number(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+});
+
+export const NewMachineUpdateContainerSchema = z.object({
+  id: z.string(),
+  seq: z.number(),
+  body: NewMachineBodySchema,
+  createdAt: z.number(),
+});
+
 export const CoreUpdateBodySchema = z.discriminatedUnion('t', [
   UpdateNewMessageBodySchema,
   UpdateSessionBodySchema,

@@ -5,8 +5,7 @@
  *
  * This package does not own the server source — it is the publishing shell
  * around packages/happy-server, which stays private and is what production
- * deploys. We reach into the sibling at build time only (same pattern as
- * happy-cli/scripts/bundle-webapp.cjs reaching into happy-app).
+ * deploys. We reach into the sibling at build time only.
  *
  * Produces:
  *   dist/standalone.mjs  — bun bundle of ../happy-server/sources/standalone.ts

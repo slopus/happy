@@ -1,7 +1,7 @@
 # happy-ios
 
-The native iOS client for Happy: Swift, UIKit and GRDB, ported from
-`packages/happy-app`. Read [AGENTS.md](AGENTS.md) before changing anything.
+The native iOS client for Happy: Swift, UIKit and GRDB.
+Read [AGENTS.md](AGENTS.md) before changing anything.
 It has the rules, the target layout and how to build on Linux (with `swift`
 and `xtool`) and on macOS (with XcodeGen and Xcode).
 

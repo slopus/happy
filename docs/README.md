@@ -2,6 +2,12 @@
 
 This folder documents how Happy works internally, with a focus on protocol, backend architecture, deployment, and the CLI tool. Start here.
 
+Mobile clients are native [iOS](../packages/happy-ios) and
+[Android](../packages/happy-android), with shared
+[JSON translations](../packages/happy-i18n). The React Native/Expo
+app and expo-tailcat have been removed. Older plans and porting notes that
+mention their paths describe historical implementations available in Git.
+
 ## Index
 - protocol.md: Wire protocol (WebSocket), payload formats, sequencing, and concurrency rules.
 - realtime-sync-and-rpc.md: High-level overview of realtime socket management and RPC control flow.

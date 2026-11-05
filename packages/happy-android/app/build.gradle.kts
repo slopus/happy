@@ -8,8 +8,7 @@ plugins {
     alias(libs.plugins.androidx.baselineprofile)
 }
 
-// One application ID per build type, the same IDs the React Native app ships
-// under (packages/happy-app/app.config.js):
+// One application ID per build type, preserving the existing store identities:
 //   debug   -> development variant
 //   preview -> preview variant
 //   release -> production variant
@@ -22,8 +21,7 @@ val applicationIds = mapOf(
     "bench" to "com.slopus.happy.bench",
 )
 
-// The commit the build is from, for Settings > Version (happy-app
-// app.config.js loadBuildMetadata): the environment's, else git's.
+// The commit the build is from, for Settings > Version: the environment's, else git's.
 fun git(vararg args: String): String? = runCatching {
     providers.exec {
         commandLine("git", *args)
@@ -36,7 +34,7 @@ val buildCommitSha = providers.environmentVariable("HAPPY_BUILD_COMMIT_SHA").orN
 val buildCommitTimestamp = providers.environmentVariable("HAPPY_BUILD_COMMIT_TIMESTAMP").orNull
     ?: git("show", "-s", "--format=%cI", buildCommitSha ?: "HEAD")
 
-// Same public SDK key as happy-app. Supply it at build time; local builds
+// Existing public SDK key. Supply it at build time; local builds
 // without a key keep purchases unavailable, without configuring an anonymous user.
 val revenueCatGoogleKey = providers.environmentVariable("EXPO_PUBLIC_REVENUE_CAT_GOOGLE").orNull
     ?.takeIf { it.isNotBlank() }
@@ -52,24 +50,17 @@ val callAgentId = providers.environmentVariable("HAPPY_CALL_AGENT_ID").orNull?.t
         providers.fileContents(rootProject.layout.projectDirectory.file("local.properties")).asText.orNull?.let { load(it.reader()) }
     }.getProperty("happy.callAgentId")?.takeIf { it.isNotBlank() }
 
-// PostHog's public project key, as happy-app's EXPO_PUBLIC_POSTHOG_API_KEY;
+// PostHog's public project key (the existing environment variable is retained);
 // only feature flags are read with it. Without one every flag is off.
 val postHogKey = providers.environmentVariable("EXPO_PUBLIC_POSTHOG_API_KEY").orNull
     ?.takeIf { it.isNotBlank() }
     ?: providers.gradleProperty("happy.postHogKey").orNull.orEmpty()
 
-// Versions follow happy-app (app.config.js, eas.json): versionName is the
-// app's `version`, read from app.config.js so the two never drift; versionCode
-// is EAS's remote, auto-incremented build number, which a store build must
-// pass in (HAPPY_VERSION_CODE or -Phappy.versionCode) so it lands above the
-// React Native build it replaces. Local builds default to 1.
-val happyAppVersion = Regex("""\bversion:\s*"([^"]+)"""")
-    .find(providers.fileContents(layout.projectDirectory.file("../../happy-app/app.config.js")).asText.orNull.orEmpty())
-    ?.groupValues?.get(1)
+// Native version ownership. Store builds must provide a versionCode above
+// the last published build; local builds default to 1.
 val versionNameValue = providers.environmentVariable("HAPPY_VERSION_NAME").orNull
     ?: providers.gradleProperty("happy.versionName").orNull
-    ?: happyAppVersion
-    ?: "0.0.0"
+    ?: "1.8.0"
 val versionCodeValue = (providers.environmentVariable("HAPPY_VERSION_CODE").orNull
     ?: providers.gradleProperty("happy.versionCode").orNull)
     ?.let { requireNotNull(it.toIntOrNull()?.takeIf { code -> code > 0 }) { "versionCode must be a positive integer, got '$it'" } }
@@ -115,10 +106,8 @@ android {
         buildConfigField("String", "DEFAULT_SERVER_URL", "\"https://api.cluster-fluster.com\"")
         buildConfigField("String", "REVENUE_CAT_GOOGLE_KEY", groovy.json.JsonOutput.toJson(revenueCatGoogleKey))
         buildConfigField("String", "POSTHOG_KEY", groovy.json.JsonOutput.toJson(postHogKey))
-        // All three RN variants currently use productionElevenLabsAgentId.
-        val voiceAgentId = Regex("""const productionElevenLabsAgentId = ['"]([^'"]+)['"]""")
-            .find(providers.fileContents(layout.projectDirectory.file("../../happy-app/app.config.js")).asText.get())
-            ?.groupValues?.get(1) ?: error("app.config.js has no elevenLabsAgentId")
+        // Existing relay voice agent, retained for compatibility with installed clients.
+        val voiceAgentId = "agent_6701k211syvvegba4kt7m68nxjmw"
         buildConfigField("String", "ELEVENLABS_AGENT_ID", "\"$voiceAgentId\"")
         buildConfigField("String", "CALL_AGENT_ID", callAgentId?.let { groovy.json.JsonOutput.toJson(it.trim()) } ?: "null")
         buildConfigField("String", "BUILD_COMMIT_SHA", buildCommitSha?.let { "\"$it\"" } ?: "null")
@@ -221,12 +210,11 @@ android {
 
 // Firebase without the google-services plugin, so a build without a
 // google-services.json still works (push then reports unsupported). The
-// file is app/google-services.json, else happy-app's committed one (same
-// Firebase project and application ids). Each variant gets the resources
+// file is app/google-services.json. Each variant gets the resources
 // the plugin would generate for the client whose package name is its
 // application id; push/FirebaseStart.kt reads them where push first needs Firebase.
-val googleServices: Map<*, *>? = listOf(file("google-services.json"), file("../../happy-app/google-services.json"))
-    .firstOrNull { it.exists() }
+val googleServices: Map<*, *>? = file("google-services.json")
+    .takeIf { it.exists() }
     ?.let { groovy.json.JsonSlurper().parse(it) as Map<*, *> }
 
 fun firebaseResources(applicationId: String): Map<String, String> {

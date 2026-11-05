@@ -1,15 +1,24 @@
 # happy-android
 
-Native Android client for Happy, in Kotlin. A port of the React Native app
-in `packages/happy-app`, which stays the reference for behaviour, protocol and
-design. `packages/happy-ios` is the iOS counterpart; keep the two
+Native Android client for Happy, in Kotlin. `packages/happy-ios` is the iOS counterpart; keep the two
 architectures comparable (local store, delta sync, crypto layer).
+
+The React Native app has been removed. References below to its implementation
+are historical porting notes, not live source dependencies. Current native
+code, checked-in compatibility fixtures, `happy-wire`, and CLI/agent producers
+are authoritative. Translation catalogs now live as plain JSON in
+`packages/happy-i18n/translations`; run
+`node tools/translations/generate.mjs` with no TypeScript loader. The old
+RN-based crypto/send/diff generators are retired; their checked-in fixtures
+remain compatibility baselines. Version and legacy voice configuration are
+owned by `app/build.gradle.kts`, Firebase by `app/google-services.json`.
+Preserve credential and push compatibility on upgrades.
 
 ## Scope
 
-- **Latest protocol only.** `packages/happy-wire` and happy-app's current
-  sync and encryption code (`sources/sync`, `sources/encryption`,
-  `sources/auth`) are the source of truth. Do not port legacy protocol paths:
+- **Latest protocol only.** `packages/happy-wire`, the CLI/agent producers,
+  and the native clients' sync and encryption code are the source of truth.
+  Do not port legacy protocol paths:
   sessions and machines without a `dataEncryptionKey` are skipped, not
   decrypted with the account secret.
 - **Voice** in Happy (relay) sessions is switched off: `AppGraph.voice` is
@@ -85,7 +94,7 @@ architectures comparable (local store, delta sync, crypto layer).
 1. **UI is Jetpack Compose** (Material 3 is fine), with the theme and design
    tokens taken from happy-app (`sources/theme.ts`, `constants/Typography.ts`).
    Use the Android branch where theme.ts uses `Platform.select`. Strings are
-   generated from happy-app's catalogs (see Localization); never edit
+   generated from shared JSON catalogs (see Localization); never edit
    `res/values*/strings.xml` by hand.
 2. **Gradle with the Kotlin DSL and the version catalog**
    (`gradle/libs.versions.toml`). The wrapper is committed; there is no Gradle
@@ -394,19 +403,18 @@ app/
   text/     Resources.plural / pluralResource, PluralExactNumbers (generated)
 benchmark/  on a device, against the bench build: StartupBenchmark (cold start) and the
           Baseline Profile generator (research/cold-start.md)
-tools/testvectors/   generates crypto and send vectors by running happy-app's TypeScript
-tools/translations/  generates the string resources from happy-app's catalogs
+tools/translations/  generates string resources from shared JSON catalogs
 ```
 
 ## Localization
 
-All UI text comes from happy-app's ten catalogs (`sources/text/_default.ts`,
-which serves English, and `translations/*.ts`), generated into
+Shared UI text comes from the ten JSON catalogs in
+`packages/happy-i18n/translations`, generated into
 `res/values/strings.xml` and `res/values-{ru,pl,es,it,pt,ca,ja,b+zh+Hans,b+zh+Hant}/strings.xml`.
-After happy-app's catalogs change, regenerate and commit the output:
+After the JSON catalogs change, regenerate and commit the output:
 
 ```
-cd tools/translations && npm run generate
+node tools/translations/generate.mjs
 ```
 
 `TranslationResourcesTest` fails until you do.
@@ -798,8 +806,7 @@ ANDROID_SERIAL=<device> ./gradlew :benchmark:connectedBenchmarkBenchAndroidTest 
 
 ### Versions and signing
 
-- `versionName` is happy-app's `version`, read from `app.config.js` at
-  configuration time, so the two apps never drift. `HAPPY_VERSION_NAME` or
+- `versionName` is owned by `app/build.gradle.kts`. `HAPPY_VERSION_NAME` or
   `-Phappy.versionName` overrides it.
 - `versionCode` is EAS's remote, auto-incremented build number
   (`eas.json` `appVersionSource: remote`). There is no counter in the repo:
@@ -824,28 +831,18 @@ ANDROID_SERIAL=<device> ./gradlew :benchmark:connectedBenchmarkBenchAndroidTest 
 - Shipping goes through the `release` skill like every other release.
 - CI: `.github/workflows/happy-android.yml` runs `assembleDebug
   assembleRelease testDebugUnitTest :crypto:test` on changes under
-  `packages/happy-android/` (and happy-app's `app.config.js`, which sets the
-  version). It has no signing secrets.
+  `packages/happy-android/` and shared mobile resources. It has no signing secrets.
 
 The JDK toolchain (21) is provisioned by the foojay resolver if the machine
 only has a JRE. In the agent sandbox Gradle needs network and local sockets:
 run it with full access and keep caches in the workspace, e.g.
 `GRADLE_USER_HOME=$PWD/../../.context/gradle-home ./gradlew …`.
 
-Crypto vectors (`crypto/src/test/resources/happy-ts-vectors.json`) come from
-running happy-app's TypeScript under Node. Regenerate after changing
-happy-app's encryption:
-
-```
-cd tools/testvectors && npm install && npm run generate
-```
-
-The send vectors are generated the same way, from sync.ts's `sendMessage`
-itself; regenerate after changing it or the system prompt:
-
-```
-cd tools/testvectors && npm install && npm run generate:send
-```
+Crypto vectors (`crypto/src/test/resources/happy-ts-vectors.json`) and send
+vectors (`app/src/test/resources/happy-ts-send-vectors.json`) are preserved
+compatibility baselines captured from the former client. Their React Native
+generators are retired. Historical source inputs remain in Git; protocol
+changes must explicitly update these baselines against current producers.
 
 ## Onboarding and connect
 
@@ -1085,8 +1082,7 @@ What happy-app does with expo-notifications, without Expo:
   syncCurrentPushToken, removePushToken).
 
 **Firebase is optional at build time.** There is no google-services
-plugin: `app/build.gradle.kts` reads `app/google-services.json`, else
-happy-app's committed `packages/happy-app/google-services.json`, and
+plugin: `app/build.gradle.kts` reads `app/google-services.json` and
 generates the plugin's resources for the client matching each variant's
 application id. Without a file or a matching client the app builds and runs
 and push reports unsupported (no prompt, nothing registered). Firebase

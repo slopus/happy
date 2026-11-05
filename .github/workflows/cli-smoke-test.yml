@@ -52,13 +52,12 @@ jobs:
     - name: Install Bun
       uses: oven-sh/setup-bun@v2
 
-    # `happy server` resolves the self-host runtime and bundled webapp from
+    # `happy server` resolves the self-host runtime from
     # happy-server-self-host. Its build bundles packages/happy-server's
     # standalone entrypoint and copies prisma/ in, so it must run before pack.
-    - name: Build happy-server-self-host runtime + bundle webapp
+    - name: Build happy-server-self-host runtime
       run: |
         pnpm --filter happy-server-self-host --fail-if-no-match build
-        pnpm --filter happy-server-self-host --fail-if-no-match run bundle:webapp
 
     - name: Pack packages
       run: |

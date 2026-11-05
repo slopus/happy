@@ -1,5 +1,8 @@
 # Roadmap
 
+Historical roadmap: the Expo app and remote-control `happy-agent` CLI described
+below have been removed from this repository.
+
 This file is the cross-product execution plan for the current Happy push.
 
 # Key Milestones

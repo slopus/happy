@@ -1,5 +1,8 @@
 # Manager Agent
 
+Historical workflow: the remote-control `happy-agent` CLI described below has
+been removed from this repository.
+
 Purpose: operate the control plane for delegated work.
 
 The manager does not need engineers to talk to each other. Each engineer has a

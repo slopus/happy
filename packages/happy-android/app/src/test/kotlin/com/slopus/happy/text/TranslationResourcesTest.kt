@@ -53,7 +53,7 @@ class TranslationResourcesTest {
 
     @Test
     fun catalogsAreTheOnesTheResourcesCameFrom() {
-        val text = File("../../happy-app/sources/text")
+        val text = File("../../happy-i18n/translations")
         for ((file, hash) in fixture.getValue("sources").jsonObject) {
             val actual = MessageDigest.getInstance("SHA-256").digest(text.resolve(file).readBytes()).joinToString("") { "%02x".format(it) }
             assertEquals("$file changed: run tools/translations/generate.mjs", hash.jsonPrimitive.content, actual)

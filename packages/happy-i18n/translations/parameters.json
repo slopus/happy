@@ -1,0 +1,272 @@
+{
+  "lastSeen": {
+    "time": "text"
+  },
+  "minutesAgo": {
+    "count": "number"
+  },
+  "hoursAgo": {
+    "count": "number"
+  },
+  "daysAgo": {
+    "count": "number"
+  },
+  "showOfflineMachines": {
+    "count": "number"
+  },
+  "githubConnected": {
+    "login": "text"
+  },
+  "accountConnected": {
+    "service": "text"
+  },
+  "machineStatus": {
+    "name": "text",
+    "status": {
+      "values": [
+        "online",
+        "offline"
+      ]
+    }
+  },
+  "featureToggled": {
+    "feature": "text",
+    "enabled": "bool"
+  },
+  "worktreeTabs": {
+    "count": "number"
+  },
+  "limitMessage": {
+    "max": "number"
+  },
+  "fileTooLargeMessage": {
+    "name": "text",
+    "maxMb": "number"
+  },
+  "uploadFailedMessage": {
+    "count": "number"
+  },
+  "voiceHardLimitReached": {
+    "hours": "number"
+  },
+  "fieldError": {
+    "field": "text",
+    "reason": "text"
+  },
+  "validationError": {
+    "field": "text",
+    "min": "number",
+    "max": "number"
+  },
+  "retryIn": {
+    "seconds": "number"
+  },
+  "errorWithCode": {
+    "message": "text",
+    "code": "text"
+  },
+  "disconnectServiceFailed": {
+    "service": "text"
+  },
+  "connectServiceFailed": {
+    "service": "text"
+  },
+  "cliVersionOutdatedMessage": {
+    "currentVersion": "text",
+    "requiredVersion": "text"
+  },
+  "accessibilityLabel": {
+    "goal": "text"
+  },
+  "detailContext": {
+    "used": "text",
+    "total": "text"
+  },
+  "percentContext": {
+    "percent": "number"
+  },
+  "percentWeek": {
+    "percent": "number"
+  },
+  "resets": {
+    "time": "text"
+  },
+  "showAll": {
+    "count": "number"
+  },
+  "unsupportedDescription": {
+    "kind": "text"
+  },
+  "moreQuestions": {
+    "count": "number"
+  },
+  "showAllWorkspaces": {
+    "count": "number"
+  },
+  "workedFor": {
+    "duration": "text"
+  },
+  "moreTools": {
+    "count": "number"
+  },
+  "editNumber": {
+    "index": "number",
+    "total": "number"
+  },
+  "multipleQuestions": {
+    "count": "number"
+  },
+  "terminalCmd": {
+    "cmd": "text"
+  },
+  "searchPattern": {
+    "pattern": "text"
+  },
+  "searchPath": {
+    "basename": "text"
+  },
+  "fetchUrlHost": {
+    "host": "text"
+  },
+  "editNotebookMode": {
+    "path": "text",
+    "mode": "text"
+  },
+  "todoListCount": {
+    "count": "number"
+  },
+  "webSearchQuery": {
+    "query": "text"
+  },
+  "grepPattern": {
+    "pattern": "text"
+  },
+  "multiEditEdits": {
+    "path": "text",
+    "count": "number"
+  },
+  "readingFile": {
+    "file": "text"
+  },
+  "writingFile": {
+    "file": "text"
+  },
+  "modifyingFile": {
+    "file": "text"
+  },
+  "modifyingFiles": {
+    "count": "number"
+  },
+  "modifyingMultipleFiles": {
+    "file": "text",
+    "count": "number"
+  },
+  "summary": {
+    "staged": "number",
+    "unstaged": "number"
+  },
+  "searchResults": {
+    "count": "number"
+  },
+  "stagedChanges": {
+    "count": "number"
+  },
+  "unstagedChanges": {
+    "count": "number"
+  },
+  "loadingFile": {
+    "fileName": "text"
+  },
+  "changedFiles": {
+    "count": "number"
+  },
+  "showMoreLines": {
+    "count": "number"
+  },
+  "tapToExpand": {
+    "count": "number"
+  },
+  "unchangedLines": {
+    "count": "number"
+  },
+  "tabLabel": {
+    "index": "number"
+  },
+  "footer": {
+    "count": "number"
+  },
+  "usageUsed": {
+    "used": "text",
+    "limit": "text"
+  },
+  "version": {
+    "version": "number"
+  },
+  "disconnectService": {
+    "service": "text"
+  },
+  "disconnectServiceConfirm": {
+    "service": "text"
+  },
+  "offlineTitleOne": {
+    "name": "text"
+  },
+  "offlineLinkedStep": {
+    "name": "text"
+  },
+  "offlineLinkedStepMany": {
+    "count": "number"
+  },
+  "bannerTitleOne": {
+    "name": "text"
+  },
+  "copiedToClipboard": {
+    "label": "text"
+  },
+  "activeSessions": {
+    "count": "number"
+  },
+  "switchedToMode": {
+    "mode": "text"
+  },
+  "usageLimitUntil": {
+    "time": "text"
+  },
+  "sendFailed": {
+    "reason": "text"
+  },
+  "mediaPosition": {
+    "index": "number",
+    "total": "number"
+  },
+  "countPlural": {
+    "count": "number"
+  },
+  "sentOn": {
+    "date": "text"
+  },
+  "removeFriendConfirm": {
+    "name": "text"
+  },
+  "requestSentDescription": {
+    "name": "text"
+  },
+  "cancelRequestConfirm": {
+    "name": "text"
+  },
+  "nowFriendsWith": {
+    "name": "text"
+  },
+  "friendRequestFrom": {
+    "name": "text"
+  },
+  "friendAccepted": {
+    "name": "text"
+  },
+  "taskFailed": {
+    "reason": "text"
+  },
+  "botFailed": {
+    "reason": "text"
+  }
+}

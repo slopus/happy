@@ -3,15 +3,8 @@
 # dependencies
 node_modules/
 
-# Expo
-.expo/
+# build output
 dist/
-web-build/
-expo-env.d.ts
-/ios
-/android
-/packages/happy-app/ios
-/packages/happy-app/android
 
 # Native
 .kotlin/
@@ -21,9 +14,6 @@ expo-env.d.ts
 *.p12
 *.key
 *.mobileprovision
-
-# Metro
-.metro-health-check*
 
 # debug
 npm-debug.*

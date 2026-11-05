@@ -17,7 +17,7 @@ const CURRENT_ENV_PATH = path.join(ENVIRONMENTS_DATA_DIR, "current.json");
 const LAB_RAT_PROJECT_TEMPLATE_DIR = path.join(ENVIRONMENTS_ROOT, "lab-rat-todo-project");
 
 // ============================================================================
-// Name generation (expanded from packages/happy-app/sources/utils/generateWorktreeName.ts)
+// Human-readable environment name generation
 // ============================================================================
 
 const adjectives = [
@@ -78,13 +78,11 @@ function allocatePort(): Promise<number> {
 export interface EnvironmentConfig {
     name: string;
     serverPort: number;
-    expoPort: number;
     createdAt: string;
     template: string;
     projectTemplate: string;
     projectPath: string;
     isolated?: boolean;
-    authenticatedWebUrl?: string;
     cliCommand?: string;
 }
 
@@ -119,7 +117,7 @@ function assertGenericEnvironment(config: EnvironmentConfig, operation: string):
     if (config.isolated === true) {
         throw new Error(
             `Environment "${config.name}" is isolated; generic ${operation} is disabled. `
-            + "Use packages/happy-mobile-gym for a new private integration run.",
+            + "Create a new server/CLI environment instead.",
         );
     }
 }
@@ -139,7 +137,7 @@ function writeEnvironmentConfig(config: EnvironmentConfig) {
     if (isolated) return;
     fs.writeFileSync(
         path.join(envDir, "env.sh"),
-        buildEnvSh(config.name, envDir, config.serverPort, config.expoPort),
+        buildEnvSh(config.name, envDir, config.serverPort),
     );
     writeEnvCommands(envDir);
 }
@@ -171,31 +169,6 @@ function isPortInUse(port: number): boolean {
         return result.trim().length > 0;
     } catch {
         return false;
-    }
-}
-
-function readDevAuth(envDir: string): { secret: string; token: string } | null {
-    const accessKeyPath = path.join(envDir, "cli", "home", "access.key");
-    if (!fs.existsSync(accessKeyPath)) {
-        return null;
-    }
-
-    try {
-        const credentials = JSON.parse(fs.readFileSync(accessKeyPath, "utf-8")) as {
-            secret?: string;
-            token?: string;
-        };
-
-        if (!credentials.secret || !credentials.token) {
-            return null;
-        }
-
-        return {
-            token: credentials.token,
-            secret: Buffer.from(credentials.secret, "base64").toString("base64url"),
-        };
-    } catch {
-        return null;
     }
 }
 
@@ -302,7 +275,6 @@ export async function createEnvironment(opts?: {
     }
 
     const serverPort = await allocatePort();
-    const expoPort = await allocatePort();
 
     const envDir = path.join(ENVIRONMENTS_DIR, name);
     if (opts?.isolated) {
@@ -323,7 +295,6 @@ export async function createEnvironment(opts?: {
     const config: EnvironmentConfig = {
         name,
         serverPort,
-        expoPort,
         createdAt: new Date().toISOString(),
         template: "empty",
         projectTemplate: "lab-rat-todo-project",
@@ -333,7 +304,7 @@ export async function createEnvironment(opts?: {
     writeEnvironmentConfig(config);
 
     console.log(`Running database migration for ${name}...`);
-    const migrationEnv = buildEnvVars(envDir, serverPort, expoPort, {
+    const migrationEnv = buildEnvVars(envDir, serverPort, {
         masterSecret: opts?.masterSecret,
     });
     const standaloneTs = path.join(REPO_ROOT, "packages", "happy-server", "sources", "standalone.ts");
@@ -372,17 +343,15 @@ export async function createEnvironment(opts?: {
     console.log("");
     console.log(`Environment created: ${name}`);
     console.log(`  Server: http://localhost:${serverPort}`);
-    console.log(`  Webapp: http://localhost:${expoPort}`);
     console.log(`  Project: ${projectPath}`);
     console.log("");
     if (opts?.isolated) {
-        console.log("  Isolated environment; new private integration runs use packages/happy-mobile-gym.");
+        console.log("  Isolated environment; generic service startup is disabled.");
     } else {
         const envShRelative = path.relative(process.cwd(), path.join(envDir, "env.sh"));
         console.log("Start in separate terminals:");
         console.log("");
         console.log(`  Server:  pnpm env:server`);
-        console.log(`  Webapp:  pnpm env:web`);
         console.log("");
         console.log("CLI (from any terminal, anywhere):");
         console.log("");
@@ -401,7 +370,7 @@ export async function startEnvironmentServices(name: string): Promise<void> {
     const envDir = getEnvironmentDir(name);
     const config = readEnvironmentConfig(name);
     assertGenericEnvironment(config, "service startup");
-    const envVars = buildEnvVars(envDir, config.serverPort, config.expoPort);
+    const envVars = buildEnvVars(envDir, config.serverPort);
     const mergedEnv: Record<string, string | undefined> = { ...process.env, ...envVars };
 
     const serverLogFile = path.join(envDir, "server", "stdout.log");
@@ -424,22 +393,6 @@ export async function startEnvironmentServices(name: string): Promise<void> {
     }
     console.log(`  Server is healthy.`);
 
-    const webLogFile = path.join(envDir, "web", "stdout.log");
-    fs.mkdirSync(path.join(envDir, "web"), { recursive: true });
-    console.log(`Starting web on port ${config.expoPort}...`);
-    const webPid = spawnService("pnpm", ["web", "--port", String(config.expoPort)], {
-        cwd: path.join(REPO_ROOT, "packages", "happy-app"),
-        env: { ...mergedEnv, BROWSER: "none" },
-        logFile: webLogFile,
-    });
-    writePidFile(envDir, "web", webPid);
-
-    try {
-        await waitFor(() => isPortInUse(config.expoPort), 30_000, "web");
-    } catch {
-        throw new Error(`Web failed to start. Check logs: ${webLogFile}`);
-    }
-    console.log(`  Web is listening.`);
 }
 
 export async function seedEnvironment(name: string): Promise<void> {
@@ -504,8 +457,7 @@ export async function seedEnvironment(name: string): Promise<void> {
         ),
     );
 
-    const authenticatedWebUrl = buildAuthenticatedWebUrl(config.expoPort, token, secretBase64);
-    writeEnvironmentConfig({ ...config, authenticatedWebUrl });
+    writeEnvironmentConfig(config);
 
     const daemonStatePath = path.join(envDir, "cli", "home", "daemon.state.json");
     if (fs.existsSync(daemonStatePath)) {
@@ -519,7 +471,7 @@ export async function seedEnvironment(name: string): Promise<void> {
         } catch {}
     }
 
-    const envVars = buildEnvVars(envDir, config.serverPort, config.expoPort);
+    const envVars = buildEnvVars(envDir, config.serverPort);
     const daemonEnv = { ...process.env, ...envVars };
     delete daemonEnv.CLAUDECODE;
 
@@ -541,14 +493,13 @@ export async function seedEnvironment(name: string): Promise<void> {
     }, 10_000, "machine registration").then(() => true, () => false);
 
     console.log(`  Seeded: credentials written, daemon ${machineRegistered ? "registered" : "starting"}`);
-    console.log(`  Auth URL: ${authenticatedWebUrl}`);
 }
 
 export function stopEnvironment(name: string): void {
     const envDir = getEnvironmentDir(name);
     let killed = 0;
 
-    for (const service of ["server", "web"] as const) {
+    for (const service of ["server"] as const) {
         const pid = readPidFile(envDir, service);
         if (pid !== null) {
             if (isProcessAlive(pid)) {
@@ -618,19 +569,13 @@ function commandList() {
         const marker = isCurrent ? " *" : "  ";
 
         const serverUp = isPortInUse(config.serverPort);
-        const expoUp = isPortInUse(config.expoPort);
 
         const serverStatus = serverUp ? "running" : "stopped";
-        const expoStatus = expoUp ? "running" : "stopped";
 
         const serverUrl = `http://localhost:${config.serverPort}`;
-        const bundlerUrl = `http://localhost:${config.expoPort}`;
-        const webAppUrl = config.authenticatedWebUrl ?? bundlerUrl;
 
         console.log(`${marker} ${envName}`);
         console.log(`     Server:  ${serverUrl} (${serverStatus})`);
-        console.log(`     Bundler: ${bundlerUrl} (${expoStatus})`);
-        console.log(`     Web app: ${webAppUrl}`);
         console.log(`     Created: ${config.createdAt}`);
         console.log("");
     }
@@ -680,10 +625,7 @@ function commandCurrent() {
     console.log(envShPath);
 
     const config = readEnvironmentConfig(currentConfig.current);
-    const webAppUrl = config.authenticatedWebUrl ?? `http://localhost:${config.expoPort}`;
     console.log(`\nServer:  http://localhost:${config.serverPort}`);
-    console.log(`Bundler: http://localhost:${config.expoPort}`);
-    console.log(`Web app: ${webAppUrl}`);
 }
 
 function commandRun(service: string, serviceArgs: string[] = []) {
@@ -704,7 +646,7 @@ function commandRun(service: string, serviceArgs: string[] = []) {
 
     const config = readEnvironmentConfig(envName);
     assertGenericEnvironment(config, "service startup");
-    const envVars = buildEnvVars(envDir, config.serverPort, config.expoPort);
+    const envVars = buildEnvVars(envDir, config.serverPort);
     const mergedEnv = { ...process.env, ...envVars };
 
     switch (service) {
@@ -715,49 +657,6 @@ function commandRun(service: string, serviceArgs: string[] = []) {
                 ["standalone", "serve"],
                 {
                     cwd: path.join(REPO_ROOT, "packages", "happy-server"),
-                    env: mergedEnv,
-                    stdio: "inherit",
-                }
-            );
-            process.exit(result.status ?? 1);
-            break;
-        }
-        case "web": {
-            console.log(`Starting web app for environment "${envName}" on port ${config.expoPort}...`);
-            const result = spawnSync(
-                "pnpm",
-                ["web", "--port", String(config.expoPort)],
-                {
-                    cwd: path.join(REPO_ROOT, "packages", "happy-app"),
-                    // Expo treats `--web` as "open in browser". Disable that for env-managed runs.
-                    env: { ...mergedEnv, BROWSER: "none" },
-                    stdio: "inherit",
-                }
-            );
-            process.exit(result.status ?? 1);
-            break;
-        }
-        case "ios": {
-            console.log(`Starting iOS app for environment "${envName}"...`);
-            const result = spawnSync(
-                "pnpm",
-                ["ios"],
-                {
-                    cwd: path.join(REPO_ROOT, "packages", "happy-app"),
-                    env: mergedEnv,
-                    stdio: "inherit",
-                }
-            );
-            process.exit(result.status ?? 1);
-            break;
-        }
-        case "android": {
-            console.log(`Starting Android app for environment "${envName}"...`);
-            const result = spawnSync(
-                "pnpm",
-                ["android"],
-                {
-                    cwd: path.join(REPO_ROOT, "packages", "happy-app"),
                     env: mergedEnv,
                     stdio: "inherit",
                 }
@@ -780,7 +679,7 @@ function commandRun(service: string, serviceArgs: string[] = []) {
             break;
         }
         default:
-            console.error(`Unknown service: "${service}". Use: server, web, ios, android, cli`);
+            console.error(`Unknown service: "${service}". Use: server, cli`);
             process.exit(1);
     }
 }
@@ -792,10 +691,8 @@ function commandRun(service: string, serviceArgs: string[] = []) {
 function buildEnvVars(
     envDir: string,
     serverPort: number,
-    expoPort: number,
     options: { masterSecret?: string } = {},
 ): Record<string, string> {
-    const devAuth = readDevAuth(envDir);
     const projectDir = path.join(envDir, "project");
 
     return {
@@ -808,28 +705,17 @@ function buildEnvVars(
         DATABASE_URL: "",
         METRICS_ENABLED: "false",
 
-        // App (Expo)
-        EXPO_PUBLIC_SERVER_URL: `http://localhost:${serverPort}`,
-        EXPO_PUBLIC_HAPPY_SERVER_URL: `http://localhost:${serverPort}`,
-        EXPO_PUBLIC_LOG_SERVER_URL: "http://localhost:8787",
-        EXPO_PORT: String(expoPort),
-
         // CLI
         HAPPY_SERVER_URL: `http://localhost:${serverPort}`,
-        HAPPY_WEBAPP_URL: `http://localhost:${expoPort}`,
         HAPPY_HOME_DIR: path.join(envDir, "cli", "home"),
         HAPPY_PROJECT_DIR: projectDir,
         HAPPY_VARIANT: "dev",
         DEBUG: "1",
-        ...(devAuth ? {
-            EXPO_PUBLIC_DEV_TOKEN: devAuth.token,
-            EXPO_PUBLIC_DEV_SECRET: devAuth.secret,
-        } : {}),
     };
 }
 
-function buildEnvSh(name: string, envDir: string, serverPort: number, expoPort: number): string {
-    const vars = buildEnvVars(envDir, serverPort, expoPort);
+function buildEnvSh(name: string, envDir: string, serverPort: number): string {
+    const vars = buildEnvVars(envDir, serverPort);
     const lines: string[] = [
         `# Happy Dev Environment: ${name}`,
         `# Generated by packages/dev-environments/environments.ts`,
@@ -848,20 +734,8 @@ function buildEnvSh(name: string, envDir: string, serverPort: number, expoPort: 
     lines.push(`export METRICS_ENABLED=false`);
     lines.push("");
 
-    lines.push("# App (Expo)");
-    lines.push(`export EXPO_PUBLIC_SERVER_URL="${vars.EXPO_PUBLIC_SERVER_URL}"`);
-    lines.push(`export EXPO_PUBLIC_HAPPY_SERVER_URL="${vars.EXPO_PUBLIC_HAPPY_SERVER_URL}"`);
-    lines.push(`export EXPO_PUBLIC_LOG_SERVER_URL="${vars.EXPO_PUBLIC_LOG_SERVER_URL}"`);
-    if (vars.EXPO_PUBLIC_DEV_TOKEN && vars.EXPO_PUBLIC_DEV_SECRET) {
-        lines.push(`export EXPO_PUBLIC_DEV_TOKEN="${vars.EXPO_PUBLIC_DEV_TOKEN}"`);
-        lines.push(`export EXPO_PUBLIC_DEV_SECRET="${vars.EXPO_PUBLIC_DEV_SECRET}"`);
-    }
-    lines.push(`export EXPO_PORT=${vars.EXPO_PORT}`);
-    lines.push("");
-
     lines.push("# CLI");
     lines.push(`export HAPPY_SERVER_URL="${vars.HAPPY_SERVER_URL}"`);
-    lines.push(`export HAPPY_WEBAPP_URL="${vars.HAPPY_WEBAPP_URL}"`);
     lines.push(`export HAPPY_HOME_DIR="${vars.HAPPY_HOME_DIR}"`);
     lines.push(`export HAPPY_PROJECT_DIR="${vars.HAPPY_PROJECT_DIR}"`);
     lines.push(`export HAPPY_VARIANT=dev`);
@@ -870,7 +744,6 @@ function buildEnvSh(name: string, envDir: string, serverPort: number, expoPort: 
     lines.push("");
     lines.push("# Commands exposed by this env");
     lines.push("# - happy");
-    lines.push("# - happy-agent");
     lines.push("");
 
     return lines.join("\n");
@@ -885,10 +758,6 @@ function writeEnvCommands(envDir: string): void {
             name: "happy",
             entrypoint: path.join(REPO_ROOT, "packages", "happy-cli", "bin", "happy.mjs"),
         },
-        {
-            name: "happy-agent",
-            entrypoint: path.join(REPO_ROOT, "packages", "happy-agent", "bin", "happy-agent.mjs"),
-        },
     ];
 
     for (const command of commands) {
@@ -901,14 +770,6 @@ function writeEnvCommands(envDir: string): void {
         fs.writeFileSync(wrapperPath, wrapper);
         fs.chmodSync(wrapperPath, 0o755);
     }
-}
-
-function buildAuthenticatedWebUrl(expoPort: number, token: string, secret: string): string {
-    const webParams = new URLSearchParams({
-        dev_token: token,
-        dev_secret: Buffer.from(secret, "base64").toString("base64url"),
-    });
-    return `http://localhost:${expoPort}/?${webParams}`;
 }
 
 function buildCliCommand(envDir: string): string {
@@ -944,7 +805,7 @@ async function commandUp(template: Template, opts?: { noSwitch?: boolean }) {
     if (template === "authenticated-empty") {
         // Always rebuild CLI so the daemon binary matches this worktree
         console.log("Building CLI (needed for daemon)...");
-        const envVars = buildEnvVars(envDir, config.serverPort, config.expoPort);
+        const envVars = buildEnvVars(envDir, config.serverPort);
         const mergedEnv: Record<string, string | undefined> = { ...process.env, ...envVars };
         const buildResult = spawnSync("pnpm", ["build"], {
             cwd: path.join(REPO_ROOT, "packages", "happy-cli"),
@@ -965,18 +826,13 @@ async function commandUp(template: Template, opts?: { noSwitch?: boolean }) {
     console.log("");
     console.log(`Environment "${envName}" is up!`);
     console.log(`  Server: http://localhost:${config.serverPort}`);
-    console.log(`  Web:    http://localhost:${config.expoPort}`);
     console.log(`  Project: ${finalConfig.projectPath}`);
 
-    if (finalConfig.authenticatedWebUrl) {
-        console.log(`  Open:   ${finalConfig.authenticatedWebUrl}`);
-    }
     if (finalConfig.cliCommand) {
         console.log(`  CLI:    ${finalConfig.cliCommand}`);
     }
 
     console.log(`  Logs:   ${path.relative(process.cwd(), path.join(envDir, "server", "stdout.log"))}`);
-    console.log(`          ${path.relative(process.cwd(), path.join(envDir, "web", "stdout.log"))}`);
     console.log(`  Stop:   pnpm env:down`);
     console.log("");
 }
@@ -1018,9 +874,8 @@ function commandTailscale() {
     // Reset existing funnels
     try { execSync("tailscale funnel reset", { stdio: "ignore" }); } catch {}
 
-    // Expose web app on 443 and server on 8443
+    // Expose the server on 8443.
     try {
-        execSync(`tailscale funnel --bg ${config.expoPort}`, { stdio: "inherit" });
         execSync(`tailscale funnel --bg --https=8443 ${config.serverPort}`, { stdio: "inherit" });
     } catch (e: any) {
         console.error("Failed to set up Tailscale funnel:", e.message);
@@ -1030,7 +885,6 @@ function commandTailscale() {
     console.log("");
     console.log(`Tailscale funnel active for "${currentConfig.current}":`);
     console.log("");
-    console.log(`  Web:    https://${hostname}`);
     console.log(`  Server: https://${hostname}:8443`);
     console.log("");
 }
@@ -1070,7 +924,7 @@ async function main(): Promise<void> {
             break;
         case "run":
             if (!args[0]) {
-                console.error("Usage: pnpm env:server | pnpm env:web | pnpm env:cli");
+                console.error("Usage: pnpm env:server | pnpm env:cli");
                 process.exit(1);
             }
             commandRun(args[0], args.slice(1));
@@ -1108,15 +962,12 @@ Usage:
   pnpm env:use <name>       Switch to a different environment
   pnpm env:remove <name>    Delete an environment
   pnpm env:current          Print current environment's env.sh path
-  pnpm env:seed             Seed auth for CLI + web (requires server running)
+  pnpm env:seed             Seed auth for CLI (requires server running)
 
   pnpm env:server           Start the server (current environment)
-  pnpm env:web              Start the web app (current environment)
-  pnpm env:ios              Start the iOS app (current environment)
-  pnpm env:android          Start the Android app (current environment)
   pnpm env:cli              Start the CLI (current environment)
 
-  pnpm env:tailscale        Expose server + web via Tailscale funnel
+  pnpm env:tailscale        Expose server via Tailscale funnel
 `);
             if (subcommand && subcommand !== "--help" && subcommand !== "-h") {
                 process.exit(1);

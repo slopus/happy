@@ -1,6 +1,5 @@
-// Generates the app's string resources from happy-app's ten UI catalogs
-// (packages/happy-app/sources/text), so the Kotlin app says what the React
-// Native one says in every language:
+// Generates Android string resources from the ten shared JSON catalogs
+// (packages/happy-i18n/translations).
 //
 // - app/src/main/res/values{,-<qualifier>}/strings.xml: one per language.
 // - app/src/main/kotlin/com/slopus/happy/text/PluralExactNumbers.kt: the
@@ -17,13 +16,13 @@
 // Values:
 // - A string stays a `<string>`.
 // - A function becomes a format string. Its parameters are numbered in the
-//   order _default.ts's annotation lists them: text as `%n$s`, numbers as
+//   order parameters.json lists them: text as `%n$s`, numbers as
 //   `%n$d`.
 // - A function that picks its words by a number (in any language) becomes
 //   `<plurals>` with the categories Android's plural rules give each
 //   language (one/other in English, one/few/many/other in Russian and
 //   Polish, other alone in Japanese and Chinese). Each category holds the
-//   words happy-app's function returns for the numbers in it. A number whose
+//   words the shared catalog renders for the numbers in it. A number whose
 //   words its category doesn't give (Japanese `count === 1`, which Android
 //   files under `other`; Portuguese 0, which Android files under `one`) gets
 //   its own string, `<name>_n<number>`, in every language;
@@ -34,51 +33,39 @@
 //   `settings_machine_status_offline`). The other parameters keep their
 //   numbers.
 //
-// The catalogs run here as TypeScript, straight from happy-app's sources;
-// parameter types are read from _default.ts's annotations, which every
-// language must match.
+// Catalogs and parameter metadata are plain JSON; no TypeScript loader is needed.
 //
 // Usage (Node 22.18 or later):
 //   cd packages/happy-android/tools/translations && npm run generate
 //
 // Output is deterministic.
 
-import { registerHooks } from 'node:module';
+import { readCatalog, render, parameters } from '../../../happy-i18n/catalogs.mjs';
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const androidRoot = path.resolve(here, '../..');
-const textDir = path.resolve(androidRoot, '../happy-app/sources/text');
+const textDir = path.resolve(androidRoot, '../happy-i18n/translations');
 const resDir = path.join(androidRoot, 'app/src/main/res');
 const vectorsFile = path.join(androidRoot, 'app/src/test/resources/translation-vectors.json');
 const kotlinFile = path.join(androidRoot, 'app/src/main/kotlin/com/slopus/happy/text/PluralExactNumbers.kt');
 
-registerHooks({
-    resolve(specifier, context, next) {
-        // The translations import `../_default` without an extension.
-        if (/(^|\/)_default$/.test(specifier)) {
-            return { url: pathToFileURL(path.join(textDir, '_default.ts')).href, shortCircuit: true };
-        }
-        return next(specifier, context);
-    },
-});
 
-// _all.ts's order; index.ts's catalogs (`en` is _default.ts's).
-// [code, file, export, resource directory, Android plural rule]
+// [code, file, language name, resource directory, Android plural rule]
 const languages = [
-    ['en', '_default.ts', 'en', 'values', 'en'],
-    ['ru', 'translations/ru.ts', 'ru', 'values-ru', 'ru'],
-    ['pl', 'translations/pl.ts', 'pl', 'values-pl', 'pl'],
-    ['es', 'translations/es.ts', 'es', 'values-es', 'romance'],
-    ['it', 'translations/it.ts', 'it', 'values-it', 'romance'],
-    ['pt', 'translations/pt.ts', 'pt', 'values-pt', 'pt'],
-    ['ca', 'translations/ca.ts', 'ca', 'values-ca', 'romance'],
-    ['zh-Hans', 'translations/zh-Hans.ts', 'zhHans', 'values-b+zh+Hans', 'none'],
-    ['zh-Hant', 'translations/zh-Hant.ts', 'zhHant', 'values-b+zh+Hant', 'none'],
-    ['ja', 'translations/ja.ts', 'ja', 'values-ja', 'none'],
+    ['en', 'en.json', 'en', 'values', 'en'],
+    ['ru', 'ru.json', 'ru', 'values-ru', 'ru'],
+    ['pl', 'pl.json', 'pl', 'values-pl', 'pl'],
+    ['es', 'es.json', 'es', 'values-es', 'romance'],
+    ['it', 'it.json', 'it', 'values-it', 'romance'],
+    ['pt', 'pt.json', 'pt', 'values-pt', 'pt'],
+    ['ca', 'ca.json', 'ca', 'values-ca', 'romance'],
+    ['zh-Hans', 'zh-Hans.json', 'zhHans', 'values-b+zh+Hans', 'none'],
+    ['zh-Hant', 'zh-Hant.json', 'zhHant', 'values-b+zh+Hant', 'none'],
+    ['ja', 'ja.json', 'ja', 'values-ja', 'none'],
 ];
 
 // Android's (CLDR's) plural rules for integers, by the categories each
@@ -115,33 +102,13 @@ const rules = {
     none: { categories: ['other'], select: () => 'other' },
 };
 
-// Parameter types, from _default.ts: `key: ({ a, b }: { a: string; b: number }) =>`.
-const source = readFileSync(path.join(textDir, '_default.ts'), 'utf8');
-const paramTypes = new Map();
-for (const match of source.matchAll(/(\w+):\s*\(\{([^}]*)\}\s*:\s*\{([^}]*)\}\s*\)\s*=>/g)) {
-    const [, leaf, , annotation] = match;
-    const types = {};
-    for (const part of annotation.split(';').map((s) => s.trim()).filter(Boolean)) {
-        const [name, type] = part.split(':').map((s) => s.trim());
-        types[name.replace('?', '')] = type;
-    }
-    const known = paramTypes.get(leaf);
-    if (known && JSON.stringify(known) !== JSON.stringify(types)) throw new Error(`conflicting types for ${leaf}`);
-    paramTypes.set(leaf, types);
-}
+const paramTypes = new Map(Object.entries(parameters));
 
 const probes = Array.from({ length: 1001 }, (_, i) => i);
 const vectorCounts = [0, 1, 2, 3, 4, 5, 11, 12, 14, 21, 22, 25, 101, 111, 112, 1000, 1001, 1002];
 const sentinel = (name, variant) => `\u{E000}${variant}${name}\u{E001}`;
 
-function kindOf(type) {
-    if (type === 'number') return 'number';
-    if (type === 'boolean') return 'bool';
-    if (type === 'string' || type === 'number | string') return 'text';
-    const literals = [...type.matchAll(/'([^']*)'/g)].map((m) => m[1]);
-    if (literals.length > 0 && type.replace(/'[^']*'|\|/g, '').trim() === '') return { values: literals };
-    throw new Error(`unsupported parameter type ${type}`);
-}
+function kindOf(type) { return type; }
 
 const snake = (s) => s.replace(/([a-z0-9])([A-Z])/g, '$1_$2').replace(/([A-Z])([A-Z][a-z])/g, '$1_$2').replace(/-/g, '_').toLowerCase();
 const resourceName = (key) => key.split('.').map(snake).join('_');
@@ -304,30 +271,23 @@ function sampleArgs(types, p) {
     return cases;
 }
 
-// Pass 1: every catalog compiled, keyed by key path in _default.ts's order.
+// Pass 1: every catalog compiled, keyed by key path in the JSON catalog's order.
 const compiled = [];
 for (const [code, file, exportName, dir, ruleName] of languages) {
-    const module = await import(pathToFileURL(path.join(textDir, file)).href);
+    const catalog = readCatalog(code);
     const rule = rules[ruleName];
     const entries = new Map();
     const vectors = [];
-    const walk = (object, prefix) => {
-        for (const [leaf, value] of Object.entries(object)) {
-            const key = prefix ? `${prefix}.${leaf}` : leaf;
-            if (value && typeof value === 'object') {
-                walk(value, key);
-            } else if (typeof value === 'string') {
-                entries.set(key, { s: value });
-            } else if (typeof value === 'function') {
-                const types = paramTypes.get(leaf);
-                if (!types) throw new Error(`no parameter types for ${key}`);
-                entries.set(key, { types, fn: value, ...compile(value, key, types) });
-            } else {
-                throw new Error(`unexpected ${typeof value} at ${key}`);
-            }
+    for (const [key, value] of Object.entries(catalog.entries)) {
+        if (typeof value === 'string') {
+            entries.set(key, { s: value });
+        } else {
+            const types = paramTypes.get(key.split('.').at(-1));
+            if (!types) throw new Error(`no parameters for ${key}`);
+            const fn = (args) => render(value, args);
+            entries.set(key, { types, fn, ...compile(fn, key, types) });
         }
-    };
-    walk(module[exportName], '');
+    }
     compiled.push({ code, file, dir, rule, entries, vectors });
 }
 
@@ -396,7 +356,7 @@ for (const [key, set] of exactNumbers) for (const n of set) claim(`${names.get(k
 const header = (code, file) => `<?xml version="1.0" encoding="utf-8"?>
 <!--
   Generated by tools/translations/generate.mjs from
-  packages/happy-app/sources/text/${file} (${code}). Do not edit.
+  packages/happy-i18n/translations/${file} (${code}). Do not edit.
 -->
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation,UnusedQuantity,UnusedResources,Typos,PluralsCandidate,StringFormatCount,ImpliedQuantity">
 `;
@@ -477,6 +437,6 @@ mkdirSync(path.dirname(vectorsFile), { recursive: true });
 const keyLines = Object.entries(keys).map(([key, info]) => `${JSON.stringify(key)}:${JSON.stringify(info)}`);
 const vectorLines = compiled.map(({ code, vectors }) => `${JSON.stringify(code)}:${JSON.stringify(vectors)}`);
 // The catalogs' SHA-256, so the test notices when they change.
-const sources = Object.fromEntries(languages.map(([, file]) => [file, createHash('sha256').update(readFileSync(path.join(textDir, file))).digest('hex')]));
+const sources = Object.fromEntries([...languages.map(([, file]) => file), 'parameters.json'].map((file) => [file, createHash('sha256').update(readFileSync(path.join(textDir, file))).digest('hex')]));
 writeFileSync(vectorsFile, `{"sources":${JSON.stringify(sources)},\n"keys":{\n${keyLines.join(',\n')}\n},\n"vectors":{\n${vectorLines.join(',\n')}\n}}\n`);
 for (const line of summary) console.log(line);

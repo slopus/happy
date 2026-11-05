@@ -64,9 +64,10 @@ happy claude
 happy codex
 ```
 
-- [happy-app](packages/happy-app): the Happy mobile app and web client (Expo)
+- [happy-ios](packages/happy-ios): native Swift/UIKit iOS app
+- [happy-android](packages/happy-android): native Kotlin/Jetpack Compose Android app
+- [happy-i18n](packages/happy-i18n): shared JSON translations
 - [happy-cli](packages/happy-cli): the original Happy CLI (`happy` on npm)
-- [happy-agent](packages/happy-agent): remote session control for the original Happy CLI (not the Happy Agent runtime)
 - [happy-server](packages/happy-server): the relay server for encrypted sync
 - [happy-push-server](packages/happy-push-server): Cloudflare Worker that delivers push notifications via APNs/FCM (replaces the Expo push service)
 

@@ -7,16 +7,14 @@ This document covers the local environment manager in [`packages/dev-environment
 - `pnpm env:new`: create a new isolated environment under `packages/dev-environments/data/envs/<name>`.
 - `pnpm env:use <name>`: switch the current environment.
 - `pnpm env:server`: run the server inside the current environment.
-- `pnpm env:web`: run the web app inside the current environment.
 - `pnpm env:cli`: run the CLI inside the current environment.
 
 Each environment injects its own:
 
 - `HAPPY_HOME_DIR`
 - `HAPPY_SERVER_URL`
-- `HAPPY_WEBAPP_URL`
 - `HAPPY_PROJECT_DIR`
-- Expo/server port settings
+- server port settings
 - dev auth values when seeded
 
 Each fresh environment also gets a copied lightweight fixture project from

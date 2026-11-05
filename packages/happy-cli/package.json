@@ -63,7 +63,6 @@
     "typecheck": "tsc --noEmit",
     "bundle:server": "node scripts/bundle-server.cjs",
     "bundle:server:all": "node scripts/bundle-server.cjs --all-platforms",
-    "bundle:webapp": "node scripts/bundle-webapp.cjs",
     "build:capability": "sh scripts/build-capability.sh",
     "test:capability-lifetime": "node scripts/test-capability-parent-lifetime.cjs",
     "build": "shx rm -rf dist && tsc --noEmit && pkgroll",

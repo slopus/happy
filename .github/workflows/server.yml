@@ -62,8 +62,7 @@ jobs:
     - name: Production typecheck
       run: pnpm --filter happy-server --fail-if-no-match build
 
-    # The full typecheck additionally covers specs, which reach into happy-app
-    # for cross-package contract checks.
+    # The full typecheck additionally covers specs and shared wire contracts.
     - name: Full typecheck
       run: pnpm --filter happy-server --fail-if-no-match typecheck
 

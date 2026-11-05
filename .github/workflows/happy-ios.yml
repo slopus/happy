@@ -2,10 +2,10 @@ name: happy-ios
 
 on:
   pull_request:
-    paths: ['packages/happy-ios/**', '.github/workflows/happy-ios.yml']
+    paths: ['packages/happy-ios/**', 'packages/happy-i18n/**', '.github/workflows/happy-ios.yml']
   push:
     branches: [main]
-    paths: ['packages/happy-ios/**', '.github/workflows/happy-ios.yml']
+    paths: ['packages/happy-ios/**', 'packages/happy-i18n/**', '.github/workflows/happy-ios.yml']
   workflow_dispatch:
 
 permissions:

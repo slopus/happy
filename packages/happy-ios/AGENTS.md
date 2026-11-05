@@ -1,8 +1,15 @@
 # happy-ios
 
-Native iOS client for Happy, written in Swift with UIKit. It ports
-`packages/happy-app` (React Native) screen by screen. It is not shipped yet:
-nothing here is wired to the release skill or to EAS.
+Native iOS client for Happy, written in Swift with UIKit.
+
+The React Native app has been removed. References below to its implementation
+are historical porting notes, not live source dependencies. Current native
+code, checked-in compatibility fixtures, `happy-wire`, and CLI/agent producers
+are authoritative. Shared translations are plain JSON in
+`packages/happy-i18n/translations`; regenerate with
+`node scripts/generate-translations.mjs` (no TypeScript loader). The old
+RN-based icon, sending and diff generators are retired; their generated assets
+and fixtures remain. Preserve credential and push compatibility on upgrades.
 
 ## Rules
 
@@ -109,10 +116,9 @@ nothing here is wired to the release skill or to EAS.
 
 ## Scope
 
-- **The current Happy protocol, meaning what the current CLI, happy-app
+- **The current Happy protocol, meaning what the native clients, CLI
   and happy-agent actually exchange today** (not what the files are
-  called). `packages/happy-wire`, happy-app's sync code
-  (`packages/happy-app/sources/sync`) and the CLI's routing are the source
+  called). `packages/happy-wire`, the native clients and the CLI's routing are the source
   of truth; when they disagree with this package, this package is wrong.
   - **User text goes out as `role: 'user'` records**,
     `{ role: 'user', content: { type: 'text', text }, meta }`, field for
@@ -464,9 +470,11 @@ nothing here is wired to the release skill or to EAS.
   implements this behind `KeychainBackend`, and `SecureStoreTests` pins it
   on Linux. Any other iOS-only secret gets its own item and must never
   touch this one.
-- **Copy comes from happy-app.** English strings are copied verbatim from
-  `packages/happy-app/sources/text/translations/en.ts` into
-  `Sources/HappyUI/Strings.swift`.
+- **Shared copy comes from JSON catalogs.** English is in
+  `packages/happy-i18n/translations/en.json`; run
+  `node scripts/generate-translations.mjs` after catalog changes and commit
+  the generated Swift catalogs and test vectors. Native-only copy remains
+  in `TranslationCatalog.nativeSources` and the native string wrappers.
 - **Design tokens come from happy-app.** They are ported from `theme.ts`
   and the component stylesheets (iOS values) into
   `Sources/HappyLayout/DesignTokens.swift`.

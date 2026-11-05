@@ -99,7 +99,7 @@ export async function handleServerCommand(args: string[]): Promise<void> {
     if (staticDir) {
         console.log(chalk.gray(`  webapp:     ${staticDir}`));
     } else {
-        console.log(chalk.yellow('  webapp:     (no build) — API only. Run `pnpm bundle:webapp` to build.'));
+        console.log(chalk.gray('  webapp:     API only — connect with the native iOS or Android app.'));
     }
     console.log();
 
@@ -141,10 +141,9 @@ export async function handleServerCommand(args: string[]): Promise<void> {
     await spawnAndWait(artifacts, env, ['migrate']);
 
     if (opts.persistServerUrl) {
-        // The bundled server serves the webapp at its own origin, so webappUrl === serverUrl.
-        // Without this the CLI's auth flow would open the prod webapp (app.happy.engineering).
-        await updateSettings(current => ({ ...current, serverUrl, webappUrl: serverUrl }));
-        console.log(chalk.gray(`Wrote serverUrl + webappUrl=${serverUrl} to ${configuration.settingsFile}`));
+        // Preserve custom web frontends, but do not point browser auth at an API-only server.
+        await updateSettings(current => ({ ...current, serverUrl, ...(staticDir ? { webappUrl: serverUrl } : {}) }));
+        console.log(chalk.gray(`Wrote serverUrl=${serverUrl} to ${configuration.settingsFile}`));
     }
 
     console.log(chalk.gray('Starting server...'));
@@ -228,15 +227,15 @@ ${chalk.bold('Options:')}
   --reset               Wipe local server data before starting
   --no-persist          Don't write serverUrl into settings.json
   ${SETTINGS_WRITE_CONFIRM_FLAG}
-                        Write settings.serverUrl/settings.webappUrl without prompting
+                        Write server settings without prompting
   --master-secret <hex> Use a specific master secret (default: auto-generated)
 
 ${chalk.bold('Notes:')}
   - Stores data in ${chalk.cyan('$HAPPY_HOME_DIR/server-data/')}
   - Packaged installs require ${chalk.cyan(SERVER_PACKAGE_NAME)} for the local server binary
-  - By default, asks before writing ${chalk.cyan('settings.serverUrl')} and ${chalk.cyan('settings.webappUrl')}
+  - By default, asks before writing ${chalk.cyan('settings.serverUrl')} (and webappUrl when a custom frontend exists)
   - Use ${chalk.cyan('--no-persist')} to run without modifying default Happy settings
-  - Open ${chalk.cyan('http://127.0.0.1:<port>')} for the web app (if bundled)
+  - Connect using the native iOS or Android app
 `);
 }
 
@@ -246,7 +245,7 @@ async function ensureSettingsWriteAllowed(opts: ServerOptions, serverUrl: string
     }
 
     const message =
-        `happy server will write settings.serverUrl and settings.webappUrl to ${serverUrl} ` +
+        `happy server will write settings.serverUrl (and webappUrl if a custom frontend exists) to ${serverUrl} ` +
         `in ${configuration.settingsFile}.`;
 
     if (!process.stdin.isTTY || !process.stderr.isTTY) {
@@ -427,14 +426,6 @@ function findWebappDir(): string | undefined {
     const bundled = resolveToolsPath('webapp');
     if (existsSync(path.join(bundled, 'index.html'))) return bundled;
 
-    const candidates = [
-        path.resolve(__dirname, '../../../happy-app/dist'),
-        path.resolve(__dirname, '../../happy-app/dist'),
-        path.resolve(process.cwd(), 'packages/happy-app/dist'),
-    ];
-    for (const c of candidates) {
-        if (existsSync(path.join(c, 'index.html'))) return c;
-    }
     return undefined;
 }
 

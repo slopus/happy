@@ -3,9 +3,8 @@ import { Prisma } from "@prisma/client";
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from "fastify-type-provider-zod";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { type Fastify } from "../types";
-// Cross-package contract check: the app's real update schema. apiTypes.ts is
-// pure zod (no react-native / @/ aliases), so it imports cleanly in node.
-import { ApiUpdateContainerSchema } from "../../../../../happy-app/sources/sync/apiTypes";
+// Cross-package contract check: the shared machine-creation wire schema.
+import { NewMachineUpdateContainerSchema } from "@slopus/happy-wire";
 
 const {
     state,
@@ -138,7 +137,7 @@ describe("machinesRoutes — POST /v1/machines creation emits", () => {
         expect(updateMachine.payload.body).not.toHaveProperty("dataEncryptionKey");
     });
 
-    it("emits a new-machine update that validates against the app's update schema (the fix accepts the real payload)", async () => {
+    it("emits a new-machine update that validates against the shared wire schema", async () => {
         app = await createApp();
 
         await app.inject({
@@ -155,11 +154,8 @@ describe("machinesRoutes — POST /v1/machines creation emits", () => {
         const newMachine = findEmit("new-machine");
         expect(newMachine).toBeDefined();
 
-        // The exact container the server pushes over the 'update' socket event —
-        // this is what Sync.handleUpdate runs ApiUpdateContainerSchema.safeParse()
-        // on. Pre-fix it failed (no new-machine member) and the machine was
-        // dropped; post-fix it must validate.
-        const parsed = ApiUpdateContainerSchema.safeParse(newMachine.payload);
+        // Validate the exact container pushed over the 'update' socket event.
+        const parsed = NewMachineUpdateContainerSchema.safeParse(newMachine.payload);
         expect(parsed.success).toBe(true);
         if (parsed.success) {
             expect(parsed.data.body.t).toBe("new-machine");
@@ -179,7 +175,7 @@ describe("machinesRoutes — POST /v1/machines creation emits", () => {
         const newMachine = findEmit("new-machine");
         expect(newMachine).toBeDefined();
         expect(newMachine.payload.body.dataEncryptionKey).toBeNull();
-        expect(ApiUpdateContainerSchema.safeParse(newMachine.payload).success).toBe(true);
+        expect(NewMachineUpdateContainerSchema.safeParse(newMachine.payload).success).toBe(true);
     });
 
     // A machine id is the primary key of the whole table, so an id another

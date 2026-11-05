@@ -44,47 +44,26 @@ git status --porcelain                     # must print nothing
 If `HEAD` is behind, `git merge --ff-only origin/main`. If it is ahead, the
 commits are not on `main` yet — push first (see `AGENTS.md` "Sync To Main"),
 then release. If the tree is dirty, commit or stash; a release must be
-reproducible from the commit EAS records.
+reproducible from the released artifact's recorded commit.
 
-The mobile release scripts enforce this mechanically:
-`packages/happy-app/sources/scripts/releasePreflight.mjs` runs first in `ota`,
-`ota:production`, `release:build:appstore`, and the other `release:build:*`
-scripts. It fetches, compares `HEAD` to `origin/main`, checks the tree is
-clean, regenerates `changelog.json` and insists it is committed, and refuses
-with the list of `main` commits the release would have dropped. If you run
-`eas update` or `eas build` by hand instead of through those scripts, run the
-preflight by hand first:
-
-```bash
-cd packages/happy-app && node sources/scripts/releasePreflight.mjs
-```
+The retired Expo preflight no longer exists; perform the checks above for native releases.
 
 **The only exception is one the user asks for by name, in the current
 conversation** — for example "publish this branch to preview so I can test
 it on my phone". A standing instruction from an earlier session does not
 count, and neither does your own judgement that it is probably fine. When the
 user does ask: fetch and rebase anyway, show them `git log --oneline
-HEAD..origin/main` (what the release will *not* contain), get a yes, run with
-`HAPPY_RELEASE_ALLOW_OFF_MAIN=1`, and say in the final report that the release
+HEAD..origin/main` (what the release will *not* contain), get a yes,
+and say in the final report that the release
 was off-main and from which commit. Afterwards, once the work lands on `main`,
 republish from `main` so the channel is back on the mainline.
-
-After publishing an OTA, verify the channel now serves what you meant:
-
-```bash
-cd packages/happy-app && eas update:list --branch <branch> --limit 1 --non-interactive
-```
-
-The newest group's commit must be your `HEAD`. If it is not, someone published
-after you; find out from what.
 
 ## Step 1: Pick a target
 
 Ask which component to release:
 
 - **CLI** — npm package `happy`
-- **Mobile** — Expo/EAS builds for iOS + Android
-- **Web** — Docker image + K8s deploy via TeamCity
+- **Mobile** — Native iOS + Android builds
 - **Server** — Docker image + K8s deploy via TeamCity
 - **Docs** — GitHub Pages (separate repo)
 
@@ -99,8 +78,8 @@ Present these as options. Wait for the user to pick.
     Registry:    https://registry.npmjs.org
     Git tags:    cli-{version}
 
-CLI releases use `.github/workflows/release-happy-cli.yml`, following the
-`happy-agent` manual-dispatch convention: one run builds/tests/packs, then
+CLI releases use `.github/workflows/release-happy-cli.yml`, dispatched manually:
+one run builds/tests/packs, then
 publishes that exact artifact through npm trusted publishing. Never publish
 from local npm credentials or create a release tag by hand. The workflow creates
 the tag and GitHub Release only after npm publication and a fresh-install smoke
@@ -110,7 +89,6 @@ local release procedure.
 Tag namespace note:
 - CLI releases use `cli-X.Y.Z`
 - Native releases use `native-<runtime-version>`
-- OTA releases use `ota-<ota-version>`
 - Do not use a bare `vX.Y.Z` tag for Happy releases because multiple release streams coexist in this repo
 
 ### Step 2: Gather state
@@ -191,9 +169,9 @@ symbol. `workspace:*` publishes the local version NUMBER, never the local CODE.
 all 792 unit tests — always sees the correct code. It only fails against the
 registry. The isolated install smoke check is what catches that class of bug.
 
-**Still exposed — `happy-agent` and `happy-server-self-host`** both keep
-happy-wire in `dependencies`, so they carry the original trap. Before publishing
-either, bundle it the same way or get happy-wire republished first.
+**Still exposed — `happy-server-self-host`** keeps happy-wire in `dependencies`,
+so it carries the original trap. Before publishing it, bundle happy-wire the
+same way or get happy-wire republished first.
 
 **Publish rights:** `@slopus/happy-wire` is owned solely by `steve.kite
 <steve@korshakov.com>`. `bra1ndump` is an owner of `happy` but NOT of the
@@ -231,23 +209,10 @@ Packaged installs resolve those from the separately installed
 If the CLI release depends on self-host server changes, release
 `happy-server-self-host` separately. It lives in `packages/happy-server-self-host`
 and is the publishing shell around the private `packages/happy-server`:
-`pnpm --filter happy-server-self-host build` bundles that package's standalone
-entrypoint into `dist/` and copies `prisma/` in (this needs bun), then
-`pnpm --filter happy-server-self-host run bundle:webapp` builds the bundled
-webapp. Publish from `packages/happy-server-self-host` — `packages/happy-server`
-is private and is never published. The server package is a JS/TS npm package;
-npm handles platform
-specific dependencies such as Prisma and sharp normally. Do not pass
-`--ignore-scripts` when publishing it; its `prepublishOnly` script rebuilds the
-runtime, rebuilds the webapp, and runs tests before npm receives the tarball.
-
-Before handing a server publish to the user, pre-run the full `prepublishOnly`
-chain yourself to catch failures early — the `bundle:webapp` step runs a multi-minute
-`expo export`, and `build` needs bun:
-
-```bash
-pnpm --filter happy-server-self-host --fail-if-no-match run prepublishOnly
-```
+`pnpm --filter happy-server-self-host build` bundles its standalone
+entrypoint into `dist/` and copies `prisma/` in (this needs bun).
+Publish from `packages/happy-server-self-host`; it no longer bundles a web app.
+Pre-run its full `prepublishOnly` chain before handing a publish to the user.
 
 The server typecheck, unit suite, and both Docker images are gated by
 `.github/workflows/server.yml`.
@@ -347,136 +312,16 @@ and fast-forward/rebase the workflow's version commit while preserving local wor
 
 ---
 
-## Mobile Release
+## Native Mobile Release
 
-    Package:     packages/happy-app
-    Variants:    development, preview, production
-    Platform:    Expo SDK 55 / React Native 0.83.1
+Packages: `packages/happy-ios` (Swift/UIKit) and `packages/happy-android`
+(Kotlin/Compose). Read their AGENTS.md files for build, version and signing
+requirements. Build and test on Kirill's Mac Mini. Confirm platform, variant,
+version and distribution target before any upload. Step 0 still applies.
 
-Step 0 first, always. Every command in this section is wrapped by
-`sources/scripts/releasePreflight.mjs`; if you bypass a `pnpm` script and call
-`eas` directly, run the preflight yourself.
-
-### Build types
-
-**Always ask the user explicitly what they want to release.** Present these
-options in order of popularity:
-
-1. **OTA update (preview)** — push JS bundle to preview channel. Most common release type.
-2. **OTA update (production)** — push JS bundle to production channel. Do this after preview OTA is validated.
-3. **Native dev build** — when native code changes. Points to dev server with bundled app.
-4. **Full native release** — build all profiles (dev + preview + production) to prep for a new native release.
-
-#### OTA Updates
-
-  ```bash
-  # Preview (most common). pnpm forwards the trailing flags to `eas update`.
-  cd packages/happy-app && pnpm ota --message "<what changed> (<short sha>)" --non-interactive
-
-  # Production
-  cd packages/happy-app && pnpm ota:production
-  ```
-
-`eas update` prompts for a message when none is given, and stdin is not
-readable from an agent, so always pass `--message` and `--non-interactive`.
-Put the short commit hash in the message: it is what lets the next person
-answer "what is actually on this channel" from `eas update:list` alone.
-
-The `ota` script is `releasePreflight.mjs && pnpm typecheck && eas update
---branch preview`. The preflight regenerates `changelog.json` from
-`CHANGELOG.md` and refuses if the result is not committed, so edit the
-changelog, regenerate, commit, push, *then* release. Do not reach around the
-script to `eas update` directly just to skip a step it is failing on; the
-failure is the point.
-
-Production OTA (`ota:production`) dispatches the EAS workflow in
-`.eas/workflows/ota.yaml`, which publishes the current commit to the
-`production` channel. Same rule: `main`, matching `origin/main`, pushed. Never
-run it without the user asking for a production OTA in the current
-conversation.
-
-#### Native Builds
-
-- **Dev build** — development profile, used when native code changes (points to dev server)
-  ```bash
-  cd packages/happy-app && eas build --profile development --platform all --non-interactive
-  ```
-
-- **TestFlight / Play Store builds** — use `-store` profiles for distribution via TestFlight and Play Store.
-  **Always pass `--auto-submit`** so the build goes straight to TestFlight after completion.
-  ```bash
-  # Production, both platforms, auto-submitted to App Store Connect and Play Console.
-  # This is `release-production.sh`, and it runs the preflight first.
-  cd packages/happy-app && pnpm release:build:appstore
-
-  # Preview (TestFlight/internal testing) — run the preflight yourself, then:
-  cd packages/happy-app && node sources/scripts/releasePreflight.mjs && eas build --profile preview-store --platform ios --non-interactive --auto-submit
-
-  # Dev (TestFlight, points to dev server)
-  cd packages/happy-app && node sources/scripts/releasePreflight.mjs && eas build --profile development-store --platform ios --non-interactive --auto-submit
-  ```
-
-  Afterwards, `eas build:list --limit 4 --non-interactive --json` and check
-  that each build's `gitCommitHash` is your `HEAD` and its `runtimeVersion`
-  is the one in `app.config.js`. A build from the wrong commit is the native
-  version of the stale-OTA mistake, and it is far harder to undo.
-
-**IMPORTANT:** Always pass `--non-interactive` to `eas build` commands. Without it,
-EAS prompts for Apple account login interactively which breaks in non-TTY contexts
-(Claude Code, CI). Remote credentials are already configured on EAS servers.
-
-**IMPORTANT:** Always pass `--auto-submit` to `-store` builds. Without it, the build
-finishes but never reaches TestFlight — you have to manually submit with `eas submit`.
-
-### EAS Build Profiles
-
-    Profile              Distribution   Channel       Notes
-    development-store    store          development   Dev build via TestFlight
-    preview-store        store          preview       TestFlight / Play Store internal testing
-    production           store          production    App Store / Play Store submission
-
----
-
-#### Internal / ad-hoc profiles (rarely used)
-
-These install via direct link, NOT TestFlight. Almost never needed — prefer
-the `-store` profiles above.
-
-    Profile              Distribution   Channel
-    development          internal       development
-    preview              internal       preview
-
-Version source is remote (EAS manages build numbers, auto-incremented).
-Runtime version is `runtimeVersion` in `app.config.js` (currently "21") — bump
-it when native code changes, so an OTA built against the new native layer can
-never land on an old binary.
-
-### App Store Connect
-
-    Apple ID:    steve@bulkovo.com
-    Team ID:     466DQWDR8C
-
-    App Store Connect App IDs:
-    Production:   6748571505  (com.ex3ndr.happy)
-    Preview:      6749025570  (com.slopus.happy.preview)
-    Development:  6748984254  (com.slopus.happy.dev)
-
----
-
-## Web Release
-
-    Package:     packages/happy-app (same Expo app, web export)
-    Dockerfile:  Dockerfile.webapp
-    Image:       docker.korshakov.com/happy-app:{version}
-    K8s:         packages/happy-app/deploy/happy-app.yaml (3 replicas)
-
-Web releases go through TeamCity (`Lab_HappyWeb`). The config is in the TeamCity UI, not in the repo.
-
-Flow: `expo export --platform web` -> nginx:alpine static serve -> Docker build -> push -> K8s deploy.
-
-Build args: `POSTHOG_API_KEY`, `REVENUE_CAT_STRIPE`.
-
-Guide the user to trigger the TeamCity build, or help with manual Docker builds if needed.
+The Expo app, EAS OTA workflows and legacy web/Tauri client have been removed.
+Do not invoke their former scripts. A native store release needs the existing
+App Store / Play signing identity and an explicit store build number.
 
 ---
 
@@ -506,25 +351,25 @@ Separate repo, not part of this monorepo. Guide the user to push to that repo.
 
 ---
 
-## Writing release notes (the in-app changelog)
+## Writing release notes
 
-`CHANGELOG.md` is regenerated into `changelog.json` and shown **inside the mobile app, on a phone, right after an OTA update**. Write for that reader.
+Write for the users of the component being released. Native changelogs are owned by their native packages.
 
 1. **Investigate before writing — use subagents (Opus).** Don't infer from commit titles. Spawn parallel subagents to read the actual code + git history of each candidate change and classify it: user-visible UX vs impl detail, default-on vs gated, new vs polish/fix.
 2. **Default-off ⇒ exclude.** A change behind a setting/experimental flag that defaults to OFF (or whose UI entry point is hidden) is a silent ship — omit it until it's on by default. Same for impl / perf-internal / refactor / type-only changes.
 3. **Audience is phone users.** Most never touch the CLI or desktop. Be skeptical of CLI-only / desktop-only / web-only / beta-only items — a genuinely strong feature can still be wrong for *this* venue; announce those in CLI release notes / docs / GitHub instead.
 4. **Ask, don't assume.** When announce-vs-silent-ship, default state, or scope is unclear, ask the owner and confirm the final include/exclude list before writing. Never headline-announce on your own judgment.
-5. **Voice:** benefit-first, terse, em-dash, one line per item, grouped as a dated themed entry like existing ones. Edit `CHANGELOG.md` only, then regenerate via `tsx packages/happy-app/sources/scripts/parseChangelog.ts`.
-6. **Community Credits bullet.** End each entry with a single bullet crediting community contributors whose commits ship in it: `- Community Credits: [@user1](https://github.com/user1), [@user2](https://github.com/user2)`. Core team never appears there — Kirill (`bra1ndump` / kirill2003de@gmail.com), `Scoteezy`, and Steve (`ex3ndr`). To find contributors: get the previous OTA's commit via `eas update:list --branch preview` + `eas update:view <group-id> --json` (`gitCommitHash`), then `git log <hash>..HEAD` and keep non-core authors. GitHub handles come from the PR (`gh pr view <n> --json author`), not from the commit email. If an OTA shipped without a changelog entry, its uncredited community commits roll into the next entry's credits.
+5. **Voice:** benefit-first, terse, one line per item. Update the native package's changelog.
+6. **Community Credits:** credit non-core contributors whose commits ship, using the previous release tag and GitHub PR authors.
 
 ## Rules
 
-- **Release only from local `main` that is `origin/main`, fetched right then, tree clean** — see Step 0. Not a worktree, not a branch, not ahead, not behind. The mobile scripts refuse otherwise. The only exception is one the user asks for by name in the current conversation; then run with `HAPPY_RELEASE_ALLOW_OFF_MAIN=1`, show what `main` commits the release lacks, and say it was off-main in the report.
+- **Release only from local `main` that is `origin/main`, fetched right then, tree clean** — see Step 0. Not a worktree, not a branch, not ahead, not behind. Perform these checks before native builds or submissions. The only exception is one the user asks for by name in the current conversation; show what `main` commits the release lacks, get confirmation, and say it was off-main in the report.
 - **Release notes: investigate with subagents, exclude default-off, ask when unsure** — see "Writing release notes" above.
 - **Always present options** — never assume which component, channel, or version.
 - **Always verify before publishing** — show the user what will be published and get confirmation.
 - **CLI releases use the approved GitHub workflow** — dispatch from main with the confirmed version and notes; never publish from local credentials or handle npm credentials/OTP.
-- **Do not bundle self-host server/webapp into `happy`** — self-host runtime and the bundled webapp ship through `happy-server-self-host`, not the main CLI package.
+- **Do not bundle self-host server/webapp into `happy`** — self-host runtime ships through `happy-server-self-host`, not the main CLI package.
 - **Unit tests are the gate, not integration tests** — integration tests are slow and have flaky abort/interrupt tests.
 - **Use pnpm to pack the workspace** — CI uploads that exact tested tarball with its pinned npm CLI; never use raw npm publishing on the source workspace.
 - **Run prepublishOnly after stamping and before packing** — tarball upload does not run the workspace's lifecycle scripts. Never skip this gate.

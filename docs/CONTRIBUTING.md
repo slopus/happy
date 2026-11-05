@@ -59,32 +59,14 @@ cd happy
 pnpm install
 ```
 
-### Happy App (Mobile + Web)
+### Native mobile apps
 
-```bash
-pnpm --filter happy-app start          # Expo dev server
-pnpm --filter happy-app ios:dev        # iOS simulator
-pnpm --filter happy-app android:dev    # Android emulator
-pnpm web                                # Browser (shortcut)
-pnpm --filter happy-app typecheck      # Run after all changes
-```
+- iOS: [happy-ios](../packages/happy-ios/README.md), Swift/UIKit.
+- Android: [happy-android](../packages/happy-android/AGENTS.md), Kotlin/Jetpack Compose.
+- Shared translations: [JSON catalogs](../packages/happy-i18n/README.md).
 
-The app has three build variants — all can be installed simultaneously on the same device:
-
-| Variant | Bundle ID | App Name | Use Case |
-|---------|-----------|----------|----------|
-| Development | `com.slopus.happy.dev` | Happy (dev) | Local development with hot reload |
-| Preview | `com.slopus.happy.preview` | Happy (preview) | Beta testing & OTA updates |
-| Production | `com.ex3ndr.happy` | Happy | App Store release |
-
-Swap `ios:dev` for `ios:preview` or `ios:production` (same for `android:`).
-
-#### macOS Desktop (Tauri)
-
-```bash
-pnpm --filter happy-app tauri:dev      # Run with hot reload
-pnpm --filter happy-app tauri:build:dev
-```
+Follow each package's build and test instructions. The old Expo app, web export
+and Tauri shell have been removed.
 
 ### Happy CLI
 
@@ -109,19 +91,16 @@ To sandbox dev data, set `HAPPY_HOME_DIR=~/.happy-dev` in your shell before runn
 pnpm --filter happy-server standalone:dev   # Local server (no Docker needed)
 ```
 
-Runs on `localhost:3005` with embedded PGlite. To point the app at your local server:
-
-```bash
-EXPO_PUBLIC_HAPPY_SERVER_URL=http://localhost:3005 pnpm --filter happy-app start
-```
+Runs on `localhost:3005` with embedded PGlite. Set the native app's server URL in its settings.
 
 ## Project Structure
 
-This is a monorepo with four packages:
+The monorepo includes:
 
-- **happy-app** — React Native + Expo mobile/web client
+- **happy-ios** — Native Swift/UIKit client
+- **happy-android** — Native Kotlin/Jetpack Compose client
+- **happy-wire** — Shared wire schemas
 - **happy-cli** — Node.js CLI that wraps Claude Code and Codex
-- **happy-agent** — Remote agent control
 - **happy-server** — Backend for encrypted sync
 
 For architecture details, check the [docs/](.) folder or ask Happy itself — it knows how the project is set up.

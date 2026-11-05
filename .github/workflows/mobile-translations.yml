@@ -1,0 +1,24 @@
+name: Native mobile translations
+
+on:
+  pull_request:
+    paths: ['packages/happy-i18n/**', 'packages/happy-ios/scripts/generate-translations.mjs', 'packages/happy-android/tools/translations/**', '.github/workflows/mobile-translations.yml']
+  push:
+    branches: [main]
+    paths: ['packages/happy-i18n/**', 'packages/happy-ios/scripts/generate-translations.mjs', 'packages/happy-android/tools/translations/**', '.github/workflows/mobile-translations.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  translations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node --test packages/happy-i18n/catalogs.test.mjs
+      - run: node packages/happy-ios/scripts/generate-translations.mjs
+      - run: node packages/happy-android/tools/translations/generate.mjs
+      - run: git diff --exit-code -- packages/happy-ios packages/happy-android

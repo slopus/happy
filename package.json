@@ -4,11 +4,6 @@
     "scripts": {
         "cli": "pnpm --filter happy cli",
         "release": "node ./scripts/release.cjs",
-        "web": "pnpm --filter happy-app web",
-        "app-logs": "pnpm --filter happy-app-logs start",
-        "mobile-gym": "pnpm --filter happy-mobile-gym cli",
-        "screenshots:compose": "node scripts/app-store/compose.mjs",
-        "screenshots:capture:android": "node scripts/app-store/android-capture.mjs",
         "postinstall": "node ./scripts/postinstall.cjs",
         "env:new": "tsx packages/dev-environments/environments.ts new",
         "env:list": "tsx packages/dev-environments/environments.ts list",
@@ -16,9 +11,6 @@
         "env:remove": "tsx packages/dev-environments/environments.ts remove",
         "env:current": "tsx packages/dev-environments/environments.ts current",
         "env:server": "tsx packages/dev-environments/environments.ts run server",
-        "env:web": "tsx packages/dev-environments/environments.ts run web",
-        "env:ios": "tsx packages/dev-environments/environments.ts run ios",
-        "env:android": "tsx packages/dev-environments/environments.ts run android",
         "env:cli": "tsx packages/dev-environments/environments.ts run cli",
         "env:seed": "tsx packages/dev-environments/environments.ts seed",
         "env:up": "tsx packages/dev-environments/environments.ts up",
@@ -28,15 +20,10 @@
     },
     "workspaces": {
         "packages": [
-            "packages/happy-app",
-            "packages/happy-agent",
             "packages/happy-cli",
             "packages/happy-server",
             "packages/happy-server-self-host",
             "packages/happy-wire",
-            "packages/happy-app-logs",
-            "packages/happy-mobile-gym",
-            "packages/expo-tailcat",
             "packages/happy-push-server"
         ]
     },
@@ -47,11 +34,8 @@
             "@types/parse-path": "7.0.3"
         },
         "onlyBuiltDependencies": [
-            "@more-tech/react-native-libsodium",
             "@prisma/client",
             "@prisma/engines",
-            "@shopify/react-native-skia",
-            "@tailwindcss/oxide",
             "better-sqlite3",
             "esbuild",
             "prisma",
@@ -60,8 +44,6 @@
         ]
     },
     "devDependencies": {
-        "playwright": "1.61.1",
-        "sharp": "^0.35.3",
         "tsx": "^4.20.6"
     },
     "packageManager": "pnpm@10.11.0"
