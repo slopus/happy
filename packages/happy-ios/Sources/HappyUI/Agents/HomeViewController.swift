@@ -40,9 +40,21 @@ final class HomeViewController: UIViewController {
 
     private struct Search {
         var query = ""
-        /// What each quick action or setting found does, by its row's id.
+        /// What each quick action, setting or found thing does, by its row's id.
         var results: [String: () -> Void] = [:]
+        /// What the computer found, and for which query.
+        var remote: (query: String, results: [HappyCore.Search.Result])?
+        /// The computer's answer on its way, cancelled by the next keystroke.
+        var asking: Task<Void, Never>?
     }
+
+    /// Whether this computer answers search; nil until asked.
+    private var servesSearch: Bool?
+    /// The Surfaces and artifacts the phone keeps, searched as it types.
+    private var surfaceCatalog: SurfaceCatalogFeed?
+    private var catalogWatches: [Task<Void, Never>] = []
+    private var surfaces: [AgentWire.Surface] = []
+    private var artifacts: [ArtifactSummary] = []
 
     /// One of desktop's palette actions (`actionRows`), as a phone has them.
     private struct QuickAction {
@@ -170,6 +182,7 @@ final class HomeViewController: UIViewController {
         guard id != session?.accountID else { return }
         // Another computer's sidebar: what was searched was the last one's.
         endSearch(animated: false)
+        servesSearch = nil
         connectionWatch?.cancel(); connectionWatch = nil
         headerWatch = nil; waitingForNetwork = false
         session = id.flatMap { Session.session(for: $0, context: context) }
@@ -239,6 +252,61 @@ final class HomeViewController: UIViewController {
         guard search != nil, search?.query != query else { return }
         search?.query = query
         showResults()
+        ask(query)
+    }
+
+    /// The computer's half of `query`, after a pause in the typing: the
+    /// last request goes as the next keystroke comes. A computer that
+    /// doesn't serve it leaves the phone's own results.
+    private func ask(_ query: String) {
+        search?.asking?.cancel()
+        let typed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let client = session?.client, !typed.isEmpty, typed.count <= 256, servesSearch != false else { return }
+        search?.asking = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(120))
+            guard !Task.isCancelled, let self else { return }
+            if servesSearch == nil {
+                guard let serves = try? await client.servesSearch() else { return }
+                servesSearch = serves
+                guard serves else { return }
+            }
+            guard !Task.isCancelled, let answer = try? await client.search(typed), !Task.isCancelled, search?.query == query else { return }
+            search?.remote = (query, answer.results)
+            showResults()
+        }
+    }
+
+    /// The Surface catalog and the artifacts, kept current while search is open.
+    private func watchCatalogs() {
+        guard let session, catalogWatches.isEmpty else { return }
+        let feed = SurfaceCatalogFeed(engine: session.engine)
+        surfaceCatalog = feed
+        let artifacts = session.engine.artifacts
+        catalogWatches = [
+            Task { [weak self] in
+                await feed.start()
+                for await state in await feed.states() {
+                    guard let self, !Task.isCancelled else { return }
+                    surfaces = state.surfaces
+                    if search != nil { showResults() }
+                }
+            },
+            Task { [weak self] in
+                await artifacts.start()
+                for await state in await artifacts.states() {
+                    guard let self, !Task.isCancelled else { return }
+                    self.artifacts = state.items
+                    if search != nil { showResults() }
+                }
+            },
+        ]
+    }
+
+    private func stopCatalogs() {
+        catalogWatches.forEach { $0.cancel() }
+        catalogWatches = []
+        if let feed = surfaceCatalog { Task { await feed.stop() } }
+        surfaceCatalog = nil
     }
 
     /// The bar's field opened. Home stays exactly as it is, and so does the
@@ -248,6 +316,7 @@ final class HomeViewController: UIViewController {
         guard session != nil, search == nil, !sidebar.isHidden else { return }
         search = Search()
         resultsView.clear()
+        watchCatalogs()
         showResults()
         // The status bar takes the results to their top, never home under them.
         sidebar.list.scrollsToTop = false
@@ -261,7 +330,9 @@ final class HomeViewController: UIViewController {
     /// The field closed: the results fade away, and home is as it was.
     func endSearch(animated: Bool = true) {
         guard search != nil else { return }
+        search?.asking?.cancel()
         search = nil
+        stopCatalogs()
         let gone = { [weak self] in
             // Search opened again while it faded: it stays.
             guard let self, search == nil else { return }
@@ -296,9 +367,137 @@ final class HomeViewController: UIViewController {
             return
         }
         let found = results(for: query)
-        search.results = found.runs
+        let fused = fusedResults(for: query, remote: search.remote?.query == search.query ? search.remote?.results ?? [] : [])
+        search.results = found.runs.merging(fused.runs) { first, _ in first }
         self.search = search
-        resultsView.show(HappyCore.Search.rows(snapshot.allRows, query: query) + found.rows, query: query)
+        resultsView.show(fused.rows + found.rows, query: query)
+    }
+
+    /// One flat list of what answers `query`: what the phone holds, at
+    /// once, fused with what the computer found once it answers
+    /// (`Search.fuse`). A row the phone found keeps its place in the
+    /// list when the computer's results come in around it.
+    private func fusedResults(for query: String, remote: [HappyCore.Search.Result]) -> (rows: [Row], runs: [String: () -> Void]) {
+        let local = HappyCore.Search.local(rows: snapshot.allRows, surfaces: surfaces, artifacts: artifacts, query: query)
+        let fused = HappyCore.Search.fuse(remote: remote.map { ($0.key, $0.rank) }, local: local.map(\.key))
+        var rows: [Row] = []
+        var runs: [String: () -> Void] = [:]
+        for one in fused {
+            let id = "found:\(one.key)"
+            if let index = one.local {
+                switch local[index].found {
+                case .row(let row):
+                    rows.append(row)
+                case .surface(let surface):
+                    rows.append(Row(id: id, nodeId: id, kind: .result, label: surface.name, mark: .glyph(Rows.surfaceGlyph(surface.type))))
+                    runs[id] = { [weak self] in self?.openSurface(AgentWire.Surface(id: surface.id, type: surface.type, name: surface.name), row: id) }
+                case .artifact(let artifact):
+                    rows.append(Row(id: id, nodeId: id, kind: .result, label: artifact.title, mark: .glyph(artifact.live || artifact.type == "html" ? "globe-outline" : "doc")))
+                    runs[id] = { [weak self] in self?.openArtifact(id: artifact.id, type: artifact.type, title: artifact.title, row: id) }
+                }
+            } else if let index = one.remote {
+                let result = remote[index]
+                rows.append(Row(id: id, nodeId: id, kind: .result, label: label(result), mark: .glyph(Self.glyph(result))))
+                runs[id] = { [weak self] in self?.open(result, row: id) }
+            }
+        }
+        return (rows, runs)
+    }
+
+    private func label(_ result: HappyCore.Search.Result) -> String {
+        switch result.type {
+        // A vault app shows without its `.artifact`, as the vault shows it.
+        case "vault_file": VaultEntry.shownName(result.label)
+        // A message is titled by its conversation.
+        case "message": result.agentId.flatMap(conversationTitle) ?? Strings.untitledSession
+        default: result.label
+        }
+    }
+
+    private static func glyph(_ result: HappyCore.Search.Result) -> String {
+        switch result.type {
+        case "vault_file": result.kind == "artifact" ? "globe-outline" : "doc"
+        case "vault_folder": "folder-outline"
+        case "document": "doc"
+        case "message": "chatbubbles-outline"
+        case "todo": "tasks"
+        case "calendar_event": "calendar"
+        case "artifact": result.artifactType == "html" ? "globe-outline" : "doc"
+        case "surface": Rows.surfaceGlyph(result.surfaceType)
+        case "agent": result.kind == "chat" || result.kind == "subtask" ? "chatbubbles-outline" : "agents"
+        default: "search"
+        }
+    }
+
+    /// A Surface's name as the phone knows it, for a result that names only its ID.
+    private func surfaceName(_ surfaceId: String) -> String? {
+        surfaces.first { $0.id == surfaceId }?.name ?? snapshot.allRows.first { $0.targetKind == "surface" && $0.targetId == surfaceId }?.label
+    }
+
+    /// A conversation's title as the sidebar shows it.
+    private func conversationTitle(_ agentId: String) -> String? {
+        snapshot.allRows.first { $0.agentId == agentId }?.label
+    }
+
+    /// Opens what the computer found, where the phone shows it: a message
+    /// opens its conversation.
+    private func open(_ result: HappyCore.Search.Result, row: String) {
+        guard let session else { return }
+        switch result.type {
+        case "agent", "message":
+            guard let agentId = result.agentId else { return }
+            session.warm.tap(agentId)
+            show(ChatViewController(session: session, agentId: agentId, title: label(result), spaceId: nil, intro: nil), for: row)
+        case "document", "surface", "todo", "calendar_event":
+            guard let surfaceId = result.surfaceId else { return }
+            let type = switch result.type {
+            case "document": "document"
+            case "todo": "todo"
+            case "calendar_event": "calendar"
+            default: result.surfaceType ?? ""
+            }
+            let named = result.type == "document" || result.type == "surface"
+            openSurface(AgentWire.Surface(id: surfaceId, type: type, name: named ? result.label : surfaceName(surfaceId) ?? ""), row: row)
+        case "artifact":
+            guard let artifactId = result.artifactId else { return }
+            openArtifact(id: artifactId, type: result.artifactType ?? "", title: result.label, row: row)
+        case "vault_file", "vault_folder":
+            let folder = result.type == "vault_folder"
+            guard let surfaceId = result.surfaceId, let id = folder ? result.folderId : result.fileId else { return }
+            let vaultName = surfaceName(surfaceId) ?? Strings.Vaults.title
+            Task { [weak self] in
+                do {
+                    let place = try await session.engine.vaults.location(surfaceId, id, folder: folder)
+                    guard let self else { return }
+                    let controller: UIViewController = folder
+                        ? VaultViewController(session: session, surfaceId: surfaceId, vaultName: vaultName, folder: place.entry, ancestors: place.ancestors)
+                        : VaultPreviewViewController(session: session, surfaceId: surfaceId, vaultName: vaultName, entry: place.entry)
+                    show(controller, for: row)
+                } catch {
+                    guard let self else { return }
+                    Alerts.show(Strings.Vaults.failedTitle, VaultActions.message(error), on: self)
+                }
+            }
+        default:
+            break
+        }
+    }
+
+    private func openSurface(_ surface: AgentWire.Surface, row: String) {
+        guard let session else { return }
+        let controller = SurfaceScreens.make(session: session, surface: surface)
+        MainPanelKey.record("surface:\(surface.id)", for: controller)
+        show(controller, for: row)
+    }
+
+    private func openArtifact(id: String, type: String, title: String, row: String) {
+        guard let session else { return }
+        show(ArtifactViewController(session: session, artifact: Artifact(id: id, version: 1, type: type, title: title, followsLatest: true)), for: row)
+    }
+
+    private func show(_ controller: UIViewController, for rowId: String) {
+        openedRows.setObject(rowId as NSString, forKey: controller)
+        navigationController?.pushViewController(controller, animated: true)
     }
 
     /// The quick actions and settings that answer `query`, at most six of

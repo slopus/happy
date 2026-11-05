@@ -41,6 +41,87 @@ public enum Search {
             .map(\.item)
     }
 
+    /// Something the phone found in what it already holds, keyed as the
+    /// computer keys its results (`<type>:<id>`, API.md "Search") so the
+    /// two lists fuse (`fuse`).
+    public enum Found: Equatable, Sendable {
+        case row(Row)
+        case surface(AgentWire.Surface)
+        case artifact(ArtifactSummary)
+
+        public var label: String {
+            switch self {
+            case .row(let row): row.label
+            case .surface(let surface): surface.name
+            case .artifact(let artifact): artifact.title
+            }
+        }
+    }
+
+    /// A sidebar row's key: a conversation is its agent's, a Surface its
+    /// own (a document's as a document), and any other space only the
+    /// phone's, which the computer never returns.
+    public static func key(_ row: Row) -> String? {
+        switch row.kind {
+        case .session:
+            return row.agentId.map { "agent:\($0)" }
+        case .space:
+            if row.targetKind == "surface", let id = row.targetId { return row.surfaceType == "document" ? "document:\(id)" : "surface:\(id)" }
+            if ["task", "bot", "agent"].contains(row.targetKind ?? ""), let agentId = row.agentId { return "agent:\(agentId)" }
+            return row.id
+        default:
+            return nil
+        }
+    }
+
+    public static func key(_ surface: AgentWire.Surface) -> String {
+        surface.type == "document" ? "document:\(surface.id)" : "surface:\(surface.id)"
+    }
+
+    /// The computer's provider order (API.md "Result types"), which breaks
+    /// ties between equally good names here as it does there; spaces,
+    /// which it has no type for, last.
+    private static let providers = ["vault_file", "vault_folder", "document", "message", "todo", "calendar_event", "artifact", "surface", "agent", "project", "workspace", "user", "skill"]
+
+    private static func provider(_ key: String) -> Int {
+        let type = key.prefix { $0 != ":" }
+        return providers.firstIndex { $0 == type } ?? providers.count
+    }
+
+    /// What the phone finds for `query` in what it holds: the sidebar's
+    /// conversations and Surfaces, the Surface catalog and the artifacts,
+    /// one result per key, best name first (`rank`), then in the
+    /// computer's provider order, then in their own. A key the sidebar
+    /// holds is its row, which opens as the sidebar does.
+    public static func local(rows: [Row], surfaces: [AgentWire.Surface] = [], artifacts: [ArtifactSummary] = [], query: String) -> [(key: String, found: Found)] {
+        var candidates: [(key: String, found: Found)] = []
+        for row in rows where row.kind == .space || row.kind == .session {
+            guard let key = key(row) else { continue }
+            var row = row
+            row.depth = 0
+            row.collapsed = nil
+            row.hasHiddenSessions = false
+            candidates.append((key, .row(row)))
+        }
+        candidates += surfaces.map { (key($0), .surface($0)) }
+        candidates += artifacts.filter { !$0.deleted }.map { ("artifact:\($0.id)", .artifact($0)) }
+        var best: [String: (rank: Int, provider: Int, index: Int, found: Found)] = [:]
+        for (index, candidate) in candidates.enumerated() {
+            guard let rank = rank(candidate.found.label, query) else { continue }
+            let entry = (rank: rank, provider: provider(candidate.key), index: index, found: candidate.found)
+            guard let held = best[candidate.key] else {
+                best[candidate.key] = entry
+                continue
+            }
+            // The sidebar's row stands for the key, at the better of the two places.
+            let found: Found = if case .row = held.found { held.found } else { entry.found }
+            let placed = (held.rank, held.index) <= (entry.rank, entry.index) ? held : entry
+            best[candidate.key] = (placed.rank, placed.provider, placed.index, found)
+        }
+        return best.sorted { ($0.value.rank, $0.value.provider, $0.value.index) < ($1.value.rank, $1.value.provider, $1.value.index) }
+            .map { ($0.key, $0.value.found) }
+    }
+
     /// How many bots and tasks an empty search shows.
     public static let recentLimit = 8
 

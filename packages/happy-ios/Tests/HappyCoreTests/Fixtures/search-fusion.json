@@ -1,0 +1,301 @@
+{
+    "description": "Search fusion test vectors. Fuse each case's remote and local lists with Reciprocal Rank Fusion (k = 60): a remote result scores 1 / (k + rank), a local result 1 / (k + p) at its 1-based position p, and a key in both lists is one result whose score is the remote term plus the local term, in that order, carrying the remote fields. Order by score, highest first; then by remote rank, results without one last; then by local position. 'expected' is the fused key order and which list each result's fields come from.",
+    "k": 60,
+    "cases": [
+        {
+            "name": "The daemon's results alone keep its order",
+            "remote": [
+                {
+                    "key": "vault_file:a",
+                    "rank": 1
+                },
+                {
+                    "key": "todo:b",
+                    "rank": 2
+                },
+                {
+                    "key": "agent:c",
+                    "rank": 3
+                }
+            ],
+            "local": [],
+            "expected": [
+                {
+                    "key": "vault_file:a",
+                    "from": "remote"
+                },
+                {
+                    "key": "todo:b",
+                    "from": "remote"
+                },
+                {
+                    "key": "agent:c",
+                    "from": "remote"
+                }
+            ]
+        },
+        {
+            "name": "Local results alone keep their order",
+            "remote": [],
+            "local": [
+                {
+                    "key": "project:x"
+                },
+                {
+                    "key": "workspace:y"
+                },
+                {
+                    "key": "surface:z"
+                }
+            ],
+            "expected": [
+                {
+                    "key": "project:x",
+                    "from": "local"
+                },
+                {
+                    "key": "workspace:y",
+                    "from": "local"
+                },
+                {
+                    "key": "surface:z",
+                    "from": "local"
+                }
+            ]
+        },
+        {
+            "name": "A key in both lists is one result with the daemon's fields, scored as the sum",
+            "remote": [
+                {
+                    "key": "vault_file:a",
+                    "rank": 1
+                },
+                {
+                    "key": "todo:b",
+                    "rank": 2
+                },
+                {
+                    "key": "agent:c",
+                    "rank": 3
+                }
+            ],
+            "local": [
+                {
+                    "key": "agent:c"
+                },
+                {
+                    "key": "project:d"
+                }
+            ],
+            "expected": [
+                {
+                    "key": "agent:c",
+                    "from": "remote"
+                },
+                {
+                    "key": "vault_file:a",
+                    "from": "remote"
+                },
+                {
+                    "key": "todo:b",
+                    "from": "remote"
+                },
+                {
+                    "key": "project:d",
+                    "from": "local"
+                }
+            ]
+        },
+        {
+            "name": "Equal scores put the daemon's result first",
+            "remote": [
+                {
+                    "key": "vault_file:a",
+                    "rank": 1
+                },
+                {
+                    "key": "todo:b",
+                    "rank": 2
+                }
+            ],
+            "local": [
+                {
+                    "key": "project:x"
+                },
+                {
+                    "key": "project:y"
+                }
+            ],
+            "expected": [
+                {
+                    "key": "vault_file:a",
+                    "from": "remote"
+                },
+                {
+                    "key": "project:x",
+                    "from": "local"
+                },
+                {
+                    "key": "todo:b",
+                    "from": "remote"
+                },
+                {
+                    "key": "project:y",
+                    "from": "local"
+                }
+            ]
+        },
+        {
+            "name": "A remote rank is its position in the daemon's whole list, not in what the client kept",
+            "remote": [
+                {
+                    "key": "vault_file:a",
+                    "rank": 3
+                },
+                {
+                    "key": "todo:b",
+                    "rank": 7
+                }
+            ],
+            "local": [
+                {
+                    "key": "project:x"
+                }
+            ],
+            "expected": [
+                {
+                    "key": "project:x",
+                    "from": "local"
+                },
+                {
+                    "key": "vault_file:a",
+                    "from": "remote"
+                },
+                {
+                    "key": "todo:b",
+                    "from": "remote"
+                }
+            ]
+        },
+        {
+            "name": "Two lists agreeing on a lower result can lift it over the daemon's first",
+            "remote": [
+                {
+                    "key": "vault_file:a",
+                    "rank": 1
+                },
+                {
+                    "key": "todo:b",
+                    "rank": 2
+                },
+                {
+                    "key": "agent:c",
+                    "rank": 3
+                }
+            ],
+            "local": [
+                {
+                    "key": "agent:c"
+                },
+                {
+                    "key": "todo:b"
+                }
+            ],
+            "expected": [
+                {
+                    "key": "agent:c",
+                    "from": "remote"
+                },
+                {
+                    "key": "todo:b",
+                    "from": "remote"
+                },
+                {
+                    "key": "vault_file:a",
+                    "from": "remote"
+                }
+            ]
+        },
+        {
+            "name": "Equal sums fall back to remote rank, then local position",
+            "remote": [
+                {
+                    "key": "todo:a",
+                    "rank": 1
+                },
+                {
+                    "key": "todo:b",
+                    "rank": 2
+                }
+            ],
+            "local": [
+                {
+                    "key": "todo:b"
+                },
+                {
+                    "key": "todo:a"
+                }
+            ],
+            "expected": [
+                {
+                    "key": "todo:a",
+                    "from": "remote"
+                },
+                {
+                    "key": "todo:b",
+                    "from": "remote"
+                }
+            ]
+        },
+        {
+            "name": "Results only the daemon finds, such as messages, interleave with local results by score",
+            "remote": [
+                {
+                    "key": "message:m1",
+                    "rank": 1
+                },
+                {
+                    "key": "agent:a",
+                    "rank": 2
+                },
+                {
+                    "key": "message:m2",
+                    "rank": 3
+                }
+            ],
+            "local": [
+                {
+                    "key": "project:x"
+                },
+                {
+                    "key": "agent:a"
+                },
+                {
+                    "key": "surface:z"
+                }
+            ],
+            "expected": [
+                {
+                    "key": "agent:a",
+                    "from": "remote"
+                },
+                {
+                    "key": "message:m1",
+                    "from": "remote"
+                },
+                {
+                    "key": "project:x",
+                    "from": "local"
+                },
+                {
+                    "key": "message:m2",
+                    "from": "remote"
+                },
+                {
+                    "key": "surface:z",
+                    "from": "local"
+                }
+            ]
+        }
+    ]
+}
