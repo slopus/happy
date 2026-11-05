@@ -41,21 +41,30 @@ class FeedTest {
 
     private class Routes : FeedRoutes {
         @Volatile var capable = true
+        @Volatile var filters = false
         @Volatile var page = FeedPage(emptyList(), 0, hasMore = false)
+        /** Pages by subjects and `before`, where a test gives them; else [page]. */
+        val pages = java.util.concurrent.ConcurrentHashMap<Pair<Set<String>?, String?>, FeedPage>()
+        val asked = CopyOnWriteArrayList<Pair<Set<String>?, String?>>()
         val seen = CopyOnWriteArrayList<Pair<FeedSubject, String?>>()
         val readAll = CopyOnWriteArrayList<String?>()
+        val readAllSubjects = CopyOnWriteArrayList<Set<String>?>()
         @Volatile var seenAnswer: (FeedSubject) -> Pair<List<FeedItem>, Int> = { emptyList<FeedItem>() to 0 }
         @Volatile var refuse: Int? = null
 
-        override suspend fun capable() = capable
-        override suspend fun page(before: String?, limit: Int) = page
+        override suspend fun capabilities() = FeedCapabilities(capable, filters)
+        override suspend fun page(before: String?, limit: Int, subjects: Set<String>?): FeedPage {
+            asked += subjects to before
+            return pages[subjects to before] ?: page
+        }
         override suspend fun seen(subject: FeedSubject, through: String?, mutationId: String): Pair<List<FeedItem>, Int> {
             refuse?.let { throw AgentApiException(it, "invalid_request", "No such subject") }
             seen += subject to through
             return seenAnswer(subject)
         }
-        override suspend fun readAll(through: String?, mutationId: String): Int {
+        override suspend fun readAll(through: String?, mutationId: String, subjects: Set<String>?): Int {
             readAll += through
+            readAllSubjects += subjects
             return 0
         }
         override suspend fun clusters() = emptyList<FeedCluster>()
@@ -200,6 +209,173 @@ class FeedTest {
         eventually { next.state.value.loaded }
         assertEquals(true, next.state.value.available)
         assertEquals(listOf(entry), next.state.value.items)
+    }
+
+    private val highlightTypes = FeedFilter.Highlights.subjects
+
+    /** Two pages of everything: a task, a Surface and an artifact, then a bot and an artifact. */
+    private fun mixed(routes: Routes) {
+        routes.pages[null to null] = FeedPage(
+            listOf(item("t", "c9", subject = FeedSubject("task", "t1")), item("s", "c8", subject = FeedSubject("surface", "s1")), item("a", "c7")),
+            unread = 5, hasMore = true, cursor = "e9",
+        )
+        routes.pages[null to "c7"] = FeedPage(listOf(item("b", "c6", subject = FeedSubject("bot", "b1")), item("a2", "c5")), unread = 5, hasMore = false)
+    }
+
+    @Test
+    fun highlightsAreFilteredHereWhereTheDaemonDoesntAndTheChoiceIsKept(): Unit = runBlocking {
+        val routes = Routes().apply(::mixed)
+        val written = CopyOnWriteArrayList<JsonObject>()
+        val feed = library(routes, IntentOutbox(scope, MemoryIntentStorage()), written = written)
+        feed.start()
+        feed.bootstrap(5, "e1")
+        feed.connected()
+        eventually { feed.state.value.items.size == 3 && !feed.state.value.refreshing }
+        feed.show(FeedFilter.Highlights)
+        eventually { feed.state.value.filter == FeedFilter.Highlights }
+        assertEquals(listOf("t", "a"), feed.state.value.items.map { it.id })
+        // Older pages may hold more: the screen pages everything on while its end shows.
+        assertTrue(feed.state.value.hasMore)
+        feed.loadMore()
+        eventually { !feed.state.value.hasMore && !feed.state.value.loadingMore }
+        assertEquals(listOf("t", "a", "a2"), feed.state.value.items.map { it.id })
+        assertTrue("a daemon that doesn't filter is never asked to", routes.asked.all { it.first == null })
+        // The whole count stays the person's, whatever is shown.
+        assertEquals(5, feed.state.value.unread)
+
+        // Kept for the connection: the next start opens on Highlights, from what was kept.
+        eventually { written.lastOrNull()?.get("filter")?.toString() == "\"highlights\"" }
+        val next = library(Routes(), IntentOutbox(scope, MemoryIntentStorage()), kept = written.last())
+        next.start()
+        eventually { next.state.value.loaded }
+        assertEquals(FeedFilter.Highlights, next.state.value.filter)
+        assertEquals(listOf("t", "a", "a2"), next.state.value.items.map { it.id })
+
+        // Back to All: everything held, and the choice kept as the default again.
+        feed.show(FeedFilter.All)
+        eventually { feed.state.value.filter == FeedFilter.All }
+        assertEquals(listOf("t", "s", "a", "b", "a2"), feed.state.value.items.map { it.id })
+        eventually { written.last()["filter"] == null }
+    }
+
+    @Test
+    fun whereTheDaemonFiltersHighlightsAreAListOfTheirOwn(): Unit = runBlocking {
+        val routes = Routes().apply {
+            filters = true
+            mixed(this)
+            // Deeper than everything's first page: only the daemon's filter finds it at once.
+            pages[highlightTypes to null] = FeedPage(listOf(item("t", "c9", subject = FeedSubject("task", "t1")), item("a", "c7"), item("a3", "c2")), unread = 5, hasMore = true)
+            pages[highlightTypes to "c2"] = FeedPage(listOf(item("a4", "c1")), unread = 5, hasMore = false)
+        }
+        val feed = library(routes, IntentOutbox(scope, MemoryIntentStorage()))
+        feed.start()
+        feed.bootstrap(5, "e1")
+        feed.connected()
+        eventually { feed.state.value.items.size == 3 && !feed.state.value.refreshing }
+        feed.show(FeedFilter.Highlights)
+        eventually { feed.state.value.items.map { it.id } == listOf("t", "a", "a3") }
+        assertEquals(highlightTypes to null, routes.asked.last())
+        assertTrue(feed.state.value.hasMore)
+        feed.loadMore()
+        eventually { feed.state.value.items.size == 4 && !feed.state.value.loadingMore }
+        assertEquals(highlightTypes to "c2", routes.asked.last())
+        assertFalse(feed.state.value.hasMore)
+
+        // Live entries outside the filter stay out of it, and show under All.
+        feed.receive(AgentEvent("e2", "feed.item.created", buildJsonObject { put("item", item("s2", "d1", subject = FeedSubject("surface", "s9")).json()) }))
+        feed.receive(AgentEvent("e3", "feed.item.created", buildJsonObject { put("item", item("a5", "d2").json()) }))
+        assertEquals(listOf("a5", "t", "a", "a3", "a4"), feed.state.value.items.map { it.id })
+        feed.show(FeedFilter.All)
+        eventually { feed.state.value.filter == FeedFilter.All }
+        assertEquals(listOf("a5", "s2", "t", "s", "a"), feed.state.value.items.map { it.id })
+    }
+
+    @Test
+    fun markAllReadInHighlightsClosesOnlyThem(): Unit = runBlocking {
+        val routes = Routes().apply {
+            filters = true
+            page = FeedPage(listOf(item("t", "c9", subject = FeedSubject("task", "t1")), item("s", "c8", subject = FeedSubject("surface", "s1")), item("a", "c7")), unread = 3, hasMore = false)
+            pages[highlightTypes to null] = FeedPage(listOf(item("t", "c9", subject = FeedSubject("task", "t1")), item("a", "c7")), unread = 3, hasMore = false)
+        }
+        val outbox = IntentOutbox(scope, MemoryIntentStorage())
+        val feed = library(routes, outbox)
+        feed.start()
+        feed.bootstrap(3, "e1")
+        feed.connected()
+        eventually { feed.state.value.items.size == 3 && !feed.state.value.refreshing }
+        feed.show(FeedFilter.Highlights)
+        eventually { feed.state.value.filter == FeedFilter.Highlights && !feed.state.value.refreshing }
+        feed.readAll()
+        // Seen here at once, the Surface's entry still open.
+        eventually { feed.state.value.unread == 1 }
+        assertEquals(setOf("t", "a"), feed.state.value.seenHere)
+        outbox.setOnline(true)
+        eventually { routes.readAll.isNotEmpty() && outbox.pending.value.isEmpty() }
+        assertEquals(listOf<String?>("c9"), routes.readAll.toList())
+        assertEquals(listOf(highlightTypes), routes.readAllSubjects.toList())
+        feed.show(FeedFilter.All)
+        eventually { feed.state.value.filter == FeedFilter.All }
+        assertEquals(listOf("s"), feed.state.value.items.filter { it.open }.map { it.id })
+
+        // A daemon without the filter would close everything: each unread highlight is seen on its own.
+        val old = Routes().apply { page = routes.page }
+        val oldOutbox = IntentOutbox(scope, MemoryIntentStorage())
+        val older = library(old, oldOutbox)
+        older.start()
+        older.bootstrap(3, "e1")
+        older.connected()
+        eventually { older.state.value.items.size == 3 && !older.state.value.refreshing }
+        older.show(FeedFilter.Highlights)
+        eventually { older.state.value.filter == FeedFilter.Highlights }
+        older.readAll()
+        eventually { older.state.value.unread == 1 }
+        oldOutbox.setOnline(true)
+        eventually { old.seen.size == 2 && oldOutbox.pending.value.isEmpty() }
+        assertEquals(setOf(FeedSubject("task", "t1") to "c9", FeedSubject("artifact", "a") to "c7"), old.seen.toSet())
+        assertEquals(emptyList<String?>(), old.readAll.toList())
+    }
+
+    @Test
+    fun aCoveredArtifactIsAPostAndOlderDaemonsAndSvgKeepTheRow() {
+        val covered = FeedLookups.Artifact.parse(
+            AgentClient.json.parseToJsonElement(
+                """{"id":"a1","type":"html","title":"Q3 revenue","latestVersion":4,"background":"#0B1020",
+                   "cover":{"path":"cover.png","mimeType":"image/png","width":1600,"height":900,"aspect":"wide"},
+                   "summary":"  Revenue up 18% QoQ,\n driven by enterprise seats. "}""",
+            ) as JsonObject,
+        )
+        assertEquals(com.slopus.happy.artifacts.ArtifactCover("cover.png", "image/png", com.slopus.happy.artifacts.ArtifactCover.Aspect.Wide), covered.cover)
+        assertEquals("Revenue up 18% QoQ, driven by enterprise seats.", covered.summary)
+        assertEquals("#0b1020", covered.background)
+        // An older daemon sends neither; `null` is none too.
+        val plain = FeedLookups.Artifact.parse(AgentClient.json.parseToJsonElement("""{"title":"Notes","type":"markdown","latestVersion":2,"cover":null,"summary":null,"background":"red"}""") as JsonObject)
+        assertNull(plain.cover)
+        assertNull(plain.summary)
+        assertNull("a background that isn't a hex colour is none", plain.background)
+
+        val svg = covered.copy(cover = com.slopus.happy.artifacts.ArtifactCover("chart.svg", "image/svg+xml", com.slopus.happy.artifacts.ArtifactCover.Aspect.Square))
+        val found = FeedLookups.Found(artifacts = mapOf("a1" to covered, "a2" to plain, "a3" to svg, "a4" to covered.copy(deleted = true)))
+        val items = listOf("a1", "a2", "a3", "a4").mapIndexed { index, id -> item("e$id", "c${9 - index}", subject = FeedSubject("artifact", id)) }
+        val rows = FeedRows.make(items, { true }, synced, found, personSeed = "conn").associateBy { it.id }
+        val post = rows.getValue("ea1")
+        assertEquals(FeedCover("a1", 4, "cover.png", "image/png", com.slopus.happy.artifacts.ArtifactCover.Aspect.Wide, "#0b1020"), post.cover)
+        assertEquals("artifact/a1/4/cover.png", post.cover?.key)
+        assertEquals("Revenue up 18% QoQ, driven by enterprise seats.", post.summary)
+        assertEquals(4, (post.target as FeedTarget.Artifact).ref.version)
+        for (id in listOf("ea2", "ea3", "ea4")) {
+            assertNull("$id keeps its row", rows.getValue(id).cover)
+            assertNull(rows.getValue(id).summary)
+        }
+    }
+
+    @Test
+    fun aCoverIsWideOrSquareAndAnyOtherShapeKeepsTheRow() {
+        fun cover(json: String) = com.slopus.happy.artifacts.ArtifactCover.parse(AgentClient.json.parseToJsonElement(json))
+        assertEquals(com.slopus.happy.artifacts.ArtifactCover.Aspect.Square, cover("""{"path":"c.png","mimeType":"image/png","width":1200,"height":1200,"aspect":"square"}""")?.aspect)
+        assertEquals(16f / 9, com.slopus.happy.artifacts.ArtifactCover.Aspect.Wide.ratio, 0.0001f)
+        // A shape added later, or a cover from before shapes, is the compact row.
+        assertNull(cover("""{"path":"c.png","mimeType":"image/png","width":1200,"height":400,"aspect":"banner"}"""))
+        assertNull(cover("""{"path":"c.png","mimeType":"image/png","width":1600,"height":900}"""))
     }
 
     private fun catalog(bootstrap: JsonObject) = AgentCatalog().withBootstrap(AgentClient.json.decodeFromJsonElement(WireDesktopBootstrap.serializer(), bootstrap))

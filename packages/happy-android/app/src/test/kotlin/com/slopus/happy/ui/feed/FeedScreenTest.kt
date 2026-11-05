@@ -7,6 +7,11 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.height
+import androidx.compose.ui.unit.width
+import coil3.asImage
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -15,6 +20,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.agent.AgentCatalog
 import com.slopus.happy.agent.AgentClient
@@ -23,7 +29,10 @@ import com.slopus.happy.agent.Wire
 import com.slopus.happy.agent.WireDesktopBootstrap
 import com.slopus.happy.feed.FeedActor
 import com.slopus.happy.feed.FeedActorName
+import com.slopus.happy.artifacts.ArtifactCover
 import com.slopus.happy.feed.FeedCluster
+import com.slopus.happy.feed.FeedCovers
+import com.slopus.happy.feed.FeedFilter
 import com.slopus.happy.feed.FeedItem
 import com.slopus.happy.feed.FeedLatest
 import com.slopus.happy.feed.FeedLibrary
@@ -32,6 +41,11 @@ import com.slopus.happy.feed.FeedRow
 import com.slopus.happy.feed.FeedRows
 import com.slopus.happy.feed.FeedSubject
 import com.slopus.happy.ui.PHONE
+import com.slopus.happy.ui.PHONE_WIDTH
+import com.slopus.happy.ui.assertBox
+import com.slopus.happy.ui.assertDp
+import com.slopus.happy.ui.bounds
+import com.slopus.happy.ui.node
 import com.slopus.happy.ui.connection.AgentHomeList
 import com.slopus.happy.ui.connection.AgentHomeTags
 import com.slopus.happy.ui.connection.agentHomeItems
@@ -245,6 +259,155 @@ class FeedScreenTest {
         }
         rule.onNodeWithText("Nothing has happened here in the last 30 days.").assertExists()
         shot("feed-peek-empty-dark")
+    }
+
+    /** Feed pictures as the screen reads them: a drawn chart for the cover, through a loader that decodes nothing. */
+    private val coverReads = java.util.concurrent.CopyOnWriteArrayList<String>()
+    private val covers = FeedCovers { cover -> coverReads += cover.key; ByteArray(8) }
+    private val chart: Bitmap = Bitmap.createBitmap(160, 90, Bitmap.Config.ARGB_8888).apply {
+        val canvas = android.graphics.Canvas(this)
+        canvas.drawColor(0xFF0B1020.toInt())
+        val paint = android.graphics.Paint().apply { color = 0xFF5B8CFF.toInt() }
+        listOf(30, 45, 40, 62, 75).forEachIndexed { index, value -> canvas.drawRect(16f + index * 28f, 80f - value, 36f + index * 28f, 80f, paint) }
+    }
+    private val loader = coil3.ImageLoader.Builder(androidx.test.core.app.ApplicationProvider.getApplicationContext())
+        .components { add(coil3.test.FakeImageLoaderEngine.Builder().default(chart.asImage()).build()) }
+        .build()
+
+    private val covered = FeedLookups.Artifact(
+        "Q3 revenue", "html", 4, deleted = false,
+        cover = ArtifactCover("cover.png", "image/png", ArtifactCover.Aspect.Wide),
+        summary = "Revenue up 18% QoQ, driven by enterprise seats.",
+        background = "#0b1020",
+    )
+    private val postItems = listOf(item("10", FeedSubject("artifact", "a2"), now - hour / 2, updates = 1, actors = listOf(FeedActor(agentId = "ab1")))) + items
+    private val postFound = found.copy(artifacts = found.artifacts + ("a2" to covered))
+
+    /** A wide post, then a square one, over the rows. */
+    private val bothItems = postItems.take(1) + item("11", FeedSubject("artifact", "a3"), now - hour / 2 - 60_000, created = true, actors = listOf(FeedActor(agentId = "at1"))) + postItems.drop(1)
+    private val bothFound = postFound.copy(
+        artifacts = postFound.artifacts + ("a3" to covered.copy(title = "Pipeline by stage", cover = ArtifactCover("pipeline.png", "image/png", ArtifactCover.Aspect.Square), summary = "Pipeline by stage, this week.", background = null)),
+    )
+
+    private fun showPosts(state: FeedLibrary.State, dark: Boolean = false, actions: FeedActions = FeedActions(onBack = {}), found: FeedLookups.Found = postFound) =
+        rule.setHappyContent(dark) {
+            androidx.compose.runtime.CompositionLocalProvider(com.slopus.happy.ui.components.LocalImageLoader provides loader) {
+                ProvideWindowLayout {
+                    FeedScreen(state, FeedRows.make(state.items, state::isUnread, catalog, found, "conn"), catalog, FeedFollowingState(), actions, clock = { now }, covers = covers)
+                }
+            }
+        }
+
+    @Test
+    fun aCoveredArtifactIsAPostItsHeightFromItsCover() {
+        val opened = mutableListOf<String>()
+        showPosts(FeedLibrary.State(available = true, items = postItems, unread = 3, loaded = true), actions = FeedActions(onBack = {}, onOpen = { opened += it.title }))
+        rule.waitForIdle()
+        rule.onNodeWithText("Revenue up 18% QoQ, driven by enterprise seats.").assertExists()
+        // Across the card inside its 16: 411 − 2 × 16 − 2 × 16 wide, as tall as 16:9 makes it.
+        val card = rule.node(FeedTags.row("10")).bounds
+        val cover = rule.node(FeedTags.COVER).bounds
+        val width = (PHONE_WIDTH - 64).toFloat()
+        assertBox("cover", cover, 32.dp, cover.top, width.dp, (width * 9 / 16).dp)
+        val summary = rule.node(FeedTags.POST_SUMMARY).bounds
+        assertDp("summary start", 32, summary.left)
+        assertDp("cover under the summary", summary.bottom + FeedSpec.coverGap, cover.top)
+        assertDp("16 under the cover", cover.bottom + 16.dp, card.bottom)
+        assertEquals(listOf("artifact/a2/4/cover.png"), coverReads.toList())
+        // Other rows keep theirs.
+        rule.onAllNodesWithTag(FeedTags.COVER, useUnmergedTree = true).assertCountEquals(1)
+        shot("feed-post")
+        rule.node(FeedTags.COVER).performClick()
+        assertEquals(listOf("Q3 revenue"), opened)
+    }
+
+    @Test
+    fun aSquareCoverIsAsTallAsItIsWide() {
+        val square = covered.copy(title = "Pipeline by stage", cover = ArtifactCover("chart.png", "image/png", ArtifactCover.Aspect.Square), summary = null)
+        rule.setHappyContent {
+            ProvideWindowLayout {
+                val state = FeedLibrary.State(available = true, items = postItems.take(1), loaded = true)
+                FeedScreen(state, FeedRows.make(state.items, state::isUnread, catalog, postFound.copy(artifacts = mapOf("a2" to square)), "conn"), catalog, FeedFollowingState(), FeedActions(onBack = {}), clock = { now })
+            }
+        }
+        val cover = rule.node(FeedTags.COVER).bounds
+        assertDp("square width", PHONE_WIDTH - 64, cover.width)
+        assertDp("square height", cover.width, cover.height)
+        // No summary: the cover follows the header.
+        rule.onAllNodesWithTag(FeedTags.POST_SUMMARY, useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    @Test
+    @Config(qualifiers = "w1280dp-h800dp-xhdpi")
+    fun onATabletASquareKeepsTheReadingWidth() {
+        val square = covered.copy(title = "Pipeline by stage", cover = ArtifactCover("chart.png", "image/png", ArtifactCover.Aspect.Square))
+        rule.setHappyContent {
+            androidx.compose.runtime.CompositionLocalProvider(com.slopus.happy.ui.components.LocalImageLoader provides loader) {
+                ProvideWindowLayout {
+                    val state = FeedLibrary.State(available = true, items = postItems, loaded = true)
+                    FeedScreen(state, FeedRows.make(state.items, state::isUnread, catalog, postFound.copy(artifacts = postFound.artifacts + ("a2" to square)), "conn"), catalog, FeedFollowingState(), FeedActions(onBack = {}), clock = { now }, covers = covers)
+                }
+            }
+        }
+        val cover = rule.node(FeedTags.COVER).bounds
+        // The 768 measure (the 800 column less its cards' 16 a side), the cover 16 inside the card.
+        assertDp("square width", 768 - 32, cover.width)
+        assertDp("square height", cover.width, cover.height)
+        shot("feed-post-square-tablet")
+    }
+
+    @Test
+    fun highlightsShowArtifactsAndTasksAndThePickIsSent() {
+        val picked = mutableListOf<FeedFilter>()
+        val highlights = FeedLibrary.State(available = true, items = postItems.filter(FeedFilter.Highlights::admits), unread = 2, loaded = true, filter = FeedFilter.Highlights)
+        showPosts(highlights, actions = FeedActions(onBack = {}, onFilter = { picked += it }))
+        rule.node(FeedTags.filter(FeedFilter.Highlights)).assertIsSelected()
+        rule.onNodeWithText("Q3 revenue").assertExists()
+        rule.onNodeWithText("Fix the login redirect on Safari").assertExists()
+        rule.onNodeWithText("Groceries").assertDoesNotExist()
+        // The filter spans the cards' width, 8 under the bar: its segments 2 inside it.
+        val slot = rule.node(FeedTags.FILTER).bounds
+        val all = rule.node(FeedTags.filter(FeedFilter.All)).bounds
+        val chosen = rule.node(FeedTags.filter(FeedFilter.Highlights)).bounds
+        assertDp("filter start", 18, all.left)
+        assertDp("filter end", PHONE_WIDTH - 18, chosen.right)
+        assertDp("filter top", slot.top + 10.dp, all.top)
+        assertDp("halves", all.width, chosen.width)
+        shot("feed-highlights")
+        rule.node(FeedTags.filter(FeedFilter.All)).performClick()
+        assertEquals(listOf(FeedFilter.All), picked)
+    }
+
+    @Test
+    fun allShowsWideAndSquarePostsBesideRows() {
+        showPosts(FeedLibrary.State(available = true, items = bothItems, unread = 3, loaded = true), found = bothFound)
+        rule.node(FeedTags.filter(FeedFilter.All)).assertIsSelected()
+        rule.onNodeWithTag(FeedTags.LIST).performScrollToNode(androidx.compose.ui.test.hasText("Pipeline by stage"))
+        shot("feed-posts-wide-square")
+    }
+
+    @Test
+    fun postsInTheDark() {
+        showPosts(FeedLibrary.State(available = true, items = bothItems, unread = 3, loaded = true), dark = true, found = bothFound)
+        shot("feed-post-dark")
+    }
+
+    @Test
+    fun anEmptyHighlightsSaysWhatShowsThere() {
+        show(state = FeedLibrary.State(available = true, loaded = true, filter = FeedFilter.Highlights))
+        rule.onNodeWithText("No highlights yet").assertExists()
+        rule.onNodeWithText("Artifacts and new tasks appear here.").assertExists()
+        shot("feed-highlights-empty")
+    }
+
+    @Test
+    fun highlightsFilteredHereKeepPagingWhileOlderPagesMayHoldOne() {
+        var more = 0
+        show(state = FeedLibrary.State(available = true, loaded = true, hasMore = true, filter = FeedFilter.Highlights), actions = FeedActions(onBack = {}, onLoadMore = { more++ }))
+        rule.waitForIdle()
+        rule.onNodeWithText("Loading activity…").assertExists()
+        rule.onNodeWithText("No highlights yet").assertDoesNotExist()
+        assertEquals(1, more)
     }
 
     @Test

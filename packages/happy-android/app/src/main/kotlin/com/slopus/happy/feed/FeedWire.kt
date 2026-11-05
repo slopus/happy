@@ -155,18 +155,41 @@ data class FeedCluster(
     }
 }
 
-/** `GET /v0/feed`. */
-data class FeedPage(val items: List<FeedItem>, val unread: Int, val hasMore: Boolean, val cursor: String? = null)
+/**
+ * Which entries the Feed shows (the Highlights filter): all of them, or
+ * only those about artifacts and tasks. The person's choice is kept per
+ * connection.
+ */
+enum class FeedFilter(val wire: String, val subjects: Set<String>?) {
+    All("all", null),
+    Highlights("highlights", setOf("artifact", "task"));
+
+    fun admits(item: FeedItem): Boolean = subjects == null || item.subject.type in subjects
+
+    companion object {
+        fun of(wire: String?): FeedFilter = entries.firstOrNull { it.wire == wire } ?: All
+    }
+}
+
+/**
+ * `GET /v0/feed`. [unread] is the person's whole count; [filteredUnread]
+ * the filtered list's, from a daemon that filters by subject.
+ */
+data class FeedPage(val items: List<FeedItem>, val unread: Int, val hasMore: Boolean, val cursor: String? = null, val filteredUnread: Int? = null)
+
+/** What health says of the Feed: whether there is one, and whether it filters by subject (`feedSubjectFilter`). */
+data class FeedCapabilities(val feed: Boolean, val subjectFilter: Boolean = false)
 
 /** The Feed's routes (API.md "Feed"), as the library uses them: the computer's, or a test's fake. */
 interface FeedRoutes {
-    /** Whether the daemon serves the Feed (`capabilities.feed`). */
-    suspend fun capable(): Boolean
-    suspend fun page(before: String?, limit: Int): FeedPage
+    /** `capabilities.feed` and `capabilities.feedSubjectFilter`. */
+    suspend fun capabilities(): FeedCapabilities
+    /** One page; [subjects] limits it to entries about those types (only where health says the daemon filters). */
+    suspend fun page(before: String?, limit: Int, subjects: Set<String>? = null): FeedPage
     /** The entries it closed, and what is open. */
     suspend fun seen(subject: FeedSubject, through: String?, mutationId: String): Pair<List<FeedItem>, Int>
-    /** What stays open. */
-    suspend fun readAll(through: String?, mutationId: String): Int
+    /** What stays open; [subjects] closes only entries about those types. */
+    suspend fun readAll(through: String?, mutationId: String, subjects: Set<String>? = null): Int
     suspend fun clusters(): List<FeedCluster>
     /** Follows [cluster], or mutes it; what the computer says it is now. */
     suspend fun follow(cluster: String, follow: Boolean, mutationId: String): FeedCluster
@@ -176,16 +199,23 @@ interface FeedRoutes {
 
 /** The Feed's routes through [client]. */
 class AgentFeedRoutes(private val client: AgentClient) : FeedRoutes {
-    override suspend fun capable(): Boolean =
-        ((client.decode<JsonObject>("GET", "/v0/health")["capabilities"].obj)?.get("feed") as? JsonPrimitive)?.booleanOrNull == true
+    override suspend fun capabilities(): FeedCapabilities {
+        val capabilities = client.decode<JsonObject>("GET", "/v0/health")["capabilities"].obj
+        fun flag(name: String) = (capabilities?.get(name) as? JsonPrimitive)?.booleanOrNull == true
+        return FeedCapabilities(flag("feed"), flag("feedSubjectFilter"))
+    }
 
-    override suspend fun page(before: String?, limit: Int): FeedPage {
-        val answer = client.decode<JsonObject>("GET", "/v0/feed?limit=${limit.coerceIn(1, 200)}" + (before?.let { "&before=${AgentClient.escape(it)}" } ?: ""))
+    override suspend fun page(before: String?, limit: Int, subjects: Set<String>?): FeedPage {
+        val query = "/v0/feed?limit=${limit.coerceIn(1, 200)}" +
+            (before?.let { "&before=${AgentClient.escape(it)}" } ?: "") +
+            (subjects?.let { "&subjects=" + it.sorted().joinToString(",") { type -> AgentClient.escape(type) } } ?: "")
+        val answer = client.decode<JsonObject>("GET", query)
         return FeedPage(
             FeedItem.list(answer["items"]),
             (answer["unread"].num?.toInt() ?: 0).coerceAtLeast(0),
             (answer["hasMore"] as? JsonPrimitive)?.booleanOrNull ?: false,
             answer["cursor"].str,
+            answer["filteredUnread"].num?.toInt()?.coerceAtLeast(0),
         )
     }
 
@@ -199,8 +229,12 @@ class AgentFeedRoutes(private val client: AgentClient) : FeedRoutes {
         return FeedItem.list(answer["items"]) to (answer["unread"].num?.toInt() ?: 0).coerceAtLeast(0)
     }
 
-    override suspend fun readAll(through: String?, mutationId: String): Int {
-        val answer = client.decode<JsonObject>("POST", "/v0/feed/read-all", buildJsonObject { put("mutationId", mutationId); through?.let { put("through", it) } })
+    override suspend fun readAll(through: String?, mutationId: String, subjects: Set<String>?): Int {
+        val answer = client.decode<JsonObject>("POST", "/v0/feed/read-all", buildJsonObject {
+            put("mutationId", mutationId)
+            through?.let { put("through", it) }
+            subjects?.let { put("subjects", JsonArray(it.sorted().map(::JsonPrimitive))) }
+        })
         return (answer["unread"].num?.toInt() ?: 0).coerceAtLeast(0)
     }
 

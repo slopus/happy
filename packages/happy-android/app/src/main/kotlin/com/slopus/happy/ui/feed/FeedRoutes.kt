@@ -173,12 +173,14 @@ private fun AgentFeed(graph: AppGraph, nav: NavHostController, route: AgentFeedR
                 onRefresh = library::refresh,
                 onLoadMore = library::loadMore,
                 onReadAll = { scope.launch { library.readAll() } },
+                onFilter = library::show,
                 onReadFollowing = following::read,
                 onFollow = following::follow,
                 onPeek = { cluster -> nav.navigate(AgentFeedPeekRoute(route.connectionId, cluster.cluster, cluster.kind)) },
                 onRefusalSeen = following::refusalSeen,
             )
         },
+        covers = session.feedCovers,
     )
 }
 
@@ -244,5 +246,6 @@ private fun AgentFeedPeek(graph: AppGraph, nav: NavHostController, route: AgentF
                 onRefresh = peeking::read,
             )
         },
+        covers = session.feedCovers,
     )
 }

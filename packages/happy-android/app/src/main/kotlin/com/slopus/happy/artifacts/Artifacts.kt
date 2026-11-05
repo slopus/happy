@@ -71,6 +71,42 @@ data class ArtifactFile(val path: String, val mimeType: String, val size: Long) 
 }
 
 /**
+ * The picture the Feed shows for an artifact's version (API.md "Covers"):
+ * one of its files, in one of the standard shapes, so a post knows its
+ * height before the picture is read. Older daemons send none.
+ */
+@Immutable
+data class ArtifactCover(val path: String, val mimeType: String, val aspect: Aspect) {
+    /** The shapes a cover comes in: 16:9 or 1:1, width over height. */
+    enum class Aspect(val wire: String, val ratio: Float) {
+        Wide("wide", 16f / 9f),
+        Square("square", 1f),
+    }
+
+    /** A picture this phone decodes: anything else (the daemon sends none) keeps the row. */
+    val drawable: Boolean get() = mimeType.substringBefore(';').trim().lowercase() in DECODED
+
+    companion object {
+        private val DECODED = setOf("image/png", "image/jpeg", "image/webp", "image/gif")
+
+        /**
+         * The wire's `cover`; null for `null` or an absent one, and for an
+         * `aspect` this phone doesn't know (a newer shape, or an older daemon's
+         * cover without one), which keeps the row.
+         */
+        fun parse(value: JsonElement?): ArtifactCover? {
+            val o = value.obj ?: return null
+            val path = o["path"].str?.takeIf { it.isNotEmpty() } ?: return null
+            val aspect = o["aspect"].str.let { wire -> Aspect.entries.firstOrNull { it.wire == wire } } ?: return null
+            return ArtifactCover(path, o["mimeType"].str.orEmpty(), aspect)
+        }
+
+        /** The wire's `summary`: one line, or null for none. */
+        fun summary(value: JsonElement?): String? = value.str?.replace(Regex("\\s+"), " ")?.trim()?.takeIf { it.isNotEmpty() }
+    }
+}
+
+/**
  * One version of an artifact (`GET /v0/artifacts/:id/versions/:n`): its
  * entry, its files and, for an older page, the URL it runs at.
  */

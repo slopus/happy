@@ -8,6 +8,7 @@ import com.slopus.happy.agent.AgentClient
 import com.slopus.happy.agent.decode
 import com.slopus.happy.agent.AgentEvent
 import com.slopus.happy.agent.string
+import com.slopus.happy.artifacts.ArtifactCover
 import com.slopus.happy.artifacts.ArtifactRef
 import com.slopus.happy.chat.num
 import com.slopus.happy.chat.obj
@@ -53,6 +54,24 @@ sealed interface FeedFace {
     data class Tile(val kind: FeedSubjectKind, val artifactType: String? = null) : FeedFace
 }
 
+/**
+ * An artifact's cover as a Feed post shows it: its latest version's
+ * picture, read through the artifact's file route, its shape, and the
+ * [background] colour it sits on (`#rrggbb`-style, checked), if any.
+ */
+@Immutable
+data class FeedCover(
+    val artifactId: String,
+    val version: Int,
+    val path: String,
+    val mimeType: String,
+    val aspect: ArtifactCover.Aspect,
+    val background: String? = null,
+) {
+    /** What the picture is kept under: the artifact file's own key, as the media library keeps it. */
+    val key: String get() = "artifact/$artifactId/$version/$path"
+}
+
 /** Where opening a Feed entry goes. */
 @Immutable
 sealed interface FeedTarget {
@@ -88,6 +107,10 @@ data class FeedRow(
     val unread: Boolean,
     /** Null where nothing opens it (a deleted artifact). */
     val target: FeedTarget?,
+    /** A covered artifact's picture: the row is a post. */
+    val cover: FeedCover? = null,
+    /** A covered artifact's one line, under the post's header. */
+    val summary: String? = null,
 )
 
 /** What an actor is called (iOS `FeedActorName`): the person reading, or a name. */
@@ -111,9 +134,32 @@ class FeedLookups(
     /** `GET /v0/surfaces/todo/:surfaceId/:todoId`'s todo. */
     private val readTodo: suspend (surfaceId: String, todoId: String) -> JsonObject,
 ) {
-    /** An artifact as a row shows it. */
+    /** An artifact as a row shows it: its latest version's cover, summary and background too, where the computer has them. */
     @Immutable
-    data class Artifact(val title: String, val type: String, val latestVersion: Int, val deleted: Boolean)
+    data class Artifact(
+        val title: String,
+        val type: String,
+        val latestVersion: Int,
+        val deleted: Boolean,
+        val cover: ArtifactCover? = null,
+        val summary: String? = null,
+        val background: String? = null,
+    ) {
+        companion object {
+            private val BACKGROUND = Regex("^#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
+
+            /** An artifact object (`GET /v0/artifacts/:id`), a tombstone too; a missing `cover` or `summary` (an older daemon) is none. */
+            fun parse(o: JsonObject) = Artifact(
+                title = o["title"].str.orEmpty(),
+                type = o["type"].str.orEmpty(),
+                latestVersion = o["latestVersion"].num?.toInt() ?: 1,
+                deleted = o["status"].str == "deleted",
+                cover = ArtifactCover.parse(o["cover"]),
+                summary = ArtifactCover.summary(o["summary"]),
+                background = o["background"].str?.takeIf { BACKGROUND.matches(it) }?.lowercase(),
+            )
+        }
+    }
 
     @Immutable
     data class Found(
@@ -166,8 +212,7 @@ class FeedLookups(
     }
 
     private suspend fun artifact(id: String) {
-        val o = readArtifact(id)
-        val read = Artifact(o["title"].str.orEmpty(), o["type"].str.orEmpty(), o["latestVersion"].num?.toInt() ?: 1, o["status"].str == "deleted")
+        val read = Artifact.parse(readArtifact(id))
         foundState.update { it.copy(artifacts = it.artifacts + (id to read)) }
     }
 
@@ -276,6 +321,8 @@ object FeedRows {
         val face: FeedFace
         val kind: FeedSubjectKind
         var detail: String? = null
+        var cover: FeedCover? = null
+        var summary: String? = null
         val target: FeedTarget?
         when (item.subject.type) {
             "task", "bot" -> {
@@ -308,6 +355,11 @@ object FeedRows {
                 face = FeedFace.Tile(kind, artifact.type)
                 // A deleted one's versions are gone: it shows, and opens nothing.
                 target = if (artifact.deleted) null else FeedTarget.Artifact(ArtifactRef(id, artifact.latestVersion, artifact.type, artifact.title, followsLatest = true))
+                // A cover this phone can draw makes the row a post; any other keeps the row.
+                artifact.cover?.takeIf { !artifact.deleted && it.drawable }?.let { c ->
+                    cover = FeedCover(id, artifact.latestVersion, c.path, c.mimeType, c.aspect, artifact.background)
+                    summary = artifact.summary
+                }
             }
             else -> return null
         }
@@ -325,6 +377,8 @@ object FeedRows {
             lastAt = item.lastAt,
             unread = unread,
             target = target,
+            cover = cover,
+            summary = summary,
         )
     }
 

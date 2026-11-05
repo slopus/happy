@@ -88,6 +88,10 @@
 
     <string name="feed_activity">Atividade</string>
     <string name="feed_following">Seguindo</string>
+    <string name="feed_all">Tudo</string>
+    <string name="feed_highlights">Destaques</string>
+    <string name="feed_highlights_empty_title">Nenhum destaque ainda</string>
+    <string name="feed_highlights_empty">Artefatos e novas tarefas aparecem aqui.</string>
     <string name="feed_mark_all_read">Marcar tudo como lido</string>
     <string name="feed_empty">Nada aconteceu ainda. Novas tarefas, bots, documentos, listas de tarefas e artefatos aparecem aqui, com cada mudança neles.</string>
     <string name="feed_loading">Carregando a atividade…</string>

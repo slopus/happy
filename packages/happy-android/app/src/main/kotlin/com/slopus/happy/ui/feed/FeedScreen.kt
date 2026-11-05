@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -35,6 +36,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -46,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -55,6 +58,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -68,7 +72,10 @@ import com.slopus.happy.artifacts.DateBucket
 import com.slopus.happy.feed.FeedCluster
 import com.slopus.happy.feed.FeedActorName
 import com.slopus.happy.feed.FeedFace
+import com.slopus.happy.feed.FeedCover
+import com.slopus.happy.feed.FeedCovers
 import com.slopus.happy.feed.FeedItem
+import com.slopus.happy.feed.FeedFilter
 import com.slopus.happy.feed.FeedLibrary
 import com.slopus.happy.feed.FeedRow
 import com.slopus.happy.feed.FeedRows
@@ -77,10 +84,12 @@ import com.slopus.happy.ui.artifacts.ArtifactListWords
 import com.slopus.happy.ui.artifacts.PlaceScaffold
 import com.slopus.happy.ui.artifacts.PlaceTags
 import com.slopus.happy.ui.artifacts.rememberArtifactListWords
+import com.slopus.happy.ui.artifacts.cssColor
 import com.slopus.happy.ui.cards.CardHeading
 import com.slopus.happy.ui.cards.CardBlock
 import com.slopus.happy.ui.cards.CardListSpec
 import com.slopus.happy.ui.cards.CardNote
+import com.slopus.happy.ui.cards.CardListTags
 import com.slopus.happy.ui.cards.cardPlaces
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
@@ -90,6 +99,7 @@ import com.slopus.happy.ui.components.HomeCardPlace
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.Octicon
+import com.slopus.happy.ui.components.RemoteImage
 import com.slopus.happy.ui.connection.AgentTopBar
 import com.slopus.happy.ui.connection.BarIconButton
 import com.slopus.happy.ui.connection.ConversationMark
@@ -97,6 +107,8 @@ import com.slopus.happy.ui.connection.FolderMarkView
 import com.slopus.happy.ui.connection.RowTile
 import com.slopus.happy.ui.conversation.ConversationScreenTags
 import com.slopus.happy.ui.tablet.BackOrSidebarToggle
+import com.slopus.happy.ui.layout.LocalWindowLayout
+import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.Dispatchers
@@ -118,8 +130,12 @@ object FeedTags {
     const val FOLLOWING = "feed.following"
     const val PLACE = "feed.place"
     const val PEEK = "feed.peek"
+    const val FILTER = "feed.filter"
+    const val COVER = "feed.post.cover"
+    const val POST_SUMMARY = "feed.post.summary"
 
     fun tab(following: Boolean) = if (following) "feed.tab.following" else "feed.tab.activity"
+    fun filter(filter: FeedFilter) = "feed.filter.${filter.wire}"
     fun row(id: String) = "feed.row:$id"
     fun follow(cluster: String) = "feed.follow:$cluster"
 }
@@ -150,6 +166,20 @@ object FeedSpec {
     val tabsRadius = 9.dp
     val tabRadius = 7.dp
     val tabLabel = happyTextStyle(fontSize = 13, weight = FontWeight.SemiBold)
+
+    /** All | Highlights: across the cards' width, 8 above the list. */
+    val filterTop = 8.dp
+
+    /**
+     * A covered artifact's post: its summary under the row's header, 16 in
+     * as the header is, then the cover across the card inside the same 16,
+     * rounded concentrically with the card (26 − 16), and 16 under it.
+     */
+    val coverRadius = CardListSpec.radius - CardListSpec.inset
+    val coverGap = 10.dp
+    val postBottom = CardListSpec.inset
+    const val SUMMARY_LINES = 3
+    val postSummary = happyTextStyle(fontSize = 15, lineHeight = 20)
 }
 
 /**
@@ -173,6 +203,10 @@ class FeedWords(private val resources: Resources) {
     val muted: String = resources.getString(R.string.feed_muted)
     val following: String = resources.getString(R.string.feed_following)
     val peekEmpty: String = resources.getString(R.string.feed_peek_empty)
+    val all: String = resources.getString(R.string.feed_all)
+    val highlights: String = resources.getString(R.string.feed_highlights)
+    val highlightsEmptyTitle: String = resources.getString(R.string.feed_highlights_empty_title)
+    val highlightsEmpty: String = resources.getString(R.string.feed_highlights_empty)
 
     fun follow(name: String): String = resources.getString(R.string.feed_follow, name)
 
@@ -234,7 +268,8 @@ sealed interface FeedListItem {
         override val key: String get() = row.id
     }
 
-    data class Note(override val key: String, val text: String) : FeedListItem
+    /** [title] heads it, over [text] that explains. */
+    data class Note(override val key: String, val text: String, val title: String? = null) : FeedListItem
 }
 
 /**
@@ -243,7 +278,8 @@ sealed interface FeedListItem {
  * list groups them; or one note in their place. [rows] are the entries
  * joined with what the connection syncs ([FeedRows]); an entry it can't
  * show yet isn't one. A place's newest entries, as Following [peek]s at
- * them, say so in their own words.
+ * them, say so in their own words. Highlights with none says what shows
+ * there, once no older page could hold one.
  */
 fun feedListItems(state: FeedLibrary.State, rows: List<FeedRow>, catalogLoaded: Boolean, words: FeedWords, dates: ArtifactListWords, now: Long, peek: Boolean = false): List<FeedListItem> {
     if (rows.isEmpty()) {
@@ -254,6 +290,8 @@ fun feedListItems(state: FeedLibrary.State, rows: List<FeedRow>, catalogLoaded: 
             !state.loaded || state.available == null || state.refreshing -> words.loading
             // Entries whose subjects aren't read yet show once they are.
             state.items.isNotEmpty() && !catalogLoaded -> words.loading
+            state.filter == FeedFilter.Highlights && (state.hasMore || state.loadingMore) -> words.loading
+            state.filter == FeedFilter.Highlights -> return listOf(FeedListItem.Note("note", words.highlightsEmpty, words.highlightsEmptyTitle))
             else -> words.empty
         }
         return listOf(FeedListItem.Note("note", text))
@@ -373,6 +411,8 @@ data class FeedActions(
     val onRefresh: () -> Unit = {},
     val onLoadMore: () -> Unit = {},
     val onReadAll: () -> Unit = {},
+    /** All or Highlights was picked. */
+    val onFilter: (FeedFilter) -> Unit = {},
     /** Following showed, or was pulled: its places are read again. */
     val onReadFollowing: () -> Unit = {},
     val onFollow: (cluster: String, follows: Boolean) -> Unit = { _, _ -> },
@@ -385,9 +425,11 @@ data class FeedActions(
  * Desktop's Feed page (iOS `FeedViewController`): what happened on this
  * computer, newest first, in home's inset cards under a heading per date.
  * Opening an entry opens its subject and counts it seen; Mark All Read
- * reads everything up to the newest entry shown. The bar's switch turns
- * to Following, the places the feed gathers from, each followed or muted.
- * A pull reads the newest page again; the list's end reads the next one.
+ * reads everything up to the newest entry shown. Under the bar All |
+ * Highlights picks what Activity shows; a covered artifact is a post with
+ * its picture ([covers] reads them). The bar's switch turns to Following,
+ * the places the feed gathers from, each followed or muted. A pull reads
+ * the newest page again; the list's end reads the next one.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -398,6 +440,7 @@ fun FeedScreen(
     following: FeedFollowingState,
     actions: FeedActions,
     clock: () -> Long = System::currentTimeMillis,
+    covers: FeedCovers? = null,
 ) {
     val words = rememberFeedWords()
     val dates = rememberArtifactListWords()
@@ -431,7 +474,12 @@ fun FeedScreen(
                 },
                 title = {
                     Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        FeedTabs(showsFollowing) { showsFollowing = it }
+                        FeedSegments(
+                            listOf(false to stringResource(R.string.feed_activity), true to stringResource(R.string.feed_following)),
+                            showsFollowing,
+                            Modifier.testTag(FeedTags.TABS).widthIn(max = FeedSpec.tabsWidth).fillMaxWidth(),
+                            tag = FeedTags::tab,
+                        ) { showsFollowing = it }
                     }
                 },
                 actions = {
@@ -448,7 +496,21 @@ fun FeedScreen(
         if (showsFollowing) {
             FeedFollowingList(places, following, words, actions)
         } else {
-            FeedActivityList(items, state, actions)
+            Column(Modifier.fillMaxSize()) {
+                FeedSegments(
+                    listOf(FeedFilter.All to words.all, FeedFilter.Highlights to words.highlights),
+                    state.filter,
+                    Modifier
+                        .contentMaxWidth(LocalWindowLayout.current)
+                        .testTag(FeedTags.FILTER)
+                        .padding(top = FeedSpec.filterTop)
+                        .padding(horizontal = CardListSpec.side)
+                        .fillMaxWidth(),
+                    tag = FeedTags::filter,
+                    onChange = actions.onFilter,
+                )
+                FeedActivityList(items, state, actions, covers)
+            }
         }
     }
     following.refused?.let { reason ->
@@ -474,6 +536,7 @@ fun FeedPeekScreen(
     catalog: AgentCatalog,
     actions: FeedActions,
     clock: () -> Long = System::currentTimeMillis,
+    covers: FeedCovers? = null,
 ) {
     val words = rememberFeedWords()
     val dates = rememberArtifactListWords()
@@ -488,29 +551,29 @@ fun FeedPeekScreen(
         value = withContext(Dispatchers.Default) { feedListItems(state, rows, catalog.loaded, words, dates, clock(), peek = true) }
     }
     PlaceScaffold(title = title, onBack = actions.onBack, tag = FeedTags.PEEK) {
-        FeedActivityList(items, state, actions)
+        FeedActivityList(items, state, actions, covers)
     }
 }
 
-/** Activity | Following, in the bar's middle: the segmented control home's dock draws. */
+/**
+ * The segmented control home's dock draws: Activity | Following in the
+ * bar's middle, and All | Highlights over Activity's cards.
+ */
 @Composable
-private fun FeedTabs(following: Boolean, onChange: (Boolean) -> Unit) {
+private fun <T> FeedSegments(options: List<Pair<T, String>>, current: T, modifier: Modifier, tag: (T) -> String, onChange: (T) -> Unit) {
     val colors = HappyTheme.colors
     Row(
-        Modifier
-            .testTag(FeedTags.TABS)
-            .widthIn(max = FeedSpec.tabsWidth)
-            .fillMaxWidth()
+        modifier
             .heightIn(min = FeedSpec.tabsHeight)
             .clip(RoundedCornerShape(FeedSpec.tabsRadius))
             .background(colors.glass.backgroundSubtle)
             .padding(FeedSpec.tabsPadding),
     ) {
-        listOf(false to R.string.feed_activity, true to R.string.feed_following).forEach { (tab, label) ->
-            val picked = tab == following
+        options.forEach { (tab, label) ->
+            val picked = tab == current
             Box(
                 Modifier
-                    .testTag(FeedTags.tab(tab))
+                    .testTag(tag(tab))
                     .weight(1f)
                     .heightIn(min = FeedSpec.tabsHeight - FeedSpec.tabsPadding * 2)
                     .clip(RoundedCornerShape(FeedSpec.tabRadius))
@@ -519,7 +582,7 @@ private fun FeedTabs(following: Boolean, onChange: (Boolean) -> Unit) {
                     .semantics { selected = picked },
                 contentAlignment = Alignment.Center,
             ) {
-                Text(stringResource(label), style = FeedSpec.tabLabel, color = if (picked) colors.text else colors.textSecondary, maxLines = 1)
+                Text(label, style = FeedSpec.tabLabel, color = if (picked) colors.text else colors.textSecondary, maxLines = 1)
             }
         }
     }
@@ -527,11 +590,19 @@ private fun FeedTabs(following: Boolean, onChange: (Boolean) -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FeedActivityList(items: List<FeedListItem>, state: FeedLibrary.State, actions: FeedActions) {
+private fun FeedActivityList(items: List<FeedListItem>, state: FeedLibrary.State, actions: FeedActions, covers: FeedCovers? = null) {
     var pulled by remember { mutableStateOf(false) }
     LaunchedEffect(state.refreshing) { if (!state.refreshing) pulled = false }
     val list = rememberLazyListState()
-    // The next page, once the last entry held is on screen.
+    // Another filter starts at its top; coming back to the screen keeps the place.
+    var listed by rememberSaveable { mutableStateOf(state.filter) }
+    LaunchedEffect(state.filter) {
+        if (state.filter != listed) {
+            listed = state.filter
+            list.scrollToItem(0)
+        }
+    }
+    // The next page, once the last entry held is on screen: Highlights filtered here page on until they fill it.
     val atEnd by remember {
         derivedStateOf {
             val info = list.layoutInfo
@@ -556,8 +627,8 @@ private fun FeedActivityList(items: List<FeedListItem>, state: FeedLibrary.State
             items(items, key = { it.key }, contentType = { it::class }) { item ->
                 when (item) {
                     is FeedListItem.Heading -> CardHeading(item.text, item.afterCard)
-                    is FeedListItem.Note -> CardNote(item.text)
-                    is FeedListItem.Row -> FeedEntryRow(item, actions.onOpen)
+                    is FeedListItem.Note -> if (item.title != null) FeedEmptyNote(item.title, item.text) else CardNote(item.text)
+                    is FeedListItem.Row -> FeedEntryRow(item, actions.onOpen, covers)
                 }
             }
         }
@@ -572,75 +643,163 @@ private fun FeedActivityList(items: List<FeedListItem>, state: FeedLibrary.State
  *
  * The title is set heavier while unread; the faces overlap, the first
  * leftmost, each ringed in the card's colour.
+ *
+ * A covered artifact is a post: the same header, then its summary and its
+ * cover ([FeedPost]). Its height comes from the card's width and the
+ * cover's size, never from the picture, so nothing moves as it lands. A
+ * tap anywhere on it opens the artifact.
  */
 @Composable
-private fun FeedEntryRow(item: FeedListItem.Row, onOpen: (FeedRow) -> Unit) {
-    val colors = HappyTheme.colors
+private fun FeedEntryRow(item: FeedListItem.Row, onOpen: (FeedRow) -> Unit, covers: FeedCovers?) {
     val words = rememberFeedWords()
     val row = item.row
     val target = row.target
+    val cover = row.cover
     FeedCard(item.place, FeedSpec.minHeight, CardListSpec.inset + CardListSpec.tile + CardListSpec.tileGap, FeedTags.row(row.id), onClick = target?.let { { onOpen(row) } }) {
-        Row(
+        Column(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = CardListSpec.inset, vertical = CardListSpec.padding)
                 .semantics(mergeDescendants = true) {
                     stateDescription = listOfNotNull(
-                        if (row.unread) words.unreadMark else null, item.summary, words.actors(row.actorNames, row.actorCount).ifEmpty { null }, item.time,
+                        if (row.unread) words.unreadMark else null, item.summary, row.summary.takeIf { cover != null }, words.actors(row.actorNames, row.actorCount).ifEmpty { null }, item.time,
                     ).joinToString(", ")
                 },
-            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(Modifier.size(CardListSpec.tile), contentAlignment = Alignment.Center) { FeedFaceView(row.face, CardListSpec.tile) }
-            Spacer(Modifier.width(CardListSpec.tileGap))
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        row.title,
-                        style = if (row.unread) CardListSpec.title.copy(fontWeight = FontWeight.SemiBold) else CardListSpec.title,
-                        color = colors.text,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f).testTag(FeedTags.TITLE),
-                    )
-                    Spacer(Modifier.width(CardListSpec.trailingGap))
-                    Text(item.time, style = CardListSpec.subtitle, color = colors.textSecondary, maxLines = 1, modifier = Modifier.testTag(FeedTags.TIME))
-                    Spacer(Modifier.width(FeedSpec.dotGap))
-                    Box(
-                        Modifier
-                            .size(FeedSpec.dot)
-                            .clip(CircleShape)
-                            .background(if (row.unread) RowTile.Blue.ink(colors.dark) else Color.Transparent)
-                            .then(if (row.unread) Modifier.testTag(FeedTags.DOT) else Modifier),
-                    )
-                }
-                Row(Modifier.padding(top = FeedSpec.lineGap), verticalAlignment = Alignment.CenterVertically) {
-                    if (row.actors.isNotEmpty()) {
-                        Box(Modifier.width(FeedSpec.face + (FeedSpec.face - FeedSpec.faceOverlap) * (row.actors.size - 1)).clearAndSetSemantics { }) {
-                            // The first face lies on top, as iOS stacks them.
-                            row.actors.withIndex().reversed().forEach { (index, face) ->
-                                Box(Modifier.offset(x = (FeedSpec.face - FeedSpec.faceOverlap) * index).testTag(FeedTags.FACE)) {
-                                    FeedFaceView(face, FeedSpec.face, ring = colors.surfaceHigh)
-                                }
+            FeedEntryHeader(item)
+            if (cover != null) FeedPost(row.summary, cover, covers)
+        }
+    }
+}
+
+/** An entry's header: its avatar, title, time and dot, and who did what. */
+@Composable
+private fun FeedEntryHeader(item: FeedListItem.Row) {
+    val colors = HappyTheme.colors
+    val row = item.row
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = CardListSpec.inset, vertical = CardListSpec.padding),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(CardListSpec.tile), contentAlignment = Alignment.Center) { FeedFaceView(row.face, CardListSpec.tile) }
+        Spacer(Modifier.width(CardListSpec.tileGap))
+        Column(Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    row.title,
+                    style = if (row.unread) CardListSpec.title.copy(fontWeight = FontWeight.SemiBold) else CardListSpec.title,
+                    color = colors.text,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f).testTag(FeedTags.TITLE),
+                )
+                Spacer(Modifier.width(CardListSpec.trailingGap))
+                Text(item.time, style = CardListSpec.subtitle, color = colors.textSecondary, maxLines = 1, modifier = Modifier.testTag(FeedTags.TIME))
+                Spacer(Modifier.width(FeedSpec.dotGap))
+                Box(
+                    Modifier
+                        .size(FeedSpec.dot)
+                        .clip(CircleShape)
+                        .background(if (row.unread) RowTile.Blue.ink(colors.dark) else Color.Transparent)
+                        .then(if (row.unread) Modifier.testTag(FeedTags.DOT) else Modifier),
+                )
+            }
+            Row(Modifier.padding(top = FeedSpec.lineGap), verticalAlignment = Alignment.CenterVertically) {
+                if (row.actors.isNotEmpty()) {
+                    Box(Modifier.width(FeedSpec.face + (FeedSpec.face - FeedSpec.faceOverlap) * (row.actors.size - 1)).clearAndSetSemantics { }) {
+                        // The first face lies on top, as iOS stacks them.
+                        row.actors.withIndex().reversed().forEach { (index, face) ->
+                            Box(Modifier.offset(x = (FeedSpec.face - FeedSpec.faceOverlap) * index).testTag(FeedTags.FACE)) {
+                                FeedFaceView(face, FeedSpec.face, ring = colors.surfaceHigh)
                             }
                         }
                     }
-                    if (item.more != null) {
-                        if (row.actors.isNotEmpty()) Spacer(Modifier.width(FeedSpec.moreGap))
-                        Text(item.more, style = CardListSpec.subtitle, color = colors.textSecondary, maxLines = 1, modifier = Modifier.testTag(FeedTags.MORE))
-                    }
-                    if (row.actors.isNotEmpty() || item.more != null) Spacer(Modifier.width(FeedSpec.summaryGap))
-                    Text(
-                        item.summary,
-                        style = CardListSpec.subtitle,
-                        color = colors.textSecondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f).testTag(FeedTags.SUMMARY),
-                    )
                 }
+                if (item.more != null) {
+                    if (row.actors.isNotEmpty()) Spacer(Modifier.width(FeedSpec.moreGap))
+                    Text(item.more, style = CardListSpec.subtitle, color = colors.textSecondary, maxLines = 1, modifier = Modifier.testTag(FeedTags.MORE))
+                }
+                if (row.actors.isNotEmpty() || item.more != null) Spacer(Modifier.width(FeedSpec.summaryGap))
+                Text(
+                    item.summary,
+                    style = CardListSpec.subtitle,
+                    color = colors.textSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f).testTag(FeedTags.SUMMARY),
+                )
             }
         }
+    }
+}
+
+/**
+ * A post's body under its header:
+ *
+ *     |16| summary, up to three lines …………………… |16|
+ *                         10
+ *     |16| ┌ cover, 16:9 or 1:1 of the width ──┐ |16|
+ *          └───────────────────────────────────┘
+ *                         16
+ */
+@Composable
+private fun FeedPost(summary: String?, cover: FeedCover, covers: FeedCovers?) {
+    Column(Modifier.fillMaxWidth().padding(start = CardListSpec.inset, end = CardListSpec.inset, bottom = FeedSpec.postBottom)) {
+        if (summary != null) {
+            Text(
+                summary,
+                style = FeedSpec.postSummary,
+                color = HappyTheme.colors.text,
+                maxLines = FeedSpec.SUMMARY_LINES,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(bottom = FeedSpec.coverGap).testTag(FeedTags.POST_SUMMARY),
+            )
+        }
+        FeedCoverView(cover, covers)
+    }
+}
+
+/**
+ * A cover across the post (spec "Covered artifact entries"): exactly its
+ * shape, 16:9 or 1:1, of the width shown, which the content column holds
+ * to the reading width on a fold or tablet. It sits on the artifact's
+ * background, or a neutral ground, and the picture fades in over it once
+ * read; one a pixel or two off its shape is cropped by those, centred.
+ */
+@Composable
+private fun FeedCoverView(cover: FeedCover, covers: FeedCovers?) {
+    val ground = cover.background?.let(::cssColor) ?: HappyTheme.colors.surfaceHighest
+    key(cover.key) {
+        val bytes by produceState(covers?.kept(cover), covers) {
+            if (value == null) value = covers?.read(cover)
+        }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(cover.aspect.ratio)
+                .clip(RoundedCornerShape(FeedSpec.coverRadius))
+                .background(ground)
+                .testTag(FeedTags.COVER),
+        ) {
+            bytes?.let { RemoteImage(it, contentDescription = null, modifier = Modifier.matchParentSize(), contentScale = ContentScale.Crop, cacheKey = cover.key) }
+        }
+    }
+}
+
+/** A note with a heading (Highlights with none): the heading 16/20 semibold over what it explains. */
+@Composable
+private fun FeedEmptyNote(title: String, text: String) {
+    val colors = HappyTheme.colors
+    Column(
+        Modifier
+            .contentMaxWidth(LocalWindowLayout.current)
+            .testTag(CardListTags.NOTE)
+            .padding(horizontal = CardListSpec.side + CardListSpec.inset, vertical = CardListSpec.notePadding),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(title, style = CardListSpec.title.copy(fontWeight = FontWeight.SemiBold), color = colors.text, textAlign = TextAlign.Center)
+        Text(text, style = CardListSpec.note, color = colors.textSecondary, textAlign = TextAlign.Center, modifier = Modifier.padding(top = CardListSpec.lineGap * 2))
     }
 }
 

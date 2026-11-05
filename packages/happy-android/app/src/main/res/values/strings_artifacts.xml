@@ -103,6 +103,10 @@
     <string name="feed_title" translatable="false">Activity</string>
     <string name="feed_activity">Activity</string>
     <string name="feed_following">Following</string>
+    <string name="feed_all">All</string>
+    <string name="feed_highlights">Highlights</string>
+    <string name="feed_highlights_empty_title">No highlights yet</string>
+    <string name="feed_highlights_empty">Artifacts and new tasks appear here.</string>
     <string name="feed_mark_all_read">Mark All Read</string>
     <string name="feed_empty">Nothing has happened yet. New tasks, bots, documents, todo lists and artifacts show up here, with every change to them.</string>
     <string name="feed_loading">Loading activity…</string>

@@ -45,6 +45,12 @@ import kotlinx.serialization.json.put
  * It holds references only (iOS 434228fa1): what an entry is about, who
  * did it and what the change was. Its rows are joined with what the
  * connection syncs ([FeedRows]).
+ *
+ * It shows all entries or only Highlights ([FeedFilter]), as the person
+ * last chose on this connection. A daemon whose health says
+ * `feedSubjectFilter` pages Highlights as a list of its own; until that
+ * list is read, and on older daemons always, Highlights is everything held,
+ * filtered here, and the screen pages on while its end shows.
  */
 class FeedLibrary(
     private val scope: CoroutineScope,
@@ -59,12 +65,13 @@ class FeedLibrary(
     data class State(
         /** Whether this computer keeps a feed for this person; null until it has said, on this phone ever. */
         val available: Boolean? = null,
-        /** Newest cursor first. */
+        /** What [filter] shows, newest cursor first. */
         val items: List<FeedItem> = emptyList(),
         /** Entries seen here that the computer still calls open. */
         val seenHere: Set<String> = emptySet(),
-        /** How many entries are open, as this phone shows it. */
+        /** How many entries are open, as this phone shows it: all of them, whatever [filter] shows. */
         val unread: Int = 0,
+        /** Older entries of what [filter] shows wait on the computer. */
         val hasMore: Boolean = false,
         /** Something was read, from disk or the computer. */
         val loaded: Boolean = false,
@@ -72,6 +79,7 @@ class FeedLibrary(
         val loadingMore: Boolean = false,
         /** The last read failed. */
         val failed: Boolean = false,
+        val filter: FeedFilter = FeedFilter.All,
     ) {
         fun isUnread(item: FeedItem): Boolean = item.open && item.id !in seenHere
     }
@@ -80,12 +88,30 @@ class FeedLibrary(
     private val stateFlow = MutableStateFlow(State())
     val state: StateFlow<State> = stateFlow.asStateFlow()
 
-    /** What the computer last said, before this phone's seeing is laid over it. */
-    private var held: List<FeedItem> = emptyList()
+    /** One list as the computer pages it, before this phone's seeing is laid over it. */
+    private class Lane(val subjects: Set<String>?) {
+        var held: List<FeedItem> = emptyList()
+        var hasMore = false
+        /** Its newest page was read from the computer. */
+        var loaded = false
+
+        fun clear() {
+            held = emptyList()
+            hasMore = false
+            loaded = false
+        }
+    }
+
+    /** Every entry: what is kept, and what Highlights filters here when the daemon doesn't. */
+    private val everything = Lane(null)
+    /** Highlights as the daemon filters them; read only where it does. */
+    private val highlights = Lane(FeedFilter.Highlights.subjects)
     private var serverUnread = 0
     /** The event cursor [serverUnread] is as of; an older one is ignored. */
     private var unreadCursor: String? = null
     private var capable: Boolean? = null
+    /** `capabilities.feedSubjectFilter`: null until health has said, on this run. */
+    private var filtering: Boolean? = null
     private var counted: Boolean? = null
     private var pending: List<Intent> = emptyList()
     private var live = false
@@ -105,13 +131,14 @@ class FeedLibrary(
             lock.withLock {
                 if (kept != null) {
                     lastKept = kept
-                    held = FeedItem.list(kept["items"])
+                    everything.held = FeedItem.list(kept["items"])
+                    everything.hasMore = (kept["hasMore"] as? JsonPrimitive)?.booleanOrNull ?: false
                     serverUnread = (kept["unread"].num?.toInt() ?: 0).coerceAtLeast(0)
                     unreadCursor = kept["unreadCursor"].str
                     stateFlow.value = stateFlow.value.copy(
                         available = (kept["available"] as? JsonPrimitive)?.booleanOrNull,
-                        hasMore = (kept["hasMore"] as? JsonPrimitive)?.booleanOrNull ?: false,
                         loaded = true,
+                        filter = FeedFilter.of(kept["filter"].str),
                     )
                 }
                 commit()
@@ -140,20 +167,24 @@ class FeedLibrary(
         }
     }
 
-    /** The event stream opened: health says whether there is a feed, and the newest page is read. */
+    /** The event stream opened: health says whether there is a feed and whether it filters, and the newest page is read. */
     fun connected() {
         live = true
         connecting?.cancel()
         connecting = scope.launch {
-            val capable = try {
-                routes.capable()
+            val capabilities = try {
+                routes.capabilities()
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
                 null
             }
             lock.withLock {
-                if (capable != null) this@FeedLibrary.capable = capable
+                if (capabilities != null) {
+                    capable = capabilities.feed
+                    filtering = capabilities.subjectFilter
+                    if (!capabilities.subjectFilter) highlights.clear()
+                }
                 settle()
                 commit()
             }
@@ -184,17 +215,36 @@ class FeedLibrary(
         if (next == stateFlow.value.available) return
         stateFlow.value = stateFlow.value.copy(available = next)
         if (next == false) {
-            held = emptyList()
+            everything.clear()
+            highlights.clear()
             serverUnread = 0
             unreadCursor = null
-            stateFlow.value = stateFlow.value.copy(hasMore = false, failed = false)
+            stateFlow.value = stateFlow.value.copy(failed = false)
+        }
+    }
+
+    /**
+     * Shows all entries or only Highlights, and keeps the choice. Where the
+     * daemon filters, Highlights' own newest page is read; meanwhile it is
+     * everything held, filtered here.
+     */
+    fun show(filter: FeedFilter) {
+        scope.launch {
+            lock.withLock {
+                if (stateFlow.value.filter == filter) return@launch
+                stateFlow.value = stateFlow.value.copy(filter = filter)
+                commit()
+            }
+            if (live && filter == FeedFilter.Highlights && filtering == true) refresh()
         }
     }
 
     /**
      * Reads the newest page and lays it over what is held: entries newer
      * than its last one are exactly the page, older ones already read stay,
-     * so a person scrolled down keeps their place. One under way is followed by one more.
+     * so a person scrolled down keeps their place. Highlights shown from a
+     * daemon that filters read their own page too. One under way is
+     * followed by one more.
      */
     fun refresh() {
         if (stateFlow.value.available != true) return
@@ -205,64 +255,72 @@ class FeedLibrary(
         reading = scope.launch {
             do {
                 again = false
-                readFirst()
+                stateFlow.value = stateFlow.value.copy(refreshing = true)
+                if (readFirst(everything) && stateFlow.value.filter == FeedFilter.Highlights && filtering == true) readFirst(highlights)
+                stateFlow.value = stateFlow.value.copy(refreshing = false)
             } while (again)
         }
     }
 
-    private suspend fun readFirst() {
-        stateFlow.value = stateFlow.value.copy(refreshing = true)
+    /** [lane]'s newest page, laid over what it holds; false when it couldn't be read. */
+    private suspend fun readFirst(lane: Lane): Boolean {
         val page = try {
-            routes.page(null, PAGE)
+            routes.page(null, PAGE, lane.subjects)
         } catch (e: CancellationException) {
+            stateFlow.value = stateFlow.value.copy(refreshing = false)
             throw e
         } catch (e: AgentApiException) {
             lock.withLock {
-                if (e.status == 404) {
+                if (e.status == 404 && lane === everything) {
                     // No feed for this person after all (a guest, an older daemon).
                     capable = false
                     settle()
                 } else {
                     stateFlow.value = stateFlow.value.copy(failed = true)
                 }
-                stateFlow.value = stateFlow.value.copy(refreshing = false)
                 commit()
             }
-            return
+            return false
         } catch (_: Exception) {
-            stateFlow.value = stateFlow.value.copy(refreshing = false, failed = true)
-            return
+            stateFlow.value = stateFlow.value.copy(failed = true)
+            return false
         }
         lock.withLock {
+            val held = lane.held
             val floor = page.items.lastOrNull()?.cursor
             val ids = page.items.mapTo(HashSet()) { it.id }
             val older = if (floor == null || !page.hasMore) emptyList() else held.filter { it.cursor < floor && it.id !in ids }
             val olderIds = older.mapTo(HashSet()) { it.id }
-            held = upsert(held.filter { it.id in ids || it.id in olderIds }, page.items, hasMore = false)
-            stateFlow.value = stateFlow.value.copy(
-                hasMore = if (older.isEmpty()) page.hasMore else stateFlow.value.hasMore,
-                failed = false,
-                loaded = true,
-                refreshing = false,
-            )
+            lane.held = upsert(held.filter { it.id in ids || it.id in olderIds }, page.items, hasMore = false)
+            if (older.isEmpty()) lane.hasMore = page.hasMore
+            lane.loaded = true
+            stateFlow.value = stateFlow.value.copy(failed = false, loaded = true)
             setUnread(page.unread, page.cursor)
             commit()
         }
+        return true
     }
 
-    /** Reads the page older than the last entry held. */
+    /**
+     * Reads the page older than the last entry shown: of Highlights' own
+     * list where the daemon filters, else of everything (which Highlights
+     * filters here).
+     */
     fun loadMore() {
         val now = stateFlow.value
-        val last = held.lastOrNull() ?: return
-        if (!live || now.available != true || !now.hasMore || now.loadingMore) return
+        val lane = if (now.filter == FeedFilter.Highlights && filtering == true && highlights.loaded) highlights else everything
+        if (lane === everything && now.filter == FeedFilter.Highlights && filtering == true) return
+        val last = lane.held.lastOrNull() ?: return
+        if (!live || now.available != true || !lane.hasMore || now.loadingMore) return
         stateFlow.value = now.copy(loadingMore = true)
         scope.launch {
             try {
-                val page = routes.page(last.cursor, PAGE)
+                val page = routes.page(last.cursor, PAGE, lane.subjects)
                 lock.withLock {
-                    val ids = held.mapTo(HashSet()) { it.id }
-                    held = upsert((held + page.items.filter { it.id !in ids }).sortedWith(FeedItem.newestFirst), page.items, hasMore = false)
-                    stateFlow.value = stateFlow.value.copy(hasMore = page.hasMore, failed = false)
+                    val ids = lane.held.mapTo(HashSet()) { it.id }
+                    lane.held = upsert((lane.held + page.items.filter { it.id !in ids }).sortedWith(FeedItem.newestFirst), page.items, hasMore = false)
+                    lane.hasMore = page.hasMore
+                    stateFlow.value = stateFlow.value.copy(failed = false)
                     commit()
                 }
             } catch (e: CancellationException) {
@@ -282,11 +340,14 @@ class FeedLibrary(
                 "feed.item.created", "feed.item.updated" -> {
                     if (stateFlow.value.available == false) return
                     val item = FeedItem.parse(event.data["item"]) ?: return
-                    held = upsert(held, listOf(item), stateFlow.value.hasMore)
+                    everything.held = upsert(everything.held, listOf(item), everything.hasMore)
+                    // Highlights' own list takes only what it is about.
+                    if (highlights.loaded && FeedFilter.Highlights.admits(item)) highlights.held = upsert(highlights.held, listOf(item), highlights.hasMore)
                 }
                 "feed.item.removed" -> {
                     val id = event.data["itemId"].str ?: return
-                    held = held.filter { it.id != id }
+                    everything.held = everything.held.filter { it.id != id }
+                    highlights.held = highlights.held.filter { it.id != id }
                 }
                 "feed.unread.updated" -> {
                     val unread = event.data["unread"].num ?: return
@@ -326,12 +387,25 @@ class FeedLibrary(
         })
     }
 
-    /** Every entry read, up to the newest one shown: entries that arrive meanwhile stay open. */
+    /**
+     * Every entry shown read, up to the newest one: entries that arrive
+     * meanwhile stay open. In Highlights only those close: through the
+     * daemon's filter where it has one, else each unread entry shown is
+     * seen on its own, since an older daemon would close everything.
+     */
     suspend fun readAll() {
         val now = stateFlow.value
-        val newest = held.firstOrNull() ?: return
-        if (now.available != true || (now.unread <= 0 && held.none(now::isUnread))) return
-        outbox.enqueue(FEED_READ_ALL, "all", buildJsonObject { put("through", newest.cursor) })
+        val newest = now.items.firstOrNull() ?: return
+        if (now.available != true || (now.unread <= 0 && now.items.none(now::isUnread))) return
+        val subjects = now.filter.subjects
+        when {
+            subjects == null -> outbox.enqueue(FEED_READ_ALL, "all", buildJsonObject { put("through", newest.cursor) })
+            filtering == true -> outbox.enqueue(FEED_READ_ALL, subjects.sorted().joinToString(","), buildJsonObject {
+                put("through", newest.cursor)
+                put("subjects", JsonArray(subjects.sorted().map(::JsonPrimitive)))
+            })
+            else -> now.items.filter(now::isUnread).forEach { enqueueSeen(it.subject, it.cursor) }
+        }
     }
 
     /**
@@ -348,18 +422,24 @@ class FeedLibrary(
                     val id = value("id") ?: return
                     val (items, unread) = routes.seen(FeedSubject(type, id), value("through"), intent.id)
                     lock.withLock {
-                        held = upsert(held, items, hasMore = false)
+                        everything.held = upsert(everything.held, items, hasMore = false)
+                        if (highlights.loaded) highlights.held = upsert(highlights.held, items.filter(FeedFilter.Highlights::admits), hasMore = false)
                         setUnread(unread, null)
                         commit()
                     }
                 }
                 FEED_READ_ALL -> {
                     val through = value("through")
-                    val unread = routes.readAll(through, intent.id)
+                    val subjects = subjects(intent)
+                    val unread = routes.readAll(through, intent.id, subjects)
                     lock.withLock {
                         // Every entry open at or before `through` is now closed, whether or not its own event has come.
                         val at = now()
-                        held = held.map { if (it.open && (through == null || it.cursor <= through)) it.copy(seenAt = at) else it }
+                        fun close(list: List<FeedItem>) = list.map {
+                            if (it.open && (through == null || it.cursor <= through) && (subjects == null || it.subject.type in subjects)) it.copy(seenAt = at) else it
+                        }
+                        everything.held = close(everything.held)
+                        highlights.held = close(highlights.held)
                         setUnread(unread, null)
                         commit()
                     }
@@ -390,32 +470,51 @@ class FeedLibrary(
         serverUnread = value.coerceAtLeast(0)
     }
 
+    /** The subject types a Mark All Read closes; null for all of them. */
+    private fun subjects(intent: Intent): Set<String>? =
+        (intent.value["subjects"] as? JsonArray)?.mapNotNullTo(HashSet()) { (it as? JsonPrimitive)?.contentOrNull }
+
     /** Whether this phone's seeing, still on its way, covers [item]. */
     private fun covered(item: FeedItem): Boolean {
         if (!item.open) return false
         return pending.any { intent ->
             val through = (intent.value["through"] as? JsonPrimitive)?.contentOrNull
-            val applies = intent.kind == FEED_READ_ALL || (intent.kind == FEED_SEEN && intent.target == item.subject.key)
+            val applies = when (intent.kind) {
+                FEED_READ_ALL -> subjects(intent)?.contains(item.subject.type) ?: true
+                FEED_SEEN -> intent.target == item.subject.key
+                else -> false
+            }
             applies && (through == null || item.cursor <= through)
         }
+    }
+
+    /** What [filter] shows, and whether older entries of it wait on the computer. */
+    private fun shown(filter: FeedFilter): Pair<List<FeedItem>, Boolean> = when {
+        filter == FeedFilter.All -> everything.held to everything.hasMore
+        filtering == true && highlights.loaded -> highlights.held to highlights.hasMore
+        else -> everything.held.filter(filter::admits) to everything.hasMore
     }
 
     /** Lays this phone's seeing over what is held, shows it, and writes it down when what is kept changed. Under [lock]. */
     private suspend fun commit() {
         val available = stateFlow.value.available == true
-        val items = if (available) held else emptyList()
-        val seen = items.filter(::covered).mapTo(HashSet()) { it.id }
+        val filter = stateFlow.value.filter
+        val (items, hasMore) = if (available) shown(filter) else emptyList<FeedItem>() to false
+        val seen = if (available) (everything.held.asSequence() + highlights.held).filter(::covered).mapTo(HashSet()) { it.id } else emptySet()
         stateFlow.value = stateFlow.value.copy(
             items = items,
             seenHere = seen,
             unread = if (available) (serverUnread - seen.size).coerceAtLeast(0) else 0,
+            hasMore = hasMore,
         )
+        val held = everything.held
         val value = buildJsonObject {
             put("items", JsonArray(held.take(KEPT).map { it.json() }))
             put("unread", serverUnread)
-            put("hasMore", stateFlow.value.hasMore || held.size > KEPT)
+            put("hasMore", everything.hasMore || held.size > KEPT)
             stateFlow.value.available?.let { put("available", it) }
             unreadCursor?.let { put("unreadCursor", it) }
+            if (filter != FeedFilter.All) put("filter", filter.wire)
         }
         // A change that changed nothing kept writes nothing.
         if (value == lastKept) return

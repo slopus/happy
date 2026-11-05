@@ -84,6 +84,10 @@
 
     <string name="feed_activity">動態</string>
     <string name="feed_following">追蹤</string>
+    <string name="feed_all">全部</string>
+    <string name="feed_highlights">精選</string>
+    <string name="feed_highlights_empty_title">還沒有精選</string>
+    <string name="feed_highlights_empty">成品和新任務會顯示在這裡。</string>
     <string name="feed_mark_all_read">全部標為已讀</string>
     <string name="feed_empty">還沒有任何動態。新的任務、機器人、文件、待辦清單和成品會顯示在這裡，連同它們的每一次變更。</string>
     <string name="feed_loading">正在載入動態…</string>

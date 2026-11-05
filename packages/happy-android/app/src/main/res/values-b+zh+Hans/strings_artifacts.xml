@@ -84,6 +84,10 @@
 
     <string name="feed_activity">动态</string>
     <string name="feed_following">关注</string>
+    <string name="feed_all">全部</string>
+    <string name="feed_highlights">精选</string>
+    <string name="feed_highlights_empty_title">还没有精选</string>
+    <string name="feed_highlights_empty">制品和新任务会显示在这里。</string>
     <string name="feed_mark_all_read">全部标为已读</string>
     <string name="feed_empty">还没有任何动态。新的任务、机器人、文档、待办清单和制品会显示在这里，连同它们的每一次更改。</string>
     <string name="feed_loading">正在加载动态…</string>

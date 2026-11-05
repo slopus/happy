@@ -18,6 +18,7 @@ import com.slopus.happy.documents.DocumentLibrary
 import com.slopus.happy.documents.DocumentStreams
 import com.slopus.happy.feed.AgentFeedRoutes
 import com.slopus.happy.feed.FeedLibrary
+import com.slopus.happy.feed.FeedCovers
 import com.slopus.happy.feed.FeedLookups
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
@@ -181,6 +182,9 @@ class AgentSession internal constructor(
             scope.launch { events.collect(lookups::receive) }
         }
     }
+
+    /** The pictures covered artifacts show as Feed posts, kept with the connection's media. */
+    val feedCovers: FeedCovers by lazy { FeedCovers.of(ArtifactClient(client), media) }
 
     private val noticeState = MutableStateFlow<String?>(null)
 
