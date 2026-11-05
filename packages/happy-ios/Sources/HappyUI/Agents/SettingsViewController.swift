@@ -489,8 +489,8 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                 [supportRow()],
                 [
                     Row(Index.appearance, action: { [weak self] in self?.open(.appearance) }),
-                    Row(Index.newSessions, value: Strings.NewSessions.start(modelPreferences.start), action: { [weak self] in self?.open(.newSessions) }),
                     Row(Index.agentVoice, value: voiceValue(), action: { [weak self] in self?.open(.agentVoice) }),
+                    Row(Index.agents, action: { [weak self] in self?.open(.agents) }),
                     Row(Index.dataStorage, action: { [weak self] in self?.open(.dataStorage) }),
                 ],
                 [Row(Index.supportUs, action: { [weak self] in self?.open(.supportUs) })],
@@ -543,14 +543,14 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
 
     /// The pages a row opens in settings' cards.
     enum Page: CaseIterable {
-        case appearance, newSessions, supportUs, account, backup, voice, language, dataStorage, agentVoice
+        case appearance, agents, supportUs, account, backup, voice, language, dataStorage, agentVoice
     }
 
     /// Whether `profile`'s page has `page`: a computer's look, or a Happy
     /// account's own pages, once that account is the active one.
     private func has(_ page: Page, _ profile: Profile) -> Bool {
         switch page {
-        case .appearance, .newSessions, .agentVoice: profile.isAgentConnection
+        case .appearance, .agents, .agentVoice: profile.isAgentConnection
         case .supportUs: true
         case .dataStorage: profile.isAgentConnection || activeSession != nil
         case .account, .backup, .voice, .language: !profile.isAgentConnection && activeSession != nil
@@ -560,7 +560,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     private func make(_ page: Page) -> SettingsPageViewController? {
         switch page {
         case .appearance: SettingsPageViewController(title: SettingsIndex.appearance.title) { [weak self] in self?.appearanceRows() ?? [] }
-        case .newSessions: SettingsPageViewController(title: SettingsIndex.newSessions.title) { [weak self] in self?.newSessionRows() ?? [] }
+        case .agents: SettingsPageViewController(title: SettingsIndex.agents.title) { [weak self] in self?.agentRows() ?? [] }
         case .supportUs: SupportUsViewController()
         case .account: activeSession.map { AccountSettingsViewController(context: context, session: $0) }
         case .backup: activeSession.map { BackupSettingsViewController(context: context, session: $0) }
@@ -613,29 +613,33 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         ]
     }
 
-    /// What new sessions start on (desktop's General › New sessions): the
-    /// last session's model and effort or the default ones, each a
-    /// pull-down. They are the person's own settings on the computer
-    /// (`ModelPreferences`), so they follow them across devices. The model
-    /// and effort shown are what a new session starts on now, fallbacks
-    /// taken.
-    private func newSessionRows() -> [[SettingsRow]] {
+    /// A computer's Agents: what new sessions start on, as desktop's
+    /// General › New sessions has it, row for row and in its words, each
+    /// value a pull-down and each description its card's footer. They are
+    /// the person's own settings on the computer (`ModelPreferences`), so
+    /// they follow them across devices. The model, effort and access shown
+    /// are what a new session starts on now, fallbacks taken.
+    private func agentRows() -> [[SettingsRow]] {
         typealias Row = SettingsRow
+        typealias Text = Strings.NewSessions
         guard let id = shown?.id, let session = Session.session(for: id, context: context) else { return [] }
         let preferences = modelPreferences
         let catalog = session.models.catalog
         let mode = catalog?.startMode(preferences)
         let model = mode.flatMap { catalog?.model($0) }
-        var start = Row(id: "new-sessions-start", title: Strings.NewSessions.startOn, value: Strings.NewSessions.start(preferences.start), accessory: .none)
-        start.pullDown = { [weak self] in
-            UIMenu(children: [ModelPreferences.Start.lastSession, .defaultModel].map { choice in
-                UIAction(title: Strings.NewSessions.start(choice), state: choice == preferences.start ? .on : .off) { _ in
-                    self?.updateModelPreferences { $0.start = choice }
-                }
-            })
+        func menu<Choice: Equatable & Sendable>(_ choices: [Choice], current: Choice?, title: @escaping (Choice) -> String, pick: @escaping @Sendable (Choice, inout ModelPreferences) -> Void) -> () -> UIMenu? {
+            { [weak self] in
+                UIMenu(children: choices.map { choice in
+                    UIAction(title: title(choice), state: choice == current ? .on : .off) { _ in
+                        self?.updateModelPreferences { pick(choice, &$0) }
+                    }
+                })
+            }
         }
-        var defaultModel = Row(id: "new-sessions-model", title: Strings.NewSessions.defaultModel,
-                               value: catalog == nil ? Strings.NewSessions.reading : model?.name ?? mode?.modelId, accessory: .none)
+        var start = Row(id: "agents-start", title: Text.startOn, value: Text.start(preferences.start), accessory: .none)
+        start.pullDown = menu([ModelPreferences.Start.lastSession, .defaultModel], current: preferences.start, title: Text.start) { $1.start = $0 }
+        var defaultModel = Row(id: "agents-model", title: Text.defaultModel,
+                               value: catalog == nil ? Text.reading : model?.name ?? mode?.modelId, accessory: .none)
         if let catalog, let mode {
             defaultModel.pullDown = { [weak self] in
                 UIMenu(children: Self.servedModels(catalog).map { service in
@@ -647,18 +651,19 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                 })
             }
         }
-        var effort = Row(id: "new-sessions-effort", title: Strings.NewSessions.defaultEffort,
+        var effort = Row(id: "agents-effort", title: Text.defaultEffort,
                          value: model.flatMap { $0.efforts.isEmpty ? nil : mode.map { ModelMenus.effortName($0.effort) } }, accessory: .none)
         if let model, let mode, !model.efforts.isEmpty {
-            effort.pullDown = { [weak self] in
-                UIMenu(children: model.efforts.map { level in
-                    UIAction(title: ModelMenus.effortName(level), state: level == mode.effort ? .on : .off) { _ in
-                        self?.updateModelPreferences { $0.effort = level }
-                    }
-                })
-            }
+            effort.pullDown = menu(model.efforts, current: mode.effort, title: ModelMenus.effortName) { $1.effort = $0 }
         }
-        return [[start, defaultModel, effort].withFooter(Strings.NewSessions.footer(preferences.start))]
+        let access = mode?.permissionMode ?? preferences.permissionMode ?? "auto"
+        var permission = Row(id: "agents-access", title: Text.defaultAccess, value: Strings.permissionName(access), accessory: .none)
+        permission.pullDown = menu(ModelPickers.permissionModes, current: access, title: Strings.permissionName) { $1.permissionMode = $0 }
+        return [
+            [start].withFooter(Text.startFooter(preferences.start)),
+            [defaultModel, effort].withFooter(Text.modelFooter(preferences.start)),
+            [permission].withFooter(Text.accessFooter),
+        ]
     }
 
     /// The models a new session can start on, by service: those an account

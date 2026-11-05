@@ -40,6 +40,12 @@ final class ModelPreferencesTests: XCTestCase {
         var opus = catalog
         opus.defaultModelId = "anthropic/opus-5"
         XCTAssertEqual(opus.startMode(ModelPreferences()), mode("claude", "anthropic/opus-5", "medium"))
+        // The access is the person's default, else "auto", as desktop
+        // starts it, whatever the configuration's own default says.
+        var guarded = catalog
+        guarded.defaultPermissionMode = "read_only"
+        XCTAssertEqual(guarded.startMode(ModelPreferences()).permissionMode, "auto")
+        XCTAssertEqual(guarded.startMode(ModelPreferences(permissionMode: "full_access")).permissionMode, "full_access")
     }
 
     func testDesktopsValuesAreRead() {

@@ -196,37 +196,52 @@ final class HostedNewSessionStartTests: XCTestCase {
         XCTAssertEqual(memory?.last?["modelId"], .string("openai/sol"))
     }
 
-    /// Settings has New Sessions beside Appearance, following the last
-    /// session; its page names what a new session starts on.
-    func testSettingsSaysWhatNewSessionsStartOn() async throws {
+    /// A computer's Settings has Agents after Voice, as a Happy account's
+    /// does; its page is desktop's New sessions group, row for row, its
+    /// descriptions following the mode.
+    func testAgentsSaysWhatNewSessionsStartOn() async throws {
         try await pair()
         let settings = SettingsViewController(context: context, computer: computerID)
         let navigation = try await host(settings)
-        try await wait { settings.shownRow("new-sessions") != nil }
-        XCTAssertEqual(settings.shownRow("new-sessions")?.value, "Last Session")
-        XCTAssertTrue(settings.shownRowIDs.contains(["appearance", "new-sessions", "agent-voice", "data-storage"]), "\(settings.shownRowIDs)")
-        try await keep("settings-new-sessions-row")
+        try await wait { settings.shownRow("agents") != nil }
+        XCTAssertTrue(settings.shownRowIDs.contains(["appearance", "agent-voice", "agents", "data-storage"]), "\(settings.shownRowIDs)")
+        XCTAssertEqual(settings.shownRow("agents")?.title, "Agents")
+        XCTAssertNil(settings.shownRow("new-sessions"))
+        try await keep("settings-agents-row")
 
-        settings.tapRow("new-sessions")
+        settings.tapRow("agents")
         try await wait { navigation.topViewController is SettingsPageViewController && navigation.transitionCoordinator == nil }
         let page = try XCTUnwrap(navigation.topViewController as? SettingsPageViewController)
-        try await wait { page.shownRow("new-sessions-model")?.value == "GPT Sol" }
-        XCTAssertEqual(page.shownRowIDs, [["new-sessions-start", "new-sessions-model", "new-sessions-effort"]])
-        XCTAssertEqual(page.shownRow("new-sessions-start")?.value, "Last Session")
-        XCTAssertEqual(page.shownRow("new-sessions-effort")?.value, "Extra High")
-        XCTAssertNotNil(page.shownRow("new-sessions-start")?.pullDown)
-        XCTAssertNotNil(page.shownRow("new-sessions-model")?.pullDown)
-        try await keep("settings-new-sessions-page")
+        try await wait { page.shownRow("agents-model")?.value == "GPT Sol" }
+        XCTAssertEqual(page.title, "Agents")
+        XCTAssertEqual(page.shownRowIDs, [["agents-start"], ["agents-model", "agents-effort"], ["agents-access"]])
+        XCTAssertEqual(page.shownRow("agents-start")?.title, "New Sessions Start On")
+        XCTAssertEqual(page.shownRow("agents-start")?.value, "Last Session")
+        XCTAssertEqual(page.shownRow("agents-effort")?.value, "Extra High")
+        XCTAssertEqual(page.shownRow("agents-access")?.title, "Default Access Mode")
+        XCTAssertEqual(page.shownRow("agents-access")?.value, "Auto")
+        for id in ["agents-start", "agents-model", "agents-effort", "agents-access"] {
+            XCTAssertNotNil(page.shownRow(id)?.pullDown, "\(id) has no menu")
+        }
+        XCTAssertEqual(page.shownFooters, [
+            "The model and effort of the last session you started.",
+            "Follows the last session you started, on the account you last picked.",
+            "What a new session may do without asking. Saved to your account, so they follow you across devices.",
+        ])
+        try await keep("settings-agents")
 
-        // Default Model chosen: written to the computer, and the page follows.
-        try await session.engine.updateModelPreferences { $0.start = .defaultModel }
-        try await wait { page.shownRow("new-sessions-start")?.value == "Default Model" }
+        // Default Model, and read only: written to the computer, and the page follows.
+        try await session.engine.updateModelPreferences { $0.start = .defaultModel; $0.permissionMode = "read_only" }
+        try await wait { page.shownRow("agents-start")?.value == "Default Model" && page.shownRow("agents-access")?.value == "Read only" }
         try await wait {
             let held = await self.computer.settings
-            return held[ModelPreferences.Key.start] == .string("default")
+            return held[ModelPreferences.Key.start] == .string("default") && held[ModelPreferences.Key.access] == .string("read_only")
         }
-        XCTAssertEqual(settings.shownRow("new-sessions")?.value, "Default Model")
-        try await keep("settings-new-sessions-default-model")
+        XCTAssertEqual(page.shownFooters.prefix(2), [
+            "The model and effort chosen below.",
+            "Runs on the account you last picked in a chat.",
+        ])
+        try await keep("settings-agents-default-model")
     }
 
     /// The screens as they are, with nothing asserted: run on a build

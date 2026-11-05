@@ -58,7 +58,7 @@ public struct ModelPreferences: Equatable, Sendable {
     /// Nil until there is one: the catalog's default then.
     public var modelId: String?
     public var effort: String
-    /// Nil for the catalog's own.
+    /// Nil for "auto", as desktop starts it.
     public var permissionMode: String?
     public var providerId: String?
     /// Oldest first.
@@ -167,9 +167,10 @@ extension ModelCatalog {
     /// when it serves it, else the default account, else the first that
     /// does. The effort is the default one when the model has it, else the
     /// model's own; the speed is the one last used with it there, when it
-    /// still has it. Each falls back on its own.
+    /// still has it; the access is the default one, else "auto". Each falls
+    /// back on its own.
     public func startMode(_ preferences: ModelPreferences) -> AgentWire.Mode {
-        let permissionMode = preferences.permissionMode ?? defaultPermissionMode
+        let permissionMode = preferences.permissionMode ?? "auto"
         let fallback = defaultMode()
         for modelId in [preferences.modelId, fallback.modelId].compactMap({ $0 }) {
             let serving = providers.filter { !$0.isDisabled && !$0.hidden && $0.models.contains { $0.id == modelId } }
