@@ -371,7 +371,8 @@ win:
     where health says `capabilities.quickSearch`; offline or older, the
     phone's alone. `QuickSearchFusion` is the shared RRF (k = 60) over
     `key`, the client package's vectors in
-    `test/resources/quick-search/` (from happy-agent 2e72c045c). A
+    `test/resources/quick-search/` (from happy-agent 2e72c045c, the same in
+    1438e9452, client 0.0.157). A
     daemon's answer joins only the query it was for. A result found by
     both keeps the phone's row unless the daemon has a content line for
     it; vault items, events and content matches are the daemon's rows,

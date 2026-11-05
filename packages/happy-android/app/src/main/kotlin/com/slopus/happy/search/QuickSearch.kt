@@ -56,9 +56,18 @@ sealed interface QuickSearchHit {
     @Serializable
     data class Surface(override val key: String, override val rank: Int, val surfaceId: String, val surfaceType: String = "", val name: String) : QuickSearchHit
 
-    /** A conversation: `chat`, `task`, `subtask` or `bot`. */
+    /** A conversation: `chat`, `task`, `subtask` or `bot`; [workspaceId] and [projectId] where it is, null where it is in none. */
     @Serializable
-    data class Agent(override val key: String, override val rank: Int, val agentId: String, val title: String = "", val kind: String = "chat", val archived: Boolean = false) : QuickSearchHit
+    data class Agent(
+        override val key: String,
+        override val rank: Int,
+        val agentId: String,
+        val title: String = "",
+        val kind: String = "chat",
+        val archived: Boolean = false,
+        val workspaceId: String? = null,
+        val projectId: String? = null,
+    ) : QuickSearchHit
 
     @Serializable
     data class Project(override val key: String, override val rank: Int, val projectId: String, val name: String, val archived: Boolean = false) : QuickSearchHit
@@ -70,7 +79,11 @@ sealed interface QuickSearchHit {
         /** The types in the daemon's provider order, which the phone's own search ranks in too. */
         val TYPES = listOf("vault_file", "vault_folder", "document", "todo", "calendar_event", "artifact", "surface", "agent", "project", "workspace")
 
-        /** [value] as the hit its `type` names; null for a type this phone doesn't know, or one that doesn't read. */
+        /**
+         * [value] as the hit its `type` names, any field this phone doesn't
+         * know left out ([AgentClient.json] ignores them); null for a type
+         * it doesn't know, or one that doesn't read.
+         */
         fun parse(value: kotlinx.serialization.json.JsonElement): QuickSearchHit? {
             val obj = value as? JsonObject ?: return null
             val serializer: KSerializer<out QuickSearchHit> = when ((obj["type"] as? JsonPrimitive)?.content) {
