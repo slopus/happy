@@ -54,7 +54,12 @@ function newScreenBoundary() {
         MAX_RIG_PENDING_RESULTS: 3, isMountedRef: { current: true },
         machineStopSession: vi.fn().mockResolvedValue({ success: true }),
         sessionKill: vi.fn().mockResolvedValue({ success: true }), sessionArchive: vi.fn(),
-        sync: { ensureSessionReady: vi.fn().mockResolvedValue(undefined), sendMessage: vi.fn().mockResolvedValue(true) },
+        // refreshSessions/storage: this build waits (bounded) for the spawned
+        // session to land locally before writing its model/permission picks, so
+        // the boundary needs both. The session is already present here, which is
+        // the first-iteration case — the wait loop exits without a timer.
+        sync: { ensureSessionReady: vi.fn().mockResolvedValue(undefined), sendMessage: vi.fn().mockResolvedValue(true), refreshSessions: vi.fn().mockResolvedValue(undefined) },
+        storage: { getState: () => ({ sessions: { created: { id: 'created' } } }) },
         sessionSetAgentModes: vi.fn(), router: { back: vi.fn() }, navigateToSession: vi.fn(),
         Modal: { alert: vi.fn(), confirm: vi.fn() }, t: (key: string) => key,
     };
