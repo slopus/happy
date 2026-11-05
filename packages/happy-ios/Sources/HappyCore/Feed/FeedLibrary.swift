@@ -24,6 +24,12 @@ public protocol FeedKeep: Sendable {
 /// bootstrap carries `feedUnread` has one; older daemons, and guests, show
 /// none.
 ///
+/// It shows all of it or its Highlights (`FeedFilter`), as the person last
+/// chose on this computer. A computer that filters (`feedSubjectFilter`)
+/// pages Highlights on its own, kept beside the whole list; on one that
+/// doesn't, Highlights is the whole list's artifact and task entries, read
+/// on until a screen's worth shows.
+///
 /// It holds references only: what an entry is about, who did it and what
 /// the change was. What they are called and how they look is the account's
 /// own (`FeedDirectory`, the engine's), joined in when the rows are made.
@@ -32,13 +38,20 @@ public actor FeedLibrary {
         /// Whether this computer keeps a feed for this person; nil until it
         /// has said, on this phone ever.
         public var available: Bool?
-        /// Newest `cursor` first.
+        /// What it shows: everything, or Highlights.
+        public var filter = FeedFilter.all
+        /// The computer's artifacts carry covers (`artifactCovers`).
+        public var covers = false
+        /// The entries `filter` shows, newest `cursor` first.
         public var items: [FeedItem] = []
         /// Entries this phone has seen that the computer still calls open.
         public var seenHere: Set<String> = []
-        /// How many entries are open, as this phone shows it.
+        /// How many entries are open, as this phone shows it: all of them,
+        /// whatever `filter` shows, as home's row counts them.
         public var unread = 0
-        /// Older entries exist beyond the last one held.
+        /// How many of those `filter` shows are open.
+        public var shownUnread = 0
+        /// Older entries `filter` shows exist beyond the last one held.
         public var hasMore = false
         /// Something was read, from disk or the computer.
         public var loaded = false
@@ -60,6 +73,10 @@ public actor FeedLibrary {
     /// The most entries kept on disk.
     static let keptLimit = 200
     static let peekLimit = 200
+    /// Highlights filtered here reads on until it holds this many…
+    static let screenful = 20
+    /// …or has read this many more pages for it.
+    static let fillPages = 10
 
     private let routes: FeedRoutes
     private let outbox: IntentOutbox
@@ -69,7 +86,19 @@ public actor FeedLibrary {
     private var listeners: [UUID: AsyncStream<State>.Continuation] = [:]
     /// What the computer last said, before this phone's seeing is laid over it.
     private var held: [FeedItem] = []
+    /// Older entries exist beyond the last one held.
+    private var heldMore = false
     private var serverUnread = 0
+    /// What the person chose to see here.
+    private var filter = FeedFilter.all
+    /// Highlights as a filtering computer pages it, with its own count of
+    /// open entries; nil until read.
+    private var picked: [FeedItem]?
+    private var pickedMore = false
+    private var pickedUnread = 0
+    /// What health said of filtering and covers, kept from the last time.
+    private var subjectFilter: Bool?
+    private var covers: Bool?
     /// The event cursor `serverUnread` is as of; an older one is ignored.
     private var unreadCursor: String?
     /// What health said of the Feed on this connection, and whether the
@@ -122,7 +151,15 @@ public actor FeedLibrary {
             held = Self.decode(kept["items"])
             serverUnread = max(0, Int(kept["unread"]?.numberValue ?? 0))
             unreadCursor = kept["unreadCursor"]?.stringValue
-            state.hasMore = kept["hasMore"]?.boolValue ?? false
+            heldMore = kept["hasMore"]?.boolValue ?? false
+            filter = kept["filter"]?.stringValue.flatMap(FeedFilter.init(rawValue:)) ?? .all
+            subjectFilter = kept["subjectFilter"]?.boolValue
+            covers = kept["covers"]?.boolValue
+            if let highlights = kept["highlights"], subjectFilter == true {
+                picked = Self.decode(highlights["items"])
+                pickedMore = highlights["hasMore"]?.boolValue ?? false
+                pickedUnread = max(0, Int(highlights["unread"]?.numberValue ?? 0))
+            }
             state.loaded = true
         }
         pending = await outbox.pending().filter(\.kind.isFeed)
@@ -159,9 +196,9 @@ public actor FeedLibrary {
         live = true
         connecting?.cancel()
         connecting = Task { [weak self, routes] in
-            let capable: Bool? = try? await routes.feedCapable()
+            let capabilities: FeedCapabilities? = try? await routes.feedCapabilities()
             guard !Task.isCancelled else { return }
-            await self?.healthAnswered(capable)
+            await self?.healthAnswered(capabilities)
         }
     }
 
@@ -178,9 +215,16 @@ public actor FeedLibrary {
         }
     }
 
-    private func healthAnswered(_ capable: Bool?) async {
+    private func healthAnswered(_ capabilities: FeedCapabilities?) async {
         connecting = nil
-        if let capable { self.capable = capable }
+        if let capabilities {
+            capable = capabilities.feed
+            covers = capabilities.covers
+            subjectFilter = capabilities.subjectFilter
+            // Updated to one that doesn't filter: Highlights comes from
+            // the whole list.
+            if !capabilities.subjectFilter { picked = nil }
+        }
         await settleAvailability()
         await commit()
         if state.available == true { await refresh() }
@@ -197,9 +241,12 @@ public actor FeedLibrary {
         state.available = next
         if next == false {
             held = []
+            heldMore = false
+            picked = nil
+            pickedMore = false
+            pickedUnread = 0
             serverUnread = 0
             unreadCursor = nil
-            state.hasMore = false
             state.error = nil
         }
     }
@@ -233,7 +280,7 @@ public actor FeedLibrary {
         defer { state.refreshing = false; publish() }
         let page: FeedPage
         do {
-            page = try await routes.feed(before: nil, limit: Self.page)
+            page = try await routes.feed(before: nil, limit: Self.page, subjects: nil)
         } catch AgentClientError.status(404, _, _) {
             // No feed for this person after all (a guest, an older daemon).
             capable = false
@@ -246,31 +293,60 @@ public actor FeedLibrary {
             return
         }
         guard !Task.isCancelled else { return }
-        let floor = page.items.last?.cursor
-        let ids = Set(page.items.map(\.id))
-        let older = floor == nil || !page.hasMore ? [] : held.filter { $0.cursor < floor! && !ids.contains($0.id) }
-        let olderIds = Set(older.map(\.id))
-        held = Self.upsert(held.filter { ids.contains($0.id) || olderIds.contains($0.id) }, page.items, hasMore: false)
-        state.hasMore = older.isEmpty ? page.hasMore : state.hasMore
+        (held, heldMore) = Self.laid(page, over: held, hasMore: heldMore)
         state.error = nil
         state.loaded = true
         setUnread(page.unread, cursor: page.cursor)
         await commit()
+        if pagesHighlights { await readHighlights() } else { await fill() }
     }
 
-    /// Reads the page older than the last entry held.
+    /// Highlights' newest page from a computer that filters.
+    private func readHighlights() async {
+        guard let subjects = FeedFilter.highlights.subjects else { return }
+        let page: FeedPage
+        do {
+            page = try await routes.feed(before: nil, limit: Self.page, subjects: subjects)
+        } catch {
+            guard !Task.isCancelled, !(error is CancellationError) else { return }
+            state.error = Store.describe(error)
+            return
+        }
+        guard !Task.isCancelled else { return }
+        (picked, pickedMore) = Self.laid(page, over: picked ?? [], hasMore: pickedMore)
+        pickedUnread = page.filteredUnread ?? page.items.filter(\.open).count
+        setUnread(page.unread, cursor: page.cursor)
+        await commit()
+    }
+
+    /// `page`, the newest, laid over `current`: entries newer than its
+    /// last one are exactly the page, older ones already read stay, so a
+    /// person scrolled down keeps their place.
+    nonisolated static func laid(_ page: FeedPage, over current: [FeedItem], hasMore: Bool) -> (items: [FeedItem], hasMore: Bool) {
+        let floor = page.items.last?.cursor
+        let ids = Set(page.items.map(\.id))
+        let older = floor == nil || !page.hasMore ? [] : current.filter { $0.cursor < floor! && !ids.contains($0.id) }
+        let olderIds = Set(older.map(\.id))
+        let items = upsert(current.filter { ids.contains($0.id) || olderIds.contains($0.id) }, page.items, hasMore: false)
+        return (items, older.isEmpty ? page.hasMore : hasMore)
+    }
+
+    /// Highlights comes from the computer's own filtered pages.
+    private var pagesHighlights: Bool { filter == .highlights && subjectFilter == true }
+
+    /// Reads the page older than the last entry shown: Highlights' own
+    /// from a computer that filters, else the whole list's.
     public func loadMore() async {
-        guard live, state.available == true, state.hasMore, !state.loadingMore, let last = held.last else { return }
+        guard pagesHighlights else { await loadMoreHeld(); return }
+        guard live, state.available == true, pickedMore, !state.loadingMore, let last = picked?.last else { return }
         state.loadingMore = true
         publish()
         defer { state.loadingMore = false; publish() }
         do {
-            let page = try await routes.feed(before: last.cursor, limit: Self.page)
-            var merged = held
-            let ids = Set(merged.map(\.id))
-            merged += page.items.filter { !ids.contains($0.id) }
-            held = Self.upsert(merged.sorted(by: Self.newestFirst), page.items, hasMore: false)
-            state.hasMore = page.hasMore
+            let page = try await routes.feed(before: last.cursor, limit: Self.page, subjects: FeedFilter.highlights.subjects)
+            picked = Self.appended(page, to: picked ?? [])
+            pickedMore = page.hasMore
+            if let unread = page.filteredUnread { pickedUnread = unread }
             state.error = nil
             await commit()
         } catch {
@@ -279,16 +355,74 @@ public actor FeedLibrary {
         }
     }
 
+    /// The whole list's next page; then Highlights, filtered here, reads
+    /// on until a screen's worth shows.
+    @discardableResult
+    private func loadMoreHeld(filling: Bool = false) async -> Bool {
+        guard live, state.available == true, heldMore, !state.loadingMore, let last = held.last else { return false }
+        state.loadingMore = true
+        publish()
+        defer { state.loadingMore = false; publish() }
+        do {
+            let page = try await routes.feed(before: last.cursor, limit: Self.page, subjects: nil)
+            held = Self.appended(page, to: held)
+            heldMore = page.hasMore
+            state.error = nil
+            await commit()
+        } catch {
+            guard !(error is CancellationError) else { return false }
+            state.error = Store.describe(error)
+            return false
+        }
+        if !filling { await fill() }
+        return true
+    }
+
+    /// Highlights filtered here: older pages of the whole list until it
+    /// shows a screen's worth, the list ends, or `fillPages` were read.
+    private func fill() async {
+        var pages = 0
+        while filter == .highlights, subjectFilter != true, pages < Self.fillPages,
+              held.filter(FeedFilter.highlights.includes).count < Self.screenful {
+            guard await loadMoreHeld(filling: true) else { return }
+            pages += 1
+        }
+    }
+
+    nonisolated static func appended(_ page: FeedPage, to current: [FeedItem]) -> [FeedItem] {
+        var merged = current
+        let ids = Set(merged.map(\.id))
+        merged += page.items.filter { !ids.contains($0.id) }
+        return upsert(merged.sorted(by: newestFirst), page.items, hasMore: false)
+    }
+
+    // MARK: Filter
+
+    /// Shows everything, or Highlights, and keeps the choice for this
+    /// computer; Highlights is read at once.
+    public func setFilter(_ next: FeedFilter) async {
+        guard next != filter else { return }
+        filter = next
+        await commit()
+        guard next == .highlights, state.available == true, live else { return }
+        if pagesHighlights { await readHighlights() } else { await fill() }
+    }
+
     /// One `feed.*` event, in stream order.
     public func receive(_ event: JSONValue) async {
         guard let type = event["type"]?.stringValue, let payload = event["payload"] else { return }
         switch type {
         case "feed.item.created", "feed.item.updated":
             guard state.available != false, let item = Self.decode(.array([payload["item"] ?? .null])).first else { return }
-            held = Self.upsert(held, [item], hasMore: state.hasMore)
+            held = Self.upsert(held, [item], hasMore: heldMore)
+            // Highlights, as the computer pages it, takes only its own.
+            if let current = picked, FeedFilter.highlights.includes(item) {
+                picked = Self.upsert(current, [item], hasMore: pickedMore)
+            }
         case "feed.item.removed":
             guard let id = payload["itemId"]?.stringValue else { return }
             held.removeAll { $0.id == id }
+            picked?.removeAll { $0.id == id }
         case "feed.unread.updated":
             guard let unread = payload["unread"]?.numberValue else { return }
             setUnread(max(0, Int(unread)), cursor: event["cursor"]?.stringValue)
@@ -326,11 +460,31 @@ public actor FeedLibrary {
         await commit()
     }
 
-    /// Every entry read, up to the newest one shown: entries that arrive
-    /// meanwhile stay open.
+    /// Every entry shown read, up to the newest one: entries that arrive
+    /// meanwhile stay open. In Highlights only its own entries close: by
+    /// their subjects on a computer that filters, else one by one, each
+    /// open one held, so nothing outside it is ever closed.
     public func readAll() async {
-        guard state.available == true, let newest = held.first, held.contains(where: state.isUnread) || state.unread > 0 else { return }
-        _ = try? await outbox.enqueue(.feedReadAll, target: "all", value: .object(["through": .string(newest.cursor)]))
+        guard state.available == true else { return }
+        switch filter {
+        case .all:
+            guard let newest = held.first, held.contains(where: state.isUnread) || state.unread > 0 else { return }
+            _ = try? await outbox.enqueue(.feedReadAll, target: "all", value: .object(["through": .string(newest.cursor)]))
+        case .highlights where pagesHighlights:
+            guard let subjects = filter.subjects, let newest = state.items.first, state.shownUnread > 0 else { return }
+            // Its own slot, so a read-all of everything still on its way stays.
+            _ = try? await outbox.enqueue(.feedReadAll, target: subjects.joined(separator: ","), value: .object([
+                "through": .string(newest.cursor), "subjects": .array(subjects.map(JSONValue.string)),
+            ]))
+        case .highlights:
+            let open = state.items.filter(state.isUnread)
+            guard !open.isEmpty else { return }
+            for item in open {
+                _ = try? await outbox.enqueue(.feedSeen, target: item.subject.key, value: .object([
+                    "type": .string(item.subject.type), "id": .string(item.subject.id), "through": .string(item.cursor),
+                ]))
+            }
+        }
         pending = await outbox.pending().filter(\.kind.isFeed)
         await commit()
     }
@@ -352,19 +506,37 @@ public actor FeedLibrary {
                 guard let type = intent.value["type"]?.stringValue, let id = intent.value["id"]?.stringValue else { return }
                 let answer = try await routes.markFeedSeen(FeedSubject(type: type, id: id), through: intent.value["through"]?.stringValue, mutationId: intent.id)
                 held = Self.upsert(held, answer.items, hasMore: false)
+                if let current = picked {
+                    let closed = current.filter { item in item.open && answer.items.contains { $0.id == item.id && !$0.open } }.count
+                    picked = Self.upsert(current, answer.items.filter(FeedFilter.highlights.includes), hasMore: false)
+                    pickedUnread = max(0, pickedUnread - closed)
+                }
                 setUnread(answer.unread, cursor: nil)
             case .feedReadAll:
                 let through = intent.value["through"]?.stringValue
-                let unread = try await routes.markFeedReadAll(through: through, mutationId: intent.id)
+                let subjects = intent.value["subjects"]?.arrayValue?.compactMap(\.stringValue)
+                let unread = try await routes.markFeedReadAll(through: through, subjects: subjects, mutationId: intent.id)
                 // By its contract every entry open at or before `through`
-                // is now closed, whether or not its own event has come; a
-                // later change arrives with a greater version.
+                // (about `subjects`, when it names them) is now closed,
+                // whether or not its own event has come; a later change
+                // arrives with a greater version.
                 let at = now()
-                held = held.map { item in
-                    guard item.open, through.map({ item.cursor <= $0 }) ?? true else { return item }
-                    var item = item
-                    item.seenAt = at
-                    return item
+                let closes = { (item: FeedItem) in
+                    item.open && (through.map { item.cursor <= $0 } ?? true) && (subjects.map { $0.contains(item.subject.type) } ?? true)
+                }
+                func close(_ items: [FeedItem]) -> [FeedItem] {
+                    items.map { item in
+                        guard closes(item) else { return item }
+                        var item = item
+                        item.seenAt = at
+                        return item
+                    }
+                }
+                held = close(held)
+                if let current = picked {
+                    picked = close(current)
+                    // Every one older is closed too: what is open is held.
+                    pickedUnread = picked?.filter(\.open).count ?? 0
                 }
                 setUnread(unread, cursor: nil)
             default:
@@ -413,8 +585,10 @@ public actor FeedLibrary {
         guard item.open else { return false }
         for intent in pending {
             let through = intent.value["through"]?.stringValue
+            let subjects = intent.value["subjects"]?.arrayValue?.compactMap(\.stringValue)
             switch intent.kind {
             case .feedSeen where intent.target == item.subject.key, .feedReadAll:
+                guard subjects.map({ $0.contains(item.subject.type) }) ?? true else { continue }
                 if through.map({ item.cursor <= $0 }) ?? true { return true }
             default:
                 continue
@@ -427,10 +601,27 @@ public actor FeedLibrary {
     /// down when what is kept changed.
     private func commit() async {
         let available = state.available == true
-        state.items = available ? held : []
-        let seen = Set(state.items.filter(covered).map(\.id))
-        state.seenHere = seen
-        state.unread = available ? max(0, serverUnread - seen.count) : 0
+        state.filter = filter
+        state.covers = covers == true
+        let shown: [FeedItem]
+        let more: Bool
+        switch filter {
+        case .all: (shown, more) = (held, heldMore)
+        case .highlights where pagesHighlights: (shown, more) = (picked ?? [], pickedMore)
+        case .highlights: (shown, more) = (held.filter(FeedFilter.highlights.includes), heldMore)
+        }
+        state.items = available ? shown : []
+        state.hasMore = available && more
+        let seenHeld = Set(held.filter(covered).map(\.id))
+        let seenShown = Set(state.items.filter(covered).map(\.id))
+        state.seenHere = available ? seenHeld.union(seenShown) : []
+        state.unread = available ? max(0, serverUnread - seenHeld.count) : 0
+        let openShown = state.items.filter(state.isUnread).count
+        switch filter {
+        case .all: state.shownUnread = state.unread
+        case .highlights where pagesHighlights: state.shownUnread = available ? max(openShown, pickedUnread - seenShown.count) : 0
+        case .highlights: state.shownUnread = openShown
+        }
         publish()
         await save()
     }
@@ -439,9 +630,19 @@ public actor FeedLibrary {
         var object: [String: JSONValue] = [
             "items": (try? JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(Array(held.prefix(Self.keptLimit))))) ?? .array([]),
             "unread": .number(Double(serverUnread)),
-            "hasMore": .bool(state.hasMore || held.count > Self.keptLimit),
+            "hasMore": .bool(heldMore || held.count > Self.keptLimit),
         ]
         if let available = state.available { object["available"] = .bool(available) }
+        if filter != .all { object["filter"] = .string(filter.rawValue) }
+        if let subjectFilter { object["subjectFilter"] = .bool(subjectFilter) }
+        if let covers { object["covers"] = .bool(covers) }
+        if let picked {
+            object["highlights"] = .object([
+                "items": (try? JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(Array(picked.prefix(Self.keptLimit))))) ?? .array([]),
+                "hasMore": .bool(pickedMore || picked.count > Self.keptLimit),
+                "unread": .number(Double(pickedUnread)),
+            ])
+        }
         if let unreadCursor { object["unreadCursor"] = .string(unreadCursor) }
         let value = JSONValue.object(object)
         // A change that changed nothing kept writes nothing.

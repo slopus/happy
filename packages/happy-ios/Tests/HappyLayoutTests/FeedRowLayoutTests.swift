@@ -93,4 +93,97 @@ final class FeedRowLayoutTests: XCTestCase {
         XCTAssertEqual(row.faces, [CGRect(x: 196, y: 34.5, width: 18, height: 18)])
         XCTAssertNil(row.summary)
     }
+
+    // MARK: Posts
+
+    func testThePostsMeasures() {
+        typealias M = FeedMetrics
+        XCTAssertEqual(M.captionLines, 3)
+        XCTAssertEqual([M.captionSize, M.postGap, M.postBottom, M.coverRadius], [15, 8, 16, 10])
+    }
+
+    private static let wide: CGFloat = 9.0 / 16.0
+
+    private func post(width: CGFloat = 390, maxWidth: CGFloat = .greatestFiniteMagnitude, place: CardPlace = .alone, caption: Measurable? = nil, cover: CGFloat) -> FeedRowLayout {
+        FeedRowLayout(
+            width: width, maxWidth: maxWidth, place: place,
+            title: .fixed(width: 200, height: 19), time: CGSize(width: 40, height: 16),
+            faces: 1, more: nil, summary: .fixed(width: 100, height: 16),
+            caption: caption, cover: cover, hairline: 0.5, scale: 2
+        )
+    }
+
+    /// A wide cover under the row: the row's own frames stay where a
+    /// plain row has them, the caption and the cover run inset to inset,
+    /// and the cover is exactly 16:9.
+    func testAPostIsTheRowThenItsCaptionAndCover() {
+        let plain = FeedRowLayout(
+            width: 390, place: .alone,
+            title: .fixed(width: 200, height: 19), time: CGSize(width: 40, height: 16),
+            faces: 1, more: nil, summary: .fixed(width: 100, height: 16),
+            hairline: 0.5, scale: 2
+        )
+        let row = post(place: CardPlace(first: true, last: false), caption: .fixed(width: 300, height: 36), cover: Self.wide)
+        XCTAssertEqual(row.avatar, plain.avatar)
+        XCTAssertEqual(row.title, plain.title)
+        XCTAssertEqual(row.time, plain.time)
+        XCTAssertEqual(row.dot, plain.dot)
+        XCTAssertEqual(row.faces, plain.faces)
+        XCTAssertEqual(row.summary, plain.summary)
+        XCTAssertNil(plain.caption)
+        XCTAssertNil(plain.cover)
+
+        XCTAssertEqual(row.caption, CGRect(x: 32, y: 64, width: 326, height: 36))
+        // 326 wide at 16:9 is 183.375, on the half pixel.
+        XCTAssertEqual(row.cover, CGRect(x: 32, y: 108, width: 326, height: 183.5))
+        XCTAssertEqual(row.size, CGSize(width: 390, height: 307.5))
+        XCTAssertEqual(row.card, CGRect(x: 16, y: 0, width: 358, height: 307.5))
+        XCTAssertEqual(row.separator, CGRect(x: 84, y: 307, width: 290, height: 0.5))
+    }
+
+    /// A square cover, and no summary: the cover follows the row at once,
+    /// as tall as it is wide.
+    func testASquarePostWithoutACaption() {
+        let row = post(caption: nil, cover: 1)
+        XCTAssertNil(row.caption)
+        XCTAssertEqual(row.cover, CGRect(x: 32, y: 64, width: 326, height: 326))
+        XCTAssertEqual(row.size.height, 64 + 326 + 16)
+        XCTAssertNil(row.separator)
+
+        let empty = post(caption: .fixed(width: 0, height: 0), cover: 1)
+        XCTAssertNil(empty.caption, "an empty caption takes no room")
+        XCTAssertEqual(empty.cover, row.cover)
+    }
+
+    /// On a 3x screen the height lands on a third of a point.
+    func testTheCoverIsOnThePixelGrid() {
+        let row = FeedRowLayout(
+            width: 390, place: .alone,
+            title: .fixed(width: 200, height: 19), time: nil,
+            faces: 0, more: nil, summary: nil,
+            cover: Self.wide, hairline: 1.0 / 3, scale: 3
+        )
+        // 326 × 9/16 = 183.375 → 550.125 pixels → 550.
+        XCTAssertEqual(row.cover?.height ?? 0, 550.0 / 3, accuracy: 0.0001)
+    }
+
+    /// No shape is no post; the row stays compact.
+    func testNoShapeIsNoPost() {
+        for ratio in [0, -1, .infinity] as [CGFloat] {
+            let row = post(caption: .fixed(width: 100, height: 18), cover: ratio)
+            XCTAssertNil(row.cover)
+            XCTAssertNil(row.caption)
+            XCTAssertEqual(row.size.height, 64)
+        }
+    }
+
+    /// On an iPad the post stands in the readable column, so a square
+    /// stays a sensible size.
+    func testAPostInTheReadableColumn() {
+        let wide = post(width: 1024, maxWidth: 800, cover: Self.wide)
+        XCTAssertEqual(wide.cover, CGRect(x: 144, y: 64, width: 736, height: 414))
+        XCTAssertEqual(wide.size.height, 64 + 414 + 16)
+        let square = post(width: 1024, maxWidth: 800, cover: 1)
+        XCTAssertEqual(square.cover, CGRect(x: 144, y: 64, width: 736, height: 736))
+    }
 }

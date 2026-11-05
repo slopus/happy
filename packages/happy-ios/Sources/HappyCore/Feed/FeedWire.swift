@@ -178,27 +178,74 @@ public struct FeedCluster: Codable, Equatable, Hashable, Sendable {
     }
 }
 
+/// Which entries the Feed shows (desktop's feed filter): all of them, or
+/// its Highlights, the entries about artifacts and tasks.
+public enum FeedFilter: String, Equatable, Hashable, Sendable, CaseIterable {
+    case all
+    case highlights
+
+    /// The subject types it keeps, as `GET /v0/feed?subjects=` names
+    /// them; nil for every one.
+    public var subjects: [String]? {
+        switch self {
+        case .all: nil
+        case .highlights: ["artifact", "task"]
+        }
+    }
+
+    public func includes(_ item: FeedItem) -> Bool {
+        subjects.map { $0.contains(item.subject.type) } ?? true
+    }
+}
+
+/// What a computer's health says of its Feed (`capabilities`): whether it
+/// keeps one, whether it filters it by subject (`feedSubjectFilter`), and
+/// whether its artifacts carry covers (`artifactCovers`).
+public struct FeedCapabilities: Equatable, Sendable {
+    public var feed: Bool
+    public var subjectFilter: Bool
+    public var covers: Bool
+
+    public init(feed: Bool, subjectFilter: Bool = false, covers: Bool = false) {
+        self.feed = feed
+        self.subjectFilter = subjectFilter
+        self.covers = covers
+    }
+
+    public init(health: JSONValue) {
+        let capabilities = health["capabilities"]
+        feed = capabilities?["feed"]?.boolValue == true
+        subjectFilter = capabilities?["feedSubjectFilter"]?.boolValue == true
+        covers = capabilities?["artifactCovers"]?.boolValue == true
+    }
+}
+
 /// `GET /v0/feed`.
 public struct FeedPage: Decodable, Equatable, Sendable {
     public var items: [FeedItem]
     public var unread: Int
+    /// How many of the filtered list are open, when the read was filtered
+    /// (`subjects`); `unread` stays the person's whole count.
+    public var filteredUnread: Int?
     public var hasMore: Bool
     /// The event cursor captured before the read.
     public var cursor: String?
 
-    public init(items: [FeedItem], unread: Int, hasMore: Bool, cursor: String? = nil) {
+    public init(items: [FeedItem], unread: Int, filteredUnread: Int? = nil, hasMore: Bool, cursor: String? = nil) {
         self.items = items
         self.unread = unread
+        self.filteredUnread = filteredUnread
         self.hasMore = hasMore
         self.cursor = cursor
     }
 
-    enum CodingKeys: String, CodingKey { case items, unread, hasMore, cursor }
+    enum CodingKeys: String, CodingKey { case items, unread, filteredUnread, hasMore, cursor }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         items = try container.decode([Lossy<FeedItem>].self, forKey: .items).compactMap(\.value)
         unread = max(0, (try? container.decode(Int.self, forKey: .unread)) ?? 0)
+        filteredUnread = (try? container.decodeIfPresent(Int.self, forKey: .filteredUnread)).flatMap { $0.map { max(0, $0) } }
         hasMore = (try? container.decode(Bool.self, forKey: .hasMore)) ?? false
         cursor = try? container.decodeIfPresent(String.self, forKey: .cursor)
     }
@@ -248,12 +295,13 @@ public struct FeedPeek: Decodable, Equatable, Sendable {
 /// The Feed's routes (API.md "Feed"), as the library uses them: the
 /// computer's client, or a test's fake.
 public protocol FeedRoutes: Sendable {
-    /// Whether the daemon serves the Feed (`capabilities.feed`).
-    func feedCapable() async throws -> Bool
-    func feed(before: String?, limit: Int) async throws -> FeedPage
+    /// Whether the daemon serves the Feed, filters it and covers artifacts.
+    func feedCapabilities() async throws -> FeedCapabilities
+    /// A page of the entries about `subjects`, or of every entry for nil.
+    func feed(before: String?, limit: Int, subjects: [String]?) async throws -> FeedPage
     func markFeedSeen(_ subject: FeedSubject, through: String?, mutationId: String) async throws -> FeedSeenAnswer
-    /// What stays open.
-    func markFeedReadAll(through: String?, mutationId: String) async throws -> Int
+    /// What stays open. `subjects` closes only the entries about those.
+    func markFeedReadAll(through: String?, subjects: [String]?, mutationId: String) async throws -> Int
     func feedClusters() async throws -> [FeedCluster]
     /// Follows `cluster`, or mutes it.
     func followFeedCluster(_ cluster: String, follow: Bool, mutationId: String) async throws -> FeedCluster
@@ -261,13 +309,14 @@ public protocol FeedRoutes: Sendable {
 }
 
 extension AgentClient: FeedRoutes {
-    public func feedCapable() async throws -> Bool {
-        try await decode(JSONValue.self, "GET", "/v0/health")["capabilities"]?["feed"]?.boolValue == true
+    public func feedCapabilities() async throws -> FeedCapabilities {
+        FeedCapabilities(health: try await decode(JSONValue.self, "GET", "/v0/health"))
     }
 
-    public func feed(before: String?, limit: Int) async throws -> FeedPage {
+    public func feed(before: String?, limit: Int, subjects: [String]?) async throws -> FeedPage {
         var query = ["limit=\(max(1, min(200, limit)))"]
         if let before { query.append("before=\(Self.escape(before))") }
+        if let subjects { query.append("subjects=\(subjects.map(Self.escape).joined(separator: ","))") }
         return try await decode(FeedPage.self, "GET", "/v0/feed?" + query.joined(separator: "&"))
     }
 
@@ -279,10 +328,11 @@ extension AgentClient: FeedRoutes {
         ]))
     }
 
-    public func markFeedReadAll(through: String?, mutationId: String) async throws -> Int {
+    public func markFeedReadAll(through: String?, subjects: [String]?, mutationId: String) async throws -> Int {
         struct Answer: Decodable { var unread: Int? }
         var body: [String: JSONValue] = ["mutationId": .string(mutationId)]
         if let through { body["through"] = .string(through) }
+        if let subjects { body["subjects"] = .array(subjects.map(JSONValue.string)) }
         return max(0, try await decode(Answer.self, "POST", "/v0/feed/read-all", json: .object(body)).unread ?? 0)
     }
 

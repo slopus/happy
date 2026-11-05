@@ -22,6 +22,57 @@ public struct ArtifactSummary: Codable, Equatable, Sendable, Identifiable {
         public var file: AgentWire.ArtifactVersion.File { .init(path: path, mimeType: mimeType, size: size) }
     }
 
+    /// The latest version's cover (`cover`): a picture among its files,
+    /// its size in pixels, and the one of the standard shapes it is,
+    /// which the Feed shows its post at.
+    public struct Cover: Codable, Equatable, Sendable {
+        /// The shapes a cover may be (within 2%, the daemon checks); the
+        /// set may grow, and a shape this phone doesn't know is no cover.
+        public enum Aspect: String, Codable, Equatable, Sendable {
+            /// 16:9.
+            case wide
+            /// 1:1.
+            case square
+
+            /// Height over width.
+            public var ratio: Double {
+                switch self {
+                case .wide: 9.0 / 16.0
+                case .square: 1
+                }
+            }
+        }
+
+        public var path: String
+        public var mimeType: String
+        public var width: Double
+        public var height: Double
+        public var aspect: Aspect
+
+        public init(path: String, mimeType: String, width: Double, height: Double, aspect: Aspect) {
+            self.path = path
+            self.mimeType = mimeType
+            self.width = width
+            self.height = height
+            self.aspect = aspect
+        }
+
+        /// The kinds of picture a cover may be; the daemon turns SVG into PNG.
+        public static let mimeTypes: Set<String> = ["image/png", "image/jpeg", "image/webp", "image/gif"]
+
+        /// A cover object; nil for `null`, or one without a path, a known
+        /// kind of picture, a size or a known shape (an older daemon's,
+        /// which sends no `aspect`).
+        init?(json: JSONValue?) {
+            guard let json, let path = json["path"]?.stringValue, !path.isEmpty,
+                  let mimeType = json["mimeType"]?.stringValue, Self.mimeTypes.contains(mimeType.lowercased()),
+                  let width = json["width"]?.numberValue, let height = json["height"]?.numberValue,
+                  width.isFinite, height.isFinite, width > 0, height > 0,
+                  let aspect = json["aspect"]?.stringValue.flatMap(Aspect.init(rawValue:)) else { return nil }
+            self.init(path: path, mimeType: mimeType.lowercased(), width: width, height: height, aspect: aspect)
+        }
+    }
+
     public var id: String
     /// `markdown`, `html`, `image`, `image_series`, `video` or `document`;
     /// a newer daemon's type is kept as it came.
@@ -37,8 +88,15 @@ public struct ArtifactSummary: Codable, Equatable, Sendable, Identifiable {
     public var updatedAt: Double
     /// A tombstone (`status: "deleted"`): its versions are gone.
     public var deleted: Bool
+    /// The latest version's cover, and its one line about itself; nil
+    /// from a daemon without covers.
+    public var cover: Cover?
+    public var summary: String?
+    /// The colour the latest version is shown on (`#rgb`, `#rgba`,
+    /// `#rrggbb` or `#rrggbbaa`, lowercased); nil for a transparent slot.
+    public var background: String?
 
-    public init(id: String, type: String, title: String, latestVersion: Int, entry: Entry?, fileCount: Int = 1, live: Bool = false, createdAt: Double, updatedAt: Double, deleted: Bool = false) {
+    public init(id: String, type: String, title: String, latestVersion: Int, entry: Entry?, fileCount: Int = 1, live: Bool = false, createdAt: Double, updatedAt: Double, deleted: Bool = false, cover: Cover? = nil, summary: String? = nil, background: String? = nil) {
         self.id = id
         self.type = type
         self.title = title
@@ -49,6 +107,9 @@ public struct ArtifactSummary: Codable, Equatable, Sendable, Identifiable {
         self.createdAt = createdAt
         self.updatedAt = updatedAt
         self.deleted = deleted
+        self.cover = cover
+        self.summary = summary
+        self.background = background
     }
 
     /// An artifact object, a tombstone included, or one this type kept;
@@ -65,6 +126,22 @@ public struct ArtifactSummary: Codable, Equatable, Sendable, Identifiable {
         createdAt = json["createdAt"]?.numberValue ?? 0
         updatedAt = json["updatedAt"]?.numberValue ?? createdAt
         deleted = json["deleted"]?.boolValue ?? (json["status"]?.stringValue == "deleted")
+        cover = Cover(json: json["cover"])
+        summary = Self.summary(json["summary"])
+        background = Self.background(json["background"])
+    }
+
+    /// One plain line, as the daemon keeps it; nil for `null` or nothing.
+    static func summary(_ json: JSONValue?) -> String? {
+        guard let text = json?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
+        return text.replacingOccurrences(of: "\n", with: " ")
+    }
+
+    /// `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`, and nothing else.
+    static func background(_ json: JSONValue?) -> String? {
+        json?.stringValue.flatMap { value in
+            value.range(of: "^#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$", options: .regularExpression) != nil ? value.lowercased() : nil
+        }
     }
 
     static func entry(_ json: JSONValue?) -> Entry? {
@@ -125,6 +202,10 @@ public enum ArtifactCatalog {
             if let count = changes["fileCount"]?.numberValue { artifact.fileCount = Int(count) }
             if let live = changes["live"] { artifact.live = live.objectValue != nil }
             if let time = changes["updatedAt"]?.numberValue { artifact.updatedAt = time }
+            // Present and `null` clears them.
+            if changes["cover"] != nil { artifact.cover = ArtifactSummary.Cover(json: changes["cover"]) }
+            if changes["summary"] != nil { artifact.summary = ArtifactSummary.summary(changes["summary"]) }
+            if changes["background"] != nil { artifact.background = ArtifactSummary.background(changes["background"]) }
             guard artifact != next[index] else { return .none }
             next[index] = artifact
             return .changed(sorted(next))

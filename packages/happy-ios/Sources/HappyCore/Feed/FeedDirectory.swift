@@ -198,6 +198,41 @@ public enum FeedActorName: Equatable, Sendable {
     case named(String)
 }
 
+/// A covered artifact's entry drawn as a post: its one line about itself,
+/// then its cover across the card at the cover's own shape.
+public struct FeedPost: Equatable, Sendable {
+    /// The cover's file in the latest version, as the daemon serves it
+    /// (`/v0/artifacts/:id/versions/:n/files/<path>`).
+    public var image: String
+    /// The cover's shape, which the post's height comes from, and its
+    /// size in pixels, which how much of it is decoded does.
+    public var aspect: ArtifactSummary.Cover.Aspect
+    public var width: Double
+    public var height: Double
+    /// The artifact's own colour behind the picture, `#rrggbb` and the like.
+    public var background: String?
+    public var summary: String?
+
+    public init(image: String, aspect: ArtifactSummary.Cover.Aspect, width: Double, height: Double, background: String? = nil, summary: String? = nil) {
+        self.image = image
+        self.aspect = aspect
+        self.width = width
+        self.height = height
+        self.background = background
+        self.summary = summary
+    }
+
+    /// `artifact`'s post, when it has a cover.
+    public init?(_ artifact: ArtifactSummary) {
+        guard let cover = artifact.cover, !artifact.deleted else { return nil }
+        let path = cover.path.split(separator: "/", omittingEmptySubsequences: false).map { AgentClient.escape(String($0)) }.joined(separator: "/")
+        self.init(
+            image: "/v0/artifacts/\(AgentClient.escape(artifact.id))/versions/\(artifact.latestVersion)/files/\(path)",
+            aspect: cover.aspect, width: cover.width, height: cover.height, background: artifact.background, summary: artifact.summary
+        )
+    }
+}
+
 /// One Feed row, joined from its entry and the directory: everything the
 /// row draws and opens, and nothing it doesn't, so two equal rows draw the
 /// same and a rename changes exactly the rows that show the renamed thing.
@@ -221,6 +256,8 @@ public struct FeedRow: Equatable, Sendable, Identifiable {
     public var unread: Bool
     /// Nil where nothing opens it (a deleted artifact).
     public var target: FeedTarget?
+    /// A covered artifact's post under the row; nil for a plain row.
+    public var post: FeedPost?
 }
 
 /// Feed rows from entries and the directory, off the main thread.
@@ -230,17 +267,20 @@ public enum FeedRows {
 
     /// A row for each entry the directory can show, in their order; `unread`
     /// says which carry the dot. An entry whose subject the directory
-    /// doesn't hold is left out, never shown with a stand-in.
-    public static func make(_ items: [FeedItem], unread: (FeedItem) -> Bool, directory: FeedDirectory, personSeed: String) -> [FeedRow] {
-        items.compactMap { row($0, unread: unread($0), directory: directory, personSeed: personSeed) }
+    /// doesn't hold is left out, never shown with a stand-in. With
+    /// `covers` (the computer's `artifactCovers`), a covered artifact's
+    /// row carries its post.
+    public static func make(_ items: [FeedItem], unread: (FeedItem) -> Bool, directory: FeedDirectory, personSeed: String, covers: Bool = false) -> [FeedRow] {
+        items.compactMap { row($0, unread: unread($0), directory: directory, personSeed: personSeed, covers: covers) }
     }
 
-    public static func row(_ item: FeedItem, unread: Bool, directory: FeedDirectory, personSeed: String) -> FeedRow? {
+    public static func row(_ item: FeedItem, unread: Bool, directory: FeedDirectory, personSeed: String, covers: Bool = false) -> FeedRow? {
         let id = item.subject.id
         let title: String
         let face: FeedFace
         let kind: FeedSubjectKind
         var detail: String?
+        var post: FeedPost?
         let target: FeedTarget?
         switch item.subject.type {
         case "task", "bot":
@@ -266,6 +306,7 @@ public enum FeedRows {
             face = .tile(.artifact, artifactType: artifact.type)
             // A deleted one's versions are gone: it shows, and opens nothing.
             target = artifact.deleted ? nil : .artifact(artifact.artifact)
+            if covers { post = FeedPost(artifact) }
         default:
             return nil
         }
@@ -275,7 +316,7 @@ public enum FeedRows {
             id: item.id, title: title, face: face, kind: kind,
             detail: detail.map(Self.oneLine).flatMap { $0.isEmpty ? nil : $0 },
             created: item.created, updates: item.updates, actors: actors, actorNames: names,
-            actorCount: max(item.actorCount, item.actors.count), lastAt: item.lastAt, unread: unread, target: target
+            actorCount: max(item.actorCount, item.actors.count), lastAt: item.lastAt, unread: unread, target: target, post: post
         )
     }
 

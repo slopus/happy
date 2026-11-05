@@ -12,6 +12,11 @@ import UIKit
 /// turns to Following: the places whose changes come in, each followed or
 /// muted, and a tap peeks at one's newest entries.
 ///
+/// The bar's filter shows all of Activity or its Highlights, the entries
+/// about artifacts and tasks, as the person last chose on this computer
+/// (`FeedLibrary.setFilter`). A covered artifact's entry is a post: its
+/// row, its summary and its cover across the card (`FeedCoverView`).
+///
 /// The entries are the engine's (`FeedLibrary`), kept on the phone and
 /// followed through its events, so the screen opens on what it last
 /// showed. They are references only: every row is joined, off the main
@@ -31,6 +36,17 @@ final class FeedViewController: UIViewController {
         item.isEnabled = false
         return item
     }()
+    private lazy var filterItem: UIBarButtonItem = {
+        // Home's filter, its menu checking the one chosen.
+        let item = UIBarButtonItem(image: .icon(.ionicons("filter"), size: 22), menu: filterMenu(.all))
+        item.accessibilityIdentifier = "feed-filter"
+        item.accessibilityLabel = Strings.Feed.words.filter
+        item.accessibilityValue = Strings.Feed.words.name(.all)
+        item.preferredMenuElementOrder = .fixed
+        return item
+    }()
+    /// The filter the bar shows as chosen.
+    private var shownFilter = FeedFilter.all
     private var pipeline: ApplyPipeline<FeedListInput, Applied, Output>?
     private var clustersPipeline: ApplyPipeline<FeedClustersInput, Applied, ClustersOutput>?
     private var watching: Task<Void, Never>?
@@ -66,7 +82,9 @@ final class FeedViewController: UIViewController {
         var entries: [String: FeedItem]
         var rows: [String: FeedRow]
         var lastEntryId: String?
+        /// Open among the entries the filter shows.
         var unread: Int
+        var filter: FeedFilter
         var hasMore: Bool
         var loadingMore: Bool
         var width: CGFloat
@@ -116,7 +134,11 @@ final class FeedViewController: UIViewController {
         activity.onSelect = { [weak self] id in self?.open(id) }
         activity.onRefresh = { [weak self] in self?.refresh() }
         activity.onScroll = { [weak self] in self?.loadMoreIfNeeded() }
-        activity.makeOverlay = { [weak self] overlay, _ in self?.makeFace(overlay, faces: self?.faces ?? [:]) }
+        activity.makeOverlay = { [weak self] overlay, id in
+            guard let self else { return nil }
+            if overlay.kind == FeedListItems.coverKind { return makeCover(overlay, id: id) }
+            return makeFace(overlay, faces: faces)
+        }
         following.onSelect = { [weak self] id in self?.peek(id) }
         following.onRefresh = { [weak self] in self?.readClusters(pulled: true) }
         following.makeOverlay = { [weak self] overlay, id in self?.makeClusterOverlay(overlay, id: id) }
@@ -175,7 +197,32 @@ final class FeedViewController: UIViewController {
         tabs.addAction(UIAction { [weak self] _ in self?.switched() }, for: .valueChanged)
         navigationItem.titleView = tabs
         readAllItem.accessibilityLabel = Strings.Feed.words.markAllRead
-        navigationItem.rightBarButtonItem = readAllItem
+        navigationItem.rightBarButtonItems = [readAllItem, filterItem]
+    }
+
+    /// All or Highlights, the chosen one checked.
+    private func filterMenu(_ chosen: FeedFilter) -> UIMenu {
+        let words = Strings.Feed.words
+        let actions = FeedFilter.allCases.map { filter in
+            let action = UIAction(title: words.name(filter), state: filter == chosen ? .on : .off) { [weak self] _ in self?.choose(filter) }
+            action.accessibilityIdentifier = "feed-filter:\(filter.rawValue)"
+            return action
+        }
+        return UIMenu(title: words.filter, options: .singleSelection, children: actions)
+    }
+
+    func choose(_ filter: FeedFilter) {
+        showFilter(filter)
+        Task { [feed] in await feed.setFilter(filter) }
+    }
+
+    private func showFilter(_ filter: FeedFilter) {
+        guard filter != shownFilter else { return }
+        shownFilter = filter
+        filterItem.menu = filterMenu(filter)
+        // Lit while it hides anything, as a toggled bar button is.
+        filterItem.isSelected = filter != .all
+        filterItem.accessibilityValue = Strings.Feed.words.name(filter)
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -250,7 +297,7 @@ final class FeedViewController: UIViewController {
         }
         let output = Output(
             items: items, faces: next.faces, entries: entries, rows: rows, lastEntryId: input.state.items.last?.id,
-            unread: input.state.unread, hasMore: input.state.hasMore, loadingMore: input.state.loadingMore,
+            unread: input.state.shownUnread, filter: input.state.filter, hasMore: input.state.hasMore, loadingMore: input.state.loadingMore,
             width: input.width, refreshing: refreshing, replan: replan
         )
         return (output, state)
@@ -282,6 +329,7 @@ final class FeedViewController: UIViewController {
         hasMore = output.hasMore
         loadingMore = output.loadingMore
         readAllItem.isEnabled = output.unread > 0
+        showFilter(output.filter)
         activity.apply(output.items, animated: true, replan: output.replan)
         if pulled, !output.refreshing {
             pulled = false
@@ -324,6 +372,12 @@ final class FeedViewController: UIViewController {
         FeedOpening.open(row, session: session, from: self)
     }
 
+    /// A post's cover, read at the size it is drawn.
+    private func makeCover(_ overlay: CardOverlay, id: String) -> UIView? {
+        guard let post = rows[id]?.post else { return nil }
+        return FeedCoverView(post: post, frame: overlay.frame, radius: overlay.radius, displayScale: traitCollection.displayScale, images: session.images)
+    }
+
     private func makeFace(_ overlay: CardOverlay, faces: [String: FeedFace]) -> UIView? {
         guard overlay.kind == FeedListItems.faceKind || overlay.kind == FeedListItems.actorKind, let face = faces[overlay.key] else { return nil }
         return FeedFaceView(face: face, radius: overlay.radius, ringed: overlay.kind == FeedListItems.actorKind, side: overlay.frame.width, images: session.images)
@@ -342,7 +396,7 @@ final class FeedViewController: UIViewController {
         activity.isHidden = showsFollowing
         following.isHidden = !showsFollowing
         HeaderBar.edge(showsFollowing ? following.edge : activity.edge, in: self)
-        navigationItem.rightBarButtonItem = showsFollowing ? nil : readAllItem
+        navigationItem.rightBarButtonItems = showsFollowing ? nil : [readAllItem, filterItem]
         if showsFollowing { readClusters(pulled: false) }
     }
 
@@ -489,8 +543,12 @@ final class FeedPeekViewController: UIViewController {
         HeaderBar.edge(list.edge, in: self)
         list.onSelect = { [weak self] id in self?.open(id) }
         list.onRefresh = { [weak self] in self?.read(pulled: true) }
-        list.makeOverlay = { [weak self] overlay, _ in
-            guard let self, let face = faces[overlay.key] else { return nil }
+        list.makeOverlay = { [weak self] overlay, id in
+            guard let self else { return nil }
+            if overlay.kind == FeedListItems.coverKind, let post = rows[id]?.post {
+                return FeedCoverView(post: post, frame: overlay.frame, radius: overlay.radius, displayScale: traitCollection.displayScale, images: session.images)
+            }
+            guard let face = faces[overlay.key] else { return nil }
             return FeedFaceView(face: face, radius: overlay.radius, ringed: overlay.kind == FeedListItems.actorKind, side: overlay.frame.width, images: session.images)
         }
         var input = FeedListInput(words: Strings.Feed.words, dates: .current)
@@ -558,6 +616,7 @@ final class FeedPeekViewController: UIViewController {
         reading = Task { [weak self, feed, cluster] in
             let result: Result<FeedPeek, Error>
             do { result = .success(try await feed.peek(cluster.cluster)) } catch { result = .failure(error) }
+            let covers = await feed.current.covers
             guard !Task.isCancelled, let self else { return }
             list.refreshing = false
             if case .success(let peek) = result {
@@ -566,6 +625,7 @@ final class FeedPeekViewController: UIViewController {
             pipeline?.update { input in
                 input.state.loaded = true
                 input.state.available = true
+                input.state.covers = covers
                 switch result {
                 case .success(let peek):
                     input.state.items = peek.entries

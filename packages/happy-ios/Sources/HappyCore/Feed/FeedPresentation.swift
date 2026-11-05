@@ -107,6 +107,18 @@ public struct FeedWords: Equatable, Sendable {
     public var everything: String { word("everything", "Everything") }
     public var team: String { word("team", "Team") }
     public var muted: String { word("muted", "Muted") }
+    /// The feed's filter: everything, or its artifacts and tasks.
+    public var filter: String { word("filter", "Filter") }
+    public var all: String { word("all", "All") }
+    public var highlights: String { word("highlights", "Highlights") }
+    public var noHighlights: String { word("noHighlights", "No highlights yet. Artifacts and new tasks show up here.") }
+
+    public func name(_ filter: FeedFilter) -> String {
+        switch filter {
+        case .all: all
+        case .highlights: highlights
+        }
+    }
 
     /// What a place in Following is called.
     public func name(_ name: FeedPlace.Name) -> String {

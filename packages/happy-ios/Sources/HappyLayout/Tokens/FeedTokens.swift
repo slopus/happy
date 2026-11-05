@@ -32,6 +32,17 @@ public enum FeedMetrics {
     public static let titleSize: CGFloat = CardListMetrics.titleSize
     public static let summarySize: CGFloat = CardListMetrics.subtitleSize
 
+    /// A covered artifact's post under its row: its summary, up to this
+    /// many lines, then its cover across the card, `postGap` apart, with
+    /// `postBottom` under the cover as at its sides.
+    public static let captionLines = 3
+    public static let captionSize: CGFloat = 15
+    public static let postGap: CGFloat = 8
+    public static let postBottom: CGFloat = CardListMetrics.inset
+    /// The cover's corners, the card's own inset by its margin, so the
+    /// two curves run parallel.
+    public static let coverRadius: CGFloat = CardListMetrics.radius - CardListMetrics.inset
+
     /// A place's avatar in Following, and its row.
     public static let clusterAvatar: CGFloat = 32
     public static let clusterRow: CGFloat = 52

@@ -39,6 +39,8 @@ enum FeedListItems {
     /// says whether it is round (a person) or a rounded square.
     static let faceKind = "face"
     static let actorKind = "actor"
+    /// A post's cover over its placeholder (`FeedCoverView`).
+    static let coverKind = "cover"
 
     /// What a row's or a place's face looks like where it is a glyph on
     /// its kind's tile, drawn into the bitmap.
@@ -85,8 +87,9 @@ enum FeedListItems {
         let state = input.state
         let words = input.words
         let peek = input.peek
-        let rows = FeedRows.make(state.items, unread: { !peek && state.isUnread($0) }, directory: input.directory, personSeed: input.personSeed)
+        let rows = FeedRows.make(state.items, unread: { !peek && state.isUnread($0) }, directory: input.directory, personSeed: input.personSeed, covers: state.covers)
         if rows.isEmpty {
+            let highlights = !input.peek && state.filter == .highlights
             let text: String
             if input.peek { text = state.error != nil ? words.clustersUnavailable : state.loaded ? words.peekEmpty : words.loadingClusters }
             else if state.available == false { text = words.unsupported }
@@ -94,7 +97,9 @@ enum FeedListItems {
             else if !state.loaded || state.available == nil || state.refreshing { text = words.loading }
             // Entries whose subjects aren't read yet show once they are.
             else if !state.items.isEmpty && !input.directory.loaded { text = words.loading }
-            else { text = words.empty }
+            // Highlights filtered here is still reading older pages for some.
+            else if highlights && state.loadingMore { text = words.loading }
+            else { text = highlights ? words.noHighlights : words.empty }
             return ([note("feed:note", text, input)], [:], [])
         }
         var made = entries(rows, input: input)
@@ -138,6 +143,9 @@ enum FeedListItems {
         let actors = Array(entry.actors.prefix(M.maxFaces))
         let rest = max(entry.actorCount, entry.actors.count) - actors.count
         let more = rest > 0 ? "+\(rest)" : nil
+        let post = entry.post
+        let captionFont = CardFont(.regular, M.captionSize, scale: input.scale)
+        let caption = post?.summary
         let layout = FeedRowLayout(
             width: input.width, maxWidth: input.maxWidth, place: place,
             title: CardText.measurable(title, font: titleFont, maxLines: 1, scale: input.displayScale),
@@ -145,6 +153,8 @@ enum FeedListItems {
             faces: actors.count,
             more: more.map { CardText.measure($0, font: small, width: 10_000, maxLines: 1, scale: input.displayScale) },
             summary: CardText.measurable(summary, font: small, maxLines: 1, scale: input.displayScale),
+            caption: caption.map { CardText.measurable($0, font: captionFont, maxLines: M.captionLines, scale: input.displayScale) },
+            cover: post.map { CGFloat($0.aspect.ratio) },
             hairline: 1 / max(1, input.displayScale), scale: input.displayScale
         )
         var drawing = CardDrawing(dark: input.dark, displayScale: input.displayScale)
@@ -172,12 +182,35 @@ enum FeedListItems {
         }
         if let more, let frame = layout.more { drawing.text(more, small, Palette.settingsSecondary, frame) }
         if let frame = layout.summary { drawing.text(summary, small, Palette.settingsSecondary, frame) }
+        if let caption, let frame = layout.caption { drawing.text(caption, captionFont, Palette.text, frame, wraps: true) }
+        if let post, let frame = layout.cover {
+            // The artifact's own colour, or a quiet stand-in, until the
+            // picture fades in over it; the height never waits for it.
+            drawing.marks.append(.tile(frame, radius: M.coverRadius, coverGround(post)))
+            overlays.append(CardOverlay(kind: coverKind, key: coverKey(entry.id, post), frame: frame, radius: M.coverRadius))
+        }
         drawing.rule(layout.separator)
         var item = CardItem(id: entry.id, kind: .row, size: layout.size, card: layout.card, place: place, drawing: drawing, opens: entry.target != nil, overlays: overlays)
         item.accessibilityLabel = title
-        item.accessibilityValue = [unread ? words.unreadMark : nil, summary, words.actors(named: entry.actorNames, count: entry.actorCount), time]
+        item.accessibilityValue = [unread ? words.unreadMark : nil, summary, caption, words.actors(named: entry.actorNames, count: entry.actorCount), time]
             .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
         return (item, faces)
+    }
+
+    /// The key a post's cover is made for: the picture it loads, so a new
+    /// version's is made again and an unchanged one kept.
+    nonisolated static func coverKey(_ id: String, _ post: FeedPost) -> String { "\(id)|cover|\(post.image)" }
+
+    /// What a cover sits on: the artifact's background, else a neutral fill.
+    nonisolated static func coverGround(_ post: FeedPost) -> ColorToken {
+        guard let hex = post.background, let color = RGBA(hex: Self.expanded(hex)) else { return Palette.surfaceHighest }
+        return ColorToken(light: color, dark: color)
+    }
+
+    /// `#rgba` as `#rrggbbaa`, which `RGBA(hex:)` reads; `#rgb` it reads itself.
+    nonisolated static func expanded(_ hex: String) -> String {
+        let digits = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
+        return digits.count == 4 ? "#" + digits.map { "\($0)\($0)" }.joined() : hex
     }
 
     /// A person's face is round; anything else a rounded square, its

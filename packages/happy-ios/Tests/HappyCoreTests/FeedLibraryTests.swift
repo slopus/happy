@@ -8,17 +8,24 @@ import HappyWire
 /// through a cursor, and read-all. It can lack a feed or be away, and
 /// every write is heard.
 actor FakeFeedServer: FeedRoutes {
-    struct Write: Equatable { var route: String; var target: String; var through: String?; var mutationId: String }
+    struct Write: Equatable { var route: String; var target: String; var through: String?; var mutationId: String; var subjects: [String]? = nil }
     private(set) var items: [FeedItem] = []
     private(set) var writes: [Write] = []
     private(set) var reads: [String?] = []
+    /// Each read's `subjects`, in order.
+    private(set) var filters: [[String]?] = []
     var capable = true
+    /// Health's `feedSubjectFilter` and `artifactCovers`.
+    var filtering = false
+    var covers = false
     var away = false
     var gone = false
     var clusters: [FeedCluster] = []
 
     func setAway(_ away: Bool) { self.away = away }
     func setCapable(_ capable: Bool) { self.capable = capable }
+    func setFiltering(_ filtering: Bool) { self.filtering = filtering }
+    func setCovers(_ covers: Bool) { self.covers = covers }
     func setGone(_ gone: Bool) { self.gone = gone }
     func seed(_ items: [FeedItem]) { self.items = items.sorted(by: FeedLibrary.newestFirst) }
 
@@ -29,16 +36,20 @@ actor FakeFeedServer: FeedRoutes {
 
     var unread: Int { items.filter(\.open).count }
 
-    func feedCapable() async throws -> Bool {
+    func feedCapabilities() async throws -> FeedCapabilities {
         if away { throw URLError(.cannotConnectToHost) }
-        return capable
+        return FeedCapabilities(feed: capable, subjectFilter: filtering, covers: covers)
     }
 
-    func feed(before: String?, limit: Int) async throws -> FeedPage {
+    func feed(before: String?, limit: Int, subjects: [String]?) async throws -> FeedPage {
         try reachable()
         reads.append(before)
-        let older = items.filter { before == nil || $0.cursor < before! }
-        return FeedPage(items: Array(older.prefix(limit)), unread: unread, hasMore: older.count > limit, cursor: nil)
+        filters.append(subjects)
+        // An older daemon ignores `subjects`.
+        let subjects = filtering ? subjects : nil
+        let about = items.filter { subjects?.contains($0.subject.type) ?? true }
+        let older = about.filter { before == nil || $0.cursor < before! }
+        return FeedPage(items: Array(older.prefix(limit)), unread: unread, filteredUnread: subjects == nil ? nil : about.filter(\.open).count, hasMore: older.count > limit, cursor: nil)
     }
 
     func markFeedSeen(_ subject: FeedSubject, through: String?, mutationId: String) async throws -> FeedSeenAnswer {
@@ -53,10 +64,11 @@ actor FakeFeedServer: FeedRoutes {
         return FeedSeenAnswer(items: closed, unread: unread)
     }
 
-    func markFeedReadAll(through: String?, mutationId: String) async throws -> Int {
+    func markFeedReadAll(through: String?, subjects: [String]?, mutationId: String) async throws -> Int {
         try reachable()
-        writes.append(Write(route: "readAll", target: "all", through: through, mutationId: mutationId))
-        for index in items.indices where items[index].open && (through.map { items[index].cursor <= $0 } ?? true) {
+        writes.append(Write(route: "readAll", target: "all", through: through, mutationId: mutationId, subjects: subjects))
+        for index in items.indices where items[index].open && (through.map { items[index].cursor <= $0 } ?? true)
+            && (subjects.map { $0.contains(items[index].subject.type) } ?? true) {
             items[index].seenAt = 9
             items[index].version = items[index].version + "z"
         }
@@ -365,5 +377,138 @@ final class FeedLibraryTests: XCTestCase {
         XCTAssertEqual(state.items.last?.id, "item1")
         hasMore = state.hasMore
         XCTAssertFalse(hasMore)
+    }
+
+    // MARK: Highlights
+
+    /// A computer that filters pages Highlights on its own: only artifact
+    /// and task entries show, its own count of open ones, and an event
+    /// about anything else stays out of it.
+    func testHighlightsFromAComputerThatFilters() async throws {
+        let server = FakeFeedServer()
+        await server.setFiltering(true)
+        await server.seed([Self.item(1, subject: "artifact"), Self.item(2, subject: "surface"), Self.item(3, subject: "task", open: false), Self.item(4, subject: "bot")])
+        let account = await launch(server, keep: MemoryFeedKeep())
+        await connect(account, unread: 3)
+        try await eventually { await account.library.current.items.count == 4 }
+        await account.library.setFilter(.highlights)
+        var state = await account.library.current
+        XCTAssertEqual(state.filter, .highlights)
+        XCTAssertEqual(state.items.map(\.id), ["item3", "item1"])
+        XCTAssertEqual(state.unread, 3, "home's count stays everything's")
+        XCTAssertEqual(state.shownUnread, 1)
+        let filters = await server.filters
+        XCTAssertEqual(filters.last, ["artifact", "task"])
+
+        await account.library.receive(Self.event("feed.item.created", cursor: 9, ["item": Self.json(Self.item(9, subject: "surface"))]))
+        await account.library.receive(Self.event("feed.item.created", cursor: 10, ["item": Self.json(Self.item(10, subject: "task"))]))
+        state = await account.library.current
+        XCTAssertEqual(state.items.map(\.id), ["item10", "item3", "item1"])
+
+        await account.library.setFilter(.all)
+        state = await account.library.current
+        XCTAssertEqual(state.items.map(\.id), ["item10", "item9", "item4", "item3", "item2", "item1"])
+    }
+
+    /// Mark All Read in Highlights closes only its subjects, by
+    /// `subjects` on a computer that filters.
+    func testReadingAllHighlightsClosesOnlyThem() async throws {
+        let server = FakeFeedServer()
+        await server.setFiltering(true)
+        await server.seed([Self.item(1, subject: "artifact"), Self.item(2, subject: "surface"), Self.item(3, subject: "task")])
+        let account = await launch(server, keep: MemoryFeedKeep())
+        await connect(account, unread: 3)
+        try await eventually { await account.library.current.items.count == 3 }
+        await account.library.setFilter(.highlights)
+        await account.library.readAll()
+        var state = await account.library.current
+        XCTAssertEqual(state.shownUnread, 0, "closed at once")
+        XCTAssertEqual(state.unread, 1, "the surface's entry stays open")
+        try await eventually { await account.outbox.pending().isEmpty }
+        let writes = await server.writes
+        XCTAssertEqual(writes.map(\.route), ["readAll"])
+        XCTAssertEqual(writes.first?.subjects, ["artifact", "task"])
+        XCTAssertEqual(writes.first?.through, Self.cursor(3))
+        XCTAssertEqual(writes.first?.target, "all")
+        await account.library.setFilter(.all)
+        state = await account.library.current
+        XCTAssertEqual(state.items.filter(state.isUnread).map(\.id), ["item2"])
+    }
+
+    /// A computer that doesn't filter: Highlights is the whole list's
+    /// artifact and task entries, read on until a screen's worth shows,
+    /// and Mark All Read sees each one shown, never the rest.
+    func testHighlightsFilteredHereReadsOnAndSeesOneByOne() async throws {
+        let server = FakeFeedServer()
+        // The newest two pages are all Surfaces; Highlights is older.
+        let surfaces = (30...(29 + 2 * FeedLibrary.page)).map { Self.item($0, subject: "surface") }
+        await server.seed([Self.item(1, subject: "artifact"), Self.item(2, subject: "task")] + surfaces)
+        let account = await launch(server, keep: MemoryFeedKeep())
+        await connect(account, unread: surfaces.count + 2)
+        try await eventually { await account.library.current.items.count == FeedLibrary.page }
+        await account.library.setFilter(.highlights)
+        var state = await account.library.current
+        XCTAssertEqual(state.items.map(\.id), ["item2", "item1"], "read on to the end")
+        XCTAssertFalse(state.hasMore)
+        let filters = await server.filters
+        XCTAssertTrue(filters.allSatisfy { $0 == nil }, "never asks a computer that doesn't filter to")
+
+        await account.library.readAll()
+        state = await account.library.current
+        XCTAssertEqual(state.shownUnread, 0)
+        try await eventually { await account.outbox.pending().isEmpty }
+        let writes = await server.writes
+        XCTAssertEqual(Set(writes.map(\.route)), ["seen"])
+        XCTAssertEqual(Set(writes.map(\.target)), ["artifact:artifact1", "task:task2"])
+        let unread = await server.unread
+        XCTAssertEqual(unread, surfaces.count)
+    }
+
+    /// The choice, the capabilities and Highlights' own list are kept: a
+    /// launch offline opens on Highlights.
+    func testTheFilterIsKeptForThisComputer() async throws {
+        let server = FakeFeedServer()
+        await server.setFiltering(true)
+        await server.setCovers(true)
+        await server.seed([Self.item(1, subject: "artifact"), Self.item(2, subject: "surface")])
+        let keep = MemoryFeedKeep()
+        let first = await launch(server, keep: keep)
+        await connect(first, unread: 2)
+        try await eventually { await first.library.current.covers }
+        await first.library.setFilter(.highlights)
+        try await eventually { await first.library.current.items.map(\.id) == ["item1"] }
+        await first.library.stop()
+
+        await server.setAway(true)
+        let second = await launch(server, keep: keep, online: false)
+        let state = await second.library.current
+        XCTAssertEqual(state.filter, .highlights)
+        XCTAssertTrue(state.covers)
+        XCTAssertEqual(state.items.map(\.id), ["item1"])
+    }
+
+    /// Offline, Mark All Read in All and then in Highlights both go: the
+    /// second never takes the first one's place.
+    func testBothReadAllsGoOnceOnline() async throws {
+        let server = FakeFeedServer()
+        await server.setFiltering(true)
+        await server.seed([Self.item(1, subject: "artifact"), Self.item(2, subject: "surface")])
+        let account = await launch(server, keep: MemoryFeedKeep())
+        await connect(account, unread: 2)
+        try await eventually { await account.library.current.items.count == 2 }
+        await account.outbox.setOnline(false)
+        await account.library.readAll()
+        await server.seed([Self.item(1, subject: "artifact"), Self.item(2, subject: "surface"), Self.item(3, subject: "task")])
+        await account.library.receive(Self.event("feed.item.created", cursor: 3, ["item": Self.json(Self.item(3, subject: "task"))]))
+        await account.library.setFilter(.highlights)
+        await account.library.readAll()
+        let pending = await account.outbox.pending()
+        XCTAssertEqual(pending.count, 2)
+        await account.outbox.setOnline(true)
+        try await eventually { await account.outbox.pending().isEmpty }
+        let writes = await server.writes
+        XCTAssertEqual(writes.map(\.subjects), [nil, ["artifact", "task"]])
+        let unread = await server.unread
+        XCTAssertEqual(unread, 0)
     }
 }
