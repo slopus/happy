@@ -244,6 +244,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        NotificationCenter.default.addObserver(self, selector: #selector(reportFailures), name: UIApplication.didBecomeActiveNotification, object: nil)
         view.backgroundColor = UIColor(Palette.surface)
         introView.accessibilityIdentifier = "intro"
         ultra.host = self
@@ -406,6 +407,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         #endif
         // In its window now, which a later layout may not follow.
         ultraKeyboard?.refresh()
+        reportFailures()
         guard !previewing, let navigationController else { return }
         _ = navigationController
         // New work: the keyboard comes up now if it couldn't with the push,
@@ -781,6 +783,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             sidebarRows = snapshot.allRows
             proposals.spacesChanged()
         }
+        target = snapshot.happyAgentId == media.agentId ? .chiefOfStaff : snapshot.botAgentIds.contains(media.agentId) ? .bot : .session
         guard let spaceId, let row = snapshot.allRows.first(where: { $0.spaceId == spaceId }) else { return }
         rowName = (row.label, row.titled)
         applyTitle()
@@ -796,6 +799,24 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
 
     /// The row's name as the sidebar has it, and whether it is one of its own.
     private var rowName: (label: String, titled: Bool)?
+    /// What analytics calls this conversation.
+    private var target: AnalyticsEvent.ChatTarget = .session
+    /// The failure cards already handed to `chat_failure_shown`.
+    private var shownFailures: Set<String> = []
+
+    /// Each failure card once it shows in the conversation the person is
+    /// looking at; the engine keeps the five-minute rule and the dedupe
+    /// across screens and launches.
+    @objc private func reportFailures() {
+        guard !previewing, viewIfLoaded?.window != nil, UIApplication.shared.applicationState == .active,
+              navigationController?.topViewController === self else { return }
+        for item in chat.items {
+            guard case .failure(let failure) = item.role, shownFailures.insert(failure.messageId).inserted else { continue }
+            Analytics.shared.failureShown(messageID: failure.messageId, createdAt: Date(timeIntervalSince1970: failure.createdAt / 1000),
+                                          .chatFailureShown(kind: failure.kind, providerKind: failure.pool ? nil : failure.providerKind,
+                                                            pool: failure.pool, target: target, sessionClient: .happyAgent))
+        }
+    }
 
     /// The row's name, or, while it has none ("New"), the conversation's
     /// own title once the daemon has written one, as desktop's header reads it.
@@ -853,6 +874,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         }
         let wasSettled = settled(chat)
         chat = snapshot
+        reportFailures()
         updateToolScreens()
         applyTitle()
         if picked == snapshot.mode { picked = nil }
@@ -1004,6 +1026,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         guard let action = ChatPlanner.action(failure, target: switchTarget) else { return }
         let conversation = conversation
         let mode: AgentWire.Mode? = if case .switchTo(let target) = action { target.mode } else { nil }
+        Analytics.shared.log(.chatFailureAction(kind: failure.kind, action: mode == nil ? .retry : .switchModel))
         Task { [weak self] in
             do { try await conversation.resolveFailure(failure.messageId, switchTo: mode) }
             catch {
@@ -1539,6 +1562,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         let conversation = conversation
         let store = session.store
         let staged = pictures
+        let sent = sentEvent(attachments: picked.count + previews.count)
         #if DEBUG
         composeTrace?.event("send choice=\(String(describing: newTask?.choice))")
         #endif
@@ -1552,6 +1576,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             acceptingSend = false
             if !accepted, !newWorkPanelGone { newWorkPanel?.isLocked = false }
             if accepted {
+                sent()
                 if card.text.trimmingCharacters(in: .whitespacesAndNewlines) == text {
                     card.setText("", selection: NSRange(location: 0, length: 0))
                 }
@@ -1574,6 +1599,27 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
                 alert.addAction(UIAlertAction(title: Strings.Common.ok, style: .default))
                 present(alert, animated: true)
             }
+        }
+    }
+
+    /// `message_sent` and the day's counts for a send now, made before the
+    /// send changes what the screen knows; called once it is accepted.
+    private func sentEvent(attachments: Int) -> () -> Void {
+        let mode = mode
+        // New work's first message makes the conversation; later ones are chat.
+        let created = newTask != nil && chat.items.isEmpty
+        let provider = mode.flatMap { session.models.catalog?.provider($0.providerId)?.type }
+        let event = AnalyticsEvent.MessageSent(
+            source: created ? .newSession : .chat, target: target, sessionClient: .happyAgent, model: mode?.modelId,
+            modelProviderKind: mode == nil ? nil : .init(type: provider), effort: mode.flatMap { .init(rawValue: $0.effort) },
+            botSystemKey: target == .chiefOfStaff ? .chiefOfStaff : nil, hasAttachment: attachments > 0)
+        let steered = chat.working
+        return {
+            let analytics = Analytics.shared
+            analytics.log(.messageSent(event))
+            if attachments > 0 { analytics.count(.attachmentsSent, by: attachments) }
+            if steered { analytics.count(.messagesSteered) }
+            if created { analytics.count(.conversationsCreated) }
         }
     }
 

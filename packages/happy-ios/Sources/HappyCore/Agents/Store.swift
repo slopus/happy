@@ -25,6 +25,9 @@ public struct Snapshot: Equatable, Sendable {
     /// (`ChatPrefill`); nil until the bots have been read, or where the
     /// account has no Chief of Staff running.
     public var happyAgentId: String?
+    /// The bots' own conversations, by agent id, for what analytics calls
+    /// a conversation's target.
+    public var botAgentIds: Set<String> = []
     /// The person's V2 setting, which runs Prioritizing; nil until read.
     public var prioritizing: Bool?
     /// The last act the daemon refused: its reason, empty when it gave none.
@@ -671,6 +674,7 @@ public actor Store {
             snapshot.document = document
         }
         snapshot.happyAgentId = places.chiefOfStaffAgentId
+        snapshot.botAgentIds = Set(places.bots.compactMap { $0.agent?.id })
         var references = References.entities(owners: composedOwners)
         references.artifacts = artifactTitles
         references.pages = artifactPages

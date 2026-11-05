@@ -154,6 +154,23 @@ final class AnalyticsTests: XCTestCase {
         XCTAssertEqual(Code(CancellationError()), .unknown)
     }
 
+    func testAFailureCardGivesAnalyticsItsKindProviderTypeAndPoolOnly() async throws {
+        let typed = AgentWire.Message(id: "m1", role: "service", createdAt: 1_762_344_000_000, content: [.text("Claude usage limit reached")],
+                                      failure: .object(["kind": .string("usage_limit"), "message": .string("limit"),
+                                                        "provider": .object(["id": .string("claude_work"), "label": .string("Work"), "type": .string("claude")])]))
+        let failure = try XCTUnwrap(Failure.of(typed))
+        XCTAssertEqual([failure.kind.rawValue, failure.providerKind?.rawValue], ["usage_limit", "claude"])
+        XCTAssertFalse(failure.pool)
+        XCTAssertEqual(failure.createdAt, 1_762_344_000_000)
+
+        let pool = AgentWire.Message(id: "m2", role: "service", createdAt: 0, content: [],
+                                     failure: .object(["kind": .string("no_account_available"), "poolName": .string("Team")]))
+        XCTAssertEqual(Failure.of(pool).map { [$0.kind.rawValue, String($0.pool)] }, ["no_account_available", "true"])
+
+        let words = AgentWire.Message(id: "m3", role: "service", createdAt: 0, content: [.text("Something broke")], error: .object([:]))
+        XCTAssertEqual(Failure.of(words)?.kind, .untyped)
+    }
+
     func testCrashesAreReducedToTheCatalogsReasons() async {
         typealias Reason = AnalyticsEvent.CrashReason
         XCTAssertEqual(Reason(exceptionType: 1, signal: 11, termination: nil), .nativeCrash)

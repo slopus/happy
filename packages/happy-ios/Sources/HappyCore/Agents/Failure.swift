@@ -26,6 +26,13 @@ public struct Failure: Equatable, Sendable {
     /// Running it again can help: everything but a conversation too long
     /// even after a reset, which desktop answers with "New chat".
     public var retryable: Bool
+    /// What analytics may say of it: the typed kind (`untyped` for words
+    /// alone), the failed account's provider type, whether the turn ran on a
+    /// routing pool, and when it happened (Unix milliseconds).
+    public var kind: AnalyticsEvent.FailureKind = .untyped
+    public var providerKind: AnalyticsEvent.ProviderKind?
+    public var pool = false
+    public var createdAt: Double = 0
 
     public init(messageId: String, reason: String, steps: [String] = [], providerId: String? = nil, modelId: String? = nil, resolution: Resolution? = nil, retryable: Bool = true) {
         self.messageId = messageId
@@ -58,13 +65,18 @@ public struct Failure: Equatable, Sendable {
             }
         }
         let mode = error?["mode"]
-        return Failure(
+        var result = Failure(
             messageId: message.id, reason: line, steps: steps,
             providerId: mode?["providerId"]?.stringValue ?? failure?["provider"]?["id"]?.stringValue,
             modelId: mode?["modelId"]?.stringValue ?? failure?["modelId"]?.stringValue,
             resolution: resolution,
             retryable: failure?["kind"]?.stringValue != "context_too_long"
         )
+        result.kind = failure == nil ? .untyped : .init(wire: failure?["kind"]?.stringValue ?? "")
+        result.providerKind = failure?["provider"]?["type"]?.stringValue.map(AnalyticsEvent.ProviderKind.init(type:))
+        result.pool = failure?["poolName"] != nil
+        result.createdAt = message.createdAt
+        return result
     }
 
     /// Desktop's `conversationFailureMessage`; nil for a kind it would
