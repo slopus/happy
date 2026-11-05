@@ -298,6 +298,7 @@ export const zhHans: TranslationStructure = {
         title: '开始新会话',
         machineOffline: '设备离线',
         switchMachinesHint: '• 点击上方的设备来切换设备',
+        switchAgentsHint: '• 在上方选择另一个代理 — 这台电脑上的另一个守护进程在线',
     },
 
     sessionHistory: {

@@ -297,6 +297,7 @@ export const zhHant: TranslationStructure = {
         title: '開始新工作階段',
         machineOffline: '裝置離線',
         switchMachinesHint: '• 點擊上方的裝置來切換裝置',
+        switchAgentsHint: '• 在上方選擇另一個代理 — 這台電腦上的另一個守護行程在線上',
     },
 
     sessionHistory: {

@@ -315,6 +315,7 @@ export const en = {
         title: 'Start New Session',
         machineOffline: 'Machine is offline',
         switchMachinesHint: '• Switch machines by clicking on the machine above',
+        switchAgentsHint: '• Pick another agent above — the other daemon on this computer is online',
     },
 
     sessionHistory: {

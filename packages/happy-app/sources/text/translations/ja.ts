@@ -298,6 +298,7 @@ export const ja: TranslationStructure = {
         title: '新しいセッションを開始',
         machineOffline: 'マシンがオフラインです',
         switchMachinesHint: '• 上のマシンをクリックしてマシンを切り替えてください',
+        switchAgentsHint: '• 上で別のエージェントを選んでください — このコンピューターのもう一方のデーモンはオンラインです',
     },
 
     sessionHistory: {
