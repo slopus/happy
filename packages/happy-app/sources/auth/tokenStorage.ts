@@ -1,5 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
+import { getServerUrl, getUnmanagedServerUrl } from '@/sync/serverConfig';
+import { managedConfiguration } from '@/sync/managedConfiguration';
 
 const AUTH_KEY = 'auth_credentials';
 
@@ -11,6 +13,14 @@ export interface AuthCredentials {
     secret: string;
 }
 
+interface StoredAuthCredentials extends AuthCredentials {
+    managedServerUrl?: string;
+}
+
+function sameServer(left: string, right: string): boolean {
+    return left.replace(/\/+$/, '') === right.replace(/\/+$/, '');
+}
+
 export const TokenStorage = {
     async getCredentials(): Promise<AuthCredentials | null> {
         if (Platform.OS === 'web') {
@@ -19,8 +29,16 @@ export const TokenStorage = {
         try {
             const stored = await SecureStore.getItemAsync(AUTH_KEY);
             if (!stored) return null;
+            const credentials = JSON.parse(stored) as StoredAuthCredentials;
+            if (managedConfiguration.serverUrl || credentials.managedServerUrl) {
+                const originalServer = credentials.managedServerUrl ?? getUnmanagedServerUrl();
+                // Never forward a previous server's bearer token after policy
+                // application, changes or removal. Leave it in Keychain until
+                // the user reconnects, rather than deleting their account key.
+                if (!sameServer(originalServer, getServerUrl())) return null;
+            }
             credentialsCache = stored; // Update cache
-            return JSON.parse(stored) as AuthCredentials;
+            return credentials;
         } catch (error) {
             console.error('Error getting credentials:', error);
             return null;
@@ -33,7 +51,12 @@ export const TokenStorage = {
             return true;
         }
         try {
-            const json = JSON.stringify(credentials);
+            const stored: StoredAuthCredentials = {
+                token: credentials.token,
+                secret: credentials.secret,
+                ...(managedConfiguration.serverUrl ? { managedServerUrl: getServerUrl() } : {}),
+            };
+            const json = JSON.stringify(stored);
             await SecureStore.setItemAsync(AUTH_KEY, json);
             credentialsCache = json; // Update cache
             return true;

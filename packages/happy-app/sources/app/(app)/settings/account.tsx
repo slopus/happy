@@ -11,6 +11,7 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Modal } from '@/modal';
 import { t } from '@/text';
+import { managedConfiguration } from '@/sync/managedConfiguration';
 import { layout } from '@/components/layout';
 import { useSettingMutable, useProfile } from '@/sync/storage';
 import { sync } from '@/sync/sync';
@@ -106,6 +107,7 @@ export default React.memo(() => {
     const [showSecret, setShowSecret] = useState(false);
     const [copiedRecently, setCopiedRecently] = useState(false);
     const [analyticsOptOut, setAnalyticsOptOut] = useSettingMutable('analyticsOptOut');
+    const analyticsDisabledByOrganization = managedConfiguration.analyticsEnabled === false;
     const { connectAccount, isLoading: isConnecting } = useConnectAccount();
     const profile = useProfile();
     const currentPushDevice = useMemo(() => getCurrentPushDeviceMetadata(), []);
@@ -486,11 +488,15 @@ export default React.memo(() => {
                 >
                     <Item
                         title={t('settingsAccount.analytics')}
-                        subtitle={analyticsOptOut ? t('settingsAccount.analyticsDisabled') : t('settingsAccount.analyticsEnabled')}
+                        subtitle={analyticsDisabledByOrganization
+                            ? t('common.managedByOrganization')
+                            : analyticsOptOut ? t('settingsAccount.analyticsDisabled') : t('settingsAccount.analyticsEnabled')}
                         rightElement={
                             <Switch
-                                value={!analyticsOptOut}
+                                value={!analyticsDisabledByOrganization && !analyticsOptOut}
+                                disabled={analyticsDisabledByOrganization}
                                 onValueChange={(value) => {
+                                    if (analyticsDisabledByOrganization) return;
                                     const optOut = !value;
                                     setAnalyticsOptOut(optOut);
                                 }}
