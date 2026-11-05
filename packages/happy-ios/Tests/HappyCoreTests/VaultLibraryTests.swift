@@ -41,7 +41,8 @@ actor FakeVaultServer: VaultRoutes {
         return entry
     }
 
-    /// A change made elsewhere and the `vault.entry.updated` it emits.
+    /// A change made elsewhere and the `vault.folder.updated` or
+    /// `vault.file.updated` it emits.
     func elsewhere(_ id: String, _ change: (inout VaultEntry) -> Void) -> JSONValue {
         let before = entries[id]!
         var entry = before
@@ -54,15 +55,17 @@ actor FakeVaultServer: VaultRoutes {
         if before.deletedAt != entry.deletedAt { changes["deletedAt"] = entry.deletedAt.map { .number($0) } ?? .null }
         if before.latestVersion != entry.latestVersion { changes["latestVersion"] = entry.latestVersion.map { .number(Double($0)) } ?? .null }
         changes["updatedAt"] = .number(entry.updatedAt)
-        return .object(["type": .string("vault.entry.updated"), "payload": .object([
-            "surfaceId": .string(surfaceId), "entryId": .string(id), "previousVersion": .string(before.version),
+        let key = entry.isFolder ? "folder" : "file"
+        return .object(["type": .string("vault.\(key).updated"), "payload": .object([
+            "surfaceId": .string(surfaceId), "\(key)Id": .string(id), "previousVersion": .string(before.version),
             "version": .string(entry.version), "changes": .object(changes),
         ])])
     }
 
     func created(_ id: String, _ name: String, parent: String? = nil) -> JSONValue {
         let entry = seed(id, name, parent: parent)
-        return .object(["type": .string("vault.entry.created"), "payload": .object(["entry": entry.json])])
+        let key = entry.isFolder ? "folder" : "file"
+        return .object(["type": .string("vault.\(key).created"), "payload": .object([key: entry.json])])
     }
 
     private func live(_ entry: VaultEntry) -> Bool {
@@ -94,8 +97,8 @@ actor FakeVaultServer: VaultRoutes {
         return VaultPage(items: page, next: start + 2 < all.count ? String(start + 2) : nil)
     }
 
-    func vaultEntry(_ surfaceId: String, _ entryId: String) async throws -> VaultLocation {
-        guard let entry = entries[entryId] else { throw AgentClientError.status(404, code: "not_found", message: nil) }
+    func vaultEntry(_ surfaceId: String, _ entryId: String, folder: Bool) async throws -> VaultLocation {
+        guard let entry = entries[entryId], entry.isFolder == folder else { throw AgentClientError.status(404, code: "not_found", message: nil) }
         return VaultLocation(entry: entry, path: "/" + entry.name, ancestors: [], inTrash: !live(entry))
     }
 
@@ -119,10 +122,11 @@ actor FakeVaultServer: VaultRoutes {
         return version
     }
 
-    func vaultActivity(_ surfaceId: String, _ entryId: String, pageCursor: String?) async throws -> VaultPage<VaultActivity> { VaultPage(items: [], next: nil) }
+    func vaultActivity(_ surfaceId: String, _ entryId: String, folder: Bool, pageCursor: String?) async throws -> VaultPage<VaultActivity> { VaultPage(items: [], next: nil) }
 
-    func createVaultEntry(_ surfaceId: String, id: String, parentId: String?, name: String, kind: VaultEntry.Kind, uploadId: String?, mutationId: String) async throws -> VaultEntry {
+    func createVaultEntry(_ surfaceId: String, id: String, parentId: String?, name: String, folder: Bool, uploadId: String?, mutationId: String) async throws -> VaultEntry {
         writes.append("create \(name)")
+        let kind: VaultEntry.Kind = folder ? .folder : VaultEntry.kind(named: name)
         if let held = entries[id] { return held }
         guard !taken(name, in: parentId) else { throw AgentClientError.status(409, code: "name_taken", message: "Name taken") }
         var size: Int?
@@ -138,7 +142,7 @@ actor FakeVaultServer: VaultRoutes {
         return entry
     }
 
-    func updateVaultEntry(_ surfaceId: String, _ entryId: String, name: String?, parent: VaultParent?, ifMatch: String, mutationId: String) async throws -> VaultEntry {
+    func updateVaultEntry(_ surfaceId: String, _ entryId: String, folder: Bool, name: String?, parent: VaultParent?, ifMatch: String, mutationId: String) async throws -> VaultEntry {
         writes.append("update \(entryId)")
         var entry = try check(entryId, ifMatch)
         let target = parent.map(\.id) ?? entry.parentId
@@ -151,7 +155,7 @@ actor FakeVaultServer: VaultRoutes {
         return entry
     }
 
-    func deleteVaultEntry(_ surfaceId: String, _ entryId: String, ifMatch: String, mutationId: String) async throws -> VaultEntry {
+    func deleteVaultEntry(_ surfaceId: String, _ entryId: String, folder: Bool, ifMatch: String, mutationId: String) async throws -> VaultEntry {
         writes.append("delete \(entryId)")
         var entry = try check(entryId, ifMatch)
         guard entry.deletedAt == nil else { return entry }
@@ -161,7 +165,7 @@ actor FakeVaultServer: VaultRoutes {
         return entry
     }
 
-    func restoreVaultEntry(_ surfaceId: String, _ entryId: String, parent: VaultParent?, name: String?, ifMatch: String, mutationId: String) async throws -> VaultEntry {
+    func restoreVaultEntry(_ surfaceId: String, _ entryId: String, folder: Bool, parent: VaultParent?, name: String?, ifMatch: String, mutationId: String) async throws -> VaultEntry {
         writes.append("restore \(entryId)")
         var entry = try check(entryId, ifMatch)
         entry.deletedAt = nil
@@ -329,7 +333,7 @@ final class VaultLibraryTests: XCTestCase {
         // Trashing a folder hides it and marks what is inside it.
         events.send(await server.elsewhere("f1") { $0.deletedAt = 9 })
         try await eventually { root.names.isEmpty && docs.state.inTrash }
-        events.send(.object(["type": .string("vault.entry.removed"), "payload": .object(["surfaceId": .string(surfaceId), "entryId": .string("f1")])]))
+        events.send(.object(["type": .string("vault.folder.removed"), "payload": .object(["surfaceId": .string(surfaceId), "folderId": .string("f1")])]))
         try await eventually { docs.names.isEmpty }
     }
 
@@ -489,16 +493,16 @@ final class VaultRulesTests: XCTestCase {
 
     func testAVaultPageReachesOnlyItsVersionsFiles() throws {
         let files = BrowserFiles.vault(surfaceId: "s1", entryId: "e1", version: 3)
-        XCTAssertEqual(try BrowserPolicy.path(target: "/img/hero.png?x=1", files: files), "/v0/surfaces/vault/s1/entries/e1/versions/3/files/img/hero.png?x=1")
+        XCTAssertEqual(try BrowserPolicy.path(target: "/img/hero.png?x=1", files: files), "/v0/surfaces/vault/s1/files/e1/versions/3/artifact/img/hero.png?x=1")
         // No data bridge: `/api/…` is a file like any other.
-        XCTAssertEqual(try BrowserPolicy.path(target: "/api/v1/kv", files: files), "/v0/surfaces/vault/s1/entries/e1/versions/3/files/api/v1/kv")
+        XCTAssertEqual(try BrowserPolicy.path(target: "/api/v1/kv", files: files), "/v0/surfaces/vault/s1/files/e1/versions/3/artifact/api/v1/kv")
         for target in ["/", "/../secret", "/a/%2e%2e/b", "//evil", "/a#b"] {
             XCTAssertThrowsError(try BrowserPolicy.path(target: target, files: files), target)
         }
         XCTAssertThrowsError(try BrowserPolicy.path(target: "/index.html", files: .vault(surfaceId: "S!", entryId: "e1", version: 1)))
         let head = BrowserHTTPHead(line: "GET /index.html HTTP/1.1", fields: [("Host", "a.happy-artifact.invalid"), ("Authorization", "Bearer page")])
         let request = try head.filesRequest(files, credential: "device")
-        XCTAssertEqual(request.line, "GET /v0/surfaces/vault/s1/entries/e1/versions/3/files/index.html HTTP/1.1")
+        XCTAssertEqual(request.line, "GET /v0/surfaces/vault/s1/files/e1/versions/3/artifact/index.html HTTP/1.1")
         XCTAssertEqual(request.value("Authorization"), "Bearer device")
     }
 
@@ -538,10 +542,18 @@ final class VaultRulesTests: XCTestCase {
         XCTAssertEqual(entry.kind, .file)
         XCTAssertEqual(entry.latestVersion, 3)
         XCTAssertEqual(entry.updatedBy, VaultActor(userId: nil, agentId: "a9"))
-        let activity = try JSONDecoder().decode(VaultActivity.self, from: Data(#"{"id":"x","entryId":"e","kind":"moved","fromParentId":null,"toParentId":"f","fromName":"draft.pdf","toName":"summary.pdf","at":1,"actor":{"userId":"u","agentId":null},"source":"api"}"#.utf8))
+        let activity = try JSONDecoder().decode(VaultActivity.self, from: Data(#"{"id":"x","itemId":"e","kind":"moved","fromParentId":null,"toParentId":"f","fromName":"draft.pdf","toName":"summary.pdf","at":1,"actor":{"userId":"u","agentId":null},"source":"api"}"#.utf8))
         XCTAssertEqual(activity.kind, .moved(fromParentId: nil, toParentId: "f", fromName: "draft.pdf", toName: "summary.pdf"))
-        let unknown = try JSONDecoder().decode(VaultActivity.self, from: Data(#"{"id":"x","entryId":"e","kind":"tagged","at":1,"actor":{"userId":null,"agentId":null},"source":"tool"}"#.utf8))
+        let unknown = try JSONDecoder().decode(VaultActivity.self, from: Data(#"{"id":"x","itemId":"e","kind":"tagged","at":1,"actor":{"userId":null,"agentId":null},"source":"tool"}"#.utf8))
         XCTAssertEqual(unknown.kind, .other("tagged"))
+        let version = try JSONDecoder().decode(VaultVersion.self, from: Data(#"{"fileId":"e","surfaceId":"s","number":3,"size":48213,"sha256":"2c26","artifact":null,"pinned":false,"restoredFrom":null,"createdAt":1,"actor":{"userId":null,"agentId":"a9"},"source":"tool"}"#.utf8))
+        XCTAssertEqual(version.entryId, "e")
+        let found = try JSONDecoder().decode(VaultSearchResult.self, from: Data(#"{"item":\#(json),"path":"/Reports/summary.pdf","match":"content","innerPath":null,"line":4,"snippet":"Q3"}"#.utf8))
+        XCTAssertEqual(found.entry.id, entry.id)
+        let trash = try JSONDecoder().decode(VaultTrashItem.self, from: Data(#"{"item":\#(json),"path":"/Reports"}"#.utf8))
+        XCTAssertEqual(trash.entry.name, "summary.pdf")
+        let folder = try JSONDecoder().decode(VaultEntry.self, from: Data(#"{"id":"f","surfaceId":"s","parentId":null,"name":"Reports","kind":"folder","createdAt":1,"createdBy":{"userId":"u","agentId":null},"updatedAt":1,"updatedBy":{"userId":"u","agentId":null},"deletedAt":null,"version":"v"}"#.utf8))
+        XCTAssertTrue(folder.isFolder)
     }
 }
 

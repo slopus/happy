@@ -144,7 +144,7 @@ final class VaultViewController: UIViewController, UISearchResultsUpdating {
         locating?.cancel()
         let library = library, surfaceId = surfaceId
         locating = Task { [weak self] in
-            guard let location = try? await library.location(surfaceId, folder.id), !Task.isCancelled, let self else { return }
+            guard let location = try? await library.location(surfaceId, folder.id, folder: true), !Task.isCancelled, let self else { return }
             self.ancestors = location.ancestors
             self.showTitle()
         }
@@ -243,7 +243,7 @@ final class VaultViewController: UIViewController, UISearchResultsUpdating {
         let path = Array(ancestors.prefix(index))
         Task { [weak self, library, surfaceId] in
             var entry = await library.entry(surfaceId, folderId)
-            if entry == nil { entry = try? await library.location(surfaceId, folderId).entry }
+            if entry == nil { entry = try? await library.location(surfaceId, folderId, folder: true).entry }
             guard let self, let entry else { return }
             self.push(entry, ancestors: path)
         }

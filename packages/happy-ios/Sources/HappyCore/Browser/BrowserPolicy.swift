@@ -77,7 +77,7 @@ public enum BrowserPolicy {
             return "\(prefix)/versions/\(version)/files\(target)"
         case .vault(let surfaceId, let entryId, let version):
             guard path != "/" else { throw BrowserError.forbidden }
-            return "/v0/surfaces/vault/\(surfaceId)/entries/\(entryId)/versions/\(version)/files\(target)"
+            return "/v0/surfaces/vault/\(surfaceId)/files/\(entryId)/versions/\(version)/artifact\(target)"
         }
     }
 

@@ -187,6 +187,11 @@ public struct VaultVersion: Codable, Equatable, Hashable, Sendable, Identifiable
 
     public var id: Int { number }
 
+    private enum CodingKeys: String, CodingKey {
+        case entryId = "fileId"
+        case surfaceId, number, size, sha256, artifact, pinned, restoredFrom, createdAt, actor, source
+    }
+
     public init(entryId: String, surfaceId: String, number: Int, size: Int, sha256: String? = nil, artifact: VaultArtifact? = nil, pinned: Bool = false,
                 restoredFrom: Int? = nil, createdAt: Double = 0, actor: VaultActor = VaultActor(), source: String = "api") {
         self.entryId = entryId
@@ -234,7 +239,8 @@ public struct VaultActivity: Codable, Equatable, Hashable, Sendable, Identifiabl
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, entryId, kind, at, actor, source, parentId, name, copiedFrom, fromParentId, toParentId, fromName, toName, number, restoredFrom
+        case entryId = "itemId"
+        case id, kind, at, actor, source, parentId, name, copiedFrom, fromParentId, toParentId, fromName, toName, number, restoredFrom
     }
 
     public init(from decoder: Decoder) throws {
@@ -288,6 +294,11 @@ public struct VaultTrashItem: Codable, Equatable, Sendable, Identifiable {
     public var path: String
     public var id: String { entry.id }
 
+    private enum CodingKeys: String, CodingKey {
+        case entry = "item"
+        case path
+    }
+
     public init(entry: VaultEntry, path: String) {
         self.entry = entry
         self.path = path
@@ -308,6 +319,11 @@ public struct VaultSearchResult: Codable, Equatable, Sendable {
     public var innerPath: String?
     public var line: Int?
     public var snippet: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case entry = "item"
+        case path, match, innerPath, line, snippet
+    }
 
     public init(entry: VaultEntry, path: String, match: Match, innerPath: String? = nil, line: Int? = nil, snippet: String? = nil) {
         self.entry = entry

@@ -59,7 +59,7 @@ enum VaultReducer {
         /// Applied to what is kept.
         case applied(entryId: String)
         /// The kept copy can't be brought forward: read the entry.
-        case read(entryId: String)
+        case read(entryId: String, folder: Bool)
         /// Gone for good, with everything below it.
         case removed(entryId: String)
     }
@@ -72,34 +72,38 @@ enum VaultReducer {
         return true
     }
 
-    /// A `vault.*` event of the vault `surfaceId`: an entry made, changed
-    /// along its version chain, or removed. An entry not held matters when
+    /// A `vault.folder.*` or `vault.file.*` event of the vault `surfaceId`:
+    /// an entry made, changed along its version chain, or removed. An entry not held matters when
     /// a screen shows it (`watched`) or it lands in a folder that is read
     /// (`open`, nil for the root).
     static func receive(_ event: JSONValue, surfaceId: String, into entries: inout [String: VaultEntry], watched: (String) -> Bool, open: (String?) -> Bool) -> Outcome {
         let payload = event["payload"]
-        switch event["type"]?.stringValue {
-        case "vault.entry.created":
-            guard let entry = payload?["entry"].flatMap(VaultEntry.init(json:)), entry.surfaceId == surfaceId else { return .ignored }
+        let type = event["type"]?.stringValue ?? ""
+        let folder = type.hasPrefix("vault.folder.")
+        guard folder || type.hasPrefix("vault.file.") else { return .ignored }
+        let key = folder ? "folder" : "file"
+        switch type.dropFirst(folder ? 13 : 11) {
+        case "created":
+            guard let entry = payload?[key].flatMap(VaultEntry.init(json:)), entry.surfaceId == surfaceId else { return .ignored }
             guard entries[entry.id] != nil || watched(entry.id) || open(entry.parentId) else { return .ignored }
             return accept(entry, into: &entries) ? .applied(entryId: entry.id) : .ignored
-        case "vault.entry.updated":
-            guard let id = payload?["entryId"]?.stringValue, let version = payload?["version"]?.stringValue else { return .ignored }
+        case "updated":
+            guard let id = payload?["\(key)Id"]?.stringValue, let version = payload?["version"]?.stringValue else { return .ignored }
             let changes = payload?["changes"]?.objectValue ?? [:]
             guard let held = entries[id] else {
                 let moves = changes["parentId"].map { open($0.stringValue) } ?? false
                 let returns = changes["deletedAt"] == .null
-                return moves || returns || watched(id) ? .read(entryId: id) : .ignored
+                return moves || returns || watched(id) ? .read(entryId: id, folder: folder) : .ignored
             }
             if held.version == version || newer(held.version, than: version) { return .ignored }
-            guard held.version == payload?["previousVersion"]?.stringValue, case .object(var fields) = held.json else { return .read(entryId: id) }
+            guard held.version == payload?["previousVersion"]?.stringValue, case .object(var fields) = held.json else { return .read(entryId: id, folder: folder) }
             for (key, value) in changes { fields[key] = value }
             fields["version"] = .string(version)
-            guard let next = VaultEntry(json: .object(fields)) else { return .read(entryId: id) }
+            guard let next = VaultEntry(json: .object(fields)) else { return .read(entryId: id, folder: folder) }
             entries[id] = next
             return .applied(entryId: id)
-        case "vault.entry.removed":
-            guard let id = payload?["entryId"]?.stringValue else { return .ignored }
+        case "removed":
+            guard let id = payload?["\(key)Id"]?.stringValue else { return .ignored }
             remove(id, from: &entries)
             return .removed(entryId: id)
         default:

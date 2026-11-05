@@ -26,21 +26,24 @@ public enum VaultParent: Equatable, Hashable, Sendable {
 }
 
 /// The vault routes the library uses (happy-agent API.md, "Vault
-/// Surfaces"); `AgentClient` is the account's.
+/// Surfaces"); `AgentClient` is the account's. Folders and files are
+/// one kind of entry here, and two kinds of route there: those that
+/// address one say which it is.
 public protocol VaultRoutes: Sendable {
     func vaultEntries(_ surfaceId: String, parentId: String?, pageCursor: String?) async throws -> VaultPage<VaultEntry>
-    func vaultEntry(_ surfaceId: String, _ entryId: String) async throws -> VaultLocation
+    func vaultEntry(_ surfaceId: String, _ entryId: String, folder: Bool) async throws -> VaultLocation
     func vaultTrash(_ surfaceId: String, pageCursor: String?) async throws -> VaultPage<VaultTrashItem>
     func vaultSearch(_ surfaceId: String, query: String) async throws -> (results: [VaultSearchResult], truncated: Bool)
-    func vaultVersions(_ surfaceId: String, _ entryId: String, pageCursor: String?) async throws -> VaultPage<VaultVersion>
-    func vaultVersion(_ surfaceId: String, _ entryId: String, number: Int?) async throws -> VaultVersion
-    func vaultActivity(_ surfaceId: String, _ entryId: String, pageCursor: String?) async throws -> VaultPage<VaultActivity>
-    func createVaultEntry(_ surfaceId: String, id: String, parentId: String?, name: String, kind: VaultEntry.Kind, uploadId: String?, mutationId: String) async throws -> VaultEntry
-    func updateVaultEntry(_ surfaceId: String, _ entryId: String, name: String?, parent: VaultParent?, ifMatch: String, mutationId: String) async throws -> VaultEntry
-    func deleteVaultEntry(_ surfaceId: String, _ entryId: String, ifMatch: String, mutationId: String) async throws -> VaultEntry
-    func restoreVaultEntry(_ surfaceId: String, _ entryId: String, parent: VaultParent?, name: String?, ifMatch: String, mutationId: String) async throws -> VaultEntry
-    func createVaultVersion(_ surfaceId: String, _ entryId: String, uploadId: String?, fromVersion: Int?, ifMatch: String, mutationId: String) async throws -> (entry: VaultEntry, version: VaultVersion?)
-    func pinVaultVersion(_ surfaceId: String, _ entryId: String, number: Int, pinned: Bool, mutationId: String) async throws -> VaultVersion
+    func vaultVersions(_ surfaceId: String, _ fileId: String, pageCursor: String?) async throws -> VaultPage<VaultVersion>
+    func vaultVersion(_ surfaceId: String, _ fileId: String, number: Int?) async throws -> VaultVersion
+    func vaultActivity(_ surfaceId: String, _ entryId: String, folder: Bool, pageCursor: String?) async throws -> VaultPage<VaultActivity>
+    /// A folder, or a file from an upload (a site when `name` ends in `.artifact`).
+    func createVaultEntry(_ surfaceId: String, id: String, parentId: String?, name: String, folder: Bool, uploadId: String?, mutationId: String) async throws -> VaultEntry
+    func updateVaultEntry(_ surfaceId: String, _ entryId: String, folder: Bool, name: String?, parent: VaultParent?, ifMatch: String, mutationId: String) async throws -> VaultEntry
+    func deleteVaultEntry(_ surfaceId: String, _ entryId: String, folder: Bool, ifMatch: String, mutationId: String) async throws -> VaultEntry
+    func restoreVaultEntry(_ surfaceId: String, _ entryId: String, folder: Bool, parent: VaultParent?, name: String?, ifMatch: String, mutationId: String) async throws -> VaultEntry
+    func createVaultVersion(_ surfaceId: String, _ fileId: String, uploadId: String?, fromVersion: Int?, ifMatch: String, mutationId: String) async throws -> (entry: VaultEntry, version: VaultVersion?)
+    func pinVaultVersion(_ surfaceId: String, _ fileId: String, number: Int, pinned: Bool, mutationId: String) async throws -> VaultVersion
     func vaultSettings(_ surfaceId: String) async throws -> VaultSettings
     func updateVaultSettings(_ surfaceId: String, retention: VaultRetention, mutationId: String) async throws -> VaultSettings
     func createVaultUpload(size: Int) async throws -> VaultUpload
@@ -56,9 +59,16 @@ extension AgentClient: VaultRoutes {
         "/v0/surfaces/vault/\(escape(surfaceId))" + rest
     }
 
-    private static func entryPath(_ surfaceId: String, _ entryId: String, _ rest: String = "") -> String {
-        vaultPath(surfaceId, "/entries/\(escape(entryId))" + rest)
+    /// `/folders/:id` or `/files/:id`, and what its answers name the item.
+    private static func itemPath(_ surfaceId: String, _ id: String, folder: Bool, _ rest: String = "") -> String {
+        vaultPath(surfaceId, "/\(folder ? "folders" : "files")/\(escape(id))" + rest)
     }
+
+    private static func filePath(_ surfaceId: String, _ fileId: String, _ rest: String = "") -> String {
+        itemPath(surfaceId, fileId, folder: false, rest)
+    }
+
+    private static func key(folder: Bool) -> String { folder ? "folder" : "file" }
 
     private static func query(_ items: [(String, String?)]) -> String {
         let pairs = items.compactMap { key, value in value.map { "\(key)=\(escape($0))" } }
@@ -87,14 +97,14 @@ extension AgentClient: VaultRoutes {
     }
 
     public func vaultEntries(_ surfaceId: String, parentId: String?, pageCursor: String?) async throws -> VaultPage<VaultEntry> {
-        let answer = try await json("GET", Self.vaultPath(surfaceId, "/entries") + Self.query([("parentId", parentId), ("limit", "500"), ("pageCursor", pageCursor)]))
-        return VaultPage(items: Self.list(VaultEntry.self, answer["entries"]), next: answer["nextPageCursor"]?.stringValue)
+        let answer = try await json("GET", Self.vaultPath(surfaceId, "/items") + Self.query([("parentId", parentId), ("limit", "500"), ("pageCursor", pageCursor)]))
+        return VaultPage(items: Self.list(VaultEntry.self, answer["items"]), next: answer["nextPageCursor"]?.stringValue)
     }
 
-    public func vaultEntry(_ surfaceId: String, _ entryId: String) async throws -> VaultLocation {
-        let answer = try await json("GET", Self.entryPath(surfaceId, entryId))
+    public func vaultEntry(_ surfaceId: String, _ entryId: String, folder: Bool) async throws -> VaultLocation {
+        let answer = try await json("GET", Self.itemPath(surfaceId, entryId, folder: folder))
         return VaultLocation(
-            entry: try Self.decode(VaultEntry.self, answer["entry"]),
+            entry: try Self.decode(VaultEntry.self, answer[Self.key(folder: folder)]),
             path: answer["path"]?.stringValue ?? "",
             ancestors: Self.list(VaultLocation.Ancestor.self, answer["ancestors"]),
             inTrash: answer["inTrash"]?.boolValue ?? false
@@ -111,59 +121,62 @@ extension AgentClient: VaultRoutes {
         return (Self.list(VaultSearchResult.self, answer["results"]), answer["truncated"]?.boolValue ?? false)
     }
 
-    public func vaultVersions(_ surfaceId: String, _ entryId: String, pageCursor: String?) async throws -> VaultPage<VaultVersion> {
-        let answer = try await json("GET", Self.entryPath(surfaceId, entryId, "/versions") + Self.query([("limit", "200"), ("pageCursor", pageCursor)]))
+    public func vaultVersions(_ surfaceId: String, _ fileId: String, pageCursor: String?) async throws -> VaultPage<VaultVersion> {
+        let answer = try await json("GET", Self.filePath(surfaceId, fileId, "/versions") + Self.query([("limit", "200"), ("pageCursor", pageCursor)]))
         return VaultPage(items: Self.list(VaultVersion.self, answer["versions"]), next: answer["nextPageCursor"]?.stringValue)
     }
 
-    public func vaultVersion(_ surfaceId: String, _ entryId: String, number: Int?) async throws -> VaultVersion {
-        let answer = try await json("GET", Self.entryPath(surfaceId, entryId, "/versions/\(number.map(String.init) ?? "latest")"))
+    public func vaultVersion(_ surfaceId: String, _ fileId: String, number: Int?) async throws -> VaultVersion {
+        let answer = try await json("GET", Self.filePath(surfaceId, fileId, "/versions/\(number.map(String.init) ?? "latest")"))
         return try Self.decode(VaultVersion.self, answer["version"])
     }
 
-    public func vaultActivity(_ surfaceId: String, _ entryId: String, pageCursor: String?) async throws -> VaultPage<VaultActivity> {
-        let answer = try await json("GET", Self.entryPath(surfaceId, entryId, "/activity") + Self.query([("limit", "200"), ("pageCursor", pageCursor)]))
+    public func vaultActivity(_ surfaceId: String, _ entryId: String, folder: Bool, pageCursor: String?) async throws -> VaultPage<VaultActivity> {
+        let answer = try await json("GET", Self.itemPath(surfaceId, entryId, folder: folder, "/activity") + Self.query([("limit", "200"), ("pageCursor", pageCursor)]))
         return VaultPage(items: Self.list(VaultActivity.self, answer["activity"]), next: answer["nextPageCursor"]?.stringValue)
     }
 
-    public func createVaultEntry(_ surfaceId: String, id: String, parentId: String?, name: String, kind: VaultEntry.Kind, uploadId: String?, mutationId: String) async throws -> VaultEntry {
+    public func createVaultEntry(_ surfaceId: String, id: String, parentId: String?, name: String, folder: Bool, uploadId: String?, mutationId: String) async throws -> VaultEntry {
         let body = Self.body([
-            "id": .string(id), "parentId": parentId.map(JSONValue.string) ?? .null, "name": .string(name), "kind": .string(kind.rawValue),
-            "uploadId": uploadId.map(JSONValue.string), "mutationId": .string(mutationId),
+            "id": .string(id), "parentId": parentId.map(JSONValue.string) ?? .null, "name": .string(name),
+            "uploadId": folder ? nil : uploadId.map(JSONValue.string), "mutationId": .string(mutationId),
         ])
-        return try Self.decode(VaultEntry.self, try await json("POST", Self.vaultPath(surfaceId, "/entries"), body: body)["entry"])
+        let answer = try await json("POST", Self.vaultPath(surfaceId, folder ? "/folders" : "/files"), body: body)
+        return try Self.decode(VaultEntry.self, answer[Self.key(folder: folder)])
     }
 
-    public func updateVaultEntry(_ surfaceId: String, _ entryId: String, name: String?, parent: VaultParent?, ifMatch: String, mutationId: String) async throws -> VaultEntry {
+    public func updateVaultEntry(_ surfaceId: String, _ entryId: String, folder: Bool, name: String?, parent: VaultParent?, ifMatch: String, mutationId: String) async throws -> VaultEntry {
         let body = Self.body([
             "name": name.map(JSONValue.string), "parentId": parent.map { $0.id.map(JSONValue.string) ?? .null }, "mutationId": .string(mutationId),
         ])
-        return try Self.decode(VaultEntry.self, try await json("PATCH", Self.entryPath(surfaceId, entryId), body: body, headers: ["If-Match": ifMatch])["entry"])
+        let answer = try await json("PATCH", Self.itemPath(surfaceId, entryId, folder: folder), body: body, headers: ["If-Match": ifMatch])
+        return try Self.decode(VaultEntry.self, answer[Self.key(folder: folder)])
     }
 
-    public func deleteVaultEntry(_ surfaceId: String, _ entryId: String, ifMatch: String, mutationId: String) async throws -> VaultEntry {
-        let answer = try await json("POST", Self.entryPath(surfaceId, entryId, "/delete"), body: .object(["mutationId": .string(mutationId)]), headers: ["If-Match": ifMatch])
-        return try Self.decode(VaultEntry.self, answer["entry"])
+    public func deleteVaultEntry(_ surfaceId: String, _ entryId: String, folder: Bool, ifMatch: String, mutationId: String) async throws -> VaultEntry {
+        let answer = try await json("POST", Self.itemPath(surfaceId, entryId, folder: folder, "/delete"), body: .object(["mutationId": .string(mutationId)]), headers: ["If-Match": ifMatch])
+        return try Self.decode(VaultEntry.self, answer[Self.key(folder: folder)])
     }
 
-    public func restoreVaultEntry(_ surfaceId: String, _ entryId: String, parent: VaultParent?, name: String?, ifMatch: String, mutationId: String) async throws -> VaultEntry {
+    public func restoreVaultEntry(_ surfaceId: String, _ entryId: String, folder: Bool, parent: VaultParent?, name: String?, ifMatch: String, mutationId: String) async throws -> VaultEntry {
         let body = Self.body([
             "parentId": parent.map { $0.id.map(JSONValue.string) ?? .null }, "name": name.map(JSONValue.string), "mutationId": .string(mutationId),
         ])
-        return try Self.decode(VaultEntry.self, try await json("POST", Self.entryPath(surfaceId, entryId, "/restore"), body: body, headers: ["If-Match": ifMatch])["entry"])
+        let answer = try await json("POST", Self.itemPath(surfaceId, entryId, folder: folder, "/restore"), body: body, headers: ["If-Match": ifMatch])
+        return try Self.decode(VaultEntry.self, answer[Self.key(folder: folder)])
     }
 
-    public func createVaultVersion(_ surfaceId: String, _ entryId: String, uploadId: String?, fromVersion: Int?, ifMatch: String, mutationId: String) async throws -> (entry: VaultEntry, version: VaultVersion?) {
+    public func createVaultVersion(_ surfaceId: String, _ fileId: String, uploadId: String?, fromVersion: Int?, ifMatch: String, mutationId: String) async throws -> (entry: VaultEntry, version: VaultVersion?) {
         let body = Self.body([
             "uploadId": uploadId.map(JSONValue.string), "fromVersion": fromVersion.map { .number(Double($0)) }, "mutationId": .string(mutationId),
         ])
-        let answer = try await json("POST", Self.entryPath(surfaceId, entryId, "/versions"), body: body, headers: ["If-Match": ifMatch])
+        let answer = try await json("POST", Self.filePath(surfaceId, fileId, "/versions"), body: body, headers: ["If-Match": ifMatch])
         let version: VaultVersion? = answer["version"] == .null || answer["version"] == nil ? nil : try Self.decode(VaultVersion.self, answer["version"])
-        return (try Self.decode(VaultEntry.self, answer["entry"]), version)
+        return (try Self.decode(VaultEntry.self, answer["file"]), version)
     }
 
-    public func pinVaultVersion(_ surfaceId: String, _ entryId: String, number: Int, pinned: Bool, mutationId: String) async throws -> VaultVersion {
-        let path = Self.entryPath(surfaceId, entryId, "/versions/\(number)/\(pinned ? "pin" : "unpin")")
+    public func pinVaultVersion(_ surfaceId: String, _ fileId: String, number: Int, pinned: Bool, mutationId: String) async throws -> VaultVersion {
+        let path = Self.filePath(surfaceId, fileId, "/versions/\(number)/\(pinned ? "pin" : "unpin")")
         return try Self.decode(VaultVersion.self, try await json("POST", path, body: .object(["mutationId": .string(mutationId)]))["version"])
     }
 
@@ -206,19 +219,20 @@ extension AgentClient: VaultRoutes {
     /// One file of an artifact version; `path` is the manifest's, each segment escaped on its own.
     public func vaultArtifactFile(_ surfaceId: String, _ entryId: String, version: Int, path: String, range: String? = nil) async throws -> HTTP1Response {
         let escaped = path.split(separator: "/", omittingEmptySubsequences: false).map { Self.escape(String($0)) }.joined(separator: "/")
-        return try await send("GET", Self.entryPath(surfaceId, entryId, "/versions/\(version)/files/\(escaped)"), headers: range.map { ["Range": $0] } ?? [:], category: .file)
+        return try await send("GET", Self.filePath(surfaceId, entryId, "/versions/\(version)/artifact/\(escaped)"), headers: range.map { ["Range": $0] } ?? [:], category: .file)
     }
 
     public static func vaultContentPath(_ surfaceId: String, _ entryId: String, version: Int?) -> String {
-        entryPath(surfaceId, entryId, "/versions/\(version.map(String.init) ?? "latest")/content")
+        filePath(surfaceId, entryId, "/versions/\(version.map(String.init) ?? "latest")/content")
     }
 
-    /// A folder (nil: the whole vault) or an artifact version as a zip.
+    /// A folder (nil: the whole vault) as a zip.
     public static func vaultZipPath(_ surfaceId: String, folderId: String?) -> String {
-        folderId.map { entryPath(surfaceId, $0, "/zip") } ?? vaultPath(surfaceId, "/zip")
+        folderId.map { itemPath(surfaceId, $0, folder: true, "/zip") } ?? vaultPath(surfaceId, "/zip")
     }
 
-    public static func vaultArtifactZipPath(_ surfaceId: String, _ entryId: String, version: Int) -> String {
-        entryPath(surfaceId, entryId, "/versions/\(version)/zip")
+    /// An artifact version as its `.artifact` file.
+    public static func vaultArtifactZipPath(_ surfaceId: String, _ fileId: String, version: Int) -> String {
+        filePath(surfaceId, fileId, "/versions/\(version)/zip")
     }
 }

@@ -178,7 +178,7 @@ public actor VaultLibrary {
 
     private func receive(_ event: JSONValue) async {
         let payload = event["payload"]
-        guard let surfaceId = payload?["surfaceId"]?.stringValue ?? payload?["entry"]?["surfaceId"]?.stringValue, var vault = vaults[surfaceId] else { return }
+        guard let surfaceId = payload?["surfaceId"]?.stringValue ?? (payload?["file"] ?? payload?["folder"])?["surfaceId"]?.stringValue, var vault = vaults[surfaceId] else { return }
         switch event["type"]?.stringValue {
         case "vault.settings.updated":
             guard let version = payload?["version"]?.stringValue, vault.settings?.version != version else { return }
@@ -194,7 +194,7 @@ public actor VaultLibrary {
             }
             return
         case "vault.version.updated":
-            guard let entryId = payload?["entryId"]?.stringValue, let number = payload?["number"]?.numberValue, let pinned = payload?["pinned"]?.boolValue else { return }
+            guard let entryId = payload?["fileId"]?.stringValue, let number = payload?["number"]?.numberValue, let pinned = payload?["pinned"]?.boolValue else { return }
             for listener in vault.entryListeners[entryId]?.values ?? [:].values { listener.yield(.pinned(number: Int(number), pinned: pinned)) }
             return
         default:
@@ -211,8 +211,8 @@ public actor VaultLibrary {
             vaults[surfaceId] = vault
             if let entry = vault.entries[id] { notify(surfaceId, id, .entry(entry)) }
             changed(surfaceId)
-        case .read(let id):
-            guard let location = try? await routes.vaultEntry(surfaceId, id) else { return }
+        case .read(let id, let folder):
+            guard let location = try? await routes.vaultEntry(surfaceId, id, folder: folder) else { return }
             take(location.entry)
         case .removed(let id):
             vaults[surfaceId] = vault
@@ -220,7 +220,7 @@ public actor VaultLibrary {
             changed(surfaceId)
         }
         let changes = payload?["changes"]?.objectValue
-        if event["type"]?.stringValue == "vault.entry.removed" || changes?["deletedAt"] != nil, vaults[surfaceId]?.trash.loaded == true {
+        if event["type"]?.stringValue?.hasSuffix(".removed") == true || changes?["deletedAt"] != nil, vaults[surfaceId]?.trash.loaded == true {
             refreshTrash(surfaceId)
         }
     }
@@ -409,8 +409,8 @@ public actor VaultLibrary {
     public func entry(_ surfaceId: String, _ entryId: String) -> VaultEntry? { shownEntries(surfaceId)[entryId] }
 
     /// Reads one entry and where it is.
-    public func location(_ surfaceId: String, _ entryId: String) async throws -> VaultLocation {
-        let location = try await routes.vaultEntry(surfaceId, entryId)
+    public func location(_ surfaceId: String, _ entryId: String, folder: Bool) async throws -> VaultLocation {
+        let location = try await routes.vaultEntry(surfaceId, entryId, folder: folder)
         if vaults[surfaceId] != nil { take(location.entry) }
         return location
     }
@@ -427,7 +427,7 @@ public actor VaultLibrary {
     /// computer answers is kept; a refusal undoes it and throws.
     @discardableResult
     private func change(_ surfaceId: String, _ entryId: String, shown: (VaultEntry) -> VaultEntry,
-                        _ request: @Sendable (_ ifMatch: String, _ mutationId: String) async throws -> VaultEntry) async throws -> VaultEntry {
+                        _ request: @Sendable (_ ifMatch: String, _ mutationId: String, _ folder: Bool) async throws -> VaultEntry) async throws -> VaultEntry {
         guard let held = entry(surfaceId, entryId) else { throw AgentClientError.status(404, code: "not_found", message: nil) }
         let id = UUID()
         pending[id] = Pending(surfaceId: surfaceId, entryId: entryId, shown: shown(held))
@@ -440,11 +440,11 @@ public actor VaultLibrary {
         let mutationId = ClientID.make()
         for attempt in 0..<2 {
             do {
-                let answer = try await request(version, mutationId)
+                let answer = try await request(version, mutationId, held.isFolder)
                 take(answer)
                 return answer
             } catch AgentClientError.status(409, "conflict", _) where attempt == 0 {
-                let fresh = try await routes.vaultEntry(surfaceId, entryId)
+                let fresh = try await routes.vaultEntry(surfaceId, entryId, folder: held.isFolder)
                 take(fresh.entry)
                 version = fresh.entry.version
             }
@@ -454,23 +454,23 @@ public actor VaultLibrary {
 
     public func rename(_ surfaceId: String, _ entryId: String, to name: String) async throws {
         let routes = routes
-        try await change(surfaceId, entryId, shown: { var entry = $0; entry.name = name; return entry }) { ifMatch, mutationId in
-            try await routes.updateVaultEntry(surfaceId, entryId, name: name, parent: nil, ifMatch: ifMatch, mutationId: mutationId)
+        try await change(surfaceId, entryId, shown: { var entry = $0; entry.name = name; return entry }) { ifMatch, mutationId, folder in
+            try await routes.updateVaultEntry(surfaceId, entryId, folder: folder, name: name, parent: nil, ifMatch: ifMatch, mutationId: mutationId)
         }
     }
 
     public func move(_ surfaceId: String, _ entryId: String, to parent: VaultParent) async throws {
         let routes = routes
-        try await change(surfaceId, entryId, shown: { var entry = $0; entry.parentId = parent.id; return entry }) { ifMatch, mutationId in
-            try await routes.updateVaultEntry(surfaceId, entryId, name: nil, parent: parent, ifMatch: ifMatch, mutationId: mutationId)
+        try await change(surfaceId, entryId, shown: { var entry = $0; entry.parentId = parent.id; return entry }) { ifMatch, mutationId, folder in
+            try await routes.updateVaultEntry(surfaceId, entryId, folder: folder, name: nil, parent: parent, ifMatch: ifMatch, mutationId: mutationId)
         }
     }
 
     /// To the Trash.
     public func delete(_ surfaceId: String, _ entryId: String) async throws {
         let routes = routes, now = now()
-        try await change(surfaceId, entryId, shown: { var entry = $0; entry.deletedAt = now; return entry }) { ifMatch, mutationId in
-            try await routes.deleteVaultEntry(surfaceId, entryId, ifMatch: ifMatch, mutationId: mutationId)
+        try await change(surfaceId, entryId, shown: { var entry = $0; entry.deletedAt = now; return entry }) { ifMatch, mutationId, folder in
+            try await routes.deleteVaultEntry(surfaceId, entryId, folder: folder, ifMatch: ifMatch, mutationId: mutationId)
         }
         if vaults[surfaceId]?.trash.loaded == true { refreshTrash(surfaceId) }
     }
@@ -487,7 +487,7 @@ public actor VaultLibrary {
             pending[token] = nil
             changed(surfaceId)
         }
-        let entry = try await routes.createVaultEntry(surfaceId, id: id, parentId: parentId, name: name, kind: .folder, uploadId: nil, mutationId: ClientID.make())
+        let entry = try await routes.createVaultEntry(surfaceId, id: id, parentId: parentId, name: name, folder: true, uploadId: nil, mutationId: ClientID.make())
         take(entry)
         return entry
     }
@@ -497,7 +497,7 @@ public actor VaultLibrary {
     public func restoreVersion(_ surfaceId: String, _ entryId: String, number: Int) async throws -> VaultVersion? {
         let routes = routes
         let box = VersionBox()
-        try await change(surfaceId, entryId, shown: { $0 }) { ifMatch, mutationId in
+        try await change(surfaceId, entryId, shown: { $0 }) { ifMatch, mutationId, _ in
             let answer = try await routes.createVaultVersion(surfaceId, entryId, uploadId: nil, fromVersion: number, ifMatch: ifMatch, mutationId: mutationId)
             box.set(answer.version)
             return answer.entry
@@ -577,7 +577,7 @@ public actor VaultLibrary {
             publishTrash(surfaceId)
             changed(surfaceId)
         }
-        let entry = try await routes.restoreVaultEntry(surfaceId, item.entry.id, parent: parent, name: name, ifMatch: item.entry.version, mutationId: ClientID.make())
+        let entry = try await routes.restoreVaultEntry(surfaceId, item.entry.id, folder: item.entry.isFolder, parent: parent, name: name, ifMatch: item.entry.version, mutationId: ClientID.make())
         take(entry)
         vaults[surfaceId]?.trash.items.removeAll { $0.entry.id == entry.id }
         refreshTrash(surfaceId)
@@ -639,7 +639,7 @@ public actor VaultLibrary {
     /// An entry's surviving versions, newest first, and its activity.
     public func history(_ surfaceId: String, _ entryId: String) async throws -> (versions: [VaultVersion], activity: [VaultActivity]) {
         async let versions = routes.vaultVersions(surfaceId, entryId, pageCursor: nil)
-        async let activity = routes.vaultActivity(surfaceId, entryId, pageCursor: nil)
+        async let activity = routes.vaultActivity(surfaceId, entryId, folder: false, pageCursor: nil)
         return (try await versions.items, try await activity.items)
     }
 
@@ -718,11 +718,11 @@ public actor VaultLibrary {
             setUpload(surfaceId, id) { $0.phase = .placing; $0.sent = $0.total }
             if let replacing = item.replacing {
                 let routes = routes
-                try await change(surfaceId, replacing, shown: { $0 }) { ifMatch, mutationId in
+                try await change(surfaceId, replacing, shown: { $0 }) { ifMatch, mutationId, _ in
                     try await routes.createVaultVersion(surfaceId, replacing, uploadId: upload.id, fromVersion: nil, ifMatch: ifMatch, mutationId: mutationId).entry
                 }
             } else {
-                let made = try await routes.createVaultEntry(surfaceId, id: TodoID.make(), parentId: item.parentId, name: item.name, kind: item.kind, uploadId: upload.id, mutationId: ClientID.make())
+                let made = try await routes.createVaultEntry(surfaceId, id: TodoID.make(), parentId: item.parentId, name: item.name, folder: false, uploadId: upload.id, mutationId: ClientID.make())
                 take(made)
             }
             staged[id] = nil
