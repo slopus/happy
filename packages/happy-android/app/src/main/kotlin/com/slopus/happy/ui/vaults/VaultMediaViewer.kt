@@ -43,7 +43,8 @@ fun VaultMediaViewer(session: AgentSession, items: List<VaultItem>, index: Int, 
                     routes.content(entry.surfaceId, entry.id, version ?: entry.latestVersion).body
                 } catch (e: CancellationException) {
                     throw e
-                } catch (_: Exception) {
+                } catch (e: Exception) {
+                    android.util.Log.w("VaultMediaViewer", "Couldn't read ${entry.id}: ${e.javaClass.simpleName} ${e.message}")
                     null
                 }
             }

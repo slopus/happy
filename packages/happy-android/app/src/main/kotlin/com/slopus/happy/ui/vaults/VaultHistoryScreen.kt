@@ -111,8 +111,12 @@ internal class VaultHistoryModel(val session: AgentSession, val surfaceId: Strin
                     event is VaultEvent.Resync -> read()
                     event is VaultEvent.Updated && event.itemId == itemId -> read()
                     event is VaultEvent.Known && event.item.id == itemId -> read()
-                    event is VaultEvent.VersionPinned && event.fileId == itemId -> stateFlow.update { state ->
-                        state.copy(versions = state.versions?.map { if (it.number == event.number) it.copy(pinned = event.pinned) else it })
+                    event is VaultEvent.VersionPinned && event.fileId == itemId -> {
+                        stateFlow.update { state ->
+                            state.copy(versions = state.versions?.map { if (it.number == event.number) it.copy(pinned = event.pinned) else it })
+                        }
+                        // A pin is also a line of the activity.
+                        read()
                     }
                     event is VaultEvent.Removed && event.itemId == itemId -> stateFlow.update { it.copy(gone = true) }
                 }

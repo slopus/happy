@@ -345,7 +345,7 @@ internal fun VaultUploadRow(task: VaultUploads.Task, onCancel: () -> Unit, onRet
             .fillMaxWidth()
             .heightIn(min = VaultRowSpec.row)
             .testTag(VaultFolderTags.UPLOAD)
-            .combinedClickableIf(task.status == VaultUploads.Status.Failed, onRetry),
+            .combinedClickableIf(task.status == VaultUploads.Status.Failed && !task.refused, onRetry),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -373,7 +373,15 @@ private fun uploadDetail(task: VaultUploads.Task): String = when (task.status) {
     VaultUploads.Status.Waiting -> stringResource(R.string.vaults_upload_waiting)
     VaultUploads.Status.Sending -> stringResource(R.string.vaults_uploading, vaultBytes(task.sent, task.size))
     VaultUploads.Status.Placing, VaultUploads.Status.NameTaken -> stringResource(R.string.vaults_upload_finishing)
-    VaultUploads.Status.Failed -> task.problem?.let { stringResource(R.string.vaults_upload_failed_reason, problemText(it)) } ?: stringResource(R.string.vaults_upload_failed)
+    VaultUploads.Status.Failed -> {
+        val reason = task.problem?.let { problemText(it) }
+        when {
+            // The daemon's own words for why it can't take it, with nothing to try again.
+            task.refused && reason != null -> reason
+            reason != null -> stringResource(R.string.vaults_upload_failed_reason, reason.trimEnd('.', '。'))
+            else -> stringResource(R.string.vaults_upload_failed)
+        }
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)

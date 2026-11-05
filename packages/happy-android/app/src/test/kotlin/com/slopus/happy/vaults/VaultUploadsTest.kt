@@ -190,6 +190,10 @@ class VaultUploadsTest {
             val id = uploads.add("s1", null, Bytes("notes.artifact", bytes(10)))
             val failed = uploads.tasks.first { tasks -> tasks.any { it.status == VaultUploads.Status.Failed } }.single()
             assertEquals(com.slopus.happy.conversation.Problem.Said("The .artifact file has no artifact.json at its root."), failed.problem)
+            // Sending it again won't change the daemon's mind.
+            assertTrue(failed.refused)
+            uploads.retry(id)
+            assertEquals(VaultUploads.Status.Failed, uploads.tasks.value.single().status)
             uploads.cancel(id)
         }
     }

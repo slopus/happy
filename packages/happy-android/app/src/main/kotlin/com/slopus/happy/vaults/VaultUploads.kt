@@ -61,6 +61,8 @@ class VaultUploads(
         /** The file already called [name], while [status] is NameTaken. */
         val taken: VaultItem? = null,
         val problem: Problem? = null,
+        /** The daemon refused it (a bad `.artifact`, a name it can't take): trying again won't help. */
+        val refused: Boolean = false,
     ) {
         val progress: Float get() = if (size <= 0) 1f else (sent.toFloat() / size).coerceIn(0f, 1f)
     }
@@ -100,7 +102,7 @@ class VaultUploads(
     fun retry(taskId: String) {
         val task = tasksFlow.value.firstOrNull { it.id == taskId } ?: return
         val source = synchronized(this) { sources[taskId] } ?: return
-        if (task.status != Status.Failed) return
+        if (task.status != Status.Failed || task.refused) return
         set(taskId) { it.copy(status = Status.Waiting, problem = null) }
         run(taskId, source)
     }
@@ -122,7 +124,8 @@ class VaultUploads(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    set(taskId) { it.copy(status = Status.Failed, problem = Conversation.describe(e)) }
+                    val refused = e is AgentApiException && e.status in 400..499 && e.status !in RETRYABLE
+                    set(taskId) { it.copy(status = Status.Failed, problem = Conversation.describe(e), refused = refused) }
                 }
             }
         }
@@ -267,6 +270,9 @@ class VaultUploads(
         const val TARGET_SECONDS = 3.0
         const val MAX_FAILURES = 6
         const val MAX_COPIES = 99
+
+        /** Refusals that may pass on another try: a timeout, a conflict, too many requests. */
+        private val RETRYABLE = setOf(408, 409, 429)
 
         const val ARTIFACT_SUFFIX = ".artifact"
 
