@@ -331,8 +331,9 @@ win:
   voice's mic) plays once when it appears, holds its last frame, and plays
   once more on a tap; with animations removed it holds still. Draw every one
   with `SceneAnimation` (or `StateAnimation`), never
-  `LottieConstants.IterateForever`. A row icon that is an emoji is a tile's
-  size (30) in the row's 32 icon box, at the row's top when the row grows
+  `LottieConstants.IterateForever`. A row icon that is an emoji sits on a
+  tile like every other row's glyph, the tile's size (30) in the row's 32
+  icon box and orange for the boba, at the row's top when the row grows
   (`SupportBobaCard`).
 - **Settings search** (iOS's, `ui/settings/SettingsSearch.kt`), on both
   kinds of Settings: the bar's search button turns the bar into a field

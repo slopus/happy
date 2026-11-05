@@ -496,8 +496,9 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
   tap; with Reduce Motion it holds still. Draw every one with
   `StateSceneView` (a `StateScene` case per file), never a bare
   `LottieAnimationView`, and never set `.loop`. A row icon that is an
-  emoji is a tile's size (30) where the tile goes, at the row's top when
-  the row grows (`SettingsLayout`'s art row).
+  emoji sits on a tile like every other row's glyph, the tile's size (30)
+  where the tile goes and orange for the boba, at the row's top when the
+  row grows (`SettingsLayout`'s art row, `SupportBobaArt`).
 
 ## Record kinds: current vs retired
 

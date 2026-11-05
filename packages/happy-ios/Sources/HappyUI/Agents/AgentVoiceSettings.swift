@@ -49,18 +49,24 @@ struct AgentVoiceStatus: Equatable {
     #endif
 }
 
-/// Settings' Support Happy row: the boba at a tile's size, where the
+/// Settings' Support Happy row: the boba on an orange tile, where the
 /// other rows have their tiles, and the words beside it. It stays still here, the
 /// pose it was drawn to rest in (`StateSceneView`'s `onDemand`, never
-/// asked); it moves only in the sheet the row opens. It takes no touches
+/// asked); it moves only on the page the row opens. It takes no touches
 /// of its own: a tap anywhere on the row is the row's.
 final class SupportBobaArt: UIView {
-    let scene = StateSceneView(scene: .boba, size: SettingsLayout.Metrics.art, play: .onDemand, replayLabel: Strings.AgentVoice.supportSpoken)
+    /// The boba inside the tile, this far from its edge.
+    static let inset: CGFloat = 3
+    let scene = StateSceneView(scene: .boba, size: SettingsLayout.Metrics.art - 2 * inset, play: .onDemand, replayLabel: Strings.AgentVoice.supportSpoken)
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         isUserInteractionEnabled = false
         accessibilityElementsHidden = true
+        backgroundColor = UIColor(SettingsCardView.RowView.color(.orange))
+        layer.cornerRadius = SettingsLayout.Metrics.tileRadius
+        layer.cornerCurve = .continuous
+        clipsToBounds = true
         addSubview(scene)
     }
 
@@ -68,7 +74,7 @@ final class SupportBobaArt: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        scene.frame = bounds
+        scene.frame = bounds.insetBy(dx: Self.inset, dy: Self.inset)
     }
 }
 

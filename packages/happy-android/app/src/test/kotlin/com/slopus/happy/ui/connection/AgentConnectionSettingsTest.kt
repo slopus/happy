@@ -164,6 +164,8 @@ class AgentConnectionSettingsTest {
         val title = rule.node(AgentVoiceTags.SUPPORT_TITLE).bounds
         val line = rule.node(AgentVoiceTags.SUPPORT_LINE).bounds
         assertBox("icon box", art, row.left + 16.dp, row.top + 12.dp, 32.dp, 32.dp)
+        // The boba on its orange tile, a row tile's size, in the box.
+        assertBox("tile", rule.node(AgentVoiceTags.SUPPORT_TILE).bounds, art.left + 1.dp, art.top + 1.dp, 30.dp, 30.dp)
         assertDp("title's first line level with the boba", (art.top + art.bottom) / 2, title.top + 12.dp)
         assertDp("title after the icon box", art.right + 12.dp, title.left)
         assertDp("line under the title", title.bottom, line.top)

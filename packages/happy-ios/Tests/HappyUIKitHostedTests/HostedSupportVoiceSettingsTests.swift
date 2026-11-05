@@ -135,6 +135,8 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
         let row = try XCTUnwrap(subview(SettingsCardView.RowView.self, in: settings.view) { $0.accessibilityIdentifier == "settings:support-boba" }, file: file, line: line)
         let art = try XCTUnwrap(subview(SupportBobaArt.self, in: row), file: file, line: line)
         XCTAssertEqual(art.frame, CGRect(x: 16, y: 11, width: 30, height: 30), file: file, line: line)
+        XCTAssertEqual(art.backgroundColor?.resolvedColor(with: art.traitCollection), UIColor(SettingsCardView.RowView.color(.orange)).resolvedColor(with: art.traitCollection), "the boba isn't on its orange tile", file: file, line: line)
+        XCTAssertEqual(art.scene.frame, CGRect(x: 3, y: 3, width: 24, height: 24), file: file, line: line)
         XCTAssertGreaterThan(row.bounds.height, SettingsLayout.Metrics.row, file: file, line: line)
         for label in row.subviews.compactMap({ $0 as? UILabel }) where !label.isHidden && !(label.text ?? "").isEmpty {
             let needed = label.sizeThatFits(CGSize(width: label.bounds.width, height: .greatestFiniteMagnitude)).height

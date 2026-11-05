@@ -299,8 +299,8 @@ struct SettingsRow {
     /// What a hold on it offers (signing an account out), and VoiceOver's
     /// actions on it.
     var menu: [MenuItem] = []
-    /// Art that leads the row in place of the icon (Support's boba), at a
-    /// tile's size and place, held at the top while its title and line
+    /// Art that leads the row in place of the icon (Support's boba on its
+    /// tile), at a tile's size and place, held at the top while its title and line
     /// wrap beside it at the person's text size and the row grows for
     /// them. The page keeps the view, so it is the same one each time the
     /// row is shown.
