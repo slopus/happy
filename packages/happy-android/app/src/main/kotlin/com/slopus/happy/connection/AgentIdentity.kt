@@ -15,8 +15,8 @@ data class AgentInfo(
     val webSocketTunnels: Boolean = false,
     /** Health's `instanceId`: the installation's, which external links are locked to (edge SSO §7). Null from an older daemon. */
     val instanceId: String? = null,
-    /** Health's `capabilities.quickSearch`: `GET /v0/quick-search` answers; an older daemon's search is the phone's alone. */
-    val quickSearch: Boolean = false,
+    /** Health's `capabilities.search`: `POST /v0/search` answers; an older daemon's search is the phone's alone. */
+    val search: Boolean = false,
 )
 
 /** What `/v0/node/avatar` answered. The ETag, not the ThumbHash, says which bytes these are. */
@@ -42,7 +42,7 @@ object AgentIdentity {
     private const val MAX_AVATAR_BYTES = 8 * 1024 * 1024
 
     @Serializable private class Version(val protocol: Int, val daemon: String? = null)
-    @Serializable private class Capabilities(val webSocketTunnels: Boolean = false, val quickSearch: Boolean = false)
+    @Serializable private class Capabilities(val webSocketTunnels: Boolean = false, val search: Boolean = false)
     @Serializable private class Health(val ready: Boolean, val version: Version, val capabilities: Capabilities? = null, val instanceId: String? = null)
     @Serializable private class Avatar(val thumbhash: String? = null)
     @Serializable private class Node(val name: String, val avatar: Avatar? = null)
@@ -92,7 +92,7 @@ object AgentIdentity {
             webSocketTunnels = health.capabilities?.webSocketTunnels == true,
             // Anything but a well-formed id is as good as none: no external link is offered.
             instanceId = health.instanceId?.takeIf(com.slopus.happy.agent.HappyUrls::isInstanceId),
-            quickSearch = health.capabilities?.quickSearch == true,
+            search = health.capabilities?.search == true,
         )
     }
 

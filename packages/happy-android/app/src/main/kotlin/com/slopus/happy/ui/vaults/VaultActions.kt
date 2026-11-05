@@ -66,7 +66,7 @@ object VaultActionTags {
 
 /**
  * Everything a person can do to a vault's entries, from any of its screens
- * (a folder's rows and bar, a file's bar, search, the Trash): each asks
+ * (a folder's rows and bar, a file's bar, the Trash): each asks
  * what it needs (a name, a folder, a confirmation, a place on the phone),
  * changes the vault and hands the entry the daemon answered with to the
  * vault's folders ([com.slopus.happy.vaults.Vaults.known]), so they show

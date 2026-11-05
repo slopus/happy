@@ -4,8 +4,8 @@ import androidx.compose.ui.unit.dp
 import com.slopus.happy.agent.AgentFeed
 import com.slopus.happy.agent.AgentFeedRow
 import com.slopus.happy.agent.Wire
-import com.slopus.happy.search.QuickSearchAnswer
-import com.slopus.happy.search.QuickSearchHit
+import com.slopus.happy.search.SearchAnswer
+import com.slopus.happy.search.SearchHit
 import com.slopus.happy.ui.connection.AgentHomeLayoutTest.Companion.NOW
 import com.slopus.happy.ui.connection.AgentHomeLayoutTest.Companion.big
 import com.slopus.happy.ui.connection.AgentHomeLayoutTest.Companion.catalog
@@ -17,7 +17,7 @@ import org.junit.Test
 
 /**
  * Home's search: what an empty search shows (happy-ios SearchTests), the
- * phone's half of quick search ranked as the daemon ranks, its fusion with
+ * phone's half of search ranked as the daemon ranks, its fusion with
  * the daemon's, and the pull that closes search.
  */
 class AgentSearchTest {
@@ -67,7 +67,7 @@ class AgentSearchTest {
         assertEquals(listOf("agent-ab2"), keys(AgentSearch.recent(idle)))
     }
 
-    private fun found(query: String, sources: AgentSearchSources = AgentSearchSources.None, remote: QuickSearchAnswer? = null) =
+    private fun found(query: String, sources: AgentSearchSources = AgentSearchSources.None, remote: SearchAnswer? = null) =
         agentSearchResults(feed, query, label, words, emptyList(), emptyList(), sources, remote).map { it.key }
 
     @Test
@@ -151,12 +151,12 @@ class AgentSearchTest {
 
     @Test
     fun theDaemonsResultsFuseWithThePhonesByKey() {
-        val remote = QuickSearchAnswer(
+        val remote = SearchAnswer(
             "plan",
             listOf(
-                QuickSearchHit.VaultFile("vault_file:f1", 1, "v1", "f1", "Launch plan.md", "/Docs/Launch plan.md", match = "content", line = 4, snippet = "The launch   plan moves"),
-                QuickSearchHit.Document("document:d2", 2, "d2", "Plan for Q3", match = "content", line = 2, snippet = "Plan the quarter"),
-                QuickSearchHit.Agent("agent:at3", 3, "at3", "Plan the launch", "task"),
+                SearchHit.VaultFile("vault_file:f1", 1, "v1", "f1", "Launch plan.md", "/Docs/Launch plan.md", match = "content", line = 4, snippet = "The launch   plan moves"),
+                SearchHit.Document("document:d2", 2, "d2", "Plan for Q3", match = "content", line = 2, snippet = "Plan the quarter"),
+                SearchHit.Agent("agent:at3", 3, "at3", "Plan the launch", "task"),
             ),
         )
         val results = agentSearchResults(feed, "plan", label, words, emptyList(), emptyList(), sources, remote).map { it as AgentSearchResult.Found }
@@ -166,13 +166,30 @@ class AgentSearchTest {
         val byKey = results.associateBy { it.key }
         // A content match shows the daemon's row, with its line; the phone's row stays otherwise.
         assertEquals(null, byKey.getValue("document:d2").drawn)
-        assertEquals("Plan the quarter", quickSearchDetail(byKey.getValue("document:d2").hit!!))
+        assertEquals("Plan the quarter", searchHitDetail(byKey.getValue("document:d2").hit!!))
         assertTrue(byKey.getValue("agent:at3").drawn is AgentSearchResult.Home)
-        assertEquals("The launch plan moves", quickSearchDetail(byKey.getValue("vault_file:f1").hit!!))
-        assertEquals("Launch plan", quickSearchTitle(QuickSearchHit.VaultFile("vault_file:f2", 1, "v1", "f2", "Launch plan.artifact", "/Apps/Launch plan.artifact", kind = "artifact")))
-        assertEquals("/Apps", quickSearchDetail(QuickSearchHit.VaultFolder("vault_folder:f3", 1, "v1", "f3", "Old", "/Apps/Old")))
+        assertEquals("The launch plan moves", searchHitDetail(byKey.getValue("vault_file:f1").hit!!))
+        assertEquals("Launch plan", searchHitTitle(SearchHit.VaultFile("vault_file:f2", 1, "v1", "f2", "Launch plan.artifact", "/Apps/Launch plan.artifact", kind = "artifact")))
+        assertEquals("/Apps", searchHitDetail(SearchHit.VaultFolder("vault_folder:f3", 1, "v1", "f3", "Old", "/Apps/Old")))
         // What the daemon found only for an earlier query isn't the caller's to fuse in: nothing else changes.
         assertEquals(found("plan", sources), agentSearchResults(feed, "plan", label, words, emptyList(), emptyList(), sources).map { it.key })
+    }
+
+    @Test
+    fun aMessageIsFoundUnderItsConversation() {
+        val at3 = feed.rows.filterIsInstance<AgentFeedRow.Conversation>().single { it.agentId == "at3" }
+        val remote = SearchAnswer("launch", listOf(SearchHit.Message("message:m1", 1, "at3", "m1", "user", "when is the   launch?", 1, null, null)))
+        val found = agentSearchResults(feed, "launch", label, words, emptyList(), emptyList(), remote = remote)
+            .filterIsInstance<AgentSearchResult.Found>().single { it.key == "message:m1" }
+        // Titled by its conversation as home names it, its line under that, drawn as the daemon's row.
+        assertEquals(label(at3), found.conversation)
+        assertEquals("when is the launch?", searchHitDetail(found.hit!!))
+        assertEquals(null, found.drawn)
+        // One the phone doesn't hold has no title of its own; the row says "New chat".
+        val elsewhere = SearchAnswer("launch", listOf(SearchHit.Message("message:m2", 1, "gone", "m2", snippet = "launch")))
+        assertEquals(null, agentSearchResults(feed, "launch", label, words, emptyList(), emptyList(), remote = elsewhere).filterIsInstance<AgentSearchResult.Found>().single { it.key == "message:m2" }.conversation)
+        // An event found by its notes shows them; by its title, when it is.
+        assertEquals("Bring the banner", searchHitDetail(SearchHit.CalendarEvent("calendar_event:e1", 1, "c1", "e1", "Launch", start = 1, match = "content", snippet = "Bring the banner")))
     }
 
     @Test

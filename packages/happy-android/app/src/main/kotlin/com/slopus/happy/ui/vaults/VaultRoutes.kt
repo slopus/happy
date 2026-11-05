@@ -24,8 +24,6 @@ import kotlinx.serialization.Serializable
 
 @Serializable data class VaultSettingsRoute(val connectionId: String, val surfaceId: String)
 
-@Serializable data class VaultSearchRoute(val connectionId: String, val surfaceId: String)
-
 /** The vault screens below a vault's root. Registered once, beside the Surface routes. */
 fun NavGraphBuilder.vaultRoutes(graph: AppGraph, nav: NavHostController) {
     val back = { nav.popBackStack(); Unit }
@@ -50,10 +48,6 @@ fun NavGraphBuilder.vaultRoutes(graph: AppGraph, nav: NavHostController) {
     page<VaultSettingsRoute> { entry ->
         val route = entry.toRoute<VaultSettingsRoute>()
         WithSession(graph, route.connectionId, back) { VaultSettingsScreen(it, route.surfaceId, back) }
-    }
-    page<VaultSearchRoute> { entry ->
-        val route = entry.toRoute<VaultSearchRoute>()
-        WithSession(graph, route.connectionId, back) { VaultSearchScreen(it, route.surfaceId, back, open) }
     }
 }
 

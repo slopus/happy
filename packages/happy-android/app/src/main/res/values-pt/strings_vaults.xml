@@ -94,13 +94,6 @@
     <string name="vaults_restored_from">da versão %1$d</string>
     <string name="vaults_root">a raiz do cofre</string>
     <string name="vaults_save_to_device">Salvar no dispositivo</string>
-    <string name="vaults_search">Buscar</string>
-    <string name="vaults_search_contents">Nos arquivos</string>
-    <string name="vaults_search_hint">Busque nomes e textos neste cofre</string>
-    <string name="vaults_search_more">Há mais resultados do que os mostrados. Tente palavras mais específicas.</string>
-    <string name="vaults_search_names">Nomes</string>
-    <string name="vaults_search_nothing">Nada encontrado para “%1$s”</string>
-    <string name="vaults_search_placeholder">Buscar no cofre</string>
     <string name="vaults_settings">Configurações do cofre</string>
     <string name="vaults_settings_failed">Não foi possível salvar as configurações</string>
     <string name="vaults_share">Compartilhar</string>

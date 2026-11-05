@@ -94,13 +94,6 @@
     <string name="vaults_restored_from">de la versión %1$d</string>
     <string name="vaults_root">la raíz de la bóveda</string>
     <string name="vaults_save_to_device">Guardar en el dispositivo</string>
-    <string name="vaults_search">Buscar</string>
-    <string name="vaults_search_contents">En archivos</string>
-    <string name="vaults_search_hint">Busca nombres y texto en esta bóveda</string>
-    <string name="vaults_search_more">Hay más resultados de los que se muestran. Prueba con palabras más concretas.</string>
-    <string name="vaults_search_names">Nombres</string>
-    <string name="vaults_search_nothing">No se encontró nada para «%1$s»</string>
-    <string name="vaults_search_placeholder">Buscar en la bóveda</string>
     <string name="vaults_settings">Ajustes de la bóveda</string>
     <string name="vaults_settings_failed">No se pudieron guardar los ajustes</string>
     <string name="vaults_share">Compartir</string>

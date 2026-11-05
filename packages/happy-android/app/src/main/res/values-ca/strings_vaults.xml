@@ -94,13 +94,6 @@
     <string name="vaults_restored_from">de la versió %1$d</string>
     <string name="vaults_root">l’arrel de la caixa forta</string>
     <string name="vaults_save_to_device">Desa al dispositiu</string>
-    <string name="vaults_search">Cerca</string>
-    <string name="vaults_search_contents">Als fitxers</string>
-    <string name="vaults_search_hint">Cerca noms i text en aquesta caixa forta</string>
-    <string name="vaults_search_more">Hi ha més resultats dels que es mostren. Prova paraules més concretes.</string>
-    <string name="vaults_search_names">Noms</string>
-    <string name="vaults_search_nothing">No s’ha trobat res per a «%1$s»</string>
-    <string name="vaults_search_placeholder">Cerca a la caixa forta</string>
     <string name="vaults_settings">Configuració de la caixa forta</string>
     <string name="vaults_settings_failed">No s’ha pogut desar la configuració</string>
     <string name="vaults_share">Comparteix</string>

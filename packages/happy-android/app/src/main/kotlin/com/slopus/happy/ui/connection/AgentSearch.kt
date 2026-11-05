@@ -63,9 +63,9 @@ import com.slopus.happy.agent.string
 import com.slopus.happy.artifacts.ArtifactCatalog
 import com.slopus.happy.artifacts.ArtifactCatalogFeed
 import com.slopus.happy.artifacts.ArtifactRef
-import com.slopus.happy.search.QuickSearchAnswer
-import com.slopus.happy.search.QuickSearchFusion
-import com.slopus.happy.search.QuickSearchHit
+import com.slopus.happy.search.SearchAnswer
+import com.slopus.happy.search.SearchFusion
+import com.slopus.happy.search.SearchHit
 import com.slopus.happy.ui.components.HomeCardPlace
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.vaults.VaultNames
@@ -81,8 +81,7 @@ import java.text.Normalizer
 import java.util.Locale
 
 /**
- * Home's search, quick search's phone half (happy-agent API.md, "Quick
- * search"): what the phone holds that answers the query, fused with what
+ * Home's search, search's phone half (happy-agent API.md, "Search"): what the phone holds that answers the query, fused with what
  * the daemon finds in one card ([agentSearchResults]); then at most six
  * quick actions and six settings. Nothing typed, the bots and tasks last
  * active. Case and accents don't count, and a query of several words
@@ -244,14 +243,21 @@ sealed interface AgentSearchResult {
     }
 
     /**
-     * One result of quick search under its [key] (`<type>:<id>`): [local]
+     * One result of search under its [key] (`<type>:<id>`): [local]
      * as the phone draws it, where it holds it; [hit] what the daemon said
      * of it. A content match's line is the daemon's alone, so it shows the
      * daemon's row; otherwise the phone's row stays as it was when the
      * daemon's answer comes in.
      */
-    data class Found(override val key: String, val local: AgentSearchResult?, val hit: QuickSearchHit?, val place: HomeCardPlace) : AgentSearchResult {
-        val drawn: AgentSearchResult? get() = local.takeIf { hit == null || quickSearchDetail(hit) == null }
+    data class Found(
+        override val key: String,
+        val local: AgentSearchResult?,
+        val hit: SearchHit?,
+        val place: HomeCardPlace,
+        /** A message's conversation, by the title home gives it; null where the phone doesn't hold it. */
+        val conversation: String? = null,
+    ) : AgentSearchResult {
+        val drawn: AgentSearchResult? get() = local.takeIf { hit == null || searchHitDetail(hit) == null }
     }
 }
 
@@ -321,23 +327,23 @@ class AgentSearchWords(
 
 /**
  * One thing the phone's own search found, under the key the daemon gives
- * it (API.md, "Quick search" › Result types): what it is called, what it
+ * it (API.md, "Search" › Result types): what it is called, what it
  * answers to below that, its tier among equals, and how it is drawn at its
  * place in the card.
  */
 private class Local(val key: String, val title: String, val secondary: List<String>, val tier: Int, val result: (HomeCardPlace) -> AgentSearchResult)
 
 /**
- * The phone's half of quick search for [query], ranked as the daemon ranks
+ * The phone's half of search for [query], ranked as the daemon ranks
  * its own: each kind's matches best first ([AgentSearch.ranked]), then
  * the kinds fused as the daemon fuses its providers, each match scored by
  * its place in its kind's list, equal places in the daemon's provider
- * order ([QuickSearchHit.TYPES]). From what the phone holds: home's
+ * order ([SearchHit.TYPES]). From what the phone holds: home's
  * conversations, projects and worktrees; the catalog's documents and other
  * Surfaces, joined or not; the open todos kept; the artifacts kept; and
  * home's own pages after them, which only the phone has.
  */
-private fun localQuickSearch(feed: AgentFeed, query: String, label: (AgentFeedRow) -> String?, words: AgentSearchWords, sources: AgentSearchSources): List<Local> {
+private fun localSearch(feed: AgentFeed, query: String, label: (AgentFeedRow) -> String?, words: AgentSearchWords, sources: AgentSearchSources): List<Local> {
     val surfaces = sources.surfaces.map { it.row to it.joined } +
         feed.rows.filterIsInstance<AgentFeedRow.Surface>().filter { row -> sources.surfaces.none { it.row.id == row.id } }.map { it to true }
     fun surface(row: AgentFeedRow.Surface, joined: Boolean) = Local(
@@ -367,7 +373,7 @@ private fun localQuickSearch(feed: AgentFeed, query: String, label: (AgentFeedRo
         "workspace" to feed.rows.filterIsInstance<AgentFeedRow.Folder>().filter { it.depth > 0 }.mapNotNull { home(it, "workspace:${it.id}") },
         HOME_PAGES to feed.rows.filter { it == AgentFeedRow.Artifacts || it is AgentFeedRow.Feed || it == AgentFeedRow.Todos }.mapNotNull { home(it, "home:${it.key}") },
     )
-    val order = QuickSearchHit.TYPES + HOME_PAGES
+    val order = SearchHit.TYPES + HOME_PAGES
     return providers.entries
         .flatMap { (type, items) ->
             AgentSearch.ranked(items, query, secondary = { it.secondary }, tier = { it.tier }) { it.title }
@@ -384,8 +390,8 @@ private const val HOME_PAGES = "home"
 
 /**
  * What search shows for [query]: one card of what it finds, the phone's
- * own results ([localQuickSearch]) fused with the daemon's ([remote], for
- * this query) as every client fuses them ([QuickSearchFusion]); then the
+ * own results ([localSearch]) fused with the daemon's ([remote], for
+ * this query) as every client fuses them ([SearchFusion]); then the
  * quick actions and the settings that answer, each under its heading, at
  * most six, best first, which only the phone has. Nothing typed: the bots
  * and tasks last active, one card with no title.
@@ -398,7 +404,7 @@ fun agentSearchResults(
     actions: List<AgentSearchEntry>,
     settings: List<AgentSearchEntry>,
     sources: AgentSearchSources = AgentSearchSources.None,
-    remote: QuickSearchAnswer? = null,
+    remote: SearchAnswer? = null,
 ): List<AgentSearchResult> {
     val out = ArrayList<AgentSearchResult>()
     if (query.isBlank()) {
@@ -406,10 +412,12 @@ fun agentSearchResults(
         recent.forEachIndexed { index, row -> out += AgentSearchResult.Home(AgentHomeItem.Row(row, first = index == 0, last = index == recent.lastIndex)) }
         return out
     }
-    val fused = QuickSearchFusion.fuse(remote?.hits.orEmpty(), localQuickSearch(feed, query, label, words, sources), { it.key }, { it.rank }, { it.key })
+    val fused = SearchFusion.fuse(remote?.hits.orEmpty(), localSearch(feed, query, label, words, sources), { it.key }, { it.rank }, { it.key })
+    val conversations = feed.rows.filterIsInstance<AgentFeedRow.Conversation>().associateBy { it.agentId }
     fused.forEachIndexed { index, found ->
         val place = HomeCardPlace(first = index == 0, last = index == fused.lastIndex)
-        out += AgentSearchResult.Found(found.key, found.local?.result?.invoke(place), found.remote, place)
+        val conversation = (found.remote as? SearchHit.Message)?.let { message -> conversations[message.agentId]?.let(label) }
+        out += AgentSearchResult.Found(found.key, found.local?.result?.invoke(place), found.remote, place, conversation)
     }
     fun section(title: String, entries: List<AgentSearchEntry>) {
         val found = AgentSearch.ranked(entries, query, AgentSearch.SECTION_LIMIT) { it.title }
@@ -503,7 +511,7 @@ fun AgentSearchResults(
     onOpenFeed: () -> Unit = {},
     onOpenTodos: () -> Unit = {},
     /** Opens what the daemon found that the phone draws no row of; null for what opens nothing (a project, as on home). */
-    onOpenHit: (QuickSearchHit) -> (() -> Unit)? = { null },
+    onOpenHit: (SearchHit) -> (() -> Unit)? = { null },
 ) {
     val colors = HappyTheme.colors
     val density = LocalDensity.current
@@ -521,7 +529,7 @@ fun AgentSearchResults(
         ) {
             items(results, key = { it.key }) { found ->
                 val tag = AgentSearchTags.result(found.key)
-                // A quick search result is drawn as the phone's row where it has one, else as the daemon's.
+                // A search result is drawn as the phone's row where it has one, else as the daemon's.
                 val result = if (found is AgentSearchResult.Found) found.drawn ?: found else found
                 when (result) {
                     is AgentSearchResult.Heading -> Box(
@@ -573,11 +581,11 @@ fun AgentSearchResults(
                     ) { onOpenArtifact(result.artifact) }
                     is AgentSearchResult.Found -> result.hit?.let { hit ->
                         AgentSearchEntryRow(
-                            quickSearchTitle(hit).ifBlank { stringResource(if (hit is QuickSearchHit.Artifact) R.string.agent_artifacts_untitled else R.string.session_new_chat) },
-                            quickSearchGlyph(hit),
+                            (result.conversation ?: searchHitTitle(hit)).ifBlank { stringResource(if (hit is SearchHit.Artifact) R.string.agent_artifacts_untitled else R.string.session_new_chat) },
+                            searchHitGlyph(hit),
                             result.place,
                             tag,
-                            detail = quickSearchDetail(hit),
+                            detail = searchHitDetail(hit),
                             onClick = onOpenHit(hit),
                         )
                     }
@@ -619,17 +627,19 @@ private fun artifactGlyph(type: String): Ionicon = when (type) {
 }
 
 /** A daemon's result's name, as its row shows it: a vault app without its ".artifact". Blank where it has none yet. */
-internal fun quickSearchTitle(hit: QuickSearchHit): String = when (hit) {
-    is QuickSearchHit.VaultFile -> VaultNames.shown(hit.name)
-    is QuickSearchHit.VaultFolder -> hit.name
-    is QuickSearchHit.Document -> hit.name
-    is QuickSearchHit.Todo -> hit.text
-    is QuickSearchHit.CalendarEvent -> hit.title
-    is QuickSearchHit.Artifact -> hit.title
-    is QuickSearchHit.Surface -> hit.name
-    is QuickSearchHit.Agent -> hit.title
-    is QuickSearchHit.Project -> hit.name
-    is QuickSearchHit.Workspace -> hit.name
+internal fun searchHitTitle(hit: SearchHit): String = when (hit) {
+    is SearchHit.VaultFile -> VaultNames.shown(hit.name)
+    is SearchHit.VaultFolder -> hit.name
+    is SearchHit.Document -> hit.name
+    // Its conversation's title, which the row is given ([AgentSearchResult.Found.conversation]).
+    is SearchHit.Message -> ""
+    is SearchHit.Todo -> hit.text
+    is SearchHit.CalendarEvent -> hit.title
+    is SearchHit.Artifact -> hit.title
+    is SearchHit.Surface -> hit.name
+    is SearchHit.Agent -> hit.title
+    is SearchHit.Project -> hit.name
+    is SearchHit.Workspace -> hit.name
 }
 
 /**
@@ -637,15 +647,16 @@ internal fun quickSearchTitle(hit: QuickSearchHit): String = when (hit) {
  * item is, or when an event next is; null where it has none, and the row
  * is one line as the phone's own are.
  */
-internal fun quickSearchDetail(hit: QuickSearchHit): String? {
+internal fun searchHitDetail(hit: SearchHit): String? {
     fun line(text: String?) = text?.replace(Regex("\\s+"), " ")?.trim()?.takeIf { it.isNotEmpty() }
     fun folder(path: String) = VaultNames.shownPath(path.substringBeforeLast('/')).ifEmpty { "/" }
     return when (hit) {
-        is QuickSearchHit.VaultFile -> line(hit.snippet) ?: folder(hit.path)
-        is QuickSearchHit.VaultFolder -> folder(hit.path)
-        is QuickSearchHit.Document -> line(hit.snippet)
-        is QuickSearchHit.Artifact -> line(hit.snippet)
-        is QuickSearchHit.CalendarEvent -> hit.start.takeIf { it > 0 }?.let {
+        is SearchHit.VaultFile -> line(hit.snippet) ?: folder(hit.path)
+        is SearchHit.VaultFolder -> folder(hit.path)
+        is SearchHit.Document -> line(hit.snippet)
+        is SearchHit.Message -> line(hit.snippet)
+        is SearchHit.Artifact -> line(hit.snippet)
+        is SearchHit.CalendarEvent -> line(hit.snippet) ?: hit.start.takeIf { it > 0 }?.let {
             val format = if (hit.allDay) java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM) else java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT)
             // An all-day event is a date, the same wherever the phone is.
             if (hit.allDay) format.timeZone = java.util.TimeZone.getTimeZone("UTC")
@@ -656,16 +667,17 @@ internal fun quickSearchDetail(hit: QuickSearchHit): String? {
 }
 
 /** A daemon's result's glyph, as the phone draws the same kind of thing. */
-private fun quickSearchGlyph(hit: QuickSearchHit): Ionicon = when (hit) {
-    is QuickSearchHit.VaultFile -> if (hit.kind == "artifact") Ionicon.AppsOutline else Ionicon.DocumentOutline
-    is QuickSearchHit.VaultFolder -> Ionicon.FolderOutline
-    is QuickSearchHit.Document -> Ionicon.DocumentTextOutline
-    is QuickSearchHit.Todo -> Ionicon.CheckmarkCircleOutline
-    is QuickSearchHit.CalendarEvent -> Ionicon.CalendarOutline
-    is QuickSearchHit.Artifact -> artifactGlyph(hit.artifactType)
-    is QuickSearchHit.Surface -> RowTile.surface(hit.surfaceType).first
-    is QuickSearchHit.Agent -> if (hit.kind == "bot") Ionicon.PersonCircleOutline else Ionicon.ChatbubbleEllipsesOutline
-    is QuickSearchHit.Project, is QuickSearchHit.Workspace -> Ionicon.FolderOutline
+private fun searchHitGlyph(hit: SearchHit): Ionicon = when (hit) {
+    is SearchHit.VaultFile -> if (hit.kind == "artifact") Ionicon.AppsOutline else Ionicon.DocumentOutline
+    is SearchHit.VaultFolder -> Ionicon.FolderOutline
+    is SearchHit.Document -> Ionicon.DocumentTextOutline
+    is SearchHit.Message -> Ionicon.ChatbubblesOutline
+    is SearchHit.Todo -> Ionicon.CheckmarkCircleOutline
+    is SearchHit.CalendarEvent -> Ionicon.CalendarOutline
+    is SearchHit.Artifact -> artifactGlyph(hit.artifactType)
+    is SearchHit.Surface -> RowTile.surface(hit.surfaceType).first
+    is SearchHit.Agent -> if (hit.kind == "bot") Ionicon.PersonCircleOutline else Ionicon.ChatbubbleEllipsesOutline
+    is SearchHit.Project, is SearchHit.Workspace -> Ionicon.FolderOutline
 }
 
 /**

@@ -94,13 +94,6 @@
     <string name="vaults_restored_from">dalla versione %1$d</string>
     <string name="vaults_root">la radice dell’archivio</string>
     <string name="vaults_save_to_device">Salva sul dispositivo</string>
-    <string name="vaults_search">Cerca</string>
-    <string name="vaults_search_contents">Nei file</string>
-    <string name="vaults_search_hint">Cerca nomi e testo in questo archivio</string>
-    <string name="vaults_search_more">Ci sono più risultati di quelli mostrati. Prova parole più precise.</string>
-    <string name="vaults_search_names">Nomi</string>
-    <string name="vaults_search_nothing">Nessun risultato per «%1$s»</string>
-    <string name="vaults_search_placeholder">Cerca nell’archivio</string>
     <string name="vaults_settings">Impostazioni dell’archivio</string>
     <string name="vaults_settings_failed">Impossibile salvare le impostazioni</string>
     <string name="vaults_share">Condividi</string>

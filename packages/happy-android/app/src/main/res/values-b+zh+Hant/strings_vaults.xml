@@ -94,13 +94,6 @@
     <string name="vaults_restored_from">來自版本 %1$d</string>
     <string name="vaults_root">保險庫最上層</string>
     <string name="vaults_save_to_device">儲存到裝置</string>
-    <string name="vaults_search">搜尋</string>
-    <string name="vaults_search_contents">檔案內容</string>
-    <string name="vaults_search_hint">搜尋此保險庫中的名稱和文字</string>
-    <string name="vaults_search_more">結果比顯示的更多。請試試更具體的字詞。</string>
-    <string name="vaults_search_names">名稱</string>
-    <string name="vaults_search_nothing">找不到「%1$s」</string>
-    <string name="vaults_search_placeholder">搜尋保險庫</string>
     <string name="vaults_settings">保險庫設定</string>
     <string name="vaults_settings_failed">無法儲存設定</string>
     <string name="vaults_share">分享</string>

@@ -94,13 +94,6 @@
     <string name="vaults_restored_from">バージョン %1$d から</string>
     <string name="vaults_root">ボールトの最上位</string>
     <string name="vaults_save_to_device">デバイスに保存</string>
-    <string name="vaults_search">検索</string>
-    <string name="vaults_search_contents">ファイル内</string>
-    <string name="vaults_search_hint">このボールトの名前とテキストを検索</string>
-    <string name="vaults_search_more">表示されている以上の結果があります。より具体的な語でお試しください。</string>
-    <string name="vaults_search_names">名前</string>
-    <string name="vaults_search_nothing">「%1$s」は見つかりませんでした</string>
-    <string name="vaults_search_placeholder">ボールトを検索</string>
     <string name="vaults_settings">ボールトの設定</string>
     <string name="vaults_settings_failed">設定を保存できませんでした</string>
     <string name="vaults_share">共有</string>

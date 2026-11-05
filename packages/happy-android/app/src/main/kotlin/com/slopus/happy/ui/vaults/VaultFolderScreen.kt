@@ -87,7 +87,6 @@ object VaultFolderTags {
     const val ROW_MORE = "vault.row.more"
     const val UPLOAD = "vault.upload"
     const val UPLOAD_CANCEL = "vault.upload.cancel"
-    const val SEARCH = "vault.search"
     const val ADD = "vault.add"
     const val MORE = "vault.more"
     const val LOADER = PlaceTags.LOADER
@@ -192,9 +191,6 @@ fun VaultFolderScreen(session: AgentSession, surfaceId: String, folderId: String
         }
     }
     PlaceScaffold(title, onBack, VaultFolderTags.SCREEN, subtitle = subtitle, actions = {
-        IconButton(onClick = { open(VaultSearchRoute(session.connectionId, surfaceId)) }, modifier = Modifier.testTag(VaultFolderTags.SEARCH)) {
-            Icon(Ionicon.SearchOutline, 24.dp, HappyTheme.colors.text, contentDescription = stringResource(R.string.vaults_search))
-        }
         AddMenu(onMedia = { actions.uploadMedia(folderId) }, onFiles = { actions.uploadFiles(folderId) }, onFolder = { actions.newFolder(folderId) })
         val items: @Composable ColumnScope.(close: () -> Unit) -> Unit = { close ->
             SortItems(state.sort, close) { model.sort(it) }

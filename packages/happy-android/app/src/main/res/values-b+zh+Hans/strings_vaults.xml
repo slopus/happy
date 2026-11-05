@@ -94,13 +94,6 @@
     <string name="vaults_restored_from">来自版本 %1$d</string>
     <string name="vaults_root">保险库顶层</string>
     <string name="vaults_save_to_device">保存到设备</string>
-    <string name="vaults_search">搜索</string>
-    <string name="vaults_search_contents">文件内容</string>
-    <string name="vaults_search_hint">搜索此保险库中的名称和文本</string>
-    <string name="vaults_search_more">结果多于显示的数量。请尝试更具体的词。</string>
-    <string name="vaults_search_names">名称</string>
-    <string name="vaults_search_nothing">未找到“%1$s”</string>
-    <string name="vaults_search_placeholder">搜索保险库</string>
     <string name="vaults_settings">保险库设置</string>
     <string name="vaults_settings_failed">无法保存设置</string>
     <string name="vaults_share">分享</string>

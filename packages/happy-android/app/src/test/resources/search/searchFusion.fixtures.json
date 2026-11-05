@@ -1,5 +1,5 @@
 {
-    "description": "Quick search fusion test vectors. Fuse each case's remote and local lists with Reciprocal Rank Fusion (k = 60): a remote result scores 1 / (k + rank), a local result 1 / (k + p) at its 1-based position p, and a key in both lists is one result whose score is the remote term plus the local term, in that order, carrying the remote fields. Order by score, highest first; then by remote rank, results without one last; then by local position. 'expected' is the fused key order and which list each result's fields come from.",
+    "description": "Search fusion test vectors. Fuse each case's remote and local lists with Reciprocal Rank Fusion (k = 60): a remote result scores 1 / (k + rank), a local result 1 / (k + p) at its 1-based position p, and a key in both lists is one result whose score is the remote term plus the local term, in that order, carrying the remote fields. Order by score, highest first; then by remote rank, results without one last; then by local position. 'expected' is the fused key order and which list each result's fields come from.",
     "k": 60,
     "cases": [
         {
@@ -244,6 +244,56 @@
                 {
                     "key": "todo:b",
                     "from": "remote"
+                }
+            ]
+        },
+        {
+            "name": "Results only the daemon finds, such as messages, interleave with local results by score",
+            "remote": [
+                {
+                    "key": "message:m1",
+                    "rank": 1
+                },
+                {
+                    "key": "agent:a",
+                    "rank": 2
+                },
+                {
+                    "key": "message:m2",
+                    "rank": 3
+                }
+            ],
+            "local": [
+                {
+                    "key": "project:x"
+                },
+                {
+                    "key": "agent:a"
+                },
+                {
+                    "key": "surface:z"
+                }
+            ],
+            "expected": [
+                {
+                    "key": "agent:a",
+                    "from": "remote"
+                },
+                {
+                    "key": "message:m1",
+                    "from": "remote"
+                },
+                {
+                    "key": "project:x",
+                    "from": "local"
+                },
+                {
+                    "key": "message:m2",
+                    "from": "remote"
+                },
+                {
+                    "key": "surface:z",
+                    "from": "local"
                 }
             ]
         }

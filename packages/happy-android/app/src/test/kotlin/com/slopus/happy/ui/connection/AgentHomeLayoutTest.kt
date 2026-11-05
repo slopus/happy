@@ -509,7 +509,7 @@ class AgentHomeLayoutTest {
         rule.onAllNodesWithTag(AgentSearchTags.RESULTS, useUnmergedTree = true).assertCountEquals(0)
     }
 
-    /** Quick search's one flat card: a worktree's chat stands at the card's edge, without its project and worktree over it. */
+    /** Search's one flat card: a worktree's chat stands at the card's edge, without its project and worktree over it. */
     @Test
     fun aNestedMatchStandsAlone() {
         show(feed())
@@ -555,7 +555,7 @@ class AgentHomeLayoutTest {
     }
 
     /**
-     * Quick search's phone half: a Surface not joined, an open todo and an
+     * Search's phone half: a Surface not joined, an open todo and an
      * artifact in the one card with home's rows, read while search is
      * open; a todo opens its list, an artifact itself.
      */
@@ -591,7 +591,7 @@ class AgentHomeLayoutTest {
     }
 
     /**
-     * Quick search's daemon half, asked once the typing rests: what it finds
+     * Search's daemon half, asked once the typing rests: what it finds
      * joins the card by key, a content match with its line under its name,
      * and a vault file opens its vault's page. The phone's rows are there
      * before it answers.
@@ -602,19 +602,19 @@ class AgentHomeLayoutTest {
         val vaultItems = mutableListOf<String>()
         val opening = AgentHomeActions(onOpenConversation = { opened += it }, onCompose = {}, onSettings = {}, onSettingsRow = {}, onSwitchAccount = {}, onAdd = {}, onOpenVaultItem = { surfaceId, id, folder, name -> vaultItems += "$surfaceId/$id/$folder/$name" })
         val answer = { query: String ->
-            com.slopus.happy.search.QuickSearchAnswer(
+            com.slopus.happy.search.SearchAnswer(
                 query,
-                listOf(com.slopus.happy.search.QuickSearchHit.VaultFile("vault_file:f1", 1, "v1", "f1", "Number plan.md", "/Docs/Number plan.md", match = "content", line = 3, snippet = "the plan moves to Friday")),
+                listOf(com.slopus.happy.search.SearchHit.VaultFile("vault_file:f1", 1, "v1", "f1", "Number plan.md", "/Docs/Number plan.md", match = "content", line = 3, snippet = "the plan moves to Friday")),
             )
         }
         // The daemon answers only when let.
         val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
-        val search: suspend (String) -> com.slopus.happy.search.QuickSearchAnswer? = { query ->
+        val search: suspend (String) -> com.slopus.happy.search.SearchAnswer? = { query ->
             asked += query
             gate.await()
             answer(query)
         }
-        rule.setHappyContent { AgentHomeScreen("Studio", feed(), AgentLinkStatus.Connected, accounts, opening, quickSearch = search) }
+        rule.setHappyContent { AgentHomeScreen("Studio", feed(), AgentLinkStatus.Connected, accounts, opening, search = search) }
         rule.node(AgentHomeTags.SEARCH).performClick()
         rule.node(AgentSearchTags.FIELD).performTextInput("plan")
         rule.waitForIdle()

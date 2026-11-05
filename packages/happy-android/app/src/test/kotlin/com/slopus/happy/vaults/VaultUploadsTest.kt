@@ -382,7 +382,6 @@ class VaultClientTest {
             200 to when {
                 "/items?" in request.path -> """{"items":[{"id":"e1","surfaceId":"s1","name":"a","kind":"folder","version":"v1"}],"nextPageCursor":"c 2"}"""
                 request.path.endsWith("/files/e1") -> """{"file":{"id":"e1","surfaceId":"s1","name":"a.txt","kind":"file","version":"v1"},"path":"/R/a.txt","ancestors":[{"id":"f1","name":"R"}],"inTrash":true}"""
-                "/search" in request.path -> """{"results":[{"item":{"id":"e1","surfaceId":"s1","name":"a","kind":"file","version":"v1"},"path":"/a","match":"content","snippet":"…a…","line":3}],"truncated":true}"""
                 else -> "{}"
             }
         }
@@ -390,9 +389,6 @@ class VaultClientTest {
         val page = routes.children("s1", "f 1", page = "c 1", sort = VaultSortField.Updated)
         assertEquals("c 2", page.next)
         assertEquals(true, page.items.single().isFolder)
-        val (results, truncated) = routes.search("s1", "a b")
-        assertTrue(truncated)
-        assertEquals(3, results.single().line)
         assertEquals("/v0/surfaces/vault/s1/files/e1/versions/latest/content", routes.contentPath("s1", "e1", null))
         assertEquals("/v0/surfaces/vault/s1/files/e1/versions/2/artifact/a%20b/c.js", routes.artifactFilePath("s1", "e1", 2, "a b/c.js"))
         val location = routes.location("s1", "e1", folder = false)
@@ -401,7 +397,7 @@ class VaultClientTest {
         assertTrue(location.inTrash)
         daemon.requests.removeAt(daemon.requests.lastIndex)
         assertEquals(
-            listOf("/v0/surfaces/vault/s1/items?parentId=f%201&sort=updatedAt&limit=500&pageCursor=c%201", "/v0/surfaces/vault/s1/search?q=a%20b&kind=all&limit=50"),
+            listOf("/v0/surfaces/vault/s1/items?parentId=f%201&sort=updatedAt&limit=500&pageCursor=c%201"),
             daemon.requests.map { it.path },
         )
     }

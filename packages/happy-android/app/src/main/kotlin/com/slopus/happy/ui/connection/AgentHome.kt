@@ -56,9 +56,9 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
-import com.slopus.happy.search.QuickSearchAnswer
-import com.slopus.happy.search.QuickSearchClient
-import com.slopus.happy.search.QuickSearchHit
+import com.slopus.happy.search.SearchAnswer
+import com.slopus.happy.search.SearchClient
+import com.slopus.happy.search.SearchHit
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -250,8 +250,8 @@ fun AgentHomeScreen(
     listState: LazyListState = rememberLazyListState(),
     /** What search finds beyond home's rows, read while it is open ([AgentSearchSources.read]). */
     searchSources: suspend () -> AgentSearchSources = { AgentSearchSources.None },
-    /** Quick search's daemon half for a query ([AgentSession.quickSearch]); null, or answering null, searches the phone alone. */
-    quickSearch: (suspend (String) -> QuickSearchAnswer?)? = null,
+    /** Search's daemon half for a query ([AgentSession.search]); null, or answering null, searches the phone alone. */
+    search: (suspend (String) -> SearchAnswer?)? = null,
 ) {
     val colors = HappyTheme.colors
     val reduceMotion = rememberReduceMotion()
@@ -298,15 +298,15 @@ fun AgentHomeScreen(
         if (searching) value = searchSources()
     }
     // The daemon's half, asked a moment after the typing stops; a new query cancels the one in flight.
-    val remote by produceState<QuickSearchAnswer?>(null, searching, query, quickSearch) {
+    val remote by produceState<SearchAnswer?>(null, searching, query, search) {
         val asked = query.trim()
-        if (!searching || asked.isEmpty() || quickSearch == null) {
+        if (!searching || asked.isEmpty() || search == null) {
             value = null
             return@produceState
         }
-        delay(QUICK_SEARCH_DEBOUNCE_MS)
+        delay(SEARCH_DEBOUNCE_MS)
         value = try {
-            quickSearch(asked)
+            search(asked)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
@@ -327,7 +327,7 @@ fun AgentHomeScreen(
             }
         }
         // Only the answer to what is typed now joins in; an earlier query's would bring in what no longer answers.
-        val answer = remote?.takeIf { it.query == query.trim().take(QuickSearchClient.MAX_QUERY) }
+        val answer = remote?.takeIf { it.query == query.trim().take(SearchClient.MAX_QUERY) }
         agentSearchResults(feed, query, label, words, searchEntries.first, searchEntries.second, sources, answer)
     }
 
@@ -583,24 +583,25 @@ private fun LeaveSurfaceDialogs(
 private enum class HomePhase { Loading, Offline, Empty, List }
 
 /** How long the typing rests before the daemon is asked (the design's ~120 ms). */
-private const val QUICK_SEARCH_DEBOUNCE_MS = 120L
+private const val SEARCH_DEBOUNCE_MS = 120L
 
 /**
  * What a result the daemon found opens, as the phone's own row of the
- * same thing would: its conversation, Surface, todo's list, event's
- * calendar, artifact or vault item. A project or worktree opens nothing,
+ * same thing would: its conversation (a message's too), Surface, todo's
+ * list, event's calendar, artifact or vault item. A project or worktree opens nothing,
  * as on home.
  */
-private fun openHit(hit: QuickSearchHit, actions: AgentHomeActions): (() -> Unit)? = when (hit) {
-    is QuickSearchHit.Agent -> { { actions.onOpenConversation(hit.agentId) } }
-    is QuickSearchHit.Document -> { { actions.onOpenSurface(AgentFeedRow.Surface(hit.surfaceId, hit.name, SurfaceReader.DOCUMENT)) } }
-    is QuickSearchHit.Surface -> { { actions.onOpenSurface(AgentFeedRow.Surface(hit.surfaceId, hit.name, hit.surfaceType)) } }
-    is QuickSearchHit.Todo -> { { actions.onOpenSurface(AgentFeedRow.Surface(hit.surfaceId, "", SurfaceReader.TODO)) } }
-    is QuickSearchHit.CalendarEvent -> { { actions.onOpenSurface(AgentFeedRow.Surface(hit.surfaceId, "", "calendar")) } }
-    is QuickSearchHit.Artifact -> { { actions.onOpenArtifact(ArtifactRef(hit.artifactId, 1, hit.artifactType, hit.title, followsLatest = true)) } }
-    is QuickSearchHit.VaultFile -> { { actions.onOpenVaultItem(hit.surfaceId, hit.fileId, false, hit.name) } }
-    is QuickSearchHit.VaultFolder -> { { actions.onOpenVaultItem(hit.surfaceId, hit.folderId, true, hit.name) } }
-    is QuickSearchHit.Project, is QuickSearchHit.Workspace -> null
+private fun openHit(hit: SearchHit, actions: AgentHomeActions): (() -> Unit)? = when (hit) {
+    is SearchHit.Agent -> { { actions.onOpenConversation(hit.agentId) } }
+    is SearchHit.Message -> { { actions.onOpenConversation(hit.agentId) } }
+    is SearchHit.Document -> { { actions.onOpenSurface(AgentFeedRow.Surface(hit.surfaceId, hit.name, SurfaceReader.DOCUMENT)) } }
+    is SearchHit.Surface -> { { actions.onOpenSurface(AgentFeedRow.Surface(hit.surfaceId, hit.name, hit.surfaceType)) } }
+    is SearchHit.Todo -> { { actions.onOpenSurface(AgentFeedRow.Surface(hit.surfaceId, "", SurfaceReader.TODO)) } }
+    is SearchHit.CalendarEvent -> { { actions.onOpenSurface(AgentFeedRow.Surface(hit.surfaceId, "", "calendar")) } }
+    is SearchHit.Artifact -> { { actions.onOpenArtifact(ArtifactRef(hit.artifactId, 1, hit.artifactType, hit.title, followsLatest = true)) } }
+    is SearchHit.VaultFile -> { { actions.onOpenVaultItem(hit.surfaceId, hit.fileId, false, hit.name) } }
+    is SearchHit.VaultFolder -> { { actions.onOpenVaultItem(hit.surfaceId, hit.folderId, true, hit.name) } }
+    is SearchHit.Project, is SearchHit.Workspace -> null
 }
 
 /** Search's section headings and the kinds' names, in the person's language. */
@@ -824,7 +825,7 @@ fun AgentHome(
             searchSources = remember(session) {
                 { withContext(Dispatchers.IO) { AgentSearchSources.read(session.catalog.value, session.feed.value, session::cachedResource, session.intents.pending.value) } }
             },
-            quickSearch = remember(session) { { query -> session.quickSearch(query) } },
+            search = remember(session) { { query -> session.search(query) } },
         )
     }
 }

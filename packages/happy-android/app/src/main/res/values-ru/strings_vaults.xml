@@ -94,13 +94,6 @@
     <string name="vaults_restored_from">из версии %1$d</string>
     <string name="vaults_root">корень хранилища</string>
     <string name="vaults_save_to_device">Сохранить на устройство</string>
-    <string name="vaults_search">Поиск</string>
-    <string name="vaults_search_contents">В файлах</string>
-    <string name="vaults_search_hint">Ищите по названиям и тексту в этом хранилище</string>
-    <string name="vaults_search_more">Результатов больше, чем показано. Уточните запрос.</string>
-    <string name="vaults_search_names">Названия</string>
-    <string name="vaults_search_nothing">По запросу «%1$s» ничего не найдено</string>
-    <string name="vaults_search_placeholder">Поиск в хранилище</string>
     <string name="vaults_settings">Настройки хранилища</string>
     <string name="vaults_settings_failed">Не удалось сохранить настройки</string>
     <string name="vaults_share">Поделиться</string>

@@ -352,13 +352,13 @@ win:
   (`HappyCore/Agents/Search.swift`, `ui/connection/AgentSearch.kt`): the
   results fade in over home (200 ms ease-out) on its own ground, drawn as
   home is, and home never moves under them. Nothing typed shows the eight
-  bots and tasks last active (`AgentSearch.recent`). A query is quick
-  search (happy-agent API.md, "Quick search"): one flat card fusing the
+  bots and tasks last active (`AgentSearch.recent`). A query is the node's
+  one search (happy-agent API.md, "Search"): one flat card fusing the
   phone's half with the daemon's, then quick actions and settings (local
   only), each under its heading, at most six, or "Nothing found" in a
-  capsule.
-  - The phone's half (`localQuickSearch`), at keystroke speed, from what
-    it holds: home's conversations (`agent:`), projects and worktrees, the
+  capsule. It is the only search over vaults; a vault has none of its own.
+  - The phone's half (`localSearch`), at keystroke speed, from what it
+    holds: home's conversations (`agent:`), projects and worktrees, the
     catalog's documents (`document:`) and other Surfaces (`surface:`),
     joined or not (`AgentSearchSources`, read only while search is open),
     the open todos kept (`todo:`), the kept artifact page (`artifact:`),
@@ -366,17 +366,17 @@ win:
     desktop's `AgentSearch.rank` (words in any order, a kind's name three
     below a title match, joined before not), then the kinds fused as the
     daemon fuses its providers: by place, then provider order.
-  - The daemon's half: `GET /v0/quick-search` (`search/QuickSearch.kt`),
-    120 ms after the typing rests, cancelled by the next keystroke, only
-    where health says `capabilities.quickSearch`; offline or older, the
-    phone's alone. `QuickSearchFusion` is the shared RRF (k = 60) over
-    `key`, the client package's vectors in
-    `test/resources/quick-search/` (from happy-agent 2e72c045c, the same in
-    1438e9452, client 0.0.157). A
-    daemon's answer joins only the query it was for. A result found by
-    both keeps the phone's row unless the daemon has a content line for
-    it; vault items, events and content matches are the daemon's rows,
-    with a second line (66 high).
+  - The daemon's half: `POST /v0/search` with `{q, limit}`
+    (`search/Search.kt`), 120 ms after the typing rests, cancelled by the
+    next keystroke, only where health says `capabilities.search`; offline
+    or older, the phone's alone. `SearchFusion` is the shared RRF (k = 60)
+    over `key`, the client package's vectors in `test/resources/search/`
+    (from happy-agent c67719baf, client 0.0.158). A daemon's answer joins
+    only the query it was for. A result found by both keeps the phone's
+    row unless the daemon has a content line for it; vault items, messages
+    (titled by their conversation, opening it), events and content matches
+    are the daemon's rows, with a second line (66 high). People and skills
+    have no page on the phone and are left out with unknown types.
   What a result opens leaves the search for coming back; new work, Cancel
   or back, and a pull down from the results' top end it.
   The Happy CLI home has no search, as on iOS.

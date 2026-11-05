@@ -73,11 +73,6 @@ class VaultClient(private val client: AgentClient) {
 
     suspend fun location(item: VaultItem): VaultLocation = location(item.surfaceId, item.id, item.isFolder)
 
-    suspend fun search(surfaceId: String, text: String, kind: String = "all", limit: Int = 50): Pair<List<VaultSearchResult>, Boolean> {
-        val body = read("${base(surfaceId)}/search" + query("q" to text, "kind" to kind, "limit" to limit))
-        return list<VaultSearchResult>(body, "results") to ((body["truncated"] as? JsonPrimitive)?.content == "true")
-    }
-
     suspend fun trash(surfaceId: String, page: String? = null): VaultPage<VaultTrashItem> {
         val body = read("${base(surfaceId)}/trash" + query("pageCursor" to page))
         return VaultPage(list(body, "items"), next(body))

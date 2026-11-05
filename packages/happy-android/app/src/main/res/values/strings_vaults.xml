@@ -100,13 +100,6 @@
     <string name="vaults_restored_from">from version %1$d</string>
     <string name="vaults_root">the top of the vault</string>
     <string name="vaults_save_to_device">Save to device</string>
-    <string name="vaults_search">Search</string>
-    <string name="vaults_search_contents">In files</string>
-    <string name="vaults_search_hint">Search names and text in this vault</string>
-    <string name="vaults_search_more">There are more results than shown. Try more specific words.</string>
-    <string name="vaults_search_names">Names</string>
-    <string name="vaults_search_nothing">Nothing found for “%1$s”</string>
-    <string name="vaults_search_placeholder">Search vault</string>
     <string name="vaults_settings">Vault settings</string>
     <string name="vaults_settings_failed">Couldn’t save the settings</string>
     <string name="vaults_share">Share</string>

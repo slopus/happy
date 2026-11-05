@@ -94,13 +94,6 @@
     <string name="vaults_restored_from">z wersji %1$d</string>
     <string name="vaults_root">główny folder sejfu</string>
     <string name="vaults_save_to_device">Zapisz na urządzeniu</string>
-    <string name="vaults_search">Szukaj</string>
-    <string name="vaults_search_contents">W plikach</string>
-    <string name="vaults_search_hint">Szukaj nazw i tekstu w tym sejfie</string>
-    <string name="vaults_search_more">Wyników jest więcej, niż pokazano. Spróbuj dokładniejszych słów.</string>
-    <string name="vaults_search_names">Nazwy</string>
-    <string name="vaults_search_nothing">Nic nie znaleziono dla „%1$s”</string>
-    <string name="vaults_search_placeholder">Szukaj w sejfie</string>
     <string name="vaults_settings">Ustawienia sejfu</string>
     <string name="vaults_settings_failed">Nie udało się zapisać ustawień</string>
     <string name="vaults_share">Udostępnij</string>

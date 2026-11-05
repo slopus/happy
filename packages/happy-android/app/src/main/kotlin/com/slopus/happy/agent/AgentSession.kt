@@ -966,12 +966,12 @@ class AgentSession internal constructor(
     private fun settingsBackoff(attempt: Int): Long = (INITIAL_BACKOFF shl attempt.coerceAtMost(5)).coerceAtMost(30_000L)
 
     /**
-     * Quick search's daemon half for [query] (`GET /v0/quick-search`); null
+     * Search's daemon half for [query] (`POST /v0/search`); null
      * where health hasn't said the daemon has it, and the phone's own
      * results stand alone.
      */
-    suspend fun quickSearch(query: String): com.slopus.happy.search.QuickSearchAnswer? =
-        if (client.quickSearch) com.slopus.happy.search.QuickSearchClient(client).search(query) else null
+    suspend fun search(query: String): com.slopus.happy.search.SearchAnswer? =
+        if (client.search) com.slopus.happy.search.SearchClient(client).search(query) else null
 
     /**
      * A resource kept beside the catalog for offline use (iOS's

@@ -165,23 +165,6 @@ data class VaultActivity(
 @Serializable
 data class VaultTrashItem(val item: VaultItem, val path: String = "")
 
-/** One search answer: a name match, or a content match with its line and snippet. */
-@Immutable
-@Serializable
-data class VaultSearchResult(
-    val item: VaultItem,
-    val path: String = "",
-    val match: String = NAME,
-    val innerPath: String? = null,
-    val line: Int? = null,
-    val snippet: String? = null,
-) {
-    companion object {
-        const val NAME = "name"
-        const val CONTENT = "content"
-    }
-}
-
 /** After [afterDays], one version kept in every [everyDays]. */
 @Immutable
 @Serializable
