@@ -126,7 +126,8 @@ class ArtifactActions(
  * `ArtifactViewController`): Markdown in the conversation's renderer with
  * its own pictures and links; pictures, image series and videos natively,
  * opening in the viewer; any other page in the in-app browser on an origin
- * of its own; a PDF or other file Android's WebView can't draw handed to an
+ * of its own, or full screen when it asks to run as an app
+ * ([ArtifactAppPage]); a PDF or other file Android's WebView can't draw handed to an
  * app that reads it. While it reads, a loader; deleted or unreadable, the
  * screen says so in place.
  */
@@ -153,7 +154,7 @@ fun ArtifactScreen(
         actions.onBack,
         ArtifactTags.SCREEN,
         actions = {
-            if (ui is ArtifactUi.Page) BrowserControls(browser)
+            if (ui is ArtifactUi.Page && !ui.app) BrowserControls(browser)
             // A page shares its link from the browser's own menu.
             val link = actions.shareLink?.takeIf { ui !is ArtifactUi.Page && ui !is ArtifactUi.Message }?.invoke()
             if (link != null) {
@@ -204,7 +205,12 @@ fun ArtifactScreen(
                         },
                     )
                     is ArtifactUi.Gallery -> if (media != null) ArtifactGallery(ui.items, media) { index -> viewing = ui.items to index }
-                    is ArtifactUi.Page -> BrowserView(browser, prepare = ui.prepare, computer = computer, onOpenElsewhere = actions.onOpenWeb, artifactLink = actions.artifactLink)
+                    // An app goes full screen over everything; closing it leaves the artifact.
+                    is ArtifactUi.Page -> if (ui.app) {
+                        ArtifactAppPage(browser, ui.prepare, computer, onClose = actions.onBack, onOpenElsewhere = actions.onOpenWeb, artifactLink = actions.artifactLink)
+                    } else {
+                        BrowserView(browser, prepare = ui.prepare, computer = computer, onOpenElsewhere = actions.onOpenWeb, artifactLink = actions.artifactLink)
+                    }
                     is ArtifactUi.Openable -> ArtifactOpenable(ui.file, actions)
                 }
             }

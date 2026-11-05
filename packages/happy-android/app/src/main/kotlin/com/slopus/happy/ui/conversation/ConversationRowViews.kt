@@ -83,6 +83,7 @@ object ConversationRowTags {
     const val MEDIA = "conversation.media"
     const val MEDIA_FILE = "conversation.media.file"
     const val ARTIFACT = "conversation.artifact"
+    const val ARTIFACT_ACTION = "conversation.artifact.action"
     const val COLLABORATOR = "conversation.collaborator"
     const val FAILURE = "conversation.failure"
     const val FAILURE_RETRY = "conversation.failure.retry"
@@ -213,17 +214,20 @@ fun ConversationRowView(row: ConversationRow, bubble: BubblePalette, actions: Co
             is ConversationRow.Media -> ToolResult(row.tool, actions, content) { MediaRow(row, actions, it) }
             is ConversationRow.Artifact -> ToolResult(row.tool, actions, content) {
                 Column(it) {
-                    InfoCard(
-                        icon = artifactCardGlyph(row.type.orEmpty()),
-                        title = row.title.ifEmpty { stringResource(R.string.artifact_untitled) },
-                        detail = if (actions.onOpenArtifact == null) stringResource(R.string.conversation_artifact_unavailable) else artifactCardDetail(row.type.orEmpty(), row.version ?: 1),
-                        onClick = actions.onOpenArtifact?.let { open -> { open(row) } },
-                        modifier = Modifier.testTag(ConversationRowTags.ARTIFACT),
-                    )
-                    // Desktop's inline page, under its card, at the column's width.
                     val page = row.page
                     val pages = actions.pages
-                    if (page != null && pages != null) {
+                    // A page that runs as an app is never run in the chat: its card says App and opens it full screen.
+                    val app = page != null && pages != null && pages.isApp(row.artifactId, page)
+                    InfoCard(
+                        icon = if (app) Ionicon.AppsOutline else artifactCardGlyph(row.type.orEmpty()),
+                        title = row.title.ifEmpty { stringResource(R.string.artifact_untitled) },
+                        detail = if (actions.onOpenArtifact == null) stringResource(R.string.conversation_artifact_unavailable) else artifactCardDetail(row.type.orEmpty(), row.version ?: 1, app),
+                        onClick = actions.onOpenArtifact?.let { open -> { open(row) } },
+                        modifier = Modifier.testTag(ConversationRowTags.ARTIFACT),
+                        action = if (app) stringResource(R.string.artifact_list_open) else null,
+                    )
+                    // Desktop's inline page, under its card, at the column's width.
+                    if (page != null && pages != null && !app) {
                         ArtifactInlinePage(
                             row.artifactId, row.title, page, pages,
                             Modifier.padding(start = ConversationRowSpec.marginHorizontal, end = ConversationRowSpec.marginHorizontal, top = 2.dp, bottom = ConversationRowSpec.marginVertical),
@@ -540,6 +544,8 @@ private fun InfoCard(
     vertical: androidx.compose.ui.unit.Dp = ConversationRowSpec.marginVertical,
     /** In the icon's place: a file's chip that follows its download. */
     chip: (@Composable () -> Unit)? = null,
+    /** In the chevron's place, in the link colour: what a tap does ("Open"). */
+    action: String? = null,
 ) {
     val colors = HappyTheme.colors
     Row(
@@ -558,7 +564,10 @@ private fun InfoCard(
             Text(title, style = ConversationRowSpec.label, color = colors.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
             if (detail != null) Text(detail, style = ConversationRowSpec.notice, color = colors.textSecondary)
         }
-        if (onClick != null) Icon(Ionicon.ChevronForward, ConversationRowSpec.icon, colors.textSecondary)
+        if (onClick != null) {
+            if (action != null) Text(action, style = ConversationRowSpec.label, color = colors.textLink, modifier = Modifier.testTag(ConversationRowTags.ARTIFACT_ACTION))
+            else Icon(Ionicon.ChevronForward, ConversationRowSpec.icon, colors.textSecondary)
+        }
     }
 }
 

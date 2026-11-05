@@ -18,6 +18,7 @@ import com.slopus.happy.ui.chat.MessageCallbacks
 import com.slopus.happy.ui.chat.userMessageBubblePalette
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.conversation.ConversationRowActions
+import com.slopus.happy.ui.conversation.ConversationRowTags
 import com.slopus.happy.ui.conversation.ConversationRowView
 import com.slopus.happy.ui.setHappyContent
 import org.junit.Assert.assertEquals
@@ -82,6 +83,28 @@ class ArtifactCardTest {
         // Measured again at the same height, in whatever fraction, it stays.
         pages.measured("p1", 312.9f)
         assertEquals(313.dp, pages.height("p1"))
+    }
+
+    /** task_206's fullscreen-spec.md: a page that runs as an app is never run in a chat row; its card says App and opens it. */
+    @Test fun anAppIsACardThatOpensItNeverAnInlinePage() {
+        val prepared = ArrayList<String>()
+        val opened = ArrayList<String>()
+        val pages = InlinePages(prepare = { id, _ -> prepared += id; awaitCancellation() }, onOpen = {}, mode = { id, _ -> id == "game" })
+        rule.setHappyContent {
+            val actions = ConversationRowActions(legacy = MessageCallbacks(), onRetryFailure = {}, loadMedia = { ByteArray(0) }, onOpenArtifact = { opened += it.artifactId }, pages = pages)
+            Column {
+                ConversationRowView(ConversationRow.Artifact("r1", "game", "Snake", "html", 2, "latest", page = References.Page(2, "index.html")), userMessageBubblePalette(null, false), actions)
+            }
+        }
+        rule.waitForIdle()
+        rule.onNodeWithText("App · Version 2").assertExists()
+        rule.onNodeWithTag(ConversationRowTags.ARTIFACT_ACTION, useUnmergedTree = true).assertExists()
+        rule.onNodeWithText("Open", useUnmergedTree = true).assertExists()
+        rule.onNodeWithTag(ArtifactInlinePageTags.PAGE).assertDoesNotExist()
+        assertTrue(prepared.isEmpty())
+        assertTrue(pages.isApp("game", References.Page(2, "index.html")))
+        rule.onNodeWithText("Snake").performClick()
+        assertEquals(listOf("game"), opened)
     }
 
     @Test fun anInlinePageThatCantBeReachedSaysSo() {

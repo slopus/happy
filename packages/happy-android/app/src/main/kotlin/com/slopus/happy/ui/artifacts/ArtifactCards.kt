@@ -18,11 +18,21 @@ fun artifactCardGlyph(type: String): Ionicon = when (type) {
 
 /**
  * An artifact card's detail (iOS's `Strings.artifactDetail`): a creation's
- * card names its kind, a change's also the version it made.
+ * card names its kind, a change's also the version it made. An HTML page
+ * that runs as an app ([app]) is an App.
  */
 @Composable
-fun artifactCardDetail(type: String, version: Int): String {
-    val kind = when (type) {
+fun artifactCardDetail(type: String, version: Int, app: Boolean = false): String {
+    val kind = when {
+        app -> stringResource(R.string.artifact_kind_app)
+        else -> artifactCardKind(type)
+    }
+    return if (version == 1) kind else stringResource(R.string.artifact_card_version, kind, version)
+}
+
+@Composable
+private fun artifactCardKind(type: String): String =
+    when (type) {
         "markdown" -> stringResource(R.string.artifact_card_kind_markdown)
         "html" -> stringResource(R.string.artifact_kind_html)
         "image" -> stringResource(R.string.artifact_kind_image)
@@ -31,5 +41,3 @@ fun artifactCardDetail(type: String, version: Int): String {
         "document" -> stringResource(R.string.artifact_card_kind_document)
         else -> stringResource(R.string.artifact_kind_unknown)
     }
-    return if (version == 1) kind else stringResource(R.string.artifact_card_version, kind, version)
-}
