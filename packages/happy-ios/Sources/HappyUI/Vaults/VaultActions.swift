@@ -1,5 +1,7 @@
 #if canImport(UIKit)
 import HappyCore
+import HappyLayout
+import LinkPresentation
 import PhotosUI
 import UIKit
 import UniformTypeIdentifiers
@@ -36,7 +38,7 @@ final class VaultActions: NSObject, UIDocumentPickerDelegate, PHPickerViewContro
     /// What a refusal says to the person.
     static func message(_ error: Error, name: String? = nil) -> String {
         switch error {
-        case AgentClientError.status(409, "name_taken", _): return Strings.Vaults.nameTaken(name ?? "")
+        case AgentClientError.status(409, "name_taken", _): return Strings.Vaults.nameTaken(VaultEntry.shownName(name ?? ""))
         case AgentClientError.status(409, _, let message):
             return message?.localizedCaseInsensitiveContains("trash") == true ? Strings.Vaults.inTrashRefused : Strings.Vaults.changedElsewhere
         case AgentClientError.status(404, _, _): return Strings.Vaults.gone
@@ -114,12 +116,11 @@ final class VaultActions: NSObject, UIDocumentPickerDelegate, PHPickerViewContro
     }
 
     func rename(_ entry: VaultEntry) {
-        askName(title: Strings.Vaults.renameTitle, current: entry.name, action: Strings.Vaults.save) { [weak self] typed in
+        askName(title: Strings.Vaults.renameTitle, current: entry.shownName, action: Strings.Vaults.save) { [weak self] typed in
             guard let self else { return }
-            // A site's name keeps its `.artifact`; nothing else may take it.
-            var name = typed
-            if entry.kind == .artifact, VaultEntry.kind(named: name) != .artifact { name += VaultEntry.artifactSuffix }
-            if entry.kind != .artifact, VaultEntry.kind(named: name) == .artifact { return self.refuse(Strings.Vaults.artifactSuffixRefused) }
+            // An app is renamed without its `.artifact`, which it keeps; nothing else may take it.
+            if entry.kind != .artifact, VaultEntry.kind(named: typed) == .artifact { return self.refuse(Strings.Vaults.artifactSuffixRefused) }
+            let name = entry.kind == .artifact ? VaultEntry.appName(typed) : typed
             guard name != entry.name else { return }
             let (surfaceId, chosen) = (surfaceId, name)
             perform(name: chosen) { try await $0.rename(surfaceId, entry.id, to: chosen) }
@@ -146,7 +147,7 @@ final class VaultActions: NSObject, UIDocumentPickerDelegate, PHPickerViewContro
 
     func chooseFiles(into parent: String?) { pickDocuments(.files(parent: parent), types: [.item], many: true) }
 
-    /// A file's next version is any file; a site's, an `.artifact` bundle,
+    /// A file's next version is any file; an app's, an `.artifact` bundle,
     /// which the computer checks.
     func chooseNewVersion(of entry: VaultEntry) { pickDocuments(.version(entry), types: [.item], many: false) }
 
@@ -242,7 +243,7 @@ final class VaultActions: NSObject, UIDocumentPickerDelegate, PHPickerViewContro
         }
     }
 
-    /// Uploads `files` into `parent`: one named `*.artifact` as a site,
+    /// Uploads `files` into `parent`: one named `*.artifact` as an app,
     /// anything else as a file. A name already there asks whether to make
     /// a new version of it or keep both.
     private func place(_ files: [(url: URL, name: String)], into parent: String?) {
@@ -252,7 +253,7 @@ final class VaultActions: NSObject, UIDocumentPickerDelegate, PHPickerViewContro
                 guard let self else { return }
                 let kind = VaultEntry.kind(named: file.name)
                 let existing = await library.sibling(surfaceId, parentId: parent, named: file.name)
-                if let existing, existing.kind == kind, await self.askReplace(existing.name) {
+                if let existing, existing.kind == kind, await self.askReplace(existing.shownName) {
                     await library.upload(surfaceId, parentId: parent, file: file.url, name: existing.name, kind: kind, replacing: existing.id)
                 } else {
                     let name = existing == nil ? file.name : await library.freeName(surfaceId, parentId: parent, for: file.name)
@@ -276,7 +277,7 @@ final class VaultActions: NSObject, UIDocumentPickerDelegate, PHPickerViewContro
     // MARK: Sharing
 
     /// The entry's bytes in the share sheet: a file as itself, a folder or
-    /// a site as a zip. `version` picks one of a file's or a site's.
+    /// an app as its `.artifact` zip. `version` picks one of a file's or an app's.
     func share(_ entry: VaultEntry?, version: Int? = nil, from item: UIBarButtonItem? = nil, view: UIView? = nil) {
         let path: String
         let name: String
@@ -295,14 +296,17 @@ final class VaultActions: NSObject, UIDocumentPickerDelegate, PHPickerViewContro
             path = AgentClient.vaultContentPath(surfaceId, entry!.id, version: version) + "?download=true"
             name = entry!.name
         }
-        download(path, name: name) { [weak self] url in self?.present(share: url, from: item, view: view) }
+        // An app's file keeps `.artifact`, so it uploads back as one; people see its name without.
+        let shown = VaultEntry.shownName(name)
+        download(path, name: name, shown: shown) { [weak self] url in self?.present(share: url, title: shown, from: item, view: view) }
     }
 
     /// Reads `path` into a file of its own with a progress alert, which
     /// cancels it.
-    func download(_ path: String, name: String, done: @escaping (URL) -> Void) {
+    func download(_ path: String, name: String, shown: String? = nil, done: @escaping (URL) -> Void) {
         guard let host else { return }
-        let alert = UIAlertController(title: Strings.Vaults.downloading, message: name, preferredStyle: .alert)
+        let shown = shown ?? name
+        let alert = UIAlertController(title: Strings.Vaults.downloading, message: shown, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: Strings.Vaults.cancel, style: .cancel) { [weak self] _ in self?.downloading?.cancel() })
         host.present(alert, animated: true)
         let target = FileManager.default.temporaryDirectory.appendingPathComponent("VaultShare/\(UUID().uuidString)/\(name)")
@@ -313,7 +317,7 @@ final class VaultActions: NSObject, UIDocumentPickerDelegate, PHPickerViewContro
             do {
                 try await client.download(path, to: target) { written, total in
                     let text = total.map { "\(VaultListItems.size(written)) / \(VaultListItems.size($0))" } ?? VaultListItems.size(written)
-                    Task { @MainActor in alert?.message = "\(name)\n\(text)" }
+                    Task { @MainActor in alert?.message = "\(shown)\n\(text)" }
                 }
                 try Task.checkCancellation()
                 result = .success(())
@@ -332,9 +336,10 @@ final class VaultActions: NSObject, UIDocumentPickerDelegate, PHPickerViewContro
         }
     }
 
-    private func present(share url: URL, from item: UIBarButtonItem?, view: UIView?) {
+    private func present(share url: URL, title: String, from item: UIBarButtonItem?, view: UIView?) {
         guard let host else { return }
-        let sheet = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+        let shared: Any = title == url.lastPathComponent ? url : SharedFile(url: url, title: title)
+        let sheet = UIActivityViewController(activityItems: [shared], applicationActivities: nil)
         if let popover = sheet.popoverPresentationController {
             if let item { popover.barButtonItem = item } else {
                 popover.sourceView = view ?? host.view
@@ -345,6 +350,40 @@ final class VaultActions: NSObject, UIDocumentPickerDelegate, PHPickerViewContro
             Task.detached(priority: .utility) { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
         }
         host.present(sheet, animated: true)
+    }
+}
+
+/// A file in the share sheet under a name other than its own: an app's
+/// `.artifact` file headed by the app's name.
+private final class SharedFile: NSObject, UIActivityItemSource {
+    let url: URL
+    let title: String
+
+    init(url: URL, title: String) {
+        self.url = url
+        self.title = title
+    }
+
+    func activityViewControllerPlaceholderItem(_ controller: UIActivityViewController) -> Any { url }
+
+    func activityViewController(_ controller: UIActivityViewController, itemForActivityType activityType: UIActivity.ActivityType?) -> Any? { url }
+
+    func activityViewController(_ controller: UIActivityViewController, subjectForActivityType activityType: UIActivity.ActivityType?) -> String { title }
+
+    /// The app's name over its tile, as the list draws it; no URL, which
+    /// would show the file's own name under it.
+    func activityViewControllerLinkMetadata(_ controller: UIActivityViewController) -> LPLinkMetadata? {
+        let metadata = LPLinkMetadata()
+        metadata.title = title
+        let side: CGFloat = 80
+        let tile = UIGraphicsImageRenderer(size: CGSize(width: side, height: side)).image { _ in
+            UIColor(Palette.tileTealFill).setFill()
+            UIBezierPath(roundedRect: CGRect(x: 0, y: 0, width: side, height: side), cornerRadius: 18).fill()
+            Glyphs.image("globe-outline", size: 44).withTintColor(UIColor(Palette.tileTeal), renderingMode: .alwaysOriginal)
+                .draw(in: CGRect(x: 18, y: 18, width: 44, height: 44))
+        }
+        metadata.iconProvider = NSItemProvider(object: tile)
+        return metadata
     }
 }
 #endif

@@ -37,7 +37,7 @@ public protocol VaultRoutes: Sendable {
     func vaultVersions(_ surfaceId: String, _ fileId: String, pageCursor: String?) async throws -> VaultPage<VaultVersion>
     func vaultVersion(_ surfaceId: String, _ fileId: String, number: Int?) async throws -> VaultVersion
     func vaultActivity(_ surfaceId: String, _ entryId: String, folder: Bool, pageCursor: String?) async throws -> VaultPage<VaultActivity>
-    /// A folder, or a file from an upload (a site when `name` ends in `.artifact`).
+    /// A folder, or a file from an upload (an app when `name` ends in `.artifact`).
     func createVaultEntry(_ surfaceId: String, id: String, parentId: String?, name: String, folder: Bool, uploadId: String?, mutationId: String) async throws -> VaultEntry
     func updateVaultEntry(_ surfaceId: String, _ entryId: String, folder: Bool, name: String?, parent: VaultParent?, ifMatch: String, mutationId: String) async throws -> VaultEntry
     func deleteVaultEntry(_ surfaceId: String, _ entryId: String, folder: Bool, ifMatch: String, mutationId: String) async throws -> VaultEntry

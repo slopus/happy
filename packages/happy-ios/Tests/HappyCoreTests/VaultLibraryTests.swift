@@ -530,7 +530,7 @@ final class VaultRulesTests: XCTestCase {
         XCTAssertEqual(VaultPreviewKind(mediaType: "text/plain", name: "notes.txt", size: 9), .text(language: "plaintext"))
         XCTAssertEqual(VaultPreviewKind(mediaType: "text/plain", name: "huge.log", size: VaultPreviewKind.textLimit + 1), .other)
         XCTAssertEqual(VaultPreviewKind(mediaType: "application/zip", name: "a.zip", size: 9), .other)
-        XCTAssertEqual(VaultPreviewKind(VaultEntry(id: "e", surfaceId: "s", parentId: nil, name: "site", kind: .artifact)), .site)
+        XCTAssertEqual(VaultPreviewKind(VaultEntry(id: "e", surfaceId: "s", parentId: nil, name: "launch.artifact", kind: .artifact)), .app)
     }
 
     func testAFreeNameNumbersBeforeTheExtension() {
@@ -539,11 +539,21 @@ final class VaultRulesTests: XCTestCase {
         XCTAssertEqual(VaultReducer.free("Notes", among: ["notes"]), "Notes 2")
     }
 
-    func testAFileNamedArtifactUploadsAsASite() {
+    func testAFileNamedArtifactUploadsAsAnApp() {
         XCTAssertEqual(VaultEntry.kind(named: "launch.artifact"), .artifact)
         XCTAssertEqual(VaultEntry.kind(named: "Launch.ARTIFACT"), .artifact)
         XCTAssertEqual(VaultEntry.kind(named: "launch.zip"), .file)
         XCTAssertEqual(VaultEntry.kind(named: ".artifact"), .file)
+    }
+
+    func testAnAppShowsWithoutItsSuffixAndKeepsIt() {
+        XCTAssertEqual(VaultEntry(id: "e", surfaceId: "s", parentId: nil, name: "launch.artifact", kind: .artifact).shownName, "launch")
+        XCTAssertEqual(VaultEntry.shownName("Launch.ARTIFACT"), "Launch")
+        XCTAssertEqual(VaultEntry.shownName("notes.txt"), "notes.txt")
+        XCTAssertEqual(VaultEntry.shownName(".artifact"), ".artifact")
+        XCTAssertEqual(VaultEntry.appName("launch again"), "launch again.artifact")
+        XCTAssertEqual(VaultEntry.appName("launch.artifact"), "launch.artifact")
+        XCTAssertEqual(VaultReducer.free("launch.artifact", among: ["launch.artifact"]), "launch 2.artifact")
     }
 
     func testAVaultSurfaceWearsItsOwnGlyph() {

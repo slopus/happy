@@ -1,10 +1,10 @@
 import Foundation
 
 /// How a vault entry is previewed on the phone: an artifact as its live
-/// site, a file by what it holds, and anything else through the share
+/// app, a file by what it holds, and anything else through the share
 /// sheet.
 public enum VaultPreviewKind: Equatable, Sendable {
-    case site
+    case app
     case markdown
     case image
     case video
@@ -21,7 +21,7 @@ public enum VaultPreviewKind: Equatable, Sendable {
     public init(_ entry: VaultEntry) {
         switch entry.kind {
         case .folder: self = .other
-        case .artifact: self = .site
+        case .artifact: self = .app
         case .file: self = Self(mediaType: entry.mediaType ?? "", name: entry.name, size: entry.size ?? 0)
         }
     }

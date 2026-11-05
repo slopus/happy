@@ -51,7 +51,7 @@ final class VaultFolderPickerViewController: UIViewController {
         library = session.engine.vaults
         super.init(nibName: nil, bundle: nil)
         title = folder?.name ?? vaultName
-        navigationItem.subtitle = moving.map { Strings.Vaults.moveTitle($0.name) }
+        navigationItem.subtitle = moving.map { Strings.Vaults.moveTitle($0.shownName) }
         navigationItem.largeTitleDisplayMode = .never
     }
 

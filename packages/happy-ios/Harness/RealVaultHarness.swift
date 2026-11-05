@@ -278,15 +278,18 @@ private final class RealVaultScript {
         await shoot("08-empty-folder")
         await reset(root)
         await tap("Sites")
-        check("artifacts show with their .artifact names", await until(15) { entry("launch.artifact") != nil && entry("handbook.artifact") != nil })
+        check("apps show by their names, without .artifact", await until(15) {
+            entry("launch.artifact") != nil && entry("handbook.artifact") != nil && names(browser).contains("launch") && !names(browser).contains { $0.hasSuffix(".artifact") }
+        }, names(browser).joined(separator: " | "))
         await shoot("09-folder-sites")
         await tap("launch.artifact")
+        check("an app's preview is titled without .artifact", top?.title == "launch", top?.title ?? "")
         await sleep(8)
-        await shoot("10-preview-site-live")
+        await shoot("10-preview-app-live")
         await back()
         await tap("handbook.artifact")
         await sleep(6)
-        await shoot("11-preview-markdown-site")
+        await shoot("11-preview-markdown-app")
         await reset(root)
         root?.setSort(VaultSort(key: .updatedAt))
         await sleep(1)
@@ -310,6 +313,7 @@ private final class RealVaultScript {
         await sleep(3)
         let found = (root.list.items).map(\.accessibilityLabel)
         check("a search shows names and contents", found.contains("Names") || found.contains("Contents"), found.joined(separator: " | "))
+        check("and apps there without .artifact", found.contains("launch") && !found.contains { $0.hasSuffix(".artifact") }, found.joined(separator: " | "))
         await shoot("14-search-names-contents")
         search.searchBar.text = ""
         search.isActive = false
@@ -400,7 +404,7 @@ private final class RealVaultScript {
             await library.upload(surfaceId, parentId: nil, file: temporary("phone picture.png", Data(picture.name.utf8) + Data(count: 10)), name: picture.name, replacing: picture.id)
             check("uploading over a file makes version 2", await until(60) { entry("phone picture.png", in: root)?.entry.latestVersion == 2 })
         }
-        // An .artifact downloaded and uploaded back is the same site.
+        // An .artifact downloaded and uploaded back is the same app.
         await tap("Sites")
         if let site = entry("launch.artifact")?.entry, let sites = browser {
             let target = FileManager.default.temporaryDirectory.appendingPathComponent("real-vault-\(UUID().uuidString)/launch copy.artifact")
@@ -408,7 +412,7 @@ private final class RealVaultScript {
                 try await session.client.download(AgentClient.vaultArtifactZipPath(surfaceId, site.id, version: site.latestVersion ?? 1), to: target)
                 check("an artifact downloads as a .artifact file", (try? Data(contentsOf: target).prefix(2)) == Data("PK".utf8))
                 await library.upload(surfaceId, parentId: site.parentId, file: target, name: "launch copy.artifact", kind: .artifact)
-                check("and uploads back as a site", await until(60) { entry("launch copy.artifact", in: sites)?.entry.kind == .artifact })
+                check("and uploads back as an app", await until(60) { entry("launch copy.artifact", in: sites)?.entry.kind == .artifact })
             } catch {
                 check("an artifact round trip", false, VaultActions.message(error))
             }
@@ -416,11 +420,41 @@ private final class RealVaultScript {
             await library.upload(surfaceId, parentId: site.parentId, file: temporary("broken.artifact", Data("not a zip".utf8)), name: "broken.artifact", kind: .artifact)
             let refused = await until(30) { sites.state.uploads.contains { if case .failed = $0.phase { true } else { false } } }
             check("a bad .artifact shows the computer's reason", refused, sites.state.uploads.map { "\($0.name) \($0.phase)" }.joined(separator: " | "))
-            await shoot("27-site-uploads")
+            await shoot("27-app-uploads")
             for upload in sites.state.uploads { await library.cancelUpload(surfaceId, upload.id) }
-            if let copy = entry("launch copy.artifact", in: sites)?.entry { try? await library.delete(surfaceId, copy.id) }
+            if let copy = entry("launch copy.artifact", in: sites)?.entry { await app(copy, in: sites) }
         }
         await reset(root)
+    }
+
+    /// An app is named, shared and trashed without its `.artifact`, which it keeps.
+    private func app(_ copy: VaultEntry, in sites: VaultViewController) async {
+        actions(sites).rename(copy)
+        await sleep(1)
+        let typed = (navigation.presentedViewController as? UIAlertController)?.textFields?.first?.text
+        check("renaming an app edits its name without .artifact", typed == "launch copy", typed ?? "no prompt")
+        await shoot("27a-rename-app-prompt")
+        await dismissPresented()
+        do {
+            try await library.rename(surfaceId, copy.id, to: VaultEntry.appName("launch again"))
+        } catch {
+            check("an app's rename", false, VaultActions.message(error))
+        }
+        check("and the app keeps .artifact", await until(10) { entry("launch again.artifact", in: sites)?.entry.kind == .artifact && names(sites).contains("launch again") },
+              names(sites).joined(separator: " | "))
+        guard let renamed = entry("launch again.artifact", in: sites)?.entry else { return }
+        actions(sites).share(renamed, view: sites.view)
+        check("an app shares as its .artifact file", await until(30) { navigation.presentedViewController is UIActivityViewController })
+        await shoot("27b-share-app")
+        await dismissPresented()
+        try? await library.delete(surfaceId, renamed.id)
+        navigation.pushViewController(VaultTrashViewController(session: session, surfaceId: surfaceId, vaultName: name), animated: true)
+        let trash = top as? VaultTrashViewController
+        let labels = { (trash?.list.items ?? []).filter { $0.kind == .row }.map(\.accessibilityLabel) }
+        check("the Trash shows the app without .artifact", await until(15) { labels().contains("launch again") && !labels().contains { $0.hasSuffix(".artifact") } },
+              labels().joined(separator: " | "))
+        await shoot("27c-trash-app")
+        await back()
     }
 
     private func history(_ root: VaultViewController?) async {

@@ -22,7 +22,7 @@ public struct VaultActor: Codable, Equatable, Hashable, Sendable {
     }
 }
 
-/// An artifact entry's site: `html` or `markdown`, its entry file, and
+/// An artifact entry's app: `html` or `markdown`, its entry file, and
 /// on a single-version read its whole manifest.
 public struct VaultArtifact: Codable, Equatable, Hashable, Sendable {
     public struct File: Codable, Equatable, Hashable, Sendable {
@@ -134,10 +134,23 @@ public struct VaultEntry: Codable, Equatable, Hashable, Sendable, Identifiable {
 
     public var isFolder: Bool { kind == .folder }
 
-    /// Every site's name ends in this, and nothing else's.
+    /// Every app's stored name ends in this, and nothing else's.
     public static let artifactSuffix = ".artifact"
 
-    /// What an upload named `name` becomes: a site when it ends in
+    /// The name people see: an app's without its `.artifact`, which its
+    /// icon and live preview already tell apart.
+    public var shownName: String { Self.shownName(name) }
+
+    public static func shownName(_ name: String) -> String {
+        kind(named: name) == .artifact ? String(name.dropLast(artifactSuffix.count)) : name
+    }
+
+    /// An app's stored name from the one a person typed, `.artifact` kept.
+    public static func appName(_ typed: String) -> String {
+        kind(named: typed) == .artifact ? typed : typed + artifactSuffix
+    }
+
+    /// What an upload named `name` becomes: an app when it ends in
     /// `.artifact`, whatever the case, else a file.
     public static func kind(named name: String) -> Kind {
         name.lowercased().hasSuffix(artifactSuffix) && name.count > artifactSuffix.count ? .artifact : .file

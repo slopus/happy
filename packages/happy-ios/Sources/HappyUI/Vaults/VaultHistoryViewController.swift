@@ -26,7 +26,7 @@ struct VaultHistoryInput: Sendable {
     var calendar = Calendar.current
 }
 
-/// One file's or site's versions, newest first, each with who made it,
+/// One file's or app's versions, newest first, each with who made it,
 /// when and how big, the current and the pinned marked; then what was done
 /// to it. A version opens a preview of itself, and offers to become the
 /// newest again, to be pinned (kept whatever the retention) or unpinned,
@@ -65,7 +65,7 @@ final class VaultHistoryViewController: UIViewController {
         library = session.engine.vaults
         super.init(nibName: nil, bundle: nil)
         title = Strings.Vaults.historyTitle
-        navigationItem.subtitle = entry.name
+        navigationItem.subtitle = entry.shownName
         navigationItem.largeTitleDisplayMode = .never
     }
 
@@ -115,7 +115,7 @@ final class VaultHistoryViewController: UIViewController {
         case .entry(let next):
             let renewed = next.latestVersion != entry.latestVersion
             entry = next
-            navigationItem.subtitle = next.name
+            navigationItem.subtitle = next.shownName
             pipeline?.update { $0.entry = next }
             // A new version, and what made it: read again.
             if renewed { read() }
@@ -214,8 +214,8 @@ final class VaultHistoryViewController: UIViewController {
 
     nonisolated static func describe(_ kind: VaultActivity.Kind) -> String {
         switch kind {
-        case .created(_, let name, _): Strings.Vaults.created(name)
-        case .moved(_, _, let from, let to): from != to ? Strings.Vaults.renamed(from, to) : Strings.Vaults.moved
+        case .created(_, let name, _): Strings.Vaults.created(VaultEntry.shownName(name))
+        case .moved(_, _, let from, let to): from != to ? Strings.Vaults.renamed(VaultEntry.shownName(from), VaultEntry.shownName(to)) : Strings.Vaults.moved
         case .deleted: Strings.Vaults.deleted
         case .restored: Strings.Vaults.restored
         case .versionCreated(let number, let from?): Strings.Vaults.versionRestored(number, from)

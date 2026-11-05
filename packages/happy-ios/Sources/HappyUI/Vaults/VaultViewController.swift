@@ -417,7 +417,7 @@ final class VaultViewController: UIViewController, UISearchResultsUpdating {
 
     private func uploadFailed(_ upload: VaultUploadState, from id: String) {
         guard case .failed(let reason) = upload.phase else { return }
-        let sheet = UIAlertController(title: upload.name, message: reason.isEmpty ? Strings.Vaults.offline : reason, preferredStyle: .actionSheet)
+        let sheet = UIAlertController(title: VaultEntry.shownName(upload.name), message: reason.isEmpty ? Strings.Vaults.offline : reason, preferredStyle: .actionSheet)
         let library = library, surfaceId = surfaceId
         sheet.addAction(UIAlertAction(title: Strings.Vaults.retry, style: .default) { _ in Task { await library.retryUpload(surfaceId, upload.id) } })
         sheet.addAction(UIAlertAction(title: Strings.Vaults.cancelUpload, style: .destructive) { _ in Task { await library.cancelUpload(surfaceId, upload.id) } })

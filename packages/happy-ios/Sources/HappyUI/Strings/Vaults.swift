@@ -36,7 +36,7 @@ extension Strings {
         static let contentMatches = "Contents"
         static let moreResults = "More results exist. Narrow your search."
         static func line(_ number: Int) -> String { "Line \(number)" }
-        static let site = "Site"
+        static let app = "App"
         static let folder = "Folder"
 
         // Actions.
@@ -61,7 +61,7 @@ extension Strings {
         static let untitledFolder = "untitled folder"
         static let failedTitle = "That didn’t work"
         static func nameTaken(_ name: String) -> String { "There’s already an item named “\(name)” here. Choose another name." }
-        static let artifactSuffixRefused = "Only sites end in .artifact. Choose another name."
+        static let artifactSuffixRefused = "Names ending in .artifact are kept for apps. Choose another name."
         static let invalidName = "A name can’t contain / or \\, or be . or .."
         static let changedElsewhere = "Someone changed this at the same time. Try again."
         static let gone = "This item isn’t in the vault anymore."

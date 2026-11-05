@@ -68,7 +68,7 @@ enum VaultListItems {
         let time = input.words.time(Date(timeIntervalSince1970: entry.updatedAt / 1000), now: input.now, calendar: input.calendar)
         switch entry.kind {
         case .folder: return time
-        case .artifact: return "\(time) · \(Strings.Vaults.site)"
+        case .artifact: return "\(time) · \(Strings.Vaults.app)"
         case .file: return "\(time) · \(size(entry.size ?? 0))"
         }
     }
@@ -97,7 +97,7 @@ enum VaultListItems {
             items.append(CardItems.heading("vault:files", Strings.Vaults.items(entries.count), width: input.width, maxWidth: input.maxWidth, afterCard: true, dark: input.dark, displayScale: input.displayScale))
         }
         for (entry, place) in zip(entries, CardPlace.run(entries.count)) {
-            items.append(row(id: entryID(entry.id), entry: entry, title: entry.name, subtitle: detail(entry, input: input), place: place,
+            items.append(row(id: entryID(entry.id), entry: entry, title: entry.shownName, subtitle: detail(entry, input: input), place: place,
                              waiting: state.waiting.contains(entry.id), input: input))
         }
         return items
@@ -121,7 +121,7 @@ enum VaultListItems {
                     let snippet = (result.snippet ?? "").replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespaces)
                     subtitle = [result.line.map(Strings.Vaults.line), snippet.isEmpty ? nil : "“\(snippet)”"].compactMap { $0 }.joined(separator: ": ") + "\n" + folder
                 }
-                items.append(row(id: resultID(index), entry: result.entry, title: result.entry.name, subtitle: subtitle, place: place, waiting: false, input: input, subtitleLines: result.match == .content ? 3 : 1))
+                items.append(row(id: resultID(index), entry: result.entry, title: result.entry.shownName, subtitle: subtitle, place: place, waiting: false, input: input, subtitleLines: result.match == .content ? 3 : 1))
             }
         }
         if search.truncated { items.append(note("vault:more", Strings.Vaults.moreResults)) }
@@ -182,7 +182,7 @@ enum VaultListItems {
         let failed = if case .failed = upload.phase { true } else { false }
         let layout = VaultUploadRowLayout(
             width: input.width, maxWidth: input.maxWidth, place: place, leading: CGSize(width: M.tile, height: M.tile),
-            title: CardText.measurable(upload.name, font: titleFont, maxLines: 1, scale: input.displayScale),
+            title: CardText.measurable(VaultEntry.shownName(upload.name), font: titleFont, maxLines: 1, scale: input.displayScale),
             subtitle: CardText.measurable(status, font: small, maxLines: 2, scale: input.displayScale),
             fraction: upload.fraction, titleLine: CardText.line(titleFont, scale: input.displayScale), hairline: 1 / max(1, input.displayScale), scale: input.displayScale
         )
@@ -193,13 +193,13 @@ enum VaultListItems {
             drawing.marks.append(.tile(frame, radius: M.tileRadius, look.fill))
             drawing.icon(look.icon, size: M.tileGlyph, look.ink, in: frame)
         }
-        drawing.text(upload.name, titleFont, Palette.text, layout.row.title)
+        drawing.text(VaultEntry.shownName(upload.name), titleFont, Palette.text, layout.row.title)
         drawing.text(status, small, failed ? Palette.textDestructive : Palette.settingsSecondary, layout.subtitle, wraps: true)
         drawing.marks.append(.tile(layout.track, radius: layout.track.height / 2, Palette.groupedSeparator))
         if layout.fill.width > 0 { drawing.marks.append(.tile(layout.fill, radius: layout.fill.height / 2, failed ? Palette.textDestructive : Palette.textLink)) }
         drawing.rule(layout.row.separator)
         var item = CardItem(id: uploadID(upload.id), kind: .row, size: layout.row.size, card: layout.row.card, place: place, drawing: drawing, opens: failed)
-        item.accessibilityLabel = upload.name
+        item.accessibilityLabel = VaultEntry.shownName(upload.name)
         item.accessibilityValue = status
         return item
     }

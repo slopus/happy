@@ -16,14 +16,14 @@ import UIKit
 /// through the vault's routes and its page on an origin with no bridge.
 final class ArtifactViewController: UIViewController, ChatMediaProviding {
     /// A vault entry's version, as a version of an artifact: a file is
-    /// its one file, a site its manifest.
+    /// its one file, an app its manifest.
     struct Vault {
         let surfaceId: String
         let entryId: String
         let version: AgentWire.ArtifactVersion
         let files: ArtifactMedia.Files
-        /// A site, whose files open as pages; a file has no page.
-        let site: Bool
+        /// An app, whose files open as pages; a file has no page.
+        let app: Bool
     }
 
     private let session: Session
@@ -84,7 +84,7 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
     init(session: Session, vault: Vault, path: String? = nil) {
         self.session = session
         self.vault = vault
-        artifact = Artifact(id: vault.entryId, version: vault.version.number, type: vault.site ? "html" : "file", title: vault.version.title, followsLatest: false)
+        artifact = Artifact(id: vault.entryId, version: vault.version.number, type: vault.app ? "html" : "file", title: vault.version.title, followsLatest: false)
         opened = (vault.version, path ?? vault.version.entry?.path ?? "")
         super.init(nibName: nil, bundle: nil)
         title = path.map { ($0 as NSString).lastPathComponent } ?? vault.version.title
@@ -163,7 +163,7 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
                 // An image series is all of its pictures, in path order.
                 let shown = file == entry ? version.files.filter(ArtifactMedia.isVisual) : [file]
                 await showGallery(shown.isEmpty ? [file] : shown, media: media)
-            } else if vault?.site == false {
+            } else if vault?.app == false {
                 show(message: Strings.artifactUnavailable)
             } else {
                 try await showWeb(version: version.number, entry: file.path)
