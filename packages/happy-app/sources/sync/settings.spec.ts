@@ -209,6 +209,7 @@ describe('settings', () => {
                 voiceAssistantLanguage: null,
                 voiceCustomAgentId: null,
                 voiceBypassToken: false,
+                readAloudPlaybackRate: 1,
                 preferredLanguage: null,
                 recentMachinePaths: [],
                 lastUsedAgent: null,
