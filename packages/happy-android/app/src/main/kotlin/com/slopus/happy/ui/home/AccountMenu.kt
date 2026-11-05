@@ -188,6 +188,7 @@ fun AccountMenuButton(
                 val name = entry.name ?: kind
                 HappyMenuItem(
                     label = name,
+                    labelMaxLines = 2,
                     supporting = entry.detail,
                     leading = { Avatar(entry.seed, AccountMenuSpec.rowAvatar, imageUri = entry.imageUrl, thumbhash = entry.thumbhash, animated = false) },
                     trailing = if (entry.attention && !entry.active) {

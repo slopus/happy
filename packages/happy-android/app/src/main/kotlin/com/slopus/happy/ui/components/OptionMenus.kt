@@ -110,6 +110,7 @@ fun HappyMenuItem(
     selected: Boolean = false,
     enabled: Boolean = true,
     destructive: Boolean = false,
+    labelMaxLines: Int = 1,
 ) {
     val colors = HappyTheme.colors
     val ink = when {
@@ -120,7 +121,7 @@ fun HappyMenuItem(
     DropdownMenuItem(
         text = {
             Column {
-                Text(label, style = MenuSpec.label, color = ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(label, style = MenuSpec.label, color = ink, maxLines = labelMaxLines, overflow = TextOverflow.Ellipsis)
                 if (supporting != null) {
                     Text(supporting, style = MenuSpec.supporting, color = colors.textSecondary, maxLines = 1, overflow = TextOverflow.MiddleEllipsis)
                 }
