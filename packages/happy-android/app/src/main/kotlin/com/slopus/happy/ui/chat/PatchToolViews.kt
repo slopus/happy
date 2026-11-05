@@ -131,7 +131,7 @@ private fun PatchFile(file: String, change: PatchEntry, env: ToolEnvironment, fo
                     )
                 }
             }
-            diff.first?.let { DiffChunk(it, env.showLineNumbers) }
+            diff.first?.let { DiffChunk(it, env.showLineNumbers, newFile = movePath == null && change.kindType == "add") }
             if (footer != null) {
                 Box(modifier = Modifier.padding(start = ToolSpec.patchFooterPaddingHorizontal, end = ToolSpec.patchFooterPaddingHorizontal, top = ToolSpec.patchFooterPaddingTop)) {
                     footer()

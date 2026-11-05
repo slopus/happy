@@ -51,12 +51,15 @@ public struct ToolCardLayout: Equatable, Sendable {
         public var elapsed: Measurable?
         /// Spinner or state glyph.
         public var statusIcon: CGSize?
+        /// A Write's NEW +N, before the timer.
+        public var badge: Measurable?
 
-        public init(title: Measurable, description: Measurable? = nil, elapsed: Measurable? = nil, statusIcon: CGSize? = nil) {
+        public init(title: Measurable, description: Measurable? = nil, elapsed: Measurable? = nil, statusIcon: CGSize? = nil, badge: Measurable? = nil) {
             self.title = title
             self.description = description
             self.elapsed = elapsed
             self.statusIcon = statusIcon
+            self.badge = badge
         }
     }
 
@@ -89,6 +92,7 @@ public struct ToolCardLayout: Equatable, Sendable {
     public var description: CGRect?
     public var elapsed: CGRect?
     public var statusIcon: CGRect?
+    public var badge: CGRect?
     public var body: CGRect?
     public var footer: CGRect?
 
@@ -103,8 +107,9 @@ public struct ToolCardLayout: Equatable, Sendable {
         description = nil
         elapsed = nil
         statusIcon = nil
+        badge = nil
         if let header = input.header {
-            // Right to left: status glyph, timer, then the title takes the rest.
+            // Right to left: status glyph, timer, badge, then the title takes the rest.
             var right = width - M.headerPadding
             var statusFrame: CGRect?
             var elapsedFrame: CGRect?
@@ -119,11 +124,16 @@ public struct ToolCardLayout: Equatable, Sendable {
                 elapsedFrame = CGRect(x: right - elapsedSize.width, y: 0, width: elapsedSize.width, height: elapsedSize.height)
                 right -= elapsedSize.width + M.elapsedMarginLeft + M.gap
             }
+            var badgeFrame: CGRect?
+            if let badgeSize = header.badge?.size(fitting: width) {
+                badgeFrame = CGRect(x: right - badgeSize.width, y: 0, width: badgeSize.width, height: badgeSize.height)
+                right -= badgeSize.width + M.gap
+            }
             let titleWidth = max(0, right - titleX)
             let titleHeight = header.title.height(fitting: titleWidth)
             let descriptionHeight = header.description?.height(fitting: titleWidth)
             let columnHeight = titleHeight + (descriptionHeight.map { M.descriptionMarginTop + $0 } ?? 0)
-            contentHeight = max(M.iconSize, columnHeight, elapsedSize?.height ?? 0, statusFrame?.height ?? 0)
+            contentHeight = max(M.iconSize, columnHeight, elapsedSize?.height ?? 0, statusFrame?.height ?? 0, badgeFrame?.height ?? 0)
             let top = M.headerPadding
             func centred(_ height: CGFloat) -> CGFloat { top + (contentHeight - height) / 2 }
             icon = CGRect(x: M.headerPadding, y: centred(M.iconSize), width: M.iconSize, height: M.iconSize)
@@ -139,6 +149,10 @@ public struct ToolCardLayout: Equatable, Sendable {
             if var frame = statusFrame {
                 frame.origin.y = centred(frame.height)
                 statusIcon = frame
+            }
+            if var frame = badgeFrame {
+                frame.origin.y = centred(frame.height)
+                badge = frame
             }
             let headerHeight = contentHeight + 2 * M.headerPadding
             self.header = CGRect(x: 0, y: 0, width: width, height: headerHeight)

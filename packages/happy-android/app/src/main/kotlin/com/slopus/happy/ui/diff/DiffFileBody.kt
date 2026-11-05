@@ -4,6 +4,7 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -51,6 +52,12 @@ class DiffFileBody(
     private val showHunkHeaders: Boolean = true,
     private val collapseAfter: Int = 400,
     private val syntax: SyntaxService? = null,
+    /**
+     * The file is new, as its source says (a Write, an added file): it is
+     * drawn as the file itself, desktop's created-file listing, with no
+     * `+` markers, tint or `@@` bars.
+     */
+    val listing: Boolean = false,
 ) {
     var expanded by mutableStateOf(false)
         private set
@@ -59,14 +66,16 @@ class DiffFileBody(
     var expanding by mutableStateOf(false)
         private set
 
-    private val selection get() = DiffLayout.selectVisibleRows(file.rows, showHunkHeaders, expanded, collapseAfter)
+    private val selection get() = DiffLayout.selectVisibleRows(file.rows, showHunkHeaders && !listing, expanded, collapseAfter)
 
     var hiddenCount by mutableIntStateOf(selection.hiddenCount)
         private set
 
-    /** The rows to draw, coloured where the syntax arrived in time. */
-    var rows by mutableStateOf(selection.rows)
-        private set
+    /** The selected rows, coloured where the syntax arrived in time; the syntax plan matches them by identity. */
+    private var drawn by mutableStateOf(selection.rows)
+
+    /** The rows to draw: [drawn], as a listing for a new file. */
+    val rows: List<DiffRow> by derivedStateOf { if (listing) DiffLayout.asListing(drawn) else drawn }
 
     var pending by mutableStateOf(false)
         private set
@@ -82,10 +91,10 @@ class DiffFileBody(
     init {
         // Decided before the first frame, so a cached file paints coloured and
         // an uncached one never flashes plain.
-        val displayed = rows
+        val displayed = drawn
         val plan = plan(displayed)
         val cached = cached(plan)
-        if (cached.isNotEmpty()) rows = DiffSyntax.apply(displayed, plan, cached)
+        if (cached.isNotEmpty()) drawn = DiffSyntax.apply(displayed, plan, cached)
         pending = cached.size < plan.size
         if (!pending) revealed = true
     }
@@ -119,7 +128,7 @@ class DiffFileBody(
         val plan = plan(displayed)
         val outcomes = ConcurrentHashMap(cached(plan))
         fun publish() {
-            rows = if (outcomes.isEmpty()) displayed else DiffSyntax.apply(displayed, plan, HashMap(outcomes))
+            drawn = if (outcomes.isEmpty()) displayed else DiffSyntax.apply(displayed, plan, HashMap(outcomes))
             pending = false
             revealed = true
             pendingSince = null
@@ -132,7 +141,7 @@ class DiffFileBody(
             kotlinx.coroutines.coroutineScope { for (hunk in missing) launch { service.highlight(hunk.input) } }
             return
         }
-        rows = displayed
+        drawn = displayed
         pending = true
         val started = pendingSince ?: System.currentTimeMillis().also { pendingSince = it }
         kotlinx.coroutines.coroutineScope {
@@ -172,10 +181,10 @@ class DiffFileBody(
 
 /** A [DiffFileBody] for [file], started with the composition and stopped when it leaves. */
 @Composable
-fun rememberDiffFileBody(file: DiffFile, showHunkHeaders: Boolean = true, collapseAfter: Int = 400): DiffFileBody {
+fun rememberDiffFileBody(file: DiffFile, showHunkHeaders: Boolean = true, collapseAfter: Int = 400, listing: Boolean = false): DiffFileBody {
     val syntax = LocalDiffSyntax.current
     val scope = rememberCoroutineScope()
-    val body = remember(file, showHunkHeaders, collapseAfter, syntax) { DiffFileBody(file, showHunkHeaders, collapseAfter, syntax) }
+    val body = remember(file, showHunkHeaders, collapseAfter, syntax, listing) { DiffFileBody(file, showHunkHeaders, collapseAfter, syntax, listing) }
     DisposableEffect(body) {
         body.start(scope)
         onDispose { body.stop() }

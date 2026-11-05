@@ -187,7 +187,7 @@ enum MessageDetailRenderer {
         func diff(_ index: Int, showLineNumbers: Bool) -> ChatPiece? {
             ChatRowRenderer.diffPiece(
                 chunks[index], index: index, toolId: toolId, showLineNumbers: showLineNumbers, expanded: input.diffExpanded[index] ?? [],
-                render: input.render, text: input.text
+                newFile: kind == .write, render: input.render, text: input.text
             )
         }
         switch kind {
@@ -232,8 +232,8 @@ enum MessageDetailRenderer {
         let cards = shown.map { index in
             let file = files[index]
             let source: DiffChunkSource? = switch file.diff {
-            case .patch(let patch)?: DiffChunkSource(patch: patch, fileName: file.fileName)
-            case .pair(let old, let new)?: DiffChunkSource(oldText: old, newText: new, fileName: file.fileName)
+            case .patch(let patch)?: DiffChunkSource(patch: patch, fileName: file.fileName, newFile: file.kind == .added)
+            case .pair(let old, let new)?: DiffChunkSource(oldText: old, newText: new, fileName: file.fileName, newFile: file.kind == .added)
             case nil: nil
             }
             let card = diffCard(header: (file.path, file.kind, file.stats, file.movePath), source: source, index: index, toolId: toolId, input: input)

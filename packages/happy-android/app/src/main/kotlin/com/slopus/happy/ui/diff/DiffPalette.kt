@@ -22,6 +22,7 @@ import kotlin.math.roundToInt
 
 object DiffTags {
     const val CHUNK = "diff.chunk"
+    const val NEW_FILE = "diff.newFile"
     const val FILE = "diff.file"
     const val GUTTER = "diff.gutter"
     const val LINE = "diff.line"

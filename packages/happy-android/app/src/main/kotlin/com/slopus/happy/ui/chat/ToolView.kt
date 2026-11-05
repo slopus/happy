@@ -65,6 +65,7 @@ import com.slopus.happy.text.plural
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.Octicon
+import com.slopus.happy.ui.diff.NewFileBadge
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 
@@ -379,6 +380,7 @@ private fun CardHeader(p: ToolPresentation, createdAt: Long, state: ToolState, o
                 )
             }
         }
+        p.newFileLines?.let { NewFileBadge(it) }
         if (state == ToolState.Running) ElapsedView(createdAt, Modifier.padding(start = ToolSpec.elapsedMarginStart))
         StatusIcon(p.statusIcon)
     }
@@ -478,7 +480,7 @@ private fun ToolSpecificView(
         ToolViewKind.Write -> {
             val path = input?.get("file_path").str
             val content = input?.get("content").str?.takeIf { path != null } ?: "<no contents>"
-            ToolSection(fullWidth = true) { DiffChunk(DiffSource.Contents(path ?: "file.txt", "", content), env.showLineNumbers) }
+            ToolSection(fullWidth = true) { DiffChunk(DiffSource.Contents(path ?: "file.txt", "", content), env.showLineNumbers, newFile = true) }
         }
         ToolViewKind.MultiEdit -> MultiEditView(input, env)
         ToolViewKind.GeminiEdit -> {

@@ -25,6 +25,8 @@ enum FixtureScenario: String, CaseIterable, Sendable {
     case giant
     /// The newest message is a Write whose diff ends in Show more.
     case showMore
+    /// The newest message is a Write of a new Swift file.
+    case newFile
     /// Nothing yet.
     case empty
 
@@ -39,6 +41,7 @@ enum FixtureScenario: String, CaseIterable, Sendable {
         case .diagrams: "Mermaid diagrams"
         case .giant: "One very tall message"
         case .showMore: "A diff past its first lines"
+        case .newFile: "A new file"
         case .empty: "Empty session"
         }
     }
@@ -180,6 +183,7 @@ enum FixtureScenarios {
             } ?? 350
             builder.agent((1...min(1000, max(1, count))).map { "Section \($0). A single message remains visible through the entire conversation viewport, with selectable text and a stable reading position.\n" }.joined(separator: "\n"))
         case .showMore: showMore(&builder)
+        case .newFile: newFile(&builder)
         case .empty: break
         }
         return builder.messages
@@ -355,6 +359,37 @@ enum FixtureScenarios {
         b.tool("Write", [
             "file_path": "/Users/fixture/happy/packages/happy-ios/docs/CHAT-NOTES.md",
             "content": (1...301).map { "Line \($0) of the full chat notes: every row is measured before it is shown." }.joined(separator: "\n"),
+        ], result: "File created successfully.")
+    }
+
+    static func newFile(_ b: inout Builder) {
+        b.user("Add a clock the cache tests can move by hand.")
+        b.tool("Write", [
+            "file_path": "/Users/fixture/happy/Sources/Cache/TestClock.swift",
+            "content": """
+            import Foundation
+
+            /// A clock the tests move by hand.
+            final class TestClock: Clock, @unchecked Sendable {
+                struct Instant: InstantProtocol {
+                    var offset: Duration = .zero
+                    func advanced(by duration: Duration) -> Instant { Instant(offset: offset + duration) }
+                    func duration(to other: Instant) -> Duration { other.offset - offset }
+                    static func < (lhs: Instant, rhs: Instant) -> Bool { lhs.offset < rhs.offset }
+                }
+
+                private(set) var now = Instant()
+                let minimumResolution: Duration = .zero
+
+                func advance(by duration: Duration) {
+                    now = now.advanced(by: duration)
+                }
+
+                func sleep(until deadline: Instant, tolerance: Duration? = nil) async throws {
+                    while now < deadline { try await Task.sleep(for: .milliseconds(1)) }
+                }
+            }
+            """,
         ], result: "File created successfully.")
     }
 

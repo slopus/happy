@@ -194,6 +194,22 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
         // Not `sizeToFit`, which would hold a longer title to the width of
         // the one before it.
         titleView.frame.size = titleView.intrinsicContentSize
+        updateNewFileBadge()
+    }
+
+    /// A Write names its file in the title, so its NEW +N ends the bar.
+    private func updateNewFileBadge() {
+        guard case .toolCall(let call)? = message, ToolViewKind(toolName: call.tool.name) == .write,
+              let lines = ChatToolPresentation.newFileLines(call.tool.input) else {
+            navigationItem.rightBarButtonItem = nil
+            return
+        }
+        let label = UILabel()
+        label.attributedText = ChatRowRenderer.newFileBadge(lines, in: view.traitCollection.textEnvironment)
+        label.sizeToFit()
+        let item = UIBarButtonItem(customView: label)
+        if #available(iOS 26.0, *) { item.hidesSharedBackground = true }
+        navigationItem.rightBarButtonItem = item
     }
 
     /// The navigation bar holds the text size its title view inherits to

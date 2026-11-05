@@ -140,7 +140,7 @@ private fun SpecializedFullView(kind: FullViewKind, message: ChatMessage.ToolCal
         FullViewKind.Write -> {
             val path = input?.get("file_path").str
             val content = input?.get("content").str ?: "<no contents>"
-            Box(Modifier.padding(bottom = 12.dp)) { DiffChunk(DiffSource.Contents(path ?: "file.txt", "", content), showLineNumbers = env.showLineNumbers) }
+            Box(Modifier.padding(bottom = 12.dp)) { DiffChunk(DiffSource.Contents(path ?: "file.txt", "", content), showLineNumbers = env.showLineNumbers, newFile = true) }
         }
         FullViewKind.MultiEdit -> MultiEditFullView(input)
         FullViewKind.Patch -> PatchFullView(tool, env, focusFile)

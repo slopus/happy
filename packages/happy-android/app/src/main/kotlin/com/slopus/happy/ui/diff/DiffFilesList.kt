@@ -119,21 +119,22 @@ private class DiffSections(private val scope: CoroutineScope, private val syntax
         drop(item.id)
         val rendered = item.rendersMarkdown
         if (source.size <= DIFF_SYNC_BUILD_LIMIT && !rendered) {
-            finish(item.id, source, source.build(), null)
+            finish(item, source, source.build(), null)
             return
         }
         val job = scope.launch {
             val (document, markdown) = withContext(Dispatchers.Default) {
                 source.build() to (source as? DiffSource.Contents)?.takeIf { rendered }?.let { MarkdownDiff.compute(it.oldText, it.newText) }
             }
-            if (sections[item.id]?.source == source) finish(item.id, source, document, markdown)
+            if (sections[item.id]?.source == source) finish(item, source, document, markdown)
         }
         sections[item.id] = Section(source, null, emptyList(), job)
     }
 
-    private fun finish(id: String, source: DiffSource, document: DiffDocument, markdown: MarkdownDiff?) {
-        val bodies = document.files.map { file -> DiffFileBody(file, showHunkHeaders = true, collapseAfter = 600, syntax = syntax).also { it.start(scope) } }
-        sections[id] = Section(source, document, bodies, null, markdown)
+    private fun finish(item: DiffFileItem, source: DiffSource, document: DiffDocument, markdown: MarkdownDiff?) {
+        val listing = item.kind == FileChangeKind.Added
+        val bodies = document.files.map { file -> DiffFileBody(file, showHunkHeaders = true, collapseAfter = 600, syntax = syntax, listing = listing).also { it.start(scope) } }
+        sections[item.id] = Section(source, document, bodies, null, markdown)
     }
 
     fun drop(id: String) {

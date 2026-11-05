@@ -22,6 +22,8 @@ import com.slopus.happy.chat.tools.isTerminalToolName
 import com.slopus.happy.chat.tools.presentTool
 import com.slopus.happy.chat.tools.toolActivityLabel
 import com.slopus.happy.chat.tools.toolDisplayTitle
+import com.slopus.happy.chat.tools.writtenFileLines
+import com.slopus.happy.ui.diff.NewFileBadge
 import com.slopus.happy.ui.chat.rememberToolText
 import com.slopus.happy.ui.components.Screen
 import com.slopus.happy.ui.components.StackHeader
@@ -78,7 +80,13 @@ fun MessageDetailScreen(
     focusFile: String? = null,
 ) {
     val colors = HappyTheme.colors
-    Screen(header = { StackHeader(messageDetailTitle(message, env), onBack) }) {
+    val newFileLines = (message as? ChatMessage.ToolCallMessage)?.tool?.takeIf { it.name == "Write" || it.name == "write" }
+        ?.let { tool -> remember(tool) { writtenFileLines(tool.input) } }
+    Screen(header = {
+        StackHeader(messageDetailTitle(message, env), onBack) {
+            newFileLines?.let { NewFileBadge(it, Modifier.padding(end = 16.dp)) }
+        }
+    }) {
         when {
             !loaded || message == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(Modifier.size(20.dp).testTag(MessageDetailTags.SPINNER), color = colors.textSecondary, strokeWidth = 2.dp)

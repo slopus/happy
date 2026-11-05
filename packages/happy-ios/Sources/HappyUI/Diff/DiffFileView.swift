@@ -19,6 +19,10 @@ struct DiffViewOptions: Equatable, Sendable {
     /// RN's `selectable` on the code lines: a long press offers Copy for
     /// that line. Off by default, as in DiffFileView.tsx.
     var selectable = false
+    /// The file is new, as its source says (a Write, an added file): it is
+    /// drawn as the file itself, desktop's created-file listing, with no
+    /// `+` markers, tint or `@@` bars.
+    var newFile = false
 }
 
 /// One file's diff, measured and ready to draw: the rows on show after the
@@ -67,10 +71,12 @@ final class DiffFilePlan: @unchecked Sendable {
         syntaxDeadline: ContinuousClock.Instant? = DiffFilePlan.syntaxDeadline(),
         text: TextEnvironment? = nil
     ) {
-        let selection = DiffRowSelection.select(file.rows, showHunkHeaders: options.showHunkHeaders, expanded: expanded, collapseAfter: options.collapseAfter)
+        let selection = DiffRowSelection.select(file.rows, showHunkHeaders: options.showHunkHeaders && !options.newFile, expanded: expanded, collapseAfter: options.collapseAfter)
         let metrics = DiffStyle.metrics(fontSize: options.fontSize, text: text)
         self.file = file
-        rows = syntaxDeadline.map { syntax.colour(file, displayed: selection.rows, until: $0) } ?? selection.rows
+        // Coloured as the diff it is: the syntax plan finds hunks by their rows.
+        let coloured = syntaxDeadline.map { syntax.colour(file, displayed: selection.rows, until: $0) } ?? selection.rows
+        rows = options.newFile ? DiffRowSelection.listing(coloured) : coloured
         hiddenCount = selection.hiddenCount
         expansionNeedsSyntax = syntaxDeadline != nil && selection.hiddenCount > 0 && syntax.isMissing(file, rows: file.rows)
         self.options = options

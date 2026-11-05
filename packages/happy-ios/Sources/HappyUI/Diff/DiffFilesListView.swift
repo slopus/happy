@@ -126,7 +126,7 @@ final class DiffSectionPlan: @unchecked Sendable {
                 }
             case .files(let files):
                 // DiffFilesList: `selectable={Platform.OS !== 'android'}`.
-                let options = DiffViewOptions(collapseAfter: Self.collapseAfter, canExpandContext: input.canExpandContext, selectable: true)
+                let options = DiffViewOptions(collapseAfter: Self.collapseAfter, canExpandContext: input.canExpandContext, selectable: true, newFile: item.kind == .added)
                 let plans = files.enumerated().map { index, file in
                     DiffFilePlan(file: file, width: width, syntax: render.diffSyntax, options: options, expanded: input.expandedFiles.contains(index), syntaxDeadline: syntaxDeadline, text: text)
                 }

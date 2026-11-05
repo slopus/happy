@@ -15,7 +15,9 @@ import UltraView
 /// Launch arguments: `-fixture <name>` picks the chat (`long` by default);
 /// `-keyboard` opens the keyboard once the rows are in; `-scrollTo
 /// <fraction>` goes that far back through the history once the rows are
-/// in; `-qaLandscape` turns the window on its side.
+/// in; `-qaLandscape` turns the window on its side; `-openTool <id>` opens
+/// that tool row and `-openMessage <id>` its screen (`tool-2` is the
+/// `newFile` fixture's Write).
 ///
 /// `ChatScrollProbe` reports the list to the tests as the accessibility value
 /// of an element named `chat-scroll-probe`. With `-hideKeyboardButton`, an
@@ -216,6 +218,22 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         #endif
         if keyboard { probe.focusComposerWhenFilled() }
+        func value(_ flag: String) -> String? {
+            let arguments = ProcessInfo.processInfo.arguments
+            return arguments.firstIndex(of: flag).flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
+        }
+        let action = value("-openTool").map(ChatRowAction.toggleTool) ?? value("-openMessage").map(ChatRowAction.openMessage)
+        if let action {
+            try? await Task.sleep(for: .seconds(1.5))
+            var stack: [UIView] = [chat.view]
+            while let view = stack.popLast() {
+                if let list = view as? ChatListView {
+                    chat.chatList(list, perform: action)
+                    break
+                }
+                stack.append(contentsOf: view.subviews)
+            }
+        }
     }
 }
 

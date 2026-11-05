@@ -396,6 +396,19 @@ final class ToolRowLayoutTests: XCTestCase {
         XCTAssertEqual(layout.size.height, 173)
     }
 
+    func testAWritesBadgeEndsItsTitleBarBeforeTheTimer() {
+        let layout = ToolCardLayout(.init(
+            width: 393,
+            header: .init(title: text("Sources/a.swift", lineHeight: 17), elapsed: text("1.2s", lineHeight: 16), badge: text("NEW  +22", lineHeight: 14)),
+            body: block(height: 50),
+            footer: nil
+        ))
+        assertFrame(layout.elapsed, rect(333, 16, 32, 16))
+        assertFrame(layout.badge, rect(253, 17, 64, 14))
+        assertFrame(layout.title, rect(44, 15.5, 201, 17))
+        assertFrame(layout.header, rect(0, 0, 377, 48))
+    }
+
     func testAnAttachmentHasNoCard() {
         let layout = ToolCardLayout(.init(width: 393, header: nil, body: block(height: 50), footer: nil, inline: true))
         XCTAssertNil(layout.header)

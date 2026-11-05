@@ -136,7 +136,7 @@ private fun PatchFileCard(file: String, change: PatchEntry, env: MessageDetailEn
                 Text(movePath, style = happyTextStyle(fontSize = 12, family = AppMono), color = palette.textSecondary, modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 9.dp))
             }
         }
-        diff.first?.let { DiffChunk(it, showLineNumbers = env.showLineNumbers) }
+        diff.first?.let { DiffChunk(it, showLineNumbers = env.showLineNumbers, newFile = movePath == null && change.kindType == "add") }
     }
 }
 

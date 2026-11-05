@@ -98,8 +98,9 @@ fun DiffFileView(
     collapseAfter: Int = 400,
     paddingVertical: Dp = 0.dp,
     onExpandContext: (() -> Unit)? = null,
+    listing: Boolean = false,
 ) {
-    val body = rememberDiffFileBody(file, showHunkHeaders, collapseAfter)
+    val body = rememberDiffFileBody(file, showHunkHeaders, collapseAfter, listing)
     DiffFileView(body, modifier, fontSize, showLineNumbers, layout, paddingVertical, onExpandContext)
 }
 
@@ -121,7 +122,7 @@ fun DiffFileView(
     val gutterWidth = metrics.gutterWidth(file.maxLineNo, showLineNumbers)
     Column(modifier = modifier.fillMaxWidth().background(palette.surface).testTag(DiffTags.FILE)) {
         Box(modifier = Modifier.syntaxGate(body.pending)) {
-            when (layout) {
+            when (layout.forBody(body)) {
                 DiffLayoutMode.Scroll -> ScrollBody(rows, file, body.scroll, palette, metrics, gutterWidth, showLineNumbers, paddingVertical, onExpandContext)
                 DiffLayoutMode.Wrap -> Column(Modifier.padding(vertical = paddingVertical)) {
                     for (row in rows) DiffRowInline(row, palette, metrics, gutterWidth, showLineNumbers, onExpandContext)
@@ -161,7 +162,7 @@ fun LazyListScope.diffFileItems(
     val file = body.file
     val gutterWidth = metrics.gutterWidth(file.maxLineNo, showLineNumbers)
     val pending = body.pending
-    when (layout) {
+    when (layout.forBody(body)) {
         DiffLayoutMode.Scroll -> {
             val codeWidth = codeWidth(file, metrics)
             items(body.rows.size, key = { "$keyPrefix:${body.rows[it].key}" }, contentType = { "diff.row" }) { index ->
@@ -236,6 +237,9 @@ private fun CopyableRow(row: DiffRow?, modifier: Modifier, content: @Composable 
         }
     }
 }
+
+/** A new file has no old side, so it never splits; it wraps instead. */
+private fun DiffLayoutMode.forBody(body: DiffFileBody) = if (body.listing && this == DiffLayoutMode.Split) DiffLayoutMode.Wrap else this
 
 /** Laid out but invisible, and unread by TalkBack, while the syntax gate holds. */
 private fun Modifier.syntaxGate(pending: Boolean) =

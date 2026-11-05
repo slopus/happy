@@ -1160,6 +1160,17 @@ stop returns, and LiveKit's audio thread releases OS focus asynchronously.
 Verify focus, recording and communication mode on a device after changes.
 `testDebugUnitTest` includes the SDK's lifecycle tests as well as app tests.
 
+## New files in diffs
+
+A new file is drawn as the file, as desktop draws a created one: syntax
+colour and line numbers, no `+` markers, tint or `@@` bars
+(`DiffFileBody.listing`), under a NEW +N header. A Write's card and screen
+name the file in their title bar, so NEW +N ends that bar
+(`NewFileBadge`) and there is no second header. Whether a file is new comes
+from what the caller knows (git status, a `file_diff` or Codex `add`, a
+Write) and is passed in. It is never read off the rows: an empty file that
+gained lines is all additions too, and git calls it modified.
+
 ## Attachments and images
 
 - **Transfer** (`attachments/`): apiAttachments.ts over OkHttp. Local

@@ -99,8 +99,8 @@ private fun DiffSource.shared(): SharedDiffSource = when (this) {
  * Nothing when there are no files.
  */
 @Composable
-fun DiffChunk(source: DiffSource, showLineNumbers: Boolean, modifier: Modifier = Modifier) {
-    SharedDiffChunk(source.shared(), modifier, showLineNumbers = showLineNumbers)
+fun DiffChunk(source: DiffSource, showLineNumbers: Boolean, modifier: Modifier = Modifier, newFile: Boolean = false) {
+    SharedDiffChunk(source.shared(), modifier, showLineNumbers = showLineNumbers, newFile = newFile)
 }
 
 /** DiffFileHeader.tsx, drawn by the shared renderer: icon, folder and name, change badge, +N −N, then [right]. */

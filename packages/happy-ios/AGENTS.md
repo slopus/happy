@@ -259,6 +259,15 @@ and fixtures remain. Preserve credential and push compatibility on upgrades.
   edge, which on a phone (no padding for edits) clips the line numbers.
   Here text scrolls and Write's diff sits edge to edge like Edit's. Built
   in `MessageDetailRenderer`.
+- **A new file reads as the file, not as a diff**, as desktop draws a
+  created one: syntax colour and line numbers, no `+` markers, tint or `@@`
+  bars (`DiffViewOptions.newFile`). Whether a file is new comes from what
+  the caller knows (git status, a `file_diff` or Codex `add`, a Write) and
+  is passed in. It is never read off the rows: an empty file that gained
+  lines is all additions too, and git calls it modified. A Write's card and
+  screen already name the file in their title bar, so NEW +N ends that bar
+  (`ToolCardLayout.Header.badge`, the screen's right bar item) and there is
+  no second header.
 - **The CLI-outdated pill sits under the header on every device.** happy-app
   places it 8 below the top of the content area. On a phone in portrait that
   area runs under the floating header, so the pill ends up behind the header

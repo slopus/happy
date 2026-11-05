@@ -115,6 +115,16 @@ fun DiffFileHeader(
     }
 }
 
+/** The end of a new file's header, NEW and +N, for a title bar that already names the file. */
+@Composable
+fun NewFileBadge(lines: Int, modifier: Modifier = Modifier) {
+    val palette = diffPalette()
+    Row(modifier.testTag(DiffTags.NEW_FILE), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Badge(stringResource(R.string.diff_badge_new), palette.markerAdd)
+        if (lines > 0) Text("+$lines", style = DiffHeaderSpec.stat, color = palette.markerAdd)
+    }
+}
+
 @Composable
 private fun Badge(text: String, color: Color) {
     Text(text, style = DiffHeaderSpec.badge, color = color, maxLines = 1)

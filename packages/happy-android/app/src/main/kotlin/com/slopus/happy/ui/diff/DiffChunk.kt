@@ -48,6 +48,8 @@ fun DiffChunk(
     contextLines: Int = 3,
     collapseAfter: Int = 80,
     fontSize: Float = DiffMetrics.DEFAULT_FONT_SIZE,
+    /** The source is a new file ([DiffFileBody.listing]). */
+    newFile: Boolean = false,
 ) {
     val document = rememberDiffDocument(source, contextLines)
     if (document.files.isEmpty()) return
@@ -60,6 +62,7 @@ fun DiffChunk(
                 layout = layout,
                 collapseAfter = collapseAfter,
                 showHunkHeaders = file.rows.count { it is DiffRow.Hunk } > 1,
+                listing = newFile,
             )
         }
     }

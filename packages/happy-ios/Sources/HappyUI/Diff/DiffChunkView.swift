@@ -13,13 +13,16 @@ struct DiffChunkSource: Equatable, Sendable {
     /// Names the language; "file.txt" when nil.
     var fileName: String?
     var contextLines = 3
+    /// A new file (`DiffViewOptions.newFile`).
+    var newFile = false
 
-    init(patch: String? = nil, oldText: String? = nil, newText: String? = nil, fileName: String? = nil, contextLines: Int = 3) {
+    init(patch: String? = nil, oldText: String? = nil, newText: String? = nil, fileName: String? = nil, contextLines: Int = 3, newFile: Bool = false) {
         self.patch = patch
         self.oldText = oldText
         self.newText = newText
         self.fileName = fileName
         self.contextLines = contextLines
+        self.newFile = newFile
     }
 
     var source: DiffFileItem.Source? {
@@ -73,7 +76,7 @@ final class DiffChunkPlan: @unchecked Sendable {
                 if case .hunk = row { return count + 1 }
                 return count
             }
-            let options = DiffViewOptions(fontSize: fontSize, showLineNumbers: showLineNumbers, showHunkHeaders: hunks > 1, collapseAfter: collapseAfter)
+            let options = DiffViewOptions(fontSize: fontSize, showLineNumbers: showLineNumbers, showHunkHeaders: hunks > 1, collapseAfter: collapseAfter, newFile: source.newFile)
             return DiffFilePlan(file: file, width: width, syntax: render.diffSyntax, options: options, expanded: expanded.contains(index), syntaxDeadline: syntaxDeadline, text: text)
         }
         layout = DiffChunkLayout(files.map(\.layout.input))

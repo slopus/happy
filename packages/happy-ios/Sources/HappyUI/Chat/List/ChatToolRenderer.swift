@@ -133,6 +133,7 @@ extension ChatRowRenderer {
         var header: ToolCardLayout.Header?
         var title: MeasuredText?
         var subtitle: MeasuredText?
+        var badge: MeasuredText?
         if presentation.showsHeader {
             let string = NSMutableAttributedString(attributedString: ChatTextStyles.toolName.string(titleText, color: Palette.text, lineBreakMode: .byTruncatingTail, in: environment))
             if let status = presentation.status {
@@ -144,7 +145,10 @@ extension ChatRowRenderer {
             subtitle = presentation.subtitle.map {
                 MeasuredText(ChatTextStyles.toolDescription.string(text.words.text($0), color: Palette.textSecondary, lineBreakMode: .byTruncatingTail, in: environment), maxLines: 1)
             }
-            header = ToolCardLayout.Header(title: title!.measurable, description: subtitle?.measurable, elapsed: elapsed.map { Measurable.fixed($0) }, statusIcon: glyph)
+            badge = presentation.newFileLines.map { MeasuredText(newFileBadge($0, in: environment), maxLines: 1) }
+            header = ToolCardLayout.Header(
+                title: title!.measurable, description: subtitle?.measurable, elapsed: elapsed.map { Measurable.fixed($0) }, statusIcon: glyph, badge: badge?.measurable
+            )
         }
         let layout = ToolCardLayout(.init(
             width: width, maxContentWidth: style.maxContentWidth, header: header,
@@ -168,6 +172,7 @@ extension ChatRowRenderer {
         if let frame = layout.icon { items.append(headerIcon(presentation.icon, frame: place(frame))) }
         if let frame = layout.title, let title { items.append(.text(title.layout(for: frame), place(frame))) }
         if let frame = layout.description, let subtitle { items.append(.text(subtitle.layout(for: frame), place(frame))) }
+        if let frame = layout.badge, let badge { items.append(.text(badge.layout(for: frame), place(frame))) }
         if let frame = layout.elapsed { items.append(.elapsed(since: tool.createdAt, frame: place(frame), text: environment)) }
         if let frame = layout.statusIcon, let glyph = presentation.statusGlyph { items.append(statusGlyph(glyph, frame: place(frame))) }
         if let body, let frame = layout.body {
@@ -184,6 +189,16 @@ extension ChatRowRenderer {
         }
         let accessibility = [titleText, presentation.subtitle.map(text.words.text)].compactMap { $0 }.joined(separator: ", ")
         return ChatRowPlan(id: message.id, size: layout.size, items: items, hits: hits, accessibilityLabel: accessibility)
+    }
+
+    /// The end of a new file's header, NEW and +N, for a title bar that
+    /// already names the file.
+    static func newFileBadge(_ lines: Int, in environment: TextEnvironment?) -> NSAttributedString {
+        let scale = DiffStyle.textScale(environment)
+        let color = UIColor(DiffPalette.markerAdded)
+        let string = NSMutableAttributedString(attributedString: DiffTextStyles.headerBadge.scaled(scale).attributedString(Strings.DiffDetail.badgeNew, color: color))
+        if lines > 0 { string.append(DiffTextStyles.headerCount.scaled(scale).attributedString("  +\(lines)", color: color)) }
+        return string
     }
 
     /// Room for the timer: right-aligned, as wide as "000.0s" at the size
@@ -273,12 +288,16 @@ extension ChatRowRenderer {
         // MultiEditView passes no line-number flag, so its diffs use the
         // same setting through ToolDiffView.
         let pieces = chunks.enumerated().compactMap { index, chunk in
-            diffPiece(chunk, index: index, toolId: message.id, showLineNumbers: style.showLineNumbers, expanded: views.diffExpanded[index] ?? [], render: style.render, text: style.text)
+            diffPiece(
+                chunk, index: index, toolId: message.id, showLineNumbers: style.showLineNumbers, expanded: views.diffExpanded[index] ?? [],
+                newFile: kind == .write, render: style.render, text: style.text
+            )
         }
         guard !pieces.isEmpty else { return nil }
         let entries = pieces.map { ChatStackEntry(piece: $0) }
         return fullWidthSection(.stack(entries, gap: 8), flush: views.flush, text: style.text)
     }
+
 
     /// ToolSectionView fullWidth: flush under the card's header and out to
     /// its edges. In a compact row's box, a plain section.
@@ -312,8 +331,8 @@ extension ChatRowRenderer {
                 opens: .openMessageFile(id: message.id, file: file.file), text: text
             ))]
             let source: DiffChunkSource? = switch file.diff {
-            case .patch(let patch)?: DiffChunkSource(patch: patch, fileName: file.fileName)
-            case .pair(let old, let new)?: DiffChunkSource(oldText: old, newText: new, fileName: file.fileName)
+            case .patch(let patch)?: DiffChunkSource(patch: patch, fileName: file.fileName, newFile: file.kind == .added)
+            case .pair(let old, let new)?: DiffChunkSource(oldText: old, newText: new, fileName: file.fileName, newFile: file.kind == .added)
             case nil: nil
             }
             if let source, let diff = diffPiece(
@@ -402,10 +421,11 @@ extension ChatRowRenderer {
     /// One DiffChunk: diff `index` of tool `toolId`, or nil when it draws
     /// nothing (DiffChunk renders null).
     static func diffPiece(
-        _ chunk: ToolDiffChunk, index: Int, toolId: String, showLineNumbers: Bool, expanded: Set<Int>, render: RenderServices, text: ChatRowText
+        _ chunk: ToolDiffChunk, index: Int, toolId: String, showLineNumbers: Bool, expanded: Set<Int>, newFile: Bool = false,
+        render: RenderServices, text: ChatRowText
     ) -> ChatPiece? {
         diffPiece(
-            DiffChunkSource(oldText: chunk.oldText, newText: chunk.newText, fileName: chunk.fileName),
+            DiffChunkSource(oldText: chunk.oldText, newText: chunk.newText, fileName: chunk.fileName, newFile: newFile),
             index: index, toolId: toolId, showLineNumbers: showLineNumbers, expanded: expanded, render: render, text: text
         )
     }

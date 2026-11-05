@@ -161,6 +161,9 @@ public struct ToolPresentation: Equatable, Sendable {
     public var activityLabel: String
     /// Edit, MultiEdit and Write open the file; everything else the message.
     public var opensFile: String?
+    /// A Write: the file it wrote is new, this many lines; its title bar
+    /// ends in NEW +N.
+    public var newFileLines: Int?
 }
 
 /// What ToolView knows about the session around a tool.
@@ -300,8 +303,16 @@ public enum ChatToolPresentation {
             awaitingDecision: awaitingDecision,
             showsPermissionFooter: tool.permission != nil && name != "AskUserQuestion",
             activityLabel: ChatToolDisplay.activityLabel(tool, words: words),
-            opensFile: filePath
+            opensFile: filePath,
+            newFileLines: view == .write ? newFileLines(tool.input) : nil
         )
+    }
+
+    /// A Write's file, as many lines as its contents; nil when the input
+    /// names no file.
+    public static func newFileLines(_ input: JSONValue) -> Int? {
+        guard input["file_path"]?.stringValue != nil, let content = input["content"]?.stringValue else { return nil }
+        return DiffStats.countContents("", content).additions
     }
 
     // MARK: knownTools

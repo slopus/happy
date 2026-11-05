@@ -409,8 +409,8 @@ enum AgentToolRenderer {
         let radius = ToolFieldsCardLayout.Metrics.radius
         let kind: FileChangeKind = file.kind == "add" ? .added : file.kind == "delete" ? .deleted : .modified
         let source: DiffChunkSource? = switch file.source {
-        case .patch(let patch)?: DiffChunkSource(patch: patch, fileName: file.path)
-        case .pair(let old, let new)?: DiffChunkSource(oldText: old, newText: new, fileName: file.path)
+        case .patch(let patch)?: DiffChunkSource(patch: patch, fileName: file.path, newFile: kind == .added)
+        case .pair(let old, let new)?: DiffChunkSource(oldText: old, newText: new, fileName: file.path, newFile: kind == .added)
         case nil: nil
         }
         var stats = source?.patch.map { DiffStats.countPatch($0) } ?? DiffStats.Counts(additions: file.added, deletions: file.deleted)

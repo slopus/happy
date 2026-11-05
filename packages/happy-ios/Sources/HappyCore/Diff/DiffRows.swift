@@ -75,6 +75,20 @@ public enum DiffRowSelection {
         return Result(rows: Array(visible[..<end]), hiddenCount: visible.count - end)
     }
 
+    /// A new file's rows as a listing: its added lines drawn as plain
+    /// lines, no `@@` bars.
+    public static func listing(_ rows: [DiffRow]) -> [DiffRow] {
+        rows.compactMap { row in
+            switch row {
+            case .hunk: return nil
+            case .line(var line) where line.type == .add:
+                line.type = .ctx
+                return .line(line)
+            default: return row
+            }
+        }
+    }
+
     private static func isChange(_ rows: [DiffRow], _ index: Int) -> Bool {
         guard rows.indices.contains(index), let line = rows[index].line else { return false }
         return line.type != .ctx

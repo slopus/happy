@@ -26,6 +26,15 @@ object DiffLayout {
         return VisibleRows(visible.subList(0, end).toList(), visible.size - end)
     }
 
+    /** A new file's rows as a listing: its added lines drawn as plain lines, no `@@` bars. */
+    fun asListing(rows: List<DiffRow>): List<DiffRow> = rows.mapNotNull { row ->
+        when {
+            row is DiffRow.Hunk -> null
+            row is DiffRow.Line && row.type == DiffLineType.Add -> row.copy(type = DiffLineType.Ctx)
+            else -> row
+        }
+    }
+
     /** gutterWidthFor: the marker column always, line numbers sized by the widest one. */
     fun gutterWidth(charWidth: Float, maxLineNo: Int, showLineNumbers: Boolean): Float {
         val markerColumns = 2

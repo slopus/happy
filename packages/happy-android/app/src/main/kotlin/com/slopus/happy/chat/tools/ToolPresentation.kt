@@ -6,6 +6,8 @@ import com.slopus.happy.chat.ToolState
 import com.slopus.happy.chat.arr
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
+import com.slopus.happy.diff.DiffStats
+import kotlinx.serialization.json.JsonElement
 
 // ToolView.tsx's decisions, apart from drawing: what a tool call is called,
 // which glyph and status it shows, and whether it is a one-line activity row
@@ -59,7 +61,16 @@ data class ToolPresentation(
     val isToolUseError: Boolean,
     /** Pending approval of a tool with no view of its own: the card shows the raw arguments. */
     val needsApprovalInput: Boolean,
+    /** A Write: the file it wrote is new, this many lines; its title bar ends in NEW +N. */
+    val newFileLines: Int? = null,
 )
+
+/** A Write's file, as many lines as its contents; null when the input names no file. */
+fun writtenFileLines(input: JsonElement?): Int? {
+    val fields = input.obj ?: return null
+    if (fields["file_path"].str == null) return null
+    return DiffStats.countContents("", fields["content"].str ?: return null).additions
+}
 
 /**
  * ToolView.tsx: null for hidden tools. [flavor] is the session's agent
@@ -135,6 +146,7 @@ fun presentTool(message: ChatMessage.ToolCallMessage, text: ToolText, compactToo
         hideDefaultError = hideDefaultError,
         isToolUseError = isToolUseError,
         needsApprovalInput = needsApprovalInput,
+        newFileLines = if (view == ToolViewKind.Write) writtenFileLines(tool.input) else null,
     )
 }
 
