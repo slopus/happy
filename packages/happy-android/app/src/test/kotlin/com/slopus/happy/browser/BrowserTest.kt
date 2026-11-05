@@ -118,6 +118,15 @@ class BrowserTest {
         throwsBrowser(BrowserException.Kind.Forbidden) { BrowserPolicy.artifactPath("/a.js", "../agents", 2) }
     }
 
+    @Test fun vaultArtifactsHaveOnlyTheirFiles() {
+        val vault = "/v0/surfaces/vault/s1/files/e1"
+        assertEquals("$vault/versions/3/artifact/index.html?x=1", BrowserPolicy.artifactPath("/index.html?x=1", "e1", 3, vault))
+        assertEquals("$vault/versions/3/artifact/api/v1/kv", BrowserPolicy.artifactPath("/api/v1/kv", "e1", 3, vault))
+        for (target in listOf("/", "//other/a.js", "/a/../../agents", "/%2e%2e/agents", "/a%00")) {
+            throwsBrowser(BrowserException.Kind.Forbidden) { BrowserPolicy.artifactPath(target, "e1", 3, vault) }
+        }
+    }
+
     @Test fun requestTranslationPreservesMethodsAndConditionsButReplacesCredentials() {
         val raw = "PUT /api/v1/kv/entry?key=a HTTP/1.1\r\nHost: page\r\nAuthorization: attacker\r\nProxy-Authorization: local\r\nX-Happy-Proxy-Route: attacker\r\n" +
             "If-Match: version1\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}"

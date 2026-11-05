@@ -24,6 +24,7 @@ object SurfaceType {
     const val DOCUMENT = "document"
     const val CALENDAR = "calendar"
     const val SYSTEM_MONITOR = "system_monitor"
+    const val VAULT = "vault"
     const val CHAT = "chat"
     const val ARTIFACT = "artifact"
     const val BOT = "bot"

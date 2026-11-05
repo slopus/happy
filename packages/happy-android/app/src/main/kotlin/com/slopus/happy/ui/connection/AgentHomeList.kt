@@ -198,6 +198,7 @@ enum class RowTile(private val light: Pair<Long, Long>, private val dark: Pair<L
             "todo" -> Ionicon.CheckboxOutline to Green
             "calendar" -> Ionicon.CalendarOutline to Red
             "system_monitor" -> Ionicon.PulseOutline to Teal
+            "vault" -> Ionicon.ArchiveOutline to Indigo
             "chat" -> Ionicon.PeopleOutline to Teal
             else -> Ionicon.DocumentTextOutline to Blue
         }

@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.connection
 
+import com.slopus.happy.ui.vaults.vaultRoutes
 import com.slopus.happy.ui.page
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -53,6 +54,7 @@ fun NavGraphBuilder.agentConnectionRoutes(graph: AppGraph, nav: NavHostControlle
     artifactRoutes(graph, nav)
     feedRoutes(graph, nav)
     surfaceRoutes(graph, nav)
+    vaultRoutes(graph, nav)
 }
 
 /** Starts pairing [code] and shows it, over whatever screen is up. */

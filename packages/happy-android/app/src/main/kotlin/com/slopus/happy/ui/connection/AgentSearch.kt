@@ -287,7 +287,7 @@ data class AgentSearchSources(
         val None = AgentSearchSources()
 
         /** Kinds with a page of their own; one that only points at an artifact, a bot or a task is found under its own name. */
-        val KINDS = setOf(SurfaceReader.DOCUMENT, SurfaceReader.TODO, "calendar", "system_monitor", "chat")
+        val KINDS = setOf(SurfaceReader.DOCUMENT, SurfaceReader.TODO, "calendar", "system_monitor", "vault", "chat")
 
         /**
          * The sources from [catalog] and what [kept] holds (an agent

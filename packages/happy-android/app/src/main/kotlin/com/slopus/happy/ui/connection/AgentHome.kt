@@ -577,6 +577,7 @@ private fun surfaceTypeName(type: String): Int = when (type) {
     SurfaceReader.TODO -> R.string.agent_search_kind_todo
     "calendar" -> R.string.agent_search_kind_calendar
     "system_monitor" -> R.string.agent_search_kind_system_monitor
+    "vault" -> R.string.vaults_kind
     "chat" -> R.string.agent_search_kind_chat
     else -> R.string.agent_search_kind_document
 }

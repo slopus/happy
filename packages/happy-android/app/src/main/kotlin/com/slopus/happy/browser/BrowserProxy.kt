@@ -53,12 +53,16 @@ class BrowserProxy(parent: CoroutineScope) {
     sealed interface Scope {
         val client: AgentClient
 
-        /** A bundled artifact on its synthetic origin: its files, its API, and the web through its source's workspace if it has one. */
+        /**
+         * A bundled artifact on its synthetic origin: its files, its API, and the web through its source's workspace if it has one.
+         * A vault's artifact entry gives [vault], its entry route: its files come from there, and it has no API.
+         */
         class Artifact(
             override val client: AgentClient,
             val id: String,
             val version: Int,
             val authority: BrowserPolicy.Authority,
+            val vault: String? = null,
             val workspace: (suspend () -> String)?,
         ) : Scope
 
@@ -242,7 +246,7 @@ class BrowserProxy(parent: CoroutineScope) {
                         if (rest.isNotEmpty()) throw BrowserException(BrowserException.Kind.Malformed)
                         val (inner, body) = BrowserRelay.head(local)
                         BrowserPolicy.checkArtifactOrigin(inner, authority)
-                        artifact(local, owner.pool, scope.id, scope.version, inner, body) { started = true }
+                        artifact(local, owner.pool, scope.id, scope.version, inner, body, scope.vault) { started = true }
                     }
                     is Scope.Live if scope.authority == authority -> {
                         local.write(ESTABLISHED)
@@ -281,7 +285,7 @@ class BrowserProxy(parent: CoroutineScope) {
             when (val scope = owner.scope) {
                 is Scope.Artifact if scope.authority == authority -> {
                     BrowserPolicy.checkArtifactOrigin(inner, authority)
-                    artifact(local, owner.pool, scope.id, scope.version, inner, rest) { started = true }
+                    artifact(local, owner.pool, scope.id, scope.version, inner, rest, scope.vault) { started = true }
                 }
                 is Scope.Live if scope.authority == authority && target.startsWith("/api/") -> {
                     BrowserPolicy.checkArtifactOrigin(inner, authority)
@@ -321,14 +325,15 @@ class BrowserProxy(parent: CoroutineScope) {
         version: Int,
         head: HttpHead,
         initial: ByteArray,
+        vault: String? = null,
         onStarted: () -> Unit,
     ) {
         val (request, body) = BrowserRelay.requestBody(head, initial, local)
         val parts = request.line.split(' ')
         val method = parts.firstOrNull().orEmpty()
-        val api = parts.getOrNull(1)?.startsWith("/api/") == true && request.value("upgrade") == null
+        val api = vault == null && parts.getOrNull(1)?.startsWith("/api/") == true && request.value("upgrade") == null
         // Checked before a connection is taken: a refused path costs nothing upstream.
-        request.artifactRequest(id, version, "-", keepAlive = api)
+        request.artifactRequest(id, version, "-", keepAlive = api, vault = vault)
         val lease = upstream { pool.take(reusing = api) }
         var reusable = false
         // Once: a lease back in the pool may already be the next request's.
@@ -339,7 +344,7 @@ class BrowserProxy(parent: CoroutineScope) {
             pool.release(lease, keep)
         }
         try {
-            val translated = request.artifactRequest(id, version, lease.token, keepAlive = api, authority = lease.socket.authority)
+            val translated = request.artifactRequest(id, version, lease.token, keepAlive = api, authority = lease.socket.authority, vault = vault)
             val remote = lease.socket
             upstream {
                 remote.write(translated.bytes)

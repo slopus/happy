@@ -326,6 +326,15 @@ class AgentSession internal constructor(
      */
     val todos: com.slopus.happy.todos.TodoLibrary = com.slopus.happy.todos.connectionTodos(this, client, scope)
 
+    /** The connection's vaults: their routes, live events and the uploads in flight, which outlive the screen that started them. */
+    val vaults: com.slopus.happy.vaults.Vaults by lazy {
+        com.slopus.happy.vaults.Vaults(
+            client, events, scope,
+            kept = { key -> kotlinx.coroutines.withContext(Dispatchers.IO) { cachedResource(key) } },
+            keep = { key, value -> kotlinx.coroutines.withContext(Dispatchers.IO) { keepResource(key, value) } },
+        )
+    }
+
     /** Bots' pictures, as home's rows draw them. */
     /** Chat media kept on this phone for good, beside the catalog (iOS `MediaLibrary.agent`); null where nothing is kept. */
     val media: com.slopus.happy.media.MediaLibrary? = cacheFile?.let { com.slopus.happy.media.MediaLibrary(File(it.parentFile, it.nameWithoutExtension + ".media")) }

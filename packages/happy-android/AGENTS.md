@@ -1719,6 +1719,57 @@ iOS's `docs/browser-proxy.md` is the contract; `browser/` ports it
   emulator. The WebView matches its `SwipeRefreshLayout`: wrapping its
   content, it gave every page `100vh`/`dvh` of 0.
 
+### Vaults
+
+A vault Surface (`type: "vault"`) is a versioned folder tree. The contract
+is happy-agent API.md, "Vault Surfaces"; the product is task_221's
+vaults-design.md; iOS's port is `packages/happy-ios`. `vaults/` is the wire
+and state, `ui/vaults/` the screens. Strings are `strings_vaults.xml` in
+every locale, not happy-i18n.
+
+- **Items** (`VaultItem`): the wire's folders (`/folders`,
+  `vault.folder.*`) and files (`/files`, `vault.file.*`, plain or
+  artifact) are one shape here, told apart by `kind`. `VaultClient` picks
+  the route from it, and events say which they are about
+  (`VaultEvent.Updated.folder`).
+- **Folders** (`VaultListing`, `VaultFolderFeed`): a folder is read whole,
+  500 items a page, and sorted on the phone (`VaultSort`: folders first,
+  then name with a SECONDARY `Collator`, updated or size), so a change never
+  waits on a page. An event that follows the held `version`
+  (`previousVersion`) is laid over the item (`VaultItem.changed`). A gap in
+  the chain, a restore or a move here reads the item again. An item that
+  left is remembered with its version, so an older page can't bring it back.
+  `hello` reads everything again. An item the phone's own request returned
+  goes to the folders at once (`Vaults.known`). There are no refresh
+  controls.
+- **Changes** carry `If-Match`, and a `409` with the current `folder` or
+  `file` is tried once more against it (`VaultActions.change`).
+- **Uploads** (`VaultUploads`): uploads are scoped to the session and run one
+  at a time, so they survive leaving the screen. Each is sent in pieces sized
+  to take about 3 s (256 KiB–16 MiB, starting at 1 MiB, under Tailcat's 35 s
+  write deadline). After a failure or a `409` an upload resumes from the
+  daemon's `received`. When the taken name (`409 name_taken`'s `item`)
+  belongs to a file of the same kind, the person chooses Replace (a new
+  version) or Keep both ("name 2.ext"). A file named "*.artifact" (any
+  case) becomes an artifact, and a ".zip" is always a plain file. An
+  artifact's new version is a whole ".artifact" file. A refused one shows
+  the daemon's own reason on its row. Artifacts keep the ".artifact"
+  suffix in their names (renaming adds it back) and download or share as
+  that `.artifact` file (`/versions/:n/zip`).
+- **Previews** (`VaultPreview.kind`): pictures and video go to
+  `PictureViewer`, with video over a `RangedSource`. PDFs go to
+  `PdfRenderer`. Text up to 2 MB, and Markdown, go to `FileScreen`.
+  Artifacts run as live sites through `BrowserProxy` with
+  `Scope.Artifact(vault = …)`: every path is a file of that version
+  (`/versions/:n/artifact/*`), and there is no `/api`. Anything else gets
+  share, open in another app, or Save to.
+- **Retention presets** (`VaultRetentionPreset`) are the same on every
+  client: Time Machine (the default), Keep everything, Last 10 versions,
+  Custom. A preset sets only the four version fields, and the Trash keeps its
+  own duration.
+- Tests: `vaults/*Test` (listing, events, uploads against a fake daemon,
+  routes, presets) and `ui/vaults/VaultLayoutTest`.
+
 ## Autocomplete
 
 `@` file mentions and `/` commands in the chat composer. Logic is in

@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -278,11 +279,15 @@ fun FileScreen(
     save: FileSave? = null,
     /** A failed read offers Retry, and says why without an alert. */
     onRetry: (() -> Unit)? = null,
+    /** The bar's title; "File viewer" when not given. */
+    title: String? = null,
+    /** More of the bar's actions, after the save. */
+    actions: @Composable RowScope.() -> Unit = {},
 ) {
     val colors = HappyTheme.colors
     val fileName = filePath.substringAfterLast('/').ifEmpty { filePath }
     var alertShown by remember(load) { mutableStateOf(load is FileLoad.Failed && onRetry == null) }
-    Screen(header = { StackHeader(stringResource(R.string.common_file_viewer), onBack) { save?.let { FileSaveButton(it) } } }) {
+    Screen(header = { StackHeader(title ?: stringResource(R.string.common_file_viewer), onBack) { save?.let { FileSaveButton(it) }; actions() } }) {
         when (load) {
             FileLoad.Loading -> Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                 CircularProgressIndicator(Modifier.size(20.dp).testTag(FileTags.SPINNER), color = colors.textSecondary, strokeWidth = 2.dp)

@@ -143,8 +143,10 @@ object BrowserPolicy {
      * An artifact page's request target as the daemon's route: `/api/…` to
      * the artifact's own API, anything else to the opened version's files.
      * Paths are checked before anything could normalize traversal away.
+     * A vault's artifact ([vault], its file route) has no API: every
+     * path is one of its version's files.
      */
-    fun artifactPath(target: String, artifactId: String, version: Int): String {
+    fun artifactPath(target: String, artifactId: String, version: Int, vault: String? = null): String {
         if (!validId(artifactId) || version <= 0 || !target.startsWith("/") || target.startsWith("//") ||
             target.any { it.code < 33 || it.code == 127 } || '#' in target
         ) throw BrowserException(BrowserException.Kind.Forbidden)
@@ -154,6 +156,10 @@ object BrowserPolicy {
             if (decoded == "." || decoded == ".." || '/' in decoded || '\\' in decoded || '%' in decoded ||
                 decoded.any { it.code < 32 || it.code == 127 }
             ) throw BrowserException(BrowserException.Kind.Forbidden)
+        }
+        if (vault != null) {
+            if (path == "/") throw BrowserException(BrowserException.Kind.Forbidden)
+            return "$vault/versions/$version/artifact$target"
         }
         val prefix = "/v0/artifacts/$artifactId"
         if (path.startsWith("/api/")) return prefix + target
@@ -197,12 +203,12 @@ data class HttpHead(val line: String, val fields: List<Pair<String, String>>) {
      * the connection closed after one answer unless it upgrades or is
      * [keepAlive] (a pooled API request).
      */
-    fun artifactRequest(artifactId: String, version: Int, credential: String, keepAlive: Boolean = false, authority: String = "server.tailcat"): HttpHead {
+    fun artifactRequest(artifactId: String, version: Int, credential: String, keepAlive: Boolean = false, authority: String = "server.tailcat", vault: String? = null): HttpHead {
         val parts = line.split(' ')
         if (parts.size != 3 || parts[2] != "HTTP/1.1" || parts[0] == "CONNECT" || !parts[0].all { it in 'A'..'Z' } ||
             '\r' in credential || '\n' in credential
         ) throw BrowserException(BrowserException.Kind.Malformed)
-        val target = BrowserPolicy.artifactPath(parts[1], artifactId, version)
+        val target = BrowserPolicy.artifactPath(parts[1], artifactId, version, vault)
         val kept = without("host", "authorization", "proxy-authorization", "proxy-connection", "connection", "x-happy-proxy-route", "expect", "keep-alive")
         return HttpHead(
             "${parts[0]} $target HTTP/1.1",

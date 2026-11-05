@@ -23,6 +23,16 @@ import com.slopus.happy.ui.theme.RnLineHeightStyle
  */
 enum class Ionicon(val codepoint: Int) {
     CardOutline(0xf1e8), // card-outline
+    CloudUploadOutline(0xf260), // cloud-upload-outline
+    Pin(0xf4ba), // pin
+    PinOutline(0xf4bb), // pin-outline
+    ShareOutline(0xf572), // share-outline
+    OpenOutline(0xf488), // open-outline
+    MoveOutline(0xf464), // move-outline
+    ArrowUndoOutline(0xf143), // arrow-undo-outline
+    SwapVerticalOutline(0xf5b4), // swap-vertical-outline
+    ArrowDown(0xf12d), // arrow-down
+    BrowsersOutline(0xf1b5), // browsers-outline
     Add(0xf103), // add
     AddOutline(0xf107), // add-outline
     AlbumsOutline(0xf110), // albums-outline
