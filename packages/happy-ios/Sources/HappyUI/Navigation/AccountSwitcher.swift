@@ -200,11 +200,12 @@ final class AccountSwitcher: NSObject {
     }
 
     /// UIKit's compact menu reserves a fixed lane for the check and picture.
-    /// UIAction offers no line-count setting, so fit its title on one line.
+    /// UIKit wraps long titles, so allow room for roughly two lines before
+    /// truncating the name.
     private static func menuTitle(_ name: String) -> String {
         let font = UIFont.preferredFont(forTextStyle: .body)
         func width(_ text: String) -> CGFloat { (text as NSString).size(withAttributes: [.font: font]).width }
-        let limit: CGFloat = 140
+        let limit: CGFloat = 300
         guard width(name) > limit else { return name }
         var title = name
         while !title.isEmpty, width(title + "…") > limit { title.removeLast() }
