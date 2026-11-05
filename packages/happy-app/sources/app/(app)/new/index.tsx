@@ -44,6 +44,9 @@ import { formatPathRelativeToHome, formatLastSeen } from '@/utils/sessionUtils';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
 import { useWorktrees } from '@/hooks/useWorktrees';
+import { useImagePicker } from '@/hooks/useImagePicker';
+import { useWebImagePaste } from '@/hooks/useWebImagePaste';
+import { AgentInputAttachmentStrip } from '@/components/AgentInputAttachmentStrip';
 import { useShallow } from 'zustand/react/shallow';
 import type { MultiTextInputHandle } from '@/components/MultiTextInput';
 import { Modal } from '@/modal';
@@ -823,6 +826,38 @@ function NewSessionScreen() {
         setWorktreeKey: s.setWorktreeKey,
     })));
     const draftAgent = draft.agentType;
+
+    // Image/file attachments for the first message.
+    // useImagePicker owns the pick/camera/file/paste mechanics; the draft store
+    // stays the single source the spawn handler reads, so the two are mirrored.
+    // Attachments deliberately live in memory only (see useNewSessionDraft).
+    const {
+        selectedImages,
+        pickImages,
+        removeImage,
+        clearImages,
+        addImages,
+    } = useImagePicker();
+    // Seed the picker once from whatever the draft already holds — HomeDock
+    // stages attachments there before routing here, so without this the strip
+    // would render empty even though the spawn would still send them.
+    const attachmentsSeededRef = React.useRef(false);
+    React.useEffect(() => {
+        if (attachmentsSeededRef.current) return;
+        attachmentsSeededRef.current = true;
+        const staged = useNewSessionDraft.getState().attachments;
+        if (staged.length > 0) addImages(staged);
+    }, [addImages]);
+    // Mirror every later picker change back into the draft store.
+    React.useEffect(() => {
+        if (!attachmentsSeededRef.current) return;
+        useNewSessionDraft.getState().setAttachments(selectedImages);
+    }, [selectedImages]);
+    // Scoped by the composer's own field node so a paste/drop here cannot also
+    // land in an in-session composer mounted beside this screen.
+    const composerFieldRef = React.useRef<View>(null);
+    useWebImagePaste(addImages, composerFieldRef);
+
     const setSelectedAgent = draft.setAgentType;
     const selectedMachineId = draft.selectedMachineId;
     const setSelectedMachineId = draft.setMachineId;
@@ -1681,7 +1716,9 @@ function NewSessionScreen() {
                     const trimmedPrompt = draftState.input.trim();
                     const attachments = draftState.attachments;
 
-                    // Send initial message if provided
+                    // Send initial message if provided. The session already
+                    // exists here, so sendMessage uploads the attachments to it
+                    // just like an in-session message.
                     if (trimmedPrompt || attachments.length > 0) {
                         const accepted = await sync.sendMessage(result.sessionId, trimmedPrompt, {
                             source: 'new_session', attachments, signal: controller.signal,
@@ -1700,7 +1737,15 @@ function NewSessionScreen() {
                     completeSpawnRequest(clientRequestId);
                     const currentDraft = useNewSessionDraft.getState();
                     if (currentDraft.input === draftState.input) currentDraft.setInput('');
-                    if (currentDraft.attachments === attachments) currentDraft.setAttachments([]);
+                    if (currentDraft.attachments === attachments) {
+                        currentDraft.setAttachments([]);
+                        // The picker mirrors the draft, so it is cleared with it or
+                        // the strip keeps showing what was already sent. Like the
+                        // prompt above, only when the draft still holds what was
+                        // sent: attachments changed while the session was spawning
+                        // stay for the next message.
+                        clearImages();
+                    }
 
                     router.back();
                     navigateToSession(result.sessionId);
@@ -1738,7 +1783,7 @@ function NewSessionScreen() {
             if (sendingRef.current === controller) sendingRef.current = null;
             if (isMountedRef.current) setIsSpawning(false);
         }
-    }, [agentWorkspaces, allMachines, canPickWorktree, currentEffort?.key, currentModelKey, currentPermission?.key, draftProjectId, effectiveAgentDefaults.effortLevel, effectiveAgentDefaults.modelMode, effectiveAgentDefaults.permissionMode, navigateToSession, picksWorkspaces, router, selectedAgent, selectedMachineId, selectedPath, selectedProjectId, worktreeKey]);
+    }, [agentWorkspaces, allMachines, canPickWorktree, clearImages, currentEffort?.key, currentModelKey, currentPermission?.key, draftProjectId, effectiveAgentDefaults.effortLevel, effectiveAgentDefaults.modelMode, effectiveAgentDefaults.permissionMode, navigateToSession, picksWorkspaces, router, selectedAgent, selectedMachineId, selectedPath, selectedProjectId, worktreeKey]);
 
     const canSend = selectedMachineId && selectedMachine && isMachineOnline(selectedMachine) && !isSpawning;
     React.useEffect(() => {
@@ -2249,6 +2294,58 @@ function NewSessionScreen() {
         </MobileGlassSurface>
     );
 
+    // Attach-image button. Shared by the desktop action row
+    // and the native-mobile left controls so both composers can stage files.
+    // On native mobile it mirrors the session composer's "+" bubble (see
+    // AgentInput's compact mobile row) so the attach affordance is identical
+    // before and after the first message; desktop keeps the outline glyph that
+    // matches the rest of its own action row.
+    const attachButtonNode = isNativeMobile ? (
+        <BubblePressable
+            onPress={pickImages}
+            hitSlop={6}
+            style={(pressedState) => [
+                styles.composerActionButton,
+                pressedState.pressed && styles.configRowPressed,
+            ]}
+            accessibilityRole="button"
+            accessibilityLabel="Attach image"
+        >
+            <Ionicons
+                name="add"
+                size={24}
+                color={selectedImages.length > 0
+                    ? theme.colors.radio.active
+                    : theme.colors.textSecondary}
+            />
+        </BubblePressable>
+    ) : (
+        <Pressable
+            onPress={pickImages}
+            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+            style={(p) => ({
+                flexDirection: 'row',
+                alignItems: 'center',
+                borderRadius: Platform.select({ default: 16, android: 20 }),
+                paddingHorizontal: 8,
+                paddingVertical: 6,
+                justifyContent: 'center',
+                height: 32,
+                opacity: p.pressed ? 0.7 : 1,
+            })}
+            accessibilityRole="button"
+            accessibilityLabel="Attach image"
+        >
+            <Ionicons
+                name="image-outline"
+                size={16}
+                color={selectedImages.length > 0
+                    ? theme.colors.radio.active
+                    : theme.colors.button.secondary.tint}
+            />
+        </Pressable>
+    );
+
     const composerNode = (
         <MobileGlassSurface
             enabled={isNativeMobile}
@@ -2259,7 +2356,13 @@ function NewSessionScreen() {
                 : undefined}
             style={[styles.inputBox, isNativeMobile && styles.mobileInputBox]}
         >
-            <View style={[styles.inputField, isNativeMobile && styles.mobileInputField]}>
+            {selectedImages.length > 0 && (
+                <AgentInputAttachmentStrip
+                    images={selectedImages}
+                    onRemove={removeImage}
+                />
+            )}
+            <View ref={composerFieldRef} style={[styles.inputField, isNativeMobile && styles.mobileInputField]}>
                 <PromptInput
                     ref={composerInputRef}
                     compact={isNativeMobile}
@@ -2271,9 +2374,14 @@ function NewSessionScreen() {
                 styles.actionButtonsContainer,
                 isNativeMobile && styles.mobileActionButtonsContainer,
             ]}>
-                {!isNativeMobile && <View style={styles.actionButtonsLeft} />}
+                {!isNativeMobile && (
+                    <View style={styles.actionButtonsLeft}>
+                        {attachButtonNode}
+                    </View>
+                )}
                 {isNativeMobile && (
                     <View style={styles.mobileComposerLeftControls}>
+                        {attachButtonNode}
                         <BubblePressable
                             scaleFeedback={false}
                             onPress={() => togglePicker('agent')}
