@@ -178,3 +178,18 @@ extension AnalyticsEvent.DailyCount {
         return changed
     }
 }
+
+extension AnalyticsEvent.ErrorCode {
+    /// A browser page's failure, by its kind alone; `other`'s words are never read.
+    public init(_ problem: BrowserProblem) {
+        self = switch problem {
+        case .noNetwork: .offline
+        case .computerUnreachable, .unavailable, .hostNotFound, .serverNotResponding, .tunnelsBlocked: .refused
+        case .timedOut: .timeout
+        case .signInRequired: .unauthorized
+        case .unsupported: .unsupported
+        case .http(let status): .init(status: status)
+        case .insecure, .crashed, .other: .unknown
+        }
+    }
+}

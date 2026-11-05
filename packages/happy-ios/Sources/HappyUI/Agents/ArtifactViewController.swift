@@ -171,8 +171,10 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
             }
         } catch is CancellationError {
         } catch AgentClientError.status(404, _, _) {
+            Analytics.shared.errorShown(vault == nil ? .artifactLoad : .fileLoad, .notFound)
             show(message: Strings.artifactDeleted)
         } catch {
+            if let code = AnalyticsEvent.ErrorCode(error) { Analytics.shared.errorShown(vault == nil ? .artifactLoad : .fileLoad, code) }
             show(message: Strings.artifactUnavailable)
         }
     }

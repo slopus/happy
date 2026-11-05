@@ -254,6 +254,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
 
     private func fail(_ problem: BrowserProblem, url: URL?, beforeCommit: Bool) {
         self.problem = problem
+        Analytics.shared.errorShown(.browserLoad, .init(problem))
         failedURL = url ?? failedURL ?? originalURL
         failedBeforeCommit = beforeCommit
         setProgress { $0.hide() }

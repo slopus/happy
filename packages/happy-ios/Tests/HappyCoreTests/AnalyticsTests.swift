@@ -209,6 +209,9 @@ final class AnalyticsTests: XCTestCase {
         XCTAssertEqual(Code(APIError.decoding("field x")), .invalidResponse)
         XCTAssertEqual(Code(PairingError.updateRequired), .versionMismatch)
         XCTAssertEqual(Code(NSError(domain: "x", code: 1)), .unknown)
+        XCTAssertEqual(Code(BrowserProblem.http(status: 502)), .serverError)
+        XCTAssertEqual(Code(BrowserProblem.noNetwork), .offline)
+        XCTAssertEqual(Code(BrowserProblem.other("a page said something")), .unknown)
     }
 
     func testASignInFailureIsReadByItsTypeAlone() async {
