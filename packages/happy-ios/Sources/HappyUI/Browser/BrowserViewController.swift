@@ -184,6 +184,7 @@ final class BrowserViewController: UIViewController, WKNavigationDelegate, WKUID
     /// Nothing of the browser's: no swipe back or forward, no link
     /// previews, and a page that stays where it is under the finger.
     private func makeApp(_ web: WKWebView) {
+        view.backgroundColor = .black
         let content = web.configuration.userContentController
         content.removeScriptMessageHandler(forName: AppPageScripts.modeMessage)
         content.add(AppPageScripts.Modes { [weak self] app in self?.appDeclared(app) }, name: AppPageScripts.modeMessage)

@@ -52,15 +52,17 @@ final class AppPageViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor(Palette.surface)
+        // Black until the page paints: a game never flashes white.
+        view.backgroundColor = .black
         view.accessibilityIdentifier = "artifact-app"
         let subject = FeedSubject(type: "artifact", id: artifactID)
         Task { [feed = session.engine.feed] in await feed.seen(subject) }
+        spinner.color = .white
         spinner.hidesWhenStopped = true
         spinner.startAnimating()
         view.addSubview(spinner)
         message.font = Fonts.ui(.regular, size: 15)
-        message.textColor = UIColor(Palette.rowText)
+        message.textColor = UIColor.white.withAlphaComponent(0.7)
         message.textAlignment = .center
         message.numberOfLines = 0
         message.isHidden = true

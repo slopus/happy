@@ -178,8 +178,12 @@ final class AppModeUITests: XCTestCase {
         print("APP_MODE window \(before) -> \(window.frame) on \(screen)")
         openFromCard(shot: "windowed-card-landscape")
         XCTAssertTrue(appScreen.waitForExistence(timeout: 15))
-        Thread.sleep(forTimeInterval: 2.2)
+        // Before the page paints: black, never white.
+        keep("windowed-app-loading-landscape")
+        XCTAssertTrue(hud.waitForExistence(timeout: 20), "the page never ran in the window")
+        XCTAssertEqual(close.value as? String, "shown")
         keep("windowed-app-open-landscape")
+        print("APP_MODE windowed hud: \(hudText())")
         print("APP_MODE windowed close at \(close.frame) in window \(app.windows.firstMatch.frame)")
         sleep(5)
         keep("windowed-app-faded-landscape")
