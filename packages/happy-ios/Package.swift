@@ -139,7 +139,9 @@ let package = Package(
             // Needs UIKit to measure real views. Compiles to nothing on Linux;
             // runs in the iOS simulator through the XcodeGen project.
             name: "HappyUIKitTests",
-            dependencies: ["HappyUI", "HappyLayout", "HappyIcons", "HappyCore"]
+            dependencies: ["HappyUI", "HappyLayout", "HappyIcons", "HappyCore"],
+            // Read from the XcodeGen bundle, which copies them.
+            exclude: ["Fixtures"]
         ),
     ]
 )

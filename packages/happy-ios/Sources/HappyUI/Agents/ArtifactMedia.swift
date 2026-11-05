@@ -83,7 +83,7 @@ final class ArtifactMedia: NSObject, ChatMediaSource, ChatMediaPlaying, ChatMedi
         let key = Self.key(file.path)
         items[key] = .file(file)
         let isVideo = Self.isVideo(file)
-        return ChatMedia(key: key, isVideo: isVideo, thumbhash: nil, label: Strings.media(isVideo: isVideo, name: (file.path as NSString).lastPathComponent))
+        return ChatMedia(key: key, isVideo: isVideo, thumbhash: file.thumbhash, label: Strings.media(isVideo: isVideo, name: (file.path as NSString).lastPathComponent))
     }
 
     /// A picture a document links to by its address.
@@ -202,7 +202,7 @@ final class ArtifactMedia: NSObject, ChatMediaSource, ChatMediaPlaying, ChatMedi
         if let cached = cachedImage(key, pixels: pixels) { return cached }
         let image: UIImage?
         if case .file(let file) = items[key], Self.isVideo(file) {
-            image = await poster(key, pixels: pixels)
+            if let still = await preview(file, pixels: pixels) { image = still } else { image = await poster(key, pixels: pixels) }
         } else if let data = await data(key) {
             image = await Task.detached(priority: .userInitiated) { Images.decode(data, maxPixels: pixels) }.value
         } else {
@@ -213,6 +213,15 @@ final class ArtifactMedia: NSObject, ChatMediaSource, ChatMediaPlaying, ChatMedi
             images.setObject(Decoded(pixels: pixels, image: image), forKey: key as NSString, cost: cost)
         }
         return image
+    }
+
+    /// The poster the daemon made of a recording (its `preview`), so the
+    /// viewer shows it before playback reads a byte of the recording.
+    private func preview(_ file: AgentWire.ArtifactVersion.File, pixels: Int) async -> UIImage? {
+        guard file.preview != nil else { return nil }
+        let path = ArtifactSummary.served(id: artifactId, version: version, route: "previews", file: file.path)
+        guard let data = try? await client.image(path) else { return nil }
+        return await Task.detached(priority: .userInitiated) { Images.decode(data, maxPixels: pixels) }.value
     }
 
     /// A recording's first frame, read through its stream.

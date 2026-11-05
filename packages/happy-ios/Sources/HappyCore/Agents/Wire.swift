@@ -758,6 +758,19 @@ extension AgentWire {
             public var path: String
             public var mimeType: String
             public var size: Double
+            /// A picture's or a recording's, from a daemon that reads its
+            /// media: drawn while it loads, and its still (a recording's
+            /// poster) at `previews/<path>`.
+            public var thumbhash: String?
+            public var preview: ArtifactSummary.Preview?
+
+            public init(path: String, mimeType: String, size: Double, thumbhash: String? = nil, preview: ArtifactSummary.Preview? = nil) {
+                self.path = path
+                self.mimeType = mimeType
+                self.size = size
+                self.thumbhash = thumbhash
+                self.preview = preview
+            }
         }
 
         public struct Live: Equatable, Sendable, Codable {

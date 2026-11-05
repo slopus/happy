@@ -212,13 +212,22 @@ public struct FeedPost: Equatable, Sendable {
         public var aspect: ArtifactSummary.Cover.Aspect
         public var width: Double
         public var height: Double
+        /// What it is (a WebP or a GIF may move) and what stands in while
+        /// it loads.
+        public var mimeType: String
+        public var thumbhash: String?
 
-        public init(image: String, aspect: ArtifactSummary.Cover.Aspect, width: Double, height: Double) {
+        public init(image: String, aspect: ArtifactSummary.Cover.Aspect, width: Double, height: Double, mimeType: String = "image/png", thumbhash: String? = nil) {
             self.image = image
             self.aspect = aspect
             self.width = width
             self.height = height
+            self.mimeType = mimeType
+            self.thumbhash = thumbhash
         }
+
+        /// A kind of picture that may have more than one frame.
+        public var mayMove: Bool { mimeType == "image/webp" || mimeType == "image/gif" }
     }
 
     /// The longest summary a post shows, as the daemon keeps it.
@@ -241,7 +250,7 @@ public struct FeedPost: Equatable, Sendable {
     public init?(_ artifact: ArtifactSummary) {
         guard !artifact.deleted else { return nil }
         let cover = artifact.cover.flatMap { cover in
-            artifact.coverPath.map { Cover(image: $0, aspect: cover.aspect, width: cover.width, height: cover.height) }
+            artifact.coverPath.map { Cover(image: $0, aspect: cover.aspect, width: cover.width, height: cover.height, mimeType: cover.mimeType, thumbhash: cover.thumbhash) }
         }
         let summary = artifact.summary.map { String($0.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.summaryLimit)) }.flatMap { $0.isEmpty ? nil : $0 }
         guard cover != nil || summary != nil else { return nil }

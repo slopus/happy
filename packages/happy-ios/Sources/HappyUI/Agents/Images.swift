@@ -39,6 +39,19 @@ final class Images {
         return image
     }
 
+    /// A picture's bytes as served, kept on disk as `picture` keeps them:
+    /// a cover that moves plays from them (`CoverAnimation`).
+    func bytes(_ path: String, thumbhash: String?) async -> Data? {
+        let client = client
+        let offline = offline
+        return await Task.detached(priority: .utility) {
+            if let kept = offline?.picture(path, thumbhash: thumbhash) { return kept }
+            guard let data = try? await client.image(path) else { return nil }
+            offline?.keepPicture(data, path: path, thumbhash: thumbhash)
+            return data
+        }.value
+    }
+
     func cachedPicture(_ path: String, thumbhash: String?, pixels: Int) -> UIImage? {
         cache.object(forKey: "\(pixels):\(path)#\(thumbhash ?? "")" as NSString)
     }
