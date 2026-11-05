@@ -120,8 +120,6 @@ public struct OutboxSender: ChatSending {
         let attachments = message.attachments.count
         await MainActor.run {
             Analytics.shared.log(.messageSent(.init(source: source, target: .session, sessionClient: .cli, hasAttachment: attachments > 0)))
-            if attachments > 0 { Analytics.shared.count(.attachmentsSent, by: attachments) }
-            if source == .newSession { Analytics.shared.count(.conversationsCreated) }
         }
         return id
     }

@@ -59,7 +59,6 @@ final class WorkspaceChangesViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        Analytics.shared.count(.diffsOpened)
         minimalBackButton()
         navigationItem.largeTitleDisplayMode = .never
         list.onRequestContent = { [weak self] path in self?.requestContent(path) }

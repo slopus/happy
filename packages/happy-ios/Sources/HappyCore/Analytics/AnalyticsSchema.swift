@@ -10,7 +10,7 @@ public enum AnalyticsSchema {
         public enum Kind: Equatable, Sendable {
             case words([String])
             case wordList([String])
-            case count, bool, version, osVersion, model, day
+            case count, bool, version, osVersion, model
         }
 
         public var kind: Kind
@@ -42,18 +42,6 @@ public enum AnalyticsSchema {
 
     /// The catalog's events whose clients include `ios`, by name.
     public static let events: [String: [String: Property]] = {
-        let count = Property(kind: .count, optional: true)
-        var daily: [String: Property] = Dictionary(uniqueKeysWithValues: E.DailyCount.allCases.map { ($0.rawValue, count) })
-        daily["day"] = Property(kind: .day)
-        daily["theme"] = .words(E.ThemeChoice.self, optional: true)
-        daily["app_language"] = .words(E.AppLanguage.self, optional: true)
-        daily["notifications"] = .words(E.NotificationsState.self, optional: true)
-        daily["agents_connected"] = .words(E.Bucket123.self, optional: true)
-        daily["accounts"] = .words(E.Bucket123.self, optional: true)
-        daily["provider_kinds"] = Property(kind: .wordList(E.ProviderKind.allCases.map(\.rawValue)), optional: true)
-        daily["provider_accounts"] = .words(E.Bucket123.self, optional: true)
-        daily["voice_enabled"] = Property(kind: .bool, optional: true)
-        daily["experiments_on"] = Property(kind: .bool, optional: true)
         let bool = Property(kind: .bool)
         return [
             "chat_failure_shown": [
@@ -87,7 +75,14 @@ public enum AnalyticsSchema {
                 "product": .words(E.PurchaseProduct.self), "result": .words(E.PurchaseResult.self),
                 "error_code": .words(E.PurchaseErrorCode.self, nullable: true),
             ],
-            "app_opened": ["launch_count": Property(kind: .count), "cold": bool],
+            "app_opened": [
+                "launch_count": Property(kind: .count), "cold": bool,
+                "theme": .words(E.ThemeChoice.self, optional: true), "app_language": .words(E.AppLanguage.self, optional: true),
+                "notifications": .words(E.NotificationsState.self, optional: true),
+                "agents_connected": .words(E.Bucket123.self, optional: true), "relay_accounts": .words(E.Bucket123.self, optional: true),
+                "provider_kinds": Property(kind: .wordList(E.ProviderKind.allCases.map(\.rawValue)), optional: true),
+                "provider_accounts": .words(E.Bucket123.self, optional: true), "experiments_on": Property(kind: .bool, optional: true),
+            ],
             "message_sent": [
                 "source": .words(E.MessageSource.self), "target": .words(E.ChatTarget.self, nullable: true),
                 "session_client": .words(E.SessionClient.self, nullable: true), "model": Property(kind: .model, nullable: true),
@@ -95,7 +90,7 @@ public enum AnalyticsSchema {
                 "bot_system_key": .words(E.BotSystemKey.self, nullable: true), "task_depth": Property(kind: .count, nullable: true),
                 "has_attachment": bool,
             ],
-            "daily_summary": daily,
+            "feature_used": ["feature": .words(E.Feature.self)],
             "onboarding_step_viewed": ["step": .words(E.OnboardingStep.self)],
             "onboarding_completed": [:],
             "pairing_options_shown": ["default_method": .words(E.PairingMethod.self), "surface": .words(E.PairingSurface.self)],
@@ -135,7 +130,6 @@ public enum AnalyticsSchema {
         case (.words(let words), .string(let word)): return words.contains(word)
         case (.wordList(let words), .array(let list)): return list.allSatisfy { $0.stringValue.map(words.contains) == true }
         case (.count, .number(let number)): return number == number.rounded() && (0...Double(maxCount)).contains(number)
-        case (.day, .number(let number)): return number == number.rounded() && (20_000...100_000).contains(number)
         case (.bool, .bool): return true
         case (.version, .string(let text)): return isVersion(text)
         case (.osVersion, .string(let text)): return text.wholeMatch(of: /[0-9]+(\.[0-9]+)?/) != nil

@@ -13,11 +13,6 @@ enum SurfaceScreens {
         let subject = FeedSubject(type: "surface", id: surface.id)
         Task { [feed = session.engine.feed] in await feed.seen(subject) }
         switch surface.type {
-        case "document": Analytics.shared.count(.documentsOpened)
-        case "system_monitor": Analytics.shared.count(.systemMonitorOpened)
-        default: break
-        }
-        switch surface.type {
         case "document":
             return DocumentScreens.make(session: session, surfaceId: surface.id, name: surface.name)
         case "system_monitor":

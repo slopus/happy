@@ -275,7 +275,8 @@ private extension ScanProblem {
         case .agentConnection(let error): .pairingResult(method: .direct, start: start, result: .failed, errorCode: .init(error))
         case .invalidServer: .signInResult(method: .teamServer, result: .failed, errorCode: .invalidAddress)
         case .notHappy, .invalidTerminal, .invalidAccount: .pairingResult(method: .relay, start: start, result: .failed, errorCode: .invalidCode)
-        case .deviceNeedsAccount, .accountNotShareable: .pairingResult(method: .relay, start: start, result: .failed, errorCode: .rejected)
+        case .deviceNeedsAccount: .pairingResult(method: .relay, start: start, result: .failed, errorCode: .signInRequired)
+        case .accountNotShareable: .pairingResult(method: .relay, start: start, result: .failed, errorCode: .rejected)
         }
     }
 }

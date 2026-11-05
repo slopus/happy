@@ -7,8 +7,8 @@ import UserNotifications
 /// What analytics reads of the app's accounts. It reads which agent is
 /// shown (the common properties, and which link `connection_issue` follows),
 /// each Happy account's `analyticsOptOut` as its settings arrive, and the
-/// state `daily_summary` reports. It reads only the accounts' kinds and
-/// counts, never a name or an id that would be sent.
+/// configuration snapshot `app_opened` carries. It reads only the
+/// accounts' kinds and counts, never a name or an id that would be sent.
 @MainActor
 final class AnalyticsBridge {
     private let context: AppContext
@@ -28,8 +28,8 @@ final class AnalyticsBridge {
             case .signedOut?, nil: nil
             }
         }
-        Analytics.shared.dailyConfig = { [weak self, weak account] in
-            var config = await Self.dailyConfig(account)
+        Analytics.shared.appConfig = { [weak self, weak account] in
+            var config = await Self.appConfig(account)
             config.experimentsOn = self?.experiments
             return config
         }
@@ -68,7 +68,7 @@ final class AnalyticsBridge {
         }
     }
 
-    private static func dailyConfig(_ account: AccountController?) async -> AnalyticsEvent.DailyConfig {
+    private static func appConfig(_ account: AccountController?) async -> AnalyticsEvent.AppConfig {
         guard let account else { return .init() }
         let theme: AnalyticsEvent.ThemeChoice = switch account.localSettings.themePreference {
         case .adaptive: .system
@@ -88,18 +88,10 @@ final class AnalyticsBridge {
             appLanguage: .init(code: AppLocalization.language),
             notifications: notifications,
             agentsConnected: .init(account.agentConnections.accounts.filter { !$0.revoked }.count),
-            accounts: .init(summaries.filter { !$0.isAgentConnection }.count),
+            relayAccounts: .init(summaries.filter { !$0.isAgentConnection }.count),
             providerKinds: providers.isEmpty ? nil : Set(providers.map { AnalyticsEvent.ProviderKind(type: $0.type) }).sorted { $0.rawValue < $1.rawValue },
             providerAccounts: providers.isEmpty ? nil : .init(providers.count)
         )
-    }
-}
-
-extension UIViewController {
-    /// In `viewDidAppear`: whether the screen was just opened, pushed or
-    /// presented, rather than uncovered when what was over it went.
-    var isOpening: Bool {
-        isMovingToParent || isBeingPresented || navigationController?.isBeingPresented == true
     }
 }
 #endif

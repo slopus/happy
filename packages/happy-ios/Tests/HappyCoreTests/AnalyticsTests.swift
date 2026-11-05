@@ -217,6 +217,8 @@ final class AnalyticsTests: XCTestCase {
     func testASignInFailureIsReadByItsTypeAlone() async {
         typealias Code = AnalyticsEvent.SignInErrorCode
         XCTAssertEqual(Code(ServerSignInError.invalidURL), .invalidAddress)
+        XCTAssertEqual(Code(ServerSignInError.wrongServer), .wrongServer)
+        XCTAssertEqual(Code(OAuthError.crossOrigin), .wrongServer)
         XCTAssertEqual(Code(ServerSignInError.discoveryBlocked), .edgeBlocked)
         XCTAssertEqual(Code(ServerSignInError.unreachable), .unreachable)
         XCTAssertEqual(Code(URLError(.timedOut)), .unreachable)
@@ -244,7 +246,7 @@ final class AnalyticsTests: XCTestCase {
         XCTAssertEqual(Subscription.PurchaseResult.unconfirmed.event, .purchaseResult(product: .pro, result: .failed, errorCode: .verificationFailed))
         XCTAssertEqual(Subscription.PurchaseResult.unavailable.event, .purchaseResult(product: .pro, result: .failed, errorCode: .storeUnavailable))
         XCTAssertEqual(Subscription.RestoreResult.restored.event, .purchaseResult(product: .pro, result: .restored, errorCode: nil))
-        XCTAssertEqual(Subscription.RestoreResult.nothingFound.event, .purchaseResult(product: .pro, result: .failed, errorCode: .unknown))
+        XCTAssertEqual(Subscription.RestoreResult.nothingFound.event, .purchaseResult(product: .pro, result: .nothingToRestore, errorCode: nil))
     }
 
     func testAModelPickCountsEachThingItChanged() async {
@@ -254,8 +256,8 @@ final class AnalyticsTests: XCTestCase {
         var both = mode
         both.modelId = "n"
         both.permissionMode = "plan"
-        XCTAssertEqual(AnalyticsEvent.DailyCount.changes(from: mode, to: mode), [])
-        XCTAssertEqual(AnalyticsEvent.DailyCount.changes(from: mode, to: effort), [.effortChanged])
-        XCTAssertEqual(AnalyticsEvent.DailyCount.changes(from: mode, to: both), [.modelChanged, .permissionModeChanged])
+        XCTAssertEqual(AnalyticsEvent.Feature.changes(from: mode, to: mode), [])
+        XCTAssertEqual(AnalyticsEvent.Feature.changes(from: mode, to: effort), [.effortChanged])
+        XCTAssertEqual(AnalyticsEvent.Feature.changes(from: mode, to: both), [.modelChanged, .permissionModeChanged])
     }
 }

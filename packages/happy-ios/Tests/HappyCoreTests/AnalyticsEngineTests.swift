@@ -4,8 +4,8 @@ import XCTest
 import HappyWire
 
 /// What leaves the phone and when: the envelope, the queue's bounds and
-/// retries, the error throttle, the failure dedupe, the daily summary, and
-/// opting out.
+/// retries, the error throttle, the failure dedupe, `app_opened`'s
+/// snapshot, and opting out.
 final class AnalyticsEngineTests: XCTestCase {
     private let common: [String: JSONValue] = [
         "client": .string("ios"), "app_version": .string("2.0.0"), "channel": .string("stable"), "os": .string("ios"),
@@ -93,7 +93,7 @@ final class AnalyticsEngineTests: XCTestCase {
         let engine = engine(http)
         await engine.record(.onboardingCompleted, common: common, at: start.addingTimeInterval(-8 * 86_400))
         for index in 0..<501 {
-            await engine.record(.appOpened(launchCount: index, cold: true), common: common, at: start)
+            await engine.record(.appOpened(launchCount: index, cold: true, config: .init()), common: common, at: start)
         }
         await engine.flush(now: start)
         let sent = try events(http)
@@ -170,51 +170,31 @@ final class AnalyticsEngineTests: XCTestCase {
         XCTAssertEqual(seen.first, "m1")
     }
 
-    func testTheFirstOpenOfALaterDaySendsTheEarlierDaysSummariesFirst() async throws {
+    func testAppOpenedCarriesTheSnapshotAndCountsColdStarts() async throws {
         let http = http()
         let engine = engine(http)
-        let config = AnalyticsEvent.DailyConfig(theme: .system, appLanguage: .en, agentsConnected: .one)
+        let config = AnalyticsEvent.AppConfig(theme: .system, appLanguage: .en, agentsConnected: .one, relayAccounts: .two)
         await engine.appOpened(cold: true, common: common, config: config, at: start)
-        await engine.count(.conversationsOpened, by: 1, at: start)
-        await engine.count(.conversationsOpened, by: 2, at: start.addingTimeInterval(60))
-        await engine.count(.filesOpened, by: 1, at: start.addingTimeInterval(60))
-        // Used on the 6th too, but with nothing counted.
-        await engine.markUsed(at: start.addingTimeInterval(86_400))
-        await engine.appOpened(cold: false, common: common, config: config, at: start.addingTimeInterval(2 * 86_400))
-        await engine.flush(now: start.addingTimeInterval(2 * 86_400))
-        let sent = try events(http)
-        XCTAssertEqual(sent.map { $0["event"]?.stringValue }, ["app_opened", "daily_summary", "daily_summary", "app_opened"])
-        XCTAssertEqual(sent[1]["timestamp"], .string("2025-11-05T12:00:00.000Z"))
-        let first = try XCTUnwrap(sent[1]["properties"]?.objectValue).filter { common[$0.key] == nil && !$0.key.hasPrefix("$") && $0.key != "distinct_id" }
-        XCTAssertEqual(first, [
-            "day": .number(20_397), "conversations_opened": .number(3), "files_opened": .number(1),
-            "theme": .string("system"), "app_language": .string("en"), "agents_connected": .string("1"),
+        await engine.appOpened(cold: false, common: common, config: .init(), at: start.addingTimeInterval(3_600))
+        await engine.appOpened(cold: true, common: common, config: .init(), at: start.addingTimeInterval(7_200))
+        await engine.flush(now: start.addingTimeInterval(7_200))
+        let sent = try events(http).map { try XCTUnwrap($0["properties"]?.objectValue).filter { common[$0.key] == nil && !$0.key.hasPrefix("$") && $0.key != "distinct_id" } }
+        XCTAssertEqual(sent, [
+            ["launch_count": .number(1), "cold": .bool(true), "theme": .string("system"), "app_language": .string("en"),
+             "agents_connected": .string("1"), "relay_accounts": .string("2")],
+            ["launch_count": .number(1), "cold": .bool(false)],
+            ["launch_count": .number(2), "cold": .bool(true)],
         ])
-        XCTAssertEqual(sent[2]["properties"]?["day"], .number(20_398))
-        XCTAssertNil(sent[2]["properties"]?["conversations_opened"], "zero counts are left out")
-        XCTAssertEqual(sent[3]["properties"]?["launch_count"], .number(1))
-        XCTAssertEqual(sent[3]["properties"]?["cold"], .bool(false))
-    }
-
-    func testSummariesOlderThanAWeekAreDropped() async throws {
-        let http = http()
-        let engine = engine(http)
-        await engine.count(.searchUsed, by: 1, at: start)
-        await engine.appOpened(cold: true, common: common, config: .init(), at: start.addingTimeInterval(8 * 86_400))
-        await engine.flush(now: start.addingTimeInterval(8 * 86_400))
-        XCTAssertEqual(try events(http).map { $0["event"]?.stringValue }, ["app_opened"])
     }
 
     func testOptingOutDeletesWhatWasWaitingButKeepsTheInstall() async throws {
         let http = http()
         let engine = engine(http)
         await engine.record(.onboardingCompleted, common: common, at: start)
-        await engine.count(.feedOpened, by: 1, at: start)
         let id = await engine.snapshot.installID
         await engine.clear()
         let state = await engine.snapshot
         XCTAssertEqual(state.queue, [])
-        XCTAssertEqual(state.days, [:])
         XCTAssertEqual(state.installID, id)
         await engine.flush(now: start)
         XCTAssertTrue(http.requests.isEmpty)

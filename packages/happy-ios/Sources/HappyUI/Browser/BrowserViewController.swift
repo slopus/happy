@@ -519,7 +519,6 @@ extension UIViewController {
     func openBrowser(_ url: URL, session: Session? = nil, agentID: String? = nil) {
         guard BrowserPolicy.route(url) != .system else { UIApplication.shared.open(url); return }
         let browser = BrowserViewController(url: url, session: session ?? browserConnection(), agentID: agentID)
-        Analytics.shared.count(.browserOpened)
         if let navigationController { navigationController.pushViewController(browser, animated: true) }
         else {
             let navigation = UINavigationController(rootViewController: browser)

@@ -1489,8 +1489,10 @@ public actor Conversation {
         if publishes { publish() }
     }
 
-    public func abort() async {
-        try? await client.abort(agentId)
+    /// Whether the computer took the stop.
+    @discardableResult
+    public func abort() async -> Bool {
+        (try? await client.abort(agentId)) != nil
     }
 
     /// Desktop's failure card actions: the failed turn run again, or with
@@ -1539,16 +1541,16 @@ public actor Conversation {
                   self.asking?.question.id == question.id, self.asking?.phase == .pending else { return }
             self.asking?.phase = .submitting
             publish()
-            await settleAnswer(kept, question: question, answers: answers, persistence: persistence)
+            _ = await settleAnswer(kept, question: question, answers: answers, persistence: persistence)
         }
     }
 
     /// Waits for the computer to take or refuse an answer on its way.
-    private func settleAnswer(_ kept: Intent, question: AgentWire.Question, answers: [String: [String]], persistence: SyncEngine) async {
+    private func settleAnswer(_ kept: Intent, question: AgentWire.Question, answers: [String: [String]], persistence: SyncEngine) async -> Bool {
         // The person waits on it: tried at once, then kept until it goes.
         Task { await persistence.intents.attempt(kept.id) }
         let taken = await persistence.intents.outcome(kept.id)
-        guard self.asking?.question.id == question.id else { return }
+        guard self.asking?.question.id == question.id else { return taken }
         if taken {
             var question = question
             question.status = "answered"
@@ -1558,6 +1560,7 @@ public actor Conversation {
             self.asking?.phase = .failed("")
             publish()
         }
+        return taken
     }
 
     /// Someone answered it, here or elsewhere, or the run stopped needing it.
@@ -1588,9 +1591,11 @@ public actor Conversation {
     /// Answers the question the agent waits on, each prompt by its ID
     /// (desktop's `answerInputRun`): shown as sending at once, settled when
     /// the computer takes it. A refusal says why, and the answer may go
-    /// again; one that lost to another answer shows that one.
-    public func answer(_ answers: [String: [String]]) async {
-        guard var asking, asking.phase != .submitting, asking.phase != .answered else { return }
+    /// again; one that lost to another answer shows that one. True once the
+    /// computer took it.
+    @discardableResult
+    public func answer(_ answers: [String: [String]]) async -> Bool {
+        guard var asking, asking.phase != .submitting, asking.phase != .answered else { return false }
         asking.phase = .submitting
         self.asking = asking
         publish()
@@ -1599,10 +1604,9 @@ public actor Conversation {
             // the computer takes it, and through a relaunch.
             guard let kept = await persistence.answer(asking.question.id, agentId: agentId, answers: answers) else {
                 if self.asking?.question.id == asking.question.id { self.asking?.phase = .failed(""); publish() }
-                return
+                return false
             }
-            await settleAnswer(kept, question: asking.question, answers: answers, persistence: persistence)
-            return
+            return await settleAnswer(kept, question: asking.question, answers: answers, persistence: persistence)
         }
         do {
             let returned = try await client.answerQuestion(agentId, questionId: asking.question.id, answers: answers, mutationId: ClientID.make())
@@ -1611,17 +1615,19 @@ public actor Conversation {
             question.status = returned.status
             question.answers = returned.answers ?? answers
             settle(question: question)
+            return true
         } catch {
             if case .status(409, _, _)? = error as? AgentClientError {
                 // Answered or abandoned already: what stands now is read again.
                 let current = try? await client.question(agentId)
                 if current?.id == asking.question.id { self.asking?.phase = .pending; publish() }
                 else { self.asking = nil; publish() }
-                return
+                return false
             }
-            guard self.asking?.question.id == asking.question.id else { return }
+            guard self.asking?.question.id == asking.question.id else { return false }
             self.asking?.phase = .failed(Store.describe(error))
             publish()
+            return false
         }
     }
 

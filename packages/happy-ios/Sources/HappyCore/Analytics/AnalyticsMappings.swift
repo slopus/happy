@@ -91,7 +91,8 @@ extension AnalyticsEvent.SignInErrorCode {
     public init(_ error: Error) {
         if let error = error as? ServerSignInError {
             self = switch error {
-            case .invalidURL, .wrongServer: .invalidAddress
+            case .invalidURL: .invalidAddress
+            case .wrongServer: .wrongServer
             case .unreachable: .unreachable
             case .discoveryUnavailable, .noSupportedMethod: .noSignIn
             case .discoveryBlocked: .edgeBlocked
@@ -102,7 +103,8 @@ extension AnalyticsEvent.SignInErrorCode {
             case .server(let code, _): code == "access_denied" ? .denied : code == "invalid_grant" ? .expired : .rejected
             case .network: .unreachable
             case .refreshUnavailable: .expired
-            case .wrongAudience, .stateMismatch, .crossOrigin, .insecureURL: .invalidToken
+            case .wrongAudience, .crossOrigin: .wrongServer
+            case .stateMismatch, .insecureURL: .invalidToken
             case .invalidResponse, .cancelled: .unknown
             }
         } else if error is URLError {
@@ -158,18 +160,18 @@ extension Subscription.PurchaseResult {
 }
 
 extension Subscription.RestoreResult {
-    /// `purchase_result` for a Restore Purchases that ended. Nothing to
-    /// restore is a restore that failed; the catalog has no word for it.
+    /// `purchase_result` for a Restore Purchases that ended.
     public var event: AnalyticsEvent {
         switch self {
         case .restored: .purchaseResult(product: .pro, result: .restored, errorCode: nil)
-        case .nothingFound, .failed: .purchaseResult(product: .pro, result: .failed, errorCode: .unknown)
+        case .nothingFound: .purchaseResult(product: .pro, result: .nothingToRestore, errorCode: nil)
+        case .failed: .purchaseResult(product: .pro, result: .failed, errorCode: .unknown)
         }
     }
 }
 
-extension AnalyticsEvent.DailyCount {
-    /// What a pick in the model control changed, each counted once.
+extension AnalyticsEvent.Feature {
+    /// What a pick in the model control changed, each one `feature_used`.
     public static func changes(from old: AgentWire.Mode?, to new: AgentWire.Mode) -> [Self] {
         var changed: [Self] = []
         if old?.providerId != new.providerId || old?.modelId != new.modelId { changed.append(.modelChanged) }

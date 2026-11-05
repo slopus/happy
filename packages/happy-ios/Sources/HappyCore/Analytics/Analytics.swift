@@ -45,8 +45,8 @@ public final class Analytics {
     public private(set) var consent = AnalyticsConsent(storage: InMemoryKeyValueStore())
     /// The agent being looked at, read as each event is made.
     public var agent: () -> Agent? = { nil }
-    /// `daily_summary`'s state, read as a summary is sent.
-    public var dailyConfig: @MainActor @Sendable () async -> AnalyticsEvent.DailyConfig = { .init() }
+    /// The configuration snapshot, read as `app_opened` is made.
+    public var appConfig: @MainActor @Sendable () async -> AnalyticsEvent.AppConfig = { .init() }
     public var now: () -> Date = Date.init
 
     private var engine: AnalyticsEngine?
@@ -99,17 +99,10 @@ public final class Analytics {
         run { await $0.recordFailureShown(messageID: messageID, createdAt: createdAt, event, common: common, at: at) }
     }
 
-    /// One more of something `daily_summary` counts.
-    public func count(_ count: AnalyticsEvent.DailyCount, by amount: Int = 1) {
-        guard recording != nil else { return }
-        let at = now()
-        run { await $0.count(count, by: amount, at: at) }
-    }
-
     // MARK: Lifecycle
 
     /// `app_opened` on the first foreground, and again after half an hour
-    /// away; the earlier days' summaries go first. Then a flush every 30 s.
+    /// away, with the configuration snapshot. Then a flush every 30 s.
     public func appBecameActive() {
         let at = now()
         let cold = !opened
@@ -118,10 +111,8 @@ public final class Analytics {
         backgroundedAt = nil
         guard recording != nil else { return }
         if cold || reopened {
-            let common = common(), config = dailyConfig
+            let common = common(), config = appConfig
             run { await $0.appOpened(cold: cold, common: common, config: await config(), at: at) }
-        } else {
-            run { await $0.markUsed(at: at) }
         }
         ticker?.cancel()
         ticker = Task { [weak self] in

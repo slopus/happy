@@ -33,7 +33,6 @@ final class AnalyticsCatalogContractTests: XCTestCase {
             case "version": kind = .version
             case "os_version": kind = .osVersion
             case "model": kind = .model
-            case "day": kind = .day
             default: throw XCTSkip("unknown property type \(spec)")
             }
         }
@@ -96,10 +95,10 @@ final class AnalyticsCatalogContractTests: XCTestCase {
             .signInResult(method: .teamServer, result: .ok, errorCode: nil),
             .voiceSessionEnded(result: .ok, errorCode: nil, duration: .from2mTo5m),
             .purchaseResult(product: .pro, result: .cancelled, errorCode: nil),
-            .appOpened(launchCount: 3, cold: true),
+            .appOpened(launchCount: 3, cold: true, config: .init(theme: .dark, relayAccounts: .one, providerKinds: [.codex, .claude], experimentsOn: false)),
             .messageSent(.init(source: .chat, target: .bot, sessionClient: .happyAgent, model: "anthropic/claude-opus-4-5",
                                modelProviderKind: .claude, effort: .high, botSystemKey: .chiefOfStaff, taskDepth: 1, hasAttachment: true)),
-            .dailySummary(.init(day: 20_397, counts: [.conversationsOpened: 4], config: .init(theme: .dark, providerKinds: [.codex, .claude]))),
+            .featureUsed(.runStopped),
             .onboardingStepViewed(step: .pair),
             .onboardingCompleted,
             .pairingOptionsShown(defaultMethod: .relay, surface: .connectAgent),

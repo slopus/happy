@@ -408,7 +408,6 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         // In its window now, which a later layout may not follow.
         ultraKeyboard?.refresh()
         reportFailures()
-        if !previewing, newTask == nil, isOpening { Analytics.shared.count(.conversationsOpened) }
         guard !previewing, let navigationController else { return }
         _ = navigationController
         // New work: the keyboard comes up now if it couldn't with the push,
@@ -989,7 +988,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     private func choose(_ key: String) {
         let conversation = conversation
         ModelPickers.choose(key, state: session.models, mode: mode) { [weak self] next in
-            for change in AnalyticsEvent.DailyCount.changes(from: self?.mode, to: next) { Analytics.shared.count(change) }
+            for change in AnalyticsEvent.Feature.changes(from: self?.mode, to: next) { Analytics.shared.log(.featureUsed(change)) }
             // Held here at once, so the chips read it before the conversation says so.
             self?.picked = next
             self?.updateChips()
@@ -1087,8 +1086,9 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     private func submit(questionId: String) {
         guard let ask = waitingQuestion, ask.question.id == questionId, ask.complete else { return }
         let conversation = conversation
-        Analytics.shared.count(.questionsAnswered)
-        Task { await conversation.answer(ask.picked) }
+        Task {
+            if await conversation.answer(ask.picked) { Analytics.shared.log(.featureUsed(.questionAnswered)) }
+        }
     }
 
     /// The width changed (a rotation, the sidebar, a window drag): the rows
@@ -1544,8 +1544,9 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         if let ask = waitingQuestion, ask.phase != .submitting, !text.isEmpty {
             let (answers, textUsed) = ask.answers(typed: text)
             let conversation = conversation
-            Analytics.shared.count(.questionsAnswered)
-            Task { await conversation.answer(answers) }
+            Task {
+                if await conversation.answer(answers) { Analytics.shared.log(.featureUsed(.questionAnswered)) }
+            }
             if textUsed {
                 Haptics.play(.send)
                 card.setText("", selection: NSRange(location: 0, length: 0))
@@ -1619,11 +1620,8 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             botSystemKey: target == .chiefOfStaff ? .chiefOfStaff : nil, hasAttachment: attachments > 0)
         let steered = chat.working
         return {
-            let analytics = Analytics.shared
-            analytics.log(.messageSent(event))
-            if attachments > 0 { analytics.count(.attachmentsSent, by: attachments) }
-            if steered { analytics.count(.messagesSteered) }
-            if created { analytics.count(.conversationsCreated) }
+            Analytics.shared.log(.messageSent(event))
+            if steered { Analytics.shared.log(.featureUsed(.messageSteered)) }
         }
     }
 
@@ -1956,8 +1954,9 @@ extension ChatViewController: AgentInputCardDelegate {
         if card.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, pictures.images.isEmpty {
             guard chat.working else { return }
             let conversation = conversation
-            Analytics.shared.count(.runsStopped)
-            Task { await conversation.abort() }
+            Task {
+                if await conversation.abort() { Analytics.shared.log(.featureUsed(.runStopped)) }
+            }
         } else {
             send()
         }
@@ -2003,8 +2002,9 @@ extension ChatViewController: AgentInputCardDelegate {
 
     func agentInputCardDidPressStop(_ card: AgentInputCardView) {
         let conversation = conversation
-        Analytics.shared.count(.runsStopped)
-        Task { await conversation.abort() }
+        Task {
+            if await conversation.abort() { Analytics.shared.log(.featureUsed(.runStopped)) }
+        }
     }
 }
 

@@ -4,7 +4,7 @@ import HappyWire
 /// Everything analytics keeps on this phone, in one file it alone writes
 /// (`Application Support/Happy/analytics.json`): the install's random id,
 /// the queue waiting to go, and the local state the catalog's rules need
-/// (the error throttle, the failures already counted, each day's counts).
+/// (the launch count, the error throttle, the failures already reported).
 /// Nothing in it is sent except the queue's events.
 public actor AnalyticsEngine {
     public static let lib = "happy-ios"
@@ -37,8 +37,6 @@ public actor AnalyticsEngine {
         var launchCount = 0
         var queue: [Queued] = []
         var throttle = ErrorThrottle()
-        /// Days used and their counts by `DailyCount` name, until summarized.
-        var days: [Int: [String: Int]] = [:]
         /// Failure messages already counted, oldest first.
         var seenFailures: [String] = []
     }
@@ -82,40 +80,15 @@ public actor AnalyticsEngine {
         enqueue(event, common: common, at: now)
     }
 
-    public func count(_ count: AnalyticsEvent.DailyCount, by amount: Int, at now: Date) {
+    /// `app_opened` with the configuration snapshot; a cold start counts
+    /// as a launch.
+    public func appOpened(cold: Bool, common: [String: JSONValue], config: AnalyticsEvent.AppConfig, at now: Date) {
         load()
-        guard amount > 0 else { return }
-        state.days[Self.day(now), default: [:]][count.rawValue, default: 0] += amount
-        save()
-    }
-
-    /// The day counts as used, so it gets its summary even with no counts.
-    public func markUsed(at now: Date) {
-        load()
-        guard state.days[Self.day(now)] == nil else { return }
-        state.days[Self.day(now)] = [:]
-        save()
-    }
-
-    /// `app_opened`, after the summaries of the earlier days used (the last
-    /// seven), each stamped noon UTC of its day.
-    public func appOpened(cold: Bool, common: [String: JSONValue], config: AnalyticsEvent.DailyConfig, at now: Date) {
-        load()
-        let today = Self.day(now)
-        for (day, counts) in state.days.sorted(by: { $0.key < $1.key }) where day < today {
-            state.days[day] = nil
-            guard day >= today - 7 else { continue }
-            let typed = Dictionary(uniqueKeysWithValues: counts.compactMap { name, value in AnalyticsEvent.DailyCount(rawValue: name).map { ($0, value) } })
-            let noon = Date(timeIntervalSince1970: TimeInterval(day) * 86_400 + 43_200)
-            enqueue(.dailySummary(.init(day: day, counts: typed, config: config)), common: common, at: noon)
-        }
         if cold { state.launchCount += 1 }
-        enqueue(.appOpened(launchCount: state.launchCount, cold: cold), common: common, at: now)
-        if state.days[today] == nil { state.days[today] = [:] }
+        enqueue(.appOpened(launchCount: state.launchCount, cold: cold, config: config), common: common, at: now)
     }
 
-    /// Analytics turned off: what was waiting goes, and the counts with it.
-    /// The install id stays.
+    /// Analytics turned off: what was waiting goes. The install id stays.
     public func clear() {
         load()
         let id = state.installID
@@ -141,8 +114,6 @@ public actor AnalyticsEngine {
         state.queue.removeAll { now.timeIntervalSince($0.timestamp) > Self.maxAge }
         if state.queue.count > Self.maxQueued { state.queue.removeFirst(state.queue.count - Self.maxQueued) }
     }
-
-    static func day(_ date: Date) -> Int { Int((date.timeIntervalSince1970 / 86_400).rounded(.down)) }
 
     // MARK: Sending
 

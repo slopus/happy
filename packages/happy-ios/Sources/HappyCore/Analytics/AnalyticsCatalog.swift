@@ -17,9 +17,9 @@ public enum AnalyticsEvent: Equatable, Sendable {
     case signInResult(method: SignInMethod, result: FlowResult, errorCode: SignInErrorCode?)
     case voiceSessionEnded(result: VoiceResult, errorCode: VoiceErrorCode?, duration: DurationBucket)
     case purchaseResult(product: PurchaseProduct, result: PurchaseResult, errorCode: PurchaseErrorCode?)
-    case appOpened(launchCount: Int, cold: Bool)
+    case appOpened(launchCount: Int, cold: Bool, config: AppConfig)
     case messageSent(MessageSent)
-    case dailySummary(DailySummary)
+    case featureUsed(Feature)
     case onboardingStepViewed(step: OnboardingStep)
     case onboardingCompleted
     case pairingOptionsShown(defaultMethod: PairingMethod, surface: PairingSurface)
@@ -38,7 +38,7 @@ public enum AnalyticsEvent: Equatable, Sendable {
         case .purchaseResult: "purchase_result"
         case .appOpened: "app_opened"
         case .messageSent: "message_sent"
-        case .dailySummary: "daily_summary"
+        case .featureUsed: "feature_used"
         case .onboardingStepViewed: "onboarding_step_viewed"
         case .onboardingCompleted: "onboarding_completed"
         case .pairingOptionsShown: "pairing_options_shown"
@@ -67,12 +67,12 @@ public enum AnalyticsEvent: Equatable, Sendable {
             ["result": .word(result), "error_code": .word(errorCode), "duration": .word(duration)]
         case .purchaseResult(let product, let result, let errorCode):
             ["product": .word(product), "result": .word(result), "error_code": .word(errorCode)]
-        case .appOpened(let launchCount, let cold):
-            ["launch_count": .count(launchCount), "cold": .bool(cold)]
+        case .appOpened(let launchCount, let cold, let config):
+            config.properties.merging(["launch_count": .count(launchCount), "cold": .bool(cold)]) { $1 }
         case .messageSent(let message):
             message.properties
-        case .dailySummary(let summary):
-            summary.properties
+        case .featureUsed(let feature):
+            ["feature": .word(feature)]
         case .onboardingStepViewed(let step):
             ["step": .word(step)]
         case .onboardingCompleted:
@@ -254,7 +254,8 @@ extension AnalyticsEvent {
     }
     public enum PairingErrorCode: String, AnalyticsWord {
         case invalidCode = "invalid_code", expired, rejected, emojiMismatch = "emoji_mismatch", invalidProof = "invalid_proof"
-        case invalidResponse = "invalid_response", unavailable, revoked, disabled, updateRequired = "update_required", unknown
+        case invalidResponse = "invalid_response", unavailable, revoked, disabled, updateRequired = "update_required"
+        case profileRequired = "profile_required", signInRequired = "sign_in_required", unknown
 
         public init(_ error: Error) {
             self = switch error as? PairingError {
@@ -275,7 +276,7 @@ extension AnalyticsEvent {
     public enum SignInMethod: String, AnalyticsWord { case relayCreate = "relay_create", relayRestore = "relay_restore", teamServer = "team_server" }
     public enum SignInErrorCode: String, AnalyticsWord {
         case invalidAddress = "invalid_address", noSignIn = "no_sign_in", edgeBlocked = "edge_blocked", unreachable, denied
-        case expired, invalidToken = "invalid_token", rejected, profileRequired = "profile_required", unknown
+        case expired, invalidToken = "invalid_token", rejected, profileRequired = "profile_required", wrongServer = "wrong_server", unknown
     }
 
     public enum VoiceResult: String, AnalyticsWord { case ok, failed }
@@ -284,7 +285,7 @@ extension AnalyticsEvent {
     }
 
     public enum PurchaseProduct: String, AnalyticsWord { case pro, support, voice, other }
-    public enum PurchaseResult: String, AnalyticsWord { case ok, failed, cancelled, restored, pending }
+    public enum PurchaseResult: String, AnalyticsWord { case ok, failed, cancelled, restored, pending, nothingToRestore = "nothing_to_restore" }
     public enum PurchaseErrorCode: String, AnalyticsWord {
         case storeUnavailable = "store_unavailable", paymentInvalid = "payment_invalid", notAllowed = "not_allowed"
         case network, verificationFailed = "verification_failed", unknown
@@ -332,20 +333,15 @@ extension AnalyticsEvent {
         case setup, subscriptions, getApp = "get_app", connectPhone = "connect_phone", welcome, pair, signIn = "sign_in", notifications, done
     }
 
-    /// What `daily_summary` counts, by its property name.
-    public enum DailyCount: String, AnalyticsWord, Codable {
-        case conversationsOpened = "conversations_opened", conversationsCreated = "conversations_created"
-        case conversationsCreatedVoice = "conversations_created_voice", attachmentsSent = "attachments_sent"
-        case photosTaken = "photos_taken", approvalsAnswered = "approvals_answered", questionsAnswered = "questions_answered"
-        case runsStopped = "runs_stopped", messagesSteered = "messages_steered", modelChanged = "model_changed"
-        case effortChanged = "effort_changed", permissionModeChanged = "permission_mode_changed"
-        case filesOpened = "files_opened", diffsOpened = "diffs_opened", terminalOpened = "terminal_opened"
-        case browserOpened = "browser_opened", artifactsOpened = "artifacts_opened", systemMonitorOpened = "system_monitor_opened"
-        case projectsAdded = "projects_added", workspacesCreated = "workspaces_created", botsCreated = "bots_created"
-        case tasksCreated = "tasks_created", subtasksAppeared = "subtasks_appeared", searchUsed = "search_used"
-        case commandPaletteUsed = "command_palette_used", todosChanged = "todos_changed", documentsOpened = "documents_opened"
-        case calendarOpened = "calendar_opened", storiesViewed = "stories_viewed", feedOpened = "feed_opened"
-        case pushOpened = "push_opened", accountSwitched = "account_switched", voiceSeconds = "voice_seconds"
+    /// A deliberate action, sent when it succeeds; never an impression.
+    public enum Feature: String, AnalyticsWord {
+        case projectAdded = "project_added", workspaceCreated = "workspace_created", botCreated = "bot_created"
+        case taskCreated = "task_created", subtaskAppeared = "subtask_appeared", approvalAnswered = "approval_answered"
+        case questionAnswered = "question_answered", runStopped = "run_stopped", messageSteered = "message_steered"
+        case modelChanged = "model_changed", effortChanged = "effort_changed", permissionModeChanged = "permission_mode_changed"
+        case photoTaken = "photo_taken", terminalStarted = "terminal_started", searchUsed = "search_used"
+        case commandPaletteUsed = "command_palette_used", todoChanged = "todo_changed", accountSwitched = "account_switched"
+        case pushOpened = "push_opened"
     }
 
     public enum ThemeChoice: String, AnalyticsWord { case light, dark, system }
@@ -358,28 +354,24 @@ extension AnalyticsEvent {
     }
     public enum NotificationsState: String, AnalyticsWord { case granted, denied, notAsked = "not_asked" }
 
-    /// The state `daily_summary` reports as it is sent; nil leaves a field out.
-    public struct DailyConfig: Equatable, Sendable {
+    /// The configuration snapshot `app_opened` carries; nil leaves a field out.
+    public struct AppConfig: Equatable, Sendable {
         public var theme: ThemeChoice?
         public var appLanguage: AppLanguage?
         public var notifications: NotificationsState?
         public var agentsConnected: Bucket123?
-        public var accounts: Bucket123?
+        public var relayAccounts: Bucket123?
         public var providerKinds: [ProviderKind]?
         public var providerAccounts: Bucket123?
-        public var voiceEnabled: Bool?
         public var experimentsOn: Bool?
 
         public init(theme: ThemeChoice? = nil, appLanguage: AppLanguage? = nil, notifications: NotificationsState? = nil,
-                    agentsConnected: Bucket123? = nil, accounts: Bucket123? = nil, providerKinds: [ProviderKind]? = nil,
-                    providerAccounts: Bucket123? = nil, voiceEnabled: Bool? = nil, experimentsOn: Bool? = nil) {
+                    agentsConnected: Bucket123? = nil, relayAccounts: Bucket123? = nil, providerKinds: [ProviderKind]? = nil,
+                    providerAccounts: Bucket123? = nil, experimentsOn: Bool? = nil) {
             self.theme = theme; self.appLanguage = appLanguage; self.notifications = notifications
-            self.agentsConnected = agentsConnected; self.accounts = accounts; self.providerKinds = providerKinds
-            self.providerAccounts = providerAccounts; self.voiceEnabled = voiceEnabled; self.experimentsOn = experimentsOn
+            self.agentsConnected = agentsConnected; self.relayAccounts = relayAccounts; self.providerKinds = providerKinds
+            self.providerAccounts = providerAccounts; self.experimentsOn = experimentsOn
         }
-
-        static let propertyNames = ["theme", "app_language", "notifications", "agents_connected", "accounts",
-                                    "provider_kinds", "provider_accounts", "voice_enabled", "experiments_on"]
 
         var properties: [String: JSONValue] {
             var out: [String: JSONValue] = [:]
@@ -387,30 +379,10 @@ extension AnalyticsEvent {
             if let appLanguage { out["app_language"] = .word(appLanguage) }
             if let notifications { out["notifications"] = .word(notifications) }
             if let agentsConnected { out["agents_connected"] = .word(agentsConnected) }
-            if let accounts { out["accounts"] = .word(accounts) }
+            if let relayAccounts { out["relay_accounts"] = .word(relayAccounts) }
             if let providerKinds { out["provider_kinds"] = .array(Array(Set(providerKinds)).map(\.rawValue).sorted().map(JSONValue.string)) }
             if let providerAccounts { out["provider_accounts"] = .word(providerAccounts) }
-            if let voiceEnabled { out["voice_enabled"] = .bool(voiceEnabled) }
             if let experimentsOn { out["experiments_on"] = .bool(experimentsOn) }
-            return out
-        }
-    }
-
-    /// One UTC day's use: its counts (zeros left out) and the state as sent.
-    public struct DailySummary: Equatable, Sendable {
-        /// Days since 1970-01-01 UTC.
-        public var day: Int
-        public var counts: [DailyCount: Int]
-        public var config: DailyConfig
-
-        public init(day: Int, counts: [DailyCount: Int], config: DailyConfig) {
-            self.day = day; self.counts = counts; self.config = config
-        }
-
-        var properties: [String: JSONValue] {
-            var out = config.properties
-            out["day"] = .number(Double(day))
-            for (count, value) in counts where value > 0 { out[count.rawValue] = .count(value) }
             return out
         }
     }
