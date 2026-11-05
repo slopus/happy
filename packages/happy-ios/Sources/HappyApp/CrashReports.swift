@@ -1,0 +1,41 @@
+#if canImport(UIKit) && canImport(MetricKit)
+import Foundation
+import HappyCore
+import MetricKit
+
+/// `app_crash` from MetricKit: the crashes and hangs iOS reports for this
+/// app, delivered at a later launch. Only each one's exception type and
+/// signal are read, mapped to the catalog's reason; no stack, message or
+/// symbol leaves the phone.
+final class CrashReports: NSObject, MXMetricManagerSubscriber, @unchecked Sendable {
+    static let shared = CrashReports()
+
+    func install() {
+        MXMetricManager.shared.add(self)
+    }
+
+    func didReceive(_ payloads: [MXDiagnosticPayload]) {
+        let thisBuild = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        let thisVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        // MetricKit names the build that crashed; the version is known only when it is this one.
+        func version(_ diagnostic: MXDiagnostic) -> String? {
+            diagnostic.metaData.applicationBuildVersion == thisBuild ? thisVersion : nil
+        }
+        var events: [AnalyticsEvent] = []
+        for payload in payloads {
+            for crash in payload.crashDiagnostics ?? [] {
+                let reason = AnalyticsEvent.CrashReason(exceptionType: crash.exceptionType?.intValue, signal: crash.signal?.intValue,
+                                                        termination: crash.terminationReason)
+                events.append(.appCrash(process: .app, reason: reason, crashedVersion: version(crash)))
+            }
+            for hang in payload.hangDiagnostics ?? [] {
+                events.append(.appCrash(process: .app, reason: .hang, crashedVersion: version(hang)))
+            }
+        }
+        guard !events.isEmpty else { return }
+        Task { @MainActor in
+            for event in events { Analytics.shared.log(event) }
+        }
+    }
+}
+#endif

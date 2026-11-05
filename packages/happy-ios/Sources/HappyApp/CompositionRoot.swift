@@ -28,7 +28,28 @@ enum CompositionRoot {
                 }
             }
         )
+        startAnalytics(bundle: bundle, variant: variant, version: version)
         return AppContext(account: account, variant: variant, version: version)
+    }
+
+    /// The switch Settings shows, always; sending only from a build that may
+    /// (`Analytics.destination`).
+    private static func startAnalytics(bundle: Bundle, variant: AppVariant, version: String) {
+        #if DEBUG
+        let debug = true
+        #else
+        let debug = false
+        #endif
+        let environment = ProcessInfo.processInfo.environment
+        let destination = Analytics.destination(apiKey: MigrationNoteFlag.apiKey(bundle: bundle), debug: debug,
+                                                automated: Analytics.isAutomated(), environment: environment)
+        let setup = destination.map {
+            Analytics.Setup(destination: $0, file: storeDirectory()?.appendingPathComponent("analytics.json"),
+                            transport: URLSessionTransport(), variant: variant, appVersion: version,
+                            osVersion: ProcessInfo.processInfo.operatingSystemVersion,
+                            deviceClass: UIDevice.current.userInterfaceIdiom == .pad ? .tablet : .phone)
+        }
+        Analytics.shared.start(setup, consent: AnalyticsConsent(storage: UserDefaultsStore(suiteName: "happy-analytics")))
     }
 
     /// Application Support/Happy, as a path only: nothing touches the disk

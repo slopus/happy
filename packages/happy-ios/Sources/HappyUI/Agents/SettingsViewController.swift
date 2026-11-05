@@ -496,6 +496,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                     Row(Index.agents, action: { [weak self] in self?.open(.agents) }),
                     Row(Index.dataStorage, action: { [weak self] in self?.open(.dataStorage) }),
                 ],
+                [analyticsRow()],
                 aboutRows(),
             ] + removal
         }
@@ -517,6 +518,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                 Row(Index.enterTerminal, accessory: .none, action: { [weak self] in self?.connectTerminal(scanning: false) }),
             ],
             [Row(Index.supportUs, action: { [weak self] in self?.open(.supportUs) })],
+            [analyticsRow()],
             aboutRows(),
             [Row(id: "sign-out", title: Strings.signOut, accessory: .none, destructive: true, action: { [weak self] in self?.remove(id, direct: false) })],
         ]
@@ -693,6 +695,18 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     private func updateModelPreferences(_ change: @escaping @Sendable (inout ModelPreferences) -> Void) {
         guard let id = shown?.id, let engine = context.account.agentConnections.syncEngine(for: id) else { return }
         Task { try? await engine.updateModelPreferences(change) }
+    }
+
+    /// This phone's own analytics switch, whatever is signed in: a phone
+    /// with only agent connections has no account setting to turn off.
+    /// Off deletes what was waiting to be sent.
+    private func analyticsRow() -> SettingsRow {
+        let consent = Analytics.shared.consent
+        return SettingsRow(id: "device-analytics", title: Strings.SettingsAccount.analytics, icon: ("analytics-outline", .blue), accessory: .toggle,
+                           isOn: !consent.deviceOptOut, toggled: { [weak self] on in
+            consent.setDeviceOptOut(!on)
+            self?.rebuild()
+        }, footer: Strings.SettingsAccount.privacyDescription)
     }
 
     private func aboutRows() -> [SettingsRow] {

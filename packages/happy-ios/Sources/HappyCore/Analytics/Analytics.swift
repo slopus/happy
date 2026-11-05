@@ -58,9 +58,11 @@ public final class Analytics {
 
     public init() {}
 
-    /// Sending starts. Called once at launch, by the app alone.
-    public func start(_ setup: Setup, consent: AnalyticsConsent) {
+    /// Called once at launch, by the app alone: `consent` is the switch
+    /// Settings shows, and with a `setup` (a build that may send) sending starts.
+    public func start(_ setup: Setup?, consent: AnalyticsConsent) {
         self.consent = consent
+        guard let setup else { return }
         engine = AnalyticsEngine(destination: setup.destination, file: setup.file, transport: setup.transport)
         fixed = [
             "client": .word(AnalyticsEvent.AnalyticsClient.ios),

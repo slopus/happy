@@ -130,6 +130,30 @@ final class AnalyticsTests: XCTestCase {
         XCTAssertEqual(incidents.update(relay, at: clock + 2000), .connectionIssue(transport: .direct, code: .unknown, outcome: .gaveUp, duration: .from15mTo1h))
     }
 
+    func testTheWatchFollowsOnlyTheLinkTheAppShows() async {
+        let watch = ConnectionWatch()
+        var logged: [AnalyticsEvent] = []
+        watch.log = { logged.append($0) }
+        watch.now = { [unowned self] in clock }
+        watch.setActive("agent:a")
+        watch.report(.init(id: "relay:x", transport: .relay, down: true))
+        watch.report(.init(id: "agent:a", transport: .direct, down: true, code: .unreachable))
+        clock += 15
+        watch.report(.init(id: "relay:x", transport: .relay, down: false))
+        XCTAssertEqual(logged, [], "another account's link")
+        watch.report(.init(id: "agent:a", transport: .direct, down: false))
+        XCTAssertEqual(logged, [.connectionIssue(transport: .direct, code: .unreachable, outcome: .recovered, duration: .from10sTo30s)])
+    }
+
+    func testAConnectionsErrorIsReadByItsTypeAlone() async {
+        typealias Code = AnalyticsEvent.ConnectionCode
+        XCTAssertEqual(Code(URLError(.timedOut)), .timeout)
+        XCTAssertEqual(Code(URLError(.cannotFindHost)), .unreachable)
+        XCTAssertEqual(Code(PairingError.updateRequired), .versionMismatch)
+        XCTAssertEqual(Code(PairingError.unavailable), .unreachable)
+        XCTAssertEqual(Code(CancellationError()), .unknown)
+    }
+
     func testCrashesAreReducedToTheCatalogsReasons() async {
         typealias Reason = AnalyticsEvent.CrashReason
         XCTAssertEqual(Reason(exceptionType: 1, signal: 11, termination: nil), .nativeCrash)

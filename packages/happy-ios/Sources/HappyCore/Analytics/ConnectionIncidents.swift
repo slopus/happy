@@ -1,4 +1,5 @@
 import Foundation
+import HappyWire
 
 /// `connection_issue`: one event per incident, when it ends, and only for
 /// one that lasted ten seconds or more in the foreground. An incident is
@@ -70,25 +71,60 @@ public struct ConnectionIncidents: Equatable, Sendable {
     }
 }
 
-/// The app's one incident tracker, fed by whatever shows the active agent's
-/// link and by the app's foreground.
+/// The app's one incident tracker. Each connection reports its link as it
+/// changes (an agent's status, a Happy account's socket); the app says which
+/// one it is showing and when it is in the foreground.
 @MainActor
 public final class ConnectionWatch {
     public static let shared = ConnectionWatch()
 
     private var incidents = ConnectionIncidents()
+    private var links: [String: ConnectionIncidents.Link] = [:]
+    private var activeID: String?
     var log: (AnalyticsEvent) -> Void = { Analytics.shared.log($0) }
     var now: () -> Date = Date.init
 
     public init() {}
 
-    public func update(_ link: ConnectionIncidents.Link?) {
-        guard link != incidents.link else { return }
-        if let event = incidents.update(link, at: now()) { log(event) }
+    public func report(_ link: ConnectionIncidents.Link) {
+        links[link.id] = link
+        apply()
+    }
+
+    /// The link the app shows, by its id; nil when it shows none.
+    public func setActive(_ id: String?) {
+        activeID = id
+        apply()
     }
 
     public func setForeground(_ active: Bool) {
         if let event = incidents.setForeground(active, at: now()) { log(event) }
+    }
+
+    private func apply() {
+        let link = activeID.flatMap { links[$0] }
+        guard link != incidents.link else { return }
+        if let event = incidents.update(link, at: now()) { log(event) }
+    }
+}
+
+extension AnalyticsEvent.ConnectionCode {
+    /// A failed attempt's error, by its type alone.
+    public init(_ error: Error) {
+        if let error = error as? PairingError {
+            self = switch error {
+            case .revoked: .revoked
+            case .updateRequired: .versionMismatch
+            // The transport's word for no way through, and health that isn't ready.
+            case .unavailable: .unreachable
+            case .invalidResponse: .serverError
+            default: .unknown
+            }
+        } else if let error = error as? URLError {
+            self = error.code == .timedOut ? .timeout : .unreachable
+        } else {
+            self = error is POSIXError ? .unreachable : .unknown
+        }
     }
 }
 
