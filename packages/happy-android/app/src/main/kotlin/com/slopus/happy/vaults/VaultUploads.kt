@@ -63,6 +63,10 @@ class VaultUploads(
         val problem: Problem? = null,
         /** The daemon refused it (a bad `.artifact`, a name it can't take): trying again won't help. */
         val refused: Boolean = false,
+        /** The version request's `operationId`, the same on every try of this upload, so a lost answer makes no second version. */
+        val operationId: String = AgentClient.newId(),
+        /** The new file's `id`, the same on every try, for the same reason. */
+        val fileId: String = AgentClient.newId(),
     ) {
         val progress: Float get() = if (size <= 0) 1f else (sent.toFloat() / size).coerceIn(0f, 1f)
     }
@@ -76,6 +80,8 @@ class VaultUploads(
     private val jobs = HashMap<String, Job>()
     private val choices = HashMap<String, CompletableDeferred<Choice>>()
     private val uploadIds = HashMap<String, String>()
+    /** Tasks whose upload was placed at least once, its answer perhaps lost. */
+    private val asked = HashSet<String>()
     private val turn = Mutex()
 
     /** Uploads [source] into [parentId]: an artifact when its name ends in ".artifact", otherwise a file. */
@@ -118,8 +124,7 @@ class VaultUploads(
         val job = scope.launch {
             turn.withLock {
                 try {
-                    val uploadId = send(taskId, source)
-                    place(taskId, uploadId)
+                    if (!placedAgain(taskId)) place(taskId, send(taskId, source))
                     finish(taskId)
                 } catch (e: CancellationException) {
                     throw e
@@ -132,8 +137,31 @@ class VaultUploads(
         synchronized(this) { jobs[taskId] = job }
     }
 
+    /**
+     * Places [taskId]'s upload again when it was placed before and the answer
+     * didn't come: the daemon has used the upload, and answers the same request
+     * (the same `operationId` or file `id`) with what it did. False when there
+     * was nothing to ask again, or the first request never arrived and the
+     * upload is gone, so its bytes go again.
+     */
+    private suspend fun placedAgain(taskId: String): Boolean {
+        val held = synchronized(this) { uploadIds[taskId]?.takeIf { taskId in asked } } ?: return false
+        return try {
+            place(taskId, held)
+            true
+        } catch (e: AgentApiException) {
+            if (e.status != 404) throw e
+            synchronized(this) {
+                uploadIds.remove(taskId)
+                asked.remove(taskId)
+            }
+            false
+        }
+    }
+
     private fun finish(taskId: String) {
         val upload = synchronized(this) {
+            asked.remove(taskId)
             sources.remove(taskId)
             jobs.remove(taskId)
             uploadIds.remove(taskId)
@@ -207,18 +235,18 @@ class VaultUploads(
     private suspend fun place(taskId: String, uploadId: String) {
         set(taskId) { it.copy(status = Status.Placing, sent = it.size) }
         val task = task(taskId)
+        synchronized(this) { asked += taskId }
         task.replacing?.let { entry ->
-            placed(newVersion(entry, uploadId))
+            placed(newVersion(entry, uploadId, task.operationId))
             synchronized(this) { uploadIds.remove(taskId) }
             return
         }
         var name = task.name
         var copy = 1
         var keepingBoth = false
-        val createId = AgentClient.newId()
         while (true) {
             try {
-                placed(routes.createFile(task.surfaceId, task.parentId, name, uploadId, id = if (keepingBoth) AgentClient.newId() else createId))
+                placed(routes.createFile(task.surfaceId, task.parentId, name, uploadId, id = if (keepingBoth) AgentClient.newId() else task.fileId))
                 synchronized(this) { uploadIds.remove(taskId) }
                 return
             } catch (e: AgentApiException) {
@@ -238,7 +266,7 @@ class VaultUploads(
                     Choice.Cancel -> throw CancellationException("cancelled")
                     Choice.Replace -> {
                         set(taskId) { it.copy(status = Status.Placing, taken = null) }
-                        placed(newVersion(taken, uploadId))
+                        placed(newVersion(taken, uploadId, task.operationId))
                         synchronized(this) { uploadIds.remove(taskId) }
                         return
                     }
@@ -253,14 +281,14 @@ class VaultUploads(
         }
     }
 
-    /** A new version of [entry], once more against its current version if it changed meanwhile. */
-    private suspend fun newVersion(entry: VaultItem, uploadId: String): VaultItem = try {
-        routes.newVersion(entry, uploadId = uploadId).first
+    /** A new version of [entry], once more against its current version if it changed meanwhile, as the one [operationId]. */
+    private suspend fun newVersion(entry: VaultItem, uploadId: String, operationId: String): VaultItem = try {
+        routes.newVersion(entry, uploadId = uploadId, operationId = operationId).first
     } catch (e: AgentApiException) {
         if (e.status != 409 || e.code == "name_taken") throw e
         val current = VaultClient.conflictItem(e) ?: routes.location(entry).item
         if (current.deletedAt != null) throw e
-        routes.newVersion(current, uploadId = uploadId).first
+        routes.newVersion(current, uploadId = uploadId, operationId = operationId).first
     }
 
     companion object {

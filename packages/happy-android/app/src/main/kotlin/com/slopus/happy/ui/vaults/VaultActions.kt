@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.FileProvider
 import com.slopus.happy.R
 import com.slopus.happy.agent.AgentApiException
+import com.slopus.happy.agent.AgentClient
 import com.slopus.happy.agent.AgentSession
 import com.slopus.happy.conversation.Conversation
 import com.slopus.happy.conversation.MediaFiles
@@ -117,8 +118,11 @@ class VaultActions internal constructor(
 
     fun restore(entry: VaultItem) = change(entry) { routes.restore(it) }
 
-    /** Makes [version]'s content the newest version again; history only grows. */
-    fun restoreVersion(entry: VaultItem, version: Int) = change(entry) { routes.newVersion(it, fromVersion = version).first }
+    /** Makes [version]'s content the newest version again; history only grows. One `operationId` for the tap, kept on its retry. */
+    fun restoreVersion(entry: VaultItem, version: Int) {
+        val operationId = AgentClient.newId()
+        change(entry) { routes.newVersion(it, fromVersion = version, operationId = operationId).first }
+    }
 
     internal fun created(parentId: String?, name: String) {
         if (VaultNames.isArtifact(name.trim())) {

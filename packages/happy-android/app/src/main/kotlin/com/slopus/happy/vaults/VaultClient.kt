@@ -145,11 +145,18 @@ class VaultClient(private val client: AgentClient) {
     suspend fun restore(item: VaultItem): VaultItem =
         itemOf(parse(client.send("POST", "${itemPath(item)}/restore", mutation(), ifMatch(item))))
 
-    /** A new version of [file] from an upload or an earlier version; the file as it now is, and the version (null when nothing changed). */
-    suspend fun newVersion(file: VaultItem, uploadId: String? = null, fromVersion: Int? = null): Pair<VaultItem, VaultVersion?> {
+    /**
+     * A new version of [file] from an upload or an earlier version; the file
+     * as it now is, and the version (null when nothing changed). [operationId]
+     * is one per thing the person asked for, sent again unchanged on every
+     * retry of it: the daemon answers a repeat with what the first one did
+     * rather than making another version.
+     */
+    suspend fun newVersion(file: VaultItem, uploadId: String? = null, fromVersion: Int? = null, operationId: String = AgentClient.newId()): Pair<VaultItem, VaultVersion?> {
         val fields = buildMap<String, JsonElement> {
             uploadId?.let { put("uploadId", JsonPrimitive(it)) }
             fromVersion?.let { put("fromVersion", JsonPrimitive(it)) }
+            put("operationId", JsonPrimitive(operationId))
             put("mutationId", JsonPrimitive(AgentClient.newId()))
         }
         val body = parse(client.send("POST", "${filePath(file.surfaceId, file.id)}/versions", JsonObject(fields), ifMatch(file)))

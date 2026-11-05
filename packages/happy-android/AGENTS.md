@@ -1756,7 +1756,13 @@ every locale, not happy-i18n.
   version) or Keep both ("name 2.ext"). A file named "*.artifact" (any
   case) becomes an artifact, and a ".zip" is always a plain file. An
   artifact's new version is a whole ".artifact" file. A refused one shows
-  the daemon's own reason on its row, with no retry.
+  the daemon's own reason on its row, with no retry. Each task keeps one
+  `operationId` (for `POST /files/:id/versions`) and one new-file `id` on
+  every try, so a lost answer makes no second version or file; a retry after
+  a placement was sent asks it again before sending any bytes (`placedAgain`),
+  and a `200` with `version: null` is success. A Restore version tap keeps its
+  own `operationId` through its `If-Match` retry. Uploads live in memory, so
+  they don't resume after the process dies.
 - **Apps**: people call an artifact an app, in every string. Its stored name
   keeps the ".artifact" suffix (API calls, and the `.artifact` file a download
   or share writes from `/versions/:n/zip`), but no screen shows it:
