@@ -36,8 +36,11 @@ enum AppPageScripts {
 
     /// The contract's host stylesheet: the page fills the screen and never
     /// scrolls or bounces; nothing is selected or called out by a long
-    /// press but what is typed into; a double tap doesn't zoom.
+    /// press but what is typed into; a double tap doesn't zoom. Behind the
+    /// page is black until it paints; one that names no background of its
+    /// own gets its scheme's, as in a browser, which it overrides.
     static let stylesheet = """
+    html{background-color:Canvas}\
     html,body{height:100% !important;margin:0 !important;overflow:hidden !important;overscroll-behavior:none !important}\
     html{-webkit-text-size-adjust:100%;touch-action:manipulation;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent}\
     input,textarea,select,[contenteditable],[contenteditable] *{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
