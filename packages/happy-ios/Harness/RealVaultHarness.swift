@@ -268,7 +268,8 @@ private final class RealVaultScript {
         }
         let rows = { home.resultsView.list.rows }
         let labels = { rows().map { $0.label + ($0.detail.map { " [\($0)]" } ?? "") }.joined(separator: " | ") }
-        let remote = { rows().contains { $0.id.hasPrefix("found:") && !$0.id.hasPrefix("found:surface:") && !$0.id.hasPrefix("found:document:") && !$0.id.hasPrefix("found:artifact:") } }
+        // Kinds only the computer finds: the phone holds none of them.
+        let remote = { rows().contains { row in ["vault_file", "vault_folder", "message", "todo", "calendar_event"].contains { row.id.hasPrefix("found:\($0):") } } }
         let bar = agentHome.search
         // As a person types: the field takes the words, and UIKit tells search.
         func type(_ query: String) async {
@@ -287,6 +288,8 @@ private final class RealVaultScript {
         check("home search shows what the phone holds before the computer is asked",
               rows().contains { $0.label.lowercased().contains("plan") } && !remote(), labels())
         check("the field shows what was typed", bar.bar.searchTextField.text == "plan", bar.bar.searchTextField.text ?? "nil")
+        check("a conversation the phone holds draws as a result, a chat bubble before it",
+              rows().contains { $0.id.hasPrefix("found:agent:") && $0.kind == .result && $0.mark == .glyph("chatbubbles-outline") }, labels())
         check("and the computer's, fused in, with the words a file matched under its name",
               await until(15) { rows().contains { $0.id.hasPrefix("found:vault_file:") && $0.detail != nil } }, labels())
         await shoot("00b-search-fused")

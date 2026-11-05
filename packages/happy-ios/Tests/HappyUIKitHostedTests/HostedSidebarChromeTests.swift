@@ -298,8 +298,8 @@ final class HostedSidebarChromeTests: XCTestCase {
         search.field.text = "notes"
         search.field.sendActions(for: .editingChanged)
         let results = try XCTUnwrap(subview(HomeSearchResultsView.self, in: home.view))
-        try await until("Notes found") { results.list.rows.contains { $0.id == "space:notes" } }
-        XCTAssertFalse(results.list.rows.contains { $0.id == "space:ios" })
+        try await until("Notes found") { results.list.rows.contains { $0.id == "found:space:notes" } }
+        XCTAssertFalse(results.list.rows.contains { $0.id == "found:space:ios" })
         try await until("home's list under the results fades") { home.homeList.alpha == 0 }
         XCTAssertFalse(search.cancel.isHidden)
         agentHome.view.layoutIfNeeded()

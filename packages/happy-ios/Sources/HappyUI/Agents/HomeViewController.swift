@@ -376,7 +376,9 @@ final class HomeViewController: UIViewController {
     /// One flat list of what answers `query`: what the phone holds, at
     /// once, fused with what the computer found once it answers
     /// (`Search.fuse`). A row the phone found keeps its place in the
-    /// list when the computer's results come in around it.
+    /// list when the computer's results come in around it. Every result
+    /// draws alike, a glyph before its title, wherever it came from; a
+    /// sidebar row opens as the sidebar opens it.
     private func fusedResults(for query: String, remote: [HappyCore.Search.Result]) -> (rows: [Row], runs: [String: () -> Void]) {
         let local = HappyCore.Search.local(rows: snapshot.allRows, surfaces: surfaces, artifacts: artifacts, query: query)
         let fused = HappyCore.Search.fuse(remote: remote.map { ($0.key, $0.rank) }, local: local.map(\.key))
@@ -390,7 +392,8 @@ final class HomeViewController: UIViewController {
                 var row: Row
                 switch local[index].found {
                 case .row(let found):
-                    row = found
+                    row = Row(id: id, nodeId: id, kind: .result, label: found.label, mark: .glyph(Self.glyph(found)))
+                    runs[id] = { [weak self] in self?.open(found) }
                 case .surface(let surface):
                     row = Row(id: id, nodeId: id, kind: .result, label: surface.name, mark: .glyph(Rows.surfaceGlyph(surface.type)))
                     runs[id] = { [weak self] in self?.openSurface(AgentWire.Surface(id: surface.id, type: surface.type, name: surface.name), row: id) }
@@ -428,6 +431,19 @@ final class HomeViewController: UIViewController {
         // A message is titled by its conversation; what it says is under it.
         case "message": result.agentId.flatMap(conversationTitle) ?? Strings.untitledSession
         default: result.label
+        }
+    }
+
+    /// A sidebar row's glyph among the results, as the computer's result
+    /// for it would have.
+    private static func glyph(_ row: Row) -> String {
+        if row.kind == .session { return "chatbubbles-outline" }
+        switch row.targetKind {
+        case "surface": return Rows.surfaceGlyph(row.surfaceType)
+        case "task", "bot", "agent": return "agents"
+        default:
+            if case .glyph(let glyph) = row.mark { return glyph }
+            return "agents"
         }
     }
 
