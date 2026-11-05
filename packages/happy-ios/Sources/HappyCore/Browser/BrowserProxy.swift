@@ -10,6 +10,9 @@ public actor BrowserProxy {
         case artifact(id: String, version: Int, authority: BrowserPolicy.Authority, workspaceID: String?)
         case workspace(id: String)
         case liveArtifact(id: String, workspaceID: String, authority: BrowserPolicy.Authority)
+        /// A vault's artifact entry: its own files and nothing else, no
+        /// data bridge and no network beyond them.
+        case vaultArtifact(surfaceId: String, entryId: String, version: Int, authority: BrowserPolicy.Authority)
     }
     public nonisolated let username = UUID().uuidString
     public nonisolated let password = UUID().uuidString
@@ -104,7 +107,13 @@ public actor BrowserProxy {
                 guard rest.isEmpty else { throw BrowserError.malformed }
                 let request = try await BrowserRelay.head(local)
                 try BrowserPolicy.checkArtifactOrigin(request.0, authority: authority)
-                try await artifact(local, client: client, upstream: upstream, id: id, version: version, initial: request)
+                try await artifact(local, client: client, upstream: upstream, files: .artifact(id: id, version: version), initial: request)
+            case .vaultArtifact(let surfaceId, let entryId, let version, let allowed) where allowed == authority:
+                try await local.write(Data("HTTP/1.1 200 Connection Established\r\n\r\n".utf8))
+                guard rest.isEmpty else { throw BrowserError.malformed }
+                let request = try await BrowserRelay.head(local)
+                try BrowserPolicy.checkArtifactOrigin(request.0, authority: authority)
+                try await artifact(local, client: client, upstream: upstream, files: .vault(surfaceId: surfaceId, entryId: entryId, version: version), initial: request)
             case .workspace(let id):
                 let remote = try await client.browserTunnel(workspaceID: id, target: authority)
                 do {
@@ -120,7 +129,7 @@ public actor BrowserProxy {
                 let target = request.0.line.split(separator: " ").dropFirst().first ?? ""
                 if target.hasPrefix("/api/") {
                     try BrowserPolicy.checkArtifactOrigin(request.0, authority: authority)
-                    try await artifact(local, client: client, upstream: upstream, id: artifactID, version: 1, initial: request)
+                    try await artifact(local, client: client, upstream: upstream, files: .artifact(id: artifactID, version: 1), initial: request)
                 } else {
                     var head = request.0
                     head.fields.removeAll { ["connection", "proxy-authorization", "proxy-connection", "x-happy-proxy-route"].contains($0.0.lowercased()) }
@@ -143,6 +152,7 @@ public actor BrowserProxy {
                     workspaceID = workspace
                 case .liveArtifact(_, let workspace, _): workspaceID = workspace
                 case .workspace(let workspace): workspaceID = workspace
+                case .vaultArtifact: throw BrowserError.unavailable
                 }
                 // Even public CDNs, redirects and WebSockets are resolved and
                 // connected by the computer. There is no phone-network fallback.
@@ -169,7 +179,7 @@ public actor BrowserProxy {
         }
     }
 
-    private nonisolated static func artifact(_ local: any BrowserStream, client: AgentClient, upstream: BrowserConnectionPool, id: String, version: Int, initial: (BrowserHTTPHead, Data)? = nil) async throws {
+    private nonisolated static func artifact(_ local: any BrowserStream, client: AgentClient, upstream: BrowserConnectionPool, files: BrowserFiles, initial: (BrowserHTTPHead, Data)? = nil) async throws {
         let (head, initialBody): (BrowserHTTPHead, Data)
         if let initial { (head, initialBody) = initial }
         else { (head, initialBody) = try await BrowserRelay.head(local) }
@@ -177,9 +187,9 @@ public actor BrowserProxy {
         // automatic retries: a failed write may already have reached the daemon.
         let (request, body) = try await BrowserRelay.requestBody(head, initial: initialBody, stream: local)
         let parts = request.line.split(separator: " ")
-        let api = parts.count == 3 && parts[1].hasPrefix("/api/") && request.value("upgrade") == nil
+        let api = files.bridges && parts.count == 3 && parts[1].hasPrefix("/api/") && request.value("upgrade") == nil
         let credential = try await client.transport.bearer(client.token)
-        _ = try request.artifactRequest(artifactID: id, version: version, credential: credential, keepAlive: api)
+        _ = try request.filesRequest(files, credential: credential, keepAlive: api)
         let start = ConnectionMetrics.uptime()
         let metrics = client.metrics
         let lease: BrowserConnectionPool.Lease
@@ -193,7 +203,7 @@ public actor BrowserProxy {
         var responseStarted = false
         var answered = false
         do {
-            let translated = try request.artifactRequest(artifactID: id, version: version, credential: credential, keepAlive: api, authority: remote.authority)
+            let translated = try request.filesRequest(files, credential: credential, keepAlive: api, authority: remote.authority)
             try await remote.write(translated.data)
             if !body.isEmpty { try await remote.write(body) }
             // Responses are never buffered: status, duplicates, chunk framing,

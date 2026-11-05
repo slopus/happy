@@ -398,7 +398,7 @@ final class VaultLibraryTests: XCTestCase {
         let file = FileManager.default.temporaryDirectory.appendingPathComponent("vault-upload-\(UUID().uuidString)")
         try bytes.write(to: file)
         await library.upload(surfaceId, parentId: nil, file: file, name: "big.bin")
-        XCTAssertEqual(root.state.uploads.first?.name, "big.bin")
+        try await eventually { root.state.uploads.first?.name == "big.bin" || root.names == ["big.bin"] }
         try await eventually(10) { root.names == ["big.bin"] && root.state.uploads.isEmpty }
         let size = await server.entries.values.first { $0.name == "big.bin" }?.size
         XCTAssertEqual(size, bytes.count)
@@ -485,6 +485,21 @@ final class VaultRulesTests: XCTestCase {
     func testACustomPolicyIsBroughtInsideTheLimits() {
         let edited = VaultRetention(maxVersions: 0, maxAgeDays: 0, keepAllDays: -3, thinning: [.init(afterDays: 30, everyDays: 0), .init(afterDays: 7, everyDays: 1), .init(afterDays: 30, everyDays: 9)], trashDays: 9_999)
         XCTAssertEqual(edited.normalized(), VaultRetention(maxVersions: 1, maxAgeDays: 1, keepAllDays: 0, thinning: [.init(afterDays: 7, everyDays: 1), .init(afterDays: 30, everyDays: 1)], trashDays: 3_650))
+    }
+
+    func testAVaultPageReachesOnlyItsVersionsFiles() throws {
+        let files = BrowserFiles.vault(surfaceId: "s1", entryId: "e1", version: 3)
+        XCTAssertEqual(try BrowserPolicy.path(target: "/img/hero.png?x=1", files: files), "/v0/surfaces/vault/s1/entries/e1/versions/3/files/img/hero.png?x=1")
+        // No data bridge: `/api/…` is a file like any other.
+        XCTAssertEqual(try BrowserPolicy.path(target: "/api/v1/kv", files: files), "/v0/surfaces/vault/s1/entries/e1/versions/3/files/api/v1/kv")
+        for target in ["/", "/../secret", "/a/%2e%2e/b", "//evil", "/a#b"] {
+            XCTAssertThrowsError(try BrowserPolicy.path(target: target, files: files), target)
+        }
+        XCTAssertThrowsError(try BrowserPolicy.path(target: "/index.html", files: .vault(surfaceId: "S!", entryId: "e1", version: 1)))
+        let head = BrowserHTTPHead(line: "GET /index.html HTTP/1.1", fields: [("Host", "a.happy-artifact.invalid"), ("Authorization", "Bearer page")])
+        let request = try head.filesRequest(files, credential: "device")
+        XCTAssertEqual(request.line, "GET /v0/surfaces/vault/s1/entries/e1/versions/3/files/index.html HTTP/1.1")
+        XCTAssertEqual(request.value("Authorization"), "Bearer device")
     }
 
     func testAFreeNameNumbersBeforeTheExtension() {

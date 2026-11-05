@@ -54,7 +54,14 @@ public enum BrowserPolicy {
 
     /// Paths are checked before Foundation can normalize traversal away.
     public static func artifactPath(target: String, artifactID: String, version: Int) throws -> String {
-        guard validID(artifactID), version > 0, target.hasPrefix("/"), !target.hasPrefix("//"),
+        try path(target: target, files: .artifact(id: artifactID, version: version))
+    }
+
+    /// Where a page's request for `target` goes on the daemon: a file of
+    /// `files`, or an artifact's `/api/*` data bridge, which a vault
+    /// artifact has none of, so its `/api/…` paths are files like any other.
+    public static func path(target: String, files: BrowserFiles) throws -> String {
+        guard files.valid, target.hasPrefix("/"), !target.hasPrefix("//"),
               !target.utf8.contains(where: { $0 < 33 || $0 == 127 }), !target.contains("#") else { throw BrowserError.forbidden }
         let path = target.split(separator: "?", maxSplits: 1, omittingEmptySubsequences: false)[0]
         for part in path.dropFirst().split(separator: "/", omittingEmptySubsequences: false) {
@@ -62,10 +69,16 @@ public enum BrowserPolicy {
                   !decoded.contains("/"), !decoded.contains("\\"), !decoded.contains("%"),
                   !decoded.utf8.contains(where: { $0 < 32 || $0 == 127 }) else { throw BrowserError.forbidden }
         }
-        let prefix = "/v0/artifacts/\(artifactID)"
-        if path.hasPrefix("/api/") { return prefix + target }
-        guard path != "/api", path != "/" else { throw BrowserError.forbidden }
-        return "\(prefix)/versions/\(version)/files\(target)"
+        switch files {
+        case .artifact(let id, let version):
+            let prefix = "/v0/artifacts/\(id)"
+            if path.hasPrefix("/api/") { return prefix + target }
+            guard path != "/api", path != "/" else { throw BrowserError.forbidden }
+            return "\(prefix)/versions/\(version)/files\(target)"
+        case .vault(let surfaceId, let entryId, let version):
+            guard path != "/" else { throw BrowserError.forbidden }
+            return "/v0/surfaces/vault/\(surfaceId)/entries/\(entryId)/versions/\(version)/files\(target)"
+        }
     }
 
     public static func validID(_ value: String) -> Bool {
@@ -79,6 +92,24 @@ public enum BrowserPolicy {
             guard let url = URL(string: origin), url.scheme == "http", Authority(url: url) == authority else { throw BrowserError.forbidden }
         }
     }
+}
+
+/// Whose files an isolated page origin serves.
+public enum BrowserFiles: Equatable, Sendable {
+    /// An artifact version: its files, and its `/api/*` data bridge.
+    case artifact(id: String, version: Int)
+    /// One version of a vault's artifact entry: its files only.
+    case vault(surfaceId: String, entryId: String, version: Int)
+
+    var valid: Bool {
+        switch self {
+        case .artifact(let id, let version): BrowserPolicy.validID(id) && version > 0
+        case .vault(let surfaceId, let entryId, let version): BrowserPolicy.validID(surfaceId) && BrowserPolicy.validID(entryId) && version > 0
+        }
+    }
+
+    /// Whether a page's `/api/*` reaches the artifact data bridge.
+    var bridges: Bool { if case .artifact = self { return true } else { return false } }
 }
 
 public enum BrowserError: Error, Equatable, Sendable {
@@ -115,11 +146,16 @@ public struct BrowserHTTPHead: Sendable {
     }
 
     public func artifactRequest(artifactID: String, version: Int, credential: String, keepAlive: Bool = false, authority: String = "server.tailcat") throws -> BrowserHTTPHead {
+        try filesRequest(.artifact(id: artifactID, version: version), credential: credential, keepAlive: keepAlive, authority: authority)
+    }
+
+    /// The page's request for one of `files`, as the daemon takes it.
+    public func filesRequest(_ files: BrowserFiles, credential: String, keepAlive: Bool = false, authority: String = "server.tailcat") throws -> BrowserHTTPHead {
         let parts = line.split(separator: " ")
         guard parts.count == 3, parts[2] == "HTTP/1.1", parts[0] != "CONNECT",
               parts[0].utf8.allSatisfy({ (65...90).contains($0) }),
               !credential.contains("\r"), !credential.contains("\n") else { throw BrowserError.malformed }
-        let target = try BrowserPolicy.artifactPath(target: String(parts[1]), artifactID: artifactID, version: version)
+        let target = try BrowserPolicy.path(target: String(parts[1]), files: files)
         let stripped: Set<String> = ["host", "authorization", "proxy-authorization", "proxy-connection", "connection", "x-happy-proxy-route", "expect"]
         var fields = self.fields.filter { !stripped.contains($0.0.lowercased()) }
         fields += [("Host", authority), ("Authorization", "Bearer \(credential)"), ("Connection", value("upgrade") == nil ? (keepAlive ? "keep-alive" : "close") : "Upgrade")]
