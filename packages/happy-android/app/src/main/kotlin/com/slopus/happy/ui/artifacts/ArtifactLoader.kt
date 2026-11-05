@@ -9,6 +9,7 @@ import com.slopus.happy.artifacts.ArtifactMarkdown
 import com.slopus.happy.artifacts.ArtifactMedia
 import com.slopus.happy.artifacts.ArtifactMediaItem
 import com.slopus.happy.artifacts.ArtifactPageMode
+import com.slopus.happy.artifacts.AppClose
 import com.slopus.happy.artifacts.ArtifactRef
 import com.slopus.happy.artifacts.ArtifactReference
 import com.slopus.happy.artifacts.ArtifactShow
@@ -64,10 +65,11 @@ sealed interface ArtifactUi {
     data class Gallery(val items: List<ArtifactMediaItem>) : ArtifactUi
 
     /**
-     * A page in the in-app browser, made when it shows; [app] when it asks
-     * to run as an app ([ArtifactPageMode]), full screen over everything.
+     * A page in the in-app browser, made when it shows; [app] where its
+     * close button goes when it asks to run as an app ([ArtifactPageMode]),
+     * full screen over everything.
      */
-    class Page(val app: Boolean = false, val prepare: suspend () -> BrowserPage) : ArtifactUi
+    class Page(val app: AppClose? = null, val prepare: suspend () -> BrowserPage) : ArtifactUi
 
     /** A file Android's WebView doesn't draw (a PDF, an office file), opened in an app that reads it. */
     data class Openable(val file: ArtifactFile) : ArtifactUi

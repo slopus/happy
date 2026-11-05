@@ -1678,10 +1678,19 @@ iOS's `docs/browser-proxy.md` is the contract; `browser/` ports it
   `BEHAVIOR_DEFAULT` (SHOW_TRANSIENT_BARS_BY_SWIPE turns the edge back
   gesture off while they are hidden) and shown again on close; back always
   closes it, as does the × (`AppCloseButton`: 32 at 8 in from the safe
-  top-start, 35% after 3 s, woken by a touch within 64). `BrowserAppMode`
-  is the page's side: no zoom, scroll, pull to reload, selection or long
-  press, `data-happy-page-mode="app"`, the host sheet at document start, and
-  `--happy-app-inset-*` (the safe area; the top plus 48 for the ×).
+  corner `<meta name="happy-app-close">` names, `top-start` by default and
+  start/end flipping right to left, 35% after 3 s, woken by a touch within
+  64). Swiped in, the bars go again after 3 s. With `none` there is no ×
+  until a pull down from the top 24 shows it
+  top-start for 3 s; the system takes a top-edge pull a move or two in, so
+  it needs only 8 of drag. `BrowserAppMode` is the page's side: no zoom,
+  scroll, pull to reload, selection or long press,
+  `data-happy-page-mode="app"`, `data-happy-app-close`, the host sheet at
+  document start, `--happy-app-inset-*` (the safe area, plus 48 on the ×'s
+  edge), `--happy-app-close-x/y/width/height` (its 48 box in CSS px, 0 for
+  `none`), and `window.happyApp.close()`, which posts to a
+  `WebMessageListener` allowed only for the page's own synthetic origin and
+  main frame (`BrowserAppMode.accepts`).
   Android centres no page, so app implies full width with nothing to do.
   `ArtifactAppDeviceTest` runs a canvas game through the real proxy on an
   emulator. The WebView matches its `SwipeRefreshLayout`: wrapping its

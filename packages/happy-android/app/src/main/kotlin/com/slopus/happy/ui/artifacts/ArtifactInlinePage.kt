@@ -45,6 +45,7 @@ import com.slopus.happy.agent.HappyUrls
 import com.slopus.happy.references.References
 import com.slopus.happy.artifacts.ArtifactClient
 import com.slopus.happy.artifacts.ArtifactPageMode
+import com.slopus.happy.artifacts.AppClose
 import com.slopus.happy.ui.browser.BrowserPage
 import com.slopus.happy.ui.browser.WebViewProfiles
 import com.slopus.happy.ui.browser.WebViewProxyOverride
@@ -77,23 +78,23 @@ class InlinePages(
     val prepare: suspend (artifactId: String, page: References.Page) -> BrowserPage,
     /** A link tapped in a page to anywhere but its own files: a Happy URL opens in the app, anything else a browser of its own. */
     val onOpen: (String) -> Unit,
-    /** Whether [artifactId]'s [page] asks to run as an app ([ArtifactPageMode]). */
-    val mode: suspend (artifactId: String, page: References.Page) -> Boolean = { _, _ -> false },
+    /** Where [artifactId]'s [page] puts its close button if it asks to run as an app ([ArtifactPageMode]); null for a page. */
+    val mode: suspend (artifactId: String, page: References.Page) -> AppClose? = { _, _ -> null },
 ) {
     private val heights = mutableStateMapOf<String, Float>()
-    private val apps = mutableStateMapOf<String, Boolean>()
+    private val apps = mutableStateMapOf<String, AppClose?>()
 
     /**
      * Whether [artifactId]'s [page] runs as an app, once read: then it is
      * never run inline, and its card says App and opens it.
      */
-    fun isApp(artifactId: String, page: References.Page): Boolean = apps[key(artifactId, page)] == true
+    fun isApp(artifactId: String, page: References.Page): Boolean = apps[key(artifactId, page)] != null
 
     /** Reads whether [page] runs as an app, once per version and entry; true when it does. */
     suspend fun readMode(artifactId: String, page: References.Page): Boolean {
         val key = key(artifactId, page)
-        apps[key]?.let { return it }
-        return mode(artifactId, page).also { apps[key] = it }
+        if (key in apps) return apps[key] != null
+        return mode(artifactId, page).also { apps[key] = it } != null
     }
 
     private fun key(artifactId: String, page: References.Page) = "$artifactId/${page.version}/${page.entry}"

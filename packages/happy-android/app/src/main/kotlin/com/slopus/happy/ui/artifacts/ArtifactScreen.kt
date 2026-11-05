@@ -154,7 +154,7 @@ fun ArtifactScreen(
         actions.onBack,
         ArtifactTags.SCREEN,
         actions = {
-            if (ui is ArtifactUi.Page && !ui.app) BrowserControls(browser)
+            if (ui is ArtifactUi.Page && ui.app == null) BrowserControls(browser)
             // A page shares its link from the browser's own menu.
             val link = actions.shareLink?.takeIf { ui !is ArtifactUi.Page && ui !is ArtifactUi.Message }?.invoke()
             if (link != null) {
@@ -206,8 +206,8 @@ fun ArtifactScreen(
                     )
                     is ArtifactUi.Gallery -> if (media != null) ArtifactGallery(ui.items, media) { index -> viewing = ui.items to index }
                     // An app goes full screen over everything; closing it leaves the artifact.
-                    is ArtifactUi.Page -> if (ui.app) {
-                        ArtifactAppPage(browser, ui.prepare, computer, onClose = actions.onBack, onOpenElsewhere = actions.onOpenWeb, artifactLink = actions.artifactLink)
+                    is ArtifactUi.Page -> if (ui.app != null) {
+                        ArtifactAppPage(browser, ui.prepare, computer, ui.app, onClose = actions.onBack, onOpenElsewhere = actions.onOpenWeb, artifactLink = actions.artifactLink)
                     } else {
                         BrowserView(browser, prepare = ui.prepare, computer = computer, onOpenElsewhere = actions.onOpenWeb, artifactLink = actions.artifactLink)
                     }

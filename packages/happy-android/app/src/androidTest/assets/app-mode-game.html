@@ -11,6 +11,9 @@
   canvas { position: fixed; inset: 0; width: 100vw; height: 100dvh; display: block; touch-action: none; }
   /* Taller than the screen on purpose: the host must keep it from scrolling. */
   #tall { height: 300vh; }
+  /* The game's own exit, clear of the host's insets, in the middle of the bottom edge. */
+  #exit { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--happy-app-inset-bottom, 0px) + 56px); z-index: 1;
+    font: 600 15px system-ui, sans-serif; color: #101820; background: #facc15; border: 0; border-radius: 18px; padding: 8px 18px; }
   #probe { position: fixed; visibility: hidden; padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
 </style>
 </head>
@@ -18,6 +21,7 @@
 <div id="tall"></div>
 <div id="probe"></div>
 <canvas id="c"></canvas>
+<button id="exit" onclick="happyApp.close()">Exit game</button>
 <script>
 const c = document.getElementById('c'), g = c.getContext('2d');
 let w = 0, h = 0, dpr = 1, touches = 0, paddle = 0.5, ball = { x: 0.5, y: 0.3, vx: 0.004, vy: 0.006 }, hits = 0;
@@ -25,6 +29,7 @@ const dots = [];
 function size() { dpr = devicePixelRatio || 1; w = innerWidth; h = innerHeight; c.width = w * dpr; c.height = h * dpr; }
 addEventListener('resize', size); size();
 function inset(name) { return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--happy-app-inset-' + name)) || 0; }
+function closeBox(name) { return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--happy-app-close-' + name)) || 0; }
 function env() { const s = getComputedStyle(document.getElementById('probe')); return [s.paddingTop, s.paddingRight, s.paddingBottom, s.paddingLeft].map(v => Math.round(parseFloat(v))).join(' '); }
 function point(x, y) { paddle = x / w; dots.push({ x, y, t: performance.now() }); }
 c.addEventListener('pointerdown', e => { touches++; point(e.clientX, e.clientY); });
@@ -43,6 +48,9 @@ function frame(now) {
   g.strokeStyle = '#ff9a3c'; g.lineWidth = 4; g.strokeRect(2, 2, w - 4, h - 4);
   g.setLineDash([8, 6]); g.strokeStyle = '#4ade80'; g.lineWidth = 2;
   g.strokeRect(left, top, w - left - right, h - top - bottom); g.setLineDash([]);
+  // The host's close button's box, solid red.
+  const cx = closeBox('x'), cy = closeBox('y'), cw = closeBox('width'), ch = closeBox('height');
+  if (cw && ch) { g.strokeStyle = '#f43f5e'; g.lineWidth = 2; g.strokeRect(cx, cy, cw, ch); }
   for (const d of dots) { const a = 1 - (now - d.t) / 1500; if (a > 0) { g.fillStyle = `rgba(96,165,250,${a})`; g.beginPath(); g.arc(d.x, d.y, 14, 0, 7); g.fill(); } }
   g.fillStyle = '#facc15'; g.beginPath(); g.arc(left + ball.x * (w - left - right), top + ball.y * (h - top - bottom - 40), 10, 0, 7); g.fill();
   g.fillStyle = '#e8f0ff'; g.fillRect(left + paddle * (w - left - right) - 50, h - bottom - 24, 100, 10);
@@ -52,10 +60,14 @@ function frame(now) {
     'scrollY=' + scrollY + '  scrollHeight=' + document.documentElement.scrollHeight + '  zoom=' + (visualViewport ? visualViewport.scale.toFixed(2) : '?'),
     '--happy-app-inset t/r/b/l=' + [top, right, bottom, left].map(Math.round).join(' '),
     'env(safe-area-inset) t/r/b/l=' + env(),
+    'close=' + document.documentElement.getAttribute('data-happy-app-close') + '  box x/y/w/h=' + [cx, cy, cw, ch].map(Math.round).join(' '),
+    'happyApp.close: ' + typeof (window.happyApp && happyApp.close),
     'touches=' + touches + '  hits=' + hits,
   ];
   g.font = '13px system-ui, sans-serif';
-  lines.forEach((l, i) => { g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(left + 8, top + 8 + i * 18, g.measureText(l).width + 8, 18); g.fillStyle = '#e8f0ff'; g.fillText(l, left + 12, top + 22 + i * 18); });
+  // Below the top inset and a little more, so a revealed button never sits on the words.
+  const y0 = top + 64;
+  lines.forEach((l, i) => { g.fillStyle = 'rgba(0,0,0,.55)'; g.fillRect(left + 8, y0 + i * 18, g.measureText(l).width + 8, 18); g.fillStyle = '#e8f0ff'; g.fillText(l, left + 12, y0 + 14 + i * 18); });
   document.title = 'scrollY=' + scrollY + ';zoom=' + (visualViewport ? visualViewport.scale.toFixed(2) : '?') + ';touches=' + touches;
   requestAnimationFrame(frame);
 }
