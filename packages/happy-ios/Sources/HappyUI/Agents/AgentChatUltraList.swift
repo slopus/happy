@@ -548,6 +548,10 @@ final class AgentChatRow: ListRow {
     /// followed as growth, by the budget; a finished row comes into view
     /// whole.
     let isStreaming: Bool
+    /// The person's own message, sent or queued under the agent's work:
+    /// the newest of them, last at the foot, stays on the composer while
+    /// the reply above it grows (`ChatRowPlan.mine`).
+    var pinsToBottomEdge: Bool { plan.mine }
     weak var transcript: AgentChatUltraList?
 
     init(identity: String, revision: UInt64, plan: ChatRowPlan, height: CGFloat? = nil, transcript: AgentChatUltraList, isStreaming: Bool = false) {

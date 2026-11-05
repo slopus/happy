@@ -276,6 +276,7 @@ enum ChatRowRenderer {
                     text: firstText, status: layout.delivery
                 )
             },
+            mine: outgoing != nil,
             selection: copyTarget.isNull || selectable.isEmpty ? nil : ChatSelectable(texts: selectable, whole: copyText, frame: copyTarget, card: false)
         )
     }

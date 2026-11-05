@@ -276,7 +276,7 @@ actor ChatPlanner {
             let selection = layout.bubble.flatMap { bubble in
                 selectable.isEmpty ? nil : ChatSelectable(texts: selectable, whole: text, frame: bubble, card: false)
             }
-            return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: label, toggles: layout.foldControl == nil ? nil : toggles, flight: flight, selection: selection)
+            return ChatRowPlan(id: item.id, size: layout.size, items: items, hits: hits, accessibilityLabel: label, toggles: layout.foldControl == nil ? nil : toggles, flight: flight, mine: true, selection: selection)
         case .collaborator, .failure, .tool, .turnEnd, .trace, .question:
             // Planned above.
             return ChatRowPlan(id: item.id, size: CGSize(width: width, height: 0), items: [])

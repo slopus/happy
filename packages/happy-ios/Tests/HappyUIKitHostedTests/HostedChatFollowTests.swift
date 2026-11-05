@@ -12,7 +12,8 @@ import XCTest
 /// holds still until the reader is back at the foot; a finished message
 /// arriving there comes into view whole; a reader further back never sees
 /// what they are looking at move, whatever grows, arrives or goes around
-/// it; a send of the person's own always comes fully into view.
+/// it; a send of the person's own always comes fully into view and,
+/// last at the foot, stays on the composer while the reply above it grows.
 ///
 /// Plans here are plain boxes of known heights, so every distance is exact.
 @MainActor
@@ -44,10 +45,11 @@ final class HostedChatFollowTests: XCTestCase {
         }
 
         /// `words`: an agent's words, which stream while it is at work.
-        func plan(_ id: String, height: CGFloat, words: Bool = false) -> ChatRowPlan {
+        /// `mine`: the person's own message.
+        func plan(_ id: String, height: CGFloat, words: Bool = false, mine: Bool = false) -> ChatRowPlan {
             ChatRowPlan(id: id, size: .init(width: width, height: height), items: [
                 .box(ChatBox(frame: .init(x: 0, y: 0, width: width, height: height), fill: Palette.surface)),
-            ], revealable: words)
+            ], mine: mine, revealable: words)
         }
 
         func update() -> ChatListUpdate {
@@ -64,7 +66,7 @@ final class HostedChatFollowTests: XCTestCase {
 
         func setHeight(_ id: String, _ height: CGFloat) {
             let index = plans.firstIndex { $0.id == id }!
-            plans[index] = plan(id, height: height, words: plans[index].revealable)
+            plans[index] = plan(id, height: height, words: plans[index].revealable, mine: plans[index].mine)
         }
 
         func setInsets(_ insets: UIEdgeInsets, keyboard: ChatUltraKeyboard.Change? = nil) {
@@ -617,6 +619,134 @@ final class HostedChatFollowTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(chat.frame("sent")).maxY, chat.restingFoot, accuracy: 0.5)
     }
 
+    /// The person's message, sent and last: it rests on the composer.
+    private func send(_ chat: Chat, _ id: String = "sent", height: CGFloat = 90, file: StaticString = #filePath, line: UInt = #line) async throws {
+        chat.adapter.revealNextSend()
+        chat.plans.insert(chat.plan(id, height: height, mine: true), at: 0)
+        chat.apply(animated: true)
+        try await settle(chat)
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertEqual(try XCTUnwrap(chat.frame(id), file: file, line: line).maxY, chat.restingFoot, accuracy: 0.5, "the send on the composer", file: file, line: line)
+    }
+
+    /// The reply above the person's newest message grows a line at a
+    /// time; the message stays on the composer through every one of them.
+    private func growAbove(_ chat: Chat, _ id: String, lines: Int, keeping sent: String, on foot: CGFloat, file: StaticString = #filePath, line: UInt = #line) async throws {
+        for index in 0..<lines {
+            chat.setHeight(id, try XCTUnwrap(chat.plans.first { $0.id == id }).size.height + 24)
+            chat.apply(animated: true)
+            try await settle(chat)
+            XCTAssertEqual(try XCTUnwrap(chat.frame(sent), file: file, line: line).maxY, foot, accuracy: 0.5, "line \(index): the send left the composer", file: file, line: line)
+        }
+        XCTAssertTrue(chat.adapter.isFollowingNewest, file: file, line: line)
+    }
+
+    func testThePersonsNewestMessageStaysOnTheComposerWhileTheReplyAboveGrows() async throws {
+        let chat = try await chat(forty)
+        try await send(chat)
+        // Thirty-five lines over it, far past the two-line budget.
+        try await growAbove(chat, "m0", lines: 35, keeping: "sent", on: chat.restingFoot)
+        XCTAssertEqual(chat.adapter.visibleMinY, 0, accuracy: 0.5)
+    }
+
+    /// The person's message going from the outbox to confirmed is a new
+    /// plan of the same row: it stays on the composer through it,
+    /// mid-stream.
+    func testASendConfirmedMidStreamStaysOnTheComposer() async throws {
+        let chat = try await chat(forty)
+        try await send(chat)
+        try await growAbove(chat, "m0", lines: 5, keeping: "sent", on: chat.restingFoot)
+        // Confirmed, with its time under it, as the reply grows.
+        chat.plans[0] = chat.plan("sent", height: 96, mine: true)
+        chat.setHeight("m0", try XCTUnwrap(chat.plans.first { $0.id == "m0" }).size.height + 24)
+        chat.apply(animated: true)
+        try await settle(chat)
+        XCTAssertEqual(try XCTUnwrap(chat.frame("sent")).maxY, chat.restingFoot, accuracy: 0.5)
+        try await growAbove(chat, "m0", lines: 10, keeping: "sent", on: chat.restingFoot)
+    }
+
+    /// A drag away from the pinned message ends its pin: what grows above
+    /// it then moves nothing. Back at the foot, it holds the composer again.
+    func testAPinnedMessageDraggedAwayFromMovesNothingUntilTheFoot() async throws {
+        let chat = try await chat(forty)
+        try await send(chat)
+        try await growAbove(chat, "m0", lines: 3, keeping: "sent", on: chat.restingFoot)
+        let time = CACurrentMediaTime()
+        chat.list.receiveScrollInput(.init(time: time, phase: .touchDown))
+        chat.list.receiveScrollInput(.init(time: time + 0.01, phase: .began))
+        chat.list.receiveScrollInput(.init(time: time + 0.05, phase: .changed, translation: .init(y: 200)))
+        chat.list.receiveScrollInput(.init(time: time + 0.3, phase: .ended, translation: .init(y: 200), velocity: .zero))
+        let rest = ContinuousClock.now + .seconds(3)
+        while chat.list.isDecelerating || chat.list.isScrollFlightActive, ContinuousClock.now < rest { try await Task.sleep(for: .milliseconds(10)) }
+        try await settle(chat)
+        XCTAssertEqual(chat.adapter.visibleMinY, 200, accuracy: 0.5)
+        XCTAssertFalse(chat.adapter.isFollowingNewest)
+        let before = chat.onScreen()
+        for _ in 0..<10 {
+            chat.setHeight("m0", try XCTUnwrap(chat.plans.first { $0.id == "m0" }).size.height + 24)
+            chat.apply(animated: true)
+            try await settle(chat)
+            assertSame(before, chat.onScreen(), "dragged away")
+        }
+        chat.adapter.scrollToNewest(animated: false)
+        try await settle(chat)
+        XCTAssertEqual(try XCTUnwrap(chat.frame("sent")).maxY, chat.restingFoot, accuracy: 0.5)
+        try await growAbove(chat, "m0", lines: 10, keeping: "sent", on: chat.restingFoot)
+    }
+
+    /// The agent's reply arriving under the person's message ends the pin:
+    /// a streaming reply is followed by two lines from its first words, a
+    /// finished one comes in whole.
+    func testAReplyUnderThePinnedMessageEndsThePin() async throws {
+        let chat = try await chat(forty)
+        try await send(chat)
+        try await growAbove(chat, "m0", lines: 10, keeping: "sent", on: chat.restingFoot)
+        let top = try XCTUnwrap(chat.frame("sent")).minY
+        chat.streaming = true
+        chat.plans.insert(chat.plan("r", height: 30, words: true), at: 0)
+        chat.apply(animated: true)
+        try await settle(chat)
+        XCTAssertEqual(try XCTUnwrap(chat.frame("sent")).minY, top - 30, accuracy: 0.5, "its first line followed")
+        chat.setHeight("r", 330)
+        chat.apply(animated: true)
+        try await settle(chat)
+        XCTAssertEqual(try XCTUnwrap(chat.frame("sent")).minY, top - 50, accuracy: 0.5, "30 and 20 make the 50")
+        XCTAssertEqual(chat.adapter.visibleMinY, 280, accuracy: 0.5)
+        XCTAssertFalse(chat.adapter.isFollowingNewest)
+
+        // Again, and a finished message comes in under it.
+        chat.streaming = false
+        chat.adapter.scrollToNewest(animated: false)
+        try await settle(chat)
+        try await send(chat, "again")
+        chat.plans.insert(chat.plan("done", height: 260, words: true), at: 0)
+        chat.apply(animated: true)
+        try await settle(chat)
+        XCTAssertEqual(try XCTUnwrap(chat.frame("done")).maxY, chat.restingFoot, accuracy: 0.5, "a finished reply whole")
+        XCTAssertEqual(chat.adapter.visibleMinY, 0, accuracy: 0.5)
+    }
+
+    /// The keyboard and the composer coming and going keep the pinned
+    /// message on the composer, and growth above it meanwhile.
+    func testTheKeyboardKeepsThePinnedMessageOnTheComposer() async throws {
+        let chat = try await chat(forty)
+        try await send(chat)
+        let height = chat.root.bounds.height
+        chat.setInsets(.init(top: 100, left: 0, bottom: 336 + 60, right: 0), keyboard: .init(transition: .keyboard(0.25)))
+        try await settle(chat)
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(try XCTUnwrap(chat.frame("sent")).maxY, height - 396 - 10, accuracy: 0.5, "the keyboard up")
+        try await growAbove(chat, "m0", lines: 10, keeping: "sent", on: height - 396 - 10)
+        chat.setInsets(.init(top: 100, left: 0, bottom: 336 + 120, right: 0))
+        try await settle(chat)
+        XCTAssertEqual(try XCTUnwrap(chat.frame("sent")).maxY, height - 456 - 10, accuracy: 0.5, "the composer grew a line")
+        chat.setInsets(.init(top: 100, left: 0, bottom: 60, right: 0), keyboard: .init(transition: .keyboard(0.25)))
+        try await settle(chat)
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(try XCTUnwrap(chat.frame("sent")).maxY, chat.restingFoot, accuracy: 0.5, "the keyboard down")
+        try await growAbove(chat, "m0", lines: 5, keeping: "sent", on: chat.restingFoot)
+    }
+
     func testScrollToTheNewestMidStreamFollowsTwoLinesAgain() async throws {
         let chat = try await chat(forty)
         chat.setHeight("m0", 400)
@@ -738,6 +868,110 @@ final class HostedChatFollowTests: XCTestCase {
         try await wait()
         XCTAssertEqual(tool.convert(tool.bounds, to: transcript).minY, toolTop - 18, accuracy: 0.5, "30 and 18 make the 48")
         XCTAssertEqual(transcript.distanceFromNewest, 200 - 48, accuracy: 0.5)
+    }
+
+    /// In the agents' chat a send while the agent works waits under its
+    /// reply, and stays on the composer as the reply streams above it,
+    /// line after line; a second send takes its place there; the first,
+    /// taken into the run, stays put above it.
+    func testTheAgentsQueuedSendsStayOnTheComposerWhileTheReplyAboveStreams() async throws {
+        let scene = try await hostedActiveScene()
+        let original = scene.keyWindow
+        let root = UIViewController()
+        let window = hostedKeyWindow(in: scene, root: root)
+        let host = Host()
+        let transcript = AgentChatUltraList(frame: root.view.bounds)
+        transcript.host = host
+        root.view.addSubview(transcript)
+        defer {
+            transcript.deactivate()
+            window.isHidden = true
+            original?.makeKey()
+        }
+        window.layoutIfNeeded()
+        transcript.followBudget = 48
+        transcript.setViewport(frame: root.view.bounds, insets: .init(top: 100, left: 0, bottom: 80, right: 0))
+        let width = root.view.bounds.width
+        let foot = root.view.bounds.height - 80
+        func plan(_ id: String, _ height: CGFloat, words: Bool = false, mine: Bool = false) -> ChatRowPlan {
+            ChatRowPlan(id: id, size: .init(width: width, height: height), items: [], mine: mine, revealable: words)
+        }
+        func frame(_ id: String) -> CGRect? {
+            guard let index = transcript.list.items.firstIndex(where: { $0.identity == "chat:row:\(id)" }),
+                  let view = transcript.list.loadedItemView(at: index) else { return nil }
+            return view.convert(view.bounds, to: transcript)
+        }
+        func wait(_ condition: () -> Bool = { false }, seconds: Double = 0.4) async throws {
+            let deadline = ContinuousClock.now + .milliseconds(Int(seconds * 1000))
+            while !condition(), ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+            try await Task.sleep(for: .milliseconds(60))
+        }
+        var settled = (0..<39).map { plan("r\($0)", 100) } + [plan("reply", 100, words: true)]
+        var waiting: [ChatRowPlan] = []
+        func apply() { transcript.apply(settled + waiting, streaming: true, queued: waiting.count) }
+        apply()
+        try await wait({ transcript.list.newestLoadedView != nil }, seconds: 5)
+        XCTAssertEqual(transcript.distanceFromNewest, 0, accuracy: 0.5)
+
+        func grow(_ id: String, lines: Int, keeping sent: String, file: StaticString = #filePath, line: UInt = #line) async throws {
+            for index in 0..<lines {
+                let at = try XCTUnwrap(settled.firstIndex { $0.id == id }, file: file, line: line)
+                let height = settled[at].size.height + 24
+                settled[at] = plan(id, height, words: true)
+                apply()
+                try await wait({ frame(id)?.height == height })
+                XCTAssertEqual(try XCTUnwrap(frame(sent), file: file, line: line).maxY, foot, accuracy: 0.5, "line \(index): the send left the composer", file: file, line: line)
+            }
+            XCTAssertEqual(transcript.distanceFromNewest, 0, accuracy: 0.5, file: file, line: line)
+        }
+
+        // Sent under the streaming reply: it waits there, on the composer,
+        // for thirty-five lines of the reply.
+        transcript.revealNextSend(animated: true)
+        waiting = [plan("q1", 90, mine: true)]
+        apply()
+        try await wait({ frame("q1")?.maxY == foot }, seconds: 2)
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertEqual(try XCTUnwrap(frame("q1")).maxY, foot, accuracy: 0.5)
+        try await grow("reply", lines: 35, keeping: "q1")
+
+        // Its row going from the outbox to confirmed, mid-stream.
+        waiting = [plan("q1", 96, mine: true)]
+        try await grow("reply", lines: 3, keeping: "q1")
+
+        // A second send waits under the first and takes the composer.
+        transcript.revealNextSend(animated: true)
+        waiting.append(plan("q2", 60, mine: true))
+        apply()
+        try await wait({ frame("q2")?.maxY == foot }, seconds: 2)
+        try await Task.sleep(for: .milliseconds(300))
+        try await grow("reply", lines: 5, keeping: "q2")
+        XCTAssertEqual(try XCTUnwrap(frame("q1")).maxY, try XCTUnwrap(frame("q2")).minY, accuracy: 0.5, "the first send right above it")
+
+        // The agent takes the first in, and answers it above the second,
+        // still waiting: that answer grows above the second as well.
+        waiting.removeFirst()
+        settled.append(plan("q1", 96, mine: true))
+        settled.append(plan("answer", 30, words: true))
+        apply()
+        try await wait({ frame("answer") != nil })
+        XCTAssertEqual(try XCTUnwrap(frame("q2")).maxY, foot, accuracy: 0.5)
+        try await grow("answer", lines: 10, keeping: "q2")
+
+        // The second taken in too and answered under it: a streaming
+        // answer is followed by two lines from its first words, then held.
+        waiting = []
+        settled.append(plan("q2", 60, mine: true))
+        settled.append(plan("last", 30, words: true))
+        apply()
+        try await wait({ frame("last") != nil })
+        let top = try XCTUnwrap(frame("q2")).minY
+        let at = try XCTUnwrap(settled.firstIndex { $0.id == "last" })
+        settled[at] = plan("last", 330, words: true)
+        apply()
+        try await wait({ frame("last")?.height == 330 })
+        XCTAssertEqual(try XCTUnwrap(frame("q2")).minY, top - 18, accuracy: 0.5, "30 and 18 make the 48")
+        XCTAssertEqual(transcript.distanceFromNewest, 330 - 48, accuracy: 0.5)
     }
 }
 #endif

@@ -27,6 +27,10 @@ final class ChatRowPlan: @unchecked Sendable {
     let toggles: String?
     /// The person's own message: what its send transition flies in.
     let flight: ChatRowFlight?
+    /// The person's own message, on its way, waiting or taken, whether or
+    /// not it flies in: the newest of them, last, stays on the composer
+    /// while what is above it grows.
+    let mine: Bool
     /// An agent's words, which may still be arriving: shown a character at
     /// a time as they grow (`ChatRevealDriver`).
     let revealable: Bool
@@ -35,7 +39,7 @@ final class ChatRowPlan: @unchecked Sendable {
     /// whole message as Copy copies it; nil where there are none.
     let selection: ChatSelectable?
 
-    init(id: String, size: CGSize, items: [ChatDrawItem], hits: [ChatHit] = [], alpha: CGFloat = 1, accessibilityLabel: String? = nil, proposals: [(artifactId: String, layout: SidebarProposalLayout, frame: CGRect)] = [], toggles: String? = nil, flight: ChatRowFlight? = nil, revealable: Bool = false, selection: ChatSelectable? = nil) {
+    init(id: String, size: CGSize, items: [ChatDrawItem], hits: [ChatHit] = [], alpha: CGFloat = 1, accessibilityLabel: String? = nil, proposals: [(artifactId: String, layout: SidebarProposalLayout, frame: CGRect)] = [], toggles: String? = nil, flight: ChatRowFlight? = nil, mine: Bool = false, revealable: Bool = false, selection: ChatSelectable? = nil) {
         self.id = id
         self.size = size
         self.items = items
@@ -45,6 +49,7 @@ final class ChatRowPlan: @unchecked Sendable {
         self.proposals = proposals
         self.toggles = toggles
         self.flight = flight
+        self.mine = mine
         self.revealable = revealable
         self.selection = selection
     }

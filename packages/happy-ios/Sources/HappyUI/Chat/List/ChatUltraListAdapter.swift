@@ -89,14 +89,19 @@ final class ChatUltraRow: ListRow {
     /// foot it is followed as growth, by the budget; a finished message
     /// comes into view whole.
     let isStreaming: Bool
+    /// The person's own message, on its way, waiting or taken, or the
+    /// footer under it: the newest of them, last, stays on the composer
+    /// while a reply above it grows (`ChatRowPlan.mine`).
+    let pinsToBottomEdge: Bool
     private let replanned = ReplannedAtWidth<ChatRowPlan>()
     weak var adapter: ChatUltraListAdapter?
     var measuresAsynchronously: Bool { !reveals }
 
     init(identity: String, revision: UInt64, plan: ChatRowPlan, contentY: CGFloat, adapter: ChatUltraListAdapter, preparedNode: NodeRow? = nil, reveals: Bool = false, height: CGFloat? = nil,
-         plannedWidth: CGFloat? = nil, replan: (@Sendable (CGFloat) -> ChatRowPlan)? = nil, isStreaming: Bool = false) {
+         plannedWidth: CGFloat? = nil, replan: (@Sendable (CGFloat) -> ChatRowPlan)? = nil, isStreaming: Bool = false, pins: Bool? = nil) {
         self.identity = identity; self.revision = revision; self.plan = plan; self.contentY = contentY; self.adapter = adapter
         self.isStreaming = isStreaming
+        pinsToBottomEdge = pins ?? plan.mine
         self.reveals = reveals
         self.height = height ?? plan.size.height
         self.plannedWidth = plannedWidth ?? plan.size.width
@@ -543,7 +548,8 @@ final class ChatUltraListAdapter {
         var moved = false
         var grew = false
         let plannedWidth = update.model.width
-        func descriptor(_ plan: ChatRowPlan, identity: String, y: CGFloat, input: ChatRowInput? = nil, replan: (@Sendable (CGFloat) -> ChatRowPlan)? = nil) -> ChatUltraRow {
+        func descriptor(_ plan: ChatRowPlan, identity: String, y: CGFloat, input: ChatRowInput? = nil, replan: (@Sendable (CGFloat) -> ChatRowPlan)? = nil, pins: Bool? = nil) -> ChatUltraRow {
+            let pins = pins ?? plan.mine
             let reveals = revealed.contains(identity)
             let revealing = reveal.height(identity)
             let height = revealing ?? plan.size.height
@@ -551,14 +557,14 @@ final class ChatUltraListAdapter {
                 if revealing != nil { grew = true } else { moved = true }
             }
             if let cached = rows[identity], cached.plan === plan, cached.reveals == reveals, cached.height == height {
-                let row = cached.contentY == y ? cached : ChatUltraRow(identity: identity, revision: cached.revision, plan: plan, contentY: y, adapter: self, preparedNode: cached.node, reveals: reveals, height: height, plannedWidth: cached.plannedWidth, replan: cached.replan, isStreaming: cached.isStreaming)
+                let row = cached.contentY == y && cached.pinsToBottomEdge == pins ? cached : ChatUltraRow(identity: identity, revision: cached.revision, plan: plan, contentY: y, adapter: self, preparedNode: cached.node, reveals: reveals, height: height, plannedWidth: cached.plannedWidth, replan: cached.replan, isStreaming: cached.isStreaming, pins: pins)
                 next[identity] = row; return row
             }
             // The revision is never reused, even after removing an identity.
             revision &+= 1
             let replan = replan ?? input.map { input -> @Sendable (CGFloat) -> ChatRowPlan in { ChatRowRenderer.plan(input, width: $0) } }
             let row = ChatUltraRow(identity: identity, revision: revision, plan: plan, contentY: y, adapter: self, reveals: reveals, height: height, plannedWidth: plannedWidth, replan: replan,
-                                   isStreaming: identity == streamingIdentity)
+                                   isStreaming: identity == streamingIdentity, pins: pins)
             next[identity] = row
             return row
         }
@@ -569,7 +575,11 @@ final class ChatUltraListAdapter {
         let streamingIdentity = update.streaming ? update.plans.first.flatMap { $0.revealable ? "chat:message:\($0.id)" : nil } : nil
         var newestFirst: [any ListRow] = []
         newestFirst.reserveCapacity(update.plans.count + 2)
-        if let footer = update.footer { newestFirst.append(descriptor(footer, identity: "chat:newer-end", y: 0, replan: update.footerReplan)) }
+        // The footer under the person's own newest message keeps it on the
+        // composer for it, as the last row.
+        if let footer = update.footer {
+            newestFirst.append(descriptor(footer, identity: "chat:newer-end", y: 0, replan: update.footerReplan, pins: update.plans.first?.mine == true))
+        }
         if landing == nil, let flight, let plan = update.plans.first, rows["chat:message:\(plan.id)"] == nil, flight.awaits(plan) {
             landing = ("chat:message:\(plan.id)", plan)
             veiled = "chat:message:\(plan.id)"
