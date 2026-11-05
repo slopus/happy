@@ -155,6 +155,15 @@ public struct ArtifactSummary: Codable, Equatable, Sendable, Identifiable {
         return entry.mimeType.hasPrefix("image/") || entry.mimeType.hasPrefix("video/")
     }
 
+    /// Where the latest version's cover is served
+    /// (`/v0/artifacts/:id/versions/:n/files/<path>`, each segment
+    /// escaped); nil without one, and for a tombstone, whose files are gone.
+    public var coverPath: String? {
+        guard let cover, !deleted else { return nil }
+        let path = cover.path.split(separator: "/", omittingEmptySubsequences: false).map { AgentClient.escape(String($0)) }.joined(separator: "/")
+        return "/v0/artifacts/\(AgentClient.escape(id))/versions/\(latestVersion)/files/\(path)"
+    }
+
     /// What the artifact viewer opens: always the latest version.
     public var artifact: Artifact {
         Artifact(id: id, version: latestVersion, type: type, title: title, followsLatest: true)

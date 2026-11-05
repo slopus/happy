@@ -7,8 +7,8 @@ import UIKit
 import XCTest
 
 /// A daemon with an artifact catalog: one page of artifacts changed at
-/// different times, one of them a picture whose file it serves. It can be
-/// told to fail, as a computer that has gone away does.
+/// different times, some with a cover (wide or square) whose file it
+/// serves. It can be told to fail, as a computer that has gone away does.
 actor ArtifactCatalogDaemon: AgentTransport {
     struct Item {
         var id: String
@@ -16,6 +16,8 @@ actor ArtifactCatalogDaemon: AgentTransport {
         var title: String
         var updatedAt: Date
         var picture: Data?
+        /// `wide` or `square`: the picture is the cover, of that shape.
+        var aspect: String? = nil
     }
 
     var items: [Item]
@@ -48,10 +50,14 @@ actor ArtifactCatalogDaemon: AgentTransport {
 
     private func object(_ item: Item) -> String {
         let ms = Int(item.updatedAt.timeIntervalSince1970 * 1000)
-        let mime = item.picture != nil ? "image/png" : item.type == "html" ? "text/html" : "text/markdown"
-        let path = item.picture != nil ? "picture.png" : item.type == "html" ? "index.html" : "README.md"
-        let size = item.picture?.count ?? 100
-        return #"{"id":"\#(item.id)","type":"\#(item.type)","title":"\#(item.title)","status":"active","latestVersion":2,"entry":{"path":"\#(path)","mimeType":"\#(mime)","size":\#(size),"sha256":"0"},"fileCount":1,"live":null,"createdAt":\#(ms),"updatedAt":\#(ms)}"#
+        let mime = item.type == "html" ? "text/html" : item.picture != nil ? "image/png" : "text/markdown"
+        let path = item.type == "html" ? "index.html" : item.picture != nil ? "picture.png" : "README.md"
+        let size = item.type == "html" ? 100 : item.picture?.count ?? 100
+        let cover = item.aspect.map { aspect in
+            let side = aspect == "wide" ? #""width":1600,"height":900"# : #""width":1200,"height":1200"#
+            return ##","cover":{"path":"picture.png","mimeType":"image/png",\##(side),"aspect":"\##(aspect)"},"background":"#0b1f33""##
+        } ?? ""
+        return #"{"id":"\#(item.id)","type":"\#(item.type)","title":"\#(item.title)","status":"active","latestVersion":2,"entry":{"path":"\#(path)","mimeType":"\#(mime)","size":\#(size),"sha256":"0"},"fileCount":1,"live":null,"createdAt":\#(ms),"updatedAt":\#(ms)\#(cover)}"#
     }
 }
 
@@ -115,13 +121,14 @@ final class HostedArtifactsListTests: XCTestCase {
     }
 
     private static func fixture() -> [ArtifactCatalogDaemon.Item] {
-        let picture = HostedArtifactMediaTests.png(CGSize(width: 240, height: 240), .systemTeal)
+        let picture = HostedArtifactMediaTests.png(CGSize(width: 320, height: 180), .systemTeal)
+        let square = HostedArtifactMediaTests.png(CGSize(width: 240, height: 240), .systemOrange)
         // Today's ahead of now on the clock is still today.
         let today = min(Date(), days(0, hours: 9))
         return [
             .init(id: "a1", type: "markdown", title: "Q3 roadmap", updatedAt: today, picture: nil),
-            .init(id: "a2", type: "image", title: "Team offsite photo", updatedAt: today.addingTimeInterval(-60), picture: picture),
-            .init(id: "a3", type: "html", title: "Pricing page prototype", updatedAt: days(1, hours: 16), picture: nil),
+            .init(id: "a2", type: "image", title: "Team offsite photo", updatedAt: today.addingTimeInterval(-60), picture: picture, aspect: "wide"),
+            .init(id: "a3", type: "html", title: "Pricing page prototype", updatedAt: days(1, hours: 16), picture: square, aspect: "square"),
             .init(id: "a4", type: "markdown", title: "Interview notes with the design partner, the longer write-up that wraps", updatedAt: days(3, hours: 11), picture: nil),
             .init(id: "a5", type: "video", title: "Onboarding walkthrough", updatedAt: days(12, hours: 10), picture: nil),
             .init(id: "a6", type: "document", title: "Signed contract", updatedAt: days(70), picture: nil),
@@ -193,19 +200,24 @@ final class HostedArtifactsListTests: XCTestCase {
         XCTAssertEqual(places[0], CardPlace(first: true, last: false))
         XCTAssertEqual(places[1], CardPlace(first: false, last: true))
         XCTAssertEqual(places[2], .alone)
-        if UIDevice.current.userInterfaceIdiom == .phone {
-            XCTAssertGreaterThan(screen.list.items.first { $0.id == "a4" }!.size.height, 60, "a long title wraps to a second line")
-        }
+        XCTAssertEqual(Set(screen.list.items.filter { $0.kind == .row }.map(\.size.height)), [60], "a long title stays on one line: every row is one height")
 
-        // The picture's thumbnail lands over its tile.
-        try await wait("the thumbnail") {
-            (screen.list.rowView("a2")?.overlay(ArtifactListItems.thumbnailKey(screen.artifacts["a2"]!)) as? UIImageView)?.image != nil
+        // Covers land in the rows' 16:9 slots: a wide one fills it, a
+        // square stands whole in the middle.
+        func cover(_ id: String) -> FeedCoverView? {
+            guard let path = screen.artifacts[id]?.coverPath else { return nil }
+            return screen.list.rowView(id)?.overlay(ArtifactListItems.coverKey(path)) as? FeedCoverView
         }
-        let thumbnail = try XCTUnwrap(screen.list.rowView("a2")?.overlay("a2/2"))
-        XCTAssertEqual(thumbnail.frame.size, CGSize(width: 40, height: 40))
+        try await wait("the covers") { cover("a2")?.loaded == true && cover("a3")?.loaded == true }
+        let slot = try XCTUnwrap(screen.list.items.first { $0.id == "a2" }?.overlays.first?.frame)
+        XCTAssertEqual(slot.size, ArtifactListMetrics.slot)
+        XCTAssertEqual(cover("a2")?.frame.size, ArtifactListMetrics.slot)
+        let square = try XCTUnwrap(screen.list.items.first { $0.id == "a3" }?.overlays.first?.frame)
+        XCTAssertEqual(square, CGRect(x: slot.midX - 20, y: slot.minY, width: 40, height: 40))
         let files = await daemon.fileReads
-        XCTAssertEqual(files.count, 1, "read once: \(files)")
-        XCTAssertNil(screen.list.rowView("a1")?.overlay("a1/2"), "a document shows its kind's tile")
+        XCTAssertEqual(files.count, 2, "each read once: \(files)")
+        XCTAssertNil(cover("a1"), "a document shows its kind's glyph")
+        XCTAssertTrue(screen.list.items.first { $0.id == "a1" }?.overlays.isEmpty == true)
 
         try await Task.sleep(for: .milliseconds(300))
         capture(opened.window, "artifacts")

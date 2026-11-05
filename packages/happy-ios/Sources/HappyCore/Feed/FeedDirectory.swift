@@ -224,11 +224,9 @@ public struct FeedPost: Equatable, Sendable {
 
     /// `artifact`'s post, when it has a cover.
     public init?(_ artifact: ArtifactSummary) {
-        guard let cover = artifact.cover, !artifact.deleted else { return nil }
-        let path = cover.path.split(separator: "/", omittingEmptySubsequences: false).map { AgentClient.escape(String($0)) }.joined(separator: "/")
+        guard let cover = artifact.cover, let image = artifact.coverPath else { return nil }
         self.init(
-            image: "/v0/artifacts/\(AgentClient.escape(artifact.id))/versions/\(artifact.latestVersion)/files/\(path)",
-            aspect: cover.aspect, width: cover.width, height: cover.height, background: artifact.background, summary: artifact.summary
+            image: image, aspect: cover.aspect, width: cover.width, height: cover.height, background: artifact.background, summary: artifact.summary
         )
     }
 }

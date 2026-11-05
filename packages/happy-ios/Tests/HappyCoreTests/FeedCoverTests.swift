@@ -93,6 +93,11 @@ final class FeedCoverTests: XCTestCase {
         XCTAssertEqual(row.target, .artifact(Artifact(id: "r9", version: 4, type: "html", title: "Revenue", followsLatest: true)))
 
         XCTAssertNil(FeedRows.row(item, unread: true, directory: directory, personSeed: "p", covers: false)?.post, "without artifactCovers nothing changes")
+        let artifact = try XCTUnwrap(ArtifactSummary(json: json(Self.covered)))
+        XCTAssertEqual(artifact.coverPath, "/v0/artifacts/r9/versions/4/files/cards/cover%201.png", "the list's slot reads the same picture")
+        var deleted = artifact
+        deleted.deleted = true
+        XCTAssertNil(deleted.coverPath, "a tombstone never shows its old cover")
         let plain = FeedFixture.item(2, "artifact", "r1")
         XCTAssertNil(FeedRows.row(plain, unread: true, directory: directory, personSeed: "p", covers: true)?.post, "no cover keeps the compact row")
     }

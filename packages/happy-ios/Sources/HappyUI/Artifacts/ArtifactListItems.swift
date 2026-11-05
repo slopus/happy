@@ -41,8 +41,16 @@ enum ArtifactListItems {
         }
     }
 
-    /// The overlay key a row's thumbnail is made for: its version's entry.
-    nonisolated static func thumbnailKey(_ artifact: ArtifactSummary) -> String { "\(artifact.id)/\(artifact.latestVersion)" }
+    /// A row's cover over its slot (`FeedCoverView`), keyed by where it is
+    /// served, so a new version's is made again and an unchanged one kept.
+    static let coverKind = "cover"
+    nonisolated static func coverKey(_ path: String) -> String { "cover|\(path)" }
+
+    /// What a cover sits on: the artifact's background, else a neutral fill.
+    nonisolated static func coverGround(_ artifact: ArtifactSummary) -> ColorToken {
+        guard let hex = artifact.background, let color = RGBA(hex: FeedListItems.expanded(hex)) else { return Palette.surfaceHighest }
+        return ColorToken(light: color, dark: color)
+    }
 
     nonisolated static func items(_ input: ArtifactListInput) -> [CardItem] {
         guard input.width > 0 else { return [] }
@@ -82,23 +90,32 @@ enum ArtifactListItems {
         var kind = Strings.Artifacts.kind(artifact.type, live: artifact.live)
         if artifact.type == "image_series", artifact.fileCount > 1 { kind += " · \(artifact.fileCount)" }
         let timeSize = CardText.measure(time, font: small, width: 10_000, maxLines: 1, scale: input.displayScale)
-        let square = CGSize(width: M.tile, height: M.tile)
+        // One slot and one title line in every row: one height for all.
         let layout = CardRowLayout(
-            width: input.width, maxWidth: input.maxWidth, place: place, leading: square,
-            title: CardText.measurable(title, font: titleFont, maxLines: 2, scale: input.displayScale),
+            width: input.width, maxWidth: input.maxWidth, place: place, leading: ArtifactListMetrics.slot,
+            title: CardText.measurable(title, font: titleFont, maxLines: ArtifactListMetrics.titleLines, scale: input.displayScale),
             subtitle: CardText.measurable(kind, font: small, maxLines: 1, scale: input.displayScale),
             trailing: timeSize, titleLine: CardText.line(titleFont, scale: input.displayScale), hairline: 1 / max(1, input.displayScale), scale: input.displayScale
         )
         var drawing = CardDrawing(dark: input.dark, displayScale: input.displayScale)
         var overlays: [CardOverlay] = []
         if let frame = layout.leading {
-            let look = tile(artifact)
-            drawing.marks.append(.tile(frame, radius: M.tileRadius, look.fill))
-            drawing.icon(look.icon, size: M.tileGlyph, look.ink, in: frame)
-            // The picture lands over its kind's tile, which stays while it loads.
-            if artifact.showsPicture { overlays.append(CardOverlay(kind: "thumbnail", key: thumbnailKey(artifact), frame: frame, radius: M.tileRadius)) }
+            let radius = ArtifactListMetrics.slotRadius
+            if let cover = artifact.cover, let path = artifact.coverPath {
+                // The cover fades in over its ground; a square stands whole
+                // in the middle of the slot.
+                let ratio = CGFloat(cover.aspect.ratio)
+                let fills = ArtifactCoverSlot.fills(ratio: ratio, slot: frame.size)
+                drawing.marks.append(.tile(frame, radius: radius, coverGround(artifact)))
+                let picture = ArtifactCoverSlot.picture(ratio: ratio, in: frame, scale: input.displayScale)
+                overlays.append(CardOverlay(kind: coverKind, key: coverKey(path), frame: picture, radius: fills ? radius : 0))
+            } else {
+                let look = tile(artifact)
+                drawing.marks.append(.tile(frame, radius: radius, look.fill))
+                drawing.icon(look.icon, size: M.tileGlyph, look.ink, in: frame)
+            }
         }
-        drawing.text(title, titleFont, Palette.text, layout.title, wraps: true)
+        drawing.text(title, titleFont, Palette.text, layout.title)
         if let frame = layout.subtitle { drawing.text(kind, small, Palette.settingsSecondary, frame) }
         if let frame = layout.trailing { drawing.text(time, small, Palette.settingsSecondary, frame) }
         drawing.rule(layout.separator)

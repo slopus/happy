@@ -2,6 +2,7 @@
 import Foundation
 @testable import HappyCore
 @testable import HappyUI
+import HappyLayout
 import HappyWire
 import UIKit
 
@@ -49,20 +50,27 @@ private actor FeedComputer: AgentTransport {
       {"id":"bo","name":"Bo","photo":null,"version":"1","updatedAt":1},
       {"id":"steve","name":"Steve","photo":{"thumbhash":"1QcSHQRnh493V4dIh4eXh1h4kJUI"},"version":"1","updatedAt":1}]}
     """#
-    static let artifacts = #"""
-    {"artifacts":[
-      {"id":"roadmap","type":"html","title":"Q4 roadmap","latestVersion":3,"createdAt":1,"updatedAt":2},
-      {"id":"mockups","type":"image_series","title":"Onboarding mockups","latestVersion":1,"createdAt":1,"updatedAt":1,"deleted":true},
-      {"id":"revenue","type":"html","title":"Q3 revenue review","latestVersion":2,"createdAt":1,"updatedAt":3,
-       "entry":{"path":"index.html","mimeType":"text/html","size":2048},
-       "cover":{"path":"cover.png","mimeType":"image/png","width":1600,"height":900,"aspect":"wide"},
-       "summary":"Revenue up 18% QoQ, driven by enterprise seats.","background":"#0b1f33"},
-      {"id":"latency","type":"image","title":"API latency, last 30 days","latestVersion":1,"createdAt":1,"updatedAt":4,
-       "entry":{"path":"chart.png","mimeType":"image/png","size":4096},
-       "cover":{"path":"chart.png","mimeType":"image/png","width":1200,"height":1200,"aspect":"square"},
-       "summary":null,"background":null}],
-     "nextPageCursor":null}
-    """#
+    /// The catalog, its times from now: covered ones, plain ones and a tombstone.
+    static func artifacts() -> String {
+        let now = Date().timeIntervalSince1970 * 1000
+        func ago(_ minutes: Double) -> Int { Int(now - minutes * 60_000) }
+        return #"""
+        {"artifacts":[
+          {"id":"roadmap","type":"html","title":"Q4 roadmap","latestVersion":3,"createdAt":1,"updatedAt":\#(ago(190))},
+          {"id":"mockups","type":"image_series","title":"Onboarding mockups","latestVersion":1,"createdAt":1,"updatedAt":1,"deleted":true},
+          {"id":"revenue","type":"html","title":"Q3 revenue review","latestVersion":2,"createdAt":1,"updatedAt":\#(ago(12)),
+           "entry":{"path":"index.html","mimeType":"text/html","size":2048},
+           "cover":{"path":"cover.png","mimeType":"image/png","width":1600,"height":900,"aspect":"wide"},
+           "summary":"Revenue up 18% QoQ, driven by enterprise seats.","background":"#0b1f33"},
+          {"id":"latency","type":"image","title":"API latency, last 30 days","latestVersion":1,"createdAt":1,"updatedAt":\#(ago(300)),
+           "entry":{"path":"chart.png","mimeType":"image/png","size":4096},
+           "cover":{"path":"chart.png","mimeType":"image/png","width":1200,"height":1200,"aspect":"square"},
+           "summary":null,"background":null},
+          {"id":"notes","type":"markdown","title":"Interview notes with the design partner, the longer write-up","latestVersion":1,"createdAt":1,"updatedAt":\#(ago(60 * 26))},
+          {"id":"walkthrough","type":"video","title":"Onboarding walkthrough","latestVersion":1,"createdAt":1,"updatedAt":\#(ago(60 * 24 * 4))}],
+         "nextPageCursor":null}
+        """#
+    }
     static let todos: [String: String] = [
         "groceries/oat": #"{"todo":{"id":"oat","surfaceId":"groceries","text":"Oat milk","status":"active","version":"1"}}"#,
         "errands/keys": #"{"todo":{"id":"keys","surfaceId":"errands","text":"Pick up the keys","status":"active","version":"1"}}"#,
@@ -167,7 +175,7 @@ private actor FeedComputer: AgentTransport {
             ])]))
         }
         if path.hasPrefix("/v0/users?ids=") { return HTTP1Response(status: 200, body: Data(Self.users.utf8)) }
-        if path.hasPrefix("/v0/artifacts?") { return HTTP1Response(status: 200, body: Data(Self.artifacts.utf8)) }
+        if path.hasPrefix("/v0/artifacts?") { return HTTP1Response(status: 200, body: Data(Self.artifacts().utf8)) }
         if path.hasPrefix("/v0/surfaces/todo/"), let todo = Self.todos[String(path.dropFirst("/v0/surfaces/todo/".count))] {
             return HTTP1Response(status: 200, body: Data(todo.utf8))
         }
@@ -441,6 +449,10 @@ private final class FeedScript {
     }
 
     /// A post's cover has its picture, somewhere on screen.
+    private func coverCount(in view: UIView) -> Int {
+        ((view as? FeedCoverView)?.loaded == true ? 1 : 0) + view.subviews.reduce(0) { $0 + coverCount(in: $1) }
+    }
+
     private func coverShown(in view: UIView) -> Bool {
         (view as? FeedCoverView)?.loaded == true || view.subviews.contains { coverShown(in: $0) }
     }
@@ -553,6 +565,23 @@ private final class FeedScript {
             check("under the place's name", peek.title == "Research", peek.title ?? "")
         }
         await shoot("feed-peek")
+
+        // The artifacts list: a 16:9 slot in every row, a wide cover filling
+        // it, a square whole in its middle, the rest their kind's glyph.
+        let artifacts = ArtifactsViewController(session: session)
+        navigation.pushViewController(artifacts, animated: true)
+        let catalog = artifacts.list
+        check("the artifacts list loads", await until { catalog.items.filter { $0.kind == .row }.count == 5 },
+              catalog.items.filter { $0.kind == .row }.map(\.id).joined(separator: ", "))
+        let rows = catalog.items.filter { $0.kind == .row }
+        check("every artifact row is one height", Set(rows.map(\.size.height)).count == 1, rows.map { "\($0.size.height)" }.joined(separator: ", "))
+        let wideSlot = rows.first { $0.id == "revenue" }?.overlays.first?.frame
+        check("a wide cover fills its slot", wideSlot?.size == ArtifactListMetrics.slot, "\(wideSlot.map { "\($0)" } ?? "none")")
+        let squareSlot = rows.first { $0.id == "latency" }?.overlays.first?.frame
+        check("a square stands whole in the middle", squareSlot?.size == CGSize(width: 40, height: 40), "\(squareSlot.map { "\($0)" } ?? "none")")
+        check("the rest show their glyph", rows.filter { $0.id != "revenue" && $0.id != "latency" }.allSatisfy { $0.overlays.isEmpty })
+        check("the covers arrive in the list", await until { coverCount(in: artifacts.view) >= 2 }, "\(coverCount(in: artifacts.view))")
+        await shoot("artifacts")
 
         let report: [String: Any] = ["style": style, "seconds": Date().timeIntervalSince(started), "checks": checks,
                                      "passed": checks.allSatisfy { $0["passed"] as? Bool == true }]
