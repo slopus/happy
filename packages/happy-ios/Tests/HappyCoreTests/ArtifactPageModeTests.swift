@@ -28,6 +28,22 @@ final class ArtifactPageModeTests: XCTestCase {
         XCTAssertEqual(ArtifactPageMode.declared(in: cut), .app)
     }
 
+    func testTheCloseButtonsCornerIsDeclaredBesideTheMode() {
+        XCTAssertEqual(ArtifactAppClose.declared(in: #"<meta name="happy-page-mode" content="app">"#), .topStart)
+        for close in ArtifactAppClose.allCases {
+            XCTAssertEqual(ArtifactAppClose.declared(in: #"<meta name="happy-app-close" content="\#(close.rawValue)">"#), close)
+        }
+        XCTAssertEqual(ArtifactAppClose.declared(in: "<META NAME='Happy-App-Close' CONTENT=' Top-End '>"), .topEnd)
+        // Anything else is the default.
+        XCTAssertEqual(ArtifactAppClose.declared(in: #"<meta name="happy-app-close" content="middle">"#), .topStart)
+        XCTAssertEqual(ArtifactAppClose.declared(in: #"<meta name="happy-app-close" content="">"#), .topStart)
+        XCTAssertEqual(ArtifactAppClose.declared(in: #"<body><meta name="happy-app-close" content="none">"#), .topStart)
+        XCTAssertEqual(
+            ArtifactPageDeclaration.declared(in: Data(#"<meta name="happy-app-close" content="none"><meta name="happy-page-mode" content="app">"#.utf8)),
+            ArtifactPageDeclaration(mode: .app, close: .none)
+        )
+    }
+
     func testOnlyHTMLFilesArePages() {
         XCTAssertTrue(ArtifactPageMode.isPage(path: "index.html", mimeType: "application/octet-stream"))
         XCTAssertTrue(ArtifactPageMode.isPage(path: "game/Play.HTM", mimeType: ""))
@@ -39,26 +55,26 @@ final class ArtifactPageModeTests: XCTestCase {
     /// latest opens the newest version read.
     func testTheStartOfAVersionIsReadOnceAndRemembered() async throws {
         let transport = Recording(answers: [
-            "/v0/artifacts/a1/versions/2/files/index.html": #"<head><meta name="happy-page-mode" content="app"></head>"#,
+            "/v0/artifacts/a1/versions/2/files/index.html": #"<head><meta name="happy-page-mode" content="app"><meta name="happy-app-close" content="bottom-end"></head>"#,
             "/v0/artifacts/a1/versions/3/files/index.html": "<head><title>Now a page</title></head>",
         ])
         let client = AgentClient(transport: transport, token: "x")
         XCTAssertNil(client.pageModes.app("a1", version: 2, opensLatest: false))
-        let mode = try await client.artifactPageMode("a1", version: 2, path: "index.html")
-        XCTAssertEqual(mode, .app)
-        _ = try await client.artifactPageMode("a1", version: 2, path: "index.html")
+        let declared = try await client.artifactPage("a1", version: 2, path: "index.html")
+        XCTAssertEqual(declared, ArtifactPageDeclaration(mode: .app, close: .bottomEnd))
+        _ = try await client.artifactPage("a1", version: 2, path: "index.html")
         XCTAssertEqual(transport.requests.count, 1)
         XCTAssertEqual(transport.requests.first?.headers["Range"], "bytes=0-65535")
-        XCTAssertEqual(client.pageModes.app("a1", version: 2, opensLatest: false), ArtifactPageModes.Read(version: 2, entry: "index.html", mode: .app))
+        XCTAssertEqual(client.pageModes.app("a1", version: 2, opensLatest: false), ArtifactPageModes.Read(version: 2, entry: "index.html", mode: .app, close: .bottomEnd))
         XCTAssertEqual(client.pageModes.app("a1", version: 2, opensLatest: true)?.version, 2)
 
         // A newer version that is a page: the latest is no app; version 2 still is.
-        let newer = try await client.artifactPageMode("a1", version: 3, path: "index.html")
-        XCTAssertEqual(newer, .page)
+        let newer = try await client.artifactPage("a1", version: 3, path: "index.html")
+        XCTAssertEqual(newer.mode, .page)
         XCTAssertNil(client.pageModes.app("a1", version: 3, opensLatest: true))
         XCTAssertNotNil(client.pageModes.app("a1", version: 2, opensLatest: false))
         // Another file of a version isn't what opening the version opens.
-        client.pageModes.remember("a1", version: 4, path: "other.html", mode: .app, isEntry: false)
+        client.pageModes.remember("a1", version: 4, path: "other.html", declared: ArtifactPageDeclaration(mode: .app), isEntry: false)
         XCTAssertNil(client.pageModes.app("a1", version: 4, opensLatest: false))
     }
 

@@ -422,7 +422,7 @@ public actor Store {
                     // An app is never run inline, so a page waits for its
                     // start to say it isn't one; unread, it shows as before.
                     if let entry = References.entry(object),
-                       (try? await client.artifactPageMode(id, version: entry.version, path: entry.path)) == .app {
+                       (try? await client.artifactPage(id, version: entry.version, path: entry.path))?.mode == .app {
                         app = entry.version
                     }
                 } catch AgentClientError.status(404, _, _) {

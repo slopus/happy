@@ -8,15 +8,20 @@ import UIKit
 /// over everything, edge to edge, presented rather than pushed. No status
 /// bar, the home indicator dimmed, and the screen's edges the page's first
 /// (the system still wins a second swipe, as in games). Nothing swipes it
-/// away, since a swipe is the game's: the one way out is the close button
-/// in the top-leading corner of its window, which fades after a few seconds
-/// and comes back when a finger or the pointer nears it. With a keyboard,
-/// Esc and ⌘W close it too.
-final class AppPageViewController: UIViewController {
+/// away, since a swipe is the game's: the way out is the close button in
+/// the corner of its window the page asked for (`ArtifactAppClose`), which
+/// fades after a few seconds and comes back when a finger or the pointer
+/// nears it, or the page's own `happyApp.close()`. A page with no button
+/// (`none`) still has a way out it can't take away: a swipe down from the
+/// window's top edge shows the button in the top-leading corner for a few
+/// seconds. With a keyboard, Esc and ⌘W close it too.
+final class AppPageViewController: UIViewController, UIGestureRecognizerDelegate {
     private let session: Session
     private let artifactID: String
     private let version: Int
     private let entry: String
+    /// Where the page asked for the close button.
+    let corner: ArtifactAppClose
     private let closeButton = AppCloseButton()
     private let spinner = UIActivityIndicatorView(style: .medium)
     private let message = UILabel()
@@ -29,12 +34,17 @@ final class AppPageViewController: UIViewController {
     static let closeFaded: CGFloat = 0.35
     /// How near a touch brings it back.
     static let closeReach: CGFloat = 64
+    /// With no button: how near the window's top a swipe down must start
+    /// to show it, and how far down it must go.
+    static let revealEdge: CGFloat = 24
+    static let revealDistance: CGFloat = 24
 
-    init(session: Session, artifactID: String, version: Int, entry: String, title: String) {
+    init(session: Session, artifactID: String, version: Int, entry: String, close: ArtifactAppClose = .topStart, title: String) {
         self.session = session
         self.artifactID = artifactID
         self.version = version
         self.entry = entry
+        corner = close
         super.init(nibName: nil, bundle: nil)
         self.title = title.isEmpty ? Strings.untitledArtifact : title
         modalPresentationStyle = .fullScreen
@@ -71,6 +81,17 @@ final class AppPageViewController: UIViewController {
         closeButton.accessibilityIdentifier = "artifact-app-close"
         closeButton.addAction(UIAction { [weak self] _ in self?.close() }, for: .touchUpInside)
         view.addSubview(closeButton)
+        if corner == .none {
+            closeButton.alpha = 0
+            closeButton.isHidden = true
+            closeButton.accessibilityValue = "hidden"
+            let reveal = UIPanGestureRecognizer(target: self, action: #selector(revealSwiped(_:)))
+            reveal.cancelsTouchesInView = false
+            reveal.delaysTouchesBegan = false
+            reveal.delaysTouchesEnded = false
+            reveal.delegate = self
+            view.addGestureRecognizer(reveal)
+        }
         let hover = UIHoverGestureRecognizer(target: self, action: #selector(hovered(_:)))
         hover.cancelsTouchesInView = false
         view.addGestureRecognizer(hover)
@@ -93,9 +114,13 @@ final class AppPageViewController: UIViewController {
             let page = try await BrowserPage.artifact(client: session.client, id: artifactID, version: version, entry: entry)
             try Task.checkCancellation()
             let browser = BrowserViewController(url: page.url, session: session, artifactID: artifactID, page: page, app: true)
-            browser.appCloseBand = AppCloseButton.margin * 2 + AppCloseButton.size
+            browser.appClose = AppPageScripts.Close(
+                corner: corner, box: AppCloseButton.margin * 2 + AppCloseButton.size,
+                rightToLeft: view.effectiveUserInterfaceLayoutDirection == .rightToLeft
+            )
             // Its three seconds start with the page, not the spinner.
             browser.appLoaded = { [weak self] in self?.showClose() }
+            browser.appClosed = { [weak self] in self?.close() }
             addChild(browser)
             view.insertSubview(browser.view, at: 0)
             browser.didMove(toParent: self)
@@ -112,6 +137,7 @@ final class AppPageViewController: UIViewController {
     }
 
     func close() {
+        guard !isBeingDismissed, presentingViewController != nil else { return }
         dismiss(animated: true)
     }
 
@@ -143,6 +169,44 @@ final class AppPageViewController: UIViewController {
 
     // MARK: Close button
 
+    /// With no button: a swipe down from the window's top edge shows it.
+    /// The page still gets the touches.
+    @objc private func revealSwiped(_ recognizer: UIPanGestureRecognizer) {
+        guard recognizer.state == .changed else { return }
+        let moved = recognizer.translation(in: view)
+        guard moved.y >= Self.revealDistance, moved.y > abs(moved.x) else { return }
+        // Once a swipe: it lets go until the next.
+        recognizer.isEnabled = false
+        recognizer.isEnabled = true
+        reveal()
+    }
+
+    func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
+        guard let pan = recognizer as? UIPanGestureRecognizer else { return true }
+        let start = pan.location(in: view).y - pan.translation(in: view).y
+        return start <= Self.revealEdge
+    }
+
+    func gestureRecognizer(_ recognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+
+    /// The hidden button, shown fully for `closeShown`, then hidden again.
+    private func reveal() {
+        fading?.cancel()
+        closeButton.isHidden = false
+        closeButton.accessibilityValue = "shown"
+        UIView.animate(withDuration: 0.2, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState]) { self.closeButton.alpha = 1 }
+        fading = Task { [weak self] in
+            try? await Task.sleep(for: Self.closeShown)
+            guard let self, !Task.isCancelled else { return }
+            self.closeButton.accessibilityValue = "hidden"
+            UIView.animate(withDuration: 0.3, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState]) {
+                self.closeButton.alpha = 0
+            } completion: { _ in
+                if self.closeButton.accessibilityValue == "hidden" { self.closeButton.isHidden = true }
+            }
+        }
+    }
+
     @objc private func hovered(_ recognizer: UIHoverGestureRecognizer) {
         guard recognizer.state == .began || recognizer.state == .changed else { return }
         touched(at: recognizer.location(in: view))
@@ -151,13 +215,14 @@ final class AppPageViewController: UIViewController {
     /// A touch or the pointer anywhere near the button shows it again; the
     /// touch still goes to the page.
     private func touched(at point: CGPoint) {
-        guard closeButton.frame.insetBy(dx: -Self.closeReach, dy: -Self.closeReach).contains(point) else { return }
+        guard corner != .none, closeButton.frame.insetBy(dx: -Self.closeReach, dy: -Self.closeReach).contains(point) else { return }
         showClose()
     }
 
     /// Fully shown now, faded after `closeShown`; never faded while
     /// VoiceOver reads the screen.
     private func showClose() {
+        guard corner != .none else { return }
         fading?.cancel()
         closeButton.accessibilityValue = "shown"
         if closeButton.alpha < 1 { UIView.animate(withDuration: 0.2, delay: 0, options: [.allowUserInteraction, .beginFromCurrentState]) { self.closeButton.alpha = 1 } }
@@ -178,9 +243,7 @@ final class AppPageViewController: UIViewController {
         let bounds = view.bounds
         let safe = view.safeAreaInsets
         browser?.view.frame = bounds
-        let size = AppCloseButton.size, margin = AppCloseButton.margin
-        let x = view.effectiveUserInterfaceLayoutDirection == .rightToLeft ? bounds.maxX - safe.right - margin - size : safe.left + margin
-        closeButton.frame = CGRect(x: x, y: safe.top + margin, width: size, height: size)
+        closeButton.frame = AppCloseButton.frame(corner, in: bounds, safe: safe, rightToLeft: view.effectiveUserInterfaceLayoutDirection == .rightToLeft)
         spinner.center = CGPoint(x: bounds.midX, y: bounds.midY)
         let width = max(0, bounds.width - safe.left - safe.right - 32)
         let height = message.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
@@ -194,7 +257,7 @@ extension UIViewController {
     /// `navigation` (which presents an app it finds full screen).
     func openArtifact(_ artifact: Artifact, session: Session, on navigation: UINavigationController? = nil) {
         if let app = session.client.pageModes.app(artifact.id, version: artifact.version, opensLatest: artifact.opensLatest) {
-            present(AppPageViewController(session: session, artifactID: artifact.id, version: app.version, entry: app.entry, title: artifact.title), animated: true)
+            present(AppPageViewController(session: session, artifactID: artifact.id, version: app.version, entry: app.entry, close: app.close, title: artifact.title), animated: true)
             return
         }
         (navigation ?? navigationController)?.pushViewController(ArtifactViewController(session: session, artifact: artifact), animated: true)
@@ -217,6 +280,15 @@ private final class AppPageRootView: UIView {
 final class AppCloseButton: UIControl {
     static let size: CGFloat = 32
     static let margin: CGFloat = 8
+
+    /// Where it sits for `corner`, `margin` inside the safe area; with no
+    /// corner (`none`), where a swipe shows it: the top-leading one.
+    static func frame(_ corner: ArtifactAppClose, in bounds: CGRect, safe: UIEdgeInsets, rightToLeft: Bool) -> CGRect {
+        let right = (corner == .none ? false : corner.isEnd) != rightToLeft
+        let x = right ? bounds.maxX - safe.right - margin - size : bounds.minX + safe.left + margin
+        let y = corner.isBottom ? bounds.maxY - safe.bottom - margin - size : bounds.minY + safe.top + margin
+        return CGRect(x: x, y: y, width: size, height: size)
+    }
     private let blur = UIVisualEffectView(effect: UIBlurEffect(style: .systemMaterialDark))
     private let glyph = UIImageView(image: .icon(.ionicons("close"), size: 20))
 

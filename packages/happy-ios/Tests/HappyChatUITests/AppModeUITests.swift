@@ -192,6 +192,89 @@ final class AppModeUITests: XCTestCase {
         fillScreen()
     }
 
+    /// The page's HUD line about its close button: `close=<corner> rect=x,y,w,h happyApp=<type>`.
+    private var closeLine: String {
+        hudText().split(separator: "\n").first { $0.hasPrefix("close=") }.map(String.init) ?? ""
+    }
+
+    /// The close button as it is now: `shown`, `faded`, or `hidden` (not on screen at all).
+    private var closeState: String { close.exists ? close.value as? String ?? "" : "hidden" }
+
+    /// An app asking for its close button at `corner`, opened through the viewer.
+    private func openGame(_ corner: String) {
+        launch(["-viaViewer", "game" + corner.replacingOccurrences(of: "-", with: "")])
+        XCTAssertTrue(appScreen.waitForExistence(timeout: 20), "the viewer didn't open the app")
+        XCTAssertTrue(hud.waitForExistence(timeout: 20), "the page never ran")
+        sleep(1)
+    }
+
+    /// `happy-app-close`: the button in the corner asked for, the page told
+    /// where (its root attribute, inset and the box), `happyApp.close()`
+    /// closing it from the page; with `none`, no button until a swipe down
+    /// from the top edge, and Esc and ⌘W.
+    func testTheCloseButtonGoesWhereThePageAsks() throws {
+        XCUIDevice.shared.orientation = .landscapeLeft
+        let landscape = "landscape"
+
+        openGame("top-end")
+        var window = app.windows.firstMatch.frame
+        print("APP_MODE top-end: \(closeLine) | \(hudText()) | button \(close.frame) in \(window)")
+        XCTAssertTrue(closeLine.hasPrefix("close=top-end rect=\(Int(window.width) - 48),0,48,48"), closeLine)
+        XCTAssertTrue(closeLine.contains("happyApp=object"), closeLine)
+        XCTAssertEqual(close.frame.maxX, window.maxX - 8, accuracy: 1)
+        XCTAssertEqual(close.frame.minY, window.minY + 8, accuracy: 1)
+        keep("close-top-end-\(landscape)")
+        // The page's own exit: `happyApp.close()`.
+        app.buttons["Exit game"].tap()
+        XCTAssertTrue(appScreen.waitForNonExistence(timeout: 5), "happyApp.close() didn't close the app")
+
+        openGame("bottom-start")
+        window = app.windows.firstMatch.frame
+        print("APP_MODE bottom-start: \(closeLine) | \(hudText()) | button \(close.frame) in \(window)")
+        XCTAssertTrue(closeLine.hasPrefix("close=bottom-start rect=0,"), closeLine)
+        XCTAssertEqual(close.frame.minX, window.minX + 8, accuracy: 1)
+        XCTAssertGreaterThan(close.frame.minY, window.midY)
+        keep("close-bottom-start-\(landscape)")
+        close.tap()
+        XCTAssertTrue(appScreen.waitForNonExistence(timeout: 5))
+
+        openGame("none")
+        print("APP_MODE none: \(closeLine) | \(hudText())")
+        XCTAssertTrue(closeLine.hasPrefix("close=none rect=0,0,0,0"), closeLine)
+        XCTAssertEqual(closeState, "hidden")
+        sleep(4)
+        XCTAssertEqual(closeState, "hidden", "the page's load showed the button")
+        keep("close-none-\(landscape)")
+        // A swipe down from the top edge shows it, for three seconds.
+        let top = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0)).withOffset(CGVector(dx: 0, dy: 8))
+        top.press(forDuration: 0.05, thenDragTo: top.withOffset(CGVector(dx: 0, dy: 160)), withVelocity: .default, thenHoldForDuration: 0.05)
+        Thread.sleep(forTimeInterval: 0.5)
+        XCTAssertEqual(closeState, "shown", "a swipe down from the top didn't show the button")
+        keep("close-none-revealed-\(landscape)")
+        sleep(4)
+        XCTAssertEqual(closeState, "hidden", "the shown button didn't hide again")
+        // A swipe down further from the edge doesn't.
+        let middle = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.3))
+        middle.press(forDuration: 0.05, thenDragTo: middle.withOffset(CGVector(dx: 0, dy: 160)), withVelocity: .default, thenHoldForDuration: 0.05)
+        Thread.sleep(forTimeInterval: 0.5)
+        XCTAssertEqual(closeState, "hidden", "a swipe away from the edge showed the button")
+        app.buttons["Exit game"].tap()
+        XCTAssertTrue(appScreen.waitForNonExistence(timeout: 5), "happyApp.close() didn't close the app")
+    }
+
+    /// Esc and ⌘W close an app with no button. XCTest's keys reach the app
+    /// only with the simulator's hardware keyboard connected (I/O › Keyboard
+    /// › Connect Hardware Keyboard); without it none arrives at all.
+    func testEscAndCommandWCloseAnAppWithNoButton() throws {
+        openGame("none")
+        app.typeKey(XCUIKeyboardKey.escape, modifierFlags: [])
+        XCTAssertTrue(appScreen.waitForNonExistence(timeout: 5), "Esc didn't close the app")
+
+        openGame("none")
+        app.typeKey("w", modifierFlags: .command)
+        XCTAssertTrue(appScreen.waitForNonExistence(timeout: 5), "⌘W didn't close the app")
+    }
+
     /// Opened as the Artifacts list or the Feed opens it, through the
     /// viewer: the viewer steps aside, and closing the app returns to the
     /// conversation under it.

@@ -15,10 +15,16 @@ private struct AppModeSockets: WebSocketConnector {
 
 /// A computer with one conversation whose agent made two HTML artifacts:
 /// `game`, a canvas game that asks to run as an app, and `notes`, a page.
-/// Its files come through the same artifact proxy a real computer's do.
+/// `game<corner>` (`gametopend`, `gamenone`: artifact ids are lowercase
+/// letters and digits) is the same game asking for its close button there
+/// (`happy-app-close`). Its files come through the
+/// same artifact proxy a real computer's do.
 private actor AppModeComputer: AgentTransport {
-    nonisolated static let game = """
-    <!doctype html><html><head><meta charset="utf-8"><meta name="happy-page-mode" content="app"><title>Dot Chase</title>
+    /// The game, with its close button where `close` says (nil: unsaid).
+    nonisolated static func game(close: String?) -> String {
+        let meta = close.map { #"<meta name="happy-app-close" content="\#($0)">"# } ?? ""
+        return #"""
+    <!doctype html><html><head><meta charset="utf-8"><meta name="happy-page-mode" content="app">\#(meta)<title>Dot Chase</title>
     <style>
     :root{color-scheme:dark}
     body{background:#101225;color:#e8e8ff;font:13px -apple-system,system-ui}
@@ -29,9 +35,14 @@ private actor AppModeComputer: AgentTransport {
       border:2px dashed rgba(120,255,170,.6);pointer-events:none}
     #tall{height:4000px}
     #bottom{position:fixed;left:0;right:0;bottom:var(--happy-app-inset-bottom,0px);text-align:center;padding:10px;font-weight:600;color:#9ff}
+    #closebox{position:fixed;left:var(--happy-app-close-x);top:var(--happy-app-close-y);width:var(--happy-app-close-width);height:var(--happy-app-close-height);
+      box-sizing:border-box;border:2px solid #ffcc4d;border-radius:6px;pointer-events:none}
+    #exit{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--happy-app-inset-bottom,0px) + 44px);
+      font:600 15px -apple-system,system-ui;color:#101225;background:#ffcc4d;border:0;border-radius:18px;padding:8px 18px}
     </style></head><body>
-    <canvas id="c"></canvas><div id="safe"></div><div id="tall"></div>
-    <div id="hud" aria-label="hud">…</div><div id="bottom">Drag to chase the dot · score <span id="score">0</span></div>
+    <canvas id="c"></canvas><div id="safe"></div><div id="tall"></div><div id="closebox"></div>
+    <div id="hud" aria-label="hud">…</div><button id="exit" aria-label="Exit game" onclick="window.happyApp && window.happyApp.close()">Exit game</button>
+    <div id="bottom">Drag to chase the dot · score <span id="score">0</span></div>
     <script>
     const c=document.getElementById('c'),x=c.getContext('2d'),hud=document.getElementById('hud'),root=document.documentElement;
     let W=0,H=0,p={x:0,y:0},dot={x:0,y:0},score=0,touches=0;
@@ -39,7 +50,8 @@ private actor AppModeComputer: AgentTransport {
     function move(){dot={x:40+Math.random()*(W-80),y:120+Math.random()*(H-240)};}
     function safe(){const d=document.createElement('div');d.style.cssText='position:fixed;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)';document.body.appendChild(d);const s=getComputedStyle(d);const v=[s.paddingTop,s.paddingRight,s.paddingBottom,s.paddingLeft].map(parseFloat);d.remove();return v.join(',');}
     function inset(){const s=getComputedStyle(root);return ['top','right','bottom','left'].map(k=>parseFloat(s.getPropertyValue('--happy-app-inset-'+k))).join(',');}
-    function report(){hud.textContent='mode='+root.getAttribute('data-happy-page-mode')+' scrollY='+Math.round(scrollY)+' zoom='+(visualViewport?visualViewport.scale.toFixed(2):'?')+'\\nsafe='+safe()+'\\nhappy-inset='+inset()+'\\nviewport='+W+'x'+H+' touches='+touches;}
+    function rect(){const s=getComputedStyle(root);return ['x','y','width','height'].map(k=>parseFloat(s.getPropertyValue('--happy-app-close-'+k))).join(',');}
+    function report(){hud.textContent='mode='+root.getAttribute('data-happy-page-mode')+' scrollY='+Math.round(scrollY)+' zoom='+(visualViewport?visualViewport.scale.toFixed(2):'?')+'\nsafe='+safe()+'\nhappy-inset='+inset()+'\nclose='+root.getAttribute('data-happy-app-close')+' rect='+rect()+' happyApp='+(typeof window.happyApp)+'\nviewport='+W+'x'+H+' touches='+touches;}
     function at(e){const t=e.touches?e.touches[0]:e;if(t){p={x:t.clientX,y:t.clientY};}}
     addEventListener('touchstart',e=>{touches++;at(e);},{passive:true});addEventListener('touchmove',at,{passive:true});
     addEventListener('pointerdown',at);addEventListener('pointermove',e=>{if(e.buttons)at(e);});
@@ -51,7 +63,8 @@ private actor AppModeComputer: AgentTransport {
       report();requestAnimationFrame(frame);}
     size();frame();
     </script></body></html>
-    """
+    """#
+    }
 
     nonisolated static let notes = """
     <!doctype html><html><head><meta charset="utf-8"><title>Notes</title></head>
@@ -79,7 +92,14 @@ private actor AppModeComputer: AgentTransport {
     ]}]}
     """#
 
-    private func file(_ id: String) -> String { id == "game" ? Self.game : Self.notes }
+    private static func id(_ close: ArtifactAppClose) -> String { "game" + close.rawValue.replacingOccurrences(of: "-", with: "") }
+    /// Longest first, so `game` never answers for `gamenone`.
+    private static let ids = (ArtifactAppClose.allCases.map(id) + ["notes", "game"])
+
+    private func file(_ id: String) -> String {
+        if id == "notes" { return Self.notes }
+        return Self.game(close: ArtifactAppClose.allCases.first { Self.id($0) == id }?.rawValue)
+    }
 
     func request(method: String, path: String, credential: String, body: Data?, headers: [String: String]) async throws -> HTTP1Response {
         let text: String
@@ -87,8 +107,8 @@ private actor AppModeComputer: AgentTransport {
             text = Self.runs
         } else if path.hasSuffix("/agents/harness/bootstrap") {
             text = #"{"agent":{"id":"harness","workspaceId":"w","status":"idle"},"pending":[],"slashCommands":[]}"#
-        } else if let id = ["game", "notes"].first(where: { path.hasPrefix("/v0/artifacts/\($0)") }) {
-            let title = id == "game" ? "Dot Chase" : "Release notes"
+        } else if let id = Self.ids.first(where: { path.hasPrefix("/v0/artifacts/\($0)/") || path == "/v0/artifacts/\($0)" }) {
+            let title = id == "notes" ? "Release notes" : "Dot Chase"
             if path.hasSuffix("/files/index.html") {
                 let bytes = Data(file(id).utf8)
                 return HTTP1Response(status: 206, headers: ["content-range": "bytes 0-\(bytes.count - 1)/\(bytes.count)"], body: bytes)
@@ -113,8 +133,7 @@ private actor AppModeComputer: AgentTransport {
         let content: String
         let type: String
         if head.line.contains("/api/v1/style.css") { content = ":root{}"; type = "text/css" }
-        else if head.line.contains("/v0/artifacts/game/") { content = Self.game; type = "text/html" }
-        else if head.line.contains("/v0/artifacts/notes/") { content = Self.notes; type = "text/html" }
+        else if let id = Self.ids.first(where: { head.line.contains("/v0/artifacts/\($0)/") }) { content = file(id); type = "text/html" }
         else { return Data("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".utf8) }
         return Data("HTTP/1.1 200 OK\r\nContent-Type: \(type); charset=utf-8\r\nContent-Length: \(content.utf8.count)\r\nConnection: close\r\n\r\n\(content)".utf8)
     }
@@ -148,7 +167,8 @@ private actor AppModeComputer: AgentTransport {
 }
 
 /// App mode for HTML artifacts (`-screen appMode`): the conversation with
-/// the game's card, which opens it full screen. `-viaViewer [game|notes]`
+/// the game's card, which opens it full screen. `-viaViewer <id>` (`game`,
+/// `notes`, `gametopend`, `gamenone`, …)
 /// pushes that artifact's viewer as well, as the Artifacts list and the
 /// Feed open it: for the game it steps aside for the app. `-autoplay`
 /// walks a device with no UI automation through it on a clock, saying each
@@ -185,7 +205,7 @@ final class AppModeHarness {
             if arguments.contains("-autoplay") { autoplay(chat: chat, navigation: navigation, session: session) }
             if let index = arguments.firstIndex(of: "-viaViewer") {
                 let id = arguments.indices.contains(index + 1) && !arguments[index + 1].hasPrefix("-") ? arguments[index + 1] : "game"
-                let artifact = Artifact(id: id, version: 1, type: "html", title: id == "game" ? "Dot Chase" : "Release notes", followsLatest: true)
+                let artifact = Artifact(id: id, version: 1, type: "html", title: id == "notes" ? "Release notes" : "Dot Chase", followsLatest: true)
                 navigation.pushViewController(ArtifactViewController(session: session, artifact: artifact), animated: true)
             }
         } catch {
