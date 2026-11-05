@@ -154,6 +154,14 @@ enum HappyScan {
         }
         busy(false)
         Analytics.shared.log(outcome.event(start: start))
+        // The computer's code made a Happy account: its creation ends with the pairing.
+        let createError: AnalyticsEvent.SignInErrorCode? = switch outcome {
+        case .approved: nil
+        case .alreadyHandled: .expired
+        case .failed: .unknown
+        case .invalidLink, .terminalNeedsUpdate: .rejected
+        }
+        Analytics.shared.log(.signInResult(method: .relayCreate, result: createError == nil ? .ok : .failed, errorCode: createError))
         guard outcome == .approved else {
             LegacyPairingFlow.report(outcome, kind: .terminal, on: window.flatMap(topmost) ?? controller)
             return .ended

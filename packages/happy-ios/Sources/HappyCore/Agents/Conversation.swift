@@ -546,7 +546,9 @@ public actor Conversation {
                     guard !Task.isCancelled else { return }
                     switch event {
                     case .accepted(let id): sent(id)
-                    case .failed(let id, let reason): failed(id, reason)
+                    case .failed(let id, let reason):
+                        failed(id, reason)
+                        Task { @MainActor in Analytics.shared.errorShown(.messageSend, .unknown) }
                     }
                 }
             }
@@ -615,6 +617,7 @@ public actor Conversation {
             } catch {
                 if Task.isCancelled { return }
                 snapshot.error = Store.describe(error)
+                Self.report(.conversationLoad, error)
                 snapshot.loaded = true
                 let held = heldEvents ?? []
                 heldEvents = nil
@@ -910,6 +913,7 @@ public actor Conversation {
             try stage(attachments, id: id, inline: &inline, files: &files)
         } catch {
             snapshot.error = Store.describe(error)
+            Self.report(.attachmentUpload, error)
             publish()
             return false
         }
@@ -1085,6 +1089,7 @@ public actor Conversation {
                     do { agentId = try await creation.make() }
                     catch {
                         failed(id, Store.describe(error))
+                        Self.report(creation.choice.kind == .bot ? .botCreate : .taskCreate, error)
                         return
                     }
                     // What it started on is what the person's next session
@@ -1138,7 +1143,10 @@ public actor Conversation {
                     // Offline sends stay queued and resume on the account's
                     // next resync, with the same daemon message ID.
                     publish()
-                } else { failed(id, Store.describe(error)) }
+                } else {
+                    failed(id, Store.describe(error))
+                    Self.report(.messageSend, error)
+                }
             }
         }
     }
@@ -1350,6 +1358,12 @@ public actor Conversation {
         if activeRun == nil { activeRun = (nil, Date().timeIntervalSince1970 * 1000) }
         snapshot.working = true
         publish()
+    }
+
+    /// `error_shown` for an error this conversation puts on screen.
+    private static func report(_ area: AnalyticsEvent.ErrorArea, _ error: Error) {
+        guard let code = AnalyticsEvent.ErrorCode(error) else { return }
+        Task { @MainActor in Analytics.shared.errorShown(area, code) }
     }
 
     private func failed(_ id: String, _ reason: String) {

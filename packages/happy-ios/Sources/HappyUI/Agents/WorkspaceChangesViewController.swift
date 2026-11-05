@@ -111,6 +111,7 @@ final class WorkspaceChangesViewController: UIViewController {
                 self.gitLoad = .noRepository
             case .failure(let error):
                 self.gitLoad = .error(Self.message(error, fallback: Strings.ChangesDetail.loadFailed))
+                if let code = AnalyticsEvent.ErrorCode(error) { Analytics.shared.errorShown(.diffLoad, code) }
             }
             self.render()
         }

@@ -197,4 +197,50 @@ final class AnalyticsTests: XCTestCase {
         XCTAssertEqual(AnalyticsEvent.PairingErrorCode(URLError(.timedOut)), .unknown)
         XCTAssertEqual(AnalyticsEvent.Bucket123(7), .threeOrMore)
     }
+
+    func testAShownErrorIsReadByItsTypeAndStatusAlone() async {
+        typealias Code = AnalyticsEvent.ErrorCode
+        XCTAssertNil(Code(CancellationError()))
+        XCTAssertNil(Code(URLError(.cancelled)))
+        XCTAssertEqual(Code(URLError(.notConnectedToInternet)), .offline)
+        XCTAssertEqual(Code(URLError(.timedOut)), .timeout)
+        XCTAssertEqual(Code(APIError.http(status: 404, body: "secret body")), .notFound)
+        XCTAssertEqual(Code(APIError.unauthorized), .unauthorized)
+        XCTAssertEqual(Code(APIError.decoding("field x")), .invalidResponse)
+        XCTAssertEqual(Code(PairingError.updateRequired), .versionMismatch)
+        XCTAssertEqual(Code(NSError(domain: "x", code: 1)), .unknown)
+    }
+
+    func testASignInFailureIsReadByItsTypeAlone() async {
+        typealias Code = AnalyticsEvent.SignInErrorCode
+        XCTAssertEqual(Code(ServerSignInError.invalidURL), .invalidAddress)
+        XCTAssertEqual(Code(ServerSignInError.discoveryBlocked), .edgeBlocked)
+        XCTAssertEqual(Code(ServerSignInError.unreachable), .unreachable)
+        XCTAssertEqual(Code(URLError(.timedOut)), .unreachable)
+        XCTAssertEqual(Code(NSError(domain: "x", code: 1)), .unknown)
+    }
+
+    func testAVoiceSessionEndsOnceWithHowItEndedAndHowLongItWasLive() async {
+        let live = CallState.active(.listening, muted: false, since: 100)
+        XCTAssertNil(CallState.connecting.ended(from: .idle, at: 0))
+        XCTAssertNil(CallState.idle.ended(from: .connecting, at: 5))
+        let hungUp = CallState.idle.ended(from: live, at: 190)
+        XCTAssertEqual(hungUp?.event, .voiceSessionEnded(result: .ok, errorCode: nil, duration: .init(seconds: 90)))
+        XCTAssertEqual(hungUp?.seconds, 90)
+        XCTAssertEqual(CallState.ended(.connection).ended(from: live, at: 110)?.event,
+                       .voiceSessionEnded(result: .failed, errorCode: .dropped, duration: .init(seconds: 10)))
+        XCTAssertEqual(CallState.ended(.connection).ended(from: .connecting, at: 3)?.event,
+                       .voiceSessionEnded(result: .failed, errorCode: .connectFailed, duration: .init(seconds: 0)))
+        XCTAssertEqual(CallState.ended(.microphonePermission).ended(from: .connecting, at: 1)?.event.properties["error_code"], .string("mic_denied"))
+        XCTAssertNil(CallState.ended(.connection).ended(from: .ended(.connection), at: 4))
+    }
+
+    func testPurchasesAndRestoresSayOnlyHowTheyEnded() async {
+        XCTAssertEqual(Subscription.PurchaseResult.purchased.event, .purchaseResult(product: .pro, result: .ok, errorCode: nil))
+        XCTAssertEqual(Subscription.PurchaseResult.cancelled.event, .purchaseResult(product: .pro, result: .cancelled, errorCode: nil))
+        XCTAssertEqual(Subscription.PurchaseResult.unconfirmed.event, .purchaseResult(product: .pro, result: .failed, errorCode: .verificationFailed))
+        XCTAssertEqual(Subscription.PurchaseResult.unavailable.event, .purchaseResult(product: .pro, result: .failed, errorCode: .storeUnavailable))
+        XCTAssertEqual(Subscription.RestoreResult.restored.event, .purchaseResult(product: .pro, result: .restored, errorCode: nil))
+        XCTAssertEqual(Subscription.RestoreResult.nothingFound.event, .purchaseResult(product: .pro, result: .failed, errorCode: .unknown))
+    }
 }

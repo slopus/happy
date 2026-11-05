@@ -52,7 +52,14 @@ public final class CallSession {
     public typealias Connect = @MainActor (CallGrant, CallStart, CallEvents) async throws -> any CallConnection
 
     public private(set) var state: CallState = .idle {
-        didSet { if state != oldValue { onState?(state) } }
+        didSet {
+            guard state != oldValue else { return }
+            if let ended = state.ended(from: oldValue, at: now()) {
+                Analytics.shared.log(ended.event)
+                Analytics.shared.count(.voiceSeconds, by: ended.seconds)
+            }
+            onState?(state)
+        }
     }
     public var onState: (@MainActor (CallState) -> Void)?
     /// The waves' level, from what the call reported (`CallLevel`).

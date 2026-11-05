@@ -858,6 +858,11 @@ public actor LegacySyncEngine {
                     item.nextAttemptAt = 0
                 } else {
                     item.state = item.attempts >= options.sendAttempts || Self.permanentSendError(error) ? .failed : .queued
+                    // Failed for good, it shows on the message to retry.
+                    if item.state == .failed, let code = AnalyticsEvent.ErrorCode(error) {
+                        let area: AnalyticsEvent.ErrorArea = item.kind == .file ? .attachmentUpload : .messageSend
+                        Task { @MainActor in Analytics.shared.errorShown(area, code) }
+                    }
                     let delay = min(options.sendRetryMaximumMs, options.sendRetryInitialMs * Int64(pow(2, Double(min(item.attempts - 1, 16)))))
                     item.nextAttemptAt = now() + delay
                 }

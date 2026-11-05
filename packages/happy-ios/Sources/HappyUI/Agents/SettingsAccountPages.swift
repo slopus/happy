@@ -113,7 +113,10 @@ final class AccountSettingsViewController: SettingsPageViewController {
                 self?.pushPermission = permission
                 self?.currentPushToken = current
             } catch {
-                if showError, let self { Alerts.show(Strings.Common.error, Strings.Push.loadFailed, on: self) }
+                if showError, let self {
+                    Alerts.show(Strings.Common.error, Strings.Push.loadFailed, on: self)
+                    if let code = AnalyticsEvent.ErrorCode(error) { Analytics.shared.errorShown(.pushSetup, code) }
+                }
             }
             self?.loadingPush = false
             self?.reload()

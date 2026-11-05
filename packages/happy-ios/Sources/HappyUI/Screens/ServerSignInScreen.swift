@@ -97,13 +97,16 @@ final class ServerSignInViewController: UIViewController, ASWebAuthenticationPre
                 signedIn = try await flow.saveProfile(name, for: signedIn)
             }
             try await context.account.addServer(signedIn)
+            Analytics.shared.log(.signInResult(method: .teamServer, result: .ok, errorCode: nil))
             // The window's root becomes the server's home; a sheet this
             // was shown in goes with the adding.
             if presentingViewController != nil, navigationController?.viewControllers.first === self { dismiss(animated: true) }
         } catch is CancellationError {
         } catch OAuthError.cancelled {
+            Analytics.shared.log(.signInResult(method: .teamServer, result: .cancelled, errorCode: nil))
         } catch {
             form.error = Strings.ServerSignIn.failure(error)
+            Analytics.shared.log(.signInResult(method: .teamServer, result: .failed, errorCode: .init(error)))
         }
     }
 
