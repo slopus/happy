@@ -24,7 +24,7 @@ final class VaultViewController: UIViewController, UISearchResultsUpdating {
     private let library: VaultLibrary
     private lazy var actions = VaultActions(session: session, surfaceId: surfaceId, vaultName: vaultName, host: self)
     let list = CardListView()
-    private lazy var searchController = UISearchController(searchResultsController: nil)
+    private(set) lazy var searchController = UISearchController(searchResultsController: nil)
     private var pipeline: ApplyPipeline<VaultListInput, Applied, Output>?
     private var following: Task<Void, Never>?
     private var followingFolder: Task<Void, Never>?
@@ -282,7 +282,7 @@ final class VaultViewController: UIViewController, UISearchResultsUpdating {
         return sort
     }
 
-    private func setSort(_ next: VaultSort) {
+    func setSort(_ next: VaultSort) {
         sort = next
         if let data = try? JSONEncoder().encode(next) { UserDefaults.standard.set(data, forKey: Self.sortKey(surfaceId)) }
         updateInput()
