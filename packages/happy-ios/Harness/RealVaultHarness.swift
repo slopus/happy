@@ -120,6 +120,16 @@ private final class RealVaultScript {
         await sleep(2.5)
     }
 
+    /// The screen as it is this moment, with no pause first: the device's
+    /// own capture would come too late.
+    private func snap(_ name: String) {
+        let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+            window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
+        }
+        try? image.pngData()?.write(to: folder.appendingPathComponent("\(name).png"))
+        print("REAL_VAULT SNAP \(name)")
+    }
+
     private func until(_ seconds: Double, _ condition: () -> Bool) async -> Bool {
         let deadline = Date().addingTimeInterval(seconds)
         while Date() < deadline {
@@ -246,26 +256,43 @@ private final class RealVaultScript {
         note("DONE")
     }
 
-    /// Home's search: the phone's own results at once, the computer's
-    /// fused in (`POST /v0/search`), a file's matched words under its
-    /// name, a found file opening in its vault, and a found message in its
-    /// conversation.
+    /// Home's search, typed into the bar's field: the phone's own results
+    /// at once, the computer's fused in (`POST /v0/search`), a file's
+    /// matched words under its name, a found file opening in its vault,
+    /// and a found message in its conversation.
     private func homeSearch() async {
-        guard let home = navigation.viewControllers.first?.children.compactMap({ $0 as? HomeViewController }).first else {
+        guard let agentHome = navigation.viewControllers.first as? AgentHomeViewController,
+              let home = agentHome.children.compactMap({ $0 as? HomeViewController }).first else {
             check("home search", false, "no home")
             return
         }
         let rows = { home.resultsView.list.rows }
         let labels = { rows().map { $0.label + ($0.detail.map { " [\($0)]" } ?? "") }.joined(separator: " | ") }
-        home.beginSearch()
-        home.search("launch")
-        check("home search shows what the phone holds at once", await until(2) { rows().contains { $0.label.lowercased().contains("launch") } }, labels())
-        await shoot("00a-search-local")
+        let remote = { rows().contains { $0.id.hasPrefix("found:") && !$0.id.hasPrefix("found:surface:") && !$0.id.hasPrefix("found:document:") && !$0.id.hasPrefix("found:artifact:") } }
+        let bar = agentHome.search
+        // As a person types: the field takes the words, and UIKit tells search.
+        func type(_ query: String) async {
+            // The field opens, and its results fade in, before the typing.
+            if !bar.isActive {
+                bar.begin()
+                await sleep(1.5)
+            }
+            bar.bar.searchTextField.text = ""
+            bar.bar.searchTextField.insertText(query)
+        }
+        await type("plan")
+        // Well inside the 120 ms pause before the computer is asked.
+        await sleep(0.03)
+        snap("00a-search-local")
+        check("home search shows what the phone holds before the computer is asked",
+              rows().contains { $0.label.lowercased().contains("plan") } && !remote(), labels())
+        check("the field shows what was typed", bar.bar.searchTextField.text == "plan", bar.bar.searchTextField.text ?? "nil")
         check("and the computer's, fused in, with the words a file matched under its name",
               await until(15) { rows().contains { $0.id.hasPrefix("found:vault_file:") && $0.detail != nil } }, labels())
         await shoot("00b-search-fused")
-        check("a vault app shows without .artifact", !rows().contains { $0.label.hasSuffix(".artifact") }, labels())
-        home.search("revenue")
+        await type("launch")
+        check("a vault app shows without .artifact", await until(15) { rows().contains { $0.id.hasPrefix("found:vault_file:") } } && !rows().contains { $0.label.hasSuffix(".artifact") }, labels())
+        await type("revenue")
         check("a word only in a file's content finds it, with its line", await until(15) { rows().contains { $0.id.hasPrefix("found:vault_file:") && $0.detail?.lowercased().contains("revenue") == true } },
               labels())
         await shoot("00c-search-content")
@@ -277,7 +304,7 @@ private final class RealVaultScript {
             navigation.popToRootViewController(animated: false)
             await sleep(0.5)
         }
-        home.search("launch")
+        await type("launch")
         if await until(15, { rows().contains { $0.id.hasPrefix("found:message:") } }), let row = rows().first(where: { $0.id.hasPrefix("found:message:") }) {
             await shoot("00e-search-message")
             home.resultsView.list.onSelect?(row)
@@ -289,7 +316,7 @@ private final class RealVaultScript {
         } else {
             note("no message says launch: \(labels())")
         }
-        home.endSearch(animated: false)
+        bar.end()
         await sleep(0.5)
     }
 
