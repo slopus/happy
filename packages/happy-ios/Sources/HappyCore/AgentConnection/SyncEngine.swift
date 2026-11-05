@@ -37,6 +37,9 @@ public actor SyncEngine {
     public nonisolated let documents: DocumentLibrary
     /// The todo lists open on this account or with changes on their way.
     public nonisolated let todos: TodoLibrary
+    /// The vaults' folders, Trash and settings open on this account, and
+    /// the uploads into them.
+    public nonisolated let vaults: VaultLibrary
     /// The person's Feed on this computer (`FeedLibrary`), followed for as
     /// long as the account is.
     public nonisolated let feed: FeedLibrary
@@ -131,6 +134,7 @@ public actor SyncEngine {
         let keep = EngineResources()
         todos = TodoLibrary(routes: client, outbox: intents, keep: keep, events: { await spaces.events(matching: ["todo."]) })
         todoDelivery.library = todos
+        vaults = VaultLibrary(routes: client, keep: keep, events: { await spaces.events(matching: ["vault."]) })
         feed = FeedLibrary(routes: client, outbox: intents, keep: keep)
         feedDelivery.library = feed
         artifacts = ArtifactCatalogFeed(
@@ -224,6 +228,7 @@ public actor SyncEngine {
         await spaces.stop()
         await documents.stop()
         await todos.stop()
+        await vaults.stop()
         await feed.stop()
         await artifacts.stop()
         await lookups.stop()

@@ -279,6 +279,12 @@ public struct MeteredAgentTransport: AgentTransport {
         }
     }
 
+    public func send(method: String, path: String, credential: String, body: Data, headers: [String: String], category: RequestCategory, sent: @escaping @Sendable (Int) -> Void) async throws -> HTTP1Response {
+        try await metered(Self.channel(path: path, category: category), method: method, path: path, headers: headers, body: body) {
+            try await base.send(method: method, path: path, credential: credential, body: body, headers: headers, category: category, sent: sent)
+        }
+    }
+
     /// The event stream: a request until its head, then a stream open
     /// until its body ends, however it ends.
     public func stream(path: String, credential: String, headers: [String: String]) async throws -> HTTP1Stream {

@@ -56,6 +56,8 @@ public final class AgentClient: Sendable {
         let response: HTTP1Response
         if let sent, let body, headers.isEmpty {
             response = try await transport.send(method: method, path: path, credential: token, body: body, category: category, sent: sent)
+        } else if let sent, let body {
+            response = try await transport.send(method: method, path: path, credential: token, body: body, headers: headers, category: category, sent: sent)
         } else {
             response = try await transport.request(method: method, path: path, credential: token, body: body, headers: headers, category: category)
         }

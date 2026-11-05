@@ -27,6 +27,8 @@ public protocol AgentTransport: Sendable {
     func send(method: String, path: String, credential: String, body: Data, upload: Bool, sent: @escaping @Sendable (Int) -> Void) async throws -> HTTP1Response
     /// `send`'s request as `category`.
     func send(method: String, path: String, credential: String, body: Data, category: RequestCategory, sent: @escaping @Sendable (Int) -> Void) async throws -> HTTP1Response
+    /// `send` with headers of its own: a vault upload's `Content-Range`.
+    func send(method: String, path: String, credential: String, body: Data, headers: [String: String], category: RequestCategory, sent: @escaping @Sendable (Int) -> Void) async throws -> HTTP1Response
     /// A GET whose body arrives as it is written, for an event stream: over
     /// the `.realtime` client.
     func stream(path: String, credential: String, headers: [String: String]) async throws -> HTTP1Stream
@@ -76,6 +78,12 @@ extension AgentTransport {
 
     public func send(method: String, path: String, credential: String, body: Data, category: RequestCategory, sent: @escaping @Sendable (Int) -> Void) async throws -> HTTP1Response {
         try await send(method: method, path: path, credential: credential, body: body, upload: false, sent: sent)
+    }
+
+    public func send(method: String, path: String, credential: String, body: Data, headers: [String: String], category: RequestCategory, sent: @escaping @Sendable (Int) -> Void) async throws -> HTTP1Response {
+        let response = try await request(method: method, path: path, credential: credential, body: body, headers: headers, category: category)
+        sent(body.count)
+        return response
     }
 
     public func stream(path: String, credential: String, headers: [String: String]) async throws -> HTTP1Stream {
@@ -277,6 +285,10 @@ public final class AgentHTTPTransport: SelfMeteringTransport {
 
     public func send(method: String, path: String, credential: String, body: Data, category: RequestCategory, sent: @escaping @Sendable (Int) -> Void) async throws -> HTTP1Response {
         try await perform(method: method, path: path, credential: credential, body: body, headers: [:], category: category, sent: sent)
+    }
+
+    public func send(method: String, path: String, credential: String, body: Data, headers: [String: String], category: RequestCategory, sent: @escaping @Sendable (Int) -> Void) async throws -> HTTP1Response {
+        try await perform(method: method, path: path, credential: credential, body: body, headers: headers, category: category, sent: sent)
     }
 
     private func upload(path: String, credential: String, body: Data, sent: (@Sendable (Int) -> Void)?) async throws -> HTTP1Response {

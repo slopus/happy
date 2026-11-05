@@ -1,4 +1,7 @@
 import Foundation
+#if !canImport(Darwin)
+import CoreFoundation
+#endif
 
 /// What a call adds to the hosted agent's context as things change: JSON
 /// lines it reads without answering. Nothing here asks it to speak.

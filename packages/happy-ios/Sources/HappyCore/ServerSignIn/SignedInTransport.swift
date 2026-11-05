@@ -114,6 +114,10 @@ public final class SignedInTransport: SelfMeteringTransport {
         try await signed { try await base.send(method: method, path: path, credential: $0, body: body, category: category, sent: sent) }
     }
 
+    public func send(method: String, path: String, credential: String, body: Data, headers: [String: String], category: RequestCategory, sent: @escaping @Sendable (Int) -> Void) async throws -> HTTP1Response {
+        try await signed { try await base.send(method: method, path: path, credential: $0, body: body, headers: headers, category: category, sent: sent) }
+    }
+
     /// The event stream. A refused head is read whole so its body can be
     /// told apart from Happy's JSON.
     public func stream(path: String, credential: String, headers: [String: String]) async throws -> HTTP1Stream {

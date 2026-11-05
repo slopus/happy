@@ -131,6 +131,9 @@ actor AgentEndpointTransport: AgentTransport {
     func send(method: String, path: String, credential: String, body: Data, category: RequestCategory, sent: @escaping @Sendable (Int) -> Void) async throws -> HTTP1Response {
         try await current().0.send(method: method, path: path, credential: credential, body: body, category: category, sent: sent)
     }
+    func send(method: String, path: String, credential: String, body: Data, headers: [String: String], category: RequestCategory, sent: @escaping @Sendable (Int) -> Void) async throws -> HTTP1Response {
+        try await current().0.send(method: method, path: path, credential: credential, body: body, headers: headers, category: category, sent: sent)
+    }
     func stream(path: String, credential: String, headers: [String: String]) async throws -> HTTP1Stream {
         try await current().0.stream(path: path, credential: credential, headers: headers)
     }
