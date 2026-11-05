@@ -14,6 +14,13 @@ function now(): number {
 
 /** Records a named point in time, e.g. when a session screen starts mounting. */
 export function perfMark(name: string): void {
+    // Marks are keyed per session id and never removed, so drop the oldest
+    // instead of growing by one entry for every session opened.
+    while (marks.size >= 64) {
+        const oldest = marks.keys().next().value;
+        if (oldest === undefined) break;
+        marks.delete(oldest);
+    }
     marks.set(name, now());
 }
 
