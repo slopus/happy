@@ -411,6 +411,9 @@ public actor Conversation {
     /// A task its first message makes (`NewTask`): until then nothing of it
     /// is on the computer, and everything that goes there waits for it.
     private var creation: NewTask?
+    /// The mode its first message made it with went to the person's
+    /// preferences, once.
+    private var startRecorded = false
     /// Sends waiting for pictures still being read (`previews`), by ID:
     /// drawn from the previews, delivered once `prepared` has them.
     private var held: [String: [PreviewAttachment]] = [:]
@@ -461,7 +464,7 @@ public actor Conversation {
             await restoreConversation()
             snapshot.loaded = true
             publish()
-            defaultMode = Task { [client] in try await client.defaultMode() }
+            defaultMode = readDefaultMode()
             following = Task {
                 guard let id = try? await creation.made(), !Task.isCancelled else { return }
                 await self.created(id)
@@ -628,7 +631,7 @@ public actor Conversation {
         mode = picked ?? start.draft?.value?.mode ?? start.mode ?? mode
         snapshot.mode = mode
         if let draft = start.draft { adoptDraft(draft, publishes: false) }
-        if mode == nil, defaultMode == nil { defaultMode = Task { [client] in try await client.defaultMode() } }
+        if mode == nil, defaultMode == nil { defaultMode = readDefaultMode() }
         // A newest-page refresh is not a deletion of older pages already
         // downloaded. Retain them until a complete history says otherwise.
         let refreshed = Set(history.runs.map(\.id))
@@ -1084,6 +1087,16 @@ public actor Conversation {
                         failed(id, Store.describe(error))
                         return
                     }
+                    // What it started on is what the person's next session
+                    // starts on, on every device (`ModelPreferences`).
+                    if outgoingModes[id] == nil {
+                        outgoingModes[id] = try await sendingMode()
+                        guard await saveConversationNow() else { failed(id, "Could not save this message on this device."); return }
+                    }
+                    if !startRecorded, let started = outgoingModes[id] {
+                        startRecorded = true
+                        try? await persistence?.sessionStarted(started)
+                    }
                 }
                 if let persistence, !(await persistence.deliveryAllowed) { return }
                 guard let outgoingIndex = outgoing.firstIndex(where: { $0.id == id }) else { return }
@@ -1299,9 +1312,18 @@ public actor Conversation {
         saveDraftSoon(after: .zero)
     }
 
+    /// What a message goes with when nothing was picked: what the person's
+    /// next session starts on (`ModelPreferences`), read from this
+    /// computer's settings as this phone last has them.
+    private func readDefaultMode() -> Task<AgentWire.Mode, Error> {
+        Task { [client, persistence] in
+            try await client.defaultMode(ModelPreferences(await persistence?.userSettings() ?? [:]))
+        }
+    }
+
     private func sendingMode() async throws -> AgentWire.Mode {
         if let mode { return mode }
-        let task = defaultMode ?? Task { [client] in try await client.defaultMode() }
+        let task = defaultMode ?? readDefaultMode()
         defaultMode = task
         do {
             let mode = try await task.value

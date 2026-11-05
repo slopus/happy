@@ -255,6 +255,39 @@ final class SyncEngineTests: XCTestCase {
         await reopened.stop()
     }
 
+    /// A session started is what the next one starts on: kept at once in
+    /// the person's settings, offline too, under desktop's keys. On Default
+    /// Model only the account and the model's memory move.
+    func testAStartedSessionIsKeptInThePersonsSettings() async throws {
+        typealias Key = ModelPreferences.Key
+        let transport = SyncFixture()
+        let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)
+        await engine.start()
+        _ = try await wait(engine) { $0.live && $0.loaded }
+        await engine.pause()
+        await transport.configure(online: false)
+        let started = AgentWire.Mode(providerId: "codex", modelId: "openai/sol", effort: "high", serviceTier: "priority", permissionMode: "auto")
+        try await engine.sessionStarted(started)
+        var settings = await engine.userSettings()
+        XCTAssertEqual(settings[Key.defaultModel], .object(["modelId": .string("openai/sol")]))
+        XCTAssertEqual(settings[Key.effort], .string("high"))
+        XCTAssertEqual(settings[Key.provider], .string("codex"))
+        XCTAssertEqual(ModelPreferences(settings).memory, [.init(providerId: "codex", modelId: "openai/sol", effort: "high", serviceTier: "priority")])
+        XCTAssertNil(settings[Key.start])
+
+        try await engine.updateModelPreferences { $0.start = .defaultModel }
+        try await engine.sessionStarted(AgentWire.Mode(providerId: "claude", modelId: "anthropic/opus-5", effort: "max", serviceTier: nil, permissionMode: "auto"))
+        settings = await engine.userSettings()
+        XCTAssertEqual(settings[Key.start], .string("default"))
+        XCTAssertEqual(settings[Key.defaultModel], .object(["modelId": .string("openai/sol")]), "Default Model moved the default")
+        XCTAssertEqual(settings[Key.effort], .string("high"))
+        XCTAssertEqual(settings[Key.provider], .string("claude"))
+        XCTAssertEqual(ModelPreferences(settings).memory.map(\.modelId), ["openai/sol", "anthropic/opus-5"])
+        let snapshot = try await wait(engine) { $0.settings[Key.provider] == .string("claude") }
+        XCTAssertEqual(snapshot.settings[Key.start], .string("default"))
+        await engine.stop()
+    }
+
     func testRemoteSettingChangesHomeAndAStaleOfflineEditAdoptsServerWinner() async throws {
         let transport = SyncFixture()
         let engine = SyncEngine(client: AgentClient(transport: transport, token: "test"), directory: nil)

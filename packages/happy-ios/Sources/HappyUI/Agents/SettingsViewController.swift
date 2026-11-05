@@ -94,6 +94,10 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     private var prioritizing: Bool?
     private var connectionSettingsWatch: Task<Void, Never>?
     private var projectsHidden = false
+    /// What the shown computer's new sessions start on, and its models
+    /// followed while its page shows, for New Sessions.
+    private var modelPreferences = ModelPreferences()
+    private var modelsWatch: Watch?
     /// The person's own profile on the computer shown, for its row.
     private var profileWatch: (id: String, watch: Watch)?
     private var profileName = ""
@@ -360,6 +364,9 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         watchProfile()
         connectionSettingsWatch?.cancel(); connectionSettingsWatch = nil
         projectsHidden = false
+        modelPreferences = ModelPreferences()
+        modelsWatch?.invalidate()
+        modelsWatch = nil
         prioritizingWatch?.invalidate()
         prioritizingWatch = nil
         prioritizing = nil
@@ -381,11 +388,15 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
             for await snapshot in await engine.snapshots() {
                 guard !Task.isCancelled, let self else { return }
                 let hidden = DesktopSettingKeys.projectsHidden(snapshot.settings)
-                guard hidden != projectsHidden else { continue }
+                let preferences = ModelPreferences(snapshot.settings)
+                guard hidden != projectsHidden || preferences != modelPreferences else { continue }
                 projectsHidden = hidden
+                modelPreferences = preferences
                 rebuild()
             }
         }
+        modelsWatch = session.models.watch { [weak self] in self?.rebuild() }
+        session.models.load()
         prioritizingWatch = session.watch { [weak self] snapshot in
             guard let self, prioritizing != snapshot.prioritizing else { return }
             prioritizing = snapshot.prioritizing
@@ -478,6 +489,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                 [supportRow()],
                 [
                     Row(Index.appearance, action: { [weak self] in self?.open(.appearance) }),
+                    Row(Index.newSessions, value: Strings.NewSessions.start(modelPreferences.start), action: { [weak self] in self?.open(.newSessions) }),
                     Row(Index.agentVoice, value: voiceValue(), action: { [weak self] in self?.open(.agentVoice) }),
                     Row(Index.dataStorage, action: { [weak self] in self?.open(.dataStorage) }),
                 ],
@@ -531,14 +543,14 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
 
     /// The pages a row opens in settings' cards.
     enum Page: CaseIterable {
-        case appearance, supportUs, account, backup, voice, language, dataStorage, agentVoice
+        case appearance, newSessions, supportUs, account, backup, voice, language, dataStorage, agentVoice
     }
 
     /// Whether `profile`'s page has `page`: a computer's look, or a Happy
     /// account's own pages, once that account is the active one.
     private func has(_ page: Page, _ profile: Profile) -> Bool {
         switch page {
-        case .appearance, .agentVoice: profile.isAgentConnection
+        case .appearance, .newSessions, .agentVoice: profile.isAgentConnection
         case .supportUs: true
         case .dataStorage: profile.isAgentConnection || activeSession != nil
         case .account, .backup, .voice, .language: !profile.isAgentConnection && activeSession != nil
@@ -548,6 +560,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     private func make(_ page: Page) -> SettingsPageViewController? {
         switch page {
         case .appearance: SettingsPageViewController(title: SettingsIndex.appearance.title) { [weak self] in self?.appearanceRows() ?? [] }
+        case .newSessions: SettingsPageViewController(title: SettingsIndex.newSessions.title) { [weak self] in self?.newSessionRows() ?? [] }
         case .supportUs: SupportUsViewController()
         case .account: activeSession.map { AccountSettingsViewController(context: context, session: $0) }
         case .backup: activeSession.map { BackupSettingsViewController(context: context, session: $0) }
@@ -598,6 +611,75 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
                 Task { try? await engine.setProjectsHidden(on) }
             })],
         ]
+    }
+
+    /// What new sessions start on (desktop's General › New sessions): the
+    /// last session's model and effort or the default ones, each a
+    /// pull-down. They are the person's own settings on the computer
+    /// (`ModelPreferences`), so they follow them across devices. The model
+    /// and effort shown are what a new session starts on now, fallbacks
+    /// taken.
+    private func newSessionRows() -> [[SettingsRow]] {
+        typealias Row = SettingsRow
+        guard let id = shown?.id, let session = Session.session(for: id, context: context) else { return [] }
+        let preferences = modelPreferences
+        let catalog = session.models.catalog
+        let mode = catalog?.startMode(preferences)
+        let model = mode.flatMap { catalog?.model($0) }
+        var start = Row(id: "new-sessions-start", title: Strings.NewSessions.startOn, value: Strings.NewSessions.start(preferences.start), accessory: .none)
+        start.pullDown = { [weak self] in
+            UIMenu(children: [ModelPreferences.Start.lastSession, .defaultModel].map { choice in
+                UIAction(title: Strings.NewSessions.start(choice), state: choice == preferences.start ? .on : .off) { _ in
+                    self?.updateModelPreferences { $0.start = choice }
+                }
+            })
+        }
+        var defaultModel = Row(id: "new-sessions-model", title: Strings.NewSessions.defaultModel,
+                               value: catalog == nil ? Strings.NewSessions.reading : model?.name ?? mode?.modelId, accessory: .none)
+        if let catalog, let mode {
+            defaultModel.pullDown = { [weak self] in
+                UIMenu(children: Self.servedModels(catalog).map { service in
+                    UIMenu(title: service.label, options: .displayInline, children: service.models.map { choice in
+                        UIAction(title: choice.name, state: choice.id == mode.modelId ? .on : .off) { _ in
+                            self?.updateModelPreferences { $0.modelId = choice.id }
+                        }
+                    })
+                })
+            }
+        }
+        var effort = Row(id: "new-sessions-effort", title: Strings.NewSessions.defaultEffort,
+                         value: model.flatMap { $0.efforts.isEmpty ? nil : mode.map { ModelMenus.effortName($0.effort) } }, accessory: .none)
+        if let model, let mode, !model.efforts.isEmpty {
+            effort.pullDown = { [weak self] in
+                UIMenu(children: model.efforts.map { level in
+                    UIAction(title: ModelMenus.effortName(level), state: level == mode.effort ? .on : .off) { _ in
+                        self?.updateModelPreferences { $0.effort = level }
+                    }
+                })
+            }
+        }
+        return [[start, defaultModel, effort].withFooter(Strings.NewSessions.footer(preferences.start))]
+    }
+
+    /// The models a new session can start on, by service: those an account
+    /// that is on and listed offers, each once, in the computer's order.
+    private static func servedModels(_ catalog: ModelCatalog) -> [(label: String, models: [ModelCatalog.Model])] {
+        var services: [(type: String, label: String, models: [ModelCatalog.Model])] = []
+        for provider in catalog.providers where !provider.isDisabled && !provider.hidden {
+            let index = services.firstIndex { $0.type == provider.type } ?? {
+                services.append((provider.type, ModelMenus.serviceName(provider.type), []))
+                return services.count - 1
+            }()
+            for model in provider.models where !provider.hiddenModels.contains(model.id) && !services[index].models.contains(where: { $0.id == model.id }) {
+                services[index].models.append(model)
+            }
+        }
+        return services.filter { !$0.models.isEmpty }.map { ($0.label, $0.models) }
+    }
+
+    private func updateModelPreferences(_ change: @escaping @Sendable (inout ModelPreferences) -> Void) {
+        guard let id = shown?.id, let engine = context.account.agentConnections.syncEngine(for: id) else { return }
+        Task { try? await engine.updateModelPreferences(change) }
     }
 
     private func aboutRows() -> [SettingsRow] {

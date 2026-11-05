@@ -183,7 +183,7 @@ final class HostedSettingsUnifiedTests: XCTestCase {
             ["account:\(computer)", "account:\(happy)", SettingsIndex.connectAgent.id],
             ["profile"],
             ["support-boba"],
-            ["appearance", "agent-voice", "data-storage"],
+            ["appearance", "new-sessions", "agent-voice", "data-storage"],
             ["support-us"],
             SettingsIndex.aboutRows.map(\.id),
             ["disconnect"],

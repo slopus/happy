@@ -207,7 +207,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             planner = previewing ? ChatPlanner(syntax: session.syntax) : held.chat.planner
         } else {
             warm = nil
-            conversation = Conversation(client: session.client, store: session.store, agentId: agentId, newTask: newTask, mode: session.models.newWorkMode, persistence: session.engine)
+            conversation = Conversation(client: session.client, store: session.store, agentId: agentId, newTask: newTask, mode: session.newWorkMode, persistence: session.engine)
             planner = ChatPlanner(syntax: session.syntax)
         }
         tappedAt = previewing ? nil : session.warm.takeTap(agentId)
@@ -877,10 +877,10 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
 
     // MARK: Model
 
-    /// What the next message goes with: the conversation's, else what new
-    /// work starts on, else the computer's default.
+    /// What the next message goes with: the conversation's, else what the
+    /// person's new sessions start on.
     private var mode: AgentWire.Mode? {
-        picked ?? chat.mode ?? (opensFocused ? session.models.newWorkMode : nil) ?? session.models.catalog?.defaultMode()
+        picked ?? chat.mode ?? session.newWorkMode
     }
     /// A pick made here, until the conversation's own mode says it back.
     private var picked: AgentWire.Mode?

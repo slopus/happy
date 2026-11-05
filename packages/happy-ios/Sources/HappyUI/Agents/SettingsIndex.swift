@@ -17,6 +17,7 @@ enum SettingsIndex {
     static var profile: Entry { Entry(id: "profile", title: Strings.Profile.title, glyph: "person-circle-outline", tile: .gray) }
     static var changeAgentName: Entry { Entry(id: "change-agent-name", title: Strings.changeAgentName, glyph: "create-outline", tile: .blue) }
     static var changeAgentAvatar: Entry { Entry(id: "change-agent-avatar", title: Strings.changeAgentAvatar, glyph: "image-outline", tile: .orange) }
+    static var newSessions: Entry { Entry(id: "new-sessions", title: Strings.NewSessions.title, glyph: "hardware-chip-outline", tile: .indigo) }
     static var hideProjects: Entry { Entry(id: "hide-projects", title: "Hide projects", glyph: "folder-outline", tile: .orange) }
     static var connection: Entry { Entry(id: "connection", title: Strings.Connection.title, glyph: "pulse-outline", tile: .teal) }
     static var account: Entry { Entry(id: "account", title: Strings.Settings.account, glyph: "person-circle-outline", tile: .blue) }
@@ -48,7 +49,7 @@ enum SettingsIndex {
     /// is Data and Storage's. Disconnect is left
     /// out: a search doesn't offer to take the computer away.
     static var computer: [Entry] {
-        [profile, changeAgentName, changeAgentAvatar, supportBoba, appearance, hideProjects, agentVoice, dataStorage, connection, supportUs, connectAgent, addAccount] + aboutRows
+        [profile, changeAgentName, changeAgentAvatar, supportBoba, appearance, hideProjects, newSessions, agentVoice, dataStorage, connection, supportUs, connectAgent, addAccount] + aboutRows
     }
 
     /// What a Happy account's settings show under its accounts card, in

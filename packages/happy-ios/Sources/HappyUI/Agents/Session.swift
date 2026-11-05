@@ -18,8 +18,11 @@ final class Session {
     let client: AgentClient
     let store: Store
     let images: Images
-    /// The models the composer's pickers offer, and the dock's pick.
+    /// The models the composer's pickers offer.
     let models: ModelState
+    /// What new work starts on: the person's preferences on this computer
+    /// (`ModelPreferences`) over its catalog; nil until the catalog is read.
+    var newWorkMode: AgentWire.Mode? { models.catalog?.startMode(ModelPreferences(home.settings)) }
     /// What this computer last showed, for opening on it offline.
     let offline: OfflineFile?
     /// The pictures, recordings and files its conversations showed, kept
