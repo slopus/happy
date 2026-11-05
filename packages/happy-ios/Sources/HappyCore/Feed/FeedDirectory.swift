@@ -198,36 +198,54 @@ public enum FeedActorName: Equatable, Sendable {
     case named(String)
 }
 
-/// A covered artifact's entry drawn as a post: its one line about itself,
-/// then its cover across the card at the cover's own shape.
+/// An artifact's entry drawn as a post: its row, then its summary, then
+/// its cover across the card at the cover's own shape. Either may be
+/// missing, not both.
 public struct FeedPost: Equatable, Sendable {
-    /// The cover's file in the latest version, as the daemon serves it
-    /// (`/v0/artifacts/:id/versions/:n/files/<path>`).
-    public var image: String
-    /// The cover's shape, which the post's height comes from, and its
-    /// size in pixels, which how much of it is decoded does.
-    public var aspect: ArtifactSummary.Cover.Aspect
-    public var width: Double
-    public var height: Double
+    /// The latest version's cover.
+    public struct Cover: Equatable, Sendable {
+        /// Its file, as the daemon serves it
+        /// (`/v0/artifacts/:id/versions/:n/files/<path>`).
+        public var image: String
+        /// Its shape, which the post's height comes from, and its size in
+        /// pixels, which how much of it is decoded does.
+        public var aspect: ArtifactSummary.Cover.Aspect
+        public var width: Double
+        public var height: Double
+
+        public init(image: String, aspect: ArtifactSummary.Cover.Aspect, width: Double, height: Double) {
+            self.image = image
+            self.aspect = aspect
+            self.width = width
+            self.height = height
+        }
+    }
+
+    /// The longest summary a post shows, as the daemon keeps it.
+    public static let summaryLimit = 5000
+
+    public var cover: Cover?
     /// The artifact's own colour behind the picture, `#rrggbb` and the like.
     public var background: String?
+    /// Post-length words, their line breaks kept.
     public var summary: String?
 
-    public init(image: String, aspect: ArtifactSummary.Cover.Aspect, width: Double, height: Double, background: String? = nil, summary: String? = nil) {
-        self.image = image
-        self.aspect = aspect
-        self.width = width
-        self.height = height
+    public init(cover: Cover?, background: String? = nil, summary: String? = nil) {
+        self.cover = cover
         self.background = background
         self.summary = summary
     }
 
-    /// `artifact`'s post, when it has a cover.
+    /// `artifact`'s post, when it has a usable cover or a summary; a
+    /// tombstone has neither.
     public init?(_ artifact: ArtifactSummary) {
-        guard let cover = artifact.cover, let image = artifact.coverPath else { return nil }
-        self.init(
-            image: image, aspect: cover.aspect, width: cover.width, height: cover.height, background: artifact.background, summary: artifact.summary
-        )
+        guard !artifact.deleted else { return nil }
+        let cover = artifact.cover.flatMap { cover in
+            artifact.coverPath.map { Cover(image: $0, aspect: cover.aspect, width: cover.width, height: cover.height) }
+        }
+        let summary = artifact.summary.map { String($0.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.summaryLimit)) }.flatMap { $0.isEmpty ? nil : $0 }
+        guard cover != nil || summary != nil else { return nil }
+        self.init(cover: cover, background: artifact.background, summary: summary)
     }
 }
 
@@ -254,7 +272,7 @@ public struct FeedRow: Equatable, Sendable, Identifiable {
     public var unread: Bool
     /// Nil where nothing opens it (a deleted artifact).
     public var target: FeedTarget?
-    /// A covered artifact's post under the row; nil for a plain row.
+    /// An artifact's post under the row; nil for a plain row.
     public var post: FeedPost?
 }
 
@@ -266,8 +284,8 @@ public enum FeedRows {
     /// A row for each entry the directory can show, in their order; `unread`
     /// says which carry the dot. An entry whose subject the directory
     /// doesn't hold is left out, never shown with a stand-in. With
-    /// `covers` (the computer's `artifactCovers`), a covered artifact's
-    /// row carries its post.
+    /// `covers` (the computer's `artifactCovers`), an artifact with a
+    /// cover or a summary carries its post.
     public static func make(_ items: [FeedItem], unread: (FeedItem) -> Bool, directory: FeedDirectory, personSeed: String, covers: Bool = false) -> [FeedRow] {
         items.compactMap { row($0, unread: unread($0), directory: directory, personSeed: personSeed, covers: covers) }
     }

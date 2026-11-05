@@ -112,6 +112,9 @@ public struct FeedWords: Equatable, Sendable {
     public var all: String { word("all", "All") }
     public var highlights: String { word("highlights", "Highlights") }
     public var noHighlights: String { word("noHighlights", "No highlights yet. Artifacts and new tasks show up here.") }
+    /// A post's long summary, cut at its fourth line, and opened in full.
+    public var showMore: String { word("showMore", "Show more") }
+    public var showLess: String { word("showLess", "Show less") }
 
     public func name(_ filter: FeedFilter) -> String {
         switch filter {

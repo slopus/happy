@@ -67,6 +67,67 @@ enum CardText {
     }
 }
 
+/// One TextKit 1 layout of words and the tappable words after them, in
+/// their own colour: how a `.paragraph` is measured (`FeedSummaryText`)
+/// and drawn, so the two agree to the glyph. Safe off the main thread.
+struct CardTextStack {
+    let storage: NSTextStorage
+    let manager = NSLayoutManager()
+    let container: NSTextContainer
+    let toggleRange: NSRange?
+
+    nonisolated init(_ text: String, _ toggle: String?, font: CardFont, width: CGFloat, lines: Int, color: UIColor = .black, toggleColor: UIColor = .black) {
+        let string = NSMutableAttributedString(string: text, attributes: CardText.attributes(font, color: color, wraps: true))
+        if let toggle {
+            toggleRange = NSRange(location: string.length, length: (toggle as NSString).length)
+            string.append(NSAttributedString(string: toggle, attributes: CardText.attributes(font, color: toggleColor, wraps: true)))
+        } else {
+            toggleRange = nil
+        }
+        storage = NSTextStorage(attributedString: string)
+        container = NSTextContainer(size: CGSize(width: max(0, width), height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        container.maximumNumberOfLines = lines
+        container.lineBreakMode = .byWordWrapping
+        manager.addTextContainer(container)
+        storage.addLayoutManager(manager)
+        manager.ensureLayout(for: container)
+    }
+
+    /// Where the laid lines' characters end.
+    nonisolated var laidEnd: Int {
+        NSMaxRange(manager.characterRange(forGlyphRange: manager.glyphRange(for: container), actualGlyphRange: nil))
+    }
+
+    /// Some of the text, besides blank space, is past the last line.
+    nonisolated var overflows: Bool {
+        let end = laidEnd
+        guard end < storage.length else { return false }
+        return !(storage.string as NSString).substring(from: end).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// Where the last laid line's characters start.
+    nonisolated var lastLineStart: Int {
+        var start = 0
+        manager.enumerateLineFragments(forGlyphRange: manager.glyphRange(for: container)) { _, _, _, glyphs, _ in
+            start = manager.characterIndexForGlyph(at: glyphs.location)
+        }
+        return start
+    }
+
+    /// The words' used size up to the screen's next pixel, and where the
+    /// toggle's words are, from the origin.
+    nonisolated func measured(scale: CGFloat) -> (size: CGSize, toggle: CGRect?) {
+        let used = manager.usedRect(for: container)
+        let pixels = max(scale, 1)
+        func ceiled(_ value: CGFloat) -> CGFloat { (value * pixels).rounded(.up) / pixels }
+        let toggle = toggleRange.map { range in
+            manager.boundingRect(forGlyphRange: manager.glyphRange(forCharacterRange: range, actualCharacterRange: nil), in: container)
+        }
+        return (CGSize(width: min(ceiled(used.width), container.size.width), height: ceiled(used.height)), toggle)
+    }
+}
+
 /// What one slot of a card list draws as a bitmap, on UltraView's display
 /// queue: text, glyphs, tiles and hairlines, at frames a pure layout chose.
 /// The card's fill and a finger's highlight are the row view's, under it;
@@ -74,6 +135,9 @@ enum CardText {
 struct CardDrawing: Drawing, Equatable {
     enum Mark: Equatable, Sendable {
         case text(String, CardFont, ColorToken, CGRect, wraps: Bool, strike: Bool, kern: CGFloat)
+        /// Wrapped words, then words of another colour after them (a
+        /// post's Show more), laid out as `CardTextStack` measured them.
+        case paragraph(String, CardFont, ColorToken, toggle: String?, ColorToken, CGRect)
         case icon(Icon, CGFloat, ColorToken, CGRect)
         /// A rounded square, filled.
         case tile(CGRect, radius: CGFloat, ColorToken)
@@ -115,6 +179,11 @@ struct CardDrawing: Drawing, Equatable {
         marks.append(.text(value, font, color, frame, wraps: wraps, strike: strike, kern: kern))
     }
 
+    mutating func paragraph(_ value: String, _ font: CardFont, _ color: ColorToken, toggle: String?, _ toggleColor: ColorToken, _ frame: CGRect) {
+        guard !value.isEmpty, frame.width > 0, frame.height > 0 else { return }
+        marks.append(.paragraph(value, font, color, toggle: toggle, toggleColor, frame))
+    }
+
     mutating func icon(_ icon: Icon, size: CGFloat, _ color: ColorToken, in frame: CGRect) {
         marks.append(.icon(icon, size, color, frame))
     }
@@ -134,6 +203,9 @@ struct CardDrawing: Drawing, Equatable {
             case .text(let value, let font, let color, let frame, let wraps, let strike, let kern):
                 let attributes = CardText.attributes(font, color: resolved(color), kern: kern, strike: strike, wraps: wraps)
                 NSAttributedString(string: value, attributes: attributes).draw(with: frame, options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine], context: nil)
+            case .paragraph(let value, let font, let color, let toggle, let toggleColor, let frame):
+                let stack = CardTextStack(value, toggle, font: font, width: frame.width, lines: 0, color: resolved(color), toggleColor: resolved(toggleColor))
+                stack.manager.drawGlyphs(forGlyphRange: stack.manager.glyphRange(for: stack.container), at: frame.origin)
             case .icon(let icon, let size, let color, let frame):
                 guard let glyph = IconCatalog.glyph(for: icon) else { continue }
                 let layout = glyph.layout(size: size, scale: displayScale)

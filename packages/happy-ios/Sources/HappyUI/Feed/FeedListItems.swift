@@ -15,6 +15,9 @@ struct FeedListInput: Sendable {
     var personSeed = ""
     /// A place's newest entries, peeked at: none carries the dot.
     var peek = false
+    /// The posts whose summary the reader opened in full, by entry: the
+    /// screen's own, never synced.
+    var expanded: Set<String> = []
     var width: CGFloat = 0
     var maxWidth: CGFloat = .greatestFiniteMagnitude
     /// The person's text size, where the screen follows it.
@@ -41,6 +44,9 @@ enum FeedListItems {
     static let actorKind = "actor"
     /// A post's cover over its placeholder (`FeedCoverView`).
     static let coverKind = "cover"
+    /// Where a tap on a post's Show more or Show less lands: no view, the
+    /// screen's tap reads it (`toggleHit`).
+    static let toggleKind = "summaryToggle"
 
     /// What a row's or a place's face looks like where it is a glyph on
     /// its kind's tile, drawn into the bitmap.
@@ -145,7 +151,12 @@ enum FeedListItems {
         let more = rest > 0 ? "+\(rest)" : nil
         let post = entry.post
         let captionFont = CardFont(.regular, M.captionSize, scale: input.scale)
-        let caption = post?.summary
+        let caption = post?.summary.map { summary in
+            FeedSummaryText.fit(
+                summary, font: captionFont, width: FeedRowLayout.postWidth(width: input.width, maxWidth: input.maxWidth),
+                expanded: input.expanded.contains(entry.id), more: words.showMore, less: words.showLess, scale: input.displayScale
+            )
+        }
         let layout = FeedRowLayout(
             width: input.width, maxWidth: input.maxWidth, place: place,
             title: CardText.measurable(title, font: titleFont, maxLines: 1, scale: input.displayScale),
@@ -153,8 +164,8 @@ enum FeedListItems {
             faces: actors.count,
             more: more.map { CardText.measure($0, font: small, width: 10_000, maxLines: 1, scale: input.displayScale) },
             summary: CardText.measurable(summary, font: small, maxLines: 1, scale: input.displayScale),
-            caption: caption.map { CardText.measurable($0, font: captionFont, maxLines: M.captionLines, scale: input.displayScale) },
-            cover: post.map { CGFloat($0.aspect.ratio) },
+            caption: caption.map { .fixed($0.size) },
+            cover: post?.cover.map { CGFloat($0.aspect.ratio) },
             hairline: 1 / max(1, input.displayScale), scale: input.displayScale
         )
         var drawing = CardDrawing(dark: input.dark, displayScale: input.displayScale)
@@ -182,24 +193,44 @@ enum FeedListItems {
         }
         if let more, let frame = layout.more { drawing.text(more, small, Palette.settingsSecondary, frame) }
         if let frame = layout.summary { drawing.text(summary, small, Palette.settingsSecondary, frame) }
-        if let caption, let frame = layout.caption { drawing.text(caption, captionFont, Palette.text, frame, wraps: true) }
-        if let post, let frame = layout.cover {
+        if let caption, let frame = layout.caption {
+            drawing.paragraph(caption.text, captionFont, Palette.text, toggle: caption.toggle, Palette.textLink, frame)
+            if let words = caption.toggleFrame {
+                // At least a finger tall, a little wider than its words.
+                let words = words.offsetBy(dx: frame.minX, dy: frame.minY)
+                let height = max(M.toggleTarget, words.height)
+                let target = CGRect(x: words.minX - M.toggleSlop, y: words.midY - height / 2, width: words.width + 2 * M.toggleSlop, height: height)
+                overlays.append(CardOverlay(kind: toggleKind, key: "\(entry.id)|toggle|\(input.expanded.contains(entry.id))", frame: target))
+            }
+        }
+        if let post, let cover = post.cover, let frame = layout.cover {
             // The artifact's own colour, or a quiet stand-in, until the
             // picture fades in over it; the height never waits for it.
             drawing.marks.append(.tile(frame, radius: M.coverRadius, coverGround(post)))
-            overlays.append(CardOverlay(kind: coverKind, key: coverKey(entry.id, post), frame: frame, radius: M.coverRadius))
+            overlays.append(CardOverlay(kind: coverKind, key: coverKey(entry.id, cover), frame: frame, radius: M.coverRadius))
         }
         drawing.rule(layout.separator)
         var item = CardItem(id: entry.id, kind: .row, size: layout.size, card: layout.card, place: place, drawing: drawing, opens: entry.target != nil, overlays: overlays)
         item.accessibilityLabel = title
-        item.accessibilityValue = [unread ? words.unreadMark : nil, summary, caption, words.actors(named: entry.actorNames, count: entry.actorCount), time]
+        item.accessibilityValue = [unread ? words.unreadMark : nil, summary, post?.summary, words.actors(named: entry.actorNames, count: entry.actorCount), time]
             .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
         return (item, faces)
     }
 
     /// The key a post's cover is made for: the picture it loads, so a new
     /// version's is made again and an unchanged one kept.
-    nonisolated static func coverKey(_ id: String, _ post: FeedPost) -> String { "\(id)|cover|\(post.image)" }
+    nonisolated static func coverKey(_ id: String, _ cover: FeedPost.Cover) -> String { "\(id)|cover|\(cover.image)" }
+
+    /// Whether a tap at `point` in `item` is on its post's Show more or
+    /// Show less.
+    nonisolated static func toggleHit(_ item: CardItem?, at point: CGPoint) -> Bool {
+        item?.overlays.contains { $0.kind == toggleKind && $0.frame.contains(point) } ?? false
+    }
+
+    /// Whether `item`'s post has a summary to open or close, for VoiceOver.
+    nonisolated static func toggles(_ item: CardItem?) -> Bool {
+        item?.overlays.contains { $0.kind == toggleKind } ?? false
+    }
 
     /// What a cover sits on: the artifact's background, else a neutral fill.
     nonisolated static func coverGround(_ post: FeedPost) -> ColorToken {

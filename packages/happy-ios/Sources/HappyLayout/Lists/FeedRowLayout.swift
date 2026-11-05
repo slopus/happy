@@ -13,16 +13,18 @@ import CoreGraphics
 /// `faceOverlap`, the first leftmost. The dot's lane is kept whether or
 /// not the entry is unread.
 ///
-/// A covered artifact's entry is a post: the same row on top, then under
-/// it its caption and its cover, both across the card from inset to inset:
+/// An artifact's entry with a cover or a summary is a post: the same row
+/// on top, then under it its caption and its cover, both across the card
+/// from inset to inset, no wider than `postMaxWidth`:
 ///
-///     |16| caption, up to three lines …………………………… |16|
+///     |16| caption, four lines … Show more, or all of it |16|
 ///     |16| ┌──────── cover, as tall as its shape ───────┐ |16|
 ///          └───────────────────────────────────────────┘
 ///                               16
 ///
-/// The cover is exactly its shape (16:9 or 1:1) across the card, so the
-/// post is measured without its picture.
+/// Either may be missing. The caption is measured at `postWidth`, cut or
+/// in full as the reader left it; the cover is exactly its shape (16:9 or
+/// 1:1), so the post is measured without its picture.
 public struct FeedRowLayout: Equatable, Sendable {
     public var size: CGSize
     public var card: CGRect
@@ -42,7 +44,7 @@ public struct FeedRowLayout: Equatable, Sendable {
     /// `faces` is how many faces show (at most `maxFaces`), `more` the
     /// size of "+N" when there are more actors than that.
     /// `cover` is a post's cover's height over its width, `caption` the
-    /// line over it; a row without a cover has no caption.
+    /// words over it; with neither the row is compact.
     public init(width: CGFloat, maxWidth: CGFloat = .greatestFiniteMagnitude, place: CardPlace, title: Measurable, time: CGSize?, faces: Int, more: CGSize?, summary: Measurable?, caption: Measurable? = nil, cover: CGFloat? = nil, hairline: CGFloat, scale: CGFloat = 1) {
         typealias M = FeedMetrics
         typealias C = CardListMetrics
@@ -75,13 +77,15 @@ public struct FeedRowLayout: Equatable, Sendable {
         func centred(_ size: CGFloat, in top: CGFloat, _ height: CGFloat) -> CGFloat { pixel(top + (height - size) / 2) }
 
         var height = rowHeight
-        if let cover, cover > 0, cover.isFinite {
-            let postWidth = max(0, right - avatarX)
-            if let captionSize = caption?.size(fitting: postWidth), captionSize.height > 0 {
-                self.caption = CGRect(x: avatarX, y: height, width: postWidth, height: captionSize.height)
-                height += captionSize.height + M.postGap
-            }
-            let coverHeight = pixel(postWidth * cover)
+        let postWidth = Self.postWidth(width: width, maxWidth: maxWidth)
+        let ratio = cover.flatMap { $0 > 0 && $0.isFinite ? $0 : nil }
+        let captionSize = caption?.size(fitting: postWidth)
+        if let captionSize, captionSize.height > 0 {
+            self.caption = CGRect(x: avatarX, y: height, width: postWidth, height: pixel(captionSize.height))
+            height += pixel(captionSize.height) + (ratio == nil ? M.postBottom : M.postGap)
+        }
+        if let ratio {
+            let coverHeight = pixel(postWidth * ratio)
             self.cover = CGRect(x: avatarX, y: height, width: postWidth, height: coverHeight)
             height += coverHeight + M.postBottom
         }
@@ -98,5 +102,13 @@ public struct FeedRowLayout: Equatable, Sendable {
         self.more = more.map { CGRect(x: moreX ?? textX, y: centred($0.height, in: lineTop, lineHeight), width: $0.width, height: $0.height) }
         self.summary = summarySize.map { CGRect(x: summaryX, y: centred($0.height, in: lineTop, lineHeight), width: max(0, right - summaryX), height: $0.height) }
         separator = place.last ? nil : CGRect(x: textX, y: height - hairline, width: max(0, column.maxX - textX), height: hairline)
+    }
+
+    /// How wide a post's caption and cover are in a list `width` wide: the
+    /// card from inset to inset, at most `postMaxWidth`. The caption is
+    /// cut to its lines at this width.
+    public static func postWidth(width: CGFloat, maxWidth: CGFloat = .greatestFiniteMagnitude) -> CGFloat {
+        let column = CardColumn(width: width, maxWidth: maxWidth)
+        return min(FeedMetrics.postMaxWidth, max(0, column.width - 2 * CardListMetrics.inset))
     }
 }

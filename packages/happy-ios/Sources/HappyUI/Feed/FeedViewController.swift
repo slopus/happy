@@ -14,8 +14,9 @@ import UIKit
 ///
 /// The bar's filter shows all of Activity or its Highlights, the entries
 /// about artifacts and tasks, as the person last chose on this computer
-/// (`FeedLibrary.setFilter`). A covered artifact's entry is a post: its
-/// row, its summary and its cover across the card (`FeedCoverView`).
+/// (`FeedLibrary.setFilter`). An artifact's entry with a cover or a
+/// summary is a post: its row, its summary, cut at four lines until Show
+/// more opens it in place, and its cover across the card (`FeedCoverView`).
 ///
 /// The entries are the engine's (`FeedLibrary`), kept on the phone and
 /// followed through its events, so the screen opens on what it last
@@ -68,6 +69,8 @@ final class FeedViewController: UIViewController {
     private var clustersRead = false
     /// The pull's refresh is under way.
     private var pulled = false
+    /// The posts whose summary is open in full, by entry.
+    private(set) var expanded: Set<String> = []
 
     struct Applied: Sendable {
         var items: [String: CardItem] = [:]
@@ -132,6 +135,11 @@ final class FeedViewController: UIViewController {
         view.addSubview(activity)
         view.addSubview(following)
         activity.onSelect = { [weak self] id in self?.open(id) }
+        activity.onSelectAt = { [weak self] id, point in
+            guard let self else { return }
+            if FeedListItems.toggleHit(activity.items.first { $0.id == id }, at: point) { toggleSummary(id) } else { open(id) }
+        }
+        activity.accessibilityActions = { [weak self] id in self?.summaryActions(id) ?? [] }
         activity.onRefresh = { [weak self] in self?.refresh() }
         activity.onScroll = { [weak self] in self?.loadMoreIfNeeded() }
         activity.makeOverlay = { [weak self] overlay, id in
@@ -372,10 +380,26 @@ final class FeedViewController: UIViewController {
         FeedOpening.open(row, session: session, from: self)
     }
 
+    /// Opens a post's summary in full, or cuts it back to four lines.
+    func toggleSummary(_ id: String) {
+        expanded.formSymmetricDifference([id])
+        let expanded = expanded
+        pipeline?.update { $0.expanded = expanded }
+    }
+
+    private func summaryActions(_ id: String) -> [UIAccessibilityCustomAction] {
+        guard FeedListItems.toggles(activity.items.first { $0.id == id }) else { return [] }
+        let words = Strings.Feed.words
+        return [UIAccessibilityCustomAction(name: expanded.contains(id) ? words.showLess : words.showMore) { [weak self] _ in
+            self?.toggleSummary(id)
+            return true
+        }]
+    }
+
     /// A post's cover, read at the size it is drawn.
     private func makeCover(_ overlay: CardOverlay, id: String) -> UIView? {
-        guard let post = rows[id]?.post else { return nil }
-        return FeedCoverView(post: post, frame: overlay.frame, radius: overlay.radius, displayScale: traitCollection.displayScale, images: session.images)
+        guard let cover = rows[id]?.post?.cover else { return nil }
+        return FeedCoverView(cover: cover, frame: overlay.frame, radius: overlay.radius, displayScale: traitCollection.displayScale, images: session.images)
     }
 
     private func makeFace(_ overlay: CardOverlay, faces: [String: FeedFace]) -> UIView? {
@@ -513,6 +537,7 @@ final class FeedPeekViewController: UIViewController {
     private var naming: Task<Void, Never>?
     private var rows: [String: FeedRow] = [:]
     private var faces: [String: FeedFace] = [:]
+    private var expanded: Set<String> = []
 
     init(session: Session, cluster: FeedCluster, place: FeedPlace) {
         self.session = session
@@ -542,11 +567,15 @@ final class FeedPeekViewController: UIViewController {
         view.addSubview(list)
         HeaderBar.edge(list.edge, in: self)
         list.onSelect = { [weak self] id in self?.open(id) }
+        list.onSelectAt = { [weak self] id, point in
+            guard let self else { return }
+            if FeedListItems.toggleHit(list.items.first { $0.id == id }, at: point) { toggleSummary(id) } else { open(id) }
+        }
         list.onRefresh = { [weak self] in self?.read(pulled: true) }
         list.makeOverlay = { [weak self] overlay, id in
             guard let self else { return nil }
-            if overlay.kind == FeedListItems.coverKind, let post = rows[id]?.post {
-                return FeedCoverView(post: post, frame: overlay.frame, radius: overlay.radius, displayScale: traitCollection.displayScale, images: session.images)
+            if overlay.kind == FeedListItems.coverKind, let cover = rows[id]?.post?.cover {
+                return FeedCoverView(cover: cover, frame: overlay.frame, radius: overlay.radius, displayScale: traitCollection.displayScale, images: session.images)
             }
             guard let face = faces[overlay.key] else { return nil }
             return FeedFaceView(face: face, radius: overlay.radius, ringed: overlay.kind == FeedListItems.actorKind, side: overlay.frame.width, images: session.images)
@@ -648,6 +677,12 @@ final class FeedPeekViewController: UIViewController {
     private func open(_ id: String) {
         guard let row = rows[id] else { return }
         FeedOpening.open(row, session: session, from: self)
+    }
+
+    private func toggleSummary(_ id: String) {
+        expanded.formSymmetricDifference([id])
+        let expanded = expanded
+        pipeline?.update { $0.expanded = expanded }
     }
 }
 

@@ -25,7 +25,7 @@ final class FeedPresentationTests: XCTestCase {
             words.activity(created: false, updates: 0, kind: .bot),
             words.actors(["Ann"], count: 1), words.actors(["Ann", "Bo"], count: 2), words.actors(["Ann", "Bo"], count: 4),
             words.muted, words.mute("Research"),
-            words.filter, words.all, words.highlights, words.noHighlights,
+            words.filter, words.all, words.highlights, words.noHighlights, words.showMore, words.showLess,
         ]
     }
 
@@ -36,7 +36,7 @@ final class FeedPresentationTests: XCTestCase {
         XCTAssertEqual(written[23...27], ["Created", "Created · 2 new versions", "1 new todo", "3 edits", "Changed"])
         XCTAssertEqual(written[28...30], ["Ann", "Ann and Bo", "Ann and 3 others"])
         XCTAssertEqual(written[31...32], ["Muted", "Mute Research"])
-        XCTAssertEqual(written[33...], ["Filter", "All", "Highlights", "No highlights yet. Artifacts and new tasks show up here."])
+        XCTAssertEqual(written[33...], ["Filter", "All", "Highlights", "No highlights yet. Artifacts and new tasks show up here.", "Show more", "Show less"])
     }
 
     func testEveryLanguageSaysEverything() {

@@ -16,8 +16,8 @@ final class FeedCoverView: UIView {
     private let picture = UIImageView()
     private let markPicture = MarkPicture()
 
-    convenience init(post: FeedPost, frame: CGRect, radius: CGFloat, displayScale: CGFloat, images: Images?) {
-        self.init(image: post.image, width: post.width, height: post.height, frame: frame, radius: radius, displayScale: displayScale, images: images)
+    convenience init(cover: FeedPost.Cover, frame: CGRect, radius: CGFloat, displayScale: CGFloat, images: Images?) {
+        self.init(image: cover.image, width: cover.width, height: cover.height, frame: frame, radius: radius, displayScale: displayScale, images: images)
     }
 
     /// The cover served at `image`, `width` by `height` pixels, filling `frame`.

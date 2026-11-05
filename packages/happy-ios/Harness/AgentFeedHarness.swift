@@ -23,7 +23,8 @@ private struct FeedNoSocket: WebSocketConnector {
 /// `rename()` names it on desktop. Seeing, read-all, following and
 /// peeking answer as the daemon does; with `live`, a new entry arrives
 /// over the stream a few seconds in. Two artifacts carry covers, a title
-/// card and a square chart, which it draws and serves as their files;
+/// card under a summary long enough to cut and a square chart, which it
+/// draws and serves as their files, and one only a short summary;
 /// it filters the feed by subject unless `filtering` is off, as an older
 /// daemon's doesn't.
 private actor FeedComputer: AgentTransport {
@@ -56,12 +57,13 @@ private actor FeedComputer: AgentTransport {
         func ago(_ minutes: Double) -> Int { Int(now - minutes * 60_000) }
         return #"""
         {"artifacts":[
-          {"id":"roadmap","type":"html","title":"Q4 roadmap","latestVersion":3,"createdAt":1,"updatedAt":\#(ago(190))},
+          {"id":"roadmap","type":"html","title":"Q4 roadmap","latestVersion":3,"createdAt":1,"updatedAt":\#(ago(190)),
+           "summary":"What ships this quarter: the Feed, covers in every artifact list, and the new onboarding."},
           {"id":"mockups","type":"image_series","title":"Onboarding mockups","latestVersion":1,"createdAt":1,"updatedAt":1,"deleted":true},
           {"id":"revenue","type":"html","title":"Q3 revenue review","latestVersion":2,"createdAt":1,"updatedAt":\#(ago(12)),
            "entry":{"path":"index.html","mimeType":"text/html","size":2048},
            "cover":{"path":"cover.png","mimeType":"image/png","width":1600,"height":900,"aspect":"wide"},
-           "summary":"Revenue up 18% QoQ, driven by enterprise seats.","background":"#0b1f33"},
+           "summary":"Revenue up 18% QoQ, driven by enterprise seats.\n\nEnterprise grew 31% on three new logos (Northwind, Globex, Initech) and 12% expansion across the existing base. Self-serve was flat at $2.1M, with churn down to 1.8% after the onboarding changes.\n\nGross margin held at 78%. Next quarter: price the team plan, ship SSO to every tier, and close the two renewals still in legal.","background":"#0b1f33"},
           {"id":"latency","type":"image","title":"API latency, last 30 days","latestVersion":1,"createdAt":1,"updatedAt":\#(ago(300)),
            "entry":{"path":"chart.png","mimeType":"image/png","size":4096},
            "cover":{"path":"chart.png","mimeType":"image/png","width":1200,"height":1200,"aspect":"square"},
@@ -493,11 +495,31 @@ private final class FeedScript {
         let cover = post?.overlays.first { $0.kind == FeedListItems.coverKind }?.frame
         check("its cover is 16:9 across the card", cover.map { abs($0.height - ($0.width * 9 / 16)) < 1 } ?? false, "\(cover.map { "\($0)" } ?? "none")")
         check("and says its summary", post?.accessibilityValue?.contains("Revenue up 18% QoQ") == true, post?.accessibilityValue ?? "")
+        let caption = { (id: String) in self.entry(id, in: list)?.overlays.first { $0.kind == FeedListItems.toggleKind } }
+        let collapsed = post?.size.height ?? 0
+        check("a long summary is cut with Show more", caption("item-8")?.key.hasSuffix("|false") == true, caption("item-8")?.key ?? "none")
         let square = entry("item-9", in: list)?.overlays.first { $0.kind == FeedListItems.coverKind }?.frame
         check("a square chart is as tall as it is wide", square.map { abs($0.height - $0.width) < 1 } ?? false)
-        check("an artifact without a cover stays a row", entry("item-3", in: list).map { !$0.overlays.contains { $0.kind == FeedListItems.coverKind } && $0.size.height < 100 } ?? false)
+        check("a summary without a cover is a post of words", entry("item-3", in: list).map {
+            !$0.overlays.contains { $0.kind == FeedListItems.coverKind } && caption("item-3") == nil && $0.size.height > 64 && $0.size.height < 160
+        } ?? false, "height \(entry("item-3", in: list)?.size.height ?? 0)")
+        check("an artifact with neither stays a row", entry("item-7", in: list).map { item in
+            !item.overlays.contains { $0.kind == FeedListItems.coverKind || $0.kind == FeedListItems.toggleKind } && item.size.height < 70
+        } ?? false, "height \(entry("item-7", in: list)?.size.height ?? 0)")
         check("the cover arrives", await until { coverShown(in: feed.view) }, "")
         await shoot("feed-covers")
+
+        // Show more opens the summary in place; the cover keeps its shape
+        // under it; a tap on Show less cuts it again.
+        feed.toggleSummary("item-8")
+        check("Show more opens it in full", await until { caption("item-8")?.key.hasSuffix("|true") == true && (self.entry("item-8", in: list)?.size.height ?? 0) > collapsed + 60 },
+              "\(collapsed) → \(entry("item-8", in: list)?.size.height ?? 0)")
+        let opened = entry("item-8", in: list)?.overlays.first { $0.kind == FeedListItems.coverKind }?.frame
+        check("the cover keeps its shape under it", opened.map { abs($0.height - ($0.width * 9 / 16)) < 1 && $0.minY > (cover?.minY ?? 0) } ?? false, "\(opened.map { "\($0)" } ?? "none")")
+        await shoot("feed-expanded")
+        if let less = caption("item-8")?.frame { list.onSelectAt?("item-8", CGPoint(x: less.midX, y: less.midY)) }
+        check("Show less cuts it again", await until { caption("item-8")?.key.hasSuffix("|false") == true && self.entry("item-8", in: list)?.size.height == collapsed })
+        check("and the screen stayed", navigation.topViewController === feed)
 
         // Highlights: artifacts and tasks only, as the bar's filter picks it.
         feed.choose(.highlights)

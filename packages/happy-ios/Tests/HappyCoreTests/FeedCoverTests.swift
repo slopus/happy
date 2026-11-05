@@ -22,7 +22,7 @@ final class FeedCoverTests: XCTestCase {
     func testAnArtifactObjectCarriesItsCover() throws {
         let artifact = try XCTUnwrap(ArtifactSummary(json: json(Self.covered)))
         XCTAssertEqual(artifact.cover, ArtifactSummary.Cover(path: "cards/cover 1.png", mimeType: "image/png", width: 1600, height: 900, aspect: .wide))
-        XCTAssertEqual(artifact.summary, "Revenue up 18% QoQ, driven by enterprise seats.", "one line")
+        XCTAssertEqual(artifact.summary, "Revenue up 18% QoQ,\ndriven by enterprise seats.", "its line breaks kept")
         XCTAssertEqual(artifact.background, "#0b1f33")
 
         // Kept as the catalog keeps it, and read back the same.
@@ -86,8 +86,8 @@ final class FeedCoverTests: XCTestCase {
 
         let row = try XCTUnwrap(FeedRows.row(item, unread: true, directory: directory, personSeed: "p", covers: true))
         XCTAssertEqual(row.post, FeedPost(
-            image: "/v0/artifacts/r9/versions/4/files/cards/cover%201.png", aspect: .wide, width: 1600, height: 900,
-            background: "#0b1f33", summary: "Revenue up 18% QoQ, driven by enterprise seats."
+            cover: .init(image: "/v0/artifacts/r9/versions/4/files/cards/cover%201.png", aspect: .wide, width: 1600, height: 900),
+            background: "#0b1f33", summary: "Revenue up 18% QoQ,\ndriven by enterprise seats."
         ))
         XCTAssertEqual(row.face, .tile(.artifact, artifactType: "html"), "the row's own header stays")
         XCTAssertEqual(row.target, .artifact(Artifact(id: "r9", version: 4, type: "html", title: "Revenue", followsLatest: true)))
@@ -100,6 +100,26 @@ final class FeedCoverTests: XCTestCase {
         XCTAssertNil(deleted.coverPath, "a tombstone never shows its old cover")
         let plain = FeedFixture.item(2, "artifact", "r1")
         XCTAssertNil(FeedRows.row(plain, unread: true, directory: directory, personSeed: "p", covers: true)?.post, "no cover keeps the compact row")
+    }
+
+    /// A summary with no usable cover is a post without a picture, its
+    /// line breaks kept and its ends trimmed; a blank one is none, and a
+    /// tombstone shows neither.
+    func testASummaryWithoutACoverIsAPost() throws {
+        var artifact = try XCTUnwrap(ArtifactSummary(json: json(Self.covered)))
+        artifact.cover = nil
+        artifact.summary = "\n  First paragraph.\n\nSecond one, after a blank line.  \n"
+        XCTAssertEqual(FeedPost(artifact), FeedPost(cover: nil, background: "#0b1f33", summary: "First paragraph.\n\nSecond one, after a blank line."))
+
+        artifact.summary = String(repeating: "word ", count: 2000)
+        XCTAssertEqual(FeedPost(artifact)?.summary?.count, FeedPost.summaryLimit)
+
+        artifact.summary = " \n "
+        XCTAssertNil(FeedPost(artifact), "a blank summary and no cover keeps the compact row")
+
+        var deleted = try XCTUnwrap(ArtifactSummary(json: json(Self.covered)))
+        deleted.deleted = true
+        XCTAssertNil(FeedPost(deleted))
     }
 
     func testAFilteredPageAndHealthDecode() throws {

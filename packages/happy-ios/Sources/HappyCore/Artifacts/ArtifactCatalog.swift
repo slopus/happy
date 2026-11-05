@@ -131,10 +131,11 @@ public struct ArtifactSummary: Codable, Equatable, Sendable, Identifiable {
         background = Self.background(json["background"])
     }
 
-    /// One plain line, as the daemon keeps it; nil for `null` or nothing.
+    /// Post-length words, their line breaks kept, as the daemon keeps
+    /// them; nil for `null` or nothing.
     static func summary(_ json: JSONValue?) -> String? {
         guard let text = json?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else { return nil }
-        return text.replacingOccurrences(of: "\n", with: " ")
+        return text
     }
 
     /// `#rgb`, `#rgba`, `#rrggbb` or `#rrggbbaa`, and nothing else.

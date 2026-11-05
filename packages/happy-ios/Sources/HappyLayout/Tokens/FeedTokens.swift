@@ -32,11 +32,17 @@ public enum FeedMetrics {
     public static let titleSize: CGFloat = CardListMetrics.titleSize
     public static let summarySize: CGFloat = CardListMetrics.subtitleSize
 
-    /// A covered artifact's post under its row: its summary, up to this
-    /// many lines, then its cover across the card, `postGap` apart, with
-    /// `postBottom` under the cover as at its sides.
-    public static let captionLines = 3
+    /// An artifact's post under its row: its summary, cut at this many
+    /// lines until it is opened in full, then its cover across the card,
+    /// `postGap` apart, with `postBottom` under the last as at its sides.
+    /// On an iPad the two are never wider than desktop's feed column.
+    public static let captionLines = 4
     public static let captionSize: CGFloat = 15
+    public static let postMaxWidth: CGFloat = 640
+    /// The summary's Show more or Show less takes a tap this tall at
+    /// least, and this much either side of its words.
+    public static let toggleTarget: CGFloat = 44
+    public static let toggleSlop: CGFloat = 8
     public static let postGap: CGFloat = 8
     public static let postBottom: CGFloat = CardListMetrics.inset
     /// The cover's corners, the card's own inset by its margin, so the
