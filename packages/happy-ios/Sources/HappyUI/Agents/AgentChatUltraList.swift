@@ -25,10 +25,15 @@ protocol AgentChatTranscriptHost: AnyObject {
 /// cards, media, hit testing and VoiceOver are the screen's; the library
 /// keeps the rows near the screen and moves them.
 ///
-/// The list is turned upside down, as the library's own chat is and as the
-/// sessions' chat is (`ChatListView`): rows go in newest first,
-/// which reads as the newest at the foot, resting on the composer. The
-/// screen keeps planning them oldest first and hands them over that way.
+/// The list stands the natural way up, as the sessions' chat does
+/// (`ChatListView`): the intro and the oldest row at the top, the newest
+/// at the foot, resting on the composer (`bottomGravity`). The screen
+/// plans them oldest first and hands them over that way.
+///
+/// The list keeps the reader's place itself. At the newest row it follows
+/// what grows there by `followBudget`, two lines of text, and then stops
+/// (`ChatFollow`); a send of the person's own is always brought fully into
+/// view (`revealNextSend`).
 @MainActor
 final class AgentChatUltraList: UIView {
     let list = UltraListView(engineMode: .keyframe)
@@ -38,8 +43,8 @@ final class AgentChatUltraList: UIView {
     var onReachedOldest: (() -> Void)?
     private(set) var isActive = true
     private var rows: [String: AgentChatRow] = [:]
-    /// Where each row starts, measured up from the newest end: the list
-    /// keeps only a window of rows, so their places are worked out here.
+    /// How far each row's foot is from the newest end: the list keeps only
+    /// a window of rows, so their places are worked out here.
     private var starts: [String: CGFloat] = [:]
     private var revision: UInt64 = 0
     private var insets = UIEdgeInsets.zero
@@ -53,13 +58,27 @@ final class AgentChatUltraList: UIView {
         var room: CGFloat?
     }
     private var submitted: Submission?
-    /// The newest row is at the foot and the reader is on it.
+    /// The newest row is at the foot and the reader is on it, or near
+    /// enough (`followThreshold`).
     private(set) var followsNewest = true
+    /// The person sent a message: the next pass that brings a new newest
+    /// row scrolls it fully into view.
+    private var revealsSend = false
+    /// The reader opened or folded something: the pass that shows it
+    /// stops following too, whatever moved the list since the tap.
+    private var holdsPlace = false
+    /// How far the list follows the newest row growing by itself
+    /// (`ChatFollow.budget`).
+    var followBudget: CGFloat = ChatFollow.budget(body: ChatTextStyles.text, scale: .standard) {
+        didSet {
+            guard followBudget != oldValue else { return }
+            list.bottomGravity = ListBottomGravity(followBudget: Double(followBudget))
+        }
+    }
     /// A preview's: the newest row, taller than the room it has, shows
     /// from its start rather than its end.
     var showsNewestFromItsStart = false
-    /// As close to the newest row as counts as on it, 24pt, not the
-    /// sessions' 200.
+    /// As close to the newest row as counts as on it.
     static let followThreshold: CGFloat = 24
     /// A send flying in from the composer: the row it waits for is
     /// veiled from the pass that inserts it until the copy lands.
@@ -89,7 +108,7 @@ final class AgentChatUltraList: UIView {
     var planIDsNearScreen: [String] {
         let loaded = list.loadedIndexRange
         guard !loaded.isEmpty else { return [] }
-        return (loaded.lowerBound..<min(list.items.count, loaded.upperBound + 8)).compactMap { (list.items[$0] as? AgentChatRow)?.plan.id }
+        return (max(0, loaded.lowerBound - 8)..<loaded.upperBound).reversed().compactMap { (list.items[$0] as? AgentChatRow)?.plan.id }
     }
 
     /// `plans`, by plan ID, made at a new width for the rows shown now: the
@@ -109,16 +128,15 @@ final class AgentChatUltraList: UIView {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        list.contentView.transform = ChatListView.flip
+        list.bottomGravity = ListBottomGravity(followBudget: Double(followBudget))
         list.keyboardDismissMode = .interactive
         list.accessibilityIdentifier = "transcript"
         list.onScroll = { [weak self] _ in self?.scrolled() }
         list.onVisibleWindowChanged = { [weak self] in self?.scrolled() }
         list.willBeginDragging = { [weak self] in self?.host?.transcriptWillBeginDragging() }
         list.didEndDragging = { [weak self] in self?.host?.transcriptDidEndDragging() }
-        // Upside down, the oldest row is at the list's far end.
         list.onLoadedEdgeReached = { [weak self] edge in
-            guard let self, isActive, edge == .bottom else { return }
+            guard let self, isActive, edge == .top else { return }
             onReachedOldest?()
         }
         addSubview(list)
@@ -144,14 +162,17 @@ final class AgentChatUltraList: UIView {
     var distanceFromOldest: CGFloat { max(0, contentHeight - viewportHeight - distanceFromNewest) }
 
     /// How far the reader is from the newest row, which is at the foot:
-    /// zero on it, growing as they read up into history, from the first
-    /// row the list has loaded (`ChatUltraListAdapter.visibleMinY`).
+    /// zero on it, growing as they read up into history
+    /// (`ChatUltraListAdapter.visibleMinY`).
     var distanceFromNewest: CGFloat {
+        // The list's own while its end is loaded: rows laid out again at a
+        // new width hold their old starts until the new plans come.
+        if let distance = list.distanceFromBottom { return distance }
         for index in list.loadedIndexRange {
             guard let row = list.items[index] as? AgentChatRow,
                   let start = starts[row.identity],
                   let frame = list.settledFrame(at: index) else { continue }
-            return start - frame.minY + insets.top
+            return ChatListPosition.distanceFromNewest(rowStart: start, rowMaxY: frame.maxY, viewportHeight: viewportSize.height, bottomInset: insets.bottom)
         }
         return 0
     }
@@ -172,8 +193,10 @@ final class AgentChatUltraList: UIView {
             // curve of the animation it is in.
             if self.insets != insets {
                 self.insets = insets
+                // A new size keeps the row read at the top where it is,
+                // not the distance from the composer.
                 list.applyChanges(newInsets: .init(top: insets.top, bottom: insets.bottom), anchorMode: .preserveVisibleContent,
-                                  compensatesInsetChange: keyboard?.compensates ?? !list.isTracking, transition: keyboard?.transition ?? .none)
+                                  compensatesInsetChange: keyboard?.compensates ?? false, transition: keyboard?.transition ?? .none)
             }
             list.resize(to: frame)
             viewportSize = size
@@ -200,8 +223,8 @@ final class AgentChatUltraList: UIView {
     /// whose plan has not changed keeps the view it had, drawn as it was:
     /// only a new plan is shown again.
     ///
-    /// The intro goes in last, which is at the top, scrolling away as the
-    /// rows under it fill the screen.
+    /// The intro goes in first, at the top, scrolling away as the rows
+    /// under it fill the screen.
     /// `animated` eases rows in while the newest is followed; `moves` eases
     /// a turn opening or folding wherever the reader is, the rows they see
     /// staying put. `streaming`: the agent is at work, so its newest words
@@ -245,6 +268,8 @@ final class AgentChatUltraList: UIView {
         var grew = false
         items.reserveCapacity(plans.count + 1)
         var landing: (identity: String, plan: ChatRowPlan)?
+        // Worked out newest first, from the foot, then turned the natural
+        // way up.
         for plan in plans.reversed() {
             let identity = "chat:row:\(plan.id)"
             if rows[identity] == nil, landing == nil, let flight, flight.awaits(plan) {
@@ -270,6 +295,10 @@ final class AgentChatUltraList: UIView {
             start += height
             items.append(row)
         }
+        // A send of the person's own, once its row is in, comes fully into view.
+        let newest = items.first?.identity
+        let reveals = revealsSend && newest.map { rows[$0] == nil } == true
+        if reveals { revealsSend = false }
         rows = next
         starts = places
         // The screen's plans replace what a width change made.
@@ -278,6 +307,7 @@ final class AgentChatUltraList: UIView {
             items.append(AgentChatIntroRow(content: intro.view, height: intro.height))
             start += intro.height
         }
+        items.reverse()
         if contentHeight != start || submitted?.rows.map(\.identity) != items.map(\.identity) { moved = true }
         contentHeight = start
         // The screen hands its rows over on every layout, the keyboard's
@@ -287,15 +317,20 @@ final class AgentChatUltraList: UIView {
                                     room: showsNewestFromItsStart ? viewportHeight : nil)
         guard submission != submitted || !transition.isImmediate else { return }
         submitted = submission
-        let follows = followsNewest && !list.isTracking && !list.isDragging && !list.isDecelerating
+        if holdsPlace {
+            holdsPlace = false
+            list.stopFollowingBottom()
+        }
+        let follows = list.isFollowingBottom || reveals
         let target: ListScrollTarget?
-        if showsNewestFromItsStart {
-            // Upside down, a row's place is its newest end's: one taller
-            // than the room goes up until its start meets the far edge.
+        if showsNewestFromItsStart, let newest = items.indices.last {
+            // The newest row's top at the top of the room, or its foot on
+            // the composer when it is shorter than the room.
             let room = Double(viewportHeight)
-            target = .init(index: 0, identity: items.first?.identity, resolve: { height, _ in min(0, room - height) })
+            target = .init(index: newest, identity: items[newest].identity, resolve: { height, _ in max(0, room - height) })
         } else {
-            target = follows ? .init(index: 0, identity: items.first?.identity) : nil
+            // The conversation opens on its newest row.
+            target = reveals || list.items.isEmpty ? .bottom : nil
         }
         let eased: ListTransition = if landing != nil && follows {
             // The rows above make room as the send flies in.
@@ -355,17 +390,40 @@ final class AgentChatUltraList: UIView {
         list.loadedItemViews.lazy.compactMap { $0 as? AgentChatRowView }.first { $0.row.plan.id == id }?.canvas
     }
 
+    /// Back to the newest row, following what grows there again.
     func scrollToNewest(animated: Bool) {
         followsNewest = true
-        list.scrollTo(newestTarget(), transition: animated && !UIAccessibility.isReduceMotionEnabled ? .easeInOut(0.2) : .none)
+        list.scrollToBottom(animated: animated && !UIAccessibility.isReduceMotionEnabled)
     }
 
-    /// What arrives next is followed: a send carries the reader to it
-    /// (`SendFollow`).
-    func follow() { followsNewest = true }
+    /// The person sent a message: back to the newest row now, and the row
+    /// it brings brought fully into view when it comes (`SendFollow`).
+    func revealNextSend(animated: Bool) {
+        revealsSend = true
+        scrollToNewest(animated: animated)
+    }
 
-    private func newestTarget() -> ListScrollTarget {
-        .init(index: 0, identity: list.items.first?.identity)
+    /// Puts the foot of the visible area `distance` from the newest end,
+    /// by the row there (`ChatListPosition.rowTop`), or at the top past
+    /// the oldest row.
+    func scroll(toDistanceFromNewest distance: CGFloat) {
+        followsNewest = false
+        let distance = max(0, distance)
+        for index in list.items.indices.reversed() {
+            guard let row = list.items[index] as? AgentChatRow, let start = starts[row.identity], start + row.height > distance else { continue }
+            let top = ChatListPosition.rowTop(rowStart: start, rowHeight: row.height, distance: distance, visibleHeight: viewportHeight)
+            list.scrollTo(.init(index: index, pointOffset: Double(top)), transition: .none)
+            return
+        }
+        list.scrollToTop(animated: false)
+    }
+
+    /// The reader opened or folded something: it grows or shrinks under
+    /// their finger, the rows above it holding still, not the newest row.
+    func holdPlace() {
+        followsNewest = false
+        holdsPlace = true
+        list.stopFollowingBottom()
     }
 
     private func scrolled() {
@@ -424,7 +482,8 @@ extension AgentChatUltraList: ChatRevealHost {
     }
 
     /// A reply came onto a new line: the row grows on Telegram's 0.15 s,
-    /// the rows above it riding up by as much.
+    /// followed while the list follows the newest row, below the fold once
+    /// it has stopped.
     func revealHeightsChanged() {
         guard isActive, let latest else { return }
         submit(latest.plans, intro: latest.intro, transition: .easeInOut(StreamingRevealMotion.heightDuration), followOnly: false)
@@ -454,8 +513,6 @@ private final class AgentChatIntroView: ListRowView {
         self.content = content
         self.height = height
         super.init(frame: .zero)
-        transform = ChatListView.flip
-        content.transform = .identity
         addSubview(content)
     }
 
@@ -511,8 +568,6 @@ final class AgentChatRowView: ListRowView, UIGestureRecognizerDelegate {
         self.row = row
         plan = row.plan
         super.init(frame: .zero)
-        // The list is upside down; each row stands the right way up in it.
-        transform = ChatListView.flip
         clipsToBounds = true
         canvas.drawsStaticContent = true
         canvas.cutsTallPlans = true
@@ -588,19 +643,10 @@ final class AgentChatRowView: ListRowView, UIGestureRecognizerDelegate {
         return height
     }
 
-    /// A tall row has views only for the part on screen (`ChatChunks`).
-    /// The list says which part in its own coordinates, which run the
-    /// other way up from the row's (the list is upside down and the row
-    /// stands the right way up in it), so the part is turned over: taken
-    /// as it came, the foot of a long reply on screen mounted its head,
-    /// and the screen showed nothing.
+    /// A tall row has views only for the part on screen (`ChatChunks`),
+    /// which the list gives in the row's own coordinates.
     override func visibleRectUpdated(_ rect: CGRect?) {
-        canvas.band = rect.map { Self.band(of: $0, height: height) } ?? .null
-    }
-
-    /// `rect`, the part on screen in the list's coordinates, in the row's.
-    static func band(of rect: CGRect, height: CGFloat) -> CGRect {
-        CGRect(x: rect.minX, y: height - rect.maxY, width: rect.width, height: rect.height)
+        canvas.band = rect ?? .null
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {

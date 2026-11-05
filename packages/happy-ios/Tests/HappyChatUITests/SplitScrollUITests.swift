@@ -77,11 +77,10 @@ final class SplitScrollUITests: XCTestCase {
         if (touch(after)["restingSamples"] as? NSNumber)?.intValue ?? 0 > 1 {
             XCTAssertLessThanOrEqual(number(touch(after)["restingDrift"]), 0.5, "\(label): the caught list moved under a resting finger")
         }
-        // Inverted: the content moves opposite the finger, by as much, less
-        // the touch's slop before the pan began, from where the finger
-        // caught it. A drag that caught the list past an end,
-        // rubber-banding after a fling, rightly gives less: where it
-        // started says so.
+        // The content moves by as much as the finger, less the touch's
+        // slop before the pan began, from where the finger caught it. A
+        // drag that caught the list past an end, rubber-banding after a
+        // fling, rightly gives less: where it started says so.
         let start = number(after["visibleMinY"]) - content
         guard start >= -1, start <= number(after["maxDistance"]) + 1 else {
             print("SPLIT-SCROLL \(label) began past an end, at \(start)")

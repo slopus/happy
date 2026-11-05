@@ -98,16 +98,16 @@ final class HostedAgentTranscriptRendererTests: XCTestCase {
             XCTAssertEqual(scrim.ground.resolvedColor(with: traits), chat.view.backgroundColor?.resolvedColor(with: traits))
         }
         let input = try XCTUnwrap(find(AgentInputCardView.self, in: chat.view))
-        XCTAssertEqual(transcript.list.viewportInsets.top, Double(chat.view.bounds.height - input.frame.minY + ChatScreenLayout.Metrics.listGap), accuracy: 1)
-        XCTAssertEqual(transcript.list.viewportInsets.bottom, Double(chat.view.safeAreaInsets.top), accuracy: 1)
+        XCTAssertEqual(transcript.list.viewportInsets.bottom, Double(chat.view.bounds.height - input.frame.minY + ChatScreenLayout.Metrics.listGap), accuracy: 1)
+        XCTAssertEqual(transcript.list.viewportInsets.top, Double(chat.view.safeAreaInsets.top), accuracy: 1)
         transcript.apply([ChatRowPlan(id: "short", size: CGSize(width: chat.view.bounds.width, height: 60), items: [])])
-        try await until { transcript.list.loadedItemView(at: 0) != nil }
-        let short = try XCTUnwrap(transcript.list.loadedItemView(at: 0))
+        try await until { transcript.list.newestLoadedView != nil }
+        let short = try XCTUnwrap(transcript.list.newestLoadedView)
         XCTAssertEqual(short.convert(short.bounds, to: chat.view).maxY, input.frame.minY - ChatScreenLayout.Metrics.listGap, accuracy: 1,
                        "a short conversation must rest above the composer")
         let plans = (0..<40).map { ChatRowPlan(id: "row-\($0)", size: CGSize(width: chat.view.bounds.width, height: 80), items: []) }
         transcript.apply(plans)
-        try await until { transcript.list.loadedItemView(at: 0) != nil }
+        try await until { transcript.list.newestLoadedView != nil }
         XCTAssertTrue(chat.sendFlies)
         XCTAssertEqual(scrim.presence, 1)
 
@@ -119,7 +119,7 @@ final class HostedAgentTranscriptRendererTests: XCTestCase {
         try await until { transcript.distanceFromNewest > 200 }
         XCTAssertFalse(chat.sendFlies, "a send in history read the unused scroll view's offset")
 
-        transcript.list.scrollTo(.init(index: 0, pointOffset: -50), transition: .none)
+        transcript.scroll(toDistanceFromNewest: 50)
         try await until { (30...80).contains(transcript.distanceFromNewest) }
         XCTAssertFalse(transcript.followsNewest)
         XCTAssertFalse(chat.sendFlies, "past Telegram's 20pt a send scrolls rather than flies")
@@ -128,7 +128,7 @@ final class HostedAgentTranscriptRendererTests: XCTestCase {
         XCTAssertTrue(chat.sendFlies)
     }
 
-    func testAnAppendTargetsTheIncomingNewestRowAboveTheComposer() async throws {
+    func testAnAppendIsFollowedByTwoLinesAtMost() async throws {
         let (_, session) = try await self.session()
         let chat = self.chat(session)
         let scene = try await hostedActiveScene()
@@ -140,17 +140,20 @@ final class HostedAgentTranscriptRendererTests: XCTestCase {
         let input = try XCTUnwrap(find(AgentInputCardView.self, in: chat.view))
         let plans = (0..<40).map { ChatRowPlan(id: "row-\($0)", size: CGSize(width: chat.view.bounds.width, height: 80), items: []) }
         transcript.apply(plans)
-        try await until { transcript.list.loadedItemView(at: 0) != nil }
+        try await until { transcript.list.newestLoadedView != nil }
         transcript.scrollToNewest(animated: false)
         try await until { abs(transcript.distanceFromNewest) < 1 }
-        let old = try XCTUnwrap(transcript.list.loadedItemView(at: 0))
+        let old = try XCTUnwrap(transcript.list.newestLoadedView)
         let oldY = old.convert(old.bounds, to: chat.view).minY
         transcript.apply(plans + [ChatRowPlan(id: "sent", size: CGSize(width: chat.view.bounds.width, height: 60), items: [])])
-        try await until { (transcript.list.loadedItemView(at: 0) as? AgentChatRowView)?.row.plan.id == "sent" }
-        let sent = try XCTUnwrap(transcript.list.loadedItemView(at: 0))
-        XCTAssertEqual(sent.convert(sent.bounds, to: chat.view).maxY, input.frame.minY - ChatScreenLayout.Metrics.listGap, accuracy: 1)
-        XCTAssertEqual(old.convert(old.bounds, to: chat.view).minY, oldY - 60, accuracy: 1,
-                       "the previous newest moves only by the appended row's height")
+        try await until { (transcript.list.newestLoadedView as? AgentChatRowView)?.row.plan.id == "sent" }
+        let sent = try XCTUnwrap(transcript.list.newestLoadedView)
+        // A row arriving at the foot is followed as growth is, by two
+        // lines at most; the rest of it waits below the fold.
+        let budget = ChatFollow.budget(body: ChatTextStyles.text, scale: chat.traitCollection.textEnvironment?.scale ?? .standard)
+        XCTAssertEqual(sent.convert(sent.bounds, to: chat.view).maxY, input.frame.minY - ChatScreenLayout.Metrics.listGap + 60 - budget, accuracy: 1)
+        XCTAssertEqual(old.convert(old.bounds, to: chat.view).minY, oldY - budget, accuracy: 1,
+                       "the previous newest moves only by the budget")
     }
 
     private func until(_ condition: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async throws {
@@ -186,13 +189,13 @@ final class HostedAgentTranscriptRendererTests: XCTestCase {
         let window = hostedKeyWindow(in: scene, root: host)
         defer { window.isHidden = true }
         window.layoutIfNeeded()
-        transcript.setViewport(frame: CGRect(origin: .zero, size: transcript.bounds.size), insets: UIEdgeInsets(top: 100, left: 0, bottom: 50, right: 0))
+        transcript.setViewport(frame: CGRect(origin: .zero, size: transcript.bounds.size), insets: UIEdgeInsets(top: 50, left: 0, bottom: 100, right: 0))
         let tall = transcript.viewportHeight + 300
         transcript.apply([ChatRowPlan(id: "older", size: CGSize(width: 393, height: 80), items: []),
                           ChatRowPlan(id: "tall", size: CGSize(width: 393, height: tall), items: [])])
-        try await until { transcript.list.loadedItemView(at: 0) != nil && abs(transcript.distanceFromNewest - 300) < 1 }
+        try await until { transcript.list.newestLoadedView != nil && abs(transcript.distanceFromNewest - 300) < 1 }
         XCTAssertEqual(transcript.distanceFromOldest, 80, accuracy: 1)
-        let row = try XCTUnwrap(transcript.list.loadedItemView(at: 0))
+        let row = try XCTUnwrap(transcript.list.newestLoadedView)
         XCTAssertEqual(row.convert(row.bounds, to: transcript).minY, 50, accuracy: 1, "the newest row's start sits at the top inset")
 
         // A shorter newest row rests on the composer as ever.

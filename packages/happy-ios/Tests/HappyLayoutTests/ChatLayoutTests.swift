@@ -38,56 +38,46 @@ final class ChatListLayoutTests: XCTestCase {
     }
 }
 
-final class ChatScrollAnchorTests: XCTestCase {
-    private let ids = (0..<10).map { "r\($0)" }
-    private var layout: ChatListLayout { ChatListLayout(width: 393, heights: Array(repeating: 100, count: 10)) }
+final class ChatListPositionTests: XCTestCase {
+    // A list 800 tall, 50 under the bar and 100 over the composer: 650 to see.
 
-    func testAReaderNearTheNewestMessageFollowsIt() {
-        let anchor = ChatScrollAnchor.capture(layout: layout, ids: ids, visibleMinY: 200)
-        XCTAssertEqual(anchor.kind, .newest)
-        XCTAssertEqual(anchor.visibleMinY(in: layout, ids: ids, current: 200, maxVisibleMinY: 900), 0)
+    func testTheDistanceFromTheNewestIsReadFromARowOnScreen() {
+        // The row's foot is 300 from the newest end and 500 down the list;
+        // the visible foot is at 700, 200 below it.
+        XCTAssertEqual(ChatListPosition.distanceFromNewest(rowStart: 300, rowMaxY: 500, viewportHeight: 800, bottomInset: 100), 100)
+        // The newest row resting on the composer.
+        XCTAssertEqual(ChatListPosition.distanceFromNewest(rowStart: 6, rowMaxY: 694, viewportHeight: 800, bottomInset: 100), 0)
+        // Pulled up past the newest end, as a bounce does.
+        XCTAssertEqual(ChatListPosition.distanceFromNewest(rowStart: 6, rowMaxY: 674, viewportHeight: 800, bottomInset: 100), -20)
     }
 
-    func testAReaderDraggingNearTheNewestMessageKeepsTheirRow() {
-        let anchor = ChatScrollAnchor.capture(layout: layout, ids: ids, visibleMinY: 150, follow: false)
-        XCTAssertEqual(anchor.kind, .row(id: "r1", distance: -50))
-        let grown = layout.replacingHeight(at: 0, with: 130)
-        XCTAssertEqual(anchor.visibleMinY(in: grown, ids: ids, current: 150, maxVisibleMinY: 1000), 180)
+    func testARowTopPutsTheVisibleFootAtADistance() {
+        XCTAssertEqual(ChatListPosition.rowTop(rowStart: 300, rowHeight: 100, distance: 100, visibleHeight: 650), 350)
+        XCTAssertEqual(ChatListPosition.rowTop(rowStart: 6, rowHeight: 50, distance: 0, visibleHeight: 650), 594)
+        // And back: that top, under the 50 inset, reads as the same distance.
+        let top = ChatListPosition.rowTop(rowStart: 300, rowHeight: 100, distance: 125, visibleHeight: 650)
+        XCTAssertEqual(top, 375)
+        XCTAssertEqual(ChatListPosition.distanceFromNewest(rowStart: 300, rowMaxY: 50 + top + 100, viewportHeight: 800, bottomInset: 100), 125)
+    }
+}
+
+final class ChatFollowTests: XCTestCase {
+    func testTheListFollowsTwoBodyLines() {
+        XCTAssertEqual(ChatFollow.budget(body: ChatTextStyles.markdownText, scale: .standard), 50)
+        XCTAssertEqual(ChatFollow.budget(body: ChatTextStyles.text, scale: .standard), 48)
     }
 
-    func testAReaderInHistoryKeepsTheirRowWhenNewerRowsArrive() {
-        let anchor = ChatScrollAnchor.capture(layout: layout, ids: ids, visibleMinY: 450)
-        XCTAssertEqual(anchor.kind, .row(id: "r4", distance: -50))
-        let newIds = ["n1", "n0"] + ids
-        let grown = ChatListLayout(width: 393, heights: Array(repeating: 100, count: 12))
-        XCTAssertEqual(anchor.visibleMinY(in: grown, ids: newIds, current: 450, maxVisibleMinY: 1100), 650)
+    func testTheBudgetGrowsWithTheTextSize() {
+        let large = TextScale(.extraLarge)
+        XCTAssertEqual(ChatFollow.budget(body: ChatTextStyles.text, scale: large), 2 * 24 * large.multiplier)
+        let largest = TextScale(.accessibilityExtraExtraExtraLarge)
+        XCTAssertEqual(ChatFollow.budget(body: ChatTextStyles.markdownText, scale: largest), 2 * 25 * largest.multiplier)
+        let smallest = TextScale(.extraSmall)
+        XCTAssertEqual(ChatFollow.budget(body: ChatTextStyles.text, scale: smallest), 2 * 24 * smallest.multiplier)
     }
 
-    func testStreamingGrowthBelowTheReaderIsAbsorbed() {
-        let anchor = ChatScrollAnchor.capture(layout: layout, ids: ids, visibleMinY: 450)
-        let grown = layout.replacingHeight(at: 0, with: 160)
-        XCTAssertEqual(anchor.visibleMinY(in: grown, ids: ids, current: 450, maxVisibleMinY: 1000), 510)
-    }
-
-    func testAnOpenedRowGrowsTowardsTheNewestUnderTheReader() {
-        // Row 4 spans 400..<500; its top on screen is 500, 50 above the
-        // visible min y of 450 … and stays there when it grows by 120.
-        let anchor = ChatScrollAnchor.pinning("r4", layout: layout, ids: ids, visibleMinY: 450)
-        XCTAssertEqual(anchor?.kind, .rowEnd(id: "r4", distance: 50))
-        let opened = layout.replacingHeight(at: 4, with: 220)
-        XCTAssertEqual(anchor?.visibleMinY(in: opened, ids: ids, current: 450, maxVisibleMinY: 1200), 570)
-        // A reader at the newest edge stays there; the row grows upwards.
-        let newest = ChatScrollAnchor.pinning("r0", layout: layout, ids: ids, visibleMinY: 0)
-        XCTAssertEqual(newest?.kind, .newest)
-        XCTAssertEqual(newest?.visibleMinY(in: layout.replacingHeight(at: 0, with: 220), ids: ids, current: 0, maxVisibleMinY: 1200), 0)
-        XCTAssertNil(ChatScrollAnchor.pinning("gone", layout: layout, ids: ids, visibleMinY: 0))
-    }
-
-    func testAMissingAnchorRowKeepsTheOffsetAndNothingOverscrolls() {
-        let anchor = ChatScrollAnchor(kind: .row(id: "gone", distance: 0))
-        XCTAssertEqual(anchor.visibleMinY(in: layout, ids: ids, current: 450, maxVisibleMinY: 300), 300)
-        let deep = ChatScrollAnchor(kind: .row(id: "r9", distance: -50))
-        XCTAssertEqual(deep.visibleMinY(in: layout, ids: ids, current: 0, maxVisibleMinY: 600), 600)
+    func testAStyleWithoutALineHeightCountsItsSize() {
+        XCTAssertEqual(ChatFollow.budget(body: ChatTextStyle(.plex(.regular), size: 10), scale: .standard), 20)
     }
 }
 

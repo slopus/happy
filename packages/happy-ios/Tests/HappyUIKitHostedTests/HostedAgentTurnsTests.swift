@@ -175,6 +175,27 @@ final class HostedAgentTurnsTests: XCTestCase {
         return row.convert(row.bounds, to: chat.view)
     }
 
+    /// The rows whole under the navigation bar, in order, and where each is.
+    private func rowsUnderTheBar(in chat: ChatViewController) -> [(String, CGRect)] {
+        guard let transcript = find(AgentChatUltraList.self, in: chat.view) else { return [] }
+        let top = transcript.list.convert(CGPoint(x: 0, y: transcript.list.viewportInsets.top), to: chat.view).y
+        return transcript.list.loadedIndexRange.compactMap { index in
+            guard let row = transcript.list.loadedItemView(at: index), transcript.list.items[index].identity.hasPrefix("chat:row:") else { return nil }
+            let frame = row.convert(row.bounds, to: chat.view)
+            return frame.minY >= top - 0.5 ? (String(transcript.list.items[index].identity.dropFirst("chat:row:".count)), frame) : nil
+        }
+    }
+
+    /// The row the list keeps in place across a change: the first under the
+    /// bar before it that is still there after, passing over a turn's
+    /// control, which goes over or under its rows. Where it was, and is.
+    private func keptRow(_ before: [(String, CGRect)], in chat: ChatViewController) -> (String, CGRect, CGRect)? {
+        for (id, frame) in before where !id.hasSuffix(":trace") && !id.hasSuffix(":status") {
+            if let now = onScreen(id, in: chat) { return (id, frame, now) }
+        }
+        return nil
+    }
+
     // MARK: Turns
 
     /// Running, each tool call is its own line; ended, they fold behind the
@@ -233,21 +254,24 @@ final class HostedAgentTurnsTests: XCTestCase {
                 window.layoutIfNeeded()
                 try await Task.sleep(for: .milliseconds(300))
             }
-            // The newest turn's answer is what the reader is looking at.
+            // The newest turn's answer is what the reader is looking at;
+            // the turn opens and folds around the first row on screen,
+            // which holds still, as the row the finger is on does.
             try await until("the newest answer on screen") { onScreen("m-r3/4", in: chat) != nil }
-            let before = try XCTUnwrap(onScreen("r3:status", in: chat))
+            let closed = rowsUnderTheBar(in: chat)
             chat.act(.toggleTurn("r2"))
             try await until("the turn opens") { plan(chat, "r2-1") != nil }
             try await Task.sleep(for: .milliseconds(400))
             XCTAssertEqual(plan(chat, "r2:trace")?.accessibilityLabel, "Hide traces, 3 tools")
             XCTAssertEqual(chat.plans.firstIndex { $0.id == "r2:trace" }.map { chat.plans[$0 + 1].id }, "m-r2", "open, the control rides the turn's first row")
-            let opened = try XCTUnwrap(onScreen("r3:status", in: chat))
-            XCTAssertEqual(opened.minY, before.minY, accuracy: 1, "opening a turn moved what the reader was reading (keyboard \(keyboard))")
+            let opened = try XCTUnwrap(keptRow(closed, in: chat))
+            XCTAssertEqual(opened.2.minY, opened.1.minY, accuracy: 1, "opening a turn moved \(opened.0), what the reader was reading (keyboard \(keyboard))")
+            let open = rowsUnderTheBar(in: chat)
             chat.act(.toggleTurn("r2"))
             try await until("the turn folds again") { plan(chat, "r2-1") == nil }
             try await Task.sleep(for: .milliseconds(400))
-            let folded = try XCTUnwrap(onScreen("r3:status", in: chat))
-            XCTAssertEqual(folded.minY, before.minY, accuracy: 1, "folding a turn moved what the reader was reading (keyboard \(keyboard))")
+            let folded = try XCTUnwrap(keptRow(open, in: chat))
+            XCTAssertEqual(folded.2.minY, folded.1.minY, accuracy: 1, "folding a turn moved \(folded.0), what the reader was reading (keyboard \(keyboard))")
         }
 
         // Read up in history: a turn opened above stays out of the way.

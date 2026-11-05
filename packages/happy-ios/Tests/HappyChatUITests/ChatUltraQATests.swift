@@ -630,7 +630,13 @@ final class ChatUltraQATests: XCTestCase {
         screenshot("06-reply-with-keyboard")
         require("send and stream a reply at newest", rowCount() > before + 1 && sent.contains { kinds($0).contains("apply") },
                 "rows \(before) → \(rowCount()), windows \(sent.map { kinds($0) })")
-        require("the reply stays at newest above the keyboard", abs(number(state()["visibleMinY"])) <= 1, "visibleMinY \(number(state()["visibleMinY"]))")
+        // The send came fully into view; the reply under it was followed by
+        // two lines and then grew below the fold.
+        let away = number(state()["visibleMinY"])
+        require("the reply grows from the newest above the keyboard", away >= -1, "visibleMinY \(away)")
+        if app.buttons["Scroll to bottom"].exists {
+            step("back to the reply's end", quiet: 1.5) { app.buttons["Scroll to bottom"].firstMatch.tap() }
+        }
 
         step("dismiss keyboard", quiet: 2) {
             drag(CGPoint(x: size.width / 2, y: size.height * 0.3), CGPoint(x: size.width / 2, y: size.height - 4), velocity: 1500)

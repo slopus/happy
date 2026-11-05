@@ -46,7 +46,7 @@ final class HostedChatUltraPreparationTests: XCTestCase {
         list.frame = root.bounds
         root.addSubview(list)
         list.layoutIfNeeded()
-        adapter.setViewport(frame: CGRect(origin: .zero, size: root.bounds.size), insets: .init(top: 96, left: 0, bottom: 113, right: 0))
+        adapter.setViewport(frame: CGRect(origin: .zero, size: root.bounds.size), insets: .init(top: 113, left: 0, bottom: 96, right: 0))
         let width = root.bounds.width
         let plans = (0..<5).map { index in
             let height: CGFloat = index == 0 ? 160 : 100
@@ -65,15 +65,15 @@ final class HostedChatUltraPreparationTests: XCTestCase {
 
         // The open-question banner can arrive after the initial rows, while
         // their first asynchronous preparation is still in progress.
-        adapter.setViewport(frame: CGRect(origin: .zero, size: root.bounds.size), insets: .init(top: 246, left: 0, bottom: 113, right: 0))
+        adapter.setViewport(frame: CGRect(origin: .zero, size: root.bounds.size), insets: .init(top: 113, left: 0, bottom: 246, right: 0))
         await gate.release()
 
         let committed = await until { adapter.isDisplayReady }
         XCTAssertTrue(committed, "the dock change must not strand the first prepared snapshot")
         XCTAssertEqual(list.items.count, 6)
         XCTAssertFalse(list.loadedItemViews.isEmpty)
-        XCTAssertEqual(list.viewportInsets.top, 246)
-        XCTAssertEqual(list.viewportInsets.bottom, 113)
+        XCTAssertEqual(list.viewportInsets.top, 113)
+        XCTAssertEqual(list.viewportInsets.bottom, 246)
     }
 
     func testPreparedTokenUpdateCannotHaltADragThatStartedWhileItWaited() async throws {
@@ -89,7 +89,7 @@ final class HostedChatUltraPreparationTests: XCTestCase {
         list.frame = root.bounds
         root.addSubview(list)
         list.layoutIfNeeded()
-        adapter.setViewport(frame: CGRect(origin: .zero, size: root.bounds.size), insets: .init(top: 100, left: 0, bottom: 60, right: 0))
+        adapter.setViewport(frame: CGRect(origin: .zero, size: root.bounds.size), insets: .init(top: 60, left: 0, bottom: 100, right: 0))
         let width = root.bounds.width
         func plan(_ id: String, height: CGFloat) -> ChatRowPlan {
             ChatRowPlan(id: id, size: .init(width: width, height: height), items: [.box(ChatBox(frame: .init(x: 0, y: 0, width: width, height: height), fill: Palette.surface))])
@@ -109,14 +109,15 @@ final class HostedChatUltraPreparationTests: XCTestCase {
         XCTAssertTrue(waiting)
         XCTAssertFalse(adapter.isDisplayReady, "the changed row is still awaiting preparation")
         let time = CACurrentMediaTime()
-        list.receiveScrollInput(.init(time: time, phase: .began, translation: .init(y: -180)))
+        list.receiveScrollInput(.init(time: time, phase: .began, translation: .init(y: 180)))
         XCTAssertTrue(list.isDragging)
-        let before = try XCTUnwrap(list.settledFrame(at: 2))
+        func frame() -> CGRect? { list.items.firstIndex { $0.identity == "chat:message:row2" }.flatMap(list.settledFrame(at:)) }
+        let before = try XCTUnwrap(frame())
         await gate.release()
         let committed = await until { adapter.isDisplayReady }
         XCTAssertTrue(committed)
         XCTAssertTrue(list.isDragging, "a prepared token cannot halt the newer drag")
-        let after = try XCTUnwrap(list.settledFrame(at: 2))
+        let after = try XCTUnwrap(frame())
         XCTAssertEqual(after.minY, before.minY, accuracy: 0.5, "the committed window keeps the row under the finger")
         list.receiveScrollInput(.init(time: time + 0.5, phase: .cancelled))
         adapter.deactivate()
@@ -126,6 +127,8 @@ final class HostedChatUltraPreparationTests: XCTestCase {
         try await toolPin(insetDelta: 0)
     }
 
+    /// The dock grows while the opened row waits: the conversation rides up
+    /// with it, the row's head with the rest.
     func testPendingToolPinFollowsTheKeyboardInset() async throws {
         try await toolPin(insetDelta: 100)
     }
@@ -143,7 +146,7 @@ final class HostedChatUltraPreparationTests: XCTestCase {
         list.frame = root.bounds
         root.addSubview(list)
         list.layoutIfNeeded()
-        adapter.setViewport(frame: CGRect(origin: .zero, size: root.bounds.size), insets: .init(top: 100, left: 0, bottom: 60, right: 0))
+        adapter.setViewport(frame: CGRect(origin: .zero, size: root.bounds.size), insets: .init(top: 60, left: 0, bottom: 100, right: 0))
         let width = root.bounds.width
         func plan(_ id: String, height: CGFloat) -> ChatRowPlan {
             ChatRowPlan(id: id, size: .init(width: width, height: height), items: [.box(ChatBox(frame: .init(x: 0, y: 0, width: width, height: height), fill: Palette.surface))])
@@ -159,7 +162,8 @@ final class HostedChatUltraPreparationTests: XCTestCase {
         adapter.setVisibleMinY(500)
         let positioned = await until { abs(adapter.visibleMinY - 500) < 0.5 && adapter.isDisplayReady }
         XCTAssertTrue(positioned)
-        let before = try XCTUnwrap(list.settledFrame(at: 6))
+        func frame() -> CGRect? { list.items.firstIndex { $0.identity == "chat:message:row5" }.flatMap(list.settledFrame(at:)) }
+        let before = try XCTUnwrap(frame())
         await gate.hold(height: 260)
         plans[5] = plan("row5", height: 260)
         adapter.apply(update(pin: "row5"), animated: false)
@@ -169,13 +173,13 @@ final class HostedChatUltraPreparationTests: XCTestCase {
         plans[0] = plan("row0", height: 120)
         adapter.apply(update(), animated: false)
         if insetDelta != 0 {
-            adapter.setViewport(frame: CGRect(origin: .zero, size: root.bounds.size), insets: .init(top: 100 + insetDelta, left: 0, bottom: 60, right: 0))
+            adapter.setViewport(frame: CGRect(origin: .zero, size: root.bounds.size), insets: .init(top: 60, left: 0, bottom: 100 + insetDelta, right: 0))
         }
         await gate.release()
         let committed = await until { adapter.isDisplayReady }
         XCTAssertTrue(committed)
-        let after = try XCTUnwrap(list.settledFrame(at: 6))
-        XCTAssertEqual(after.maxY, before.maxY + insetDelta, accuracy: 0.5, "coalescing a later token retains the tool pin relative to the dock")
+        let after = try XCTUnwrap(frame())
+        XCTAssertEqual(after.minY, before.minY - insetDelta, accuracy: 0.5, "coalescing a later token retains the opened row's head relative to the dock")
         adapter.deactivate()
     }
 }

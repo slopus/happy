@@ -264,7 +264,7 @@ final class HostedStreamingRevealTests: XCTestCase {
         }
         window.layoutIfNeeded()
         let transcript = try XCTUnwrap(find(AgentChatUltraList.self, in: chat.view))
-        let loaded = try await until { chat.plans.count > 12 && transcript.list.loadedItemView(at: 0) != nil }
+        let loaded = try await until { chat.plans.count > 12 && transcript.list.newestLoadedView != nil }
         XCTAssertTrue(loaded, "the conversation never landed: \(chat.plans.count) rows")
         try await Task.sleep(for: .milliseconds(400))
         return AgentScreen(window: window, chat: chat, transcript: transcript, store: session.store)
@@ -326,7 +326,7 @@ final class HostedStreamingRevealTests: XCTestCase {
         try await stream(Self.reply, run: "live", id: "live-m", into: screen.store, sampler: sampler)
         sampler.stop()
         assertGrowsSmoothly(sampler.frames, "agent")
-        assertOnTheComposer(sampler.frames, "agent")
+        assertFollowsByTheBudget(sampler.frames, "agent", budget: ChatFollow.budget(body: ChatTextStyles.text, scale: .standard))
         let plan = try XCTUnwrap(screen.chat.plans.first { $0.id == "live-m" })
         XCTAssertEqual(try XCTUnwrap(sampler.frames.last?.row).height, plan.size.height, accuracy: 0.5, "the finished reply shows whole")
     }
@@ -340,7 +340,7 @@ final class HostedStreamingRevealTests: XCTestCase {
         try await stream(Self.reply, run: "tools", id: "tools-m", tools: ["swift test --filter CacheTests", "git diff Sources/Cache"], into: screen.store, sampler: sampler)
         sampler.stop()
         assertGrowsSmoothly(sampler.frames, "after tools")
-        assertOnTheComposer(sampler.frames, "after tools")
+        assertFollowsByTheBudget(sampler.frames, "after tools", budget: ChatFollow.budget(body: ChatTextStyles.text, scale: .standard))
         XCTAssertEqual(screen.chat.plans.suffix(3).map(\.id), ["tools:trace", "tools-m", "tools:status"], "the tool calls folded behind their traces")
     }
 
@@ -360,7 +360,7 @@ final class HostedStreamingRevealTests: XCTestCase {
     func testAnAgentsReplyLeavesTheReaderWhereTheyRead() async throws {
         let screen = try await agentChat()
         let list = screen.transcript.list
-        list.scrollTo(.init(index: 24), transition: .none)
+        screen.transcript.scroll(toDistanceFromNewest: 700)
         let there = try await until { screen.transcript.distanceFromNewest > 400 }
         XCTAssertTrue(there)
         try await Task.sleep(for: .milliseconds(300))
@@ -468,7 +468,8 @@ final class HostedStreamingRevealTests: XCTestCase {
         try await Task.sleep(for: .milliseconds(1800))
         sampler.stop()
         assertGrowsSmoothly(sampler.frames, "legacy")
-        assertOnTheComposer(sampler.frames, "legacy")
+        let bar = list.convert(CGPoint(x: 0, y: list.contentInsets.top), to: window).y
+        assertFollowsByTheBudget(sampler.frames, "legacy", budget: ChatFollow.budget(body: ChatTextStyles.markdownText, scale: .standard), top: bar)
         let plan = try XCTUnwrap(list.plans.first { $0.id.hasPrefix("agent-") })
         XCTAssertEqual(try XCTUnwrap(sampler.frames.last?.row).height, plan.size.height, accuracy: 0.5, "the finished reply shows whole")
     }
@@ -527,12 +528,29 @@ final class HostedStreamingRevealTests: XCTestCase {
     }
 
     /// While it streams, the reply's foot keeps its distance to the composer.
-    private func assertOnTheComposer(_ frames: [RevealSampler.Frame], _ label: String, file: StaticString = #filePath, line: UInt = #line) {
-        let gaps = frames.filter { $0.streaming && $0.row != nil }.map { $0.composer.minY - $0.row!.maxY }
-        XCTAssertGreaterThan(gaps.count, 60, file: file, line: line)
-        let drift = (gaps.max() ?? 0) - (gaps.min() ?? 0)
-        print("HostedStreamingRevealTests \(label): composer gap \(gaps.min() ?? 0)…\(gaps.max() ?? 0)")
-        XCTAssertLessThanOrEqual(drift, 1, "\(label): the reply left the composer by \(drift) points", file: file, line: line)
+    /// The reply starts on the composer and the list follows it by
+    /// `budget`, two lines; then its head holds still and it grows below
+    /// the fold. Drawn, its head only ever rises, and never past that. In
+    /// a chat shorter than the screen the rows rest on the composer until
+    /// they fill it, so the head may rise further, but never past `top`,
+    /// the foot of the bar.
+    private func assertFollowsByTheBudget(_ frames: [RevealSampler.Frame], _ label: String, budget: CGFloat, top: CGFloat? = nil, file: StaticString = #filePath, line: UInt = #line) {
+        let shown = frames.filter { $0.streaming && $0.row != nil }
+        XCTAssertGreaterThan(shown.count, 60, file: file, line: line)
+        guard let first = shown.first else { return }
+        let tops = shown.map { $0.row!.minY }
+        print("HostedStreamingRevealTests \(label): head \(tops.first ?? 0)…\(tops.min() ?? 0), composer gap at first \(first.composer.minY - first.row!.maxY)")
+        XCTAssertLessThanOrEqual(abs(first.composer.minY - first.row!.maxY), 60, "\(label): the reply started off the composer", file: file, line: line)
+        for (previous, next) in zip(tops, tops.dropFirst()) where next > previous + 1 {
+            XCTFail("\(label): the reply's head went down from \(previous) to \(next)", file: file, line: line)
+            break
+        }
+        let rise = tops[0] - (tops.min() ?? tops[0])
+        if let top, rise > budget + 1 {
+            XCTAssertGreaterThanOrEqual(tops.min() ?? 0, top - 1, "\(label): a short chat rose past the bar", file: file, line: line)
+        } else {
+            XCTAssertLessThanOrEqual(rise, budget + 1, "\(label): the list followed the reply past two lines", file: file, line: line)
+        }
     }
 }
 
@@ -798,7 +816,7 @@ extension HostedStreamingRevealTests {
         let constructed = try await until { chat.contentInstalled }
         XCTAssertTrue(constructed)
         let list = try XCTUnwrap(find(ChatListView.self, in: chat.view))
-        let loaded = try await until { list.plans.count > 20 && list.ultra.list.loadedItemView(at: 1) != nil }
+        let loaded = try await until { list.plans.count > 20 && list.ultra.list.newestLoadedView != nil }
         XCTAssertTrue(loaded, "the chat never landed: \(list.plans.count) rows")
         try await Task.sleep(for: .milliseconds(400))
         return LegacyScreen(sessionId: sessionId, list: list)

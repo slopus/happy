@@ -167,9 +167,9 @@ final class HostedDeliveryStabilityTests: XCTestCase {
                         let item = ChatItem(id: id, role: .user, pieces: [.text(text)], delivery: delivery, time: time)
                         let shown = await planner.plans([earlier, item], key: key, copied: nil)
                         transcript.apply(shown, animated: true)
-                        let mounted = try await until { (transcript.list.loadedItemView(at: 0) as? AgentChatRowView)?.row.plan === shown[1] }
+                        let mounted = try await until { (transcript.list.newestLoadedView as? AgentChatRowView)?.row.plan === shown[1] }
                         XCTAssertTrue(mounted, "\(label) \(name): never shown")
-                        let view = try XCTUnwrap(transcript.list.loadedItemView(at: 0) as? AgentChatRowView)
+                        let view = try XCTUnwrap(transcript.list.newestLoadedView as? AgentChatRowView)
                         try await Task.sleep(for: .milliseconds(60))
                         let (step, mark) = try read(view, plan: shown[1], canvas: view.canvas, window: window, label: "\(label) \(name)")
                         steps.append((name, step))

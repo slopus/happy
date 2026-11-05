@@ -43,7 +43,7 @@ final class ApplyPerfChatTextSizeTests: XCTestCase {
 
     /// One off-main pass measures every row once and reconfigures them
     /// all in one apply, moving nothing: ids and order are kept, so the
-    /// list holds the reader's row (`ChatScrollAnchor`).
+    /// list holds the reader's row.
     func testANewTextSizeMeasuresEveryRowOnceInOneChangeset() {
         let messages = ApplyPerfChatRowsTests.conversation(turns: 500)
         let pass = Pass()

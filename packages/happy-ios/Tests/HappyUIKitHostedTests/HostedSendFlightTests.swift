@@ -171,7 +171,7 @@ final class HostedSendFlightTests: XCTestCase {
         }
         window.layoutIfNeeded()
         let transcript = try XCTUnwrap(find(AgentChatUltraList.self, in: chat.view))
-        let loaded = try await until { chat.plans.count > 12 && transcript.list.loadedItemView(at: 0) != nil }
+        let loaded = try await until { chat.plans.count > 12 && transcript.list.newestLoadedView != nil }
         XCTAssertTrue(loaded, "the conversation never landed: \(chat.plans.count) rows")
         try await Task.sleep(for: .milliseconds(400))
         chat.view.layoutIfNeeded()
@@ -232,7 +232,7 @@ final class HostedSendFlightTests: XCTestCase {
     /// Sends what the composer holds and samples the flight to its end.
     private func flySend(_ screen: Screen, _ label: String) async throws {
         let window = screen.window
-        let previousIdentity = try XCTUnwrap(screen.list.items.first { $0.identity.hasPrefix(screen.rowPrefix) }?.identity)
+        let previousIdentity = try XCTUnwrap(screen.list.items.last { $0.identity.hasPrefix(screen.rowPrefix) }?.identity)
         let words = "Fly this into its bubble \(label)"
         screen.card.setText(words, selection: NSRange(location: (words as NSString).length, length: 0))
         try await Task.sleep(for: .milliseconds(300))
@@ -496,9 +496,9 @@ final class HostedSendFlightTests: XCTestCase {
                 for delivery in [ChatItem.Delivery.sending, .pending, .sent, .failed("refused")] {
                     let shown = plans(delivery, words: words)
                     transcript.apply(shown, animated: true)
-                    let mounted = try await until { transcript.list.loadedItemView(at: 0) != nil }
+                    let mounted = try await until { transcript.list.newestLoadedView != nil }
                     XCTAssertTrue(mounted)
-                    let view = try XCTUnwrap(transcript.list.loadedItemView(at: 0) as? AgentChatRowView)
+                    let view = try XCTUnwrap(transcript.list.newestLoadedView as? AgentChatRowView)
                     XCTAssertTrue(view.row.plan === shown[1])
                     let (state, popped) = mark(in: view)
                     let bubble = view.convert(try XCTUnwrap(shown[1].flight).bubble.frame, to: window)

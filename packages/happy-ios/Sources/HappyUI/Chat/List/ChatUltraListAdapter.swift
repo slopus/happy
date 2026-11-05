@@ -195,7 +195,6 @@ final class ChatUltraRowView: ListRowView, UIGestureRecognizerDelegate {
         plan = row.plan
         drawing = row.node.makeView()
         super.init(frame: .zero)
-        transform = ChatListView.flip
         clipsToBounds = true
         canvas.drawsStaticContent = row.usesNativeDrawing
         addSubview(drawing); addSubview(canvas)
@@ -332,8 +331,6 @@ private final class ChatOlderUltraView: ListRowView {
     init(content: ChatOlderEndView) {
         self.content = content
         super.init(frame: .zero)
-        transform = ChatListView.flip
-        content.transform = .identity
         addSubview(content)
     }
     @available(*, unavailable)
@@ -342,8 +339,17 @@ private final class ChatOlderUltraView: ListRowView {
     override func update(width: Double, transition: ListTransition) -> Double { ChatOlderEndLayout.height }
 }
 
-/// Bridges the shared newest-first plans to UltraList. Logical content
-/// positions come from HappyLayout, since the library retains only a window.
+/// Bridges the shared newest-first plans to UltraList, which shows them the
+/// natural way up: the older end at the top, the newest message at the foot
+/// on the composer (`bottomGravity`). Logical content positions come from
+/// HappyLayout, since the library retains only a window.
+///
+/// The list keeps the reader's place itself: away from the newest message,
+/// the row under the finger, or else the top row on screen, stays where it
+/// is through every update. At the newest message it follows what grows
+/// there by `followBudget` and then stops, leaving the rest below the fold
+/// until the reader scrolls. A send of the person's own is always brought
+/// fully into view (`revealNextSend`).
 @MainActor
 final class ChatUltraListAdapter {
     let list = UltraListView(engineMode: .keyframe)
@@ -352,20 +358,23 @@ final class ChatUltraListAdapter {
     private var rows: [String: ChatUltraRow] = [:]
     private var revision: UInt64 = 0
     private var model = ChatListLayout(width: 0, heights: [])
+    private var hasFooter = false
     private var insets = UIEdgeInsets.zero
     private var viewportSize = CGSize.zero
     private var latest: ChatListUpdate?
     private var submitted: UInt64 = 0
-    private var motion: UInt64 = 0
-    private struct Settlement {
-        var submission: UInt64
-        var motion: UInt64
-        var follow: Bool
-        var pin: (identity: String, end: CGFloat)?
-        var animated: Bool
-    }
-    private var settlement: Settlement?
+    /// The person sent a message: the next update that brings a new newest
+    /// row scrolls it fully into view, whatever the follow has left.
+    private var revealsSend = false
     private(set) var isActive = true
+    /// How far the list follows a message growing at its foot by itself
+    /// (`ChatFollow.budget`).
+    var followBudget: CGFloat = ChatFollow.budget(body: ChatTextStyles.markdownText, scale: .standard) {
+        didSet {
+            guard followBudget != oldValue else { return }
+            list.bottomGravity = ListBottomGravity(followBudget: Double(followBudget))
+        }
+    }
     /// A send flying in from the composer: the row it waits for is
     /// veiled from the pass that inserts it until the copy lands.
     var flight: ChatSendFlight? {
@@ -411,16 +420,14 @@ final class ChatUltraListAdapter {
     init(olderEnd: ChatOlderEndView, measurer: any NodeRowMeasuring = NodeRowMeasurer()) {
         self.olderEnd = olderEnd
         self.measurer = measurer
-        list.contentView.transform = ChatListView.flip
+        list.bottomGravity = ListBottomGravity(followBudget: Double(followBudget))
         list.keyboardDismissMode = .interactive
         list.accessibilityIdentifier = "chat.ultralist"
         list.onScroll = { [weak self] _ in self?.onScroll?() }
         list.onVisibleWindowChanged = { [weak self] in
-            self?.settleCommittedUpdate()
             self?.land()
             self?.onScroll?()
         }
-        list.willBeginDragging = { [weak self] in self?.motion &+= 1 }
         list.registerForTraitChanges([UITraitUserInterfaceStyle.self, UITraitDisplayScale.self]) { [weak self] (_: UltraListView, _) in
             guard let self, let latest = self.latest else { return }
             self.rows.removeAll()
@@ -429,16 +436,25 @@ final class ChatUltraListAdapter {
         reveal.host = self
     }
 
+    /// How far the foot of the visible area is from the newest end: 0
+    /// with the newest message on the composer. The list's own while its
+    /// end is loaded, as rows laid out again at a new width hold their old
+    /// starts until the new plans come; otherwise from the first row it
+    /// has loaded.
     var visibleMinY: CGFloat {
+        if let distance = list.distanceFromBottom { return distance }
         for index in list.loadedIndexRange {
             guard let row = list.items[index] as? ChatUltraRow, let frame = list.settledFrame(at: index) else { continue }
-            return row.contentY - frame.minY + insets.top
+            return ChatListPosition.distanceFromNewest(rowStart: row.contentY, rowMaxY: frame.maxY, viewportHeight: viewportSize.height, bottomInset: insets.bottom)
         }
         return 0
     }
 
+    /// The list follows what grows at its foot.
+    var isFollowingNewest: Bool { list.isFollowingBottom }
+
     var isDisplayReady: Bool {
-        list.items.last?.revision == submitted && !list.loadedItemViews.isEmpty && list.loadedItemViews.allSatisfy(\.isDisplayReady)
+        list.items.first?.revision == submitted && !list.loadedItemViews.isEmpty && list.loadedItemViews.allSatisfy(\.isDisplayReady)
     }
 
     /// `keyboard` carries the keyboard's transition and whether the rows
@@ -457,8 +473,10 @@ final class ChatUltraListAdapter {
             // animation it is in.
             if self.insets != insets {
                 self.insets = insets
+                // A new size keeps the row read at the top where it is,
+                // not the distance from the composer.
                 list.applyChanges(newInsets: .init(top: insets.top, bottom: insets.bottom), anchorMode: .preserveVisibleContent,
-                                  compensatesInsetChange: keyboard?.compensates ?? !list.isTracking, transition: keyboard?.transition ?? .none)
+                                  compensatesInsetChange: keyboard?.compensates ?? false, transition: keyboard?.transition ?? .none)
             }
             list.resize(to: frame)
             viewportSize = size
@@ -477,9 +495,9 @@ final class ChatUltraListAdapter {
         flight?.follow(in: list)
     }
 
-    func apply(_ update: ChatListUpdate, target: CGFloat? = nil, animated: Bool) {
-        if isActive, target == nil { startReveals(update) }
-        submit(update, target: target, transition: animated ? .easeInOut(0.2) : .none, followOnly: true)
+    func apply(_ update: ChatListUpdate, animated: Bool) {
+        if isActive { startReveals(update) }
+        submit(update, transition: animated ? .easeInOut(0.2) : .none, followOnly: true)
     }
 
     /// Only the newest row comes out as it streams, and only with words
@@ -504,28 +522,15 @@ final class ChatUltraListAdapter {
         reveal.keep { plan($0) != nil }
     }
 
-    private func submit(_ update: ChatListUpdate, target: CGFloat?, transition: ListTransition, followOnly: Bool) {
-        let animated = !transition.isImmediate
+    private func submit(_ update: ChatListUpdate, transition: ListTransition, followOnly: Bool) {
         latest = update
         submitted &+= 1
-        let idle = !list.isTracking && !list.isDragging && !list.isDecelerating
-        let follow = idle && visibleMinY <= ChatScrollAnchor.followThreshold
-        var pin: (identity: String, end: CGFloat)?
-        if idle, visibleMinY > 0.5, let id = update.pinning {
-            let identity = "chat:message:\(id)"
-            if let index = list.items.firstIndex(where: { $0.identity == identity }), let frame = list.settledFrame(at: index) {
-                pin = (identity, frame.maxY - insets.top)
-            }
-        }
-        if pin == nil, update.pinning == nil, let previous = settlement,
-           previous.motion == motion, let pendingPin = previous.pin,
-           update.plans.contains(where: { "chat:message:\($0.id)" == pendingPin.identity }) {
-            // Row planning emits a tool pin once. A newer token or syntax
-            // pass may supersede its preparation before it is committed.
-            pin = pendingPin
-        }
-        settlement = target == nil ? Settlement(submission: submitted, motion: motion, follow: pin == nil && follow, pin: pin, animated: animated) : nil
+        // A row the reader opened or closed grows or shrinks under their
+        // finger: the rows above it hold still, not the newest message.
+        if update.pinning != nil { list.stopFollowingBottom() }
+        let follow = list.isFollowingBottom
         model = update.model
+        hasFooter = update.footer != nil
         var next: [String: ChatUltraRow] = [:]
         // What moves: a row's height or the rows there are, and of that, a
         // revealing row growing a line.
@@ -550,13 +555,21 @@ final class ChatUltraListAdapter {
             next[identity] = row
             return row
         }
-        var items: [any ListRow] = []
-        if let footer = update.footer { items.append(descriptor(footer, identity: "chat:newer-end", y: 0, replan: update.footerReplan)) }
+        // Worked out newest first, as the plans come, then turned the
+        // natural way up: the older end, the oldest row … the newest, the
+        // footer.
+        var newestFirst: [any ListRow] = []
+        newestFirst.reserveCapacity(update.plans.count + 2)
+        if let footer = update.footer { newestFirst.append(descriptor(footer, identity: "chat:newer-end", y: 0, replan: update.footerReplan)) }
         if landing == nil, let flight, let plan = update.plans.first, rows["chat:message:\(plan.id)"] == nil, flight.awaits(plan) {
             landing = ("chat:message:\(plan.id)", plan)
             veiled = "chat:message:\(plan.id)"
         }
         let lands = landing.map { landing in rows[landing.identity] == nil } ?? false
+        // A send of the person's own, once its row is in, comes fully into view.
+        let newestIdentity = update.plans.first.map { "chat:message:\($0.id)" }
+        let reveals = revealsSend && newestIdentity.map { rows[$0] == nil } == true
+        if reveals { revealsSend = false }
         // What revealing rows still hold back, newer than each row.
         var held: CGFloat = 0
         for (index, plan) in update.plans.enumerated() {
@@ -564,20 +577,19 @@ final class ChatUltraListAdapter {
             let input = update.inputs.indices.contains(index) && update.inputs[index].id == plan.id ? update.inputs[index] : nil
             let row = descriptor(plan, identity: identity, y: update.model.frame(ofRow: index).minY - held, input: input)
             held += plan.size.height - row.height
-            items.append(row)
+            newestFirst.append(row)
         }
-        items.append(ChatOlderUltraRow(revision: submitted, view: olderEnd))
+        newestFirst.append(ChatOlderUltraRow(revision: submitted, view: olderEnd))
+        let items = Array(newestFirst.reversed())
         if list.items.count != items.count || zip(list.items, items).contains(where: { $0.identity != $1.identity }) { moved = true }
         rows = next
-        let scroll = target.map { scrollTarget($0) } ?? pin.flatMap { pin in
-            guard let index = items.firstIndex(where: { $0.identity == pin.identity }) else { return nil }
-            return ListScrollTarget(index: index, identity: pin.identity, resolve: { height, _ in pin.end - height })
-        }
-        let eased: ListTransition = if lands && follow {
+        // The chat opens on its newest message.
+        let scroll: ListScrollTarget? = reveals || list.items.isEmpty ? .bottom : nil
+        let eased: ListTransition = if lands && (follow || reveals) {
             // The rows above make room as the send flies in.
             ChatSendFlight.Motion.list
         } else {
-            follow || !followOnly ? transition : .none
+            follow || reveals || !followOnly ? transition : .none
         }
         list.applyChanges(items: items, newSize: viewportSize, newInsets: .init(top: insets.top, bottom: insets.bottom), scrollTo: scroll,
                           anchorMode: .preserveVisibleContent, transition: AgentChatUltraList.transition(eased, moved: moved, grew: grew))
@@ -604,34 +616,36 @@ final class ChatUltraListAdapter {
         (list.loadedItemView(at: index) as? ChatUltraRowView)?.unveil()
     }
 
-    private func settleCommittedUpdate() {
-        guard let pending = settlement, list.items.last?.revision == pending.submission else { return }
-        settlement = nil
-        list.performAfterCurrentPass { [weak self] in
-            guard let self, isActive, submitted == pending.submission, motion == pending.motion,
-                  !list.isTracking, !list.isDragging, !list.isDecelerating else { return }
-            // Tool pins commit with their collection. Following the newest
-            // row is the only target settled afterward.
-            if pending.follow, abs(visibleMinY) > 0.5, list.loadedItemView(at: 0) != nil {
-                list.scrollTo(newestTarget(), transition: pending.animated && !UIAccessibility.isReduceMotionEnabled ? .easeInOut(0.2) : .none)
-            }
-        }
-    }
-
+    /// The target that puts the foot of the visible area `distance` from
+    /// the newest end, by the row there (`ChatListPosition.rowTop`).
     private func scrollTarget(_ distance: CGFloat) -> ListScrollTarget {
-        let distance = min(max(0, distance), max(0, model.contentHeight + insets.top + insets.bottom - list.bounds.height))
-        let index = model.firstRow(endingAfter: distance)
-        if distance < model.newerEndHeight || model.count == 0 { return .init(index: 0, pointOffset: -distance) }
-        if index >= model.count { return .init(index: model.count + 1, pointOffset: model.olderEndFrame.minY - distance) }
-        return .init(index: index + 1, pointOffset: model.frame(ofRow: index).minY - distance)
+        let visible = viewportSize.height - insets.top - insets.bottom
+        let distance = min(max(0, distance), max(0, model.contentHeight - visible))
+        // The rows stand oldest first, under the older end.
+        let count = model.count
+        func top(_ frame: CGRect) -> Double { Double(ChatListPosition.rowTop(rowStart: frame.minY, rowHeight: frame.height, distance: distance, visibleHeight: visible)) }
+        if count == 0 || (distance < model.newerEndHeight && hasFooter) {
+            if hasFooter { return .init(index: count + 1, pointOffset: top(model.newerEndFrame)) }
+            return .init(index: 0, pointOffset: top(model.olderEndFrame))
+        }
+        let index = min(model.firstRow(endingAfter: distance), count)
+        if index == count { return .init(index: 0, pointOffset: top(model.olderEndFrame)) }
+        return .init(index: count - index, pointOffset: top(model.frame(ofRow: index)))
     }
 
-    private func newestTarget() -> ListScrollTarget {
-        .init(index: 0, identity: list.items.first?.identity == "chat:newer-end" ? "chat:newer-end" : nil)
+    func setVisibleMinY(_ distance: CGFloat) { list.scrollTo(scrollTarget(distance), transition: .none) }
+
+    /// Back to the newest message, following it again from there.
+    func scrollToNewest(animated: Bool) {
+        list.scrollToBottom(animated: animated && !UIAccessibility.isReduceMotionEnabled)
     }
 
-    func setVisibleMinY(_ distance: CGFloat) { motion &+= 1; list.scrollTo(scrollTarget(distance), transition: .none) }
-    func scrollToNewest(animated: Bool) { motion &+= 1; list.scrollTo(newestTarget(), transition: animated ? .easeInOut(0.2) : .none) }
+    /// The person sent a message: back to the newest message now, and the
+    /// row it brings brought fully into view when it comes.
+    func revealNextSend() {
+        revealsSend = true
+        scrollToNewest(animated: true)
+    }
 
     func deactivate() {
         flight = nil
@@ -639,7 +653,6 @@ final class ChatUltraListAdapter {
         reveal.stopAll()
         onScroll = nil; onAction = nil; onLink = nil; onHold = nil; onSelectText = nil
         list.onScroll = nil; list.onVisibleWindowChanged = nil
-        list.willBeginDragging = nil
         list.applyChanges(items: [], transition: .none)
         list.removeFromSuperview()
         rows.removeAll()
@@ -653,10 +666,11 @@ extension ChatUltraListAdapter: ChatRevealHost {
     }
 
     /// A reply came onto a new line: the row grows on Telegram's 0.15 s,
-    /// the rows above it riding up by as much.
+    /// followed while the list follows the newest message, below the fold
+    /// once it has stopped.
     func revealHeightsChanged() {
         guard isActive, let latest else { return }
-        submit(latest, target: nil, transition: .easeInOut(StreamingRevealMotion.heightDuration), followOnly: false)
+        submit(latest, transition: .easeInOut(StreamingRevealMotion.heightDuration), followOnly: false)
     }
 }
 #endif

@@ -3,13 +3,13 @@ import Foundation
 import CoreGraphics
 #endif
 
-/// The chat list's geometry, in the list's own (flipped) content space.
+/// The chat list's geometry, measured from its newest end.
 ///
-/// The list is inverted, as happy-app's ChatList.tsx and Telegram's history
-/// list are: content y grows from the newest message towards the oldest, and
-/// the view is flipped so y = 0 is the bottom of the screen. Row 0 is the
-/// newest. That makes the newest edge the scroll origin, so the keyboard,
-/// the composer and history loading never have to move what the reader sees.
+/// The list itself stands the natural way up, the oldest row at the top and
+/// the newest at the foot, but the rows are derived newest first, so this
+/// measures each row from the newest end: y grows from the newest message
+/// towards the oldest. Row 0 is the newest. On screen, y = 0 is the foot of
+/// the content, over the composer (`ChatListPosition`).
 ///
 ///     y = 0            newer end (ChatFooter)
 ///     newerEnd         row 0   (newest)
@@ -99,93 +99,43 @@ public struct ChatListLayout: Equatable, Sendable {
     }
 }
 
-/// Keeps what the reader is looking at in place across a list update.
+/// Where the reader is in the chat list, which stands the natural way up:
+/// the oldest row at the top, the newest at the foot, resting on the
+/// composer (bottom gravity). The list keeps the row the reader is looking
+/// at in place by itself; this turns its frames into the distance the
+/// screen reasons in, and back.
 ///
-/// Telegram keeps a "stationary" row fixed while it applies a transaction.
-/// This is the same rule for a flipped UICollectionView:
-///   - a reader at the newest edge (within `followThreshold`, happy-app's
-///     `autoscrollToTopThreshold`) stays at the newest edge, so new and
-///     streaming messages carry them along;
-///   - a reader further back keeps the row at the bottom of their screen at
-///     the same distance from that edge, whatever was inserted, removed or
-///     resized before it.
-///
-/// Offsets here are "visible min y": the content y at the bottom edge of
-/// the visible area, `contentOffset.y + adjustedContentInset.top` in the
-/// flipped collection view. 0 means the newest edge is showing.
-public struct ChatScrollAnchor: Equatable, Sendable {
-    public static let followThreshold: CGFloat = 200
-
-    public enum Kind: Equatable, Sendable {
-        case newest
-        /// The row's near edge (its bottom on screen) stays this far from
-        /// the visible min y.
-        case row(id: String, distance: CGFloat)
-        /// The row's far edge (its top on screen) stays this far from the
-        /// visible min y.
-        case rowEnd(id: String, distance: CGFloat)
+/// "Distance from the newest" is how far the foot of the visible area
+/// (above the bottom inset) is from the newest end of the content: 0 with
+/// the newest message on screen. A row's `start` is its foot's distance
+/// from the newest end, `ChatListLayout.frame(ofRow:).minY`.
+public enum ChatListPosition {
+    /// The distance from the newest, read from one row on screen: its
+    /// `start`, and its foot in the list's bounds (`rowMaxY`), in a list
+    /// `viewportHeight` tall with `bottomInset` over its foot.
+    public static func distanceFromNewest(rowStart: CGFloat, rowMaxY: CGFloat, viewportHeight: CGFloat, bottomInset: CGFloat) -> CGFloat {
+        rowStart - (viewportHeight - bottomInset - rowMaxY)
     }
 
-    public var kind: Kind
-
-    public init(kind: Kind) {
-        self.kind = kind
+    /// Where a row's top goes, down from the top inset, for the visible
+    /// area's foot to be `distance` from the newest end; `visibleHeight` is
+    /// the list's height less both insets.
+    public static func rowTop(rowStart: CGFloat, rowHeight: CGFloat, distance: CGFloat, visibleHeight: CGFloat) -> CGFloat {
+        visibleHeight - (rowStart - distance) - rowHeight
     }
+}
 
-    /// Notes where the reader is before an update. `follow` is false while
-    /// the reader's finger is on the list: snapping to the newest edge then
-    /// would fight the drag, so even near it the row under them holds.
-    public static func capture(layout: ChatListLayout, ids: [String], visibleMinY: CGFloat, follow: Bool = true) -> ChatScrollAnchor {
-        if layout.count == 0 || (follow && visibleMinY <= followThreshold) {
-            return ChatScrollAnchor(kind: .newest)
-        }
-        let index = min(layout.firstRow(endingAfter: visibleMinY), layout.count - 1)
-        let frame = layout.frame(ofRow: index)
-        return ChatScrollAnchor(kind: .row(id: ids[index], distance: frame.minY - visibleMinY))
-    }
+/// How far the list follows a message growing at its foot by itself before
+/// it stops: two lines of the chat's body text, at the person's text size.
+/// Past that, the message goes on growing below the fold until the reader
+/// scrolls; their own sends are always brought fully into view.
+public enum ChatFollow {
+    public static let lines: CGFloat = 2
 
-    /// Holds one row's top on screen where it is: a row the reader just
-    /// opened grows down towards the newest messages, under their finger,
-    /// as a table row would, instead of pushing what they tapped up. A
-    /// reader at the newest edge stays there and the row grows upwards, so
-    /// what opened is on screen. Nil when the row isn't there.
-    public static func pinning(_ id: String, layout: ChatListLayout, ids: [String], visibleMinY: CGFloat) -> ChatScrollAnchor? {
-        guard let index = ids.firstIndex(of: id), index < layout.count else { return nil }
-        if visibleMinY <= 0.5 { return ChatScrollAnchor(kind: .newest) }
-        return ChatScrollAnchor(kind: .rowEnd(id: id, distance: layout.frame(ofRow: index).maxY - visibleMinY))
-    }
-
-    /// Where the visible min y goes when the inset at the newest edge
-    /// changes by `delta` (the keyboard, the dock growing).
-    ///
-    /// Left alone, the reader keeps what they see at the newest edge: it
-    /// rides up or down with the dock, inside the keyboard's animation.
-    /// Under the reader's finger the content stays where the finger has it:
-    /// the offset doesn't move, so the change only adds or takes away that
-    /// much to scroll back. Telegram's list keeps its anchor only when not
-    /// tracking, too. During an interactive dismiss the keyboard follows the
-    /// finger, and keeping the anchor would add the keyboard's travel to the
-    /// drag's: the conversation would run at twice the finger's speed.
-    public static func visibleMinY(afterNewestInsetChange delta: CGFloat, from visibleMinY: CGFloat, maxVisibleMinY: CGFloat, tracking: Bool) -> CGFloat {
-        if tracking { return visibleMinY + delta }
-        return min(max(0, visibleMinY), max(0, maxVisibleMinY))
-    }
-
-    /// Where the visible min y must be after the update. `maxVisibleMinY`
-    /// is the furthest the list can scroll (content height minus the
-    /// visible height), so the anchor never asks for an overscroll.
-    public func visibleMinY(in layout: ChatListLayout, ids: [String], current: CGFloat, maxVisibleMinY: CGFloat) -> CGFloat {
-        switch kind {
-        case .newest:
-            return 0
-        case .row(let id, let distance):
-            guard let index = ids.firstIndex(of: id) else { return min(current, max(0, maxVisibleMinY)) }
-            let target = layout.frame(ofRow: index).minY - distance
-            return min(max(0, target), max(0, maxVisibleMinY))
-        case .rowEnd(let id, let distance):
-            guard let index = ids.firstIndex(of: id) else { return min(current, max(0, maxVisibleMinY)) }
-            let target = layout.frame(ofRow: index).maxY - distance
-            return min(max(0, target), max(0, maxVisibleMinY))
-        }
+    /// `lines` of `body` at `scale`. A style without a fixed line height
+    /// counts its font size.
+    public static func budget(body: ChatTextStyle, scale: TextScale) -> CGFloat {
+        let style = body.scaled(scale)
+        return lines * (style.lineHeight ?? style.size)
     }
 }

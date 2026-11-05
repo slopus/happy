@@ -358,7 +358,7 @@ Following now:
     bubble's status line keeps `pendingStatusText`'s fixed 14, and its
     text is cut there from a little past the default size; RN's `height:
     14` also stops it growing (read from MessageView.tsx, not seen in RN).
-  - A new size keeps the reader's row where it was (`ChatScrollAnchor`)
+  - A new size keeps the reader's row where it was (the list's anchor)
     and message detail the text at the top of the screen
     (`MessageDetailReadingPlace`). Until the new plans land the old ones
     stay drawn whole: the text is in the plan, so a row never mixes sizes.

@@ -6,10 +6,9 @@ import XCTest
 
 /// A reply many screens tall in the agents' transcript has views only for
 /// the part of it on screen (`ChatChunks`), and that part is the one the
-/// reader sees: the list is upside down and the row the right way up in it,
-/// so the part the list reports is turned over. Taken as it came, the foot
-/// of a long reply on screen mounted its head, and the screen was blank
-/// until it scrolled past it.
+/// reader sees: with the newest reply resting on the composer, its foot.
+/// (When the list stood upside down, the part it reported had to be turned
+/// over, and the foot on screen once mounted the reply's head.)
 @MainActor
 final class HostedAgentTallRowTests: XCTestCase {
     private final class Screen: AgentChatTranscriptHost {
@@ -57,12 +56,12 @@ final class HostedAgentTallRowTests: XCTestCase {
             original?.makeKey()
         }
         root.view.addSubview(transcript)
-        transcript.setViewport(frame: CGRect(origin: .zero, size: transcript.bounds.size), insets: UIEdgeInsets(top: 100, left: 0, bottom: 120, right: 0))
+        transcript.setViewport(frame: CGRect(origin: .zero, size: transcript.bounds.size), insets: UIEdgeInsets(top: 120, left: 0, bottom: 100, right: 0))
         // The newest reply is 12,000 points: the screen rests on its foot.
         transcript.apply([tall("question", height: 300), tall("answer", height: 12_000)])
         window.layoutIfNeeded()
 
-        let viewport = transcript.convert(CGRect(x: 0, y: 100, width: 390, height: 580), to: window)
+        let viewport = transcript.convert(CGRect(x: 0, y: 120, width: 390, height: 580), to: window)
         var shown: [CGRect] = []
         try await until {
             transcript.layoutIfNeeded()
@@ -74,14 +73,6 @@ final class HostedAgentTallRowTests: XCTestCase {
         // Its foot is what shows, low on the screen, over the composer.
         let foot = try XCTUnwrap(shown.map(\.maxY).max())
         XCTAssertGreaterThan(foot, viewport.midY)
-    }
-
-    /// The part on screen, in the list's coordinates, turned over into the row's.
-    func testThePartOnScreenIsTurnedOver() {
-        XCTAssertEqual(AgentChatRowView.band(of: CGRect(x: 0, y: 0, width: 390, height: 600), height: 12_000),
-                       CGRect(x: 0, y: 11_400, width: 390, height: 600))
-        XCTAssertEqual(AgentChatRowView.band(of: CGRect(x: 0, y: 200, width: 390, height: 100), height: 1000),
-                       CGRect(x: 0, y: 700, width: 390, height: 100))
     }
 
     private static func rows(in view: UIView) -> [AgentChatRowView] {

@@ -284,7 +284,7 @@ final class HostedChatUltraKeyboardTests: XCTestCase {
         post(UIResponder.keyboardWillChangeFrameNotification, up: true, in: window)
         XCTAssertEqual(test.dock.frame.maxY, height - keyboardHeight, accuracy: 0.5, "the dock sits on the keyboard")
         XCTAssertEqual(test.list.frame, list, "the list's frame stays where the dock rests")
-        XCTAssertEqual(test.list.contentInsets.top, list.maxY - test.dock.frame.minY + LegacyChatScreenLayout.Metrics.newerEdgeExtra, accuracy: 0.5)
+        XCTAssertEqual(test.list.contentInsets.bottom, list.maxY - test.dock.frame.minY + LegacyChatScreenLayout.Metrics.newerEdgeExtra, accuracy: 0.5)
         XCTAssertFalse(backdrop.isHidden)
         XCTAssertEqual(backdrop.frame.minY, test.dock.frame.minY, accuracy: 0.5, "the backdrop starts at the dock")
         XCTAssertEqual(backdrop.frame.maxY, height, accuracy: 0.5)
@@ -295,7 +295,7 @@ final class HostedChatUltraKeyboardTests: XCTestCase {
         let down = try await until { abs(self.resting(test.chat) - test.dock.frame.maxY) < 0.5 }
         XCTAssertTrue(down, "the dock is back on the safe area, at \(test.dock.frame.maxY)")
         XCTAssertEqual(test.list.frame, list)
-        XCTAssertEqual(test.list.contentInsets.top, LegacyChatScreenLayout.Metrics.newerEdgeExtra, accuracy: 0.5)
+        XCTAssertEqual(test.list.contentInsets.bottom, LegacyChatScreenLayout.Metrics.newerEdgeExtra, accuracy: 0.5)
 
         resize(700)
         let back = try await until {
@@ -322,8 +322,8 @@ final class HostedChatUltraKeyboardTests: XCTestCase {
         // The library's inset-only pass, which keeps a viewport curve, not
         // a full pass.
         XCTAssertEqual(ultra.appliedPassCount, passes, "the keyboard moved the inset without a full list pass")
-        XCTAssertEqual(test.list.contentInsets.top, height - test.dock.frame.minY + LegacyChatScreenLayout.Metrics.newerEdgeExtra, accuracy: 0.5)
-        XCTAssertEqual(ultra.viewportInsets.top, Double(test.list.contentInsets.top), accuracy: 0.5)
+        XCTAssertEqual(test.list.contentInsets.bottom, height - test.dock.frame.minY + LegacyChatScreenLayout.Metrics.newerEdgeExtra, accuracy: 0.5)
+        XCTAssertEqual(ultra.viewportInsets.bottom, Double(test.list.contentInsets.bottom), accuracy: 0.5)
         // The rows are still on their way to the new inset.
         let index = try XCTUnwrap(ultra.loadedIndexRange.first)
         let settled = try XCTUnwrap(ultra.settledFrame(at: index))
@@ -339,7 +339,7 @@ final class HostedChatUltraKeyboardTests: XCTestCase {
         post(UIResponder.keyboardDidHideNotification, up: false, in: window)
         let down = try await until { abs(self.resting(test.chat) - test.dock.frame.maxY) < 0.5 }
         XCTAssertTrue(down, "the dock is back on the safe area, at \(test.dock.frame.maxY)")
-        XCTAssertEqual(test.list.contentInsets.top, height - test.dock.frame.minY + LegacyChatScreenLayout.Metrics.newerEdgeExtra, accuracy: 0.5)
+        XCTAssertEqual(test.list.contentInsets.bottom, height - test.dock.frame.minY + LegacyChatScreenLayout.Metrics.newerEdgeExtra, accuracy: 0.5)
     }
 }
 #endif

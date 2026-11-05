@@ -20,20 +20,19 @@ protocol ChatListViewDelegate: AnyObject {
     func chatList(_ list: ChatListView, selectText text: String)
 }
 
-/// The chat's message list, on UltraList (`ChatUltraListAdapter`): turned
-/// upside down, so row 0, the newest, rests at the foot. Every row was
-/// measured before it was handed over (`ChatRowPlan`), so every frame is
-/// exact and nothing jumps. The rows, their geometry and their changes
-/// arrive worked out (`ChatListUpdate`); the list only applies them.
+/// The chat's message list, on UltraList (`ChatUltraListAdapter`), the
+/// natural way up: the oldest row at the top, the newest resting at the
+/// foot on the composer. Every row was measured before it was handed over
+/// (`ChatRowPlan`), so every frame is exact and nothing jumps. The rows,
+/// their geometry and their changes arrive worked out (`ChatListUpdate`,
+/// newest first); the list only applies them.
 ///
 /// An update keeps the reader's place: a reader at the newest message is
-/// carried along as rows arrive and grow, animated; a reader further back
-/// keeps the row they are looking at where it is, whatever changed around
-/// it.
+/// carried along as rows arrive, and as the newest grows by two lines of
+/// text (`ChatFollow`), after which it grows below the fold; a reader
+/// further back keeps the row they are looking at where it is, whatever
+/// changed around it.
 final class ChatListView: UIView {
-    /// Turns the list upside down, and each row the right way up in it.
-    static let flip = CGAffineTransform(scaleX: 1, y: -1)
-
     weak var delegate: (any ChatListViewDelegate)?
 
     let ultra: ChatUltraListAdapter
@@ -42,8 +41,8 @@ final class ChatListView: UIView {
     private var model = ChatListLayout(width: 0, heights: [])
     private(set) var plans: [ChatRowPlan] = []
 
-    /// OlderEnd, past the oldest message, in the slot the layout keeps for
-    /// it (`ChatListLayout.olderEndFrame`): the inverted list's footer.
+    /// OlderEnd, above the oldest message, in the slot the layout keeps for
+    /// it (`ChatListLayout.olderEndFrame`): the list's header.
     let olderEnd = ChatOlderEndView()
 
     override init(frame: CGRect = .zero) {
@@ -80,6 +79,7 @@ final class ChatListView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        ultra.followBudget = ChatFollow.budget(body: ChatTextStyles.markdownText, scale: traitCollection.textEnvironment?.scale ?? .standard)
         ultra.setViewport(frame: sidesBand, insets: edgeInsets)
     }
 
@@ -101,8 +101,8 @@ final class ChatListView: UIView {
 
     // MARK: Position
 
-    /// The content y at the newest edge of the visible area; 0 when the
-    /// newest message is showing.
+    /// How far the foot of the visible area is from the newest end of the
+    /// content; 0 when the newest message rests on the composer.
     var visibleMinY: CGFloat { ultra.visibleMinY }
 
     var isTracking: Bool { ultra.list.isTracking }
@@ -111,7 +111,7 @@ final class ChatListView: UIView {
     var contentInsets: UIEdgeInsets { edgeInsets }
     var contentHeight: CGFloat { model.contentHeight }
     var scrollGestureView: UIView { ultra.list.scrollGestureHostView }
-    var scrollOffset: CGFloat { visibleMinY - edgeInsets.top }
+    var scrollOffset: CGFloat { visibleMinY - edgeInsets.bottom }
     var maximumVisibleMinY: CGFloat { max(0, model.contentHeight + edgeInsets.top + edgeInsets.bottom - bounds.height) }
     var isDisplayReady: Bool { ultra.isDisplayReady }
 
@@ -131,12 +131,16 @@ final class ChatListView: UIView {
         let scale = window?.screen.scale ?? traitCollection.displayScale
         let newest = PixelGrid.round(newest, scale: scale)
         let oldest = PixelGrid.round(oldest, scale: scale)
-        // Flipped: the list's top is the screen's bottom.
-        edgeInsets = UIEdgeInsets(top: newest, left: 0, bottom: oldest, right: 0)
+        edgeInsets = UIEdgeInsets(top: oldest, left: 0, bottom: newest, right: 0)
         ultra.setViewport(frame: sidesBand, insets: edgeInsets, keyboard: keyboard)
     }
 
+    /// Back to the newest message, following what grows there again.
     func scrollToNewest(animated: Bool) { ultra.scrollToNewest(animated: animated) }
+
+    /// The person sent a message: it is brought fully into view when its
+    /// row comes.
+    func revealNextSend() { ultra.revealNextSend() }
 
     // MARK: Updates
 

@@ -455,7 +455,7 @@ final class HostedListResizeTests: XCTestCase {
                     if reading, let read, let now = Self.share(read, list), abs(now.share - read.share) > 0.12 {
                         problems.append("reading \(read.identity) at \(now.share), was \(read.share), frame \(now.frame) top=\(list.viewportInsets.top)")
                     }
-                    if !reading, rows.distanceFromNewest > 1 { problems.append("left the newest row: \(rows.distanceFromNewest)") }
+                    if !reading, rows.distanceFromNewest > 1 { problems.append("left the newest row: \(rows.distanceFromNewest), list \(list.distanceFromBottom ?? -1) following \(list.isFollowingBottom)") }
                     return problems
                 }
                 report("legacy-chat \(reading ? "reading" : "newest") \(name)", list)
@@ -478,22 +478,24 @@ final class HostedListResizeTests: XCTestCase {
 
     typealias Reading = (identity: String, share: CGFloat, top: CGFloat)
 
-    /// The row the reader is on, at the list's reading edge, how much of it
-    /// was past the edge, and the inset over the edge then.
+    /// The row the reader is on, at the list's reading edge (the top
+    /// inset, under the bar: the chats stand the natural way up and keep
+    /// the row there in place), how much of it was past the edge, and the
+    /// inset then.
     private static func readingRow(_ list: UltraListView) -> Reading? {
+        let top = CGFloat(list.viewportInsets.top)
         for index in list.loadedIndexRange {
-            guard let frame = list.settledFrame(at: index), frame.minY <= 0, frame.maxY > 0, frame.height > 0 else { continue }
-            return (list.items[index].identity, -frame.minY / frame.height, CGFloat(list.viewportInsets.top))
+            guard let frame = list.settledFrame(at: index), frame.minY <= top, frame.maxY > top, frame.height > 0 else { continue }
+            return (list.items[index].identity, (top - frame.minY) / frame.height, top)
         }
         return nil
     }
 
-    /// How much of the row being read is past the reading edge now. The
-    /// edge moves with the inset over it, as the list carries the rows
-    /// with a composer that changes height (`compensatesInsetChange`).
+    /// How much of the row being read is past the reading edge now, the
+    /// top inset, which a turned bar moves.
     private static func share(_ read: Reading, _ list: UltraListView) -> (share: CGFloat, frame: CGRect)? {
         guard let index = list.items.firstIndex(where: { $0.identity == read.identity }), let frame = list.settledFrame(at: index) else { return nil }
-        let edge = list.viewportInsets.top - read.top
+        let edge = CGFloat(list.viewportInsets.top)
         return ((edge - frame.minY) / max(1, frame.height), frame)
     }
 
@@ -573,7 +575,7 @@ final class HostedListResizeTests: XCTestCase {
                         let undrawn = Self.undrawn(view.canvas)
                         if !undrawn.isEmpty { problems.append("\(view.row.identity) is not drawn: " + undrawn) }
                     }
-                    if !reading, transcript.distanceFromNewest > 1 { problems.append("left the newest row: \(transcript.distanceFromNewest)") }
+                    if !reading, transcript.distanceFromNewest > 1 { problems.append("left the newest row: \(transcript.distanceFromNewest), list \(list.distanceFromBottom ?? -1) following \(list.isFollowingBottom)") }
                     return problems
                 }
                 print(String(format: "RESIZE_REPORT agent-chat-planning %@ %@ main=%.2fms rows=%d", reading ? "reading" : "newest", name, chat.inPlaceMilliseconds, chat.inPlaceRows))

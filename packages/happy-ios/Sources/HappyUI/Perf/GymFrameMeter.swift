@@ -357,10 +357,9 @@ public final class GymFrameMeter: NSObject {
                 // The list owns a measured window, not a contentSize. Its
                 // public input seam moves that window and reports real
                 // scrolls to the meter, including newly loaded history.
-                let inverted = ultra.contentView.transform.d < 0
                 let index = ultra.loadedIndexRange.lowerBound + ultra.loadedIndexRange.count / 2
                 let before = ultra.settledFrame(at: index)
-                translation += Double(velocity) * dt * (inverted ? 1 : -1)
+                translation -= Double(velocity) * dt
                 GymFrameMeter.scrolling = true
                 ultra.receiveScrollInput(.init(time: link.timestamp, phase: .changed,
                                                translation: .init(x: 0, y: translation)))
@@ -368,8 +367,7 @@ public final class GymFrameMeter: NSObject {
                     GymFrameMeter.shared?.scriptPoints += abs(after.minY - before.minY)
                 }
                 let older = velocity < 0
-                let hit = inverted ? (older ? ultra.reachedBottom : ultra.reachedTop)
-                                   : (older ? ultra.reachedTop : ultra.reachedBottom)
+                let hit = older ? ultra.reachedTop : ultra.reachedBottom
                 if drag {
                     remaining -= dt
                     if remaining <= 0 || hit { velocity = 0 }

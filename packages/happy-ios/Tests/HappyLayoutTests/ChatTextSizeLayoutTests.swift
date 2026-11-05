@@ -295,20 +295,6 @@ final class ChatTextSizeLayoutTests: XCTestCase {
         }
     }
 
-    /// A new size re-heights every row; the reader's row stays where it is
-    /// on screen, as for a new width (`ChatListView.apply`).
-    func testANewSizeKeepsTheReadersRow() {
-        let ids = (0..<10).map { "r\($0)" }
-        let designed = ChatListLayout(width: 393, heights: Array(repeating: 63, count: 10), newerEndHeight: 6, olderEndHeight: 32)
-        let anchor = ChatScrollAnchor.capture(layout: designed, ids: ids, visibleMinY: 300)
-        guard case .row(let id, _) = anchor.kind else { return XCTFail("a reader in history keeps a row") }
-        let grown = ChatListLayout(width: 393, heights: Array(repeating: 146, count: 10), newerEndHeight: 6, olderEndHeight: 32)
-        let target = anchor.visibleMinY(in: grown, ids: ids, current: 300, maxVisibleMinY: grown.contentHeight)
-        let index = try! XCTUnwrap(ids.firstIndex(of: id))
-        XCTAssertEqual(designed.frame(ofRow: index).minY - 300, grown.frame(ofRow: index).minY - target, accuracy: 0.001)
-        XCTAssertEqual(target - 300, CGFloat(index) * (146 - 63), accuracy: 0.001)
-    }
-
     /// The message screen keeps the piece of text at the top of the screen
     /// there, as far down it, when a new size moves every piece; the gaps
     /// between pieces are padding and keep their size.

@@ -77,7 +77,7 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/slopus/ultraview.git",
       "state" : {
-        "revision" : "6f0e75537c46b1d6a7c104b76b28330b5dfb031b"
+        "revision" : "177d6f5228bd81e92e702fbbdb6e1f2309480bae"
       }
     },
     {

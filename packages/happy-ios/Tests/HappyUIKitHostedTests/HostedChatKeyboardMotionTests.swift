@@ -105,7 +105,7 @@ final class HostedChatKeyboardMotionTests: XCTestCase {
         return KeyboardMotionSampler(
             window: screen.window,
             composer: { screen.composer },
-            newestIdentity: { list.items.first { $0.identity.hasPrefix(prefix) }?.identity },
+            newestIdentity: { list.items.last { $0.identity.hasPrefix(prefix) }?.identity },
             row: { identity in list.items.firstIndex { $0.identity == identity }.flatMap(list.loadedItemView(at:)) }
         )
     }
@@ -176,7 +176,7 @@ final class HostedChatKeyboardMotionTests: XCTestCase {
         }
         window.layoutIfNeeded()
         let transcript = try XCTUnwrap(find(AgentChatUltraList.self, in: chat.view))
-        let loaded = try await until { chat.plans.count > 40 && transcript.list.loadedItemView(at: 0) != nil }
+        let loaded = try await until { chat.plans.count > 40 && transcript.list.newestLoadedView != nil }
         XCTAssertTrue(loaded, "the conversation never landed: \(chat.plans.count) rows")
         try await Task.sleep(for: .milliseconds(300))
         chat.view.layoutIfNeeded()

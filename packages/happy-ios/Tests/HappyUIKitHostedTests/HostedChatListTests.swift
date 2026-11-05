@@ -209,7 +209,9 @@ final class HostedChatListTests: XCTestCase {
         XCTAssertEqual(list.visibleMinY, place, accuracy: 0.5)
     }
 
-    func testTheListFollowsAStreamWithinTheExisting200PointThreshold() async throws {
+    /// 190 points back is back in history: the reply growing at the foot
+    /// goes on below the fold, and nothing the reader sees moves.
+    func testAStreamBelowAReaderInHistoryMovesNothing() async throws {
         let test = try await listInWindow()
         let list = test.list
         list.setVisibleMinY(190)
@@ -222,20 +224,22 @@ final class HostedChatListTests: XCTestCase {
         let streamed = try XCTUnwrap(ChatRows.derive(input(messages, width: list.bounds.width, grows: 0), applied: test.applied, planner: planner))
         let update = try XCTUnwrap(streamed.output.list)
         XCTAssertEqual(update.changeset.reconfigures.count, 1)
+        let grown = update.model.contentHeight - list.contentHeight
+        XCTAssertGreaterThan(grown, 0)
         list.apply(update, animated: true)
-        let followed = try await until { list.isDisplayReady && abs(list.visibleMinY) < 0.5 }
-        XCTAssertTrue(followed, "an idle reader 190 points from newest follows the stream")
+        let applied = try await until { list.isDisplayReady && abs(list.visibleMinY - 190 - grown) < 0.5 }
+        XCTAssertTrue(applied, "the reader stays put: \(list.visibleMinY), expected \(190 + grown)")
     }
 
     func testTheListRedrawsDisplayedRowsThroughAppearanceChanges() async throws {
         let test = try await listInWindow()
         let list = test.list
         for style in [UIUserInterfaceStyle.dark, .light] {
-            let revision = list.ultra.list.items.first?.revision
+            let revision = list.ultra.list.items.last?.revision
             list.overrideUserInterfaceStyle = style
             list.setNeedsLayout()
             list.layoutIfNeeded()
-            let drawn = try await until { list.isDisplayReady && list.ultra.list.items.first?.revision != revision }
+            let drawn = try await until { list.isDisplayReady && list.ultra.list.items.last?.revision != revision }
             XCTAssertTrue(drawn, "unchanged rows must redraw after appearance changes")
         }
     }
