@@ -104,7 +104,12 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     /// what rides it follow. None in a preview.
     private(set) var ultraKeyboard: ChatUltraKeyboard?
 
-    private var chat = ChatSnapshot()
+    private var chat = ChatSnapshot() {
+        didSet { failuresByID = nil }
+    }
+    /// The failure cards by item ID, made again only when a row comes on
+    /// screen after the conversation changed.
+    private var failuresByID: [String: Failure]?
     /// The tool calls opened from here (`AgentToolViewController`).
     private let toolScreens = NSHashTable<AgentToolViewController>.weakObjects()
     private var following: Task<Void, Never>?
@@ -249,6 +254,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         introView.accessibilityIdentifier = "intro"
         ultra.host = self
         ultra.onReachedOldest = { [weak self] in self?.loadOlder() }
+        ultra.onRowShown = { [weak self] id in self?.reportFailure(id) }
         view.addSubview(ultra)
         if !previewing {
             // The header's own edge: the ground at the top, easing out
@@ -783,7 +789,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             sidebarRows = snapshot.allRows
             proposals.spacesChanged()
         }
-        target = snapshot.happyAgentId == media.agentId ? .chiefOfStaff : snapshot.botAgentIds.contains(media.agentId) ? .bot : .session
+        target = .init(media.agentId, in: snapshot)
         guard let spaceId, let row = snapshot.allRows.first(where: { $0.spaceId == spaceId }) else { return }
         rowName = (row.label, row.titled)
         applyTitle()
@@ -801,21 +807,23 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     private var rowName: (label: String, titled: Bool)?
     /// What analytics calls this conversation.
     private var target: AnalyticsEvent.ChatTarget = .session
-    /// The failure cards already handed to `chat_failure_shown`.
-    private var shownFailures: Set<String> = []
-
-    /// Each failure card once it shows in the conversation the person is
-    /// looking at; the engine keeps the five-minute rule and the dedupe
-    /// across screens and launches.
+    /// Each failure card on screen in the conversation the person is
+    /// looking at: the rows the transcript reports visible, as one comes on
+    /// and as the screen comes to the front. The engine keeps the
+    /// five-minute rule and the dedupe across screens and launches.
     @objc private func reportFailures() {
+        for id in ultra.onScreen.ids { reportFailure(id) }
+    }
+
+    private func reportFailure(_ id: String) {
         guard !previewing, viewIfLoaded?.window != nil, UIApplication.shared.applicationState == .active,
               navigationController?.topViewController === self else { return }
-        for item in chat.items {
-            guard case .failure(let failure) = item.role, shownFailures.insert(failure.messageId).inserted else { continue }
-            Analytics.shared.failureShown(messageID: failure.messageId, createdAt: Date(timeIntervalSince1970: failure.createdAt / 1000),
-                                          .chatFailureShown(kind: failure.kind, providerKind: failure.pool ? nil : failure.providerKind,
-                                                            pool: failure.pool, target: target, sessionClient: .happyAgent))
-        }
+        let failures = failuresByID ?? chat.failuresByID
+        failuresByID = failures
+        guard let failure = failures[id] else { return }
+        Analytics.shared.failureShown(messageID: failure.messageId, createdAt: Date(timeIntervalSince1970: failure.createdAt / 1000),
+                                      .chatFailureShown(kind: failure.kind, providerKind: failure.pool ? nil : failure.providerKind,
+                                                        pool: failure.pool, target: target, sessionClient: .happyAgent))
     }
 
     /// The row's name, or, while it has none ("New"), the conversation's
@@ -874,7 +882,6 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         }
         let wasSettled = settled(chat)
         chat = snapshot
-        reportFailures()
         updateToolScreens()
         applyTitle()
         if picked == snapshot.mode { picked = nil }
@@ -1607,8 +1614,9 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         }
     }
 
-    /// `message_sent` and the day's counts for a send now, made before the
-    /// send changes what the screen knows; called once it is accepted.
+    /// `message_sent`, and `feature_used` for a steer, for a send now: made
+    /// before the send changes what the screen knows, called once it is
+    /// accepted.
     private func sentEvent(attachments: Int) -> () -> Void {
         let mode = mode
         // New work's first message makes the conversation; later ones are chat.

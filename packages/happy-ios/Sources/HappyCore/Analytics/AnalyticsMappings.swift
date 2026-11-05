@@ -144,6 +144,24 @@ extension CallState {
     }
 }
 
+extension AnalyticsEvent.ChatTarget {
+    /// What a conversation is, as the sidebar knows it: Happy's own, a
+    /// bot's, or else work.
+    public init(_ agentId: String, in snapshot: Snapshot) {
+        self = snapshot.happyAgentId == agentId ? .chiefOfStaff : snapshot.botAgentIds.contains(agentId) ? .bot : .session
+    }
+}
+
+extension AnalyticsEvent.MessageSent {
+    /// `message_sent` for what a call said into a conversation over the
+    /// agent connection. It carries no attachment and no model of its own.
+    public static func voice(to agentId: String, in snapshot: Snapshot) -> Self {
+        let target = AnalyticsEvent.ChatTarget(agentId, in: snapshot)
+        return .init(source: .voice, target: target, sessionClient: .happyAgent,
+                     botSystemKey: target == .chiefOfStaff ? .chiefOfStaff : nil, hasAttachment: false)
+    }
+}
+
 extension Subscription.PurchaseResult {
     /// `purchase_result` for a Subscribe that ended. The app sells one
     /// product, the monthly subscription that grants `pro`.
@@ -193,5 +211,20 @@ extension AnalyticsEvent.ErrorCode {
         case .http(let status): .init(status: status)
         case .insecure, .crashed, .other: .unknown
         }
+    }
+}
+
+extension AnalyticsEvent.AppConfig {
+    /// `provider_kinds` and `provider_accounts` from the active agent's
+    /// catalog: its switched-on providers. Nil, when it isn't known or a
+    /// Happy CLI account is in front, leaves both out.
+    public mutating func setProviders(_ catalog: ModelCatalog?) {
+        guard let providers = catalog?.providers.filter({ !$0.isDisabled }) else {
+            providerKinds = nil
+            providerAccounts = nil
+            return
+        }
+        providerKinds = Set(providers.map { AnalyticsEvent.ProviderKind(type: $0.type) }).sorted { $0.rawValue < $1.rawValue }
+        providerAccounts = .init(providers.count)
     }
 }

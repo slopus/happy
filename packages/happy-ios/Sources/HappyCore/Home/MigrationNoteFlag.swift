@@ -25,6 +25,9 @@ public final class MigrationNoteFlag {
 
     /// Harnesses: the answer, and nothing asked or stored.
     public var fixedAnswer: Bool?
+    /// Whether this run may ask at all. The app allows it only where
+    /// analytics may send: never a debug build, a test or a harness.
+    public var permitted = false
 
     private var observers: [UUID: () -> Void] = [:]
     /// The accounts with an ask on its way.
@@ -42,6 +45,15 @@ public final class MigrationNoteFlag {
     nonisolated static func validKey(_ key: String) -> String? {
         let key = key.trimmingCharacters(in: .whitespacesAndNewlines)
         return key.isEmpty || key.hasPrefix("$(") ? nil : key
+    }
+
+    /// Whether the account that is open counts as opted out, by its own
+    /// setting and by analytics' consent: the device switch, or any
+    /// signed-in account that opted out. Nil until every account's setting
+    /// has been read: nothing is asked and nothing stored is dropped yet.
+    public static func optedOut(account: Bool, consent: AnalyticsConsent) -> Bool? {
+        guard consent.isSettled || consent.isOptedOut else { return nil }
+        return account || consent.isOptedOut
     }
 
     /// Whether the card may show for the account `settings` belong to.
@@ -67,7 +79,7 @@ public final class MigrationNoteFlag {
 
     @discardableResult
     func refresh(accountID: String, settings: LocalSettings, optedOut: Bool, apiKey: String?, transport: HTTPTransport) -> Task<Void, Never>? {
-        guard fixedAnswer == nil else { return nil }
+        guard fixedAnswer == nil, permitted else { return nil }
         guard !optedOut, let apiKey else {
             store(nil, in: settings)
             return nil

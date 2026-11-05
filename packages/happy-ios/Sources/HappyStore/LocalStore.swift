@@ -634,6 +634,15 @@ public final class LocalStore: Sendable {
         Self.deliverOnMain(settingsSnapshots(), onChange: onChange)
     }
 
+    /// The settings in the store file at `url`, read once without opening
+    /// the store: an account that is signed in here but not open.
+    public nonisolated static func settingsSnapshot(at url: URL) async throws -> SettingsSnapshot {
+        var configuration = Configuration()
+        configuration.readonly = true
+        configuration.busyMode = .timeout(2)
+        return try await DatabaseQueue(path: url.path, configuration: configuration).read { db in try fetchSettingsSnapshot(db) }
+    }
+
     static func fetchSettingsSnapshot(_ db: Database) throws -> SettingsSnapshot {
         SettingsSnapshot(
             synced: try AccountSettingsRecord.fetchOne(db, key: 1),

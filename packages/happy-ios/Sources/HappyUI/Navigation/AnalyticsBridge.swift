@@ -36,6 +36,13 @@ final class AnalyticsBridge {
         accounts = account.observeAccounts { [weak self] summaries in self?.accountsChanged(summaries) }
     }
 
+    /// The accounts are restored: every signed-in account's stored setting
+    /// is read, and only then may anything go.
+    func restored() async {
+        let optOuts = await context.account.analyticsOptOuts()
+        Analytics.shared.consent.settle(optOuts)
+    }
+
     private func accountsChanged(_ summaries: [AccountSummary]) {
         let account = context.account
         Analytics.shared.consent.keepAccounts(Set(summaries.filter { !$0.isAgentConnection }.map(\.id)))
@@ -82,16 +89,16 @@ final class AnalyticsBridge {
         @unknown default: .notAsked
         }
         let summaries = account.accounts
-        let providers = Session.enabledProviders
-        return .init(
+        var config = AnalyticsEvent.AppConfig(
             theme: theme,
             appLanguage: .init(code: AppLocalization.language),
             notifications: notifications,
             agentsConnected: .init(account.agentConnections.accounts.filter { !$0.revoked }.count),
-            relayAccounts: .init(summaries.filter { !$0.isAgentConnection }.count),
-            providerKinds: providers.isEmpty ? nil : Set(providers.map { AnalyticsEvent.ProviderKind(type: $0.type) }).sorted { $0.rawValue < $1.rawValue },
-            providerAccounts: providers.isEmpty ? nil : .init(providers.count)
+            relayAccounts: .init(summaries.filter { !$0.isAgentConnection }.count)
         )
+        // The agent in front only; a Happy CLI account in front has none.
+        if case .agentConnection(let connection) = account.state { config.setProviders(Session.catalog(for: connection.id)) }
+        return config
     }
 }
 #endif

@@ -41,8 +41,11 @@ enum CompositionRoot {
         let debug = false
         #endif
         let environment = ProcessInfo.processInfo.environment
+        let automated = Analytics.isAutomated()
+        // PostHog's /flags is asked only where analytics may send.
+        MigrationNoteFlag.shared.permitted = !debug && !automated
         let destination = Analytics.destination(apiKey: MigrationNoteFlag.apiKey(bundle: bundle), debug: debug,
-                                                automated: Analytics.isAutomated(), environment: environment)
+                                                automated: automated, environment: environment)
         let setup = destination.map {
             Analytics.Setup(destination: $0, file: storeDirectory()?.appendingPathComponent("analytics.json"),
                             transport: URLSessionTransport(), variant: variant, appVersion: version,

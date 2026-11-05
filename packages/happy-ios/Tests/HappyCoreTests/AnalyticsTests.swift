@@ -10,12 +10,16 @@ import HappyWire
 final class AnalyticsTests: XCTestCase {
     private var clock = Date(timeIntervalSince1970: 1_762_344_000)
 
-    private func started(_ http: FakeHTTP, consent: AnalyticsConsent = AnalyticsConsent(storage: InMemoryKeyValueStore())) -> Analytics {
+    /// Started, with the accounts' settings read as `accounts` says; nil
+    /// leaves them unread, as at launch before the accounts are restored.
+    private func started(_ http: FakeHTTP, consent: AnalyticsConsent = AnalyticsConsent(storage: InMemoryKeyValueStore()),
+                         accounts: [String: Bool]? = [:]) -> Analytics {
         let analytics = Analytics()
         analytics.now = { [unowned self] in clock }
         analytics.start(.init(destination: .init(apiKey: "phc_test"), file: nil, transport: http, variant: .production,
                               appVersion: "2.0.0", osVersion: OperatingSystemVersion(majorVersion: 26, minorVersion: 1, patchVersion: 3),
                               deviceClass: .phone), consent: consent)
+        if let accounts { consent.settle(accounts) }
         return analytics
     }
 
@@ -37,7 +41,12 @@ final class AnalyticsTests: XCTestCase {
         XCTAssertNil(Analytics.destination(apiKey: "phc_x", debug: true, automated: false, environment: [:]), "debug build")
         XCTAssertNil(Analytics.destination(apiKey: "phc_x", debug: false, automated: true, environment: [:]), "tests or UI automation")
         XCTAssertNil(Analytics.destination(apiKey: "phc_x", debug: true, automated: true, environment: ["HAPPY_ANALYTICS_CAPTURE": "http://10.0.0.2:8787/batch/"]))
-        XCTAssertEqual(Analytics.destination(apiKey: nil, debug: true, automated: false, environment: ["HAPPY_ANALYTICS_CAPTURE": "http://10.0.0.2:8787/batch/"])?.url.absoluteString, "http://10.0.0.2:8787/batch/")
+        XCTAssertEqual(Analytics.destination(apiKey: nil, debug: true, automated: false, environment: ["HAPPY_ANALYTICS_CAPTURE": "http://127.0.0.1:8787/batch/"])?.url.absoluteString, "http://127.0.0.1:8787/batch/")
+        XCTAssertNotNil(Analytics.destination(apiKey: nil, debug: true, automated: false, environment: ["HAPPY_ANALYTICS_CAPTURE": "http://localhost:8787/batch/"]))
+        XCTAssertNotNil(Analytics.destination(apiKey: nil, debug: true, automated: false, environment: ["HAPPY_ANALYTICS_CAPTURE": "http://[::1]:8787/batch/"]))
+        for elsewhere in ["http://10.0.0.2:8787/batch/", "https://us.i.posthog.com/batch/", "http://127.0.0.1.example.com/batch/", "file:///tmp/x"] {
+            XCTAssertNil(Analytics.destination(apiKey: "phc_x", debug: true, automated: false, environment: ["HAPPY_ANALYTICS_CAPTURE": elsewhere]), elsewhere)
+        }
         XCTAssertTrue(Analytics.isAutomated(environment: [:], arguments: ["Happy", "-screen", "home"]))
         XCTAssertTrue(Analytics.isAutomated(environment: ["XCTestConfigurationFilePath": "/x"], arguments: []))
     }
@@ -97,14 +106,68 @@ final class AnalyticsTests: XCTestCase {
     func testAnySignedInAccountThatOptedOutStopsSending() async {
         let storage = InMemoryKeyValueStore()
         let consent = AnalyticsConsent(storage: storage)
-        consent.setAccount("a", optedOut: false)
-        consent.setAccount("b", optedOut: true)
+        consent.settle(["a": false, "b": true])
         XCTAssertTrue(consent.isOptedOut)
         XCTAssertTrue(AnalyticsConsent(storage: storage).isOptedOut, "remembered across launches")
         consent.keepAccounts(["a"])
         XCTAssertFalse(consent.isOptedOut, "b signed out")
         consent.setDeviceOptOut(true)
         XCTAssertTrue(AnalyticsConsent(storage: storage).isOptedOut)
+    }
+
+    /// At launch the accounts aren't read yet: what happens waits in
+    /// memory, and goes only once every signed-in account's stored setting
+    /// says it may. An empty account list before then erases nothing.
+    func testAnInactiveAccountsOptOutHoldsAcrossARelaunch() async throws {
+        let storage = InMemoryKeyValueStore()
+        let http = http()
+        // First launch: A opted out, B is the account in front.
+        let first = started(http, consent: AnalyticsConsent(storage: storage), accounts: ["a": true, "b": false])
+        first.appBecameActive()
+        first.log(.onboardingCompleted)
+        _ = try await sent(first, http)
+
+        // Relaunch: B's store opens first; A's is read with the rest.
+        let consent = AnalyticsConsent(storage: storage)
+        let second = started(http, consent: consent, accounts: nil)
+        consent.keepAccounts([])
+        consent.setAccount("b", optedOut: false)
+        second.appBecameActive()
+        second.log(.onboardingStepViewed(step: .pair))
+        second.errorShown(.messageSend, .offline)
+        consent.settle(["a": true, "b": false])
+        let events = try await sent(second, http)
+        XCTAssertTrue(events.isEmpty)
+        XCTAssertTrue(http.requests.isEmpty, "nothing on either launch")
+    }
+
+    func testWhatWaitedForTheAccountsGoesOnceTheyAllow() async throws {
+        let http = http()
+        let consent = AnalyticsConsent(storage: InMemoryKeyValueStore())
+        let analytics = started(http, consent: consent, accounts: nil)
+        analytics.appBecameActive()
+        analytics.log(.onboardingCompleted)
+        analytics.appEnteredBackground()
+        await analytics.settle()
+        XCTAssertTrue(http.requests.isEmpty, "the accounts aren't read yet")
+        consent.settle(["a": false])
+        let events = try await sent(analytics, http).map { $0["event"]?.stringValue }
+        XCTAssertEqual(events, ["app_opened", "onboarding_completed"])
+    }
+
+    /// Opting back in while the app is in front starts the flushes again.
+    func testOptingBackInStartsTheFlushesAgain() async throws {
+        let http = http()
+        let consent = AnalyticsConsent(storage: InMemoryKeyValueStore())
+        let analytics = started(http, consent: consent)
+        analytics.flushInterval = .milliseconds(20)
+        analytics.appBecameActive()
+        consent.setDeviceOptOut(true)
+        consent.setDeviceOptOut(false)
+        analytics.log(.onboardingCompleted)
+        let deadline = ContinuousClock.now + .seconds(3)
+        while http.requests("POST /batch").isEmpty, ContinuousClock.now < deadline { try await Task.sleep(for: .milliseconds(20)) }
+        XCTAssertFalse(http.requests("POST /batch").isEmpty, "flushed without going to the background")
     }
 
     func testAShortDropSendsNothingAndALongOneSaysHowItEnded() async {
@@ -259,5 +322,68 @@ final class AnalyticsTests: XCTestCase {
         XCTAssertEqual(AnalyticsEvent.Feature.changes(from: mode, to: mode), [])
         XCTAssertEqual(AnalyticsEvent.Feature.changes(from: mode, to: effort), [.effortChanged])
         XCTAssertEqual(AnalyticsEvent.Feature.changes(from: mode, to: both), [.modelChanged, .permissionModeChanged])
+    }
+
+    /// `provider_kinds` and `provider_accounts` are the active agent's
+    /// switched-on providers, and nothing when that isn't known.
+    func testTheProviderSnapshotIsTheActiveAgentsOnly() async {
+        var config = AnalyticsEvent.AppConfig(theme: .dark)
+        config.setProviders(nil)
+        XCTAssertNil(config.providerKinds)
+        XCTAssertNil(config.providerAccounts)
+        let model = ModelCatalog.Model(id: "anthropic/opus-5", name: "Opus", efforts: ["high"], defaultEffort: "high")
+        let catalog = ModelCatalog(defaultProviderId: "work", defaultModelId: "anthropic/opus-5", models: [], providers: [
+            .init(id: "work", name: "Work", type: "claude", enabled: true, hidden: false, models: [model]),
+            .init(id: "home", name: "Home", type: "claude", enabled: true, hidden: false, models: [model]),
+            .init(id: "off", name: nil, type: "codex", enabled: false, hidden: false, models: [model]),
+            .init(id: "mine", name: nil, type: "acme", enabled: true, hidden: false, models: [model]),
+        ])
+        config.setProviders(catalog)
+        XCTAssertEqual(config.providerKinds, [.claude, .other])
+        XCTAssertEqual(config.providerAccounts, .threeOrMore)
+        config.setProviders(nil)
+        XCTAssertNil(config.providerKinds, "a Happy CLI account in front")
+    }
+
+    /// `chat_failure_shown` reads the rows the transcript reports on
+    /// screen: a card further up the history, never scrolled to, is not
+    /// one of them; one coming on screen is, once, until it leaves.
+    func testOnlyAFailureCardOnScreenIsReported() async throws {
+        var snapshot = ChatSnapshot()
+        let failed = AgentWire.Message(id: "m1", role: "service", createdAt: 0, content: [], failure: .object(["kind": .string("rate_limited")]))
+        let failure = try XCTUnwrap(Failure.of(failed))
+        snapshot.items = [
+            ChatItem(id: "old-failure", role: .failure(failure), pieces: [], delivery: .sent),
+            ChatItem(id: "reply", role: .agent, pieces: [], delivery: .sent),
+            ChatItem(id: "new-failure", role: .failure(failure), pieces: [], delivery: .sent),
+        ]
+        var rows = ShownRows()
+        XCTAssertTrue(rows.update("reply", shown: true))
+        XCTAssertTrue(rows.update("new-failure", shown: true))
+        XCTAssertFalse(rows.update("new-failure", shown: true), "still on screen: not again")
+        let reported = rows.ids.compactMap { snapshot.failuresByID[$0] != nil ? $0 : nil }
+        XCTAssertEqual(reported, ["new-failure"])
+        XCTAssertFalse(rows.update("new-failure", shown: false))
+        XCTAssertEqual(rows.ids, ["reply"])
+    }
+    /// What a call says into a conversation over the agent connection is a
+    /// `voice` send, with the conversation's target and nothing of what it said.
+    func testAVoiceSendSaysOnlyWhereItWent() async throws {
+        var snapshot = Snapshot()
+        snapshot.happyAgentId = "chief"
+        snapshot.botAgentIds = ["bot"]
+        let chief = AnalyticsEvent.MessageSent.voice(to: "chief", in: snapshot)
+        XCTAssertEqual(chief, .init(source: .voice, target: .chiefOfStaff, sessionClient: .happyAgent, botSystemKey: .chiefOfStaff, hasAttachment: false))
+        XCTAssertEqual(AnalyticsEvent.MessageSent.voice(to: "bot", in: snapshot).target, .bot)
+        XCTAssertEqual(AnalyticsEvent.MessageSent.voice(to: "task", in: snapshot).target, .session)
+        let event = AnalyticsEvent.messageSent(.voice(to: "task", in: snapshot))
+        let admitted = try XCTUnwrap(AnalyticsSchema.admit(event.name, event.properties, common: [
+            "client": .string("ios"), "app_version": .string("2.0.0"), "channel": .string("stable"), "os": .string("ios"),
+            "os_version": .string("26.1"), "device_class": .string("phone"), "agent_location": .null, "agent_os": .null,
+            "happy_agent_version": .null,
+        ]))
+        XCTAssertEqual(admitted["source"], .string("voice"))
+        XCTAssertEqual(admitted["session_client"], .string("happy_agent"))
+        XCTAssertEqual(admitted["has_attachment"], .bool(false))
     }
 }

@@ -248,10 +248,11 @@ final class SessionListViewController: UIViewController {
     }
 
     /// The migration card's PostHog flag for this account; never asked for
-    /// someone who opted out of analytics.
+    /// someone who opted out of analytics, here or on this device.
     @objc private func refreshMigrationFlag() {
-        guard hasModel, context.account.session === session else { return }
-        MigrationNoteFlag.shared.refresh(session, settings: context.account.localSettings, optedOut: model.analyticsOptOut)
+        guard hasModel, context.account.session === session,
+              let optedOut = MigrationNoteFlag.optedOut(account: model.analyticsOptOut, consent: Analytics.shared.consent) else { return }
+        MigrationNoteFlag.shared.refresh(session, settings: context.account.localSettings, optedOut: optedOut)
     }
 
     /// HomeListHeader.tsx: the offline plaque, then the update banner,
@@ -271,7 +272,8 @@ final class SessionListViewController: UIViewController {
             migration: DesktopMigrationCard.path(
                 context.account,
                 serverAgent: model.hasServerAgent,
-                flag: MigrationNoteFlag.shared.isOn(context.account.localSettings, optedOut: model.analyticsOptOut)
+                flag: MigrationNoteFlag.shared.isOn(context.account.localSettings,
+                                                    optedOut: MigrationNoteFlag.optedOut(account: model.analyticsOptOut, consent: Analytics.shared.consent) ?? model.analyticsOptOut)
             )
         )
         guard state != bannerState else { return }

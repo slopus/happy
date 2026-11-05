@@ -40,7 +40,8 @@ public final class Analytics {
 
     /// A foreground after this long in the background is a new visit.
     public static let reopenAfter: TimeInterval = 30 * 60
-    public static let flushInterval: Duration = .seconds(30)
+    /// How often the queue goes while the app is in front.
+    public var flushInterval: Duration = .seconds(30)
 
     public private(set) var consent = AnalyticsConsent(storage: InMemoryKeyValueStore())
     /// The agent being looked at, read as each event is made.
@@ -53,8 +54,13 @@ public final class Analytics {
     private var fixed: [String: JSONValue] = [:]
     private var opened = false
     private var backgroundedAt: Date?
+    private var foreground = false
     private var ticker: Task<Void, Never>?
     private var pending: Task<Void, Never>?
+    /// Work made before the accounts' settings were read this launch, kept
+    /// in memory only: handed on once they allow it, dropped if they don't.
+    private var held: [@Sendable (AnalyticsEngine) async -> Void] = []
+    static let heldLimit = 200
 
     public init() {}
 
@@ -108,18 +114,25 @@ public final class Analytics {
         let cold = !opened
         let reopened = backgroundedAt.map { at.timeIntervalSince($0) >= Self.reopenAfter } ?? false
         opened = true
+        foreground = true
         backgroundedAt = nil
         guard recording != nil else { return }
         if cold || reopened {
             let common = common(), config = appConfig
             run { await $0.appOpened(cold: cold, common: common, config: await config(), at: at) }
         }
+        startTicker()
+    }
+
+    private func startTicker() {
         ticker?.cancel()
+        let interval = flushInterval
         ticker = Task { [weak self] in
             while !Task.isCancelled {
-                try? await Task.sleep(for: Self.flushInterval)
-                guard !Task.isCancelled, let self, let engine = recording else { return }
-                await engine.flush(now: now())
+                try? await Task.sleep(for: interval)
+                guard !Task.isCancelled, let self, recording != nil else { return }
+                let at = now()
+                run { await $0.flush(now: at) }
             }
         }
     }
@@ -127,6 +140,7 @@ public final class Analytics {
     /// Flushes once and writes the state down. `finish` runs when both are done.
     public func appEnteredBackground(finish: @escaping @MainActor () -> Void = {}) {
         backgroundedAt = now()
+        foreground = false
         ticker?.cancel()
         ticker = nil
         guard recording != nil else { return finish() }
@@ -145,16 +159,35 @@ public final class Analytics {
     private var recording: AnalyticsEngine? { consent.isOptedOut ? nil : engine }
 
     private func consentChanged() {
-        guard consent.isOptedOut, let engine else { return }
-        ticker?.cancel()
-        ticker = nil
-        run(on: engine) { await $0.clear() }
+        guard let engine else { return }
+        if consent.isOptedOut {
+            ticker?.cancel()
+            ticker = nil
+            held = []
+            chain(engine) { await $0.clear() }
+            return
+        }
+        guard consent.isSettled else { return }
+        let work = held
+        held = []
+        for item in work { chain(engine, item) }
+        // Back on while the app is in front: the flushes start again.
+        if foreground { startTicker() }
     }
 
     /// Hands `work` to the engine after everything handed to it before, so
-    /// events keep their order.
-    private func run(on engine: AnalyticsEngine? = nil, _ work: @escaping @Sendable (AnalyticsEngine) async -> Void) {
-        guard let engine = engine ?? recording else { return }
+    /// events keep their order. Until every signed-in account's setting has
+    /// been read it waits in memory.
+    private func run(_ work: @escaping @Sendable (AnalyticsEngine) async -> Void) {
+        guard let engine = recording else { return }
+        guard consent.isSettled else {
+            if held.count < Self.heldLimit { held.append(work) }
+            return
+        }
+        chain(engine, work)
+    }
+
+    private func chain(_ engine: AnalyticsEngine, _ work: @escaping @Sendable (AnalyticsEngine) async -> Void) {
         let previous = pending
         pending = Task {
             await previous?.value
@@ -180,11 +213,14 @@ public final class Analytics {
 
     /// The destination a build sends to, or nil when it must send nothing:
     /// no key, a test or UI-automation run, or a debug build, which sends
-    /// only to a capture endpoint it was given (`HAPPY_ANALYTICS_CAPTURE`).
+    /// only to a capture endpoint on this machine it was given
+    /// (`HAPPY_ANALYTICS_CAPTURE`), so it can never reach PostHog.
     public nonisolated static func destination(apiKey: String?, debug: Bool, automated: Bool, environment: [String: String]) -> AnalyticsEngine.Destination? {
         guard !automated else { return nil }
         if debug {
-            guard let capture = environment["HAPPY_ANALYTICS_CAPTURE"].flatMap(URL.init(string:)), capture.scheme?.hasPrefix("http") == true else { return nil }
+            guard let capture = environment["HAPPY_ANALYTICS_CAPTURE"].flatMap(URL.init(string:)),
+                  capture.scheme == "http" || capture.scheme == "https",
+                  let host = capture.host, ["127.0.0.1", "::1", "[::1]", "localhost"].contains(host.lowercased()) else { return nil }
             return AnalyticsEngine.Destination(apiKey: apiKey ?? "capture", url: capture)
         }
         return apiKey.map { AnalyticsEngine.Destination(apiKey: $0) }
@@ -219,6 +255,19 @@ public final class AnalyticsConsent {
     }
 
     public var isOptedOut: Bool { deviceOptOut || !accounts.isEmpty }
+    /// Every signed-in account's stored setting has been read this launch.
+    /// Until then nothing is sent.
+    public private(set) var isSettled = false
+
+    /// Every signed-in account's stored `analyticsOptOut`, read after the
+    /// accounts are restored. Accounts not listed are no longer signed in.
+    public func settle(_ optOuts: [String: Bool]) {
+        let next = Set(optOuts.filter(\.value).map(\.key))
+        isSettled = true
+        accounts = next
+        storage.set(next.isEmpty ? nil : next.sorted().joined(separator: "\n"), forKey: Self.accountsKey)
+        onChange?()
+    }
 
     public func setDeviceOptOut(_ optedOut: Bool) {
         guard deviceOptOut != optedOut else { return }
@@ -236,6 +285,8 @@ public final class AnalyticsConsent {
 
     /// The accounts still signed in; any other's setting no longer counts.
     public func keepAccounts(_ ids: Set<String>) {
+        // Before the accounts are read, an empty list means nothing yet.
+        guard isSettled else { return }
         update(accounts.intersection(ids))
     }
 

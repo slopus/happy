@@ -68,6 +68,8 @@ public final class AppCoordinator {
             // The Happy account's filter showed a computer's V2: that
             // computer is home now, from the first screen.
             await account.restore(openingAgentConnection: v2.takeFilterChoice(), preferred: v2.agentConnectionID)
+            // Analytics waits for every signed-in account's opt-out, read off the main thread.
+            if let analytics = self?.analytics { Task { await analytics.restored() } }
             self?.show(account.state)
             self?.accountRestored = true
             self?.openPendingLink()

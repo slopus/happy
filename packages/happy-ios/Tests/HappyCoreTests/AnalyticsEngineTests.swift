@@ -1,6 +1,7 @@
 import Foundation
 import XCTest
 @testable import HappyCore
+import HappyStore
 import HappyWire
 
 /// What leaves the phone and when: the envelope, the queue's bounds and
@@ -198,6 +199,69 @@ final class AnalyticsEngineTests: XCTestCase {
         XCTAssertEqual(state.installID, id)
         await engine.flush(now: start)
         XCTAssertTrue(http.requests.isEmpty)
+    }
+
+    /// A queue file from an older build goes through today's allowlist
+    /// before it is sent: an event the catalog dropped goes, a property it
+    /// doesn't know is left out, a malformed `$insert_id` drops its event,
+    /// and the privacy envelope is made again.
+    func testAReplayedQueueIsCheckedAgainstTodaysCatalog() async throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("analytics-\(UUID().uuidString)/analytics.json")
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+        let failing = FakeHTTP()
+        failing.on("POST /batch") { _ in throw URLError(.timedOut) }
+        let first = engine(failing, file: file)
+        await first.record(.onboardingCompleted, common: common, at: start)
+        await first.flush(now: start)
+        await first.saveNow()
+
+        var state = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: file))
+        var queue = try XCTUnwrap(state["queue"]?.arrayValue)
+        var kept = try XCTUnwrap(queue.first?.objectValue)
+        var properties = try XCTUnwrap(kept["properties"]?.objectValue)
+        properties["note"] = .string("hello from v1")
+        properties["$ip"] = .string("203.0.113.9")
+        properties["$process_person_profile"] = .bool(true)
+        kept["properties"] = .object(properties)
+        var summary = kept
+        summary["event"] = .string("daily_summary")
+        var summaryProperties = properties
+        summaryProperties["day"] = .number(20_397)
+        summaryProperties["$insert_id"] = .string(UUID().uuidString.lowercased())
+        summary["properties"] = .object(summaryProperties)
+        var forged = kept
+        var forgedProperties = properties
+        forgedProperties["$insert_id"] = .string("not-a-uuid")
+        forged["properties"] = .object(forgedProperties)
+        queue = [.object(kept), .object(summary), .object(forged)]
+        guard case .object(var object) = state else { return XCTFail("state") }
+        object["queue"] = .array(queue)
+        state = .object(object)
+        try JSONEncoder().encode(state).write(to: file)
+
+        let http = http()
+        let second = engine(http, file: file)
+        await second.flush(now: start)
+        let sent = try events(http)
+        XCTAssertEqual(sent.map { $0["event"]?.stringValue }, ["onboarding_completed"])
+        let sentProperties = try XCTUnwrap(sent.first?["properties"]?.objectValue)
+        XCTAssertNil(sentProperties["note"])
+        XCTAssertEqual(sentProperties["$ip"], .null)
+        XCTAssertEqual(sentProperties["$process_person_profile"], .bool(false))
+        XCTAssertEqual(sentProperties["$insert_id"], properties["$insert_id"])
+    }
+
+    /// A signed-in account that isn't open has its opt-out read from its
+    /// store's file, with this device's unsent change on top.
+    func testAClosedAccountsStoredOptOutIsReadFromItsFile() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("store-\(UUID().uuidString)/store.sqlite")
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let store = try LocalStore.open(at: url)
+        let before = try await LocalStore.settingsSnapshot(at: url)
+        XCTAssertFalse(AccountSettings(before).analyticsOptOut)
+        try store.addPendingSettings(["analyticsOptOut": .bool(true)])
+        let after = try await LocalStore.settingsSnapshot(at: url)
+        XCTAssertTrue(AccountSettings(after).analyticsOptOut)
     }
 
     func testTheQueueSurvivesARelaunch() async throws {

@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import HappyCore
 import HappyLayout
 import UIKit
 import UltraView
@@ -43,6 +44,10 @@ final class AgentChatUltraList: UIView {
     /// The reader reached the oldest row the conversation has read: there
     /// may be more behind it.
     var onReachedOldest: (() -> Void)?
+    /// The plan IDs of the rows on screen now, as the list reports them.
+    private(set) var onScreen = ShownRows()
+    /// A row came on screen.
+    var onRowShown: ((String) -> Void)?
     private(set) var isActive = true
     private var rows: [String: AgentChatRow] = [:]
     /// How far each row's foot is from the newest end: the list keeps only
@@ -434,6 +439,10 @@ final class AgentChatUltraList: UIView {
         list.stopFollowingBottom()
     }
 
+    func rowVisibility(_ id: String, shown: Bool) {
+        if onScreen.update(id, shown: shown) { onRowShown?(id) }
+    }
+
     private func scrolled() {
         guard isActive else { return }
         followsNewest = distanceFromNewest <= Self.followThreshold
@@ -442,6 +451,7 @@ final class AgentChatUltraList: UIView {
 
     /// Let go of: the rows go, and nothing of this list answers a touch.
     func deactivate() {
+        onRowShown = nil
         flight = nil
         isActive = false
         host = nil
@@ -664,6 +674,7 @@ final class AgentChatRowView: ListRowView, UIGestureRecognizerDelegate {
     /// which the list gives in the row's own coordinates.
     override func visibleRectUpdated(_ rect: CGRect?) {
         canvas.band = rect ?? .null
+        row.transcript?.rowVisibility(row.plan.id, shown: rect != nil)
     }
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {

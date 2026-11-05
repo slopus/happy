@@ -9,6 +9,13 @@ import XCTest
 final class MigrationNoteFlagTests: XCTestCase {
     private let route = "POST /flags"
 
+    /// As a run that may ask: a release build, not a test or a harness.
+    private func permitted() -> MigrationNoteFlag {
+        let flag = MigrationNoteFlag()
+        flag.permitted = true
+        return flag
+    }
+
     private func answering(_ body: String, status: Int = 200) -> FakeHTTP {
         let http = FakeHTTP()
         http.onRaw(route, body, status: status)
@@ -22,7 +29,7 @@ final class MigrationNoteFlagTests: XCTestCase {
     /// The flag on for this person shows the card, and the answer stays
     /// with the account for the next launch.
     func testFlagOnShowsTheCard() async throws {
-        let flag = MigrationNoteFlag()
+        let flag = permitted()
         let storage = InMemoryKeyValueStore()
         let settings = LocalSettings(storage: storage)
         let http = answering(on(true))
@@ -43,7 +50,7 @@ final class MigrationNoteFlagTests: XCTestCase {
     /// Off, or missing from a whole answer, hides the card, a yes before
     /// included.
     func testFlagOffHidesTheCard() async {
-        let flag = MigrationNoteFlag()
+        let flag = permitted()
         let settings = LocalSettings(storage: InMemoryKeyValueStore())
         settings.migrationNoteFlag = true
         await flag.refresh(accountID: "anon", settings: settings, optedOut: false, apiKey: "phc_test", transport: answering(on(false)))?.value
@@ -56,7 +63,7 @@ final class MigrationNoteFlagTests: XCTestCase {
     /// Unknown stays hidden; a failure, a refusal or a flag PostHog
     /// couldn't compute keeps the last answer.
     func testFailuresKeepTheLastAnswer() async {
-        let flag = MigrationNoteFlag()
+        let flag = permitted()
         let settings = LocalSettings(storage: InMemoryKeyValueStore())
         let failing = FakeHTTP()
         failing.on(route) { _ in throw URLError(.notConnectedToInternet) }
@@ -73,8 +80,8 @@ final class MigrationNoteFlagTests: XCTestCase {
 
     /// Opted out of analytics, or a build without the key: nothing is
     /// asked, and the card stays hidden.
-    func testOptedOutOrNoKeyAsksNothing() {
-        let flag = MigrationNoteFlag()
+    func testOptedOutOrNoKeyAsksNothing() async {
+        let flag = permitted()
         let settings = LocalSettings(storage: InMemoryKeyValueStore())
         settings.migrationNoteFlag = true
         XCTAssertFalse(flag.isOn(settings, optedOut: true))
@@ -91,10 +98,37 @@ final class MigrationNoteFlagTests: XCTestCase {
     }
 
     /// PostHog's v1 answer, a variant name counting as on.
-    func testTheOlderAnswer() {
+    func testTheOlderAnswer() async {
         XCTAssertEqual(MigrationNoteFlag.answer(status: 200, body: Data(#"{"featureFlags":{"direct-connection-migration-note":true}}"#.utf8)), true)
         XCTAssertEqual(MigrationNoteFlag.answer(status: 200, body: Data(#"{"featureFlags":{"direct-connection-migration-note":"test"}}"#.utf8)), true)
         XCTAssertEqual(MigrationNoteFlag.answer(status: 200, body: Data(#"{"featureFlags":{"direct-connection-migration-note":false}}"#.utf8)), false)
         XCTAssertEqual(MigrationNoteFlag.answer(status: 200, body: Data(#"{"featureFlags":{}}"#.utf8)), false)
+    }
+
+    /// A debug build, a test or a harness asks nothing and keeps what it had.
+    func testARunThatMayNotSendAsksNothing() async {
+        let flag = MigrationNoteFlag()
+        let settings = LocalSettings(storage: InMemoryKeyValueStore())
+        settings.migrationNoteFlag = true
+        let http = answering(on(false))
+        XCTAssertNil(flag.refresh(accountID: "anon", settings: settings, optedOut: false, apiKey: "phc_test", transport: http))
+        XCTAssertTrue(http.requests.isEmpty)
+        XCTAssertEqual(settings.migrationNoteFlag, true)
+    }
+
+    /// Analytics' consent gates the ask: the device switch or any account
+    /// that opted out stops it, and before the accounts are read nothing is
+    /// asked at all.
+    func testTheAskFollowsAnalyticsConsent() async {
+        let consent = AnalyticsConsent(storage: InMemoryKeyValueStore())
+        XCTAssertNil(MigrationNoteFlag.optedOut(account: false, consent: consent), "accounts not read yet")
+        consent.settle(["a": false, "b": false])
+        XCTAssertEqual(MigrationNoteFlag.optedOut(account: false, consent: consent), false)
+        XCTAssertEqual(MigrationNoteFlag.optedOut(account: true, consent: consent), true)
+        consent.setAccount("b", optedOut: true)
+        XCTAssertEqual(MigrationNoteFlag.optedOut(account: false, consent: consent), true, "another account opted out")
+        consent.setAccount("b", optedOut: false)
+        consent.setDeviceOptOut(true)
+        XCTAssertEqual(MigrationNoteFlag.optedOut(account: false, consent: consent), true, "the device switch")
     }
 }

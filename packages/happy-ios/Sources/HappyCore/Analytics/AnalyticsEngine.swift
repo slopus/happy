@@ -98,16 +98,33 @@ public actor AnalyticsEngine {
     }
 
     private func enqueue(_ event: AnalyticsEvent, common: [String: JSONValue], at now: Date) {
-        guard var properties = AnalyticsSchema.admit(event.name, event.properties, common: common) else { return save() }
+        guard let properties = AnalyticsSchema.admit(event.name, event.properties, common: common) else { return save() }
+        state.queue.append(Queued(event: event.name, timestamp: now, properties: envelope(properties, insertID: UUID())))
+        prune(now: now)
+        save()
+    }
+
+    /// The catalog's properties with the fixed privacy envelope around them.
+    private func envelope(_ properties: [String: JSONValue], insertID: UUID) -> [String: JSONValue] {
+        var properties = properties
         properties["distinct_id"] = .string(state.installID)
-        properties["$insert_id"] = .string(UUID().uuidString.lowercased())
+        properties["$insert_id"] = .string(insertID.uuidString.lowercased())
         properties["$lib"] = .string(Self.lib)
         properties["$process_person_profile"] = .bool(false)
         properties["$ip"] = .null
         properties["$geoip_disable"] = .bool(true)
-        state.queue.append(Queued(event: event.name, timestamp: now, properties: properties))
-        prune(now: now)
-        save()
+        return properties
+    }
+
+    /// A queued record as it may go now: checked against today's catalog
+    /// again, since the file may be from an older build. An event the
+    /// catalog no longer has, a value it doesn't allow or a malformed
+    /// `$insert_id` drops it; properties it doesn't know are left out; the
+    /// envelope is made again.
+    private func rechecked(_ queued: Queued) -> Queued? {
+        guard let id = queued.properties["$insert_id"]?.stringValue.flatMap(UUID.init(uuidString:)),
+              let properties = AnalyticsSchema.admit(queued.event, queued.properties, common: queued.properties) else { return nil }
+        return Queued(event: queued.event, timestamp: queued.timestamp, properties: envelope(properties, insertID: id))
     }
 
     private func prune(now: Date) {
@@ -124,6 +141,11 @@ public actor AnalyticsEngine {
     public func flush(now: Date = Date()) async {
         load()
         prune(now: now)
+        let checked = state.queue.compactMap(rechecked)
+        if checked != state.queue {
+            state.queue = checked
+            save()
+        }
         guard !flushing, !state.queue.isEmpty else { return }
         flushing = true
         defer { flushing = false }

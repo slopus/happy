@@ -245,6 +245,35 @@ public final class AccountController {
     /// Read-only connections can meet the previous pool's final checkpoint
     /// while it removes WAL sidecars. Busy handling covers SQL locks; one
     /// bounded reopen also covers the sidecar-open race.
+    /// Each signed-in Happy account's stored `analyticsOptOut`, the open one
+    /// from its store and the rest from their files. One whose settings
+    /// can't be read counts as opted out; one with no store yet has none.
+    public func analyticsOptOuts() async -> [AccountSummary.ID: Bool] {
+        let activeStore = session?.store
+        let activeID = session?.keys.anonID
+        let ids = registry.entries.map(\.id)
+        let memoryStores = self.memoryStores
+        let directory = storageDirectory
+        return await Task.detached {
+            var out: [AccountSummary.ID: Bool] = [:]
+            for id in ids {
+                let snapshot: SettingsSnapshot?
+                if id == activeID, let activeStore {
+                    snapshot = try? activeStore.settingsSnapshot()
+                } else if let store = memoryStores[id] {
+                    snapshot = try? store.settingsSnapshot()
+                } else if let url = directory.map({ AccountSession.accountDirectory(directory: $0, id: id).appendingPathComponent("store.sqlite") }) {
+                    guard FileManager.default.fileExists(atPath: url.path) else { out[id] = false; continue }
+                    snapshot = try? await LocalStore.settingsSnapshot(at: url)
+                } else {
+                    snapshot = SettingsSnapshot()
+                }
+                out[id] = snapshot.map { AccountSettings($0).analyticsOptOut } ?? true
+            }
+            return out
+        }.value
+    }
+
     private nonisolated static func readSession(id: String, at url: URL) async throws -> Bool {
         var configuration = Configuration()
         configuration.readonly = true
