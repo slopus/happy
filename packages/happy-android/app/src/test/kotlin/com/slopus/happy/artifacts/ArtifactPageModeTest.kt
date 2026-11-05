@@ -1,6 +1,8 @@
 package com.slopus.happy.artifacts
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -21,6 +23,22 @@ class ArtifactPageModeTest {
         assertFalse(ArtifactPageMode.declaresApp("""<meta name="happy-page-width" content="full">"""))
         assertFalse(ArtifactPageMode.declaresApp("""<meta name="happy-page-mode">"""))
         assertFalse(ArtifactPageMode.declaresApp("""<meta property="happy-page-mode" content="app">"""))
+    }
+
+    /** The addendum's `happy-app-close`: a corner, `none`, or top-start for anything else. */
+    @Test fun theCloseButtonsCorner() {
+        val app = """<meta name="happy-page-mode" content="app">"""
+        assertEquals(AppClose.TopStart, ArtifactPageMode.read(app))
+        assertEquals(AppClose.TopEnd, ArtifactPageMode.read("""$app<meta name="happy-app-close" content="top-end">"""))
+        assertEquals(AppClose.BottomStart, ArtifactPageMode.read("""<meta name='happy-app-close' content='Bottom-Start'>$app"""))
+        assertEquals(AppClose.BottomEnd, ArtifactPageMode.read("""$app<meta name="happy-app-close" content="bottom-end">"""))
+        assertEquals(AppClose.None, ArtifactPageMode.read("""$app<meta name="happy-app-close" content="none">"""))
+        assertEquals(AppClose.TopStart, ArtifactPageMode.read("""$app<meta name="happy-app-close" content="middle">"""))
+        assertEquals(AppClose.TopStart, ArtifactPageMode.read("""$app<!-- <meta name="happy-app-close" content="none"> -->"""))
+        // The first of each counts.
+        assertEquals(AppClose.TopEnd, ArtifactPageMode.read("""$app<meta name="happy-app-close" content="top-end"><meta name="happy-app-close" content="none">"""))
+        // Without app mode, a corner means nothing.
+        assertNull(ArtifactPageMode.read("""<meta name="happy-app-close" content="none">"""))
     }
 
     @Test fun commentsAndScriptsDontDeclareAnything() {

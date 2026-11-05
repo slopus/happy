@@ -81,7 +81,10 @@ class ArtifactAppDeviceTest {
 
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val device = UiDevice.getInstance(instrumentation)
-    private val game: ByteArray = instrumentation.context.assets.open("app-mode-game.html").use { it.readBytes() }
+    private val paddle: String = instrumentation.context.assets.open("app-mode-game.html").use { it.readBytes() }.decodeToString()
+    /** The game's `happy-app-close`, if it declares one. */
+    @Volatile private var corner: String? = null
+    private val game: ByteArray get() = corner?.let { paddle.replace("<title>", "<meta name=\"happy-app-close\" content=\"$it\">\n<title>") }?.toByteArray() ?: paddle.toByteArray()
     private val plain: ByteArray = instrumentation.context.assets.open("plain-page.html").use { it.readBytes() }
     /** The device's name in the screenshots' names (`-e shots android-phone`). */
     private val prefix: String = InstrumentationRegistry.getArguments().getString("shots") ?: "android"
@@ -390,6 +393,65 @@ class ArtifactAppDeviceTest {
         Thread.sleep(1_500)
         shot("$side-4-normal-page")
         openPlain = false
+    }
+
+    /** Where the page's [selector] is on the screen, in pixels: its middle. */
+    private fun centre(selector: String): Pair<Int, Int> {
+        val rect = js("(() => { const r = document.querySelector('$selector').getBoundingClientRect(); return (r.left + r.width / 2) + ',' + (r.top + r.height / 2); })()")
+        val (x, y) = rect.split(',').map { it.toFloat() * instrumentation.targetContext.resources.displayMetrics.density }
+        return x.toInt() to y.toInt()
+    }
+
+    /** A short pull down from the screen's top edge. */
+    private fun swipeDownFromTheTop() {
+        val dp = instrumentation.targetContext.resources.displayMetrics.density
+        device.swipe(device.displayWidth / 2, (4 * dp).toInt(), device.displayWidth / 2, (84 * dp).toInt(), 12)
+    }
+
+    private fun pageClose() = js("document.documentElement.getAttribute('data-happy-app-close') + ' ' + ['x', 'y', 'width', 'height'].map(s => getComputedStyle(document.documentElement).getPropertyValue('--happy-app-close-' + s)).join(' ')")
+
+    /**
+     * The addendum, on whatever device runs it (Steve's set is a tablet on
+     * its side): the button in the corner the page asks for, the page told
+     * its box, and with `none` no button until a swipe down from the top.
+     * The game's own Exit calls `happyApp.close()`.
+     */
+    @Test fun theCloseButtonGoesWhereThePageAsks() {
+        for (where in listOf("top-end", "bottom-start")) {
+            corner = where
+            waitFor("the card") { device.hasObject(By.text("Open")) }
+            openApp()
+            val told = pageClose()
+            assertTrue(told, told.startsWith("$where ") && told.endsWith("48px 48px"))
+            val bounds = device.findObject(By.desc("Close")).visibleBounds
+            val (w, h) = device.displayWidth to device.displayHeight
+            if (where == "top-end") assertTrue("$bounds", bounds.left > w / 2 && bounds.top < h / 2)
+            else assertTrue("$bounds", bounds.left < w / 2 && bounds.top > h / 2)
+            device.click(w / 2, h / 2)
+            Thread.sleep(400)
+            shot("close-$where-open")
+            Thread.sleep(3_800)
+            shot("close-$where-faded")
+            // The game's own exit.
+            val (x, y) = centre("#exit")
+            device.click(x, y)
+            waitFor("closed by happyApp.close()", 10_000) { !open }
+        }
+        corner = "none"
+        waitFor("the card") { device.hasObject(By.text("Open")) }
+        openApp()
+        val told = pageClose()
+        assertEquals("none 0px 0px 0px 0px", told)
+        assertFalse("no button", device.hasObject(By.desc("Close")))
+        shot("close-none-hidden")
+        swipeDownFromTheTop()
+        // At once, with no wait for an idle the game never has: the swipe itself spends two of the 3 s.
+        device.takeScreenshot(File(dir, "$prefix-close-none-revealed.png"))
+        assertTrue("the button shown by a swipe down", device.hasObject(By.desc("Close")))
+        waitFor("the button gone again", 6_000) { !device.hasObject(By.desc("Close")) }
+        // Back always leaves.
+        device.pressBack()
+        waitFor("closed by back", 10_000) { !open }
     }
 
     private companion object {

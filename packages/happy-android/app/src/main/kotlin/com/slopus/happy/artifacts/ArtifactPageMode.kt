@@ -3,6 +3,25 @@ package com.slopus.happy.artifacts
 import kotlinx.coroutines.CancellationException
 
 /**
+ * Where an app's close button sits (`<meta name="happy-app-close">`, the
+ * spec's addendum): a corner in logical start and end, so right to left
+ * flips it, or [None], no button (the page draws its own exit and calls
+ * `happyApp.close()`; back and a swipe down from the top still leave).
+ */
+enum class AppClose(val value: String, val top: Boolean, val start: Boolean) {
+    TopStart("top-start", true, true),
+    TopEnd("top-end", true, false),
+    BottomStart("bottom-start", false, true),
+    BottomEnd("bottom-end", false, false),
+    None("none", true, true);
+
+    companion object {
+        /** [value] as declared; anything else, or nothing, is [TopStart]. */
+        fun of(value: String?): AppClose = entries.firstOrNull { it.value.equals(value?.trim(), ignoreCase = true) } ?: TopStart
+    }
+}
+
+/**
  * How an HTML artifact's page asks to be shown (task_206's
  * fullscreen-spec.md): a normal scrolling page, or, with
  *
@@ -25,25 +44,34 @@ object ArtifactPageMode {
     private val META = Regex("<meta\\b([^>]*)>", RegexOption.IGNORE_CASE)
     private val ATTRIBUTE = Regex("([^\\s\"'>/=]+)(?:\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'=<>`]+)))?")
 
-    /** Whether [html], an entry's start, declares `happy-page-mode: app`, as desktop's selector matches it (both ASCII case-insensitive). */
-    fun declaresApp(html: String): Boolean {
+    /**
+     * Where [html], an entry's start, puts its close button if it declares
+     * `happy-page-mode: app` (as desktop's selector matches it, ASCII
+     * case-insensitive); null for a page. The first of each meta counts.
+     */
+    fun read(html: String): AppClose? {
         val markup = html.replace(COMMENT, "").replace(RAW_TEXT, "")
-        return META.findAll(markup).any { meta ->
-            val attributes = ATTRIBUTE.findAll(meta.groupValues[1]).associate { match ->
+        val metas = META.findAll(markup).map { meta ->
+            ATTRIBUTE.findAll(meta.groupValues[1]).associate { match ->
                 match.groupValues[1].lowercase() to (match.groups[2] ?: match.groups[3] ?: match.groups[4])?.value.orEmpty()
             }
-            attributes["name"].equals("happy-page-mode", ignoreCase = true) && attributes["content"].equals("app", ignoreCase = true)
-        }
+        }.toList()
+        fun content(name: String) = metas.firstOrNull { it["name"].equals(name, ignoreCase = true) && "content" in it }?.get("content")
+        if (!content("happy-page-mode").equals("app", ignoreCase = true)) return null
+        return AppClose.of(content("happy-app-close"))
     }
 
-    /** Whether [path] of [artifactId]'s [version] asks to be an app; a file that can't be read is a page. */
-    suspend fun of(files: ArtifactClient, artifactId: String, version: Int, path: String): Boolean = try {
+    /** Whether [html] declares `happy-page-mode: app`. */
+    fun declaresApp(html: String): Boolean = read(html) != null
+
+    /** Where [path] of [artifactId]'s [version] puts its close button if it is an app; null for a page, or a file that can't be read. */
+    suspend fun of(files: ArtifactClient, artifactId: String, version: Int, path: String): AppClose? = try {
         val response = files.file(artifactId, version, path, "bytes=0-${HEAD_BYTES - 1}")
         // A server that ignores the range answers with the whole file.
-        response.status in 200..299 && declaresApp(String(response.body, 0, minOf(response.body.size, HEAD_BYTES), Charsets.UTF_8))
+        if (response.status in 200..299) read(String(response.body, 0, minOf(response.body.size, HEAD_BYTES), Charsets.UTF_8)) else null
     } catch (e: CancellationException) {
         throw e
     } catch (_: Exception) {
-        false
+        null
     }
 }

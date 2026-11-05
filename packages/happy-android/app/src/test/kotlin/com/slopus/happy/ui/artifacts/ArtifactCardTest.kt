@@ -89,7 +89,7 @@ class ArtifactCardTest {
     @Test fun anAppIsACardThatOpensItNeverAnInlinePage() {
         val prepared = ArrayList<String>()
         val opened = ArrayList<String>()
-        val pages = InlinePages(prepare = { id, _ -> prepared += id; awaitCancellation() }, onOpen = {}, mode = { id, _ -> id == "game" })
+        val pages = InlinePages(prepare = { id, _ -> prepared += id; awaitCancellation() }, onOpen = {}, mode = { id, _ -> com.slopus.happy.artifacts.AppClose.TopEnd.takeIf { id == "game" } })
         rule.setHappyContent {
             val actions = ConversationRowActions(legacy = MessageCallbacks(), onRetryFailure = {}, loadMedia = { ByteArray(0) }, onOpenArtifact = { opened += it.artifactId }, pages = pages)
             Column {
