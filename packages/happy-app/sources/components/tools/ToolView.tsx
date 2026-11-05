@@ -7,6 +7,7 @@ import { Message, ToolCall } from '@/sync/typesMessage';
 import { CodeView } from '../CodeView';
 import { ToolSectionView } from './ToolSectionView';
 import { useElapsedTime } from '@/hooks/useElapsedTime';
+import { formatElapsed } from '@/utils/formatElapsed';
 import { ToolError } from './ToolError';
 import { getToolCategoryIcon, knownTools } from '@/components/tools/knownTools';
 import { Metadata } from '@/sync/storageTypes';
@@ -319,7 +320,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
 function ElapsedView(props: { from: number }) {
     const { from } = props;
     const elapsed = useElapsedTime(from);
-    return <Text style={styles.elapsedText}>{elapsed.toFixed(1)}s</Text>;
+    return <Text style={styles.elapsedText}>{formatElapsed(elapsed)}</Text>;
 }
 
 const styles = StyleSheet.create((theme) => ({
