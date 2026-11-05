@@ -44,4 +44,15 @@
     <string name="settings_commit">Commit</string>
     <string name="settings_commit_at">Commit %1$s</string>
     <string name="settings_manage_subscriptions">Gestiona les subscripcions</string>
+    <string name="agent_settings_new_sessions_start">Les sessions noves comencen amb</string>
+    <string name="agent_settings_new_sessions_last">L’última sessió</string>
+    <string name="agent_settings_new_sessions_default">El model predeterminat</string>
+    <string name="agent_settings_new_sessions_last_description">El model i l’esforç de l’última sessió que vas iniciar.</string>
+    <string name="agent_settings_new_sessions_default_description">El model i l’esforç triats a sota.</string>
+    <string name="agent_settings_default_model_last_description">Segueix l’última sessió que vas iniciar, al compte que vas triar per última vegada.</string>
+    <string name="agent_settings_default_model_default_description">Fa servir el compte que vas triar per última vegada en un xat.</string>
+    <string name="agent_settings_default_effort">Esforç predeterminat</string>
+    <string name="agent_settings_default_access">Accés predeterminat</string>
+    <string name="agent_settings_default_access_description">El que una sessió nova pot fer sense preguntar. Es desa al teu compte, així que t’acompanya a tots els dispositius.</string>
+    <string name="agent_settings_new_sessions_unreadable">No s’han pogut llegir els models. Comprova la connexió i torna a obrir aquesta pàgina.</string>
 </resources>

@@ -73,6 +73,7 @@ import com.slopus.happy.ui.components.ItemGroup
 import com.slopus.happy.ui.components.ItemList
 import com.slopus.happy.ui.components.ItemSpec
 import com.slopus.happy.ui.components.Screen
+import com.slopus.happy.ui.conversation.conversationRequest
 import com.slopus.happy.ui.settings.SettingsCard
 import com.slopus.happy.ui.settings.SettingsEntry
 import com.slopus.happy.ui.settings.SettingsSection
@@ -134,6 +135,30 @@ internal fun NavGraphBuilder.agentSettingsPages(graph: AppGraph, nav: NavHostCon
         val session = remember(id) { graph.agentSessions.session(id) }
         val state = session?.sharing?.collectAsStateWithLifecycle()?.value ?: com.slopus.happy.agent.AgentSharingState.Loading
         AgentSharingScreen(state, { kind, enabled -> session?.setAutoJoin(kind, enabled) }, { nav.popBackStack() })
+    }
+    page<AgentAgentsRoute> { entry ->
+        val id = entry.toRoute<AgentAgentsRoute>().connectionId
+        val session = remember(id) { graph.agentSessions.session(id) } ?: return@page
+        val preferences by session.modelPreferences.collectAsStateWithLifecycle()
+        // The computer's models, read each time the page opens, as a new chat reads them.
+        val catalog by produceState<AgentModelsCatalog>(AgentModelsCatalog.Loading, session) {
+            value = try {
+                AgentModelsCatalog.Ready(com.slopus.happy.conversation.ConversationApi(session.conversationRequest()).catalog())
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                AgentModelsCatalog.Failed
+            }
+        }
+        AgentAgentsScreen(
+            preferences = preferences,
+            catalog = catalog,
+            onStart = session::setNewSessionStart,
+            onModel = session::setDefaultModel,
+            onEffort = session::setDefaultEffort,
+            onAccess = session::setDefaultAccess,
+            onBack = { nav.popBackStack() },
+        )
     }
     page<AgentProfileRoute> { entry ->
         val id = entry.toRoute<AgentProfileRoute>().connectionId

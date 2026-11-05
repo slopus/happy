@@ -54,4 +54,15 @@
     <string name="settings_commit">Commit</string>
     <string name="settings_commit_at">Commit %1$s</string>
     <string name="settings_manage_subscriptions">Manage subscriptions</string>
+    <string name="agent_settings_new_sessions_start">New Sessions Start On</string>
+    <string name="agent_settings_new_sessions_last">Last Session</string>
+    <string name="agent_settings_new_sessions_default">Default Model</string>
+    <string name="agent_settings_new_sessions_last_description">The model and effort of the last session you started.</string>
+    <string name="agent_settings_new_sessions_default_description">The model and effort chosen below.</string>
+    <string name="agent_settings_default_model_last_description">Follows the last session you started, on the account you last picked.</string>
+    <string name="agent_settings_default_model_default_description">Runs on the account you last picked in a chat.</string>
+    <string name="agent_settings_default_effort">Default Effort</string>
+    <string name="agent_settings_default_access">Default Access Mode</string>
+    <string name="agent_settings_default_access_description">What a new session may do without asking. Saved to your account, so they follow you across devices.</string>
+    <string name="agent_settings_new_sessions_unreadable">Couldn’t read the models. Check the connection and open this page again.</string>
 </resources>

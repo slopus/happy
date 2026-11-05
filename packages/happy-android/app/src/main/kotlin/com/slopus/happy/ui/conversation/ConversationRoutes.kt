@@ -241,6 +241,8 @@ internal fun AgentSession.makeConversation(
     typesetter = typesetter,
     read = ::markRead,
     references = references,
+    preferences = modelPreferences,
+    onStarted = ::recordStart,
 )
 
 /** Where [agentId]'s newest history is kept, beside the connection's catalog and gone with it. */

@@ -44,4 +44,15 @@
     <string name="settings_commit">Commit</string>
     <string name="settings_commit_at">Commit %1$s</string>
     <string name="settings_manage_subscriptions">Zarządzaj subskrypcjami</string>
+    <string name="agent_settings_new_sessions_start">Nowe sesje zaczynają od</string>
+    <string name="agent_settings_new_sessions_last">Ostatniej sesji</string>
+    <string name="agent_settings_new_sessions_default">Domyślnego modelu</string>
+    <string name="agent_settings_new_sessions_last_description">Model i poziom wysiłku ostatniej uruchomionej sesji.</string>
+    <string name="agent_settings_new_sessions_default_description">Model i poziom wysiłku wybrane poniżej.</string>
+    <string name="agent_settings_default_model_last_description">Podąża za ostatnią uruchomioną sesją, na koncie wybranym ostatnio.</string>
+    <string name="agent_settings_default_model_default_description">Działa na koncie wybranym ostatnio w czacie.</string>
+    <string name="agent_settings_default_effort">Domyślny wysiłek</string>
+    <string name="agent_settings_default_access">Domyślny dostęp</string>
+    <string name="agent_settings_default_access_description">Co nowa sesja może robić bez pytania. Zapisane na Twoim koncie, więc działa na wszystkich Twoich urządzeniach.</string>
+    <string name="agent_settings_new_sessions_unreadable">Nie udało się odczytać modeli. Sprawdź połączenie i otwórz tę stronę ponownie.</string>
 </resources>

@@ -44,4 +44,15 @@
     <string name="settings_commit">提交</string>
     <string name="settings_commit_at">提交 %1$s</string>
     <string name="settings_manage_subscriptions">管理訂閱</string>
+    <string name="agent_settings_new_sessions_start">新工作階段開始於</string>
+    <string name="agent_settings_new_sessions_last">上次的工作階段</string>
+    <string name="agent_settings_new_sessions_default">預設模型</string>
+    <string name="agent_settings_new_sessions_last_description">你上次開始的工作階段的模型和推理強度。</string>
+    <string name="agent_settings_new_sessions_default_description">下方選擇的模型和推理強度。</string>
+    <string name="agent_settings_default_model_last_description">跟隨你上次開始的工作階段，使用你上次選擇的帳號。</string>
+    <string name="agent_settings_default_model_default_description">使用你上次在聊天中選擇的帳號。</string>
+    <string name="agent_settings_default_effort">預設推理強度</string>
+    <string name="agent_settings_default_access">預設存取模式</string>
+    <string name="agent_settings_default_access_description">新工作階段無需詢問即可執行的操作。儲存在你的帳號中，因此在你的所有裝置上都生效。</string>
+    <string name="agent_settings_new_sessions_unreadable">無法讀取模型。請檢查連線後重新開啟此頁面。</string>
 </resources>

@@ -44,4 +44,15 @@
     <string name="settings_commit">Commit</string>
     <string name="settings_commit_at">Commit %1$s</string>
     <string name="settings_manage_subscriptions">Gestionar suscripciones</string>
+    <string name="agent_settings_new_sessions_start">Las sesiones nuevas empiezan con</string>
+    <string name="agent_settings_new_sessions_last">La última sesión</string>
+    <string name="agent_settings_new_sessions_default">El modelo predeterminado</string>
+    <string name="agent_settings_new_sessions_last_description">El modelo y el esfuerzo de la última sesión que iniciaste.</string>
+    <string name="agent_settings_new_sessions_default_description">El modelo y el esfuerzo elegidos abajo.</string>
+    <string name="agent_settings_default_model_last_description">Sigue a la última sesión que iniciaste, en la cuenta que elegiste por última vez.</string>
+    <string name="agent_settings_default_model_default_description">Usa la cuenta que elegiste por última vez en un chat.</string>
+    <string name="agent_settings_default_effort">Esfuerzo predeterminado</string>
+    <string name="agent_settings_default_access">Acceso predeterminado</string>
+    <string name="agent_settings_default_access_description">Lo que una sesión nueva puede hacer sin preguntar. Se guarda en tu cuenta, así que te acompaña en todos tus dispositivos.</string>
+    <string name="agent_settings_new_sessions_unreadable">No se pudieron leer los modelos. Comprueba la conexión y vuelve a abrir esta página.</string>
 </resources>

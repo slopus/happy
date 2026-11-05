@@ -44,4 +44,15 @@
     <string name="settings_commit">Коммит</string>
     <string name="settings_commit_at">Коммит %1$s</string>
     <string name="settings_manage_subscriptions">Управление подписками</string>
+    <string name="agent_settings_new_sessions_start">Новые сессии начинаются с</string>
+    <string name="agent_settings_new_sessions_last">Последней сессии</string>
+    <string name="agent_settings_new_sessions_default">Модели по умолчанию</string>
+    <string name="agent_settings_new_sessions_last_description">Модель и уровень усилий последней сессии, которую вы запустили.</string>
+    <string name="agent_settings_new_sessions_default_description">Модель и уровень усилий, выбранные ниже.</string>
+    <string name="agent_settings_default_model_last_description">Следует за последней запущенной сессией, на аккаунте, выбранном последним.</string>
+    <string name="agent_settings_default_model_default_description">Работает на аккаунте, выбранном последним в чате.</string>
+    <string name="agent_settings_default_effort">Усилия по умолчанию</string>
+    <string name="agent_settings_default_access">Доступ по умолчанию</string>
+    <string name="agent_settings_default_access_description">Что новая сессия может делать без вопросов. Сохраняется в вашем аккаунте и действует на всех ваших устройствах.</string>
+    <string name="agent_settings_new_sessions_unreadable">Не удалось загрузить модели. Проверьте подключение и откройте эту страницу снова.</string>
 </resources>

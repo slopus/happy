@@ -159,6 +159,10 @@ class Conversation(
     private val read: (suspend (String) -> Unit)? = null,
     /** What the Happy references in its messages read as ([AgentSession.references][com.slopus.happy.agent.AgentSession.references]); null leaves the tags as written. */
     private val references: com.slopus.happy.references.ReferenceReader? = null,
+    /** The person's model preferences: a new chat opens on their start ([ModelPreferences.startMode]); null, on the catalog's default. */
+    private val preferences: StateFlow<ModelPreferences>? = null,
+    /** A new chat's first message went with this mode: it is the session's start. */
+    private val onStarted: (Mode) -> Unit = {},
 ) {
     /**
      * A send on its way: the person's [text], its pictures inline and its
@@ -232,6 +236,8 @@ class Conversation(
     private var picked: Mode? = null
     private var catalog: ModeCatalog? = null
     private var catalogRead: Deferred<ModeCatalog>? = null
+    /** A new chat until its first message is in: unpicked, it opens on the person's start rather than the catalog's default. */
+    private var starting = newTask != null
     private var activeRunStartedAt: Long? = null
     /** A run is going: from `run.started` until it finishes or the agent goes idle. */
     private var running = false
@@ -283,6 +289,8 @@ class Conversation(
                     }
                 }
             }
+            // Preferences changed on another device: an unpicked new chat follows them.
+            preferences?.let { flow -> launch { flow.collect { if (adoptStartMode()) publish() } } }
             if (created) reload()
             signals.collect { signal ->
                 // The computer's models changed, or may have while away: the pickers read them again.
@@ -1027,6 +1035,11 @@ class Conversation(
                     // All there, whatever the transport told on the way; the echo clears them.
                     images.indices.forEach { uploads.set(UploadBoard.pictureKey(next.id, it), UploadPhase.Done) }
                     next.accepted = true
+                    // The first message of new work is its start: the person's next new chat opens on it.
+                    if (starting) {
+                        starting = false
+                        onStarted(mode)
+                    }
                     if (message != null && message.id !in messages) {
                         messages[message.id] = message
                         if (message.runId != null) place(message.id, message.runId)
@@ -1131,9 +1144,23 @@ class Conversation(
 
     private suspend fun sendingMode(): Mode? {
         mode?.let { return it }
-        val found = readCatalog().defaults
+        val found = defaultMode(readCatalog())
         // A pick made while the default was read wins.
         return mode ?: found?.also { mode = it; publish() }
+    }
+
+    /** What a message runs with when nothing was picked: a new chat's start, else the catalog's default. */
+    private fun defaultMode(catalog: ModeCatalog): Mode? =
+        (if (starting) preferences?.value?.startMode(catalog) else null) ?: catalog.defaults
+
+    /** An unpicked new chat shows the mode it would start on, as the catalog and preferences now say; true when that changed it. */
+    private fun adoptStartMode(): Boolean {
+        val catalog = catalog ?: return false
+        if (!starting || picked != null) return false
+        val next = defaultMode(catalog) ?: return false
+        if (next == mode) return false
+        mode = next
+        return true
     }
 
     /** Reads the computer's models again (`config.updated`, a reconnect): hidden accounts and models, names, windows. */
@@ -1149,6 +1176,7 @@ class Conversation(
             catalogRead = null
             if (found != catalog) {
                 catalog = found
+                adoptStartMode()
                 publish()
             }
         }
@@ -1168,6 +1196,7 @@ class Conversation(
         }
         if (catalog == null) {
             catalog = found
+            adoptStartMode()
             publish()
         }
         return found

@@ -44,4 +44,15 @@
     <string name="settings_commit">提交</string>
     <string name="settings_commit_at">提交 %1$s</string>
     <string name="settings_manage_subscriptions">管理订阅</string>
+    <string name="agent_settings_new_sessions_start">新会话开始于</string>
+    <string name="agent_settings_new_sessions_last">上次会话</string>
+    <string name="agent_settings_new_sessions_default">默认模型</string>
+    <string name="agent_settings_new_sessions_last_description">你上次开始的会话的模型和推理强度。</string>
+    <string name="agent_settings_new_sessions_default_description">下方选择的模型和推理强度。</string>
+    <string name="agent_settings_default_model_last_description">跟随你上次开始的会话，使用你上次选择的账户。</string>
+    <string name="agent_settings_default_model_default_description">使用你上次在聊天中选择的账户。</string>
+    <string name="agent_settings_default_effort">默认推理强度</string>
+    <string name="agent_settings_default_access">默认访问模式</string>
+    <string name="agent_settings_default_access_description">新会话无需询问即可执行的操作。保存在你的账户中，因此在你的所有设备上都生效。</string>
+    <string name="agent_settings_new_sessions_unreadable">无法读取模型。请检查连接后重新打开此页面。</string>
 </resources>

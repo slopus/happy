@@ -44,4 +44,15 @@
     <string name="settings_commit">コミット</string>
     <string name="settings_commit_at">コミット %1$s</string>
     <string name="settings_manage_subscriptions">サブスクリプションを管理</string>
+    <string name="agent_settings_new_sessions_start">新しいセッションの開始設定</string>
+    <string name="agent_settings_new_sessions_last">前回のセッション</string>
+    <string name="agent_settings_new_sessions_default">デフォルトモデル</string>
+    <string name="agent_settings_new_sessions_last_description">最後に開始したセッションのモデルと推論レベル。</string>
+    <string name="agent_settings_new_sessions_default_description">下で選んだモデルと推論レベル。</string>
+    <string name="agent_settings_default_model_last_description">最後に開始したセッションに合わせ、最後に選んだアカウントで実行します。</string>
+    <string name="agent_settings_default_model_default_description">チャットで最後に選んだアカウントで実行します。</string>
+    <string name="agent_settings_default_effort">デフォルトの推論レベル</string>
+    <string name="agent_settings_default_access">デフォルトのアクセスモード</string>
+    <string name="agent_settings_default_access_description">新しいセッションが確認なしで行えること。アカウントに保存されるため、すべてのデバイスで共通です。</string>
+    <string name="agent_settings_new_sessions_unreadable">モデルを読み込めませんでした。接続を確認して、このページを開き直してください。</string>
 </resources>

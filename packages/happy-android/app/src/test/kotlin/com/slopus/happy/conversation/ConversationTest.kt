@@ -128,7 +128,16 @@ class ConversationTest {
 
     @After fun cancel() = jobs.forEach { it.cancel() }
 
-    private fun TestScope.conversation(agent: FakeAgent, newTask: NewTask? = null, choice: WorkChoice = WorkChoice(), keeper: ConversationKeeper? = null, typesetter: RowTypesetter? = null, created: (JsonObject) -> Unit = {}) = Conversation(
+    private fun TestScope.conversation(
+        agent: FakeAgent,
+        newTask: NewTask? = null,
+        choice: WorkChoice = WorkChoice(),
+        keeper: ConversationKeeper? = null,
+        typesetter: RowTypesetter? = null,
+        preferences: kotlinx.coroutines.flow.StateFlow<ModelPreferences>? = null,
+        started: (Mode) -> Unit = {},
+        created: (JsonObject) -> Unit = {},
+    ) = Conversation(
         api = ConversationApi(agent.request),
         signals = signals,
         // Not backgroundScope: advanceUntilIdle leaves its work alone. Cancelled after each test.
@@ -144,6 +153,8 @@ class ConversationTest {
         keeper = keeper,
         disk = StandardTestDispatcher(testScheduler),
         typesetter = typesetter,
+        preferences = preferences,
+        onStarted = started,
     ).also { it.start() }
 
     private fun event(type: String, payload: String) = ConversationSignal.Event(type, Json.parseToJsonElement(payload).jsonObject)
@@ -471,6 +482,65 @@ class ConversationTest {
         assertTrue(chat.state.value.created)
         assertEquals("t1", made!!["task"]!!.jsonObject["id"].toString().trim('"'))
         assertEquals(listOf("Second", "First"), chat.state.value.rows.map { (it as ConversationRow.User).text })
+    }
+
+    @Test fun `a new chat opens on the person's last start and records its own once its first message is in`() = runTest {
+        val agent = FakeAgent()
+        // The made chat's bootstrap names no mode: what is shown after is this phone's own.
+        agent.bootstrap = """{"agent":{"id":"a9","workspaceId":"w1","status":"idle"},"draft":{"value":null,"updatedAt":null},"pending":[]}"""
+        val preferences = kotlinx.coroutines.flow.MutableStateFlow(
+            ModelPreferences(defaultModelId = "openai/gpt-5.6-sol", defaultEffort = "xhigh", providerId = "codex", memory = listOf(ModelMemory("codex", "openai/gpt-5.6-sol", "low", "priority"))),
+        )
+        val starts = ArrayList<Mode>()
+        val chat = conversation(agent, NewTask("t1", "w1", "a9", "m1"), preferences = preferences, started = { starts += it })
+        advanceUntilIdle()
+        // Shown before anything is sent: the model, account, effort and speed the preferences say.
+        assertEquals(Mode("codex", "openai/gpt-5.6-sol", "xhigh", "priority", "auto"), chat.state.value.mode)
+        // Changed on another device while the chat is still unpicked: it follows.
+        preferences.value = preferences.value.copy(defaultModelId = "anthropic/opus-5", defaultEffort = "max")
+        advanceUntilIdle()
+        assertEquals(Mode("claude", "anthropic/opus-5", "max", null, "auto"), chat.state.value.mode)
+        chat.send("First")
+        chat.send("Second")
+        advanceUntilIdle()
+        val sent = agent.requests.first { it.second.endsWith("/send") }.third!!["mode"]!!.jsonObject
+        assertEquals("\"anthropic/opus-5\"", sent["modelId"].toString())
+        assertEquals("\"max\"", sent["effort"].toString())
+        // Recorded once, for the first message alone.
+        assertEquals(listOf(Mode("claude", "anthropic/opus-5", "max", null, "auto")), starts)
+        // Started: a later change of preferences leaves this chat's mode alone.
+        preferences.value = preferences.value.copy(defaultModelId = "openai/gpt-5.6-luna")
+        advanceUntilIdle()
+        assertEquals("anthropic/opus-5", chat.state.value.mode?.modelId)
+    }
+
+    @Test fun `a pick on a new chat wins over the preferences, and is what gets recorded`() = runTest {
+        val agent = FakeAgent()
+        val preferences = kotlinx.coroutines.flow.MutableStateFlow(ModelPreferences(defaultModelId = "openai/gpt-5.6-sol"))
+        val starts = ArrayList<Mode>()
+        val chat = conversation(agent, NewTask("t1", "w1", "a9", "m1"), preferences = preferences, started = { starts += it })
+        advanceUntilIdle()
+        val picked = Mode("codex", "openai/gpt-5.6-luna", "low", null, "read_only")
+        chat.setMode(picked)
+        advanceUntilIdle()
+        preferences.value = ModelPreferences(defaultModelId = "anthropic/opus-5")
+        advanceUntilIdle()
+        assertEquals(picked, chat.state.value.mode)
+        chat.send("Go")
+        advanceUntilIdle()
+        assertEquals(listOf(picked), starts)
+    }
+
+    @Test fun `an existing chat records no start and keeps the catalog default when nothing was picked`() = runTest {
+        val agent = FakeAgent()
+        agent.bootstrap = """{"agent":{"id":"a1","workspaceId":"w1","status":"idle","title":"Fix it"},"draft":{"value":null,"updatedAt":null},"pending":[]}"""
+        val starts = ArrayList<Mode>()
+        val chat = conversation(agent, preferences = kotlinx.coroutines.flow.MutableStateFlow(ModelPreferences(defaultModelId = "openai/gpt-5.6-sol")), started = { starts += it })
+        advanceUntilIdle()
+        chat.send("More")
+        advanceUntilIdle()
+        assertEquals("\"anthropic/opus-5\"", agent.requests.first { it.second.endsWith("/send") }.third!!["mode"]!!.jsonObject["modelId"].toString())
+        assertTrue(starts.isEmpty())
     }
 
     @Test fun `Bot and a name make a bot under that name, then the message goes into it`() = runTest {

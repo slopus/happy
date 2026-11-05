@@ -119,6 +119,7 @@ fun agentSettingsIndex(): List<AgentSettingsRow> {
         row(AgentSettingsTags.APPEARANCE, stringResource(R.string.settings_appearance), Ionicon.ColorPaletteOutline),
         row(AgentPagesTags.HIDE_PROJECTS_ROW, stringResource(R.string.settings_hide_projects), Ionicon.FolderOutline, AgentSettingsPlace.Appearance),
         row(AgentVoiceTags.ROW, stringResource(R.string.agent_voice_title), Ionicon.MicOutline),
+        row(AgentAgentsTags.ROW, stringResource(R.string.settings_agents), Ionicon.OptionsOutline),
         row(DataStorageTags.ROW, stringResource(R.string.data_storage_title), Ionicon.ServerOutline),
         row(AgentSharingTags.ROW, stringResource(R.string.sharing_title), Ionicon.PeopleOutline),
         row(SettingsTags.SUPPORT, stringResource(R.string.settings_support_us), Ionicon.HeartOutline),
@@ -172,6 +173,8 @@ class AgentSettingsActions(
     /** Data and Storage: the media kept on this phone; null where nothing is kept. */
     val onDataStorage: (() -> Unit)? = null,
     val onSharing: (() -> Unit)? = null,
+    /** Agents: what a new chat starts on (desktop's New sessions); null where it isn't offered. */
+    val onAgents: (() -> Unit)? = null,
     /** Disconnects this connection; asked for only after the person confirmed. */
     val onRemove: () -> Unit = {},
     /** Opens this connection's Chief of Staff with [prefix] typed, unsent. */
@@ -245,6 +248,15 @@ fun AgentConnectionSettingsScreen(
                 ),
                 agentVoiceEntry(voice, actions.onVoice),
             ) + listOfNotNull(
+                // Where the relay's Agents row is: after Voice.
+                actions.onAgents?.let { open ->
+                    SettingsEntry(
+                        id = AgentAgentsTags.ROW,
+                        title = stringResource(R.string.settings_agents),
+                        icon = { SettingsTile(Ionicon.OptionsOutline, SettingsTiles.teal) },
+                        onClick = open,
+                    )
+                },
                 actions.onDataStorage?.let { open ->
                     SettingsEntry(
                         id = DataStorageTags.ROW,
@@ -423,6 +435,7 @@ internal fun AgentConnectionSettings(graph: AppGraph, nav: NavHostController, co
             onVoice = { nav.navigate(AgentVoiceRoute(connectionId)) },
             onDataStorage = { nav.navigate(AgentDataStorageRoute(connectionId)) },
             onSharing = { nav.navigate(AgentSharingRoute(connectionId)) },
+            onAgents = { nav.navigate(AgentAgentsRoute(connectionId)) },
             onAskChief = { prefix -> nav.openChiefOfStaff(connectionId, prefix) },
             onRemove = {
                 if (switcher != null) switcher.removingFromSettings { removeAgentConnection(graph, connectionId) }
