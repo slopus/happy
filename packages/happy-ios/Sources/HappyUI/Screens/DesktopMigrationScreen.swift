@@ -22,7 +22,7 @@ enum MigrationPath: String, Hashable, Sendable {
 }
 
 /// Whether the Happy CLI home shows a migration card, and which: none
-/// unless PostHog's flag is on for the account (`MigrationNoteFlag`), none
+/// unless PostHog's flag is on for this install (`MigrationNoteFlag`), none
 /// once this phone has a direct Happy Agent connection (paired and not
 /// revoked), nor once that path's card was closed here, which holds for
 /// every account on this phone.

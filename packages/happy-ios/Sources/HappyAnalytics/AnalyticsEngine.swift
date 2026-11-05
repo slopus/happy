@@ -49,6 +49,11 @@ public actor AnalyticsEngine {
     private var loaded = false
     private var saving: Task<Void, Never>?
     private var flushing = false
+    /// Opted out: nothing is recorded or sent until `resume`.
+    private var paused = false
+    /// Bumped by each `clear`, so a request on its way when it came keeps
+    /// nothing of what it sent.
+    private var epoch = 0
 
     public init(destination: Destination, file: URL?, transport: HTTPTransport) {
         self.destination = destination
@@ -58,7 +63,15 @@ public actor AnalyticsEngine {
 
     // MARK: Recording
 
+    /// The random id every event carries as `distinct_id`, made at the
+    /// first launch and kept until the app is deleted.
+    public var installID: String {
+        load()
+        return state.installID
+    }
+
     public func record(_ event: AnalyticsEvent, common: [String: JSONValue], at now: Date) {
+        guard !paused else { return }
         load()
         enqueue(event, common: common, at: now)
     }
@@ -66,6 +79,7 @@ public actor AnalyticsEngine {
     /// `error_shown`, at most once per area and code every ten minutes; the
     /// ones held back ride on the next as `repeat_count`.
     public func recordError(area: AnalyticsEvent.ErrorArea, code: AnalyticsEvent.ErrorCode, common: [String: JSONValue], at now: Date) {
+        guard !paused else { return }
         load()
         guard let repeats = state.throttle.admit(area: area, code: code, at: now) else { return save() }
         enqueue(.errorShown(area: area, code: code, repeatCount: repeats), common: common, at: now)
@@ -74,6 +88,7 @@ public actor AnalyticsEngine {
     /// `chat_failure_shown`, once per failure message, and only while it is
     /// news. The message's id stays here.
     public func recordFailureShown(messageID: String, createdAt: Date, _ event: AnalyticsEvent, common: [String: JSONValue], at now: Date) {
+        guard !paused else { return }
         load()
         guard now.timeIntervalSince(createdAt) <= Self.failureFreshness, !state.seenFailures.contains(messageID) else { return }
         state.seenFailures.append(messageID)
@@ -84,18 +99,28 @@ public actor AnalyticsEngine {
     /// `app_opened` with the configuration snapshot; a cold start counts
     /// as a launch.
     public func appOpened(cold: Bool, common: [String: JSONValue], config: AnalyticsEvent.AppConfig, at now: Date) {
+        guard !paused else { return }
         load()
         if cold { state.launchCount += 1 }
         enqueue(.appOpened(launchCount: state.launchCount, isColdStart: cold, config: config), common: common, at: now)
     }
 
-    /// Analytics turned off: what was waiting goes. The install id stays.
+    /// Analytics turned off: what was waiting goes, written down at once,
+    /// and nothing is recorded or sent until `resume`. A request already
+    /// on its way keeps nothing it sent. The install id stays.
     public func clear() {
+        paused = true
+        epoch += 1
         load()
         let id = state.installID
         state = State()
         state.installID = id
-        save()
+        saveNow()
+    }
+
+    /// Analytics allowed again, after a `clear`.
+    public func resume() {
+        paused = false
     }
 
     private func enqueue(_ event: AnalyticsEvent, common: [String: JSONValue], at now: Date) {
@@ -147,13 +172,16 @@ public actor AnalyticsEngine {
             state.queue = checked
             save()
         }
-        guard !flushing, !state.queue.isEmpty else { return }
+        // Consent is checked again right before anything leaves.
+        guard !paused, !flushing, !state.queue.isEmpty else { return }
         flushing = true
         defer { flushing = false }
-        let batch = state.queue
+        let batch = state.queue, sending = epoch
         let status: Int
         do { status = try await transport.send(Self.request(batch, destination: destination)).status }
         catch { return }
+        // Cleared while it was on its way: there is nothing of it to keep.
+        guard epoch == sending, !paused else { return }
         guard (200..<300).contains(status) || ((400..<500).contains(status) && status != 408 && status != 429) else { return }
         let sent = Set(batch.map(\.insertID))
         state.queue.removeAll { sent.contains($0.insertID) }
@@ -178,6 +206,9 @@ public actor AnalyticsEngine {
         loaded = true
         guard let file, let data = try? Data(contentsOf: file), let stored = try? JSONDecoder().decode(State.self, from: data) else { return }
         state = stored
+        // Only a random UUID is ever sent as the install; anything else in
+        // the file is replaced, and the queue goes out under the new one.
+        if UUID(uuidString: state.installID) == nil { state.installID = UUID().uuidString.lowercased() }
     }
 
     private func save() {

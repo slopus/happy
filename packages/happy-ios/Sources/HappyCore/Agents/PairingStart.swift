@@ -1,9 +1,9 @@
 import Foundation
 
 /// How a pairing began.
-public enum PairingStart: String, Sendable {
+public enum PairingStart: Sendable {
     case scan
-    case pasteLink = "paste_link"
+    case pasteLink
     /// A link opened from outside the app.
-    case openedLink = "opened_link"
+    case openedLink
 }

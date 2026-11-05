@@ -17,7 +17,7 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
     ) -> Bool {
         LegacyFonts.registerBundledFonts()
         PushNotifications.shared.install()
-        CrashReports.shared.install()
+        Analytics.shared.reportCrashes()
         // The store's transactions are listened for from the first moment: renewals, approvals, refunds.
         Offers.launch()
         return true

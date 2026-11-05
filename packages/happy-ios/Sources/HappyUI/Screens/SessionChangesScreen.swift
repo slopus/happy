@@ -237,7 +237,7 @@ final class SessionChangesViewController: UIViewController {
                 self.list.reset()
             case .failure(let error):
                 self.gitLoad = .error(Self.message(error))
-                if let code = AnalyticsEvent.ErrorCode(error) { Analytics.shared.errorShown(.diffLoad, code) }
+                Analytics.shared.diffLoadFailed(error)
             }
             self.renderHappyAgent()
         }

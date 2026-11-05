@@ -1,133 +1,42 @@
 import Foundation
 @testable import HappyCore
-import HappyWire
 import XCTest
 
-/// The migration card's PostHog flag: asked for the account's anonID,
-/// kept per account, and the card hidden unless the last answer was yes.
+/// The migration card's flag as the core keeps it: a stored yes counts only
+/// while something may ask PostHog (the analytics module), so a build
+/// without analytics never shows the card.
 @MainActor
 final class MigrationNoteFlagTests: XCTestCase {
-    private let route = "POST /flags"
-
-    /// As a run that may ask: a release build, not a test or a harness.
-    private func permitted() -> MigrationNoteFlag {
+    func testAStoredYesCountsOnlyWhileSomethingAsks() {
         let flag = MigrationNoteFlag()
-        flag.permitted = true
-        return flag
-    }
-
-    private func answering(_ body: String, status: Int = 200) -> FakeHTTP {
-        let http = FakeHTTP()
-        http.onRaw(route, body, status: status)
-        return http
-    }
-
-    private func on(_ enabled: Bool) -> String {
-        #"{"flags":{"direct-connection-migration-note":{"key":"direct-connection-migration-note","enabled":\#(enabled),"variant":null}},"errorsWhileComputingFlags":false}"#
-    }
-
-    /// The flag on for this person shows the card, and the answer stays
-    /// with the account for the next launch.
-    func testFlagOnShowsTheCard() async throws {
-        let flag = permitted()
         let storage = InMemoryKeyValueStore()
         let settings = LocalSettings(storage: storage)
-        let http = answering(on(true))
-        XCTAssertFalse(flag.isOn(settings, optedOut: false), "shown before PostHog answered")
-        await flag.refresh(accountID: "anon-1", settings: settings, optedOut: false, apiKey: "phc_test", transport: http)?.value
+        flag.store(true, in: settings)
+        XCTAssertFalse(flag.isOn(settings, optedOut: false), "nothing asks, as in a build without analytics")
+        flag.isAnswering = true
         XCTAssertTrue(flag.isOn(settings, optedOut: false))
-        XCTAssertTrue(MigrationNoteFlag().isOn(LocalSettings(storage: storage), optedOut: false), "not kept for the account")
-
-        let request = try XCTUnwrap(http.requests(route).first)
-        XCTAssertEqual(request.url.host, "us.i.posthog.com")
-        XCTAssertEqual(request.query("v"), "2")
-        let body = try request.jsonBody([String: JSONValue].self)
-        XCTAssertEqual(body["api_key"], .string("phc_test"))
-        XCTAssertEqual(body["distinct_id"], .string("anon-1"))
-        XCTAssertEqual(body["flag_keys_to_evaluate"], .array([.string("direct-connection-migration-note")]))
-    }
-
-    /// Off, or missing from a whole answer, hides the card, a yes before
-    /// included.
-    func testFlagOffHidesTheCard() async {
-        let flag = permitted()
-        let settings = LocalSettings(storage: InMemoryKeyValueStore())
-        settings.migrationNoteFlag = true
-        await flag.refresh(accountID: "anon", settings: settings, optedOut: false, apiKey: "phc_test", transport: answering(on(false)))?.value
-        XCTAssertFalse(flag.isOn(settings, optedOut: false))
-        settings.migrationNoteFlag = true
-        await flag.refresh(accountID: "anon", settings: settings, optedOut: false, apiKey: "phc_test", transport: answering(#"{"flags":{},"errorsWhileComputingFlags":false}"#))?.value
-        XCTAssertFalse(flag.isOn(settings, optedOut: false))
-    }
-
-    /// Unknown stays hidden; a failure, a refusal or a flag PostHog
-    /// couldn't compute keeps the last answer.
-    func testFailuresKeepTheLastAnswer() async {
-        let flag = permitted()
-        let settings = LocalSettings(storage: InMemoryKeyValueStore())
-        let failing = FakeHTTP()
-        failing.on(route) { _ in throw URLError(.notConnectedToInternet) }
-        await flag.refresh(accountID: "anon", settings: settings, optedOut: false, apiKey: "phc_test", transport: failing)?.value
-        XCTAssertNil(settings.migrationNoteFlag)
-        XCTAssertFalse(flag.isOn(settings, optedOut: false))
-
-        settings.migrationNoteFlag = true
-        for transport in [failing, answering("{}", status: 500), answering("not json"), answering(#"{"flags":{},"errorsWhileComputingFlags":true}"#)] {
-            await flag.refresh(accountID: "anon", settings: settings, optedOut: false, apiKey: "phc_test", transport: transport)?.value
-            XCTAssertEqual(settings.migrationNoteFlag, true)
-        }
-    }
-
-    /// Opted out of analytics, or a build without the key: nothing is
-    /// asked, and the card stays hidden.
-    func testOptedOutOrNoKeyAsksNothing() async {
-        let flag = permitted()
-        let settings = LocalSettings(storage: InMemoryKeyValueStore())
-        settings.migrationNoteFlag = true
         XCTAssertFalse(flag.isOn(settings, optedOut: true))
-        let http = answering(on(true))
-        XCTAssertNil(flag.refresh(accountID: "anon", settings: settings, optedOut: true, apiKey: "phc_test", transport: http))
-        XCTAssertNil(flag.refresh(accountID: "anon", settings: settings, optedOut: false, apiKey: nil, transport: http))
-        XCTAssertTrue(http.requests.isEmpty)
-        XCTAssertNil(settings.migrationNoteFlag)
+        XCTAssertEqual(LocalSettings(storage: storage).migrationNoteFlag, true, "kept for the account")
+        flag.store(nil, in: settings)
         XCTAssertFalse(flag.isOn(settings, optedOut: false))
-        // xtool leaves the build setting unexpanded.
-        XCTAssertNil(MigrationNoteFlag.validKey("$(HAPPY_POSTHOG_API_KEY)"))
-        XCTAssertNil(MigrationNoteFlag.validKey(" "))
-        XCTAssertEqual(MigrationNoteFlag.validKey("phc_abc"), "phc_abc")
     }
 
-    /// PostHog's v1 answer, a variant name counting as on.
-    func testTheOlderAnswer() async {
-        XCTAssertEqual(MigrationNoteFlag.answer(status: 200, body: Data(#"{"featureFlags":{"direct-connection-migration-note":true}}"#.utf8)), true)
-        XCTAssertEqual(MigrationNoteFlag.answer(status: 200, body: Data(#"{"featureFlags":{"direct-connection-migration-note":"test"}}"#.utf8)), true)
-        XCTAssertEqual(MigrationNoteFlag.answer(status: 200, body: Data(#"{"featureFlags":{"direct-connection-migration-note":false}}"#.utf8)), false)
-        XCTAssertEqual(MigrationNoteFlag.answer(status: 200, body: Data(#"{"featureFlags":{}}"#.utf8)), false)
-    }
-
-    /// A debug build, a test or a harness asks nothing and keeps what it had.
-    func testARunThatMayNotSendAsksNothing() async {
+    func testAHarnessAnswerNeedsNoAsk() {
         let flag = MigrationNoteFlag()
+        flag.fixedAnswer = true
         let settings = LocalSettings(storage: InMemoryKeyValueStore())
-        settings.migrationNoteFlag = true
-        let http = answering(on(false))
-        XCTAssertNil(flag.refresh(accountID: "anon", settings: settings, optedOut: false, apiKey: "phc_test", transport: http))
-        XCTAssertTrue(http.requests.isEmpty)
-        XCTAssertEqual(settings.migrationNoteFlag, true)
+        XCTAssertTrue(flag.isOn(settings, optedOut: false))
+        XCTAssertFalse(flag.isOn(settings, optedOut: true))
     }
 
-    /// What the app says of everyone else gates the ask: unknown asks
-    /// nothing, opted out anywhere asks nothing, and the account's own
-    /// setting needs no one else.
-    func testTheAskFollowsWhatTheAppSays() async {
+    func testObserversHearAnAnswerAndTheAskGoingAway() {
         let flag = MigrationNoteFlag()
-        var others: Bool?
-        flag.othersOptedOut = { others }
-        XCTAssertNil(flag.optedOut(account: false), "not known yet")
-        XCTAssertEqual(flag.optedOut(account: true), true)
-        others = false
-        XCTAssertEqual(flag.optedOut(account: false), false)
-        others = true
-        XCTAssertEqual(flag.optedOut(account: false), true)
+        var heard = 0
+        let observation = flag.observe { heard += 1 }
+        flag.isAnswering = true
+        flag.store(true, in: LocalSettings(storage: InMemoryKeyValueStore()))
+        flag.isAnswering = false
+        XCTAssertEqual(heard, 3)
+        _ = observation
     }
 }

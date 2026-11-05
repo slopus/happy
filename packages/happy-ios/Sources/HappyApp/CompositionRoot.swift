@@ -39,9 +39,9 @@ enum CompositionRoot {
         #else
         let debug = false
         #endif
-        Analytics.shared.launch(apiKey: MigrationNoteFlag.apiKey(bundle: bundle), debug: debug, variant: variant, appVersion: version,
+        Analytics.shared.launch(bundle: bundle, debug: debug, variant: variant, appVersion: version,
                                 file: storeDirectory()?.appendingPathComponent("analytics.json"),
-                                deviceClass: UIDevice.current.userInterfaceIdiom == .pad ? .tablet : .phone)
+                                tablet: UIDevice.current.userInterfaceIdiom == .pad)
     }
 
     /// Application Support/Happy, as a path only: nothing touches the disk

@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import HappyAnalytics
 import HappyCore
 import HappyLayout
 import StoreKit
@@ -196,6 +197,14 @@ final class SupportViewController: UIViewController {
                 await UIApplication.shared.open(SupportUsViewController.manageSubscriptionsURL)
             }
         }
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        // Once each time it is opened with Subscribe on it, not on coming
+        // back to it from Manage Subscriptions or a sheet; a subscriber's
+        // thank-you sells nothing.
+        if isMovingToParent || isBeingPresented, offers.offer != .subscribed { Analytics.shared.paywallPresented() }
     }
 
     override func viewDidLayoutSubviews() {

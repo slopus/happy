@@ -11,6 +11,19 @@ public enum PairingOutcome: Equatable, Sendable {
     case deviceLinked
 }
 
+/// How answering a scanned or pasted pairing code ended, as the app tells
+/// the person (`LegacyPairingFlow` in HappyUI).
+public enum LegacyPairingResult: Equatable, Sendable {
+    case approved
+    /// The code was answered already, or has expired: nothing was sent.
+    case alreadyHandled
+    /// Not a pairing link of the expected kind.
+    case invalidLink
+    /// A terminal that only speaks auth v1.
+    case terminalNeedsUpdate
+    case failed
+}
+
 public enum LegacyPairingError: Error, Equatable, Sendable {
     /// The terminal only speaks auth v1, which hands over the master secret.
     /// The iOS app supports the current protocol only, so the user has to

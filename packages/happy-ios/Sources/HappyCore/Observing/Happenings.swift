@@ -21,8 +21,9 @@ public enum Happening: Sendable {
     case errorShown(ErrorPlace, (any Error)?)
     /// A message went into a Happy CLI session's outbox.
     case relayMessageQueued(source: OutgoingMessage.Source, attachments: Int)
-    /// New work a first message makes on a Happy Agent.
-    case newWorkMade(NewTask.Kind, Outcome)
+    /// New work a first message makes on a Happy Agent; `agentId` is its
+    /// conversation as the phone named it (`NewTask.agentId`).
+    case newWorkMade(NewTask.Kind, agentId: String, Outcome)
     /// A start from a composer: a session, a bot or a task.
     case sessionStartEnded(NewSessionLaunch, Outcome)
     /// A paired computer's connection; `problem` is why it last failed.

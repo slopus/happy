@@ -7,23 +7,25 @@ import HappyWire
 
 extension Analytics {
     /// `message_sent` for a send to a Happy Agent conversation, made from
-    /// what the screen knows before the send changes it, and
-    /// `conversation_created` with it for new work's first message
-    /// (`opensConversation`). Call the result once the send is accepted.
-    /// `steering`: the agent was still working.
+    /// what the screen knows before the send changes it. Call the result
+    /// once the send is accepted. `newWork`: the conversation new work's
+    /// first message makes (`NewTask.agentId`), whose `conversation_created`
+    /// goes only once the computer has made it. `steering`: the agent was
+    /// still working.
     public func agentSend(to agentId: String, in spaces: Snapshot, mode: AgentWire.Mode?, catalog: ModelCatalog?,
-                          opensConversation: Bool, attachments: Int, steering: Bool) -> @MainActor () -> Void {
+                          newWork: String?, attachments: Int, steering: Bool) -> @MainActor () -> Void {
         let target = AnalyticsEvent.ChatTarget(agentId, in: spaces)
         let provider = mode.flatMap { catalog?.provider($0.providerId)?.type }
         let event = AnalyticsEvent.MessageSent(
-            source: opensConversation ? .newSession : .chat, target: target, sessionClient: .happyAgent, model: mode?.modelId,
+            source: newWork != nil ? .newSession : .chat, target: target, sessionClient: .happyAgent, model: mode?.modelId,
             modelProviderKind: mode == nil ? nil : .init(type: provider), effort: mode.flatMap { .init(rawValue: $0.effort) },
             botSystemKey: target == .chiefOfStaff ? .chiefOfStaff : nil, hasAttachment: attachments > 0, isSteering: steering)
-        let opened = AnalyticsEvent.conversationCreated(source: .home, model: event.model, modelProviderKind: event.modelProviderKind, effort: event.effort)
-        return { [weak self] in
-            if opensConversation { self?.log(opened) }
-            self?.log(.messageSent(event))
+        if let newWork {
+            // Kept before the send starts, so the made task can't come first.
+            if opening.count >= Self.openingLimit { opening.removeAll() }
+            opening[newWork] = .conversationCreated(source: .home, model: event.model, modelProviderKind: event.modelProviderKind, effort: event.effort)
         }
+        return { [weak self] in self?.log(.messageSent(event)) }
     }
 
     /// `message_sent` for what a call said into a conversation over the

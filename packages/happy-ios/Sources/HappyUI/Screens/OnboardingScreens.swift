@@ -104,12 +104,12 @@ public final class RestoreQRViewController: UIViewController {
                 self?.showsCode = true
                 let credentials = try await login.waitForApproval()
                 try await account.signIn(credentials)
-                Analytics.shared.log(.accountRestored)
+                Analytics.shared.accountRestored()
             } catch is CancellationError {
                 return
             } catch {
                 guard let self, !Task.isCancelled else { return }
-                Analytics.shared.log(.signInFailed(method: .relayRestore, errorCode: error is URLError ? .unreachable : .unknown))
+                Analytics.shared.accountRestoreFailed(error, secretKey: false)
                 Alerts.show(Strings.Common.error, Strings.Errors.authenticationFailed, on: self)
             }
         }
@@ -247,9 +247,9 @@ public final class RestoreSecretKeyViewController: UIViewController, UITextViewD
         do {
             let credentials = try await context.account.authService.restore(secretKey: key)
             try await context.account.signIn(credentials)
-            Analytics.shared.log(.accountRestored)
+            Analytics.shared.accountRestored()
         } catch {
-            Analytics.shared.log(.signInFailed(method: .relayRestore, errorCode: error is URLError ? .unreachable : .invalidToken))
+            Analytics.shared.accountRestoreFailed(error, secretKey: true)
             Alerts.show(Strings.Common.error, Strings.Connect.invalidSecretKey, on: self)
         }
     }

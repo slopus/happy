@@ -1,5 +1,6 @@
 import Foundation
 import HappyCore
+import XCTest
 
 /// An HTTP server in a dictionary: routes are "METHOD /path" and answer
 /// with a closure, so a test can inspect what was sent and vary the reply.
@@ -28,5 +29,15 @@ final class FakeHTTP: HTTPTransport, @unchecked Sendable {
         guard let handler else { return HTTPResponse(status: 404, body: Data()) }
         let (status, body) = try handler(request)
         return HTTPResponse(status: status, body: body)
+    }
+}
+
+extension HTTPRequest {
+    func query(_ name: String) -> String? {
+        URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == name }?.value
+    }
+
+    func jsonBody<T: Decodable>(_ type: T.Type) throws -> T {
+        try JSONDecoder().decode(T.self, from: XCTUnwrap(body))
     }
 }

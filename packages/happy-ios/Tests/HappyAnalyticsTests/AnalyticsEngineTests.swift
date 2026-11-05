@@ -201,8 +201,55 @@ final class AnalyticsEngineTests: XCTestCase {
         let state = await engine.snapshot
         XCTAssertEqual(state.queue, [])
         XCTAssertEqual(state.installID, id)
+        await engine.record(.accountRestored, common: common, at: start)
         await engine.flush(now: start)
-        XCTAssertTrue(http.requests.isEmpty)
+        XCTAssertTrue(http.requests.isEmpty, "nothing recorded or sent until it resumes")
+        await engine.resume()
+        await engine.record(.teamServerSignedIn, common: common, at: start)
+        await engine.flush(now: start)
+        XCTAssertEqual(try events(http).map { $0["event"]?.stringValue }, ["team_server_signed_in"])
+    }
+
+    /// Cleared while a batch is on its way: the clear doesn't wait for it,
+    /// and a failed answer keeps nothing for a retry.
+    func testAClearDoesNotWaitForARequestOnItsWay() async throws {
+        let gated = GatedHTTP(status: 503)
+        let engine = AnalyticsEngine(destination: .init(apiKey: "phc_test"), file: nil, transport: gated)
+        await engine.record(.accountCreated, common: common, at: start)
+        let flushing = Task { await engine.flush(now: start) }
+        await gated.started(1)
+        await engine.clear()
+        let cleared = await engine.snapshot.queue
+        XCTAssertEqual(cleared, [], "cleared while the request is still out")
+        gated.release()
+        await flushing.value
+        let after = await engine.snapshot.queue
+        XCTAssertEqual(after, [], "the failed batch came back to nothing")
+        await engine.resume()
+        await engine.flush(now: start)
+        XCTAssertEqual(gated.requests.count, 1)
+    }
+
+    /// Only a random UUID goes out as the install: a file holding anything
+    /// else gets a new one, and its queue goes under it.
+    func testAnInstallIDThatIsNotAUUIDIsReplaced() async throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("analytics-\(UUID().uuidString)/analytics.json")
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+        let failing = FakeHTTP()
+        failing.on("POST /batch") { _ in throw URLError(.timedOut) }
+        let first = engine(failing, file: file)
+        await first.record(.accountCreated, common: common, at: start)
+        await first.saveNow()
+        guard case .object(var state) = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: file)) else { return XCTFail("state") }
+        state["installID"] = .string("anon-account-id")
+        try JSONEncoder().encode(JSONValue.object(state)).write(to: file)
+
+        let http = http()
+        let second = engine(http, file: file)
+        let id = await second.installID
+        XCTAssertNotNil(UUID(uuidString: id))
+        await second.flush(now: start)
+        XCTAssertEqual(try events(http).first?["properties"]?["distinct_id"], .string(id))
     }
 
     /// A queue file from an older build goes through today's allowlist

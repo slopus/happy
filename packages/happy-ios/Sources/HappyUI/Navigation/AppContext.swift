@@ -32,16 +32,7 @@ enum LegacyPairingFlow {
         case account
     }
 
-    enum Outcome: Equatable {
-        case approved
-        /// The code was answered already, or has expired: nothing was sent.
-        case alreadyHandled
-        /// Not a pairing link of the expected kind.
-        case invalidLink
-        /// A terminal that only speaks auth v1.
-        case terminalNeedsUpdate
-        case failed
-    }
+    typealias Outcome = LegacyPairingResult
 
     /// Approves a scanned or pasted link of the expected kind.
     static func approve(_ text: String, expecting kind: Kind, session: AccountSession) async -> Outcome {

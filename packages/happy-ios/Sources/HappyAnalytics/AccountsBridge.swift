@@ -1,9 +1,9 @@
-#if canImport(UIKit)
-import HappyAnalytics
+import Foundation
 import HappyCore
 import HappyStore
-import UIKit
+#if canImport(UserNotifications) && os(iOS)
 import UserNotifications
+#endif
 
 /// What analytics reads of the app's accounts. It reads which agent is
 /// shown (the common properties, and which link `agent_connection_lost` follows),
@@ -11,15 +11,14 @@ import UserNotifications
 /// little `app_opened` carries. It reads only the accounts' kinds and
 /// counts, never a name or an id that would be sent.
 @MainActor
-final class AnalyticsBridge {
-    private let context: AppContext
+final class AccountsBridge {
+    private weak var account: AccountController?
     private var accounts: AccountsObservation?
     private var settings: StoreObservation?
     private var settingsSession: ObjectIdentifier?
 
-    init(context: AppContext) {
-        self.context = context
-        let account = context.account
+    init(account: AccountController) {
+        self.account = account
         Analytics.shared.agent = { [weak account] in
             switch account?.state {
             case .signedIn?: .init(location: .relay)
@@ -34,16 +33,17 @@ final class AnalyticsBridge {
     /// The accounts are restored: every signed-in account's stored setting
     /// is read, and only then may anything go.
     func restored() async {
-        let optOuts = await context.account.analyticsOptOuts()
+        guard let account else { return }
+        let optOuts = await account.analyticsOptOuts()
         Analytics.shared.consent.settle(optOuts)
     }
 
     private func accountsChanged(_ summaries: [AccountSummary]) {
-        let account = context.account
+        guard let account else { return }
         Analytics.shared.consent.keepAccounts(Set(summaries.filter { !$0.isAgentConnection }.map(\.id)))
         switch account.state {
         case .signedIn(let session):
-            ConnectionWatch.shared.setActive(LegacyLink.watchID(session))
+            ConnectionWatch.shared.setActive(Analytics.watchID(session))
             follow(session)
         case .agentConnection(let connection):
             ConnectionWatch.shared.setActive("agent:\(connection.id)")
@@ -69,12 +69,16 @@ final class AnalyticsBridge {
 
     private static func appConfig(_ account: AccountController?) async -> AnalyticsEvent.AppConfig {
         guard let account else { return .init() }
+        #if canImport(UserNotifications) && os(iOS)
         let notifications: AnalyticsEvent.NotificationsState = switch await UNUserNotificationCenter.current().notificationSettings().authorizationStatus {
         case .authorized, .provisional, .ephemeral: .granted
         case .denied: .denied
         case .notDetermined: .notAsked
         @unknown default: .notAsked
         }
+        #else
+        let notifications: AnalyticsEvent.NotificationsState? = nil
+        #endif
         return AnalyticsEvent.AppConfig(
             appLanguage: .init(code: AppLocalization.language),
             notifications: notifications,
@@ -82,4 +86,17 @@ final class AnalyticsBridge {
         )
     }
 }
-#endif
+
+extension Analytics {
+    /// Follows the app's accounts, once, at launch: which agent is shown,
+    /// each Happy account's `analyticsOptOut`, and what `app_opened` says.
+    public func follow(_ account: AccountController) {
+        accountsBridge = AccountsBridge(account: account)
+    }
+
+    /// The accounts are restored: once every signed-in account's stored
+    /// setting is read, what waited may go.
+    public func accountsRestored() async {
+        await accountsBridge?.restored()
+    }
+}

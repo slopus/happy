@@ -24,8 +24,6 @@ final class LegacyLink {
     }
 
     private weak var session: AccountSession?
-    /// `agent_connection_lost`'s name for this account's link.
-    private let watchID: String
     let indicator: LinkIndicator
     private var networkWatch: NetworkPathWatch?
     private var following: [Task<Void, Never>] = []
@@ -39,7 +37,6 @@ final class LegacyLink {
 
     private init(session: AccountSession) {
         self.session = session
-        watchID = Self.watchID(session)
         indicator = LinkIndicator(wanted: Self.headerState(status: status, catchingUp: catchingUp, network: network))
         networkWatch = NetworkPath.shared.watch { [weak self] satisfied in
             MainActor.assumeIsolated { self?.receive(network: satisfied) }
@@ -71,12 +68,10 @@ final class LegacyLink {
 
     var headerState: LinkState { Self.headerState(status: status, catchingUp: catchingUp, network: network) }
 
-    static func watchID(_ session: AccountSession) -> String { "relay:\(session.keys.anonID)" }
-
     /// The socket down, or no network at all, is the relay out of reach.
     private func report() {
-        let down = !network || status != .connected
-        ConnectionWatch.shared.report(.init(id: watchID, transport: .relay, down: down, code: !network ? .unreachable : .unknown))
+        guard let session else { return }
+        Analytics.shared.relayLinkChanged(session, down: !network || status != .connected, network: network)
     }
 
     /// What headers show of the link, now and on every change.

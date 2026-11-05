@@ -36,7 +36,6 @@ public final class AppCoordinator {
     /// Decides the language of the screens about to be built, holding the
     /// window's touches meanwhile; a newer root replaces a pending one.
     private let language: ScreensLanguage
-    private var analytics: AnalyticsBridge?
 
     public init(window: UIWindow, context: AppContext) {
         self.window = window
@@ -63,14 +62,14 @@ public final class AppCoordinator {
         // opens; with none, a paired computer rather than Welcome.
         let v2 = Preference(variant: context.variant)
         context.account.fallsBackToAgentConnection = true
-        analytics = AnalyticsBridge(context: context)
+        Analytics.shared.follow(context.account)
         Task { @MainActor [weak self] in
             guard let account = self?.context.account else { return }
             // The Happy account's filter showed a computer's V2: that
             // computer is home now, from the first screen.
             await account.restore(openingAgentConnection: v2.takeFilterChoice(), preferred: v2.agentConnectionID)
             // Analytics waits for every signed-in account's opt-out, read off the main thread.
-            if let analytics = self?.analytics { Task { await analytics.restored() } }
+            Task { await Analytics.shared.accountsRestored() }
             self?.show(account.state)
             self?.accountRestored = true
             self?.openPendingLink()

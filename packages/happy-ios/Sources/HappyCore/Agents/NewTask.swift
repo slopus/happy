@@ -86,12 +86,12 @@ public actor NewTask {
         do {
             let agentId = try await attempt.value
             // Only the first answer gets here; later sends read `madeAgentId`.
-            Happenings.post(.newWorkMade(choice.kind, .made))
+            Happenings.post(.newWorkMade(choice.kind, agentId: identity.agentId, .made))
             made(agentId)
             return agentId
         } catch {
             making = nil
-            if !(error is CancellationError) { Happenings.post(.newWorkMade(choice.kind, .failed(error))) }
+            if !(error is CancellationError) { Happenings.post(.newWorkMade(choice.kind, agentId: identity.agentId, .failed(error))) }
             throw error
         }
     }

@@ -116,7 +116,7 @@ final class AccountSettingsViewController: SettingsPageViewController {
             } catch {
                 if showError, let self {
                     Alerts.show(Strings.Common.error, Strings.Push.loadFailed, on: self)
-                    if let code = AnalyticsEvent.ErrorCode(error) { Analytics.shared.errorShown(.pushSetup, code) }
+                    Analytics.shared.pushSetupFailed(error)
                 }
             }
             self?.loadingPush = false

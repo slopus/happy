@@ -31,11 +31,15 @@ public final class Analytics {
         public var appVersion: String
         public var osVersion: OperatingSystemVersion
         public var deviceClass: AnalyticsEvent.DeviceClass
+        /// The PostHog key `/flags` is asked with for the migration card;
+        /// nil asks nothing, as in a debug run.
+        public var flagKey: String?
 
         public init(destination: AnalyticsEngine.Destination, file: URL?, transport: HTTPTransport, variant: AppVariant,
-                    appVersion: String, osVersion: OperatingSystemVersion, deviceClass: AnalyticsEvent.DeviceClass) {
+                    appVersion: String, osVersion: OperatingSystemVersion, deviceClass: AnalyticsEvent.DeviceClass,
+                    flagKey: String? = nil) {
             self.destination = destination; self.file = file; self.transport = transport; self.variant = variant
-            self.appVersion = appVersion; self.osVersion = osVersion; self.deviceClass = deviceClass
+            self.appVersion = appVersion; self.osVersion = osVersion; self.deviceClass = deviceClass; self.flagKey = flagKey
         }
     }
 
@@ -51,17 +55,31 @@ public final class Analytics {
     public var appConfig: @MainActor @Sendable () async -> AnalyticsEvent.AppConfig = { .init() }
     public var now: () -> Date = Date.init
 
-    private var engine: AnalyticsEngine?
+    private(set) var engine: AnalyticsEngine?
+    /// The migration card's flag, which only this module asks PostHog for.
+    var flag = MigrationNoteFlag.shared
+    private(set) var flagAsk: MigrationFlagAsk?
+    var flagsAsking: Set<ObjectIdentifier> = []
     private var fixed: [String: JSONValue] = [:]
     private var opened = false
     private var backgroundedAt: Date?
     private var foreground = false
     private var ticker: Task<Void, Never>?
     private var pending: Task<Void, Never>?
+    /// Bumped by each opt-out: work handed on before it is dropped unrun,
+    /// however long it waited behind a slow request.
+    private(set) var generation = 0
+    /// What was on its way when the last opt-out came, for `settle`.
+    private var dropped: Task<Void, Never>?
     /// Work made before the accounts' settings were read this launch, kept
     /// in memory only: handed on once they allow it, dropped if they don't.
     private var held: [@Sendable (AnalyticsEngine) async -> Void] = []
     static let heldLimit = 200
+    /// `conversation_created` for new work sent but not yet made, by its
+    /// conversation's id; it goes once the core says it was made.
+    var opening: [String: AnalyticsEvent] = [:]
+    static let openingLimit = 20
+    var accountsBridge: AccountsBridge?
 
     public init() {}
 
@@ -71,6 +89,7 @@ public final class Analytics {
         self.consent = consent
         guard let setup else { return }
         engine = AnalyticsEngine(destination: setup.destination, file: setup.file, transport: setup.transport)
+        flagAsk = setup.flagKey.map { MigrationFlagAsk(apiKey: $0, transport: setup.transport) }
         fixed = [
             "client": .word(AnalyticsEvent.AnalyticsClient.ios),
             "app_version": AnalyticsSchema.version(setup.appVersion).map(JSONValue.string) ?? .string("0.0.0"),
@@ -86,21 +105,19 @@ public final class Analytics {
         }
     }
 
-    /// The app's launch: the switch Settings shows, always; sending, and
-    /// PostHog's `/flags` for the migration card, only from a build that
-    /// may (`destination`). `debug` is the build's.
-    public func launch(apiKey: String?, debug: Bool, variant: AppVariant, appVersion: String,
-                       file: URL?, deviceClass: AnalyticsEvent.DeviceClass) {
-        let automated = Self.isAutomated()
+    /// The app's launch: the switch Settings shows, always; sending only
+    /// from a build that may (`destination`), and PostHog's `/flags` for the
+    /// migration card only from a release one, both with the PostHog key
+    /// in `bundle`. `debug` is the build's.
+    public func launch(bundle: Bundle, debug: Bool, variant: AppVariant, appVersion: String, file: URL?, tablet: Bool) {
+        let apiKey = Self.apiKey(bundle: bundle)
         let consent = AnalyticsConsent(storage: UserDefaultsStore(suiteName: "happy-analytics"))
-        let flag = MigrationNoteFlag.shared
-        flag.permitted = !debug && !automated
-        flag.othersOptedOut = { consent.othersOptedOut }
-        let destination = Self.destination(apiKey: apiKey, debug: debug, automated: automated,
+        let destination = Self.destination(apiKey: apiKey, debug: debug, automated: Self.isAutomated(),
                                            environment: ProcessInfo.processInfo.environment)
         let setup = destination.map {
             Setup(destination: $0, file: file, transport: URLSessionTransport(), variant: variant, appVersion: appVersion,
-                  osVersion: ProcessInfo.processInfo.operatingSystemVersion, deviceClass: deviceClass)
+                  osVersion: ProcessInfo.processInfo.operatingSystemVersion, deviceClass: tablet ? .tablet : .phone,
+                  flagKey: debug ? nil : apiKey)
         }
         start(setup, consent: consent)
     }
@@ -184,17 +201,26 @@ public final class Analytics {
     private var recording: AnalyticsEngine? { consent.isOptedOut ? nil : engine }
 
     private func consentChanged() {
+        updateFlag()
         guard let engine else { return }
         if consent.isOptedOut {
             ticker?.cancel()
             ticker = nil
             held = []
-            chain(engine) { await $0.clear() }
+            opening = [:]
+            // Everything handed on so far is dropped, and the queue goes now,
+            // not behind a request on its way: the engine stops at once and
+            // drops what that request was sending.
+            generation += 1
+            let before = dropped, last = pending
+            dropped = Task { await before?.value; await last?.value }
+            pending = Task { await engine.clear() }
             return
         }
         guard consent.isSettled else { return }
         let work = held
         held = []
+        chain(engine) { await $0.resume() }
         for item in work { chain(engine, item) }
         // Back on while the app is in front: the flushes start again.
         if foreground { startTicker() }
@@ -213,15 +239,17 @@ public final class Analytics {
     }
 
     private func chain(_ engine: AnalyticsEngine, _ work: @escaping @Sendable (AnalyticsEngine) async -> Void) {
-        let previous = pending
-        pending = Task {
+        let previous = pending, generation = generation
+        pending = Task { [weak self] in
             await previous?.value
+            guard let self, self.generation == generation, !consent.isOptedOut else { return }
             await work(engine)
         }
     }
 
     /// Waits for everything handed to the engine so far.
     public func settle() async {
+        await dropped?.value
         await pending?.value
     }
 
@@ -280,9 +308,6 @@ public final class AnalyticsConsent {
     }
 
     public var isOptedOut: Bool { deviceOptOut || !accounts.isEmpty }
-    /// What the migration card's flag reads: opted out here, nil while the
-    /// accounts haven't been read.
-    public var othersOptedOut: Bool? { isOptedOut ? true : isSettled ? false : nil }
     /// Every signed-in account's stored setting has been read this launch.
     /// Until then nothing is sent.
     public private(set) var isSettled = false

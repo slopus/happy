@@ -19,9 +19,11 @@ extension Analytics {
             if let code { errorShown(area, code) }
         case .relayMessageQueued(let source, let attachments):
             log(.messageSent(.init(source: .init(source), target: .session, sessionClient: .cli, hasAttachment: attachments > 0)))
-        case .newWorkMade(let kind, let outcome):
+        case .newWorkMade(let kind, let agentId, let outcome):
             let (result, code) = Self.created(outcome)
             log(kind == .bot ? .botCreated(source: .home, result: result, errorCode: code) : .taskCreated(result: result, errorCode: code))
+            // The conversation exists only now; a failure keeps it for the retry.
+            if result == .ok, let opened = opening.removeValue(forKey: agentId) { log(opened) }
         case .sessionStartEnded(let launch, let outcome):
             for event in Self.started(launch, outcome) { log(event) }
         case .agentConnectionChanged(let account, let problem):

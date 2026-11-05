@@ -13,7 +13,7 @@ final class AnalyticsTests: XCTestCase {
 
     /// Started, with the accounts' settings read as `accounts` says; nil
     /// leaves them unread, as at launch before the accounts are restored.
-    private func started(_ http: FakeHTTP, consent: AnalyticsConsent = AnalyticsConsent(storage: InMemoryKeyValueStore()),
+    private func started(_ http: HTTPTransport, consent: AnalyticsConsent = AnalyticsConsent(storage: InMemoryKeyValueStore()),
                          accounts: [String: Bool]? = [:]) -> Analytics {
         let analytics = Analytics()
         analytics.now = { [unowned self] in clock }
@@ -102,6 +102,42 @@ final class AnalyticsTests: XCTestCase {
         let events = try await sent(analytics, failing).map { $0["event"]?.stringValue }
         XCTAssertEqual(events, ["team_server_signed_in"], "only what came after opting back in")
         XCTAssertFalse(AnalyticsConsent(storage: storage).isOptedOut)
+    }
+
+    /// Opting out while a batch is on its way: the queue goes at once, not
+    /// behind the request; what was handed on behind it never runs; and
+    /// nothing from before reaches PostHog once analytics is back on.
+    func testOptingOutDuringASlowSendSendsNothingMore() async throws {
+        let gated = GatedHTTP(status: 503)
+        let consent = AnalyticsConsent(storage: InMemoryKeyValueStore())
+        let analytics = started(gated, consent: consent)
+        analytics.log(.accountCreated)
+        analytics.appEnteredBackground()
+        await gated.started(1)
+        analytics.log(.accountRestored)
+        analytics.appEnteredBackground()
+        consent.setDeviceOptOut(true)
+
+        let engine = try XCTUnwrap(analytics.engine)
+        let deadline = ContinuousClock.now + .seconds(3)
+        while await engine.snapshot.queue.isEmpty == false, ContinuousClock.now < deadline { await Task.yield() }
+        let queue = await engine.snapshot.queue
+        XCTAssertEqual(queue, [], "cleared while the first request is still out")
+        XCTAssertEqual(gated.requests.count, 1)
+
+        gated.release()
+        await analytics.settle()
+        XCTAssertEqual(gated.requests.count, 1, "the flush handed on before the opt-out never ran")
+        let afterRelease = await engine.snapshot.queue
+        XCTAssertEqual(afterRelease, [], "the failed batch didn't come back")
+
+        consent.setDeviceOptOut(false)
+        analytics.log(.teamServerSignedIn)
+        analytics.appEnteredBackground()
+        await analytics.settle()
+        XCTAssertEqual(gated.requests.count, 2)
+        let last = try JSONDecoder().decode(JSONValue.self, from: XCTUnwrap(gated.requests.last?.body))
+        XCTAssertEqual(last["batch"]?.arrayValue?.map { $0["event"]?.stringValue }, ["team_server_signed_in"])
     }
 
     func testAnySignedInAccountThatOptedOutStopsSending() async {
@@ -315,6 +351,18 @@ final class AnalyticsTests: XCTestCase {
         XCTAssertEqual(Subscription.RestoreResult.nothingFound.event, .paywallError(product: .pro, errorCode: .nothingToRestore))
     }
 
+    /// A scan's or a pairing's ending, as the screens hand it over.
+    func testAScanOrAPairingEndsAsTheCatalogSaysIt() {
+        XCTAssertEqual(Analytics.event(ScanProblem.invalidServer, start: .scan), .signInFailed(method: .teamServer, errorCode: .invalidAddress))
+        XCTAssertEqual(Analytics.event(ScanProblem.deviceNeedsAccount, start: .scan),
+                       .mobilePairingFailed(method: .relay, start: .scan, errorCode: .signInRequired))
+        XCTAssertEqual(Analytics.event(LegacyPairingResult.approved, start: .pasteLink), .mobilePairingCompleted(method: .relay, start: .pasteLink))
+        XCTAssertEqual(Analytics.event(LegacyPairingResult.alreadyHandled, start: .openedLink),
+                       .mobilePairingFailed(method: .relay, start: .openedLink, errorCode: .expired))
+        XCTAssertEqual(Analytics.accountCreated(.approved), .accountCreated)
+        XCTAssertEqual(Analytics.accountCreated(.terminalNeedsUpdate), .signInFailed(method: .relayCreate, errorCode: .rejected))
+    }
+
     /// What the core posts becomes the catalog's events: a start by what it
     /// made, a failed create with only why, a new conversation only once it
     /// starts, and a shown error by its type alone.
@@ -339,7 +387,7 @@ final class AnalyticsTests: XCTestCase {
         let http = http()
         let analytics = started(http)
         analytics.receive(.relayMessageQueued(source: .voice, attachments: 2))
-        analytics.receive(.newWorkMade(.task, .made))
+        analytics.receive(.newWorkMade(.task, agentId: "t", .made))
         analytics.receive(.errorShown(.attachmentUpload, URLError(.notConnectedToInternet)))
         analytics.receive(.errorShown(.messageSend, CancellationError()))
         analytics.receive(.callChanged(from: .active(.listening, muted: false, since: 0), to: .idle, at: 40))
@@ -354,9 +402,10 @@ final class AnalyticsTests: XCTestCase {
     }
 
     /// The chat screen's send: `message_sent` once it is accepted, a steer
-    /// when the agent was working, and new work's first message opens a
-    /// conversation too. Nothing goes for a send never accepted.
-    func testAChatSendIsSentOnceAcceptedAndNewWorkOpensAConversation() async throws {
+    /// when the agent was working. New work's first message opens a
+    /// conversation only once the computer made it: a failed make sends
+    /// none, its retry's success does. Nothing goes for a send never accepted.
+    func testAChatSendIsSentOnceAcceptedAndNewWorkOpensAConversationOnceMade() async throws {
         let http = http()
         let analytics = started(http)
         var spaces = Snapshot()
@@ -365,17 +414,23 @@ final class AnalyticsTests: XCTestCase {
         let catalog = ModelCatalog(defaultProviderId: "work", defaultModelId: "anthropic/opus-5-5", models: [], providers: [
             .init(id: "work", name: "Work", type: "claude", enabled: true, hidden: false, models: []),
         ])
-        _ = analytics.agentSend(to: "bot", in: spaces, mode: mode, catalog: catalog, opensConversation: false, attachments: 0, steering: false)
-        analytics.agentSend(to: "bot", in: spaces, mode: mode, catalog: catalog, opensConversation: false, attachments: 0, steering: true)()
-        analytics.agentSend(to: "new", in: spaces, mode: mode, catalog: catalog, opensConversation: true, attachments: 1, steering: false)()
+        _ = analytics.agentSend(to: "bot", in: spaces, mode: mode, catalog: catalog, newWork: nil, attachments: 0, steering: false)
+        analytics.agentSend(to: "bot", in: spaces, mode: mode, catalog: catalog, newWork: nil, attachments: 0, steering: true)()
+        analytics.agentSend(to: "new", in: spaces, mode: mode, catalog: catalog, newWork: "new", attachments: 1, steering: false)()
+        analytics.receive(.newWorkMade(.task, agentId: "new", .failed(URLError(.notConnectedToInternet))))
+        analytics.receive(.newWorkMade(.task, agentId: "other", .made))
+        analytics.receive(.newWorkMade(.task, agentId: "new", .made))
+        analytics.receive(.newWorkMade(.task, agentId: "new", .made))
         let events = try await sent(analytics, http)
-        XCTAssertEqual(events.map { $0["event"]?.stringValue }, ["message_sent", "conversation_created", "message_sent"])
+        XCTAssertEqual(events.map { $0["event"]?.stringValue },
+                       ["message_sent", "message_sent", "task_created", "task_created", "task_created", "conversation_created", "task_created"])
         XCTAssertEqual(events[0]["properties"]?["target"], .string("bot"))
         XCTAssertEqual(events[0]["properties"]?["is_steering"], .bool(true))
-        XCTAssertEqual(events[1]["properties"]?["model"], .string("anthropic/opus-5-5"))
-        XCTAssertEqual(events[1]["properties"]?["model_provider_kind"], .string("claude"))
-        XCTAssertEqual(events[2]["properties"]?["source"], .string("new_session"))
-        XCTAssertEqual(events[2]["properties"]?["has_attachment"], .bool(true))
+        XCTAssertEqual(events[1]["properties"]?["source"], .string("new_session"))
+        XCTAssertEqual(events[1]["properties"]?["has_attachment"], .bool(true))
+        XCTAssertEqual(events[2]["properties"]?["result"], .string("failed"))
+        XCTAssertEqual(events[5]["properties"]?["model"], .string("anthropic/opus-5-5"))
+        XCTAssertEqual(events[5]["properties"]?["model_provider_kind"], .string("claude"))
     }
 
     /// `chat_failure_shown` reads the rows the transcript reports on

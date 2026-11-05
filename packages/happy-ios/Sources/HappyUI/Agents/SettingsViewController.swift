@@ -702,10 +702,9 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     /// with only agent connections has no account setting to turn off.
     /// Off deletes what was waiting to be sent.
     private func analyticsRow() -> SettingsRow {
-        let consent = Analytics.shared.consent
-        return SettingsRow(id: "device-analytics", title: Strings.SettingsAccount.analytics, icon: ("analytics-outline", .blue), accessory: .toggle,
-                           isOn: !consent.deviceOptOut, toggled: { [weak self] on in
-            consent.setDeviceOptOut(!on)
+        SettingsRow(id: "device-analytics", title: Strings.SettingsAccount.analytics, icon: ("analytics-outline", .blue), accessory: .toggle,
+                    isOn: !Analytics.shared.deviceOptOut, toggled: { [weak self] on in
+            Analytics.shared.setDeviceOptOut(!on)
             self?.rebuild()
         }, footer: Strings.SettingsAccount.privacyDescription)
     }

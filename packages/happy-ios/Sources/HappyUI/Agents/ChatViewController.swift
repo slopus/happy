@@ -810,6 +810,8 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     private func reportFailure(_ id: String) {
         guard !previewing, viewIfLoaded?.window != nil, UIApplication.shared.applicationState == .active,
               navigationController?.topViewController === self,
+              // A sheet over it is in front instead.
+              presentedViewController == nil, navigationController?.presentedViewController == nil,
               case .failure(let failure)? = chat.items.first(where: { $0.id == id })?.role else { return }
         Analytics.shared.failureCardShown(failure, agentId: media.agentId, in: session.snapshot)
     }
@@ -1558,7 +1560,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
         let store = session.store
         let staged = pictures
         let sent = Analytics.shared.agentSend(to: media.agentId, in: session.snapshot, mode: mode, catalog: session.models.catalog,
-                                              opensConversation: newTask != nil && chat.items.isEmpty,
+                                              newWork: chat.items.isEmpty ? newTask?.agentId : nil,
                                               attachments: picked.count + previews.count, steering: chat.working)
         #if DEBUG
         composeTrace?.event("send choice=\(String(describing: newTask?.choice))")
@@ -1720,7 +1722,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
     }
 
     private func showFileUnavailable() {
-        Analytics.shared.errorShown(.fileLoad, .unknown)
+        Analytics.shared.fileLoadFailed()
         let alert = UIAlertController(title: nil, message: Strings.fileUnavailable, preferredStyle: .alert)
         alert.addAction(UIAlertAction(title: Strings.Common.ok, style: .default))
         present(alert, animated: true)

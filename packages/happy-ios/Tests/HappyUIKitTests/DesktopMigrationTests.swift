@@ -39,9 +39,11 @@ final class DesktopMigrationTests: XCTestCase {
         XCTAssertEqual(DesktopMigrationCard.path(account, serverAgent: false, flag: true, defaults: defaults), .desktop)
         XCTAssertEqual(DesktopMigrationCard.path(account, serverAgent: true, flag: true, defaults: defaults), .agentConnection)
         let settings = LocalSettings(storage: InMemoryKeyValueStore())
-        XCTAssertFalse(MigrationNoteFlag().isOn(settings, optedOut: false))
+        let flag = MigrationNoteFlag()
+        flag.isAnswering = true
+        XCTAssertFalse(flag.isOn(settings, optedOut: false))
         settings.migrationNoteFlag = true
-        XCTAssertTrue(MigrationNoteFlag().isOn(settings, optedOut: false))
+        XCTAssertTrue(flag.isOn(settings, optedOut: false))
     }
 
     /// VoiceOver reads the card as one button that opens the screen, with

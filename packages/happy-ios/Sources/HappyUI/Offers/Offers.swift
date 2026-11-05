@@ -126,7 +126,7 @@ public final class Offers {
             controller.sheetPresentationController?.detents = [.large()]
             controller.sheetPresentationController?.preferredCornerRadius = 28
             top.present(controller, animated: true)
-            if sheet != .welcome { Analytics.shared.log(.paywallPresented(product: .pro)) }
+            if sheet != .welcome { Analytics.shared.paywallPresented() }
         }
     }
 
@@ -140,7 +140,7 @@ public final class Offers {
     func subscribe(from controller: UIViewController) async {
         if case .preview = offer { return Alerts.show(Strings.Call.upgradePreviewTitle, Strings.Call.upgradePreviewMessage, on: controller) }
         let result = await subscription.buy()
-        Analytics.shared.log(result.event)
+        Analytics.shared.purchaseEnded(result)
         guard controller.viewIfLoaded?.window != nil else { return }
         switch result {
         case .pending: Alerts.show(Strings.Offer.pendingTitle, Strings.Offer.pendingMessage, on: controller)
@@ -155,7 +155,7 @@ public final class Offers {
     func restore(from controller: UIViewController) async {
         if case .preview = offer { return Alerts.show(Strings.Call.upgradePreviewTitle, Strings.Call.upgradePreviewMessage, on: controller) }
         let result = await subscription.restore()
-        Analytics.shared.log(result.event)
+        Analytics.shared.restoreEnded(result)
         guard controller.viewIfLoaded?.window != nil else { return }
         switch result {
         case .restored: Alerts.show(Strings.Offer.restoredTitle, on: controller)

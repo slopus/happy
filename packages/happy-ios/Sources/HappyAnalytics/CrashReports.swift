@@ -1,7 +1,5 @@
-#if canImport(UIKit) && canImport(MetricKit)
+#if canImport(MetricKit) && os(iOS)
 import Foundation
-import HappyAnalytics
-import HappyCore
 import MetricKit
 
 /// `app_crashed` from MetricKit: the crashes and hangs iOS reports for this
@@ -37,6 +35,13 @@ final class CrashReports: NSObject, MXMetricManagerSubscriber, @unchecked Sendab
         Task { @MainActor in
             for event in events { Analytics.shared.log(event) }
         }
+    }
+}
+
+extension Analytics {
+    /// MetricKit's crash and hang reports, from launch.
+    public func reportCrashes() {
+        CrashReports.shared.install()
     }
 }
 #endif
