@@ -21,9 +21,7 @@
     <string name="agent_search_clear">Wyczyść</string>
     <string name="agent_search_actions">Szybkie akcje</string>
     <string name="agent_search_open_settings">Otwórz ustawienia</string>
-    <string name="agent_search_documents">Dokumenty</string>
     <string name="agent_search_todos">Zadania</string>
-    <string name="agent_search_shared">Udostępnione</string>
     <string name="agent_search_kind_todo">Lista zadań</string>
     <string name="agent_search_kind_document">Dokument</string>
     <string name="agent_search_kind_calendar">Kalendarz</string>

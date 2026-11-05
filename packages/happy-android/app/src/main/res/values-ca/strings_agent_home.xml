@@ -21,9 +21,7 @@
     <string name="agent_search_clear">Esborra</string>
     <string name="agent_search_actions">Accions ràpides</string>
     <string name="agent_search_open_settings">Obre la configuració</string>
-    <string name="agent_search_documents">Documents</string>
     <string name="agent_search_todos">Tasques</string>
-    <string name="agent_search_shared">Compartits</string>
     <string name="agent_search_kind_todo">Llista de tasques</string>
     <string name="agent_search_kind_document">Document</string>
     <string name="agent_search_kind_calendar">Calendari</string>

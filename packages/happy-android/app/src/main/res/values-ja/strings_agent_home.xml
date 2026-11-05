@@ -21,9 +21,7 @@
     <string name="agent_search_clear">クリア</string>
     <string name="agent_search_actions">クイックアクション</string>
     <string name="agent_search_open_settings">設定を開く</string>
-    <string name="agent_search_documents">ドキュメント</string>
     <string name="agent_search_todos">Todo</string>
-    <string name="agent_search_shared">共有</string>
     <string name="agent_search_kind_todo">Todoリスト</string>
     <string name="agent_search_kind_document">ドキュメント</string>
     <string name="agent_search_kind_calendar">カレンダー</string>

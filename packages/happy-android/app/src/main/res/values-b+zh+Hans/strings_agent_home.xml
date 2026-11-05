@@ -21,9 +21,7 @@
     <string name="agent_search_clear">清除</string>
     <string name="agent_search_actions">快捷操作</string>
     <string name="agent_search_open_settings">打开设置</string>
-    <string name="agent_search_documents">文档</string>
     <string name="agent_search_todos">待办</string>
-    <string name="agent_search_shared">共享</string>
     <string name="agent_search_kind_todo">待办列表</string>
     <string name="agent_search_kind_document">文档</string>
     <string name="agent_search_kind_calendar">日历</string>

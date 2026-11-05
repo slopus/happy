@@ -21,9 +21,7 @@
     <string name="agent_search_clear">Cancella</string>
     <string name="agent_search_actions">Azioni rapide</string>
     <string name="agent_search_open_settings">Apri impostazioni</string>
-    <string name="agent_search_documents">Documenti</string>
     <string name="agent_search_todos">Attività</string>
-    <string name="agent_search_shared">Condivisi</string>
     <string name="agent_search_kind_todo">Elenco attività</string>
     <string name="agent_search_kind_document">Documento</string>
     <string name="agent_search_kind_calendar">Calendario</string>

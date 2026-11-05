@@ -21,9 +21,7 @@
     <string name="agent_search_clear">清除</string>
     <string name="agent_search_actions">快速動作</string>
     <string name="agent_search_open_settings">開啟設定</string>
-    <string name="agent_search_documents">文件</string>
     <string name="agent_search_todos">待辦</string>
-    <string name="agent_search_shared">共享</string>
     <string name="agent_search_kind_todo">待辦清單</string>
     <string name="agent_search_kind_document">文件</string>
     <string name="agent_search_kind_calendar">行事曆</string>

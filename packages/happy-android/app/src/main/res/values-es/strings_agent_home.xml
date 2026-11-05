@@ -21,9 +21,7 @@
     <string name="agent_search_clear">Borrar</string>
     <string name="agent_search_actions">Acciones rápidas</string>
     <string name="agent_search_open_settings">Abrir configuración</string>
-    <string name="agent_search_documents">Documentos</string>
     <string name="agent_search_todos">Tareas</string>
-    <string name="agent_search_shared">Compartidos</string>
     <string name="agent_search_kind_todo">Lista de tareas</string>
     <string name="agent_search_kind_document">Documento</string>
     <string name="agent_search_kind_calendar">Calendario</string>

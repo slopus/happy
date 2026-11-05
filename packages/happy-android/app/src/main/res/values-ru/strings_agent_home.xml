@@ -21,9 +21,7 @@
     <string name="agent_search_clear">Очистить</string>
     <string name="agent_search_actions">Быстрые действия</string>
     <string name="agent_search_open_settings">Открыть настройки</string>
-    <string name="agent_search_documents">Документы</string>
     <string name="agent_search_todos">Задачи</string>
-    <string name="agent_search_shared">Общие</string>
     <string name="agent_search_kind_todo">Список задач</string>
     <string name="agent_search_kind_document">Документ</string>
     <string name="agent_search_kind_calendar">Календарь</string>
