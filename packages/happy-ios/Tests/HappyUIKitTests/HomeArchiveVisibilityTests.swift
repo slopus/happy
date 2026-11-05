@@ -136,20 +136,38 @@ final class HomeArchiveVisibilityTests: XCTestCase {
             var row = HomeRowMeasurerTests.session("archive-\(index)", workspace: nil)
             row.archived = true; row.faded = true; return row
         }
+        func shown(_ ordered: [SessionRow]) -> HomeListModel {
+            HomeListModel(
+                ids: [.archiveToggle, .day(0)] + ordered.map { .session($0.id) },
+                rows: [.flat(.archiveToggle(hidden: false)), .flat(.dayHeader(.today))] + ordered.map { .flat(.session($0)) },
+                avatarStyle: .gradient, avatarMonochrome: false, grouped: false, offline: nil
+            )
+        }
+        let initial = shown(sessions)
+        // Warm the controls, the card's fixed first row and one interior row.
+        // Only that interior row moves, so its card corners stay unchanged.
+        let viewportHeight = await Task.detached {
+            zip(initial.rows, initial.places).prefix(3).reduce(CGFloat(1)) { height, pair in
+                height + HomeRowDrawing.make(pair.0, width: 320, grouped: false, selected: false, place: pair.1, carded: true, environment: environment, dark: false, deferArchiveText: true).size.height
+            }
+        }.value
+        let rotating = Array(sessions.dropFirst().dropLast())
         var firstWarm: HomeUltraRow?
         for offset in [0, 10, 20, 30, 40] {
-            let ordered = Array(sessions.dropFirst(offset)) + Array(sessions.prefix(offset))
-            var shown = models().shown
-            shown.ids = [.archiveToggle, .day(0)] + ordered.map { .session($0.id) }
-            shown.rows = [.flat(.archiveToggle(hidden: false)), .flat(.dayHeader(.today))] + ordered.map { .flat(.session($0)) }
-            let pair = HomeArchiveModels(hidden: hidden, shown: shown)
+            let ordered = [sessions[0]] + Array(rotating.dropFirst(offset)) + Array(rotating.prefix(offset)) + [sessions[49]]
+            let model = shown(ordered)
+            let pair = HomeArchiveModels(hidden: hidden, shown: model)
             adapter.receiveArchiveSettings(settings(false))
-            adapter.update(.init(model: shown, width: 320, environment: environment, dark: false, selected: nil, archiveModels: pair, viewportHeight: 100))
+            adapter.update(.init(model: model, width: 320, environment: environment, dark: false, selected: nil, archiveModels: pair, viewportHeight: viewportHeight))
             await view.next()
-            XCTAssertLessThanOrEqual(adapter.archiveBitmapCacheCount, 4, "only two controls, a day header and the first archived row fit this warm viewport")
+            XCTAssertLessThanOrEqual(adapter.archiveBitmapCacheCount, 5, "only two controls, a day header and the first two archived rows fit this warm viewport")
             let rows = try XCTUnwrap(view.snapshots.last)
-            if offset == 0 { firstWarm = rows.first { $0.identity == "session:archive-0" } }
-            else if let firstWarm, let moved = rows.first(where: { $0.identity == firstWarm.identity }) {
+            if offset == 0 {
+                firstWarm = try XCTUnwrap(rows.first { $0.identity == "session:archive-1" })
+                XCTAssertNotNil(firstWarm?.archiveBitmap, "the tracked interior row starts in the warm viewport")
+            } else {
+                let firstWarm = try XCTUnwrap(firstWarm)
+                let moved = try XCTUnwrap(rows.first { $0.identity == firstWarm.identity })
                 XCTAssertNil(moved.archiveBitmap, "off-viewport cached owners release their old warm images")
                 XCTAssertTrue(moved.isEqual(to: firstWarm), "releasing a cache entry must not reconfigure a still-mounted valid bitmap")
             }
