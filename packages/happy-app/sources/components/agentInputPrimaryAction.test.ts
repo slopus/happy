@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { resolveAgentInputPrimaryAction } from './agentInputPrimaryAction';
+import { resolveAgentInputPrimaryAction, resolveFollowUpSendControl } from './agentInputPrimaryAction';
+import { resolveFollowUpDeliveries } from '@/sync/followUpBehavior';
 
 describe('resolveAgentInputPrimaryAction', () => {
     const base = {
@@ -76,5 +77,22 @@ describe('resolveAgentInputPrimaryAction', () => {
             isSendBlocked: true,
             showAbortButton: true,
         })).toBe('blocked');
+    });
+});
+
+describe('resolveFollowUpSendControl', () => {
+    it('offers the alternate gesture only when the setting leaves one', () => {
+        expect(resolveFollowUpSendControl('send', resolveFollowUpDeliveries('steer'))).toEqual({ plain: 'steer', alternate: 'queue' });
+        expect(resolveFollowUpSendControl('send', resolveFollowUpDeliveries('queue'))).toEqual({ plain: 'queue', alternate: 'steer' });
+        expect(resolveFollowUpSendControl('send', resolveFollowUpDeliveries('alwaysSteer'))).toEqual({ plain: 'steer', alternate: null });
+        expect(resolveFollowUpSendControl('send', resolveFollowUpDeliveries('alwaysQueue'))).toEqual({ plain: 'queue', alternate: null });
+    });
+
+    it('is absent while the agent is idle or its daemon ignores deliveries', () => {
+        expect(resolveFollowUpSendControl('send', undefined)).toBeNull();
+    });
+
+    it.each(['stop', 'blocked', 'voice', 'idle'] as const)('is absent when the button is not a send (%s)', (action) => {
+        expect(resolveFollowUpSendControl(action, resolveFollowUpDeliveries('steer'))).toBeNull();
     });
 });

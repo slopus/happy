@@ -33,7 +33,9 @@ import { isRunningOnMac } from '@/utils/platform';
 import { MobileGlassSurface } from './MobileGlass';
 import { AnimatedFade } from './AnimatedOverlay';
 import { BubblePressable } from './BubblePressable';
-import { resolveAgentInputPrimaryAction } from './agentInputPrimaryAction';
+import { resolveAgentInputPrimaryAction, resolveFollowUpSendControl } from './agentInputPrimaryAction';
+import type { FollowUpDeliveries, FollowUpDelivery } from '@/sync/followUpBehavior';
+import { Modal } from '@/modal';
 import { NativeSettingsMenu, type NativeSettingsMenuGroup, type NativeSettingsMenuOption } from './NativeSettingsMenu';
 import { ProviderIcon } from './ProviderIcon';
 import { PickerSheet, PickerSheetOption, PickerSheetSection } from './PickerSheet';
@@ -70,7 +72,14 @@ interface AgentInputProps {
     // hasText) — typically wrapped in startTransition / debounce by the caller.
     onChangeText?: (text: string) => void;
     sessionId?: string;
-    onSend: () => void;
+    /** `delivery` is set only for a one-off Steer/Queue from `followUpDeliveries`. */
+    onSend: (delivery?: FollowUpDelivery) => void;
+    /**
+     * What Send and its alternate gesture (long-press, or ⌘↵ / Ctrl+Enter on
+     * web) do to the running agent. Given only while it runs and its daemon
+     * honors a delivery; without it the send control is unchanged.
+     */
+    followUpDeliveries?: FollowUpDeliveries;
     sendIcon?: React.ReactNode;
     onMicPress?: () => void;
     isMicActive?: boolean;
@@ -414,6 +423,13 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         minWidth: 0,
         fontSize: 14,
         color: theme.colors.text,
+        ...Typography.default(),
+    },
+    followUpCaption: {
+        flexShrink: 0,
+        marginLeft: 8,
+        fontSize: 12,
+        color: theme.colors.textSecondary,
         ...Typography.default(),
     },
     mobileModeSeparator: {
@@ -962,6 +978,16 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         // session stays in this state so the same button can end it.
         canVoice: compactMobileComposer && !!props.onMicPress,
     });
+    const followUpControl = resolveFollowUpSendControl(primaryAction, props.followUpDeliveries);
+    const followUpName = (delivery: FollowUpDelivery) => (
+        delivery === 'steer' ? t('agentInput.followUp.steer') : t('agentInput.followUp.queue')
+    );
+    // Touch names what Send does; web adds the chord that does the other.
+    const followUpCaption = !followUpControl ? null
+        : Platform.OS !== 'web' || !followUpControl.alternate ? followUpName(followUpControl.plain)
+            : t(followUpControl.plain === 'steer' ? 'agentInput.followUp.steerHint' : 'agentInput.followUp.queueHint', {
+                chord: typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘↵' : 'Ctrl+Enter',
+            });
     const shouldShowStopButton = primaryAction === 'stop';
     const shouldShowVoiceButton = primaryAction === 'voice';
     const canSendMessage = primaryAction === 'send';
@@ -1292,7 +1318,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         sendBlockShakerRef.current?.shake();
     }, [hasText, isSendBlocked, props.isSending]);
 
-    const handleSendPress = React.useCallback(() => {
+    const handleSendPress = React.useCallback((delivery?: FollowUpDelivery) => {
         if (isSendBlocked) {
             handleBlockedSendAttempt();
             return;
@@ -1304,11 +1330,23 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         const liveHasText = (inputRef.current?.getText() ?? '').trim().length > 0;
         if (liveHasText || hasImages) {
             setStopRequested(false);
-            props.onSend();
+            props.onSend(delivery);
         } else if (!compactMobileComposer) {
             props.onMicPress?.();
         }
     }, [compactMobileComposer, handleBlockedSendAttempt, hasImages, isSendBlocked, props.isSendDisabled, props.isSending, props.onMicPress, props.onSend]);
+
+    // The touch stand-in for ⌘↵: a one-off send the other way, chosen from a
+    // sheet so a long-press never sends by accident.
+    const handleFollowUpLongPress = React.useCallback(() => {
+        if (!followUpControl?.alternate) return;
+        hapticsLight();
+        Modal.alert(t('settingsFeatures.followUpBehavior'), undefined, [
+            { text: t('agentInput.followUp.sendAsSteer'), onPress: () => handleSendPress('steer') },
+            { text: t('agentInput.followUp.sendAsQueue'), onPress: () => handleSendPress('queue') },
+            { text: t('common.cancel'), style: 'cancel' },
+        ]);
+    }, [followUpControl?.alternate, handleSendPress]);
 
     const handleMicrophonePress = React.useCallback(() => {
         if (!props.onMicPress || props.isSendDisabled) return;
@@ -1470,6 +1508,13 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             // Use pointer:coarse media query instead of ontouchstart/maxTouchPoints
             // to avoid false positives on Windows touch-screen laptops with keyboards.
             const isTouchDevice = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
+            // ⌘↵ / Ctrl+Enter sends the other way while the agent runs, as on
+            // desktop. Otherwise it falls through to the handling below.
+            if (event.key === 'Enter' && event.commandKey && followUpControl?.alternate
+                && (inputRef.current?.getText() ?? '').trim()) {
+                props.onSend(followUpControl.alternate);
+                return true;
+            }
             if (agentInputEnterToSend && event.key === 'Enter' && !event.shiftKey && !isTouchDevice) {
                 // Read live text from the textarea — `hasText` is debounced via
                 // startTransition and would lag behind a quick type-then-Enter.
@@ -1494,7 +1539,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
         }
         return false; // Key was not handled
-    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.onSend, props.onPermissionModeChange, availableModes, permissionModeKey, isSendBlocked, handleBlockedSendAttempt, props.isSendDisabled]);
+    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortPress, agentInputEnterToSend, props.onSend, props.onPermissionModeChange, availableModes, permissionModeKey, isSendBlocked, handleBlockedSendAttempt, props.isSendDisabled, followUpControl?.alternate]);
 
     const desktopActionControls = (
         <View style={styles.actionButtonsContainer}>
@@ -1624,6 +1669,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         )}
                     </View>}
 
+                    {followUpCaption && (
+                        <Text style={styles.followUpCaption} numberOfLines={1}>{followUpCaption}</Text>
+                    )}
+
                     <View
                         style={[
                             styles.sendButton,
@@ -1643,7 +1692,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 opacity: p.pressed ? 0.7 : 1,
                             })}
                             hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                            onPress={handleSendPress}
+                            onPress={() => handleSendPress()}
+                            onLongPress={followUpControl?.alternate ? handleFollowUpLongPress : undefined}
                             disabled={!desktopCanPressSendButton}
                         >
                             {props.isSending ? (
@@ -2162,6 +2212,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             <FileViewerButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
                         )}
 
+                        {followUpCaption && (
+                            <Text style={styles.followUpCaption} numberOfLines={1}>{followUpCaption}</Text>
+                        )}
+
                         <Shaker ref={shakerRef}>
                             <View
                                 style={[
@@ -2186,6 +2240,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     })}
                                     hitSlop={6}
                                     onPress={handleMobilePrimaryPress}
+                                    onLongPress={followUpControl?.alternate ? handleFollowUpLongPress : undefined}
                                     disabled={!canPressSendButton}
                                     accessibilityRole="button"
                                     accessibilityLabel={shouldShowStopButton ? 'Stop'

@@ -2,7 +2,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { useSettingMutable, useLocalSettingMutable } from '@/sync/storage';
+import { storage, useSettingMutable, useLocalSettingMutable } from '@/sync/storage';
+import {
+    FOLLOW_UP_BEHAVIORS,
+    normalizeFollowUpBehavior,
+    rigSupportsFollowUpQueueing,
+    type FollowUpBehavior,
+} from '@/sync/followUpBehavior';
 import { useRouter } from 'expo-router';
 import * as Localization from 'expo-localization';
 import { StyleSheet, useUnistyles, UnistylesRuntime } from 'react-native-unistyles';
@@ -26,6 +32,21 @@ import { AvatarBrutalist } from '@/components/AvatarBrutalist';
 import { AvatarSkia } from '@/components/AvatarSkia';
 import { AvatarGradient } from '@/components/AvatarGradient';
 import { AVATAR_STYLES, normalizeAvatarStyle, type AvatarStyle } from '@/utils/avatarStyle';
+
+// Desktop names the keys; a touch screen names the send button's gestures.
+const getFollowUpBehaviorLabel = (behavior: FollowUpBehavior): string => {
+    const touch = Platform.OS !== 'web';
+    switch (behavior) {
+        case 'queue':
+            return touch ? t('settingsFeatures.followUpBehaviorOptions.queueTouch') : t('settingsFeatures.followUpBehaviorOptions.queue');
+        case 'alwaysSteer':
+            return t('settingsFeatures.followUpBehaviorOptions.alwaysSteer');
+        case 'alwaysQueue':
+            return t('settingsFeatures.followUpBehaviorOptions.alwaysQueue');
+        default:
+            return touch ? t('settingsFeatures.followUpBehaviorOptions.steerTouch') : t('settingsFeatures.followUpBehaviorOptions.steer');
+    }
+};
 
 const getUserMessageBubbleColorLabel = (color: UserMessageBubbleColor): string => {
     switch (color) {
@@ -231,6 +252,11 @@ export default function AppearanceSettingsScreen() {
     const [commandPaletteEnabled, setCommandPaletteEnabled] = useLocalSettingMutable('commandPaletteEnabled');
     const [fileDiffsSidebar, setFileDiffsSidebar] = useSettingMutable('fileDiffsSidebar');
     const [groupToolCalls, setGroupToolCalls] = useSettingMutable('groupToolCalls');
+    const [followUpBehaviorSetting, setFollowUpBehavior] = useSettingMutable('followUpBehavior');
+    const followUpBehavior = normalizeFollowUpBehavior(followUpBehaviorSetting);
+    const anySessionSupportsQueueing = storage((state) => (
+        Object.values(state.sessions).some((session) => rigSupportsFollowUpQueueing(session.metadata))
+    ));
     const [bubbleColorDropdownOpen, setBubbleColorDropdownOpen] = React.useState(false);
     const [avatarStyleDropdownOpen, setAvatarStyleDropdownOpen] = React.useState(false);
 
@@ -434,6 +460,20 @@ export default function AppearanceSettingsScreen() {
                         />
                     }
                 />
+                {/* Hidden until a connected Happy Agent honors the choice. A
+                    tap cycles through the four values like the theme row. */}
+                {anySessionSupportsQueueing && (
+                    <Item
+                        title={t('settingsFeatures.followUpBehavior')}
+                        subtitle={getFollowUpBehaviorLabel(followUpBehavior)}
+                        icon={<Ionicons name="git-merge-outline" size={29} color="#007AFF" />}
+                        onPress={() => {
+                            const index = FOLLOW_UP_BEHAVIORS.indexOf(followUpBehavior);
+                            setFollowUpBehavior(FOLLOW_UP_BEHAVIORS[(index + 1) % FOLLOW_UP_BEHAVIORS.length]);
+                        }}
+                        showChevron={false}
+                    />
+                )}
                 {Platform.OS === 'web' && (
                     <>
                         <Item

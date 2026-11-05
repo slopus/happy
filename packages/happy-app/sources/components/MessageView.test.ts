@@ -106,6 +106,24 @@ describe('user message frame', () => {
         expect(renderer.root.findByType('LongPressCopyable')).toBe(bubble);
     });
 
+    it.each([
+        ['queue', 'message.queued'],
+        ['steer', 'message.steering'],
+    ] as const)('names a busy send’s %s delivery until acceptance', (delivery, label) => {
+        const message = { ...base, pending: true, meta: { queuedWhileBusy: true, delivery } };
+        const renderer = render(message);
+        expect(labels(renderer)).toContain(label);
+        expect(labels(renderer)).not.toContain('message.sendsAfterThisTurn');
+
+        render({ ...message, pending: false }, renderer);
+        expect(labels(renderer)).toEqual(['']);
+    });
+
+    it('keeps an idle send quiet even when it carries a delivery', () => {
+        expect(labels(render({ ...base, pending: true, meta: { queuedWhileBusy: false, delivery: 'queue' } })))
+            .toEqual(['']);
+    });
+
     it('puts the other participant’s name above their message', () => {
         const renderer = render({ ...base, author: { id: 'other', name: 'Alex', owner: false } });
         const author = renderer.root.findAllByType('Text')[0];

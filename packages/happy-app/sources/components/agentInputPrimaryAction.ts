@@ -1,3 +1,5 @@
+import type { FollowUpDeliveries, FollowUpDelivery } from '@/sync/followUpBehavior';
+
 export type AgentInputPrimaryAction = 'send' | 'stop' | 'blocked' | 'voice' | 'idle';
 
 export function resolveAgentInputPrimaryAction({
@@ -35,4 +37,21 @@ export function resolveAgentInputPrimaryAction({
         return 'voice';
     }
     return 'idle';
+}
+
+/**
+ * The Steer/Queue choice on the send control. Null while the agent is idle or
+ * the daemon ignores deliveries (no `deliveries`), and whenever the button is
+ * not a send. `alternate` is what a long-press or ⌘↵ sends; null when the
+ * setting locks both gestures to one delivery.
+ */
+export function resolveFollowUpSendControl(
+    primaryAction: AgentInputPrimaryAction,
+    deliveries: FollowUpDeliveries | undefined,
+): { plain: FollowUpDelivery; alternate: FollowUpDelivery | null } | null {
+    if (primaryAction !== 'send' || !deliveries) return null;
+    return {
+        plain: deliveries.plain,
+        alternate: deliveries.alternate === deliveries.plain ? null : deliveries.alternate,
+    };
 }

@@ -251,6 +251,15 @@ export const pl: TranslationStructure = {
         enterToSend: 'Enter aby wysłać',
         enterToSendEnabled: 'Naciśnij Enter, aby wysłać (Shift+Enter dla nowej linii)',
         enterToSendDisabled: 'Enter wstawia nową linię',
+        followUpBehavior: 'Zachowanie kolejnych wiadomości',
+        followUpBehaviorOptions: {
+            steer: 'Enter kieruje, ⌘↵ dodaje do kolejki',
+            queue: 'Enter dodaje do kolejki, ⌘↵ kieruje',
+            steerTouch: 'Wyślij kieruje, przytrzymaj, aby dodać do kolejki',
+            queueTouch: 'Wyślij dodaje do kolejki, przytrzymaj, aby kierować',
+            alwaysSteer: 'Zawsze kieruj',
+            alwaysQueue: 'Zawsze do kolejki',
+        },
         commandPalette: 'Paleta poleceń',
         commandPaletteEnabled: 'Naciśnij ⌘K, aby otworzyć',
         commandPaletteDisabled: 'Szybki dostęp do poleceń wyłączony',
@@ -473,6 +482,15 @@ export const pl: TranslationStructure = {
     },
 
     agentInput: {
+        followUp: {
+            // The Steer/Queue choice beside Send while a Happy Agent runs
+            steer: 'Kieruj',
+            queue: 'Kolejka',
+            steerHint: ({ chord }: { chord: string }) => `Kieruj · ${chord}, aby dodać do kolejki`,
+            queueHint: ({ chord }: { chord: string }) => `Kolejka · ${chord}, aby kierować`,
+            sendAsSteer: 'Wyślij jako kierowanie',
+            sendAsQueue: 'Wyślij do kolejki',
+        },
         permissionMode: {
             title: 'TRYB UPRAWNIEŃ',
             auto: 'decyduje samodzielnie, pyta w razie wątpliwości',
@@ -963,6 +981,8 @@ export const pl: TranslationStructure = {
         usageLimitUntil: ({ time }: { time: string }) => `Osiągnięto limit użycia do ${time}`,
         sentAsGoal: 'Sent as goal',
         sendsAfterThisTurn: 'Sends after this turn',
+        queued: 'W kolejce',
+        steering: 'Kierowanie',
         sending: 'Sending…',
         sendFailed: ({ reason }: { reason: string }) => `Nie wysłano: ${reason}`,
         unknownTime: 'nieznany czas',

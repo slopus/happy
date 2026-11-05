@@ -191,6 +191,7 @@ describe('settings', () => {
                 experiments: false,
                 alwaysShowContextSize: false,
                 agentInputEnterToSend: true,
+                followUpBehavior: 'steer',
                 avatarStyle: 'brutalist',
                 avatarMonochrome: false,
                 sessionListGrouping: 'flat',
