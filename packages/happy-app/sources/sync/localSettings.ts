@@ -25,6 +25,10 @@ export const LocalSettingsSchema = z.object({
     expandedProjects: z.record(z.string(), z.boolean()).describe('Projects showing all workspaces instead of the first few'),
     // Boxes ticked on the "Link your computer" checklist - keyed by step id
     linkComputerChecklist: z.record(z.string(), z.boolean()).describe('Ticked steps on the link-your-computer checklist'),
+    // Folded checkout cards on the home session list - keyed by project+workspace.
+    // Upstream reused its old `collapsedProjects` key for `expandedProjects`,
+    // which means something else, so this build keeps its own key.
+    collapsedProjects: z.record(z.string(), z.boolean()).describe('Collapsed state per checkout card'),
 });
 
 //
@@ -55,6 +59,7 @@ export const localSettingsDefaults: LocalSettings = {
     acknowledgedCliVersions: {},
     expandedProjects: {},
     linkComputerChecklist: {},
+    collapsedProjects: {},
 };
 Object.freeze(localSettingsDefaults);
 
