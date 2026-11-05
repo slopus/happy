@@ -6,7 +6,6 @@ import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { join } from 'node:path';
 import { parseSpecialCommand } from "@/parsers/specialCommands";
 import { logger } from "@/lib";
-import { PushableAsyncIterable } from "@/utils/PushableAsyncIterable";
 import { getProjectPath } from "./utils/path";
 import { awaitFileExist } from "@/modules/watcher/awaitFileExist";
 import { systemPrompt } from "./utils/systemPrompt";
@@ -16,6 +15,7 @@ import { fromRateLimitEvent, windowsFromGetUsage, type UnboundRateLimit, type Us
 import type { UsageLimitWindow } from "@/api/types";
 import { pluginsFromArgs } from './utils/pluginsFromArgs';
 import { claudeProviderAuthMessage } from './utils/providerAuth';
+import { randomUUID } from 'node:crypto';
 
 export async function claudeRemote(opts: {
 
@@ -36,7 +36,7 @@ export async function claudeRemote(opts: {
     jsRuntime?: JsRuntime,
 
     // Dynamic parameters
-    nextMessage: () => Promise<{ message: MessageParam['content'], mode: EnhancedMode } | null>,
+    nextMessage: (signal?: AbortSignal, onlySteer?: boolean) => Promise<{ message: MessageParam['content'], mode: EnhancedMode, restore?: () => void } | null>,
     onReady: (status?: 'failed') => void | Promise<void>,
     isAborted: (toolCallId: string) => boolean,
 
@@ -159,16 +159,43 @@ export async function claudeRemote(opts: {
         }
     };
 
-    // Push initial message
-    let messages = new PushableAsyncIterable<SDKUserMessage>();
-    messages.push({
-        type: 'user',
-        parent_tool_use_id: null,
-        message: {
-            role: 'user',
-            content: initial.message,
-        },
-    });
+    const pendingInputs = new Set<string>();
+    let turnActive = false;
+    const inputController = new AbortController();
+    const inputSignal = opts.signal ? AbortSignal.any([opts.signal, inputController.signal]) : inputController.signal;
+    let inputWait: AbortController | undefined;
+    let inputError: unknown;
+    const messages = (async function* (): AsyncGenerator<SDKUserMessage> {
+        try {
+            let next: Awaited<ReturnType<typeof opts.nextMessage>> = initial;
+            while (!inputSignal.aborted) {
+                if (next) {
+                    mode = next.mode;
+                    const uuid = randomUUID();
+                    pendingInputs.add(uuid);
+                    const priority = turnActive ? 'now' : 'later';
+                    turnActive = true;
+                    updateThinking(true);
+                    yield { type: 'user', uuid, parent_tool_use_id: null, message: { role: 'user', content: next.message }, priority };
+                }
+                inputWait = new AbortController();
+                const waitSignal = AbortSignal.any([inputSignal, inputWait.signal]);
+                // SDK receipts are bounded to 64 IDs. Keep fewer unacknowledged sends.
+                if (pendingInputs.size >= 32) {
+                    if (!waitSignal.aborted) await new Promise<void>(resolve => waitSignal.addEventListener('abort', () => resolve(), { once: true }));
+                    next = null;
+                    continue;
+                }
+                // Keep Queue inputs local until completion so /clear can discard them.
+                next = await opts.nextMessage(waitSignal, turnActive);
+                if (waitSignal.aborted) { next?.restore?.(); next = null; continue; }
+                if (!next) return;
+            }
+        } catch (error) {
+            inputError = error;
+            throw error;
+        }
+    })();
 
     // Start the loop
     const response = query({
@@ -263,6 +290,13 @@ export async function claudeRemote(opts: {
         logger.debug(`[claudeRemote] Starting to iterate over response`);
 
         for await (const message of response) {
+            const receipts = message as SDKMessage & {
+                user_message_uuid?: string;
+                user_message_uuids?: string[];
+            };
+            const inputIds = receipts.user_message_uuids?.length
+                ? receipts.user_message_uuids : [receipts.user_message_uuid];
+            for (const id of inputIds) if (id) pendingInputs.delete(id);
             const authMessage = claudeProviderAuthMessage(message);
             if (authMessage && !providerAuthFailed) {
                 providerAuthFailed = true;
@@ -335,7 +369,16 @@ export async function claudeRemote(opts: {
 
             // Handle result messages
             if (message.type === 'result') {
-                updateThinking(false);
+                // A result without receipts cannot safely acknowledge in-flight sends.
+                // End this query rather than replay them or leave Queue input blocked.
+                if (pendingInputs.size > 0 && !inputIds.some(Boolean)) {
+                    if (!providerAuthFailed) opts.onCompletionEvent?.('Claude did not confirm delivery of pending input. Check the conversation before retrying.');
+                    await opts.onReady('failed');
+                    return;
+                }
+                const hasPendingInput = pendingInputs.size > 0 || (message.queued_turn_count ?? 0) > 0;
+                turnActive = hasPendingInput;
+                updateThinking(hasPendingInput);
                 logger.debug('[claudeRemote] Result received');
 
                 // Fire-and-forget: unavailable for API key / Bedrock / Vertex
@@ -359,19 +402,7 @@ export async function claudeRemote(opts: {
                 }
                 providerAuthFailed = false;
 
-                // Wait for next user message without blocking the message loop.
-                // Background task messages (task_started, task_progress, task_notification)
-                // continue flowing through while we wait for user input.
-                opts.nextMessage().then((next) => {
-                    if (!next) {
-                        messages.end();
-                    } else {
-                        mode = next.mode;
-                        messages.push({ type: 'user', parent_tool_use_id: null, message: { role: 'user', content: next.message } });
-                    }
-                }).catch(() => {
-                    messages.end();
-                });
+                inputWait?.abort();
             }
 
             // Handle tool result
@@ -387,7 +418,9 @@ export async function claudeRemote(opts: {
                 }
             }
         }
+        if (inputError) throw inputError;
     } catch (e) {
+        if (inputError) throw inputError;
         if (e instanceof AbortError) {
             logger.debug(`[claudeRemote] Aborted`);
             // Ignore
@@ -395,6 +428,8 @@ export async function claudeRemote(opts: {
             throw e;
         }
     } finally {
+        inputController.abort();
+        await messages.return(undefined);
         updateThinking(false);
     }
 }

@@ -267,6 +267,13 @@ describe('SDKToLogConverter', () => {
             expect((opus as any)?.message.usage.context_window).toBe(1_000_000)
         })
 
+        it.each(['anthropic/claude-sonnet-5.5', 'claude-sonnet-5-5'])('replaces stale window data for API spelling %s', model => {
+            converter.convert(resultReporting({ 'anthropic/claude-sonnet-5.5': { contextWindow: 200_000 } }))
+            converter.convert(resultReporting({ 'anthropic/claude-sonnet-5.5[1m]': { contextWindow: 1_000_000 } }))
+            const logMessage = converter.convert(assistantWithUsage(model))
+            expect((logMessage as any)?.message.usage.context_window).toBe(1_000_000)
+        })
+
         it('should ignore unusable window values', () => {
             converter.convert(resultReporting({ 'claude-opus-4-8': { contextWindow: 0 } }))
 

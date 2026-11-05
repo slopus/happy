@@ -41,7 +41,7 @@ describe('enqueueCodexUserText', () => {
         });
 
         expect(result).toBe('queued');
-        expect(queue.push).toHaveBeenCalledWith('inspect this image', mode, attachments);
+        expect(queue.push).toHaveBeenCalledWith('inspect this image', mode, attachments, undefined);
         expect(queue.pushIsolateAndClear).not.toHaveBeenCalled();
     });
 

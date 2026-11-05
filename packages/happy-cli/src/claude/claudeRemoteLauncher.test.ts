@@ -28,6 +28,7 @@ function fixture() {
     const state: ClaudeSessionProtocolState = { currentTurnId: null };
     const envelopes: SessionEnvelope[] = [];
     const session = {
+        thinking: false,
         sessionId: 'fixture-session', path: '/fixture/project', hookSettingsPath: '/fixture/settings.json',
         queue: { size: () => 0 },
         consumeOneTimeFlags: vi.fn(),
@@ -86,7 +87,7 @@ describe('claudeRemoteLauncher provider auth', () => {
         const { session, notification, stop } = fixture();
         vi.mocked(claudeRemote)
             .mockRejectedValueOnce(new Error('Failed to authenticate: OAuth session expired and could not be refreshed\nhttps://fixture-secret@example.invalid'))
-            .mockImplementationOnce(async () => { stop(); });
+            .mockImplementationOnce(async opts => { session.thinking = true; await opts.onReady(); stop(); });
         await claudeRemoteLauncher(session as any);
         expect(session.client.closeClaudeSessionTurn).toHaveBeenCalledWith('failed');
         expect(session.client.sendSessionEvent).toHaveBeenCalledWith({ type: 'message', message: CLAUDE_LOGIN_EXPIRED_MESSAGE });

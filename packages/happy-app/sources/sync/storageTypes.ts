@@ -23,6 +23,7 @@ export type RigComposerMode = z.infer<typeof RigComposerModeSchema>;
 export type RigComposerDraft = z.infer<typeof RigComposerDraftSchema>;
 
 export const MetadataSchema = z.object({
+    supportsSteering: z.boolean().optional(),
     bot: RigBotSchema.optional(),
     models: z.array(z.object({
         code: z.string(),

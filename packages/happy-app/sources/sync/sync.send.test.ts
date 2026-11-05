@@ -275,3 +275,24 @@ describe('Happy Agent composer on send', () => {
         expect(mocks.clearDraft).not.toHaveBeenCalled();
     });
 });
+
+it('sends the chosen mode only to steering-capable sessions and queues other send sources', async () => {
+    const supported = await sessionRecord('supported', false, {
+        path: '/test', host: 'test', flavor: 'codex', supportsSteering: true,
+    });
+    const older = await sessionRecord('older');
+    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ sessions: [supported, older] }) });
+    await engine.fetchSessions();
+    mocks.state.settings = { ...settingsDefaults, agentInputSendMode: 'steer' };
+
+    await engine.sendMessage('supported', 'guide', { sendMode: 'steer', awaitDelivery: true });
+    await engine.sendMessage('supported', 'spoken', { source: 'voice', awaitDelivery: true });
+    await engine.sendMessage('older', 'legacy', { sendMode: 'steer', awaitDelivery: true });
+
+    const modes = await Promise.all(mocks.request.mock.calls.map(async ([path, request]) => {
+        const id = path.split('/')[3];
+        const record = await writer.getSessionEncryption(id)!.decryptRaw(JSON.parse(request.body).messages[0].content) as any;
+        return record.meta.sendMode;
+    }));
+    expect(modes).toEqual(['steer', 'queue', undefined]);
+});

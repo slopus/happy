@@ -30,6 +30,7 @@ export const SettingsSchema = z.object({
     experiments: z.boolean().describe('Enable current experiments: the Rig session file browser and the Usage settings page'),
     alwaysShowContextSize: z.boolean().describe('Always show context size in agent input'),
     agentInputEnterToSend: z.boolean().describe('Whether pressing Enter submits/sends in the agent input (web)'),
+    agentInputSendMode: z.enum(['queue', 'steer']).catch('queue').describe('How follow-ups are delivered while an agent is working'),
     // Kept as a free string for cross-version sync; normalized on read by
     // normalizeAvatarStyle so unknown values fall back to brutalist.
     avatarStyle: z.string().describe('Generated avatar style: brutalist, pixelated, or gradient'),
@@ -117,6 +118,7 @@ export const settingsDefaults: Settings = {
     experiments: false,
     alwaysShowContextSize: false,
     agentInputEnterToSend: true,
+    agentInputSendMode: 'queue',
     avatarStyle: 'brutalist',
     avatarMonochrome: false,
     sessionListGrouping: 'flat',
