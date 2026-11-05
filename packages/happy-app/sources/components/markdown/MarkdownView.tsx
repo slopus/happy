@@ -17,6 +17,9 @@ import { MermaidRenderer } from './MermaidRenderer';
 import { t } from '@/text';
 import { isHttpMarkdownLink } from './linkUtils';
 import { openExternalUrl } from '@/utils/openExternalUrl';
+import { isSvgImageUrl } from './svgImageSource';
+import { SvgChatImage } from './SvgChatImage';
+import { type SvgIntrinsicSize } from './svgIntrinsicSize';
 
 // Option type for callback
 export type Option = {
@@ -212,20 +215,58 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
     );
 }
 
+// Ratio used to reserve space for an SVG before its own proportions are known,
+// so the block does not start at zero height and then snap open.
+const DEFAULT_SVG_ASPECT_RATIO = 4 / 3;
+
 function RenderImageBlock(props: { url: string, alt: string, first: boolean, last: boolean }) {
     const accessibleLabel = props.alt || 'Markdown image';
+    // RN's <Image> only decodes raster formats, so an SVG (data URI or .svg)
+    // renders blank on native. Route SVG through SvgChatImage instead, which
+    // owns the platform split. Non-SVG images keep using <Image> unchanged.
+    const isSvg = React.useMemo(() => isSvgImageUrl(props.url), [props.url]);
 
     return (
         <View style={[style.imageBlock, props.first && style.first, props.last && style.last]}>
-            <Image
-                source={{ uri: props.url }}
-                style={style.image}
-                accessibilityLabel={accessibleLabel}
-                resizeMode="contain"
-            />
+            {isSvg ? (
+                // Keyed by URL so a different image never inherits the previous
+                // one's size.
+                <RenderSvgImage key={props.url} url={props.url} accessibilityLabel={accessibleLabel} />
+            ) : (
+                <Image
+                    source={{ uri: props.url }}
+                    style={style.image}
+                    accessibilityLabel={accessibleLabel}
+                    resizeMode="contain"
+                />
+            )}
             {props.alt ? (
                 <Text style={style.imageCaption}>{props.alt}</Text>
             ) : null}
+        </View>
+    );
+}
+
+function RenderSvgImage(props: { url: string, accessibilityLabel: string }) {
+    // The SVG reports its own size once its markup is in hand, and the box takes
+    // those proportions. A fixed box would letterbox every diagram the same way
+    // whatever its shape.
+    const [size, setSize] = React.useState<SvgIntrinsicSize | null>(null);
+    const sizing = React.useMemo(() => ({
+        aspectRatio: size ? size.width / size.height : DEFAULT_SVG_ASPECT_RATIO,
+        // A viewBox gives proportions in user units, which say nothing about how
+        // large the picture wants to be, so a width cap taken from one would
+        // shrink a diagram whose viewBox happens to be small.
+        maxWidth: size && !size.fromViewBox ? size.width : undefined,
+    }), [size]);
+
+    return (
+        <View style={[style.svgImage, sizing]}>
+            <SvgChatImage
+                uri={props.url}
+                accessibilityLabel={props.accessibilityLabel}
+                onIntrinsicSize={setSize}
+            />
         </View>
     );
 }
@@ -548,6 +589,17 @@ const style = StyleSheet.create((theme) => ({
         height: 240,
         borderRadius: 12,
         backgroundColor: theme.colors.surfaceHighest,
+    },
+    svgImage: {
+        // The SVG sizes itself at height="100%", so this container needs a
+        // definite height, and `aspectRatio` from the source supplies one. A
+        // fixed height squashed every diagram into the same letterbox whatever
+        // its shape.
+        width: '100%',
+        borderRadius: 12,
+        backgroundColor: theme.colors.surfaceHighest,
+        // Clip the rendered SVG to the rounded image frame.
+        overflow: 'hidden',
     },
     imageCaption: {
         ...Typography.default(),
