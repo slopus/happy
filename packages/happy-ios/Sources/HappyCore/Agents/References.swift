@@ -59,6 +59,10 @@ public struct References: Equatable, Sendable {
     public var artifacts: [String: Artifact] = [:]
     /// The artifacts read so far that want to be shown inline, by ID.
     public var pages: [String: Page] = [:]
+    /// The artifacts read so far whose latest version is an app
+    /// (`ArtifactPageMode`), by ID: that version. An app is never run in
+    /// the conversation; its card opens it full screen.
+    public var apps: [String: Int] = [:]
     /// The conversation's own subagents, by ID, as titled ("" untitled):
     /// a hidden one reads as its title, and opens nothing.
     public var subagents: [String: String] = [:]
@@ -126,6 +130,21 @@ public struct References: Equatable, Sendable {
             value.range(of: "^#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$", options: .regularExpression) != nil ? value.lowercased() : nil
         }
         return Page(version: Int(version), entry: entry, background: background)
+    }
+
+    /// An artifact object's latest page, whose start says whether it is an
+    /// app: an active HTML artifact of files (not a live URL) with an entry.
+    public static func entry(_ object: JSONValue) -> (version: Int, path: String)? {
+        guard object["status"]?.stringValue != "deleted", object["type"]?.stringValue == "html",
+              object["live"] == nil || object["live"] == .null,
+              let path = object["entry"]?["path"]?.stringValue, let version = object["latestVersion"]?.numberValue else { return nil }
+        return (Int(version), path)
+    }
+
+    /// Whether `artifact`, as a message shows it, opens as an app.
+    public func isApp(_ artifactId: String, version: Int, opensLatest: Bool) -> Bool {
+        guard let app = apps[artifactId] else { return false }
+        return opensLatest || app == version
     }
 
     /// The artifacts `text` names whose titles haven't been read.

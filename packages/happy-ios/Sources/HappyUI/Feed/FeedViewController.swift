@@ -599,6 +599,7 @@ final class FeedPeekViewController: UIViewController {
 @MainActor
 enum FeedOpening {
     static func open(_ row: FeedRow, session: Session, from controller: UIViewController) {
+        if case .artifact(let artifact) = row.target { return controller.openArtifact(artifact, session: session) }
         guard let next = screen(row, session: session) else { return }
         controller.navigationController?.pushViewController(next, animated: true)
     }

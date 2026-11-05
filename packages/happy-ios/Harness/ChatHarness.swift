@@ -57,6 +57,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
     #if DEBUG || HAPPY_FIXTURES
     private var homeRenderer: HomeRendererHarness?
     private var agent: AgentHarness?
+    private var appMode: AppModeHarness?
     private var agentList: AgentListScrollHarness?
     private var composerKeyboardProbe: ComposerKeyboardProbe?
     private var realArchive: RealArchiveHarness?
@@ -147,6 +148,10 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         }
         if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "agentFeed" {
             agentFeed = AgentFeedHarness(window: window, arguments: arguments)
+            return
+        }
+        if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "appMode" {
+            appMode = AppModeHarness(window: window, arguments: arguments)
             return
         }
         if let index = arguments.firstIndex(of: "-screen"), arguments.indices.contains(index + 1), arguments[index + 1] == "realFeed" {

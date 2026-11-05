@@ -491,20 +491,32 @@ public struct ResultCardLayout: Equatable, Sendable {
     public static let gap: CGFloat = 12
     public static let titleHeight: CGFloat = 20
     public static let detailHeight: CGFloat = 18
+    public static let buttonHeight: CGFloat = 28
+    public static let buttonPadding: CGFloat = 12
 
     public var chip: CGRect
     public var glyph: CGRect
     public var title: CGRect
     public var detail: CGRect
     public var chevron: CGRect?
+    /// A named action ("Open") in place of the chevron, and its words.
+    public var button: CGRect?
+    public var buttonLabel: CGRect?
 
-    public init(frame: CGRect, opens: Bool) {
+    /// `button`: the width of the words of an action shown in place of the chevron.
+    public init(frame: CGRect, opens: Bool, button words: CGFloat? = nil) {
         typealias C = ResultCardLayout
         chip = CGRect(x: frame.minX + C.padding, y: frame.minY + (frame.height - C.chip) / 2, width: C.chip, height: C.chip)
         glyph = CGRect(x: chip.midX - C.glyph / 2, y: chip.midY - C.glyph / 2, width: C.glyph, height: C.glyph)
         let textX = chip.maxX + C.gap
         var right = frame.maxX - C.padding
-        if opens {
+        if let words {
+            let width = words.rounded(.up) + C.buttonPadding * 2
+            let box = CGRect(x: right - width, y: frame.minY + (frame.height - C.buttonHeight) / 2, width: width, height: C.buttonHeight)
+            button = box
+            buttonLabel = box.insetBy(dx: C.buttonPadding, dy: 0)
+            right -= width + C.gap
+        } else if opens {
             chevron = CGRect(x: right - C.chevron, y: frame.minY + (frame.height - C.chevron) / 2, width: C.chevron, height: C.chevron)
             right -= C.chevron + C.gap
         }

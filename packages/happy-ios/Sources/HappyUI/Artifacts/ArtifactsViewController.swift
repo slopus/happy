@@ -196,7 +196,7 @@ final class ArtifactsViewController: UIViewController, UISearchResultsUpdating {
 
     private func open(_ id: String) {
         guard let artifact = artifacts[id] else { return }
-        navigationController?.pushViewController(ArtifactViewController(session: session, artifact: artifact.artifact), animated: true)
+        openArtifact(artifact.artifact, session: session)
     }
 
     private func menu(_ id: String) -> UIMenu? {

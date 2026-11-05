@@ -1114,9 +1114,10 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             let store = session.store
             Task { await store.readArtifacts(unread) }
         }
-        // An HTML artifact a call shows is read for whether it wants to be inline.
+        // An HTML artifact a call shows is read for whether it wants to be
+        // inline, or is an app, whose card opens it full screen.
         let pages = items.flatMap(\.pieces).compactMap { piece -> String? in
-            guard case .artifact(let artifact) = piece, artifact.type == "html", artifact.followsLatest, references.artifacts[artifact.id] == nil else { return nil }
+            guard case .artifact(let artifact) = piece, artifact.type == "html", references.artifacts[artifact.id] == nil else { return nil }
             return artifact.id
         }
         if !pages.isEmpty {
@@ -1733,7 +1734,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             }
             var artifact = Artifact(id: reference.id, version: reference.version ?? known.latest, type: known.type, title: known.title, followsLatest: reference.version == nil)
             artifact.pinned = reference.version != nil
-            navigationController?.pushViewController(ArtifactViewController(session: session, artifact: artifact), animated: true)
+            openArtifact(artifact, session: session)
             return
         }
         guard let entity = references.entity(reference) else { return }
@@ -1794,7 +1795,7 @@ final class ChatViewController: UIViewController, ComposeHosting, KeyboardPushed
             // Here already: the ring is gone, so the tap opens it.
             if media.isDownloaded(key) { open(key) } else { media.toggleDownload(key) }
         case .openArtifact(let artifact):
-            navigationController?.pushViewController(ArtifactViewController(session: session, artifact: artifact), animated: true)
+            openArtifact(artifact, session: session)
         case .toggleTool(let messageId):
             toggle(messageId)
         case .openMessage(let itemId):
