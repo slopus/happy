@@ -48,14 +48,14 @@ final class PairingEmojiLabel: UILabel {
 enum PairingFlow {
     @discardableResult
     /// `start`: how the link came, for the pairing's events.
-    static func openIfAgentPairing(_ text: String, context: AppContext, on controller: UIViewController, start: PairingStart = .openedLink) -> Bool {
+    static func openIfAgentPairing(_ text: String, context: AppContext, on controller: UIViewController, start: AnalyticsEvent.PairingStart = .openedLink) -> Bool {
         guard PairingLink.isAgentConnection(text) else { return false }
         do {
             let link = try PairingLink(text)
             let pairing = AgentPairingViewController(context: context, link: link, start: start)
             controller.navigationController?.pushViewController(pairing, animated: true)
         } catch {
-            PairingAnalytics.shared.log(.failed(method: .agentConnection, start: start))
+            Analytics.shared.log(.pairingResult(method: .direct, start: start, result: .failed, errorCode: .init(error)))
             Alerts.show("Could not pair", error.localizedDescription, on: controller)
         }
         return true
@@ -73,11 +73,11 @@ final class AgentPairingViewController: UIViewController {
     private var expiry: Task<Void, Never>?
     private var ready = false
     private var finished = false
-    private let start: PairingStart
+    private let start: AnalyticsEvent.PairingStart
     /// Its ending, once logged.
     private var reported = false
 
-    init(context: AppContext, link: PairingLink, start: PairingStart = .openedLink) {
+    init(context: AppContext, link: PairingLink, start: AnalyticsEvent.PairingStart = .openedLink) {
         self.context = context; self.link = link; self.start = start; service = PairingService(link: link)
         super.init(nibName: nil, bundle: nil)
         followsTextSize()
@@ -133,20 +133,20 @@ final class AgentPairingViewController: UIViewController {
             screen.primary.title = "Loading computer…"
             try await context.account.addAgentConnection(credentials, name: link.name)
             finished = true
-            report(.completed(method: .agentConnection, start: start))
+            report(.ok)
         } catch {
             finished = false
             fail(error)
         }
     }
-    private func report(_ event: PairingEvent) {
+    private func report(_ result: AnalyticsEvent.FlowResult, _ error: AnalyticsEvent.PairingErrorCode? = nil) {
         guard !reported else { return }
         reported = true
-        PairingAnalytics.shared.log(event)
+        Analytics.shared.log(.pairingResult(method: .direct, start: start, result: result, errorCode: error))
     }
     private func fail(_ error: Error) {
         guard !finished else { return }
-        report(.failed(method: .agentConnection, start: start))
+        report(.failed, .init(error))
         finished = true; job?.cancel(); expiry?.cancel()
         let service = service; Task { await service.cancel() }
         screen.primary.isLoading = false; screen.primary.isEnabled = false; screen.primary.title = "Pairing ended"
@@ -155,7 +155,8 @@ final class AgentPairingViewController: UIViewController {
         view.setNeedsLayout()
     }
     private func cancel() {
-        if !finished { report(.cancelled(method: .agentConnection, start: start)) }
+        // "They don't match" once the emoji are up.
+        if !finished { ready ? report(.failed, .emojiMismatch) : report(.cancelled) }
         job?.cancel(); expiry?.cancel(); finished = true
         let service = service; Task { await service.cancel() }
         navigationController?.popViewController(animated: true)
@@ -165,7 +166,7 @@ final class AgentPairingViewController: UIViewController {
         super.viewDidDisappear(animated)
         if isMovingFromParent || navigationController == nil || navigationController?.isBeingDismissed == true {
             // Left before it ended: back, or the sheet swiped away.
-            if !finished { report(.cancelled(method: .agentConnection, start: start)) }
+            if !finished { report(.cancelled) }
             job?.cancel(); expiry?.cancel()
             let service = service; Task { await service.cancel() }
         }

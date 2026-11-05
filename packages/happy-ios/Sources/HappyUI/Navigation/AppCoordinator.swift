@@ -61,7 +61,6 @@ public final class AppCoordinator {
         // opens; with none, a paired computer rather than Welcome.
         let v2 = Preference(variant: context.variant)
         context.account.fallsBackToAgentConnection = true
-        PairingAnalytics.shared.variant = context.variant
         Task { @MainActor [weak self] in
             guard let account = self?.context.account else { return }
             // The Happy account's filter showed a computer's V2: that

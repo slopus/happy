@@ -23,7 +23,7 @@ enum Scan {
         }
     }
 
-    static func open(_ text: String, context: AppContext, on controller: UIViewController, start: PairingStart) {
+    static func open(_ text: String, context: AppContext, on controller: UIViewController, start: AnalyticsEvent.PairingStart) {
         Task { @MainActor in
             await HappyScan.open(text, intent: .connect, context: context, on: controller, start: start)
         }
