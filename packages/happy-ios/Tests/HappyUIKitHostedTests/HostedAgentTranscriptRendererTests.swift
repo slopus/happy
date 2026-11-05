@@ -128,7 +128,7 @@ final class HostedAgentTranscriptRendererTests: XCTestCase {
         XCTAssertTrue(chat.sendFlies)
     }
 
-    func testAnAppendIsFollowedByTwoLinesAtMost() async throws {
+    func testAFinishedRowAppendedAtTheFootComesIntoViewWhole() async throws {
         let (_, session) = try await self.session()
         let chat = self.chat(session)
         let scene = try await hostedActiveScene()
@@ -148,12 +148,10 @@ final class HostedAgentTranscriptRendererTests: XCTestCase {
         transcript.apply(plans + [ChatRowPlan(id: "sent", size: CGSize(width: chat.view.bounds.width, height: 60), items: [])])
         try await until { (transcript.list.newestLoadedView as? AgentChatRowView)?.row.plan.id == "sent" }
         let sent = try XCTUnwrap(transcript.list.newestLoadedView)
-        // A row arriving at the foot is followed as growth is, by two
-        // lines at most; the rest of it waits below the fold.
-        let budget = ChatFollow.budget(body: ChatTextStyles.text, scale: chat.traitCollection.textEnvironment?.scale ?? .standard)
-        XCTAssertEqual(sent.convert(sent.bounds, to: chat.view).maxY, input.frame.minY - ChatScreenLayout.Metrics.listGap + 60 - budget, accuracy: 1)
-        XCTAssertEqual(old.convert(old.bounds, to: chat.view).minY, oldY - budget, accuracy: 1,
-                       "the previous newest moves only by the budget")
+        // A finished row arriving at the foot comes into view whole.
+        XCTAssertEqual(sent.convert(sent.bounds, to: chat.view).maxY, input.frame.minY - ChatScreenLayout.Metrics.listGap, accuracy: 1)
+        XCTAssertEqual(old.convert(old.bounds, to: chat.view).minY, oldY - 60, accuracy: 1,
+                       "the previous newest moves only by the appended row's height")
     }
 
     private func until(_ condition: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async throws {

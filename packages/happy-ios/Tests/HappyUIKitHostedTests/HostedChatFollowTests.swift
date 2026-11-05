@@ -7,10 +7,12 @@ import UltraView
 import XCTest
 
 /// The chat list stands the natural way up and keeps the reader's place:
-/// the newest message rests on the composer; while it grows there the list
-/// follows by two lines of text and then stops; a reader further back never
-/// sees what they are looking at move, whatever grows, arrives or goes
-/// around it; a send of the person's own always comes fully into view.
+/// the newest message rests on the composer; a reply streaming there is
+/// followed by two lines of text from its first words and then the list
+/// holds still until the reader is back at the foot; a finished message
+/// arriving there comes into view whole; a reader further back never sees
+/// what they are looking at move, whatever grows, arrives or goes around
+/// it; a send of the person's own always comes fully into view.
 ///
 /// Plans here are plain boxes of known heights, so every distance is exact.
 @MainActor
@@ -26,6 +28,8 @@ final class HostedChatFollowTests: XCTestCase {
         /// Newest first, as the rows are derived.
         var plans: [ChatRowPlan] = []
         var pinning: String?
+        /// The agent is at work: a newest row of its words streams.
+        var streaming = false
         var width: CGFloat { root.bounds.width }
         var visibleHeight: CGFloat { root.bounds.height - insets.top - insets.bottom }
 
@@ -39,17 +43,18 @@ final class HostedChatFollowTests: XCTestCase {
             plans = heights.enumerated().map { plan("m\($0.offset)", height: $0.element) }
         }
 
-        func plan(_ id: String, height: CGFloat) -> ChatRowPlan {
+        /// `words`: an agent's words, which stream while it is at work.
+        func plan(_ id: String, height: CGFloat, words: Bool = false) -> ChatRowPlan {
             ChatRowPlan(id: id, size: .init(width: width, height: height), items: [
                 .box(ChatBox(frame: .init(x: 0, y: 0, width: width, height: height), fill: Palette.surface)),
-            ])
+            ], revealable: words)
         }
 
         func update() -> ChatListUpdate {
             let footer = plan("footer", height: 10)
             return ChatListUpdate(ids: plans.map(\.id), plans: plans,
                                   model: ChatListLayout(width: width, heights: plans.map(\.size.height), newerEndHeight: 10, olderEndHeight: ChatOlderEndLayout.height),
-                                  footer: footer, changeset: .init(), pinning: pinning)
+                                  footer: footer, changeset: .init(), pinning: pinning, streaming: streaming)
         }
 
         func apply(animated: Bool = false) {
@@ -59,7 +64,7 @@ final class HostedChatFollowTests: XCTestCase {
 
         func setHeight(_ id: String, _ height: CGFloat) {
             let index = plans.firstIndex { $0.id == id }!
-            plans[index] = plan(id, height: height)
+            plans[index] = plan(id, height: height, words: plans[index].revealable)
         }
 
         func setInsets(_ insets: UIEdgeInsets, keyboard: ChatUltraKeyboard.Change? = nil) {
@@ -264,6 +269,166 @@ final class HostedChatFollowTests: XCTestCase {
             XCTAssertLessThanOrEqual(next, previous + 0.5, "the row went back down")
         }
         XCTAssertGreaterThanOrEqual(samples.min() ?? 0, start - 50 - 0.5, "the row rose past the budget")
+    }
+
+    // MARK: Streaming and finished messages
+
+    /// A reply's first words count against the two lines as its growth
+    /// does: a new streaming row is followed, with what grows after it, by
+    /// the budget in all.
+    func testANewStreamingReplyIsFollowedByTwoLinesFromItsFirstWords() async throws {
+        let chat = try await chat(forty)
+        chat.streaming = true
+        chat.plans.insert(chat.plan("r", height: 30, words: true), at: 0)
+        chat.apply(animated: true)
+        try await settle(chat)
+        XCTAssertEqual(chat.adapter.visibleMinY, 0, accuracy: 0.5, "its first line is followed")
+        XCTAssertEqual(try XCTUnwrap(chat.frame("r")).maxY, chat.restingFoot, accuracy: 0.5)
+        let top = try XCTUnwrap(chat.frame("m0")).minY
+        chat.setHeight("r", 130)
+        chat.apply(animated: true)
+        try await settle(chat)
+        // 30 on arriving and 20 of the 100 it grew make the 50.
+        XCTAssertEqual(try XCTUnwrap(chat.frame("m0")).minY, top - 20, accuracy: 0.5)
+        XCTAssertEqual(chat.adapter.visibleMinY, 80, accuracy: 0.5)
+        XCTAssertFalse(chat.adapter.isFollowingNewest)
+    }
+
+    /// A tall first chunk of a streaming reply is followed by the budget
+    /// only, not shown whole.
+    func testATallFirstChunkOfAStreamingReplyRisesOnlyByTheBudget() async throws {
+        let chat = try await chat(forty)
+        let top = try XCTUnwrap(chat.frame("m0")).minY
+        chat.streaming = true
+        chat.plans.insert(chat.plan("r", height: 300, words: true), at: 0)
+        chat.apply(animated: true)
+        try await settle(chat)
+        XCTAssertEqual(try XCTUnwrap(chat.frame("m0")).minY, top - 50, accuracy: 0.5)
+        XCTAssertEqual(chat.adapter.visibleMinY, 250, accuracy: 0.5)
+    }
+
+    /// A message that arrives finished at the foot is brought into view
+    /// whole, as any chat does, and the list stays on the foot.
+    func testAFinishedMessageArrivingAtTheFootComesIntoViewWhole() async throws {
+        let chat = try await chat(forty)
+        for (index, height) in [CGFloat(300), 120, 260].enumerated() {
+            chat.plans.insert(chat.plan("n\(index)", height: height), at: 0)
+            chat.apply(animated: true)
+            try await settle(chat)
+            XCTAssertEqual(chat.adapter.visibleMinY, 0, accuracy: 0.5, "message \(index) whole")
+            XCTAssertEqual(try XCTUnwrap(chat.frame("n\(index)")).maxY, chat.restingFoot, accuracy: 0.5)
+            XCTAssertTrue(chat.adapter.isFollowingNewest)
+        }
+        // So is an agent's message that comes when it is at rest.
+        chat.plans.insert(chat.plan("done", height: 240, words: true), at: 0)
+        chat.apply(animated: true)
+        try await settle(chat)
+        XCTAssertEqual(chat.adapter.visibleMinY, 0, accuracy: 0.5, "an agent's finished words whole")
+    }
+
+    /// Taller than the screen, a finished message shows its top under the
+    /// bar, and the list holds there.
+    func testAFinishedMessageTallerThanTheScreenShowsItsTop() async throws {
+        let chat = try await chat(forty)
+        chat.plans.insert(chat.plan("long", height: 2000), at: 0)
+        chat.apply(animated: true)
+        try await settle(chat)
+        XCTAssertEqual(try XCTUnwrap(chat.frame("long")).minY, chat.insets.top, accuracy: 0.5)
+        XCTAssertFalse(chat.adapter.isFollowingNewest)
+        let before = chat.onScreen()
+        chat.setHeight("long", 2100)
+        chat.apply()
+        try await settle(chat)
+        assertSame(before, chat.onScreen(), "it grew below the fold")
+    }
+
+    /// A finished message arriving while the reader is up in history
+    /// moves nothing.
+    func testAFinishedMessageArrivingAwayFromTheFootMovesNothing() async throws {
+        let chat = try await chat(forty)
+        try await scroll(chat, to: 400)
+        let before = chat.onScreen()
+        chat.plans.insert(chat.plan("n", height: 300), at: 0)
+        chat.apply(animated: true)
+        try await settle(chat)
+        assertSame(before, chat.onScreen(), "a finished message below")
+        XCTAssertEqual(chat.adapter.visibleMinY, 700, accuracy: 0.5)
+    }
+
+    /// Follow, stop, back at the foot, follow two lines, stop, three times
+    /// over, the foot reached by scrolling there, by a drag and by the
+    /// button. Once stopped, growth moves nothing at all, token by token;
+    /// near the foot without reaching it is not the foot.
+    func testEachReturnToTheFootFollowsTwoLinesAgainAndOnlyThen() async throws {
+        let chat = try await chat(forty)
+        chat.streaming = true
+        var height: CGFloat = 100
+        chat.plans[0] = chat.plan("m0", height: height, words: true)
+        func stream(_ points: CGFloat, by step: CGFloat = 5) async throws {
+            var left = points
+            while left > 0 {
+                height += min(step, left); left -= step
+                chat.setHeight("m0", height)
+                chat.apply(animated: true)
+                try await Task.sleep(for: .milliseconds(4))
+            }
+            try await settle(chat)
+        }
+        func reachTheFoot(_ how: Int) async throws {
+            switch how {
+            case 0:
+                try await scroll(chat, to: 0)
+            case 1:
+                // A drag up past the foot, let go there: it springs back
+                // and rests on it.
+                let time = CACurrentMediaTime()
+                let distance = chat.adapter.visibleMinY
+                chat.list.receiveScrollInput(.init(time: time, phase: .touchDown))
+                chat.list.receiveScrollInput(.init(time: time + 0.01, phase: .began))
+                chat.list.receiveScrollInput(.init(time: time + 0.05, phase: .changed, translation: .init(y: -(distance + 40))))
+                chat.list.receiveScrollInput(.init(time: time + 0.3, phase: .ended, translation: .init(y: -(distance + 40)), velocity: .zero))
+                let rest = ContinuousClock.now + .seconds(3)
+                while chat.list.isDecelerating || chat.list.isScrollFlightActive || chat.adapter.visibleMinY > 0.5, ContinuousClock.now < rest {
+                    try await Task.sleep(for: .milliseconds(10))
+                }
+                try await settle(chat)
+            default:
+                chat.adapter.scrollToNewest(animated: false)
+                try await settle(chat)
+            }
+            XCTAssertEqual(chat.adapter.visibleMinY, 0, accuracy: 0.5, "way \(how) reached the foot")
+            XCTAssertTrue(chat.adapter.isFollowingNewest, "way \(how) followed again")
+        }
+        for cycle in 0..<3 {
+            let top = try XCTUnwrap(chat.frame("m1")).minY
+            try await stream(120)
+            XCTAssertEqual(try XCTUnwrap(chat.frame("m1")).minY, top - 50, accuracy: 0.5, "cycle \(cycle): two lines followed")
+            XCTAssertFalse(chat.adapter.isFollowingNewest, "cycle \(cycle): stopped")
+            // Held: token after token moves nothing on screen, once the
+            // follow's own animation has landed.
+            try await Task.sleep(for: .milliseconds(400))
+            let held = chat.onScreen()
+            var samples: [CGFloat] = []
+            for _ in 0..<20 {
+                height += 5
+                chat.setHeight("m0", height)
+                chat.apply(animated: true)
+                try await Task.sleep(for: .milliseconds(8))
+                if let frame = chat.presented("m1") { samples.append(frame.minY) }
+            }
+            try await settle(chat)
+            assertSame(held, chat.onScreen(), "cycle \(cycle): held")
+            XCTAssertLessThanOrEqual((samples.max() ?? 0) - (samples.min() ?? 0), 0.5, "cycle \(cycle): drawn, it crept: \(samples)")
+            // Near the foot is not on it.
+            if cycle == 0 {
+                try await scroll(chat, to: 10)
+                let near = chat.onScreen()
+                try await stream(60)
+                assertSame(near, chat.onScreen(), "10 from the foot")
+                XCTAssertEqual(chat.adapter.visibleMinY, 70, accuracy: 0.5)
+            }
+            try await reachTheFoot(cycle)
+        }
     }
 
     // MARK: Away from the newest
@@ -547,6 +712,32 @@ final class HostedChatFollowTests: XCTestCase {
         transcript.apply(plans)
         try await wait()
         XCTAssertEqual(try XCTUnwrap(transcript.list.settledFrame(at: index)).minY, before, accuracy: 0.5)
+
+        // Back at the foot: a finished row (a tool's, here) comes in whole;
+        // the agent's words starting to stream under it are followed by
+        // two lines from their first, then held.
+        transcript.scrollToNewest(animated: false)
+        try await wait({ abs(transcript.distanceFromNewest) < 0.5 })
+        plans.append(plan("tool", 260))
+        transcript.apply(plans, streaming: true)
+        try await wait({ (transcript.list.newestLoadedView as? AgentChatRowView)?.row.identity == "chat:row:tool" })
+        XCTAssertEqual(transcript.distanceFromNewest, 0, accuracy: 0.5, "a finished row whole")
+        let foot = root.view.bounds.height - 80
+        let tool = try XCTUnwrap(transcript.list.newestLoadedView)
+        XCTAssertEqual(tool.convert(tool.bounds, to: transcript).maxY, foot, accuracy: 0.5)
+        func words(_ height: CGFloat) -> ChatRowPlan {
+            ChatRowPlan(id: "words", size: .init(width: width, height: height), items: [], revealable: true)
+        }
+        plans.append(words(30))
+        transcript.apply(plans, streaming: true)
+        try await wait()
+        XCTAssertEqual(transcript.distanceFromNewest, 0, accuracy: 0.5, "its first line followed")
+        let toolTop = tool.convert(tool.bounds, to: transcript).minY
+        plans[plans.count - 1] = words(200)
+        transcript.apply(plans, streaming: true)
+        try await wait()
+        XCTAssertEqual(tool.convert(tool.bounds, to: transcript).minY, toolTop - 18, accuracy: 0.5, "30 and 18 make the 48")
+        XCTAssertEqual(transcript.distanceFromNewest, 200 - 48, accuracy: 0.5)
     }
 }
 #endif

@@ -30,10 +30,12 @@ protocol AgentChatTranscriptHost: AnyObject {
 /// at the foot, resting on the composer (`bottomGravity`). The screen
 /// plans them oldest first and hands them over that way.
 ///
-/// The list keeps the reader's place itself. At the newest row it follows
-/// what grows there by `followBudget`, two lines of text, and then stops
-/// (`ChatFollow`); a send of the person's own is always brought fully into
-/// view (`revealNextSend`).
+/// The list keeps the reader's place itself. At the newest row a reply
+/// still streaming is followed by `followBudget`, two lines of text, from
+/// its first words on, and then the list holds still until the reader is
+/// back at the foot (`ChatFollow`). A finished row arriving there comes
+/// into view whole, and a send of the person's own always does
+/// (`revealNextSend`).
 @MainActor
 final class AgentChatUltraList: UIView {
     let list = UltraListView(engineMode: .keyframe)
@@ -75,6 +77,9 @@ final class AgentChatUltraList: UIView {
             list.bottomGravity = ListBottomGravity(followBudget: Double(followBudget))
         }
     }
+    /// The agent is at work and its newest row is its words, still
+    /// arriving: followed as growth, within the budget.
+    private var streams = false
     /// A preview's: the newest row, taller than the room it has, shows
     /// from its start rather than its end.
     var showsNewestFromItsStart = false
@@ -234,6 +239,7 @@ final class AgentChatUltraList: UIView {
     func apply(_ plans: [ChatRowPlan], intro: (view: UIView, height: CGFloat)? = nil, animated: Bool = false, moves: Bool = false, streaming: Bool = false, queued: Int = 0) {
         if isActive { startReveals(plans.dropLast(queued), streaming: streaming) }
         latest = (plans, intro)
+        streams = streaming && plans.last?.revealable == true
         submit(plans, intro: intro, transition: (animated || moves) && !UIAccessibility.isReduceMotionEnabled ? .easeInOut(0.2) : .none, followOnly: !moves)
     }
 
@@ -268,6 +274,7 @@ final class AgentChatUltraList: UIView {
         var grew = false
         items.reserveCapacity(plans.count + 1)
         var landing: (identity: String, plan: ChatRowPlan)?
+        let streamingIdentity = plans.last.map { "chat:row:\($0.id)" }
         // Worked out newest first, from the foot, then turned the natural
         // way up.
         for plan in plans.reversed() {
@@ -288,7 +295,8 @@ final class AgentChatUltraList: UIView {
             } else {
                 // A revision is never reused, even where an identity comes back.
                 revision &+= 1
-                row = AgentChatRow(identity: identity, revision: revision, plan: plan, height: height, transcript: self)
+                row = AgentChatRow(identity: identity, revision: revision, plan: plan, height: height, transcript: self,
+                                   isStreaming: streams && identity == streamingIdentity)
             }
             next[identity] = row
             places[identity] = start
@@ -536,9 +544,14 @@ final class AgentChatRow: ListRow {
     let plan: ChatRowPlan
     /// The plan's height, or less while its words are coming out.
     let height: CGFloat
+    /// The agent's words still arriving. Arriving at the foot they are
+    /// followed as growth, by the budget; a finished row comes into view
+    /// whole.
+    let isStreaming: Bool
     weak var transcript: AgentChatUltraList?
 
-    init(identity: String, revision: UInt64, plan: ChatRowPlan, height: CGFloat? = nil, transcript: AgentChatUltraList) {
+    init(identity: String, revision: UInt64, plan: ChatRowPlan, height: CGFloat? = nil, transcript: AgentChatUltraList, isStreaming: Bool = false) {
+        self.isStreaming = isStreaming
         self.identity = identity
         self.revision = revision
         self.plan = plan

@@ -85,13 +85,18 @@ final class ChatUltraRow: ListRow {
     /// width change that lays the rows on screen out again before the
     /// pipeline plans them there.
     let replan: (@Sendable (CGFloat) -> ChatRowPlan)?
+    /// An agent's reply whose words are still arriving. Arriving at the
+    /// foot it is followed as growth, by the budget; a finished message
+    /// comes into view whole.
+    let isStreaming: Bool
     private let replanned = ReplannedAtWidth<ChatRowPlan>()
     weak var adapter: ChatUltraListAdapter?
     var measuresAsynchronously: Bool { !reveals }
 
     init(identity: String, revision: UInt64, plan: ChatRowPlan, contentY: CGFloat, adapter: ChatUltraListAdapter, preparedNode: NodeRow? = nil, reveals: Bool = false, height: CGFloat? = nil,
-         plannedWidth: CGFloat? = nil, replan: (@Sendable (CGFloat) -> ChatRowPlan)? = nil) {
+         plannedWidth: CGFloat? = nil, replan: (@Sendable (CGFloat) -> ChatRowPlan)? = nil, isStreaming: Bool = false) {
         self.identity = identity; self.revision = revision; self.plan = plan; self.contentY = contentY; self.adapter = adapter
+        self.isStreaming = isStreaming
         self.reveals = reveals
         self.height = height ?? plan.size.height
         self.plannedWidth = plannedWidth ?? plan.size.width
@@ -346,10 +351,11 @@ private final class ChatOlderUltraView: ListRowView {
 ///
 /// The list keeps the reader's place itself: away from the newest message,
 /// the row under the finger, or else the top row on screen, stays where it
-/// is through every update. At the newest message it follows what grows
-/// there by `followBudget` and then stops, leaving the rest below the fold
-/// until the reader scrolls. A send of the person's own is always brought
-/// fully into view (`revealNextSend`).
+/// is through every update. At the newest message a reply still streaming
+/// is followed by `followBudget` from its first words on, and then the list
+/// holds still, leaving the rest below the fold until the reader is back at
+/// the foot. A finished message arriving there comes into view whole, and a
+/// send of the person's own always does (`revealNextSend`).
 @MainActor
 final class ChatUltraListAdapter {
     let list = UltraListView(engineMode: .keyframe)
@@ -545,19 +551,22 @@ final class ChatUltraListAdapter {
                 if revealing != nil { grew = true } else { moved = true }
             }
             if let cached = rows[identity], cached.plan === plan, cached.reveals == reveals, cached.height == height {
-                let row = cached.contentY == y ? cached : ChatUltraRow(identity: identity, revision: cached.revision, plan: plan, contentY: y, adapter: self, preparedNode: cached.node, reveals: reveals, height: height, plannedWidth: cached.plannedWidth, replan: cached.replan)
+                let row = cached.contentY == y ? cached : ChatUltraRow(identity: identity, revision: cached.revision, plan: plan, contentY: y, adapter: self, preparedNode: cached.node, reveals: reveals, height: height, plannedWidth: cached.plannedWidth, replan: cached.replan, isStreaming: cached.isStreaming)
                 next[identity] = row; return row
             }
             // The revision is never reused, even after removing an identity.
             revision &+= 1
             let replan = replan ?? input.map { input -> @Sendable (CGFloat) -> ChatRowPlan in { ChatRowRenderer.plan(input, width: $0) } }
-            let row = ChatUltraRow(identity: identity, revision: revision, plan: plan, contentY: y, adapter: self, reveals: reveals, height: height, plannedWidth: plannedWidth, replan: replan)
+            let row = ChatUltraRow(identity: identity, revision: revision, plan: plan, contentY: y, adapter: self, reveals: reveals, height: height, plannedWidth: plannedWidth, replan: replan,
+                                   isStreaming: identity == streamingIdentity)
             next[identity] = row
             return row
         }
         // Worked out newest first, as the plans come, then turned the
         // natural way up: the older end, the oldest row … the newest, the
         // footer.
+        // The agent at work and its newest message its words: they stream.
+        let streamingIdentity = update.streaming ? update.plans.first.flatMap { $0.revealable ? "chat:message:\($0.id)" : nil } : nil
         var newestFirst: [any ListRow] = []
         newestFirst.reserveCapacity(update.plans.count + 2)
         if let footer = update.footer { newestFirst.append(descriptor(footer, identity: "chat:newer-end", y: 0, replan: update.footerReplan)) }
