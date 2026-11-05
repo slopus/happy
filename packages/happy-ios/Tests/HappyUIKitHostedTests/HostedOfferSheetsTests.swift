@@ -80,9 +80,9 @@ final class HostedOfferSheetsTests: XCTestCase {
         return (root, window)
     }
 
-    private func subview<T: UIView>(_ type: T.Type, in view: UIView) -> T? {
-        if let view = view as? T { return view }
-        for child in view.subviews { if let found = subview(type, in: child) { return found } }
+    private func subview<T: UIView>(_ type: T.Type, in view: UIView, where match: (T) -> Bool = { _ in true }) -> T? {
+        if let view = view as? T, match(view) { return view }
+        for child in view.subviews { if let found = subview(type, in: child, where: match) { return found } }
         return nil
     }
 
@@ -201,10 +201,13 @@ final class HostedOfferSheetsTests: XCTestCase {
         XCTAssertNotNil(offers.month())
         try await closed(top)
 
-        // Support Happy still opens, and thanks them; they can manage it.
+        // Support Happy still opens, says what they pay and thanks them;
+        // they can manage it, with nothing to restore.
         let support = try await pushSupport(offers, over: top)
         XCTAssertNil(support.subscribe)
-        XCTAssertEqual(support.restore?.isEnabled, false)
+        XCTAssertNil(support.restore)
+        XCTAssertEqual(support.heading?.string, "You’re subscribed at $19.99/month.")
+        XCTAssertNotNil(subview(StyledLabel.self, in: support.view) { $0.string == "Thank you for your support!" })
         XCTAssertEqual(support.manage?.isEnabled, true)
         try await Task.sleep(for: .seconds(1.2))
         capture(window, "support-subscribed")
@@ -321,6 +324,9 @@ final class HostedOfferSheetsTests: XCTestCase {
         restore.sendActions(for: .touchUpInside)
         try await until { offers.offer == .subscribed }
         try await until { sheet.subscribe == nil }
+        // A yearly subscription: no monthly price to say.
+        XCTAssertEqual(sheet.heading?.string, "You’re subscribed.")
+        XCTAssertNil(sheet.restore)
         try await until { page.shownRow("voice-plan")?.value == Strings.Offer.subscribed }
     }
 

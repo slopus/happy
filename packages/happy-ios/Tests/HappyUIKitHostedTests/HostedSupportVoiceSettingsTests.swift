@@ -131,7 +131,7 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
     /// The row the boba leads, as drawn: the boba a tile's size where a
     /// tile sits, held at the top however tall the words make the row, and
     /// every word inside the row.
-    private func checkSupportRow(_ settings: SettingsViewController, file: StaticString = #filePath, line: UInt = #line) throws {
+    private func checkSupportRow(_ settings: SettingsViewController, spoken: String = Strings.AgentVoice.supportSpoken, file: StaticString = #filePath, line: UInt = #line) throws {
         let row = try XCTUnwrap(subview(SettingsCardView.RowView.self, in: settings.view) { $0.accessibilityIdentifier == "settings:support-boba" }, file: file, line: line)
         let art = try XCTUnwrap(subview(SupportBobaArt.self, in: row), file: file, line: line)
         XCTAssertEqual(art.frame, CGRect(x: 16, y: 11, width: 30, height: 30), file: file, line: line)
@@ -143,7 +143,7 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
             XCTAssertLessThanOrEqual(needed, label.bounds.height + 1, "\(label.text ?? "") is clipped", file: file, line: line)
             XCTAssertLessThanOrEqual(label.frame.maxY, row.bounds.height, file: file, line: line)
         }
-        XCTAssertEqual(row.accessibilityLabel, Strings.AgentVoice.supportSpoken, file: file, line: line)
+        XCTAssertEqual(row.accessibilityLabel, spoken, file: file, line: line)
         XCTAssertTrue(row.accessibilityTraits.contains(.button), file: file, line: line)
     }
 
@@ -159,7 +159,7 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
             XCTAssertEqual(cards.firstIndex(of: ["support-boba"]), 2, "Support Happy is not right under Profile: \(cards)")
             XCTAssertEqual(settings.shownRow("agent-voice")?.value, "12 min left")
             XCTAssertEqual(settings.shownRow("support-boba")?.title, "Happy is open source")
-            XCTAssertEqual(settings.shownRow("support-boba")?.subtitle, "Support the project by sending us boba every month.")
+            XCTAssertEqual(settings.shownRow("support-boba")?.subtitle, "Support by sending us boba, get 5 hours of calls with agents")
             window.layoutIfNeeded()
             try checkSupportRow(settings)
             // The boba stays still on Settings.
@@ -180,7 +180,14 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
             try await Task.sleep(for: .seconds(1.2))
             XCTAssertNil(subview(SessionButton.self, in: sheet.view), "the support page offers a voice session")
             XCTAssertEqual(sheet.subscribe?.isEnabled, false, "something is on sale")
+            XCTAssertNotNil(sheet.restore)
             XCTAssertNotNil(sheet.manage)
+            XCTAssertNil(subview(UIScrollView.self, in: sheet.view), "the support page scrolls")
+            // Everything fits between the bar and the foot of the screen.
+            for label in [sheet.heading].compactMap({ $0 }) + [sheet.manage].compactMap({ $0 }) {
+                let frame = label.convert(label.bounds, to: sheet.view)
+                XCTAssertLessThanOrEqual(frame.maxY, sheet.view.bounds.height - sheet.view.safeAreaInsets.bottom + 0.5)
+            }
             if !UIAccessibility.isReduceMotionEnabled {
                 XCTAssertTrue(sheet.isAnimating, "the boba doesn't play as the sheet appears")
                 try await until(seconds: 6) { !sheet.isAnimating && sheet.bobaProgress == 1 }
@@ -201,6 +208,25 @@ final class HostedSupportVoiceSettingsTests: XCTestCase {
             withExtendedLifetime(navigation) {}
             window.isHidden = true
         }
+    }
+
+    /// A subscriber's row thanks them and says where to manage it, and
+    /// still pushes Support Happy's page.
+    func testSubscribedSupportRowThanks() async throws {
+        _ = try await hostedOffers("unconfigured", for: self)
+        let rig = try await rig()
+        let settings = settings(rig, offer: .subscribed)
+        let (navigation, window) = try await host(settings)
+        try await until { settings.shownRow("profile")?.value == "Alex Rivera" }
+        XCTAssertEqual(settings.shownRow("support-boba")?.title, "Thank you for supporting Happy")
+        XCTAssertEqual(settings.shownRow("support-boba")?.subtitle, "Manage your subscription")
+        window.layoutIfNeeded()
+        try checkSupportRow(settings, spoken: Strings.AgentVoice.supportThanksSpoken)
+        capture(window, "settings-subscribed")
+        settings.tapRow("support-boba")
+        try await until { navigation.topViewController is SupportViewController && navigation.transitionCoordinator == nil }
+        withExtendedLifetime(navigation) {}
+        window.isHidden = true
     }
 
     /// A 320-wide phone and the largest text sizes: the words wrap, the row

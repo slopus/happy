@@ -83,7 +83,7 @@ class AgentConnectionSettingsTest {
         onAskChief = { done += it },
     )
 
-    private fun show(dark: Boolean = false, daemonVersion: String? = null) = rule.setHappyContent(dark) {
+    private fun show(dark: Boolean = false, daemonVersion: String? = null, voice: AgentVoiceSummary = AgentVoiceSummary(com.slopus.happy.call.CallAllowance.FREE_MILLIS)) = rule.setHappyContent(dark) {
         page = HappyTheme.colors.grouped.background.toArgb()
         AgentConnectionSettingsScreen(
             profile = SettingsProfile("agent-connection-1", "Studio", "Connected"),
@@ -94,6 +94,7 @@ class AgentConnectionSettingsTest {
             person = AgentPerson("Steve"),
             daemonVersion = daemonVersion,
             aboutActions = AboutActions(onSupport = { done += "support" }),
+            voice = voice,
         )
     }
 
@@ -171,7 +172,20 @@ class AgentConnectionSettingsTest {
         assertDp("line under the title", title.bottom, line.top)
         assertTrue("the row grows for both lines", row.height > 56.dp)
         rule.onNodeWithText("Happy is open source").assertIsDisplayed()
-        rule.onNodeWithText("Support the project by sending us boba every month.").assertIsDisplayed()
+        rule.onNodeWithText("Support by sending us boba, get 5 hours of calls with agents").assertIsDisplayed()
+    }
+
+    /** A subscriber's boba row thanks them and says where to manage it; it still opens Support Happy. */
+    @Test
+    fun aSubscribersBobaRowThanks() {
+        show(voice = AgentVoiceSummary(4 * 3_600_000L, offer = com.slopus.happy.payments.Offer.Subscribed))
+        rule.node(AgentVoiceTags.SUPPORT).performScrollTo()
+        rule.onNodeWithText("Thank you for supporting Happy").assertIsDisplayed()
+        rule.onNodeWithText("Manage your subscription").assertIsDisplayed()
+        rule.onNodeWithText("Happy is open source").assertDoesNotExist()
+        rule.node(AgentVoiceTags.SUPPORT).performClick()
+        rule.waitForIdle()
+        assertEquals(listOf("support"), done)
     }
 
     /** The boba row pushes Support Happy's page ([SupportScreen]; its content in CallSheetTest). */

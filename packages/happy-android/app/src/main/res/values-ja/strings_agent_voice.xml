@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="agent_voice_support_title">Happy はオープンソースです</string>
-    <string name="agent_voice_support_line">毎月ボバを贈って、プロジェクトを応援してください。</string>
-    <string name="agent_voice_support_spoken">Happy はオープンソースです。毎月ボバを贈って、プロジェクトを応援してください。</string>
+    <string name="agent_voice_support_line">ボバを贈って応援すると、エージェントとの通話が 5 時間使えます</string>
+    <string name="agent_voice_support_spoken">Happy はオープンソースです。ボバを贈って応援すると、エージェントとの通話が 5 時間使えます</string>
+    <string name="agent_voice_support_thanks_title">Happy を応援していただきありがとうございます</string>
+    <string name="agent_voice_support_manage">サブスクリプションを管理</string>
+    <string name="agent_voice_support_thanks_spoken">Happy を応援していただきありがとうございます。サブスクリプションを管理</string>
     <string name="agent_voice_title">音声</string>
     <string name="agent_voice_minutes_left">残り %1$d 分</string>
     <string name="agent_voice_used_up">使い切りました</string>
@@ -22,7 +25,10 @@
     <string name="agent_voice_restore_unavailable">利用できません</string>
     <string name="agent_voice_restore_hint">音声サブスクリプションの販売開始まで、復元するものはありません。</string>
     <string name="agent_voice_sheet_title">オープンソースの Happy を応援</string>
-    <string name="agent_voice_sheet_body">毎月ボバを贈ってください。毎月 5 時間の音声が付き、Happy の開発費になり、Happy はオープンソースのままです。</string>
+    <string name="agent_voice_sheet_body">Happy はオープンソースです。ボバを贈って応援すると、エージェントとの通話が 5 時間使えます</string>
     <string name="agent_voice_sheet_not_yet">支援はまだ受け付けていません。</string>
     <string name="agent_voice_sheet_pledge">毎月 %1$s で支援</string>
+    <string name="agent_voice_sheet_subscribed">月額 %1$s で登録中です。</string>
+    <string name="agent_voice_sheet_subscribed_no_price">登録中です。</string>
+    <string name="agent_voice_sheet_thanks">ご支援ありがとうございます！</string>
 </resources>

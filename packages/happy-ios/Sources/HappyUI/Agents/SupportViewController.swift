@@ -11,9 +11,10 @@ import UIKit
 /// (`StateSceneView`), a headline and what sending boba is for, then the
 /// monthly pledge at the store's price and Subscribe, always there and
 /// greyed out while nothing is on sale, and under it Restore Purchases and
-/// Manage Subscriptions as quiet links (`Offers`). Only about supporting
-/// Happy: it has no voice session. A subscriber is thanked. Debug test runs
-/// can draw it as a no-charge preview.
+/// Manage Subscriptions as quiet links (`Offers`). It fits the screen and
+/// never scrolls. Only about supporting Happy: it has no voice session. A
+/// subscriber is told what they pay and thanked, with only Manage
+/// Subscriptions under it. Debug test runs can draw it as a no-charge preview.
 @MainActor
 final class SupportViewController: UIViewController {
     typealias Metrics = CallSheetViewController.Metrics
@@ -21,15 +22,15 @@ final class SupportViewController: UIViewController {
     let offers: Offers
     private let gradient = GrainGradientView(palette: StartViewController.Colors.grain)
     private let boba = StateSceneView(scene: .boba, size: Metrics.mic, replayLabel: Strings.AgentVoice.sheetReplay)
-    private let scroll = UIScrollView()
     /// Not while subscribed: the subscription, greyed out while nothing is on sale.
     private(set) var subscribe: RoundButton?
+    /// The pledge, or what a subscriber pays.
+    private(set) var heading: StyledLabel?
     private(set) var restore: OfferLink?
     private(set) var manage: OfferLink?
     private let footer = UIStackView()
     private var subscribeHeight: NSLayoutConstraint?
-    private var footerBottom: NSLayoutConstraint?
-    private var drawn: (CallOffer, Bool)?
+    private var drawn: (CallOffer, Bool, String?)?
     private var observation: SubscriptionObservation?
 
     init(offers: Offers = .shared) {
@@ -76,53 +77,35 @@ final class SupportViewController: UIViewController {
         footer.spacing = 12
         drawFooter()
 
-        scroll.alwaysBounceVertical = true
-        scroll.showsVerticalScrollIndicator = false
-        scroll.contentInsetAdjustmentBehavior = .never
-        scroll.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(scroll)
         for view in [column, footer] {
             view.translatesAutoresizingMaskIntoConstraints = false
-            scroll.addSubview(view)
+            self.view.addSubview(view)
         }
         // As voice's sheet places them: the actions at the foot, the column
-        // in the middle of the space above, the whole taller once the words are.
-        let content = scroll.contentLayoutGuide
-        let frame = scroll.frameLayoutGuide
-        let fit = content.heightAnchor.constraint(equalTo: frame.heightAnchor)
-        fit.priority = .defaultLow
+        // in the middle of the space above. Words too tall for the screen
+        // give way in the body first.
+        body.setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+        let safe = view.safeAreaLayoutGuide
         let upper = UILayoutGuide()
-        scroll.addLayoutGuide(upper)
-        let tight = footer.heightAnchor.constraint(equalToConstant: 0)
-        tight.priority = UILayoutPriority(600)
+        view.addLayoutGuide(upper)
         let centre = column.centerYAnchor.constraint(equalTo: upper.centerYAnchor)
         centre.priority = UILayoutPriority(500)
-        let footerBottom = footer.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -16)
-        self.footerBottom = footerBottom
         var constraints = [
             // Under the bar, which the gradient runs behind.
-            scroll.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            scroll.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            scroll.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            scroll.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            content.widthAnchor.constraint(equalTo: frame.widthAnchor),
-            content.heightAnchor.constraint(greaterThanOrEqualTo: frame.heightAnchor),
-            fit,
-            upper.topAnchor.constraint(equalTo: content.topAnchor),
+            upper.topAnchor.constraint(equalTo: safe.topAnchor),
             upper.bottomAnchor.constraint(equalTo: footer.topAnchor),
             column.topAnchor.constraint(greaterThanOrEqualTo: upper.topAnchor, constant: 16),
             column.bottomAnchor.constraint(lessThanOrEqualTo: upper.bottomAnchor, constant: -32),
             centre,
-            tight,
-            footerBottom,
+            footer.bottomAnchor.constraint(equalTo: safe.bottomAnchor, constant: -16),
         ]
         for stack in [column, footer] {
-            let fill = stack.widthAnchor.constraint(equalTo: frame.widthAnchor, constant: -2 * Metrics.side)
+            let fill = stack.widthAnchor.constraint(equalTo: view.widthAnchor, constant: -2 * Metrics.side)
             fill.priority = .defaultHigh
             constraints += [
-                stack.centerXAnchor.constraint(equalTo: frame.centerXAnchor),
+                stack.centerXAnchor.constraint(equalTo: view.centerXAnchor),
                 stack.widthAnchor.constraint(lessThanOrEqualToConstant: Metrics.column),
-                stack.leadingAnchor.constraint(greaterThanOrEqualTo: frame.leadingAnchor, constant: Metrics.side),
+                stack.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: Metrics.side),
                 fill,
             ]
         }
@@ -130,22 +113,31 @@ final class SupportViewController: UIViewController {
     }
 
     /// The pledge at the store's price and Subscribe, greyed out with why
-    /// while pledges aren't open; a thank-you once subscribed; then Restore
-    /// Purchases and Manage Subscriptions side by side. Drawn again
+    /// while pledges aren't open, then Restore Purchases and Manage
+    /// Subscriptions side by side; once subscribed, what they pay a month
+    /// and a thank-you over Manage Subscriptions alone. Drawn again
     /// whenever what is on offer changes.
     private func drawFooter() {
         typealias Text = Strings.AgentVoice
         let offer = offers.offer
         let unconfirmed = offers.unconfirmed
-        if let drawn, drawn == (offer, unconfirmed) { return }
-        drawn = (offer, unconfirmed)
+        let paying = offers.subscribedPrice
+        if let drawn, drawn == (offer, unconfirmed, paying) { return }
+        drawn = (offer, unconfirmed, paying)
         for view in footer.arrangedSubviews { view.removeFromSuperview() }
         subscribe = nil
         subscribeHeight = nil
         var notes: [String] = []
         if offer == .subscribed {
+            let heading = StyledLabel(style: CallSheetViewController.offerStyle, color: Palette.startText, alignment: .center)
+            heading.string = paying.map(Text.sheetSubscribed) ?? Text.sheetSubscribedNoPrice
+            heading.accessibilityIdentifier = "support-page-heading"
+            footer.addArrangedSubview(heading)
+            self.heading = heading
+            footer.setCustomSpacing(4, after: heading)
             let thanks = StyledLabel(style: CallSheetViewController.offerStyle, color: Palette.startText, alignment: .center)
-            thanks.string = Strings.SupportUs.thankYou
+            thanks.string = Text.sheetThanks
+            thanks.accessibilityIdentifier = "support-page-thanks"
             footer.addArrangedSubview(thanks)
         } else {
             let heading = StyledLabel(style: offer.price == nil ? CallSheetViewController.detailStyle : CallSheetViewController.offerStyle,
@@ -155,6 +147,7 @@ final class SupportViewController: UIViewController {
             // Said only while there is something to say: a purchase waiting on RevenueCat says that instead.
             heading.isHidden = offer.price == nil && unconfirmed
             footer.addArrangedSubview(heading)
+            self.heading = heading
             footer.setCustomSpacing(offer.price == nil ? 12 : 20, after: heading)
             let subscribe = RoundButton(title: Strings.Call.subscribe)
             subscribe.action = { [weak self] in
@@ -170,14 +163,15 @@ final class SupportViewController: UIViewController {
             if case .preview = offer { notes.append(Strings.Call.upgradePreviewNote) }
         }
         if let last = footer.arrangedSubviews.last { footer.setCustomSpacing(4, after: last) }
-        let restore = OfferLink.restore(offers: offers, from: self)
-        restore.isEnabled = offers.canRestore && offer != .subscribed
+        // Nothing to restore for a subscriber.
+        let restore = offer == .subscribed ? nil : OfferLink.restore(offers: offers, from: self)
+        restore?.isEnabled = offers.canRestore
         self.restore = restore
         let manage = OfferLink(title: Strings.Offer.manage)
         manage.accessibilityIdentifier = "offer-manage"
         manage.addAction(UIAction { [weak self] _ in self?.manageSubscriptions() }, for: .touchUpInside)
         self.manage = manage
-        let links = UIStackView(arrangedSubviews: [restore, manage])
+        let links = UIStackView(arrangedSubviews: [restore, manage].compactMap { $0 })
         links.axis = .horizontal
         links.distribution = .fillEqually
         links.alignment = .center
@@ -202,11 +196,6 @@ final class SupportViewController: UIViewController {
                 await UIApplication.shared.open(SupportUsViewController.manageSubscriptionsURL)
             }
         }
-    }
-
-    override func viewSafeAreaInsetsDidChange() {
-        super.viewSafeAreaInsetsDidChange()
-        footerBottom?.constant = -16 - view.safeAreaInsets.bottom
     }
 
     override func viewDidLayoutSubviews() {

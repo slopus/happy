@@ -28,9 +28,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
@@ -115,6 +113,8 @@ object AgentVoiceTags {
     const val PAGE = "agentVoice.supportPage"
     const val PAGE_ART = "agentVoice.supportPage.art"
     const val PAGE_NOT_YET = "agentVoice.supportPage.notYet"
+    const val PAGE_SUBSCRIBED = "agentVoice.supportPage.subscribed"
+    const val PAGE_THANKS = "agentVoice.supportPage.thanks"
     const val SUBSCRIBE_BUTTON = "agentVoice.supportPage.subscribe"
     const val PAGE_RESTORE = "agentVoice.supportPage.restore"
     const val PAGE_MANAGE = "agentVoice.supportPage.manage"
@@ -168,15 +168,16 @@ object SupportBobaSpec {
  * orange tile where the other rows' tiles are, held at the top; "Happy is open
  * source", and under it at the same size in the page's quieter grey what
  * sending boba is for, wrapping at the person's font size, the row growing
- * for them; then a chevron. The boba stays still here, the pose it was
+ * for them; then a chevron. A subscriber ([subscribed]) is thanked instead
+ * and told where to manage it. The boba stays still here, the pose it was
  * drawn to rest in; it moves only on [SupportScreen], which the row opens.
  * TalkBack reads it as one button.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun SupportBobaCard(onClick: () -> Unit) {
+fun SupportBobaCard(onClick: () -> Unit, subscribed: Boolean = false) {
     val colors = HappyTheme.colors
-    val spoken = stringResource(R.string.agent_voice_support_spoken)
+    val spoken = stringResource(if (subscribed) R.string.agent_voice_support_thanks_spoken else R.string.agent_voice_support_spoken)
     ItemGroup {
         Row(
             modifier = Modifier
@@ -195,8 +196,8 @@ fun SupportBobaCard(onClick: () -> Unit) {
                 }
             }
             Column(Modifier.weight(1f).padding(top = SupportBobaSpec.titleTop)) {
-                Text(stringResource(R.string.agent_voice_support_title), style = ItemSpec.title, color = colors.text, modifier = Modifier.testTag(AgentVoiceTags.SUPPORT_TITLE))
-                Text(stringResource(R.string.agent_voice_support_line), style = ItemSpec.title, color = colors.textSecondary, modifier = Modifier.testTag(AgentVoiceTags.SUPPORT_LINE))
+                Text(stringResource(if (subscribed) R.string.agent_voice_support_thanks_title else R.string.agent_voice_support_title), style = ItemSpec.title, color = colors.text, modifier = Modifier.testTag(AgentVoiceTags.SUPPORT_TITLE))
+                Text(stringResource(if (subscribed) R.string.agent_voice_support_manage else R.string.agent_voice_support_line), style = ItemSpec.title, color = colors.textSecondary, modifier = Modifier.testTag(AgentVoiceTags.SUPPORT_LINE))
             }
             Icon(icon = Ionicon.ChevronForward, size = ItemSpec.chevronSize, color = colors.grouped.chevron, modifier = Modifier.padding(start = ItemSpec.rightSectionGap))
         }
@@ -283,12 +284,14 @@ fun AgentVoiceScreen(summary: AgentVoiceSummary, onSubscribe: () -> Unit = {}, o
  * first screen's grain under the standard bar, clear over it, the boba
  * where voice's sheet has its mic, played once as the page appears and
  * again on a tap ([SceneAnimation]; never looped), a headline and what
- * sending boba is for and comes with (5 hours of voice a month). No voice
- * session. Then "Pledge <the store's price>/month" over Subscribe, which
- * is always there and greyed out, under "Pledges aren't open yet.", while
- * nothing is on sale; a thank-you once [offer] is [Offer.Subscribed]; and
- * under them Restore Purchases and Manage Subscriptions as quiet links in
- * the gradient's secondary ink. With animations removed the boba holds
+ * sending boba is for and comes with (5 hours of calls with agents). No
+ * voice session. Then "Pledge <the store's price>/month" over Subscribe,
+ * which is always there and greyed out, under "Pledges aren't open yet.",
+ * while nothing is on sale, and under them Restore Purchases and Manage
+ * Subscriptions as quiet links in the gradient's secondary ink. Once
+ * [offer] is [Offer.Subscribed]: what they pay a month ([subscribedPrice],
+ * where known) and a thank-you, over Manage Subscriptions alone. It fits
+ * the screen and never scrolls. With animations removed the boba holds
  * still.
  */
 @Composable
@@ -299,6 +302,7 @@ fun SupportScreen(
     onRestore: (suspend () -> RestoreResult)? = null,
     onManage: () -> Unit = {},
     unconfirmed: Boolean = false,
+    subscribedPrice: String? = null,
 ) {
     val dark = HappyTheme.colors.dark
     val text = if (dark) StartSpec.darkText else StartSpec.lightText
@@ -316,7 +320,6 @@ fun SupportScreen(
             Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.displayCutout))
-                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 28.dp, vertical = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
@@ -340,7 +343,15 @@ fun SupportScreen(
             Spacer(Modifier.height(32.dp))
             Column(Modifier.widthIn(max = 440.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                 if (subscribed) {
-                    Text(stringResource(R.string.settings_support_us_subtitle_pro), style = CallSheetSpec.offer, color = text, textAlign = TextAlign.Center)
+                    Text(
+                        subscribedPrice?.let { stringResource(R.string.agent_voice_sheet_subscribed, it) } ?: stringResource(R.string.agent_voice_sheet_subscribed_no_price),
+                        style = CallSheetSpec.offer,
+                        color = text,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.testTag(AgentVoiceTags.PAGE_SUBSCRIBED),
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(stringResource(R.string.agent_voice_sheet_thanks), style = CallSheetSpec.offer, color = text, textAlign = TextAlign.Center, modifier = Modifier.testTag(AgentVoiceTags.PAGE_THANKS))
                 } else {
                     when {
                         price != null -> Text(stringResource(R.string.agent_voice_sheet_pledge, price), style = CallSheetSpec.offer, color = text, textAlign = TextAlign.Center)
@@ -357,15 +368,18 @@ fun SupportScreen(
                 }
                 Spacer(Modifier.height(4.dp))
                 Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-                    QuietLink(
-                        stringResource(R.string.agent_voice_restore),
-                        secondary,
-                        enabled = onRestore != null && !subscribed && !restoring,
-                        tag = AgentVoiceTags.PAGE_RESTORE,
-                    ) {
-                        val restore = onRestore ?: return@QuietLink
-                        restoring = true
-                        scope.launch { restored = restore().also { restoring = false } }
+                    // Nothing to restore for a subscriber.
+                    if (!subscribed) {
+                        QuietLink(
+                            stringResource(R.string.agent_voice_restore),
+                            secondary,
+                            enabled = onRestore != null && !restoring,
+                            tag = AgentVoiceTags.PAGE_RESTORE,
+                        ) {
+                            val restore = onRestore ?: return@QuietLink
+                            restoring = true
+                            scope.launch { restored = restore().also { restoring = false } }
+                        }
                     }
                     QuietLink(stringResource(R.string.settings_manage_subscriptions), secondary, enabled = true, tag = AgentVoiceTags.PAGE_MANAGE, onClick = onManage)
                 }

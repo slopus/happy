@@ -6,15 +6,22 @@ import Foundation
 extension Strings {
     enum AgentVoice {
         static var supportTitle: String { "Happy is open source" }
-        static var supportLine: String { "Support the project by sending us boba every month." }
-        static var supportSpoken: String { "Happy is open source. Support the project by sending us boba every month." }
+        static var supportLine: String { "Support by sending us boba, get 5 hours of calls with agents" }
+        static var supportSpoken: String { "Happy is open source. Support by sending us boba, get 5 hours of calls with agents" }
+        // The same row for a subscriber.
+        static var supportThanksTitle: String { "Thank you for supporting Happy" }
+        static var supportManage: String { "Manage your subscription" }
+        static var supportThanksSpoken: String { "Thank you for supporting Happy. Manage your subscription" }
 
         // The sheet the row opens (`SupportSheetViewController`): about Happy; voice is what a pledge comes with.
         static var sheetTitle: String { "Support Happy open source" }
         static var sheetReplay: String { "Play the boba again" }
-        static var sheetBody: String { "Send us boba every month. It comes with 5 hours of voice a month, pays for Happy’s development, and keeps Happy open source." }
+        static var sheetBody: String { "Happy is open source. Support by sending us boba, get 5 hours of calls with agents" }
         static func sheetPrice(_ price: String) -> String { "Pledge \(price)/month" }
         static var sheetNotYet: String { "Pledges aren’t open yet." }
+        static func sheetSubscribed(_ price: String) -> String { "You’re subscribed at \(price)/month." }
+        static var sheetSubscribedNoPrice: String { "You’re subscribed." }
+        static var sheetThanks: String { "Thank you for your support!" }
         static var sheetPreviewMessage: String { "Pledges aren’t open yet. Nothing was bought or charged." }
 
         static var title: String { "Voice" }

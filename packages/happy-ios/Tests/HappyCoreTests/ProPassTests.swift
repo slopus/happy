@@ -128,7 +128,7 @@ final class ProPassTests: XCTestCase {
 
     func testAFullSubscriberAnswerIsReadAsItIs() throws {
         let pass = try XCTUnwrap(Self.pass(try JSONValue.decode(Data(Self.full.utf8))))
-        XCTAssertEqual(pass, ProPass(purchased: s("2026-11-20T08:00:05Z"), expires: s("2026-12-20T08:00:05Z"), renews: s("2026-12-20T08:00:05Z"), graceUntil: nil, checkedAt: s("2026-11-25T13:14:15Z")))
+        XCTAssertEqual(pass, ProPass(purchased: s("2026-11-20T08:00:05Z"), expires: s("2026-12-20T08:00:05Z"), renews: s("2026-12-20T08:00:05Z"), graceUntil: nil, checkedAt: s("2026-11-25T13:14:15Z"), product: "happy"))
         XCTAssertEqual(pass.month(at: pass.checkedAt), ProMonth(start: s("2026-11-20T08:00:05Z"), end: s("2026-12-20T08:00:05Z")))
     }
 

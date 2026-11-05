@@ -38,6 +38,7 @@ import com.slopus.happy.R
 import com.slopus.happy.agent.AgentLinkStatus
 import com.slopus.happy.agent.AgentProfileState
 import com.slopus.happy.agent.CompletionSound
+import com.slopus.happy.payments.Offer
 import com.slopus.happy.ui.components.Avatar
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.ItemList
@@ -321,7 +322,7 @@ fun AgentConnectionSettingsScreen(
                     // Support Happy right under Profile, the first card.
                     for ((index, section) in sections.withIndex()) {
                         SettingsCard(section)
-                        if (index == 0) SupportBobaCard(aboutActions.onSupport)
+                        if (index == 0) SupportBobaCard(aboutActions.onSupport, subscribed = voice.offer == Offer.Subscribed)
                     }
                     RemoveCard(agent = true, name = profile.name, onRemove = actions.onRemove)
                 }

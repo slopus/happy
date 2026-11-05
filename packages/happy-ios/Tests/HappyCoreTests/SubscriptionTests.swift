@@ -81,6 +81,7 @@ final class SubscriptionTests: XCTestCase {
         let subscription = await ready("a")
         XCTAssertTrue(subscription.hasPro)
         XCTAssertEqual(subscription.offer, .subscribed)
+        XCTAssertNil(subscription.subscribedPrice, "a lifetime pro is said at the monthly price")
         assertEqual(await subscription.buy(), .unavailable)
         XCTAssertTrue(store.purchases.isEmpty)
     }
@@ -115,6 +116,7 @@ final class SubscriptionTests: XCTestCase {
         XCTAssertEqual(store.finished, [bought.id])
         XCTAssertTrue(subscription.hasPro)
         XCTAssertEqual(subscription.offer, .subscribed)
+        XCTAssertEqual(subscription.subscribedPrice, "$19.99")
     }
 
     func testAPurchaseRevenueCatDidntTakeStaysUnfinishedAndIsPostedAtTheNextForeground() async {

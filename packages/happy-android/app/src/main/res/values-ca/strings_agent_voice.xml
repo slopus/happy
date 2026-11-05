@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="agent_voice_support_title">Happy és de codi obert</string>
-    <string name="agent_voice_support_line">Dona suport al projecte convidant-nos a un boba cada mes.</string>
-    <string name="agent_voice_support_spoken">Happy és de codi obert. Dona suport al projecte convidant-nos a un boba cada mes.</string>
+    <string name="agent_voice_support_line">Dona suport convidant-nos a un boba i obtén 5 hores de trucades amb agents</string>
+    <string name="agent_voice_support_spoken">Happy és de codi obert. Dona suport convidant-nos a un boba i obtén 5 hores de trucades amb agents</string>
+    <string name="agent_voice_support_thanks_title">Gràcies per donar suport a Happy</string>
+    <string name="agent_voice_support_manage">Gestiona la teva subscripció</string>
+    <string name="agent_voice_support_thanks_spoken">Gràcies per donar suport a Happy. Gestiona la teva subscripció</string>
     <string name="agent_voice_title">Veu</string>
     <string name="agent_voice_minutes_left">Queden %1$d min</string>
     <string name="agent_voice_used_up">Esgotat</string>
@@ -22,7 +25,10 @@
     <string name="agent_voice_restore_unavailable">No disponible</string>
     <string name="agent_voice_restore_hint">No hi ha res a restaurar fins que les subscripcions de veu estiguin a la venda.</string>
     <string name="agent_voice_sheet_title">Dona suport a Happy de codi obert</string>
-    <string name="agent_voice_sheet_body">Convida\'ns a un boba cada mes. Inclou 5 hores de veu al mes, paga el desenvolupament de Happy i manté Happy de codi obert.</string>
+    <string name="agent_voice_sheet_body">Happy és de codi obert. Dona suport convidant-nos a un boba i obtén 5 hores de trucades amb agents</string>
     <string name="agent_voice_sheet_not_yet">Les aportacions encara no estan obertes.</string>
     <string name="agent_voice_sheet_pledge">Aporta %1$s/mes</string>
+    <string name="agent_voice_sheet_subscribed">Estàs subscrit per %1$s/mes.</string>
+    <string name="agent_voice_sheet_subscribed_no_price">Estàs subscrit.</string>
+    <string name="agent_voice_sheet_thanks">Gràcies pel teu suport!</string>
 </resources>

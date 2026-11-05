@@ -136,6 +136,7 @@ internal fun NavGraphBuilder.agentSettingsPages(graph: AppGraph, nav: NavHostCon
     page<SupportRoute> {
         val offer by graph.offers.offers.collectAsStateWithLifecycle()
         val unconfirmed by graph.offers.unconfirmed.collectAsStateWithLifecycle()
+        val subscribedPrice by graph.offers.subscribedPrice.collectAsStateWithLifecycle()
         val activity = LocalContext.current.activity()
         val scope = rememberCoroutineScope()
         val uriHandler = LocalUriHandler.current
@@ -151,6 +152,7 @@ internal fun NavGraphBuilder.agentSettingsPages(graph: AppGraph, nav: NavHostCon
                 else openExternalUrl(uriHandler, SettingsSpec.SUBSCRIPTIONS_URL)
             },
             unconfirmed = unconfirmed,
+            subscribedPrice = subscribedPrice,
         )
     }
     page<AgentDataStorageRoute> { entry -> AgentDataStorage(graph, nav, entry.toRoute<AgentDataStorageRoute>().connectionId) }

@@ -90,6 +90,8 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     private var query: String?
     private let empty = UILabel()
     private var observation: AccountsObservation?
+    /// Bought, restored or lapsed: Support Happy's row says so at once.
+    private var offersObservation: SubscriptionObservation?
     private var prioritizingWatch: Watch?
     private var prioritizing: Bool?
     private var connectionSettingsWatch: Task<Void, Never>?
@@ -169,6 +171,7 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
         // Support Happy's words follow the person's text size; the row grows.
         registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) { (self: Self, _) in self.view.setNeedsLayout() }
         observation = context.account.observeAccounts { [weak self] _ in self?.reload() }
+        offersObservation = Offers.shared.observe { [weak self] in self?.rebuild() }
         // A switch made here builds the new home in its account's language:
         // this page, kept over it, speaks it too.
         rootChange = NotificationCenter.default.addObserver(forName: AppCoordinator.rootDidChange, object: nil, queue: .main) { [weak self] _ in
@@ -520,13 +523,16 @@ final class SettingsViewController: UIViewController, UIScrollViewDelegate, UISe
     }
 
     /// Support Happy, under Profile: the boba, still, that Happy is open
-    /// source and, quieter under it, the ask. It pushes Support Happy's own
-    /// page, where the boba moves.
+    /// source and, quieter under it, the ask; a subscriber is thanked and
+    /// told where to manage it. It pushes Support Happy's own page, where
+    /// the boba moves.
     private func supportRow() -> SettingsRow {
-        var row = SettingsRow(id: SettingsIndex.supportBoba.id, title: Strings.AgentVoice.supportTitle, action: { [weak self] in self?.openSupport() })
-        row.subtitle = Strings.AgentVoice.supportLine
+        typealias Text = Strings.AgentVoice
+        let subscribed = voiceStatus().subscribed
+        var row = SettingsRow(id: SettingsIndex.supportBoba.id, title: subscribed ? Text.supportThanksTitle : Text.supportTitle, action: { [weak self] in self?.openSupport() })
+        row.subtitle = subscribed ? Text.supportManage : Text.supportLine
         row.art = boba
-        row.spoken = Strings.AgentVoice.supportSpoken
+        row.spoken = subscribed ? Text.supportThanksSpoken : Text.supportSpoken
         return row
     }
 

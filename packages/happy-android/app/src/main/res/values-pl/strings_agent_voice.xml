@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="agent_voice_support_title">Happy jest open source</string>
-    <string name="agent_voice_support_line">Wesprzyj projekt, stawiając nam bobę co miesiąc.</string>
-    <string name="agent_voice_support_spoken">Happy jest open source. Wesprzyj projekt, stawiając nam bobę co miesiąc.</string>
+    <string name="agent_voice_support_line">Wesprzyj nas, stawiając nam bobę, i zyskaj 5 godzin rozmów z agentami</string>
+    <string name="agent_voice_support_spoken">Happy jest open source. Wesprzyj nas, stawiając nam bobę, i zyskaj 5 godzin rozmów z agentami</string>
+    <string name="agent_voice_support_thanks_title">Dziękujemy za wspieranie Happy</string>
+    <string name="agent_voice_support_manage">Zarządzaj subskrypcją</string>
+    <string name="agent_voice_support_thanks_spoken">Dziękujemy za wspieranie Happy. Zarządzaj subskrypcją</string>
     <string name="agent_voice_title">Głos</string>
     <string name="agent_voice_minutes_left">Zostało %1$d min</string>
     <string name="agent_voice_used_up">Wykorzystano</string>
@@ -22,7 +25,10 @@
     <string name="agent_voice_restore_unavailable">Niedostępne</string>
     <string name="agent_voice_restore_hint">Nie ma czego przywracać, dopóki subskrypcje głosu nie są w sprzedaży.</string>
     <string name="agent_voice_sheet_title">Wspieraj open source Happy</string>
-    <string name="agent_voice_sheet_body">Stawiaj nam bobę co miesiąc. Dostajesz 5 godzin głosu miesięcznie, opłacasz rozwój Happy, a Happy pozostaje open source.</string>
+    <string name="agent_voice_sheet_body">Happy jest open source. Wesprzyj nas, stawiając nam bobę, i zyskaj 5 godzin rozmów z agentami</string>
     <string name="agent_voice_sheet_not_yet">Wsparcie nie jest jeszcze dostępne.</string>
     <string name="agent_voice_sheet_pledge">Wspieraj za %1$s/mies.</string>
+    <string name="agent_voice_sheet_subscribed">Subskrybujesz za %1$s/mies.</string>
+    <string name="agent_voice_sheet_subscribed_no_price">Subskrybujesz.</string>
+    <string name="agent_voice_sheet_thanks">Dziękujemy za wsparcie!</string>
 </resources>

@@ -6,8 +6,11 @@
 -->
 <resources>
     <string name="agent_voice_support_title">Happy is open source</string>
-    <string name="agent_voice_support_line">Support the project by sending us boba every month.</string>
-    <string name="agent_voice_support_spoken">Happy is open source. Support the project by sending us boba every month.</string>
+    <string name="agent_voice_support_line">Support by sending us boba, get 5 hours of calls with agents</string>
+    <string name="agent_voice_support_spoken">Happy is open source. Support by sending us boba, get 5 hours of calls with agents</string>
+    <string name="agent_voice_support_thanks_title">Thank you for supporting Happy</string>
+    <string name="agent_voice_support_manage">Manage your subscription</string>
+    <string name="agent_voice_support_thanks_spoken">Thank you for supporting Happy. Manage your subscription</string>
     <string name="agent_voice_title">Voice</string>
     <string name="agent_voice_minutes_left">%1$d min left</string>
     <string name="agent_voice_used_up">Used up</string>
@@ -27,7 +30,10 @@
     <string name="agent_voice_restore_unavailable">Unavailable</string>
     <string name="agent_voice_restore_hint">Nothing to restore until voice subscriptions are on sale.</string>
     <string name="agent_voice_sheet_title">Support Happy open source</string>
-    <string name="agent_voice_sheet_body">Send us boba every month. It comes with 5 hours of voice a month, pays for Happy’s development, and keeps Happy open source.</string>
+    <string name="agent_voice_sheet_body">Happy is open source. Support by sending us boba, get 5 hours of calls with agents</string>
     <string name="agent_voice_sheet_not_yet">Pledges aren’t open yet.</string>
     <string name="agent_voice_sheet_pledge">Pledge %1$s/month</string>
+    <string name="agent_voice_sheet_subscribed">You’re subscribed at %1$s/month.</string>
+    <string name="agent_voice_sheet_subscribed_no_price">You’re subscribed.</string>
+    <string name="agent_voice_sheet_thanks">Thank you for your support!</string>
 </resources>

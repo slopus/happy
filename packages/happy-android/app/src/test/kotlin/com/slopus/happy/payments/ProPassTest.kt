@@ -160,7 +160,7 @@ class ProPassTest {
         val answer = HappyJson.parseToJsonElement(FULL)
         assertTrue(ProPass.answered(answer))
         val pass = ProPass.from(answer)!!
-        assertEquals(ProPass(ms("2026-11-20T08:00:05Z"), ms("2026-12-20T08:00:05Z"), ms("2026-12-20T08:00:05Z"), null, ms("2026-11-25T13:14:15Z")), pass)
+        assertEquals(ProPass(ms("2026-11-20T08:00:05Z"), ms("2026-12-20T08:00:05Z"), ms("2026-12-20T08:00:05Z"), null, ms("2026-11-25T13:14:15Z"), "happy"), pass)
         assertFalse(pass.inGrace())
         assertEquals(ProMonth(ms("2026-11-20T08:00:05Z"), ms("2026-12-20T08:00:05Z")), pass.period())
     }

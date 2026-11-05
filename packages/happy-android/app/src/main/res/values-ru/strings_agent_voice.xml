@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="agent_voice_support_title">Happy — открытый проект</string>
-    <string name="agent_voice_support_line">Поддержите проект: угощайте нас бобой каждый месяц.</string>
-    <string name="agent_voice_support_spoken">Happy — открытый проект. Поддержите проект: угощайте нас бобой каждый месяц.</string>
+    <string name="agent_voice_support_line">Поддержите нас бобой и получите 5 часов звонков с агентами</string>
+    <string name="agent_voice_support_spoken">Happy — открытый проект. Поддержите нас бобой и получите 5 часов звонков с агентами</string>
+    <string name="agent_voice_support_thanks_title">Спасибо, что поддерживаете Happy</string>
+    <string name="agent_voice_support_manage">Управление подпиской</string>
+    <string name="agent_voice_support_thanks_spoken">Спасибо, что поддерживаете Happy. Управление подпиской</string>
     <string name="agent_voice_title">Голос</string>
     <string name="agent_voice_minutes_left">Осталось %1$d мин</string>
     <string name="agent_voice_used_up">Израсходовано</string>
@@ -22,7 +25,10 @@
     <string name="agent_voice_restore_unavailable">Недоступно</string>
     <string name="agent_voice_restore_hint">Восстанавливать нечего, пока подписка на голос не продаётся.</string>
     <string name="agent_voice_sheet_title">Поддержите открытый Happy</string>
-    <string name="agent_voice_sheet_body">Угощайте нас бобой каждый месяц. Это 5 часов голоса в месяц, оплата разработки Happy и открытый код Happy.</string>
+    <string name="agent_voice_sheet_body">Happy — открытый проект. Поддержите нас бобой и получите 5 часов звонков с агентами</string>
     <string name="agent_voice_sheet_not_yet">Поддержка пока не открыта.</string>
     <string name="agent_voice_sheet_pledge">Поддержать за %1$s в месяц</string>
+    <string name="agent_voice_sheet_subscribed">Вы подписаны за %1$s в месяц.</string>
+    <string name="agent_voice_sheet_subscribed_no_price">Вы подписаны.</string>
+    <string name="agent_voice_sheet_thanks">Спасибо за вашу поддержку!</string>
 </resources>

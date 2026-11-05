@@ -93,6 +93,14 @@ class Subscription(
     private val mutableProblem = MutableStateFlow<Problem?>(if (revenueCat == null || store == null) Problem.Unconfigured else null)
     val problem: StateFlow<Problem?> = mutableProblem.asStateFlow()
     private val mutablePro = MutableStateFlow(false)
+    private val mutableSubscribedPrice = MutableStateFlow<String?>(null)
+
+    /**
+     * What [customer] pays a month, as the store words it: the monthly
+     * product's price, when that is the product granting `pro`; null for
+     * any other, or while that isn't known.
+     */
+    val subscribedPrice: StateFlow<String?> = mutableSubscribedPrice.asStateFlow()
 
     /**
      * Whether [customer] has `pro` now, as RevenueCat last said within a
@@ -134,6 +142,7 @@ class Subscription(
         changing = true
         mutableOffer.value = Offer.Unavailable
         mutablePro.value = false
+        mutableSubscribedPrice.value = null
         scope.launch {
             work.withLock {
                 if (subject == null && preferences.getString(CUSTOMER, null) != null) {
@@ -304,6 +313,9 @@ class Subscription(
     private fun publish() {
         val pro = hasPro()
         mutablePro.value = pro
+        // RevenueCat names a Play subscription by its product, or with its base plan after a colon.
+        val product = cache.pass(customer, now())?.product
+        mutableSubscribedPrice.value = monthly?.takeIf { pro && (product == it.product || product == "${it.product}:${it.basePlan}") }?.price
         mutableOffer.value = when {
             pro -> Offer.Subscribed
             unconfirmed -> Offer.Unavailable.also { mutableProblem.value = Problem.Unconfirmed }

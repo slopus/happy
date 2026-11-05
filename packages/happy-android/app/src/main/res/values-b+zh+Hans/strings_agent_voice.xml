@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="agent_voice_support_title">Happy 是开源的</string>
-    <string name="agent_voice_support_line">每月请我们喝杯波霸，支持这个项目。</string>
-    <string name="agent_voice_support_spoken">Happy 是开源的。每月请我们喝杯波霸，支持这个项目。</string>
+    <string name="agent_voice_support_line">请我们喝杯波霸来支持我们，获得 5 小时与智能体通话</string>
+    <string name="agent_voice_support_spoken">Happy 是开源的。请我们喝杯波霸来支持我们，获得 5 小时与智能体通话</string>
+    <string name="agent_voice_support_thanks_title">感谢你支持 Happy</string>
+    <string name="agent_voice_support_manage">管理你的订阅</string>
+    <string name="agent_voice_support_thanks_spoken">感谢你支持 Happy。管理你的订阅</string>
     <string name="agent_voice_title">语音</string>
     <string name="agent_voice_minutes_left">剩余 %1$d 分钟</string>
     <string name="agent_voice_used_up">已用完</string>
@@ -22,7 +25,10 @@
     <string name="agent_voice_restore_unavailable">不可用</string>
     <string name="agent_voice_restore_hint">语音订阅开售前没有可恢复的内容。</string>
     <string name="agent_voice_sheet_title">支持开源的 Happy</string>
-    <string name="agent_voice_sheet_body">每月请我们喝杯波霸。每月附带 5 小时语音，为 Happy 的开发买单，也让 Happy 一直开源。</string>
+    <string name="agent_voice_sheet_body">Happy 是开源的。请我们喝杯波霸来支持我们，获得 5 小时与智能体通话</string>
     <string name="agent_voice_sheet_not_yet">认捐尚未开放。</string>
     <string name="agent_voice_sheet_pledge">每月认捐 %1$s</string>
+    <string name="agent_voice_sheet_subscribed">你已订阅，每月 %1$s。</string>
+    <string name="agent_voice_sheet_subscribed_no_price">你已订阅。</string>
+    <string name="agent_voice_sheet_thanks">感谢你的支持！</string>
 </resources>

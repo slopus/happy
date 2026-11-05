@@ -140,6 +140,14 @@ public final class Subscription {
         return monthly.map { .onSale(price: $0.displayPrice) } ?? .unavailable
     }
 
+    /// What the customer pays a month, as the store words it: the monthly
+    /// product's price, when that is the product granting `pro`; nil for any
+    /// other, or while that isn't known.
+    public var subscribedPrice: String? {
+        guard hasPro, let monthly, cache.pass(customer: customer, now: now())?.pass?.product == monthly.id else { return nil }
+        return monthly.displayPrice
+    }
+
     /// Told of every change to what it says, on the main actor, until the token goes.
     public func observe(_ handler: @escaping @MainActor () -> Void) -> SubscriptionObservation {
         let id = UUID()

@@ -107,6 +107,9 @@ public final class Offers {
         return subscription.offer
     }
 
+    /// What a subscriber pays a month, as the store words it, where that is known.
+    var subscribedPrice: String? { subscription.subscribedPrice }
+
     /// The paid month the allowance counts in, if the customer has one.
     func month() -> ProMonth? { subscription.month() }
 

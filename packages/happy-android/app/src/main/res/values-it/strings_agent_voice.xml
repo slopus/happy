@@ -1,8 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="agent_voice_support_title">Happy è open source</string>
-    <string name="agent_voice_support_line">Sostieni il progetto offrendoci un boba ogni mese.</string>
-    <string name="agent_voice_support_spoken">Happy è open source. Sostieni il progetto offrendoci un boba ogni mese.</string>
+    <string name="agent_voice_support_line">Sostienici offrendoci un boba e ottieni 5 ore di chiamate con gli agenti</string>
+    <string name="agent_voice_support_spoken">Happy è open source. Sostienici offrendoci un boba e ottieni 5 ore di chiamate con gli agenti</string>
+    <string name="agent_voice_support_thanks_title">Grazie per sostenere Happy</string>
+    <string name="agent_voice_support_manage">Gestisci il tuo abbonamento</string>
+    <string name="agent_voice_support_thanks_spoken">Grazie per sostenere Happy. Gestisci il tuo abbonamento</string>
     <string name="agent_voice_title">Voce</string>
     <string name="agent_voice_minutes_left">%1$d min rimasti</string>
     <string name="agent_voice_used_up">Esaurito</string>
@@ -22,7 +25,10 @@
     <string name="agent_voice_restore_unavailable">Non disponibile</string>
     <string name="agent_voice_restore_hint">Niente da ripristinare finché gli abbonamenti voce non sono in vendita.</string>
     <string name="agent_voice_sheet_title">Sostieni Happy open source</string>
-    <string name="agent_voice_sheet_body">Offrici un boba ogni mese. Include 5 ore di voce al mese, paga lo sviluppo di Happy e mantiene Happy open source.</string>
+    <string name="agent_voice_sheet_body">Happy è open source. Sostienici offrendoci un boba e ottieni 5 ore di chiamate con gli agenti</string>
     <string name="agent_voice_sheet_not_yet">I contributi non sono ancora aperti.</string>
     <string name="agent_voice_sheet_pledge">Contribuisci con %1$s/mese</string>
+    <string name="agent_voice_sheet_subscribed">Sei abbonato a %1$s/mese.</string>
+    <string name="agent_voice_sheet_subscribed_no_price">Sei abbonato.</string>
+    <string name="agent_voice_sheet_thanks">Grazie per il tuo supporto!</string>
 </resources>

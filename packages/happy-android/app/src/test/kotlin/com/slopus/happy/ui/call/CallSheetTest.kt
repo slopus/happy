@@ -2,6 +2,8 @@ package com.slopus.happy.ui.call
 
 import android.content.Context
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -152,12 +154,14 @@ class CallSheetTest {
     /**
      * Nothing on sale, it still opens and says so over Subscribe, which
      * stays and is greyed out, Restore and Manage under it; with pro, it
-     * thanks, sells nothing more and still manages.
+     * says what they pay and thanks, sells and restores nothing more and
+     * still manages.
      */
     @Test
     fun supportSaysWhenNothingIsOnSaleAndThanksASubscriber() {
         var offer by androidx.compose.runtime.mutableStateOf<Offer>(Offer.Unavailable)
-        rule.setHappyContent { SupportScreen(offer, onBack = {}, onRestore = { com.slopus.happy.payments.RestoreResult.NothingFound }) }
+        var price by androidx.compose.runtime.mutableStateOf<String?>(null)
+        rule.setHappyContent { SupportScreen(offer, onBack = {}, onRestore = { com.slopus.happy.payments.RestoreResult.NothingFound }, subscribedPrice = price) }
         rule.waitForIdle()
         rule.onNodeWithText(context.getString(R.string.agent_voice_sheet_not_yet)).assertExists()
         rule.node(AgentVoiceTags.SUBSCRIBE_BUTTON).assertIsNotEnabled()
@@ -166,10 +170,29 @@ class CallSheetTest {
         assertTrue(rule.node(AgentVoiceTags.PAGE_RESTORE).bounds.top > rule.node(AgentVoiceTags.SUBSCRIBE_BUTTON).bounds.bottom)
         offer = Offer.Subscribed
         rule.waitForIdle()
-        rule.onNodeWithText(context.getString(R.string.settings_support_us_subtitle_pro)).assertExists()
+        text("You’re subscribed.").assertExists()
+        text("Thank you for your support!").assertExists()
+        assertTrue(rule.node(AgentVoiceTags.PAGE_THANKS).bounds.top >= rule.node(AgentVoiceTags.PAGE_SUBSCRIBED).bounds.bottom)
         rule.node(AgentVoiceTags.SUBSCRIBE_BUTTON).assertDoesNotExist()
-        rule.node(AgentVoiceTags.PAGE_RESTORE).assertIsNotEnabled()
+        rule.node(AgentVoiceTags.PAGE_RESTORE).assertDoesNotExist()
         rule.node(AgentVoiceTags.PAGE_MANAGE).assertIsEnabled()
+        price = "9,99 €"
+        rule.waitForIdle()
+        text("You’re subscribed at 9,99 €/month.").assertExists()
+        text("Thank you for your support!").assertExists()
+    }
+
+    /** Support Happy's page fits the screen: nothing scrolls, the footer sits at its foot. */
+    @Test
+    fun supportFitsWithoutScrolling() {
+        rule.setHappyContent { SupportScreen(Offer.OnSale("9,99 €"), onBack = {}, onRestore = { com.slopus.happy.payments.RestoreResult.NothingFound }) }
+        rule.waitForIdle()
+        text("Happy is open source. Support by sending us boba, get 5 hours of calls with agents").assertIsDisplayed()
+        rule.onAllNodes(androidx.compose.ui.test.hasScrollAction()).assertCountEquals(0)
+        val page = rule.node(AgentVoiceTags.PAGE).bounds
+        val manage = rule.node(AgentVoiceTags.PAGE_MANAGE).bounds
+        assertTrue(manage.bottom <= page.bottom)
+        rule.node(AgentVoiceTags.PAGE_MANAGE).assertIsDisplayed()
     }
 
     @Test

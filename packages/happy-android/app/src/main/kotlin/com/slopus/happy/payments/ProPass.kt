@@ -27,11 +27,12 @@ data class ProMonth(val start: Long, val end: Long?)
  * the subscription that grants it (`subscriptions[product_identifier]`, none
  * for a one-time product), when its paid period ends ([renews], its
  * `expires_date`) and until when a failed renewal keeps access ([graceUntil],
- * `grace_period_expires_date`); and RevenueCat's own time when it answered
- * ([checkedAt], `request_date`).
+ * `grace_period_expires_date`); RevenueCat's own time when it answered
+ * ([checkedAt], `request_date`); and the product itself ([product],
+ * `product_identifier`; null in a pass kept before it was read), for its price.
  */
 @Serializable
-data class ProPass(val purchased: Long, val expires: Long?, val renews: Long?, val graceUntil: Long?, val checkedAt: Long) {
+data class ProPass(val purchased: Long, val expires: Long?, val renews: Long?, val graceUntil: Long?, val checkedAt: Long, val product: String? = null) {
     /** Active at RevenueCat's [at]: the device's clock decides nothing here. */
     fun active(at: Long = checkedAt): Boolean = expires == null || expires > at
 
@@ -77,7 +78,7 @@ data class ProPass(val purchased: Long, val expires: Long?, val renews: Long?, v
             val subscription = subscriber["subscriptions"].obj?.get(product).obj
             val renews = optionalDate(subscription?.get("expires_date")) ?: return null
             val graceUntil = optionalDate(subscription?.get("grace_period_expires_date")) ?: return null
-            return ProPass(purchased, expires, renews.value, graceUntil.value, checkedAt)
+            return ProPass(purchased, expires, renews.value, graceUntil.value, checkedAt, product)
         }
 
         /** Whether [response] is a subscriber response at all, with `pro` or without. */
@@ -120,6 +121,9 @@ class ProPassCache(private val preferences: SharedPreferences, private val maxAg
         val pass = entry.pass ?: return null
         return pass.period(pass.checkedAt + (now - entry.askedAt))
     }
+
+    /** What RevenueCat last said of [customer]'s `pro` within [maxAge] of [now]; null without it, or when that isn't known. */
+    fun pass(customer: String, now: Long): ProPass? = entry(customer, now)?.pass
 
     /** Whether RevenueCat said, within [maxAge] of [now], whether [customer] has `pro`. */
     fun known(customer: String, now: Long): Boolean = entry(customer, now) != null

@@ -98,6 +98,7 @@ class SubscriptionTest {
         store.emit(t1); runCurrent()
         assertEquals(listOf("t1"), store.acknowledged)
         assertEquals(Offer.Subscribed, subscription.offer.value)
+        assertEquals("9,99 €", subscription.subscribedPrice.value)
     }
 
     @Test
@@ -387,6 +388,7 @@ class SubscriptionTest {
         assertTrue(subscription.pro.value)
         assertTrue(subscription.hasPro())
         assertEquals(Offer.Subscribed, subscription.offer.value)
+        assertNull("a yearly pro is said at the monthly price", subscription.subscribedPrice.value)
         assertEquals(Subscription.Problem.NoProduct, subscription.problem.value)
         assertTrue(posts().isEmpty())
         // Offline at the next launch, within the day: still pro, without asking.

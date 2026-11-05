@@ -153,6 +153,9 @@ class Offers(
         .stateIn(scope, SharingStarted.Eagerly, subscription.offer.value)
     val offer: Offer get() = offers.value
 
+    /** What a subscriber pays a month, as the store words it, where that is known ([Subscription.subscribedPrice]). */
+    val subscribedPrice: StateFlow<String?> = subscription.subscribedPrice
+
     /** The store holds a subscription RevenueCat hasn't confirmed yet. */
     val unconfirmed: StateFlow<Boolean> = subscription.problem.map { it == Subscription.Problem.Unconfirmed }
         .stateIn(scope, SharingStarted.Eagerly, false)
