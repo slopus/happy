@@ -136,7 +136,6 @@ private final class RealVaultScript {
     private func entry(_ name: String, in screen: VaultViewController? = nil) -> (id: String, entry: VaultEntry)? {
         for (id, row) in (screen ?? browser)?.rows ?? [:] {
             if case .entry(let entry) = row, entry.name == name { return (id, entry) }
-            if case .result(let result) = row, result.entry.name == name { return (id, result.entry) }
         }
         return nil
     }
@@ -234,7 +233,6 @@ private final class RealVaultScript {
         check("the root lists its folders first", await until(10) { foldersFirst(root) }, names(root).joined(separator: " | "))
         await shoot("02-vault-root")
         await browse(root)
-        await search(root)
         await changes(root)
         await uploads(root)
         await history(root)
@@ -296,29 +294,6 @@ private final class RealVaultScript {
         check("folders stay first in another order", foldersFirst(root), names(root).joined(separator: " | "))
         await shoot("12-sorted-by-date")
         root?.setSort(.name)
-    }
-
-    private func search(_ root: VaultViewController?) async {
-        guard let root else { return }
-        await reset(root)
-        let search = root.searchController
-        search.isActive = true
-        await sleep(1)
-        search.searchBar.text = "summary"
-        root.updateSearchResults(for: search)
-        check("a name search finds the file", await until(15) { entry("Q3 summary.txt", in: root) != nil })
-        await shoot("13-search-name")
-        search.searchBar.text = "launch"
-        root.updateSearchResults(for: search)
-        await sleep(3)
-        let found = (root.list.items).map(\.accessibilityLabel)
-        check("a search shows names and contents", found.contains("Names") || found.contains("Contents"), found.joined(separator: " | "))
-        check("and apps there without .artifact", found.contains("launch") && !found.contains { $0.hasSuffix(".artifact") }, found.joined(separator: " | "))
-        await shoot("14-search-names-contents")
-        search.searchBar.text = ""
-        search.isActive = false
-        root.updateSearchResults(for: search)
-        await sleep(1)
     }
 
     private func changes(_ root: VaultViewController?) async {

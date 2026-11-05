@@ -318,36 +318,6 @@ public struct VaultTrashItem: Codable, Equatable, Sendable, Identifiable {
     }
 }
 
-/// One search hit: a name match, or text found in a file (inside an
-/// artifact, `innerPath`) with the line it starts on.
-public struct VaultSearchResult: Codable, Equatable, Sendable {
-    public enum Match: String, Codable, Sendable {
-        case name
-        case content
-    }
-
-    public var entry: VaultEntry
-    public var path: String
-    public var match: Match
-    public var innerPath: String?
-    public var line: Int?
-    public var snippet: String?
-
-    private enum CodingKeys: String, CodingKey {
-        case entry = "item"
-        case path, match, innerPath, line, snippet
-    }
-
-    public init(entry: VaultEntry, path: String, match: Match, innerPath: String? = nil, line: Int? = nil, snippet: String? = nil) {
-        self.entry = entry
-        self.path = path
-        self.match = match
-        self.innerPath = innerPath
-        self.line = line
-        self.snippet = snippet
-    }
-}
-
 /// A staged upload: bytes received so far, from the start.
 public struct VaultUpload: Codable, Equatable, Sendable {
     public var id: String

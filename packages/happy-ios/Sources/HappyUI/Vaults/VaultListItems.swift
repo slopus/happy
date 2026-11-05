@@ -5,20 +5,11 @@ import HappyIcons
 import HappyLayout
 import UIKit
 
-/// Search as a vault's browser shows it: the query asked and what came back.
-struct VaultSearchState: Equatable, Sendable {
-    var query = ""
-    var results: [VaultSearchResult] = []
-    var truncated = false
-    var searching = false
-}
-
 /// What a vault folder's list derives from, written by the library (its
-/// state), the search and the screen (sort, width, text size, theme, words).
+/// state) and the screen (sort, width, text size, theme, words).
 struct VaultListInput: Sendable {
     var state = VaultFolderState()
     var sort = VaultSort.name
-    var search: VaultSearchState?
     var width: CGFloat = 0
     var maxWidth: CGFloat = .greatestFiniteMagnitude
     var scale: CGFloat = 1
@@ -31,11 +22,10 @@ struct VaultListInput: Sendable {
 
 /// A vault folder's slots, worked out off the main thread: uploads under
 /// way over the folder's entries (folders first, in the chosen order), or
-/// search results by names then contents, or one note in their place.
+/// one note in their place.
 enum VaultListItems {
     static func entryID(_ id: String) -> String { "e:\(id)" }
     static func uploadID(_ id: String) -> String { "u:\(id)" }
-    static func resultID(_ index: Int) -> String { "r:\(index)" }
 
     /// The glyph and tint an entry's tile shows.
     nonisolated static func tile(_ entry: VaultEntry) -> (icon: Icon, ink: ColorToken, fill: ColorToken) {
@@ -78,7 +68,6 @@ enum VaultListItems {
         func note(_ id: String, _ text: String) -> CardItem {
             CardItems.note(id, text, width: input.width, maxWidth: input.maxWidth, scale: input.scale, dark: input.dark, displayScale: input.displayScale)
         }
-        if let search = input.search { return results(search, input: input, note: note) }
         let state = input.state
         var items: [CardItem] = []
         if state.status == .missing { return [note("vault:note", Strings.Vaults.missing)] }
@@ -100,31 +89,6 @@ enum VaultListItems {
             items.append(row(id: entryID(entry.id), entry: entry, title: entry.shownName, subtitle: detail(entry, input: input), place: place,
                              waiting: state.waiting.contains(entry.id), input: input))
         }
-        return items
-    }
-
-    private nonisolated static func results(_ search: VaultSearchState, input: VaultListInput, note: (String, String) -> CardItem) -> [CardItem] {
-        if search.results.isEmpty { return [note("vault:note", search.searching ? Strings.Vaults.searching : Strings.Vaults.noResults)] }
-        var items: [CardItem] = []
-        let groups: [(String, [Int])] = [
-            (Strings.Vaults.nameMatches, search.results.indices.filter { search.results[$0].match == .name }),
-            (Strings.Vaults.contentMatches, search.results.indices.filter { search.results[$0].match == .content }),
-        ].filter { !$0.1.isEmpty }
-        for (group, (title, indices)) in groups.enumerated() {
-            items.append(CardItems.heading("vault:results:\(group)", title, width: input.width, maxWidth: input.maxWidth, afterCard: group > 0, dark: input.dark, displayScale: input.displayScale))
-            for (index, place) in zip(indices, CardPlace.run(indices.count)) {
-                let result = search.results[index]
-                var folder = (result.path as NSString).deletingLastPathComponent
-                if let inner = result.innerPath { folder = result.path + "/" + inner }
-                var subtitle = folder
-                if result.match == .content {
-                    let snippet = (result.snippet ?? "").replacingOccurrences(of: "\n", with: " ").trimmingCharacters(in: .whitespaces)
-                    subtitle = [result.line.map(Strings.Vaults.line), snippet.isEmpty ? nil : "“\(snippet)”"].compactMap { $0 }.joined(separator: ": ") + "\n" + folder
-                }
-                items.append(row(id: resultID(index), entry: result.entry, title: result.entry.shownName, subtitle: subtitle, place: place, waiting: false, input: input, subtitleLines: result.match == .content ? 3 : 1))
-            }
-        }
-        if search.truncated { items.append(note("vault:more", Strings.Vaults.moreResults)) }
         return items
     }
 

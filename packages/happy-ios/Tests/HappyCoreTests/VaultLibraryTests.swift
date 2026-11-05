@@ -107,10 +107,6 @@ actor FakeVaultServer: VaultRoutes {
         return VaultPage(items: items, next: nil)
     }
 
-    func vaultSearch(_ surfaceId: String, query: String) async throws -> (results: [VaultSearchResult], truncated: Bool) {
-        (entries.values.filter { live($0) && $0.name.lowercased().contains(query.lowercased()) }.map { VaultSearchResult(entry: $0, path: "/" + $0.name, match: .name) }, false)
-    }
-
     func vaultVersions(_ surfaceId: String, _ entryId: String, pageCursor: String?) async throws -> VaultPage<VaultVersion> {
         VaultPage(items: (versions[entryId] ?? []).reversed(), next: nil)
     }
@@ -427,15 +423,15 @@ final class VaultLibraryTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: file.path), "the library removes the file once the entry is made")
     }
 
-    func testAFileFoundBySearchInAFolderNeverOpenedCanBeChanged() async throws {
+    func testAFileHomesSearchOpensInAVaultNeverOpenedCanBeChanged() async throws {
         let server = FakeVaultServer(surfaceId: surfaceId)
         await server.seed("f1", "Docs", kind: .folder)
         await server.seed("e1", "plan.md", parent: "f1")
         let library = library(server)
-        let root = await watch(library)
-        try await eventually { root.names == ["Docs"] && !root.state.kept }
-        let found = try await library.search(surfaceId, query: "plan")
-        XCTAssertEqual(found.results.map(\.entry.id), ["e1"])
+        // As Home opens a found file: read where it is, then its preview follows it.
+        let place = try await library.location(surfaceId, "e1", folder: false)
+        let events = await library.entryEvents(surfaceId, "e1", known: place.entry)
+        defer { _ = events }
         try await library.rename(surfaceId, "e1", to: "roadmap.md")
         let name = await server.entries["e1"]?.name
         XCTAssertEqual(name, "roadmap.md")
@@ -620,8 +616,6 @@ final class VaultRulesTests: XCTestCase {
         XCTAssertEqual(unknown.kind, .other("tagged"))
         let version = try JSONDecoder().decode(VaultVersion.self, from: Data(#"{"fileId":"e","surfaceId":"s","number":3,"size":48213,"sha256":"2c26","artifact":null,"pinned":false,"restoredFrom":null,"createdAt":1,"actor":{"userId":null,"agentId":"a9"},"source":"tool"}"#.utf8))
         XCTAssertEqual(version.entryId, "e")
-        let found = try JSONDecoder().decode(VaultSearchResult.self, from: Data(#"{"item":\#(json),"path":"/Reports/summary.pdf","match":"content","innerPath":null,"line":4,"snippet":"Q3"}"#.utf8))
-        XCTAssertEqual(found.entry.id, entry.id)
         let trash = try JSONDecoder().decode(VaultTrashItem.self, from: Data(#"{"item":\#(json),"path":"/Reports"}"#.utf8))
         XCTAssertEqual(trash.entry.name, "summary.pdf")
         let folder = try JSONDecoder().decode(VaultEntry.self, from: Data(#"{"id":"f","surfaceId":"s","parentId":null,"name":"Reports","kind":"folder","createdAt":1,"createdBy":{"userId":"u","agentId":null},"updatedAt":1,"updatedBy":{"userId":"u","agentId":null},"deletedAt":null,"version":"v"}"#.utf8))

@@ -102,7 +102,6 @@ public actor VaultLibrary {
         var settings: VaultSettings?
         /// The newest policy sent and not yet answered, shown over it.
         var settingsEdit: (token: UUID, retention: VaultRetention)?
-        var changeListeners: [UUID: AsyncStream<Void>.Continuation] = [:]
         var settingsListeners: [UUID: AsyncStream<VaultSettings?>.Continuation] = [:]
         var entryListeners: [String: [UUID: AsyncStream<VaultEntryEvent>.Continuation]] = [:]
         var uploads: [VaultUploadState] = []
@@ -385,7 +384,6 @@ public actor VaultLibrary {
     /// Publishes every open folder of the vault, and keeps the read ones.
     private func changed(_ surfaceId: String) {
         guard let vault = vaults[surfaceId] else { return }
-        for listener in vault.changeListeners.values { listener.yield() }
         for key in vault.folders.keys {
             publish(surfaceId, folder: key)
             scheduleKeep(surfaceId, folder: key)
@@ -665,27 +663,6 @@ public actor VaultLibrary {
     }
 
     // MARK: Reads passed through
-
-    /// What matches `query`; its items are held, so they can be changed.
-    public func search(_ surfaceId: String, query: String) async throws -> (results: [VaultSearchResult], truncated: Bool) {
-        let found = try await routes.vaultSearch(surfaceId, query: query)
-        for result in found.results { take(result.entry) }
-        return found
-    }
-
-    /// A signal each time anything in the vault changes here, for what
-    /// isn't a folder's state (a search on screen).
-    public func changes(_ surfaceId: String) -> AsyncStream<Void> {
-        start()
-        if vaults[surfaceId] == nil { vaults[surfaceId] = Vault() }
-        let id = UUID()
-        let (stream, continuation) = AsyncStream.makeStream(of: Void.self, bufferingPolicy: .bufferingNewest(1))
-        vaults[surfaceId]?.changeListeners[id] = continuation
-        continuation.onTermination = { [weak self] _ in Task { await self?.unlistenChanges(surfaceId, id) } }
-        return stream
-    }
-
-    private func unlistenChanges(_ surfaceId: String, _ id: UUID) { vaults[surfaceId]?.changeListeners[id] = nil }
 
     /// An entry's surviving versions, newest first, and its activity.
     public func history(_ surfaceId: String, _ entryId: String) async throws -> (versions: [VaultVersion], activity: [VaultActivity]) {

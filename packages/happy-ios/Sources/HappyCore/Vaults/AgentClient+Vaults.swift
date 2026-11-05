@@ -33,7 +33,6 @@ public protocol VaultRoutes: Sendable {
     func vaultEntries(_ surfaceId: String, parentId: String?, pageCursor: String?) async throws -> VaultPage<VaultEntry>
     func vaultEntry(_ surfaceId: String, _ entryId: String, folder: Bool) async throws -> VaultLocation
     func vaultTrash(_ surfaceId: String, pageCursor: String?) async throws -> VaultPage<VaultTrashItem>
-    func vaultSearch(_ surfaceId: String, query: String) async throws -> (results: [VaultSearchResult], truncated: Bool)
     func vaultVersions(_ surfaceId: String, _ fileId: String, pageCursor: String?) async throws -> VaultPage<VaultVersion>
     func vaultVersion(_ surfaceId: String, _ fileId: String, number: Int?) async throws -> VaultVersion
     func vaultActivity(_ surfaceId: String, _ entryId: String, folder: Bool, pageCursor: String?) async throws -> VaultPage<VaultActivity>
@@ -116,11 +115,6 @@ extension AgentClient: VaultRoutes {
     public func vaultTrash(_ surfaceId: String, pageCursor: String?) async throws -> VaultPage<VaultTrashItem> {
         let answer = try await json("GET", Self.vaultPath(surfaceId, "/trash") + Self.query([("limit", "500"), ("pageCursor", pageCursor)]))
         return VaultPage(items: Self.list(VaultTrashItem.self, answer["items"]), next: answer["nextPageCursor"]?.stringValue)
-    }
-
-    public func vaultSearch(_ surfaceId: String, query: String) async throws -> (results: [VaultSearchResult], truncated: Bool) {
-        let answer = try await json("GET", Self.vaultPath(surfaceId, "/search") + Self.query([("q", query), ("limit", "100")]))
-        return (Self.list(VaultSearchResult.self, answer["results"]), answer["truncated"]?.boolValue ?? false)
     }
 
     public func vaultVersions(_ surfaceId: String, _ fileId: String, pageCursor: String?) async throws -> VaultPage<VaultVersion> {

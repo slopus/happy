@@ -157,23 +157,6 @@ final class VaultUITests: XCTestCase {
         pause(1)
     }
 
-    func test2Search() {
-        openVault()
-        let field = app.searchFields.firstMatch
-        if !field.exists { app.navigationBars.buttons["Search"].firstMatch.tap() }
-        XCTAssertTrue(field.waitForExistence(timeout: 5))
-        field.tap()
-        field.typeText("summary")
-        pause(2.5)
-        capture("12-search-names")
-        field.buttons.firstMatch.tap()
-        field.typeText("launch")
-        pause(2.5)
-        capture("13-search-names-and-contents")
-        app.buttons["Cancel"].firstMatch.tap()
-        pause(0.5)
-    }
-
     func test3FoldersRenameMoveTrash() {
         openVault()
         barMenu("vault-add", "New Folder")

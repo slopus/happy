@@ -29,13 +29,6 @@ extension Strings {
         static let settings = "Vault Settings"
         static let downloadFolder = "Download Folder as Zip"
         static let downloadVault = "Download Vault as Zip"
-        static let search = "Search this vault"
-        static let searching = "Searching…"
-        static let noResults = "Nothing found."
-        static let nameMatches = "Names"
-        static let contentMatches = "Contents"
-        static let moreResults = "More results exist. Narrow your search."
-        static func line(_ number: Int) -> String { "Line \(number)" }
         static let app = "App"
         static let folder = "Folder"
 
