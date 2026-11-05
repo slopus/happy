@@ -102,15 +102,19 @@ public actor TodoLibrary {
     private var asked: Set<String> = []
     private var following: [Task<Void, Never>] = []
     private var started = false
+    /// A change the person made is kept: `feature_used`.
+    private let changed: @Sendable () async -> Void
 
     public init(routes: TodoRoutes, outbox: IntentOutbox, keep: TodoKeep,
                 events: @escaping @Sendable () async -> AsyncStream<Store.ConversationEvent>,
-                now: @escaping @Sendable () -> Double = { (Date().timeIntervalSince1970 * 1000).rounded(.down) }) {
+                now: @escaping @Sendable () -> Double = { (Date().timeIntervalSince1970 * 1000).rounded(.down) },
+                changed: @escaping @Sendable () async -> Void = { await Analytics.shared.log(.featureUsed(.todoChanged)) }) {
         self.routes = routes
         self.outbox = outbox
         self.keep = keep
         self.events = events
         self.now = now
+        self.changed = changed
     }
 
     // MARK: Following
@@ -378,16 +382,16 @@ public actor TodoLibrary {
     // MARK: Changes
 
     /// `reported`: one change the person made, `feature_used` once it is
-    /// queued; a restore's second step is the same change.
+    /// kept in the outbox; a restore's second step is the same change.
     private func enqueue(_ op: TodoOp, reported: Bool = true) async {
-        if reported { Task { @MainActor in Analytics.shared.log(.featureUsed(.todoChanged)) } }
         await start()
         await open(op.surfaceId)
         lists[op.surfaceId]?.failure = nil
-        _ = try? await outbox.enqueue(op.intentKind, target: op.todoId, value: op.value)
+        let kept = (try? await outbox.enqueue(op.intentKind, target: op.todoId, value: op.value)) != nil
         // The outbox publishes the change; this shows it without waiting.
         ops = Self.todoOps(await outbox.pending())
         publish(op.surfaceId)
+        if kept, reported { await changed() }
     }
 
     /// A new todo at the top; its ID, or nil when `text` is nothing.

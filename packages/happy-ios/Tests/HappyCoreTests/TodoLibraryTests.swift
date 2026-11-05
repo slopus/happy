@@ -144,13 +144,14 @@ final class TodoLibraryTests: XCTestCase {
     }
 
     /// One launch of an account: its outbox over `storage`, its library over `keep`.
-    private func launch(_ server: FakeTodoServer, storage: MemoryIntentStorage, keep: MemoryTodoKeep, online: Bool = true) async -> Account {
+    private func launch(_ server: FakeTodoServer, storage: any IntentStorage, keep: MemoryTodoKeep, online: Bool = true,
+                        changed: @escaping @Sendable () async -> Void = {}) async -> Account {
         let clock = Clock()
         let delivery = TodoDelivery()
         let outbox = IntentOutbox(storage: storage, deliver: { try await delivery.deliver($0) }, now: { clock.now() }, sleep: { clock.advance($0); await Task.yield() })
         let (stream, continuation) = AsyncStream.makeStream(of: Store.ConversationEvent.self)
         let box = StreamBox(stream)
-        let library = TodoLibrary(routes: server, outbox: outbox, keep: keep, events: { box.take() }, now: { Double(clock.now()) })
+        let library = TodoLibrary(routes: server, outbox: outbox, keep: keep, events: { box.take() }, now: { Double(clock.now()) }, changed: changed)
         delivery.library = library
         await outbox.setOnline(online)
         return Account(library: library, outbox: outbox, events: continuation)
@@ -183,6 +184,39 @@ final class TodoLibraryTests: XCTestCase {
         let stream = await library.states(surfaceId)
         Task { for await state in stream { watcher.set(state) } }
         return watcher
+    }
+
+    /// Intents that can't be written: the disk refused.
+    private actor FailingIntentStorage: IntentStorage {
+        struct Refused: Error {}
+        func intents() -> [Intent] { [] }
+        func saveIntent(_ intent: Intent) throws { throw Refused() }
+        func updateIntent(_ intent: Intent) {}
+        func removeIntent(id: String) {}
+    }
+
+    private final class Reports: @unchecked Sendable {
+        private let lock = NSLock()
+        private var value = 0
+        var count: Int { lock.lock(); defer { lock.unlock() }; return value }
+        func add() { lock.lock(); value += 1; lock.unlock() }
+    }
+
+    /// `feature_used: todo_changed` goes once a change is kept in the
+    /// outbox, once per change, and never for one that couldn't be kept.
+    func testAChangeIsReportedOnlyOnceItIsKept() async throws {
+        let server = FakeTodoServer(surfaceId: surfaceId)
+        await server.seed("t000000000000000000000a1", "Milk")
+        let reports = Reports()
+        let account = await launch(server, storage: MemoryIntentStorage(), keep: MemoryTodoKeep(), changed: { reports.add() })
+        _ = await account.library.add(surfaceId, text: "Bread")
+        _ = await account.library.add(surfaceId, text: "Butter")
+        XCTAssertEqual(reports.count, 2)
+
+        let failed = Reports()
+        let broken = await launch(server, storage: FailingIntentStorage(), keep: MemoryTodoKeep(), changed: { failed.add() })
+        _ = await broken.library.add(surfaceId, text: "Eggs")
+        XCTAssertEqual(failed.count, 0)
     }
 
     func testAChangeShowsAtOnceAndReachesTheComputerUnderItsIDs() async throws {
