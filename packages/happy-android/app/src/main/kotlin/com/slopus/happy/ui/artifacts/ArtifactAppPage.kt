@@ -78,7 +78,7 @@ object ArtifactAppPageTags {
     val CloseAlpha = SemanticsPropertyKey<Float>("ArtifactAppCloseAlpha")
 }
 
-/** The close button over an app (task_206's fullscreen-spec.md and its addendum, iOS's alike). */
+/** The close button over an app (happy-agent's docs/DESIGN.md §1.8, iOS's alike). */
 object ArtifactAppPageSpec {
     /** The button's circle. */
     val button = 32.dp
@@ -128,7 +128,7 @@ object ArtifactAppPageSpec {
 
 /**
  * An HTML artifact that asks to run as an app (`happy-page-mode: app`),
- * full screen over everything (task_206's fullscreen-spec.md, Android): a
+ * full screen over everything (happy-agent's docs/DESIGN.md §1.8): a
  * dialog window edge to edge into the display cutout, the system bars
  * hidden and shown again when it closes; swiped in, they go again after
  * [ArtifactAppPageSpec.AWAKE_MS]. They are hidden with

@@ -13,8 +13,8 @@ import com.slopus.happy.artifacts.AppClose
 import kotlin.math.roundToInt
 
 /**
- * A page shown as an app (an artifact's `happy-page-mode: app`, task_206's
- * fullscreen-spec.md): the host's part inside the WebView. The page fills
+ * A page shown as an app (an artifact's `happy-page-mode: app`,
+ * happy-agent's docs/DESIGN.md §1.8): the host's part inside the WebView. The page fills
  * its place and never scrolls, zooms, selects or bounces; its root carries
  * `data-happy-page-mode="app"` and `data-happy-app-close`; no host inset
  * (`--happy-host-page-inset: 0`, no padding on the root or body); it reads

@@ -36,7 +36,7 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
 /**
- * An app's frame and close button (task_206's fullscreen-spec.md,
+ * An app's frame and close button (happy-agent's docs/DESIGN.md §1.8,
  * Android): a 32 circle 8 in from the safe area's top-start corner, fully
  * there for 3 s, then at 35% until a touch within 64 of it; every touch
  * still reaches the page; "Close" for TalkBack.

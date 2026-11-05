@@ -66,7 +66,7 @@ import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 /**
- * An artifact that runs as an app (task_206's fullscreen-spec.md), on a
+ * An artifact that runs as an app (happy-agent's docs/DESIGN.md §1.8), on a
  * device: a canvas game over a made-up agent that exists only in this
  * test's memory, its files served to the real BrowserProxy by a byte-level
  * fake daemon. Inline it is a card; opened, it is full screen with the bars

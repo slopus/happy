@@ -1669,8 +1669,8 @@ iOS's `docs/browser-proxy.md` is the contract; `browser/` ports it
   pages in their own profiles at once, the computer's localhost, and the
   cleartext refusal.
 - **App mode** (`<meta name="happy-page-mode" content="app">`, the
-  contract shared with desktop and iOS: Happy/Tasks/task_206's
-  fullscreen-spec.md). `artifacts/ArtifactPageMode` reads the entry's first
+  contract shared with desktop and iOS, as agents read it in
+  happy-agent's docs/DESIGN.md §1.8). `artifacts/ArtifactPageMode` reads the entry's first
   64 KB before any WebView is made (`ArtifactUi.Page.app`,
   `InlinePages.readMode`), so nothing jumps. Inline, such a page is never
   run: its card reads "App" and "Open". Opened, `ArtifactAppPage` is a

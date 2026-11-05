@@ -6,7 +6,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** `happy-page-mode: app` read from an entry's head, as desktop's selector matches it (task_206's fullscreen-spec.md). */
+/** `happy-page-mode: app` read from an entry's head, as desktop's selector matches it (happy-agent's docs/DESIGN.md §1.8). */
 class ArtifactPageModeTest {
     @Test fun theMetaMakesAnApp() {
         assertTrue(ArtifactPageMode.declaresApp("""<!doctype html><html><head><meta charset="utf-8"><meta name="happy-page-mode" content="app"><title>Snake</title></head><body></body></html>"""))

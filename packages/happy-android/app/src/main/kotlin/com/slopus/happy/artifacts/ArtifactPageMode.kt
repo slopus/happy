@@ -22,8 +22,7 @@ enum class AppClose(val value: String, val top: Boolean, val start: Boolean) {
 }
 
 /**
- * How an HTML artifact's page asks to be shown (task_206's
- * fullscreen-spec.md): a normal scrolling page, or, with
+ * How an HTML artifact's page asks to be shown (happy-agent's docs/DESIGN.md §1.8): a normal scrolling page, or, with
  *
  *     <meta name="happy-page-mode" content="app">
  *

@@ -85,7 +85,7 @@ class ArtifactCardTest {
         assertEquals(313.dp, pages.height("p1"))
     }
 
-    /** task_206's fullscreen-spec.md: a page that runs as an app is never run in a chat row; its card says App and opens it. */
+    /** happy-agent's docs/DESIGN.md §1.8: a page that runs as an app is never run in a chat row; its card says App and opens it. */
     @Test fun anAppIsACardThatOpensItNeverAnInlinePage() {
         val prepared = ArrayList<String>()
         val opened = ArrayList<String>()
