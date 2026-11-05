@@ -451,6 +451,8 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.lottie.compose)
     implementation(libs.coil.network.okhttp)
+    // Animated covers in Feed posts (AnimatedImageDecoder, API 28+), asked for per request.
+    implementation(libs.coil.gif)
     implementation(libs.play.billing)
 
     testImplementation(libs.junit)

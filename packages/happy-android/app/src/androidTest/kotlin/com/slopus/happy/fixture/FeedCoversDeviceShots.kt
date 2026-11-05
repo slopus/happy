@@ -61,9 +61,10 @@ import java.util.Collections
  * FeedLookups, FeedCovers and AgentFeedRoutes over a made-up daemon in this
  * test's memory that has `artifactCovers` and `feedSubjectFilter`. A wide
  * (16:9) and a square (1:1) cover, drawn here, become posts in All and in
- * Highlights; a markdown artifact without one keeps its row. Captured to
- * the test app's files under `device-evidence/feed-covers-*.png`. Every
- * entry is synthetic.
+ * Highlights; a markdown artifact without one keeps its row; an animated
+ * WebP cover (`assets/cover-loop.webp`) moves unless animations are off.
+ * The lists read the computer's still previews. Captured to the test app's
+ * files under `device-evidence/feed-covers-*.png`. Every entry is synthetic.
  */
 @RunWith(AndroidJUnit4::class)
 class FeedCoversDeviceShots {
@@ -86,6 +87,47 @@ class FeedCoversDeviceShots {
 
     @Test fun captureListDark() = list(dark = true)
 
+    /**
+     * The animated cover plays: two frames apart, its pixels differ, and
+     * once the app is paused they hold still. With animations off
+     * (`animator_duration_scale` 0) it is the first frame throughout.
+     */
+    @Test fun captureMotion() {
+        val still = android.provider.Settings.Global.getFloat(app.contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
+        val name = if (still) "feed-covers-motion-still" else "feed-covers-motion"
+        open(dark = false)
+        rule.waitUntil(10_000) { daemon.requests.any { it.endsWith("/files/loop.webp") } }
+        rule.waitForIdle()
+        SystemClock.sleep(2500)
+        val box = rule.onAllNodes(androidx.compose.ui.test.hasTestTag(FeedTags.COVER), useUnmergedTree = true)[0].fetchSemanticsNode().boundsInRoot
+        val origin = IntArray(2).also { rule.activity.window.decorView.getLocationOnScreen(it) }
+        fun frame(file: String): IntArray {
+            val shot = File(evidence, file)
+            device.takeScreenshot(shot)
+            val bitmap = android.graphics.BitmapFactory.decodeFile(shot.path)
+            val left = origin[0] + box.left.toInt() + 8
+            val top = origin[1] + box.top.toInt() + 8
+            val width = box.width.toInt() - 16
+            val height = box.height.toInt() - 16
+            return IntArray(width * height).also { bitmap.getPixels(it, 0, width, left, top, width, height) }
+        }
+        val first = frame("$name-a.png")
+        SystemClock.sleep(450)
+        val second = frame("$name-b.png")
+        if (still) {
+            assertTrue("with animations off the cover holds its first frame", first.contentEquals(second))
+        } else {
+            assertTrue("the animated cover moves", !first.contentEquals(second))
+            // In the background it stops: two frames apart are the same.
+            rule.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.STARTED)
+            SystemClock.sleep(600)
+            val paused = frame("$name-paused-a.png")
+            SystemClock.sleep(450)
+            assertTrue("a paused app's cover holds still", paused.contentEquals(frame("$name-paused-b.png")))
+            rule.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+        }
+    }
+
     /** The artifacts list over the same daemon: a wide cover, a square one, a picture without one, and a glyph. */
     private fun list(dark: Boolean) {
         rule.runOnUiThread { rule.activity.enableEdgeToEdge() }
@@ -100,40 +142,19 @@ class FeedCoversDeviceShots {
                 com.slopus.happy.ui.artifacts.ArtifactsScreen(state, {}, {}, {}, thumbnails, covers = covers)
             }
         }
-        rule.waitUntil(10_000) { daemon.requests.count { it.contains("/files/") } >= 3 }
+        // Two covers read whole; the animated cover and the photo through their stills.
+        rule.waitUntil(10_000) { daemon.requests.count { it.contains("/files/") || it.contains("/previews/") } >= 4 }
         rule.waitForIdle()
         SystemClock.sleep(1500)
         device.takeScreenshot(File(evidence, "artifacts-list-covers${if (dark) "-dark" else ""}.png"))
+        assertTrue(daemon.requests.toString(), "GET /v0/artifacts/fx-loop/versions/1/previews/loop.webp" in daemon.requests)
+        assertTrue(daemon.requests.toString(), "GET /v0/artifacts/fx-photo/versions/1/previews/team.png" in daemon.requests)
+        assertTrue("a previewed file isn't read whole", daemon.requests.none { it.endsWith("/files/loop.webp") || it.endsWith("/files/team.png") })
     }
 
     private fun show(dark: Boolean) {
         val suffix = if (dark) "-dark" else ""
-        rule.runOnUiThread { rule.activity.enableEdgeToEdge() }
-        val client = AgentClient(daemon, "fixture")
-        val catalog = AgentCatalog().withBootstrap(AgentClient.json.decodeFromString(WireDesktopBootstrap.serializer(), BOOTSTRAP))
-        val library = FeedLibrary(scope, AgentFeedRoutes(client), IntentOutbox(scope, MemoryIntentStorage()), kept = { null }, keep = {})
-        val lookups = FeedLookups.of(scope, client) { ArtifactClient(client).artifact(it) }
-        val covers = FeedCovers.of(ArtifactClient(client), null)
-        rule.runOnUiThread {
-            library.start()
-            library.bootstrap(3, "e1")
-            library.connected()
-        }
-        rule.setContent {
-            HappyTheme(preference = if (dark) com.slopus.happy.ui.theme.ThemePreference.Dark else com.slopus.happy.ui.theme.ThemePreference.Light) {
-                ProvideWindowLayout {
-                    val state by library.state.collectAsState()
-                    val found by lookups.found.collectAsState()
-                    LaunchedEffect(state.items) { lookups.want(state.items) }
-                    val rows = remember(state, found) { FeedRows.make(state.items, state::isUnread, catalog, found, "fixture") }
-                    FeedScreen(
-                        state, rows, catalog, FeedFollowingState(loaded = true),
-                        FeedActions(onBack = {}, onFilter = library::show, onRefresh = library::refresh, onLoadMore = library::loadMore),
-                        covers = covers,
-                    )
-                }
-            }
-        }
+        val library = open(dark)
         rule.waitUntil(10_000) { rule.onAllNodesWithText("Q3 revenue").fetchSemanticsNodes().isNotEmpty() }
         // Before the pictures land, each post already has its height, on its ground.
         device.takeScreenshot(File(evidence, "feed-covers-loading$suffix.png"))
@@ -161,6 +182,37 @@ class FeedCoversDeviceShots {
         assertTrue(daemon.requests.toString(), daemon.requests.any { it == "GET /v0/artifacts/fx-pipeline/versions/1/files/cover.png" })
     }
 
+    /** The Feed over [daemon], in All. */
+    private fun open(dark: Boolean): FeedLibrary {
+        rule.runOnUiThread { rule.activity.enableEdgeToEdge() }
+        val client = AgentClient(daemon, "fixture")
+        val catalog = AgentCatalog().withBootstrap(AgentClient.json.decodeFromString(WireDesktopBootstrap.serializer(), BOOTSTRAP))
+        val library = FeedLibrary(scope, AgentFeedRoutes(client), IntentOutbox(scope, MemoryIntentStorage()), kept = { null }, keep = {})
+        val lookups = FeedLookups.of(scope, client) { ArtifactClient(client).artifact(it) }
+        val covers = FeedCovers.of(ArtifactClient(client), null)
+        rule.runOnUiThread {
+            library.start()
+            library.bootstrap(4, "e1")
+            library.connected()
+        }
+        rule.setContent {
+            HappyTheme(preference = if (dark) com.slopus.happy.ui.theme.ThemePreference.Dark else com.slopus.happy.ui.theme.ThemePreference.Light) {
+                ProvideWindowLayout {
+                    val state by library.state.collectAsState()
+                    val found by lookups.found.collectAsState()
+                    LaunchedEffect(state.items) { lookups.want(state.items) }
+                    val rows = remember(state, found) { FeedRows.make(state.items, state::isUnread, catalog, found, "fixture") }
+                    FeedScreen(
+                        state, rows, catalog, FeedFollowingState(loaded = true),
+                        FeedActions(onBack = {}, onFilter = library::show, onRefresh = library::refresh, onLoadMore = library::loadMore),
+                        covers = covers,
+                    )
+                }
+            }
+        }
+        return library
+    }
+
     private fun androidx.compose.ui.test.junit4.ComposeTestRule.onAllNodesWithText(text: String) =
         onAllNodes(hasText(text), useUnmergedTree = true)
 
@@ -169,7 +221,11 @@ class FeedCoversDeviceShots {
         val requests: MutableList<String> = Collections.synchronizedList(ArrayList())
         private val wide by lazy { wideCover() }
         private val square by lazy { squareCover() }
-        /** An older daemon's picture artifact: no cover, its own file as the row's thumbnail. */
+        /** An animated WebP: a bar filling and a square crossing, 16 frames at 10 a second. */
+        private val loop by lazy { InstrumentationRegistry.getInstrumentation().context.assets.open("cover-loop.webp").use { it.readBytes() } }
+        /** The computer's still of it: its first frame. */
+        private val loopStill by lazy { png(android.graphics.BitmapFactory.decodeByteArray(loop, 0, loop.size)) }
+        /** A picture artifact without a cover: the computer's still of its photo fills the row's slot. */
         private val photo by lazy {
             val bitmap = Bitmap.createBitmap(640, 480, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
@@ -184,7 +240,14 @@ class FeedCoversDeviceShots {
             val route = path.substringBefore('?')
             return when {
                 route == "/v0/artifacts" -> json(CATALOG.replace("NOW", now.toString()))
-                route == "/v0/artifacts/fx-photo/versions/1/files/team.png" -> TransportResponse(200, body = photo)
+                route == "/v0/artifacts/fx-photo/versions/1/previews/team.png" -> TransportResponse(200, body = photo)
+                route == "/v0/artifacts/fx-loop/versions/1/previews/loop.webp" -> TransportResponse(200, body = loopStill)
+                route == "/v0/artifacts/fx-loop/versions/1/files/loop.webp" -> TransportResponse(200, body = loop)
+                route == "/v0/artifacts/fx-loop" -> json(
+                    """{"artifact":{"id":"fx-loop","type":"html","title":"Nightly build","status":"active","latestVersion":1,"background":"#101828",
+                        "cover":{"path":"loop.webp","mimeType":"image/webp","width":640,"height":360,"aspect":"wide","thumbhash":"$LOOP_HASH","preview":{"path":"loop.png"}},
+                        "summary":"The nightly build, live: the test suite is running."}}""",
+                )
                 route == "/v0/health" -> json("""{"capabilities":{"feed":true,"feedSubjectFilter":true,"artifactCovers":true}}""")
                 route == "/v0/feed" && "subjects=artifact,task" in path -> json(page(highlights = true))
                 route == "/v0/feed" -> json(page(highlights = false))
@@ -217,6 +280,7 @@ class FeedCoversDeviceShots {
 
         private fun page(highlights: Boolean): String {
             val all = listOf(
+                "artifact" to entry("7", "artifact", "fx-loop", 3, seen = false, updates = 4, actor = "\"agentId\":\"at1\""),
                 "artifact" to entry("6", "artifact", "fx-q3", 8, seen = false, updates = 1, actor = "\"agentId\":\"at1\""),
                 "surface" to entry("5", "surface", "s1", 25, seen = false, updates = 3, actor = "\"userId\":\"u1\""),
                 "artifact" to entry("4", "artifact", "fx-pipeline", 50, seen = false, created = true, actor = "\"agentId\":\"ab1\""),
@@ -225,7 +289,7 @@ class FeedCoversDeviceShots {
                 "bot" to entry("1", "bot", "b1", 26 * 60, seen = true, created = true, actor = "\"userId\":\"u1\""),
             )
             val items = all.filter { !highlights || it.first == "artifact" || it.first == "task" }.joinToString(",") { it.second }
-            return """{"items":[$items],"unread":3,${if (highlights) "\"filteredUnread\":2," else ""}"hasMore":false,"cursor":"e9"}"""
+            return """{"items":[$items],"unread":4,${if (highlights) "\"filteredUnread\":3," else ""}"hasMore":false,"cursor":"e9"}"""
         }
 
         /** A 16:9 title card: the headline and its number over a rising line. */
@@ -272,7 +336,13 @@ class FeedCoversDeviceShots {
     }
 
     private companion object {
+        /** The loop's first frame as a ThumbHash. */
+        const val LOOP_HASH = "h+cFDIDPeUapeHdEVHjfifCdCA"
+
         val CATALOG = """{"artifacts":[
+            {"id":"fx-loop","type":"html","title":"Nightly build","latestVersion":1,"createdAt":NOW,"updatedAt":NOW,"background":"#101828",
+                "entry":{"path":"index.html","mimeType":"text/html","size":10},
+                "cover":{"path":"loop.webp","mimeType":"image/webp","width":640,"height":360,"aspect":"wide","thumbhash":"$LOOP_HASH","preview":{"path":"loop.png"}}},
             {"id":"fx-q3","type":"html","title":"Q3 revenue","latestVersion":2,"createdAt":NOW,"updatedAt":NOW,"background":"#0b1020",
                 "entry":{"path":"index.html","mimeType":"text/html","size":10},
                 "cover":{"path":"cover.png","mimeType":"image/png","width":1600,"height":900,"aspect":"wide"}},
@@ -280,7 +350,7 @@ class FeedCoversDeviceShots {
                 "entry":{"path":"index.html","mimeType":"text/html","size":10},
                 "cover":{"path":"cover.png","mimeType":"image/png","width":1200,"height":1200,"aspect":"square"}},
             {"id":"fx-photo","type":"image","title":"Team offsite","latestVersion":1,"createdAt":NOW,"updatedAt":NOW,
-                "entry":{"path":"team.png","mimeType":"image/png","size":10}},
+                "entry":{"path":"team.png","mimeType":"image/png","size":10,"thumbhash":"1QcSHQRnh493V4dIh4eXh1h4kJUI","preview":{"path":"team.png"}}},
             {"id":"fx-notes","type":"markdown","title":"Release notes","latestVersion":3,"createdAt":NOW,"updatedAt":NOW,
                 "entry":{"path":"index.md","mimeType":"text/markdown","size":10}}
         ],"nextPageCursor":null}"""

@@ -85,6 +85,14 @@ open class ArtifactClient(private val client: AgentClient) {
         )
     }
 
+    /** A file's still preview (`GET .../previews/<path>`), a picture's first frame or a recording's poster within 640: whole, being small. */
+    open suspend fun preview(artifactId: String, version: Int, path: String): ByteArray {
+        val escaped = path.split('/').joinToString("/") { AgentClient.escape(it) }
+        val response = client.send("GET", "/v0/artifacts/${AgentClient.escape(artifactId)}/versions/$version/previews/$escaped", category = RequestCategory.File)
+        if (response.status !in 200..299) throw AgentApiException(response.status, "not_found", "No preview")
+        return response.body
+    }
+
     /** The whole file, read a range of [chunk] at a time; [progress] hears how much of how much is here after each. */
     suspend fun bytes(
         artifactId: String,

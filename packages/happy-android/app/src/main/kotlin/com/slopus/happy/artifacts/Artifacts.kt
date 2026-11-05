@@ -35,9 +35,14 @@ data class ArtifactRef(
     }
 }
 
-/** One file of an artifact version, as its manifest lists it. */
+/**
+ * One file of an artifact version, as its manifest lists it. A picture or
+ * recording may carry its ThumbHash and whether the computer keeps a still
+ * [preview] of it (API.md "Media metadata and previews"); older daemons
+ * send neither.
+ */
 @Immutable
-data class ArtifactFile(val path: String, val mimeType: String, val size: Long) {
+data class ArtifactFile(val path: String, val mimeType: String, val size: Long, val thumbhash: String? = null, val preview: Boolean = false) {
     val name: String get() = path.substringAfterLast('/')
     val isVideo: Boolean get() = mimeType.startsWith("video/")
     /** A picture or a recording: shown natively, in the gallery and the viewer. */
@@ -65,6 +70,8 @@ data class ArtifactFile(val path: String, val mimeType: String, val size: Long) 
                 path = o["path"].str ?: return null,
                 mimeType = o["mimeType"].str ?: "application/octet-stream",
                 size = o["size"].num?.toLong() ?: 0,
+                thumbhash = o["thumbhash"].str,
+                preview = o["preview"].obj != null,
             )
         }
     }
@@ -76,7 +83,15 @@ data class ArtifactFile(val path: String, val mimeType: String, val size: Long) 
  * height before the picture is read. Older daemons send none.
  */
 @Immutable
-data class ArtifactCover(val path: String, val mimeType: String, val aspect: Aspect) {
+data class ArtifactCover(
+    val path: String,
+    val mimeType: String,
+    val aspect: Aspect,
+    /** Its placeholder until the picture lands; null when the computer couldn't make one, or an older one. */
+    val thumbhash: String? = null,
+    /** The computer keeps a still preview of it, which a list's slot reads instead of the file. */
+    val preview: Boolean = false,
+) {
     /** The shapes a cover comes in: 16:9 or 1:1, width over height. */
     enum class Aspect(val wire: String, val ratio: Float) {
         Wide("wide", 16f / 9f),
@@ -98,7 +113,7 @@ data class ArtifactCover(val path: String, val mimeType: String, val aspect: Asp
             val o = value.obj ?: return null
             val path = o["path"].str?.takeIf { it.isNotEmpty() } ?: return null
             val aspect = o["aspect"].str.let { wire -> Aspect.entries.firstOrNull { it.wire == wire } } ?: return null
-            return ArtifactCover(path, o["mimeType"].str.orEmpty(), aspect)
+            return ArtifactCover(path, o["mimeType"].str.orEmpty(), aspect, o["thumbhash"].str, o["preview"].obj != null)
         }
 
         /** The most of a summary shown (the daemon's own limit). */

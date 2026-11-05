@@ -23,10 +23,12 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import coil3.BitmapImage
+import coil3.Image
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import coil3.decode.DataSource
+import coil3.decode.Decoder
 import coil3.disk.DiskCache
 import coil3.disk.directory
 import coil3.memory.MemoryCache
@@ -141,16 +143,21 @@ fun RemoteImage(
     background: Color = Color.Transparent,
     cacheKey: String? = null,
     placeholder: ImageBitmap? = null,
+    /** Decodes this one picture: an animated cover's frames. Others take the loader's still decoders. */
+    decoder: Decoder.Factory? = null,
     onState: (RemoteImageState) -> Unit = {},
+    /** What was decoded, once it shows: an animated cover's drawable, to pause. */
+    onImage: (Image) -> Unit = {},
 ) {
     val context = LocalContext.current
     val loader = rememberImageLoader()
     val still = rememberReduceMotion()
-    val request = remember(model, cacheKey, context, still) {
+    val request = remember(model, cacheKey, context, still, decoder) {
         ImageRequest.Builder(context)
             .data(model)
             .apply { if (cacheKey != null) memoryCacheKey(cacheKey) }
             .apply { if (still) crossfade(false) }
+            .apply { if (decoder != null) decoderFactory(decoder) }
             .build()
     }
     var state by remember(request) { mutableStateOf(RemoteImageState.Loading) }
@@ -188,6 +195,7 @@ fun RemoteImage(
                 }
                 if (painterState is AsyncImagePainter.State.Success) {
                     fromMemory = painterState.result.dataSource == DataSource.MEMORY_CACHE
+                    onImage(painterState.result.image)
                 }
             },
         )

@@ -83,6 +83,23 @@ class ArtifactCatalogTest {
         assertEquals("#0b1020", cleared.items.single().background)
     }
 
+    @Test fun aCoversAndAnEntrysThumbHashAndPreviewAreKeptAndAnOlderDaemonsAreNone() {
+        val read = ArtifactSummary.parse(
+            obj("""{"id":"a","type":"image","title":"Shots","latestVersion":2,"createdAt":1,"updatedAt":2,
+                "entry":{"path":"a.webp","mimeType":"image/webp","size":12,"thumbhash":"1QcSHQRnh493V4dIh4eXh1h4kJUI","preview":{"path":"previews/a.png"}},
+                "cover":{"path":"cover.webp","mimeType":"image/webp","width":1600,"height":900,"aspect":"wide","thumbhash":"3OcRJYB4d3h/iIeHeEh3eIhw+j3A","preview":{}}}"""),
+        )!!
+        assertEquals(ArtifactCover("cover.webp", "image/webp", ArtifactCover.Aspect.Wide, "3OcRJYB4d3h/iIeHeEh3eIhw+j3A", preview = true), read.cover)
+        assertEquals(ArtifactFile("a.webp", "image/webp", 12, "1QcSHQRnh493V4dIh4eXh1h4kJUI", preview = true), read.entry)
+        assertEquals(read, ArtifactSummary.parse(read.json()))
+        val older = ArtifactSummary.parse(
+            obj("""{"id":"b","type":"image","title":"B","latestVersion":1,"createdAt":1,"updatedAt":1,
+                "entry":{"path":"b.png","mimeType":"image/png","size":3},"cover":{"path":"c.png","mimeType":"image/png","aspect":"square","thumbhash":null}}"""),
+        )!!
+        assertEquals(ArtifactCover("c.png", "image/png", ArtifactCover.Aspect.Square), older.cover)
+        assertEquals(ArtifactFile("b.png", "image/png", 3), older.entry)
+    }
+
     @Test fun eventsAddChangeAndRemove() {
         val list = listOf(summary("a", 30), summary("b", 20))
         val created = ArtifactCatalog.apply("artifact.created", obj("""{"artifact":{"id":"c","type":"html","title":"New","createdAt":40,"updatedAt":40}}"""), list)

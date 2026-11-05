@@ -85,6 +85,7 @@ firebase-messaging = { module = "com.google.firebase:firebase-messaging", versio
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 lottie-compose = { module = "com.airbnb.android:lottie-compose", version.ref = "lottie" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
+coil-gif = { module = "io.coil-kt.coil3:coil-gif", version.ref = "coil" }
 coil-test = { module = "io.coil-kt.coil3:coil-test", version.ref = "coil" }
 play-billing = { module = "com.android.billingclient:billing", version.ref = "play-billing" }
 livekit = { module = "io.livekit:livekit-android", version.ref = "livekit" }

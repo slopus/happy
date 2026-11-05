@@ -266,7 +266,27 @@ class FeedScreenTest {
 
     /** Feed pictures as the screen reads them: a drawn chart for the cover, through a loader that decodes nothing. */
     private val coverReads = java.util.concurrent.CopyOnWriteArrayList<String>()
-    private val covers = FeedCovers { cover -> coverReads += cover.key; ByteArray(8) }
+
+    /** The covers kept in memory are Android's LruCache, so they are read here, under Robolectric. */
+    @Test
+    fun coversAndPreviewsAreReadOnceAndKeptApart() = kotlinx.coroutines.test.runTest {
+        val asked = mutableListOf<String>()
+        val covers = FeedCovers(
+            fetch = { cover -> asked += cover.key; byteArrayOf(1) },
+            previews = { id, version, path -> asked += FeedCovers.previewKey(id, version, path); byteArrayOf(2) },
+        )
+        val cover = com.slopus.happy.feed.FeedCover("a1", 3, "loop.webp", "image/webp", com.slopus.happy.artifacts.ArtifactCover.Aspect.Square)
+        assertEquals(1, covers.read(cover)?.single()?.toInt())
+        assertEquals(2, covers.preview("a1", 3, "loop.webp")?.single()?.toInt())
+        covers.read(cover)
+        covers.preview("a1", 3, "loop.webp")
+        assertEquals(listOf("artifact/a1/3/loop.webp", "artifact-preview/a1/3/loop.webp"), asked)
+        assertEquals(2, covers.kept("artifact-preview/a1/3/loop.webp")?.single()?.toInt())
+        // A computer without previews gives none, and it is asked again later.
+        org.junit.Assert.assertNull(FeedCovers(fetch = { null }).preview("a1", 3, "loop.webp"))
+    }
+
+    private val covers = FeedCovers(fetch = { cover -> coverReads += cover.key; ByteArray(8) })
     private val chart: Bitmap = Bitmap.createBitmap(160, 90, Bitmap.Config.ARGB_8888).apply {
         val canvas = android.graphics.Canvas(this)
         canvas.drawColor(0xFF0B1020.toInt())

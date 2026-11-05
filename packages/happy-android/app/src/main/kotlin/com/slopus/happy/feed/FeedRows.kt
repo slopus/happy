@@ -67,6 +67,7 @@ data class FeedCover(
     val mimeType: String,
     val aspect: ArtifactCover.Aspect,
     val background: String? = null,
+    val thumbhash: String? = null,
 ) {
     /** What the picture is kept under: the artifact file's own key, as the media library keeps it. */
     val key: String get() = "artifact/$artifactId/$version/$path"
@@ -355,7 +356,7 @@ object FeedRows {
                 target = if (artifact.deleted) null else FeedTarget.Artifact(ArtifactRef(id, artifact.latestVersion, artifact.type, artifact.title, followsLatest = true))
                 // A cover this phone can draw, or a summary, makes the row a post; a deleted one keeps the row.
                 if (!artifact.deleted) {
-                    cover = artifact.cover?.takeIf { it.drawable }?.let { c -> FeedCover(id, artifact.latestVersion, c.path, c.mimeType, c.aspect, artifact.background) }
+                    cover = artifact.cover?.takeIf { it.drawable }?.let { c -> FeedCover(id, artifact.latestVersion, c.path, c.mimeType, c.aspect, artifact.background, c.thumbhash) }
                     summary = artifact.summary
                 }
             }

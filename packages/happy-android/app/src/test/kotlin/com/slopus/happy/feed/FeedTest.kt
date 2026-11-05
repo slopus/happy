@@ -382,6 +382,19 @@ class FeedTest {
         assertNull(cover("""{"path":"c.png","mimeType":"image/png","width":1600,"height":900}"""))
     }
 
+    @Test
+    fun aPostsCoverCarriesItsThumbHash() {
+        val artifact = FeedLookups.Artifact.parse(
+            AgentClient.json.parseToJsonElement(
+                """{"title":"Loop","type":"image","latestVersion":3,
+                   "cover":{"path":"loop.webp","mimeType":"image/webp","aspect":"square","thumbhash":"1QcSHQRnh493V4dIh4eXh1h4kJUI","preview":{}}}""",
+            ) as JsonObject,
+        )
+        val found = FeedLookups.Found(artifacts = mapOf("a1" to artifact))
+        val row = FeedRows.make(listOf(item("e1", "c1", subject = FeedSubject("artifact", "a1"))), { true }, synced, found, personSeed = "conn").single()
+        assertEquals(FeedCover("a1", 3, "loop.webp", "image/webp", com.slopus.happy.artifacts.ArtifactCover.Aspect.Square, thumbhash = "1QcSHQRnh493V4dIh4eXh1h4kJUI"), row.cover)
+    }
+
     private fun catalog(bootstrap: JsonObject) = AgentCatalog().withBootstrap(AgentClient.json.decodeFromJsonElement(WireDesktopBootstrap.serializer(), bootstrap))
 
     private val synced = catalog(

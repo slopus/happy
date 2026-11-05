@@ -80,6 +80,7 @@ object ArtifactsTags {
     const val THUMBNAIL = "artifacts.thumbnail"
     const val COVER = "artifacts.cover"
     const val GLYPH = "artifacts.glyph"
+    const val PREVIEW = "artifacts.preview"
     const val MENU_OPEN = "artifacts.menu.open"
     const val MENU_COPY = "artifacts.menu.copy"
 }
@@ -410,11 +411,13 @@ private fun ArtifactRow(item: ArtifactListItem.Row, thumbnails: ArtifactThumbnai
 }
 
 /**
- * A row's 16:9 slot, rounded as the tile is: a wide cover filling it, a
- * square one whole at its height in the middle, both on the artifact's
- * background or the neutral fill, fading in. Without a cover, the kind's
- * glyph centred on its tile colour, and an older daemon's picture or
- * recording over it as before.
+ * A row's 16:9 slot, rounded as the tile is, never moving: a wide cover
+ * filling it, a square one whole at its height in the middle, both on the
+ * artifact's background or the neutral fill; else a picture's or a
+ * recording's still filling it. Each is the computer's preview where it
+ * keeps one (a cover without one is read whole), over its ThumbHash, and
+ * fades in. Without either, the kind's glyph centred on its tile colour,
+ * and an older daemon's picture or recording read here over it as before.
  */
 @Composable
 private fun ArtifactSlot(artifact: ArtifactSummary, thumbnails: ArtifactThumbnails?, covers: FeedCovers?) {
@@ -422,8 +425,24 @@ private fun ArtifactSlot(artifact: ArtifactSummary, thumbnails: ArtifactThumbnai
     val shape = RoundedCornerShape(CardListSpec.tileRadius)
     val cover = artifact.drawnCover
     if (cover != null) {
+        val previewed = artifact.cover?.preview == true
         Box(Modifier.fillMaxSize().clip(shape).background(cover.background?.let(::cssColor) ?: colors.surfaceHighest).testTag(ArtifactsTags.COVER)) {
-            ArtifactCoverImage(cover, covers, if (cover.aspect == ArtifactCover.Aspect.Wide) ContentScale.Crop else ContentScale.Fit, use = "thumbnail")
+            ArtifactPicture(
+                key = if (previewed) FeedCovers.previewKey(artifact.id, artifact.latestVersion, cover.path) else cover.key,
+                thumbhash = cover.thumbhash,
+                covers = covers,
+                scale = if (cover.aspect == ArtifactCover.Aspect.Wide) ContentScale.Crop else ContentScale.Fit,
+                use = "thumbnail",
+            ) { if (previewed) it.preview(artifact.id, artifact.latestVersion, cover.path) else it.read(cover) }
+        }
+        return
+    }
+    val media = artifact.entry?.takeIf { !artifact.live && it.isVisual && it.preview }
+    if (media != null) {
+        Box(Modifier.fillMaxSize().clip(shape).background(colors.surfaceHighest).testTag(ArtifactsTags.PREVIEW)) {
+            ArtifactPicture(FeedCovers.previewKey(artifact.id, artifact.latestVersion, media.path), media.thumbhash, covers, ContentScale.Crop, use = "thumbnail") {
+                it.preview(artifact.id, artifact.latestVersion, media.path)
+            }
         }
         return
     }

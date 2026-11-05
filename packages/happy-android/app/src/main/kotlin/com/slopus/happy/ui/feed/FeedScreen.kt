@@ -866,7 +866,7 @@ private fun FeedCoverView(cover: FeedCover, covers: FeedCovers?) {
             .background(ground)
             .testTag(FeedTags.COVER),
     ) {
-        ArtifactCoverImage(cover, covers, ContentScale.Crop, use = "post")
+        ArtifactCoverImage(cover, covers, ContentScale.Crop, use = "post", moves = true)
     }
 }
 

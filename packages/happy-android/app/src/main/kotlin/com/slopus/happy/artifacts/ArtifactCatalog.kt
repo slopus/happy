@@ -56,6 +56,8 @@ data class ArtifactSummary(
                 put("path", file.path)
                 put("mimeType", file.mimeType)
                 put("size", file.size)
+                file.thumbhash?.let { put("thumbhash", it) }
+                if (file.preview) put("preview", buildJsonObject {})
             })
         }
         put("fileCount", fileCount)
@@ -67,6 +69,8 @@ data class ArtifactSummary(
                 put("path", c.path)
                 put("mimeType", c.mimeType)
                 put("aspect", c.aspect.wire)
+                c.thumbhash?.let { put("thumbhash", it) }
+                if (c.preview) put("preview", buildJsonObject {})
             })
         }
         summary?.let { put("summary", it) }
@@ -100,7 +104,7 @@ data class ArtifactSummary(
         internal fun entry(value: JsonElement?): ArtifactFile? {
             val o = value.obj ?: return null
             val path = o["path"].str ?: return null
-            return ArtifactFile(path, o["mimeType"].str.orEmpty(), o["size"].num?.toLong() ?: 0)
+            return ArtifactFile(path, o["mimeType"].str.orEmpty(), o["size"].num?.toLong() ?: 0, o["thumbhash"].str, o["preview"].obj != null)
         }
 
         /** `live` is `{ url, networkId }` on the wire and `true` once kept. */

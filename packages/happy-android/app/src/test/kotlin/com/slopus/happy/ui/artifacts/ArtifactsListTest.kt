@@ -263,7 +263,7 @@ class ArtifactsListTest {
 
     private fun showCovered(dark: Boolean = false) {
         // One byte for the wide cover, two for the square, so the fake engine tells them apart.
-        val covers = FeedCovers { cover -> if (cover.path == "cover.png") ByteArray(1) else ByteArray(2) }
+        val covers = FeedCovers(fetch = { cover -> if (cover.path == "cover.png") ByteArray(1) else ByteArray(2) })
         rule.setHappyContent(dark) {
             androidx.compose.runtime.CompositionLocalProvider(com.slopus.happy.ui.components.LocalImageLoader provides coverLoader) {
                 ArtifactsScreen(ArtifactCatalogFeed.State(covered, loaded = true), {}, {}, {}, clock = { now }, covers = covers)
@@ -285,6 +285,34 @@ class ArtifactsListTest {
         rule.onAllNodesWithTag(ArtifactsTags.COVER, useUnmergedTree = true).assertCountEquals(2)
         rule.onAllNodesWithTag(ArtifactsTags.GLYPH, useUnmergedTree = true).assertCountEquals(2)
         shot("artifacts-covers")
+    }
+
+    @Test fun theSlotReadsTheComputersStillPreviewWhereItKeepsOne() {
+        val asked = mutableListOf<String>()
+        val covers = FeedCovers(
+            fetch = { cover -> asked += "file ${cover.path}"; ByteArray(1) },
+            previews = { id, version, path -> asked += "preview $id/$version/$path"; ByteArray(2) },
+        )
+        val items = listOf(
+            // A previewed cover reads its preview, not the file.
+            summary("v1", "Q3 revenue", "html", "2026-11-02T11:00").copy(cover = wide.copy(preview = true, thumbhash = "1QcSHQRnh493V4dIh4eXh1h4kJUI")),
+            // A picture without a cover reads the preview of its first image.
+            summary("v2", "Shots", "image", "2026-11-02T10:30", ArtifactFile("a.png", "image/png", 12, thumbhash = "1QcSHQRnh493V4dIh4eXh1h4kJUI", preview = true)),
+            // An older daemon's picture keeps the old thumbnail over the glyph.
+            summary("v3", "Old", "image", "2026-11-02T10:00", ArtifactFile("b.png", "image/png", 12)),
+        )
+        rule.setHappyContent {
+            androidx.compose.runtime.CompositionLocalProvider(com.slopus.happy.ui.components.LocalImageLoader provides coverLoader) {
+                ArtifactsScreen(ArtifactCatalogFeed.State(items, loaded = true), {}, {}, {}, clock = { now }, covers = covers)
+            }
+        }
+        rule.waitUntil(5_000) { asked.size >= 2 }
+        assertEquals(setOf("preview v1/2/cover.png", "preview v2/2/a.png"), asked.toSet())
+        rule.onAllNodesWithTag(ArtifactsTags.COVER, useUnmergedTree = true).assertCountEquals(1)
+        rule.onAllNodesWithTag(ArtifactsTags.PREVIEW, useUnmergedTree = true).assertCountEquals(1)
+        rule.onAllNodesWithTag(ArtifactsTags.GLYPH, useUnmergedTree = true).assertCountEquals(1)
+        val rows = rule.onAllNodesWithTag(ArtifactsTags.ROW, useUnmergedTree = true)
+        for (index in items.indices) assertDp("row $index height", 60, rows[index].bounds.height)
     }
 
     @Test fun coversInTheDark() {
