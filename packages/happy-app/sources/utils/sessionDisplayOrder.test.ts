@@ -27,6 +27,7 @@ function session(
         gitCountsExact: true,
         gitDeletions: null,
         gitInsertions: null,
+        backgroundCount: 0,
         state: 'waiting',
         createdAt,
         lastActivityAt: createdAt,

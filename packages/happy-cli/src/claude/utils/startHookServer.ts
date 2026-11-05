@@ -1,9 +1,10 @@
 /**
  * Dedicated HTTP server for receiving Claude session hooks
- * 
+ *
  * This server receives notifications from Claude when sessions change
- * (new session, resume, compact, fork, etc.) via the SessionStart hook.
- * 
+ * (new session, resume, compact, fork, etc.) via the SessionStart hook, and
+ * the session's in-flight background work via the Stop / SessionEnd hooks.
+ *
  * Separate from the MCP server to keep concerns isolated.
  * 
  * ## Control Flow
@@ -59,6 +60,7 @@
 
 import { createServer, IncomingMessage, ServerResponse, Server } from 'node:http';
 import { logger } from '@/ui/logger';
+import { parseBackgroundTasks, type BackgroundTaskSummary } from './backgroundActivity';
 
 /**
  * Data received from Claude's SessionStart hook
@@ -70,12 +72,20 @@ export interface SessionHookData {
     cwd?: string;
     hook_event_name?: string;
     source?: string;
+    /** Stop hook only: background work still in flight for this session. */
+    background_tasks?: unknown;
     [key: string]: unknown;
 }
 
 export interface HookServerOptions {
     /** Called when a session hook is received with a valid session ID */
     onSessionHook: (sessionId: string, data: SessionHookData) => void;
+    /**
+     * Called on every Stop hook with the background work still in flight, and
+     * on SessionEnd with an empty list. `thinking` only describes the current
+     * turn, so this is what tells the app a session is idle-but-still-busy.
+     */
+    onBackgroundActivity?: (tasks: BackgroundTaskSummary[]) => void;
 }
 
 export interface HookServer {
@@ -92,12 +102,36 @@ export interface HookServer {
  * @returns Promise resolving to the server instance with port info
  */
 export async function startHookServer(options: HookServerOptions): Promise<HookServer> {
-    const { onSessionHook } = options;
+    const { onSessionHook, onBackgroundActivity } = options;
+
+    const handlers: Record<string, (data: SessionHookData) => void> = {
+        '/hook/session-start': (data) => {
+            // Support both snake_case (from Claude) and camelCase
+            const sessionId = data.session_id || data.sessionId;
+            if (sessionId) {
+                logger.debug(`[hookServer] Session hook received session ID: ${sessionId}`);
+                onSessionHook(sessionId, data);
+            } else {
+                logger.debug('[hookServer] Session hook received but no session_id found in data');
+            }
+        },
+        '/hook/stop': (data) => {
+            const tasks = parseBackgroundTasks(data.background_tasks);
+            logger.debug(`[hookServer] Stop hook: ${tasks.length} background task(s) in flight`);
+            onBackgroundActivity?.(tasks);
+        },
+        // The session is gone, so whatever it had in flight is no longer ours to
+        // report — clear it rather than leaving the last Stop's counts frozen.
+        '/hook/session-end': () => {
+            logger.debug('[hookServer] SessionEnd hook: clearing background activity');
+            onBackgroundActivity?.([]);
+        },
+    };
 
     return new Promise((resolve, reject) => {
         const server: Server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
-            // Only handle POST to /hook/session-start
-            if (req.method === 'POST' && req.url === '/hook/session-start') {
+            const handler = req.method === 'POST' && req.url ? handlers[req.url] : undefined;
+            if (handler) {
                 // Set timeout to prevent hanging if Claude doesn't close stdin
                 const timeout = setTimeout(() => {
                     if (!res.headersSent) {
@@ -112,9 +146,9 @@ export async function startHookServer(options: HookServerOptions): Promise<HookS
                         chunks.push(chunk as Buffer);
                     }
                     clearTimeout(timeout);
-                    
+
                     const body = Buffer.concat(chunks).toString('utf-8');
-                    logger.debug('[hookServer] Received session hook:', body);
+                    logger.debug(`[hookServer] Received hook ${req.url}:`, body);
 
                     let data: SessionHookData = {};
                     try {
@@ -123,14 +157,7 @@ export async function startHookServer(options: HookServerOptions): Promise<HookS
                         logger.debug('[hookServer] Failed to parse hook data as JSON:', parseError);
                     }
 
-                    // Support both snake_case (from Claude) and camelCase
-                    const sessionId = data.session_id || data.sessionId;
-                    if (sessionId) {
-                        logger.debug(`[hookServer] Session hook received session ID: ${sessionId}`);
-                        onSessionHook(sessionId, data);
-                    } else {
-                        logger.debug('[hookServer] Session hook received but no session_id found in data');
-                    }
+                    handler(data);
 
                     res.writeHead(200, { 'Content-Type': 'text/plain' }).end('ok');
                 } catch (error) {

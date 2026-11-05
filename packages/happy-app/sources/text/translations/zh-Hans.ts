@@ -96,6 +96,7 @@ export const zhHans: TranslationStructure = {
         activeNow: '当前活跃',
         unknown: '未知',
         unread: '新结果',
+        backgroundWork: ({ count }: { count: number }) => `后台运行 ${count} 项`,
     },
 
     time: {
