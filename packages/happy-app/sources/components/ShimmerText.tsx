@@ -8,13 +8,14 @@ import Animated, {
     Easing,
     Extrapolation,
     interpolate,
+    makeMutable,
     ReduceMotion,
     useAnimatedStyle,
     useReducedMotion,
-    useSharedValue,
     withRepeat,
     withTiming,
 } from 'react-native-reanimated';
+import type { SharedValue } from 'react-native-reanimated';
 
 import { Text } from '@/components/StyledText';
 
@@ -22,6 +23,43 @@ const SWEEP_DURATION = 1700;
 const SWEEP_PAUSE = 650;
 const SWEEP_FRACTION = SWEEP_DURATION / (SWEEP_DURATION + SWEEP_PAUSE);
 const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
+
+// One sweep driver shared by every mounted ShimmerText. Each instance used to
+// run its own infinite withRepeat loop, so a list with many thinking rows
+// carried one animation per row for as long as it stayed on screen. The
+// first subscriber starts the loop, the last one to leave cancels it. The
+// shared value is created lazily: makeMutable must not run at import time.
+let sweepProgress: SharedValue<number> | null = null;
+let sweepSubscribers = 0;
+
+function getSweepProgress(): SharedValue<number> {
+    if (!sweepProgress) sweepProgress = makeMutable(0);
+    return sweepProgress;
+}
+
+function subscribeToSweep(): () => void {
+    const progress = getSweepProgress();
+    if (sweepSubscribers++ === 0) {
+        progress.value = 0;
+        progress.value = withRepeat(
+            withTiming(1, {
+                duration: SWEEP_DURATION + SWEEP_PAUSE,
+                easing: Easing.linear,
+                reduceMotion: ReduceMotion.System,
+            }),
+            -1,
+            false,
+            undefined,
+            ReduceMotion.System,
+        );
+    }
+    return () => {
+        if (--sweepSubscribers === 0) {
+            cancelAnimation(progress);
+            progress.value = 0;
+        }
+    };
+}
 
 export interface ShimmerTextProps {
     text: string;
@@ -37,30 +75,14 @@ export const ShimmerText = React.memo(({
     baseColor,
     highlightColor,
 }: ShimmerTextProps) => {
-    const progress = useSharedValue(0);
+    const progress = getSweepProgress();
     const reduceMotion = useReducedMotion();
     const [width, setWidth] = React.useState(0);
 
     React.useEffect(() => {
-        cancelAnimation(progress);
-        progress.value = 0;
-
         if (reduceMotion) return;
-
-        progress.value = withRepeat(
-            withTiming(1, {
-                duration: SWEEP_DURATION + SWEEP_PAUSE,
-                easing: Easing.linear,
-                reduceMotion: ReduceMotion.System,
-            }),
-            -1,
-            false,
-            undefined,
-            ReduceMotion.System,
-        );
-
-        return () => cancelAnimation(progress);
-    }, [progress, reduceMotion]);
+        return subscribeToSweep();
+    }, [reduceMotion]);
 
     const bandWidth = Math.max(44, width * 0.4);
     const animatedStyle = useAnimatedStyle(() => ({
