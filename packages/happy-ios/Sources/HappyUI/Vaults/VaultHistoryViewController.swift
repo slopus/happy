@@ -304,12 +304,19 @@ final class VaultHistoryViewController: UIViewController {
             },
         ]
         if changeable {
-            if version.number != entry.latestVersion {
+            if restorable(version) {
                 children.append(UIAction(title: Strings.Vaults.restoreVersion, image: Glyphs.image("return-up-back-outline", size: 20)) { [weak self] _ in self?.restore(version) })
             }
             children.append(pinAction(version))
         }
         return UIMenu(children: children)
+    }
+
+    /// Restoring content the current version already has makes no version, so it isn't offered.
+    private func restorable(_ version: VaultVersion) -> Bool {
+        guard version.number != entry.latestVersion else { return false }
+        guard let sha = version.sha256, let current = versions.values.first(where: { $0.number == entry.latestVersion }) else { return true }
+        return sha != current.sha256
     }
 
     private func pinAction(_ version: VaultVersion) -> UIAction {
@@ -327,7 +334,7 @@ final class VaultHistoryViewController: UIViewController {
     private func accessibilityActions(_ id: String) -> [UIAccessibilityCustomAction] {
         guard let version = versions[id], changeable else { return [] }
         var items = [UIAccessibilityCustomAction(name: version.pinned ? Strings.Vaults.unpin : Strings.Vaults.pin) { [weak self] _ in self?.pin(version); return true }]
-        if version.number != entry.latestVersion {
+        if restorable(version) {
             items.append(UIAccessibilityCustomAction(name: Strings.Vaults.restoreVersion) { [weak self] _ in self?.restore(version); return true })
         }
         return items
