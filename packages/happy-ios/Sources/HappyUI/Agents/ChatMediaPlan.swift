@@ -102,6 +102,8 @@ enum ChatMediaPlan {
         var action: ChatRowAction
         /// A file's: its chip and detail follow its download.
         var file: Media? = nil
+        /// An app's: what its button says, in place of the chevron.
+        var button: String? = nil
     }
 
     static func card(file media: Media) -> Card {
@@ -121,6 +123,18 @@ enum ChatMediaPlan {
         )
     }
 
+    /// An app (`ArtifactPageMode`): never run in the conversation, its
+    /// card says so and offers to open it full screen.
+    static func card(app artifact: Artifact) -> Card {
+        Card(
+            glyph: .ionicons("game-controller"),
+            title: artifact.title.isEmpty ? Strings.untitledArtifact : artifact.title,
+            detail: Strings.ArtifactApp.kind,
+            action: .openArtifact(artifact),
+            button: Strings.ArtifactApp.open
+        )
+    }
+
     /// Desktop's `ArtifactTypeGlyph`, from the glyphs the app carries.
     static func glyph(_ type: String) -> Icon {
         switch type {
@@ -137,8 +151,10 @@ enum ChatMediaPlan {
     /// The card's boxes, glyph, title and detail in `frame`, and its tap.
     static func draw(_ card: Card, in frame: CGRect, environment: TextEnvironment?) -> (items: [ChatDrawItem], hit: ChatHit) {
         typealias C = ResultCardLayout
-        let layout = ResultCardLayout(frame: frame, opens: true)
         let scale = environment?.scale.multiplier ?? 1
+        let buttonFont = Fonts.ui(.semiBold, size: 13 * min(scale, 1.2))
+        let words = card.button.map { ($0 as NSString).size(withAttributes: [.font: buttonFont]).width + 1 }
+        let layout = ResultCardLayout(frame: frame, opens: true, button: words)
         func line(_ text: String, weight: Fonts.Weight, size: CGFloat, color: ColorToken, frame: CGRect) -> ChatDrawItem {
             // One line exactly the frame's height, the glyphs centred in it.
             let font = Fonts.ui(weight, size: size * min(scale, 1.2))
@@ -170,6 +186,10 @@ enum ChatMediaPlan {
         } else {
             items.append(.icon(card.glyph, size: C.glyph, frame: layout.glyph, tint: Palette.cardDetail))
             items.append(line(card.detail, weight: .medium, size: 12, color: Palette.cardDetail, frame: layout.detail))
+        }
+        if let words = card.button, let button = layout.button, let label = layout.buttonLabel {
+            items.append(.box(ChatBox(frame: button, fill: Palette.cardChip, radius: button.height / 2)))
+            items.append(line(words, weight: .semiBold, size: 13, color: Palette.cardTitle, frame: label))
         }
         if let chevron = layout.chevron {
             items.append(.icon(.ionicons("chevron-forward"), size: 16, frame: chevron, tint: Palette.cardDetail))

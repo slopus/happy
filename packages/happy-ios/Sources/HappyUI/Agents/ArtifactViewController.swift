@@ -10,7 +10,8 @@ import UIKit
 /// linked ones through the computer's network. Images, image series and
 /// videos show natively (`ArtifactGalleryView`), opening in the viewer.
 /// Other entries use the shared browser with an artifact-scoped file/API
-/// origin over the agent connection.
+/// origin over the agent connection, but for an app (`ArtifactPageMode`),
+/// which is presented full screen (`AppPageViewController`) in its place.
 final class ArtifactViewController: UIViewController, ChatMediaProviding {
     private let session: Session
     private let artifact: Artifact
@@ -33,6 +34,9 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
     private var plannedSizes = 0
     private var gallery: ArtifactGalleryView?
     private var browser: BrowserViewController?
+    /// An app's version and file, and the button that opens it again.
+    private var app: (version: Int, entry: String)?
+    private var openButton: UIButton?
     private var loading: Task<Void, Never>?
     /// How long the first drawing waits for the pictures' sizes, so it
     /// doesn't jump as they arrive.
@@ -87,6 +91,11 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
             navigationItem.rightBarButtonItem = CopyLinkItem.make(target, instanceId: session.instanceId, identifier: "artifact-copy-link")
         }
         loading = Task { [weak self] in await self?.load() }
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        if app != nil, openButton == nil { presentApp() }
     }
 
     override func viewDidDisappear(_ animated: Bool) {
@@ -371,9 +380,59 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
     // MARK: Pages
 
     private func showWeb(version: Int, entry: String) async throws {
+        let mode = try? await session.client.artifactPageMode(artifact.id, version: version, path: entry, isEntry: opened == nil)
+        try Task.checkCancellation()
+        if mode == .app { return showApp(version: version, entry: entry) }
         let page = try await BrowserPage.artifact(client: session.client, id: artifact.id, version: version, entry: entry)
         try Task.checkCancellation()
         showBrowser(BrowserViewController(url: page.url, session: session, artifactID: artifact.id, page: page))
+    }
+
+    /// An app opens full screen over everything, and this viewer steps out
+    /// from under it, so closing it goes back to where it was opened from.
+    /// As a stack's root it stays, offering to open it again.
+    private func showApp(version: Int, entry: String) {
+        spinner.stopAnimating()
+        scrollView.isHidden = true
+        app = (version, entry)
+        presentApp()
+    }
+
+    private func presentApp() {
+        guard let app else { return }
+        // Not on screen yet, or still being pushed: once it is.
+        guard view.window != nil, presentedViewController == nil else { return }
+        if let coordinator = navigationController?.transitionCoordinator {
+            coordinator.animate(alongsideTransition: nil) { [weak self] context in
+                if !context.isCancelled { self?.presentApp() }
+            }
+            return
+        }
+        let controller = AppPageViewController(session: session, artifactID: artifact.id, version: app.version, entry: app.entry, title: title ?? "")
+        let navigation = navigationController
+        guard let navigation, navigation.viewControllers.first !== self, navigation.topViewController === self else {
+            showOpenButton()
+            present(controller, animated: true)
+            return
+        }
+        navigation.present(controller, animated: true) { [weak self, weak navigation] in
+            guard let self, let navigation else { return }
+            navigation.setViewControllers(navigation.viewControllers.filter { $0 !== self }, animated: false)
+        }
+    }
+
+    private func showOpenButton() {
+        guard openButton == nil else { return }
+        var configuration = UIButton.Configuration.filled()
+        configuration.title = Strings.ArtifactApp.open
+        configuration.image = .icon(.ionicons("game-controller"), size: 18)
+        configuration.imagePadding = 8
+        configuration.cornerStyle = .capsule
+        let button = UIButton(configuration: configuration, primaryAction: UIAction { [weak self] _ in self?.presentApp() })
+        button.accessibilityIdentifier = "artifact-app-open"
+        view.addSubview(button)
+        openButton = button
+        view.setNeedsLayout()
     }
 
     private func showBrowser(_ browser: BrowserViewController) {
@@ -390,6 +449,10 @@ final class ArtifactViewController: UIViewController, ChatMediaProviding {
         scrollView.frame = view.bounds
         gallery?.frame = view.bounds
         browser?.view.frame = view.bounds
+        if let openButton {
+            let size = openButton.sizeThatFits(view.bounds.size)
+            openButton.frame = CGRect(x: (view.bounds.width - size.width) / 2, y: (view.bounds.height - size.height) / 2, width: size.width, height: size.height)
+        }
         spinner.setLayoutFrame(ArtifactMediaLayout.spinner(size: view.bounds.size, safeArea: LayoutInsets(view.safeAreaInsets)))
         let width = view.bounds.width
         if documentText != nil, width > 0, plannedWidth != width {

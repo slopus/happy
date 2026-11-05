@@ -24,6 +24,8 @@ public final class AgentClient: Sendable {
     /// A team server signed in to: refused, it wants signing in again,
     /// not pairing.
     public let signsIn: Bool
+    /// How the artifact pages read through it ask to be shown.
+    public let pageModes = ArtifactPageModes()
 
     init(transport: any AgentTransport, token: String, signsIn: Bool = false) {
         self.transport = transport

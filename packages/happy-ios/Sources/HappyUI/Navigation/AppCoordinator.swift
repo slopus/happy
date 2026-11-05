@@ -238,7 +238,7 @@ public final class AppCoordinator {
         case .artifact:
             var artifact = Artifact(id: reference.id, version: reference.version ?? 1, type: "", title: "", followsLatest: reference.version == nil)
             artifact.pinned = reference.version != nil
-            navigation.pushViewController(ArtifactViewController(session: session, artifact: artifact), animated: true)
+            navigation.openArtifact(artifact, session: session, on: navigation)
         case .agent:
             let row = session.snapshot.allRows.first { ($0.kind == .space || $0.kind == .session) && $0.agentId == reference.id }
             navigation.pushViewController(ChatViewController(session: session, agentId: reference.id, title: row?.label ?? "", spaceId: row?.spaceId, intro: nil), animated: true)
