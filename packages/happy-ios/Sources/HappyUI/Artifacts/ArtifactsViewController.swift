@@ -14,6 +14,7 @@ import UltraView
 final class ArtifactsViewController: UIViewController, UISearchResultsUpdating {
     private let session: Session
     private let feed: ArtifactCatalogFeed
+    private let thumbnails: ArtifactThumbnails
     let list = CardListView()
     private lazy var searchController = UISearchController(searchResultsController: nil)
     private var pipeline: ApplyPipeline<ArtifactListInput, Applied, Output>?
@@ -43,6 +44,7 @@ final class ArtifactsViewController: UIViewController, UISearchResultsUpdating {
     init(session: Session) {
         self.session = session
         feed = session.engine.artifacts
+        thumbnails = ArtifactThumbnails(session: session)
         super.init(nibName: nil, bundle: nil)
         title = Strings.Artifacts.title
         navigationItem.largeTitleDisplayMode = .never
@@ -207,9 +209,17 @@ final class ArtifactsViewController: UIViewController, UISearchResultsUpdating {
     }
 
     /// A row's cover, through the computer's images as the Feed's posts
-    /// read theirs, decoded at the slot's size.
+    /// read theirs, decoded at the slot's size; else a picture's or a
+    /// recording's own, filling the slot.
     private func makeOverlay(_ overlay: CardOverlay, id: String) -> UIView? {
-        guard overlay.kind == ArtifactListItems.coverKind, let artifact = artifacts[id], let cover = artifact.cover, let path = artifact.coverPath else { return nil }
+        guard let artifact = artifacts[id] else { return nil }
+        if overlay.kind == ArtifactListItems.thumbnailKind {
+            let view = ArtifactThumbnailView(radius: overlay.radius)
+            let pixels = Int((max(overlay.frame.width, overlay.frame.height) * max(traitCollection.displayScale, 2)).rounded(.up))
+            thumbnails.show(artifact, in: view, pixels: pixels)
+            return view
+        }
+        guard overlay.kind == ArtifactListItems.coverKind, let cover = artifact.cover, let path = artifact.coverPath else { return nil }
         return FeedCoverView(image: path, width: cover.width, height: cover.height, frame: overlay.frame, radius: overlay.radius,
                              displayScale: traitCollection.displayScale, images: session.images)
     }

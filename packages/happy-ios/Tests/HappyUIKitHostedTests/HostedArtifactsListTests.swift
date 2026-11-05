@@ -8,7 +8,8 @@ import XCTest
 
 /// A daemon with an artifact catalog: one page of artifacts changed at
 /// different times, some with a cover (wide or square) whose file it
-/// serves. It can be told to fail, as a computer that has gone away does.
+/// serves, some a picture of their own, one a tombstone. It can be told
+/// to fail, as a computer that has gone away does.
 actor ArtifactCatalogDaemon: AgentTransport {
     struct Item {
         var id: String
@@ -18,6 +19,7 @@ actor ArtifactCatalogDaemon: AgentTransport {
         var picture: Data?
         /// `wide` or `square`: the picture is the cover, of that shape.
         var aspect: String? = nil
+        var deleted = false
     }
 
     var items: [Item]
@@ -57,7 +59,7 @@ actor ArtifactCatalogDaemon: AgentTransport {
             let side = aspect == "wide" ? #""width":1600,"height":900"# : #""width":1200,"height":1200"#
             return ##","cover":{"path":"picture.png","mimeType":"image/png",\##(side),"aspect":"\##(aspect)"},"background":"#0b1f33""##
         } ?? ""
-        return #"{"id":"\#(item.id)","type":"\#(item.type)","title":"\#(item.title)","status":"active","latestVersion":2,"entry":{"path":"\#(path)","mimeType":"\#(mime)","size":\#(size),"sha256":"0"},"fileCount":1,"live":null,"createdAt":\#(ms),"updatedAt":\#(ms)\#(cover)}"#
+        return #"{"id":"\#(item.id)","type":"\#(item.type)","title":"\#(item.title)","status":"\#(item.deleted ? "deleted" : "active")","latestVersion":2,"entry":{"path":"\#(path)","mimeType":"\#(mime)","size":\#(size),"sha256":"0"},"fileCount":1,"live":null,"createdAt":\#(ms),"updatedAt":\#(ms)\#(cover)}"#
     }
 }
 
@@ -123,6 +125,7 @@ final class HostedArtifactsListTests: XCTestCase {
     private static func fixture() -> [ArtifactCatalogDaemon.Item] {
         let picture = HostedArtifactMediaTests.png(CGSize(width: 320, height: 180), .systemTeal)
         let square = HostedArtifactMediaTests.png(CGSize(width: 240, height: 240), .systemOrange)
+        let sketch = HostedArtifactMediaTests.png(CGSize(width: 180, height: 240), .systemPurple)
         // Today's ahead of now on the clock is still today.
         let today = min(Date(), days(0, hours: 9))
         return [
@@ -130,7 +133,8 @@ final class HostedArtifactsListTests: XCTestCase {
             .init(id: "a2", type: "image", title: "Team offsite photo", updatedAt: today.addingTimeInterval(-60), picture: picture, aspect: "wide"),
             .init(id: "a3", type: "html", title: "Pricing page prototype", updatedAt: days(1, hours: 16), picture: square, aspect: "square"),
             .init(id: "a4", type: "markdown", title: "Interview notes with the design partner, the longer write-up that wraps", updatedAt: days(3, hours: 11), picture: nil),
-            .init(id: "a5", type: "video", title: "Onboarding walkthrough", updatedAt: days(12, hours: 10), picture: nil),
+            .init(id: "gone", type: "image", title: "Old mockup", updatedAt: days(2, hours: 9), picture: sketch, deleted: true),
+            .init(id: "a5", type: "image", title: "Whiteboard sketch", updatedAt: days(12, hours: 10), picture: sketch),
             .init(id: "a6", type: "document", title: "Signed contract", updatedAt: days(70), picture: nil),
             .init(id: "a7", type: "markdown", title: "Launch checklist", updatedAt: days(420), picture: nil),
         ]
@@ -214,10 +218,27 @@ final class HostedArtifactsListTests: XCTestCase {
         XCTAssertEqual(cover("a2")?.frame.size, ArtifactListMetrics.slot)
         let square = try XCTUnwrap(screen.list.items.first { $0.id == "a3" }?.overlays.first?.frame)
         XCTAssertEqual(square, CGRect(x: slot.midX - 20, y: slot.minY, width: 40, height: 40))
+        XCTAssertEqual(screen.list.items.first { $0.id == "a2" }?.overlays.map(\.kind), [ArtifactListItems.coverKind], "a cover wins over the picture's own file")
+
+        // A picture without a cover shows its own file, cropped to fill
+        // the slot over its glyph.
+        let overlays = { (id: String) in screen.list.items.first { $0.id == id }?.overlays ?? [] }
+        XCTAssertEqual(overlays("a5").map(\.kind), [ArtifactListItems.thumbnailKind])
+        XCTAssertEqual(overlays("a5").first?.frame, slot)
+        func thumbnail(_ id: String) -> ArtifactThumbnailView? {
+            guard let artifact = screen.artifacts[id] else { return nil }
+            return screen.list.rowView(id)?.overlay(ArtifactListItems.thumbnailKey(artifact)) as? ArtifactThumbnailView
+        }
+        try await wait("the thumbnail") { thumbnail("a5")?.image != nil }
+        XCTAssertEqual(thumbnail("a5")?.frame.size, ArtifactListMetrics.slot)
+        XCTAssertEqual(thumbnail("a5")?.contentMode, .scaleAspectFill)
+
         let files = await daemon.fileReads
-        XCTAssertEqual(files.count, 2, "each read once: \(files)")
+        XCTAssertEqual(files.count, 3, "each read once, the tombstone's never: \(files)")
+        XCTAssertFalse(files.contains { $0.contains("/gone/") })
         XCTAssertNil(cover("a1"), "a document shows its kind's glyph")
-        XCTAssertTrue(screen.list.items.first { $0.id == "a1" }?.overlays.isEmpty == true)
+        XCTAssertTrue(overlays("a1").isEmpty)
+        XCTAssertTrue(overlays("a3").allSatisfy { $0.kind == ArtifactListItems.coverKind })
 
         try await Task.sleep(for: .milliseconds(300))
         capture(opened.window, "artifacts")

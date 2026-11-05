@@ -41,6 +41,11 @@ enum ArtifactListItems {
         }
     }
 
+    /// A picture or recording without a cover: its own file, or its first
+    /// frame, filling the slot (`ArtifactThumbnails`), keyed by its version.
+    static let thumbnailKind = "thumbnail"
+    nonisolated static func thumbnailKey(_ artifact: ArtifactSummary) -> String { "\(artifact.id)/\(artifact.latestVersion)" }
+
     /// A row's cover over its slot (`FeedCoverView`), keyed by where it is
     /// served, so a new version's is made again and an unchanged one kept.
     static let coverKind = "cover"
@@ -113,6 +118,11 @@ enum ArtifactListItems {
                 let look = tile(artifact)
                 drawing.marks.append(.tile(frame, radius: radius, look.fill))
                 drawing.icon(look.icon, size: M.tileGlyph, look.ink, in: frame)
+                // Media without a cover: its own picture lands over the
+                // glyph, which stays while it loads.
+                if artifact.showsPicture, !artifact.deleted {
+                    overlays.append(CardOverlay(kind: thumbnailKind, key: thumbnailKey(artifact), frame: frame, radius: radius))
+                }
             }
         }
         drawing.text(title, titleFont, Palette.text, layout.title)
