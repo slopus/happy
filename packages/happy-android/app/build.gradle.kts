@@ -271,13 +271,15 @@ androidComponents {
 /**
  * The release APK can't be run here, so after R8 this reads what it kept:
  * every `@Serializable` type in the sources keeps a `serializer()` by rule
- * (Navigation's routes and reified decoding look it up reflectively), the
+ * (Navigation's routes and reified decoding look it up reflectively), serialized
+ * enums keep their class names and values() for Navigation's EnumNavType, the
  * manifest's own components survive, and the merged manifest still has the
  * Play Store `<queries>` entry, the App Link, the FCM service and the
  * default notification channel. assembleRelease runs it.
  */
 abstract class VerifyReleaseKeeps : DefaultTask() {
     @get:InputFile abstract val seeds: RegularFileProperty
+    @get:InputFile abstract val mapping: RegularFileProperty
     @get:InputFile abstract val manifest: RegularFileProperty
     @get:InputFiles abstract val sources: ConfigurableFileCollection
     @get:OutputFile abstract val report: RegularFileProperty
@@ -286,16 +288,44 @@ abstract class VerifyReleaseKeeps : DefaultTask() {
     fun verify() {
         val problems = mutableListOf<String>()
         val seedLines = seeds.get().asFile.readLines()
-        val withSerializer = seedLines
+        val serializerOwners = seedLines
             .filter { it.endsWith("kotlinx.serialization.KSerializer serializer()") }
-            .map { it.substringBefore(':').removeSuffix("\$Companion").split('.', '$').last() }
+            .map { it.substringBefore(':').removeSuffix("\$Companion") }
             .toSet()
+        val withSerializer = serializerOwners.map { it.split('.', '$').last() }.toSet()
         val declaration = Regex("""@Serializable\b(?:\([^)]*\))?(?:\s|@\w+(?:\([^)]*\))?)*(?:(?:public|internal|private|data|sealed|enum|value|abstract|open)\s+)*(?:class|object|interface)\s+(\w+)""")
-        val serializable = sources.files.filter { it.extension == "kt" }
-            .flatMap { file -> declaration.findAll(file.readText()).map { it.groupValues[1] }.toList() }
+        val sourceTexts = sources.files.filter { it.extension == "kt" }.map { it.readText() }
+        val serializable = sourceTexts
+            .flatMap { text -> declaration.findAll(text).map { it.groupValues[1] }.toList() }
             .toSortedSet()
         if (serializable.isEmpty()) problems += "no @Serializable types found in the sources"
         (serializable - withSerializer).forEach { problems += "R8 kept no serializer() for @Serializable $it" }
+
+        // Seeds use original names, even when R8 renames the class. Check the
+        // mapping too: EnumNavType resolves the serial descriptor's class name,
+        // then calls getEnumConstants() (which requires values()). Recover binary
+        // nested names from the serializer owners, rather than assuming every
+        // enum is top-level or hard-coding today's route argument types.
+        val classMapping = mapping.get().asFile.useLines { lines ->
+            val entry = Regex("""^(\S+) -> (\S+):$""")
+            lines.mapNotNull { entry.matchEntire(it)?.destructured?.let { (from, to) -> from to to } }.toMap()
+        }
+        val enumDeclaration = Regex("""\benum\s+class\s+(\w+)$""")
+        val serializedEnums = sourceTexts.flatMap { text ->
+            val packageName = Regex("""(?m)^package\s+([\w.]+)""").find(text)?.groupValues?.get(1)
+            declaration.findAll(text).mapNotNull { enumDeclaration.find(it.value)?.groupValues?.get(1) }
+                .flatMap { name ->
+                    val owners = serializerOwners.filter { owner ->
+                        owner.substringBeforeLast('.') == packageName && owner.split('.', '$').last() == name
+                    }
+                    if (owners.isEmpty()) problems += "R8 kept no serializer owner for enum $packageName.$name"
+                    owners.asSequence()
+                }.toList()
+        }.toSortedSet()
+        serializedEnums.forEach { name ->
+            if (classMapping[name] != name) problems += "Navigation enum $name was removed or renamed to ${classMapping[name]}"
+            if ("$name: $name[] values()" !in seedLines) problems += "Navigation enum $name lost values() for getEnumConstants()"
+        }
 
         val xml = manifest.get().asFile.readText()
         val kept = seedLines.filter { ':' !in it }.toSet()
@@ -331,15 +361,16 @@ abstract class VerifyReleaseKeeps : DefaultTask() {
         }
 
         report.get().asFile.writeText(
-            if (problems.isEmpty()) "ok: ${serializable.size} serializable types, manifest checked\n" else problems.joinToString("\n"),
+            if (problems.isEmpty()) "ok: ${serializable.size} serializable types, ${serializedEnums.size} enum names and values(), manifest checked\n" else problems.joinToString("\n"),
         )
         check(problems.isEmpty()) { "Release build safety:\n" + problems.joinToString("\n") { "- $it" } }
     }
 }
 
 val verifyReleaseKeeps = tasks.register<VerifyReleaseKeeps>("verifyReleaseKeeps") {
-    dependsOn("minifyReleaseWithR8", "processReleaseMainManifest")
+    dependsOn("minifyReleaseWithR8", "mergeReleaseComposeMapping", "processReleaseMainManifest")
     seeds.set(layout.buildDirectory.file("outputs/mapping/release/seeds.txt"))
+    mapping.set(layout.buildDirectory.file("outputs/mapping/release/mapping.txt"))
     manifest.set(layout.buildDirectory.file("intermediates/merged_manifest/release/processReleaseMainManifest/AndroidManifest.xml"))
     sources.from(fileTree("src/main/kotlin"))
     report.set(layout.buildDirectory.file("reports/verifyReleaseKeeps.txt"))
