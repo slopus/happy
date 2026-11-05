@@ -89,7 +89,7 @@ data class ArtifactCover(
     val aspect: Aspect,
     /** Its placeholder until the picture lands; null when the computer couldn't make one, or an older one. */
     val thumbhash: String? = null,
-    /** The computer keeps a still preview of it, which a list's slot reads instead of the file. */
+    /** The computer keeps a still preview of it (`preview: { width, height }`), which a list's slot reads instead of the file. */
     val preview: Boolean = false,
 ) {
     /** The shapes a cover comes in: 16:9 or 1:1, width over height. */

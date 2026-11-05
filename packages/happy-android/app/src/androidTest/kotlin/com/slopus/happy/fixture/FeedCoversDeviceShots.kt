@@ -245,7 +245,7 @@ class FeedCoversDeviceShots {
                 route == "/v0/artifacts/fx-loop/versions/1/files/loop.webp" -> TransportResponse(200, body = loop)
                 route == "/v0/artifacts/fx-loop" -> json(
                     """{"artifact":{"id":"fx-loop","type":"html","title":"Nightly build","status":"active","latestVersion":1,"background":"#101828",
-                        "cover":{"path":"loop.webp","mimeType":"image/webp","width":640,"height":360,"aspect":"wide","thumbhash":"$LOOP_HASH","preview":{"path":"loop.png"}},
+                        "cover":{"path":"loop.webp","mimeType":"image/webp","width":640,"height":360,"aspect":"wide","thumbhash":"$LOOP_HASH","preview":{"width":640,"height":360}},
                         "summary":"The nightly build, live: the test suite is running."}}""",
                 )
                 route == "/v0/health" -> json("""{"capabilities":{"feed":true,"feedSubjectFilter":true,"artifactCovers":true}}""")
@@ -342,7 +342,7 @@ class FeedCoversDeviceShots {
         val CATALOG = """{"artifacts":[
             {"id":"fx-loop","type":"html","title":"Nightly build","latestVersion":1,"createdAt":NOW,"updatedAt":NOW,"background":"#101828",
                 "entry":{"path":"index.html","mimeType":"text/html","size":10},
-                "cover":{"path":"loop.webp","mimeType":"image/webp","width":640,"height":360,"aspect":"wide","thumbhash":"$LOOP_HASH","preview":{"path":"loop.png"}}},
+                "cover":{"path":"loop.webp","mimeType":"image/webp","width":640,"height":360,"aspect":"wide","thumbhash":"$LOOP_HASH","preview":{"width":640,"height":360}}},
             {"id":"fx-q3","type":"html","title":"Q3 revenue","latestVersion":2,"createdAt":NOW,"updatedAt":NOW,"background":"#0b1020",
                 "entry":{"path":"index.html","mimeType":"text/html","size":10},
                 "cover":{"path":"cover.png","mimeType":"image/png","width":1600,"height":900,"aspect":"wide"}},
@@ -350,7 +350,7 @@ class FeedCoversDeviceShots {
                 "entry":{"path":"index.html","mimeType":"text/html","size":10},
                 "cover":{"path":"cover.png","mimeType":"image/png","width":1200,"height":1200,"aspect":"square"}},
             {"id":"fx-photo","type":"image","title":"Team offsite","latestVersion":1,"createdAt":NOW,"updatedAt":NOW,
-                "entry":{"path":"team.png","mimeType":"image/png","size":10,"thumbhash":"1QcSHQRnh493V4dIh4eXh1h4kJUI","preview":{"path":"team.png"}}},
+                "entry":{"path":"team.png","mimeType":"image/png","size":10,"thumbhash":"1QcSHQRnh493V4dIh4eXh1h4kJUI","preview":{"width":640,"height":480}}},
             {"id":"fx-notes","type":"markdown","title":"Release notes","latestVersion":3,"createdAt":NOW,"updatedAt":NOW,
                 "entry":{"path":"index.md","mimeType":"text/markdown","size":10}}
         ],"nextPageCursor":null}"""

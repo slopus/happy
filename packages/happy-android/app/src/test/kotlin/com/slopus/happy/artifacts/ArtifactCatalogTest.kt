@@ -86,8 +86,8 @@ class ArtifactCatalogTest {
     @Test fun aCoversAndAnEntrysThumbHashAndPreviewAreKeptAndAnOlderDaemonsAreNone() {
         val read = ArtifactSummary.parse(
             obj("""{"id":"a","type":"image","title":"Shots","latestVersion":2,"createdAt":1,"updatedAt":2,
-                "entry":{"path":"a.webp","mimeType":"image/webp","size":12,"thumbhash":"1QcSHQRnh493V4dIh4eXh1h4kJUI","preview":{"path":"previews/a.png"}},
-                "cover":{"path":"cover.webp","mimeType":"image/webp","width":1600,"height":900,"aspect":"wide","thumbhash":"3OcRJYB4d3h/iIeHeEh3eIhw+j3A","preview":{}}}"""),
+                "entry":{"path":"a.webp","mimeType":"image/webp","size":12,"thumbhash":"1QcSHQRnh493V4dIh4eXh1h4kJUI","preview":{"width":640,"height":427}},
+                "cover":{"path":"cover.webp","mimeType":"image/webp","width":1600,"height":900,"aspect":"wide","thumbhash":"3OcRJYB4d3h/iIeHeEh3eIhw+j3A","preview":{"width":640,"height":360}}}"""),
         )!!
         assertEquals(ArtifactCover("cover.webp", "image/webp", ArtifactCover.Aspect.Wide, "3OcRJYB4d3h/iIeHeEh3eIhw+j3A", preview = true), read.cover)
         assertEquals(ArtifactFile("a.webp", "image/webp", 12, "1QcSHQRnh493V4dIh4eXh1h4kJUI", preview = true), read.entry)
@@ -98,6 +98,19 @@ class ArtifactCatalogTest {
         )!!
         assertEquals(ArtifactCover("c.png", "image/png", ArtifactCover.Aspect.Square), older.cover)
         assertEquals(ArtifactFile("b.png", "image/png", 3), older.entry)
+        // A changed cover brings its own preview, or says it has none by leaving it out.
+        val previewed = ArtifactCatalog.apply(
+            "artifact.updated",
+            obj("""{"artifactId":"b","changes":{"latestVersion":2,"updatedAt":2,"cover":{"path":"d.png","mimeType":"image/png","aspect":"wide","preview":{"width":640,"height":360}}}}"""),
+            listOf(older),
+        ) as ArtifactCatalog.Change.Changed
+        assertTrue(previewed.items.single().cover!!.preview)
+        val unpreviewed = ArtifactCatalog.apply(
+            "artifact.updated",
+            obj("""{"artifactId":"b","changes":{"latestVersion":3,"updatedAt":3,"cover":{"path":"e.png","mimeType":"image/png","aspect":"wide"}}}"""),
+            previewed.items,
+        ) as ArtifactCatalog.Change.Changed
+        assertFalse(unpreviewed.items.single().cover!!.preview)
     }
 
     @Test fun eventsAddChangeAndRemove() {

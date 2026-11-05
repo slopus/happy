@@ -395,7 +395,7 @@ class FeedTest {
         val artifact = FeedLookups.Artifact.parse(
             AgentClient.json.parseToJsonElement(
                 """{"title":"Loop","type":"image","latestVersion":3,
-                   "cover":{"path":"loop.webp","mimeType":"image/webp","aspect":"square","thumbhash":"1QcSHQRnh493V4dIh4eXh1h4kJUI","preview":{}}}""",
+                   "cover":{"path":"loop.webp","mimeType":"image/webp","aspect":"square","thumbhash":"1QcSHQRnh493V4dIh4eXh1h4kJUI","preview":{"width":640,"height":640}}}""",
             ) as JsonObject,
         )
         val found = FeedLookups.Found(artifacts = mapOf("a1" to artifact))
