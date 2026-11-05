@@ -571,7 +571,15 @@ const CODEX_EFFORTS_BY_MODEL: Record<string, readonly string[]> = {
 const CODEX_EFFORTS_FALLBACK = ['low', 'medium', 'high', 'xhigh'] as const;
 
 export function getClaudeEffortLevels(): EffortLevel[] {
-    return effortLevels(CLAUDE_EFFORTS);
+    return [
+        // 'auto' pins no effort level. happy-cli leaves the SDK `effort` option
+        // out (toSdkEffort in claude/loop.ts), so Claude Code applies the effort
+        // from the user's own Claude config, or else the model's default. It is
+        // the one level with a description, so it is listed apart from the SDK
+        // scale.
+        { key: 'auto', name: effortDisplayName('auto'), description: 'let Claude decide' },
+        ...effortLevels(CLAUDE_EFFORTS),
+    ];
 }
 
 export function getAgyEffortLevels(modelKey?: string | null): EffortLevel[] {
