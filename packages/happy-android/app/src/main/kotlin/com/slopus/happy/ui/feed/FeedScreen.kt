@@ -89,6 +89,7 @@ import com.slopus.happy.ui.components.HappySwitch
 import com.slopus.happy.ui.components.HomeCardPlace
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.components.Octicon
 import com.slopus.happy.ui.connection.AgentTopBar
 import com.slopus.happy.ui.connection.BarIconButton
 import com.slopus.happy.ui.connection.ConversationMark
@@ -275,6 +276,8 @@ sealed interface FeedPlaceFace {
     data class Mark(val mark: FeedFace.Mark) : FeedPlaceFace
     data class Project(val mark: FolderMark) : FeedPlaceFace
     data class Tile(val glyph: Ionicon, val tint: RowTile) : FeedPlaceFace
+    /** Everything: Activity's own pulse, as home's row wears it. */
+    data object Everything : FeedPlaceFace
 }
 
 /** A place the feed gathers from, named from what the connection syncs (iOS `FeedPlace`). */
@@ -286,7 +289,7 @@ data class FeedPlace(val cluster: FeedCluster, val name: String, val face: FeedP
     companion object {
         /** [cluster] as [catalog] names it; null for a place it doesn't hold, or a kind this phone doesn't know. */
         fun of(cluster: FeedCluster, catalog: AgentCatalog, words: FeedWords): FeedPlace? {
-            if (cluster.cluster == "*") return FeedPlace(cluster, words.everything, FeedPlaceFace.Tile(Ionicon.NewspaperOutline, RowTile.Red))
+            if (cluster.cluster == "*") return FeedPlace(cluster, words.everything, FeedPlaceFace.Everything)
             if (cluster.kind == "team") return FeedPlace(cluster, words.team, FeedPlaceFace.Tile(Ionicon.PeopleOutline, RowTile.Teal))
             val id = cluster.placeId ?: return null
             return when (cluster.kind) {
@@ -672,10 +675,18 @@ internal fun FeedFaceView(face: FeedFace, size: Dp, ring: Color? = null) {
 }
 
 @Composable
-private fun FeedTileView(glyph: Ionicon, tint: RowTile, size: Dp, radius: Dp) {
+private fun FeedTileView(glyph: Ionicon, tint: RowTile, size: Dp, radius: Dp) =
+    FeedTileBox(tint, size, radius) { glyphSize, ink -> Icon(glyph, glyphSize, ink) }
+
+@Composable
+private fun FeedTileView(glyph: Octicon, tint: RowTile, size: Dp, radius: Dp) =
+    FeedTileBox(tint, size, radius) { glyphSize, ink -> Icon(glyph, glyphSize, ink) }
+
+@Composable
+private fun FeedTileBox(tint: RowTile, size: Dp, radius: Dp, glyph: @Composable (Dp, Color) -> Unit) {
     val dark = HappyTheme.colors.dark
     Box(Modifier.size(size).clip(RoundedCornerShape(radius)).background(tint.fill(dark)), contentAlignment = Alignment.Center) {
-        Icon(glyph, CardListSpec.tileGlyph * (size / CardListSpec.tile), tint.ink(dark))
+        glyph(CardListSpec.tileGlyph * (size / CardListSpec.tile), tint.ink(dark))
     }
 }
 
@@ -745,6 +756,7 @@ private fun FeedPlaceRow(item: FeedFollowingItem.Place, words: FeedWords, action
                     is FeedPlaceFace.Mark -> FeedFaceView(face.mark, FeedSpec.clusterAvatar)
                     is FeedPlaceFace.Project -> FolderMarkView(face.mark, FeedSpec.clusterAvatar)
                     is FeedPlaceFace.Tile -> FeedTileView(face.glyph, face.tint, FeedSpec.clusterAvatar, radius)
+                    FeedPlaceFace.Everything -> FeedTileView(Octicon.Pulse, RowTile.Red, FeedSpec.clusterAvatar, radius)
                 }
             }
             Spacer(Modifier.width(CardListSpec.tileGap))

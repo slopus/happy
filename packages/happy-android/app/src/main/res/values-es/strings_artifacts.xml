@@ -89,9 +89,9 @@
     <string name="feed_following">Siguiendo</string>
     <string name="feed_mark_all_read">Marcar todo como leído</string>
     <string name="feed_empty">Todavía no ha pasado nada. Aquí aparecen las nuevas tareas, bots, documentos, listas de tareas y artefactos, con cada cambio que tengan.</string>
-    <string name="feed_loading">Cargando las novedades…</string>
-    <string name="feed_unavailable">No se pudieron cargar las novedades. Comprueba que tu ordenador esté encendido.</string>
-    <string name="feed_unsupported">Este Happy Agent no tiene novedades. Actualízalo para tenerlas.</string>
+    <string name="feed_loading">Cargando la actividad…</string>
+    <string name="feed_unavailable">No se pudo cargar la actividad. Comprueba que tu ordenador esté encendido.</string>
+    <string name="feed_unsupported">Este Happy Agent aún no registra actividad. Actualízalo para verla aquí.</string>
     <string name="feed_everywhere">En todas partes</string>
     <string name="feed_places">Lugares</string>
     <string name="feed_no_clusters">Todavía no hay nada que seguir. Las tareas, bots, documentos y listas de tareas aparecen aquí cuando pasa algo en ellos.</string>

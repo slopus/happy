@@ -164,7 +164,7 @@ class FeedScreenTest {
     @Test
     fun itSaysWhyThereIsNothingToShow() {
         show(state = FeedLibrary.State(available = false, loaded = true))
-        rule.onNodeWithText("This Happy Agent doesn’t keep a feed. Updating it adds one.").assertExists()
+        rule.onNodeWithText("This Happy Agent doesn’t track activity yet. Update it to see activity here.").assertExists()
     }
 
     @Test
@@ -178,7 +178,7 @@ class FeedScreenTest {
         }
         rule.onNodeWithTag(AgentHomeTags.ROW_COUNT, useUnmergedTree = true).assertTextEquals("3")
         shot("home-feed-row")
-        rule.onNodeWithText("Feed").performClick()
+        rule.onNodeWithText("Activity").performClick()
         assertEquals(1, opened)
     }
 

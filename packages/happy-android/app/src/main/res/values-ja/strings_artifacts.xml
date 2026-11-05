@@ -85,9 +85,9 @@
     <string name="feed_following">フォロー中</string>
     <string name="feed_mark_all_read">すべて既読にする</string>
     <string name="feed_empty">まだ何も起きていません。新しいタスク、ボット、ドキュメント、ToDoリスト、アーティファクトが、そのすべての変更とともにここに表示されます。</string>
-    <string name="feed_loading">フィードを読み込み中…</string>
-    <string name="feed_unavailable">フィードを読み込めませんでした。コンピュータの電源が入っているか確認してください。</string>
-    <string name="feed_unsupported">この Happy Agent にはフィードがありません。アップデートすると使えるようになります。</string>
+    <string name="feed_loading">アクティビティを読み込み中…</string>
+    <string name="feed_unavailable">アクティビティを読み込めませんでした。コンピュータの電源が入っているか確認してください。</string>
+    <string name="feed_unsupported">この Happy Agent はまだアクティビティを記録していません。アップデートするとここに表示されます。</string>
     <string name="feed_everywhere">すべて</string>
     <string name="feed_places">個別</string>
     <string name="feed_no_clusters">フォローできるものはまだありません。タスク、ボット、ドキュメント、ToDoリストは、何かが起きるとここに表示されます。</string>

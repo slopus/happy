@@ -89,9 +89,9 @@
     <string name="feed_following">Seguint</string>
     <string name="feed_mark_all_read">Marca-ho tot com a llegit</string>
     <string name="feed_empty">Encara no ha passat res. Aquí apareixen les noves tasques, bots, documents, llistes de tasques i artefactes, amb cada canvi que tinguin.</string>
-    <string name="feed_loading">S’estan carregant les novetats…</string>
-    <string name="feed_unavailable">No s’han pogut carregar les novetats. Comprova que l’ordinador estigui encès.</string>
-    <string name="feed_unsupported">Aquest Happy Agent no té novetats. Actualitza’l per tenir-ne.</string>
+    <string name="feed_loading">S’està carregant l’activitat…</string>
+    <string name="feed_unavailable">No s’ha pogut carregar l’activitat. Comprova que l’ordinador estigui encès.</string>
+    <string name="feed_unsupported">Aquest Happy Agent encara no registra l’activitat. Actualitza’l per veure-la aquí.</string>
     <string name="feed_everywhere">Arreu</string>
     <string name="feed_places">Llocs</string>
     <string name="feed_no_clusters">Encara no hi ha res per seguir. Les tasques, bots, documents i llistes de tasques apareixen aquí quan hi passa alguna cosa.</string>

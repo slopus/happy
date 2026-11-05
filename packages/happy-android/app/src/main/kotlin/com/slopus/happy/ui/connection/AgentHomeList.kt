@@ -74,6 +74,7 @@ import com.slopus.happy.ui.components.HomeCardSpec
 import com.slopus.happy.ui.components.HomeCardTags
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.components.Octicon
 import com.slopus.happy.ui.components.MenuSpec
 import com.slopus.happy.ui.components.RemoteImage
 import com.slopus.happy.ui.components.ShimmerSpec
@@ -205,13 +206,22 @@ enum class RowTile(private val light: Pair<Long, Long>, private val dark: Pair<L
 
 /** [glyph] on its softly tinted tile, the mark's square at [size]. */
 @Composable
-internal fun TileMark(glyph: Ionicon, tile: RowTile, size: Dp = AgentHomeSpec.mark) {
+internal fun TileMark(glyph: Ionicon, tile: RowTile, size: Dp = AgentHomeSpec.mark) =
+    TileBox(tile, size) { glyphSize, ink -> Icon(glyph, glyphSize, ink) }
+
+/** An Octicon on its tile: Activity's pulse, as desktop's `feed` icon draws it. */
+@Composable
+internal fun TileMark(glyph: Octicon, tile: RowTile, size: Dp = AgentHomeSpec.mark) =
+    TileBox(tile, size) { glyphSize, ink -> Icon(glyph, glyphSize, ink) }
+
+@Composable
+private fun TileBox(tile: RowTile, size: Dp, glyph: @Composable (Dp, Color) -> Unit) {
     val dark = HappyTheme.colors.dark
     Box(
         Modifier.size(size).clip(RoundedCornerShape(AgentHomeSpec.tileRadius)).background(tile.fill(dark)),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(glyph, AgentHomeSpec.tileGlyph * (size / AgentHomeSpec.mark), tile.ink(dark))
+        glyph(AgentHomeSpec.tileGlyph * (size / AgentHomeSpec.mark), tile.ink(dark))
     }
 }
 
@@ -387,9 +397,9 @@ internal fun AgentHomeCardRow(
         when (val row = item.row) {
             is AgentFeedRow.Conversation -> ConversationRow(row, onOpen, onHold)
             is AgentFeedRow.Folder -> FolderRow(row)
-            AgentFeedRow.Artifacts -> PlaceRow(stringResource(R.string.artifacts_title), Ionicon.DocumentTextOutline, RowTile.Purple, onOpenArtifacts)
+            AgentFeedRow.Artifacts -> PlaceRow(stringResource(R.string.artifacts_title), { TileMark(Ionicon.DocumentTextOutline, RowTile.Purple) }, onOpenArtifacts)
             is AgentFeedRow.Feed -> FeedPlaceRow(row.unread, onOpenFeed)
-            AgentFeedRow.Todos -> PlaceRow(stringResource(R.string.agent_search_todos), Ionicon.CheckboxOutline, RowTile.Green, onOpenTodos)
+            AgentFeedRow.Todos -> PlaceRow(stringResource(R.string.agent_search_todos), { TileMark(Ionicon.CheckboxOutline, RowTile.Green) }, onOpenTodos)
             is AgentFeedRow.Surface -> SurfaceRow(row, { onOpenSurface(row) }, onLeaveSurface)
             is AgentFeedRow.Section -> Unit
         }
@@ -523,7 +533,7 @@ private fun SurfaceRow(row: AgentFeedRow.Surface, onOpen: () -> Unit, onLeave: (
     var menu by remember { mutableStateOf(false) }
     val (glyph, tile) = RowTile.surface(row.type)
     Box(Modifier.fillMaxSize()) {
-        PlaceRow(row.name, glyph, tile, onOpen, onLongClick = onLeave?.let { { menu = true } })
+        PlaceRow(row.name, { TileMark(glyph, tile) }, onOpen, onLongClick = onLeave?.let { { menu = true } })
         if (onLeave != null) {
             HappyDropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
                 HappyMenuItem(
@@ -541,19 +551,19 @@ private fun SurfaceRow(row: AgentFeedRow.Surface, onOpen: () -> Unit, onLeave: (
 }
 
 /**
- * Desktop's Feed row (iOS `SidebarRows`): the newspaper on its red tile,
+ * Desktop's Activity row (iOS `SidebarRows`): the pulse on its red tile,
  * its name bold while something is unread, with how many beside it.
  */
 @Composable
 private fun FeedPlaceRow(unread: Int, onClick: () -> Unit) {
     val count = unread.takeIf { it > 0 }
     val label = count?.let { pluralStringResource(R.plurals.feed_unread, it, it) }
-    PlaceRow(stringResource(R.string.feed_title), Ionicon.NewspaperOutline, RowTile.Red, onClick, count = count, countLabel = label)
+    PlaceRow(stringResource(R.string.feed_title), { TileMark(Octicon.Pulse, RowTile.Red) }, onClick, count = count, countLabel = label)
 }
 
-/** Artifacts, the Feed, or a Surface: its glyph on its tile, and its name; bold with a [count] after it while something in it is unread. */
+/** Artifacts, the Feed, or a Surface: its [mark] (a glyph on its tile), and its name; bold with a [count] after it while something in it is unread. */
 @Composable
-private fun PlaceRow(name: String, glyph: Ionicon, tile: RowTile, onClick: () -> Unit, onLongClick: (() -> Unit)? = null, count: Int? = null, countLabel: String? = null) {
+private fun PlaceRow(name: String, mark: @Composable () -> Unit, onClick: () -> Unit, onLongClick: (() -> Unit)? = null, count: Int? = null, countLabel: String? = null) {
     Row(
         modifier = Modifier
             .fillMaxSize()
@@ -561,7 +571,7 @@ private fun PlaceRow(name: String, glyph: Ionicon, tile: RowTile, onClick: () ->
             .padding(start = AgentHomeSpec.markInset, end = AgentHomeSpec.paddingEnd),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(modifier = Modifier.size(AgentHomeSpec.mark).testTag(AgentHomeTags.ROW_MARK)) { TileMark(glyph, tile) }
+        Box(modifier = Modifier.size(AgentHomeSpec.mark).testTag(AgentHomeTags.ROW_MARK)) { mark() }
         Text(
             name,
             style = if (count != null) AgentHomeSpec.title.copy(fontWeight = FontWeight.SemiBold) else AgentHomeSpec.title,

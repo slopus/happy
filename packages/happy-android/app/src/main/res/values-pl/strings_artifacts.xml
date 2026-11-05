@@ -91,9 +91,9 @@
     <string name="feed_following">Obserwowane</string>
     <string name="feed_mark_all_read">Oznacz wszystko jako przeczytane</string>
     <string name="feed_empty">Na razie nic się nie wydarzyło. Tutaj pojawią się nowe zadania, boty, dokumenty, listy zadań i artefakty — z każdą ich zmianą.</string>
-    <string name="feed_loading">Wczytywanie aktualności…</string>
-    <string name="feed_unavailable">Nie udało się wczytać aktualności. Sprawdź, czy komputer jest włączony.</string>
-    <string name="feed_unsupported">Ten Happy Agent nie prowadzi aktualności. Zaktualizuj go, aby je dodać.</string>
+    <string name="feed_loading">Wczytywanie aktywności…</string>
+    <string name="feed_unavailable">Nie udało się wczytać aktywności. Sprawdź, czy komputer jest włączony.</string>
+    <string name="feed_unsupported">Ten Happy Agent nie śledzi jeszcze aktywności. Zaktualizuj go, aby ją tu zobaczyć.</string>
     <string name="feed_everywhere">Wszędzie</string>
     <string name="feed_places">Miejsca</string>
     <string name="feed_no_clusters">Na razie nie ma czego obserwować. Zadania, boty, dokumenty i listy zadań pojawią się tutaj, gdy coś się w nich wydarzy.</string>

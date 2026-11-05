@@ -55,7 +55,7 @@ public enum SidebarRows {
         rows.append(Row(id: "direct:artifacts", nodeId: "direct:artifacts", kind: .space, label: "Artifacts", mark: .glyph("doc"), targetKind: "artifacts"))
         if let feed {
             // Bold while something is unread, with how many beside it.
-            var row = Row(id: "direct:feed", nodeId: "direct:feed", kind: .space, label: "Feed", mark: .glyph("feed"), unread: feed.unread > 0, targetKind: "feed")
+            var row = Row(id: "direct:feed", nodeId: "direct:feed", kind: .space, label: "Activity", mark: .glyph("feed"), unread: feed.unread > 0, targetKind: "feed")
             row.count = feed.unread > 0 ? feed.unread : nil
             rows.append(row)
         }

@@ -65,7 +65,7 @@ final class SidebarRowsMarksTests: XCTestCase {
         XCTAssertFalse(SidebarRows.make(desktop, settings: [:]).contains { $0.targetKind == "feed" })
         let labels = SidebarRows.make(desktop, settings: [:], feed: .init(unread: 3)).map(\.label)
         let artifacts = try XCTUnwrap(labels.firstIndex(of: "Artifacts"))
-        XCTAssertEqual(labels[artifacts + 1], "Feed")
+        XCTAssertEqual(labels[artifacts + 1], "Activity")
         let row = try XCTUnwrap(SidebarRows.make(desktop, settings: [:], feed: .init(unread: 3)).first { $0.targetKind == "feed" })
         XCTAssertEqual(row.id, "direct:feed")
         XCTAssertEqual(row.mark, .glyph("feed"))

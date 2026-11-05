@@ -36,9 +36,9 @@ final class FeedUITests: XCTestCase {
         app.launch()
 
         // Home: the Feed row under Artifacts, with what is unread beside it.
-        let row = app.descendants(matching: .any)["row:space:Feed"]
-        XCTAssertTrue(row.waitForExistence(timeout: 20), "home has no Feed row")
-        until("the Feed row counts 3 unread") { value(row).contains("3") }
+        let row = app.descendants(matching: .any)["row:space:Activity"]
+        XCTAssertTrue(row.waitForExistence(timeout: 20), "home has no Activity row")
+        until("the Activity row counts 3 unread") { value(row).contains("3") }
         sleep(1)
         keep("feed-home")
 

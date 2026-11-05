@@ -35,6 +35,7 @@ enum class Octicon(val codepoint: Int) {
     LightBulb(0xf1ac), // light-bulb
     Pencil(0xf1d3), // pencil
     Plus(0xf1dd), // plus
+    Pulse(0xf1e3), // pulse
     Rocket(0xf1f3), // rocket
     ScreenFull(0xf1f7), // screen-full
     Search(0xf1f9), // search

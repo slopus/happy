@@ -9,7 +9,7 @@ here, with the strings the font itself carries.
 
 ## Fonts
 
-### Ionicons (`Ionicons.ttf`, 178 icons)
+### Ionicons (`Ionicons.ttf`, 177 icons)
 
 ```
 Ionicons, https://github.com/ionic-team/ionicons
@@ -20,7 +20,7 @@ License: MIT (below).
 - Font family: Ionicons
 - Font version: Version 001.000
 
-### Octicons (`Octicons.ttf`, 30 icons)
+### Octicons (`Octicons.ttf`, 31 icons)
 
 ```
 Octicons, https://github.com/primer/octicons
