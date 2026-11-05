@@ -1,162 +1,61 @@
-# Product Analytics
+# Product analytics
 
-# [auto]
+Happy Desktop and the native iOS and Android apps send the events in
+[`analytics-catalog.json`](analytics-catalog.json) and nothing else. Each
+event and property is listed there, along with the values it may take and
+which clients send it. The catalog is byte-identical in happy-desktop
+(`packages/happy-desktop-analytics/catalog.json`). Change it there first and
+copy it here. Each client has a unit test that parses the catalog and checks
+the client's own typed catalog against it. The taxonomy spec (accepted
+2026-11-05) explains why each event exists. Where the spec and the catalog
+disagree, the catalog wins. Happy Agent (the daemon) sends nothing.
 
-## Navigation
+The rules every client follows:
 
-- $screen
-  - $screen_name
+- **No private data.** A property holds a closed enum value, a count, a
+  coarse duration bucket, a boolean, a version, or an allowlisted model ID.
+  It never holds text, IDs, names, paths, URLs, hosts, error messages, stack
+  traces, device model, timezone or screen size. Each client enforces this
+  twice. A typed catalog means an unknown event or property does not
+  compile, and a runtime allowlist at the send boundary drops anything else.
+- **Identity** is a random install UUID, used as `distinct_id`. It is never
+  derived from or aliased to an account, agent or `anonId`. There are no
+  person profiles: `$process_person_profile: false`, `$ip: null` and
+  `$geoip_disable: true` are set on every event.
+- **Errors come first.** An error is recorded when a person saw it, not
+  when it was thrown. Usage is counted locally and sent once a day as
+  `daily_summary`, except for `app_opened` and `message_sent`.
+- **Nothing is sent** from debug builds, tests, UI automation, or a build
+  without a PostHog key (Info.plist `HappyPostHogKey` on iOS).
 
-## Lifecycle
+## iOS (`packages/happy-ios`)
 
-- Application Installed
-- Application Updated
-  - previous_version?
-  - previous_build?
-- Application Opened
-  - url?
-- Application Became Active
-- Application Backgrounded
+- `HappyCore/Analytics` holds the whole client. `AnalyticsEvent` is the
+  typed catalog. `AnalyticsSchema` is the allowlist, built from the same
+  Swift enums. `AnalyticsEngine` keeps the queue (500 events, 7 days),
+  the `error_shown` throttle, the failure dedupe set and the daily counts
+  in `Application Support/Happy/analytics.json`. `Analytics.shared` is the
+  only entry point the app calls.
+- Events are posted to `https://us.i.posthog.com/batch/` in one batch
+  every 30 seconds while the app is active and once when it goes to the
+  background. There is no PostHog SDK. A failed batch stays queued and is
+  sent again later with the same `$insert_id`.
+- Sending stops when the device switch in Settings is off, or when any
+  signed-in Happy account has `analyticsOptOut` on. The last value seen for
+  each account is remembered. Turning analytics off deletes the queue and
+  the pending counts.
+- Crashes and hangs come from MetricKit at the next launch. Only the
+  exception type and signal are read, and they are mapped to `reason`.
+- A debug run can send to a local capture endpoint instead of PostHog:
+  launch with `HAPPY_ANALYTICS_CAPTURE=http://<host>:<port>/batch/`.
+- Contract test: `Tests/HappyCoreTests/AnalyticsCatalogContractTests.swift`.
 
-# [explicit]
+## Android (`packages/happy-android`)
 
-## Auth
-
-- account_created
-- account_restored
-  - note: this is restore-flow start, not restore success
-
-## Core
-
-- connect_attempt
-- message_sent
-  - source
-  - session_agent
-  - session_started_source
-  - happy_cli_version
-  - ota_version
-  - ota_runtime_version
-- session_switched
-  - session_id
-  - session_created_at
-  - last_active_at
-  - last_updated_at
-
-## Voice
-
-- voice_permission_response
-  - allowed
-- voice_session_started
-  - session_id
-  - elevenlabs_conversation_id
-- voice_session_error
-  - session_id
-  - elevenlabs_conversation_id
-  - error
-- voice_session_stopped
-  - session_id
-  - elevenlabs_conversation_id
-  - duration_seconds
-
-## Paywall
-
-all include flow property which customizes the upsell screen shown by revenue cat.
-
-- paywall_button_clicked
-- paywall_presented
-- paywall_purchased
-- paywall_restored
-- paywall_cancelled
-- paywall_error
-  - error
-
-## Review
-
-- review_prompt_shown
-- review_prompt_response
-  - likes_app
-- review_store_shown
-- review_retry_scheduled
-  - days_until_retry
-
-## Updates
-
-- ota_update_available
-  - ota_version
-  - ota_runtime_version
-- ota_update_applied
-  - ota_version
-  - ota_runtime_version
-- whats_new_clicked
-
-## GitHub
-
-- github_connected
-
-## Friends
-
-- friends_search
-- friends_profile_view
-- friends_connect
-
-# Appendix
-
-## Shared SDK Properties
-
-- every capture(...) send also includes:
-  - $lib
-  - $lib_version
-  - $session_id
-  - $screen_height
-  - $screen_width
-  - $process_person_profile
-  - $is_identified
-  - $device_type
-  - $app_build?
-  - $app_name?
-  - $app_namespace?
-  - $app_version?
-  - $device_manufacturer?
-  - $device_name?
-  - $os_name?
-  - $os_version?
-  - $locale?
-  - $timezone?
-  - $screen_name?
-  - event
-  - distinct_id
-
-## Identity And Control Sends
-
-- $identify
-- $set
-- reset
-- optIn
-- optOut
-
-## Strong Preferences
-
-- Prefer a small number of core events with explicit properties over a growing set of overlapping events.
-- `message_sent` is the canonical outbound send event. Do not add parallel send events for specific surfaces like voice. Add or use `source` instead.
-- If a new analytics question can be answered by extending an existing event, prefer adding a property over inventing a new event.
-- `session_switched` should carry stable identity, not just recency. Keep `session_id` and `session_created_at` on it.
-- OTA context is first-class and should travel with the events that matter. Keep `ota_version` and `ota_runtime_version` on `message_sent`, `ota_update_available`, and `ota_update_applied`.
-- Prefer direct, explicit property objects at capture sites. Do not hide event shape behind generic helper layers that silently add, remove, or filter fields.
-- If we ever care about session-switch entry source, add an explicit `source` property. Do not try to reconstruct it later from navigation context.
-
-## Notes
-
-- session_switched now includes stable identity (`session_id`, `session_created_at`) plus recency. Entry source is still merged until we add an explicit source property.
-- elevenlabs_conversation_id is the conversation id returned by the ElevenLabs voice session layer.
-- github_connected is a plain event with no GitHub profile data attached.
-
-## Relevant Sources
-
-- packages/happy-app/sources/track/index.ts
-- packages/happy-app/sources/hooks/useNavigateToSession.ts
-- packages/happy-app/sources/-session/SessionView.tsx
-- packages/happy-app/sources/realtime/RealtimeSession.ts
-- packages/happy-app/sources/components/SettingsView.tsx
-- packages/happy-app/sources/sync/sync.ts
-- packages/happy-app/sources/track/useTrackScreens.ts
-- packages/happy-app/sources/track/tracking.ts
+- Android uses the same design as iOS. It posts directly to PostHog's
+  `/batch/` with OkHttp, next to `PostHogFlags`, and keeps a bounded
+  on-disk queue (500 events, 7 days).
+- Crashes come from `ActivityManager.getHistoricalProcessExitReasons`
+  (API 30+), using its `REASON_*` enum.
+- Opt-out works as on iOS. Any signed-in account's `analyticsOptOut` or the
+  device-level switch stops sending and deletes the queue.

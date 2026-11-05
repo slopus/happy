@@ -1,0 +1,302 @@
+{
+  "version": 1,
+  "about": "Happy product analytics catalog shared by Happy Desktop, happy-ios and happy-android. Every event and property a client may send. Values are closed enums, counts, booleans, versions, or the model rule; nothing else may leave a client. Clients send only the events listed for them. Optional properties may be omitted; nullable properties may be null.",
+  "types": {
+    "count": "integer 0..1000000",
+    "version": "string matching ^[0-9]+(\\.[0-9]+){0,3}([-+][0-9A-Za-z.]+)?$, at most 64 characters",
+    "os_version": "string matching ^[0-9]+(\\.[0-9]+)?$ (major.minor only)",
+    "model": "string matching ^(anthropic|openai|xai|google|zai|moonshotai)/[a-z0-9][a-z0-9.-]{0,63}$, or \"other\"; any providerId: prefix is stripped first",
+    "day": "integer UTC day number (milliseconds since epoch / 86400000), 20000..100000"
+  },
+  "shared_enums": {
+    "provider_kind": ["claude", "codex", "grok", "bedrock", "anthropic", "gemini", "glm", "kimi", "openai", "other"],
+    "failure_kind": ["signin_missing", "usage_limit", "no_account_available", "rate_limited", "provider_unavailable", "network", "context_too_long", "provider_disabled", "internal", "other", "untyped"],
+    "duration": ["under_10s", "10s_to_30s", "30s_to_2m", "2m_to_5m", "5m_to_15m", "15m_to_1h", "over_1h"],
+    "error_code": ["offline", "timeout", "unauthorized", "forbidden", "not_found", "conflict", "too_large", "rate_limited", "server_error", "refused", "version_mismatch", "invalid_response", "unsupported", "unknown"],
+    "pairing_method": ["relay", "direct"],
+    "pairing_surface": ["onboarding", "settings", "connect_agent"],
+    "result": ["ok", "failed", "cancelled"],
+    "effort": ["off", "on", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"],
+    "bucket_123": ["0", "1", "2", "3+"]
+  },
+  "common": {
+    "client": { "enum": ["desktop", "ios", "android"] },
+    "app_version": { "type": "version" },
+    "channel": { "enum": ["stable", "preview", "nightly", "development"] },
+    "os": { "enum": ["mac", "win", "linux", "ios", "android"] },
+    "os_version": { "type": "os_version", "nullable": true },
+    "device_class": { "enum": ["desktop", "phone", "tablet"] },
+    "arch": { "enum": ["arm64", "x64", "other"], "nullable": true, "clients": ["desktop"] },
+    "agent_location": { "enum": ["local", "remote", "relay"], "nullable": true },
+    "agent_os": { "enum": ["mac", "win", "linux", "other"], "nullable": true },
+    "happy_agent_version": { "type": "version", "nullable": true }
+  },
+  "events": {
+    "chat_failure_shown": {
+      "tier": "error",
+      "clients": ["desktop", "ios", "android"],
+      "fires": "A failed agent turn's card is first rendered in the visible, focused conversation and the failure message is at most 5 minutes old. Deduplicated per device by message id in a bounded local set (500); the id is never sent.",
+      "properties": {
+        "kind": { "enum": "failure_kind" },
+        "provider_kind": { "enum": "provider_kind", "nullable": true },
+        "pool": { "type": "bool" },
+        "target": { "enum": ["chief_of_staff", "bot", "session"] },
+        "session_client": { "enum": ["happy_agent", "cli"] }
+      }
+    },
+    "chat_failure_action": {
+      "tier": "error",
+      "clients": ["desktop", "ios", "android"],
+      "fires": "The person acts on a failure card, on the device where they tapped.",
+      "properties": {
+        "kind": { "enum": "failure_kind" },
+        "action": { "enum": ["retry", "switch_model", "new_chat", "ask_chief", "sign_in", "copy_command", "open_settings"] }
+      }
+    },
+    "connection_issue": {
+      "tier": "error",
+      "clients": ["desktop", "ios", "android"],
+      "fires": "Once per incident, when it ends, only if the connection to the agent (or relay) was down for 10 seconds or more while the app was in the foreground. Reconnects under 10 s send nothing.",
+      "properties": {
+        "transport": { "enum": ["local", "remote", "direct", "relay"] },
+        "code": { "enum": ["unreachable", "timeout", "auth_expired", "revoked", "version_mismatch", "edge_blocked", "server_error", "unknown"] },
+        "outcome": { "enum": ["recovered", "restarted", "gave_up", "backgrounded", "closed"] },
+        "duration": { "enum": "duration" },
+        "recovery_screen": { "type": "bool" }
+      }
+    },
+    "error_shown": {
+      "tier": "error",
+      "clients": ["desktop", "ios", "android"],
+      "fires": "Any other error state a person saw. At most one per (area, code) per 10 minutes per device; suppressed occurrences are added to repeat_count of the next one sent.",
+      "properties": {
+        "area": { "enum": ["conversation_load", "message_send", "attachment_upload", "file_load", "diff_load", "artifact_load", "browser_load", "terminal", "voice", "model_list", "settings_save", "project_add", "workspace_create", "bot_create", "task_create", "push_setup", "update", "ui_render"] },
+        "code": { "enum": "error_code" },
+        "repeat_count": { "type": "count" }
+      }
+    },
+    "app_crash": {
+      "tier": "error",
+      "clients": ["desktop", "ios", "android"],
+      "fires": "A process of the app died abnormally. Reported at the next launch from OS exit records (MetricKit, ApplicationExitInfo) or a marker the desktop main process wrote. No stack, message, or symbol is ever sent.",
+      "properties": {
+        "process": { "enum": ["main", "renderer", "app", "extension"] },
+        "reason": { "enum": ["crash", "native_crash", "oom", "hang", "killed", "launch_failed", "integrity", "unknown"] },
+        "crashed_version": { "type": "version", "nullable": true }
+      }
+    },
+    "pairing_result": {
+      "tier": "error",
+      "clients": ["desktop", "ios", "android"],
+      "fires": "A phone pairing ends: linked, failed, or abandoned. Replaces desktop mobile_pairing_completed/failed/cancelled and iOS pairing_completed/failed/cancelled.",
+      "properties": {
+        "side": { "enum": ["desktop", "phone"] },
+        "method": { "enum": "pairing_method" },
+        "start": { "enum": ["code_shown", "scan", "paste_link", "opened_link"] },
+        "result": { "enum": "result" },
+        "error_code": { "enum": ["invalid_code", "expired", "rejected", "emoji_mismatch", "invalid_proof", "invalid_response", "unavailable", "revoked", "disabled", "update_required", "unknown"], "nullable": true }
+      }
+    },
+    "sign_in_result": {
+      "tier": "error",
+      "clients": ["ios", "android"],
+      "fires": "Creating, restoring, or signing in to an account ends.",
+      "properties": {
+        "method": { "enum": ["relay_create", "relay_restore", "team_server"] },
+        "result": { "enum": "result" },
+        "error_code": { "enum": ["invalid_address", "no_sign_in", "edge_blocked", "unreachable", "denied", "expired", "invalid_token", "rejected", "profile_required", "unknown"], "nullable": true }
+      }
+    },
+    "voice_session_ended": {
+      "tier": "error",
+      "clients": ["desktop", "ios", "android"],
+      "fires": "A voice session ends, whether it worked or not. One event per session; there is no start event.",
+      "properties": {
+        "result": { "enum": ["ok", "failed"] },
+        "error_code": { "enum": ["mic_denied", "connect_failed", "dropped", "quota_exhausted", "unknown"], "nullable": true },
+        "duration": { "enum": "duration" }
+      }
+    },
+    "purchase_result": {
+      "tier": "error",
+      "clients": ["ios", "android"],
+      "fires": "A store purchase or restore ends.",
+      "properties": {
+        "product": { "enum": ["pro", "support", "voice", "other"] },
+        "result": { "enum": ["ok", "failed", "cancelled", "restored", "pending"] },
+        "error_code": { "enum": ["store_unavailable", "payment_invalid", "not_allowed", "network", "verification_failed", "unknown"], "nullable": true }
+      }
+    },
+    "onboarding_setup_result": {
+      "tier": "error",
+      "clients": ["desktop"],
+      "fires": "Unchanged from the existing desktop catalog.",
+      "properties": {
+        "result": { "enum": ["ok", "failed"] },
+        "error_code": { "enum": ["node_missing", "download_failed", "start_failed", "start_timeout", "version_mismatch", "connect_failed", "state_unreadable", "closed_during_setup"], "optional": true },
+        "error_detail": { "enum": ["release_lookup_rate_limited", "release_lookup_failed", "release_unavailable", "network_unreachable", "transfer_interrupted", "transfer_timeout", "transfer_http_error", "integrity_mismatch", "disk_full", "filesystem_locked", "extract_failed", "install_lock_timeout", "unclassified"], "optional": true },
+        "attempt_count": { "type": "count", "optional": true },
+        "transfer_percent_bucket": { "enum": ["none", "under_half", "over_half", "complete"], "optional": true },
+        "duration_ms": { "type": "count" }
+      }
+    },
+    "app_opened": {
+      "tier": "usage",
+      "clients": ["desktop", "ios", "android"],
+      "fires": "Desktop: once per launch. Mobile: a cold start, or returning to the foreground after 30 minutes or more in the background.",
+      "properties": {
+        "launch_count": { "type": "count" },
+        "cold": { "type": "bool" }
+      }
+    },
+    "message_sent": {
+      "tier": "usage",
+      "clients": ["desktop", "ios", "android"],
+      "fires": "The person sends a message. The denominator for failure rates.",
+      "properties": {
+        "source": { "enum": ["chat", "new_session", "voice", "notification_reply", "share"] },
+        "target": { "enum": ["chief_of_staff", "bot", "session"], "nullable": true },
+        "session_client": { "enum": ["happy_agent", "cli"], "nullable": true },
+        "model": { "type": "model", "nullable": true },
+        "model_provider_kind": { "enum": "provider_kind", "nullable": true },
+        "effort": { "enum": "effort", "nullable": true },
+        "bot_system_key": { "enum": ["chief_of_staff"], "nullable": true },
+        "task_depth": { "type": "count", "nullable": true },
+        "has_attachment": { "type": "bool" }
+      }
+    },
+    "daily_summary": {
+      "tier": "usage",
+      "clients": ["desktop", "ios", "android"],
+      "fires": "One per device per UTC day the app was used, sent at the first app_opened of a later day (desktop also when the window closes on a later day). The event timestamp is 12:00 UTC of the summarized day. Zero counts are omitted. Summaries older than 7 days are dropped. A client sends only the counts its UI has.",
+      "properties": {
+        "day": { "type": "day" },
+        "conversations_opened": { "type": "count", "optional": true },
+        "conversations_created": { "type": "count", "optional": true },
+        "conversations_created_voice": { "type": "count", "optional": true },
+        "attachments_sent": { "type": "count", "optional": true },
+        "photos_taken": { "type": "count", "optional": true },
+        "approvals_answered": { "type": "count", "optional": true },
+        "questions_answered": { "type": "count", "optional": true },
+        "runs_stopped": { "type": "count", "optional": true },
+        "messages_steered": { "type": "count", "optional": true },
+        "model_changed": { "type": "count", "optional": true },
+        "effort_changed": { "type": "count", "optional": true },
+        "permission_mode_changed": { "type": "count", "optional": true },
+        "files_opened": { "type": "count", "optional": true },
+        "diffs_opened": { "type": "count", "optional": true },
+        "terminal_opened": { "type": "count", "optional": true },
+        "browser_opened": { "type": "count", "optional": true },
+        "artifacts_opened": { "type": "count", "optional": true },
+        "system_monitor_opened": { "type": "count", "optional": true },
+        "projects_added": { "type": "count", "optional": true },
+        "workspaces_created": { "type": "count", "optional": true },
+        "bots_created": { "type": "count", "optional": true },
+        "tasks_created": { "type": "count", "optional": true },
+        "subtasks_appeared": { "type": "count", "optional": true },
+        "search_used": { "type": "count", "optional": true },
+        "command_palette_used": { "type": "count", "optional": true },
+        "todos_changed": { "type": "count", "optional": true },
+        "documents_opened": { "type": "count", "optional": true },
+        "calendar_opened": { "type": "count", "optional": true },
+        "stories_viewed": { "type": "count", "optional": true },
+        "feed_opened": { "type": "count", "optional": true },
+        "push_opened": { "type": "count", "optional": true },
+        "account_switched": { "type": "count", "optional": true },
+        "voice_seconds": { "type": "count", "optional": true },
+        "theme": { "enum": ["light", "dark", "system"], "optional": true },
+        "app_language": { "enum": ["en", "ru", "pl", "es", "it", "pt", "ca", "zh-Hans", "zh-Hant", "ja", "other"], "optional": true },
+        "notifications": { "enum": ["granted", "denied", "not_asked"], "optional": true },
+        "agents_connected": { "enum": "bucket_123", "optional": true },
+        "accounts": { "enum": "bucket_123", "optional": true },
+        "provider_kinds": { "enum[]": "provider_kind", "optional": true },
+        "provider_accounts": { "enum": "bucket_123", "optional": true },
+        "voice_enabled": { "type": "bool", "optional": true },
+        "experiments_on": { "type": "bool", "optional": true }
+      }
+    },
+    "onboarding_step_viewed": {
+      "tier": "usage",
+      "clients": ["desktop", "ios", "android"],
+      "fires": "The onboarding step changes.",
+      "properties": {
+        "step": { "enum": ["setup", "subscriptions", "get_app", "connect_phone", "welcome", "pair", "sign_in", "notifications", "done"] }
+      }
+    },
+    "onboarding_completed": {
+      "tier": "usage",
+      "clients": ["desktop", "ios", "android"],
+      "fires": "Onboarding reaches its end.",
+      "properties": {}
+    },
+    "onboarding_assistant_status": {
+      "tier": "usage",
+      "clients": ["desktop"],
+      "fires": "Unchanged from the existing desktop catalog.",
+      "properties": {
+        "assistant": { "enum": ["claude", "codex", "grok", "custom"] },
+        "status": { "enum": ["signed_in", "not_signed_in", "not_installed", "check_failed"] },
+        "path_refreshed": { "type": "bool" }
+      }
+    },
+    "onboarding_command_copied": {
+      "tier": "usage",
+      "clients": ["desktop"],
+      "fires": "Unchanged from the existing desktop catalog.",
+      "properties": {
+        "assistant": { "enum": ["claude", "codex", "grok", "custom"] },
+        "kind": { "enum": ["install", "sign_in", "agent_prompt"] },
+        "shell": { "enum": ["powershell", "posix"] }
+      }
+    },
+    "onboarding_local_apps": {
+      "tier": "usage",
+      "clients": ["desktop"],
+      "fires": "Unchanged from the existing desktop catalog.",
+      "properties": {
+        "claude_desktop_app": { "type": "bool", "nullable": true },
+        "codex_desktop_app": { "type": "bool", "nullable": true },
+        "antigravity_app": { "type": "bool", "nullable": true },
+        "agy_cli": { "type": "bool", "nullable": true }
+      }
+    },
+    "onboarding_subscriptions_exit": {
+      "tier": "usage",
+      "clients": ["desktop"],
+      "fires": "Unchanged from the existing desktop catalog.",
+      "properties": {
+        "claude_status": { "enum": ["signed_in", "not_signed_in", "not_installed", "check_failed"], "nullable": true },
+        "codex_status": { "enum": ["signed_in", "not_signed_in", "not_installed", "check_failed"], "nullable": true },
+        "grok_status": { "enum": ["signed_in", "not_signed_in", "not_installed", "check_failed"], "nullable": true },
+        "custom_status": { "enum": ["signed_in", "not_signed_in", "not_installed", "check_failed"], "nullable": true }
+      }
+    },
+    "onboarding_mobile": {
+      "tier": "usage",
+      "clients": ["desktop"],
+      "fires": "Unchanged from the existing desktop catalog.",
+      "properties": {
+        "action": { "enum": ["paired", "skipped"] }
+      }
+    },
+    "pairing_options_shown": {
+      "tier": "experiment",
+      "clients": ["desktop", "ios", "android"],
+      "fires": "A pairing page shows its Relay | Direct choice. Temporary: delete when the direct-connection rollout ends.",
+      "properties": {
+        "default_method": { "enum": "pairing_method" },
+        "surface": { "enum": "pairing_surface" }
+      }
+    },
+    "pairing_option_selected": {
+      "tier": "experiment",
+      "clients": ["desktop", "ios", "android"],
+      "fires": "The person changes the pairing method. Temporary, as above.",
+      "properties": {
+        "from": { "enum": "pairing_method" },
+        "to": { "enum": "pairing_method" },
+        "surface": { "enum": "pairing_surface" }
+      }
+    }
+  }
+}
