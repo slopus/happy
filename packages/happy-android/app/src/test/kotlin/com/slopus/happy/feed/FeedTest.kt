@@ -345,7 +345,8 @@ class FeedTest {
             ) as JsonObject,
         )
         assertEquals(com.slopus.happy.artifacts.ArtifactCover("cover.png", "image/png", com.slopus.happy.artifacts.ArtifactCover.Aspect.Wide), covered.cover)
-        assertEquals("Revenue up 18% QoQ, driven by enterprise seats.", covered.summary)
+        // Post-length, its line breaks kept.
+        assertEquals("Revenue up 18% QoQ,\n driven by enterprise seats.", covered.summary)
         assertEquals("#0b1020", covered.background)
         // An older daemon sends neither; `null` is none too.
         val plain = FeedLookups.Artifact.parse(AgentClient.json.parseToJsonElement("""{"title":"Notes","type":"markdown","latestVersion":2,"cover":null,"summary":null,"background":"red"}""") as JsonObject)
@@ -360,9 +361,12 @@ class FeedTest {
         val post = rows.getValue("ea1")
         assertEquals(FeedCover("a1", 4, "cover.png", "image/png", com.slopus.happy.artifacts.ArtifactCover.Aspect.Wide, "#0b1020"), post.cover)
         assertEquals("artifact/a1/4/cover.png", post.cover?.key)
-        assertEquals("Revenue up 18% QoQ, driven by enterprise seats.", post.summary)
+        assertEquals("Revenue up 18% QoQ,\n driven by enterprise seats.", post.summary)
         assertEquals(4, (post.target as FeedTarget.Artifact).ref.version)
-        for (id in listOf("ea2", "ea3", "ea4")) {
+        // A cover this phone can't draw: a post of its summary alone.
+        assertNull(rows.getValue("ea3").cover)
+        assertEquals(post.summary, rows.getValue("ea3").summary)
+        for (id in listOf("ea2", "ea4")) {
             assertNull("$id keeps its row", rows.getValue(id).cover)
             assertNull(rows.getValue(id).summary)
         }

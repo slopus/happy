@@ -1,6 +1,19 @@
 package com.slopus.happy.ui.feed
 
 import android.content.res.Resources
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.withLink
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -132,6 +145,7 @@ object FeedTags {
     const val FILTER = "feed.filter"
     const val COVER = "feed.post.cover"
     const val POST_SUMMARY = "feed.post.summary"
+    const val SUMMARY_TOGGLE = "feed.post.summary.toggle"
 
     fun tab(following: Boolean) = if (following) "feed.tab.following" else "feed.tab.activity"
     fun filter(filter: FeedFilter) = "feed.filter.${filter.wire}"
@@ -177,8 +191,12 @@ object FeedSpec {
     val coverRadius = CardListSpec.radius - CardListSpec.inset
     val coverGap = 10.dp
     val postBottom = CardListSpec.inset
-    const val SUMMARY_LINES = 3
+    /** A summary shows four lines until it is opened, the fourth ending "… Show more". */
+    const val SUMMARY_LINES = 4
     val postSummary = happyTextStyle(fontSize = 15, lineHeight = 20)
+
+    /** On a tablet the cards, posts and their covers are at most desktop's 640 wide. */
+    val postMaxWidth = 640.dp
 }
 
 /**
@@ -495,20 +513,22 @@ fun FeedScreen(
         if (showsFollowing) {
             FeedFollowingList(places, following, words, actions)
         } else {
-            Column(Modifier.fillMaxSize()) {
-                FeedSegments(
-                    listOf(FeedFilter.All to words.all, FeedFilter.Highlights to words.highlights),
-                    state.filter,
-                    Modifier
-                        .contentMaxWidth(LocalWindowLayout.current)
-                        .testTag(FeedTags.FILTER)
-                        .padding(top = FeedSpec.filterTop)
-                        .padding(horizontal = CardListSpec.side)
-                        .fillMaxWidth(),
-                    tag = FeedTags::filter,
-                    onChange = actions.onFilter,
-                )
-                FeedActivityList(items, state, actions, covers)
+            ProvideFeedWidth {
+                Column(Modifier.fillMaxSize()) {
+                    FeedSegments(
+                        listOf(FeedFilter.All to words.all, FeedFilter.Highlights to words.highlights),
+                        state.filter,
+                        Modifier
+                            .contentMaxWidth(LocalWindowLayout.current)
+                            .testTag(FeedTags.FILTER)
+                            .padding(top = FeedSpec.filterTop)
+                            .padding(horizontal = CardListSpec.side)
+                            .fillMaxWidth(),
+                        tag = FeedTags::filter,
+                        onChange = actions.onFilter,
+                    )
+                    FeedActivityList(items, state, actions, covers)
+                }
             }
         }
     }
@@ -550,8 +570,16 @@ fun FeedPeekScreen(
         value = withContext(Dispatchers.Default) { feedListItems(state, rows, catalog.loaded, words, dates, clock(), peek = true) }
     }
     PlaceScaffold(title = title, onBack = actions.onBack, tag = FeedTags.PEEK) {
-        FeedActivityList(items, state, actions, covers)
+        ProvideFeedWidth { FeedActivityList(items, state, actions, covers) }
     }
+}
+
+/** The Feed's list held to [FeedSpec.postMaxWidth] between the cards' edges, as desktop's is: narrower than the tablet's 768 measure. */
+@Composable
+private fun ProvideFeedWidth(content: @Composable () -> Unit) {
+    val layout = LocalWindowLayout.current
+    val held = layout.content.maxContentWidth.coerceAtMost(FeedSpec.postMaxWidth)
+    CompositionLocalProvider(LocalWindowLayout provides layout.copy(content = layout.content.copy(maxContentWidth = held)), content = content)
 }
 
 /**
@@ -660,12 +688,16 @@ private fun FeedEntryRow(item: FeedListItem.Row, onOpen: (FeedRow) -> Unit, cove
                 .fillMaxWidth()
                 .semantics(mergeDescendants = true) {
                     stateDescription = listOfNotNull(
-                        if (row.unread) words.unreadMark else null, item.summary, row.summary.takeIf { cover != null }, words.actors(row.actorNames, row.actorCount).ifEmpty { null }, item.time,
+                        if (row.unread) words.unreadMark else null, item.summary, words.actors(row.actorNames, row.actorCount).ifEmpty { null }, item.time,
                     ).joinToString(", ")
                 },
         ) {
             FeedEntryHeader(item)
-            if (cover != null) FeedPost(row.summary, cover, covers)
+            if (cover != null || row.summary != null) {
+                // Opened or not is this phone's, per entry, kept while the list keeps it.
+                var opened by rememberSaveable(row.id) { mutableStateOf(false) }
+                FeedPost(row.summary, opened, { opened = !opened }, cover, covers)
+            }
         }
     }
 }
@@ -736,28 +768,85 @@ private fun FeedEntryHeader(item: FeedListItem.Row) {
 /**
  * A post's body under its header:
  *
- *     |16| summary, up to three lines …………………… |16|
+ *     |16| summary, four lines … Show more ……… |16|
  *                         10
  *     |16| ┌ cover, 16:9 or 1:1 of the width ──┐ |16|
  *          └───────────────────────────────────┘
  *                         16
+ *
+ * Either may be missing: a summary without a cover is a post of words.
  */
 @Composable
-private fun FeedPost(summary: String?, cover: FeedCover, covers: FeedCovers?) {
+private fun FeedPost(summary: String?, opened: Boolean, onToggle: () -> Unit, cover: FeedCover?, covers: FeedCovers?) {
     Column(Modifier.fillMaxWidth().padding(start = CardListSpec.inset, end = CardListSpec.inset, bottom = FeedSpec.postBottom)) {
-        if (summary != null) {
-            Text(
-                summary,
-                style = FeedSpec.postSummary,
-                color = HappyTheme.colors.text,
-                maxLines = FeedSpec.SUMMARY_LINES,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(bottom = FeedSpec.coverGap).testTag(FeedTags.POST_SUMMARY),
-            )
-        }
-        FeedCoverView(cover, covers)
+        if (summary != null) FeedSummary(summary, opened, onToggle, Modifier.padding(bottom = if (cover != null) FeedSpec.coverGap else 0.dp))
+        if (cover != null) FeedCoverView(cover, covers)
     }
 }
+
+/**
+ * A summary in the Feed's body style, its line breaks kept: whole when it
+ * fits [FeedSpec.SUMMARY_LINES] lines; else cut so the last of them ends
+ * "… Show more", which opens it in place, and opened it ends "Show less".
+ * Only those words toggle; a tap anywhere else is the post's.
+ */
+@Composable
+private fun FeedSummary(text: String, opened: Boolean, onToggle: () -> Unit, modifier: Modifier) {
+    val colors = HappyTheme.colors
+    val more = stringResource(R.string.feed_show_more)
+    val less = stringResource(R.string.machine_launcher_show_less)
+    val measurer = rememberTextMeasurer()
+    val style = FeedSpec.postSummary
+    BoxWithConstraints(modifier.fillMaxWidth()) {
+        val width = constraints.maxWidth
+        val cut = remember(text, width, style, more, measurer) { feedSummaryCut(measurer, text, style, width, more) }
+        val link = LinkAnnotation.Clickable(FeedTags.SUMMARY_TOGGLE, TextLinkStyles(SpanStyle(color = colors.textLink))) { onToggle() }
+        val shown = buildAnnotatedString {
+            when {
+                cut == null -> append(text)
+                opened -> {
+                    append(text)
+                    append(" ")
+                    withLink(link) { append(less) }
+                }
+                else -> {
+                    append(feedSummaryHead(text, cut))
+                    append("\u2026 ")
+                    withLink(link) { append(more) }
+                }
+            }
+        }
+        Text(
+            shown,
+            style = style,
+            color = colors.text,
+            modifier = Modifier
+                .testTag(FeedTags.POST_SUMMARY)
+                .semantics { if (cut != null) customActions = listOf(CustomAccessibilityAction(if (opened) less else more) { onToggle(); true }) },
+        )
+    }
+}
+
+/**
+ * Where [text] is cut so it and "… [more]" fill [lines] lines [width]
+ * pixels wide, as [measurer] lays them out; null when it fits whole.
+ */
+internal fun feedSummaryCut(measurer: TextMeasurer, text: String, style: TextStyle, width: Int, more: String, lines: Int = FeedSpec.SUMMARY_LINES): Int? {
+    val constraints = Constraints(maxWidth = width)
+    val whole = measurer.measure(text, style, maxLines = lines, constraints = constraints)
+    if (!whole.hasVisualOverflow) return null
+    var low = 0
+    var high = whole.getLineEnd(lines - 1, visibleEnd = true)
+    while (low < high) {
+        val mid = (low + high + 1) / 2
+        val tried = measurer.measure(feedSummaryHead(text, mid) + "\u2026 " + more, style, maxLines = lines, constraints = constraints)
+        if (tried.hasVisualOverflow) high = mid - 1 else low = mid
+    }
+    return low
+}
+
+/** The first [length] characters of a summary as the ellipsis follows them: no space or stop before it. */
+internal fun feedSummaryHead(text: String, length: Int): String = text.substring(0, length).trimEnd { it.isWhitespace() || it in ".,;:" }
 
 /**
  * A cover across the post (spec "Covered artifact entries"): exactly its

@@ -101,8 +101,12 @@ data class ArtifactCover(val path: String, val mimeType: String, val aspect: Asp
             return ArtifactCover(path, o["mimeType"].str.orEmpty(), aspect)
         }
 
-        /** The wire's `summary`: one line, or null for none. */
-        fun summary(value: JsonElement?): String? = value.str?.replace(Regex("\\s+"), " ")?.trim()?.takeIf { it.isNotEmpty() }
+        /** The most of a summary shown (the daemon's own limit). */
+        const val SUMMARY_MAX = 5000
+
+        /** The wire's `summary`: post-length text with its line breaks, or null for none. */
+        fun summary(value: JsonElement?): String? =
+            value.str?.replace("\r\n", "\n")?.trim()?.take(SUMMARY_MAX)?.takeIf { it.isNotEmpty() }
 
         private val BACKGROUND = Regex("^#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$")
 

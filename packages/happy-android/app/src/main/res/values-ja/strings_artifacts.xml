@@ -88,6 +88,7 @@
     <string name="feed_highlights">ハイライト</string>
     <string name="feed_highlights_empty_title">ハイライトはまだありません</string>
     <string name="feed_highlights_empty">アーティファクトと新しいタスクがここに表示されます。</string>
+    <string name="feed_show_more">さらに表示</string>
     <string name="feed_mark_all_read">すべて既読にする</string>
     <string name="feed_empty">まだ何も起きていません。新しいタスク、ボット、ドキュメント、ToDoリスト、アーティファクトが、そのすべての変更とともにここに表示されます。</string>
     <string name="feed_loading">アクティビティを読み込み中…</string>

@@ -8,6 +8,9 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.performCustomAccessibilityActionWithLabel
+import org.junit.Assert.assertTrue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import androidx.compose.ui.unit.width
@@ -350,10 +353,68 @@ class FeedScreenTest {
             }
         }
         val cover = rule.node(FeedTags.COVER).bounds
-        // The 768 measure (the 800 column less its cards' 16 a side), the cover 16 inside the card.
-        assertDp("square width", 768 - 32, cover.width)
+        // Desktop's 640 card, not the tablet's 768 measure, and the cover 16 inside it.
+        assertDp("square width", 640 - 32, cover.width)
         assertDp("square height", cover.width, cover.height)
         shot("feed-post-square-tablet")
+    }
+
+    private val long = (1..12).joinToString("\n") { "Line $it of the quarter's notes: revenue, seats and churn." }
+
+    private fun showLong(opened: MutableList<String>, cover: ArtifactCover? = covered.cover) {
+        val artifact = covered.copy(cover = cover, summary = long)
+        rule.setHappyContent {
+            androidx.compose.runtime.CompositionLocalProvider(com.slopus.happy.ui.components.LocalImageLoader provides loader) {
+                ProvideWindowLayout {
+                    val state = FeedLibrary.State(available = true, items = postItems.take(2), loaded = true)
+                    FeedScreen(state, FeedRows.make(state.items, state::isUnread, catalog, postFound.copy(artifacts = postFound.artifacts + ("a2" to artifact)), "conn"), catalog, FeedFollowingState(), FeedActions(onBack = {}, onOpen = { opened += it.title }), clock = { now }, covers = covers)
+                }
+            }
+        }
+        rule.waitForIdle()
+    }
+
+    @OptIn(androidx.compose.ui.test.ExperimentalTestApi::class)
+    @Test
+    fun aLongSummaryShowsFourLinesThenOpensInPlace() {
+        val opened = mutableListOf<String>()
+        showLong(opened)
+        val summary = rule.node(FeedTags.POST_SUMMARY)
+        // Four 20 lines, the fourth ending "… Show more"; its breaks kept.
+        assertDp("four lines", 80, summary.bounds.height)
+        summary.assertTextContains("Show more", substring = true)
+        summary.assertTextContains("Line 1 of the quarter's notes: revenue, seats and churn.\nLine 2", substring = true)
+        shot("feed-summary-collapsed")
+        summary.performCustomAccessibilityActionWithLabel("Show more")
+        rule.waitForIdle()
+        assertTrue(rule.node(FeedTags.POST_SUMMARY).bounds.height > 200.dp)
+        rule.node(FeedTags.POST_SUMMARY).assertTextContains("Line 12", substring = true)
+        rule.node(FeedTags.POST_SUMMARY).assertTextContains("Show less", substring = true)
+        shot("feed-summary-expanded")
+        // Opening it in place opened nothing; the cover still opens the artifact.
+        assertEquals(emptyList<String>(), opened)
+        rule.node(FeedTags.COVER).performClick()
+        assertEquals(listOf("Q3 revenue"), opened)
+        // And Show less folds it again.
+        rule.node(FeedTags.POST_SUMMARY).performCustomAccessibilityActionWithLabel("Show less")
+        rule.waitForIdle()
+        assertDp("four lines again", 80, rule.node(FeedTags.POST_SUMMARY).bounds.height)
+    }
+
+    @Test
+    fun aSummaryWithoutACoverIsAPostOfWords() {
+        showLong(mutableListOf(), cover = null)
+        rule.onAllNodesWithTag(FeedTags.COVER, useUnmergedTree = true).assertCountEquals(0)
+        val summary = rule.node(FeedTags.POST_SUMMARY).bounds
+        val card = rule.node(FeedTags.row("10")).bounds
+        assertDp("16 under the words", summary.bottom + 16.dp, card.bottom)
+        shot("feed-summary-no-cover")
+    }
+
+    @Test
+    fun aShortSummaryHasNoToggle() {
+        showPosts(FeedLibrary.State(available = true, items = postItems.take(1), loaded = true))
+        rule.node(FeedTags.POST_SUMMARY).assertTextEquals("Revenue up 18% QoQ, driven by enterprise seats.")
     }
 
     @Test

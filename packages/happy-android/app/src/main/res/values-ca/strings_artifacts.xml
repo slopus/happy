@@ -92,6 +92,7 @@
     <string name="feed_highlights">Destacats</string>
     <string name="feed_highlights_empty_title">Encara no hi ha destacats</string>
     <string name="feed_highlights_empty">Aquí apareixen els artefactes i les tasques noves.</string>
+    <string name="feed_show_more">Mostra\'n més</string>
     <string name="feed_mark_all_read">Marca-ho tot com a llegit</string>
     <string name="feed_empty">Encara no ha passat res. Aquí apareixen les noves tasques, bots, documents, llistes de tasques i artefactes, amb cada canvi que tinguin.</string>
     <string name="feed_loading">S’està carregant l’activitat…</string>

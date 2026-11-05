@@ -107,9 +107,9 @@ data class FeedRow(
     val unread: Boolean,
     /** Null where nothing opens it (a deleted artifact). */
     val target: FeedTarget?,
-    /** A covered artifact's picture: the row is a post. */
+    /** An artifact's cover: with it, or with a [summary], the row is a post. */
     val cover: FeedCover? = null,
-    /** A covered artifact's one line, under the post's header. */
+    /** An artifact's summary, under the post's header: post-length, its line breaks kept. */
     val summary: String? = null,
 )
 
@@ -353,9 +353,9 @@ object FeedRows {
                 face = FeedFace.Tile(kind, artifact.type)
                 // A deleted one's versions are gone: it shows, and opens nothing.
                 target = if (artifact.deleted) null else FeedTarget.Artifact(ArtifactRef(id, artifact.latestVersion, artifact.type, artifact.title, followsLatest = true))
-                // A cover this phone can draw makes the row a post; any other keeps the row.
-                artifact.cover?.takeIf { !artifact.deleted && it.drawable }?.let { c ->
-                    cover = FeedCover(id, artifact.latestVersion, c.path, c.mimeType, c.aspect, artifact.background)
+                // A cover this phone can draw, or a summary, makes the row a post; a deleted one keeps the row.
+                if (!artifact.deleted) {
+                    cover = artifact.cover?.takeIf { it.drawable }?.let { c -> FeedCover(id, artifact.latestVersion, c.path, c.mimeType, c.aspect, artifact.background) }
                     summary = artifact.summary
                 }
             }
