@@ -122,7 +122,7 @@ class TailcatTransport internal constructor(
         requestTimeoutMillis: Long = 35_000,
         fileTimeoutMillis: Long = 15 * 60_000,
     ) : this(port, requestTimeoutMillis, fileTimeoutMillis, { _, key ->
-        TailcatClient.connect(address, ClientConfiguration(privateKey = key, mapProvider = derpMap, connectTimeoutMillis = connectTimeoutMillis))
+        TailcatClient.connect(address, tailcatConfiguration(key, connectTimeoutMillis))
     })
 
     private val flows = OpenFlows()
@@ -341,6 +341,10 @@ class TailcatTransport internal constructor(
     }
 
     companion object {
+        internal fun tailcatConfiguration(key: NodePrivateKey, connectTimeoutMillis: Long): ClientConfiguration =
+            // Serve the first request over DERP while this client's direct path is probed.
+            ClientConfiguration(privateKey = key, mapProvider = derpMap, connectTimeoutMillis = connectTimeoutMillis, relayFirst = true)
+
         /**
          * One provider for the app (tailcat-kotlin's default map,
          * tailcat.dev), so its hour-long cache is shared by every agent.

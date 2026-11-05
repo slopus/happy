@@ -134,11 +134,17 @@ public final class AgentHTTPTransport: SelfMeteringTransport {
 
     public convenience init(address: String, port: UInt16, publicUrl: String? = nil, tailcatAvailable: Bool = true) {
         self.init(port: port, publicUrl: publicUrl, tailcatAvailable: tailcatAvailable) { _, key in
-            var config = TailcatClient.Configuration()
-            config.connectTimeout = 20
-            config.privateKey = key
-            return try await TailcatClient.connect(to: address, configuration: config)
+            return try await TailcatClient.connect(to: address, configuration: Self.tailcatConfiguration(key: key))
         }
+    }
+
+    static func tailcatConfiguration(key: NodePrivateKey) -> TailcatClient.Configuration {
+        var config = TailcatClient.Configuration()
+        config.connectTimeout = 20
+        config.privateKey = key
+        // Serve the first request over DERP while this client's direct path is probed.
+        config.relayFirst = true
+        return config
     }
 
     /// `connect` makes one client of `category` with its own node key.

@@ -14,7 +14,7 @@
 #         budgets (at most 1024 of them, oldest evicted), so a browser's
 #         short requests can't exhaust the stack.
 set -euo pipefail
-COMMIT=4f041f4754f9cf4e52b26cc41173ef9903f86c76
+COMMIT=06303967c95dc6a05454037cbc931f68e0570c48
 here="$(cd "$(dirname "$0")" && pwd)"
 patches=("$here"/patches/*.patch)
 [ -e "${patches[0]}" ] || patches=()
