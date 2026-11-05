@@ -387,7 +387,7 @@ class BrowserProxy(parent: CoroutineScope) {
      * [answered] hears that, once the upstream has given its whole answer
      * and before the page has the last of it.
      */
-    private suspend fun relay(
+    internal suspend fun relay(
         remote: TransportSocket,
         local: TransportSocket,
         framing: BrowserResponseBody,
@@ -434,7 +434,9 @@ class BrowserProxy(parent: CoroutineScope) {
             relay.cancel()
             watch.cancel()
         }
-        if (!reuse) remote.close()
+        // The pool owns the upstream lease. It may already have been returned
+        // by answered() and taken by the next request when this page closes.
+        // artifact() releases an unfinished lease in its finally block.
         reuse
     }
 

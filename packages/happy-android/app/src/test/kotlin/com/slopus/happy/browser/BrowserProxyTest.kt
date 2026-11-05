@@ -7,9 +7,12 @@ import com.slopus.happy.connection.Transport
 import com.slopus.happy.connection.TransportResponse
 import com.slopus.happy.connection.TransportSocket
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.test.runTest
 import okhttp3.Credentials
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -17,6 +20,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -199,6 +203,40 @@ class BrowserProxyTest {
         }
         response("/api/echo") { assertEquals(200, it.code) }
         assertEquals(1, daemon.connections.get())
+    }
+
+    @Test fun closingThePageAfterAnAnswerDoesNotCloseTheReturnedUpstreamLease() = runTest {
+        var upstreamClosed = false
+        val remote = object : TransportSocket {
+            override suspend fun read(maximumBytes: Int): ByteArray = error("the whole answer is already read")
+            override suspend fun write(bytes: ByteArray) = error("the request was already sent")
+            override fun close() { upstreamClosed = true }
+        }
+        val lastWrite = CompletableDeferred<Unit>()
+        val local = object : TransportSocket {
+            override suspend fun read(maximumBytes: Int): ByteArray {
+                lastWrite.await()
+                return byteArrayOf() // The page goes away during its final write.
+            }
+            override suspend fun write(bytes: ByteArray) {
+                lastWrite.complete(Unit)
+                awaitCancellation()
+            }
+            override fun close() {}
+        }
+        val pool = BrowserConnectionPool({ remote to "token" })
+        try {
+            val lease = pool.take()
+            val head = HttpHead.parse("HTTP/1.1 409 Conflict\r\nContent-Length: 2\r\n\r\n".toByteArray())!!.first
+            val framing = BrowserResponseBody(head, "GET")
+            val delivered = proxy.relay(remote, local, framing, "{}".toByteArray()) { reusable -> pool.release(lease, reusable) }
+            assertFalse(delivered)
+            assertFalse("the page must not close a socket already returned to the pool", upstreamClosed)
+            assertSame(lease, pool.take())
+        } finally {
+            pool.stop()
+        }
+        assertTrue(upstreamClosed)
     }
 
     @Test fun closeDelimitedAndTruncatedAnswersAreNeverPooled() {
