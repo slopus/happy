@@ -98,10 +98,11 @@ extension Analytics {
         guard flagsAsking.insert(asking).inserted else { return nil }
         let generation = generation
         return Task { @MainActor [weak self] in
+            defer { self?.flagsAsking.remove(asking) }
             let install = await engine.installID
+            // Consent is checked again right before anything leaves.
+            guard let self, self.generation == generation, !consent.isOptedOut else { return }
             let answer = await ask.fetch(distinctID: install)
-            guard let self else { return }
-            flagsAsking.remove(asking)
             guard let answer, self.generation == generation, !consent.isOptedOut else { return }
             flag.store(answer, in: settings)
         }

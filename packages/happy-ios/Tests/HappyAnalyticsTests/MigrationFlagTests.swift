@@ -118,6 +118,27 @@ final class MigrationFlagTests: XCTestCase {
         XCTAssertTrue(http.requests.isEmpty)
     }
 
+    /// Opted out after the ask was made but before it went: nothing is
+    /// sent, and opted back in, the next ask goes.
+    func testAnOptOutBeforeTheAskGoesSendsNothing() async {
+        let flag = MigrationNoteFlag()
+        let settings = LocalSettings(storage: InMemoryKeyValueStore())
+        let http = answering(on(true))
+        let consent = AnalyticsConsent(storage: InMemoryKeyValueStore())
+        let analytics = started(http, flag: flag, consent: consent)
+        let asking = analytics.refreshMigrationFlag(settings: settings, accountOptedOut: false)
+        XCTAssertNotNil(asking)
+        consent.setDeviceOptOut(true)
+        await asking?.value
+        XCTAssertTrue(http.requests.isEmpty)
+        XCTAssertNil(settings.migrationNoteFlag)
+
+        consent.setDeviceOptOut(false)
+        await analytics.refreshMigrationFlag(settings: settings, accountOptedOut: false)?.value
+        XCTAssertEqual(http.requests(route).count, 1, "the dropped ask let go of the account")
+        XCTAssertEqual(settings.migrationNoteFlag, true)
+    }
+
     /// An answer that comes back after an opt-out is dropped.
     func testAnAnswerAfterAnOptOutIsDropped() async {
         let flag = MigrationNoteFlag()
